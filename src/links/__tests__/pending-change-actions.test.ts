@@ -72,6 +72,9 @@ import {
   applySuggestion,
   insertSuggestionBelow,
   settleAppliedChangeForLifecycle,
+  suggestionApplicability,
+  suggestionInsertability,
+  SUGGESTION_BLOCK_TEXT,
   type AppliedChangeDescriptor,
   type PendingChangeCardDeps,
   type InsertBelowCardDeps,
@@ -167,6 +170,19 @@ describe("keepSuggestion", () => {
     expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
     expect(deps.setArchived).not.toHaveBeenCalled();
     expect(deps.setAppliedChange).not.toHaveBeenCalled();
+  });
+
+  it("inserts the human's user_text when they typed one (task 713)", () => {
+    const deps = makeInsertDeps({
+      suggestedText: "the AI draft",
+      userText: "my own wording",
+      anchorUuid: "P1",
+      appliedChange: undefined,
+    });
+    const ok = insertSuggestionBelow(editor, "c1", "doc-9", deps);
+
+    expect(ok).toBe(true);
+    expect(insertParagraphAfter).toHaveBeenCalledWith(editor, "P1", "my own wording");
   });
 
   it("skips the flush when docId is null but still completes the card transition", () => {
@@ -384,6 +400,7 @@ function makeSuggestion(over: Partial<SuggestionLike> = {}): SuggestionLike {
     id: "s1",
     original_text: "old text",
     suggested_text: "new text",
+    user_text: "",
     links: [
       {
         id: "l1",
@@ -490,6 +507,115 @@ describe("applySuggestion", () => {
   });
 });
 
+// ── TASK 713 — the REPLACEMENT the splice writes ───────────────────────────
+//
+// The precedence "`user_text` wins, else `suggested_text`" was stated in four
+// doc comments and executed by exactly ONE reader (the flag-OFF Accept prompt).
+// `applySuggestion` read `suggested_text` alone, so (a) a human who typed their
+// own revision watched the AI's text land instead, and (b) a human-created
+// revision card — seeded `suggested_text: ""` — turned Apply into a DELETE of
+// the passage the card was written to improve.
+
+describe("applySuggestion — the replacement precedence (task 713)", () => {
+  it("splices the human's user_text in REPLACE mode when suggested_text is empty", () => {
+    const deps = { ...makeApplyDeps(), family: "revision-suggestion" as const };
+    const result = applySuggestion({
+      ...deps,
+      card: makeSuggestion({ suggested_text: "", user_text: "X" }),
+    });
+
+    // Never `delete`: the card HAS a replacement, it is just the human's.
+    expect(applyPendingChange).toHaveBeenCalledWith(
+      editor,
+      expect.objectContaining({ mode: "replace", replacement: "X" }),
+    );
+    expect(result).toMatchObject({ outcome: "applied" });
+  });
+
+  it("user_text WINS over a non-empty suggested_text, in the splice and in appliedChange", () => {
+    const deps = makeApplyDeps();
+    applySuggestion({
+      ...deps,
+      card: makeSuggestion({ suggested_text: "ai draft", user_text: "mine" }),
+    });
+
+    expect(applyPendingChange).toHaveBeenCalledWith(
+      editor,
+      expect.objectContaining({ replacement: "mine", mode: "replace" }),
+    );
+    // Revert/Keep reconcile from the descriptor, so it records what LANDED.
+    const ac2 = (deps.setAppliedChange as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(ac2).toMatchObject({ replacement: "mine", mode: "replace" });
+  });
+
+  it("a REVISION suggestion with both replacement fields empty is refused, not deleted", () => {
+    const deps = { ...makeApplyDeps(), family: "revision-suggestion" as const };
+    const result = applySuggestion({
+      ...deps,
+      card: makeSuggestion({ suggested_text: "", user_text: "" }),
+    });
+
+    expect(applyPendingChange).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(result).toEqual({ outcome: "skipped", reason: "no-replacement" });
+  });
+
+  it("a CUTTER suggestion with both empty still applies, in delete mode (the cut is the point)", () => {
+    const deps = { ...makeApplyDeps(), family: "cutter-suggestion" as const };
+    const result = applySuggestion({
+      ...deps,
+      card: makeSuggestion({ suggested_text: "", user_text: "" }),
+    });
+
+    expect(applyPendingChange).toHaveBeenCalledWith(
+      editor,
+      expect.objectContaining({ mode: "delete", replacement: "" }),
+    );
+    expect(result).toMatchObject({ outcome: "applied" });
+  });
+});
+
+describe("suggestionApplicability / suggestionInsertability (task 713)", () => {
+  it("the family discriminates an empty replacement: refused in Revisions, allowed in Cutter", () => {
+    const empty = makeSuggestion({ suggested_text: "", user_text: "" });
+    expect(suggestionApplicability(empty, "revision-suggestion")).toEqual({
+      canApply: false,
+      reason: "no-replacement",
+    });
+    expect(suggestionApplicability(empty, "cutter-suggestion")).toEqual({
+      canApply: true,
+    });
+    // ...and the refusal is SAID, per the row's own doctrine.
+    expect(SUGGESTION_BLOCK_TEXT["no-replacement"]).toMatch(/replacement text/i);
+  });
+
+  it("whitespace is not a replacement", () => {
+    expect(
+      suggestionApplicability(
+        makeSuggestion({ suggested_text: "   ", user_text: "" }),
+        "revision-suggestion",
+      ),
+    ).toEqual({ canApply: false, reason: "no-replacement" });
+  });
+
+  it("insertability asks its OWN verb's question: an anchor and a replacement, no capture", () => {
+    // Insert-below writes a NEW sibling paragraph, so an empty `original_text`
+    // is irrelevant to it — gating it on `no-capture` would refuse a card the
+    // action would have served.
+    const noCapture = makeSuggestion({ original_text: "" });
+    expect(suggestionApplicability(noCapture, "revision-suggestion")).toEqual({
+      canApply: false,
+      reason: "no-capture",
+    });
+    expect(suggestionInsertability(noCapture)).toEqual({ canApply: true });
+    // But it does need an anchor — the fact `insertSuggestionBelow` bails on.
+    expect(suggestionInsertability(makeSuggestion({ links: [] }))).toEqual({
+      canApply: false,
+      reason: "unanchored",
+    });
+  });
+});
+
 // ── insertSuggestionBelow — the third landing verb (retires the 4-field fallback) ──
 //
 // The escape hatch behind the retired AI 4-field grid: drop `suggested_text` as
@@ -499,18 +625,48 @@ describe("applySuggestion", () => {
 
 /** An InsertBelow deps bag whose `getSuggestion` returns a fixed record (or
  *  undefined for the not-found case). `applied` toggles the auto-applied-first
- *  teardown branch. */
+ *  teardown branch.
+ *
+ *  Since task 713 the bag hands over the CARD, and the insert resolves its own
+ *  replacement + anchor from it — so the fixture spells the two replacement
+ *  fields (and the links) rather than a pre-extracted string. */
 function makeInsertDeps(
   suggestion:
     | {
         suggestedText: string;
+        /** The human's own replacement — WINS over `suggestedText`. */
+        userText?: string;
         anchorUuid: string | undefined;
         appliedChange: AppliedChangeDescriptor | undefined;
       }
     | undefined,
 ): InsertBelowCardDeps<"accepted" | "applied" | "rejected"> {
+  const record = suggestion
+    ? {
+        card: makeSuggestion({
+          id: "c1",
+          suggested_text: suggestion.suggestedText,
+          user_text: suggestion.userText ?? "",
+          links: suggestion.anchorUuid
+            ? [
+                {
+                  id: "l1",
+                  kind: "anchor",
+                  anchor: {
+                    type: "textObject",
+                    targetKind: "paragraph",
+                    textObjectIds: [suggestion.anchorUuid],
+                  },
+                  target: { panel: "revisions", cardId: "c1" },
+                },
+              ]
+            : [],
+        } as unknown as Partial<SuggestionLike>),
+        appliedChange: suggestion.appliedChange,
+      }
+    : undefined;
   return {
-    getSuggestion: (id: string) => (id === "c1" ? suggestion : undefined),
+    getSuggestion: (id: string) => (id === "c1" ? record : undefined),
     setSuggestionStatus: vi.fn(),
     setArchived: vi.fn(),
     setAppliedChange: vi.fn(),

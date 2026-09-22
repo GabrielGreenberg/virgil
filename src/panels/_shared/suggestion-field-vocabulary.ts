@@ -48,3 +48,54 @@ export const FIELD_ORDER: SuggestionField[] = [
 export const READONLY_HUMAN_FIELDS: ReadonlySet<SuggestionField> = new Set<SuggestionField>([
   "original_text",
 ]);
+
+// ── The REPLACEMENT precedence (task 713) ─────────────────────────────────
+//
+// "The human's `user_text` wins, else the AI's `suggested_text`" was doctrine
+// stated in four doc comments (`suggestion-fields.tsx`, `cards/types.ts`,
+// `card-registry.tsx`, `suggestion-apply-prompt.ts`) and spelled out by hand in
+// exactly ONE of them. The leg that mutates the paper — `applySuggestion` /
+// `insertSuggestionBelow` — read `suggested_text` and nothing else, so a human
+// who typed their own revision into "Your text" watched the AI's text land
+// instead, and a human-created card (seeded `suggested_text: ""`) turned Apply
+// into a DELETE of the passage it was written to improve.
+//
+// A precedence restated in prose in four places and executed in one is not an
+// SSOT. It is spelled here, once, beside the field vocabulary it is a fact
+// about — and every reader (the splice, the insert, the applicability
+// predicate, the flag-OFF Accept prompt) cites this function.
+
+/** The fields the replacement precedence reads — the structural intersection of
+ *  `RevisionSuggestionCard` and `CutterSuggestionCard`. */
+export interface SuggestionReplacementSource {
+  /** The AI's drafted replacement (also what a human types when there is no
+   *  AI draft to refine). */
+  suggested_text: string;
+  /** The human's own replacement ("Your text"). WINS when non-empty. */
+  user_text: string;
+}
+
+/**
+ * **The one speller of a suggestion's replacement text.** `user_text` when the
+ * human typed one, else the AI's `suggested_text` — the literal precedence the
+ * four doc comments state.
+ *
+ * Byte-exact (`||` on the empty string, no trimming), because the result is
+ * spliced into the paper as BYTES and is what `AppliedChangeDescriptor.replacement`
+ * records for Revert. Whether the result counts as "something to put in the
+ * paper" is a separate, trimmed question — {@link hasSuggestionReplacement}.
+ */
+export function suggestionReplacement(card: SuggestionReplacementSource): string {
+  return card.user_text || card.suggested_text;
+}
+
+/** Does this card have a replacement to PUT IN the paper? The trimmed question
+ *  behind both landing verbs' refusals: Apply's `no-replacement` (for a family
+ *  that does not mean deletion) and Insert-below's. Whitespace is not a
+ *  replacement — inserting a blank paragraph is the same silence as inserting
+ *  nothing. */
+export function hasSuggestionReplacement(
+  card: SuggestionReplacementSource,
+): boolean {
+  return suggestionReplacement(card).trim() !== "";
+}

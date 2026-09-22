@@ -739,7 +739,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // grid at all) and is recoverable from the document → never counted.
     // `suggested_text` is AUTHOR-CONDITIONAL (task 241): AI prefill on an AI
     // card, but on a human card it's the typed replacement the apply path runs
-    // (`replacement = user_text or suggested_text`) — counting it only for a
+    // (`suggestionReplacement` — `user_text` wins, else `suggested_text`;
+    // task 713 made that leaf the one speller) — counting it only for a
     // human record keeps "dismiss an untouched AI suggestion freely" AND stops
     // the silent hard-delete of a human draft whose only content is that field.
     content: {

@@ -1,5 +1,6 @@
 import type { Link } from "@/links/_shared/types";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
+import { suggestionReplacement } from "@/panels/_shared/suggestion-field-vocabulary";
 
 /**
  * Shared builder for the flag-OFF **Accept** prompt of a suggestion card
@@ -15,6 +16,12 @@ import type { PendingChangeFamily } from "@/links/apply-suggestion";
  * REPLACEMENT precedence (`user_text` wins, else `suggested_text`) can't
  * diverge between the two families again. Only the lead-in verb line is
  * parameterized by `family`.
+ *
+ * TASK 713 — and the precedence itself is no longer written out here: it is
+ * {@link suggestionReplacement}, the same leaf the in-browser splice reads. This
+ * file hoisted the prompt so the two FAMILIES couldn't drift; it still left the
+ * flag-OFF prompt and the flag-ON splice free to drift from each other, which is
+ * exactly what happened — the splice never learned `user_text` at all.
  */
 
 /** The fields the Accept prompt reads — the structural intersection of
@@ -24,7 +31,7 @@ export interface SuggestionPromptSource {
   suggested_text: string;
   explanation: string;
   /** Human's own replacement ("your version"). Wins over `suggested_text`
-   *  when non-empty — the whole point of this shared builder. */
+   *  when non-empty — see {@link suggestionReplacement}. */
   user_text: string;
   instructions: string;
   selectedText?: string;
@@ -55,7 +62,7 @@ export function buildSuggestionApplyPrompt(
   return [
     LEAD_IN[family],
     `ORIGINAL: ${s.original_text}`,
-    `REPLACEMENT: ${s.user_text || s.suggested_text}`,
+    `REPLACEMENT: ${suggestionReplacement(s)}`,
     `EXPLANATION: ${s.explanation || "(none)"}`,
     s.instructions ? `INSTRUCTIONS: ${s.instructions}` : null,
     `ANCHOR: ${anchor}`,

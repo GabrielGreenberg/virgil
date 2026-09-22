@@ -225,10 +225,8 @@ export function CutterSuggestionCard({
         // Flag-agnostic: an AI-drafted pending suggestion NEVER shows the 4-field
         // grid — it shows the minimal Insert-below body (retires the fallback).
         <PendingAiRecordBody
-          id={card.id}
-          originalText={card.original_text}
+          card={card}
           originalContent={card.selectedContent}
-          suggestedText={card.suggested_text}
           explanation={card.explanation}
           family="cutter-suggestion"
         />

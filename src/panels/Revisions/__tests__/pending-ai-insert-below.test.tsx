@@ -8,10 +8,13 @@
 //   1. pending AI + expanded → Insert-below body, NO textareas (no grid).
 //   2. clicking Insert below → controller.insertBelow("revision-suggestion", id).
 //   3. pending HUMAN + expanded → the 4-field grid (textareas present), no button.
-//   4. empty suggested_text (a delete/empty cut) → no Insert-below button; a
-//      quiet "No replacement text to insert." notice instead.
+//   4. empty replacement (a delete/empty cut) → the button stays, DISABLED,
+//      with the refusal said beneath it (task 713 — it used to be hidden).
 //   5. the explanation renders always-on; the Original text stays behind a chevron.
 //   6. controller off → the button is disabled (defensive).
+//   7. TASK 713 — an UNANCHORED card gets a disabled button + a stated reason,
+//      not a live one whose press `insertSuggestionBelow` silently refuses; and
+//      a human's `user_text` alone is replacement enough to enable the verb.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -82,9 +85,24 @@ function makePending(
     user_text: "",
     instructions: "",
     status: "pending",
-    links: [],
+    // ANCHORED by default (task 713): `insertSuggestionBelow` bails without a
+    // Mode-A paragraph link, so an unanchored fixture would pin a press that
+    // does nothing. The unanchored case is now its own leg, below.
+    links: [
+      {
+        id: "l1",
+        kind: "anchor",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        anchor: {
+          type: "textObject",
+          targetKind: "paragraph",
+          textObjectIds: ["P1"],
+        },
+        target: { panel: "revisions", cardId: "rs1" },
+      },
+    ],
     ...over,
-  };
+  } as RevisionSuggestionCardData;
 }
 
 function makeController(isOn = true) {
@@ -150,10 +168,38 @@ describe("pending AI suggestion — minimal Insert-below body (retires the 4-fie
     expect(screen.getByTestId("borrowed")).toBeTruthy();
   });
 
-  it("hides Insert below for an empty suggested_text (a delete/empty cut) — shows a notice", () => {
+  it("disables Insert below for an empty replacement (a delete/empty cut) and SAYS why", () => {
     renderCard(makePending({ suggested_text: "" }), makeController());
-    expect(screen.queryByRole("button", { name: "Insert below" })).toBeNull();
-    expect(screen.getByText("No replacement text to insert.")).toBeTruthy();
+    const btn = screen.getByRole("button", { name: "Insert below" }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(screen.getByTestId("pending-insert-blocked").textContent).toMatch(
+      /nothing to put in the paper/i,
+    );
+  });
+
+  it("task 713 — an UNANCHORED card disables the verb with a reason, not a live no-op", () => {
+    const controller = makeController();
+    renderCard(makePending({ links: [] }), controller);
+    const btn = screen.getByRole("button", { name: "Insert below" }) as HTMLButtonElement;
+    // `insertSuggestionBelow` bails on a missing Mode-A anchor and returns
+    // `false` with no status write and no notice — so a live button here was a
+    // press that did nothing, forever.
+    expect(btn.disabled).toBe(true);
+    expect(screen.getByTestId("pending-insert-blocked").textContent).toMatch(
+      /not anchored/i,
+    );
+    fireEvent.click(btn);
+    expect(controller.insertBelow).not.toHaveBeenCalled();
+  });
+
+  it("task 713 — the human's user_text alone is replacement enough", () => {
+    renderCard(
+      makePending({ suggested_text: "", user_text: "My own wording." }),
+      makeController(),
+    );
+    const btn = screen.getByRole("button", { name: "Insert below" }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(screen.queryByTestId("pending-insert-blocked")).toBeNull();
   });
 
   it("disables Insert below when the controller is off (defensive)", () => {

@@ -162,7 +162,8 @@ export interface CardContentModel {
    *  suggestion family's `suggested_text` is AI *prefill* on an AI card (which
    *  never renders the editable field grid — see `PendingAiRecordBody`) but the
    *  human author's typed, apply-load-bearing replacement on a human card
-   *  (`replacement = user_text or suggested_text`, `apply_response.py`). Listed
+   *  (`suggestionReplacement` in `panels/_shared/suggestion-field-vocabulary`,
+   *  matched by `apply_response.py`). Listed
    *  as `aiPrefilledFields` it read as EMPTY for a human draft whose only
    *  content was a typed replacement — hard-deleted with no confirm, and
    *  asymmetric with the apply path that treats it as real content. */

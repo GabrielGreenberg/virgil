@@ -65,11 +65,11 @@ type AddSuggestion = (
 ) => { id: string };
 
 const PANELS = [
-  ["cutter", useCutter] as const,
-  ["revisions", useRevisions] as const,
+  ["cutter", useCutter, "cutter-suggestion"] as const,
+  ["revisions", useRevisions, "revision-suggestion"] as const,
 ];
 
-describe.each(PANELS)("%s: a suggestion is seeded in the apply dialect (task 696)", (name, useHook) => {
+describe.each(PANELS)("%s: a suggestion is seeded in the apply dialect (task 696)", (name, useHook, family) => {
   const docId = `doc-696-${name}`;
 
   it("seeds original_text from the anchor's LaTeX form, not its flattened line", async () => {
@@ -114,7 +114,7 @@ describe.each(PANELS)("%s: a suggestion is seeded in the apply dialect (task 696
     // The card is anchored, so the refusal is about the CAPTURE, and the
     // surface says which — rather than rendering a live Apply that would
     // answer `stale` against a paragraph that never changed.
-    expect(suggestionApplicability(card as never)).toEqual({
+    expect(suggestionApplicability(card as never, family)).toEqual({
       canApply: false,
       reason: "no-capture",
     });

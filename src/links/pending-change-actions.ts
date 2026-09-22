@@ -56,6 +56,10 @@ import {
   resetPreviewDir,
   setPreviewDir,
 } from "@/links/pending-preview-store";
+import {
+  hasSuggestionReplacement,
+  suggestionReplacement,
+} from "@/panels/_shared/suggestion-field-vocabulary";
 
 /** The applied-splice descriptor a `status:"applied"` suggestion card carries
  *  (`RevisionSuggestionCard.appliedChange` ≡ `CutterSuggestionCard.appliedChange`
@@ -299,14 +303,16 @@ export function previewSuggested<TStatus extends string>(
  *  it resolves the whole suggestion by id. Generic over the family's status
  *  union so each family keeps its literal type. */
 export interface InsertBelowCardDeps<TStatus extends string = string> {
-  /** Resolve the pending suggestion by id → its replacement text, its Mode-A
-   *  anchor uuid (the first linked paragraph), and any applied-splice descriptor
-   *  (present only if the card was auto-applied first). `undefined` = not found /
-   *  wrong kind → the action is a safe no-op. */
+  /** Resolve the pending suggestion by id → the CARD itself (so the insert
+   *  resolves its own replacement + anchor through the shared predicate rather
+   *  than trusting a pre-extracted string — task 713: the extraction read
+   *  `suggested_text` and dropped the human's `user_text`) plus any
+   *  applied-splice descriptor (present only if the card was auto-applied
+   *  first). `undefined` = not found / wrong kind → the action is a safe
+   *  no-op. */
   getSuggestion: (id: string) =>
     | {
-        suggestedText: string;
-        anchorUuid: string | undefined;
+        card: SuggestionLike;
         appliedChange: AppliedChangeDescriptor | undefined;
       }
     | undefined;
@@ -318,15 +324,20 @@ export interface InsertBelowCardDeps<TStatus extends string = string> {
 }
 
 /**
- * Insert the suggestion's `suggested_text` as a NEW paragraph directly below its
- * anchored paragraph, then retire the card.
+ * Insert the suggestion's REPLACEMENT ({@link suggestionReplacement} — the
+ * human's `user_text` when they typed one, else the AI's `suggested_text`) as a
+ * NEW paragraph directly below its anchored paragraph, then retire the card.
  *
  * Non-destructive: the original paragraph is never spliced — {@link
  * insertParagraphAfter} only inserts a sibling after it, and `BlockUuidBackfill`
  * mints the new paragraph's `%!v:` id. Returns false (no doc/card mutation) when:
- *   - the card isn't resolvable,
- *   - `suggested_text` is blank (a delete/empty cut — nothing to insert), or
- *   - the anchor uuid doesn't resolve in the live doc.
+ *   - the card isn't resolvable, or
+ *   - {@link suggestionInsertability} refuses it (no anchor, or no replacement
+ *     text — a delete/empty cut), which is the SAME predicate the "Insert
+ *     below" button is disabled by, so the button can no longer offer a press
+ *     that silently does nothing (task 713, member 3), or
+ *   - the anchor uuid doesn't resolve in the LIVE doc (a document fact the pure
+ *     predicate cannot answer).
  *
  * On success: if the card had been auto-applied first (an `appliedChange` → a
  * live blue mark), drop that mark + clear the descriptor BEFORE finalizing, so
@@ -342,11 +353,17 @@ export function insertSuggestionBelow<TStatus extends string>(
 ): boolean {
   const s = deps.getSuggestion(id);
   if (!s) return false;
-  // Nothing to insert (a cutter/delete cut, or an empty revision) → refuse.
-  if (s.suggestedText.trim() === "") return false;
-  if (!s.anchorUuid) return false;
+  // Can this card answer Insert below at all? ONE predicate, shared with the
+  // button that offers the verb — no anchor, or nothing to insert (a
+  // cutter/delete cut, or an unfinished revision) → refuse.
+  if (!suggestionInsertability(s.card).canApply) return false;
+  const anchorUuid = getLinkedTextObjectIds(s.card)[0];
 
-  const inserted = insertParagraphAfter(editor, s.anchorUuid, s.suggestedText);
+  const inserted = insertParagraphAfter(
+    editor,
+    anchorUuid,
+    suggestionReplacement(s.card),
+  );
   if (!inserted) return false;
 
   // If the card was auto-applied first, tear down its blue mark + descriptor so
@@ -380,14 +397,24 @@ export function insertSuggestionBelow<TStatus extends string>(
 // own everything from "compute the anchor" through "set card state", returning
 // a discriminated result so a caller (the driver) can branch on what happened.
 
-/** The minimal suggestion-card shape `applySuggestion` reads: the two
- *  splice-defining text fields, the paragraph links (for the Mode-A anchor),
- *  plus `id` (for `CardWithLinks`). Both `RevisionSuggestionCard` and
- *  `CutterSuggestionCard` structurally satisfy this. */
+/** The minimal suggestion-card shape `applySuggestion` reads: the capture, BOTH
+ *  replacement fields (the precedence between them is
+ *  {@link suggestionReplacement} — task 713), the paragraph links (for the
+ *  Mode-A anchor), plus `id` (for `CardWithLinks`). Both
+ *  `RevisionSuggestionCard` and `CutterSuggestionCard` structurally satisfy
+ *  this.
+ *
+ *  `user_text` is on the shape rather than threaded in per call site precisely
+ *  because it was possible to write the splice without it: the whole apply path
+ *  read `suggested_text` alone and silently discarded whatever the human had
+ *  typed. A card shape that omits the winning field is a shape that invites
+ *  that bug back. */
 export interface SuggestionLike extends CardWithLinks {
   id: string;
   original_text: string;
   suggested_text: string;
+  /** The human's own replacement ("Your text"). WINS over `suggested_text`. */
+  user_text: string;
 }
 
 /** Card-state mutators + the anchorId minter the apply sequence drives. Both
@@ -431,8 +458,37 @@ export interface ApplySuggestionDeps<TStatus extends string = string> {
  *    into. The state a "+"-created suggestion starts in (task 695).
  *  - `no-capture` — anchored, but `original_text` is empty, so there is nothing
  *    to find and replace. `locateSpan` treats an empty needle as an automatic
- *    miss (`indexOf("")` is a false 0), so this can never succeed either. */
-export type SuggestionBlockReason = "unanchored" | "no-capture";
+ *    miss (`indexOf("")` is a false 0), so this can never succeed either.
+ *  - `no-replacement` — the card has no replacement text at all
+ *    ({@link hasSuggestionReplacement}: neither `user_text` nor
+ *    `suggested_text`), and the family does not mean deletion. Task 713: a
+ *    human-created REVISION suggestion is seeded `suggested_text: ""` and
+ *    invites the author to type into "Your text"; the old predicate looked at
+ *    neither replacement field, so pressing Apply before typing took the
+ *    `mode: "delete"` branch and staged the anchored paragraph for REMOVAL. In
+ *    Cutter an empty replacement IS the point (the cut), so the family is the
+ *    discriminator — see {@link FAMILY_MEANS_DELETION}. */
+export type SuggestionBlockReason =
+  | "unanchored"
+  | "no-capture"
+  | "no-replacement";
+
+/**
+ * **Does an empty replacement MEAN something in this family?** In Cutter it
+ * does — a suggestion with nothing to put back is a cut, and deleting the
+ * passage is the panel's whole purpose. In Revisions it does not: nothing on a
+ * revision card says Apply might remove the paragraph, so an empty replacement
+ * there is an unfinished draft, not an instruction.
+ *
+ * A family fact, not a per-card flag: the discriminator has to hold for every
+ * card the family will ever have, and the family already flows to every caller
+ * of the predicate (`PendingActionRow` takes it, the auto-apply driver carries
+ * it on the resolved target, `applySuggestion` takes it in its deps).
+ */
+export const FAMILY_MEANS_DELETION: Record<PendingChangeFamily, boolean> = {
+  "cutter-suggestion": true,
+  "revision-suggestion": false,
+};
 
 /** The ONE predicate's answer. Deliberately a discriminated result rather than
  *  a boolean: the UI has to be able to SAY why, and a second hand-written
@@ -448,6 +504,11 @@ export const SUGGESTION_BLOCK_TEXT: Record<SuggestionBlockReason, string> = {
     "Not anchored to a paragraph yet — drop this card on the passage it should replace.",
   "no-capture":
     "No original passage captured — drop this card on the passage it should replace.",
+  // Said on BOTH landing verbs (Apply and Insert below) and on both
+  // authorships, so it names the fact rather than one surface's field label —
+  // an AI card never renders the "Your text" box this would otherwise point at.
+  "no-replacement":
+    "No replacement text yet — this suggestion has nothing to put in the paper.",
 };
 
 /**
@@ -461,17 +522,51 @@ export const SUGGESTION_BLOCK_TEXT: Record<SuggestionBlockReason, string> = {
  * them drifting again — the alternative (a second condition written out in the
  * component) is precisely how they came apart.
  *
- * Pure and card-only: no editor, no flag, no React. Whether the anchored span
- * still MATCHES the live document is a different question, answered later and
- * reported as `stale`.
+ * Pure and card-only (plus the FAMILY, which is a fact about the card's panel,
+ * not about the surface rendering it): no editor, no flag, no React. Whether
+ * the anchored span still MATCHES the live document is a different question,
+ * answered later and reported as `stale`.
+ *
+ * TASK 713 — the predicate grew its third refusal, `no-replacement`, because it
+ * asked about the capture and the anchor but never about the thing that would
+ * actually be written. An unfinished revision draft therefore rendered a live
+ * Apply whose press took the DELETE branch on the user's own paragraph. The
+ * family discriminates: a Cutter suggestion with no replacement is a cut and
+ * stays appliable ({@link FAMILY_MEANS_DELETION}).
  */
 export function suggestionApplicability(
   card: SuggestionLike,
+  family: PendingChangeFamily,
 ): SuggestionApplicability {
   if (!getLinkedTextObjectIds(card)[0])
     return { canApply: false, reason: "unanchored" };
   if (card.original_text.length === 0)
     return { canApply: false, reason: "no-capture" };
+  if (!FAMILY_MEANS_DELETION[family] && !hasSuggestionReplacement(card))
+    return { canApply: false, reason: "no-replacement" };
+  return { canApply: true };
+}
+
+/**
+ * **Can this card answer INSERT BELOW?** — the second landing verb's predicate,
+ * the one {@link insertSuggestionBelow} itself bails on, on the same reason
+ * vocabulary (task 713, closing the third member of that cluster).
+ *
+ * Deliberately NOT `suggestionApplicability`: insert-below writes a NEW sibling
+ * paragraph and never touches the anchored one, so it needs an anchor and a
+ * replacement but no capture — gating it on `no-capture` would refuse a card the
+ * action would have served. Sharing the reason vocabulary while asking each
+ * verb's own question is what keeps a button and its action from drifting
+ * WITHOUT inventing refusals the action doesn't make (task 695's rule, read
+ * per verb).
+ */
+export function suggestionInsertability(
+  card: SuggestionLike,
+): SuggestionApplicability {
+  if (!getLinkedTextObjectIds(card)[0])
+    return { canApply: false, reason: "unanchored" };
+  if (!hasSuggestionReplacement(card))
+    return { canApply: false, reason: "no-replacement" };
   return { canApply: true };
 }
 
@@ -505,20 +600,25 @@ export function applySuggestion<TStatus extends string>(
   // Can this card answer Apply at all? ONE predicate, shared with the button
   // that offers the verb (task 695) — bail WITHOUT mutating the doc or the card
   // (matches Phase 1b's early return), carrying the reason out to the caller.
-  const applicability = suggestionApplicability(card);
+  const applicability = suggestionApplicability(card, deps.family);
   if (!applicability.canApply)
     return { outcome: "skipped", reason: applicability.reason };
   // Mode-A anchor: the first linked paragraph uuid — non-empty by the predicate.
   const anchorUuid = getLinkedTextObjectIds(card)[0];
 
-  const mode: "replace" | "delete" =
-    card.suggested_text === "" ? "delete" : "replace";
+  // TASK 713 — what lands is the card's REPLACEMENT, which is the human's
+  // `user_text` when they typed one. This read was `card.suggested_text`, so a
+  // human who disagreed with the AI and wrote their own revision watched the
+  // AI's text go into their paper instead. One speller, cited here and by the
+  // predicate above, so the splice and its gate read the same string.
+  const replacement = suggestionReplacement(card);
+  const mode: "replace" | "delete" = replacement === "" ? "delete" : "replace";
   const anchorId = deps.generateAnchorId();
 
   const result = applyPendingChange(editor, {
     anchorUuid,
     originalText: card.original_text,
-    replacement: card.suggested_text,
+    replacement,
     mode,
     cardId: card.id,
     anchorId,
@@ -540,7 +640,10 @@ export function applySuggestion<TStatus extends string>(
     // string would put the flattened line back into the paragraph in place of
     // the marked-up bytes that were taken out.
     originalText: result.originalText,
-    replacement: card.suggested_text,
+    // The SAME resolved string the splice wrote — Revert/Keep reconcile from
+    // this descriptor, so recording `suggested_text` here while splicing
+    // `user_text` would make them disagree about what is in the paper.
+    replacement,
     mode,
     appliedAt: new Date().toISOString(),
   };

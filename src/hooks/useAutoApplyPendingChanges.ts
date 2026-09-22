@@ -388,7 +388,7 @@ export function applyOne(
   // a card that could never apply neither burns its dispatch slot nor reaches
   // the splice path — `applySuggestion` would return `skipped` anyway; this
   // keeps the pass O(1) on it and the claim honest.
-  if (!suggestionApplicability(target.card).canApply) return;
+  if (!suggestionApplicability(target.card, target.family).canApply) return;
   if (
     !isAutoApplyEligible({
       card: target.card,
