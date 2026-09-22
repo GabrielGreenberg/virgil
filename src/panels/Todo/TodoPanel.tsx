@@ -8,6 +8,7 @@ import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
+import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { TodoRow } from "./TodoRow";
 
@@ -25,8 +26,6 @@ interface TodoPanelProps {
   onUpdateNotes: (id: string, notes: string) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
-  /** DELETES the done todos passed to it — it never archived (task 681). */
-  onClearDone: (ids?: readonly string[]) => void;
   selectedTodoId: string | null;
   onSelectTodo: (id: string | null) => void;
   onJumpToCard?: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
@@ -45,7 +44,6 @@ export default function TodoPanel({
   onUpdateNotes,
   onSetAiRequest,
   onDelete,
-  onClearDone,
   selectedTodoId,
   onSelectTodo,
   onJumpToCard,
@@ -59,10 +57,25 @@ export default function TodoPanel({
   // Footer + Archive derive from the SAME archive-view-filtered slice
   // `CardListPanel` renders (via the shared `useArchiveVisibleItems`), so an
   // archived (hidden, deliberately set-aside) done todo can't inflate the
-  // "N completed" count, keep the Archive button alive, or get purged by it in
-  // the Active view. (task 2026-07-12-103.)
+  // "N completed" count or be touched by the button in the Active view.
+  // (task 2026-07-12-103.)
   const visible = useArchiveVisibleItems("todo", orderedItems, isArchived);
   const done = visible.filter((i) => i.done);
+  // The footer's "Archive" ARCHIVES (task 706). It used to reach the pane's
+  // clear-done door — a permanent, unconfirmed hard delete of every completed
+  // todo, notes and all, under the one label in the app that promises the
+  // reversible set-aside. It now runs each done, not-yet-archived todo through
+  // the SAME per-card archive door every card's own archive button uses
+  // (`useCardArchiveActions().archive`): the flag flips, any pending AI
+  // request resolves exactly as it does for a single archive, and the card
+  // stays restorable from the Archives view. Already-archived done todos (shown
+  // in the All/Archives views) are skipped — `archive` is a toggle, and this
+  // control never un-archives.
+  const archiveActions = useCardArchiveActions();
+  const archivable = done.filter((i) => !i.archived);
+  const archiveCompleted = () => {
+    for (const t of archivable) archiveActions.archive("todo", t.id);
+  };
 
   return (
     <CardListPanel
@@ -113,8 +126,10 @@ export default function TodoPanel({
             <span className="text-xs text-ink-muted">
               {done.length} completed
             </span>
+            {archiveActions.enabled && archivable.length > 0 ? (
             <button
-              onClick={() => onClearDone(done.map((d) => d.id))}
+              onClick={archiveCompleted}
+              title="Archive completed todos (restore them from the Archives view)"
               className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center gap-1.5"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -124,6 +139,7 @@ export default function TodoPanel({
               </svg>
               Archive
             </button>
+            ) : null}
           </div>
         ) : null
       }

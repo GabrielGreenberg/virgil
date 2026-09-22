@@ -198,8 +198,17 @@ describe("the pane really is wired this way (the mirror above is not fiction)", 
     expect(pane).toContain("makeUnbridgingBulkDelete(deleteTodoItem)");
   });
 
-  it("the Todo panel is handed that door and no other", () => {
-    expect(pane).toContain("clearDoneTodos={todosHook.clearDone}");
+  it("no Todo panel control is handed the delete door (task 706)", () => {
+    // The footer labelled "Archive" used to reach this door — a permanent,
+    // unconfirmed bulk delete. It now archives through the per-card archive
+    // door; nothing downstream of the pane may be handed a bulk delete under
+    // any name.
+    expect(pane).not.toContain("clearDoneTodos={");
+    const host = readFileSync(
+      join("src", "components", "editor-layout", "panels", "todo-host.tsx"),
+      "utf8",
+    );
+    expect(host).not.toMatch(/clearDone|onClearDone/);
   });
 
   it("`useTodos` exposes no raw bulk purge for a consumer to reach past it", () => {
