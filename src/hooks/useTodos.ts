@@ -21,6 +21,8 @@ import {
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
+import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -30,7 +32,8 @@ const EMPTY: TodoState = { items: [] };
 
 function migrateTodo(raw: unknown): TodoItem {
   const i = raw as Partial<TodoItem>;
-  return {
+  // Task 712: unknown keys ride through the load (`carryUnknownKeys`).
+  return carryUnknownKeys(raw, {
     id: i.id!,
     archived: i.archived,
     // T6/C12: the legacy seed put a generated "Task N" in the BODY, so for a
@@ -45,7 +48,7 @@ function migrateTodo(raw: unknown): TodoItem {
     aiRequest: !!i.aiRequest,
     createdAt: i.createdAt!,
     links: migrateCardLinks("todo", raw),
-  };
+  });
 }
 
 function migrateTodos(raw: unknown): TodoState {
@@ -244,6 +247,20 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     (_s, items) => ({ items }),
   );
 
+  // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
+  const reinstate = useCallback(
+    (raw: unknown): boolean =>
+      reinstateCard<TodoState, TodoItem>(
+        stateRef.current,
+        update,
+        (s) => s.items,
+        (_s, items) => ({ items }),
+        migrateTodo,
+        raw,
+      ),
+    [update, stateRef],
+  );
+
   /**
    * Set a Mode-B text-range anchor on a todo (symmetric with
    * `useNotes.setNoteAnchor`). Folds any existing Mode-A paragraph links
@@ -396,6 +413,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       addParagraphId,
       removeParagraphId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       setTodoAnchor,
@@ -418,6 +436,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       addParagraphId,
       removeParagraphId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       setTodoAnchor,

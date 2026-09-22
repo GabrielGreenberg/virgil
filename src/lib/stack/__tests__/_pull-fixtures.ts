@@ -122,6 +122,10 @@ export const POPULATED_SNAPSHOT_DATA: {
     createdAt: "2020-01-01T00:00:00.000Z",
     unanchored: true,
     links: [SOURCE_LINK],
+    // Task 712: an agent-archived card's origin record — a per-doc binding.
+    originalPanel: "notes",
+    originalCard: { kind: "note", id: "src-archive-id", links: [SOURCE_LINK] },
+    archivedAt: "2020-01-02T00:00:00.000Z",
   },
   "revision-comment": {
     kind: "comment",

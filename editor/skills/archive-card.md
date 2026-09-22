@@ -66,11 +66,14 @@ pen**, with the audit notification + version bump. Fully reversible by
 > over the card-store universe, asked by every mutation op. Read it there rather
 > than trusting this prose; it is where a refusal is actually enforced.
 
-> **Note (manifest extension, flagged).** `archive.json`'s documented
-> `ArchivedSnippet` has no field for *where a card came from*. To make restore
-> lossless this op adds `originalPanel` + `originalCard` to the snippet — a
-> deliberate, forward-compatible extension (extra fields the Archive panel
-> ignores). See the chip report / `apply_response.cmd_archive`.
+> **Note (origin record).** To make restore lossless this op adds
+> `originalPanel` + the verbatim `originalCard` + `archivedAt` to the snippet.
+> Since task 712 these are part of the app's `ArchivedSnippet` contract
+> (`src/lib/types.ts`, read through `src/lib/archive-origin.ts`): opening the
+> paper keeps them, and the Archive panel's own Restore puts the card back in
+> its panel ("Restore to Notes") rather than pasting its body into the prose.
+> The app's sidecar loaders carry any key they don't know through a load
+> (`src/lib/sidecar-migrate.ts`), so a future extension survives too.
 
 ## Reply
 

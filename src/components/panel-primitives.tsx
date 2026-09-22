@@ -1660,6 +1660,7 @@ export function EditableCard({
   // first if they want to hand the excerpt back a second time.)
   const restorable = isExcerptCardKind(kind) && cardRestore.enabled && !cardArchived;
   const doRestore = restorable ? () => cardRestore.restore(kind, id) : undefined;
+  const restoreLabel = restorable ? cardRestore.label?.(kind, id) : undefined;
 
   /** Check whether the card has any visible USER content. Routes through the
    *  kind-aware `cardHasContent` (the SAME predicate `deleteMarginItem` uses),
@@ -1789,6 +1790,7 @@ export function EditableCard({
       onTrashClick={inlineDelete && onDeleteAllowed ? tryDelete : undefined}
       onArchiveClick={inlineDelete ? doArchive : undefined}
       onRestoreClick={inlineDelete ? doRestore : undefined}
+      restoreLabel={restoreLabel}
       isArchived={cardArchived}
       extraCardClass={extraCardClass ? `${cursorClass} ${extraCardClass}` : cursorClass}
       title={title}
@@ -2613,7 +2615,13 @@ export function CardArchiveButton({
  * return arrow reads as "put it back where it came from", which is the verb.
  * Neutral tone: nothing is destroyed (the content moves), so this is not a
  * danger action. Requires the outer card wrapper to be `position: relative`. */
-export function CardRestoreButton({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
+export function CardRestoreButton({
+  onClick,
+  label = "Restore to document",
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  label?: string;
+}) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(e); }}
@@ -2621,7 +2629,7 @@ export function CardRestoreButton({ onClick }: { onClick: (e: React.MouseEvent) 
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className="iconbtn-sm absolute bottom-1.5 right-[3.125rem] opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
-      {...iconHint({ label: "Restore to document", pos: "above" })}
+      {...iconHint({ label, pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="9 14 4 9 9 4" />
@@ -2658,6 +2666,8 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  the archive button — the un-archive verb for excerpt-bodied cards. Gated
    *  identically to `onTrashClick`. */
   onRestoreClick?: () => void;
+  /** The restore control's label (default "Restore to document"). */
+  restoreLabel?: string;
   /** Whether this card is currently archived — flips the archive button to its
    *  "Unarchive" affordance. */
   isArchived?: boolean;
@@ -2776,6 +2786,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onTrashClick,
     onArchiveClick,
     onRestoreClick,
+    restoreLabel,
     isArchived,
     isDropTarget,
     extraCardClass,
@@ -3277,7 +3288,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         </>
       )}
       {onRestoreClick && !isCollapsed && (
-        <CardRestoreButton onClick={onRestoreClick} />
+        <CardRestoreButton onClick={onRestoreClick} label={restoreLabel} />
       )}
       {onArchiveClick && !isCollapsed && (
         <CardArchiveButton onClick={onArchiveClick} isArchived={isArchived} />

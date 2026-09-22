@@ -238,12 +238,13 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // two; task 637 added the `useCardDeleteAllowed` door + the host-permit
       // reads on `EditableCard` / `PanelCard` +39 above the first and +54 above
       // these two; task 683 added the `usePanelCardTryEmptyContent` guard +89
-      // above all three): the SITES are the
+      // above all three; task 712 added the restore control's `restoreLabel`
+      // read + prop +2 above these two): the SITES are the
       // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
       // variants. `file:line` is this leg's own stated reporting form, so an
       // unrelated edit above a site costs a number update here.
-      "src/components/panel-primitives.tsx:2191",
-      "src/components/panel-primitives.tsx:2197",
+      "src/components/panel-primitives.tsx:2193",
+      "src/components/panel-primitives.tsx:2199",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });

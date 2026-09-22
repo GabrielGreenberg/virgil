@@ -36,6 +36,8 @@ import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
+import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -66,7 +68,9 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("cutter-comment", raw);
-  return {
+  // Task 712: unknown keys ride through the load (`carryUnknownKeys`); the
+  // present-only captures below are consumed — their carries are the rule.
+  return carryUnknownKeys<CutterCommentCard>(raw, {
     kind: "comment",
     id: r.id,
     archived: r.archived,
@@ -88,7 +92,7 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
     // made here from a string that has already lost the markup.
     ...(typeof r.selectedLatex === "string" ? { selectedLatex: r.selectedLatex } : {}),
     links,
-  };
+  }, ["selectedContent", "selectedLatex"]);
 }
 
 function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
@@ -102,7 +106,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     r.status === "stale"
       ? r.status
       : "pending";
-  return {
+  return carryUnknownKeys<CutterSuggestionCard>(raw, {
     kind: "suggestion",
     id: r.id,
     archived: r.archived,
@@ -131,7 +135,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     // made here from a string that has already lost the markup.
     ...(typeof r.selectedLatex === "string" ? { selectedLatex: r.selectedLatex } : {}),
     links,
-  };
+  }, ["selectedContent", "selectedLatex", "appliedChange"]);
 }
 
 function migrateCard(raw: unknown): CutterCard | null {
@@ -663,6 +667,20 @@ export function useCutter(
     (s, cards) => ({ ...s, cards }),
   );
 
+  // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
+  const reinstate = useCallback(
+    (raw: unknown): boolean =>
+      reinstateCard<CutterState, CutterCard>(
+        stateRef.current,
+        update,
+        (s) => s.cards,
+        (s, cards) => ({ ...s, cards }),
+        migrateCard,
+        raw,
+      ),
+    [update, stateRef],
+  );
+
   const deleteCard = useCallback(
     (id: string) => {
       pristine.markDirty(id);
@@ -836,6 +854,7 @@ export function useCutter(
       addCardParagraphId,
       removeCardParagraphId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       deleteCard,
@@ -865,6 +884,7 @@ export function useCutter(
       addCardParagraphId,
       removeCardParagraphId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       deleteCard,

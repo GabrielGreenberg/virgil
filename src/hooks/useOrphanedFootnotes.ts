@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
+import { carryUnknownKeys } from "@/lib/sidecar-migrate";
 import { usePersistentState } from "./usePersistentState";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { OrphanedFootnote, OrphanedFootnotesState } from "@/lib/types";
@@ -64,7 +65,8 @@ function migrateOrphans(raw: unknown): OrphanedFootnotesState {
   const orphans: OrphanedFootnote[] = (list as unknown[])
     .filter((o): o is Record<string, unknown> => !!o && typeof o === "object")
     .filter((o) => typeof o.footnoteId === "string")
-    .map((o) => ({
+    // Task 712: unknown keys ride through the load (`carryUnknownKeys`).
+    .map((o) => carryUnknownKeys(o, {
       footnoteId: o.footnoteId as string,
       content: normalizeRichContent(o.content),
       title: typeof o.title === "string" ? o.title : undefined,

@@ -262,6 +262,17 @@ export interface ArchivedSnippet {
   /** All paragraphs this snippet is anchored to. See src/links/links.ts
    *  for helpers (getLinkedTextObjectIds, addTextObjectLink, …). */
   links: Link[];
+  /** ORIGIN RECORD (task 712) — present iff the snippet is a whole CARD set
+   *  aside by `/editor/archive-card` (`apply_response.py cmd_archive`), not a
+   *  slice of the document. `originalPanel` names the panel it left
+   *  (`notes` / `todos` / `cutter` / `revisions` / `reports`), `originalCard`
+   *  is that card VERBATIM, `archivedAt` when it moved. Restore — the agent's
+   *  `cmd_restore` and the app's `restoreSnippet` alike — puts `originalCard`
+   *  back in its panel; it never lands the body in the prose. See
+   *  `src/lib/archive-origin.ts`. */
+  originalPanel?: string;
+  originalCard?: Record<string, unknown>;
+  archivedAt?: string;
 }
 
 export interface ArchiveState {

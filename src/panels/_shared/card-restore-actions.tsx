@@ -40,6 +40,10 @@ export interface CardRestoreActionsApi {
    *  refuses, or that a read-only host swallows, must leave the card standing
    *  (the host notifies). */
   restore: (kind: CardKind, id: string) => void;
+  /** What the control says for this card. Absent → "Restore to document".
+   *  An agent-archived CARD (task 712, `src/lib/archive-origin.ts`) restores
+   *  to its panel, not the prose, and its control says so. */
+  label?: (kind: CardKind, id: string) => string | undefined;
 }
 
 const DEFAULT: CardRestoreActionsApi = {
