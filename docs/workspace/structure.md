@@ -1,4 +1,4 @@
-<!-- last-verified: 340f8456 2026-09-21 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -44,7 +44,9 @@ tab state, folder handles, the doc index — **never paper content**.
   the whole file. What the parser accepts/emits is [latex.md](latex.md); the
   invisible markers a skill must preserve are [identity.md](identity.md).
 - **`<name>.bib`** holds bibliography entries. Citation Atoms reference its keys
-  ([atoms.md](atoms.md)); bib Cards mirror it.
+  ([atoms.md](atoms.md)); bib Cards mirror it. The app's writes to it are SPLICES of
+  one entry's (or field's) own source span, never a whole-file re-emit (task 688), and
+  are FIFO in call order through one per-doc queue (`BIB_WRITE_SUBKEY`, task 691).
 
 ## The virgil/ sidecar folder
 

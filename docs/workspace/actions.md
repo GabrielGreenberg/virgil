@@ -1,4 +1,4 @@
-<!-- last-verified: 340f8456 2026-09-21 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -316,7 +316,10 @@ above a `<MenuList>` carrying `<MenuItemsFromRegistry rows={cardActionRows("ligh
 The primitive owns positioning, arrow-key/letter nav, the roving "selection
 square" highlight (CSS token `--menu-roving-bg`), a container-mousedown
 `preventDefault` so a menu click can't blur the editor, and — since task 295 —
-the menu **surface** itself, so no menu authors its own chrome. Its `<AnchoredMenu>`
+the menu **surface** itself, so no menu authors its own chrome. Since task 687
+`useMenuDismiss` / `MenuProvider` take an `onCancel` that Escape ends through
+(defaulting to `onClose`), so a deferred-commit surface (`CitationCreatePopover`)
+can keep click-away = commit while Escape = cancel ([laws/escape-means-cancel.md](../agents/laws/escape-means-cancel.md)). Its `<AnchoredMenu>`
 trigger half states the button contract once (renders the `<button>`, captures +
 re-reads the anchor rect, `maxHeight` on by default, `excludeRefs` self-close
 guard, `aria-haspopup`/`aria-expanded`); the action vocabulary
@@ -558,7 +561,9 @@ on a float header is **retired** (req-7), and the panel→gutter **native HTML5
 drag-and-drop** was **removed** (the `panel-drops.ts` / `anchor-rebind.ts`
 event-bridges + `Revisions/mime.ts` are deleted) — the drop button is now the
 single entry. The block grab handle (above) and the in-text inline-atom grab
-remain their own producers.
+remain their own producers. A re-anchor through a drop adapter must answer what it
+does to the card's Mode-B anchor (`ParagraphAnchorApi.modeB`, built by
+`releaseModeB` — task 698; [anchoring.md → OriginalAnchor](anchoring.md#originalanchor)).
 
 **Inline-Atom drag** is rooted in **`ATOM_REGISTRY`**
 ([atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) — the four drag-able

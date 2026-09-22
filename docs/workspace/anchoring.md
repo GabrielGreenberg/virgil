@@ -1,4 +1,4 @@
-<!-- last-verified: 340f8456 2026-09-21 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -89,7 +89,12 @@ drop **converts** the link to a clean Mode-A anchor: `addTextObjectLink(…, "pa
 does **not** fold the new paragraph id into the surviving `linkedRange` link (the
 `targetKind === "paragraph"` gate in [src/links/links.ts](../../src/links/links.ts)),
 and the caller drops the stale range link via `clearModeB` so the load Mode-B re-apply
-can't drag the card back to the old paragraph. The prior range is saved so future UX
+can't drag the card back to the old paragraph. Since task 698 every drop adapter MUST
+answer `ParagraphAnchorApi.modeB` (`ModeBReanchorPolicy`): `releaseModeB(find, convert)`
+([src/components/drop-mode/util/mode-b-release.ts](../../src/components/drop-mode/util/mode-b-release.ts))
+converts and returns the released anchorId so the spec strips the mark (the capture is
+untouched — a re-anchor is not a re-capture), or the kind declares `{ policy: "intrinsic",
+why }` (highlights: the card IS its range). The prior range is saved so future UX
 can restore it:
 
 ```ts
@@ -200,7 +205,9 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
   not the 1500 ms doc clock. Belt-and-suspenders, `storage-fsa` also **writes load-minted
   uuids back to the `.tex` on load** (parity with `storage-dev`).
 - **"Is this card anchored?" has the same one door (task 665).** Every surface that
-  gates a Jump — the popped float, the omni row, the margin marker — takes its
+  gates a Jump — the popped float, the omni row, the margin marker, and since task 699
+  every DOCKED panel (a required `jumpGate` read off `CardAnchorProvider`'s one pass;
+  Archive's orphan badge and Todo's `isAnchored` too) — takes its
   verdict from the authority via `cardJumpGate(card, resolveCardRows)`
   ([src/links/card-anchor-rows.ts](../../src/links/card-anchor-rows.ts)), never from
   "the card STORES a link" (`getLinkedTextObjectIds(...).length`), which is equally

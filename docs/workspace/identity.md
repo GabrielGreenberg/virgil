@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -155,7 +155,10 @@ gated behind two **default-OFF** localStorage flags — flag-OFF preserves the
 legacy paths exactly, so nothing below is on the hot path until a flag is set.
 
 - **`virgil:identity-cascade`** (`src/lib/identity/identity-flag.ts`,
-  `isIdentityCascadeOn`) — the bib-rename + id-regen cascade.
+  `isIdentityCascadeOn`) — the uid-keyed sidecar FORMAT (v2 annotations,
+  uid-carrying review rows). Since task 689 it no longer gates a BEHAVIOUR: a
+  citekey rename always dispatches through the cascade (`\cite{}` rewrite + the
+  app-side re-keyers `renameAnnotationKey` / `renameBibKey`, both shapes).
 - **`virgil:inline-atom-lifecycle`** (`inline-atom-lifecycle-flag.ts`,
   `isInlineAtomLifecycleOn`) — gates only the orphan-footnote **writer** (T2
   Wave 2): flag-ON, the bus-driven `useInlineAtomLifecycle` reconciler writes the
@@ -179,7 +182,12 @@ registering one, not by patching the rename call site.
 
 **`BibEntry.uid`** (the `\vbid` round-trip, `src/lib/bib-uid.ts` +
 `serializeBibFile`/parse in `src/lib/bib-parser.ts`) is the durable surrogate
-that decouples sidecar identity from the renameable citekey.
+that decouples sidecar identity from the renameable citekey. It is minted against
+the uids in scope — `mintBibUid(existing)` REQUIRES the set (`bibUidsOf(entries)`),
+and a library preview carries `NO_BIB_UID` until `addBibEntry` gives it a place in
+this paper (task 693). A write addresses an entry through `src/lib/bib-address.ts`
+(uid → offset+key → key+ordinal → unique key, task 690), because a markerless block
+is minted a fresh uid by every parse.
 **`sidecar-uid-migrate.ts`** re-keys `annotations.json` / `bib-review-requests
 .json` onto the uid non-destructively (unresolvable citekeys bucket under
 `orphanByKey`, never silent-delete; additive + idempotent).

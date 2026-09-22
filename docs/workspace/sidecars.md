@@ -1,4 +1,4 @@
-<!-- last-verified: 340f8456 2026-09-21 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -13,7 +13,7 @@
 > shape is owned by [anchoring.md](anchoring.md) and only referenced here.
 
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
-The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **58** exported
+The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **59** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
 if they ever disagree, the code wins). The full type index — every exported type,
 grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
@@ -40,14 +40,21 @@ below carry only what's *distinctive*:
   `Link` shape and Mode A/B are [anchoring.md](anchoring.md).
 - **`selectedText?: string`** — the Mode-B captured text (undefined for
   paragraph-only / unanchored cards). It is `doc.textBetween`, so it drops every
-  MARK and every inline ATOM: the currency the apply path splices and the copy
-  button copies, never a faithful rendering of the passage.
+  MARK and every inline ATOM: the RELOCATION currency and what the copy
+  button copies (the apply path splices `selectedLatex`, below), never a faithful rendering of the passage.
 - **`selectedContent?: unknown`** — the RICH twin of the same passage, taken at
   anchor time (task 488), on the four suggestion/comment kinds. DISPLAY-ONLY: it
   is what the "Original" surfaces render, because no render-time parse can
   recover a citation or a `$x$` `selectedText` never held. Absent on every
   pre-488 card and on skill-authored records, where the display door falls back
   to parsing the bytes.
+- **`selectedLatex?: string`** — the THIRD form of the same cut (task 696): the
+  span's inline-LaTeX serialization (from `captureRangeLatex`, `\vlid` markers
+  kept), which seeds a human-made suggestion's `original_text` so the apply path's
+  verbatim match can succeed over markup. Absent when the span has no single inline
+  form (then `original_text` stays empty and the card reads `no-capture`). The
+  three forms travel as a unit (`CAPTURE_HALVES` / `carryCapturedPassage` in
+  `src/cards/envelope.ts`, task 694).
 - **`aiRequest: boolean`** — the sticky "I want Claude to act on this" flag the
   bridge collapses into a Task ([cards.md → the Task Card](cards.md#the-task-ai-requestsjson)).
 - **`archived?: boolean`** — set-aside flag (per-card Archive). Absent ≡ active;
@@ -253,7 +260,8 @@ The `bib` card is backed by the **`.bib` file** (`BibEntry`), with three sidecar
 for the panel's extra state:
 
 ```ts
-BibEntry         { uid; key; type; fields: Record<string,string>; raw }  // .bib entry
+BibEntry         { uid; key; type; fields: Record<string,string>; raw;
+                   source?: BibSourceRef }  // .bib entry; source = {start,end,text,balanced} splice anchor (task 688)
 // bib-review-requests.json
 BibReviewState   { requests: BibReviewRequest[] }
 BibReviewRequest { bibKey; entryUid?; type: "fields"|"notes"; requestedAt;
@@ -276,7 +284,10 @@ and two entries sharing a citekey get distinct uids. The uid-keyed sidecars
 (`AnnotationsStateV2` keying annotations on `uid` via `byUid`, with unmatched
 legacy keys parked in `orphanByKey` rather than dropped; `BibReviewRequest.entryUid`)
 are the **identity-cascade** path (T1 Stage 1) — live behind `virgil:identity-cascade`
-(default OFF). The flat-citekey `AnnotationsState` and `bibKey`-only review request
+(default OFF — it gates only this sidecar FORMAT; since task 689 the app-side rename
+fan-out always runs). A uid is minted against the uids in scope (`mintBibUid(existing)`
+requires the set; a library preview carries `NO_BIB_UID` until `addBibEntry`, task 693).
+The flat-citekey `AnnotationsState` and `bibKey`-only review request
 remain the legacy/migration shape. `bib-uid.ts` mints the uid; `bib-cite-rewrite.ts`
 + `sidecar-uid-migrate.ts` (in [src/lib/identity/](../../src/lib/identity/)) carry
 the non-destructive migration.
@@ -287,7 +298,9 @@ names every citekey-keyed sidecar (citation cards, annotations, bib-review rows)
 CI pins it to `SIDECAR_VALUE`, and the skill-side `renameCitekey` op re-keys all of
 them atomically (task 615 — before it, a rename rewrote only the `.tex` and
 `citations.json`, stranding the user's annotation). `annotations.json` has ONE shape
-door (V1 flat / V2 `byUid`) shared by write, read and re-key. See
+door (V1 flat / V2 `byUid`) shared by write, read and re-key. The APP-side twin
+(task 689) is `useAnnotations.renameAnnotationKey` + `useBibReview.renameBibKey`,
+registered by the editor pane as `bibEntry` cascade migrators. See
 [editor/AGENTS.md](../../editor/AGENTS.md).
 
 `bib-review-requests.json` is a **separate discovery path** (`list_requests.py`
@@ -405,7 +418,7 @@ the type exists, and check 2 now holds it to that.
 
 This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
 field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
-forward-points to. All **58** exported types are named below (schema above, or
+forward-points to. All **59** exported types are named below (schema above, or
 doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
@@ -422,7 +435,7 @@ doc-of-record noted), grouped by family:
   `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`,
   `AiRequestsState`.
 - **Notifications** — `DocNotification`, `DocNotificationsInbox`.
-- **Bibliography support** — `BibEntry`, `BibReviewRequest`, `BibReviewState`,
+- **Bibliography support** — `BibEntry`, `BibSourceRef`, `BibReviewRequest`, `BibReviewState`,
   `BibSettings`, `BibEntryRequest`, `AnnotationsState`, `AnnotationsStateV2`.
 - **Infrastructure** — `VirgilSidecar`, `ParagraphMeta`, `EditorStateData`.
 - **Legacy / dead residue** — `Suggestion`, `SuggestionsState`, `SessionState`,

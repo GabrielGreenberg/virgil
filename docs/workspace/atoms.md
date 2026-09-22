@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -184,7 +184,8 @@ dispatcher and the **single** inline-atom `DocStructureBus` consumer
 citation-resync register on as ordered POLICIES) plus stable bib UIDs from
 `src/lib/bib-uid.ts`. Both halves are gated behind **default-OFF** flags:
 `virgil:identity-cascade` (sidecars re-key on `BibEntry.uid` instead of the
-renameable citekey; a citekey rename also rewrites every `\cite{}` in-doc) and
+renameable citekey — a FORMAT gate only: since task 689 a citekey rename rewrites
+every `\cite{}` in-doc on both flag paths) and
 `virgil:inline-atom-lifecycle`. The durable **per-doc** orphan store
 (`useOrphanedFootnotes(docId)`, backed by `orphaned-footnotes.json`) is now
 unconditional on **both** flag paths — so orphans survive a reload and never

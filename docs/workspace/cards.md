@@ -1,4 +1,4 @@
-<!-- last-verified: 340f8456 2026-09-21 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -338,7 +338,13 @@ registered through `registerCardMorph`
 `ai-requests.json` entry (the `report-request`→`report` flip, plus — since task
 198 — the `revision-comment`→`revision-suggestion` and
 `cutter-comment`→`cutter-suggestion` flips). `lossy` is pinned to
-`drops.length > 0` by `assertMorphCoverage`.
+`drops.length > 0` by `assertMorphCoverage`. Where BOTH ends route an `aiRequest`
+(`morphCarriesAiRequest` — the complement of the `drops` unbridge; e.g. `note` ⇄
+`highlight`) the flag rides across, and `rederiveAiRequestForMorph` rewrites every
+OPEN linked `ai-requests.json` row for the TO kind + the new card's context
+(task 701). A clone or morph carries the captured passage's forms as one unit
+(`carryCapturedPassage` over `CAPTURE_HALVES` in `src/cards/envelope.ts`,
+tasks 694/696).
 
 ## The ghost kinds: `ai` and `suggestion` (neither is a `CardKind`)
 
@@ -418,7 +424,9 @@ special:
   [structure.md → the write path](structure.md#the-write-path) — don't re-derive
   them; this doc only records that the Task *is* where they live.
 - **It is created two ways.** *Workflow A* — bridged from a card's `aiRequest`
-  flag (`bridgeCardAiRequestFlag`, `linkedTo: { panel, cardId }`); *Workflow B* —
+  flag (`bridgeCardAiRequestFlag`, `linkedTo: { panel, cardId }`; the panel hooks
+  reach it through `bridgeFlagForCard`, which lets a DROP fire with
+  `ABSENT_CARD_CONTEXT` when the card is gone and refuses an ADD — task 697); *Workflow B* —
   synthesized on the fly for a chat-initiated call (`--synthesize-task`). Either
   way the Task, the result card, and the source-flag clear land **atomically
   through `apply_response.py`**, never a raw write.

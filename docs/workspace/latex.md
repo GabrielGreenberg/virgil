@@ -1,4 +1,4 @@
-<!-- last-verified: 340f8456 2026-09-21 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -205,7 +205,10 @@ surfaced conflict.
   ([identity.md → injected macros](identity.md#the-injected-macros)). `\vbid` is
   the lone macro that never appears in this `.tex` body — it marks a `.bib`
   entry's durable surrogate uid (a `\vbid{<uid>}` line before each block, minted
-  + round-tripped by `serializeBibFile` / `src/lib/bib-uid.ts`); the preamble
+  + round-tripped by `serializeBibFile` / `src/lib/bib-uid.ts`; since task 688 a
+  panel write goes through `serializeBibFileAgainst`, which SPLICES each edited
+  entry into its own source span via `src/lib/bib-source.ts` and refuses rather
+  than guesses); the preamble
   no-op is declared only so a paper opened in raw LaTeX never breaks.
 - **Detection believes only the bytes the compiler would.** Every scan that
   decides a requirement (or a bib family) runs over `projectDetectableLatex`

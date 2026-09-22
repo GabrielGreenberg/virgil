@@ -1,4 +1,4 @@
-<!-- last-verified: 340f8456 2026-09-21 -->
+<!-- last-verified: 45faa9e8 2026-09-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -133,6 +133,17 @@ dispatched to footnotes). Under the DEFAULT-OFF `virgil:inline-atom-lifecycle`
 flag the bus policy's orphan-upsert is suppressed for the archived id (the
 one-shot `archivedSuppress` seam in `inline-atom-lifecycle-policy.ts`) so a
 footnote can't be both archived and orphaned.
+
+The mirror has ONE upsert door (task 703): `useFootnotes`' `withRef` / `ensureRef` /
+`patchRef` seed a missing ref from the live atom (`resolveFootnoteBody`) — a
+toolbar/slash/parsed footnote has no sidecar row until then — and refuse before
+the sidecar has loaded; `spliceAndArchiveAtom` calls `ensureRef` BEFORE it
+suppresses + deletes the atom and aborts with a notice if the capture fails. And a
+live atom wins over declared intent (task 704): if the atom comes back (Cmd+Z of an
+archive, a code-view retype, a paste), `EditorPane`'s flag-independent reconcile
+(`staleAtomIntentIds`, [src/links/_shared/live-atom-intent.ts](../../src/links/_shared/live-atom-intent.ts))
+clears the stale `archived`/`unanchored` flag through `markAnchored` — the same
+rule for citations.
 
 When a footnote's in-text marker is deleted but its body/title might still be
 wanted, it becomes an **orphan**. The `Footnote` plugin
