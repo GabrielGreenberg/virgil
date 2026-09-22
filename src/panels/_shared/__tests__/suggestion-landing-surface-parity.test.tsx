@@ -511,13 +511,31 @@ describe("task 684 census — no suggestion landing verb is wired per MOUNT SITE
     expect(offenders).toEqual([]);
   });
 
-  it("both card bodies resolve the action row from the shared controller", () => {
-    for (const f of [
-      "panels/Revisions/RevisionSuggestionCard.tsx",
-      "panels/Cutter/CutterSuggestionCard.tsx",
-    ]) {
+  it("the card body resolves the action row from the shared controller", () => {
+    // TASK 714 — there is now ONE body. The two panel files were hand
+    // transcriptions of each other and kept diverging (this is the third such
+    // divergence filed on the pair), so `SuggestionCard` is the single
+    // component both families render, and it is where the action row lives.
+    const body = readFileSync(
+      join(REPO_SRC, "panels/_shared/SuggestionCard.tsx"),
+      "utf8",
+    );
+    expect(body).toContain("PendingActionRow");
+    // And the two panel files are pure DELEGATIONS — which is a stronger
+    // statement than "each one mentions the row": a file with no body of its
+    // own has no branch that can forget one.
+    for (const [f, family] of [
+      ["panels/Revisions/RevisionSuggestionCard.tsx", "revision-suggestion"],
+      ["panels/Cutter/CutterSuggestionCard.tsx", "cutter-suggestion"],
+    ] as const) {
       const src = readFileSync(join(REPO_SRC, f), "utf8");
-      expect(src, f).toContain("PendingActionRow");
+      expect(src, f).toMatch(
+        new RegExp(`<SuggestionCard\\s+\\{\\.\\.\\.props\\}\\s+family="${family}"`),
+      );
+      // No second body: the branch keywords the old transcription carried.
+      expect(src, f).not.toContain("PendingActionRow");
+      expect(src, f).not.toContain("AppliedRecordBody");
+      expect(src, f).not.toContain("FIELD_ORDER");
     }
     const row = readFileSync(
       join(REPO_SRC, "panels/_shared/suggestion-fields.tsx"),
