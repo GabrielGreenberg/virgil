@@ -24,13 +24,13 @@
  * (`useFootnotes.markAnchored`); this derivation is the one that cannot be
  * bypassed.
  *
- * **It suppresses the duplicate render; it does not rewrite the sidecar.** A
- * stale flag survives on disk, and the flag is still authoritative elsewhere —
- * notably `archivedIds` in `EditorPane`, built from `footnoteRefs` by flag
- * alone, which feeds the card's archived glyph and its archive-toggle. So on the
- * non-drop routes above, a footnote can render live in the prose while its card
- * actions still believe it archived. Narrowing that residual means routing those
- * consumers through the same live-marker test, not widening this selector.
+ * **It suppresses the duplicate render; it does not rewrite the sidecar.** The
+ * sidecar is healed at the source by the live-atom intent reconcile
+ * (`staleAtomIntentIds` in `src/links/_shared/live-atom-intent.ts`, run by
+ * `EditorPane` on the structural counters, task 704), which clears the stale
+ * flag through `markAnchored` so `archivedIds` and every other flag-keyed
+ * consumer agree. This selector stays as the belt for the window between the
+ * atom's return and that reconcile's write.
  */
 
 import type { FootnoteRef } from "@/lib/types";

@@ -333,6 +333,36 @@ describe("useCitations.syncFromEditor — the REAL hook, a sidecar that resolves
     });
   });
 
+  it("task 704 — a ref flagged archived whose atom is LIVE (an undone archive; citation ids are stable across parse) is replaced by the live ref, never listed twice", async () => {
+    beginDocPipeline("doc-c");
+    pendingRead("doc-c", "citations.json").resolve({
+      ...STORED,
+      citations: [
+        {
+          id: "live-1",
+          command: "\\cite{live2020}",
+          keys: ["live2020"],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          archived: true,
+          unanchored: true,
+        },
+        ...STORED.citations,
+      ],
+    });
+    const { result } = renderHook(() => useCitations("doc-c"));
+    await waitFor(() => expect(result.current.citations).toHaveLength(2));
+    act(() => {
+      result.current.syncFromEditor(EDITOR_ATOMS);
+    });
+    expect(result.current.citations.map((c) => c.id)).toEqual([
+      "live-1",
+      "parked-1",
+    ]);
+    const live = result.current.citations.find((c) => c.id === "live-1")!;
+    expect(live.archived).toBeUndefined();
+    expect(live.unanchored).toBeUndefined();
+  });
+
   it("CONTROL — a sidecar that resolved BEFORE the sync behaves exactly as before: anchored refs re-derived from the editor, the parked one kept", async () => {
     beginDocPipeline("doc-c");
     pendingRead("doc-c", "citations.json").resolve({
