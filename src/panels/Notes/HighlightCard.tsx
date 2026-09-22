@@ -12,11 +12,9 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import {
-  getLinkedTextObjectIds,
-  getTextAnchor,
-  hasTextAnchor,
-} from "@/links/links";
+import { getTextAnchor, type CardWithLinks } from "@/links/links";
+import { isModeB } from "@/links/_shared/types";
+import { useLinkedAnchorText } from "@/links/_shared/useLinkedAnchorText";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { cardKindsForPanel } from "@/cards/predicates";
@@ -52,10 +50,18 @@ export function HighlightCard({
 }) {
   const theme = useCardKindTheme("highlight");
   const cardRef = useRef<HTMLDivElement>(null);
-  const isAnchored =
-    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
-  const anchorText = getTextAnchor(card)?.anchorText ?? "";
-  const isOrphaned = !isAnchored && !!anchorText;
+  // The passage as it reads NOW (task 700): the live text under the
+  // highlight's mark, falling back to the stored text only when the mark is
+  // gone. The stored snapshot is the recovery key, not the display text — an
+  // edit inside the highlight must reach the card.
+  const textAnchor = getTextAnchor(card);
+  const liveText = useLinkedAnchorText(textAnchor?.anchorId);
+  const anchorText = liveText ?? storedHighlightText(card);
+  // Jump is the HOST's decision (task 699): every host hands `onJump` only
+  // through the card-anchor authority's gate, so the card re-derives nothing.
+  // (The old local `isOrphaned` could never be true — it required text with
+  // no anchor, and the text came FROM the anchor.)
+  const canJump = !!onJump;
   const popped = usePoppedCards();
   const cardKey = cardPopKey("highlight", card.id);
   const onToggleFromCtx =
@@ -110,9 +116,9 @@ export function HighlightCard({
             }
           : undefined
       }
-      canJump={isAnchored && !isOrphaned && !!onJump}
+      canJump={canJump}
       onJump={(e) => {
-        if (onJump && isAnchored && !isOrphaned)
+        if (onJump)
           onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
       tabIndex={isSelected ? 0 : -1}
@@ -121,7 +127,7 @@ export function HighlightCard({
         const el = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
         ac.onBodyActivate({
           onSelect: () => onSelect(card.id),
-          jump: isAnchored && !isOrphaned && onJump ? () => onJump(el) : undefined,
+          jump: onJump ? () => onJump(el) : undefined,
         });
       }}
       onMouseEnter={() => { cardStore.setHover(ac.ref); onHoverChange?.(true); }}
@@ -165,4 +171,22 @@ export function HighlightCard({
   );
 
   return cardEl;
+}
+
+/**
+ * The highlighted words as last STORED — the display fallback for a highlight
+ * whose mark is gone. A live Mode-B link carries them as `textSnapshot`; a
+ * highlight the snapshot rung relocated to Mode-A
+ * (`resolve-card-anchor.ts` `relocateBySnapshot`) carries the same words as
+ * its `paragraphSnapshot`, so it no longer reads "empty highlight" while it is
+ * still anchored.
+ */
+function storedHighlightText(card: CardWithLinks): string {
+  const ranged = getTextAnchor(card);
+  if (ranged) return ranged.anchorText;
+  for (const link of card.links ?? []) {
+    if (link.anchor.type !== "textObject" || isModeB(link)) continue;
+    if (link.anchor.paragraphSnapshot) return link.anchor.paragraphSnapshot;
+  }
+  return "";
 }

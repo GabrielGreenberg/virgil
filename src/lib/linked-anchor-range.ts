@@ -61,10 +61,11 @@ export function findLinkedAnchorRange(
   doc: PMNode,
   anchorId: string,
   markType?: MarkType,
+  within?: { from: number; to: number },
 ): { from: number; to: number } | null {
   let from = -1;
   let to = -1;
-  doc.descendants((node, pos) => {
+  const visit = (node: PMNode, pos: number): boolean => {
     if (!node.isText) return true;
     const hasMark = node.marks.some(
       (m) =>
@@ -76,9 +77,42 @@ export function findLinkedAnchorRange(
       to = pos + node.nodeSize;
     }
     return true;
-  });
+  };
+  if (within) {
+    // BOUNDED walk (task 700): a caller that already knows roughly where the
+    // mark lives — the DocStructure snapshot's mapped `anchors` entry — pays
+    // O(range), not O(doc). Same predicate, same bounding rule.
+    const lo = Math.max(0, Math.min(within.from, doc.content.size));
+    const hi = Math.max(lo, Math.min(within.to, doc.content.size));
+    doc.nodesBetween(lo, hi, visit);
+  } else {
+    doc.descendants(visit);
+  }
   if (from === -1) return null;
   return { from, to };
+}
+
+/**
+ * The LIVE text under a `linkedAnchor` mark — what the passage says NOW, read
+ * the same way the create path captured its `textSnapshot`
+ * (`doc.textBetween(from, to, " ")` over the mark's bounding range), so a live
+ * read and a stored snapshot are the same currency and compare equal when
+ * nothing was edited.
+ *
+ * Task 700: the snapshot is the RECOVERY key `reanchorByText` searches with
+ * when the mark is lost — never display text. A surface that shows "the
+ * highlighted words" reads HERE (through `useLinkedAnchorText`), and the load
+ * reconcile refreshes the stored snapshot from here so recovery searches
+ * current text. `within` bounds the walk (see `findLinkedAnchorRange`).
+ * Returns null when no text carries the mark.
+ */
+export function readLinkedAnchorText(
+  doc: PMNode,
+  anchorId: string,
+  within?: { from: number; to: number },
+): string | null {
+  const range = findLinkedAnchorRange(doc, anchorId, undefined, within);
+  return range ? doc.textBetween(range.from, range.to, " ") : null;
 }
 
 /**
