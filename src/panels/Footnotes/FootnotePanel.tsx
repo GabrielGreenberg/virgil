@@ -226,6 +226,7 @@ function FootnotePanel({
             isSelected={selected}
             onSelect={() => onSelect(it.data.id)}
             onEdit={(json) => onEditUnanchored?.(it.data.id, json)}
+            onEditTitle={(title) => onEditTitle?.(it.data.id, title)}
             onDelete={() => onDeleteUnanchored?.(it.data.id)}
             onEditorFocus={onEditorFocus}
             getCitationDisplayText={getCitationDisplayText}

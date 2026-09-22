@@ -135,6 +135,7 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
           isSelected={isSelected}
           onSelect={() => a.setSelectedFootnoteId(ref.id)}
           onEdit={(json) => a.onEditUnanchored?.(ref.id, json)}
+          onEditTitle={(title) => a.onEditFootnoteTitle(ref.id, title)}
           onDelete={() => a.onDeleteUnanchored?.(ref.id)}
           onEditorFocus={a.setOverrideEditor}
           getCitationDisplayText={a.getCitationDisplayText}

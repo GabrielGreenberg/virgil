@@ -282,6 +282,7 @@ function inspectNodeAt(
           pos: at,
           thanks: !!attrs.thanks,
           number: (attrs.number as number | undefined) ?? 0,
+          title: (attrs.title as string | undefined) ?? "",
         });
       }
     }
@@ -395,14 +396,20 @@ function citationChanged(a: CitationEntry, b: CitationEntry): boolean {
 
 /** A footnote that survived (same id) but whose position or attrs changed
  *  — the signature of an atom MOVE (delete+insert). `pos` is the load-
- *  bearing field for the structure index + renumber; thanks/number folded
- *  in so the snapshot stays exact. */
+ *  bearing field for the structure index + renumber; thanks/number/title
+ *  folded in so the snapshot stays exact (a title rename re-derives the card
+ *  rows, task 705). */
 function footnoteChanged(
   aPosInNewDoc: number,
   a: FootnoteEntry,
   b: FootnoteEntry,
 ): boolean {
-  return aPosInNewDoc !== b.pos || a.thanks !== b.thanks || a.number !== b.number;
+  return (
+    aPosInNewDoc !== b.pos ||
+    a.thanks !== b.thanks ||
+    a.number !== b.number ||
+    (a.title ?? "") !== (b.title ?? "")
+  );
 }
 
 /** An example that survived (same id) but whose position or displayed attrs

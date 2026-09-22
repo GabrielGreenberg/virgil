@@ -290,6 +290,10 @@ export interface UnanchoredFootnoteCardProps {
   onSelect?: () => void;
   onEdit: (json: JSONContent) => void;
   onDelete: () => void;
+  /** Rename the card title (task 705) — the SAME door the anchored twin uses
+   *  (`handleEditFootnoteTitle`); with no atom its attr leg no-ops and the
+   *  persisted ref takes the write. */
+  onEditTitle?: (title: string) => void;
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
@@ -322,6 +326,7 @@ export function UnanchoredFootnoteCard({
   onSelect,
   onEdit,
   onDelete,
+  onEditTitle,
   onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
@@ -376,6 +381,10 @@ export function UnanchoredFootnoteCard({
       // enabled"). The citation twin, whose atom needs a citekey, answers no
       // while it is keyless.
       unanchored={{ kind: "footnote", cardKey, canAnchor: true }}
+      // Task 705: the parked ref keeps (and edits) the title the anchored card
+      // showed — it lives on the ref, so it survives the park.
+      bodyTitle={fn.title}
+      onBodyTitleChange={onEditTitle ?? undefined}
       isPoppedOut={isPoppedOut}
       chromeless={isPoppedOut}
       // No in-text marker for an atomless ref, so body click is select+expand

@@ -101,11 +101,9 @@ export const NON_TRAVELLING_FIELDS: {
   // whose factory cannot accept a field, which is how `addTodo`'s `notes` came
   // to be un-passable.
   highlight: ["kind", "id", "createdAt", "links", "archived", "aiRequest", "originalAnchor"],
-  // A footnote's whole travelling set is its body. NOTE the asymmetry, recorded
-  // rather than implied: `CARD_REGISTRY.footnote.content` also names `title`
-  // (the `\thanks` label), which lives on the ATOM's node attrs and NOT on
-  // `FootnoteRef` — so the title is already absent from the snapshot, one layer
-  // before this table. A pull cannot carry what the capture never took.
+  // A footnote travels its body AND its card title. Since task 705 the title
+  // is persisted on `FootnoteRef` (the `.tex` cannot carry it), so the
+  // snapshot captures it and `addFootnoteFromSeed` lands it.
   footnote: ["id", "createdAt", "archived", "aiRequest", "unanchored"],
   // `keys` travels, and the hook re-derives it from `command` anyway
   // (`parseCiteCommand`) — the same derivation the destination uses.

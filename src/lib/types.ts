@@ -538,6 +538,13 @@ export interface FootnoteRef {
    *  unarchive clears `archived` but leaves `unanchored` (the atom is NOT
    *  re-inserted — the card returns as a re-placeable unanchored ref). */
   unanchored?: boolean;
+  /** The card's user-typed title (task 705). The `.tex` cannot carry it — the
+   *  serializer writes only the `\footnote{}` body — so this sidecar ref is its
+   *  persistent home, the same home as `aiRequest`. The live atom's `title` attr
+   *  is the runtime copy: EditorPane writes BOTH on a rename and hydrates the
+   *  attr from here when the atom appears (load, re-parse, re-anchor). Absent ≡
+   *  untitled. */
+  title?: string;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy footnotes stored HTML strings; migrated on read.
   content: unknown;

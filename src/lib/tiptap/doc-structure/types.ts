@@ -66,6 +66,9 @@ export interface FootnoteEntry {
   thanks: boolean;
   /** Current `number` attribute (renumber pass updates this). */
   number: number;
+  /** The card title (`title` attr, "" when untitled — task 705). Carried so a
+   *  rename is a structural footnote change: the card rows re-read it. */
+  title?: string;
 }
 
 export interface CitationEntry {
