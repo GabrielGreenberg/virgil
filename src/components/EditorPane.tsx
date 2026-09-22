@@ -170,6 +170,7 @@ import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { useFootnotes } from "@/hooks/useFootnotes";
 import { selectAtomlessFootnoteRefs } from "@/panels/Footnotes/atomless-refs";
+import { staleAtomIntentIds } from "@/links/_shared/live-atom-intent";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useAutoApplyPendingChanges } from "@/hooks/useAutoApplyPendingChanges";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
@@ -5155,8 +5156,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // atom, nothing rewrites the sidecar), or a `\footnote` re-typed in the code
   // view. The drop path also clears the flag at the source (`markAnchored`);
   // this is the derivation that can't be bypassed. It suppresses the duplicate
-  // RENDER — it does not rewrite the sidecar, so a stale flag still reaches
-  // `archivedIds` above (see the selector's own doc for that residual).
+  // RENDER — it does not rewrite the sidecar; the live-atom intent reconcile
+  // right below does (task 704), so this filter is now the belt, not the fix.
   //
   // Both inputs are structurally gated (`footnoteRefs` = sidecar collection,
   // `footnoteInfos` = `rev.footnotes` counter), so this stays off the keystroke
@@ -5165,6 +5166,51 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => selectAtomlessFootnoteRefs(footnotesHook.footnoteRefs, footnoteInfos),
     [footnotesHook.footnoteRefs, footnoteInfos],
   );
+
+  // A live marker wins over declared intent — at the SOURCE (task 704). The
+  // selector above only hides the duplicate render; the stale `archived` /
+  // `unanchored` flag it leaves is authoritative in `archivedIds` (Omni filter,
+  // margin markers, archive glyph + toggle) and in the Citations panel's
+  // Archives split. So whenever the live atom set changes (an undone archive,
+  // a code-view retype, a paste), clear the flags of every ref whose atom is
+  // back, through each kind's idempotent `markAnchored` — the same clear the
+  // drop path runs. Flag-independent (the legacy path had the defect too) and
+  // main-editor only (this pane's own doc).
+  //
+  // Keyed on the STRUCTURAL lists (`footnoteInfos` / `citationOrder`, i.e.
+  // `rev.footnotes` / `rev.citations` — silent on a plain keystroke) plus the
+  // footnote mirror's load edge (a flag an earlier session persisted), and
+  // deliberately NOT on the refs: an archive writes the flag before the
+  // RAF-coalesced counter removes the atom from the live set, so a refs-keyed
+  // reconcile would un-archive what was just archived. The refs are read
+  // through a latest-value ref instead.
+  const atomIntentRefsRef = useRef({
+    footnotes: footnotesHook.footnoteRefs,
+    citations: citationsHook.citations,
+  });
+  useEffect(() => {
+    atomIntentRefsRef.current = {
+      footnotes: footnotesHook.footnoteRefs,
+      citations: citationsHook.citations,
+    };
+  });
+  useEffect(() => {
+    const { footnotes, citations } = atomIntentRefsRef.current;
+    const liveFootnotes = new Set(footnoteInfos.map((f) => f.footnoteId));
+    for (const id of staleAtomIntentIds(footnotes, liveFootnotes)) {
+      footnotesHook.markAnchored(id);
+    }
+    const liveCitations = new Set(citationOrder);
+    for (const id of staleAtomIntentIds(citations, liveCitations)) {
+      citationsHook.markAnchored(id);
+    }
+  }, [
+    footnoteInfos,
+    citationOrder,
+    footnotesHook.loaded,
+    footnotesHook.markAnchored,
+    citationsHook.markAnchored,
+  ]);
 
   // Live ExampleInfo list — same trigger cadence as footnoteInfos.
   // Powers the popped-out example card renderer below.

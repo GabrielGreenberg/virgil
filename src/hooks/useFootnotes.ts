@@ -54,6 +54,10 @@ export function useFootnotes(
   // one-entry file over the real sidecar (task 570's loss class). A FAILED read
   // leaves it false for the same reason — the collection is not authoritative.
   const loadedRef = useRef(false);
+  // The same fact, REACTIVE — the load edge a consumer keys an effect on (the
+  // live-atom intent reconcile in EditorPane, task 704: a stale `archived` flag
+  // persisted by an earlier session is only healable once the mirror is here).
+  const [loaded, setLoaded] = useState(false);
 
   // Pin the write handle to docId's active pipeline. Stale handles
   // are rejected by the storage layer (see doc-pipeline.ts).
@@ -65,6 +69,7 @@ export function useFootnotes(
   useEffect(() => {
     let cancelled = false;
     loadedRef.current = false;
+    setLoaded(false);
     if (!docId) { setState(EMPTY); return; }
     readSidecar<FootnotesState>(docId, "footnotes.json", EMPTY)
       .then((data) => {
@@ -72,6 +77,7 @@ export function useFootnotes(
         if (!data.footnotes) {
           // A readable file with no `footnotes` array is an empty mirror.
           loadedRef.current = true;
+          setLoaded(true);
           return;
         }
         // Migrate legacy footnotes that stored content as HTML strings.
@@ -84,6 +90,7 @@ export function useFootnotes(
         stateRef.current = migrated;
         setState(migrated);
         loadedRef.current = true;
+        setLoaded(true);
       })
       .catch(() => {});
     return () => {
@@ -357,6 +364,7 @@ export function useFootnotes(
   return useMemo(
     () => ({
       footnoteRefs: state.footnotes,
+      loaded,
       addFootnote,
       ensureRef,
       updateFootnoteContent,
@@ -369,6 +377,7 @@ export function useFootnotes(
     }),
     [
       state.footnotes,
+      loaded,
       addFootnote,
       ensureRef,
       updateFootnoteContent,

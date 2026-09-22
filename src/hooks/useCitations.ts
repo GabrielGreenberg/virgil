@@ -839,8 +839,16 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           createdAt: new Date().toISOString(),
         };
       });
+      // A live atom wins over declared intent (task 704): a ref flagged
+      // unanchored/archived whose `\cite{}` IS in the editor (an undone
+      // archive, a code-view retype — citation ids are stable across parse) is
+      // anchored, so the fresh live ref replaces it. Carrying it forward too
+      // listed the same id twice: once live, once in Archives.
       updateWhenLoaded((prev) => {
-        const unanchored = prev.citations.filter(isUnanchored);
+        const liveIds = new Set(refs.map((r) => r.id));
+        const unanchored = prev.citations.filter(
+          (c) => isUnanchored(c) && !liveIds.has(c.id),
+        );
         return { ...prev, citations: [...refs, ...unanchored] };
       });
     },
