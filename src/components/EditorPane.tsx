@@ -2885,19 +2885,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         cutterHook.addCommentFromSeed(paragraphId, seed),
       addCutterSuggestion: (paragraphId, seed) =>
         cutterHook.addSuggestionFromSeed(paragraphId, seed),
-      // The two single-field kinds. Each record's ENTIRE travelling set is the
-      // one field named here — a footnote's body, a citation's command — and
-      // the hook re-derives the rest from it (`keys` via `parseCiteCommand`,
-      // the same derivation the destination's own `syncFromEditor` runs). These
-      // are the census's only two exempt lines, per LINE and with this reason,
-      // because a file-scoped exemption would excuse the next factory written
-      // beside them. NOTE the footnote asymmetry, recorded rather than implied:
-      // `CARD_REGISTRY.footnote.content` also names `title` (the `\thanks`
-      // label), which lives on the ATOM's node attrs and never reaches
-      // `FootnoteRef` — so the capture, not the pull, is where it is lost.
-      addFootnote: (seed) =>
-        // stack-pull-seed-exempt: the whole travelling set is `content`.
-        footnotesHook.addFootnote((seed.content ?? "") as JSONContent | string),
+      // A footnote travels body AND title (task 705 — the title now lives on
+      // `FootnoteRef`), so its seed goes whole to the hook's door.
+      addFootnote: (seed) => footnotesHook.addFootnoteFromSeed(seed),
+      // The single-field kind. Its record's ENTIRE travelling set is the one
+      // field named here — a citation's command — and the hook re-derives the
+      // rest from it (`keys` via `parseCiteCommand`, the same derivation the
+      // destination's own `syncFromEditor` runs). This is the census's only
+      // exempt line, per LINE and with this reason, because a file-scoped
+      // exemption would excuse the next factory written beside it.
       addCitation: (seed) =>
         // stack-pull-seed-exempt: the whole travelling set is `command`.
         citationsHook.addCitation(seed.command ?? "", undefined, true),
@@ -5078,11 +5074,20 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [footnotesHook.updateFootnoteContent, footnotePristine],
   );
-  const handleEditFootnoteTitle = useCallback((_id: string, _title: string) => {
-    // Footnote titles aren't part of the EditorHandle imperative API
-    // today; the panel calls this on rename but the Reader is
-    // read-only. Wired as a no-op until the main app needs it.
-  }, []);
+  // Task 705: a footnote card's title has TWO homes, written together here.
+  // The live atom's `title` attr is the runtime copy every doc-derived reader
+  // sees (the card rows via `getFootnotes`, search, the orphan capture); the
+  // `footnotes.json` ref is the persistent one, because the `.tex` cannot carry
+  // a title. The load-edge hydration below copies ref → atom when the atom
+  // (re)appears. An atomless (archived / unanchored) ref has no atom, so the
+  // attr leg finds no node and no-ops — the ref leg is its whole rename.
+  const handleEditFootnoteTitle = useCallback(
+    (id: string, title: string) => {
+      innerRef.current?.updateFootnoteTitle(id, title);
+      footnotesHook.setFootnoteTitle(id, title);
+    },
+    [footnotesHook.setFootnoteTitle],
+  );
   const handleDeleteFootnote = useCallback((id: string) => {
     // Close the linked ai-requests.json row (task 219) via the shared
     // `deleteFootnoteUnbridged` door (below): a flagged footnote deleted from the
@@ -5211,6 +5216,28 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     footnotesHook.markAnchored,
     citationsHook.markAnchored,
   ]);
+
+  // Task 705 — hydrate each live footnote atom's `title` attr from its
+  // persisted ref. The serializer never writes a title into the `.tex`, so a
+  // load, a code-view re-parse, or a re-anchor of a parked ref mints an atom
+  // with `title: ""`; the ref in `footnotes.json` is where the user's title
+  // survived. Same trigger as the intent reconcile above (the STRUCTURAL
+  // footnote list + the mirror's load edge — silent on a plain keystroke),
+  // O(#footnotes) per fire, and it writes only where an untitled atom has a
+  // titled ref — so it converges in one pass and never fights a rename (which
+  // writes both homes at once, and is not an undo step: `updateFootnoteTitle`
+  // is metadata, kept out of history like the ref it mirrors).
+  useEffect(() => {
+    if (!footnotesHook.loaded) return;
+    const refs = atomIntentRefsRef.current.footnotes;
+    if (!refs.some((r) => r.title)) return;
+    const titleById = new Map<string, string>();
+    for (const r of refs) if (r.title) titleById.set(r.id, r.title);
+    for (const fn of footnoteInfos) {
+      const title = titleById.get(fn.footnoteId);
+      if (title && !fn.title) innerRef.current?.updateFootnoteTitle(fn.footnoteId, title);
+    }
+  }, [footnoteInfos, footnotesHook.loaded]);
 
   // Live ExampleInfo list — same trigger cadence as footnoteInfos.
   // Powers the popped-out example card renderer below.

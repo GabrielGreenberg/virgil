@@ -15,6 +15,7 @@ import {
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
 import type { PristineKindApi } from "./usePristineCardManager";
+import type { PullSeed } from "@/lib/stack/pull-seed";
 
 const EMPTY: FootnotesState = { footnotes: [] };
 
@@ -193,6 +194,42 @@ export function useFootnotes(
     return ref;
   }, [persist]);
 
+  /** A stack pull's footnote door (task 705): the whole surviving record —
+   *  `content` AND `title` — lands, never a hand-picked field. Mirrors
+   *  `useNotes.addNoteFromSeed`: fresh identity wins over anything the seed
+   *  carries (defence in depth behind `NON_TRAVELLING_FIELDS`). */
+  const addFootnoteFromSeed = useCallback((seed: PullSeed<"footnote">): FootnoteRef => {
+    const ref: FootnoteRef = {
+      ...seed,
+      id: generateShortId(),
+      content: normalizeRichContent(seed.content ?? ""),
+      createdAt: new Date().toISOString(),
+    };
+    if (!ref.title) delete ref.title;
+    const next = { footnotes: [...stateRef.current.footnotes, ref] };
+    stateRef.current = next;
+    setState(next);
+    persist(next);
+    return ref;
+  }, [persist]);
+
+  /** Persist a renamed card title (task 705). The `.tex` cannot carry a
+   *  footnote title, so this ref IS its persistent home; the caller
+   *  (EditorPane's `handleEditFootnoteTitle`) also writes the live atom's attr.
+   *  Through the upsert door, so a footnote the mirror has never seen gains its
+   *  ref (seeded from the live atom) instead of dropping the rename. An empty
+   *  title is stored as ABSENT, so "untitled" has one spelling. Returns whether
+   *  the ref took the write. */
+  const setFootnoteTitle = useCallback((id: string, title: string): boolean => {
+    const kept = title.trim() ? title : "";
+    const ok = patchRef(id, (f) => {
+      const { title: _prev, ...rest } = f;
+      return kept ? { ...rest, title: kept } : rest;
+    });
+    if (ok && kept) pristine?.markDirty(id);
+    return ok;
+  }, [patchRef, pristine]);
+
   /** Persist an edited footnote body into the sidecar mirror. The body's source
    *  of truth is the editor node (it serializes to the `.tex` `\footnote{}`);
    *  this keeps `footnotes.json`'s `content` coherent so consumers that read the
@@ -343,6 +380,8 @@ export function useFootnotes(
       id: generateShortId(),
       content: normalizeRichContent(source.content),
       createdAt: new Date().toISOString(),
+      // The title is the card's own writing (task 705) — a duplicate keeps it.
+      ...(source.title ? { title: source.title } : {}),
     };
     const next = { footnotes: [...stateRef.current.footnotes, newRef] };
     stateRef.current = next;
@@ -366,8 +405,10 @@ export function useFootnotes(
       footnoteRefs: state.footnotes,
       loaded,
       addFootnote,
+      addFootnoteFromSeed,
       ensureRef,
       updateFootnoteContent,
+      setFootnoteTitle,
       deleteFootnote,
       setArchived,
       setFootnoteAiRequest,
@@ -379,8 +420,10 @@ export function useFootnotes(
       state.footnotes,
       loaded,
       addFootnote,
+      addFootnoteFromSeed,
       ensureRef,
       updateFootnoteContent,
+      setFootnoteTitle,
       deleteFootnote,
       setArchived,
       setFootnoteAiRequest,

@@ -1138,11 +1138,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         return true;
       });
       if (fnPos != null && fnNode) {
+        if ((fnNode.attrs.title ?? "") === title) return;
+        // Card metadata, not document text (task 705): the title never reaches
+        // the `.tex`, and its persistent home (`FootnoteRef.title`) is not
+        // undoable — so neither is this copy. An undoable attr would let Undo
+        // strip the atom's title while the ref kept it, and the load-edge
+        // hydration would silently restore it: a vetoed gesture.
         editor.view.dispatch(
-          editor.view.state.tr.setNodeMarkup(fnPos, undefined, {
-            ...fnNode.attrs,
-            title,
-          })
+          editor.view.state.tr
+            .setNodeMarkup(fnPos, undefined, { ...fnNode.attrs, title })
+            .setMeta("addToHistory", false),
         );
       }
     },

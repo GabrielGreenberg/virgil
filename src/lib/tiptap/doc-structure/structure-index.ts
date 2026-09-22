@@ -189,6 +189,7 @@ export function buildInitial(doc: PMNode): DocStructure {
         linkId?: string;
         thanks?: boolean;
         number?: number;
+        title?: string;
         content?: JSONContent | null;
       };
       if (attrs.footnoteId) {
@@ -197,6 +198,7 @@ export function buildInitial(doc: PMNode): DocStructure {
           pos,
           thanks: !!attrs.thanks,
           number: attrs.number ?? 0,
+          title: attrs.title ?? "",
         });
       }
 

@@ -431,7 +431,7 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
           text = "(highlight)";
           break;
         case "footnote":
-          text = richJsonToPlainText(c.data.content);
+          text = c.data.title || richJsonToPlainText(c.data.content);
           break;
         case "citation":
           text = (c.data.keys || []).join(", ") || c.data.command;

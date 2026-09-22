@@ -83,6 +83,7 @@ export const POPULATED_SNAPSHOT_DATA: {
     archived: true,
     aiRequest: true,
     unanchored: true,
+    title: "A footnote title",
     content: RICH_BODY,
     createdAt: "2020-01-01T00:00:00.000Z",
   },
@@ -248,17 +249,11 @@ export function declaredContentFields(
  * cannot carry — so a pull cannot deliver them and this is where that is said
  * out loud rather than quietly relaxed inside an assertion.
  *
- * ONE entry. `CARD_REGISTRY.footnote.content` names `title` (the `\thanks`
- * label), and the content model is fed a COMPOSED `{ content, title }` object at
- * its footnote call sites — the title lives on the `\footnote` atom's node
- * attrs, and `FootnoteRef`, which is what a stack snapshot carries, has no such
- * field. The loss is therefore at the CAPTURE, one layer before anything this
- * task touches. The set may only shrink: closing it means teaching
- * `snapshotCard` to capture the atom's title, at which point the exemption goes
- * and this suite demands it back.
+ * EMPTY since task 705. Its one entry was the footnote `title`, which lived only
+ * on the `\footnote` atom's node attrs; `FootnoteRef` now persists it, the
+ * snapshot captures it, and this suite demands it back. The set may only
+ * shrink — it stays so a future uncarriable field has to be named here.
  */
 export const UNCARRIABLE_CONTENT_FIELDS: Readonly<
   Partial<Record<StackCardKind, readonly string[]>>
-> = {
-  footnote: ["title"],
-};
+> = {};

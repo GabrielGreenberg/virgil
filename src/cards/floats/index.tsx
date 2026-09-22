@@ -276,13 +276,19 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
     jump: staticJumpGate(true),
     jumpToSource: () => ctx.editorRef.current?.scrollToFootnote(fn.footnoteId, null),
     // R1 (Option B): build a FootnoteRef-shaped record from the FootnoteInfo
-    // already in hand. The stack payload only consumes `content`; `id` /
-    // `createdAt` are filled with sensible fallbacks (no live FootnoteRef
-    // is reachable here without a sidecar read).
+    // already in hand. The stack payload consumes `content` + `title` (task
+    // 705 — the atom's hydrated title attr); `id` / `createdAt` are filled
+    // with sensible fallbacks (no live FootnoteRef is reachable here without a
+    // sidecar read).
     snapshotForStack: (source) =>
       snapshotCard(
         "footnote",
-        { id: fn.footnoteId, content: fn.content, createdAt: "" } satisfies FootnoteRef,
+        {
+          id: fn.footnoteId,
+          content: fn.content,
+          createdAt: "",
+          ...(fn.title ? { title: fn.title } : {}),
+        } satisfies FootnoteRef,
         source,
       ),
     renderBody: () => (
@@ -333,6 +339,7 @@ function unanchoredFootnoteFloatable(id: string, ctx: CardFloatCtx): Floatable |
         onSelect={() => ctx.setSelectedFootnoteId(isSelected ? null : ref.id)}
         onEdit={(json) => ctx.handleEditFootnote(ref.id, json)}
         onDelete={() => ctx.handleDeleteUnanchoredFootnote(ref.id)}
+        onEditTitle={(title) => ctx.handleEditFootnoteTitle(ref.id, title)}
         onEditorFocus={ctx.setOverrideEditor}
         getCitationDisplayText={ctx.getCitationDisplayText}
         onCitationCreated={ctx.handleCitationCreated}

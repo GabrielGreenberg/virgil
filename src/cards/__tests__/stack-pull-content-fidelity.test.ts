@@ -158,7 +158,7 @@ describe("the host FORWARDS the seed — it never picks fields out of it", () =>
    *
    * Exemptions are per LINE (a marker on the read or the line above it), never
    * per file — a file-scoped one would excuse the next factory written beside
-   * the two that legitimately carry it.
+   * the one that legitimately carries it.
    */
   const MARKER = "stack-pull-seed-exempt:";
   const READ = /\bseed\.\w+/;
@@ -175,7 +175,7 @@ describe("the host FORWARDS the seed — it never picks fields out of it", () =>
   /** Lines that are wholly comment (the region is heavily commented prose). */
   const isComment = (line: string) => /^\s*(\/\/|\/?\*)/.test(line);
 
-  it("no factory reads a field off its seed, except the two exempt lines", () => {
+  it("no factory reads a field off its seed, except the one exempt line", () => {
     const lines = dropStackApiRegion();
     const offenders: string[] = [];
     lines.forEach((line, i) => {
@@ -204,14 +204,16 @@ describe("the host FORWARDS the seed — it never picks fields out of it", () =>
     expect(hits).toHaveLength(1);
   });
 
-  it("the two exemptions are the ones this task justified, and no more", () => {
+  it("the one exemption is the one this task justified, and no more", () => {
+    // Was two until task 705: the footnote's line retired once `FootnoteRef`
+    // carried a title, making its record two travelling fields.
     const lines = dropStackApiRegion();
     const marked = lines.filter((l) => l.includes(MARKER)).length;
     expect(
       marked,
-      "a third `stack-pull-seed-exempt:` appeared — a kind whose record has " +
+      "a second `stack-pull-seed-exempt:` appeared — a kind whose record has " +
         "more than one travelling field cannot be exempt, and the reason has " +
         "to be written at the line",
-    ).toBe(2);
+    ).toBe(1);
   });
 });
