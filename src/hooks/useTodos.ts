@@ -21,6 +21,7 @@ import {
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
+import { carryCardEnvelope } from "@/cards/envelope";
 import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
@@ -284,11 +285,40 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     [update, pristine],
   );
 
+  /** Deep-copy a todo sidecar entry with a fresh id — the `lifecycle.clone`
+   *  op the duplicate walker calls when a `linkedAnchor` mark naming a todo
+   *  rides a duplicated slice (task 721). Same shape as `useNotes.cloneNote`:
+   *  the record-level envelope (`archived`) rides the shared
+   *  `carryCardEnvelope` SSOT, `aiRequest`→false and `links`→[] are reset
+   *  (the walker rewires the clone's anchor via `bindAnchor` after the slice
+   *  lands, and a duplicated todo must not file a second inbox row), and every
+   *  authored field — both user-typed fields `text`/`notes`, their `titleAuto`
+   *  provenance bit, and the `done` state — is carried verbatim. */
+  const cloneTodo = useCallback(
+    (sourceId: string): string | null => {
+      const source = stateRef.current.items.find((i) => i.id === sourceId);
+      if (!source) return null;
+      const clone: TodoItem = carryCardEnvelope(source, {
+        id: generateEntityId(),
+        text: source.text,
+        titleAuto: source.titleAuto,
+        notes: source.notes,
+        done: source.done,
+        aiRequest: false,
+        createdAt: new Date().toISOString(),
+        links: [],
+      });
+      update((prev) => ({ items: [...prev.items, clone] }));
+      return clone.id;
+    },
+    [update, stateRef],
+  );
+
   /**
    * Re-attach a Mode-B text-range anchor on a freshly-cloned todo.
-   * Idempotent — no-op if the todo already carries this anchorId. Mirrors
-   * `useNotes.bindAnchor` so a future todo-duplicate path can reuse it via
-   * the card-lifecycle registry. */
+   * Idempotent — no-op if the todo already carries this anchorId. The
+   * duplicate walker calls it through the card-lifecycle registry right
+   * after the clone slice lands. */
   const bindAnchor = useCallback(
     (id: string, paragraphId: string, anchorId: string, anchorText: string) => {
       update((prev) => {
@@ -317,7 +347,10 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   // doc (e.g. the anchored text was deleted), clear the dead Mode-B anchor
   // on the matching todo so it doesn't keep a stale text-range link. The
   // todo stays in the panel (Mode-A paragraph links, if any, are preserved
-  // by `clearTextAnchorLink`). Mirrors `useNotes`'s `virgil-anchor-orphaned`
+  // by `clearTextAnchorLink`). This is the ORDINARY-EDITING path — the mark
+  // went away because the user typed over the span. A deliberate lifecycle
+  // delete of the anchored range is the other path and DOES take the card with
+  // it, through the registry's `delete` op (task 721). Mirrors `useNotes`'s `virgil-anchor-orphaned`
   // listener. O(todos) per event, never per-keystroke.
   // Gated on `docId` by the door (task 598) — membership decides WITHIN a
   // document, the event's docId decides ACROSS documents.
@@ -420,6 +453,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       loaded,
       loadError,
       setTodoAnchor,
+      cloneTodo,
       bindAnchor,
       clearCardAnchor,
       discardPristineTodos,
@@ -443,6 +477,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       loaded,
       loadError,
       setTodoAnchor,
+      cloneTodo,
       bindAnchor,
       clearCardAnchor,
       discardPristineTodos,

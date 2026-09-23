@@ -5092,3 +5092,63 @@ what caught it.
 CI: `ai-request-absent-card-bridge.test.ts`,
 `ai-request-cancel-absent-card.test.tsx`, `ai-window-cancel-routing.test.ts`,
 `unbridge-mode-wiring-guardrail.test.ts`, `card-removal-door-census.test.ts`.
+
+---
+
+## The rationale half — a declaration's REASON is read by people, so check it too (task 721)
+
+The law's usual shape is a table nobody reads. This is the mirror image: a
+table that IS read, under a sentence that is not.
+
+`CARD_REGISTRY` declared the duplicate/delete cascade permanently OFF for
+`todo`, `report` and `report-request`, each row carrying the same hand-written
+reason — that the kind is paragraph-anchored and carries no text-range anchor
+for a walker to reach. The registry's own derivation says otherwise:
+`carriesModeBAnchor` ([src/cards/mode-b-collections.ts](../../../src/cards/mode-b-collections.ts))
+computes Mode-B membership from `anchored` + the crosswalk's `legacyDataKind`
+and names all three among the nine. The walkers key on the MARK, never on the
+flag — so the flag never described reachability; it only decided whether a
+reachable kind was *served*. Duplicating a passage therefore carried its note
+and silently dropped its todo and its report, and the copy lost the anchor
+outright (`duplicate-slice` strips a mark whose card will not clone).
+
+Three things kept it alive for months, and each is the lesson:
+
+- **The rationale was copied, not derived.** Three registry rows, the
+  `assertLifecycleCoverage` docblock, and the criterion test all repeated it.
+  Four copies of a sentence, zero checks of it.
+- **The word "permanent" closed the question.** A declaration that announces it
+  is settled is the one nobody re-derives. If a value is genuinely ratified,
+  the ratification belongs somewhere a test can read — task 721 put it in
+  `RATIFIED_EXCEPTIONS`, a named empty list in the criterion suite, so an
+  exception has to be argued in code rather than asserted in prose.
+- **The guard was circular.** `lifecycle-cascade-criterion.test.ts` defined
+  "walker-reachable" as `isInlineAtomCardKind(k) || lifecycle.bindAnchor` — the
+  flag under test. It asked whether the declaration agreed with itself, and it
+  always did. **A criterion test that reads the thing it is judging is not a
+  criterion test.** It now derives reachability from the mark
+  (`isInlineAtomCardKind || carriesModeBAnchor`) and pins the declaration to it
+  in both directions, plus `bindAnchor === carriesModeBAnchor` exactly.
+
+And the half that is new: **the prose is guarded too.** A Mode-B kind's own
+registry row may not contain a phrase denying it has a text-range anchor
+(brace-depth sliced per row, so a comment elsewhere contrasting the two modes
+is unaffected). It bans the sentence, which means it also refuses a row that
+QUOTES the old rationale while correcting it — deliberately: describe what a
+row used to declare, don't reprint it. A correct flag under a false rationale
+is one refactor away from being wrong again, because the next author reads the
+sentence.
+
+The fix itself was parity, not an exception: the three kinds now declare
+`{ clone: true, delete: true, bindAnchor: true }` and are wired in
+`EditorPane`'s `cardLifecycleRegistry` from doors that already existed —
+`useReports.cloneReport` / `cloneRequest` / `bindAnchor` had sat published and
+unreachable behind the false flag, labelled "future-proofing — dead code
+today", and both deletes are the already-composed UNBRIDGING wrappers, so a
+cascade delete of a flagged card closes its `ai-requests.json` row exactly as
+the panel trash does. Only `useTodos.cloneTodo` had to be written.
+
+CI: `lifecycle-cascade-criterion.test.ts` (derived criterion + the per-row
+prose census), `duplicate-slice-mode-b-cascade.test.ts` (the real walker, over
+every Mode-B kind), `useTodos-clone-envelope.test.ts`,
+`lifecycle-coverage-assertion.test.ts`.

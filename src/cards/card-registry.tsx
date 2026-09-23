@@ -578,8 +578,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "todo",
-    // permanent: Mode-A paragraph-anchored, no text-range anchor for the cascade to reach.
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // Cascade ON, at parity with the other Mode-B kinds (task 721). A todo
+    // carries a `linkedAnchor` text-range mark — `carriesModeBAnchor("todo")`
+    // is true, derived from `anchored` + the crosswalk's `legacyDataKind` — so
+    // both walkers reach it. This row used to declare the cascade permanently
+    // off on the opposite premise, which the registry's own derivation
+    // refutes; duplicating a passage therefore carried its note and silently
+    // dropped its todo. `lifecycle-cascade-criterion.test.ts` now bans the
+    // sentence as well as the value.
+    lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A todo has TWO user-typed fields: the `text` title line AND the free-text
     // `notes` textarea (TodoRow). Both must be visible to the has-content confirm
     // (SSOT §T4 3.1) — a `text:"" notes:"…"` todo is reachable, so gating on
@@ -796,8 +803,10 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "report",
-    // permanent: Mode-A paragraph-anchored, no cascade reaches it.
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // Cascade ON, at parity with the other Mode-B kinds (task 721) —
+    // `carriesModeBAnchor("report")` is true, so both walkers reach it. See
+    // the `todo` row for the false premise this replaced.
+    lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A report carries a user-authored title + a rich body (+ its plain-text
     // mirror). REP-F7-01: a titled-but-empty-body report IS content — the title
     // must trigger the delete-confirm, so `title` counts.
@@ -825,8 +834,11 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "report",
-    // permanent: Mode-A paragraph-anchored, no cascade reaches it.
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // Cascade ON, at parity with the other Mode-B kinds (task 721) —
+    // `carriesModeBAnchor("report-request")` is true, so both walkers reach it.
+    // The clone resets `aiRequest`, so a duplicated request never files a
+    // second inbox row off the copy.
+    lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A report request carries a rich body + its plain-text mirror.
     content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,

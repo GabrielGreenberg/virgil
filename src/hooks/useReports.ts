@@ -433,8 +433,10 @@ export function useReports(
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "report") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
-      // `links`→[] is intentionally reset for the clone. (Reports declare
-      // `lifecycle.clone:false`, so this is future-proofing — dead code today.)
+      // `links`→[] is intentionally reset for the clone — the duplicate walker
+      // rewires the clone's anchor through `bindAnchor` after the slice lands.
+      // LIVE since task 721 (`report` declares `lifecycle.clone: true`); it sat
+      // here unreachable while the row claimed the kind carried no mark.
       const clone: ReportCard = carryCardEnvelope(source, {
         kind: "report",
         id: generateEntityId(),
@@ -459,8 +461,9 @@ export function useReports(
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "report-request") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
-      // `aiRequest`→false and `links`→[] are intentionally reset for the clone.
-      // (Reports declare `lifecycle.clone:false` — future-proofing, dead today.)
+      // `aiRequest`→false and `links`→[] are intentionally reset for the clone,
+      // so a duplicated request never files a second inbox row off the copy.
+      // LIVE since task 721 (`report-request` declares `lifecycle.clone: true`).
       const clone: ReportRequestCard = carryCardEnvelope(source, {
         kind: "report-request",
         id: generateEntityId(),

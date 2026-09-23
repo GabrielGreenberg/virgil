@@ -69,11 +69,14 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
  *  this on the freshly-cloned card after the clone slice lands, so the
  *  clone's `links[]` points at its own `linkedAnchor` mark (which
  *  carries a freshly-minted anchorId) and card→editor jump-to works.
- *  Mode B kinds (note / highlight / comment / suggestion /
- *  cutter-comment / cutter-suggestion) implement it; Mode A kinds may
- *  leave it unset. Implementations MUST be idempotent — a second call
- *  with the same `anchorId` is a no-op. See ACTION-MENU-DIAGNOSIS.md
- *  cluster C2. */
+ *  WHICH KINDS IMPLEMENT IT IS DERIVED, NOT LISTED: exactly the kinds
+ *  `carriesModeBAnchor` answers true for (`@/cards/mode-b-collections`,
+ *  itself derived from `anchored` + the crosswalk's `legacyDataKind`).
+ *  This doc used to enumerate six of them by hand and that list went
+ *  stale — it named neither todo nor the two report kinds, all three of
+ *  which carry the mark (task 721). Implementations MUST be idempotent —
+ *  a second call with the same `anchorId` is a no-op. See
+ *  ACTION-MENU-DIAGNOSIS.md cluster C2. */
 export interface CardLifecycle {
   clone(sourceId: string): string | null;
   delete(id: string): void | Promise<boolean>;
@@ -113,14 +116,21 @@ export function useCardLifecycleApi(
 /** Dev-only: verify a per-doc lifecycle registry provides EXACTLY the ops the
  *  card registry declares (`CardMeta.lifecycle` — clone / delete / bindAnchor).
  *  A declared-but-unwired op — or a wired-but-undeclared one — is silent
- *  capability drift; this makes it loud. The all-false kinds fall in two
- *  groups: five explained gaps — 4 PERMANENT (todo / report / report-request →
- *  Mode-A paragraph-anchored; example → origin:derived mirror, R19) plus
- *  `archive` (R18: ratified NO cascade — survives anchor-paragraph deletion) —
- *  and the two `origin:"system"` kinds `bib`/`error`, trivially all-false (no
- *  user clone/delete/anchor affordance). A3 DOCUMENTS the
- *  cascade-vs-UI-delete criterion (see `CardLifecycleCapability`); it does not
- *  fill them. The E-4 criterion test pins the gaps.
+ *  capability drift; this makes it loud.
+ *
+ *  WHICH KINDS ARE ALL-FALSE IS NOT ENUMERATED HERE. It is derived, and
+ *  `lifecycle-cascade-criterion.test.ts` derives it: a kind is cascade-capable
+ *  exactly when a walker can REACH it — it rides an inline atom
+ *  (footnote / citation) or it carries a Mode-B text-range mark
+ *  (`carriesModeBAnchor`). Everything else is all-false because nothing walks
+ *  over it: `archive` (R18 — anchored but mark-less, so it survives its
+ *  anchor paragraph's deletion), `example` (R19 — an origin:derived mirror of
+ *  its exampleBlock TextObject), and the non-anchored system kinds
+ *  `bib` / `error` / `ai`. This paragraph used to carry a hand-written list
+ *  instead, and it was the SECOND copy of the rationale task 721 had to
+ *  correct: it called todo / report / report-request permanent gaps on a
+ *  premise their own registry rows had borrowed and the derivation refutes.
+ *  Say what the criterion is; never re-list who satisfies it.
  *
  *  Call from the site that builds the registry (`EditorPane`), right beside
  *  `useCardLifecycleApi`. This fires on every dev render, so drift is loud

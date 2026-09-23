@@ -4331,12 +4331,36 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         delete: cutterHook.deleteCard,
         bindAnchor: cutterHook.bindAnchor,
       },
+      // The three kinds task 721 brought to Mode-B parity. They were unwired
+      // here for as long as their registry rows claimed they carried no
+      // text-range anchor — a claim `carriesModeBAnchor` refutes for all
+      // three — so duplicating a passage carried its note and dropped its
+      // todo/report, and deleting one left the card behind unanchored. Both
+      // deletes are the already-composed UNBRIDGING wrappers (`todosHook`/
+      // `reportsHook` are the wired hooks, not the raw ones), so a cascade
+      // delete of a flagged card closes its `ai-requests.json` row exactly as
+      // the panel trash does.
+      todo: {
+        clone: todosHook.cloneTodo,
+        delete: todosHook.deleteItem,
+        bindAnchor: todosHook.bindAnchor,
+      },
+      report: {
+        clone: reportsHook.cloneReport,
+        delete: reportsHook.deleteCard,
+        bindAnchor: reportsHook.bindAnchor,
+      },
+      "report-request": {
+        clone: reportsHook.cloneRequest,
+        delete: reportsHook.deleteCard,
+        bindAnchor: reportsHook.bindAnchor,
+      },
     }),
-    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, handleDeleteCitation, deleteFootnoteUnbridged],
+    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, todosHook, reportsHook, handleDeleteCitation, deleteFootnoteUnbridged],
   );
   const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
   // Dev-only: assert the provider satisfies exactly CARD_REGISTRY's declared
-  // lifecycle (the 5 intentional gaps stay unwired; capability drift is loud).
+  // lifecycle (the remaining gaps stay unwired; capability drift is loud).
   assertLifecycleCoverage(cardLifecycleRegistry);
   // Wide-scope warning dialog for destructive lifecycle actions
   // (Archive / Delete on any kind; Duplicate on headings). Distinct
