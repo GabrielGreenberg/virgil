@@ -210,7 +210,9 @@ describe("task 733 (0) — the door reads BOTH axes", () => {
     });
     // No `readOnlyEnforcer` ⇒ no published ref ⇒ `view.editable`, which is the
     // honest answer on that surface.
-    expect(editor.storage.readOnlyEnforcer).toBeUndefined();
+    expect(
+      (editor.storage as unknown as Record<string, unknown>).readOnlyEnforcer,
+    ).toBeUndefined();
     expect(surfaceEditableNow(editor)).toBe(false);
     editor.setEditable(true);
     expect(surfaceEditableNow(editor)).toBe(true);

@@ -5574,3 +5574,77 @@ node on any foreign transaction touching its source (`useMainTransactionSync` �
 it contains no `useEffect`. `src/components/__tests__/source-pod-float-no-clobber.test.tsx`
 pins it, so the second line of defence can't be removed on the strength of the
 first.
+
+---
+
+## Task 733 — an SSOT with two readers, and the third surface that needed it most
+
+`surfaceIsEditable` ([src/lib/tiptap/surface-editable.ts](../../../src/lib/tiptap/surface-editable.ts))
+was written to end a bug class, and its own header names the class: on MAIN,
+`view.editable` is a **lie** whenever the host mounted the pane read-only,
+because `Editor.tsx` pins `view.editable = true` for the view's entire lifetime
+(PM's `contenteditable="false"` broke selection routing in the Library Reader)
+and carries the user-facing answer in `editableRef`. Task 524 found it for the
+atom grab, 579 for the spellchecker, and the door exists so a third finder would
+not have to.
+
+It had exactly **two readers** — `spellcheck-decorator.ts` and
+`inline-atom-grab.ts` — and neither was the grab bar, the surface carrying
+Archive, Delete and Duplicate. In the Library Reader the handle renders (its
+only gate is `editor.isEditable`, the flag the Reader deliberately pins true),
+the menu opens, every row reads enabled, and the destructive confirm fires:
+`cleanupAndComputeDeleteRange` runs each anchored card's lifecycle `delete` and
+the anchor retarget, and *then* dispatches a transaction `readOnlyEnforcer`
+drops on the floor. The paragraph stays; its footnote and citation cards leave
+the panels until reload. (Not durable — `isSidecarWriteAllowed` and
+`libraryPaperWriteAllowed` refuse the disk writes — but a silent no-op plus
+phantom panel loss all the same.)
+
+**Why it had only two readers, and the remedy.** The predicate needs the
+`editableRef` HANDED to it, which only a surface BUILT with it can do; both
+readers are plugins that get it as an extension option. Every other affordance
+holds an `Editor` or a bare `EditorView` and nothing else, so each one spelled
+the question privately as `editor.isEditable` / `!view.editable` — the very
+copies the SSOT exists to prevent. A prop drilled through every menu would have
+been a fifth copy. Instead **the editor publishes the answer**: `readOnlyEnforcer`
+(main-only) exposes the ref it already enforces on as its extension STORAGE, and
+`surfaceEditableNow(target)` reads it from an `Editor`, or from a bare view via
+`owningEditor` (task 642's back-pointer). A surface with no enforcer — a card
+body, a float, a raw PM harness — publishes nothing, resolves `null`, and is
+answered by `view.editable` alone, which is honest there. So the conversion is a
+no-op everywhere except the surface that was lying.
+
+**The caller audit, and the rule it yields.** `collabReadOnly` is `!view.editable`
+— the PEN axis, a constant `false` on MAIN. Each caller was asked one question:
+*can this seam's mutation escape `filterTransaction`?*
+
+- **Moved to `surfaceEditableNow`** — the seams with a half ProseMirror cannot
+  filter (a sidecar write, a card registration, a lifecycle `delete`, a second
+  document): the grab/lightning card dispatcher, `drop-mode/commit-seam.ts`,
+  `drop-mode/hit-test.ts`. The `ActionContext.canEdit` suppliers move with them
+  (`DragHandleMenu`, `ActionsMenuPanel`, `MenuBar`, the actions bridge), so the
+  rows GREY from the same question the seam REFUSES on.
+- **Kept on `collabReadOnly`** — the pure-PM seams, where the enforcer is the
+  real backstop and a constant gate costs a dropped transaction, never a
+  stranded card: the typed-LaTeX input rules, `insert-inline-atom.ts`, and
+  `RichTextField.tsx` (a card body, where `view.editable` is honest).
+
+**Reader-writable kinds.** `READER_CHROME.editableCardKinds` permits notes, so
+the note row could in principle have stayed enabled. It greys with the rest: a
+note created from the grab bar lands a Mode-B `linkedAnchor` MARK, which is
+itself a `docChanged` transaction the enforcer refuses — an enabled note row is
+another dead affordance.
+
+**One tolerance, stated.** `surfaceEditableNow` treats a view that does not MODEL
+`editable` (a hand-built harness view, a foreign embed) as editable rather than
+read-only, matching the no-over-gating default every absent answer in this app
+takes (`ActionContext.canEdit`: absent ⇒ editable). Every real ProseMirror view
+sets the flag, so the SSOT answers each production call.
+
+**Guard:** `src/components/editor-layout/card-actions/__tests__/host-read-only-grab-surface.test.tsx`
+builds the state no sibling suite could express — `view.editable === true` AND
+`editableRef.current === false` — and holds the door, the greying, and the
+ORDERING claim (`archive`/`delete` stop before the confirm, the anchored-card
+cleanup and the anchor retarget, which "the doc is unchanged" alone cannot
+make, since the enforcer produces that outcome anyway while every irreversible
+side effect still runs). Twelve of its legs fail when either gate is reverted.
