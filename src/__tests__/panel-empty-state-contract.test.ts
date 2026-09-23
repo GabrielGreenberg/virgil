@@ -39,6 +39,8 @@ import { describe, expect, it } from "vitest";
  *   3. COPY       a panel that is GENUINELY empty names what's missing and
  *                 teaches the way in. A filter/search miss is exempt — nothing
  *                 is missing, and the way forward is the query the user has.
+ *   5. PROVENANCE the way in is DERIVED, not remembered (task 727 — see the
+ *                 postscript below).
  *
  * Leg 3 is the one the guide's prose is really about, and the reason it is
  * scoped to "at least one branch teaches" rather than "every branch": several
@@ -65,6 +67,36 @@ import { describe, expect, it } from "vitest";
  * menu inside the lightning-bolt panel, and `\section` typed in the editor) —
  * and it satisfied every mechanical shape of `teaches`. A regex pins the SHAPE
  * of a how-to; only a reader pins whether it is honest.
+ *
+ * ---------------------------------------------------------------------------
+ * TASK 727 — so stop asking a reader. The paragraph above was written as a
+ * confession of a limit, and it was read as a limit for one release: the
+ * Examples panel spent that release telling every new user to "click the (1)
+ * glyph in the formatting toolbar", a control retired with the MenuBar's
+ * example buttons. A repo-wide search for the literal found the panel's
+ * sentence, the style guide quoting that sentence as the MODEL of a good empty
+ * state, and this file quoting it in a failure message. Three copies of one
+ * lie, and following it exactly produced nothing.
+ *
+ * The limit was never "a test cannot know the truth" — it was "a SENTENCE
+ * cannot, because it is a second copy of a fact the app already holds."
+ * `VIRGIL_ACTION_REGISTRY` declares, per action, which surfaces reach it and
+ * what each is called, and `assertActionCoverage` reconciles `slashName`
+ * against the live `VIRGIL_COMMANDS` both ways. Copy DERIVED from that row
+ * (`@/lib/actions/creation-routes` → `<CreationHint action="…" />`) is true by
+ * that same proof, and a retired surface takes its clause with it.
+ *
+ * So leg 5 below asks for PROVENANCE rather than truth: an empty state that
+ * names an in-editor way to create something must derive it. The vocabulary it
+ * greps for is the one the three stale sentences were built from — a toolbar, a
+ * glyph, a dropdown, a button, a `\command`, a "+". Two stated limits. (a) It
+ * sees a named CONTROL, never a paraphrase: Bibliography's "Add citations in
+ * the editor and ensure a .bib file is available" names no control and is out
+ * of reach — deliberately unconverted, because that panel's "+" offers
+ * "Search library…"/"Request entry" rather than a citation, so the shared
+ * derivation would promise a button that makes something else. (b) The
+ * derivation's own honesty is the registry's problem, pinned one file over in
+ * `src/lib/actions/__tests__/creation-routes.test.ts`.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -375,6 +407,37 @@ function copyUnits(body: string): string[] {
 /** Names what's missing AND teaches: a sentence break with prose after it. */
 const teaches = (unit: string) => /[.!?]\s+\p{L}/u.test(unit);
 
+/**
+ * Does this empty state get its how-to from the registry instead of writing one
+ * (task 727)? `<CreationHint action="…" />` paints the sentence
+ * `creationSentence()` builds from `VIRGIL_ACTION_REGISTRY`, so the slot's own
+ * copy is the NOUN alone and `teaches` — which reads source text, not a render
+ * — correctly finds no second sentence there.
+ */
+const derivesTeaching = (body: string) => /<CreationHint\b/.test(body);
+
+/**
+ * The vocabulary of an IN-EDITOR creation surface: the words the three stale
+ * sentences named their vanished controls with. Copy that reaches for any of
+ * them is making a claim the action registry owns, and must derive it.
+ *
+ * "+" is here for the same reason a toolbar glyph is: the Examples panel
+ * declared an `onAdd` no host passed, so a panel asserting a "+" is asserting a
+ * control it does not know it has. `CardListPanel` provides the answer through
+ * `PanelAddProvider`, from the button it is about to render.
+ */
+const SURFACE_VOCABULARY: { re: RegExp; what: string }[] = [
+  { re: /\btool\s?bar\b/i, what: "a toolbar" },
+  { re: /\blightning\b|\u26A1/iu, what: "the \u26A1 menu" },
+  { re: /\bgrab bar\b/i, what: "a block's grab bar" },
+  { re: /\bglyph\b/i, what: "a glyph" },
+  { re: /\bslash\b/i, what: "a slash command" },
+  { re: /\bdropdown\b/i, what: "a dropdown" },
+  { re: /\bbutton\b/i, what: "a button" },
+  { re: /(^|[\s"'(])\+([\s"')]|$)/, what: 'a panel "+"' },
+  { re: /\\[a-zA-Z]+/, what: "a LaTeX command" },
+];
+
 const SLOTS = emptyStateSlots(SRC).filter(
   // CardListPanel is the slot's HOST — its `emptyState` occurrences are the
   // prop type, the destructure and the render, not an empty state.
@@ -424,15 +487,16 @@ describe("an empty panel teaches the way in", () => {
       if (exemption(slot)) return; // filter/search miss — the guide's carve-out
       const units = copyUnits(slot.body);
       expect(
-        units.some(teaches),
+        derivesTeaching(slot.body) || units.some(teaches),
         `${name}: ${
           slot.grouped
             ? "every branch of this empty state is a bare sentence. At least the " +
               "genuinely-empty branch must also teach the way in"
             : "this empty state names the absence and teaches nothing"
-        } — "No examples. Click the (1) glyph in the formatting toolbar to insert ` +
-          'one." A filter/search miss is exempt; say so in EXEMPT_FROM_TEACHING ' +
-          "with the reason nothing is missing.\n" +
+        } — "No examples yet." followed by ` +
+          '<CreationHint action="example" />, which derives the way in from the ' +
+          "action registry. A filter/search miss is exempt; say so in " +
+          "EXEMPT_FROM_TEACHING with the reason nothing is missing.\n" +
           `copy read: ${JSON.stringify(units)}`,
       ).toBe(true);
     },
@@ -445,6 +509,39 @@ describe("an empty panel teaches the way in", () => {
     ).map((e) => `${e.file}: ${e.copy}`);
     expect(unclaimed, "delete the entry, or restore the copy it names").toEqual([]);
   });
+});
+
+// ── Leg 5: the way in is DERIVED, not remembered (task 727) ────────────────
+
+describe("an empty state does not name a creation surface from memory", () => {
+  it("finds the panels that derive (a census that finds nothing proves nothing)", () => {
+    // Floor, not an exact count. The nine card panels plus Outline's two sites
+    // derive today; a refactor that quietly unhooks them all must fail here
+    // rather than pass the leg below by having nothing left to check.
+    const deriving = EMPTY_STATES.filter((s) => derivesTeaching(s.body));
+    expect(deriving.length).toBeGreaterThanOrEqual(9);
+  });
+
+  it.each(EMPTY_STATES.map((s) => [label(s), s] as const))(
+    "%s names no control it wrote down by hand",
+    (name, slot) => {
+      if (derivesTeaching(slot.body)) return; // the route comes from the registry
+      const hits = copyUnits(slot.body).flatMap((unit) =>
+        SURFACE_VOCABULARY.filter((v) => v.re.test(unit)).map(
+          (v) => `${v.what} — in ${JSON.stringify(unit)}`,
+        ),
+      );
+      expect(
+        hits,
+        `${name}: this copy names an in-editor way to create something, and the ` +
+          "action registry owns that fact. Render the noun and let " +
+          '`<CreationHint action="…" />` say the rest ' +
+          "(src/lib/actions/creation-routes.ts). This is the leg that would have " +
+          "caught the `(1)` toolbar glyph, and Outline's Section dropdown before " +
+          "it.",
+      ).toEqual([]);
+    },
+  );
 });
 
 // ── Leg 4: the richer composition is genuinely NOT shipped ──────────────────
@@ -537,5 +634,67 @@ describe("the guard would catch what it was written for", () => {
       'a ? (<p className={PANEL.empty}>All errors dismissed.</p>) : ' +
       '(<p className={PANEL.empty}>No errors match the filter.</p>)';
     expect(copyUnits(twoBareBranches).some(teaches)).toBe(false);
+  });
+
+  // ── Leg 5's plants: the sentence that shipped, and the two before it ──────
+
+  it("flags the exact sentence task 727 was filed for", () => {
+    const shipped =
+      '<div className={PANEL.empty}>No examples. Click the ' +
+      '<span className="font-mono">(1)</span> glyph in the formatting toolbar ' +
+      "to insert one.</div>";
+    expect(derivesTeaching(shipped)).toBe(false);
+    const hits = copyUnits(shipped).flatMap((u) =>
+      SURFACE_VOCABULARY.filter((v) => v.re.test(u)).map((v) => v.what),
+    );
+    expect(hits).toContain("a glyph");
+    expect(hits).toContain("a toolbar");
+  });
+
+  it("flags the two sentences that shipped before it, in the same shape", () => {
+    // Outline's retired copy (a dropdown that did not exist), and its
+    // hand-written replacement — true on the day it was written, and a fourth
+    // copy of a fact the registry owns.
+    const dropdown =
+      "<div className={PANEL.empty}>No sections yet. Use the Section dropdown " +
+      "in the toolbar to add headings.</div>";
+    const byHand =
+      "<div className={PANEL.empty}>No sections yet. Type \\section in the " +
+      "editor to add one.</div>";
+    for (const body of [dropdown, byHand]) {
+      const hits = copyUnits(body).flatMap((u) =>
+        SURFACE_VOCABULARY.filter((v) => v.re.test(u)).map((v) => v.what),
+      );
+      expect(hits.length, body).toBeGreaterThan(0);
+    }
+  });
+
+  it("flags a panel that promises a \"+\" on its own authority", () => {
+    // `CardListPanel` knows whether a "+" will be painted; a panel does not.
+    const claimsPlus =
+      '<div className={PANEL.empty}>No tasks yet. Click &quot;+&quot; to create one.</div>';
+    const hits = copyUnits(claimsPlus).flatMap((u) =>
+      SURFACE_VOCABULARY.filter((v) => v.re.test(u)).map((v) => v.what),
+    );
+    expect(hits).toContain('a panel "+"');
+  });
+
+  it("clears the copy that legitimately names a PANEL control", () => {
+    // The ⋮ view menu is the panel's own chrome, not an editor creation
+    // surface — the view-aware empty state must keep naming it.
+    const viewCopy =
+      "<div className={PANEL.empty}>Nothing archived yet. Switch to View " +
+      "Active in the \u22EE menu.</div>";
+    const hits = copyUnits(viewCopy).flatMap((u) =>
+      SURFACE_VOCABULARY.filter((v) => v.re.test(u)).map((v) => v.what),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("reads a derived empty state as both teaching and clean", () => {
+    const derived =
+      '<div className={PANEL.empty}>No examples yet.<CreationHint action="example" /></div>';
+    expect(derivesTeaching(derived)).toBe(true);
+    expect(copyUnits(derived).some(teaches)).toBe(false); // the noun alone
   });
 });

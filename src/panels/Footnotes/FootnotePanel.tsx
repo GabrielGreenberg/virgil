@@ -12,6 +12,7 @@ import {
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -170,7 +171,8 @@ function FootnotePanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No footnotes. Select text and use the toolbar to create one.
+          No footnotes yet.
+          <CreationHint action="footnote" />
         </div>
       }
       onKeyDown={handleNavKeys}

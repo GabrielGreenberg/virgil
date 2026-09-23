@@ -17,6 +17,7 @@ import {
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
@@ -138,8 +139,8 @@ export default function NotesPanel({
       scrollTabIndex={0}
       emptyState={
         <div className={PANEL.empty}>
-          No notes or highlights yet. Select text and click the highlighter
-          button, or click + to create a note.
+          No notes or highlights yet.
+          <CreationHint action="note" />
         </div>
       }
       renderCard={(card, { selected }) => {

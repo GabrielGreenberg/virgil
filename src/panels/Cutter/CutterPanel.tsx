@@ -23,6 +23,7 @@ import {
 } from "@/lib/doc-products/use-doc-products";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -154,7 +155,8 @@ export default function CutterPanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No comments or suggestions yet. Click + to add one.
+          No comments or suggestions yet.
+          <CreationHint action="cutter" />
         </div>
       }
       renderCard={(it, { selected }) => {

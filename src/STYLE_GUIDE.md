@@ -1548,11 +1548,28 @@ class string, and none adds an icon, a title/description tier, or an example
 card: there is no `EmptyState` component, by design, because what carries
 the weight here is the sentence. The contract is that a panel which is
 genuinely empty **names what's missing and teaches the way in** — *"No
-examples. Click the (1) glyph in the formatting toolbar to insert one."* A
+examples yet. Type `\ex` in the editor, or pick Example from the ⚡ menu."* A
 bare *"No items yet"* fails it: it names the absence and teaches nothing. A
 *filter* or *search* miss is exempt from the teaching half (*"No matches
 found."*) — nothing is missing, and the way forward is the query the user
 already has.
+
+**The panel writes the NOUN; the registry owns the ROUTE; the host owns the
+"+".** The teaching half is not copy at all — it is a projection of
+`VIRGIL_ACTION_REGISTRY`, painted by
+[`<CreationHint action="…" />`](panels/_shared/CreationHint.tsx) off
+[`creation-routes.ts`](lib/actions/creation-routes.ts), so a panel supplies
+*"No examples yet."* and nothing more. This paragraph itself used to model the
+contract with *"No examples. Click the (1) glyph in the formatting toolbar to
+insert one."* — a control retired with the MenuBar's example buttons, quoted
+here and shipped in the panel long after it stopped existing, which is the
+third time a hand-written empty state outlived the surface it named (Outline's
+"Section dropdown in the toolbar" was the first). A derived sentence cannot:
+drop a surface from a registry row and the clause goes with it. The "+" is the
+same rule one control over — `CardListPanel` publishes whether it is actually
+painting one, so a panel can no longer promise a button no host wired. Two
+routes at most; the ⚡ margin menu and a block's grab bar count as one, being
+two triggers on the same body.
 
 **A panel's `emptyState` is its GENUINELY-empty copy, and nothing else.** An
 archivable card panel is looked at through a per-panel *View Active / View
@@ -1585,7 +1602,9 @@ Every clause above is pinned by
 [src/__tests__/panel-empty-state-contract.test.ts](__tests__/panel-empty-state-contract.test.ts):
 the class string, the no-second-speller census (both silos), the routing, the
 copy contract at all 16 empty states with each exemption named and its reason
-stated, and the *absence* of the richer composition. Non-panel surfaces that
+stated, the PROVENANCE leg (no empty state names a toolbar, a glyph, a
+dropdown, a button, a `\command` or a "+" it wrote down by hand), and the
+*absence* of the richer composition. Non-panel surfaces that
 carry their own tone — the omni rail's filter line, the font and bib picker
 menus, the AI window — are the census's named exceptions, not panel bodies.
 Build the richer empty state and that last leg fails, which is the intended

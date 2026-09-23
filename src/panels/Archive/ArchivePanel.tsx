@@ -10,6 +10,7 @@ import {
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { ArchiveCard } from "./ArchiveCard";
 
@@ -61,7 +62,8 @@ function ArchivePanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No archived text. Select text and use the menu to archive it.
+          No archived text yet.
+          <CreationHint action="archive" />
         </div>
       }
       renderCard={(s, { selected }) => {
