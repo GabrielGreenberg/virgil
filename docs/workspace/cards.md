@@ -1,4 +1,4 @@
-<!-- last-verified: 45faa9e8 2026-09-22 -->
+<!-- last-verified: 5e91fe15 2026-09-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -106,7 +106,7 @@ load. ADDITIVE/optional; mechanism in [anchoring.md](anchoring.md).
 | `note` | Notes (poly) | `notes.json` · `cards` | `"note"` | anchor (A or B) | `aiRequest` → Task `note` |
 | `highlight` | Notes (poly) | `notes.json` · `cards` | `"highlight"` | anchor (B only — exactly one range) | `aiRequest` → Task `highlight` |
 | `footnote` | Footnotes | `footnotes.json` · `footnotes` | — | **atom-link** to `\footnote{}`/`\thanks{}` (`id` = `\vfid`); unanchored OK | `aiRequest` → Task `footnote` (#55a) |
-| `archive` | Archive | `archive.json` · `snippets` | — | anchor (A; may pin many paragraphs) | none |
+| `archive` | Archive | `archive.json` · `snippets` | — | anchor (A; may pin many paragraphs) | restore-to-panel iff it carries an ORIGIN record (`originalPanel` / `originalCard` / `archivedAt`, task 712); otherwise none |
 | `todo` | Todo | `todos.json` · `items` | — | anchor (A) | `done` bool; `aiRequest` → Task `todo` |
 | `bib` | Bibliography | the **`.bib` file** (+ `bib-settings.json` / `annotations.json` / `bib-review-requests.json`) | — | **atom-link** to every `\cite{}` of its key | reviewed via `bib-review-requests.json` |
 | `citation` | Citations | `citations.json` · `citations` | — | **atom-link** to cite commands (`id` = `\vcid`); `unanchored` flag | none |
@@ -209,8 +209,12 @@ is DISCOVERED from the tree.
 Every **user-authored** card carries an optional `archived?: boolean`
 ([src/lib/types.ts](../../src/lib/types.ts), on each card record). Archived cards
 hide from a panel's active view, the OmniView, and the gutter — set aside
-reversibly rather than deleted. This is **wholly distinct** from the text-object
-Archive PANEL (the `archive` CardKind, which *moves text objects*).
+reversibly rather than deleted. This is distinct from the text-object Archive PANEL (the `archive` CardKind), which
+holds *moved text objects* — but since task 712 that panel ALSO holds whole CARDS
+set aside through `/editor/archive-card` (`apply_response.py cmd_archive`). Such a
+snippet carries an ORIGIN record (`originalPanel` / `originalCard` / `archivedAt`)
+and Restore puts the card back in its panel ("Restore to Notes"); it never lands
+the body in the prose.
 
 - **`isArchivable(kind)`** ([predicates.ts](../../src/cards/predicates.ts)) —
   derived from provenance: `origin === "user"`, MINUS one exception.
@@ -327,8 +331,14 @@ polymorphic-panel map:
 | **Reports** | `report` + `report-request` | `report` | `report` ⇄ `report-request`, lossy both ways — [below](#the-reports-panel) |
 
 Each pair is a reciprocal **morph pair** (`CardMeta.morph: { to, lossy, drops }`):
-the card converts *in place* into its panel sibling — preserving id / createdAt /
-anchor, flipping the on-disk data discriminator — via the kind control on the
+the card converts *in place* into the kind the morph ROUTE names — preserving id /
+createdAt / anchor, flipping the on-disk data discriminator. The target is resolved
+from the registry, never from panel membership and never hand-written at the chevron
+(task 722): `morphOptionsFor(kind)` builds the menu from `morph.to` (ordered by, not
+defined by, panel membership) and `resolveMorphTarget(fromKind, selected)` is the one
+door between the selection and the mutation, reached through the single
+`CardMorphHandler (fromKind, id, toKind)` shape; the chokepoint's `mutate` switch keys
+on the RESOLVED TARGET — via the kind control on the
 card header (and the popped float's title control), backed by a transform
 registered through `registerCardMorph`
 ([card-registry.tsx](../../src/cards/card-registry.tsx)). `drops` enumerates the
@@ -436,7 +446,9 @@ suggestion` enqueues a Task** rather than editing the `.tex` — the editor neve
 mutates the document on accept, so the textual replacement rides the same cowork
 write path as everything else. That replacement is consummated skill-side by
 [`/editor/accept-suggestion`](../../editor/skills/accept-suggestion.md) (chip 13):
-it splices `original_text` → `suggested_text` through `apply_response.py`'s generic
+it splices `original_text` → the human's own revision (`user_text`, else
+`suggested_text` — the same precedence the in-app Apply path reads since task 713)
+through `apply_response.py`'s generic
 `replace-span` texEdit — stale-guarded (a proposal whose `original_text` no longer
 matches the anchored paragraph is refused, never blindly spliced) — flips the card
 `status` → `accepted`, and completes the originating Task in one atomic commit;

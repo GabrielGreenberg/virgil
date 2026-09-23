@@ -1,4 +1,4 @@
-<!-- last-verified: 45faa9e8 2026-09-22 -->
+<!-- last-verified: 5e91fe15 2026-09-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -179,6 +179,13 @@ hand-maintained copies rot. Two **card/panel** shadows exist:
   `report-request` `example`; `quotation`/`annotation` dropped) and **pinned** by a
   module-level assert that every member is a real `CardKind` ([cards.md](cards.md), the SSOT).
 
+A **card/panel projection** the app EMITS rather than a hand copy: `editor/scripts/
+card_titles.json` (task 718) + `_common.title_fields()`, which the five Python card
+writers splat so title provenance (`titleAuto`) is stamped by BOTH writers, not only
+the app. Pinned from both sides by `src/cards/__tests__/card-title-provenance-manifest.test.ts`
+and `editor/scripts/tests/test_card_title_provenance.py`. (`ai_request_routing.json`
+is the same shape.)
+
 A third slice — the **Task vocabulary** — is now stated once per language in
 `editor/scripts/_common.py` rather than hand-copied per script: `TERMINAL_STATUSES` /
 `is_terminal_status` / `is_request_open` (task 680, twins of TS `isTerminalStatus` /
@@ -187,7 +194,11 @@ A third slice — the **Task vocabulary** — is now stated once per language in
 `list_requests.py` all read them, so a new terminal status or Task kind lands
 everywhere at once. These are **not** covered by check 5 — their cross-language
 parity is pinned live by `src/lib/__tests__/ai-request-open-parity.test.ts` and
-`ai-request-kind.test.ts`, which read the Python tuples off disk.
+`ai-request-kind.test.ts`, which read the Python tuples off disk. The **RESULT**
+vocabulary is a fourth such slice (task 720): `RESULT_*` / `ALL_RESULTS` — in
+`apply_response.py`, *not* `_common.py` — plus `reflect.py`'s tier map, with
+`"withdrawn"` as its newest member; `status` has had a pin since task 043, and
+`result` gained one here.
 
 `check:coherence` **check 5** reconciles both card/panel shadows against the TS SSOTs
 (`CardKind`, `PANEL_REGISTRY`) — it is **error-grade and currently clean**. The

@@ -8,6 +8,6 @@
     "todo": "text"
   },
   "exempt": {
-    "footnote": "FootnoteRef is {id, content, createdAt} — a footnote card has no title field on disk, and no load site resolves a footnote title, so there is no provenance to record. The registry's \"Footnote\" titleLabel names the float/header label, not a stored field."
+    "footnote": "FootnoteRef DOES carry a title since task 705, but the app is its only writer: no Python card writer sets a footnote title and no load site resolves its provenance, so there is no auto-vs-authored bit to record. (Exempt for want of a SECOND writer, not for want of a field — if a skill ever writes one, this kind moves to titleField.)"
   }
 }

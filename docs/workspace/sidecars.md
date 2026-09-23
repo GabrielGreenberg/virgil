@@ -1,4 +1,4 @@
-<!-- last-verified: 45faa9e8 2026-09-22 -->
+<!-- last-verified: 5e91fe15 2026-09-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -72,6 +72,14 @@ below carry only what's *distinctive*:
   falls back to the shape heuristic once, then self-stamps the bit). Present on
   `UserNote` / `ReportCard` / `TodoItem` / `ExampleRef` / `ArchivedSnippet`.
 
+- **The sidecar envelope** — keys neither language knows are CARRIED, not dropped,
+  at BOTH levels: per RECORD (`carryUnknownKeys`, task 712) and at the FILE's own
+  top level (`withSidecarEnvelope` in
+  [src/lib/sidecar-migrate.ts](../../src/lib/sidecar-migrate.ts), task 715, wrapping
+  every `usePersistentState` migrate registration). So a key a skill wrote beside
+  `cards` survives an app save — `document-settings.json` is the live case, since
+  `apply_response`'s `settingsEdit` merges arbitrary keys.
+
 Every sidecar's root is a thin **`…State`** wrapper around one array (plus the odd
 per-doc scalar). The wrapper's array key is the `list-key` the writeback targets
 (`PANEL_TO_SIDECAR` in `apply_response.py`).
@@ -119,7 +127,10 @@ TodoItem { id; text; titleAuto?; notes; done: boolean; aiRequest; createdAt;
 **`footnotes.json` — `FootnotesState { footnotes: FootnoteRef[] }`:**
 
 ```ts
-FootnoteRef { id; content; createdAt; archived?; unanchored?; aiRequest? }  // no links/anchor
+FootnoteRef { id; content; createdAt; title?; archived?; unanchored?; aiRequest? }  // no links/anchor
+// `title` (task 705): the card's user-typed title. Its durable home is HERE because
+// the `.tex` cannot carry it; the atom's `title` attr is the runtime copy, hydrated
+// from this ref at load.
 ```
 
 The `id` **is** the anchor — it equals the `\vfid{}` marker. Splice recipe +
@@ -176,11 +187,19 @@ CutterGoal           { target: number; initialWords: number; setAt }
 The **suggestion** shape (the six text fields + `author` + `status`) is shared
 verbatim with `RevisionSuggestionCard` below. `user_text` is the human's revised
 take (empty until they edit the AI draft); `instructions` is AI-only guidance.
+The replacement the Apply path splices is the HUMAN's own revision first —
+`user_text`, else `suggested_text` (one speller, `suggestionReplacement` in
+`src/links/pending-change-actions.ts`; the Python `apply_response.py` splices the
+same precedence). An EMPTY replacement is REFUSED in Revisions rather than applied
+as a silent paragraph delete; a Cutter cut, whose family MEANS deletion, still
+applies (task 713).
 The `applied` / `stale` statuses + `appliedChange` are the pending-ai-changes
-in-doc splice path (flag-ON, `pending-changes-flag`): `applied` = the suggestion
-is spliced into the doc as a blue, revertable mark; `appliedChange.originalText`
-is the pre-splice revert source. `accepted`/`rejected` remain the terminal
-propose→review states.
+in-doc splice path: `applied` = the suggestion is spliced into the doc as a blue,
+revertable mark; `appliedChange.originalText` is the pre-splice revert source.
+The `pending-changes-flag` gates PRODUCTION only (`canProducePendingChanges()`,
+task 716) — an already-`applied` card's Keep / Revert is gated on its STATUS and
+resolves flag-OFF, so turning the flag off never strands a spliced change.
+`accepted`/`rejected` remain the terminal propose→review states.
 (`CutItemLegacy { id; title; content; createdAt; links }` is the pre-refactor cut
 shape, kept only for the `useCutter` migration.)
 
@@ -228,7 +247,13 @@ ExampleRef { id; tag; label; title; titleAuto?; createdAt }  // shadow, no links
 
 ```ts
 ArchivedSnippet { id; title; titleAuto?; content; createdAt; links: Link[];
-                  archived? }  // links may pin many
+                  archived?; unanchored?;
+                  originalPanel?; originalCard?; archivedAt? }  // links may pin many
+// ORIGIN RECORD (task 712) — the last three are present iff the snippet is a whole
+// CARD set aside by `/editor/archive-card`, not a slice of the document:
+// `originalPanel` names the panel it left, `originalCard` is that card VERBATIM.
+// Restore puts the card back in its panel ("Restore to Notes"); it never lands the
+// body in the prose. See `src/lib/archive-origin.ts` + `src/hooks/reinstate-card.ts`.
 ```
 
 (`archived?` here is the set-aside flag from the spine — distinct from this card
@@ -248,6 +273,16 @@ the serialized write critical section (`mutateSidecar`) and published on success
 a stale edit whose row is gone DECLINES rather than resurrecting it. The filename
 constant is module-private — address the file through the authority, never
 through `mutateSidecar` directly.
+
+Since task 719 it is **no longer the exception**: every record-collection sidecar
+MERGES against a base inside the write's critical section. `SIDECAR_COLLECTIONS` +
+`mergeSidecarState` ([src/lib/sidecar-merge.ts](../../src/lib/sidecar-merge.ts))
+behind the one door `writeSidecarMerged`
+([src/lib/sidecar-merged-write.ts](../../src/lib/sidecar-merged-write.ts)), used by
+`usePersistentState` and by `useFootnotes` / `useExamples` / `useBibReview`. The
+merge is THREE-WAY, not a union — deletion is derived from the base, and the base
+is the SUBMITTED payload, never the merged result — and a write the dirty-guard
+defers is REMEMBERED and replayed when writes drain, rather than discarded.
 
 ```ts
 AiRequest {

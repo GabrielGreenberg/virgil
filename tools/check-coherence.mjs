@@ -882,7 +882,7 @@ function countCommits(baseline, paths, docRel) {
  * ════════════════════════════════════════════════════════════════════ */
 const APPLY_PY = "editor/scripts/apply_response.py";
 const CREATE_PY = "editor/scripts/create_card.py";
-const CARDKIND_TS = "src/panels/_shared/types.ts";
+const CARDKIND_TS = "src/cards/types.ts";
 const PANELREG_TS = "src/panels/panel-registry.ts";
 const CARDREG_TSX = "src/cards/card-registry.tsx";
 

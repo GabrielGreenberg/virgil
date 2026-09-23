@@ -1,4 +1,4 @@
-<!-- last-verified: 45faa9e8 2026-09-22 -->
+<!-- last-verified: 5e91fe15 2026-09-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -62,11 +62,15 @@ typeset it. If the selection is not found verbatim in the paragraph,
     "content": { "type": "doc", "content": [
       { "type": "paragraph", "content": [
         { "type": "text", "text": "…footnote body…" } ] } ] },
+    "title": "Sources for the 1904 figure",
     "createdAt": "2026-04-23T12:00:00.000Z" } ] }
 ```
 
 `FootnoteRef` (`src/lib/types.ts`) is `id`, `content` (Tiptap `JSONContent` doc;
-legacy HTML strings migrate on read), `createdAt`, an optional **`aiRequest?`** flag (#55a — see
+legacy HTML strings migrate on read), `createdAt`, an optional **`title?`** (task 705 — the card's user-typed title; a REAL
+persisted field, and its durable home, because the `.tex` cannot carry it. `handleEditFootnoteTitle` writes the atom attr non-undoably AND the ref through the
+task-703 upsert door; the load edge hydrates attr from ref, and the title rides
+`FootnoteEntry` through archive / clone / stack-pull), an optional **`aiRequest?`** flag (#55a — see
 [the AI-request flag](#the-per-card-ai-request-flag-55a)), plus the family-wide
 optional **`archived?`** and (bug sweep #3) **`unanchored?`** flags — both **live**
 for footnotes now, mirroring `CitationRef` (see the archive note below). **There is no anchor / paragraphId

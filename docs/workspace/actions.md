@@ -1,4 +1,4 @@
-<!-- last-verified: 45faa9e8 2026-09-22 -->
+<!-- last-verified: 5e91fe15 2026-09-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -486,7 +486,12 @@ Whole-block (TextObject) operations come from two places:
   still asks the live document.
 - **The `DragHandleMenu` lifecycle actions** — `duplicate` (clone the captured
   passage, forking any contained atoms' sidecars via `cardLifecycle`),
-  `archive`, and `delete` (Family 1).
+  `archive`, and `delete` (Family 1). The cascade is Mode-B-anchor-wide, not a
+  hand-picked list: since task 721 `todo` / `report` / `report-request` carry
+  `{ clone: true, delete: true, bindAnchor: true }` like the other Mode-B kinds, so
+  duplicating a passage carries its todo and its report (it used to drop both
+  silently while carrying its note), and a cascade delete of a flagged card closes
+  its `ai-requests.json` row through the unbridging wrappers.
 
 ### The grab handle (lift / pop / drop)
 
@@ -561,7 +566,11 @@ on a float header is **retired** (req-7), and the panel→gutter **native HTML5
 drag-and-drop** was **removed** (the `panel-drops.ts` / `anchor-rebind.ts`
 event-bridges + `Revisions/mime.ts` are deleted) — the drop button is now the
 single entry. The block grab handle (above) and the in-text inline-atom grab
-remain their own producers. A re-anchor through a drop adapter must answer what it
+remain their own producers — as does one PANEL-INTERNAL native drag: an Outline pod
+reorder, which carries the private `MIME_OUTLINE_POD` and **no `text/plain`**, and
+which the editor refuses BY NAME via `EDITOR_REFUSED_DRAG_TYPES`
+([marginalia.ts](../../src/lib/marginalia.ts), task 708), so releasing a pod over the
+paper types nothing into it. A re-anchor through a drop adapter must answer what it
 does to the card's Mode-B anchor (`ParagraphAnchorApi.modeB`, built by
 `releaseModeB` — task 698; [anchoring.md → OriginalAnchor](anchoring.md#originalanchor)).
 
