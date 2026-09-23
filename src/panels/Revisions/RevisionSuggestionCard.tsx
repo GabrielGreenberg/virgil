@@ -1,6 +1,7 @@
 "use client";
 
 import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
+import type { CardMorphHandler } from "@/cards/types";
 import { SuggestionTrailing, type SuggestionField } from "@/panels/_shared/suggestion-fields";
 import { SuggestionCard } from "@/panels/_shared/SuggestionCard";
 
@@ -33,7 +34,7 @@ export function RevisionSuggestionCard(props: {
   card: RevisionSuggestionCardData;
   selected: boolean;
   onUpdateField: (id: string, field: SuggestionField, value: string) => void;
-  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvert?: CardMorphHandler;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;

@@ -139,10 +139,56 @@ export function morphCarriesAiRequest(fromKind: CardKind): boolean {
   );
 }
 
+/** The kind-chevron's OPTION LIST for `kind` — the kind itself plus every kind
+ *  it can actually morph INTO. Derived from the SAME `morph.to` the dispatch
+ *  resolves (`resolveMorphTarget`) and the confirm copy names, so the menu can
+ *  never offer an option whose action goes somewhere else (task 722).
+ *
+ *  Panel membership ORDERS the list — a kind's panel declares the display order
+ *  of its kinds — but no longer DEFINES it. The chevron used to take
+ *  `cardKindsForPanel(panel)` wholesale, which returns every kind sharing the
+ *  panel whether or not a morph route reaches it; today every morphing panel
+ *  holds exactly a pair, so the two agreed by coincidence. A third kind added
+ *  to a morphing panel is reachable from neither end and is simply not offered.
+ *
+ *  Returns a single-element list for a non-morphing kind, which `CardKindHeader`
+ *  renders as the plain label (`options.length <= 1` → no dropdown). */
+export function morphOptionsFor(kind: CardKind): CardKind[] {
+  const to = CARD_REGISTRY[kind].morph?.to;
+  if (to == null || to === kind) return [kind];
+  const panel = CARD_REGISTRY[kind].panel;
+  const order = (Object.keys(CARD_REGISTRY) as CardKind[]).filter(
+    (k) => CARD_REGISTRY[k].panel === panel,
+  );
+  const rank = (k: CardKind): number => {
+    const i = order.indexOf(k);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return [kind, to].sort((a, b) => rank(a) - rank(b));
+}
+
+/** Resolve a chevron SELECTION to the morph the dispatch should perform, or
+ *  `null` when there is none (the current kind re-picked, or a kind no morph
+ *  route reaches). The one door between "what the user chose" and "what the
+ *  mutation does": every chevron passes the SELECTED kind through, and this
+ *  answers with the target — so the confirm copy (generated from `morph.to`)
+ *  and the mutation cannot name different kinds (task 722). Before, each of the
+ *  15 chevron sites tested the selection against its own kind and then
+ *  dispatched a hand-written literal, discarding the selection entirely. */
+export function resolveMorphTarget(
+  fromKind: CardKind,
+  selected: CardKind,
+): CardKind | null {
+  if (selected === fromKind) return null;
+  return CARD_REGISTRY[fromKind].morph?.to === selected ? selected : null;
+}
+
 /** Dev-only: verify the morph declarations are internally consistent and fully
  *  wired. For every `morph !== null` kind: (1) a converter was registered via
- *  `registerCardMorph`, and (2) `morph.to` shares the kind's panel (so the
- *  chevron's `cardKindsForPanel(panel)` options always include the target).
+ *  `registerCardMorph`, and (2) `morph.to` shares the kind's panel (the panel
+ *  owns the sidecar the morph mutates in place, and it orders the chevron's
+ *  options) and is OFFERED by `morphOptionsFor` — the very list the chevron
+ *  renders, so a declared target is always one the user can select.
  *  Also checks the pairing is symmetric — the target's `morph.to` points back.
  *  Mirrors `assertLifecycleCoverage`; call from the morphs boot module after
  *  every `registerCardMorph`. */
@@ -161,7 +207,17 @@ export function assertMorphCoverage(): void {
       console.error(
         `[CardMorph] "${k}".morph.to = "${m.to}" but they live in different ` +
           `panels (${CARD_REGISTRY[k].panel} ≠ ${CARD_REGISTRY[m.to].panel}); ` +
-          `the chevron derives options from cardKindsForPanel(panel).`,
+          `the chevron derives its options from the morph route.`,
+      );
+    }
+    // The TIE between the declared target and the menu the user actually sees:
+    // the chevron's options ARE `morphOptionsFor`, so a target it does not
+    // return is a target no user can select (task 722).
+    if (!morphOptionsFor(k).includes(m.to)) {
+      console.error(
+        `[CardMorph] "${k}".morph.to = "${m.to}" is not offered by ` +
+          `morphOptionsFor("${k}") (${JSON.stringify(morphOptionsFor(k))}) — ` +
+          `the chevron cannot reach the declared target.`,
       );
     }
     const back = CARD_REGISTRY[m.to].morph;

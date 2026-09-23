@@ -1,6 +1,7 @@
 "use client";
 
 import type { DockedJumpGate } from "@/links/card-anchor-rows";
+import type { CardMorphHandler } from "@/cards/types";
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
@@ -74,7 +75,7 @@ export default function CutterPanel({
      Keep / Revert resolve from the `PendingChangeController` context inside the
      card, so this panel is no longer one of the places that has to remember to
      pass them — and omni + float, which never did, behave identically. */
-  onConvertCard: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvertCard: CardMorphHandler;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;

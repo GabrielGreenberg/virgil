@@ -14,7 +14,8 @@ import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
-import { cardKindsForPanel } from "@/cards/predicates";
+import { morphOptionsFor } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import { canMorphNoteToHighlight } from "@/cards/morphs";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
@@ -43,7 +44,7 @@ export function NoteCard({
   onUpdateTitle: (id: string, title: string) => void;
   /** Morph this note ⇄ highlight via the kind-chevron (R14, bidirectional).
    *  note → highlight is lossy (drops the body); the host confirms first. */
-  onConvert?: (id: string, toKind: "note" | "highlight") => void;
+  onConvert?: CardMorphHandler;
   onSetAiRequest?: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -95,13 +96,9 @@ export function NoteCard({
       id={note.id}
       cardKind="note"
       kind="note"
-      kindOptions={onConvert && morphable ? cardKindsForPanel("notes") : undefined}
+      kindOptions={onConvert && morphable ? morphOptionsFor("note") : undefined}
       onKindChange={
-        onConvert && morphable
-          ? (k) => {
-              if (k !== "note") onConvert(note.id, "highlight");
-            }
-          : undefined
+        onConvert && morphable ? (k) => onConvert("note", note.id, k) : undefined
       }
       selected={isSelected}
       theme={theme}

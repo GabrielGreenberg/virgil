@@ -1,5 +1,6 @@
 "use client";
 
+import type { CardMorphHandler } from "@/cards/types";
 import type {
   ReportItem,
   ReportCard as ReportCardData,
@@ -26,7 +27,7 @@ interface BuildArgs {
   updateReportTitle: (id: string, title: string) => void;
   updateRequestContent: (id: string, content: JSONContent) => void;
   setRequestAiRequest: (id: string, value: boolean) => void;
-  convertCard: (id: string, toKind: "report" | "report-request") => void;
+  convertCard: CardMorphHandler;
   deleteCard: (id: string) => void;
   // Required: the omni report cards are the SAME mini-editors as the docked
   // panel — they need citation-display + editor-focus wiring or inline `\cite{}`

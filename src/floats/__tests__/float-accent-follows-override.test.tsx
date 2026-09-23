@@ -103,7 +103,7 @@ function cardCtx(): CardFloatCtx {
     selectedNoteId: null,
     selectedTodoId: null,
     toggleTodo: () => {},
-    convertNotesCard: () => {},
+    morphCard: () => {},
     // The card-anchor authority the float builders gate Jump on (task 665).
     // Required on the real bag; this fixture's note carries no links, so the
     // resolver honestly answers "no rows, not anchored".

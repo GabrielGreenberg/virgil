@@ -58,8 +58,8 @@ import type { FootnoteRef } from "@/lib/types";
 import { buildFloatKey } from "@/floats/float-key";
 import type { CardFloatCtx } from "../card-float-ctx";
 import type { CardKind } from "../types";
-import { CARD_REGISTRY, registerCardFloatable } from "../card-registry";
-import { cardKindsForPanel, hasCollabClaims } from "../predicates";
+import { CARD_REGISTRY, morphOptionsFor, registerCardFloatable } from "../card-registry";
+import { hasCollabClaims } from "../predicates";
 import { canMorphNoteToHighlight } from "../morphs";
 import { CardKindHeader } from "@/components/panel-primitives";
 
@@ -173,9 +173,9 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
             title: (
               <CardKindHeader
                 kind="note"
-                options={cardKindsForPanel("notes")}
+                options={morphOptionsFor("note")}
                 onChange={(k) => {
-                  if (k !== "note") ctx.convertNotesCard(id, "highlight");
+                  ctx.morphCard("note", id, k);
                 }}
               />
             ),
@@ -191,7 +191,7 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
         selected={ctx.selectedNoteId === note.id}
         onUpdate={ctx.updateNote}
         onUpdateTitle={ctx.updateNoteTitle}
-        onConvert={ctx.convertNotesCard}
+        onConvert={ctx.morphCard}
         onSetAiRequest={ctx.setNoteAiRequest}
         onDelete={ctx.deleteNote}
         onSelect={ctx.setSelectedNoteId}
@@ -214,9 +214,9 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="highlight"
-          options={cardKindsForPanel("notes")}
+          options={morphOptionsFor("highlight")}
           onChange={(k) => {
-            if (k !== "highlight") ctx.convertNotesCard(id, "note");
+            ctx.morphCard("highlight", id, k);
           }}
         />
       ),
@@ -228,7 +228,7 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
       <HighlightCard
         card={hl}
         selected={ctx.selectedNoteId === hl.id}
-        onConvert={ctx.convertNotesCard}
+        onConvert={ctx.morphCard}
         onSetAiRequest={ctx.setHighlightAiRequest}
         onDelete={ctx.deleteNote}
         onSelect={ctx.setSelectedNoteId}
@@ -403,9 +403,9 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="cutter-comment"
-          options={cardKindsForPanel("cutter")}
+          options={morphOptionsFor("cutter-comment")}
           onChange={(k) => {
-            if (k !== "cutter-comment") ctx.convertCutterCard(id, "suggestion");
+            ctx.morphCard("cutter-comment", id, k);
           }}
         />
       ),
@@ -418,7 +418,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
         card={card}
         selected={ctx.selectedCutterCardId === card.id}
         onUpdateContent={ctx.updateCutterCommentContent}
-        onConvert={ctx.convertCutterCard}
+        onConvert={ctx.morphCard}
         onSetAiRequest={ctx.setCutterCommentAiRequest}
         onDelete={ctx.deleteCutterCard}
         onSelect={ctx.setSelectedCutterCardId}
@@ -439,9 +439,9 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="cutter-suggestion"
-          options={cardKindsForPanel("cutter")}
+          options={morphOptionsFor("cutter-suggestion")}
           onChange={(k) => {
-            if (k !== "cutter-suggestion") ctx.convertCutterCard(id, "comment");
+            ctx.morphCard("cutter-suggestion", id, k);
           }}
         />
       ),
@@ -454,7 +454,7 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
         card={card}
         selected={ctx.selectedCutterCardId === card.id}
         onUpdateField={ctx.updateCutterSuggestionField}
-        onConvert={ctx.convertCutterCard}
+        onConvert={ctx.morphCard}
         onDelete={ctx.deleteCutterCard}
         onSelect={ctx.setSelectedCutterCardId}
         onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
@@ -475,9 +475,9 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="report"
-          options={cardKindsForPanel("reports")}
+          options={morphOptionsFor("report")}
           onChange={(k) => {
-            if (k !== "report") ctx.convertReportCard(id, "report-request");
+            ctx.morphCard("report", id, k);
           }}
         />
       ),
@@ -491,7 +491,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
         selected={ctx.selectedReportCardId === card.id}
         onUpdate={ctx.updateReportContent}
         onUpdateTitle={ctx.updateReportTitle}
-        onConvert={ctx.convertReportCard}
+        onConvert={ctx.morphCard}
         onDelete={ctx.deleteReportCard}
         onSelect={ctx.setSelectedReportCardId}
         onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
@@ -512,9 +512,9 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="report-request"
-          options={cardKindsForPanel("reports")}
+          options={morphOptionsFor("report-request")}
           onChange={(k) => {
-            if (k !== "report-request") ctx.convertReportCard(id, "report");
+            ctx.morphCard("report-request", id, k);
           }}
         />
       ),
@@ -527,7 +527,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
         request={card}
         selected={ctx.selectedReportCardId === card.id}
         onUpdate={ctx.updateRequestContent}
-        onConvert={ctx.convertReportCard}
+        onConvert={ctx.morphCard}
         onSetAiRequest={ctx.setRequestAiRequest}
         onDelete={ctx.deleteReportCard}
         onSelect={ctx.setSelectedReportCardId}
@@ -666,9 +666,9 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="revision-comment"
-          options={["revision-comment", "revision-suggestion"]}
+          options={morphOptionsFor("revision-comment")}
           onChange={(k) => {
-            if (k !== "revision-comment") ctx.convertRevisionCard(id, "suggestion");
+            ctx.morphCard("revision-comment", id, k);
           }}
         />
       ),
@@ -681,7 +681,7 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
         selected={ctx.selectedCommentId === card.id}
         onUpdateContent={ctx.updateRevisionCommentContent}
         onSetAiRequest={ctx.setRevisionCommentAiRequest}
-        onConvert={ctx.convertRevisionCard}
+        onConvert={ctx.morphCard}
         onDelete={ctx.deleteRevisionCard}
         onSelect={ctx.setSelectedCommentId}
         isPoppedOut
@@ -702,9 +702,9 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="revision-suggestion"
-          options={["revision-comment", "revision-suggestion"]}
+          options={morphOptionsFor("revision-suggestion")}
           onChange={(k) => {
-            if (k !== "revision-suggestion") ctx.convertRevisionCard(id, "comment");
+            ctx.morphCard("revision-suggestion", id, k);
           }}
         />
       ),
@@ -716,7 +716,7 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
         card={card}
         selected={ctx.selectedCommentId === card.id}
         onUpdateField={ctx.updateRevisionSuggestionField}
-        onConvert={ctx.convertRevisionCard}
+        onConvert={ctx.morphCard}
         onDelete={ctx.deleteRevisionCard}
         onSelect={ctx.setSelectedCommentId}
         isPoppedOut

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import type { CardMorphHandler } from "@/cards/types";
 import CutterPanel from "@/panels/Cutter";
 import type {
   CutterCard,
@@ -36,7 +37,7 @@ export interface CutterHostProps {
   ) => void;
   /** Morph comment ⇄ suggestion via the kind-chevron — routes through the
    *  EditorPane morph chokepoint (float-key remap). */
-  convertCard: (id: string, toKind: "comment" | "suggestion") => void;
+  convertCard: CardMorphHandler;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;

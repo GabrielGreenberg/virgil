@@ -17,7 +17,9 @@ import {
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
-import { cardKindsForPanel, bodyVariantForCardKind } from "@/cards/predicates";
+import { bodyVariantForCardKind } from "@/cards/predicates";
+import { morphOptionsFor } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -42,7 +44,7 @@ export function CutterCommentCard({
   selected: boolean;
   onUpdateContent: (id: string, content: JSONContent) => void;
   /** Morph comment ⇄ suggestion via the kind-chevron. */
-  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvert?: CardMorphHandler;
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -101,13 +103,9 @@ export function CutterCommentCard({
       id={card.id}
       cardKind="cutter-comment"
       kind="cutter-comment"
-      kindOptions={onConvert ? cardKindsForPanel("cutter") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("cutter-comment") : undefined}
       onKindChange={
-        onConvert
-          ? (k) => {
-              if (k !== "cutter-comment") onConvert(card.id, "suggestion");
-            }
-          : undefined
+        onConvert ? (k) => onConvert("cutter-comment", card.id, k) : undefined
       }
       selected={isSelected}
       theme={theme}

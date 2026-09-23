@@ -1,6 +1,7 @@
 "use client";
 
 import type { JSONContent } from "@tiptap/react";
+import type { CardMorphHandler } from "@/cards/types";
 import type { NoteCardItem } from "@/lib/types";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
@@ -22,7 +23,7 @@ interface BuildArgs {
   updateNoteTitle: (id: string, title: string) => void;
   setNoteAiRequest: (id: string, value: boolean) => void;
   setHighlightAiRequest: (id: string, value: boolean) => void;
-  convertCard: (id: string, toKind: "note" | "highlight") => void;
+  convertCard: CardMorphHandler;
   deleteNote: (id: string) => void;
   setOverrideEditor: (editor: any) => void;
   getCitationDisplayText: (command: string) => string;

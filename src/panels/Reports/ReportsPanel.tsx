@@ -1,6 +1,7 @@
 "use client";
 
 import type { DockedJumpGate } from "@/links/card-anchor-rows";
+import type { CardMorphHandler } from "@/cards/types";
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
@@ -47,7 +48,7 @@ export default function ReportsPanel({
   onUpdateReportTitle: (id: string, title: string) => void;
   onUpdateRequestContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   onSetRequestAiRequest: (id: string, value: boolean) => void;
-  onConvertCard: (id: string, toKind: "report" | "report-request") => void;
+  onConvertCard: CardMorphHandler;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;

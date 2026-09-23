@@ -40,6 +40,7 @@ import type { useRevisions } from "@/hooks/useRevisions";
 import type { useCutter } from "@/hooks/useCutter";
 import type { useReports } from "@/hooks/useReports";
 import type { JSONContent } from "@tiptap/react";
+import type { CardMorphHandler } from "@/cards/types";
 import type {
   ArchivedSnippet,
   OrphanedFootnote,
@@ -111,9 +112,12 @@ export interface OmniHostProps {
   updateNoteTitle: NotesHook["updateNoteTitle"];
   setNoteAiRequest: NotesHook["setNoteAiRequest"];
   setHighlightAiRequest: NotesHook["setHighlightAiRequest"];
-  /** Morph note ⇄ highlight via the kind-chevron (R14) — the EditorPane
-   *  morph chokepoint (lossy confirm + float-key remap). */
-  convertNotesCard: (id: string, toKind: "note" | "highlight") => void;
+  /** The ONE kind-chevron dispatch for every morphing kind the omni renders —
+   *  the EditorPane morph chokepoint (lossy confirm + float-key remap). Takes
+   *  the card's own kind and THE KIND THE USER SELECTED; the target is resolved
+   *  from the registry there, never from a literal at the call site (task 722,
+   *  which collapsed the four per-pair adapters into this one). */
+  morphCard: CardMorphHandler;
   /** Kind-aware delete; routed through cardCreation so deleting a
    *  highlight also strips the in-doc tint. */
   deleteNote: (id: string) => void;
@@ -142,7 +146,6 @@ export interface OmniHostProps {
      docked, and left it at `accepted` with the prose un-applied and nothing
      anywhere acting on it. The card resolves every landing verb from the
      `PendingChangeController` context now, so no float needs the setter. */
-  convertRevisionCard: RevisionsHook["convertCard"];
   deleteRevisionCard: RevisionsHook["deleteCard"];
   // Errors
   latexErrors: LatexError[];
@@ -165,8 +168,6 @@ export interface OmniHostProps {
   updateCutterCommentContent: CutterHook["updateCommentContent"];
   setCutterCommentAiRequest: CutterHook["setCommentAiRequest"];
   updateCutterSuggestionField: CutterHook["updateSuggestionField"];
-  /** Morph cutter comment ⇄ suggestion via the kind-chevron. */
-  convertCutterCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCutterCard: CutterHook["deleteCard"];
   // Reports
   reportCards: ReportsHook["cards"];
@@ -174,8 +175,6 @@ export interface OmniHostProps {
   updateReportTitle: ReportsHook["updateReportTitle"];
   updateRequestContent: ReportsHook["updateRequestContent"];
   setRequestAiRequest: ReportsHook["setRequestAiRequest"];
-  /** Morph report ⇄ report-request via the kind-chevron. */
-  convertReportCard: (id: string, toKind: "report" | "report-request") => void;
   deleteReportCard: ReportsHook["deleteCard"];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
@@ -521,7 +520,7 @@ export function OmniHost(p: OmniHostProps) {
       updateNoteTitle: p.updateNoteTitle,
       setNoteAiRequest: p.setNoteAiRequest,
       setHighlightAiRequest: p.setHighlightAiRequest,
-      convertCard: p.convertNotesCard,
+      convertCard: p.morphCard,
       deleteNote: p.deleteNote,
       setOverrideEditor,
       getCitationDisplayText,
@@ -568,7 +567,7 @@ export function OmniHost(p: OmniHostProps) {
       updateCommentContent: p.updateRevisionCommentContent,
       setCommentAiRequest: p.setRevisionCommentAiRequest,
       updateSuggestionField: p.updateRevisionSuggestionField,
-      convertCard: p.convertRevisionCard,
+      convertCard: p.morphCard,
       deleteCard: p.deleteRevisionCard,
     }),
     ...buildErrorOmniItems({
@@ -596,7 +595,7 @@ export function OmniHost(p: OmniHostProps) {
       updateCommentContent: p.updateCutterCommentContent,
       setCommentAiRequest: p.setCutterCommentAiRequest,
       updateSuggestionField: p.updateCutterSuggestionField,
-      convertCard: p.convertCutterCard,
+      convertCard: p.morphCard,
       deleteCard: p.deleteCutterCard,
     }),
     ...buildReportsOmniItems({
@@ -609,7 +608,7 @@ export function OmniHost(p: OmniHostProps) {
       updateReportTitle: p.updateReportTitle,
       updateRequestContent: p.updateRequestContent,
       setRequestAiRequest: p.setRequestAiRequest,
-      convertCard: p.convertReportCard,
+      convertCard: p.morphCard,
       deleteCard: p.deleteReportCard,
       setOverrideEditor,
       getCitationDisplayText,
@@ -658,22 +657,21 @@ export function OmniHost(p: OmniHostProps) {
     p.getAnnotation, p.setAnnotation,
     p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus,
     // Note handlers
-    p.updateNote, p.updateNoteTitle, p.convertNotesCard, p.deleteNote,
+    p.updateNote, p.updateNoteTitle, p.morphCard, p.deleteNote,
     // Archive handlers
     p.updateArchiveSnippet, p.updateArchiveSnippetTitle, p.handleDeleteArchive,
     // Todo handlers
     p.toggleTodo, p.updateTodo, p.updateTodoNotes, p.setTodoAiRequest, p.deleteTodo,
     // Revision handlers
     p.updateRevisionCommentContent, p.setRevisionCommentAiRequest,
-    p.updateRevisionSuggestionField, p.convertRevisionCard, p.deleteRevisionCard,
+    p.updateRevisionSuggestionField, p.deleteRevisionCard,
     // Error handlers
     p.dismissError, p.errorJump,
     p.expandedErrorIds, p.expandError, p.toggleErrorExpanded,
     // Cutter handlers
     p.updateCutterCommentContent, p.setCutterCommentAiRequest,
-    p.updateCutterSuggestionField, p.convertCutterCard, p.deleteCutterCard,
+    p.updateCutterSuggestionField, p.deleteCutterCard,
     // Reports handlers
-    p.convertReportCard,
   ]);
 
   // Container-child nesting (PHASE 1 footnotes + PHASE 2a examples). Derive the

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import type { CardMorphHandler } from "@/cards/types";
 import type { JSONContent } from "@tiptap/react";
 import RevisionsPanel from "@/panels/Revisions";
 import type {
@@ -34,7 +35,7 @@ export interface RevisionsHostProps {
       | "instructions",
     value: string,
   ) => void;
-  convertCard: (id: string, toKind: "comment" | "suggestion") => void;
+  convertCard: CardMorphHandler;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;

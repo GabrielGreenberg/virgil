@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type { CardMorphHandler } from "@/cards/types";
 import NotesPanel from "@/panels/Notes";
 import type { useNotes } from "@/hooks/useNotes";
 import type { Side } from "@/hooks/useViewPrefs";
@@ -27,7 +28,7 @@ export interface NotesHostProps {
   setHighlightAiRequest: NotesHook["setHighlightAiRequest"];
   /** Morph note ⇄ highlight via the kind-chevron (R14) — routes through the
    *  EditorPane morph chokepoint (lossy confirm + float-key remap). */
-  convertCard: (id: string, toKind: "note" | "highlight") => void;
+  convertCard: CardMorphHandler;
   deleteNote: NotesHook["deleteNote"];
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;

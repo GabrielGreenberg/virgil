@@ -4,6 +4,7 @@ import type {
   RefObject,
 } from "react";
 import type { JSONContent, Editor } from "@tiptap/react";
+import type { CardMorphHandler } from "@/cards/types";
 import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
 import type {
   UserNote,
@@ -129,8 +130,13 @@ export interface PoppedCardDeps {
   updateNoteTitle: (id: string, title: string) => void;
   setNoteAiRequest: (id: string, value: boolean) => void;
   setHighlightAiRequest: (id: string, value: boolean) => void;
-  /** Morph a notes-panel card note ⇄ highlight (A9 kind-chevron, R14). */
-  convertNotesCard: (id: string, toKind: "note" | "highlight") => void;
+  /** The ONE kind-chevron dispatch for every morphing kind this bag serves
+   *  (A9 kind-chevron; task 722 collapsed the four per-pair adapters —
+   *  `convertNotesCard` / `convertCutterCard` / `convertReportCard` /
+   *  `convertRevisionCard` — into it). The float chrome hands it the card's own
+   *  kind and THE KIND THE USER SELECTED; the target is resolved from the
+   *  registry at the chokepoint, never from a literal written here. */
+  morphCard: CardMorphHandler;
   deleteNote: (id: string) => void;
 
   // Footnotes
@@ -170,8 +176,6 @@ export interface PoppedCardDeps {
      docked, and left it at `accepted` with the prose un-applied and nothing
      anywhere acting on it. The card resolves every landing verb from the
      `PendingChangeController` context now, so no float needs the setter. */
-  /** Morph a cutter card comment ⇄ suggestion (A9 kind-chevron). */
-  convertCutterCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCutterCard: (id: string) => void;
 
   // Reports (polymorphic: report + report-request)
@@ -179,8 +183,6 @@ export interface PoppedCardDeps {
   updateReportTitle: (id: string, title: string) => void;
   updateRequestContent: (id: string, content: JSONContent) => void;
   setRequestAiRequest: (id: string, value: boolean) => void;
-  /** Morph a report card report ⇄ report-request (A9 kind-chevron). */
-  convertReportCard: (id: string, toKind: "report" | "report-request") => void;
   deleteReportCard: (id: string) => void;
 
   // Todos
@@ -224,7 +226,6 @@ export interface PoppedCardDeps {
      docked, and left it at `accepted` with the prose un-applied and nothing
      anywhere acting on it. The card resolves every landing verb from the
      `PendingChangeController` context now, so no float needs the setter. */
-  convertRevisionCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteRevisionCard: (id: string) => void;
 }
 

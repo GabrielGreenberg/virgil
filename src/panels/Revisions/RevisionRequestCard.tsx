@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback } from "react";
-import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
+import { bodyVariantForCardKind } from "@/cards/predicates";
+import { morphOptionsFor } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { RevisionRequestCard as RevisionRequestCardData } from "@/lib/types";
 import {
@@ -42,7 +44,7 @@ export function RevisionRequestCard({
   selected: boolean;
   onUpdateContent: (id: string, content: JSONContent) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
-  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvert?: CardMorphHandler;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
@@ -100,13 +102,9 @@ export function RevisionRequestCard({
       id={card.id}
       cardKind="revision-comment"
       kind="revision-comment"
-      kindOptions={onConvert ? cardKindsForPanel("revisions") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("revision-comment") : undefined}
       onKindChange={
-        onConvert
-          ? (k) => {
-              if (k !== "revision-comment") onConvert(card.id, "suggestion");
-            }
-          : undefined
+        onConvert ? (k) => onConvert("revision-comment", card.id, k) : undefined
       }
       selected={isSelected}
       theme={theme}

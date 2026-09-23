@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef } from "react";
-import { cardKindsForPanel } from "@/cards/predicates";
-import { CARD_REGISTRY } from "@/cards/card-registry";
+import { CARD_REGISTRY, morphOptionsFor } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import type {
   CutterSuggestionCard as CutterSuggestionCardData,
   RevisionSuggestionCard as RevisionSuggestionCardData,
@@ -64,7 +64,7 @@ import { capturedPassageOneLine } from "@/panels/_shared/captured-passage";
  *
  *   - the accent            → `useCardKindTheme(family)` → `registry.themeKey`
  *   - the owning panel      → `registry.panel`
- *   - the morph kind menu   → `cardKindsForPanel(registry.panel)`
+ *   - the morph kind menu   → `morphOptionsFor(family)` (registry `morph.to`)
  *   - the body typography   → `PANEL_KIND_TO_BODY_KEY[registry.panel]`
  *   - the pop / anchor keys → `cardPopKey(family, id)` / `{ kind: family, id }`
  *   - the docked hook attr  → `data-<family>-entry`
@@ -91,7 +91,6 @@ export type SuggestionCardData =
 function familyFacets(family: PendingChangeFamily) {
   const panel = CARD_REGISTRY[family].panel;
   return {
-    panel,
     /** `undefined` is a legitimate answer for a panel with no tunable body row;
      *  `usePanelBodyStyle` takes it and yields `{}`. */
     bodyKey: panel ? PANEL_KIND_TO_BODY_KEY[panel] : undefined,
@@ -124,7 +123,7 @@ export function SuggestionCard({
      is exactly how `onApply` came to be honoured docked and dropped in omni and
      float, leaving one card doing three different things under one global flag. */
   /** Morph suggestion ⇄ comment via the kind-chevron. */
-  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvert?: CardMorphHandler;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
@@ -132,7 +131,7 @@ export function SuggestionCard({
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
-  const { panel, bodyKey } = familyFacets(family);
+  const { bodyKey } = familyFacets(family);
   const theme = useCardKindTheme(family);
   const cardStore = useCardStore();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -237,14 +236,8 @@ export function SuggestionCard({
       onKeyDown={handleDeleteKey}
       className="mb-2"
       kind={family}
-      kindOptions={onConvert && panel ? cardKindsForPanel(panel) : undefined}
-      onKindChange={
-        onConvert
-          ? (k) => {
-              if (k !== family) onConvert(card.id, "comment");
-            }
-          : undefined
-      }
+      kindOptions={onConvert ? morphOptionsFor(family) : undefined}
+      onKindChange={onConvert ? (k) => onConvert(family, card.id, k) : undefined}
       canJump={isAnchored && !!onJump}
       onJump={(e) => {
         if (onJump && isAnchored)
