@@ -61,7 +61,6 @@ function mainCtx(anchored: Set<string>): EditorExtensionsCtx {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     // The margin-marker set MarginaliaAnchorGuard reads. Decided at mount time.
     anchoredUuidsRef: { current: anchored },
     host: null,

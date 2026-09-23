@@ -155,7 +155,6 @@ function mount(confirmRef?: ConfirmRef, doc: Content = content()) {
     cardContext: false,
     callbacks: confirmRef ? { onConfirmLabelRename: confirmRef } : {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
   };

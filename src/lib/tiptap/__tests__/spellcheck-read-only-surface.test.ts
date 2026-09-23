@@ -89,7 +89,6 @@ function mount(editableRef: RefObject<boolean>): Editor {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
     spellcheckPortRef: makePort(),

@@ -182,7 +182,6 @@ import { type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { FloatHost } from "@/floats/FloatHost";
 import { captureFloatToStack } from "@/floats/resolve-floatable";
 import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
-import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY, resolveMorphTarget } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
@@ -2636,24 +2635,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [viewPrefs],
   );
 
-  // ── TexBlock popped predicate ─────────────────────────────────────
-  // The texBlock NodeView reads this through its extension options to
-  // render `.is-popped` chrome when its float is open. Other kinds had
-  // analogous predicates here, but only to drive the per-NodeView
-  // grips that Phase D4 deleted — those are gone now.
-  const texBlockIsPoppedRef = useRef<(uuid: string) => boolean>(
-    () => false,
-  );
-  if (viewPrefs) {
-    const popped = viewPrefs.prefs.poppedOutCards;
-    // AF unified the key to `float:textobject:texBlock:<uuid>`; the
-    // `textobject:` (pre-flip) and bare `texBlock:` (pre-D10) fallbacks cover
-    // any keys the migration legs haven't rewritten yet.
-    texBlockIsPoppedRef.current = (uuid) =>
-      popped.includes(textObjectPopoutKey({ kind: "texBlock", id: uuid })) ||
-      popped.includes(`textobject:texBlock:${uuid}`) ||
-      popped.includes(`texBlock:${uuid}`);
-  }
+  // ── (no texBlock popped predicate here) ───────────────────────────
+  // There used to be one: a `(uuid) => boolean` closed over
+  // `prefs.poppedOutCards`, threaded down to the texBlock extension so its
+  // NodeView could render `.is-popped`. Task 730 deleted it. Every hop of that
+  // thread named ONE kind, so the pod's other wearer (`forestBlock`) kept a
+  // fully live docked pod beside its float — two editors over one `source`
+  // attr — and could only be answered by forking the thread. The shared pod now
+  // asks the float store directly via `useIsFloatPopped(kind, uuid)`, which is
+  // both kind-agnostic and REACTIVE (a ref read during render was neither).
   // Per-doc PoppedCardsContext value. Built from the `viewPrefs` prop so
   // both the main app (persisted `useViewPrefs`) and the Library Reader
   // (`useReaderViewPrefs`, the same engine in ephemeral mode) supply the
@@ -7682,7 +7672,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     onCitationDrop={handleCitationDrop}
                     anchoredUuidsRef={anchoredUuidsRef}
                     onBlockAbsorbedRef={onBlockAbsorbedRef}
-                    texBlockIsPoppedRef={texBlockIsPoppedRef}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
                     onConfirmHeadingDelete={handleConfirmHeadingDelete}
                     onConfirmFigureDelete={handleConfirmFigureDelete}

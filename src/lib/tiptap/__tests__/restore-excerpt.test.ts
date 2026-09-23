@@ -36,7 +36,6 @@ function mainCtx(anchored: Iterable<string> = [PARA_UUID]): EditorExtensionsCtx 
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set(anchored) },
     host: null,
   } as unknown as EditorExtensionsCtx;

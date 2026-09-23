@@ -60,7 +60,6 @@ function ctx(surface: "main" | "float"): EditorExtensionsCtx {
     cardContext: surface === "float",
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
   };

@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
+import { poppedKeysHoldFloat } from "@/floats/float-key";
 
 /**
  * Thread-safe, tree-global access to the per-card popout state managed by
@@ -58,4 +59,31 @@ export const PoppedCardsContext = createContext<PoppedCardsValue | null>(null);
 /** Returns null when no provider is mounted — callers should tolerate that. */
 export function usePoppedCards(): PoppedCardsValue | null {
   return useContext(PoppedCardsContext);
+}
+
+/**
+ * "Is THIS text object's float open?" — the kind-agnostic replacement for the
+ * per-kind `texBlockIsPoppedRef` thread that task 730 retired.
+ *
+ * A NodeView that has a twin float (today: every source pod — `texBlock`,
+ * `forestBlock`) asks this to render its `.is-popped` chrome, which dims the
+ * docked pod and takes it out of the pointer path so only ONE of the two
+ * surfaces over a single `source` attr is live at a time. It reads the float
+ * store directly (see {@link poppedKeysHoldFloat} for the dual-read), so the
+ * answer arrives without a single per-kind hop, and re-renders when the store
+ * changes — which the old predicate ref, being a ref, did not.
+ *
+ * Returns false with no provider mounted (a bare unit mount, the Reader before
+ * its view-prefs shim attaches): "nothing is popped" is the safe answer, since
+ * it leaves the docked surface live rather than inert.
+ */
+export function useIsFloatPopped(
+  kind: string | null | undefined,
+  id: string | null | undefined,
+): boolean {
+  const poppedKeys = useContext(PoppedCardsContext)?.poppedKeys;
+  return useMemo(
+    () => (poppedKeys ? poppedKeysHoldFloat(poppedKeys, kind, id) : false),
+    [poppedKeys, kind, id],
+  );
 }

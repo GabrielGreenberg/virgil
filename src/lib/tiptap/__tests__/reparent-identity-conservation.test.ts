@@ -70,7 +70,6 @@ function mainCtx(): EditorExtensionsCtx {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: anchored },
     host: null,
   } as unknown as EditorExtensionsCtx;

@@ -13,6 +13,7 @@ import {
   useFieldEditSession,
 } from "@/lib/field-edit-session";
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
+import { useIsFloatPopped } from "@/hooks/usePoppedCards";
 
 /**
  * THE source pod — one implementation of the "raw bytes in a framed, foldable,
@@ -43,8 +44,6 @@ export interface SourcePodConfig {
   emptyLabel: string;
   /** Confirm-dialog body for the pod's own delete button. */
   confirmMessage: string;
-  /** Whether the block's popout float is open — dims the docked pod. */
-  isPopped?: boolean;
   /**
    * Optional derived VIEW over the source (task 384). A kind that can render
    * its bytes contributes this; the pod then shows the derived preview by
@@ -147,6 +146,27 @@ export default function SourcePodNodeView({
 }) {
   const source = (node.attrs[config.sourceAttr] as string) || "";
   const title = (node.attrs.parTitle as string | null) || null;
+  /**
+   * Whether this block's popout float is open — the `.is-popped` chrome that
+   * dims the docked pod and takes it out of the pointer path, so the float and
+   * its docked twin are never both live over one `source` attr.
+   *
+   * Resolved HERE, by the shared pod, from the node's own `(kind, uuid)` —
+   * not supplied by each wearer's NodeView (task 730). It used to be a
+   * `SourcePodConfig` field fed by a predicate ref that named `texBlock` at
+   * every hop from `EditorPane` down, so `forestBlock` — same pod, same CSS
+   * rule, same two-writers hazard — silently had no answer. A pod that asks the
+   * float store itself cannot leave a wearer out: the next pod-bearing kind
+   * inherits the dimming by construction.
+   */
+  //
+  // `node.type?.name`: a bare unit mount hands this component an attrs-only
+  // stand-in with no schema behind it, and "no kind" is answerable — nothing
+  // is popped — rather than a crash.
+  const isPopped = useIsFloatPopped(
+    node.type?.name ?? null,
+    (node.attrs.uuid as string | null) || null,
+  );
   const collapsed = node.attrs.collapsed === true;
   const [confirmOpen, setConfirmOpen] = useState(false);
   // The pod's mode. A kind with a derived preview opens SHOWING it; a kind
@@ -347,7 +367,7 @@ export default function SourcePodNodeView({
       // when the .par-title-text span renders (title present and not
       // currently replaced by the edit input), so the annotation-overlay
       // rule fires for byte-identical states.
-      className={`${config.hostClass} group relative${config.isPopped ? " is-popped" : ""}${title && !titleEditing ? " has-par-title" : ""}`}
+      className={`${config.hostClass} group relative${isPopped ? " is-popped" : ""}${title && !titleEditing ? " has-par-title" : ""}`}
     >
       {/* +T title affordance — hidden when collapsed and there's no title, and
           read-only when the doc is: an untitled pod then shows nothing at all

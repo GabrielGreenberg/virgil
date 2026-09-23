@@ -103,7 +103,6 @@ function mainCtx(withAnchors = true): EditorExtensionsCtx {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     // Present so the conditional MarginaliaAnchorGuard is emitted — mirrors
     // how EditorLayout invokes the live main editor.
     ...(withAnchors ? { anchoredUuidsRef: { current: new Set<string>() } } : {}),

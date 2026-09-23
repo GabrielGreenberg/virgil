@@ -100,7 +100,6 @@ function mainCtx(): EditorExtensionsCtx {
       onOpenHeadingTypeMenu: openerRef as EditorExtensionsCtx["callbacks"]["onOpenHeadingTypeMenu"],
     },
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
   };
