@@ -92,6 +92,30 @@ export function dispatchLanded(editor: Editor, tr: Transaction): boolean {
   return editor.state.doc !== before;
 }
 
+/**
+ * THE GRAB-BAR COMMIT DOOR (task 735) — the one ordering for a compound that
+ * changes the document AND card sidecars.
+ *
+ * 1. re-ask editability at the SEAM (the caller may have awaited a confirm or a
+ *    settle prompt since its own gate, and the host can flip in between);
+ * 2. dispatch, and MEASURE that it landed (`dispatchLanded`);
+ * 3. only then run `cards` — the sidecar half, which never passes through
+ *    ProseMirror and so has nothing to filter it.
+ *
+ * Returns `false` when the compound was refused as a unit: nothing dispatched
+ * landed and `cards` never ran. The caller owns telling the user.
+ */
+export function commitDocThenCards(
+  editor: Editor,
+  tr: Transaction,
+  cards?: () => void,
+): boolean {
+  if (!commitSurfacesWritable(editor)) return false;
+  if (!dispatchLanded(editor, tr)) return false;
+  cards?.();
+  return true;
+}
+
 /** One cross-editor move: insert into `target`, then remove from `source`. */
 export interface CrossEditorMove {
   /** The editor receiving the payload. */

@@ -25,13 +25,21 @@
 import { useCallback, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import {
+  NodeSelection,
+  TextSelection,
+  type Transaction,
+} from "@tiptap/pm/state";
 import {
   createDuplicateDiagnostics,
+  dryCloneLifecycle,
   duplicateSlice,
+  recordingCloneLifecycle,
 } from "@/text-objects/duplicate-slice";
+import { commitDocThenCards } from "@/components/drop-mode/commit-seam";
+import { transactionAdmitted } from "@/lib/tiptap/transaction-admitted";
 import {
-  cleanupAndComputeDeleteRange,
+  commitRangeDelete,
   expandCascadeRange,
   settleRangeCardObligations,
 } from "@/text-objects/delete-range";
@@ -47,7 +55,7 @@ import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
 import type { AnchorRetargetApi } from "@/cards/retarget-anchors";
 import {
   captureParagraphSnapshot,
-  createLinkedAnchor,
+  tryCreateLinkedAnchor,
   paragraphUuidAt,
   updateLinkedAnchorCard,
   type LinkedAnchorKind,
@@ -212,7 +220,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     ],
   );
 
-  const dispatch = useCallback(
+  const dispatchUnguarded = useCallback(
     async (action: DragHandleAction, ref: DragHandleRef) => {
       const handle = editorRef.current;
       const ed = handle?.getEditor();
@@ -286,6 +294,19 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       } else if (action === "duplicate" && ref.kind === "heading") {
         const proceed = await confirmHeadingLifecycle(ed, ref, "duplicate", confirm);
         if (!proceed) return;
+      }
+
+      // ── RE-ASK AFTER EVERY AWAIT (task 735) ─────────────────────────────
+      // The gate above is live at CLICK time; a confirm is unbounded user time,
+      // and the host can flip the surface read-only while it is open. So the
+      // question is asked again here, and once more at the commit door
+      // (`commitDocThenCards` / `commitRangeDelete`) after the settle prompt the
+      // range legs await below — the 648 contract, one surface over. A refusal
+      // after the user confirmed is LOUD: they asked for something that did not
+      // happen.
+      if (!surfaceEditableNow(ed)) {
+        notifyRefused(lifecycleLabel(action), notify);
+        return;
       }
 
       // Annotation actions (H/N/F/C/Q/T/E/X) work on the heading line for
@@ -486,15 +507,20 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           //
           // Empty-block safety (Nit E): a truly-empty block has empty `text`,
           // so the `!text` guard makes this a CLEAN no-op — no broken/empty
-          // anchor is ever minted. As a second layer, `createLinkedAnchor`
+          // anchor is ever minted. As a second layer, `tryCreateLinkedAnchor`
           // itself returns null on a zero-width selection (`to <= from`) and
           // the `!record` guard below bails on that too. So both an empty
           // paragraph AND any zero-content range short-circuit cleanly here.
           if (!text) break;
-          const record = createLinkedAnchor(ed, "highlight", undefined, undefined, {
+          const attempt = tryCreateLinkedAnchor(ed, "highlight", undefined, undefined, {
             tintColor: defaultTintForLinkedAnchorKind("highlight"),
           });
-          if (!record) break;
+          if (!attempt.ok) {
+            // Filtered ⇒ loud (task 735); nothing to mark ⇒ the clean no-op.
+            if (attempt.reason === "filtered") throw new DocChangeRefused();
+            break;
+          }
+          const record = attempt.record;
           const card = cardCreation.createHighlight({
             anchor: {
               anchorId: record.anchorId,
@@ -617,17 +643,55 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             notify({ message: "Nothing to duplicate." });
             break;
           }
-          const diag = createDuplicateDiagnostics();
-          const cloned = duplicateSlice(slice, cardLifecycle, diag);
-          const tr = ed.state.tr.replace(outer.to, outer.to, cloned);
+          // ── VALIDATE DRY, MINT, THEN COMMIT (task 735) ─────────────────
+          // `duplicateSlice` clones every atom's / Mode-B mark's card as it
+          // walks, because `lifecycle.clone` MINTS the id the slice must carry
+          // — so the card half cannot simply follow the document half here.
+          // Instead every question that could refuse the transaction is asked
+          // FIRST, on a dry build whose "clones" mint nothing: the schema
+          // check, the surface's editability, and the plugins' own filters.
+          // Only a transaction all three admit is rebuilt for real. (A dry
+          // clone never answers null, so the dry slice keeps every atom and
+          // mark the real one could — stripping a mark can only make a slice
+          // MORE valid, never less.) Before this, the clones existed before
+          // `tr.doc.check()` ran, so a schema refusal left a full set of cards
+          // pointing at content that was never inserted.
+          const placeDupSelection = (tr: Transaction) => {
+            // Node-selecting blocks (true atoms): select the cloned node as a
+            // unit. Text-bearing kinds (incl. `latexComment`, a content block
+            // since task-017): drop the caret near the start of the cloned
+            // content, so a duplicated comment lands caret-ready. Keys on the
+            // SELECTION facet, not the gating facet (task 066).
+            try {
+              const insertPos = outer.to;
+              const docSize = tr.doc.content.size;
+              const refKind = ref.kind;
+              const atomBlock =
+                refKind !== "selection" &&
+                isTextObjectKind(refKind) &&
+                TEXT_OBJECT_REGISTRY[refKind].selectsAsNode;
+              if (atomBlock && insertPos < docSize) {
+                tr.setSelection(NodeSelection.create(tr.doc, insertPos));
+              } else if (insertPos < docSize) {
+                const caretPos = Math.min(insertPos + 1, docSize - 1);
+                tr.setSelection(TextSelection.near(tr.doc.resolve(caretPos)));
+              }
+            } catch {
+              /* ignore — selection placement is best-effort */
+            }
+          };
+          const dryTr = ed.state.tr.replace(
+            outer.to,
+            outer.to,
+            duplicateSlice(slice, dryCloneLifecycle(cardLifecycle)),
+          );
           // Pre-dispatch schema validation. PM's `Node.check` throws
           // when the new doc shape violates a content rule (e.g. two
           // titleFields, an exampleItem outside an exampleBlock, a
-          // figureBlock in a slot that doesn't allow one). Catch here
-          // so we never dispatch a doomed transaction; on throw the
-          // doc is untouched.
+          // figureBlock in a slot that doesn't allow one). Asked of the DRY
+          // build, so a refusal leaves the doc AND every sidecar untouched.
           try {
-            tr.doc.check();
+            dryTr.doc.check();
           } catch (err) {
             console.warn("[Duplicate] schema violation; aborting", err);
             notify({
@@ -636,29 +700,24 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             });
             break;
           }
-          // Node-selecting blocks (true atoms): select the cloned node as a
-          // unit. Text-bearing kinds (incl. `latexComment`, a content block
-          // since task-017): drop the caret near the start of the cloned
-          // content, so a duplicated comment lands caret-ready. Keys on the
-          // SELECTION facet, not the gating facet (task 066).
-          try {
-            const insertPos = outer.to;
-            const docSize = tr.doc.content.size;
-            const refKind = ref.kind;
-            const atomBlock =
-              refKind !== "selection" &&
-              isTextObjectKind(refKind) &&
-              TEXT_OBJECT_REGISTRY[refKind].selectsAsNode;
-            if (atomBlock && insertPos < docSize) {
-              tr.setSelection(NodeSelection.create(tr.doc, insertPos));
-            } else if (insertPos < docSize) {
-              const caretPos = Math.min(insertPos + 1, docSize - 1);
-              tr.setSelection(TextSelection.near(tr.doc.resolve(caretPos)));
-            }
-          } catch {
-            /* ignore — selection placement is best-effort */
+          placeDupSelection(dryTr);
+          if (!surfaceEditableNow(ed) || !transactionAdmitted(ed, dryTr)) {
+            notifyRefused("Duplicate", notify);
+            break;
           }
-          ed.view.dispatch(tr);
+          const diag = createDuplicateDiagnostics();
+          const cloneLog = recordingCloneLifecycle(cardLifecycle);
+          const cloned = duplicateSlice(slice, cloneLog.api, diag);
+          const tr = ed.state.tr.replace(outer.to, outer.to, cloned);
+          placeDupSelection(tr);
+          if (!commitDocThenCards(ed, tr)) {
+            // Unreachable while the dry probe above asks every filter the
+            // dispatch runs — kept so a future filter that disagrees with its
+            // own probe still cannot strand the clones it forced us to mint.
+            cloneLog.rollback();
+            notifyRefused("Duplicate", notify);
+            break;
+          }
           // C2: walk the inserted slice and rewire each cloned card's
           // `links[]` back to its mark via `lifecycle.bindAnchor`. The
           // duplicate-slice walker already minted fresh anchorIds + new
@@ -680,8 +739,9 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // C4: archive routes through `cardCreation.createArchiveSnippet`
           // (peer of Delete via the unified card-creation factory).
           // Dispatcher's job here is the editor mutation: snapshot
-          // content, resolve the reanchor target, cascade, cleanup
-          // sidecars, delete the range, then mint the snippet.
+          // content, resolve the reanchor target, cascade, then commit the
+          // delete — and only once it has landed, re-home the displaced cards,
+          // clean up the range's sidecars and mint the snippet (task 735).
           //
           // A line whose ONLY content is an inline atom — math-only
           // (`$\lambda$`), citation-only, footnote-only — has empty
@@ -749,7 +809,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // theirs. The door then asks the excerpt schema about CONTENT as
           // well as vocabulary.
           //
-          // Runs BEFORE `cleanupAndComputeDeleteRange`, so an abort leaves the
+          // Runs BEFORE `commitRangeDelete`, so an abort leaves the
           // document and every sidecar completely untouched.
           //
           // It is also the FIRST of the two read-only questions this leg asks
@@ -843,10 +903,12 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // on the `cleanupLinksInRange` path Delete shares — see
           // `src/cards/retarget-anchors.ts` and task 393's equality leg.
           //
-          // Runs BEFORE the delete: the deferred `virgil-textobject-orphaned`
-          // sweep fires off that transaction and strips any link still naming a
-          // vanished uuid, so retargeting first makes the two agree by
-          // construction rather than by racing.
+          // RESOLVED before the delete (positions are pre-delete), APPLIED
+          // right after it lands (task 735): the `virgil-textobject-orphaned`
+          // sweep that strips a link still naming a vanished uuid runs in a
+          // `setTimeout(0)` off that transaction, so a synchronous retarget in
+          // the commit's card half still precedes it — by construction, not by
+          // racing — without re-homing anything for a delete that was refused.
           const displacedUuids = collectRemovedAnchorUuids(
             ed.state.doc,
             settled.from,
@@ -858,15 +920,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             settled.to,
             displacedUuids,
           );
-          anchorRetarget.retarget({
-            removed: displacedUuids,
-            target: neighbour,
-            // Self-healing on reload, exactly as the drop-mode re-anchor
-            // gesture's fresh links are.
-            snapshot: neighbour
-              ? captureParagraphSnapshot(ed, neighbour.uuid)
-              : null,
-          });
+          // Taken now, against the pre-delete doc, and APPLIED only once the
+          // delete has landed (task 735) — see `commitRangeDelete`.
+          const snapshot = neighbour
+            ? captureParagraphSnapshot(ed, neighbour.uuid)
+            : null;
           // B2 (post-refactor followup): resolve the snippet's anchor
           // BEFORE deletion. The pre-delete `paragraphId` is the source
           // block's own uuid — for a whole-paragraph archive that uuid
@@ -883,35 +941,43 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             snippetParagraphId = neighbour?.uuid ?? "";
             snippetTargetKind = neighbour?.kind ?? targetKind;
           }
-          // F2: same stale-range hazard as Delete — cleanup may strip an
-          // inline atom inside the range and shrink the block, so re-derive
-          // the deletion bounds against the post-cleanup state. The
-          // `richContent` snapshot above is taken BEFORE cleanup, so the
-          // archived copy still carries the atom. See delete-range.ts.
-          const delRange = cleanupAndComputeDeleteRange(
+          // ── THE DOCUMENT FIRST, THEN THE CARDS (task 735) ──────────────
+          // Every sidecar write this gesture makes — the Mode-A re-home, the
+          // range's card deletes, the snippet — runs only once the delete has
+          // LANDED. Before, all three ran around a dispatch nobody measured, so
+          // a refused delete left the passage in place, its cards destroyed and
+          // an archive snippet minted for text that was never archived.
+          // (`richContent` was captured above, from the settled document, so the
+          // snippet still carries every inline atom the delete removes.)
+          let snippetId: string | null = null;
+          const landed = commitRangeDelete(
             ed,
             settled.from,
             settled.to,
             cardLifecycle,
+            () => {
+              anchorRetarget.retarget({
+                removed: displacedUuids,
+                target: neighbour,
+                // Self-healing on reload, exactly as the drop-mode re-anchor
+                // gesture's fresh links are.
+                snapshot,
+              });
+              snippetId = cardCreation.createArchiveSnippet({
+                text,
+                content: richContent,
+                paragraphId: snippetParagraphId,
+                targetKind: snippetTargetKind,
+                mode: "omni",
+              }).id;
+            },
           );
-          // Tag this as a deliberate lifecycle removal so
-          // MarginaliaAnchorGuard does NOT resurrect the anchored block as
-          // an empty same-uuid placeholder. The snippet reanchors to the
-          // previous block (above) and TextObjectOrphanGuard sweeps any
-          // Mode-A card whose anchor vanished.
-          const tr = ed.state.tr
-            .delete(delRange.from, delRange.to)
-            .setMeta(LIFECYCLE_DELETE_META, true);
-          ed.view.dispatch(tr);
-          const snippet = cardCreation.createArchiveSnippet({
-            text,
-            content: richContent,
-            paragraphId: snippetParagraphId,
-            targetKind: snippetTargetKind,
-            mode: "omni",
-          });
+          if (!landed || snippetId == null) {
+            notifyRefused("Archive", notify);
+            break;
+          }
           panelId = "archive";
-          focusCardKey = cardPopKey("archive", snippet.id);
+          focusCardKey = cardPopKey("archive", snippetId);
           break;
         }
         case "delete": {
@@ -949,28 +1015,20 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             appliedSplice,
           );
           if (!settlement) break;
-          // F2: cleanupLinksInRange may synchronously dispatch a doc tx
-          // (e.g. deleting a `\cite` atom inside the range), shrinking the
-          // block and making the range stale — the old code then deleted
-          // the stale range and swallowed the next sibling (a size-1
-          // graphicsBlock vanished silently). The helper runs the cleanup
-          // and returns a range corrected for that mutation, valid against
-          // the post-cleanup `ed.state`. Its input is the SETTLED range, which
-          // is already corrected for anything phase one moved. See
-          // delete-range.ts.
-          const delRange = cleanupAndComputeDeleteRange(
-            ed,
-            settlement.from,
-            settlement.to,
-            cardLifecycle,
-          );
-          // Deliberate lifecycle removal — tag so MarginaliaAnchorGuard
-          // bypasses the anchored-block re-insert. TextObjectOrphanGuard
-          // sweeps any Mode-A card whose anchor disappeared.
-          const tr = ed.state.tr
-            .delete(delRange.from, delRange.to)
-            .setMeta(LIFECYCLE_DELETE_META, true);
-          ed.view.dispatch(tr);
+          // Phase two, through the commit door (task 735): the range's delete
+          // lands and is MEASURED before a single card's lifecycle `delete`
+          // fires. A refused transaction destroys nothing. (This ordering also
+          // retires F2 by construction — see `commitRangeDelete`.)
+          if (
+            !commitRangeDelete(
+              ed,
+              settlement.from,
+              settlement.to,
+              cardLifecycle,
+            )
+          ) {
+            notifyRefused("Delete", notify);
+          }
           break;
         }
       }
@@ -1036,6 +1094,31 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       notify,
       ensureOmniActiveForPanel,
     ],
+  );
+
+  // ── ONE FAILURE DOOR (task 735) ─────────────────────────────────────────
+  // Both menus fire this and move on; a throw anywhere in the compound (between
+  // a settle prompt and the commit, inside a card creation, a stale position)
+  // used to surface as an unhandled rejection the user never saw. The promise
+  // therefore never rejects: a failure reaches the user through the same
+  // `notify` door the refusals use.
+  const dispatch = useCallback(
+    async (action: DragHandleAction, ref: DragHandleRef): Promise<void> => {
+      try {
+        await dispatchUnguarded(action, ref);
+      } catch (err) {
+        if (err instanceof DocChangeRefused) {
+          notifyRefused(lifecycleLabel(action), notify);
+          return;
+        }
+        console.error(`[ActionsMenu] "${action}" failed`, err, ref);
+        notify({
+          tone: "danger",
+          message: `${lifecycleLabel(action)} failed — something went wrong, see the console for details.`,
+        });
+      }
+    },
+    [dispatchUnguarded, notify],
   );
 
   return { dispatch };
@@ -1165,6 +1248,21 @@ function notifyStaleRef(
   });
 }
 
+/** The loud refusal for a compound the commit door turned away (task 735): the
+ *  surface stopped being editable while the gesture was in flight (a confirm or
+ *  settle prompt was open), or a plugin filtered the transaction. Nothing was
+ *  changed — the document half never landed, so the card half never ran — and
+ *  the user who just confirmed an action must hear that it did not happen. */
+function notifyRefused(
+  label: string,
+  notify: DragHandleActionsDeps["notify"],
+): void {
+  console.warn(`[${label}] refused — the document change did not land; nothing was modified.`);
+  notify({
+    message: `${label} didn't happen — this document can't be edited right now, so nothing was changed.`,
+  });
+}
+
 /** Capitalized console tag for a lifecycle action ("archive" → "Archive"). */
 function lifecycleLabel(action: DragHandleAction): string {
   return action.charAt(0).toUpperCase() + action.slice(1);
@@ -1286,9 +1384,32 @@ function outerRangeFor(
   return result;
 }
 
+/**
+ * The card-creating legs' refusal (task 735): the Mode-B mark a card was about
+ * to be written against was FILTERED out of the document. Thrown rather than
+ * returned so no leg can go on to register its card — the one failure door in
+ * `dispatch` turns it into the loud refusal.
+ */
+class DocChangeRefused extends Error {
+  constructor() {
+    super("the document change was refused");
+  }
+}
+
+/**
+ * A range anchor for a new card, or `undefined` when the range has nothing to
+ * mark — the card then anchors at block level (Mode A), as it always has.
+ * THROWS `DocChangeRefused` when the mark was filtered: a card written against
+ * an anchor that exists nowhere would have a dead "jump to text" and a
+ * highlight that never paints.
+ */
 function createAnchor(ed: Editor, kind: LinkedAnchorKind) {
-  const record = createLinkedAnchor(ed, kind);
-  if (!record) return undefined;
+  const attempt = tryCreateLinkedAnchor(ed, kind);
+  if (!attempt.ok) {
+    if (attempt.reason === "filtered") throw new DocChangeRefused();
+    return undefined;
+  }
+  const record = attempt.record;
   // `anchorContent` (task 488) is the RICH twin of `record.text` — carry it, or
   // every card minted here shows its captured passage as the flattened line
   // `doc.textBetween` produced. `anchorLatex` (task 696) is the third form:

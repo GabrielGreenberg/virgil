@@ -4,7 +4,7 @@
 //
 // ARCHIVE / DELETE / DUPLICATE across every applicable TextObject kind + the
 // atom variants (atom-bearing / atom-only), driven at the REAL-code level:
-//   - the delete/archive range helpers `cleanupAndComputeDeleteRange` +
+//   - the delete/archive range helpers `commitRangeDelete` +
 //     `expandCascadeRange` (src/text-objects/delete-range.ts), exactly as the
 //     drag-handle dispatcher sequences them (drag-handle-actions.ts cases
 //     "archive"/"delete"); and
@@ -24,8 +24,9 @@
 //     a paragraph whose range carries an inline atom (citation / footnote /
 //     labelRef / inlineMath) IMMEDIATELY FOLLOWED by a size-1 block atom
 //     (graphicsBlock / displayMath / texBlock) must delete WITHOUT swallowing
-//     the neighbour — for BOTH delete and archive. The fix is
-//     `cleanupAndComputeDeleteRange` correcting the stale `to`. We cross every
+//     the neighbour — for BOTH delete and archive. The fix was an arithmetic
+//     correction of the stale `to`; since task 735 `commitRangeDelete` deletes
+//     the DOCUMENT first, so no cleanup strip can precede the range it uses. We cross every
 //     {inline-atom kind} × {trailing block-atom kind} cell, plus the OLD-buggy
 //     control to prove the cell genuinely exercises the defect.
 //     (Note: the F2 bug is only reachable when the cleanup actually removes a
@@ -68,7 +69,7 @@ import {
 } from "@/lib/editor-extensions";
 import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import {
-  cleanupAndComputeDeleteRange,
+  commitRangeDelete,
   cleanupLinksInRange,
   expandCascadeRange,
 } from "@/text-objects/delete-range";
@@ -309,8 +310,8 @@ function blockAtomJSON(kind: BlockAtomKind, uuid: string): JSONContent {
 //
 // Mirror the dispatcher's delete/archive sequence: outer range of the leading
 // paragraph → expandCascadeRange (no-op for a top-level paragraph) →
-// cleanupAndComputeDeleteRange (fires the atom-stripping lifecycle, corrects
-// `to`) → tr.delete(range).setMeta(LIFECYCLE_DELETE_META). The trailing block
+// commitRangeDelete (tr.delete(range).setMeta(LIFECYCLE_DELETE_META) FIRST,
+// then — once it landed — the atom-stripping lifecycle, which finds nothing). The trailing block
 // atom MUST survive and childCount must drop by exactly 1.
 // ---------------------------------------------------------------------------
 
@@ -350,10 +351,7 @@ function runFixedLifecycleRemoval(
   const outer = { from: loc.pos, to: loc.pos + loc.size };
   const extended = expandCascadeRange(editor.state.doc, outer);
   const childCountBefore = editor.state.doc.childCount;
-  const delRange = cleanupAndComputeDeleteRange(editor, extended.from, extended.to, lifecycle);
-  editor.view.dispatch(
-    editor.state.tr.delete(delRange.from, delRange.to).setMeta(LIFECYCLE_DELETE_META, true),
-  );
+  commitRangeDelete(editor, extended.from, extended.to, lifecycle);
   const childCountAfter = editor.state.doc.childCount;
   const blockSurvives = !!locateByUuid(editor, BLOCK_UUID);
   return { childCountBefore, childCountAfter, blockSurvives };
@@ -433,8 +431,8 @@ describe("F2 (broadened) — atom-bearing paragraph delete/archive must not swal
 //     SHRINKS the doc (the F2 hazard).
 //   - footnote.delete is sidecar-only → cleanup leaves the doc atom in place.
 // This codifies that cleanupLinksInRange's effect on the DOC differs by kind,
-// which is exactly why the range-correction (cleanupAndComputeDeleteRange) is
-// only load-bearing for citation. (See the report's flag on whether the
+// which is exactly why the old range-correction was only load-bearing for
+// citation (task 735 retired it: `commitRangeDelete` deletes the document first). (See the report's flag on whether the
 // footnote sidecar-only behavior is intended — it appears to be a deliberate
 // asymmetry: a footnote atom is removed by the outer tr.delete, not by cleanup.)
 // ---------------------------------------------------------------------------
@@ -535,10 +533,7 @@ describe("atom-only paragraph — removable (content-aware emptiness)", () => {
           : NOOP_LIFECYCLE;
       const childCountBefore = editor.state.doc.childCount;
       const extended = expandCascadeRange(editor.state.doc, outer);
-      const delRange = cleanupAndComputeDeleteRange(editor, extended.from, extended.to, lc);
-      editor.view.dispatch(
-        editor.state.tr.delete(delRange.from, delRange.to).setMeta(LIFECYCLE_DELETE_META, true),
-      );
+      commitRangeDelete(editor, extended.from, extended.to, lc);
       expect(editor.state.doc.childCount).toBe(childCountBefore - 1);
       expect(locateByUuid(editor, PARA_UUID)).toBeNull();
     });
@@ -575,10 +570,7 @@ describe("cascade — last sub-item collapses its wrapper", () => {
     expect(extended.to).toBeGreaterThan(outer.to);
 
     const childCountBefore = editor.state.doc.childCount;
-    const delRange = cleanupAndComputeDeleteRange(editor, extended.from, extended.to, NOOP_LIFECYCLE);
-    editor.view.dispatch(
-      editor.state.tr.delete(delRange.from, delRange.to).setMeta(LIFECYCLE_DELETE_META, true),
-    );
+    commitRangeDelete(editor, extended.from, extended.to, NOOP_LIFECYCLE);
     // The whole list is gone (no empty bulletList placeholder left behind).
     expect(countOfType(editor, "bulletList")).toBe(0);
     expect(countOfType(editor, "listItem")).toBe(0);
@@ -611,10 +603,7 @@ describe("cascade — last sub-item collapses its wrapper", () => {
     expect(extended.from).toBe(outer.from);
     expect(extended.to).toBe(outer.to);
 
-    const delRange = cleanupAndComputeDeleteRange(editor, extended.from, extended.to, NOOP_LIFECYCLE);
-    editor.view.dispatch(
-      editor.state.tr.delete(delRange.from, delRange.to).setMeta(LIFECYCLE_DELETE_META, true),
-    );
+    commitRangeDelete(editor, extended.from, extended.to, NOOP_LIFECYCLE);
     expect(countOfType(editor, "bulletList")).toBe(1);
     expect(countOfType(editor, "listItem")).toBe(1);
     expect(locateByUuid(editor, "li-0")).toBeNull();
@@ -649,10 +638,7 @@ describe("cascade — last sub-item collapses its wrapper", () => {
     expect(extended.to).toBeGreaterThan(outer.to);
     expect(countOfType(editor, "exampleItem")).toBe(1);
 
-    const delRange = cleanupAndComputeDeleteRange(editor, extended.from, extended.to, NOOP_LIFECYCLE);
-    editor.view.dispatch(
-      editor.state.tr.delete(delRange.from, delRange.to).setMeta(LIFECYCLE_DELETE_META, true),
-    );
+    commitRangeDelete(editor, extended.from, extended.to, NOOP_LIFECYCLE);
     // No empty exampleItemList left dangling.
     expect(countOfType(editor, "exampleItemList")).toBe(0);
     expect(countOfType(editor, "exampleItem")).toBe(0);
@@ -880,10 +866,7 @@ describe("heading lifecycle — whole-section scope", () => {
     const outer = { from: section.start, to: section.end };
     const childCountBefore = editor.state.doc.childCount;
     const extended = expandCascadeRange(editor.state.doc, outer);
-    const delRange = cleanupAndComputeDeleteRange(editor, extended.from, extended.to, NOOP_LIFECYCLE);
-    editor.view.dispatch(
-      editor.state.tr.delete(delRange.from, delRange.to).setMeta(LIFECYCLE_DELETE_META, true),
-    );
+    commitRangeDelete(editor, extended.from, extended.to, NOOP_LIFECYCLE);
     // Section A (3 blocks) gone; Section B (heading + 1 para) intact.
     expect(editor.state.doc.childCount).toBe(childCountBefore - 3);
     expect(locateByUuid(editor, "head-0")).toBeNull();
@@ -959,15 +942,7 @@ describe("delete/archive doc-mutation alignment (identical doc result)", () => {
     const extended = expandCascadeRange(ed2.state.doc, outer);
     // (archive snapshots ed2.state.doc.slice(extended...) here — no doc change)
     ed2.state.doc.slice(extended.from, extended.to);
-    const delRange = cleanupAndComputeDeleteRange(
-      ed2,
-      extended.from,
-      extended.to,
-      strippingLifecycle(ed2, "citation", "citationId"),
-    );
-    ed2.view.dispatch(
-      ed2.state.tr.delete(delRange.from, delRange.to).setMeta(LIFECYCLE_DELETE_META, true),
-    );
+    commitRangeDelete(ed2, extended.from, extended.to, strippingLifecycle(ed2, "citation", "citationId"));
     const afterArchive = ed2.state.doc.toJSON();
 
     expect(afterArchive).toEqual(afterDelete);

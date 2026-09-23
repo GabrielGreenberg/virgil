@@ -12,15 +12,15 @@
 // so the originally-computed `to` (== the block's end == the next sibling's
 // start) goes stale and over-reaches by the removed size into the next sibling.
 // A size-1 block atom (graphicsBlock / displayMath / texBlock) is swallowed
-// whole. The fix (`cleanupAndComputeDeleteRange`) runs the cleanup and corrects
-// `to` by the doc-size delta, so the delete lands on exactly the targeted block.
+// whole. The first fix corrected `to` by the doc-size delta; since task 735
+// `commitRangeDelete` dispatches the range's delete FIRST (measured) and runs
+// the card cleanup only after it landed, so no strip can precede the range.
 //
 // This test drives the REAL buildEditorExtensions("main") stack plus the REAL
-// `cleanupAndComputeDeleteRange`, with a stub CardLifecycle whose citation
-// `delete` removes the `\cite` atom from the doc — exactly what the live
-// citation lifecycle (`deleteCitation` → `deleteLink`) does. It then performs
-// the dispatcher's `tr.delete(range).setMeta(LIFECYCLE_DELETE_META)` and asserts
-// the trailing block SURVIVES.
+// `commitRangeDelete`, with a stub CardLifecycle whose citation `delete`
+// removes the `\cite` atom from the doc — exactly what the live citation
+// lifecycle (`deleteCitation` → `deleteLink`) does — and asserts the trailing
+// block SURVIVES. The old-buggy control still runs cleanup-then-stale-delete.
 //
 // (The storage stub guards the extension-barrel/@/lib/storage gotcha: the
 // figure/graphics/tex NodeViews transitively import @/lib/storage.)
@@ -37,7 +37,7 @@ import {
 } from "@/lib/editor-extensions";
 import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import {
-  cleanupAndComputeDeleteRange,
+  commitRangeDelete,
   cleanupLinksInRange,
 } from "@/text-objects/delete-range";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
@@ -135,10 +135,8 @@ function citationStrippingLifecycle(editor: Editor): CardLifecycleApi {
  *   heading("The Reader as Annotator")
  *   tail paragraph
  *
- * Runs `cleanupAndComputeDeleteRange` (which fires the citation lifecycle's
- * atom-stripping tx), then `tr.delete(range).setMeta(LIFECYCLE_DELETE_META)` —
- * the exact two steps the dispatcher performs — and reports whether the block
- * survives.
+ * Runs `commitRangeDelete` — the exact phase-two door the dispatcher uses —
+ * and reports whether the block survives.
  */
 function runDeletePath(
   kind: BlockKind,
@@ -211,28 +209,21 @@ function runDeletePath(
   const childCountBefore = editor.state.doc.childCount;
 
   const lifecycle = citationStrippingLifecycle(editor);
-  let delRange: { from: number; to: number };
   if (variant === "fixed") {
-    // The exact dispatcher sequence (post-fix): cleanup + range-correct, then
-    // the lifecycle-tagged delete.
-    delRange = cleanupAndComputeDeleteRange(
-      editor,
-      outer.from,
-      outer.to,
-      lifecycle,
-    );
+    // The exact dispatcher sequence (post-735): the measured delete, then the
+    // cards.
+    expect(commitRangeDelete(editor, outer.from, outer.to, lifecycle)).toBe(true);
   } else {
     // The OLD buggy sequence: cleanup mutates the doc, but the delete reuses
     // the stale pre-cleanup range — over-reaching into the next sibling.
     cleanupLinksInRange(editor.state.doc, outer.from, outer.to, lifecycle);
-    delRange = outer;
+    editor.view.dispatch(
+      editor.state.tr.delete(outer.from, outer.to).setMeta(
+        LIFECYCLE_DELETE_META,
+        true,
+      ),
+    );
   }
-  editor.view.dispatch(
-    editor.state.tr.delete(delRange.from, delRange.to).setMeta(
-      LIFECYCLE_DELETE_META,
-      true,
-    ),
-  );
 
   const childCountAfter = editor.state.doc.childCount;
   let blockSurvives = false;
