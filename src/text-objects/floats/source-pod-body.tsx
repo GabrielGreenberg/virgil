@@ -37,6 +37,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
@@ -117,6 +118,12 @@ export function SourcePodFloatBody({
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
+  // The float twin of the in-place pod's gate (task 728). Same signal, same
+  // reason: every write below is a `setNodeMarkup` on the MAIN doc, which
+  // `readOnlyEnforcer` drops on a read-only / partner-claimed doc — so the
+  // popped-out pod must refuse the typing rather than show it and lose it.
+  // `SourcePodNodeView` states the whole argument.
+  const mainEditable = useMainEditable(mainEditor);
 
   const initial = useMemo(() => {
     let code = "";
@@ -151,6 +158,7 @@ export function SourcePodFloatBody({
 
   const writeBackToMain = useCallback(
     (next: string) => {
+      if (!mainEditable) return;
       const ed = ref.current?.getEditor();
       if (!ed) return;
       const src = findSourceNodeByUuid(
@@ -173,7 +181,7 @@ export function SourcePodFloatBody({
       tr.setMeta(FLOAT_WRITE_META, `${kind}:${uuid}`);
       ed.view.dispatch(tr);
     },
-    [ref, uuid, kind, sourceAttr],
+    [ref, uuid, kind, sourceAttr, mainEditable],
   );
 
   const handleChange = useCallback(
@@ -187,6 +195,7 @@ export function SourcePodFloatBody({
 
   const writeTitleBackToMain = useCallback(
     (next: string | null) => {
+      if (!mainEditable) return;
       const ed = ref.current?.getEditor();
       if (!ed) return;
       const src = findSourceNodeByUuid(
@@ -204,7 +213,7 @@ export function SourcePodFloatBody({
       tr.setMeta(FLOAT_WRITE_META, `${kind}:${uuid}`);
       ed.view.dispatch(tr);
     },
-    [ref, uuid, kind, sourceAttr],
+    [ref, uuid, kind, sourceAttr, mainEditable],
   );
 
   const commitTitle = useCallback(
@@ -278,8 +287,8 @@ export function SourcePodFloatBody({
         >
           <FloatTitleField
             title={title}
-            editing={editingTitle}
-            canEdit
+            editing={editingTitle && mainEditable}
+            canEdit={mainEditable}
             onStartEdit={() => setEditingTitle(true)}
             onCommit={commitTitle}
             onCancel={() => setEditingTitle(false)}
@@ -304,6 +313,7 @@ export function SourcePodFloatBody({
                 <CodeMirror
                   value={code}
                   onChange={handleChange}
+                  editable={mainEditable}
                   extensions={[
                     latex({ enableLinting: false }),
                     sourcePodFloatTheme,

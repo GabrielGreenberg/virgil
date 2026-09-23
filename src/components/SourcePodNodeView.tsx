@@ -15,6 +15,7 @@ import {
   commitLiveValue,
   useFieldEditSession,
 } from "@/lib/field-edit-session";
+import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 
 /**
  * THE source pod — one implementation of the "raw bytes in a framed, foldable,
@@ -166,9 +167,22 @@ export default function SourcePodNodeView({
   node,
   updateAttributes,
   deleteNode,
+  editor,
   config,
   cardContext,
 }: Pick<NodeViewProps, "node" | "updateAttributes" | "deleteNode"> & {
+  /**
+   * The editor this pod is mounted in — the ONE thing a wearer has to hand
+   * over for the read-only gate below (task 728). Optional so a bare unit
+   * mount (no PM around it) degrades to "editable", which is what
+   * `useMainEditable` answers for a missing editor anyway.
+   *
+   * Read from the node's OWN editor rather than from the EditorRef context:
+   * N panes are mounted at once under multi-doc keep-alive, so "the current
+   * doc" is not a module-level fact and the pod's authority on its own
+   * document is the view it lives in.
+   */
+  editor?: NodeViewProps["editor"] | null;
   config: SourcePodConfig;
   cardContext: boolean;
 }) {
@@ -183,6 +197,29 @@ export default function SourcePodNodeView({
   const [editingTitle, setEditingTitle] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * THE pod's editability — resolved ONCE here, for every wearer (task 728).
+   *
+   * `view.editable` is pinned `true` always (Editor.tsx); read-only /
+   * partner-claimed is enforced downstream by `readOnlyEnforcer`'s
+   * `filterTransaction`, which drops any `docChanged` transaction without the
+   * `ignoreReadOnly` meta — and EVERY write this pod makes is a
+   * `setNodeMarkup` through `updateAttributes`, so every one of them is
+   * dropped. Ungated, the pod therefore accepted a whole tikz picture or
+   * forest tree, showed it as if saved, and lost it at the next re-render.
+   *
+   * So the pod reads the declarative signal the main editor publishes,
+   * `data-editable` — the same gate the sibling embedded editors take
+   * (`ExampleCard`, `example-block-body`, `example-item-body`) and the same
+   * one `FigureBlockNodeView` takes positionally. It drives ALL of it: the
+   * CodeMirror surface, the title field's edit session, the fold chevron and
+   * the delete confirm — so a third wearer inherits the gate instead of
+   * re-deriving it, and no affordance is left running a dialog that resolves
+   * to a no-op. The CSS half is the `.source-pod` arm of the
+   * `.ProseMirror[data-editable="false"]` block in globals.css.
+   */
+  const editable = useMainEditable(editor ?? null);
 
   // ONE derivation per (kind, source) — the tree and its badge are two halves
   // of a single verdict and must never come from two parses (pod-config.tsx).
@@ -205,15 +242,24 @@ export default function SourcePodNodeView({
   // there under it.
   const sourceMode = preview === null || showSource;
 
+  // The title INPUT is mounted only where its commit could land — so the
+  // read-only flip takes the field out of edit mode in the same breath as it
+  // takes away the `+T` that opens it.
+  const titleEditing = editingTitle && !collapsed && editable;
+
   const setSource = useCallback(
     (val: string) => {
+      // Belt to the CodeMirror `editable={editable}` braces below: a
+      // read-only pod must not dispatch a write the enforcer would drop.
+      if (!editable) return;
       if (val !== source) updateAttributes({ [config.sourceAttr]: val });
     },
-    [source, updateAttributes, config.sourceAttr],
+    [editable, source, updateAttributes, config.sourceAttr],
   );
 
   const setTitle = useCallback(
     (next: string | null) => {
+      if (!editable) return;
       const trimmed = next && next.trim() ? next.trim() : null;
       // Equality-bail, like `setSource` above: a commit of an unchanged title
       // must not dispatch a transaction (an undo step and an autosave arm for
@@ -221,12 +267,16 @@ export default function SourcePodNodeView({
       if (trimmed === title) return;
       updateAttributes({ parTitle: trimmed });
     },
-    [title, updateAttributes],
+    [editable, title, updateAttributes],
   );
 
   const toggleCollapsed = useCallback(() => {
+    // `collapsed` is a node ATTR, so folding is a doc change like any other
+    // and is dropped read-only. The chevron and the collapsed preview hide
+    // themselves below rather than offer a fold that silently fails.
+    if (!editable) return;
     updateAttributes({ collapsed: !collapsed });
-  }, [collapsed, updateAttributes]);
+  }, [editable, collapsed, updateAttributes]);
 
   // Auto-focus + select on enter-edit-mode.
   useEffect(() => {
@@ -290,9 +340,12 @@ export default function SourcePodNodeView({
   // flag set means re-expanding drops the user straight back into edit mode on
   // a pod they never asked to edit. Clearing it here makes that true by
   // construction, whichever path did the collapsing.
+  //
+  // Same for a mid-session read-only flip (a collab pen handoff): the input
+  // would otherwise stay mounted over a field whose commit is now refused.
   useEffect(() => {
-    if (collapsed) setEditingTitle(false);
-  }, [collapsed]);
+    if (collapsed || !editable) setEditingTitle(false);
+  }, [collapsed, editable]);
 
   // Card-context preview: rendered inside a RichTextField (archive card, note,
   // …) or a HeadingFloat. Show a compact static `<pre>` instead of the full pod
@@ -335,16 +388,19 @@ export default function SourcePodNodeView({
       // when the .par-title-text span renders (title present and not
       // currently replaced by the edit input), so the annotation-overlay
       // rule fires for byte-identical states.
-      className={`${config.hostClass} group relative${config.isPopped ? " is-popped" : ""}${title && !(editingTitle && !collapsed) ? " has-par-title" : ""}`}
+      className={`${config.hostClass} group relative${config.isPopped ? " is-popped" : ""}${title && !titleEditing ? " has-par-title" : ""}`}
     >
-      {/* +T title affordance — hidden when collapsed and there's no title. */}
-      {(!collapsed || title) && (
+      {/* +T title affordance — hidden when collapsed and there's no title, and
+          read-only when the doc is: an untitled pod then shows nothing at all
+          (the `+T` writes `parTitle`, which is refused), while a titled one
+          still shows its title as plain text. */}
+      {(title || (!collapsed && editable)) && (
         <div
           className="par-title-annotation"
           contentEditable={false}
           style={{ display: title || (!collapsed && !editingTitle) ? undefined : "block" }}
         >
-          {editingTitle && !collapsed ? (
+          {titleEditing ? (
             <input
               ref={inputRef}
               type="text"
@@ -378,7 +434,7 @@ export default function SourcePodNodeView({
               <span
                 className="par-title-text"
                 onClick={(e) => {
-                  if (collapsed) return;
+                  if (collapsed || !editable) return;
                   e.preventDefault();
                   e.stopPropagation();
                   setEditingTitle(true);
@@ -386,7 +442,7 @@ export default function SourcePodNodeView({
               >
                 {title}
               </span>
-              {!collapsed && (
+              {!collapsed && editable && (
                 <button
                   type="button"
                   className={chromeOnly("par-title-delete focus-ring")}
@@ -434,7 +490,11 @@ export default function SourcePodNodeView({
         <div className={chromeOnly("source-pod-row-sensor")} aria-hidden contentEditable={false} />
 
         {/* Fold chevron — anchored to the pod's top via .source-pod's
-            position:relative, so it lines up with the blue outline. */}
+            position:relative, so it lines up with the blue outline. Absent
+            read-only: `collapsed` is a node attr, so the fold is a refused
+            write, and a chevron that does nothing is the UX trap task 728
+            exists to close (the same call `.figure-chrome` already makes). */}
+        {editable && (
         <button
           type="button"
           className={chromeOnly(`source-pod-fold-chevron${collapsed ? " is-folded" : ""} focus-ring`)}
@@ -466,6 +526,7 @@ export default function SourcePodNodeView({
             <path d="M4.5 2l4 4-4 4" />
           </svg>
         </button>
+        )}
 
         {/* The 6-dot grab handle lives in the editor-mounted
             TextObjectGrabHandle (src/text-objects/TextObjectGrabHandle.tsx).
@@ -511,11 +572,14 @@ export default function SourcePodNodeView({
           className={chromeOnly("source-pod-preview")}
           contentEditable={false}
           onClick={(e) => {
+            if (!editable) return;
             e.preventDefault();
             e.stopPropagation();
             toggleCollapsed();
           }}
-          data-hint="Click to expand" aria-description="Click to expand"
+          {...(editable
+            ? { "data-hint": "Click to expand", "aria-description": "Click to expand" }
+            : {})}
         >
           {previewLines.length > 0 ? (
             previewLines.map((line, i) => (
@@ -532,6 +596,10 @@ export default function SourcePodNodeView({
           <CodeMirror
             value={source}
             onChange={setSource}
+            // The gate's visible half: read-only the surface still SELECTS
+            // (a reader can copy the LaTeX out) but takes no caret and no
+            // keystroke, so nothing can be typed that the enforcer will drop.
+            editable={editable}
             extensions={[
               // `enableLinting` defaults to TRUE in codemirror-lang-latex despite
               // what the .d.ts suggests — the linter checks for `\begin{document}`
@@ -594,7 +662,9 @@ export default function SourcePodNodeView({
           />
         </div>
       )}
-      {!collapsed && (
+      {/* Delete — absent read-only rather than opening a confirm dialog whose
+          "Delete" resolves to nothing. */}
+      {!collapsed && editable && (
         <button
           type="button"
           onClick={(e) => {
@@ -608,7 +678,7 @@ export default function SourcePodNodeView({
             e.preventDefault();
           }}
           {...iconHint({ label: `Delete ${config.kindLabel}` })}
-          className={chromeOnly("absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover-on-light focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 focus-ring")}
+          className={chromeOnly("source-pod-delete absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover-on-light focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 focus-ring")}
           contentEditable={false}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

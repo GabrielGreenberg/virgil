@@ -3599,6 +3599,24 @@ textarea,
   cursor: default;
 }
 
+/* The SOURCE POD's arm of the same rule (task 728). A pod's model IS its
+ * bytes, and every one of its writes — source, `parTitle`, `collapsed`, the
+ * delete — is a `setNodeMarkup` the readOnlyEnforcer drops, so read-only it
+ * must show no affordance that would silently fail. `SourcePodNodeView`
+ * resolves the gate in React (via `useMainEditable`) and renders none of
+ * these; this is the structural floor under that, the same belt-and-braces
+ * the figure block takes, and it also covers a pod whose host has flipped
+ * read-only between the attribute write and React's next paint. */
+.ProseMirror[data-editable="false"] .source-pod .source-pod-fold-chevron,
+.ProseMirror[data-editable="false"] .source-pod .source-pod-delete,
+.ProseMirror[data-editable="false"] :is(.tex-block, .forest-block) .par-title-add,
+.ProseMirror[data-editable="false"] :is(.tex-block, .forest-block) .par-title-delete {
+  display: none;
+}
+.ProseMirror[data-editable="false"] .source-pod .source-pod-preview {
+  cursor: default;
+}
+
 .figure-block .figure-chrome-btn {
   width: 22px;
   height: 22px;
