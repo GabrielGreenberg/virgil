@@ -112,7 +112,7 @@ function installHook(
   hook: HookName,
   fn: (doc: PMNode, uuid: string) => MoveSource | null,
 ): void {
-  const meta = TEXT_OBJECT_REGISTRY[kind] as Record<string, unknown>;
+  const meta = TEXT_OBJECT_REGISTRY[kind] as unknown as Record<string, unknown>;
   const prev = meta[hook];
   meta[hook] = fn;
   installed.push(() => {
