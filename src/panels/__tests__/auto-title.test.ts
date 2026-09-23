@@ -312,6 +312,51 @@ describe("REP-A2-02 [HIGH]: create → rename to 'Report 8' → reload KEEPS it"
 });
 
 /**
+ * The OTHER writer (task 718). The app is not the only thing that writes these
+ * sidecars — `editor/scripts/create_card.py` + `apply_response.py` write the
+ * same records when a skill runs — and for a while they stamped no `titleAuto`
+ * at all. A bit-less record is classified by the DEMOTED shape heuristic, and
+ * the loaders run with `persistMigrationOnLoad`, so the guess was written back:
+ * an agent todo whose body read "Task 2" was emptied on the next open, on disk,
+ * permanently.
+ *
+ * These are the shapes the Python writers emit NOW (stamped through
+ * `_common.title_fields` over `editor/scripts/card_titles.json`). The Python
+ * suite `test_card_title_provenance.py` proves the real CLIs land exactly these;
+ * this proves the loader keeps them, twice over.
+ */
+describe("task 718: an agent-written record survives two loads", () => {
+  it("a todo whose BODY is 'Task 2' still reads 'Task 2'", () => {
+    // _build_todo: --body is required non-blank → the bit is always false.
+    const written: TitledRecord = { title: "Task 2", titleAuto: false };
+    const once = reload("todo", written);
+    expect(once.title).toBe("Task 2");
+    expect(reload("todo", once).title).toBe("Task 2");
+  });
+
+  it("a report titled 'Report 3' survives", () => {
+    const written: TitledRecord = { title: "Report 3", titleAuto: false };
+    const once = reload("report", written);
+    expect(once.title).toBe("Report 3");
+    expect(reload("report", once).title).toBe("Report 3");
+  });
+
+  it("an UNTITLED agent card gets the same provenance an app card gets", () => {
+    // The common case (`a.title or ""`): both writers now say machine-default,
+    // where the agent used to say "user-owned" and the app "generated".
+    expect(reload("report", { title: "", titleAuto: true })).toEqual(
+      reload("report", createCard()),
+    );
+  });
+
+  it("the legacy fallback is still there for records that genuinely predate the bit", () => {
+    // Not a regression: the one-time guess is what self-heals a pre-T6 paper.
+    // It is now unreachable for anything either writer produces TODAY.
+    expect(resolveLoadedTitle("todo", "Task 2", undefined)).toBe("");
+  });
+});
+
+/**
  * Source-level guards (T6-C12): the load/migrate path now reads recorded
  * provenance via `resolveLoadedTitle` + stamps via `resolveTitleAuto`; the
  * shape heuristic `isAutoTitle` is no longer called directly from a hook.

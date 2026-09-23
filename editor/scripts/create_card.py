@@ -72,6 +72,7 @@ from _common import (
     read_json,
     resolve_doc,
     sidecar,
+    title_fields,
 )
 
 # ---------------------------------------------------------------------------
@@ -181,7 +182,11 @@ def _comment_note_card(anchor_uuid: str, detail: str, label: str) -> dict:
     return {
         "kind": "note",
         "id": note_id,
-        "title": f"Virgil added a {label}",
+        # A supplied (non-blank) title → `titleAuto: False`, "keep, always".
+        # This one is composed by Virgil rather than typed, but the bit is not
+        # "who wrote it" — it is "may the loader DISCARD it?", and this title
+        # is the card's only label. See `_common.title_fields`.
+        **title_fields("note", f"Virgil added a {label}"),
         "content": _jsoncontent(f"Added a {label} here: {_snippet(detail, 80)}"),
         "createdAt": now_iso(),
         "aiRequest": False,
@@ -282,7 +287,7 @@ def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
 
 def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     """note — anchored, sidecar-only. notes.json · cards, UserNote
-    {kind:"note", id, title, content, createdAt, aiRequest, links}."""
+    {kind:"note", id, title, titleAuto, content, createdAt, aiRequest, links}."""
     body = _require_body(a, "note")
     nid = str(uuid.uuid4())
     return KindBuild(
@@ -290,7 +295,7 @@ def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
         card={
             "kind": "note",
             "id": nid,
-            "title": a.title or "",
+            **title_fields("note", a.title),
             "content": _jsoncontent(body),
             "createdAt": now_iso(),
             "aiRequest": False,
@@ -307,14 +312,19 @@ def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
 
 def _build_todo(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     """todo — anchored, sidecar-only. todos.json · items, TodoItem
-    {id, text, notes, done, aiRequest, createdAt, links} (no `kind` field)."""
+    {id, text, titleAuto, notes, done, aiRequest, createdAt, links} (no `kind`
+    field; for a todo the title-provenance bit governs the body `text`)."""
     body = _require_body(a, "todo")
     tid = str(uuid.uuid4())
     return KindBuild(
         panel="todos",
         card={
             "id": tid,
-            "text": body,
+            # For a todo the "title" IS the body `text` (src/lib/types.ts), and
+            # `--body` is required non-blank — so the bit always lands False and
+            # the loader's demoted shape heuristic can never empty a body that
+            # happens to read "Task 2".
+            **title_fields("todo", body),
             "notes": a.notes or "",
             "done": False,
             "aiRequest": False,
@@ -332,8 +342,9 @@ def _build_todo(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
 
 def _build_report(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     """report — anchored, sidecar-only, polymorphic (on-disk kind:"report").
-    reports.json · cards, ReportCard {kind, id, createdAt, author, title, text,
-    content, selectedText?, links}. A skill-authored report is author="ai"."""
+    reports.json · cards, ReportCard {kind, id, createdAt, author, title,
+    titleAuto, text, content, selectedText?, links}. A skill-authored report is
+    author="ai"."""
     body = _require_body(a, "report")
     author = a.author or "ai"
     if author not in ("human", "ai"):
@@ -346,7 +357,7 @@ def _build_report(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "id": rid,
             "createdAt": now_iso(),
             "author": author,
-            "title": a.title or "",
+            **title_fields("report", a.title),
             "text": body,
             "content": _jsoncontent(body),
             "selectedText": ctx.selected_text or "",

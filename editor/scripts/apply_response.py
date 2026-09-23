@@ -178,6 +178,7 @@ from _common import (
     STATUS_FAILED,
     STATUS_IN_PROGRESS,
     STATUS_PENDING,
+    title_fields,
     TERMINAL_STATUSES,
     version_bumped,
 )
@@ -1913,17 +1914,30 @@ def cmd_update(doc: Path, op: dict) -> dict:
 # --- archive / restore ------------------------------------------------------
 
 
-def _archive_title(card: dict, kind: str) -> str:
+def _archive_title(card: dict) -> dict:
+    """The snippet's `title` + `titleAuto` provenance pair (T6/C12).
+
+    A title DERIVED from the archived card's own words is content — the loader
+    must keep it — so it stamps `titleAuto: False` through the one rule
+    (`_common.title_fields`). When the card offers nothing to derive from, the
+    old fallback string `"Archived <kind>"` was a pure placeholder naming the
+    kind the panel already shows; it is written as a blank machine-default
+    title instead, which is byte-for-byte what the app's own archive door
+    (`useArchive.archiveContent`, FORK-1) writes. Either way the bit is
+    EXPLICIT, so the demoted shape heuristic never classifies an
+    agent-archived snippet.
+    """
     t = card.get("title") or card.get("text") or ""
     t = t if len(t) <= 80 else t[:80] + "…"
-    return t or f"Archived {kind}"
+    return title_fields("archive", t)
 
 
 def cmd_archive(doc: Path, op: dict) -> dict:
     """Move a panel card to archive.json, preserving its origin so restore is
-    lossless. `archive.json`'s documented `ArchivedSnippet { id, title, content,
-    createdAt, links }` has no origin field, so we add `originalPanel` + the
-    verbatim `originalCard` as a deliberate, forward-compatible extension."""
+    lossless. `archive.json`'s documented `ArchivedSnippet { id, title,
+    titleAuto, content, createdAt, links }` has no origin field, so we add
+    `originalPanel` + the verbatim `originalCard` as a deliberate,
+    forward-compatible extension."""
     from card_by_id import find_card, card_kind
 
     card_id = op.get("cardId")
@@ -1960,7 +1974,7 @@ def cmd_archive(doc: Path, op: dict) -> dict:
                              result=RESULT_AUTO_APPLIED, force=True)
     snippet = {
         "id": card_id,
-        "title": _archive_title(original, kind),
+        **_archive_title(original),
         "content": original.get("content") or _jsoncontent(original.get("text") or ""),
         "createdAt": now_iso(),
         "links": original.get("links") or [],

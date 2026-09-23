@@ -78,12 +78,28 @@ per-doc scalar). The wrapper's array key is the `list-key` the writeback targets
 
 ## The card sidecars
 
+**`titleAuto` — title provenance, and BOTH writers stamp it.** Every card kind
+that auto-titles (registry `titleLabel` non-null) carries an optional
+`titleAuto`: `true` = the title is a machine default and the loader may discard
+it, `false` = it is content and the loader must keep it, absent = a record that
+predates the bit, which `resolveLoadedTitle` classifies ONCE from the old
+`^<Label> <digits>$` shape heuristic and then self-stamps. That heuristic is
+demoted precisely because it is ambiguous, so a writer that omits the bit hands
+the demoted guess a permanent job — and the load sites run with
+`persistMigrationOnLoad`, so the guess is written back. The app is not the only
+writer: `editor/scripts/` writes these same files when a skill runs. Its rule
+lives in `editor/scripts/card_titles.json` (the registry projection) and
+`_common.title_fields()` (the one stamp), pinned from both sides by
+`src/cards/__tests__/card-title-provenance-manifest.test.ts` and
+`editor/scripts/tests/test_card_title_provenance.py`.
+
+
 **`notes.json` — `NotesState { cards: NoteCardItem[] }`** (`NoteCardItem = UserNote
 | HighlightCard`):
 
 ```ts
-UserNote      { kind: "note"; id; title; content; createdAt; aiRequest;
-                links: Link[]; originalAnchor?: OriginalAnchor }
+UserNote      { kind: "note"; id; title; titleAuto?; content; createdAt;
+                aiRequest; links: Link[]; originalAnchor?: OriginalAnchor }
 HighlightCard { kind: "highlight"; id; createdAt; highlightColor: string | null;
                 aiRequest; links: Link[];  // exactly one text-range anchor
                 originalAnchor?: OriginalAnchor }
@@ -96,7 +112,8 @@ HighlightCard { kind: "highlight"; id; createdAt; highlightColor: string | null;
 **`todos.json` — `TodoState { items: TodoItem[] }`:**
 
 ```ts
-TodoItem { id; text; notes; done: boolean; aiRequest; createdAt; links: Link[] }
+TodoItem { id; text; titleAuto?; notes; done: boolean; aiRequest; createdAt;
+           links: Link[] }   // for a todo the "title" IS the body `text`
 ```
 
 **`footnotes.json` — `FootnotesState { footnotes: FootnoteRef[] }`:**
@@ -189,7 +206,8 @@ ReportCard | ReportRequestCard`):
 
 ```ts
 ReportCard        { kind: "report"; id; createdAt; author: "human"|"ai";
-                    title; text; content; selectedText?; links: Link[] }
+                    title; titleAuto?; text; content; selectedText?;
+                    links: Link[] }
 ReportRequestCard { kind: "report-request"; id; createdAt; text; content;
                     aiRequest; selectedText?; links: Link[] }
 ```
@@ -199,7 +217,7 @@ Kind semantics + lifecycle: [cards.md → the Reports panel](cards.md#the-report
 **`examples.json` — `ExamplesState { examples: ExampleRef[] }`:**
 
 ```ts
-ExampleRef { id; tag; label; title; createdAt }   // metadata shadow, no links
+ExampleRef { id; tag; label; title; titleAuto?; createdAt }  // shadow, no links
 ```
 
 `ExampleRef` is a **shadow** of an `exampleBlock` whose canonical form is the

@@ -1,0 +1,13 @@
+{
+  "_comment": "Projection of CARD_REGISTRY[kind].titleLabel (src/cards/card-registry.tsx) — the cross-language half of the T6/C12 title-provenance contract. A kind with a non-null titleLabel auto-titles, so its record carries a `titleAuto` bit the five app load sites read through `resolveLoadedTitle` / `resolveTitleAuto` (src/panels/panel-registry.ts). `titleField` names the RECORD field that bit governs (for a todo the \"title\" IS the body `text`); `exempt` names each titleLabel-bearing kind whose on-disk record has no such field at all, with the reason. Python card writers stamp the bit through _common.title_fields(), so no builder spells the rule by hand and none can omit it. PINNED against the registry by src/cards/__tests__/card-title-provenance-manifest.test.ts: a registry edit that adds or removes a titleLabel must update this file (titleField or exempt) or the test fails. Do NOT hand-edit the kind set; mirror the registry.",
+  "titleField": {
+    "archive": "title",
+    "example": "title",
+    "note": "title",
+    "report": "title",
+    "todo": "text"
+  },
+  "exempt": {
+    "footnote": "FootnoteRef is {id, content, createdAt} — a footnote card has no title field on disk, and no load site resolves a footnote title, so there is no provenance to record. The registry's \"Footnote\" titleLabel names the float/header label, not a stored field."
+  }
+}
