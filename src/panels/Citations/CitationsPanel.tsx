@@ -19,6 +19,7 @@ import { citeNotesDroppedByPackage } from "@/lib/cite-command-model";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -419,13 +420,8 @@ function CitationsPanel({
       emptyState={
         !pendingCreate ? (
           <div className={PANEL.empty}>
-            <>
-              No citations yet. Type{" "}
-              <code className="text-xs bg-surface-muted-strong px-1 rounded">
-                \cite
-              </code>{" "}
-              in the editor to add one.
-            </>
+            No citations yet.
+            <CreationHint action="citation" />
           </div>
         ) : undefined
       }

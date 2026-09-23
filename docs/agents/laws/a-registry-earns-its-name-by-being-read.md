@@ -5435,3 +5435,76 @@ falsifying direction, so it can never excuse a dead one.
 the guard was measuring the right thing. Here it was not — it asked "does this
 kind name a field?" when the question is "can this kind delete typed text?" A
 phantom that satisfies a proxy is the proxy's fault as much as the phantom's.
+
+## The copy half — a SENTENCE is a reader too, and it never re-reads (task 727)
+
+> **User-facing copy that states a fact a registry owns is a second copy of that
+> fact, and it is the copy nothing updates.** A panel does not know how its cards
+> are made. The registry knows. The panel knows the NOUN.
+
+The Examples panel's empty state — the first thing anyone reads about examples —
+said: *"No examples. Click the `(1)` glyph in the formatting toolbar to insert
+one."* There is no `(1)` glyph. There is no glyph: the MenuBar's example controls
+were retired, and a repo-wide search for the literal found the panel's sentence,
+`STYLE_GUIDE.md` quoting that sentence as the MODEL of a good empty state, and
+`panel-empty-state-contract.test.ts` quoting it in a failure message. Three
+copies of one lie, and a new user following it exactly produced nothing.
+
+The two live ways to make an example were declared one file over the whole time
+(`surfaces: { slash: true, lightning: true }`, `slashName: "ex"`), and
+`assertActionCoverage` reconciles that `slashName` against the live
+`VIRGIL_COMMANDS` in both directions. So the truth was not hard to reach — it
+was simply never asked for.
+
+**Why the existing guard could not see it, and why that reason was wrong.**
+`panel-empty-state-contract.test.ts` pinned that an empty state "names what's
+missing and teaches the way in", and its own header conceded the limit in
+plain words: *"A regex pins the SHAPE of a how-to; only a reader pins whether it
+is honest."* It wrote that after Outline shipped the same defect ("use the
+Section dropdown in the toolbar" — a control that did not exist), and it was
+read as a limit for another release. The limit was never "a test cannot know the
+truth". It was **"a sentence cannot, because it is a copy."** Replace the copy
+with a projection and truth stops being a property a reader has to check.
+
+**The three-way split this lands.** Every empty state now states each fact from
+whoever holds it:
+
+| fact | owner | how |
+| --- | --- | --- |
+| the NOUN ("No examples yet.") | the panel | ordinary copy |
+| the ROUTE | `VIRGIL_ACTION_REGISTRY` | `creationRoutesFor(id)` → `<CreationHint action="…" />` |
+| the "+" | `CardListPanel` | `PanelAddProvider`, fed by the button it is about to render |
+
+The third is not decoration, and it is the half that generalises the lesson past
+strings: `ExamplesPanel` also declared an `onAdd` prop that **no host has ever
+passed**, so the header "+" it existed to paint was never painted. A panel
+asserting *"click + to create one"* is asserting a control it does not know it
+has — the same defect as the glyph, one control over. A panel can no longer
+claim a "+" at all; it asks. `<CreationHint action>` is typed `ActionId`, so the
+link to the registry is a COMPILE-TIME one: retire the row and the panel stops
+building. There is no spelling of a surface left for a stale string to live in.
+
+**Two derivation rules worth keeping.** (1) The ⚡ margin menu and a block's grab
+bar are two triggers on one `ActionsMenuPanel` body, so naming both is naming one
+route twice — the first surface a row declares wins. (2) Two clauses maximum: a
+sentence listing four ways in is a list, not an instruction.
+
+**Guards.** `creation-routes.test.ts` pins the derivation (including that every
+`\name` the copy can print is a live `VIRGIL_COMMAND_NAMES` entry, and that
+dropping a surface flag drops its clause). `creation-hint-add-affordance.test.tsx`
+drives the REAL `CardListPanel` with and without an `onAdd` and reads the
+rendered sentence. And leg 5 of `panel-empty-state-contract.test.ts` asks the
+question the header said no census could — **not** "is this sentence true?" but
+**"where did it come from?"**: an empty state that names a toolbar, a glyph, a
+dropdown, a button, a `\command` or a "+" without deriving it fails, with all
+three historical sentences planted and verified failing on the real tree. Two
+stated limits: it sees a named CONTROL, never a paraphrase (Bibliography's "add
+citations in the editor" is out of reach, and is deliberately unconverted because
+that panel's "+" makes something else), and the derivation's own honesty is the
+registry's problem, pinned one file over.
+
+**The generalisation, for the next one.** The rule is task 306's ("a panel's
+add-menu derives its card-type LABELS from the registry") one column over: label
+then, ROUTE now. Same class. Before writing a sentence that tells a user where a
+control is, ask which table already knows — and if one does, the sentence is not
+copy, it is a view.

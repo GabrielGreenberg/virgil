@@ -13,6 +13,7 @@ import type {
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -130,7 +131,8 @@ export default function RevisionsPanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No comments or revisions yet. Click + to add one.
+          No comments or revisions yet.
+          <CreationHint action="suggest-edit" />
         </div>
       }
       renderCard={(it, { selected }) => {

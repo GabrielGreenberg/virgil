@@ -10,6 +10,7 @@ import {
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { ExampleCard } from "./ExampleCard";
 
 interface ExamplesPanelProps {
@@ -17,7 +18,13 @@ interface ExamplesPanelProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onJump: (id: string, sourceEl?: HTMLElement | null) => void;
-  onAdd?: (anchorRect?: DOMRect) => void;
+  // NOTE: no `onAdd`. It was declared here and forwarded to `CardListPanel` for
+  // as long as the panel existed, and no host ever passed it — so the header
+  // "+" was never rendered and the only way in an empty Examples panel named
+  // was a `(1)` toolbar glyph that does not exist. Task 727 removed the prop
+  // rather than wiring a button: inserting an example from a panel header is a
+  // different gesture from `\ex` at the caret, and that is a feature to ask
+  // for, not one to infer from a prop nobody passed.
 }
 
 function ExamplesPanel(props: ExamplesPanelProps) {
@@ -26,7 +33,6 @@ function ExamplesPanel(props: ExamplesPanelProps) {
     selectedId,
     onSelect,
     onJump,
-    onAdd,
   } = props;
   const onActivate = useCallback(
     (ex: ExampleInfo) => {
@@ -56,7 +62,6 @@ function ExamplesPanel(props: ExamplesPanelProps) {
   return (
     <CardListPanel
       kind="examples"
-      onAdd={onAdd}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
@@ -70,8 +75,8 @@ function ExamplesPanel(props: ExamplesPanelProps) {
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No examples. Click the <span className="font-mono">(1)</span> glyph in
-          the formatting toolbar to insert one.
+          No examples yet.
+          <CreationHint action="example" />
         </div>
       }
       onKeyDown={handleNavKeys}

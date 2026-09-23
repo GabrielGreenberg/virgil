@@ -6,6 +6,7 @@ import type { TodoItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
@@ -99,7 +100,8 @@ export default function TodoPanel({
       onSelect={onSelectTodo}
       emptyState={
         <div className={PANEL.empty}>
-          No tasks yet. Click &quot;+&quot; to create one.
+          No tasks yet.
+          <CreationHint action="todo" />
         </div>
       }
       renderCard={(item, { selected }) => (

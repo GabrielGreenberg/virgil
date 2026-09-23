@@ -24,6 +24,7 @@ import {
   useCardArchiveView,
 } from "./card-archive-view";
 import { ArchiveViewEmptyState } from "./ArchiveViewEmptyState";
+import { PanelAddProvider } from "./CreationHint";
 
 export interface CardListPanelProps<T> {
   kind: PanelKind;
@@ -64,9 +65,17 @@ export interface CardListPanelProps<T> {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 
-  /** The panel's GENUINELY-empty state — the one case only the panel can
-   *  author, because only it knows how its cards are made ("Select text and use
-   *  the toolbar to create one"). Rendered when nothing is filtered out.
+  /** The panel's GENUINELY-empty state — the NOUN that names what is missing
+   *  ("No examples yet."), followed by `<CreationHint action="…" />` for the way
+   *  in. Rendered when nothing is filtered out.
+   *
+   *  This docstring used to say the panel authors the whole sentence "because
+   *  only it knows how its cards are made" — and that was the bug (task 727).
+   *  The panel does not know: `VIRGIL_ACTION_REGISTRY` owns the surfaces, and a
+   *  panel writing them from memory is how the Examples panel spent its life
+   *  pointing at a `(1)` toolbar glyph that had been deleted. The "+" half is
+   *  not the panel's either — it comes from `PanelAddProvider` below, fed by the
+   *  button this component is actually about to render.
    *
    *  A panel supplies this and NOTHING else: when the archive view is what
    *  emptied the list, `CardListPanel` renders the shared view-aware state
@@ -210,6 +219,14 @@ export function CardListPanel<T>({
     [onAddOptions, leaveArchivesView],
   );
 
+  // Whether the header will actually paint a "+" — the exact condition
+  // `PanelHeader` renders on (`onAddOptions ? dropdown : onAdd && button`).
+  // Published to the empty state through `PanelAddProvider` so a panel's copy
+  // never ASSERTS a "+": it asks the surface that owns one. Task 727 — the
+  // Examples panel declared an `onAdd` no host passed while its sentence named
+  // a toolbar glyph that no longer existed; both were promises nobody kept.
+  const hasAddButton = handleAddOptions != null || handleAdd != null;
+
   return (
     // Docked card panels DECLARE their compressed-line count (R8) rather than
     // relying on the silent context default — keeps omni (2) / docked (1)
@@ -238,7 +255,11 @@ export function CardListPanel<T>({
         // block (BIB-F1-01). Render `listTrailing` alongside the empty-state so
         // a pending request isn't dropped when the card list is empty.
         <>
-          {viewEmpty ? <ArchiveViewEmptyState reason={viewEmpty} /> : emptyState}
+          {viewEmpty ? (
+            <ArchiveViewEmptyState reason={viewEmpty} />
+          ) : (
+            <PanelAddProvider value={hasAddButton}>{emptyState}</PanelAddProvider>
+          )}
           {listTrailing}
         </>
       ) : (

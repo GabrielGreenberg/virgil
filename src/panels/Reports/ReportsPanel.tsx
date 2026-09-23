@@ -12,6 +12,7 @@ import type {
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -105,7 +106,8 @@ export default function ReportsPanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No reports yet. Click + to add a Report or a Report Request.
+          No reports yet.
+          <CreationHint action="report" />
         </div>
       }
       renderCard={(it, { selected }) => {
