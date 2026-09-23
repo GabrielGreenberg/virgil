@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { readSidecar, writeSidecar } from "@/lib/storage";
+import { readSidecar } from "@/lib/storage";
+import { writeSidecarMerged } from "@/lib/sidecar-merged-write";
 import type { ExamplesState } from "@/lib/types";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import {
@@ -32,6 +33,13 @@ export function useExamples(docId: string | null) {
   const [state, setState] = useState<ExamplesState>(EMPTY);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // THE MERGE BASE (task 719) — what this hook last knew the file to hold (its
+  // load, or its own last submitted payload). The third input the write needs
+  // to stop being a rebuild: without it "absent from local" cannot be told
+  // apart from "the user deleted it". Null until the read resolves, and null
+  // forever on a read that threw, which degrades the merge to a union rather
+  // than letting it guess at a deletion.
+  const baselineRef = useRef<ExamplesState | null>(null);
 
   const handle = useMemo(
     () => (docId ? getActiveHandle(docId) : null),
@@ -60,13 +68,25 @@ export function useExamples(docId: string | null) {
         });
         const migrated = { examples };
         stateRef.current = migrated;
+        baselineRef.current = migrated;
         setState(migrated);
         // Self-heal write-back: persist the stamped provenance so the heuristic
         // never runs again. Resolve the handle fresh (the pipeline may register
         // after the parent's first render — see usePersistentState).
         if (changed) {
           const h = getActiveHandle(docId);
-          if (h) void writeSidecar(h, "examples.json", migrated).catch(() => {});
+          // Base `null` deliberately (task 719): this write-back's whole job
+          // is to make the NORMALIZED records durable, so they must win every
+          // collision — a base equal to them would read each one as untouched
+          // and adopt disk's unstamped version back, writing nothing. With no
+          // base the merge degrades to a union with local winning, which is
+          // exactly the rule a migration write-back wants: my records, plus
+          // anything else disk holds.
+          if (h) {
+            void writeSidecarMerged(h, "examples.json", null, migrated).catch(
+              () => {},
+            );
+          }
         }
       })
       .catch(() => {});
@@ -78,8 +98,11 @@ export function useExamples(docId: string | null) {
   const persist = useCallback(
     async (s: ExamplesState) => {
       if (!handle) return;
+      // The ONE merged write door (task 719) — see `sidecar-merge.ts`.
+      const base = baselineRef.current;
       try {
-        await writeSidecar(handle, "examples.json", s);
+        await writeSidecarMerged(handle, "examples.json", base, s);
+        baselineRef.current = s;
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save examples:", err);

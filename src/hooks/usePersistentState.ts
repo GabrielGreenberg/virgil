@@ -9,7 +9,9 @@ import {
   type SetStateAction,
   type MutableRefObject,
 } from "react";
-import { readSidecarIfExists, writeSidecar } from "@/lib/storage";
+import { readSidecarIfExists, mutateSidecar } from "@/lib/storage";
+import { mergeSidecarState } from "@/lib/sidecar-merge";
+import { writeSidecarMerged } from "@/lib/sidecar-merged-write";
 import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
 import { onTabHidden } from "@/lib/tab-hidden";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
@@ -267,6 +269,47 @@ export function usePersistentState<S>(
     return pendingTimerRef.current !== null || inFlightRef.current > 0;
   }, []);
 
+  // ── THE MERGE BASE (task 719) ──────────────────────────────────────────────
+  // What this instance last knew the FILE to hold: its load, its last adopted
+  // external re-read, or its own last submitted payload. It is the third input
+  // the write needs to stop being a rebuild — without it, "absent from local"
+  // cannot be told apart from "the user deleted it", so a merge would either
+  // resurrect deleted cards (a union) or delete an agent's concurrent append
+  // (the whole-snapshot write this replaces). See `sidecar-merge.ts` for the
+  // verdict table.
+  //
+  // Null until the first read resolves, and null FOREVER on a read that threw:
+  // an instance that never learned what disk held cannot derive a deletion, and
+  // the merge degrades to a union rather than guessing.
+  const baselineRef = useRef<S | null>(null);
+  // `migrate` in a ref so the write path can migrate the in-lock disk read
+  // before merging. Both sides of every comparison are then MIGRATED values —
+  // otherwise a raw on-disk record and its migrated twin read as an edit, and
+  // the merge would adopt the raw one, silently undoing the very normalization
+  // `persistMigrationOnLoad` had just written.
+  const migrateRef = useRef(migrate);
+  migrateRef.current = migrate;
+
+  // ── THE DEFERRED EXTERNAL READ (task 719) ─────────────────────────────────
+  // The watcher emits ONCE per change: it re-baselines its ledger to the new
+  // on-disk bytes BEFORE dispatching, so its next poll takes the cheap
+  // mtime/size path and neither reads nor re-emits. A dirty guard that merely
+  // `return`s therefore DROPS the event — permanently, if no further external
+  // write comes. So a deferral is a DEBT: remember it, and replay the moment
+  // this instance's writes drain. (`useAiRequests` has carried exactly this
+  // since task 220; it is right there for the same reason it is right here —
+  // because the write below merges, so disk after the drain holds the union.)
+  const deferredExternalReadRef = useRef(false);
+  // The live re-read for the current docId, published by the watcher effect so
+  // the write drain can replay a deferred signal. Null while no doc is open.
+  const rehydrateRef = useRef<(() => void) | null>(null);
+  const maybeReplayDeferredRead = useCallback((): void => {
+    if (!deferredExternalReadRef.current) return;
+    if (hasPendingWrite()) return;
+    deferredExternalReadRef.current = false;
+    rehydrateRef.current?.();
+  }, [hasPendingWrite]);
+
   // Tracks whether the user has mutated state via `update()` since the
   // mount-effect loader was last started. Prevents the loader's async
   // `.then()` from stomping a user's change with the (now-stale) on-disk
@@ -293,6 +336,10 @@ export function usePersistentState<S>(
     loadedRef.current = false;
     loadErrorRef.current = false;
     heldReconcileRef.current = null;
+    // A base belongs to ONE document. Cleared on every switch, and re-earned
+    // only by a read that actually resolved (task 719).
+    baselineRef.current = null;
+    deferredExternalReadRef.current = false;
     setLoaded(false);
     setLoadError(false);
     let cancelled = false;
@@ -320,13 +367,24 @@ export function usePersistentState<S>(
         setLoaded(true);
         if (raw === null) return;
         if (hasMutatedRef.current) return;
-        const migrated = migrate ? migrate(raw) : raw;
+        const migrated = migrate ? migrate(raw) : (raw as S);
+        baselineRef.current = migrated;
         setState(migrated);
         // Same Reader-mode guard as `persist`: never write a disallowed card
         // sidecar back to disk, even for a migration upgrade.
         if (persistMigrationOnLoad && writeAllowedRef.current) {
           const h = resolveHandle();
-          if (h) writeSidecar(h, filename, migrated).catch(() => {});
+          // Through the SERIALIZED door (task 719), and re-deriving from the
+          // in-lock disk read rather than re-writing the snapshot we just
+          // migrated: between the mount bundle's read and this write a skill's
+          // append can land, and a whole-snapshot write-back would delete it.
+          // A `null` current means the file went away — then write nothing
+          // rather than re-creating it from memory.
+          if (h) {
+            void mutateSidecar<S | null>(h, filename, null, (cur) =>
+              cur === null ? null : migrate ? migrate(cur) : cur,
+            ).catch(() => {});
+          }
         }
       })
       .catch((err) => {
@@ -363,101 +421,128 @@ export function usePersistentState<S>(
 
   const persist = useCallback(
     async (s: S) => {
-      // ── TWO DOORS, ONE QUEUE ────────────────────────────────────────────
-      // `update()` and `persist()` are both write doors, and only `update()`
-      // used to own the debounce queue — so an immediate write could be
-      // OUTLIVED by an older payload and silently undone ON DISK:
-      //
-      //   updateSnippetTitle(X)  → arms the 300 ms timer with state that
-      //                            still CONTAINS X
-      //   persist(stateWithoutX) → writes X-removed immediately
-      //   …timer fires…          → flushes the pre-removal payload and
-      //                            RESURRECTS X in the sidecar
-      //
-      // In-memory state says X is gone, disk says it's there, and nothing
-      // reconciles until the next `update()` — so with no further edit the
-      // divergence is permanent and X reappears on reload. That was task 106's
-      // `useArchive.restoreSnippet` bug, but the hazard belongs to the
-      // PRIMITIVE rather than to that caller: it is inherent to having two
-      // write doors where only one owns the queue, and it is waiting for the
-      // next read-then-write flow written against this API. (Scope, stated
-      // honestly: the sidecar hooks with their OWN bespoke `persist` —
-      // useFootnotes, useExamples, useAiRequests, useBibReview, useStack,
-      // useEditorUIState — do NOT go through this door and are unaffected.
-      // Among this hook's consumers only `useSuggestions.clearSuggestions`
-      // still calls it directly.) An immediate write is by definition the
-      // newest intent, so it SUPERSEDES anything scheduled — cancel the timer
-      // and drop the stale payload, once, for every caller.
-      //
-      // Precondition on the caller, since this cancels rather than merges: the
-      // payload must already reflect any `update()` issued before it.
-      // `stateRef` refreshes on RENDER, so `update(f); persist({...stateRef
-      // .current})` inside ONE handler would drop `f` — derive the payload from
-      // the same state `update` did, or just use `update`.
-      cancelArmedTimer();
-      pendingRef.current = null;
-      // Reader-mode safety guard: refuse a write the active chrome disallows
-      // (a read-mostly host writing anything but its editable card sidecars).
-      // The note annotation sidecar passes — and LANDS, since the storage
-      // funnel reads the same derivation (task 556); everything else is
-      // dropped here — the in-memory state still updated, only the disk write
-      // is suppressed — which is what keeps the `hasMutatedRef` stamp below
-      // honest: it is never set for a write the layer below would refuse.
-      //
-      // NOT published to the refusal channel, deliberately (task 637): under a
-      // read-mostly host this branch is reached by ORDINARY, DESIGNED churn —
-      // `focus.json`, `document-settings.json`, `editor-state.json` are
-      // session-only in the Reader BY DECISION (`library/READER_INHERITANCE.md`),
-      // so a band raised here would be permanently lit by the user simply
-      // reading. The card-mutation half of this defect is answered where it can
-      // be answered honestly: BEFORE the gesture, by withholding the affordance
-      // (`useCardDeleteAllowed`, `panel-primitives.tsx`) — a standing host
-      // property needs no runtime discovery. What is published below is the
-      // `failed` case, which is not designed and not knowable in advance.
-      if (!writeAllowedRef.current) return;
-      const h = resolveHandle();
-      if (!h) return;
-      // AFTER both guards, never before. `hasMutatedRef` means "a newer value
-      // is on disk", and its only consumer is the mount-loader's bail — so
-      // stamping it for a write that was suppressed (read-only chrome) or
-      // dropped (pipeline not yet registered) would permanently hide the
-      // sidecar for that doc, leaving every load-gated reconcile running over
-      // the empty default.
-      hasMutatedRef.current = true;
-      // IN FLIGHT from here until the write SETTLES — the `hasPendingWrite`
-      // half the timer handle cannot carry. Incremented synchronously, in the
-      // same turn the caller nulled the handle, so there is no interleaving
-      // point between the two; decremented in `finally`, so a refusal or a
-      // throw releases it exactly as a landing does.
-      inFlightRef.current += 1;
       try {
-        await writeSidecar(h, filename, s);
-      } catch (err) {
-        if (isStalePipelineError(err)) return;
-        console.error(`Failed to save ${errorLabel ?? filename}:`, err);
-        // … and SAY so (task 637, over task 630's channel). A `console.error`
-        // is not a report: this primitive owns fifteen sidecars, thirteen of
-        // them CONTENT tier, and a throw here means the user's writing is in
-        // memory only — gone at the next reload, with the panel still showing
-        // it as saved. That is precisely the swallow `sidecar-refusal.ts` was
-        // built for; it just had no publisher on the panel path.
+        // ── TWO DOORS, ONE QUEUE ────────────────────────────────────────────
+        // `update()` and `persist()` are both write doors, and only `update()`
+        // used to own the debounce queue — so an immediate write could be
+        // OUTLIVED by an older payload and silently undone ON DISK:
         //
-        // The noun is the hook's own `errorLabel` ("notes", "revisions", …),
-        // which every content consumer already declares for the log line. NEVER
-        // the filename — the channel deliberately does not carry one, and a
-        // consumer with no label gets the generic phrase rather than a leaked
-        // one.
-        recordSidecarRefusal({
-          docId: h.docId,
-          what: errorLabel ?? "document annotation",
-          reason: "failed",
-          detail: err instanceof Error ? err.message : undefined,
-        });
+        //   updateSnippetTitle(X)  → arms the 300 ms timer with state that
+        //                            still CONTAINS X
+        //   persist(stateWithoutX) → writes X-removed immediately
+        //   …timer fires…          → flushes the pre-removal payload and
+        //                            RESURRECTS X in the sidecar
+        //
+        // In-memory state says X is gone, disk says it's there, and nothing
+        // reconciles until the next `update()` — so with no further edit the
+        // divergence is permanent and X reappears on reload. That was task 106's
+        // `useArchive.restoreSnippet` bug, but the hazard belongs to the
+        // PRIMITIVE rather than to that caller: it is inherent to having two
+        // write doors where only one owns the queue, and it is waiting for the
+        // next read-then-write flow written against this API. (Scope, stated
+        // honestly: the sidecar hooks with their OWN bespoke `persist` —
+        // useFootnotes, useExamples, useAiRequests, useBibReview, useStack,
+        // useEditorUIState — do NOT go through this door and are unaffected.
+        // Among this hook's consumers only `useSuggestions.clearSuggestions`
+        // still calls it directly.) An immediate write is by definition the
+        // newest intent, so it SUPERSEDES anything scheduled — cancel the timer
+        // and drop the stale payload, once, for every caller.
+        //
+        // Precondition on the caller, since this cancels rather than merges: the
+        // payload must already reflect any `update()` issued before it.
+        // `stateRef` refreshes on RENDER, so `update(f); persist({...stateRef
+        // .current})` inside ONE handler would drop `f` — derive the payload from
+        // the same state `update` did, or just use `update`.
+        cancelArmedTimer();
+        pendingRef.current = null;
+        // Reader-mode safety guard: refuse a write the active chrome disallows
+        // (a read-mostly host writing anything but its editable card sidecars).
+        // The note annotation sidecar passes — and LANDS, since the storage
+        // funnel reads the same derivation (task 556); everything else is
+        // dropped here — the in-memory state still updated, only the disk write
+        // is suppressed — which is what keeps the `hasMutatedRef` stamp below
+        // honest: it is never set for a write the layer below would refuse.
+        //
+        // NOT published to the refusal channel, deliberately (task 637): under a
+        // read-mostly host this branch is reached by ORDINARY, DESIGNED churn —
+        // `focus.json`, `document-settings.json`, `editor-state.json` are
+        // session-only in the Reader BY DECISION (`library/READER_INHERITANCE.md`),
+        // so a band raised here would be permanently lit by the user simply
+        // reading. The card-mutation half of this defect is answered where it can
+        // be answered honestly: BEFORE the gesture, by withholding the affordance
+        // (`useCardDeleteAllowed`, `panel-primitives.tsx`) — a standing host
+        // property needs no runtime discovery. What is published below is the
+        // `failed` case, which is not designed and not knowable in advance.
+        if (!writeAllowedRef.current) return;
+        const h = resolveHandle();
+        if (!h) return;
+        // AFTER both guards, never before. `hasMutatedRef` means "a newer value
+        // is on disk", and its only consumer is the mount-loader's bail — so
+        // stamping it for a write that was suppressed (read-only chrome) or
+        // dropped (pipeline not yet registered) would permanently hide the
+        // sidecar for that doc, leaving every load-gated reconcile running over
+        // the empty default.
+        hasMutatedRef.current = true;
+        // IN FLIGHT from here until the write SETTLES — the `hasPendingWrite`
+        // half the timer handle cannot carry. Incremented synchronously, in the
+        // same turn the caller nulled the handle, so there is no interleaving
+        // point between the two; decremented in `finally`, so a refusal or a
+        // throw releases it exactly as a landing does.
+        inFlightRef.current += 1;
+        // ── A WRITE IS A SPLICE, NEVER A REBUILD (task 719) ────────────────
+        // The ONE merged write door (`sidecar-merge.ts`), shared with the three
+        // hooks that keep their own bespoke persist. All this hook supplies is
+        // the base it has been tracking — what it last knew disk held.
+        const base = baselineRef.current;
+        try {
+          await writeSidecarMerged<S>(h, filename, base, s, migrateRef.current);
+          // The base becomes the SUBMITTED payload, never the merged result.
+          // Disk now holds the union; memory still holds `s`. Re-basing to the
+          // union would make the next write read an external record as "in base,
+          // absent from local" — a DELETE — and the preservation would hold for
+          // exactly one write. Memory converges by the other door: the watcher
+          // re-read below, which merges the same way.
+          baselineRef.current = s;
+        } catch (err) {
+          if (isStalePipelineError(err)) return;
+          console.error(`Failed to save ${errorLabel ?? filename}:`, err);
+          // … and SAY so (task 637, over task 630's channel). A `console.error`
+          // is not a report: this primitive owns fifteen sidecars, thirteen of
+          // them CONTENT tier, and a throw here means the user's writing is in
+          // memory only — gone at the next reload, with the panel still showing
+          // it as saved. That is precisely the swallow `sidecar-refusal.ts` was
+          // built for; it just had no publisher on the panel path.
+          //
+          // The noun is the hook's own `errorLabel` ("notes", "revisions", …),
+          // which every content consumer already declares for the log line. NEVER
+          // the filename — the channel deliberately does not carry one, and a
+          // consumer with no label gets the generic phrase rather than a leaked
+          // one.
+          recordSidecarRefusal({
+            docId: h.docId,
+            what: errorLabel ?? "document annotation",
+            reason: "failed",
+            detail: err instanceof Error ? err.message : undefined,
+          });
+        } finally {
+          inFlightRef.current -= 1;
+        }
       } finally {
-        inFlightRef.current -= 1;
+        // EVERY exit, not just the one that wrote: a write the chrome refuses or
+        // that finds no pipeline handle returns before the counter ever moves,
+        // and a deferred external read must still be replayed once this instance
+        // is quiet — otherwise the deferral is the discard all over again, one
+        // branch over (task 719).
+        maybeReplayDeferredRead();
       }
     },
-    [resolveHandle, filename, errorLabel, cancelArmedTimer],
+    [
+      resolveHandle,
+      filename,
+      errorLabel,
+      cancelArmedTimer,
+      maybeReplayDeferredRead,
+    ],
   );
 
   // Fire the pending write synchronously (the persist itself stays
@@ -598,22 +683,24 @@ export function usePersistentState<S>(
   // (docId+filename), so a dirty notes.json never blocks a clean revisions.json
   // re-read.
   //
-  // WHAT A DEFERRAL MEANS, stated honestly: LOCAL WINS for this file. This hook
-  // writes WHOLE SNAPSHOTS, so the pending write lands the local state over the
-  // external bytes, and `writeTrackedText` then re-baselines the disk ledger to
-  // OUR bytes — so the watcher's next poll takes the cheap mtime/size path and
-  // emits NOTHING. The external change is not "re-checked once the write has
-  // flushed" (an earlier draft of this comment claimed that, and it is false —
-  // the watcher re-baselines to the external bytes BEFORE it emits, and has no
-  // way to know a listener declined); it is overwritten, which is the
-  // 220/558 "two writers means ONE serialized read-modify-merge authority"
-  // class, owed by every sidecar that is not `ai-requests.json` or the bib and
-  // recorded for a design pass of its own. `useAiRequests` REPLAYS a deferred
-  // re-read once its in-flight mutations drain, and that is right THERE because
-  // it merges: disk after the drain holds the union. Here a replay after a
-  // landed write would read back our own snapshot (a no-op), and after a
-  // refused or thrown write would adopt disk over unlanded memory — the stomp
-  // this guard exists to prevent, one turn later. So: defer, and only defer.
+  // WHAT A DEFERRAL MEANS (task 719 — it no longer means a discard). Until
+  // 719 this hook wrote WHOLE SNAPSHOTS, so a deferral meant LOCAL WINS for
+  // this file: the pending write landed the local state over the external
+  // bytes and `writeTrackedText` re-baselined the disk ledger to OURS, so the
+  // watcher's next poll emitted nothing and the external change was gone. That
+  // is how an agent's answered report was deleted while the user had one
+  // unsaved keystroke in the same panel — the 220/558 "two writers means ONE
+  // serialized read-modify-merge authority" class, with two one-file fixes and
+  // no general door.
+  //
+  // Both halves are now here. The write goes through `mutateSidecar` and MERGES
+  // against a base (see `persist`), so a landed write holds the union rather
+  // than the local snapshot; and a deferral is REMEMBERED and replayed the
+  // moment this instance's writes drain, so the event is not dropped. The old
+  // objections to a replay both rested on the rebuild: "a replay after a landed
+  // write reads back our own snapshot" is now a genuine no-op only because the
+  // write merged, and "a replay after a refused write adopts disk over unlanded
+  // memory" is answered by the re-read merging too.
   //
   // KEYSTROKE SANCTITY: this is an event listener on `window`, NOT an
   // `editor.on(...)` subscriber. It fires only on an external sidecar change
@@ -622,42 +709,76 @@ export function usePersistentState<S>(
     if (!docId) return;
     let cancelled = false;
 
-    const onSidecarChanged = (e: Event) => {
-      const detail = (e as CustomEvent<SidecarChangedDetail>).detail;
-      if (!detail) return;
-      if (detail.docId !== docId || detail.filename !== filename) return;
-      // DIRTY GUARD: an armed or in-flight write means local state has an
-      // unsaved edit — defer rather than clobber it (see above for what the
-      // deferral costs).
-      if (hasPendingWrite()) return;
+    // The re-read, published on a ref so the WRITE DRAIN can replay it. A
+    // deferral is a debt (see the `deferredExternalReadRef` note above), and
+    // this is the function that pays it.
+    const rehydrate = () => {
+      deferredExternalReadRef.current = false;
       // Re-read from disk (the bundle was invalidated by the watcher, so this
-      // hits disk). Update state on success; on absence (file removed) fall back
-      // to the default so the panel empties. A read error leaves state as-is.
+      // hits disk). Merge into state on success; on absence (file removed) fall
+      // back to the default so the panel empties. A read error leaves state
+      // as-is and RE-ARMS the debt.
       readSidecarIfExists<S>(docId, filename)
         .then((raw) => {
           if (cancelled) return;
           // Re-check the dirty guard AFTER the async read: the user may have
           // started editing — or a `persist()` may have started writing — while
-          // the read was in flight. Never stomp either.
-          if (hasPendingWrite()) return;
+          // the read was in flight. Never stomp either; re-arm so the drain
+          // replays (task 719 — before it, this branch dropped the event).
+          if (hasPendingWrite()) {
+            deferredExternalReadRef.current = true;
+            return;
+          }
           if (raw === null) {
             // External removal → reset to the empty default (matches the load
             // path's "absent" handling, but here the sidecar existed then went
             // away, so an explicit reset is correct).
+            baselineRef.current = null;
             setState(defaultValue);
             return;
           }
-          const migrated = migrate ? migrate(raw) : raw;
-          setState(migrated);
+          const migrated = migrate ? migrate(raw) : (raw as S);
+          const base = baselineRef.current;
+          // Disk is now the base: this is what the file holds.
+          baselineRef.current = migrated;
+          // MERGE rather than adopt. The guard above only proves no write is
+          // ARMED or IN FLIGHT; it does not prove memory equals the base — a
+          // `setState` consumer, or a write the chrome refused, leaves an
+          // in-memory value disk has never seen, and adopting wholesale would
+          // discard it. Where memory IS the base (the common case) the merge
+          // yields exactly `migrated`, so the clean path is unchanged.
+          setState((prev) => mergeSidecarState<S>(filename, base, migrated, prev));
         })
         .catch(() => {
-          // Transient read failure — leave state untouched; the next poll retries.
+          // Transient read failure — leave state untouched and re-arm, so the
+          // next drain retries. NOT a claim that the watcher will try again:
+          // it re-baselined before emitting and will not re-emit.
+          deferredExternalReadRef.current = true;
         });
+    };
+    rehydrateRef.current = rehydrate;
+
+    const onSidecarChanged = (e: Event) => {
+      const detail = (e as CustomEvent<SidecarChangedDetail>).detail;
+      if (!detail) return;
+      if (detail.docId !== docId || detail.filename !== filename) return;
+      // DIRTY GUARD: an armed or in-flight write means local state has an
+      // unsaved edit — defer rather than clobber it. The deferral is now
+      // REMEMBERED and replayed when the write drains (task 719); before that
+      // it was a silent discard, and the whole-snapshot write that followed
+      // overwrote the change it had just declined to read.
+      if (hasPendingWrite()) {
+        deferredExternalReadRef.current = true;
+        return;
+      }
+      rehydrate();
     };
 
     window.addEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
     return () => {
       cancelled = true;
+      rehydrateRef.current = null;
+      deferredExternalReadRef.current = false;
       window.removeEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
     };
     // Same rationale as the loader effect: `filename`/`defaultValue`/`migrate`

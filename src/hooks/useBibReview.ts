@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { readSidecar, writeSidecar } from "@/lib/storage";
+import { readSidecar } from "@/lib/storage";
+import { writeSidecarMerged } from "@/lib/sidecar-merged-write";
 import { libraryPaperSidecarWritable } from "@/lib/host-writability";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import type { BibReviewState, BibReviewRequest, BibEntry } from "@/lib/types";
@@ -39,6 +40,13 @@ export function useBibReview(
   const cascadeOn = isIdentityCascadeOn() && !!getBibEntry;
   const [state, setState] = useState<BibReviewState>(EMPTY);
   const docIdRef = useRef(docId);
+  // THE MERGE BASE (task 719) — what this hook last knew the file to hold (its
+  // load, or its own last submitted payload). The third input the write needs
+  // to stop being a rebuild: without it "absent from local" cannot be told
+  // apart from "the user deleted it". Null until the read resolves, and null
+  // forever on a read that threw, which degrades the merge to a union rather
+  // than letting it guess at a deletion.
+  const baselineRef = useRef<BibReviewState | null>(null);
   const handle = useMemo(
     () => (docId ? getActiveHandle(docId) : null),
     [docId],
@@ -82,7 +90,11 @@ export function useBibReview(
         : EMPTY;
       // Migrate-on-load: stamp `entryUid` onto rows whose citekey resolves
       // (non-destructive — unresolvable rows keep their bare bibKey).
-      setState(cascadeRef.current ? migrateBibReviewToUid(raw, keyToUidRef.current) : raw);
+      const loadedState = cascadeRef.current
+        ? migrateBibReviewToUid(raw, keyToUidRef.current)
+        : raw;
+      baselineRef.current = loadedState;
+      setState(loadedState);
     } catch {
       // ignore
     }
@@ -151,8 +163,13 @@ export function useBibReview(
       if (!libraryPaperSidecarWritable(handle.docId, "bib-review-requests.json")) {
         return refuse("read-only");
       }
+      // The ONE merged write door (task 719) — see `sidecar-merge.ts`. The
+      // reviews an `/editor/answer-bib-review` run marks complete are exactly
+      // the records a whole-snapshot write from a stale panel would undo.
+      const base = baselineRef.current;
       try {
-        await writeSidecar(handle, "bib-review-requests.json", s);
+        await writeSidecarMerged(handle, "bib-review-requests.json", base, s);
+        baselineRef.current = s;
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save bib review requests:", err);

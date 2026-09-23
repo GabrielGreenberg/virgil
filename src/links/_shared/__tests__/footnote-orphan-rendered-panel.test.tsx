@@ -41,6 +41,21 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(async (h: { docId: string }, filename: string, data: unknown) => {
     writes.push({ docId: h.docId, filename, data });
   }),
+  // The sidecar hook's write door since task 719 — a read inside the write's
+  // critical section, the caller's merge, then the write.
+  mutateSidecar: vi.fn(
+    async (
+      h: { docId: string },
+      filename: string,
+      defaultValue: unknown,
+      mutate: (current: unknown) => unknown,
+    ) => {
+      const next = mutate(DISK ?? defaultValue);
+      if (next === null) return null;
+      writes.push({ docId: h.docId, filename, data: next });
+      return next;
+    },
+  ),
 }));
 
 // Light card stubs — emit a recognizable testid carrying the footnoteId + a body

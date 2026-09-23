@@ -449,8 +449,13 @@ describe("the pending-flusher registry is a per-document MULTI-SET (task 559)", 
  * existing, and a retired one cannot leave a stale registration behind.
  */
 describe("census — every coalescing writer registers with the ONE registry", () => {
+  // `writeSidecarMerged` (task 719) is the sidecar hooks' door — a serialized
+  // read-modify-merge over `mutateSidecar`. A census that did not name it would
+  // drop every sidecar coalescer from the population and pass vacuously. The
+  // optional `<…>` is load-bearing for the same reason: these doors are spelled
+  // with an explicit type argument where it cannot be inferred.
   const WRITE_DOOR =
-    /\b(?:writeSidecar|writeDocBundle|mutateSidecar|mutateBib|writeTex)\s*\(/;
+    /\b(?:writeSidecar|writeSidecarMerged|writeDocBundle|mutateSidecar|mutateBib|writeTex)\s*(?:<[^>()]*>)?\s*\(/;
   const DEBOUNCE = /\bsetTimeout\s*\(/;
   const REGISTER = /\bregisterPendingFlusher\s*\(/;
   const REGISTRY_FILE = "src/lib/multi-window/pending-saves.ts";

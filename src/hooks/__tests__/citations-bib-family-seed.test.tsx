@@ -50,6 +50,22 @@ vi.mock("@/lib/storage", () => ({
   readSidecarIfExists: (id: string, file: string) => readSidecarIfExists(id, file),
   writeSidecar: (h: unknown, file: string, data: unknown) =>
     writeSidecar(h, file, data),
+  // The sidecar hook's write door since task 719. This suite is not about the
+  // merge and holds its reads open deliberately, so the double answers "file
+  // absent" — `mergeSidecarState` then returns the local snapshot verbatim,
+  // which is exactly the whole-snapshot write these legs were written against
+  // (and it cannot deadlock on a read this suite has not resolved yet).
+  mutateSidecar: async (
+    h: { docId: string },
+    file: string,
+    _defaultValue: unknown,
+    mutate: (current: unknown) => unknown,
+  ) => {
+    const next = mutate(null);
+    if (next === null) return null;
+    await writeSidecar(h, file, next);
+    return next;
+  },
   readBib: (id: string) => readBib(id),
   mutateBib: vi.fn(async () => null),
 }));
