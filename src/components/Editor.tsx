@@ -289,7 +289,13 @@ export interface EditorHandle {
    *  toolbar actions that need to create a footnote regardless of
    *  whether text is selected. */
   createEmptyFootnote: (opts?: { title?: string }) => { footnoteId: string } | null;
-  renumberFootnotes: () => void;
+  // NO `renumberFootnotes` (task 725). Footnote numbers are DERIVED, and their
+  // one owner is the extension's `appendTransaction` numberer, which runs
+  // inside the very transaction that inserts or removes an atom — so the
+  // document is already correctly numbered by the time any caller could ask.
+  // The handle used to expose a second walk that re-numbered every footnote
+  // 1..N, `\thanks` included, undoably and without an equality bail: it ran
+  // last, so it overwrote the right answer with a wrong one.
   getExamples: () => ExampleInfo[];
   scrollToExample: (exampleId: string, sourceEl?: HTMLElement | null) => void;
   // CHIP 5c: `insertExample` was RETIRED — the only caller was the now-retired
@@ -1231,24 +1237,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (landed.refused) return null; // task 396 — see the sibling above.
       return { footnoteId };
     },
-    renumberFootnotes(): void {
-      if (!editor) return;
-      const positions: { pos: number; attrs: any }[] = [];
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === "footnote") {
-          positions.push({ pos, attrs: node.attrs });
-        }
-        return true;
-      });
-      if (positions.length === 0) return;
-      let tr = editor.state.tr;
-      let counter = 1;
-      for (const { pos, attrs } of positions) {
-        tr = tr.setNodeMarkup(pos, undefined, { ...attrs, number: counter++ });
-      }
-      editor.view.dispatch(tr);
-    },
-
     getExamples(): ExampleInfo[] {
       if (!editor) return [];
       const out: ExampleInfo[] = [];

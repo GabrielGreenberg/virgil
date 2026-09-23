@@ -4,6 +4,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
+import { writeFootnoteNumbers } from "@/lib/footnote-numbering";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import {
   setAttrIfChanged,
@@ -216,20 +217,16 @@ export const Footnote = Node.create<FootnoteOptions>({
               from,
               nodeType.create({ content, footnoteId, number: 0 })
             );
-            let counter = 1;
+            // Numbers come from the ONE rule (task 725) — this walk collects
+            // positions, `writeFootnoteNumbers` decides the values, so the
+            // `\thanks` exemption and the equality bail cannot drift from the
+            // `appendTransaction` numberer below.
+            const typedPositions: number[] = [];
             trFixed.doc.descendants((node, pos) => {
-              if (node.type.name === "footnote") {
-                if (node.attrs.thanks) {
-                  // Acknowledgements don't consume the footnote counter.
-                  if (node.attrs.number !== 0) {
-                    trFixed.setNodeMarkup(pos, undefined, { ...node.attrs, number: 0 });
-                  }
-                } else {
-                  trFixed.setNodeMarkup(pos, undefined, { ...node.attrs, number: counter++ });
-                }
-              }
+              if (node.type.name === "footnote") typedPositions.push(pos);
               return true;
             });
+            writeFootnoteNumbers(trFixed, typedPositions);
             view.dispatch(trFixed);
             // Register the panel card via the registry's `footnote.run`
             // (surface "typed"). The bridge ADOPTS this just-inserted atom (via
@@ -322,22 +319,13 @@ export const Footnote = Node.create<FootnoteOptions>({
           const footnotes = structure.footnotes;
           if (footnotes.length === 0) return null;
 
-          const tr = newState.tr;
-          let num = 1;
-          for (const f of footnotes) {
-            const node = newState.doc.nodeAt(f.pos);
-            if (!node || node.type.name !== "footnote") continue;
-            if (f.thanks) {
-              if (node.attrs.number !== 0) {
-                tr.setNodeMarkup(f.pos, undefined, { ...node.attrs, number: 0 });
-              }
-            } else {
-              if (node.attrs.number !== num) {
-                tr.setNodeMarkup(f.pos, undefined, { ...node.attrs, number: num });
-              }
-              num++;
-            }
-          }
+          // The ONE rule (task 725): `writeFootnoteNumbers` owns the `\thanks`
+          // exemption AND the per-node equality bail, so an unchanged sequence
+          // still returns null and costs no observer fan-out.
+          const tr = writeFootnoteNumbers(
+            newState.tr,
+            footnotes.map((f) => f.pos),
+          );
 
           return tr.steps.length > 0 ? tr : null;
         },
