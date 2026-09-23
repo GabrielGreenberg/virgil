@@ -236,7 +236,7 @@ function renderMenu(editor: Editor) {
     <DragHandleMenu
       anchorRect={RECT}
       kind="selection"
-      ref={{ kind: "selection", from: 7, to: 11, paragraphId: "p-A" }}
+      target={{ kind: "selection", from: 7, to: 11, paragraphId: "p-A" }}
       editor={editor}
       canEdit
       onSelect={() => {}}

@@ -8003,7 +8003,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               // inside a titleField / codeBlock / latexComment show
               // Citation/footnote/suggest-edit enabled (the SELECTION-ref
               // residual of task 061).
-              ref={dragHandleMenuState.ref}
+              target={dragHandleMenuState.ref}
               editor={editor}
               // CHIP 7b: the UNIFORM collab read-only gate. `collab.canEditMainText`
               // (`!sidecar.enabled || iHavePen`) is the SSOT — false only when
@@ -8014,8 +8014,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               // (The HOST axis is conjoined inside `DragHandleMenu` from
               // `editor` — task 733. Passing it here too would be a second
               // copy of the same question.)
-              onSelect={(action) => {
-                const ref = dragHandleMenuState.ref;
+              onSelect={(action, liveRef) => {
+                // Task 737: act on the ref the menu FOLLOWED through every
+                // document change made while it was open — never the
+                // positions snapshotted at open.
+                const ref = liveRef ?? dragHandleMenuState.ref;
                 closeDragHandleMenu();
                 // Never rejects — the dispatcher reports its own failures
                 // (task 735).
