@@ -416,7 +416,7 @@ MUTATION_PANEL_POLICY: dict[str, _PanelPolicy] = {
                         "snippet envelope is dropped when restore re-appends its originalCard, "
                         "leaving the other card pointing at nothing. Restore it first, then link."),
             "examples": ("link refuses an example ($cardId): an example exists ONLY as its "
-                         "\\ex\u2026\\xe block in the .tex \u2014 the app neither reads nor writes "
+                         "\\ex…\\xe block in the .tex — the app neither reads nor writes "
                          "examples.json (the file is retired; see sidecar-value.ts `legacy`), "
                          "which is why examples is absent from PANEL_TO_SIDECAR. A record "
                          "written there would be read by nobody. Link the paragraph's cards "

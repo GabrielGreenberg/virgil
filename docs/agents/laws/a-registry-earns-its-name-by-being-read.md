@@ -5356,3 +5356,82 @@ is verified to trip them. Behaviour is pinned separately by
 after I changed something", check whether the owner already ran inside the same
 transaction. If it did, the helper is not a safety net — it is a second writer
 with worse information.
+
+---
+
+## The retirement half (task 726)
+
+> **A mechanism does not die when its last caller goes away — it dies when
+> someone says so, in a place CI reads.** A layer nothing runs stays perfectly
+> self-consistent: it type-checks, it keeps its tests, and its comments go on
+> describing a feature in confident plain English. The rationale is the thing
+> that gets read, so a dead layer is not neutral — it actively teaches the next
+> reader something false.
+
+The `example` card kind carried a card-level metadata layer declared in five
+places and wired in none:
+
+1. `src/hooks/useExamples.ts` — a complete per-doc sidecar hook (read, migrate,
+   merged write, `updateExampleTitle`, `deleteExample`) whose only occurrence of
+   `useExamples(` anywhere in `src/` or `library/` was its own definition.
+2. `sidecar-value.ts` declared `examples.json` `mount: true` — "the doc-mount
+   bundle pre-reads this, because a hook owns it". None did.
+3. `sidecar-merge.ts` held its record-merge rule, and `host-writability.ts`
+   mapped `example → "examples.json"`, both for a file no production module
+   opened.
+4. `CARD_REGISTRY.example` declared `textFields: ["title"]` under a comment
+   asserting a "panel-only display title". `ExampleCard.tsx` has never contained
+   the string `title`.
+5. The Python skill side refused to write `examples.json` with a rationale
+   naming `useExamples.syncFromEditor` — a function deleted two tasks earlier.
+
+**What made it durable is more interesting than what made it dead.** Task 570
+deleted this hook's editor-derived *reconcile* on exactly the right ground, and
+wrote "WIRE-it-or-DELETE-it" into `load-time-reconcile-census.test.ts`. It left
+the hook standing. The lesson was recorded; what it could not do was **fail**.
+And the phantom was load-bearing in the one way that matters: `assertContentCoverage`
+refuses a kind with neither `bodyField` nor `textFields`, so `example` passed the
+boot guard **on the strength of a field that does not exist**. Delete the phantom
+and the guard fires — which is why a dead declaration nobody can remove without
+breaking CI is worse than one nobody reads.
+
+**Two lists became derivations, and one absence became a declaration.**
+
+- `assertContentCoverage` used a three-name `allowedNull` hand-list. The harm a
+  content model prevents is a card-level DELETE destroying typed text, so the
+  permission now derives from the thing that causes the harm:
+  `lifecycle.delete === false` (no delete → nothing for a confirm to guard),
+  which covers `bib`, `error` and now `example`. Exactly one **granted**
+  exemption survives, `highlight` — it does delete, and legitimately without a
+  confirm, because it is a colour over a range. `CONFIRMLESS_BY_GRANT` is
+  exported so the suite reads the same value the boot guard does, and a leg
+  fails if the grant ever names a kind the derivation already covers (a no-op
+  hiding in a list that should hold only real exemptions).
+- `SIDECAR_VALUE` gained a `legacy?: true` column. A retired sidecar keeps its
+  row for ONE reason — the conflict scanner's base vocabulary is the whole
+  table, so a `examples (conflicted copy …).json` a folder already holds stays
+  recognisable — and `legacy` says that out loud. `SIDECAR_COLLECTIONS`'s
+  totality leg now subtracts legacy rows itself, so retiring the next sidecar is
+  a one-word diff instead of three silent deletions across three tables, and a
+  legacy row that *keeps* a merge rule fails.
+- `ExampleCard` builds its own body rather than going through `EditableCard`,
+  the one place that resolves `bodySchema` — so its two `BorrowedMainText`
+  mounts took that component's hardcoded `"card"` default and agreed with
+  `CARD_REGISTRY.example.bodySchema` **by coincidence**. They read the registry
+  now. A facet nothing reads is not an SSOT, even when it happens to be right.
+
+**Guard:** `sidecar-hook-caller-census.test.ts`, against the real tree, in three
+rules — R1 a per-doc sidecar hook (one whose code reaches `readSidecar` /
+`writeSidecarMerged` / `mutateSidecar` / `usePersistentState`) must have a
+production CALLER; R2 a `mount: true` row must be SPELLED by some production
+module other than the four SSOT tables; R3 a `legacy` row is `mount: false` and
+spelled by nothing. All three planted in the falsifying direction (a synthetic
+caller-less hook; `examples.json` flipped back to `mount: true`; the retired
+name re-spelled in a production module), each verified to fail. R1's one
+allowlist — the two hooks consumed by other hooks — is itself checked in the
+falsifying direction, so it can never excuse a dead one.
+
+**Corollary worth carrying:** when a deletion makes a guard fire, ask whether
+the guard was measuring the right thing. Here it was not — it asked "does this
+kind name a field?" when the question is "can this kind delete typed text?" A
+phantom that satisfies a proxy is the proxy's fault as much as the phantom's.
