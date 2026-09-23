@@ -250,3 +250,35 @@ export function findSourceNodeByUuid(
   });
   return result;
 }
+
+/**
+ * Resolve a mirrored source node AND re-stamp the hint ref with where it was
+ * found — the one door for a mirror body that has no per-transaction
+ * subscriber to map its range forward.
+ *
+ * A float body keeps its `sourceRangeRef` live through `useFloatMainSync`,
+ * which maps the range on every main transaction (`trackSourceRange`, O(steps))
+ * and simply READS the ref as a hint. A DOCKED CARD cannot do that: a panel
+ * renders one card per example, so a per-transaction subscriber per card would
+ * be N subscribers on the typing path — exactly what keystroke sanctity's
+ * allowlist exists to keep out. Task 723's answer is that the card's hint is
+ * maintained by its own resolutions instead: every read re-stamps, so the
+ * write-back that follows the previous write-back is hinted, and a hint that
+ * went stale (a foreign edit upstream moved the block) self-heals after ONE
+ * fallback walk rather than staying stale forever.
+ *
+ * Safety is `findSourceNodeByUuid`'s: a hint is verified against type + uuid +
+ * exact extent before it is trusted, so a stale hint costs a wasted check and
+ * never a wrong answer. A miss clears the ref — the node is gone, and a hint
+ * pointing at where it used to be would only slow the next read down.
+ */
+export function findAndTrackSourceNode(
+  doc: PMNode,
+  uuid: string,
+  typeNames: string | readonly string[],
+  hintRef: { current: SourceRange | null },
+): FoundSourceNode | null {
+  const src = findSourceNodeByUuid(doc, uuid, typeNames, hintRef.current);
+  hintRef.current = src ? { from: src.start, to: src.end } : null;
+  return src;
+}
