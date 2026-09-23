@@ -207,3 +207,57 @@ describe("task 386's protection (the defect leg, re-run against the new predicat
     expect(e.defaultPrevented).toBe(false);
   });
 });
+
+// ── census ──
+// The host getter is no longer an ARIA detail: it is the ownership statement
+// the keyboard controller reads. Four menus used to carry a character-identical
+// private copy of it, which is how the FOURTH shipped — and how a fifth would.
+// There is now ONE resolver; nothing else may re-derive "the focused
+// contentEditable".
+describe("census — one resolver for the focused contentEditable", () => {
+  it("no production file but caret-host.ts pairs document.activeElement with isContentEditable", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join, resolve } = await import("node:path");
+
+    const SRC = resolve(__dirname, "../../..");
+    const ALLOWED = resolve(SRC, "components/menu/caret-host.ts");
+
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        if (name === "node_modules" || name === "__tests__") continue;
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) files.push(p);
+      }
+    };
+    walk(SRC);
+
+    // Comments describe the rule; only CODE may break it.
+    const stripComments = (s: string) =>
+      s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+    const offenders = files.filter((p) => {
+      if (p === ALLOWED) return false;
+      const code = stripComments(readFileSync(p, "utf8"));
+      return code.includes("activeElement") && code.includes("isContentEditable");
+    });
+
+    expect(offenders.map((p) => p.slice(SRC.length + 1))).toEqual([]);
+  });
+
+  it("every editor-anchored menu passes the shared resolver as its host", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const SRC = resolve(__dirname, "../../..");
+    for (const f of [
+      "components/DragHandleMenu.tsx",
+      "components/ActionsMenuPanel.tsx",
+      "components/HeadingTypeMenu.tsx",
+      "components/SelectionColorPopover.tsx",
+    ]) {
+      const src = readFileSync(resolve(SRC, f), "utf8");
+      expect(src, f).toContain("getActiveDescendantHost={caretEditableHost}");
+    }
+  });
+});
