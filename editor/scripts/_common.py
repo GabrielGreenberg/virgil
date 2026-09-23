@@ -314,6 +314,63 @@ def write_json(path: Path, data: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Title provenance (T6/C12) — the cross-language half.
+#
+# The app records WHETHER a card's title was machine-supplied (`titleAuto`)
+# instead of guessing from the title's SHAPE. `isAutoTitle` — the old
+# `^<Label> <digits>$` heuristic — is DEMOTED (src/panels/panel-registry.ts):
+# provably ambiguous (a generated "Report 8" and a typed "Report 8" are
+# byte-identical), it survives only as a one-time legacy fallback inside
+# `resolveLoadedTitle`, for records written before the bit existed.
+#
+# That demotion holds only if every CURRENT writer stamps the bit. The app is
+# not the only writer: these scripts write the same sidecars. A record we leave
+# bit-less is classified by the demoted heuristic FOREVER AFTER — and, because
+# the load sites run with `persistMigrationOnLoad`, the guess is written back to
+# disk. On a todo the resolved field is the BODY (`text`), so an agent todo
+# whose body happens to read "Task 2" was emptied on the next open, permanently.
+#
+# So the rule is spelled ONCE, here, over the registry-derived manifest
+# `card_titles.json`, and every card builder in this silo goes through it.
+# ---------------------------------------------------------------------------
+
+_CARD_TITLES: dict = json.loads(
+    (Path(__file__).with_name("card_titles.json")).read_text(encoding="utf-8")
+)
+
+#: kind → the record field whose provenance `titleAuto` governs. A kind absent
+#: here either does not auto-title (registry `titleLabel: null`) or is named in
+#: `card_titles.json`'s `exempt` map with its reason.
+TITLE_FIELD_BY_KIND: dict[str, str] = dict(_CARD_TITLES["titleField"])
+
+
+def title_fields(kind: str, value: str | None, *, auto: bool | None = None) -> dict:
+    """The title + `titleAuto` pair for a card record of `kind`.
+
+    The app's rule, mirrored exactly (`useReports.addReport` FORK-1 and its four
+    siblings): a supplied title is user/agent-owned (`titleAuto: False` — never
+    strip it), a blank one is the machine default (`True` — a render-time
+    placeholder, strippable on load).
+
+    `auto` overrides the derivation for the one case the app has no analogue
+    for: a value this silo GENERATED as a placeholder rather than received
+    (see `apply_response._archive_title`). Pass it only with a reason.
+
+    Splat the result into the record literal — `{**title_fields("note", a.title),
+    ...}` — so the field NAME comes from the manifest too (a todo's "title" is
+    its body `text`) and no builder can emit the title without the bit.
+    """
+    field_name = TITLE_FIELD_BY_KIND.get(kind)
+    if field_name is None:
+        die(
+            f"title_fields: kind {kind!r} declares no title field"
+            f" (editor/scripts/card_titles.json)"
+        )
+    text = value or ""
+    return {field_name: text, "titleAuto": (not text) if auto is None else auto}
+
+
+# ---------------------------------------------------------------------------
 # Card → paragraph helpers (mirrors src/links/links.ts).
 # ---------------------------------------------------------------------------
 
