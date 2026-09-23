@@ -2,14 +2,11 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import CodeMirror, { EditorView } from "@uiw/react-codemirror";
-import { latex } from "codemirror-lang-latex";
-import { EditorState } from "@codemirror/state";
+import { SourcePodCodeMirror } from "./source-pod-code-mirror";
 import ConfirmDialog from "./ConfirmDialog";
 import { useFieldDraft } from "./field-draft";
 import { iconHint } from "@/components/Hint";
 import type { SourcePodDerive } from "./source-pod-derive";
-import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import {
   commitLiveValue,
@@ -60,44 +57,6 @@ export interface SourcePodConfig {
    */
   derive?: SourcePodDerive;
 }
-
-// Slimmed-down version of CodeEditor.tsx's virgilTheme, sized for inline
-// embedding inside a doc paragraph rather than a full code-view pane.
-// Border tone matches the heading-annotation lozenge so the pod reads as
-// Virgil-native chrome rather than a generic input.
-export const sourcePodTheme = EditorView.theme({
-  "&": {
-    fontSize: "13px",
-    fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
-    backgroundColor: "var(--code-block-bg, rgba(124, 94, 60, 0.04))",
-    borderRadius: "var(--radius-md)",
-    border: "1px solid var(--heading-annotation-border, #a8c4de)",
-  },
-  "&.cm-focused": {
-    outline: "none",
-  },
-  ".cm-content": {
-    padding: "10px 12px",
-    paddingRight: "44px",
-    caretColor: "var(--accent)",
-  },
-  ".cm-line": {
-    padding: "0",
-  },
-  ".cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.15) !important",
-  },
-  "&.cm-focused .cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.2) !important",
-  },
-  ".cm-cursor": {
-    borderLeftColor: "var(--accent)",
-  },
-  ".cm-matchingBracket": {
-    backgroundColor: "rgba(124, 94, 60, 0.2)",
-    outline: "1px solid rgba(124, 94, 60, 0.4)",
-  },
-});
 
 
 /**
@@ -593,36 +552,20 @@ export default function SourcePodNodeView({
         </>
       ) : sourceMode ? (
         <div contentEditable={false} className="source-pod-editor relative">
-          <CodeMirror
+          {/* THE pod's CodeMirror mount, shared with the float twin
+              (source-pod-code-mirror.tsx). The extension set, the theme and
+              the `basicSetup` live at module scope there and the change
+              handler is made identity-stable there, because every one of
+              those is a key of `@uiw`'s reconfigure effect — an inline
+              literal here cost a full CodeMirror reconfigure, and a fresh
+              never-pruned theme stylesheet, on EVERY keystroke (task 729). */}
+          <SourcePodCodeMirror
             value={source}
             onChange={setSource}
             // The gate's visible half: read-only the surface still SELECTS
             // (a reader can copy the LaTeX out) but takes no caret and no
             // keystroke, so nothing can be typed that the enforcer will drop.
             editable={editable}
-            extensions={[
-              // `enableLinting` defaults to TRUE in codemirror-lang-latex despite
-              // what the .d.ts suggests — the linter checks for `\begin{document}`
-              // and unmatched environments, both of which fire on any raw LaTeX
-              // fragment. We never want those diagnostics here.
-              latex({ enableLinting: false }),
-              sourcePodTheme,
-              EditorView.lineWrapping,
-              // Defense-in-depth: also suppress browser spell-check so plain
-              // words inside `{…}` arguments don't get wavy underlines.
-              EditorView.contentAttributes.of(NEVER_SPELLCHECK_ATTRS),
-              EditorState.tabSize.of(2),
-            ]}
-            basicSetup={{
-              lineNumbers: false,
-              highlightActiveLineGutter: false,
-              highlightActiveLine: false,
-              bracketMatching: true,
-              foldGutter: false,
-              indentOnInput: true,
-              closeBrackets: true,
-              autocompletion: false,
-            }}
           />
           <PodCorner
             chipLabel={config.chipLabel}

@@ -30,9 +30,7 @@
  */
 
 import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
-import CodeMirror, { EditorView } from "@uiw/react-codemirror";
-import { latex } from "codemirror-lang-latex";
-import { EditorState } from "@codemirror/state";
+import { SourcePodCodeMirror } from "@/components/source-pod-code-mirror";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -53,7 +51,6 @@ import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
 import type { FloatSourceKind } from "@/lib/float-sync";
 import { FloatTitleField } from "./float-title-field";
 import type { SourcePodDerive } from "@/components/source-pod-derive";
-import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 
 /** What one source-pod kind contributes over the shared body. */
 export interface SourcePodFloatConfig {
@@ -73,39 +70,6 @@ export interface SourcePodFloatConfig {
    */
   derive?: SourcePodDerive;
 }
-
-// Theme matches the in-place `sourcePodTheme` so the
-// released popout reads as the same `.source-pod` as the lifted ghost:
-// same blue pod border + radius, same content padding (the 44px right
-// inset clears the ".tex" chip). The border color is the shared
-// --heading-annotation-border var, so the pod tone stays single-source.
-const sourcePodFloatTheme = EditorView.theme({
-  "&": {
-    fontSize: "13px",
-    fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
-    backgroundColor: "var(--code-block-bg, rgba(124, 94, 60, 0.04))",
-    borderRadius: "var(--radius-md)",
-    border: "1px solid var(--heading-annotation-border, #a8c4de)",
-  },
-  "&.cm-focused": { outline: "none" },
-  ".cm-content": {
-    padding: "10px 12px",
-    paddingRight: "44px",
-    caretColor: "var(--accent)",
-  },
-  ".cm-line": { padding: "0" },
-  ".cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.15) !important",
-  },
-  "&.cm-focused .cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.2) !important",
-  },
-  ".cm-cursor": { borderLeftColor: "var(--accent)" },
-  ".cm-matchingBracket": {
-    backgroundColor: "rgba(124, 94, 60, 0.2)",
-    outline: "1px solid rgba(124, 94, 60, 0.4)",
-  },
-});
 
 export function SourcePodFloatBody({
   cardKey,
@@ -310,27 +274,16 @@ export function SourcePodFloatBody({
             <div className="source-pod">
               {banner && <div className="source-pod-banner">{banner}</div>}
               <div className="source-pod-editor relative">
-                <CodeMirror
+                {/* THE shared pod mount (source-pod-code-mirror.tsx) — the
+                    same component the docked `SourcePodNodeView` renders, so
+                    the released float frames identically by CONSTRUCTION
+                    rather than by two hand-synced copies of one theme, and
+                    inherits the identity-stable configuration that keeps a
+                    keystroke from reconfiguring CodeMirror (task 729). */}
+                <SourcePodCodeMirror
                   value={code}
                   onChange={handleChange}
                   editable={mainEditable}
-                  extensions={[
-                    latex({ enableLinting: false }),
-                    sourcePodFloatTheme,
-                    EditorView.lineWrapping,
-                    EditorView.contentAttributes.of(NEVER_SPELLCHECK_ATTRS),
-                    EditorState.tabSize.of(2),
-                  ]}
-                  basicSetup={{
-                    lineNumbers: false,
-                    highlightActiveLineGutter: false,
-                    highlightActiveLine: false,
-                    bracketMatching: true,
-                    foldGutter: false,
-                    indentOnInput: true,
-                    closeBrackets: true,
-                    autocompletion: false,
-                  }}
                 />
                 {/* Kind chip — the SHARED `.source-pod-corner` / `.source-pod-chip`
                     the in-place pod wears, so the released float frames identically

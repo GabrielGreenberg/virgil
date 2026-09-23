@@ -680,6 +680,63 @@ which drives the same keystroke burst through the card over a 4-block and a
 resolver, so the main editor's own plugins reacting to the write cannot swamp
 the measurement): 7212 visits before, 0 after.
 
+### The embedded-editor half: a prop identity is a keystroke cost
+
+> **Where Virgil embeds a THIRD-PARTY editor, that editor's own re-configuration
+> triggers are part of this law.** A React wrapper that reconfigures on prop
+> IDENTITY turns an inline `{[…]}` / `{{…}}` literal, or a `useCallback` keyed on
+> the very text being typed, into O(1)-looking code that costs a full engine
+> reconfigure per character. The configuration belongs at MODULE SCOPE, the
+> handler identity belongs to the wrapper (a latest-ref behind an empty-dep
+> callback), and every wearer takes the ONE shared mount so the next one inherits
+> the stability instead of re-deriving it.
+
+Task 729, the source pod (`texBlock` / `forestBlock`). `@uiw/react-codemirror`
+dispatches `StateEffect.reconfigure` from an effect keyed on the identity of
+`[theme, extensions, height…, editable, readOnly, indentWithTab, basicSetup,
+onChange, onUpdate]`. Both pod wearers handed it three identities that change
+every render — an inline `extensions` array (with `latex()` minting a fresh
+`LanguageSupport` each call), an inline `basicSetup` object, and an `onChange`
+whose deps included the source string it compares against — inside a component
+that re-renders per keystroke *because the keystroke writes the source back*
+through `updateAttributes` / `setNodeMarkup`. React Compiler is not enabled, so
+nothing memoized the literals.
+
+The expensive half is not the reconfigure but what it MOUNTS: `@uiw` builds its
+`defaultThemeOption = EditorView.theme({…})` inside the hook body, so each
+reconfigure installs a brand-new `StyleModule` — and `style-mod`'s `mount` never
+prunes. Its module list only grows, and in the `<style>`-tag path it rebuilds the
+tag's entire `textContent` from every accumulated module each time. Typing N
+characters therefore left N orphan theme modules behind and re-serialised all of
+them on the way: the pod got slower the longer you typed, it slowed the WHOLE
+page (the injected stylesheet is document-wide), and it did not recover until
+reload.
+
+The fix is the shared mount
+[src/components/source-pod-code-mirror.tsx](../../../src/components/source-pod-code-mirror.tsx)
+— one module-scope extension set, one module-scope `basicSetup`, one theme
+(the float's hand-synced duplicate is deleted), and a permanently stable
+`onChange` that forwards through a ref so stability is not staleness. Guard:
+[source-pod-codemirror-stability.test.tsx](../../../src/components/__tests__/source-pod-codemirror-stability.test.tsx)
+counts reconfigures the way the library does — by the identity of exactly those
+props across mounts — for BOTH wearers, with a canary proving the counter can
+see churn (a deliberately churning mount reads as N), a leg proving a real edit
+still lands, and a census holding both wearers to the one mount. Neutered to the
+pre-fix shape, both burst legs read 40 reconfigures for 40 keystrokes.
+
+Its second lesson is for the CENSUS next door. Task 728's
+[embedded-source-editor-gate-census.test.ts](../../../src/__tests__/embedded-source-editor-gate-census.test.ts)
+found its population by `text.includes("@uiw/react-codemirror")`; hoisting the
+mount would have emptied that population silently — green, and covering nothing,
+for the very two modules the rule was written for. A census whose membership test
+names a MECHANISM is one refactor away from vacuous, so the surface set is
+derived instead: a module counts as a CodeMirror surface when it imports the
+vendor package and hands the mount an `editable={…}` it takes from its CALLER,
+because delegating editability is exactly what makes its callers the
+gate-holders. The two CodeMirror modules that own their editability (`CodeEditor`,
+the style-file modal) still fall out on their own, and their callers are not
+dragged in.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).
