@@ -204,7 +204,15 @@ describe("DragHandleMenu — aria-activedescendant (no focus theft)", () => {
     expect(document.activeElement).toBe(editable); // sanity: jsdom focused it
 
     render(<DragHandleMenu anchorRect={RECT} onSelect={() => {}} onClose={() => {}} kind="selection" />);
-    key("ArrowDown");
+    // Dispatch on the EDITABLE, the way a browser does — not on `window`
+    // (task 734: a window-targeted key never exercised the controller's
+    // editable bail, so this assertion used to hold in a state production
+    // could not produce).
+    act(() => {
+      editable.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+      );
+    });
 
     const active = activeButton();
     expect(active).toBeDefined();

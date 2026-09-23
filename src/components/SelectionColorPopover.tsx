@@ -45,6 +45,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import { caretEditableHost } from "./menu/caret-host";
 import { useMenuItem } from "./menu/useMenuItem";
 import type { MenuRole } from "./menu/types";
 import { iconHint } from "@/components/Hint";
@@ -82,19 +83,6 @@ interface Props {
   onContainerRef?: (el: HTMLDivElement | null) => void;
 }
 
-/** The PM view's focused contentEditable holds the caret while the popover is
- *  open (the popover never steals focus — roving aria-activedescendant only).
- *  Use it as the activedescendant host so a screen reader tracks the active
- *  swatch without the caret moving; fall back to null (the provider then no-ops
- *  the attribute write) if focus isn't on an editable element. Mirrors
- *  `HeadingTypeMenu` / `DragHandleMenu`'s resolver. */
-function getActiveDescendantHost(): HTMLElement | null {
-  if (typeof document === "undefined") return null;
-  const el = document.activeElement;
-  if (el instanceof HTMLElement && el.isContentEditable) return el;
-  return null;
-}
-
 export function SelectionColorPopover({
   anchorRect,
   palette,
@@ -124,7 +112,7 @@ export function SelectionColorPopover({
       anchorRect={anchorRect}
       placements={COLOR_POPOVER_PLACEMENTS}
       gap={6}
-      getActiveDescendantHost={getActiveDescendantHost}
+      getActiveDescendantHost={caretEditableHost}
       onClose={onClose}
       ariaLabel="Text color"
       containerStyle={{

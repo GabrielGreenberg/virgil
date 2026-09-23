@@ -56,6 +56,7 @@ import { IconExample } from "./editor-layout/panel-icons";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import { caretEditableHost } from "./menu/caret-host";
 import { MenuGrid, MenuList } from "./menu/regions";
 import {
   MenuItemsFromRegistry,
@@ -155,18 +156,6 @@ const PANEL_PLACEMENTS: FloatingMenuPlacement[] = [
   { side: "below", align: "start" },
   { side: "above", align: "start" },
 ];
-
-/** The PM view's focused contentEditable holds the caret while the menu is
- *  open (the menu never steals focus — roving aria-activedescendant only). Use
- *  it as the activedescendant host so a screen reader tracks the active item
- *  without the caret moving; fall back to null (the provider then no-ops the
- *  attribute write) if focus isn't on an editable element. */
-function getActiveDescendantHost(): HTMLElement | null {
-  if (typeof document === "undefined") return null;
-  const el = document.activeElement;
-  if (el instanceof HTMLElement && el.isContentEditable) return el;
-  return null;
-}
 
 export function ActionsMenuPanel({
   editor,
@@ -491,7 +480,7 @@ export function ActionsMenuPanel({
         placements={PANEL_PLACEMENTS}
         gap={4}
         letterShortcuts
-        getActiveDescendantHost={getActiveDescendantHost}
+        getActiveDescendantHost={caretEditableHost}
         // Preserve the load-bearing `e.stopPropagation()` on Escape (was
         // ActionsMenuPanel.tsx:338): keeps Escape from reaching tab-indent.ts's
         // Escape→blur handler, so closing the menu doesn't drop the editor's
