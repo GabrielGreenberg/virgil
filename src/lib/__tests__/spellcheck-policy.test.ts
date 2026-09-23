@@ -152,8 +152,19 @@ describe("census — every opt-out enters the door", () => {
       if (src.includes("NEVER_SPELLCHECK_ATTRS")) attrs.push(rel);
       if (src.includes("NEVER_SPELLCHECK_PROPS")) props.push(rel);
     }
-    // Two CodeMirror source pods + the main editor's read-only branch.
-    expect(attrs.length).toBeGreaterThanOrEqual(3);
+    // The source pod's ONE shared CodeMirror mount + the main editor's
+    // read-only branch. This floor was 3 while the pod's configuration was
+    // duplicated across its docked and floating wearers; task 729 hoisted both
+    // into `components/source-pod-code-mirror.tsx`, so the third caller is gone
+    // because the COPY is gone, not because an opt-out was dropped. The
+    // assertion under it is what keeps the lowered floor honest: the pod's
+    // mount must still be NAMED among the callers, so dropping its opt-out
+    // outright cannot pass as another consolidation.
+    expect(attrs.length).toBeGreaterThanOrEqual(2);
+    expect(
+      attrs.some((rel) => rel.includes("source-pod-code-mirror")),
+      "the source pod's shared CodeMirror mount must still opt out of native spellcheck",
+    ).toBe(true);
     // The discrete form inputs.
     expect(props.length).toBeGreaterThanOrEqual(6);
   });
