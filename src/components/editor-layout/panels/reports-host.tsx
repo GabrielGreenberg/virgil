@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import type { CardMorphHandler } from "@/cards/types";
 import ReportsPanel from "@/panels/Reports";
 import type { ReportItem, ReportCard, ReportRequestCard } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
@@ -22,7 +23,7 @@ export interface ReportsHostProps {
   setRequestAiRequest: (id: string, value: boolean) => void;
   /** Morph report ⇄ report-request via the kind-chevron — routes through the
    *  EditorPane morph chokepoint (lossy confirm + float-key remap). */
-  convertCard: (id: string, toKind: "report" | "report-request") => void;
+  convertCard: CardMorphHandler;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;

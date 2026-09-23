@@ -18,7 +18,8 @@ import { isModeB } from "@/links/_shared/types";
 import { useLinkedAnchorText } from "@/links/_shared/useLinkedAnchorText";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { cardPopKey } from "@/panels/panel-registry";
-import { cardKindsForPanel } from "@/cards/predicates";
+import { morphOptionsFor } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { FONT_SERIF } from "@/lib/font-stacks";
@@ -39,7 +40,7 @@ export function HighlightCard({
   card: HighlightCardData;
   selected: boolean;
   /** Morph this highlight ⇄ note via the kind-chevron (R14, bidirectional). */
-  onConvert?: (id: string, toKind: "note" | "highlight") => void;
+  onConvert?: CardMorphHandler;
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -118,14 +119,8 @@ export function HighlightCard({
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
       kind="highlight"
-      kindOptions={onConvert ? cardKindsForPanel("notes") : undefined}
-      onKindChange={
-        onConvert
-          ? (k) => {
-              if (k !== "highlight") onConvert(card.id, "note");
-            }
-          : undefined
-      }
+      kindOptions={onConvert ? morphOptionsFor("highlight") : undefined}
+      onKindChange={onConvert ? (k) => onConvert("highlight", card.id, k) : undefined}
       canJump={canJump}
       onJump={(e) => {
         if (onJump)

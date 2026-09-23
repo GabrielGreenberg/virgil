@@ -1,6 +1,7 @@
 "use client";
 
 import type { Editor } from "@tiptap/react";
+import type { CardMorphHandler } from "@/cards/types";
 import type {
   RevisionCard,
   RevisionRequestCard as RevisionRequestCardData,
@@ -38,7 +39,7 @@ interface BuildArgs {
   /* NO acceptSuggestion / rejectSuggestion (task 684): the card resolves every
      landing verb from the `PendingChangeController` context, so omni no longer
      hands it a bare status write where the docked panel handed it an Apply. */
-  convertCard: (id: string, toKind: "comment" | "suggestion") => void;
+  convertCard: CardMorphHandler;
   deleteCard: (id: string) => void;
 }
 

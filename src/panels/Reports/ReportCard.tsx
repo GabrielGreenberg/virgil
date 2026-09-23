@@ -12,7 +12,9 @@ import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
-import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
+import { bodyVariantForCardKind } from "@/cards/predicates";
+import { morphOptionsFor } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import { AuthorByline } from "./AuthorByline";
 
 export function ReportCard({
@@ -38,7 +40,7 @@ export function ReportCard({
   onUpdateTitle: (id: string, title: string) => void;
   /** Morph report ⇄ report-request via the kind-chevron (lossy: drops the
    *  title/author byline; the host confirms first). */
-  onConvert?: (id: string, toKind: "report" | "report-request") => void;
+  onConvert?: CardMorphHandler;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
@@ -81,14 +83,8 @@ export function ReportCard({
       id={report.id}
       cardKind="report"
       kind="report"
-      kindOptions={onConvert ? cardKindsForPanel("reports") : undefined}
-      onKindChange={
-        onConvert
-          ? (k) => {
-              if (k !== "report") onConvert(report.id, "report-request");
-            }
-          : undefined
-      }
+      kindOptions={onConvert ? morphOptionsFor("report") : undefined}
+      onKindChange={onConvert ? (k) => onConvert("report", report.id, k) : undefined}
       selected={isSelected}
       theme={theme}
       hideToolbar

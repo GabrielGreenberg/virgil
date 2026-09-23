@@ -113,6 +113,21 @@ export interface CardLifecycleCapability {
  *  entry on morph (the C8 lossy-morph-leak class). */
 export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys" | "formatting";
 
+/** The one shape a kind-chevron dispatches through (task 722). Every card that
+ *  renders the chevron — docked, omni and float chrome alike — hands the
+ *  handler its OWN kind, the card id, and **the kind the user selected**; the
+ *  chokepoint (`convertCardWithRemap`) resolves the target from the registry
+ *  (`resolveMorphTarget`) rather than from a literal written at the call site.
+ *  Before, each site tested the selection against its own kind and then passed
+ *  a hardcoded partner, so the selection never reached the mutation — and the
+ *  confirm dialog, generated from `morph.to`, could name a different kind than
+ *  the one the morph produced. */
+export type CardMorphHandler = (
+  fromKind: CardKind,
+  id: string,
+  toKind: CardKind,
+) => void;
+
 /** Declarative content model (T4 §3.1). The single descriptor `cardHasContent`
  *  walks — both the panel-trash and margin-marker delete-confirm read it, so a
  *  kind can never silently delete user content the confirm couldn't see.

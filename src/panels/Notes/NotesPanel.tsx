@@ -1,6 +1,7 @@
 "use client";
 
 import type { DockedJumpGate } from "@/links/card-anchor-rows";
+import type { CardMorphHandler } from "@/cards/types";
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type {
@@ -29,7 +30,7 @@ interface NotesPanelProps {
   /** Returns null if no live selection (highlight requires a text range). */
   onAddHighlight?: (anchorRect?: DOMRect) => HighlightCardData | null;
   /** Morph note ⇄ highlight via the kind-chevron (R14, bidirectional). */
-  onConvertCard: (id: string, toKind: "note" | "highlight") => void;
+  onConvertCard: CardMorphHandler;
   onUpdate: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
   onSetNoteAiRequest: (id: string, value: boolean) => void;

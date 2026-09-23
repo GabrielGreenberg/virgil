@@ -5152,3 +5152,79 @@ CI: `lifecycle-cascade-criterion.test.ts` (derived criterion + the per-row
 prose census), `duplicate-slice-mode-b-cascade.test.ts` (the real walker, over
 every Mode-B kind), `useTodos-clone-envelope.test.ts`,
 `lifecycle-coverage-assertion.test.ts`.
+
+#### The chooser half: derived OPTIONS, hand-written ACTION
+
+Same law at a narrower seam (task 722), and the variant worth naming on its
+own: a menu whose CHOICES come from the registry and whose DISPATCH is a
+literal. The user's selection is tested and then thrown away.
+
+`CARD_REGISTRY` declares each morphing kind's target once —
+`morph: { to: "report-request", lossy: true, drops: [...] }` — and validates it
+hard at boot (shares the panel, reciprocated by the target, `lossy` pinned to
+`drops`). Two consumers read it: the generated confirm copy
+(`CARD_REGISTRY[morph.to].label`) and the `card-morphed` signal. **Nothing on
+the dispatch path did.** All fifteen kind-chevrons — seven docked cards and
+their eight float-chrome twins — re-derived the target as
+
+```tsx
+onKindChange={(k) => { if (k !== "report") onConvert(id, "report-request"); }}
+```
+
+a not-me test that consults the selection and a hardcoded partner that
+ignores it. TypeScript could not see it: `onConvert` was typed to a per-pair
+union and the handler passed a literal member of that union, never the `k` it
+had just tested. The same re-derivation ran twice more in the host — the morph
+`mutate` switch keyed on the FROM kind, and four per-pair adapters that
+recovered the from-kind by INVERTING a data `toKind`
+(`toKind === "report-request" ? "report" : "report-request"`).
+
+No user-visible defect today, because every morphing panel holds exactly a
+pair: `k !== me` and `morph.to` agree by coincidence, not by construction. The
+menu, though, came from `cardKindsForPanel(panel)` — *every* kind sharing the
+panel — so a third kind added to a morphing panel would appear in the menu and
+morph the card to the hardcoded other one, while the confirm dialog, generated
+from `morph.to`, named the correct target. A dialog that names one outcome and
+performs another.
+
+> **Where a chooser's options are derived, its action is derived from the SAME
+> fact — and the selection is what travels.** A handler that binds the user's
+> choice and dispatches a literal has a decorative parameter.
+
+Both halves now read one `morph.to`, in
+[card-registry.tsx](../../../src/cards/card-registry.tsx):
+
+- `morphOptionsFor(kind)` builds the menu from the morph ROUTE (the kind plus
+  its declared target), ordered by panel membership rather than defined by it.
+  A third kind no route reaches is simply not offered — so an option whose
+  action goes elsewhere is unrepresentable, not merely avoided. It returns the
+  identical list for all eight kinds today, so no chevron changed.
+- `resolveMorphTarget(fromKind, selected)` is the one door between the
+  selection and the mutation, and every chevron passes `k` through to it via
+  the single `CardMorphHandler` shape `(fromKind, id, toKind)`.
+- `assertMorphCoverage` gained the tie: a declared `morph.to` that
+  `morphOptionsFor` does not offer is a target no user can select.
+
+The simplification is the real prize. The four inverting adapters are DELETED —
+the cards pass their own spine kind, so there is nothing left to invert — and
+the chokepoint's `mutate` switch keys on the RESOLVED TARGET, because the
+data discriminator each per-doc hook wants (`"suggestion"`,
+`"report-request"`, …) is a fact about the kind the card is BECOMING. The hooks'
+own `(id, dataToKind)` signatures are untouched: they name their sidecar's
+on-disk discriminator, which is not a spine kind. `WithMorphDoor<T>` in
+`EditorPane` (the `WiredTodosHook` pattern) states that the hook bag's
+`convertCard` IS the chokepoint, so no surface can reach the raw per-sidecar
+mutation past it.
+
+CI: `morph-target-from-registry.test.ts` — menu/route parity for every morphing
+kind, and the third-kind proof done by INSTALLING a fixture kind rather than by
+reasoning about one (unreachable → not offered and resolves to null; declared
+as the target → offered, dispatched, and named by the confirm copy, with the
+old literal's kind unreachable). `morph-chevron-dialect-census.test.ts` bans the
+SHAPE at all fifteen sites: no handler compares its parameter to a card-kind
+literal, and every handler passes its parameter on (the body after the arrow,
+so the parameter's own declaration can't satisfy the rule — it did, and a
+planted selection-dropping handler passed until the slice was tightened). A
+handler may still name its OWN kind: that is the FROM argument, the same kind
+the component writes in `kind="…"` two lines above. What it may not do is
+decide the TARGET.

@@ -1,6 +1,7 @@
 "use client";
 
 import type { CutterSuggestionCard as CutterSuggestionCardData } from "@/lib/types";
+import type { CardMorphHandler } from "@/cards/types";
 import {
   CopyButton,
   FieldTitleRow,
@@ -35,7 +36,7 @@ export function CutterSuggestionCard(props: {
   selected: boolean;
   onUpdateField: (id: string, field: SuggestionField, value: string) => void;
   /** Morph suggestion ⇄ comment via the kind-chevron. */
-  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvert?: CardMorphHandler;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;

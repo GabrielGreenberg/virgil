@@ -107,7 +107,7 @@ function ctxWith(partial: Partial<CardFloatCtx>): CardFloatCtx {
     selectedNoteId: null,
     selectedTodoId: null,
     toggleTodo: () => {},
-    convertNotesCard: () => {},
+    morphCard: () => {},
     // The card-anchor authority the Jump gate reads (task 665).
     resolveCardRows: () => ({ rows: [], anchored: false }),
     ...partial,

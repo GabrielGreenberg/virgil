@@ -13,7 +13,9 @@ import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
-import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
+import { bodyVariantForCardKind } from "@/cards/predicates";
+import { morphOptionsFor } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 
@@ -38,7 +40,7 @@ export function ReportRequestCard({
   selected: boolean;
   onUpdate: (id: string, content: JSONContent) => void;
   /** Morph report-request ⇄ report via the kind-chevron. */
-  onConvert?: (id: string, toKind: "report" | "report-request") => void;
+  onConvert?: CardMorphHandler;
   onSetAiRequest?: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -80,13 +82,9 @@ export function ReportRequestCard({
       id={request.id}
       cardKind="report-request"
       kind="report-request"
-      kindOptions={onConvert ? cardKindsForPanel("reports") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("report-request") : undefined}
       onKindChange={
-        onConvert
-          ? (k) => {
-              if (k !== "report-request") onConvert(request.id, "report");
-            }
-          : undefined
+        onConvert ? (k) => onConvert("report-request", request.id, k) : undefined
       }
       selected={isSelected}
       theme={theme}

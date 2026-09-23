@@ -236,7 +236,7 @@ const FAMILIES = [
             selectedCommentId: null,
             setSelectedCommentId: () => {},
             updateRevisionSuggestionField: () => {},
-            convertRevisionCard: () => {},
+            morphCard: () => {},
             deleteRevisionCard: () => {},
             // The bare status write the float host used to wire onAccept to.
             setRevisionSuggestionStatus: bareStatus,
@@ -290,7 +290,7 @@ const FAMILIES = [
             selectedCutterCardId: null,
             setSelectedCutterCardId: () => {},
             updateCutterSuggestionField: () => {},
-            convertCutterCard: () => {},
+            morphCard: () => {},
             deleteCutterCard: () => {},
             setCutterSuggestionStatus: bareStatus,
             editorRef: { current: { jumpToCard: () => {} } },

@@ -184,7 +184,8 @@ import { captureFloatToStack } from "@/floats/resolve-floatable";
 import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { LiftHost } from "@/text-objects/LiftHost";
-import { CARD_REGISTRY } from "@/cards/card-registry";
+import { CARD_REGISTRY, resolveMorphTarget } from "@/cards/card-registry";
+import type { CardMorphHandler } from "@/cards/types";
 import { CardPresenceProvider } from "@/cards/presence";
 import { SpellcheckProvider } from "@/lib/spell/spellcheck-context";
 import { useSpellDictionary } from "@/hooks/useSpellDictionary";
@@ -1556,11 +1557,22 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the TO spine kind + lossy flag are read from `CARD_REGISTRY[fromCardKind]
   // .morph` (SSOT), and the per-pair data `toKind` each hook expects is
   // derived from it.
+  //
+  // `selectedKind` is THE KIND THE USER PICKED in the chevron, passed through
+  // from the card rather than tested-and-discarded at the call site (task 722).
+  // `resolveMorphTarget` is the one door between the selection and the
+  // mutation: it answers with the registry's declared target when the selection
+  // IS that target, and `null` otherwise (the current kind re-picked, or a kind
+  // no morph route reaches) — so this chokepoint, the generated confirm copy
+  // and the `card-morphed` signal all read one `morph.to` and cannot name
+  // different kinds. The chevron only ever OFFERS `morphOptionsFor(fromKind)`,
+  // so the `null` leg is defensive rather than reachable from the UI.
   const convertCardWithRemap = useCallback(
-    async (fromCardKind: CardKind, id: string) => {
+    async (fromCardKind: CardKind, id: string, selectedKind: CardKind) => {
       const morph = CARD_REGISTRY[fromCardKind].morph;
       if (!morph) return; // non-morphing kind — defensive no-op
-      const toCardKind = morph.to;
+      const toCardKind = resolveMorphTarget(fromCardKind, selectedKind);
+      if (!toCardKind) return; // selection reaches no morph route — no-op
       // Capture the card's Mode-B text-range anchorId BEFORE the mutation. A
       // morph carries `links` across UNCHANGED, so the anchorId is stable; we
       // read it now (while the source card is still in its FROM-kind sidecar) to
@@ -1609,29 +1621,34 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           appliedSplice: appliedSpliceOps,
           mutate: () => {
             // Dispatch to the owning panel hook with its expected data toKind.
-            switch (fromCardKind) {
-              case "revision-comment":
+            // Keyed on the RESOLVED TARGET, never on the FROM kind: the data
+            // discriminator each hook wants ("suggestion", "report-request", …)
+            // is a fact about the kind the card is BECOMING, so it is derived
+            // from that kind. Keying on the from-kind happened to agree only
+            // because every morphing panel holds exactly a pair (task 722).
+            switch (toCardKind) {
+              case "revision-suggestion":
                 revisionsHookRaw.convertCard(id, "suggestion");
                 break;
-              case "revision-suggestion":
+              case "revision-comment":
                 revisionsHookRaw.convertCard(id, "comment");
                 break;
-              case "cutter-comment":
+              case "cutter-suggestion":
                 cutterHookRaw.convertCard(id, "suggestion");
                 break;
-              case "cutter-suggestion":
+              case "cutter-comment":
                 cutterHookRaw.convertCard(id, "comment");
                 break;
-              case "report":
+              case "report-request":
                 reportsHookRaw.convertCard(id, "report-request");
                 break;
-              case "report-request":
+              case "report":
                 reportsHookRaw.convertCard(id, "report");
                 break;
-              case "note":
+              case "highlight":
                 notesHookRaw.convertCard(id, "highlight");
                 break;
-              case "highlight":
+              case "note":
                 notesHookRaw.convertCard(id, "note");
                 break;
             }
@@ -1655,39 +1672,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow],
   );
-  // Per-pair adapters that take each card's legacy `(id, dataToKind)` signature,
-  // resolve the FROM spine kind, and delegate to the generalized chokepoint —
-  // so all 4 pairs morph identically (float survival + lossy confirm + remap).
-  const convertRevisionCard = useCallback(
-    (id: string, toKind: "comment" | "suggestion") => {
-      void convertCardWithRemap(
-        toKind === "suggestion" ? "revision-comment" : "revision-suggestion",
-        id,
-      );
-    },
-    [convertCardWithRemap],
-  );
-  const convertCutterCard = useCallback(
-    (id: string, toKind: "comment" | "suggestion") => {
-      void convertCardWithRemap(
-        toKind === "suggestion" ? "cutter-comment" : "cutter-suggestion",
-        id,
-      );
-    },
-    [convertCardWithRemap],
-  );
-  const convertReportCard = useCallback(
-    (id: string, toKind: "report" | "report-request") => {
-      void convertCardWithRemap(
-        toKind === "report-request" ? "report" : "report-request",
-        id,
-      );
-    },
-    [convertCardWithRemap],
-  );
-  const convertNotesCard = useCallback(
-    (id: string, toKind: "note" | "highlight") => {
-      void convertCardWithRemap(toKind === "highlight" ? "note" : "highlight", id);
+  // The ONE kind-chevron handler every morphing card is wired to — docked,
+  // omni and float chrome alike. It is the chokepoint itself, minus the promise.
+  //
+  // It replaces four per-pair adapters (`convertRevisionCard` and siblings)
+  // that existed only to INVERT a data `toKind` back into a spine kind
+  // (`toKind === "suggestion" ? "revision-comment" : "revision-suggestion"`) —
+  // a second hand-written copy of the pairing the registry already declares,
+  // and a second place a third kind in a morphing panel would have landed
+  // wrong. The cards pass their own spine kind now, so there is nothing left to
+  // invert (task 722).
+  const morphCard = useCallback<CardMorphHandler>(
+    (fromKind, id, toKind) => {
+      void convertCardWithRemap(fromKind, id, toKind);
     },
     [convertCardWithRemap],
   );
@@ -1734,12 +1731,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const revisionsHook = useMemo(
-    () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard, deleteCard: deleteRevisionCard }),
-    [revisionsHookRaw, convertRevisionCard, deleteRevisionCard],
+    () => ({ ...revisionsHookRaw, convertCard: morphCard, deleteCard: deleteRevisionCard }),
+    [revisionsHookRaw, morphCard, deleteRevisionCard],
   );
   const cutterHook = useMemo(
-    () => ({ ...cutterHookRaw, convertCard: convertCutterCard, deleteCard: deleteCutterCard }),
-    [cutterHookRaw, convertCutterCard, deleteCutterCard],
+    () => ({ ...cutterHookRaw, convertCard: morphCard, deleteCard: deleteCutterCard }),
+    [cutterHookRaw, morphCard, deleteCutterCard],
   );
 
   // ── Phase 2 — auto-apply driver for AI-pending changes (flag-ON) ──────────
@@ -1792,10 +1789,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const reportsHook = useMemo(
     () => ({
       ...reportsHookRaw,
-      convertCard: convertReportCard,
+      convertCard: morphCard,
       deleteCard: deleteReportCard,
     }),
-    [reportsHookRaw, convertReportCard, deleteReportCard],
+    [reportsHookRaw, morphCard, deleteReportCard],
   );
   // note AND highlight both carry aiRequest routing and share this one hook
   // delete; resolve the kind off the card so the executor unbridges the right
@@ -1814,8 +1811,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const notesHook = useMemo(
-    () => ({ ...notesHookRaw, convertCard: convertNotesCard, deleteNote: deleteNoteCard }),
-    [notesHookRaw, convertNotesCard, deleteNoteCard],
+    () => ({ ...notesHookRaw, convertCard: morphCard, deleteNote: deleteNoteCard }),
+    [notesHookRaw, morphCard, deleteNoteCard],
   );
   const todosHookRaw = useTodos(docId, todoPristine);
   // A todo always resolves to the single routed kind `"todo"`; wrap its raw
@@ -5597,9 +5594,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateNoteTitle: notesHook.updateNoteTitle,
       setNoteAiRequest: notesHook.setNoteAiRequest,
       setHighlightAiRequest: notesHook.setHighlightAiRequest,
-      // note ⇄ highlight kind-chevron (R14, bidirectional via the morph
-      // chokepoint — replaces the one-way addNoteForHighlight "+ note" path).
-      convertNotesCard,
+      // The ONE kind-chevron dispatch for every morphing kind (R14 note ⇄
+      // highlight, the two suggestion families, report ⇄ report-request) —
+      // bidirectional via the morph chokepoint.
+      morphCard,
       // Route through cardCreation: deleting a highlight strips the in-doc tint.
       deleteNote: cardCreation.deleteHighlightOrNote,
 
@@ -5627,7 +5625,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateCutterCommentContent: cutterHook.updateCommentContent,
       setCutterCommentAiRequest: cutterHook.setCommentAiRequest,
       updateCutterSuggestionField: cutterHook.updateSuggestionField,
-      convertCutterCard,
       deleteCutterCard: cutterHook.deleteCard,
 
       // Reports
@@ -5635,7 +5632,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateReportTitle: reportsHook.updateReportTitle,
       updateRequestContent: reportsHook.updateRequestContent,
       setRequestAiRequest: reportsHook.setRequestAiRequest,
-      convertReportCard,
       deleteReportCard: reportsHook.deleteCard,
 
       // Todos
@@ -5663,7 +5659,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateRevisionCommentContent: revisionsHook.updateCommentContent,
       setRevisionCommentAiRequest: revisionsHook.setCommentAiRequest,
       updateRevisionSuggestionField: revisionsHook.updateSuggestionField,
-      convertRevisionCard: revisionsHook.convertCard,
       deleteRevisionCard: revisionsHook.deleteCard,
     }),
     [
@@ -5678,7 +5673,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       handleCitationCreated, handleEditFootnote, handleDeleteFootnote,
       handleDeleteCitation, unanchoredFootnoteRefs, handleDeleteUnanchoredFootnote,
       handleEditFootnoteTitle, handleArchiveDelete,
-      convertCutterCard, convertReportCard, convertNotesCard,
+      morphCard,
     ],
   );
 
@@ -8094,6 +8089,24 @@ export default EditorPane;
  * no way to see. Declaring it only here means the wired door is the ONLY door:
  * there is no raw sibling left for a future consumer to reach past it.
  */
+/**
+ * A morphing panel's hook AS THE PANE HANDS IT DOWNSTREAM — its raw
+ * `convertCard` REPLACED by the morph chokepoint (`morphCard`), the same way
+ * `WiredTodosHook` replaces the destructive doors. The swap is what keeps every
+ * surface on the ONE dispatch (lossy confirm + aiRequest unbridge + float-key
+ * remap + `card-morphed` signal): with the raw member overwritten there is no
+ * sibling left for a consumer to reach past it.
+ *
+ * The chokepoint's signature is the whole point (task 722): it takes the card's
+ * kind and THE KIND THE USER SELECTED, where the raw per-doc `convertCard`
+ * takes its sidecar's on-disk discriminator. The four per-pair adapters that
+ * used to translate between them — by INVERTING the data kind back into a spine
+ * kind, a second hand-written copy of the registry's pairing — are gone.
+ */
+type WithMorphDoor<T> = Omit<T, "convertCard"> & {
+  convertCard: CardMorphHandler;
+};
+
 type WiredTodosHook = ReturnType<typeof useTodos> & {
   /** Delete every DONE todo (restricted to `ids` when supplied), each through
    *  the same unbridging executor as the single delete. */
@@ -8115,7 +8128,7 @@ interface PaneRailProps {
   annotationsHook: ReturnType<typeof useAnnotations>;
   bibReviewHook: ReturnType<typeof useBibReview>;
   bibSettingsHook: ReturnType<typeof useBibSettings>;
-  notesHook: ReturnType<typeof useNotes>;
+  notesHook: WithMorphDoor<ReturnType<typeof useNotes>>;
   cardCreation: ReturnType<typeof useCardCreation>;
   allEditorCitations: Array<{
     citationId: string;
@@ -8144,9 +8157,9 @@ interface PaneRailProps {
   discardPristineNotes: () => void;
   todosHook: WiredTodosHook;
   archiveHook: ReturnType<typeof useArchive>;
-  cutterHook: ReturnType<typeof useCutter>;
-  reportsHook: ReturnType<typeof useReports>;
-  revisionsHook: ReturnType<typeof useRevisions>;
+  cutterHook: WithMorphDoor<ReturnType<typeof useCutter>>;
+  reportsHook: WithMorphDoor<ReturnType<typeof useReports>>;
+  revisionsHook: WithMorphDoor<ReturnType<typeof useRevisions>>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   /** Task 476: the cross-panel ARCHIVED SSOT, threaded to `OmniHost` so the omni
    *  gutter filters its assembled items against the SAME set the margin markers
@@ -8430,7 +8443,7 @@ function PaneRail({
           updateNoteTitle={notesHook.updateNoteTitle}
           setNoteAiRequest={notesHook.setNoteAiRequest}
           setHighlightAiRequest={notesHook.setHighlightAiRequest}
-          convertNotesCard={notesHook.convertCard}
+          morphCard={notesHook.convertCard}
           deleteNote={cardCreation.deleteHighlightOrNote}
           sortedArchiveSnippets={sortedArchiveSnippets}
           updateArchiveSnippet={archiveHook.updateSnippet}
@@ -8447,7 +8460,6 @@ function PaneRail({
           updateRevisionCommentContent={revisionsHook.updateCommentContent}
           setRevisionCommentAiRequest={revisionsHook.setCommentAiRequest}
           updateRevisionSuggestionField={revisionsHook.updateSuggestionField}
-          convertRevisionCard={revisionsHook.convertCard}
           deleteRevisionCard={revisionsHook.deleteCard}
           latexErrors={diagnostics.allLatexErrors}
           paragraphByErrorId={diagnostics.paragraphByErrorId}
@@ -8464,14 +8476,12 @@ function PaneRail({
           updateCutterCommentContent={cutterHook.updateCommentContent}
           setCutterCommentAiRequest={cutterHook.setCommentAiRequest}
           updateCutterSuggestionField={cutterHook.updateSuggestionField}
-          convertCutterCard={cutterHook.convertCard}
           deleteCutterCard={cutterHook.deleteCard}
           reportCards={reportsHook.cards}
           updateReportContent={reportsHook.updateReportContent}
           updateReportTitle={reportsHook.updateReportTitle}
           updateRequestContent={reportsHook.updateRequestContent}
           setRequestAiRequest={reportsHook.setRequestAiRequest}
-          convertReportCard={reportsHook.convertCard}
           deleteReportCard={reportsHook.deleteCard}
           getOmniEnabled={viewPrefs.getOmniEnabled}
           getOmniHideAll={viewPrefs.getOmniHideAll}
@@ -8562,7 +8572,7 @@ interface PaneRailBodyProps {
   annotationsHook: ReturnType<typeof useAnnotations>;
   bibReviewHook: ReturnType<typeof useBibReview>;
   bibSettingsHook: ReturnType<typeof useBibSettings>;
-  notesHook: ReturnType<typeof useNotes>;
+  notesHook: WithMorphDoor<ReturnType<typeof useNotes>>;
   cardCreation: ReturnType<typeof useCardCreation>;
   allEditorCitations: Array<{
     citationId: string;
@@ -8591,9 +8601,9 @@ interface PaneRailBodyProps {
   discardPristineNotes: () => void;
   todosHook: WiredTodosHook;
   archiveHook: ReturnType<typeof useArchive>;
-  cutterHook: ReturnType<typeof useCutter>;
-  reportsHook: ReturnType<typeof useReports>;
-  revisionsHook: ReturnType<typeof useRevisions>;
+  cutterHook: WithMorphDoor<ReturnType<typeof useCutter>>;
+  reportsHook: WithMorphDoor<ReturnType<typeof useReports>>;
+  revisionsHook: WithMorphDoor<ReturnType<typeof useRevisions>>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   onArchiveDelete: (id: string) => void;
   onAddFootnote: () => string;
