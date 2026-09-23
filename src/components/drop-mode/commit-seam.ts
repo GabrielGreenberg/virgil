@@ -27,9 +27,10 @@
  *    Not at mousedown, not at hit-test: the collab pen can change hands while
  *    the ghost is in flight. Both ends, because a move that cannot finish must
  *    not start — refusing after the insert would leave the duplicate.
- *    The question is `collabReadOnly`'s, asked through that one door (task 638
- *    put it at the deepest point a deferred commit passes through; this is the
- *    same seam for the drop gestures).
+ *    The question is `surfaceEditableNow`'s, asked through that one door (task
+ *    638 put it at the deepest point a deferred commit passes through; this is
+ *    the same seam for the drop gestures, and task 733 widened the door from
+ *    the pen alone to pen ∧ host).
  * 2. **Dispatch, then measure the EFFECT.** `insertLanded` (schema-adopt.ts) is
  *    the PRE-dispatch net: it asks whether the built `Transform` kept the
  *    payload. It cannot see a veto, which happens strictly later. `dispatchLanded`
@@ -46,21 +47,30 @@
 
 import type { Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
-import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
 /**
  * May every surface this commit is about to mutate be mutated RIGHT NOW?
  *
  * `null`/`undefined` entries are skipped so a caller can pass an optional
  * source without branching (a create has no source editor). Asked through
- * `collabReadOnly` rather than re-deriving `view.editable`, so the pen question
+ * `surfaceEditableNow` rather than re-deriving `view.editable`, so the question
  * keeps one door.
+ *
+ * TASK 733 — that door used to be `collabReadOnly`, which is `!view.editable`
+ * and therefore the PEN axis alone. MAIN pins `view.editable = true` for the
+ * view's whole life, so on the surface most of these commits target the gate
+ * was a constant. The HOST axis (a Library Reader pane's React
+ * `editable={false}`, mirrored in `editableRef`) is exactly what
+ * `readOnlyEnforcer` filters on, so reading it here is what makes obligation 1
+ * — "ask editability at the COMMIT, for every surface the compound touches" —
+ * true of the axis that actually vetoes.
  */
 export function commitSurfacesWritable(
   ...surfaces: ReadonlyArray<Editor | null | undefined>
 ): boolean {
   for (const editor of surfaces) {
-    if (editor && collabReadOnly(editor)) return false;
+    if (editor && !surfaceEditableNow(editor)) return false;
   }
   return true;
 }

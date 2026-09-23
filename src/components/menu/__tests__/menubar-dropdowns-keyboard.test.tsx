@@ -118,7 +118,9 @@ function makeEditor(currentLevel: number | null) {
       return currentLevel !== null; // isActive("heading")
     },
     chain: () => chain,
-    view: { state: { selection: { head: 1 }, doc: {} } },
+    // `editable` on the VIEW, because that is where a real TipTap editor
+    // keeps it and where the surface-editability door reads it (task 733).
+    view: { editable: true, state: { selection: { head: 1 }, doc: {} } },
   } as unknown as Editor;
   return { editor, chain, run, setBlockType, headingType };
 }
@@ -220,6 +222,7 @@ describe("BlockTypeDropdown — docked render + click selection", () => {
   it("a read-only editor makes the pick inert (no chain call)", () => {
     const { editor, chain } = makeEditor(2);
     (editor as unknown as { isEditable: boolean }).isEditable = false;
+    (editor.view as unknown as { editable: boolean }).editable = false;
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
     fireEvent.click(blockButtonByLabel("Body text")!);

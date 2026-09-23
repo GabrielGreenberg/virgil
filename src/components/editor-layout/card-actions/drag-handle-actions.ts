@@ -74,7 +74,7 @@ import {
   type ActionScopeClass,
 } from "@/text-objects/action-scope";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
-import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import {
   describeCardBodyRefusal,
   prepareCardBodyCapture,
@@ -233,14 +233,33 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       // `report` / `cutter` / `suggest-edit` REGISTER A CARD — React state plus a
       // sidecar write, which never passes through ProseMirror. Those sailed past.
       //
-      // Asked through the ONE door (`collabReadOnly`) and asked LIVE, at the
-      // moment of the mutation, so no snapshot can go stale between menu-build
-      // and click. This is the collab/pen axis ONLY: the Library Reader's
-      // host-writability axis is a different question with its own SSOT
-      // (`isSidecarWriteAllowed` / `isCardMutationAllowed`), and the Reader
-      // deliberately keeps writing note cards while its React `editable` prop is
-      // false — see `collab-read-only-gate.ts` ("What this is NOT").
-      if (collabReadOnly(ed)) return;
+      // Asked through the ONE door and asked LIVE, at the moment of the
+      // mutation, so no snapshot can go stale between menu-build and click.
+      //
+      // TASK 733 — that door is now `surfaceEditableNow`, not `collabReadOnly`,
+      // because the pen was only ONE of the two axes and this seam was reading
+      // the one that cannot move. `collabReadOnly` is `!view.editable`, and
+      // MAIN pins `view.editable = true` for the view's entire lifetime
+      // (`Editor.tsx` — `contenteditable="false"` broke selection routing in
+      // the Reader), so on MAIN the gate above was a CONSTANT `false`: inert on
+      // the one surface every card row lives on. The HOST axis — the React
+      // `editable` prop, mirrored in `editableRef`, which `readOnlyEnforcer`
+      // filters transactions against — is what a Library Reader pane sets
+      // false, and there this dispatcher ran the destructive confirm, fired
+      // every anchored card's lifecycle `delete` and the anchor retarget, and
+      // THEN dispatched a transaction the enforcer dropped on the floor. The
+      // paragraph stayed; its footnote and citation cards left the panels until
+      // reload.
+      //
+      // Both axes, one question: `surfaceEditableNow` is `view.editable` AND
+      // `editableRef` (`surface-editable.ts`). Still NOT the sidecar axis —
+      // what a Reader may write to DISK is `isSidecarWriteAllowed` /
+      // `isCardMutationAllowed`. The Reader's one writable sidecar is
+      // `notes.json`, and a note created from here is unreachable anyway: its
+      // Mode-B `linkedAnchor` mark is itself a `docChanged` transaction the
+      // enforcer refuses, so an enabled note row was another dead affordance.
+      // It greys with the rest.
+      if (!surfaceEditableNow(ed)) return;
 
       // Destructive-action warnings:
       //
