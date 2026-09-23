@@ -34,6 +34,13 @@ import { codeOnlyLines } from "@/lib/__tests__/_source-scan";
 import { VIRGIL_ACTION_REGISTRY } from "@/lib/actions/action-registry";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
+import StarterKit from "@tiptap/starter-kit";
+import type { AnyExtension } from "@tiptap/core";
+import {
+  buildCardBodySchema,
+  starterKitConfigForScope,
+  type CardBodySchemaScope,
+} from "@/lib/tiptap/borrowed-schema";
 
 // ── harness ──────────────────────────────────────────────────────────────────
 
@@ -257,6 +264,117 @@ describe("the registry's RECORD of the wrapper surfaces is the binding (task 427
   });
 });
 
+// ── the CARD-BODY stack: the second surface (task 731) ──────────────────────
+//
+// Task 427 gated the MAIN editor's stack and the card-body TOOLBAR, and missed
+// the card-body EDITOR — which mounts its wrappers by INHERITANCE
+// (`StarterKit.configure(...)` with the three keys left on) and so reached the
+// identical commands with the stock, ungated bindings. Measured on the pre-731
+// tree: inside an archive-card body, `Mod-Shift-8` at a caret in a `codeBlock`
+// coerced the block into a list item while the toolbar's own bullet button sat
+// greyed out for that same block. Both halves now enter `withWrapperGate`.
+
+/** The extension pair EVERY card-body surface mounts — `RichTextField`,
+ *  `BorrowedMainText` and `renderBorrowed` all compose exactly this, then layer
+ *  Placeholder / TabIndent / read-only (none of which touch the schema). */
+function cardBodyStack(scope: CardBodySchemaScope): AnyExtension[] {
+  return [
+    StarterKit.configure({ ...starterKitConfigForScope(scope) }),
+    ...buildCardBodySchema(scope, { includeLabelRefFootnote: true }),
+  ];
+}
+
+const EXCERPT_FIXTURE: JSONContent = {
+  type: "doc",
+  content: [
+    { type: "heading", attrs: { uuid: "c-h", level: 2 }, content: [{ type: "text", text: "A section" }] },
+    { type: "codeBlock", attrs: { uuid: "c-code" }, content: [{ type: "text", text: "verbatim" }] },
+    { type: "paragraph", attrs: { uuid: "c-prose" }, content: [{ type: "text", text: "Ordinary prose here." }] },
+    { type: "paragraph", attrs: { uuid: "c-empty" } },
+  ],
+};
+
+function mountCard(scope: CardBodySchemaScope, content: JSONContent): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  return new Editor({ element, extensions: cardBodyStack(scope), content });
+}
+
+/** The block types, in document order — the card-body legs assert on structure
+ *  rather than on `.tex` (a card body is not serialized through the body
+ *  serializer). */
+function blockTypes(ed: Editor): string[] {
+  return ed.state.doc.children.map((n) => n.type.name);
+}
+
+describe("a CARD BODY's wrapper chords ask the same door its toolbar asks (task 731)", () => {
+  for (const which of ["bullet-list", "ordered-list", "blockquote"] as const) {
+    it(`${which}: the chord at a caret in an excerpt-body codeBlock leaves it a codeBlock`, () => {
+      const ed = mountCard("excerpt", EXCERPT_FIXTURE);
+      caret(ed, "c-code");
+      const before = blockTypes(ed);
+      chord(ed, which);
+      expect(blockTypes(ed)).toEqual(before);
+      expect(ed.state.doc.child(1).textContent).toBe("verbatim");
+      ed.destroy();
+    });
+
+    it(`${which}: the chord on an excerpt-body HEADING leaves the heading intact`, () => {
+      const ed = mountCard("excerpt", EXCERPT_FIXTURE);
+      caret(ed, "c-h");
+      chord(ed, which);
+      expect(blockTypes(ed)).toEqual(["heading", "codeBlock", "paragraph", "paragraph"]);
+      expect(ed.state.doc.child(0).attrs.level).toBe(2);
+      ed.destroy();
+    });
+
+    it(`${which}: the markdown rule at the start of an excerpt-body HEADING stays text`, () => {
+      const ed = mountCard("excerpt", EXCERPT_FIXTURE);
+      caret(ed, "c-h", "start");
+      type(ed, TRIGGERS[which]);
+      expect(blockTypes(ed)).toEqual(["heading", "codeBlock", "paragraph", "paragraph"]);
+      expect(ed.state.doc.child(0).textContent).toBe(`${TRIGGERS[which]}A section`);
+      ed.destroy();
+    });
+  }
+
+  it("CONTROL: the bullet chord in an excerpt-body PARAGRAPH still makes a list", () => {
+    const ed = mountCard("excerpt", EXCERPT_FIXTURE);
+    caret(ed, "c-prose");
+    expect(chord(ed, "bullet-list")).toBe(true);
+    expect(blockTypes(ed)).toEqual(["heading", "codeBlock", "bulletList", "paragraph"]);
+    ed.destroy();
+  });
+
+  it("CONTROL: typing `- ` in an excerpt-body paragraph still makes a list", () => {
+    const ed = mountCard("excerpt", EXCERPT_FIXTURE);
+    caret(ed, "c-empty", "start");
+    type(ed, "- x");
+    expect(blockTypes(ed)).toContain("bulletList");
+    expect(ed.state.doc.child(3).textContent).toBe("x");
+    ed.destroy();
+  });
+
+  it("CONTROL: the `card` scope keeps its narrow vocabulary — the two lists, no blockquote", () => {
+    const ed = mountCard("card", {
+      type: "doc",
+      content: [{ type: "paragraph", attrs: { uuid: "p" }, content: [{ type: "text", text: "x" }] }],
+    });
+    expect(Object.keys(ed.schema.nodes)).toEqual(expect.arrayContaining(["bulletList", "orderedList", "listItem"]));
+    expect(ed.schema.nodes.blockquote).toBeUndefined();
+    expect(ed.schema.nodes.heading).toBeUndefined();
+    ed.destroy();
+  });
+
+  it("CONTROL: re-registering the wrappers did not cost the excerpt body its main-editor attrs", () => {
+    const ed = mountCard("excerpt", EXCERPT_FIXTURE);
+    for (const name of ["bulletList", "orderedList", "blockquote"]) {
+      expect(Object.keys(ed.schema.nodes[name].spec.attrs ?? {}), name).toContain("uuid");
+    }
+    ed.destroy();
+  });
+});
+
 // ── the census: the leg with teeth ──────────────────────────────────────────
 //
 // The door was never the part that could misbehave — a surface that fires a
@@ -303,6 +421,26 @@ function regionAt(regs: { start: number; text: string }[], line: number) {
   return hit;
 }
 
+/** Every production file that mounts a StarterKit — i.e. every file that could
+ *  inherit an ungated wrapper. Each one's stack must appear in
+ *  {@link CENSUS_STACKS}; `borrowed-schema.ts` and `borrowed-render.ts` compose
+ *  the card-body pair, which both scopes below mount. */
+const STARTERKIT_MOUNTERS = [
+  "src/lib/editor-extensions.ts",
+  "src/lib/borrowed-render.ts",
+  "src/lib/tiptap/borrowed-schema.ts",
+  "src/components/RichTextField.tsx",
+  "src/components/BorrowedMainText.tsx",
+];
+
+/** The stacks those files build, as the runtime census mounts them. */
+const CENSUS_STACKS: Record<string, () => AnyExtension[]> = {
+  main: () => buildEditorExtensions(mainCtx()),
+  float: () => buildEditorExtensions({ ...mainCtx(), surface: "float" } as EditorExtensionsCtx),
+  "card-body:card": () => cardBodyStack("card"),
+  "card-body:excerpt": () => cardBodyStack("excerpt"),
+};
+
 const TOGGLE = /\btoggle(BulletList|OrderedList|Blockquote)\s*\(/;
 const DOOR = /\bwrapperSafe(InState|Here)\s*\(/;
 
@@ -332,24 +470,63 @@ describe("CENSUS: every production wrapper-toggle call is guarded (task 427)", (
     expect(DOOR.test(reg!.text)).toBe(true);
   });
 
-  it("every .extend() of BulletList / OrderedList / Blockquote routes BOTH its chords and its input rules through the gate", () => {
+  // ── the population rule (task 731) ────────────────────────────────────────
+  //
+  // The 427 census populated from LITERAL call sites — `toggleBulletList(` and
+  // `BulletList.extend(`. A card body contains neither token: it inherits all
+  // three wrappers through `StarterKit.configure(...)`, so the file was
+  // invisible to the needle and the suite reported clean while the surface ran
+  // ungated. A guard that cannot see the surface it is guarding is the defect,
+  // not a missing allowlist entry. So the population rule is now:
+  //
+  //   1. NOBODY hand-extends a wrapper node — `withWrapperGate` is the door,
+  //      and it is the only place the two hooks are spelled.
+  //   2. Every production file that mounts a StarterKit is NAMED as a wrapper
+  //      surface, with a stack the runtime leg can actually mount.
+  //   3. Every wrapper node in every named stack's schema carries the gate.
+  //
+  // Leg 2 is what makes leg 3 non-vacuous: a new surface cannot appear without
+  // failing CI until its stack joins the census.
+
+  it("nobody hand-extends a wrapper node — withWrapperGate is the only door, and only it spells the two hooks", () => {
+    const extenders = FILES.filter((f) =>
+      /\b(BulletList|OrderedList|Blockquote)\.extend\s*\(/.test(codeOnlyLines(readFileSync(f, "utf8"))),
+    ).map(rel);
+    expect(extenders).toEqual([]);
+    const hookSpellers = FILES.filter((f) =>
+      /\bguardWrapper(Shortcuts|InputRules)\s*\(/.test(codeOnlyLines(readFileSync(f, "utf8"))),
+    ).map(rel);
+    expect(hookSpellers).toEqual(["src/lib/tiptap/wrapper-gate.ts"]);
+  });
+
+  it("every production file that mounts a StarterKit is a NAMED wrapper surface", () => {
+    const mounters = FILES.filter((f) => {
+      const code = codeOnlyLines(readFileSync(f, "utf8"));
+      return /\bStarterKit\.configure\s*\(/.test(code) || /^\s*StarterKit,\s*$/m.test(code);
+    }).map(rel);
+    // Sorted so the diff on a new surface reads as "you added a file".
+    expect([...mounters].sort()).toEqual([...STARTERKIT_MOUNTERS].sort());
+  });
+
+  it("every wrapper node in every named stack's schema carries the gate", () => {
+    let pairs = 0;
     const offenders: string[] = [];
-    let hits = 0;
-    for (const file of FILES) {
-      const code = codeOnlyLines(readFileSync(file, "utf8"));
-      if (!/\b(BulletList|OrderedList|Blockquote)\.extend\s*\(/.test(code)) continue;
-      const regs = regions(code);
-      code.split("\n").forEach((l, i) => {
-        if (!/\b(BulletList|OrderedList|Blockquote)\.extend\s*\(/.test(l)) return;
-        hits += 1;
-        const r = regionAt(regs, i).text;
-        if (!/\bguardWrapperShortcuts\s*\(/.test(r) || !/\bguardWrapperInputRules\s*\(/.test(r)) {
-          offenders.push(`${rel(file)}:${i + 1}`);
-        }
-      });
+    for (const [id, build] of Object.entries(CENSUS_STACKS)) {
+      const element = document.createElement("div");
+      document.body.appendChild(element);
+      const ed = new Editor({ element, extensions: build() });
+      for (const name of ["bulletList", "orderedList", "blockquote"] as const) {
+        if (!ed.schema.nodes[name]) continue;
+        pairs += 1;
+        const storage = (ed.storage as unknown as Record<string, { wrapperGated?: boolean } | undefined>)[name];
+        if (storage?.wrapperGated !== true) offenders.push(`${id}:${name}`);
+      }
+      ed.destroy();
     }
-    expect(hits).toBe(3);
     expect(offenders).toEqual([]);
+    // The canary: main(3) + float(3) + card(2) + excerpt(3). Pinned exactly, so
+    // a wrapper QUIETLY leaving a stack's schema is a failure too.
+    expect(pairs).toBe(11);
   });
 
   it("the wrapper question has ONE implementation: findWrapping is spelled only in wrapper-gate.ts", () => {

@@ -45,11 +45,14 @@ import type { NodeType, NodeRange, ResolvedPos } from "@tiptap/pm/model";
 import { findWrapping } from "@tiptap/pm/transform";
 import type { EditorState } from "@tiptap/pm/state";
 import { InputRule } from "@tiptap/core";
-import type { KeyboardShortcutCommand } from "@tiptap/core";
+import type { KeyboardShortcutCommand, Node as TiptapNode } from "@tiptap/core";
 
 /** The schema names of the three wrapper nodes, as the registry rows spell
  *  them. */
 export type WrapperNodeName = "bulletList" | "orderedList" | "blockquote";
+
+/** The storage key {@link withWrapperGate} stamps — see its doc comment. */
+export type WrapperGateStorage = { wrapperGated: true };
 
 /**
  * The schema node-type names a list/quote wrapper can safely wrap WITHOUT
@@ -247,4 +250,56 @@ export function guardWrapperInputRules(
           wrapperSafeInState(props.state, wrapperNodeName) ? rule.handler(props) : null,
       }),
   );
+}
+
+/**
+ * **THE door a wrapper node enters the schema through** (task 731). Takes one
+ * of the three wrapper extensions and returns it with BOTH of its ungated
+ * surfaces — the `Mod-Shift-8/7/b` chord and the `- ` / `1. ` / `> ` markdown
+ * rule — routed through {@link wrapperSafeInState}, and nothing else changed.
+ *
+ * Task 427 landed the two hooks by hand inside `editor-extensions.ts`'s three
+ * `.extend()`ed factories, which made "is this wrapper gated?" a property of
+ * WHICH STACK you happen to be on. The card bodies (`RichTextField`,
+ * `BorrowedMainText`, `renderBorrowed`) mount their wrappers by INHERITANCE —
+ * `StarterKit.configure(...)` with the keys left on — so they reached the same
+ * commands with the stock, ungated bindings: the card-body toolbar greyed its
+ * bullet button on a `codeBlock` while `Mod-Shift-8` coerced that same block
+ * into a list item. Two halves of one surface disagreeing is exactly the
+ * block-identity loss 397/427 exist to prevent.
+ *
+ * So the gating moves OFF the stack and ONTO the node: every surface turns the
+ * three StarterKit keys OFF and registers `withWrapperGate(X, "x")` instead,
+ * and the census in `wrapper-surfaces-guard.test.ts` MOUNTS each stack and
+ * presses the chord rather than grepping for a call site it can only see when
+ * the call is spelled out (the inherited mount was invisible to the needle, so
+ * the guard passed vacuously).
+ *
+ * Wrapping is composable: a caller may `.extend()` the result further (the main
+ * editor adds its attrs / NodeView on top) — the gate's `this.parent?.()` still
+ * resolves to the BASE extension's own bindings.
+ */
+export function withWrapperGate<O, S>(
+  node: TiptapNode<O, S>,
+  wrapperNodeName: WrapperNodeName,
+): TiptapNode<O, S & WrapperGateStorage> {
+  return node.extend<O, S & WrapperGateStorage>({
+    addKeyboardShortcuts() {
+      return guardWrapperShortcuts(this.parent?.() ?? {}, wrapperNodeName, () => this.editor?.state);
+    },
+    addInputRules() {
+      return guardWrapperInputRules(this.parent?.() ?? [], wrapperNodeName);
+    },
+    // The census MARK. `wrapper-surfaces-guard.test.ts` mounts every declared
+    // stack and reads `editor.storage[name].wrapperGated` for each of the three
+    // wrapper nodes the stack's schema actually has — a source-regex census
+    // could not see a wrapper mounted by INHERITANCE (`StarterKit.configure`
+    // with the key left on) and so passed vacuously while the card bodies ran
+    // ungated for two tasks. It is set HERE, in the same three lines that do
+    // the gating, so the mark cannot be present without the gate; that the mark
+    // MEANS refusal is proven behaviourally by the chord/input-rule legs.
+    addStorage() {
+      return { ...(this.parent?.() as S), wrapperGated: true as const };
+    },
+  });
 }

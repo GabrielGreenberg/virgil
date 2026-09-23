@@ -36,7 +36,7 @@ import {
   MAIN_STARTERKIT_NODE_ATTRS,
   MAIN_STARTERKIT_NODE_CONTENT,
 } from "@/lib/node-attr-sets";
-import { guardWrapperShortcuts, guardWrapperInputRules } from "@/lib/tiptap/wrapper-gate";
+import { withWrapperGate } from "@/lib/tiptap/wrapper-gate";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
@@ -688,7 +688,7 @@ function createListTitleNodeView(
   };
 }
 
-// ── Wrapper-toggle surfaces outside the registry (task 427) ─────────────────
+// ── Wrapper-toggle surfaces outside the registry (tasks 427 → 731) ──────────
 // StarterKit's bullet / ordered / blockquote extensions each ship TWO surfaces
 // that reach `toggleBulletList` / `toggleOrderedList` / `toggleBlockquote`
 // without entering the action registry: a `Mod-Shift-8/7/b` chord and a
@@ -696,26 +696,25 @@ function createListTitleNodeView(
 // guard (task 397) covers the lightning grid and the slash twins only, so the
 // chords were MEASURED destroying an expex item (`toggleList` lifts the
 // paragraph out of the `exampleItem`; `\vxid` gone, example renumbered).
-// Every `.extend()` below therefore overrides BOTH hooks and routes the parent
-// binding through the ONE wrapper door (`@/lib/tiptap/wrapper-gate`) — the
-// `.extend()` owns the binding, the binding asks the predicate. The input-rule
-// half was measured SAFE already (upstream asks `findWrapping` first) and is
-// routed anyway so every surface answers from one table.
+//
+// Task 427 wrote the two overrides out by hand in each factory below, which
+// made "is this wrapper gated?" a property of the STACK rather than of the
+// node — and the card bodies, which mount their wrappers by INHERITANCE
+// (`StarterKit.configure` with the keys left on), inherited the stock ungated
+// bindings. Task 731 moved the gating onto the node: `withWrapperGate` is the
+// one door all three of these factories AND `buildCardBodySchema` enter, so
+// the three nodes cannot reach a schema ungated. Each factory here still
+// `.extend()`s the gated base with its own attrs / group / NodeView — the gate
+// composes under them.
 
 export function createBulletListWithTitle(opts?: ListSurfaceOpts) {
-  return BulletList.extend({
+  return withWrapperGate(BulletList, "bulletList").extend({
     group: "block list textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
         ...MAIN_STARTERKIT_NODE_ATTRS.bulletList,
       };
-    },
-    addKeyboardShortcuts() {
-      return guardWrapperShortcuts(this.parent?.() ?? {}, "bulletList", () => this.editor?.state);
-    },
-    addInputRules() {
-      return guardWrapperInputRules(this.parent?.() ?? [], "bulletList");
     },
     addNodeView() {
       return createListTitleNodeView("ul", "bulletList", opts);
@@ -724,19 +723,13 @@ export function createBulletListWithTitle(opts?: ListSurfaceOpts) {
 }
 
 export function createOrderedListWithTitle(opts?: ListSurfaceOpts) {
-  return OrderedList.extend({
+  return withWrapperGate(OrderedList, "orderedList").extend({
     group: "block list textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
         ...MAIN_STARTERKIT_NODE_ATTRS.orderedList,
       };
-    },
-    addKeyboardShortcuts() {
-      return guardWrapperShortcuts(this.parent?.() ?? {}, "orderedList", () => this.editor?.state);
-    },
-    addInputRules() {
-      return guardWrapperInputRules(this.parent?.() ?? [], "orderedList");
     },
     addNodeView() {
       return createListTitleNodeView("ol", "orderedList", opts);
@@ -745,19 +738,13 @@ export function createOrderedListWithTitle(opts?: ListSurfaceOpts) {
 }
 
 export function createBlockquoteWithUuid() {
-  return Blockquote.extend({
+  return withWrapperGate(Blockquote, "blockquote").extend({
     group: "block textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
         ...MAIN_STARTERKIT_NODE_ATTRS.blockquote,
       };
-    },
-    addKeyboardShortcuts() {
-      return guardWrapperShortcuts(this.parent?.() ?? {}, "blockquote", () => this.editor?.state);
-    },
-    addInputRules() {
-      return guardWrapperInputRules(this.parent?.() ?? [], "blockquote");
     },
   });
 }
