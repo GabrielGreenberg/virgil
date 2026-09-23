@@ -1972,3 +1972,32 @@ an unmeasured one — `null`. One bad measurement costs one node, never the side
 **Owed:** a preview eyeball — Preferences → Body Text → Line height at its
 minimum on the dev doc, watching a long marked paragraph's icons (FSA-masking
 class; the durable proof is the unit tests).
+
+### The binding half: a geometry consumer is handed a TRACKED editor, never a ref read during render (task 736)
+
+`useViewportFrame(editor)` is keyed on the editor it is HANDED. `Editor.tsx`
+fills `editorInstanceRef` in an effect, i.e. AFTER its children render, so a
+child that called `useViewportFrame(editorRef.current)` bound its frame to
+`null` — the EMPTY frame, whose `containsHoverZone` is `() => false` — and an
+effect keyed `[editorRef]` never re-ran when the editor arrived or was swapped.
+The grab handle papered over this with a 50 ms `poll()` that re-subscribed but
+forced no re-render (handles appeared only because an UNRELATED parent render
+happened to re-run the child), never re-bound on a swap (the old instance kept
+its listeners), and read the Reader's `selectionchange` gate once, at null, so
+it never installed. `SelectionActionsMenu` carried the same shape with a RAF
+wait-loop, and resolved its scroll parent once from the null ref.
+
+Rule: a placement overlay takes `editor: Editor | null` as a PROP (the parent
+re-renders when `useEditor` returns the instance), passes it to
+`useViewportFrame`, and keys every subscription effect on `[editor]`. That is
+one render per editor LIFETIME, never per transaction — keystroke sanctity is
+untouched because the per-keystroke work still rides the RAF-scheduled
+placement path. The React Compiler lint names the defect directly
+(`react-hooks/refs`: "Cannot access refs during render"). Converted: the grab
+handle and `SelectionActionsMenu`. **Residual (same class, not yet
+converted):** `PendingChangePill` and `LiftHost` (`EditorPane.tsx`) still call
+`useViewportFrame(editorRef.current)`; `PendingChangePill` mounts only once a
+pending change exists (the editor is normally live by then) and `LiftHost`
+reads its frame only during a gesture, so neither is known to misbehave today.
+Pins: `grab-handle-editor-binding.test.tsx`,
+`SelectionActionsMenu-placement-decouple.test.tsx` ("tracked editor binding").

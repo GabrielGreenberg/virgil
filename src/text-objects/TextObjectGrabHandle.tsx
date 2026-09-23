@@ -56,13 +56,11 @@ import {
   useState,
   useCallback,
   type CSSProperties,
-  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { hydrateSelectionToTextObject } from "./hydrate-selection";
 import { resolveDomForUuid } from "@/lib/marginalia-blocks";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
@@ -748,10 +746,18 @@ function resolveSelectionChromeAnchor(
 }
 
 interface Props {
-  editorRef: RefObject<Editor | null>;
+  /** The live editor, as a TRACKED value (task 736). It used to arrive as a
+   *  ref the parent filled in an effect — after this child rendered — so the
+   *  geometry hook, the PM subscriptions and the Reader's `selectionchange`
+   *  gate all bound to `null` and were rescued only by an unrelated parent
+   *  re-render (or a 50 ms poll). As a prop, the editor's arrival (or swap) is
+   *  ONE render per editor lifetime, and every binding below re-keys on it.
+   *  Nothing per-transaction flows through this prop: selection/doc/pointer
+   *  work stays on the RAF-scheduled placement path (keystroke sanctity). */
+  editor: Editor | null;
 }
 
-export function TextObjectGrabHandle({ editorRef }: Props) {
+export function TextObjectGrabHandle({ editor }: Props) {
   const popped = usePoppedCards();
   const [placements, setPlacements] = useState<Placement[]>([]);
   // The post-threshold lifted-overlay core lives in the shared `LiftHost`
@@ -773,9 +779,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   // browser — no leave-grace timer needed.
   const mousePosRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
-  // Track the editor instance currently subscribed-to so we don't double-
-  // subscribe across re-renders.
-  const subscribedEditorRef = useRef<Editor | null>(null);
   // RAF handle for coalescing high-frequency events (selection, doc,
   // mousemove) into one placement compute per frame.
   const rafRef = useRef<number>(0);
@@ -787,7 +790,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
 
   const visibleRef = useIsVisibleRef();
   const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
-    editorRef.current,
+    editor,
   );
 
   // ---------------------------------------------------------------------------
@@ -817,7 +820,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     if (!isPrimaryDragStart(downEv)) return;
     downEv.preventDefault();
     downEv.stopPropagation();
-    const editor = editorRef.current;
     if (!editor) return;
     // For TextObjectRefs, derive the tentative popout key up front. If
     // already popped we still allow click-to-open-menu; just no lift.
@@ -927,13 +929,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       if (triggered) return;
       const open = dragHandleMenuRef.current?.open;
       if (open) {
-        if (startRef.kind !== "selection") {
-          const ed = editorRef.current;
-          if (ed && !startRef.id) {
-            cleanup();
-            return;
-          }
-        }
         const rect = handleEl.getBoundingClientRect();
         open(startRef, rect);
       }
@@ -946,28 +941,17 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [editorRef]);
-
-  // Click-to-ensure-anchor-uuid fast path is wired through `beginGesture`'s
-  // !startRef.id check above. Keep the import alive for clarity.
-  void ensureAnchorUuid;
+  }, [editor]);
 
   // ---------------------------------------------------------------------------
   // Resolution + placement loop
   // ---------------------------------------------------------------------------
 
+  // Keyed on the TRACKED editor (task 736): its arrival, swap or loss re-runs
+  // this whole effect, so every binding below — the PM subscriptions, the
+  // document mousemove, the read-only `selectionchange` sync — is installed
+  // against the live instance and torn down from the old one in one place.
   useEffect(() => {
-    let prevEditor: Editor | null = null;
-    const cleanupListeners = () => {
-      if (prevEditor) {
-        prevEditor.off("selectionUpdate", onSelectionUpdate);
-        prevEditor.off("update", onDocUpdate);
-      }
-      // Mousemove was attached document-wide (not on the editor DOM) so
-      // the hover zone could include the margin to the left of content.
-      // Detach the global listener whenever the editor instance changes.
-      document.removeEventListener("mousemove", onMouseMove);
-    };
 
     /**
      * Resolve the refs (each paired with its pre-resolved block DOM, so
@@ -1046,7 +1030,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     };
 
     const schedule = () => {
-      const editor = editorRef.current;
       if (!editor || editor.isDestroyed) {
         setPlacements((p) => (p.length === 0 ? p : []));
         return;
@@ -1096,14 +1079,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     };
     scheduleRefRef.current = scheduleRaf;
 
-    // DECLARATIONS, not consts: `cleanupListeners` (above) detaches all three
-    // of these, and it runs from `ensureSubscribed` — which `poll()` calls
-    // SYNCHRONOUSLY inside this effect body. With `const`, a mount whose
-    // `editorRef.current` is already non-null (a warm keep-alive re-mount)
-    // reached the detach while they were still in the temporal dead zone and
-    // threw out of the effect, taking the whole handle with it. Hoisting is the
-    // fix that doesn't reorder the effect. Identity is preserved for the
-    // `editor.off(...)` pairs by construction.
     function onSelectionUpdate() {
       scheduleRaf();
     }
@@ -1116,38 +1091,17 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       scheduleRaf();
     }
 
-    const ensureSubscribed = () => {
-      const editor = editorRef.current;
-      if (editor === subscribedEditorRef.current) return;
-      cleanupListeners();
-      subscribedEditorRef.current = editor;
-      prevEditor = editor;
-      if (editor) {
-        editor.on("selectionUpdate", onSelectionUpdate);
-        editor.on("update", onDocUpdate);
-      }
-      // Hover zone now extends into the margin to the left of the
-      // editor content (so the user can travel from text to the
-      // margin-anchored handle without losing hover). The
-      // viewport-cache `containsHoverZone` predicate gates the actual
-      // hover effect inside `onMouseMove`. A single document listener
-      // is enough — no separate mouseleave handler is needed because
-      // zone exit is detected inside `onMouseMove` itself.
-      if (editor) {
-        document.addEventListener("mousemove", onMouseMove);
-      }
-    };
-
-    let pollAttempts = 0;
-    const poll = () => {
-      ensureSubscribed();
-      schedule();
-      if (!editorRef.current && pollAttempts < 30) {
-        pollAttempts += 1;
-        window.setTimeout(poll, 50);
-      }
-    };
-    poll();
+    if (editor) {
+      editor.on("selectionUpdate", onSelectionUpdate);
+      editor.on("update", onDocUpdate);
+      // Hover zone extends into the margin to the left of the editor content
+      // (so the user can travel from text to the margin-anchored handle
+      // without losing hover), so the listener is document-wide; the
+      // viewport-frame `containsHoverZone` predicate gates the hover effect
+      // inside `onMouseMove`, which also detects zone exit.
+      document.addEventListener("mousemove", onMouseMove);
+    }
+    schedule();
 
     // FOUT: when web fonts swap in mid-session, the cap-top cache holds
     // values measured against the fallback font. The metrics module
@@ -1238,7 +1192,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       gesturePark.fire();
     }
     const onDocSelectionChange = () => {
-      const editor = editorRef.current;
       if (!editor || editor.isDestroyed) return;
       // Sync PM's selection from the DOM (matches SelectionDragHandle's
       // logic for the Reader's contenteditable=false case).
@@ -1290,23 +1243,25 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
 
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
-    // DOM listeners (mousemove, mouseleave) attach via `ensureSubscribed`
-    // so they re-attach if the editor instance is created late or swapped.
-    const editorForGate = editorRef.current;
-    const installSelectionChange =
-      editorForGate !== null && !editorForGate.isEditable;
+    // Read-only surfaces (the Library Reader) sync PM's selection from the
+    // DOM. Evaluated against THIS effect's editor, so a late-arriving or
+    // swapped read-only editor installs it (task 736 — it used to read a
+    // still-null ref once and never install).
+    const installSelectionChange = editor !== null && !editor.isEditable;
     if (installSelectionChange) {
       document.addEventListener("selectionchange", onDocSelectionChange);
     }
     return () => {
-      cleanupListeners();
+      if (editor) {
+        editor.off("selectionUpdate", onSelectionUpdate);
+        editor.off("update", onDocUpdate);
+        document.removeEventListener("mousemove", onMouseMove);
+      }
       disposeFontReady();
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
       }
-      subscribedEditorRef.current = null;
-      prevEditor = null;
       unsubModality();
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
@@ -1315,7 +1270,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         document.removeEventListener("selectionchange", onDocSelectionChange);
       }
     };
-  }, [editorRef, visibleRef]);
+  }, [editor, visibleRef]);
 
   // Recompute placement when the viewport cache version bumps (editor
   // resize, sidebar toggle). The portal target is resolved inline at

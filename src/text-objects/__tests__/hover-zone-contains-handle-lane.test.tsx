@@ -532,8 +532,8 @@ describe("the SHIPPED handle's halo is capped at its lane — read off the DOM",
     });
     vi.stubGlobal("cancelAnimationFrame", () => { raf = []; });
     notePointerInput();
-    const editorRef = { current: fakeEditor(ed) };
-    render(<TextObjectGrabHandle editorRef={editorRef} />);
+    const handleEditor = fakeEditor(ed);
+    render(<TextObjectGrabHandle editor={handleEditor} />);
     act(() => {
       document.dispatchEvent(
         new MouseEvent("mousemove", { clientX: 400, clientY: 320, bubbles: true }),
