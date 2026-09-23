@@ -22,7 +22,7 @@
  * Position-stability: every edit is an attr-only `setNodeMarkup` on the host
  * node (a top-level citation, or a footnote whose body literal we rewrite) — it
  * never shifts positions, so we can walk the ORIGINAL doc while accumulating
- * into one transaction (the `renumberFootnotes`/`stripFootnoteNestedCitation`
+ * into one transaction (the `writeFootnoteNumbers`/`stripFootnoteNestedCitation`
  * pattern). One dispatch, atomic.
  *
  * No `ignoreReadOnly` meta — like `stripFootnoteNestedCitation`, this real doc

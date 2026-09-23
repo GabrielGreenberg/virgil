@@ -1,6 +1,7 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
+import { footnoteNumbersFor } from "@/lib/footnote-numbering";
 import { matchCiteCommandAt } from "@/lib/cite-commands";
 import {
   detachItemAnchor,
@@ -1188,12 +1189,21 @@ function mergeSidecarTitles(node: JSONContent, sidecar: VirgilSidecar): void {
   node.content?.forEach((child) => mergeSidecarTitles(child, sidecar));
 }
 
+/**
+ * Assign the load-time footnote numbers through the ONE rule
+ * (`footnoteNumbersFor`, task 725).
+ *
+ * The editor is constructed with `content: initialContent`, which is NOT a
+ * transaction — so the extension's `appendTransaction` numberer never runs at
+ * load, and whatever this pass writes is exactly what the reader sees until
+ * they add or delete a footnote. Its own private counter used to number a
+ * `\thanks` like an ordinary footnote, so every footnote after an author note
+ * displayed one too high from the moment the paper opened.
+ */
 function numberFootnotes(node: JSONContent): void {
-  let counter = 1;
+  const found: JSONContent[] = [];
   function walk(n: JSONContent) {
-    if (n.type === "footnote") {
-      n.attrs = { ...n.attrs, number: counter++ };
-    }
+    if (n.type === "footnote") found.push(n);
     if (n.content) {
       for (const child of n.content) {
         walk(child);
@@ -1201,6 +1211,10 @@ function numberFootnotes(node: JSONContent): void {
     }
   }
   walk(node);
+  const numbers = footnoteNumbersFor(found.map((n) => ({ thanks: n.attrs?.thanks })));
+  found.forEach((n, i) => {
+    n.attrs = { ...n.attrs, number: numbers[i] };
+  });
 }
 
 /**

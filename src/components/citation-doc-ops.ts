@@ -37,7 +37,7 @@ export { walkJsonContentForCitations, removeCitationFromJsonContent };
  * readOnlyEnforcer in collaborator read-only mode (the nested cite is left in
  * place in a read-only / partner-claimed doc, as required). `setNodeMarkup` is
  * attr-only and never shifts positions, so the accumulated ops stay valid
- * against the original positions (the renumberFootnotes pattern). Returns the
+ * against the original positions (the `writeFootnoteNumbers` pattern). Returns the
  * number of host footnotes rewritten (0 when nothing matched or the doc is
  * read-only and the tx was filtered).
  */
@@ -49,7 +49,7 @@ export function stripFootnoteNestedCitation(
   let touched = 0;
   // Safe to walk the ORIGINAL doc while accumulating into `tr`: setNodeMarkup
   // is an attr-only op that never shifts positions, so `pos` stays valid
-  // across iterations (mirrors renumberFootnotes). Do NOT add a size-changing
+  // across iterations (mirrors `writeFootnoteNumbers`). Do NOT add a size-changing
   // op to this loop without re-reading positions from the running tr.
   editor.state.doc.descendants((node, pos) => {
     if (node.type.name !== "footnote" || !node.attrs.content) return true;

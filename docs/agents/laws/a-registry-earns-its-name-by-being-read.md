@@ -5296,3 +5296,63 @@ host recomputing its card's answer. The census reads `error-jump.ts` for that
 signature, so the exemption evaporates the day the channel exists, and it is
 pinned to exactly those two sites so a third element-less jump cannot borrow a
 reason written for them.
+
+## The last-writer half — a duplicate derivation OUTRANKS its owner by running later (task 725)
+
+> **Where one derivation is implemented twice, the copy that runs LAST is the
+> authority, whatever the comments say.** A second implementation does not
+> merely risk drifting from the first: it silently overwrites it. And the
+> owner cannot repair the damage, because a copy that writes only ATTRIBUTES
+> trips no structural gate — so the wrong answer STANDS.
+
+A footnote's number is a derivation over the document's footnotes in order,
+with one subtlety: a `\thanks` is a title-page acknowledgement, renders `A`,
+and therefore takes `number: 0` and does **not** step the counter. That rule
+was written four times:
+
+1. `latex-parser.ts` `numberFootnotes` — the **load-time** pass. Thanks-blind.
+2. `lib/tiptap/footnote.ts` `appendTransaction` — the live numberer. Correct.
+3. `lib/tiptap/footnote.ts`, the typed-`\footnote{}` input rule. Correct.
+4. `Editor.tsx` `EditorHandle.renumberFootnotes`. Thanks-blind, undoable, no
+   equality bail — and its two callers ran it *after* `insertInlineAtom`'s
+   dispatch, i.e. after (2) had already numbered the same transaction right.
+
+Three things this cost, each of which points somewhere other than the copy:
+
+- **The reader saw it at LOAD, not at edit.** The editor is constructed with
+  `content: initialContent`, and that is **not a transaction** — so (2) never
+  runs at mount and whatever (1) wrote is what the paper displays. In any
+  imported paper with an author note, the thanks ate slot 1 while rendering
+  `A`, so *every* footnote after it showed one too high the moment the file
+  opened. The acknowledgement's own corrupted number is invisible by
+  construction, which is exactly why this hid.
+- **The owner could not heal it.** The live numberer's gate is
+  `added / removed / order-changed`; an attr-only renumber trips none of them.
+  A wrong number therefore persisted until the user added or deleted a
+  footnote — the repair mechanism was blind to the damage.
+- **Running last is not a detail.** (4) was written as a *helper*, and the
+  helper became the authority purely by call order. Nothing at either call
+  site said so.
+
+**The fix is not to make the copies agree.** Teaching (1) and (4) the `\thanks`
+rule would leave the next change to be made in four places, which is how the
+rule got three spellings in the first place. The derivation moved to one owner,
+`src/lib/footnote-numbering.ts` — `footnoteNumbersFor` (the pure rule) and
+`writeFootnoteNumbers` (the rule + the position-stability and equality-bail
+properties every transaction caller needs) — (1), (2) and (3) call it, and (4)
+is **deleted**, interface member included, so the door cannot be reopened by a
+future caller reaching for a name that is still there.
+
+**Guard:** `footnote-number-authority.test.ts`, against the real tree, in three
+rules — R2 no module outside the owner writes a footnote `number` through
+`setNodeMarkup`; R3 none steps a counter into a `number` field; R4 any module
+that *computes* a footnote number must IMPORT the owner (the rule that keeps
+the parser honest: it may write numbers, but only ones the owner handed it).
+All three are planted in both directions, and each of the three deleted copies
+is verified to trip them. Behaviour is pinned separately by
+`footnote-thanks-numbering.test.ts`, whose load-time leg fails on HEAD~.
+
+**Corollary worth carrying:** when a helper's value is "make sure it's right
+after I changed something", check whether the owner already ran inside the same
+transaction. If it did, the helper is not a safety net — it is a second writer
+with worse information.

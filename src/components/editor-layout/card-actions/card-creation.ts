@@ -627,7 +627,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // applied to the already-landed atom. (Pristine ⇒ a blank footnote is
       // click-away-discardable; pin ⇒ it rides the top of the panel.)
       if (opts.existingFootnoteId) {
-        handle.renumberFootnotes();
+        // No renumber (task 725): the atom's own insert transaction already
+        // carried the extension's numbering pass, which is the one authority.
         // Pristine ⇒ a BLANK footnote is click-away-discardable. The slash
         // `\footnote` (empty body) is pristine, matching the menu; a typed
         // `\footnote{body}` carries real content, so the caller passes
@@ -649,7 +650,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         ? handle.createFootnoteFromSelection({ title: "" })
         : handle.createEmptyFootnote({ title: "" });
       if (!result) return null;
-      handle.renumberFootnotes();
+      // No renumber (task 725) — see the adopt path above.
       if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
       finishCreate("footnote", "footnote", setSelectedFootnoteId, result.footnoteId, opts);
       return result;
