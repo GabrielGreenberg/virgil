@@ -5508,3 +5508,69 @@ add-menu derives its card-type LABELS from the registry") one column over: label
 then, ROUTE now. Same class. Before writing a sentence that tells a user where a
 control is, ask which table already knows — and if one does, the sentence is not
 copy, it is a view.
+
+## The half-generalized half — a CSS selector is a declaration, and it has no producer (task 730)
+
+> **A rule written for N kinds while only ONE kind can satisfy it is not a
+> generalization — it is a claim no reader can check.** Where a behaviour's
+> CONSUMER is widened to a family and its PRODUCER stays per-kind, the widened
+> consumer reads as evidence that the family is wired, and the missing kind is
+> invisible at every site a maintainer would look.
+
+`.is-popped` dims a source pod and takes it out of the pointer path while its
+float is open — the one thing keeping a pod's two surfaces from both being live
+over a single `source` attr. Task 384 generalized the CSS to
+`:is(.tex-block, .forest-block).is-popped .source-pod { opacity:.45;
+pointer-events:none }`. Nothing generalized the producer:
+
+- The predicate was a ref, `texBlockIsPoppedRef`, named per-KIND at every hop —
+  `EditorPane` → `Editor` prop → `EditorExtensionsCtx` → `TexBlock.configure` →
+  `TexBlockOptions.isPoppedRef` → `SourcePodConfig.isPopped`. Six declarations,
+  one kind.
+- So `forestBlock` — the pod's other wearer, the one the CSS had just been
+  widened for — never got the class. Its docked pod stayed fully opaque and
+  fully editable beside its float.
+- A grep for `isPopped` in `ForestBlockNodeView.tsx` returned nothing, and the
+  CSS said the opposite. The comment that *did* state the gap sat in a third
+  file.
+
+**The shape of the fix: delete the thread, don't fork it.** A per-kind thread
+cannot be extended to a second kind without becoming two threads, and the
+question it carries — "is there an open float for this block?" — was never a
+fact any NodeView owned. It is a fact about the FLOAT STORE, and the float key
+grammar (`float:<domain>:<kind>:<id>`) already names both halves of the answer.
+So the shared pod asks the store directly, from the node's own `(kind, uuid)`:
+`useIsFloatPopped` ([src/hooks/usePoppedCards.ts](../../../src/hooks/usePoppedCards.ts))
+over `poppedKeysHoldFloat` ([src/floats/float-key.ts](../../../src/floats/float-key.ts)),
+a dual-read that compares PARSED keys so the canonical, pre-flip and pre-D10
+spellings answer alike. All six per-kind declarations are gone; a third
+pod-bearing kind inherits the dimming with nothing added anywhere.
+
+Two things fell out that the thread had been hiding:
+
+- **The ref was never reactive.** A predicate ref read during render subscribes
+  to nothing; `texBlock`'s pod re-rendered on the float toggle only because
+  something else in the tree happened to. The context hook re-renders on the
+  store, which is what the chrome always claimed to do.
+- **`TEX_POD_CONFIG` could finally become a constant**
+  ([src/lib/tiptap/tex-pod-config.ts](../../../src/lib/tiptap/tex-pod-config.ts)).
+  Its `isPopped` field was the only per-render value in it, which is why
+  `texBlock` alone spelled its pod config as an inline literal at the NodeView —
+  the exact thing `FOREST_POD_CONFIG`'s own docstring warns against (the pod
+  memoizes on the config). The half-generalized producer had been forcing a
+  second, worse spelling of the sibling it was supposed to match.
+
+**Guard:** `src/floats/__tests__/popped-keys-hold-float.test.ts` (the predicate,
+every grammar, falsifying twins on both halves of the key) and
+`src/components/__tests__/source-pod-popped-dim.test.tsx` (both wearers get the
+class from the store, neither gets it from someone else's float). The second
+suite fails on pre-730 code in exactly the forest leg.
+
+**Residual, pinned rather than assumed:** the float body's write-back is a
+whole-buffer replace from local state, so a second live writer WOULD clobber.
+What makes that unreachable is not only the dim but the float's re-read of its
+node on any foreign transaction touching its source (`useMainTransactionSync` →
+`syncFromMain`) — a convergence the float body's own source doesn't show, since
+it contains no `useEffect`. `src/components/__tests__/source-pod-float-no-clobber.test.tsx`
+pins it, so the second line of defence can't be removed on the strength of the
+first.

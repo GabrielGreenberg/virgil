@@ -37,7 +37,6 @@ function mount(content: JSONContent[], anchored: string[] = []): Editor {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set(anchored) },
     host: null,
   };

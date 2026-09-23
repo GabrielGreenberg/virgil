@@ -27,7 +27,6 @@ function mainCtx(anchored: Set<string>, docId: string | null = null): EditorExte
     cardContext: false,
     callbacks: {},
     docIdRef: { current: docId },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: anchored },
     host: null,
   };

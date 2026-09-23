@@ -1,5 +1,4 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
-import type { RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import TexBlockNodeView from "@/components/TexBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
@@ -17,21 +16,20 @@ import { sourcePodStaticBody } from "./source-pod-static";
 // The grid now takes the same door as every other cell; a second ctx-builder is
 // what let the two answers drift, so there is one.
 
-// Options injected from Editor.tsx via `TexBlock.configure({…})` so the
-// NodeView can read the popped-out state. Lift + click-to-menu live in
-// the editor-mounted TextObjectGrabHandle
-// (src/text-objects/TextObjectGrabHandle.tsx); they are no longer per-
-// NodeView concerns. The NodeView keeps `isPoppedRef` so the in-doc
-// rendering can dim while the popout is open.
+// Options for the NodeView. Lift + click-to-menu live in the editor-mounted
+// TextObjectGrabHandle (src/text-objects/TextObjectGrabHandle.tsx); they are no
+// longer per-NodeView concerns.
 //
-// `isPoppedRef`'s double-ref shape mirrors the ExampleBlock convention:
-// the outer ref tracks the (sometimes-changing) inner ref's identity,
-// the inner ref holds the live predicate.
+// Task 730 removed the last one that was: `isPoppedRef`, a predicate threaded
+// `EditorPane → Editor → buildEditorExtensions → here` so the docked pod could
+// dim while its float was open. Every hop of that thread named `texBlock`, so
+// the pod's OTHER wearer (`forestBlock`) could not be answered without a second
+// copy of the whole thread. The shared pod now asks the float store itself,
+// from the node's own `(kind, uuid)` — see `useIsFloatPopped`.
 export interface TexBlockOptions {
   /** Stamp gate for the NodeView data-uuid/kind exposure (2d): only the
    *  MAIN document surface carries the attributes (decorator parity). */
   surface: "main" | "float";
-  isPoppedRef: RefObject<RefObject<(uuid: string) => boolean> | undefined> | null;
   // When true, the NodeView renders a compact static preview (no
   // CodeMirror, no edit/delete chrome). Set by every card-bearing
   // rich-text surface (RichTextField + HeadingFloat) so block atoms
@@ -55,7 +53,6 @@ export const TexBlock = Node.create<TexBlockOptions>({
 
   addOptions() {
     return {
-      isPoppedRef: null,
       cardContext: false,
       // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
       surface: "float" as "main" | "float",

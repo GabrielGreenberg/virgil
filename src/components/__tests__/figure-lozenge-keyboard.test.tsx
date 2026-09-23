@@ -66,7 +66,6 @@ function mount(label: string | null = "fig:a") {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
   };

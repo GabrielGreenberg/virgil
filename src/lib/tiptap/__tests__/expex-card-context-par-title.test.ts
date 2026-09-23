@@ -46,7 +46,6 @@ function ctx(cardContext: boolean): EditorExtensionsCtx {
     cardContext,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
   };

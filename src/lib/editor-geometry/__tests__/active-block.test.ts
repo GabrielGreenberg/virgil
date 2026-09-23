@@ -31,7 +31,6 @@ function mainCtx(): EditorExtensionsCtx {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: new Set() },
     host: null,
   };

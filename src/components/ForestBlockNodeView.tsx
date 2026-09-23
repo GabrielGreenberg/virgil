@@ -24,11 +24,12 @@ import { FOREST_POD_CONFIG } from "@/lib/forest/pod-config";
  * same answer Virgil gives every other unmodelled construct, and nothing is
  * lost either way.
  *
- * Stage-1 gap, stated rather than implied: no `.is-popped` dimming. That chrome
- * reads a per-kind predicate (`texBlockIsPoppedRef`) threaded from EditorPane
- * through Editor → buildEditorExtensions; generalizing it to a
- * `(kind, uuid)` predicate is the right fix and belongs with the renderer work,
- * not bolted on as a second per-kind ref.
+ * The Stage-1 `.is-popped` gap is CLOSED (task 730), and closed the way this
+ * comment asked for: not by a second per-kind predicate ref, but by deleting
+ * the first one. The shared pod resolves "is my float open?" from the node's
+ * own `(kind, uuid)` against the float store, so the docked pod dims and goes
+ * inert here exactly as it does for `texBlock` — and this NodeView stays what
+ * it wants to be, a config and nothing else.
  */
 export default function ForestBlockNodeView({
   node,

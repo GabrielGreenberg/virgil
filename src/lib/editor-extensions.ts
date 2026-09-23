@@ -1607,10 +1607,6 @@ export interface EditorExtensionsCtx {
   callbacks: EditorExtensionsCallbackRefs;
   /** docId mirror for FigureBlock / GraphicsBlock NodeViews. */
   docIdRef?: RefObject<string | null> | null;
-  /** texBlock is-popped predicate (double-ref shape; see TexBlockOptions). */
-  texBlockIsPoppedRef?: RefObject<
-    RefObject<(uuid: string) => boolean> | undefined
-  > | null;
   /** Paragraph UUIDs carrying marginalia — gates MarginaliaAnchorGuard. */
   anchoredUuidsRef?: RefObject<Set<string>>;
   /** Where `TextObjectOrphanGuard` reports a block ABSORBED by a join (task
@@ -1755,17 +1751,16 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // BORROWED_BLOCK_ATOM_NAMES. Add a new atom to borrowed-schema.ts AND here;
     // that test fails until both surfaces carry it.
     TexBlock.configure({
-      isPoppedRef: ctx.texBlockIsPoppedRef ?? null,
       cardContext: ctx.cardContext,
       surface: isFloat ? "float" : "main",
     }),
     // `forestBlock` wears the SAME source pod as `texBlock` (task 383) and sits
-    // beside it here for that reason. It takes no `isPoppedRef` yet: that
-    // predicate is per-KIND all the way up (EditorPane → Editor →
-    // buildEditorExtensions), so a second copy would be a second fork rather
-    // than a shared fact — generalizing it to `(kind, uuid)` belongs with the
-    // renderer work (task 384), and until then the docked pod simply does not
-    // dim while its float is open.
+    // beside it here for that reason. Their configure calls are now IDENTICAL
+    // but for the node: task 730 deleted the `isPoppedRef` that texBlock alone
+    // took, because it was a per-KIND thread from `EditorPane` down and forest
+    // could not be answered by it without forking the whole thread. The pod
+    // resolves "is my float open?" from the node's own `(kind, uuid)` instead,
+    // so both kinds dim — and so does the next one, with nothing added here.
     ForestBlock.configure({
       cardContext: ctx.cardContext,
       surface: isFloat ? "float" : "main",

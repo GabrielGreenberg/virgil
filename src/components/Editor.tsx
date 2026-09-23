@@ -145,13 +145,6 @@ interface EditorProps {
    * `AnchorHighlightDecorator` (the node/atom attrs). Both props and the branch
    * are gone; a future consumer paints through `setTransientHighlights`, which
    * takes a per-band color for exactly this shape. */
-  /** Predicate reporting whether a given texBlock uuid is currently
-   *  popped out. The TexBlock NodeView consults this on every render to
-   *  toggle the `.is-popped` class on its wrapper (dim the in-doc pod
-   *  while the float is open). Other kinds don't have an analogous
-   *  in-doc affordance today; their `is-popped` predicates lived here
-   *  only to drive the now-deleted per-NodeView grips. */
-  texBlockIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
   /** Doc id, passed into the FigureBlock / GraphicsBlock extensions so
    *  their NodeViews can resolve `\includegraphics` paths against the
    *  active paper folder. `null` is fine — figures just won't render. */
@@ -448,7 +441,7 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightText, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -483,13 +476,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // re-renders. Populated below via useEffect once `useEditor` returns
   // the instance.
   const editorInstanceRef = useRef<Editor | null>(null);
-  // The texBlock NodeView reads this through its extension options to
-  // mirror the "popped out" state into the in-doc rendering (dim the
-  // pod while its float is open). Other kinds don't have an analogous
-  // is-popped affordance today — their refs lived here only to drive
-  // the now-deleted per-NodeView grips.
-  const texBlockIsPoppedPredicateRef = useRef(texBlockIsPoppedRef);
-  texBlockIsPoppedPredicateRef.current = texBlockIsPoppedRef;
   // docId mirror — FigureBlock / GraphicsBlock NodeViews read it via
   // `extension.options.docIdRef.current` to resolve `\includegraphics`
   // paths against the active paper folder.
@@ -542,7 +528,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         onConfirmFigureDelete: onConfirmFigureDeleteRef,
       },
       docIdRef,
-      texBlockIsPoppedRef: texBlockIsPoppedPredicateRef,
       anchoredUuidsRef,
       onBlockAbsorbedRef: onBlockAbsorbedRef ?? null,
       host: null,

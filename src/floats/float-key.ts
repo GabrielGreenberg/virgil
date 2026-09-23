@@ -221,3 +221,39 @@ export function migrateFloatKeys<T>(
   }
   return { keys: nextKeys, positions: nextPositions, changed: true };
 }
+
+/**
+ * Does `poppedKeys` hold an OPEN FLOAT for this `(kind, id)` pair?
+ *
+ * The "am I popped out?" question, asked once for every kind rather than
+ * per-kind. Before task 730 the only asker was `texBlock`, and it asked through
+ * a predicate ref threaded `EditorPane → Editor → buildEditorExtensions → the
+ * texBlock extension's options` — a thread that named ONE kind at every hop, so
+ * `forestBlock` (which wears the very same pod, and whose CSS was already
+ * generalized to dim it) simply never got an answer, and its docked pod stayed
+ * live beside its float: two editors over one `source` attr.
+ *
+ * Asked here instead, of the float store itself, the answer is kind-agnostic by
+ * construction: a third pod-bearing kind inherits it with no new thread.
+ *
+ * **Dual-read, like `parseAnyKey`** — it compares PARSED keys, never raw
+ * strings, so all three grammars the store may still carry answer alike: the
+ * canonical `float:textobject:<kind>:<id>`, the pre-flip `textobject:<kind>:<id>`
+ * and the pre-D10 bare `<kind>:<id>`. Domain is deliberately NOT compared: the
+ * bare legacy spelling parses as `card` (a card/text-object distinction the old
+ * grammar could not make), and no card kind shares a name with a text-object
+ * kind, so matching on `(kind, id)` is exactly as precise and reads every
+ * legacy key correctly.
+ */
+export function poppedKeysHoldFloat(
+  poppedKeys: readonly string[],
+  kind: string | null | undefined,
+  id: string | null | undefined,
+): boolean {
+  if (!kind || !id) return false;
+  for (const key of poppedKeys) {
+    const parsed = parseAnyKey(key);
+    if (parsed && parsed.kind === kind && parsed.id === id) return true;
+  }
+  return false;
+}

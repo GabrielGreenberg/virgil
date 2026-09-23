@@ -64,7 +64,6 @@ function mainCtx(): EditorExtensionsCtx {
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
-    texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: anchored },
     onBlockAbsorbedRef: absorbedRef,
     host: null,
