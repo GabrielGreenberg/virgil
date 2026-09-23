@@ -255,6 +255,7 @@ import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { labelRenameConfirmCopy } from "@/lib/tiptap/label-rename";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import {
   buildMarginItemHandlers,
   deleteMarginItem,
@@ -4516,7 +4517,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // commands.ts / citation.ts / footnote.ts — and would be rejected by the
         // `readOnlyEnforcer` regardless.) No over-gating: a non-collab editor is
         // always editable, so this is inert outside collaborator read-only.
-        if (!ed.isEditable) return "read-only";
+        // TASK 733 — the HOST axis too. `ed.isEditable` is `view.editable`,
+        // which MAIN pins `true` for the view's whole life, so this read alone
+        // was a constant on the only surface the bridge serves. The React
+        // `editable` prop (a Library Reader pane's `false`) lives in
+        // `editableRef`, published by `readOnlyEnforcer`'s storage and read
+        // through the one door.
+        if (!surfaceEditableNow(ed)) return "read-only";
         const deps = bridgeDepsRef.current;
         // ── THE ORIGIN (task 642) ──────────────────────────────────────────
         // `ed` is THIS PANE's editor — the source of the app-global React APIs
@@ -4554,7 +4561,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           // CHIP 7b: thread the collab gate into the ctx too (the early-return
           // above already short-circuits, so this is `true` whenever we reach
           // here — but it keeps the `run()` guards' invariant honest).
-          canEdit: ed.isEditable,
+          canEdit: surfaceEditableNow(ed),
           cardCreation: deps.cardCreation,
           dispatch: deps.dispatch,
           payload: seed.payload,
@@ -8004,6 +8011,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               // out declaratively via `applies()`. Non-collab docs leave it true →
               // no over-gating.
               canEdit={collab.canEditMainText}
+              // (The HOST axis is conjoined inside `DragHandleMenu` from
+              // `editor` — task 733. Passing it here too would be a second
+              // copy of the same question.)
               onSelect={(action) => {
                 const ref = dragHandleMenuState.ref;
                 closeDragHandleMenu();

@@ -55,6 +55,35 @@ import type { EditorView } from "@tiptap/pm/view";
  * over-gate the Reader's one editable feature; asking that one about the pen
  * would under-gate every non-Reader surface. Two axes, two doors.
  *
+ * ## The caller audit (task 733)
+ *
+ * On MAIN this door is a CONSTANT `false`: `Editor.tsx` pins
+ * `view.editable = true` for the view's entire lifetime and carries the
+ * user-facing answer in `editableRef`. So every caller was audited against one
+ * question — *is `view.editable` honest on the surface this seam serves?*
+ *
+ * MOVED to `surfaceEditableNow` (`surface-editable.ts`, the pen ∧ host
+ * conjunction), because each performs a mutation with a half ProseMirror cannot
+ * filter — a sidecar write, a card registration, a lifecycle `delete`, a second
+ * document:
+ *
+ *   - `drag-handle-actions.ts` — the card dispatcher BOTH menus cross;
+ *   - `drop-mode/commit-seam.ts` + `drop-mode/hit-test.ts` — the drop gestures.
+ *
+ * KEPT here, because the mutation is pure ProseMirror and `readOnlyEnforcer` is
+ * the real backstop — a constant gate there costs a dropped transaction, never
+ * a stranded card:
+ *
+ *   - the typed-LaTeX input rules (`math.ts`, `citation.ts`, `footnote.ts`,
+ *     `latex-comment.ts`, `commands.ts`, `typed-latex-input-rules.ts`) and
+ *     `insert-inline-atom.ts`, all of which build a transaction and nothing
+ *     else;
+ *   - `RichTextField.tsx`, a CARD-BODY surface, where `view.editable` is the
+ *     honest answer by construction (no enforcer, no `editableRef`).
+ *
+ * A future caller decides by the same rule: if the seam's mutation can escape
+ * `filterTransaction`, it asks `surfaceEditableNow`.
+ *
  * No over-gating: a non-collab document is always editable, so every call here
  * answers `false` outside collaborator read-only.
  *

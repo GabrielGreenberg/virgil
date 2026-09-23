@@ -30,6 +30,7 @@ import {
   type FloatingMenuPlacement,
 } from "@/hooks/useFloatingMenuPosition";
 import { isTextObjectKind } from "@/text-objects/text-object-registry";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { TextObjectKind } from "@/text-objects/types";
 import {
   cardActionRows,
@@ -96,15 +97,22 @@ interface Props {
    *  Block refs never read the view (they key on `ref.kind`), so this is
    *  irrelevant for them. */
   editor?: Editor | null;
-  /** Whether this user may currently edit the main text — the UNIFORM
-   *  collab-read-only gate (CHIP 7b). Threaded from `collab.canEditMainText`
-   *  (the SSOT — see `ActionContext.canEdit`). When `false` (partner holds the
-   *  pen) EVERY card action greys out, declaratively, via the row's `applies()`.
-   *  Defaults to `true` (editable) so legacy call sites + non-collab docs are
-   *  un-gated — NO over-gating. In practice the grab handle's hover-zone math
-   *  already suppresses the handle when `!editor.isEditable`, so the menu rarely
-   *  opens in read-only; this makes the greying DECLARATIVE rather than
-   *  incidental. */
+  /** Whether this user may currently edit the main text — the PEN half of the
+   *  gate (CHIP 7b). Threaded from `collab.canEditMainText` (the SSOT — see
+   *  `ActionContext.canEdit`). When `false` (partner holds the pen) EVERY card
+   *  action greys out, declaratively, via the row's `applies()`. Defaults to
+   *  `true` (editable) so legacy call sites + non-collab docs are un-gated — NO
+   *  over-gating.
+   *
+   *  TASK 733 — this is only ONE of the two axes, and the menu conjoins the
+   *  other itself, from `editor`. The HOST axis (the React `editable` prop) is
+   *  what a Library Reader pane sets false while PM's `view.editable` stays
+   *  true on purpose, so the grab handle keeps appearing there and every row
+   *  read as enabled: Archive and Delete ran their confirm dialog, fired each
+   *  anchored card's lifecycle `delete`, and then dispatched a transaction
+   *  `readOnlyEnforcer` silently dropped — a no-op paragraph plus footnote and
+   *  citation cards gone from the panels until reload. `surfaceEditableNow`
+   *  (`surface-editable.ts`) is the door that asks both. */
   canEdit?: boolean;
 }
 
@@ -138,7 +146,15 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, edito
     // surfaces already do. Without a view it short-circuits to the historic
     // "allow-all" (the viewless bypass 145 closes). `canEdit` threads the
     // uniform collab gate (CHIP 7b): `canEdit !== false` ⇒ un-gated.
-    const ctx = { ref: resolvedRef, canEdit, view: editor?.view } as ActionContext;
+    // The CONJUNCTION (task 733): the pen prop AND the host axis, the latter
+    // read live off the editor through the one door. `surfaceEditableNow(null)`
+    // is `true`, so a viewless legacy caller stays exactly as un-gated as it
+    // was — the no-over-gating default, preserved.
+    const ctx = {
+      ref: resolvedRef,
+      canEdit: canEdit && surfaceEditableNow(editor ?? null),
+      view: editor?.view,
+    } as ActionContext;
     return cardRows.map<DecoratedMenuRow>((row) => ({
       id: row.id,
       label: row.label,

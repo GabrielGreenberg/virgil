@@ -30,6 +30,7 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
 import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { markAnchorMint } from "@/lib/anchor-mint-signal";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { contentSpanFor } from "./move-geometry";
 import { EXPEX_INNER_KINDS } from "@/text-objects/drop-adapters";
 import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
@@ -90,7 +91,13 @@ export function hitTest(
 ): Placement | null {
   const editor = findEditorAtPoint(x, y);
   if (!editor) return null;
-  if (!editor.isEditable) return null;
+  // TASK 733 — both axes. `editor.isEditable` is `view.editable`, which MAIN
+  // pins `true` for the view's lifetime, so a host-read-only pane (the Library
+  // Reader) accepted every drop target here and handed the gesture on to a
+  // commit the `readOnlyEnforcer` would then drop. `surfaceEditableNow` also
+  // reads `editableRef`; on a card body / float (no enforcer, no ref) it is
+  // `view.editable` exactly as before.
+  if (!surfaceEditableNow(editor)) return null;
   if (spec.targetScope === "main-only" && editor !== mainEditor) return null;
   if (targetIsSourceCardBody(editor, sourceCardKey)) return null;
 

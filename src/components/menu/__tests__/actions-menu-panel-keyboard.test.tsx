@@ -90,6 +90,9 @@ function makeEditor(editable = true) {
   };
   const view = {
     state,
+    // See the sibling affordance suite: `isEditable` is `view.editable`, and
+    // the door task 733 routed this panel through reads the view.
+    editable: editable,
     coordsAtPos: () => ({ left: 0, top: 0, bottom: 10, right: 0 }),
   };
   return {

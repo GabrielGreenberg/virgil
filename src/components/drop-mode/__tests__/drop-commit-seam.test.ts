@@ -439,9 +439,13 @@ describe("census — every cross-editor commit goes through the ONE door", () =>
     }
   });
 
-  it("the door asks the collab SSOT rather than re-deriving `view.editable`", () => {
+  it("the door asks the editability SSOT rather than re-deriving `view.editable`", () => {
     const door = codeOf(readSource("commit-seam.ts"));
-    expect(door).toContain("collabReadOnly");
+    // Task 733 widened that SSOT from the pen alone (`collabReadOnly`, i.e.
+    // `!view.editable`) to pen ∧ host (`surfaceEditableNow`, which also reads
+    // the React `editable` prop a Library Reader pane sets false). What this
+    // leg holds is unchanged: the seam names a door, it does not re-derive one.
+    expect(door).toContain("surfaceEditableNow");
     expect(door).not.toMatch(/\.editable/);
   });
 

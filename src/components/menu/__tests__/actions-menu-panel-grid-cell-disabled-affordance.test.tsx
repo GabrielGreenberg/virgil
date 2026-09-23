@@ -72,6 +72,11 @@ function makeEditor(editable: boolean) {
   };
   const view = {
     state,
+    // `editor.isEditable` IS `view.editable` on a real TipTap editor, and since
+    // task 733 the panel asks the surface-editability door, which reads the
+    // VIEW. A mock that carried the flag only on the wrapper made this suite's
+    // read-only leg unanswerable.
+    editable: editable,
     coordsAtPos: () => ({ left: 0, top: 0, bottom: 10, right: 0 }),
   };
   return {

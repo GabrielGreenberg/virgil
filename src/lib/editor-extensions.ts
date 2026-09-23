@@ -101,6 +101,7 @@ import {
   GraphicsBlock,
 } from "@/lib/tiptap-extensions";
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
+import type { SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 
 // --- Heading callback refs (threaded from the host component) ----------
 // Formerly lexical closures inside VirgilEditor; the heading NodeView reads
@@ -1935,6 +1936,22 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
           // gate editability via TipTap's own `editable` flag instead.
           Extension.create({
             name: "readOnlyEnforcer",
+            // TASK 733 — the enforcer PUBLISHES the answer it enforces on.
+            // Every affordance outside this file (the grab menu, the lightning
+            // grid, the MenuBar, the actions bridge, the drop hit-test and
+            // commit seam) used to spell "may the user edit this surface?" as
+            // `editor.isEditable` / `!view.editable`, which on MAIN is a
+            // CONSTANT `true` — `Editor.tsx` pins `view.editable` for the
+            // view's whole life and carries the real answer in `editableRef`.
+            // Handing the ref to every surface as a prop would be a fifth
+            // private copy of the question; publishing it here makes it a fact
+            // about the editor, which `surfaceEditableNow` reads through the
+            // one door. Main-only by construction: a card body / float mounts
+            // no enforcer, resolves `null`, and is answered by `view.editable`
+            // alone — honest there (see `surface-editable.ts`).
+            addStorage(): SurfaceEditableStorage {
+              return { editableRef: ctx.editableRef ?? null };
+            },
             addProseMirrorPlugins() {
               return [
                 new Plugin({

@@ -33,6 +33,7 @@ import { paragraphUuidAt } from "@/links/links";
 // `headingRun`, can't corrupt a titleField / codeBlock / latexComment either.
 import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
 import { setHeadingLevelInRange } from "@/lib/tiptap/heading-level";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { iconHint } from "@/components/Hint";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
@@ -151,12 +152,16 @@ const LEVEL_TO_HEADING_ACTION: Readonly<Record<string, BlockActionId>> = {
  * bridge: heading needs no React-land `cardCreation`.
  */
 function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
-  // CHIP 7b: uniform collab read-only gate. `editor.isEditable` is the in-editor
-  // mirror of `collab.canEditMainText` ([EditorLayout.tsx:946]) — false only when
-  // the partner holds the pen, so a heading conversion refuses here too (the
-  // registry `run()` ALSO guards on `ctx.canEdit`; this fail-safes the direct-set
-  // fallback below). No over-gating: a non-collab editor is always editable.
-  if (!editor.isEditable) return;
+  // CHIP 7b: the uniform read-only gate — false when the partner holds the pen,
+  // so a heading conversion refuses here too (the registry `run()` ALSO guards
+  // on `ctx.canEdit`; this fail-safes the direct-set fallback below). No
+  // over-gating: a non-collab, host-writable editor is always editable.
+  //
+  // TASK 733 — asked through `surfaceEditableNow`, not `editor.isEditable`.
+  // The latter is `view.editable`, the PEN mirror, which MAIN pins `true` for
+  // the view's whole life; the HOST axis (a Library Reader pane's React
+  // `editable={false}`) lives in `editableRef`, and only the door reads both.
+  if (!surfaceEditableNow(editor)) return;
   const id = LEVEL_TO_HEADING_ACTION[levelValue];
   if (id) {
     const spec = VIRGIL_ACTION_REGISTRY[id];
@@ -172,7 +177,7 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
           paragraphId: paragraphUuidAt(view.state.doc, pos) ?? "",
         },
         surface: "lightning",
-        canEdit: editor.isEditable,
+        canEdit: surfaceEditableNow(editor),
       };
       void spec.run(ctx);
       return;
@@ -240,10 +245,11 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
  *  Enter activation (so keyboard + mouse take the identical path).
  *  Exported for the task-153 container-gate regression test. */
 export function pickBlockType(editor: Editor, value: string): void {
-  // CHIP 7b: uniform collab read-only gate — a block-type change
-  // (incl. 'Body' → setParagraph) refuses when the partner holds
-  // the pen. No over-gating: always editable in a non-collab doc.
-  if (!editor.isEditable) return;
+  // CHIP 7b + task 733: the uniform read-only gate, both axes — a block-type
+  // change (incl. 'Body' → setParagraph) refuses when the partner holds the pen
+  // OR the host mounted this surface read-only. No over-gating: an ordinary
+  // non-collab, host-writable doc is always editable.
+  if (!surfaceEditableNow(editor)) return;
   if (value === "p") {
     // 'Body' is the explicit way OUT of heading-hood — setParagraph,
     // no toggle needed (CHIP 5a: the heading items no longer toggle

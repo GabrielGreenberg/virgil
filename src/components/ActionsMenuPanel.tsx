@@ -49,6 +49,7 @@ import {
   type ActionId,
 } from "@/lib/actions/action-registry";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
 import { useCollabContext } from "@/hooks/useCollab";
 import { BlockTypeDropdown } from "./MenuBar";
@@ -188,7 +189,15 @@ export function ActionsMenuPanel({
   //
   // No over-gating: `COLLAB_INERT.canEditMainText` is `true`, so a non-collab
   // doc — and a panel mounted outside any provider — is un-gated.
-  const canEdit = useCollabContext().canEditMainText && editor.isEditable;
+  // TASK 733 — the second conjunct is now the DOOR, not `editor.isEditable`.
+  // That property is `view.editable`, which MAIN pins `true` for the view's
+  // entire lifetime, so the conjunction below was the pen alone on the surface
+  // this panel serves. `surfaceEditableNow` adds the HOST axis (the React
+  // `editable` prop a Library Reader pane sets false, mirrored in `editableRef`
+  // and published by `readOnlyEnforcer`'s storage) — and is byte-identical on a
+  // card body / float, which mounts no enforcer and is honestly answered by
+  // `view.editable` alone.
+  const canEdit = useCollabContext().canEditMainText && surfaceEditableNow(editor);
 
   // Color palette state (MRU-first, 7 slots).
   const [palette, setPalette] = useState<string[]>(() => loadPalette());
