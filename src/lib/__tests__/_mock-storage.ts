@@ -361,5 +361,45 @@ export function mockStorageModule(
     }
     mod[key] = value;
   }
+  // `mutateSidecar` is not an independent door — it IS `readSidecar` → mutate →
+  // `writeSidecar`, run inside one critical section. Synthesizing it from its
+  // declared return type gives `null` (the "nothing to change" arm), and since
+  // task 719 that is the door EVERY `usePersistentState` sidecar writes
+  // through: a suite that overrode the read and the write would then observe no
+  // write at all, with both of its overrides unused. So this one default is
+  // COMPOSED from the assembled stub rather than synthesized, AFTER the
+  // overrides land, so it composes the suite's own doors. A suite wanting
+  // something else overrides `mutateSidecar` itself.
+  if (!("mutateSidecar" in overrides)) {
+    mod.mutateSidecar = vi.fn(
+      async (
+        handle?: { docId: string },
+        filename?: string,
+        defaultValue?: unknown,
+        mutate?: (current: unknown) => unknown,
+      ) => {
+        // Called with no arguments (the derivation census walks every door
+        // that way), the honest answer is the declared `| null` arm: nothing
+        // to change, nothing written.
+        if (!handle || typeof mutate !== "function") return null;
+        const read = mod.readSidecar as (
+          docId: string,
+          filename: string,
+          defaultValue: unknown,
+        ) => Promise<unknown>;
+        const current =
+          (await read(handle.docId, filename!, defaultValue)) ?? defaultValue;
+        const next = mutate(current);
+        if (next === null) return null;
+        const write = mod.writeSidecar as (
+          h: unknown,
+          filename: string,
+          data: unknown,
+        ) => Promise<void>;
+        await write(handle, filename!, next);
+        return next;
+      },
+    );
+  }
   return mod;
 }

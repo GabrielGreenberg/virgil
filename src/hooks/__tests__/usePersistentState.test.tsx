@@ -9,6 +9,23 @@ vi.mock("@/lib/storage", () => ({
   readSidecar: (...args: unknown[]) => mockRead(...args),
   readSidecarIfExists: (...args: unknown[]) => mockRead(...args),
   writeSidecar: (...args: unknown[]) => mockWrite(...args),
+  // Task 719 moved the hook's write onto the SERIALIZED read-modify-merge door:
+  // a read INSIDE the write's critical section, the caller's merge applied to
+  // it, then the write. Modelled faithfully here — `mockRead` is this suite's
+  // disk — so `mockWrite` still receives `(handle, filename, payload)` and the
+  // payload is what actually lands.
+  mutateSidecar: async (
+    handle: { docId: string },
+    filename: string,
+    defaultValue: unknown,
+    mutate: (current: unknown) => unknown,
+  ) => {
+    const current = (await mockRead(handle.docId, filename)) ?? defaultValue;
+    const next = mutate(current);
+    if (next === null) return null;
+    await mockWrite(handle, filename, next);
+    return next;
+  },
 }));
 
 import { type ReactNode } from "react";

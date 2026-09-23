@@ -69,6 +69,22 @@ vi.mock("@/lib/storage", () => ({
     pendingRead(docId, file).promise,
   writeSidecar: (h: { docId: string }, f: string, d: unknown) =>
     mockWrite(h, f, d),
+  // The sidecar hook's write door since task 719. This suite is not about the
+  // merge and holds its reads open deliberately, so the double answers "file
+  // absent" — `mergeSidecarState` then returns the local snapshot verbatim,
+  // which is exactly the whole-snapshot write these legs were written against
+  // (and it cannot deadlock on a read this suite has not resolved yet).
+  mutateSidecar: async (
+    h: { docId: string },
+    file: string,
+    _defaultValue: unknown,
+    mutate: (current: unknown) => unknown,
+  ) => {
+    const next = mutate(null);
+    if (next === null) return null;
+    await mockWrite(h, file, next);
+    return next;
+  },
   // `useCitations` reads the `.bib` beside the sidecar; nothing here is about
   // it, so it answers empty with NO detected family (task 344's seed stays
   // silent, which is what lets the stored `natbib` below be the only voice).

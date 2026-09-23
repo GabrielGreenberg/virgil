@@ -29,6 +29,22 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(async (h: { docId: string }, filename: string, data: unknown) => {
     writes.push({ docId: h.docId, filename, data });
   }),
+  // The hook's write door since task 719: read the file INSIDE the write's
+  // critical section, apply the caller's merge, then write. `DISK` is this
+  // suite's file, so the merge sees the same bytes the loader did.
+  mutateSidecar: vi.fn(
+    async (
+      h: { docId: string },
+      filename: string,
+      defaultValue: unknown,
+      mutate: (current: unknown) => unknown,
+    ) => {
+      const next = mutate(DISK ?? defaultValue);
+      if (next === null) return null;
+      writes.push({ docId: h.docId, filename, data: next });
+      return next;
+    },
+  ),
 }));
 
 import { useOrphanedFootnotes } from "../useOrphanedFootnotes";

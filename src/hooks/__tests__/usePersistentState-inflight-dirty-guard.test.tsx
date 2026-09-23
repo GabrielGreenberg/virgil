@@ -40,6 +40,23 @@ vi.mock("@/lib/storage", () => ({
   readSidecar: (...args: unknown[]) => mockRead(...args),
   readSidecarIfExists: (...args: unknown[]) => mockRead(...args),
   writeSidecar: (...args: unknown[]) => mockWrite(...args),
+  // Task 719 moved the hook's write onto the SERIALIZED read-modify-merge door:
+  // a read INSIDE the write's critical section, the caller's merge applied to
+  // it, then the write. Modelled faithfully here — `mockRead` is this suite's
+  // disk — so `mockWrite` still receives `(handle, filename, payload)` and the
+  // payload is what actually lands.
+  mutateSidecar: async (
+    handle: { docId: string },
+    filename: string,
+    defaultValue: unknown,
+    mutate: (current: unknown) => unknown,
+  ) => {
+    const current = (await mockRead(handle.docId, filename)) ?? defaultValue;
+    const next = mutate(current);
+    if (next === null) return null;
+    await mockWrite(handle, filename, next);
+    return next;
+  },
 }));
 
 import { usePersistentState } from "../usePersistentState";
@@ -56,11 +73,14 @@ import {
 } from "../../lib/__tests__/_source-scan";
 
 interface Shape {
-  items: string[];
+  words: string[];
 }
-const EMPTY: Shape = { items: [] };
+const EMPTY: Shape = { words: [] };
 const DOC = "doc-569";
-const FILE = "notes.json";
+// A file whose record collection is DECLARED (`sidecar-merge.ts`: `words`,
+// value identity), so the task-719 merge these legs now drain into has real
+// semantics rather than an undeclared array's scalar fallback.
+const FILE = "dictionary.json";
 
 function deferred<T = void>() {
   let resolve!: (v: T) => void;
@@ -93,82 +113,101 @@ afterEach(() => {
 describe("the dirty guard covers the IN-FLIGHT window (task 569)", () => {
   it("DEFECT: DEFERS an external change that lands while the DEBOUNCED write is in flight — the timer handle is already null there", async () => {
     beginDocPipeline(DOC);
-    mockRead.mockResolvedValue({ items: ["initial"] });
+    mockRead.mockResolvedValue({ words: ["initial"] });
     const { result } = renderHook(() =>
       usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 20 }),
     );
-    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+    await waitFor(() => expect(result.current.state.words).toEqual(["initial"]));
 
     // Hold the write open: from the moment the debounce fires until we
     // release it, the instance has a write IN FLIGHT and no timer armed.
     const gate = deferred();
     mockWrite.mockImplementation(() => gate.promise);
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
     await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
 
     // The watcher confirms a genuine external change to the SAME file inside
     // that window. Pre-569 both guard reads passed here.
     mockRead.mockClear();
-    mockRead.mockResolvedValue({ items: ["initial", "external-only"] });
+    mockRead.mockResolvedValue({ words: ["initial", "external-only"] });
     act(() => {
       dispatchSidecarChanged({ docId: DOC, filename: FILE });
     });
     await settle();
 
     expect(mockRead, "the re-read was deferred, not run").not.toHaveBeenCalled();
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(result.current.state.words).toEqual(["initial", "local-edit"]);
 
-    // The write lands. Memory still holds the local edit — and disk (the fake
-    // write) now holds it too, so the two agree; that is the whole contract.
+    // The write lands. TASK 719: the deferral was a DEBT, not a skip — the
+    // drain REPLAYS the re-read, and disk by then holds what `mutateSidecar`
+    // merged (the fake disk is stateless, so point it at that union). Memory
+    // converges to it without losing the local edit.
+    mockRead.mockResolvedValue({
+      words: ["initial", "local-edit", "external-only"],
+    });
     await act(async () => {
       gate.resolve();
       await gate.promise;
     });
     await settle();
-    expect(mockRead).not.toHaveBeenCalled();
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(mockRead, "the deferred re-read is REPLAYED on the drain").toHaveBeenCalled();
+    expect(result.current.state.words).toEqual([
+      "initial",
+      "local-edit",
+      "external-only",
+    ]);
   });
 
   it("DEFECT: DEFERS on the DIRECT path too — `debounceMs: 0` hands `persist` the write with no timer ever armed", async () => {
     beginDocPipeline(DOC);
-    mockRead.mockResolvedValue({ items: ["initial"] });
+    mockRead.mockResolvedValue({ words: ["initial"] });
     const { result } = renderHook(() =>
       usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 0 }),
     );
-    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+    await waitFor(() => expect(result.current.state.words).toEqual(["initial"]));
 
     const gate = deferred();
     mockWrite.mockImplementation(() => gate.promise);
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
-    expect(mockWrite).toHaveBeenCalledTimes(1); // synchronous hand-off, in flight
+    // The hand-off is immediate, but the merged door reads its base first, so
+    // the write itself is one microtask out (task 719).
+    await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
 
     mockRead.mockClear();
-    mockRead.mockResolvedValue({ items: ["initial", "external-only"] });
+    mockRead.mockResolvedValue({ words: ["initial", "external-only"] });
     act(() => {
       dispatchSidecarChanged({ docId: DOC, filename: FILE });
     });
     await settle();
-    expect(mockRead).not.toHaveBeenCalled();
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(mockRead, "the re-read was deferred, not run").not.toHaveBeenCalled();
+    expect(result.current.state.words).toEqual(["initial", "local-edit"]);
 
+    mockRead.mockResolvedValue({
+      words: ["initial", "local-edit", "external-only"],
+    });
     await act(async () => {
       gate.resolve();
       await gate.promise;
     });
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    await settle();
+    expect(result.current.state.words).toEqual([
+      "initial",
+      "local-edit",
+      "external-only",
+    ]);
   });
 
   it("DEFECT: the SECOND guard read sees a write that STARTS while the re-read is in flight", async () => {
     beginDocPipeline(DOC);
-    mockRead.mockResolvedValue({ items: ["initial"] });
+    mockRead.mockResolvedValue({ words: ["initial"] });
     const { result } = renderHook(() =>
       usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 0 }),
     );
-    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+    await waitFor(() => expect(result.current.state.words).toEqual(["initial"]));
 
     // Clean when the event arrives, so the re-read STARTS — and is held open.
     const readGate = deferred<Shape>();
@@ -185,40 +224,50 @@ describe("the dirty guard covers the IN-FLIGHT window (task 569)", () => {
     const writeGate = deferred();
     mockWrite.mockImplementation(() => writeGate.promise);
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
-    expect(mockWrite).toHaveBeenCalledTimes(1);
+    // The merged door reads its base before writing (task 719), and this leg
+    // holds `mockRead` open — so release it for the WRITE's own base read.
+    readGate.resolve({ words: ["initial"] });
+    await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
 
-    // The read resolves with the external bytes. The post-await re-check must
-    // see the in-flight write and decline — pre-569 it read the (null) timer.
-    await act(async () => {
-      readGate.resolve({ items: ["initial", "external-only"] });
-      await readGate.promise;
-    });
+    // The re-read's own resolve already happened above; the post-await
+    // re-check must see the in-flight write and decline — pre-569 it read the
+    // (null) timer. It RE-ARMS the debt (task 719) rather than dropping it.
     await settle();
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(result.current.state.words).toEqual(["initial", "local-edit"]);
 
+    // Draining the write pays the debt: the replayed read merges the external
+    // record in without touching the local edit.
+    mockRead.mockResolvedValue({
+      words: ["initial", "local-edit", "external-only"],
+    });
     await act(async () => {
       writeGate.resolve();
       await writeGate.promise;
     });
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    await settle();
+    expect(result.current.state.words).toEqual([
+      "initial",
+      "local-edit",
+      "external-only",
+    ]);
   });
 
   it("CONTROL: once the in-flight write SETTLES the counter releases — a LATER external change re-hydrates", async () => {
     // A predicate that never returned to clean would pass every defect leg
     // above and silently disable live reactivity for the rest of the session.
     beginDocPipeline(DOC);
-    mockRead.mockResolvedValue({ items: ["initial"] });
+    mockRead.mockResolvedValue({ words: ["initial"] });
     const { result } = renderHook(() =>
       usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 0 }),
     );
-    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+    await waitFor(() => expect(result.current.state.words).toEqual(["initial"]));
 
     const gate = deferred();
     mockWrite.mockImplementation(() => gate.promise);
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
     await act(async () => {
       gate.resolve();
@@ -226,12 +275,12 @@ describe("the dirty guard covers the IN-FLIGHT window (task 569)", () => {
     });
 
     mockRead.mockClear();
-    mockRead.mockResolvedValue({ items: ["initial", "local-edit", "later-external"] });
+    mockRead.mockResolvedValue({ words: ["initial", "local-edit", "later-external"] });
     act(() => {
       dispatchSidecarChanged({ docId: DOC, filename: FILE });
     });
     await waitFor(() =>
-      expect(result.current.state.items).toEqual([
+      expect(result.current.state.words).toEqual([
         "initial",
         "local-edit",
         "later-external",
@@ -242,30 +291,36 @@ describe("the dirty guard covers the IN-FLIGHT window (task 569)", () => {
 
   it("CONTROL: a write that THROWS releases the counter too (the decrement is in `finally`)", async () => {
     beginDocPipeline(DOC);
-    mockRead.mockResolvedValue({ items: ["initial"] });
+    mockRead.mockResolvedValue({ words: ["initial"] });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { result } = renderHook(() =>
       usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 0 }),
     );
-    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+    await waitFor(() => expect(result.current.state.words).toEqual(["initial"]));
 
     mockWrite.mockRejectedValue(new Error("disk full"));
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
     await settle();
     expect(errorSpy).toHaveBeenCalled();
 
-    // The write is over (it failed). Disk did not take the edit, so the honest
-    // answer to an external change now is to adopt disk — the instance owes
-    // no write any more.
+    // The write is over (it failed), so the instance owes no write and the
+    // re-read runs. TASK 719 REVISED WHAT IT DOES: 569 adopted disk wholesale
+    // here, which threw away an edit disk had never taken. The re-read now
+    // MERGES against the base, so the unlanded local edit survives AND the
+    // external record arrives — neither writer's content is destroyed.
     mockRead.mockClear();
-    mockRead.mockResolvedValue({ items: ["initial", "external-only"] });
+    mockRead.mockResolvedValue({ words: ["initial", "external-only"] });
     act(() => {
       dispatchSidecarChanged({ docId: DOC, filename: FILE });
     });
     await waitFor(() =>
-      expect(result.current.state.items).toEqual(["initial", "external-only"]),
+      expect(result.current.state.words).toEqual([
+        "initial",
+        "local-edit",
+        "external-only",
+      ]),
     );
     errorSpy.mockRestore();
   });
@@ -275,25 +330,32 @@ describe("the dirty guard covers the IN-FLIGHT window (task 569)", () => {
     // exactly as it returns before stamping `hasMutatedRef`. A write the layer
     // below refuses is not a write this instance OWES, so an external change
     // still re-hydrates (the read-mostly host's design; stated at the site).
-    mockRead.mockResolvedValue({ items: ["initial"] });
+    mockRead.mockResolvedValue({ words: ["initial"] });
     const { result } = renderHook(() =>
       usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 0 }),
     );
-    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+    await waitFor(() => expect(result.current.state.words).toEqual(["initial"]));
 
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "memory-only"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "memory-only"] }));
     });
     await settle();
     expect(mockWrite).not.toHaveBeenCalled();
 
     mockRead.mockClear();
-    mockRead.mockResolvedValue({ items: ["initial", "external-only"] });
+    mockRead.mockResolvedValue({ words: ["initial", "external-only"] });
     act(() => {
       dispatchSidecarChanged({ docId: DOC, filename: FILE });
     });
+    // Same task-719 revision as the thrown-write leg: the re-read MERGES, so
+    // the memory-only value a read-mostly host will never persist is not
+    // destroyed by the external change it adopts.
     await waitFor(() =>
-      expect(result.current.state.items).toEqual(["initial", "external-only"]),
+      expect(result.current.state.words).toEqual([
+        "initial",
+        "memory-only",
+        "external-only",
+      ]),
     );
   });
 });
@@ -329,7 +391,7 @@ describe("census · the sidecar hook's dirty predicate is ONE thing", () => {
   });
 
   it("`persist` counts the write in flight around its await and releases in `finally`", () => {
-    const at = code.indexOf("await writeSidecar(h, filename, s)");
+    const at = code.indexOf("await writeSidecarMerged<S>(h, filename, base, s,");
     expect(at).toBeGreaterThan(0);
     const persist = enclosingDeclaration(code, at);
     // The region is the `async (s: S) => {…}` arrow; its owner is the line above.
@@ -339,7 +401,7 @@ describe("census · the sidecar hook's dirty predicate is ONE thing", () => {
       "const persist = useCallback(",
     );
     const inc = persist.indexOf("inFlightRef.current += 1");
-    const awaitAt = persist.indexOf("await writeSidecar");
+    const awaitAt = persist.indexOf("await writeSidecarMerged");
     expect(inc, "incremented BEFORE the await").toBeGreaterThan(0);
     expect(inc).toBeLessThan(awaitAt);
     expect(persist).toMatch(/finally\s*\{\s*inFlightRef\.current -= 1;\s*\}/);

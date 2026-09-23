@@ -83,6 +83,34 @@ vi.mock("@/lib/storage", () => ({
     const { stampDiskFingerprint, fingerprintOf } = await import("@/lib/disk-ledger");
     stampDiskFingerprint(h.docId, relPath, fingerprintOf(stat, text));
   },
+  /**
+   * The sidecar hook's write door since task 719: the read runs INSIDE the
+   * write's critical section, so it sees whatever an out-of-band writer landed
+   * while this write sat in the queue. `writeGate` is awaited BEFORE the read
+   * for exactly that reason — the gate models the queued task being held, and
+   * the read is the first thing the task does when it finally runs.
+   */
+  mutateSidecar: async (
+    h: { docId: string },
+    filename: string,
+    defaultValue: unknown,
+    mutate: (current: unknown) => unknown,
+  ) => {
+    sidecarWrites++;
+    if (writeGate) await writeGate;
+    const relPath = `virgil/${filename}`;
+    const existing = disk.get(key(h.docId, relPath));
+    const current = existing ? JSON.parse(existing.text) : defaultValue;
+    const next = mutate(current);
+    if (next === null) return null;
+    const text = JSON.stringify(next);
+    clock += 1_000;
+    const stat = { mtimeMs: clock, size: text.length };
+    disk.set(key(h.docId, relPath), { text, stat });
+    const { stampDiskFingerprint, fingerprintOf } = await import("@/lib/disk-ledger");
+    stampDiskFingerprint(h.docId, relPath, fingerprintOf(stat, text));
+    return next;
+  },
 }));
 
 import { DiskWatcherProvider } from "../disk-watcher";
@@ -92,11 +120,14 @@ import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeli
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 
 interface Shape {
-  items: string[];
+  words: string[];
 }
-const EMPTY: Shape = { items: [] };
+const EMPTY: Shape = { words: [] };
 const DOC = "doc-wired";
-const FILE = "notes.json";
+// A file whose record collection is DECLARED (`sidecar-merge.ts`: `words`, by
+// value identity), so the legs below exercise the real task-719 merge rather
+// than an undeclared array's scalar fallback.
+const FILE = "dictionary.json";
 const REL = `virgil/${FILE}`;
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -138,112 +169,129 @@ afterEach(() => {
 
 describe("DiskWatcherProvider mounts the sidecar watcher (task 432)", () => {
   it("the watched set is every sidecar Virgil reads at mount", () => {
-    // A sanity pin for the leg below: notes.json is in the population the
+    // A sanity pin for the leg below: the file is in the population the
     // provider hands the watcher, so a change to it is reachable.
     expect(ALL_SIDECAR_FILENAMES).toContain(FILE);
   });
 
   it("an external sidecar write re-hydrates the REAL usePersistentState on the next poll, with no reload and no hand-dispatched event", async () => {
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial"] }));
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial"] }));
     const { result } = renderHook(
       () => usePersistentState<Shape>(DOC, FILE, EMPTY),
       { wrapper },
     );
     // Mount: the hook's own load + the watcher's PRIME pass (baseline, no emit).
     await pollOnce();
-    expect(result.current.state.items).toEqual(["initial"]);
+    expect(result.current.state.words).toEqual(["initial"]);
     const readsAfterMount = sidecarReads;
 
     // A quiet poll re-reads nothing (the cheap mtime/size path).
     await pollOnce();
     expect(sidecarReads).toBe(readsAfterMount);
-    expect(result.current.state.items).toEqual(["initial"]);
+    expect(result.current.state.words).toEqual(["initial"]);
 
     // An /editor/* skill (or a sync daemon) writes the file out of process.
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial", "ai-drafted"] }));
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial", "ai-drafted"] }));
     await pollOnce();
 
-    expect(result.current.state.items).toEqual(["initial", "ai-drafted"]);
+    expect(result.current.state.words).toEqual(["initial", "ai-drafted"]);
     expect(sidecarReads).toBe(readsAfterMount + 1);
   });
 
   it("an external REMOVAL empties the panel to its default", async () => {
-    externalWrite(DOC, REL, JSON.stringify({ items: ["gone-soon"] }));
+    externalWrite(DOC, REL, JSON.stringify({ words: ["gone-soon"] }));
     const { result } = renderHook(
       () => usePersistentState<Shape>(DOC, FILE, EMPTY),
       { wrapper },
     );
     await pollOnce();
-    expect(result.current.state.items).toEqual(["gone-soon"]);
+    expect(result.current.state.words).toEqual(["gone-soon"]);
 
     disk.delete(key(DOC, REL));
     await pollOnce();
 
-    expect(result.current.state.items).toEqual([]);
+    expect(result.current.state.words).toEqual([]);
   });
 });
 
 /**
- * Task 569 — what a DEFERRAL means, driven through the REAL watcher.
+ * Task 569 → task 719 — what a DEFERRAL means, driven through the REAL watcher.
  *
- * The hook defers an external change while it holds a pending write. The task
- * that filed 569 asked that "the next poll re-emits once clean" be VERIFIED
- * with a leg rather than assumed. Verified: it does NOT. The watcher
- * re-baselines its ledger to the external bytes BEFORE it emits; our landed
- * whole-snapshot write then re-baselines it again to OURS; the next poll is a
- * cheap mtime/size match and emits nothing. A deferral is therefore LOCAL WINS
- * for that file — the external bytes are overwritten, which is the 220/558
- * two-writers class every non-merging sidecar still carries. These legs pin
- * that truth, and the in-flight one is the 569 defect end to end: pre-569 the
- * hook adopted the external bytes in memory while its own write landed the
- * local ones on disk.
+ * 569 asked that "the next poll re-emits once clean" be VERIFIED rather than
+ * assumed, and it does NOT: the watcher re-baselines its ledger to the external
+ * bytes BEFORE it emits, our landed write re-baselines it again to OURS, and
+ * the next poll is a cheap mtime/size match that emits nothing. So a deferral
+ * had to be either a REPLAY or a discard — and it was a discard, with a
+ * whole-snapshot write landing on top of the change it had declined to read.
+ *
+ * TASK 719 supplies both missing halves, and these legs now pin them: the write
+ * is a serialized read-modify-MERGE, so what lands is the UNION rather than the
+ * local snapshot; and the deferral is a DEBT, replayed once the write drains,
+ * so memory converges without the watcher ever emitting again.
  */
-describe("a deferral is LOCAL WINS, and the watcher does not re-emit (task 569)", () => {
+describe("a deferral is a DEBT, not a discard — the watcher never re-emits (tasks 569 + 719)", () => {
   const disktext = () => disk.get(key(DOC, REL))?.text ?? "";
 
-  it("MID-DEBOUNCE: the external bytes are overwritten by the landed local write; no later poll re-reads", async () => {
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial"] }));
+  it("MID-DEBOUNCE: the landed write MERGES the external bytes in, and the deferred read is replayed", async () => {
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial"] }));
     // 5 s debounce so the 3 s poll lands while the timer is still ARMED.
     const { result } = renderHook(
       () => usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 5_000 }),
       { wrapper },
     );
     await pollOnce(); // prime
-    expect(result.current.state.items).toEqual(["initial"]);
+    expect(result.current.state.words).toEqual(["initial"]);
     const readsAfterMount = sidecarReads;
 
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial", "external-only"] }));
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial", "external-only"] }));
     await pollOnce(); // the watcher emits; the hook is dirty → defers
     expect(sidecarReads).toBe(readsAfterMount);
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(result.current.state.words).toEqual(["initial", "local-edit"]);
 
-    // The debounce fires (t+5 s) and the local snapshot LANDS over the external bytes.
+    // The debounce fires (t+5 s). PRE-719 the local snapshot landed OVER the
+    // external bytes and "external-only" was gone for good. Now the write reads
+    // disk inside its own critical section and lands the UNION.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
     await flush();
     expect(sidecarWrites).toBe(1);
     expect(disktext()).toContain("local-edit");
-    expect(disktext()).not.toContain("external-only");
+    expect(disktext()).toContain("external-only");
 
-    // Two more polls: nothing re-reads, nothing re-emits. Memory = disk = local.
+    // …and the deferral was a DEBT: draining the write replayed the re-read, so
+    // memory converged too — without the watcher emitting again.
+    expect(sidecarReads, "the deferred read is replayed on the drain").toBe(
+      readsAfterMount + 1,
+    );
+    expect(result.current.state.words).toEqual([
+      "initial",
+      "local-edit",
+      "external-only",
+    ]);
+
+    // Two more polls: nothing re-emits. Memory = disk.
     await pollOnce();
     await pollOnce();
-    expect(sidecarReads).toBe(readsAfterMount);
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(sidecarReads).toBe(readsAfterMount + 1);
+    expect(result.current.state.words).toEqual([
+      "initial",
+      "local-edit",
+      "external-only",
+    ]);
   });
 
-  it("IN FLIGHT (the 569 defect): an external change polled while the write is held open is deferred — memory and disk agree on the LOCAL edit afterwards", async () => {
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial"] }));
+  it("IN FLIGHT (the 569 defect): an external change polled while the write is held open is deferred — and the drain merges it in", async () => {
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial"] }));
     const { result } = renderHook(
       () => usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 1_000 }),
       { wrapper },
     );
     await pollOnce(); // prime
-    expect(result.current.state.items).toEqual(["initial"]);
+    expect(result.current.state.words).toEqual(["initial"]);
     const readsAfterMount = sidecarReads;
 
     let release!: () => void;
@@ -251,7 +299,7 @@ describe("a deferral is LOCAL WINS, and the watcher does not re-emit (task 569)"
       release = r;
     });
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
     // The debounce fires: the timer handle is NULL and the write is IN FLIGHT.
     await act(async () => {
@@ -261,29 +309,39 @@ describe("a deferral is LOCAL WINS, and the watcher does not re-emit (task 569)"
     expect(disktext()).not.toContain("local-edit"); // not landed yet
 
     // An out-of-band writer lands inside the window; the watcher confirms it.
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial", "external-only"] }));
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial", "external-only"] }));
     await pollOnce();
     // Pre-569: both guard reads passed, the hook adopted the external bytes.
     expect(sidecarReads, "the re-read was deferred").toBe(readsAfterMount);
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(result.current.state.words).toEqual(["initial", "local-edit"]);
 
-    // Release the write; it lands the LOCAL snapshot over the external bytes.
+    // Release the write. Its in-lock read now sees the external bytes, so the
+    // UNION lands — and the drain replays the deferred read, so memory follows.
     await act(async () => {
       release();
       await writeGate;
     });
+    writeGate = null;
     await flush();
     expect(disktext()).toContain("local-edit");
-    expect(disktext()).not.toContain("external-only");
+    expect(disktext()).toContain("external-only");
 
-    // No re-emit, no re-read; memory and disk agree.
+    expect(sidecarReads, "the deferred read is replayed on the drain").toBe(
+      readsAfterMount + 1,
+    );
+    expect(result.current.state.words).toEqual([
+      "initial",
+      "local-edit",
+      "external-only",
+    ]);
+
+    // No further emit: memory and disk already agree.
     await pollOnce();
-    expect(sidecarReads).toBe(readsAfterMount);
-    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+    expect(sidecarReads).toBe(readsAfterMount + 1);
   });
 
   it("CONTROL: a LATER external write, after the in-flight write has settled, still re-hydrates", async () => {
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial"] }));
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial"] }));
     const { result } = renderHook(
       () => usePersistentState<Shape>(DOC, FILE, EMPTY, { debounceMs: 1_000 }),
       { wrapper },
@@ -294,7 +352,7 @@ describe("a deferral is LOCAL WINS, and the watcher does not re-emit (task 569)"
       release = r;
     });
     act(() => {
-      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+      result.current.update((prev) => ({ words: [...prev.words, "local-edit"] }));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
@@ -307,8 +365,142 @@ describe("a deferral is LOCAL WINS, and the watcher does not re-emit (task 569)"
     await flush();
     expect(disktext()).toContain("local-edit");
 
-    externalWrite(DOC, REL, JSON.stringify({ items: ["initial", "local-edit", "later-external"] }));
+    externalWrite(DOC, REL, JSON.stringify({ words: ["initial", "local-edit", "later-external"] }));
     await pollOnce();
-    expect(result.current.state.items).toEqual(["initial", "local-edit", "later-external"]);
+    expect(result.current.state.words).toEqual(["initial", "local-edit", "later-external"]);
+  });
+});
+
+/**
+ * TASK 719 — the traced sequence, end to end, on the file it was found in.
+ *
+ * 1. The user has an unsaved edit in `reports.json` (one keystroke in any
+ *    report card arms the debounce).
+ * 2. A skill answers a report request: `create_card.py` APPENDS the AI's card
+ *    to the same file.
+ * 3. The watcher sees it and emits; the hook is dirty, so it defers.
+ * 4. The debounced write lands.
+ *
+ * Before 719 step 4 wrote the local whole snapshot — which does not contain the
+ * agent's card — over the file, and re-baselined the ledger to our bytes so the
+ * watcher never mentioned it again. The AI's report was deleted from disk, the
+ * `ai-requests.json` row still read `complete`, and the work was unrepeatable.
+ *
+ * The assertion is on the BYTES, not on state: state agreeing is necessary but
+ * it is not what the user lost.
+ */
+describe("task 719 — a skill's append survives the user's unsaved edit", () => {
+  interface Card {
+    id: string;
+    body: string;
+  }
+  interface ReportsShape {
+    cards: Card[];
+  }
+  const REPORTS = "reports.json";
+  const REPORTS_REL = `virgil/${REPORTS}`;
+  const EMPTY_REPORTS: ReportsShape = { cards: [] };
+  const onDisk = (): ReportsShape =>
+    JSON.parse(disk.get(key(DOC, REPORTS_REL))?.text ?? "null");
+
+  it("BOTH the agent's card and the user's unsaved edit are on disk afterwards", async () => {
+    externalWrite(
+      DOC,
+      REPORTS_REL,
+      JSON.stringify({ cards: [{ id: "u1", body: "the user's report" }] }),
+    );
+    const { result } = renderHook(
+      () =>
+        usePersistentState<ReportsShape>(DOC, REPORTS, EMPTY_REPORTS, {
+          debounceMs: 5_000,
+        }),
+      { wrapper },
+    );
+    await pollOnce(); // load + prime
+    expect(result.current.state.cards).toHaveLength(1);
+
+    // (1) One keystroke in the user's own card: the debounce is armed, so this
+    //     instance is DIRTY for the next five seconds.
+    act(() => {
+      result.current.update((prev) => ({
+        cards: prev.cards.map((c) =>
+          c.id === "u1" ? { ...c, body: "the user's report, edited" } : c,
+        ),
+      }));
+    });
+
+    // (2) The skill appends its answer straight to disk, out of process.
+    externalWrite(
+      DOC,
+      REPORTS_REL,
+      JSON.stringify({
+        cards: [
+          { id: "u1", body: "the user's report" },
+          { id: "a1", body: "the AI's answer" },
+        ],
+      }),
+    );
+
+    // (3) The watcher emits; the hook is dirty and defers.
+    await pollOnce();
+    expect(result.current.state.cards.map((c) => c.id)).toEqual(["u1"]);
+
+    // (4) The debounce fires and the write lands.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    await flush();
+
+    // THE ASSERTION ON THE BYTES: both records, neither writer's content lost.
+    expect(onDisk().cards.map((c) => c.id).sort()).toEqual(["a1", "u1"]);
+    expect(onDisk().cards.find((c) => c.id === "u1")!.body).toBe(
+      "the user's report, edited",
+    );
+    expect(onDisk().cards.find((c) => c.id === "a1")!.body).toBe(
+      "the AI's answer",
+    );
+
+    // …and the replayed read brought the agent's card into the panel too.
+    expect(result.current.state.cards.map((c) => c.id).sort()).toEqual([
+      "a1",
+      "u1",
+    ]);
+  });
+
+  it("a card the USER deleted is not resurrected by the merge (the base is what makes deletion derivable)", async () => {
+    externalWrite(
+      DOC,
+      REPORTS_REL,
+      JSON.stringify({
+        cards: [
+          { id: "u1", body: "keep me" },
+          { id: "u2", body: "delete me" },
+        ],
+      }),
+    );
+    const { result } = renderHook(
+      () =>
+        usePersistentState<ReportsShape>(DOC, REPORTS, EMPTY_REPORTS, {
+          debounceMs: 1_000,
+        }),
+      { wrapper },
+    );
+    await pollOnce();
+    expect(result.current.state.cards).toHaveLength(2);
+
+    act(() => {
+      result.current.update((prev) => ({
+        cards: prev.cards.filter((c) => c.id !== "u2"),
+      }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    await flush();
+
+    // A plain UNION would have read "on disk, absent from memory" as an
+    // external insert and put `u2` back. The base says the user removed it.
+    expect(onDisk().cards.map((c) => c.id)).toEqual(["u1"]);
+    expect(result.current.state.cards.map((c) => c.id)).toEqual(["u1"]);
   });
 });

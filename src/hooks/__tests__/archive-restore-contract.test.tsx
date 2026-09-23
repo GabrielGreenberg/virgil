@@ -86,7 +86,11 @@ describe("A. an immediate persist supersedes a scheduled one (usePersistentState
     beginDocPipeline("doc-l");
     // A read that resolves only after the user has already written.
     let release!: (v: unknown) => void;
-    mockRead.mockReturnValue(new Promise((res) => { release = res; }));
+    // ONCE: only the LOADER's read is held open. Since task 719 the write is a
+    // serialized read-modify-merge, so it takes a read of its own — holding
+    // every read open would deadlock the `await persist(...)` below on the very
+    // promise this test releases after it.
+    mockRead.mockReturnValueOnce(new Promise((res) => { release = res; }));
 
     const { result } = renderHook(() =>
       usePersistentState<{ items: string[] }>("doc-l", "t.json", { items: [] }),

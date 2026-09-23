@@ -34,6 +34,27 @@ vi.mock("@/lib/storage", () => ({
     DISK[file] = data;
     writes.push({ file, data });
   }),
+  /**
+   * The hook's write door since task 719: the read runs INSIDE the write's
+   * critical section, the caller's merge is applied to it, then the write.
+   * `DISK` is this suite's file, so the merge sees the same bytes a reader
+   * would — and `writes` still records what actually lands.
+   */
+  mutateSidecar: vi.fn(
+    async (
+      _handle: unknown,
+      file: string,
+      defaultValue: unknown,
+      mutate: (current: unknown) => unknown,
+    ) => {
+      const current = file in DISK ? DISK[file] : defaultValue;
+      const next = mutate(current);
+      if (next === null) return null;
+      DISK[file] = next as never;
+      writes.push({ file, data: next });
+      return next;
+    },
+  ),
 }));
 
 import { useFootnotes } from "../useFootnotes";

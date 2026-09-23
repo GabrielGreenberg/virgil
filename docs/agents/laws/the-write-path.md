@@ -2298,3 +2298,96 @@ that already holds several. Durable proof:
 library load (400 uids collapsing to 1 distinct) and a MEASURED leg showing two
 entries sharing a uid reading each other's annotation, which is what makes the
 rest load-bearing rather than decorative.
+
+## The sidecar half: a record collection MERGES, and a deferral is a DEBT (task 719)
+
+> **A sidecar with two writers is merged against a BASE, and a deferred external
+> change is replayed rather than dropped.** The `.bib` half above ("a write is a
+> SPLICE, never a rebuild", task 688) named the rule and delivered it for one
+> file. The fourteen card sidecars `usePersistentState` owns — plus the three
+> with their own bespoke persist — were the unaddressed members, and their
+> version of the defect was not a race the app lost but a DELETION it performed.
+
+**The live sequence.** The user has one unsaved keystroke in `reports.json`, so
+the 300 ms debounce is armed. A skill answers a report request and appends the
+AI's card to the same file. The watcher sees it and emits; the hook's dirty
+guard reads dirty and `return`s. The debounced write then lands the local whole
+snapshot — which does not contain the agent's card — over the file, and
+`writeTrackedText` re-baselines the disk ledger to OUR bytes, so the watcher's
+next poll takes the cheap mtime/size path and emits nothing. The AI's report is
+gone from disk; the `ai-requests.json` row still reads `complete`, so
+`create_card.py` no-ops on a retry and the work is unrepeatable. What the user
+sees is a report they asked for that simply never appeared.
+
+**Two halves, because either alone is still lossy.**
+
+1. **The write is a serialized read-modify-MERGE.** `writeSidecarMerged`
+   ([src/lib/sidecar-merged-write.ts](../../../src/lib/sidecar-merged-write.ts))
+   runs over `mutateSidecar`, so the read happens INSIDE the same queued,
+   doc-locked task as the write and the base cannot be superseded between the
+   two halves. Four callers: `usePersistentState` and the three bespoke persists
+   (`useFootnotes`, `useExamples`, `useBibReview`).
+2. **A deferral is REMEMBERED and replayed when the instance's writes drain.**
+   The watcher emits ONCE per change — it re-baselines its ledger before
+   dispatching — so a guard that merely `return`s loses the event permanently.
+   `useAiRequests` has carried this replay since task 220; it is right there for
+   the same reason it is right here, *because the write merges*.
+
+**Why a BASE and not a union.** A two-way union gets exactly one case wrong, and
+it is the common one: a record the user DELETED is on disk and absent from
+memory, so a union resurrects it. Deletion is therefore derived from a base —
+the last content the instance knows the file held (its load, its last adopted
+external read, or its own last submitted payload). The full verdict table is in
+[src/lib/sidecar-merge.ts](../../../src/lib/sidecar-merge.ts); its two
+load-bearing rows are *"in base, on disk, absent from local → the user deleted
+it"* and *"in base, on disk, in local, local == base → adopt DISK"*, which is
+what makes an external EDIT survive as well as an external insert.
+
+**The base is the SUBMITTED payload, never the merged result.** After a merged
+write disk holds the union and memory still holds the local snapshot. Re-basing
+to the union would make the next write read the external record as "in base,
+absent from local" — a delete — and the preservation would hold for exactly one
+write. Memory converges by the other door: the watcher re-read, which merges the
+same way.
+
+**What is declared and what is derived.** Only the record COLLECTIONS are
+declared (`SIDECAR_COLLECTIONS`: which top-level key holds an array, and which
+fields identify a record — composite, because `orphaned-footnotes.json`
+identifies by `footnoteId` and `bib-review-requests.json` by `(bibKey, type)`,
+and empty for `dictionary.json`, whose records ARE their own identity). A shape
+heuristic ("an array of objects with an `id`") was rejected for the reason task
+718 demoted its own. Everything else is structural: nested objects merge
+key-wise (so `annotations.json`'s uid→html map and `document-settings.json`'s
+arbitrary agent-written keys merge per key — task 715's file), and a scalar
+takes the local value unless local is unchanged from base, in which case it
+adopts disk.
+
+**What the fix deliberately did NOT do.** It did not widen the cowork pen to
+cover sidecar writes: that serializes the two writers by blocking one of them
+and makes the app feel stalled during a skill run. It did not fold
+`ai-requests.json` (task 220) or the `.bib` (task 558) onto the shared door —
+they are done, their authorities are census-pinned, and regressing them to prove
+a point is not an improvement. `ai-requests.json` is the one content-tier
+sidecar deliberately absent from the table, because 220's own census forbids any
+other production file from even spelling the filename.
+
+**Two revisions to task 569's stated decisions**, both in the direction the
+merge makes available: a re-read after a write that THREW, and one after a write
+the chrome REFUSED, used to adopt disk wholesale — throwing away an edit disk
+had never taken. They now merge, so the unlanded local edit survives *and* the
+external record arrives. 569's deferral itself is untouched: the dirty guard
+still declines to read while a write is armed or in flight.
+
+**Residual, stated.** The out-of-process skill is not on Virgil's doc lock, so a
+skill write that lands between the door's in-lock read and its in-lock write is
+still outside the merge — the window is sub-millisecond and the replayed re-read
+converges memory, but disk can transiently lose that one append. Closing it
+needs a compare-and-swap on the disk fingerprint at the write, which is the
+funnel's business rather than the hook's.
+
+**CI:** `sidecar-merge.test.ts` (the verdict table row by row, the degenerate
+inputs, and the totality census over the content tier),
+`sidecar-watcher-wiring.test.tsx` → "task 719" (the traced sequence end to end
+over a real in-memory disk, asserting the BYTES), and
+`usePersistentState-inflight-dirty-guard.test.tsx` (569's legs, now draining
+into the replay).
