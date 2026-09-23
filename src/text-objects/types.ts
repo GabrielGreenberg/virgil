@@ -402,7 +402,9 @@ export interface TextObjectMeta {
     target: DropTarget,
   ) => DropAction;
 
-  /** Collect the doc range a move-drop should pick up. Default behavior
+  /** Collect the doc range a move-drop should pick up — and, more generally,
+   *  the LIFECYCLE range of this kind (what Duplicate / Archive / Delete act
+   *  on). Read kind-agnostically through `action-scope.ts`. Default behavior
    *  (used when this is omitted) is "the single node whose `attrs.uuid`
    *  matches `uuid`." Headings override this to collect the entire
    *  section (heading + every block under it up to the next heading of
@@ -422,7 +424,11 @@ export interface TextObjectMeta {
    *  (used when omitted) is the node's own content range — same fallback
    *  as `resolveRefRange`. Only `heading` overrides today; other kinds
    *  may grow scope asymmetry later (e.g. exampleBlock annotating its
-   *  intro line). Pure; called from the dispatcher at click time.
+   *  intro line) and that is now a REGISTRY edit alone: since task 732
+   *  both hooks are read kind-agnostically by the one owner,
+   *  `collectScopeOverride` in `src/text-objects/action-scope.ts`, which
+   *  every resolver on both action surfaces goes through. Pure; called
+   *  from the dispatcher at click time.
    *
    *  See ACTION-MENU-DIAGNOSIS.md §6 cluster C9 + C11 — the split
    *  resolves the silent data loss where heading × Highlight wrote

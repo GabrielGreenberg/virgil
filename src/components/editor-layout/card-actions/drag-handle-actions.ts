@@ -53,7 +53,6 @@ import {
   type LinkedAnchorKind,
 } from "@/links/links";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
-import { getSectionRangeByUuid } from "@/lib/section-range";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
@@ -68,6 +67,12 @@ import {
   inlineInsertPos,
   INLINE_INSERT_ACTIONS,
 } from "@/text-objects/text-object-registry";
+import {
+  actionScopeClass,
+  scopeOverrideRange,
+  LIFECYCLE_ACTION_IDS,
+  type ActionScopeClass,
+} from "@/text-objects/action-scope";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 import {
@@ -1203,10 +1208,16 @@ function rangeHasAnchorsOrAtoms(
  * inside), this returns the full node bounds so the wrapper node travels
  * with its contents during slice / delete.
  *
- *   selection         → the selection's range as-is
- *   heading           → section bounds (heading + body, via collectMoveSource)
- *   linkedRange       → mark bounds (the menu never opens for this kind,
- *                       but kept for completeness)
+ * This is a LIFECYCLE-class door, so the range comes from the registry's
+ * lifecycle hook (`collectMoveSource`) for ANY kind that declares one —
+ * `heading` is merely the only kind that does so today (task 732; before it,
+ * the comment claimed this wiring and the code hardcoded the section walk).
+ *
+ *   selection          → the selection's range as-is
+ *   linkedRange        → mark bounds (the menu never opens for this kind,
+ *                        but kept for completeness)
+ *   kind with a lifecycle hook → whatever `collectMoveSource` returns
+ *                        (heading → section bounds: heading + body)
  *   block / sub-object → {pos, pos + nodeSize}
  *   atom block         → {pos, pos + nodeSize}
  */
@@ -1229,10 +1240,17 @@ function outerRangeFor(
     return findLinkedAnchorRange(ed.state.doc, ref.id, markType);
   }
 
-  if (ref.kind === "heading") {
-    const section = getSectionRangeByUuid(ed.state.doc, ref.id);
-    return section ? { from: section.start, to: section.end } : null;
-  }
+  // The registry's lifecycle hook, for ANY kind that declares one. `undefined`
+  // = no hook (fall through to the generic node bounds); `null` = the hook is
+  // declared and could not locate the object, which is a BAIL — never a
+  // silent fallback to bounds the kind has said are the wrong ones.
+  const lifecycleOverride = scopeOverrideRange(
+    ed.state.doc,
+    ref.kind,
+    ref.id,
+    "lifecycle",
+  );
+  if (lifecycleOverride !== undefined) return lifecycleOverride;
 
   let result: { from: number; to: number } | null = null;
   ed.state.doc.descendants((node, pos) => {
@@ -1272,13 +1290,15 @@ function createAnchor(ed: Editor, kind: LinkedAnchorKind) {
  * only the heading line (annotation) while heading × Delete removes the
  * whole section (lifecycle). See ACTION-MENU-DIAGNOSIS.md cluster C9.
  */
-type ResolveAction = "annotation" | "lifecycle";
+type ResolveAction = ActionScopeClass;
 
-const LIFECYCLE_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
-  "duplicate",
-  "archive",
-  "delete",
-]);
+// DERIVED from the one owner (`@/text-objects/action-scope`); the registry
+// side (`action-registry.ts`) asks that same owner rather than keeping the
+// copy it used to — task 732 retired the two hand-kept sets. The explicit
+// `Set<DragHandleAction>` is this vocabulary's type-level pin: it compiles
+// only while every canonical id is a real `DragHandleAction`.
+const LIFECYCLE_ACTIONS: ReadonlySet<DragHandleAction> =
+  new Set<DragHandleAction>(LIFECYCLE_ACTION_IDS);
 
 // The card actions whose result is an INLINE ATOM (footnote/citation) or an
 // inline MARK (highlight/suggest-edit) embedded in the block's text — so the
@@ -1302,7 +1322,7 @@ const CONTAINER_SENSITIVE_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
 ]);
 
 function actionClass(action: DragHandleAction): ResolveAction {
-  return LIFECYCLE_ACTIONS.has(action) ? "lifecycle" : "annotation";
+  return actionScopeClass(action);
 }
 
 /**
@@ -1342,18 +1362,20 @@ function resolveRefRange(
     return { selectionKind: "text", from: bounds.from, to: bounds.to };
   }
 
+  // The registry's per-class scope hook, for ANY kind that declares one.
   // Annotation actions on a heading stay on the heading line; lifecycle
-  // actions on a heading take the whole section. The `forAction` flag
-  // tells us which side we're on. See ACTION-MENU-DIAGNOSIS.md C9/C11.
-  if (ref.kind === "heading") {
-    if (forAction === "annotation" && meta.collectAnnotationRange) {
-      const line = meta.collectAnnotationRange(ed.state.doc, ref.id);
-      if (!line) return null;
-      return { selectionKind: "text", from: line.from, to: line.to };
-    }
-    const section = getSectionRangeByUuid(ed.state.doc, ref.id);
-    if (!section) return null;
-    return { selectionKind: "text", from: section.start, to: section.end };
+  // actions on a heading take the whole section — but that is the REGISTRY's
+  // statement about `heading`, not this function's. A kind that grows scope
+  // asymmetry later is honoured here without an edit. See
+  // ACTION-MENU-DIAGNOSIS.md C9/C11 and task 732.
+  const override = scopeOverrideRange(
+    ed.state.doc,
+    ref.kind,
+    ref.id,
+    forAction,
+  );
+  if (override !== undefined) {
+    return override && { selectionKind: "text", ...override };
   }
 
   // Locate the node by uuid.

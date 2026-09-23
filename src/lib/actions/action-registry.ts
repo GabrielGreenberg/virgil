@@ -213,6 +213,11 @@ import {
   blockRangeHostsBlockInsert,
   blockTypeHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
+import {
+  actionScopeClass,
+  scopeOverrideRange,
+  LIFECYCLE_ACTION_IDS,
+} from "@/text-objects/action-scope";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
 import { sliceIsFullyCapturedBy } from "@/lib/tiptap/capture-symmetry";
 // VALUE imports: the markdown triggers the three WRAPPER rows record as their
@@ -220,10 +225,6 @@ import { sliceIsFullyCapturedBy } from "@/lib/tiptap/capture-symmetry";
 // re-spelling — the binding lives in StarterKit and the row only RECORDS it.
 import { bulletListInputRegex, orderedListInputRegex } from "@tiptap/extension-list";
 import { inputRegex as blockquoteInputRegex } from "@tiptap/extension-blockquote";
-import {
-  getSectionRangeByUuid,
-  getHeadingLineRangeByUuid,
-} from "@/lib/section-range";
 // VALUE import: the typed-LaTeX citation FULL-form pattern (`\cite{key}`). The
 // PARSER, the `citation.ts` input rule, AND this registry row all reference the
 // SAME regexes from `cite-commands` (the true pattern SSOT) so the four
@@ -1033,18 +1034,20 @@ export type ActionDispatchOutcome =
 //     every non-heading kind yields the same block/range either way.
 // ---------------------------------------------------------------------------
 
-/** The lifecycle (structural) card actions — their scope on a heading is the
- *  WHOLE SECTION. Everything else is an annotation action (heading → line).
- *  Mirrors `LIFECYCLE_ACTIONS` / `actionClass` in `drag-handle-actions.ts`. */
-const CARD_LIFECYCLE_ACTIONS: ReadonlySet<CardActionId> = new Set<CardActionId>([
-  "duplicate",
-  "archive",
-  "delete",
-]);
-
-function isCardLifecycleAction(id: CardActionId): boolean {
-  return CARD_LIFECYCLE_ACTIONS.has(id);
-}
+// The lifecycle (structural) card actions — their scope on a heading is the
+// WHOLE SECTION; everything else is an annotation action (heading → line).
+// There is no longer a card-side COPY of that membership: `cardResolveScope`
+// asks the one owner (`actionScopeClass`, `@/text-objects/action-scope`), the
+// same door `drag-handle-actions.ts` asks. Task 732 retired the hand-kept
+// mirror the old `CARD_LIFECYCLE_ACTIONS` comment admitted to.
+//
+// What remains here is the TYPE-LEVEL PIN in this vocabulary's direction: the
+// canonical ids must all be real `CardActionId`s, or the two vocabularies have
+// drifted and this line stops compiling. (Its twin, over `DragHandleAction`,
+// sits in `action-scope.ts` itself.)
+const _LIFECYCLE_IDS_ARE_CARD_ACTIONS: readonly CardActionId[] =
+  LIFECYCLE_ACTION_IDS;
+void _LIFECYCLE_IDS_ARE_CARD_ACTIONS;
 
 /**
  * Does the action's ref carry a live, non-empty text range?
@@ -1236,10 +1239,10 @@ function cardActionAllowedForCtx(id: CardActionId, ctx: ActionContext): boolean 
  * Shared scope resolver for every card row — mirrors `resolveRefRange` in
  * `drag-handle-actions.ts`:
  *   - selection ref      → its own clamped range;
- *   - heading + annotation action → the heading LINE
- *     (`getHeadingLineRangeByUuid`);
- *   - heading + lifecycle action  → the whole SECTION
- *     (`getSectionRangeByUuid`);
+ *   - a kind declaring a per-class scope hook → whatever the REGISTRY says
+ *     (`heading` + annotation → the heading LINE; `heading` + lifecycle →
+ *     the whole SECTION). Read through the one owner in
+ *     `@/text-objects/action-scope`, kind-agnostically (task 732);
  *   - any other TextObject kind   → its node content range (same either way);
  *   - cursor ref         → the collapsed caret as a zero-width range.
  *
@@ -1289,15 +1292,12 @@ function cardResolveScope(
     return from < 0 ? null : { from, to };
   }
 
-  // Heading: annotation → line, lifecycle → section.
-  if (ref.kind === "heading") {
-    if (!isCardLifecycleAction(id)) {
-      const line = getHeadingLineRangeByUuid(doc, ref.id);
-      return line ? { from: line.from, to: line.to } : null;
-    }
-    const section = getSectionRangeByUuid(doc, ref.id);
-    return section ? { from: section.start, to: section.end } : null;
-  }
+  // The registry's per-class scope hook, for ANY kind that declares one
+  // (today: `heading` — annotation → line, lifecycle → section). `undefined`
+  // = no hook, fall through to the generic node bounds below; `null` = the
+  // hook is declared and could not locate the object, which is a BAIL.
+  const override = scopeOverrideRange(doc, ref.kind, ref.id, actionScopeClass(id));
+  if (override !== undefined) return override;
 
   // Any other block / sub-object / atom-block: its node bounds. Node-selecting
   // blocks (true atoms) return the full node range (NodeSelection territory);
