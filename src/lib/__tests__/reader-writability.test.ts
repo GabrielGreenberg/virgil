@@ -206,22 +206,23 @@ describe("host-writability — the derivation", () => {
       "notes.json",
       "todos.json",
     ]);
-    // RESTATED (task 637). This used to assert `[]` for these three, on the
-    // premise that a footnote / citation / example card has "no standalone
-    // editable sidecar" — which was simply false, and was the premise under
-    // which the Reader offered those cards a trash button that wrote nothing.
-    // The map is total over `CardKind` now, so a host that declares one of them
-    // editable actually PERMITS the file its cards live in, instead of granting
-    // an editor and refusing every write one layer down.
-    expect([...writableSidecarsFor(["footnote", "citation", "example"])!]).toEqual([
+    // RESTATED (task 637). This used to assert `[]` for these, on the premise
+    // that a footnote / citation card has "no standalone editable sidecar" —
+    // which was simply false, and was the premise under which the Reader
+    // offered those cards a trash button that wrote nothing. The map is total
+    // over `CardKind` now, so a host that declares one of them editable
+    // actually PERMITS the file its cards live in, instead of granting an
+    // editor and refusing every write one layer down.
+    expect([...writableSidecarsFor(["footnote", "citation"])!]).toEqual([
       "footnotes.json",
       "citations.json",
-      "examples.json",
     ]);
-    // The two SYSTEM kinds are the ones that now contribute nothing — `bib` is
-    // derived from the `.bib` and `error` from the linter, and both declare
-    // `lifecycle.delete: false`: they have no file of their own to write.
-    expect([...writableSidecarsFor(["bib", "error"])!]).toEqual([]);
+    // The kinds that contribute nothing are the ones with no file of their own,
+    // and all three declare `lifecycle.delete: false`: the two SYSTEM kinds
+    // (`bib` from the `.bib`, `error` from the linter) and `example`, whose
+    // whole content is the `\ex … \xe` block in the `.tex` (task 726 — the
+    // `examples.json` this row used to name is retired, read by nothing).
+    expect([...writableSidecarsFor(["bib", "error", "example"])!]).toEqual([]);
   });
 
   it("the Reader's set is derived from its declared kinds (today: the note sidecar)", () => {

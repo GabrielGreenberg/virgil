@@ -394,10 +394,13 @@ MUTATION_PANEL_POLICY: dict[str, _PanelPolicy] = {
     # The two exempt stores are refused on question 1 — they are not writeback
     # targets — and `archive` also fails question 2 (cmd_restore re-appends the
     # verbatim `originalCard`, so a record on the snippet ENVELOPE is dropped).
-    # Note the examples reason is ownership only: `useExamples.syncFromEditor` does
-    # merge unknown fields, so the first draft's "overwritten on the next re-derive"
-    # was simply wrong about that store. Stating the true reason matters more than
-    # stating a tidy one.
+    # The examples reason got RESTATED twice, which is worth recording. The first
+    # draft said a record there is "overwritten on the next re-derive"; that was
+    # wrong, because the app's reconcile merged unknown fields. The second said
+    # the reason was ownership. Since task 726 the true reason is simpler and
+    # stronger than either: the app neither READS nor WRITES examples.json at all
+    # — the hook that owned it is deleted and the file is declared `legacy` in
+    # src/lib/sidecar-value.ts. A record written there would be read by nobody.
     "link": _PanelPolicy(
         allow=frozenset(PANEL_TO_SIDECAR) - {"citations"},
         refuse={
@@ -412,10 +415,12 @@ MUTATION_PANEL_POLICY: dict[str, _PanelPolicy] = {
             "archive": ("link refuses an archived card ($cardId): a relationship written onto the "
                         "snippet envelope is dropped when restore re-appends its originalCard, "
                         "leaving the other card pointing at nothing. Restore it first, then link."),
-            "examples": ("link refuses an example ($cardId): examples.json is the app's "
-                         "\\ex-derived projection, not a writeback target (it is absent from "
-                         "PANEL_TO_SIDECAR for that reason) and a row exists only while its "
-                         "block does. Link the paragraph's cards instead."),
+            "examples": ("link refuses an example ($cardId): an example exists ONLY as its "
+                         "\\ex…\\xe block in the .tex — the app neither reads nor writes "
+                         "examples.json (the file is retired; see sidecar-value.ts `legacy`), "
+                         "which is why examples is absent from PANEL_TO_SIDECAR. A record "
+                         "written there would be read by nobody. Link the paragraph's cards "
+                         "instead."),
         },
     ),
 }

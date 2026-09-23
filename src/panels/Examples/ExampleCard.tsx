@@ -26,6 +26,7 @@ import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { BorrowedMainText } from "@/components/BorrowedMainText";
+import { bodySchemaForCardKind } from "@/cards/predicates";
 import { useCardTier } from "@/cards/presence";
 import { useEditorRefContextOrNull } from "@/components/editor-layout/contexts/editor-ref";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
@@ -618,6 +619,13 @@ export function ExampleCard({
                   variant="footnote"
                   className="leading-snug break-words"
                   bodyStyle={bodyStyle}
+                  // READ the registry facet (task 726). This card builds its own
+                  // body rather than going through `EditableCard`, which is the
+                  // one place that resolves `bodySchema` — so these mounts were
+                  // taking BorrowedMainText's hardcoded `"card"` default and
+                  // agreeing with `CARD_REGISTRY.example.bodySchema` only by
+                  // coincidence. A registry facet nothing reads is not an SSOT.
+                  schemaScope={bodySchemaForCardKind("example")}
                 />
               ) : (
                 example.bodyText && (
@@ -641,6 +649,7 @@ export function ExampleCard({
                             variant="footnote"
                             className="leading-snug break-words"
                             bodyStyle={bodyStyle}
+                            schemaScope={bodySchemaForCardKind("example")}
                           />
                         ) : (
                           <span className="leading-snug whitespace-pre-wrap break-words">

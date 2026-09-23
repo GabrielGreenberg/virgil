@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { CARD_REGISTRY, assertContentCoverage } from "../card-registry";
+import {
+  CARD_REGISTRY,
+  CONFIRMLESS_BY_GRANT,
+  assertContentCoverage,
+  mayDeclareContentNull,
+} from "../card-registry";
 import { CARD_KINDS } from "../predicates";
 import { cardHasContent } from "../has-content";
 import type { CardKind } from "../types";
@@ -11,7 +16,13 @@ import type { CardKind } from "../types";
  *
  *   • every kind declares a `content` descriptor (or an explicit null for the
  *     no-user-content kinds) — `assertContentCoverage` logs nothing;
- *   • a `null` descriptor is ONLY the tint/system kinds (highlight/bib/error);
+ *   • a `null` descriptor is only a kind that DERIVES the permission
+ *     (`lifecycle.delete === false` — no card-level delete, so nothing for a
+ *     confirm to guard) or holds the one granted exemption (`highlight`, a
+ *     tint). Task 726 replaced a three-name hand-list, two of whose entries
+ *     were the derivation and one of which — `example` — was kept OUT of it
+ *     only by a `textFields: ["title"]` naming a field the card never
+ *     rendered;
  *   • `cardHasContent` classifies every kind correctly, including the cases the
  *     old per-kind switch missed: report-with-title (REP-F7-01),
  *     citation-with-keys (CI-F7-01 / OMNI-F7-01), footnote-with-title (FN-A1-02),
@@ -19,11 +30,11 @@ import type { CardKind } from "../types";
  *     only into `suggested_text` (must count — task 241).
  */
 
-const NO_USER_CONTENT: ReadonlySet<CardKind> = new Set<CardKind>([
-  "highlight",
-  "bib",
-  "error",
-]);
+/** The kinds that DO declare `content: null`, read off the registry rather
+ *  than re-listed here — a second copy of this list is what drifted. */
+const NO_USER_CONTENT: ReadonlySet<CardKind> = new Set<CardKind>(
+  CARD_KINDS.filter((k) => CARD_REGISTRY[k].content === null),
+);
 
 describe("content-facet coverage (T4 §3.1)", () => {
   it("assertContentCoverage logs nothing at boot (every kind declared)", () => {
@@ -45,12 +56,44 @@ describe("content-facet coverage (T4 §3.1)", () => {
     }
   });
 
-  it("only the tint/system kinds declare content=null", () => {
-    for (const k of CARD_KINDS) {
-      if (CARD_REGISTRY[k].content === null) {
-        expect(NO_USER_CONTENT.has(k), `${k}: content=null but is a user-content kind`).toBe(true);
-      }
+  it("a content=null kind either cannot delete, or holds the one grant", () => {
+    for (const k of NO_USER_CONTENT) {
+      expect(
+        mayDeclareContentNull(k),
+        `${k}: content=null AND lifecycle.delete:true — it would delete typed ` +
+          `text without a confirm unless it is granted in CONFIRMLESS_BY_GRANT`,
+      ).toBe(true);
     }
+  });
+
+  it("the grant is exactly one kind, and that kind really does delete", () => {
+    // The grant is a judgement ("a tint is not typed text"), so widening it is
+    // a decision that must show up as a diff here. And it is only a grant at
+    // all for a kind the derivation does NOT already cover: a kind with
+    // `lifecycle.delete: false` listed here would be a no-op hiding in a list
+    // that is supposed to hold only real exemptions.
+    expect([...CONFIRMLESS_BY_GRANT]).toEqual(["highlight"]);
+    for (const k of CONFIRMLESS_BY_GRANT) {
+      expect(CARD_REGISTRY[k].lifecycle.delete, `${k} is a redundant grant`).toBe(true);
+    }
+  });
+
+  it("the derivation SEES a kind that would delete typed text blindly (canary)", () => {
+    // Planted in the falsifying direction: `note` deletes and holds a body, so
+    // were it ever to declare content=null the guard must refuse it. If this
+    // ever passes vacuously the leg above proves nothing.
+    expect(CARD_REGISTRY.note.lifecycle.delete).toBe(true);
+    expect(CONFIRMLESS_BY_GRANT.has("note")).toBe(false);
+    expect(mayDeclareContentNull("note")).toBe(false);
+  });
+
+  it("example declares NO card-level content (task 726)", () => {
+    // Its body is the `\ex … \xe` block in the .tex and its title is a
+    // paragraph-title block attr; the retired `textFields: ["title"]` named a
+    // field `ExampleCard` has never rendered.
+    expect(CARD_REGISTRY.example.content).toBeNull();
+    expect(CARD_REGISTRY.example.lifecycle.delete).toBe(false);
+    expect(cardHasContent("example", { id: "x", title: "anything" })).toBe(false);
   });
 
   it("a non-null descriptor names at least one counted field", () => {

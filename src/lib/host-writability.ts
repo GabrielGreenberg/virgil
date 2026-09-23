@@ -97,21 +97,32 @@ export function libraryPaperCitekey(docId: string): string {
  *
  * `highlight` shares `notes.json` with `note`, and each twin suggestion kind
  * shares its panel's file with the comment kind beside it — one hook owns the
- * pair in every case. The two `null`s are the SYSTEM kinds (`bib` is derived
- * from the `.bib`, `error` from the linter), both of which declare
- * `lifecycle.delete: false`: they have nothing of their own to write.
+ * pair in every case. The three `null`s are the kinds with nothing of their own
+ * to write, and all three declare `lifecycle.delete: false`: the two SYSTEM
+ * kinds (`bib` derived from the `.bib`, `error` from the linter) and `example`,
+ * whose whole content is the `\ex … \xe` block in the `.tex`.
  *
  * WIDENED (task 637). It used to stop at the eight kinds whose sidecar the
  * Reader's *editable* set could name, on the claim that footnote / citation /
  * example "have no standalone editable sidecar … a read-mostly host has no
- * editor for them and writes nothing for them." The first half was simply
- * false (`footnotes.json` / `citations.json` / `examples.json` are three of the
- * loudest content sidecars in the folder) and the second half described the
+ * editor for them and writes nothing for them." For footnote and citation the
+ * first half was simply false (`footnotes.json` / `citations.json` are two of
+ * the loudest content sidecars in the folder) and the second half described the
  * TEXT BODY only: the Reader mounts those panels and offered every one of their
  * cards a live trash button, whose press wrote nothing and said nothing. A map
  * that answers for only the kinds one caller happened to ask about is a map the
  * next caller reads a false `undefined` out of — so it is total now, and the
  * second caller ({@link cardMutationWritable}) is what this file gained it for.
+ *
+ * NARROWED for `example` (task 726). That kind was the row 637 got wrong in the
+ * other direction: it named `examples.json` on the strength of the file being
+ * in the folder, but no app code has read or written that file since the 570
+ * reconcile deletion, and `useExamples` — the hook the row implied — is now
+ * deleted too. An example has no card-level mutation to land anywhere, which is
+ * why its `lifecycle` refuses clone/delete/bindAnchor outright. Behaviourally
+ * this is a no-op today (`examples.json` was in no host's writable set, so both
+ * spellings already answered `false` under a whitelist and `true` without one);
+ * what changes is that the map now says the true reason.
  */
 export const CARD_KIND_SIDECAR: Readonly<Record<CardKind, string | null>> =
   Object.freeze({
@@ -119,7 +130,7 @@ export const CARD_KIND_SIDECAR: Readonly<Record<CardKind, string | null>> =
     highlight: "notes.json",
     footnote: "footnotes.json",
     citation: "citations.json",
-    example: "examples.json",
+    example: null,
     todo: "todos.json",
     report: "reports.json",
     "report-request": "reports.json",

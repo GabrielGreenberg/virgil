@@ -273,6 +273,26 @@ export function assertMorphCoverage(): void {
   }
 }
 
+/**
+ * The ONE granted exemption to the `content: null` derivation (task 726): a
+ * kind that DOES offer a card-level delete yet legitimately deletes without a
+ * confirm, because it holds no text anyone typed. `highlight` is a colour over
+ * a range — a tint. Everything else that may declare `content: null` derives
+ * the permission from `lifecycle.delete === false` (no delete, nothing for a
+ * confirm to guard), so this set is the judgement call and nothing more.
+ *
+ * Exported so the coverage suite reads the same value the boot guard does
+ * rather than keeping a second copy of the list — the copy that was three names
+ * long and drifted from what the registry actually declared.
+ */
+export const CONFIRMLESS_BY_GRANT: ReadonlySet<CardKind> = new Set<CardKind>([
+  "highlight",
+]);
+
+/** May this kind declare `content: null`? See {@link CONFIRMLESS_BY_GRANT}. */
+export const mayDeclareContentNull = (k: CardKind): boolean =>
+  CARD_REGISTRY[k].lifecycle.delete === false || CONFIRMLESS_BY_GRANT.has(k);
+
 /** Dev-only: verify EVERY card kind declares a `content` descriptor (or an
  *  explicit `null` for the no-user-content system/tint kinds), and that every
  *  field a descriptor names is a real `string` key in the descriptor's own
@@ -283,22 +303,33 @@ export function assertMorphCoverage(): void {
  *  `assertMorphCoverage`). */
 export function assertContentCoverage(): void {
   if (process.env.NODE_ENV === "production") return;
-  // The kinds that legitimately carry NO user content (a `null` descriptor):
-  // the tint kind (highlight) + the system kinds (bib/error). Any OTHER kind
-  // declaring `null` is a coverage gap (it would delete without a confirm).
-  const allowedNull: ReadonlySet<CardKind> = new Set<CardKind>([
-    "highlight",
-    "bib",
-    "error",
-  ]);
+  // WHO MAY DECLARE `content: null` (task 726). The harm a content model
+  // prevents is a card-level DELETE that silently destroys typed text — so the
+  // permission is DERIVED from the thing that causes the harm, not hand-listed:
+  //
+  //   • `lifecycle.delete === false` → there is no card-level delete, so there
+  //     is nothing for a confirm to guard. This covers the system kinds
+  //     (`bib` from the `.bib`, `error` from the linter) and `example`, whose
+  //     entire content is the `\ex … \xe` block in the `.tex`.
+  //   • plus exactly ONE granted exemption, `highlight`: it DOES delete, and
+  //     legitimately without a confirm, because a highlight is a colour over a
+  //     range — a tint, not text anyone typed. That is a judgement about the
+  //     kind's content, so it is stated here rather than derived.
+  //
+  // The hand-list this replaces was three names long and two of them were the
+  // derivation; `example` passed the guard below only on the strength of a
+  // `textFields: ["title"]` naming a field the card has never rendered. A guard
+  // satisfied by a phantom field is what makes the phantom load-bearing.
   for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
     const c = CARD_REGISTRY[k].content;
     if (c === null) {
-      if (!allowedNull.has(k)) {
+      if (!mayDeclareContentNull(k)) {
         console.error(
-          `[CardContent] "${k}" declares content=null but is not a known ` +
-            `no-user-content kind — it would delete without a confirm. Declare ` +
-            `its content model (CardMeta.content).`,
+          `[CardContent] "${k}" declares content=null but offers a card-level ` +
+            `delete (lifecycle.delete: true) — it would delete without a ` +
+            `confirm. Declare its content model (CardMeta.content), or, if the ` +
+            `kind genuinely holds no typed text, grant it in ` +
+            `CONFIRMLESS_BY_GRANT with the reason.`,
         );
       }
       continue;
@@ -917,18 +948,29 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     themeKey: "example",
     collabClaims: false,
     panel: "examples",
-    origin: "derived", // mirrors the doc exampleBlock harvested by useExamples
+    // A projection of the doc's `exampleBlock` nodes, derived per render from
+    // the live editor (the DocStructureBus-gated memos in `EditorPane`) — not
+    // harvested into a sidecar. There is no per-doc hook behind this row.
+    origin: "derived",
     anchored: true,
     markerType: null,
     // PERMANENT (R19): the lifecycle is the exampleBlock TextObject's
     // (origin:derived); a card-level clone/delete would double-act = two-kinds
     // violation.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
-    // An example's body lives in the doc block (no card-level body); its only
-    // card-level user field is the panel-only display `title`. Declared so the
-    // kind is never silently un-classified (coverage assertion), even though its
-    // delete rides the exampleBlock TextObject lifecycle, not a panel-trash.
-    content: { bodyField: null, textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
+    // NO card-level user content at all (task 726). Everything an example holds
+    // — its body, its `(N)`, its sub-items, its glosses — is the `\ex … \xe`
+    // block in the `.tex`, edited in place through the card's own expex editor;
+    // and a per-block title is a paragraph-title BLOCK attribute (task 343),
+    // which is where the user's title actually lives and round-trips.
+    //
+    // It used to declare `textFields: ["title"]` under a comment calling that a
+    // "panel-only display title". `ExampleCard.tsx` has never contained the
+    // string `title`: there was no field to display, none to edit, and after
+    // task 570 no hook maintaining one. The declaration existed only to satisfy
+    // the boot guard below, which is now derived rather than satisfied by a
+    // phantom — see `assertContentCoverage`.
+    content: null,
     dropSpec: null,
     // NO drop button: example carries a `dropSpec` (exampleDropSpec) but it is a
     // `between-blocks` block content-MOVE, not a card re-anchor — the drop button

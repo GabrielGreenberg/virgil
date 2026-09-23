@@ -109,8 +109,23 @@ interface SidecarValueEntry {
    *  parallel batch). True for exactly the files a `usePersistentState` hook
    *  owns; the three files with their own readers (`virgil.json` rides the doc
    *  bundle, `editor-state.json` has `useEditorUIState`, `collab.json` has
-   *  `useCollab`) are false. */
+   *  `useCollab`) are false. A `legacy` row is always false. */
   mount: boolean;
+  /** RETIRED (task 726). Virgil no longer reads or writes this file: the hook
+   *  that owned it is deleted and no production module spells its name. The
+   *  row survives for ONE reason — the conflict scanner's base vocabulary is
+   *  the whole table, so a `examples (conflicted copy …).json` sibling a
+   *  pre-retirement folder already holds stays recognisable and cleanable by
+   *  the badge. (Same reason `editor-state.json` keeps its row after moving to
+   *  the local store; the difference is that file still has a reader, so it
+   *  is not legacy.)
+   *
+   *  This is a DECLARED state, not a comment: CI pins that a `legacy` row is
+   *  `mount: false`, is spelled by no production module, and needs no
+   *  `SIDECAR_COLLECTIONS` merge rule (nothing merges a file nothing writes).
+   *  Retiring the next sidecar is therefore a one-word diff with guards
+   *  behind it, instead of three silent deletions across three tables. */
+  legacy?: true;
 }
 
 /**
@@ -158,7 +173,12 @@ export const SIDECAR_VALUE: Readonly<Record<string, SidecarValueEntry>> =
     // non-issue: it is written only on a deliberate "Add to dictionary".
     "dictionary.json": { tier: "content", store: "disk", mount: true },
     "document-settings.json": { tier: "content", store: "disk", mount: true },
-    "examples.json": { tier: "content", store: "disk", mount: true },
+    // RETIRED (task 726) — see `legacy` on {@link SidecarValueEntry}. An
+    // example's canonical form is the `\ex … \xe` block in the `.tex`, and
+    // its per-block title is a paragraph-title BLOCK attribute (task 343); the
+    // sidecar's "panel-only display title" was a superseded mechanism no card
+    // ever rendered. `useExamples` is deleted; nothing reads or writes this.
+    "examples.json": { tier: "content", store: "disk", mount: false, legacy: true },
     "footnotes.json": { tier: "content", store: "disk", mount: true },
     "notes.json": { tier: "content", store: "disk", mount: true },
     "orphaned-footnotes.json": { tier: "content", store: "disk", mount: true },
@@ -196,6 +216,16 @@ export const ALL_VIRGIL_SIDECAR_FILENAMES: readonly string[] = Object.freeze(
  */
 export const MOUNT_SIDECAR_FILENAMES: readonly string[] = Object.freeze(
   ALL_VIRGIL_SIDECAR_FILENAMES.filter((f) => SIDECAR_VALUE[f]!.mount),
+);
+
+/**
+ * The RETIRED files — DERIVED from the `legacy` column (task 726). Virgil
+ * neither reads nor writes these; they are declared only so the conflict
+ * scanner still recognises forks a folder already holds. Read by the census
+ * that pins what a legacy row may and may not do.
+ */
+export const LEGACY_SIDECAR_FILENAMES: readonly string[] = Object.freeze(
+  ALL_VIRGIL_SIDECAR_FILENAMES.filter((f) => SIDECAR_VALUE[f]!.legacy === true),
 );
 
 /**

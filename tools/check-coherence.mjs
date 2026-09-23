@@ -899,9 +899,10 @@ const PANEL_ALIAS = { todos: "todo" };
 //   bibliography  — backed by the .bib file, not a virgil/ sidecar (find-citation
 //                   + the bib skills own it), so it has no PANEL_TO_SIDECAR row.
 //   errors        — not persisted; re-derived from the LaTeX lint each pass.
-//   examples      — examples.json is an app-derived SHADOW of the .tex
-//                   (useExamples.syncFromEditor); create-card writes the .tex
-//                   \vexid…\ex…\xe block, not the sidecar (create_card.py
+//   examples      — an example exists ONLY as its .tex block; the app neither
+//                   reads nor writes examples.json (retired in task 726 — see
+//                   `legacy` in src/lib/sidecar-value.ts). create-card writes
+//                   the \vexid…\ex…\xe block, not the sidecar (create_card.py
 //                   _create_example), so examples is correctly absent.
 const WRITEBACK_EXEMPT_PANELS = new Set(["archive", "bibliography", "errors", "examples"]);
 

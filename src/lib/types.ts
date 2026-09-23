@@ -576,31 +576,15 @@ export interface FootnotesState {
   footnotes: FootnoteRef[];
 }
 
-// --- Examples (expex package, persistent metadata sidecar) ---
-
-/** Sidecar shadow of an `exampleBlock` node. The canonical representation
- *  lives in the `.tex` (as `\ex … \xe` / `\pex … \xe`) — this ref carries
- *  per-example panel metadata the editor can't easily re-derive (custom
- *  title override, timestamps). Matched back to the editor by `id`, which
- *  is the `\vexid{…}` uuid. */
-export interface ExampleRef {
-  id: string;
-  /** `\ex<tag>` angle-bracket tag, if any. Mirrors the node attr for quick
-   *  panel filtering without re-walking the doc. */
-  tag: string;
-  /** Inner `\label{…}` on the example, if any. Mirror of node attr. */
-  label: string;
-  /** Optional panel-only display title. Doesn't serialize back to the
-   *  `.tex` — this is a panel UX affordance. */
-  title: string;
-  /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
-  titleAuto?: boolean;
-  createdAt: string;
-}
-
-export interface ExamplesState {
-  examples: ExampleRef[];
-}
+// --- Examples ---
+//
+// There is deliberately NO `ExampleRef` / `ExamplesState` here (task 726). An
+// example's canonical and ONLY representation is the `\ex … \xe` block in the
+// `.tex`; the Examples panel projects its rows from the live editor and the
+// card edits the block in place. The `examples.json` sidecar these types
+// described is retired (`sidecar-value.ts` → `legacy`): its "panel-only display
+// title" was a mechanism the per-block paragraph title (task 343) superseded,
+// and no card ever rendered it.
 
 // --- Notes ---
 //

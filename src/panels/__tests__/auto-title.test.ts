@@ -372,7 +372,6 @@ describe("T6-C12: creation sites don't persist a generated title", () => {
     "hooks/useNotes.ts",
     "hooks/useArchive.ts",
     "hooks/useReports.ts",
-    "hooks/useExamples.ts",
     "hooks/useTodos.ts",
   ];
 
@@ -382,12 +381,11 @@ describe("T6-C12: creation sites don't persist a generated title", () => {
     }
   });
 
-  it("the five persisting-sidecar migrators read provenance via resolveLoadedTitle", () => {
+  it("the four persisting-sidecar migrators read provenance via resolveLoadedTitle", () => {
     for (const rel of [
       "hooks/useNotes.ts",
       "hooks/useArchive.ts",
       "hooks/useReports.ts",
-      "hooks/useExamples.ts",
       "hooks/useTodos.ts",
     ]) {
       const src = read(rel);

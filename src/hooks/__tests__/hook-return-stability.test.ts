@@ -39,7 +39,6 @@ const MEMOIZED_RETURN_HOOKS: Record<string, string> = {
   useBibReview: resolve(SRC_HOOKS, "useBibReview.ts"),
   useAiRequests: resolve(SRC_HOOKS, "useAiRequests.ts"),
   useSuggestions: resolve(SRC_HOOKS, "useSuggestions.ts"),
-  useExamples: resolve(SRC_HOOKS, "useExamples.ts"),
   useLibraryTabs: resolve(REPO_ROOT, "library/hooks/useLibraryTabs.ts"),
 };
 
