@@ -89,7 +89,7 @@ function props(): AIWindowProps {
     panelAiRequestsLoaded: true,
     panelAiRequestsLoadError: false,
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
-    deletePanelAiRequest: noop,
+    withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
     cardLinkResolves: () => true, // task 697
     requestBibReview: noop,

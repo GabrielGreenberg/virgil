@@ -6,8 +6,9 @@
  *       request is still OPEN must UPDATE that request in place (refresh the
  *       context fields, preserve id/createdAt/status) — never append a
  *       duplicate the skill inbox would double-serve.
- *   (b) `value=false` drops the open linked request (and no-ops with NO write
- *       when there is nothing to drop).
+ *   (b) `value=false` WITHDRAWS the open linked request — closes it
+ *       `complete`/`"withdrawn"` in place, never removes the row (task 720) —
+ *       and no-ops with NO write when there is nothing open to withdraw.
  *   (c) terminal-status re-file: when the linked request already reached a
  *       terminal status ("complete" / "failed"), a re-toggle files a NEW
  *       pending request rather than resurrecting the terminal one.
@@ -52,7 +53,7 @@ vi.mock("@/lib/multi-window/doc-pipeline", () => ({
 }));
 
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
-import { isRequestOpen } from "@/lib/ai-request-open";
+import { isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
 
 /** An on-disk request linked to the todo card `card-1` (registry routing for
  *  `todo` is { kind: "todo", linkPanel: "todos" } — pinned byte-for-byte by
@@ -111,27 +112,83 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     expect(r.selectedText).toBe("old selection");
   });
 
-  it("(b) value=false drops the open linked request", async () => {
+  it("(b) value=false CLOSES the open linked request in place — the row stays", async () => {
     seeded.state = {
       requests: [
         linkedRequest(),
-        // An unrelated request must survive the drop untouched.
+        // An unrelated request must survive the withdrawal untouched.
         linkedRequest({ id: "req-other", linkedTo: { panel: "todos", cardId: "card-2" } }),
       ],
     };
     await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
 
     expect(written).toHaveLength(1);
-    expect(written[0].data.requests.map((r) => r.id)).toEqual(["req-other"]);
+    const reqs = written[0].data.requests;
+    // Task 720: withdrawal is a STATE, not an erasure — the row a skill may be
+    // holding is still there, and terminal.
+    expect(reqs.map((r) => r.id)).toEqual(["req-existing", "req-other"]);
+    expect(reqs[0]).toMatchObject({ status: "complete", result: "withdrawn" });
+    expect(isRequestOpen(reqs[0])).toBe(false);
+    // Everything else about the row survives, so a holder can still read it.
+    expect(reqs[0].text).toBe("original text");
+    expect(reqs[0].createdAt).toBe("2026-01-01T00:00:00.000Z");
+    // The unrelated row is byte-untouched.
+    expect(reqs[1]).toEqual(
+      linkedRequest({ id: "req-other", linkedTo: { panel: "todos", cardId: "card-2" } }),
+    );
   });
 
   it("(b') value=false with no open linked request is a pure no-op (no write at all)", async () => {
     seeded.state = { requests: [linkedRequest({ status: "complete" })] };
     await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
-    // Terminal requests are not "open" — nothing to drop, nothing written
+    // Terminal requests are not "open" — nothing to withdraw, nothing written
     // (the terminal record is the skill's audit trail; value=false must not
-    // erase it).
+    // erase it, nor re-stamp it as a withdrawal).
     expect(written).toHaveLength(0);
+  });
+
+  it("(b2) an in-flight row a skill is holding survives the untick, terminal — task 720", async () => {
+    // THE BUG. There is no claim step: a skill that picked this row up leaves
+    // it `pending` (or `in-progress` with no resultId) for the whole of its
+    // run. The old toggle-off filtered it out of the file, so the skill's final
+    // `create_card.py` call died on `die("request id not found")` — exit 2,
+    // after all the work, nothing written, no idempotent-skip branch to land
+    // in. Closed instead, the row is still there when the skill re-reads, and
+    // its terminal status routes into create_card's existing
+    // `{"noop": true, "reason": "request already terminal"}`.
+    for (const status of ["pending", "in-progress"] as const) {
+      seeded.state = { requests: [linkedRequest({ status })] };
+      written.length = 0;
+      await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
+
+      expect(written).toHaveLength(1);
+      const [r] = written[0].data.requests;
+      expect(r.id).toBe("req-existing"); // PRESENT
+      expect(isTerminalStatus(r.status)).toBe(true); // …and terminal
+      expect(r.result).toBe("withdrawn");
+    }
+  });
+
+  it("(b3) re-ticking after a withdrawal files a FRESH row, never revives it", async () => {
+    seeded.state = { requests: [linkedRequest()] };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "asking again" }, "toggle");
+
+    expect(written).toHaveLength(2);
+    const reqs = written[1].data.requests;
+    expect(reqs).toHaveLength(2);
+    // The withdrawn row stays withdrawn — a re-tick must not re-open a row the
+    // drain has already stopped serving.
+    expect(reqs[0]).toMatchObject({
+      id: "req-existing",
+      status: "complete",
+      result: "withdrawn",
+      text: "original text",
+    });
+    expect(reqs[1].id).not.toBe("req-existing");
+    expect(reqs[1].status).toBe("pending");
+    expect(reqs[1].result).toBeUndefined();
+    expect(reqs[1].text).toBe("asking again");
   });
 
   it("(c) terminal status 'complete': re-toggle files a NEW pending request, old survives", async () => {
@@ -222,9 +279,16 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
       requests: [linkedRequest({ status: "in-progress", resultId: "card-proposal-1" })],
     };
     await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
-    // Answered ⇒ not open ⇒ nothing to drop ⇒ no write. The accept/reject flow
-    // and the proposal card's origin pointer keep their `resultId`.
+    // Answered ⇒ not open ⇒ nothing to withdraw ⇒ no write. The accept/reject
+    // flow and the proposal card's origin pointer keep their `resultId`. Task
+    // 720 changed how an OPEN row ends, not which rows the toggle leg matches:
+    // an untick must neither close NOR re-open an answered proposal.
     expect(written).toHaveLength(0);
+    expect(seeded.state.requests[0]).toMatchObject({
+      status: "in-progress",
+      resultId: "card-proposal-1",
+    });
+    expect(seeded.state.requests[0].result).toBeUndefined();
   });
 
   it("(f) in-progress WITHOUT resultId still counts as OPEN → update-in-place (no regression)", async () => {

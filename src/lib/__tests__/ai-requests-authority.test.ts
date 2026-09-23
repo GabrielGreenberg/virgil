@@ -210,7 +210,7 @@ describe("ai-requests: one serialized read-modify-merge authority", () => {
 // ---------------------------------------------------------------------------
 
 describe("useAiRequests writes are merges, not snapshots", () => {
-  it("deleting one row keeps a row that landed on disk AFTER this hook's read", async () => {
+  it("withdrawing one row keeps a row that landed on disk AFTER this hook's read", async () => {
     // The two-window lost-update, reduced to its mechanism: window A (or an
     // `/editor/*` skill) adds a row straight to disk with no in-process publish,
     // so THIS hook's state is stale. Its next mutation must merge over disk.
@@ -224,13 +224,20 @@ describe("useAiRequests writes are merges, not snapshots", () => {
     seed([row({ id: "mine" }), row({ id: "peer" })]); // peer write, no publish
 
     act(() => {
-      result.current.deleteRequest("mine");
+      result.current.withdrawRequest("mine");
     });
     await settle();
 
-    expect(onDisk().map((r) => r.id)).toEqual(["peer"]);
+    // "mine" is CLOSED, not removed (task 720) — and the peer row that landed
+    // between this hook's read and its write is still there, which is what this
+    // test is actually about.
+    expect(onDisk().map((r) => r.id)).toEqual(["mine", "peer"]);
+    expect(onDisk().find((r) => r.id === "mine")).toMatchObject({
+      status: "complete",
+      result: "withdrawn",
+    });
     // …and the hook adopted the authoritative post-write list.
-    expect(result.current.requests.map((r) => r.id)).toEqual(["peer"]);
+    expect(result.current.requests.map((r) => r.id)).toEqual(["mine", "peer"]);
   });
 
   it("a hook add and a bridge toggle overlapping both survive", async () => {
@@ -316,7 +323,7 @@ describe("useAiRequests re-hydrates on an external sidecar change", () => {
     act(() => {
       // Declines on disk (no such id) ⇒ no write, no publish — but it still
       // holds `inFlight` for the duration of its round-trip.
-      result.current.deleteRequest("not-on-disk");
+      result.current.withdrawRequest("not-on-disk");
       // …and the external change lands inside that window.
       seed([row({ id: "from-elsewhere" })]);
       dispatchSidecarChanged({ docId: DOC, filename: AI_REQUESTS_FILE });

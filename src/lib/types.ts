@@ -366,7 +366,12 @@ export type AiRequestStatus =
 
 /** Outcome of a Task — *how it ended* (EDITOR_SKILLS_V1 §7). Set only on a
  *  terminal status (`complete` / `failed`); absent while `pending` /
- *  `in-progress`. Distinct from `resultId`, which points at the produced card. */
+ *  `in-progress`. Distinct from `resultId`, which points at the produced card.
+ *
+ *  The Python twin is `apply_response.py`'s `RESULT_*` / `ALL_RESULTS`; the two
+ *  vocabularies are pinned equal by `ai-request-open-parity.test.ts` (task 720),
+ *  because a token one side writes and the other cannot name is exactly the
+ *  drift `isTerminalStatus`'s own parity pin exists to stop. */
 export type AiRequestResult =
   | "accepted"
   | "rejected"
@@ -375,7 +380,12 @@ export type AiRequestResult =
   | "direct-created"
   | "refused"
   | "impossible"
-  | "errored";
+  | "errored"
+  /** The USER ended it: the "AI request" box was unticked, or the request was
+   *  cancelled from the AI window. The app is this token's only writer — no
+   *  skill reports it, because it names something done TO a run rather than by
+   *  one (task 720). */
+  | "withdrawn";
 
 export interface AiRequest {
   id: string;

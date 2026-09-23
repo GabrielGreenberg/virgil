@@ -7,12 +7,17 @@
  *
  *   - A **card-linked** row (`linkedTo` set — bridged from a note/todo/footnote/
  *     etc. with `aiRequest:true`) cancels through the card-flag-clearing path
- *     (`clearLinkedAiRequest(kind, cardId)`), which drops the queue row AND
+ *     (`clearLinkedAiRequest(kind, cardId)`), which withdraws the queue row AND
  *     lowers the owning card's flag together (the inverse of checking the box).
- *     It must NOT hit the raw `deletePanelAiRequest` filter — that drops the row
+ *     It must NOT hit the by-id `withdrawPanelAiRequest` — that ends the row
  *     and leaves the card's checkbox lit over a request the drain never serves.
- *   - An **unlinked** composer-created row (no `linkedTo`) keeps the raw
- *     `deletePanelAiRequest(id)` path unchanged.
+ *   - An **unlinked** composer-created row (no `linkedTo`) keeps the by-id
+ *     `withdrawPanelAiRequest(id)` path unchanged.
+ *
+ * Both legs now END the row the same way — CLOSED (`complete`/`"withdrawn"`),
+ * never filtered out of the file (task 720). This suite pins the ROUTING; the
+ * ending each door writes is pinned by `ai-request-bridge-idempotency.test.ts`
+ * and `ai-requests-authority.test.ts`.
  *
  * The owning `CardKind` is resolved from the request's `(kind, linkPanel)` PAIR
  * — `linkPanel` alone is ambiguous (note/highlight both `notes`; cutter- vs
@@ -49,7 +54,7 @@ function req(overrides: Partial<AiRequest> = {}): AiRequest {
 function build(
   r: AiRequest,
   spies: {
-    deletePanelAiRequest?: (id: string) => void;
+    withdrawPanelAiRequest?: (id: string) => void;
     clearLinkedAiRequest?: (kind: CardKind, cardId: string) => void;
     cardLinkResolves?: (kind: CardKind, cardId: string) => boolean;
   },
@@ -61,7 +66,7 @@ function build(
     panelAiRequests: [r],
     cancelBibReview: () => {},
     removeEntryRequest: () => {},
-    deletePanelAiRequest: spies.deletePanelAiRequest ?? (() => {}),
+    withdrawPanelAiRequest: spies.withdrawPanelAiRequest ?? (() => {}),
     clearLinkedAiRequest: spies.clearLinkedAiRequest ?? (() => {}),
     // task 697 — default: the link resolves (today's behaviour).
     cardLinkResolves: spies.cardLinkResolves ?? (() => true),
@@ -72,15 +77,15 @@ function build(
 describe("AIWindow cancel routes card-linked requests through the both-faces clear (task 222)", () => {
   it("linked request → onCancel calls clearLinkedAiRequest(kind, cardId), NOT the raw delete", () => {
     const clearLinkedAiRequest = vi.fn();
-    const deletePanelAiRequest = vi.fn();
+    const withdrawPanelAiRequest = vi.fn();
     const vm = build(
       req({ kind: "todo", linkedTo: { panel: "todos", cardId: "card-1" } }),
-      { clearLinkedAiRequest, deletePanelAiRequest },
+      { clearLinkedAiRequest, withdrawPanelAiRequest },
     );
     expect(vm.onCancel).toBeTypeOf("function");
     vm.onCancel!();
     expect(clearLinkedAiRequest).toHaveBeenCalledExactlyOnceWith("todo", "card-1");
-    expect(deletePanelAiRequest).not.toHaveBeenCalled();
+    expect(withdrawPanelAiRequest).not.toHaveBeenCalled();
   });
 
   // ── task 697: "is there a link?" was the wrong question ──────────────────
@@ -92,14 +97,14 @@ describe("AIWindow cancel routes card-linked requests through the both-faces cle
     // There is no card flag to lower here, so the honest retraction is the row
     // delete the UNLINKED branch already used.
     const clearLinkedAiRequest = vi.fn();
-    const deletePanelAiRequest = vi.fn();
+    const withdrawPanelAiRequest = vi.fn();
     const vm = build(
       req({ id: "stranded-1", kind: "todo", linkedTo: { panel: "todos", cardId: "gone" } }),
-      { clearLinkedAiRequest, deletePanelAiRequest, cardLinkResolves: () => false },
+      { clearLinkedAiRequest, withdrawPanelAiRequest, cardLinkResolves: () => false },
     );
     expect(vm.onCancel).toBeTypeOf("function");
     vm.onCancel!();
-    expect(deletePanelAiRequest).toHaveBeenCalledExactlyOnceWith("stranded-1");
+    expect(withdrawPanelAiRequest).toHaveBeenCalledExactlyOnceWith("stranded-1");
     expect(clearLinkedAiRequest).not.toHaveBeenCalled();
   });
 
@@ -115,16 +120,16 @@ describe("AIWindow cancel routes card-linked requests through the both-faces cle
     expect(cardLinkResolves).toHaveBeenCalledWith("cutter-comment", "cx");
   });
 
-  it("unlinked composer request → onCancel keeps the raw deletePanelAiRequest(id) path", () => {
+  it("unlinked composer request → onCancel keeps the raw withdrawPanelAiRequest(id) path", () => {
     const clearLinkedAiRequest = vi.fn();
-    const deletePanelAiRequest = vi.fn();
+    const withdrawPanelAiRequest = vi.fn();
     const vm = build(
       req({ id: "composer-1", kind: "note", linkedTo: undefined }),
-      { clearLinkedAiRequest, deletePanelAiRequest },
+      { clearLinkedAiRequest, withdrawPanelAiRequest },
     );
     expect(vm.onCancel).toBeTypeOf("function");
     vm.onCancel!();
-    expect(deletePanelAiRequest).toHaveBeenCalledExactlyOnceWith("composer-1");
+    expect(withdrawPanelAiRequest).toHaveBeenCalledExactlyOnceWith("composer-1");
     expect(clearLinkedAiRequest).not.toHaveBeenCalled();
   });
 
@@ -159,14 +164,14 @@ describe("AIWindow cancel routes card-linked requests through the both-faces cle
 
   it("a linked row whose (kind, panel) pair resolves to nothing (corrupt link) falls back to the raw delete", () => {
     const clearLinkedAiRequest = vi.fn();
-    const deletePanelAiRequest = vi.fn();
+    const withdrawPanelAiRequest = vi.fn();
     // citation has no aiRequest routing → no (citation, notes) pair exists.
     const vm = build(
       req({ id: "weird-1", kind: "citation", linkedTo: { panel: "notes", cardId: "c9" } }),
-      { clearLinkedAiRequest, deletePanelAiRequest },
+      { clearLinkedAiRequest, withdrawPanelAiRequest },
     );
     vm.onCancel!();
-    expect(deletePanelAiRequest).toHaveBeenCalledExactlyOnceWith("weird-1");
+    expect(withdrawPanelAiRequest).toHaveBeenCalledExactlyOnceWith("weird-1");
     expect(clearLinkedAiRequest).not.toHaveBeenCalled();
     expect(linkedCardKindFrom("citation", "notes")).toBeNull();
   });

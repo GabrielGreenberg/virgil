@@ -11,8 +11,14 @@
 //
 // This suite drives the REAL setters over a seeded `ai-requests.json` whose
 // linked cards are NOT in their sidecars, one per flag-bearing kind, and
-// asserts the row closes anyway. Against `main` (the `if (card)` gate) every
-// one of these fails: nothing is written at all.
+// asserts the row closes anyway. Against the pre-697 `if (card)` gate every one
+// of these fails: nothing is written at all.
+//
+// "Closes" is now literal (task 720): a toggle-off stamps the row
+// `complete`/`"withdrawn"` in place rather than filtering it out of the file,
+// so a skill still holding the id reads a terminal row instead of dying on
+// `die("request id not found")`. What this suite pins is unchanged — that the
+// Cancel reaches the queue at all when the card is gone.
 //
 // The card-PRESENT legs are the other half: they pin today's context shape so
 // the refactor cannot quietly thin it.
@@ -148,7 +154,7 @@ const KINDS = [
 
 describe("Cancel on a card-linked row whose card is ABSENT still closes the row (697)", () => {
   for (const k of KINDS) {
-    it(`${k.label}: the row is removed even though the card is not in its sidecar`, async () => {
+    it(`${k.label}: the row is closed even though the card is not in its sidecar`, async () => {
       beginDocPipeline(DOC);
       seedStrandedRow({
         kind: k.wireKind,
@@ -168,7 +174,11 @@ describe("Cancel on a card-linked row whose card is ABSENT still closes the row 
       });
 
       await waitFor(() => expect(lastQueue()).toBeDefined());
-      expect(lastQueue()!.requests).toEqual([]);
+      expect(lastQueue()!.requests).toHaveLength(1);
+      expect(lastQueue()!.requests[0]).toMatchObject({
+        status: "complete",
+        result: "withdrawn",
+      });
     });
   }
 
@@ -194,7 +204,11 @@ describe("Cancel on a card-linked row whose card is ABSENT still closes the row 
     });
 
     await waitFor(() => expect(lastQueue()).toBeDefined());
-    expect(lastQueue()!.requests).toEqual([]);
+    expect(lastQueue()!.requests).toHaveLength(1);
+    expect(lastQueue()!.requests[0]).toMatchObject({
+      status: "complete",
+      result: "withdrawn",
+    });
   });
 
   it("a PRESENT card's context is unchanged — the rich payload still reaches the row", async () => {

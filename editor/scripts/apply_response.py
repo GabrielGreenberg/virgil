@@ -213,10 +213,21 @@ RESULT_DIRECT_CREATED = "direct-created"
 RESULT_REFUSED = "refused"
 RESULT_IMPOSSIBLE = "impossible"
 RESULT_ERRORED = "errored"
+# The USER ended it: the "AI request" box was unticked, or the request was
+# cancelled from the AI window (task 720). The APP is this token's only writer —
+# it names something done TO a run rather than by one, so no skill reports it —
+# but the vocabulary is a byte-mirror of TS `AiRequestResult` and a token one
+# side can write and the other cannot name is exactly the drift the parity pin
+# exists to stop. A row carrying it is terminal by its `status`, so every Python
+# reader already handles it: `create_card.py` returns its clean
+# `{"noop": true, "reason": "request already terminal"}` instead of dying on an
+# id the file no longer held.
+RESULT_WITHDRAWN = "withdrawn"
 FAIL_RESULTS = {RESULT_REFUSED, RESULT_IMPOSSIBLE, RESULT_ERRORED}
 ALL_RESULTS = {
     RESULT_ACCEPTED, RESULT_REJECTED, RESULT_AUTO_APPLIED, RESULT_SILENT_APPLIED,
     RESULT_DIRECT_CREATED, RESULT_REFUSED, RESULT_IMPOSSIBLE, RESULT_ERRORED,
+    RESULT_WITHDRAWN,
 }
 
 SUBCOMMANDS = {

@@ -62,7 +62,7 @@ function props(panelAiRequests: AiRequest[]): AIWindowProps {
     panelAiRequestsLoaded: true,
     panelAiRequestsLoadError: false,
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
-    deletePanelAiRequest: noop,
+    withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
     cardLinkResolves: () => true, // task 697
     requestBibReview: noop,
@@ -82,7 +82,7 @@ function build(panelAiRequests: AiRequest[]) {
     panelAiRequests,
     cancelBibReview: () => {},
     removeEntryRequest: () => {},
-    deletePanelAiRequest: () => {},
+    withdrawPanelAiRequest: () => {},
     clearLinkedAiRequest: () => {},
     cardLinkResolves: () => true, // task 697
   });
@@ -147,7 +147,7 @@ describe("an off-union kind cannot throw the AI window", () => {
   });
 
   it("leaves it cancellable — an unlinked row keeps the raw delete", () => {
-    const deletePanelAiRequest = vi.fn();
+    const withdrawPanelAiRequest = vi.fn();
     const [vm] = buildRequests({
       bibReviewRequests: [],
       bibEntryRequests: [],
@@ -155,12 +155,12 @@ describe("an off-union kind cannot throw the AI window", () => {
       panelAiRequests: [row({ id: "bad", kind: "totally-not-a-kind" })],
       cancelBibReview: () => {},
       removeEntryRequest: () => {},
-      deletePanelAiRequest,
+      withdrawPanelAiRequest,
       clearLinkedAiRequest: () => {},
       cardLinkResolves: () => true, // task 697
     });
     vm.onCancel?.();
-    expect(deletePanelAiRequest).toHaveBeenCalledWith("bad");
+    expect(withdrawPanelAiRequest).toHaveBeenCalledWith("bad");
   });
 
   it("resolves every KNOWN kind to a real display kind, and renders it (control)", () => {

@@ -118,6 +118,7 @@ RESULT_TIER = {
     "refused": TIER_NOTED,               # the refusal patterns — read it
     "impossible": TIER_NOTED,            # couldn't be done — read it
     "errored": TIER_FLAGGED,             # something broke — read first
+    "withdrawn": TIER_NOTED,             # the user retracted mid-run — read it
 }
 
 BUCKET_TITLES = {

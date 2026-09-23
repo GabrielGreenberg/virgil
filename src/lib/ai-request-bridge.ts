@@ -11,10 +11,13 @@
  *   2. The unified `ai-requests.json` queue (drafted, submitted, complete).
  *
  * Skills run from outside the app and need a single inbox they can drain.
- * This module collapses (1) into (2): when a card flag toggles on, we add
- * a corresponding entry with `linkedTo` set; when it toggles off, we drop
- * it. The fulfillment skill clears the card flag *and* flips the request
- * to `complete` when it finishes.
+ * This module collapses (1) into (2): when a card flag toggles on, we add a
+ * corresponding entry with `linkedTo` set; when it toggles off, we CLOSE that
+ * entry (`complete` / `withdrawn`) rather than removing it — a skill may
+ * already be holding the id, and nothing a reader outside this process can be
+ * holding is ever deleted from the file (task 720). The fulfillment skill
+ * clears the card flag *and* flips the request to `complete` when it
+ * finishes.
  */
 
 import { generateEntityId } from "@/lib/uuid";
@@ -24,7 +27,11 @@ import {
   mutateAiRequests,
 } from "@/lib/ai-requests-store";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
-import { isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
+import {
+  closeRequestRow,
+  isRequestOpen,
+  isTerminalStatus,
+} from "@/lib/ai-request-open";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 
@@ -61,8 +68,11 @@ export interface BridgeContext {
  * How the bridge should reconcile a card's linked `ai-requests.json` row.
  *
  * - `"toggle"` — the reversible per-card flag semantics: `value=true`
- *   adds/refreshes an OPEN row, `value=false` drops it. Deliberately protects an
- *   answered-L3 row (`in-progress`+`resultId`) from a stray toggle-off (task 043).
+ *   adds/refreshes an OPEN row, `value=false` WITHDRAWS it (closes it
+ *   `complete`/`"withdrawn"`, task 720 — it used to drop the row from the
+ *   file). Deliberately protects an answered-L3 row (`in-progress`+`resultId`)
+ *   from a stray toggle-off (task 043): that row is closed to the drain, so it
+ *   never matches, and an untick neither closes nor re-opens it.
  * - `"terminate"` — the card is **gone** (archived / deleted), or has left its
  *   aiRequest identity (a flag-dropping morph). A terminal transition: close
  *   EVERY linked NON-terminal row (each a plain open row OR an answered-L3 row)
@@ -88,7 +98,8 @@ export type AiRequestSyncMode = "toggle" | "terminate";
  *
  * - `value=true` and no existing linked request → add one (`status: "pending"`).
  * - `value=true` and an existing linked request → leave it (idempotent).
- * - `value=false` and an existing linked request → drop it.
+ * - `value=false` and an existing OPEN linked request → CLOSE it
+ *   (`complete` / `"withdrawn"`), never remove it (task 720).
  *
  * Routing is REGISTRY-DECLARED (R29): the request `kind` and the
  * `linkedTo.panel` wire token both come from `CARD_REGISTRY[kind].aiRequest`
@@ -173,7 +184,7 @@ export async function bridgeCardAiRequestFlag(
       const terminated = requests.map((r) => {
         if (!isLinkedNonTerminal(r, link)) return r;
         matched = true;
-        return { ...r, status: "complete", result: "auto-applied" } as AiRequest;
+        return closeRequestRow(r, "auto-applied");
       });
       return matched ? terminated : null;
     }
@@ -204,8 +215,30 @@ export async function bridgeCardAiRequestFlag(
       }
       return [...requests, freshRequest];
     }
+    // WITHDRAWAL (task 720). The user unticked the box — the ask is retracted,
+    // the card stays. That is a terminal transition like archive and delete,
+    // and it is written the same way: the row is CLOSED through the shared
+    // `closeRequestRow`, stamped `"withdrawn"` so a reader can tell a
+    // retraction from a card that went away. It is NOT filtered out of the
+    // file, which is what this leg used to do: a skill that had already
+    // claimed the id (and there is no claim step, so it is still `pending` the
+    // whole time it works) came back to a file with no such row and died on
+    // `die("request id not found")` — exit 2, after all the work, with nothing
+    // written and no idempotent-skip branch to land in. Against a closed row
+    // `create_card.py`'s existing terminal check returns the same clean
+    // `{"noop": true}` it already returns for archive and delete; no Python
+    // change was needed, which is the tell that this is the right seam.
+    //
+    // The match is still `isRequestOpen`, so task 043 holds unchanged: an
+    // answered-L3 row (`in-progress` + `resultId`) is closed to the drain, is
+    // therefore not `existingIdx`, and an untick neither closes NOR re-opens
+    // it — the accept/reject flow keeps its `resultId`. And because a closed
+    // row is no longer open, a RE-tick still files a FRESH request rather
+    // than reviving the withdrawn one.
     if (existingIdx < 0) return null;
-    return requests.filter((_, i) => i !== existingIdx);
+    return requests.map((r, i) =>
+      i === existingIdx ? closeRequestRow(r, "withdrawn") : r,
+    );
   });
 
   // The card flag is the panel's source of truth and it has already persisted,
