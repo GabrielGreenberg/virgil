@@ -31,7 +31,7 @@ import { useCardTier } from "@/cards/presence";
 import { useEditorRefContextOrNull } from "@/components/editor-layout/contexts/editor-ref";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useExampleContentRevision } from "@/lib/tiptap/doc-structure";
-import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
+import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";

@@ -34,6 +34,7 @@ export default function ForestBlockNodeView({
   node,
   updateAttributes,
   deleteNode,
+  editor,
   extension,
 }: NodeViewProps) {
   const opts = extension.options as ForestBlockOptions;
@@ -43,6 +44,7 @@ export default function ForestBlockNodeView({
       node={node}
       updateAttributes={updateAttributes}
       deleteNode={deleteNode}
+      editor={editor}
       cardContext={opts.cardContext === true}
       config={FOREST_POD_CONFIG}
     />

@@ -17,6 +17,7 @@ export default function TexBlockNodeView({
   node,
   updateAttributes,
   deleteNode,
+  editor,
   extension,
 }: NodeViewProps) {
   const uuid = (node.attrs.uuid as string | null) || null;
@@ -34,6 +35,7 @@ export default function TexBlockNodeView({
       node={node}
       updateAttributes={updateAttributes}
       deleteNode={deleteNode}
+      editor={editor}
       cardContext={opts.cardContext === true}
       config={{
         hostClass: "tex-block",

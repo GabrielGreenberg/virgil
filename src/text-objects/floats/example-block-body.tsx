@@ -41,7 +41,7 @@ import {
   type ExpexColumnWidths,
 } from "@/lib/tiptap/expex";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
-import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
+import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
