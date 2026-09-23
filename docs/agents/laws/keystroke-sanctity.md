@@ -623,6 +623,63 @@ which is how this class survived 126. Pre-fix both behavioural legs and both
 census legs fail while all five legacy legs, the keystroke-silence one included,
 pass.
 
+### The second-copy half: a shared resolver fixed on ONE of its copies is not fixed
+
+> **A helper that answers a per-keystroke question has ONE implementation. A
+> surface holding a textually independent copy of it is outside every fix that
+> helper will ever receive — and nothing will say so, because the copy shares
+> no identifier with the thing that was repaired.**
+
+Task 140 gave the answer to *"where is my source node in the main document
+right now?"* one owner,
+[findSourceNodeByUuid](../../../src/lib/float-source-range.ts): resolve from
+the live source range as a POSITION HINT (O(depth), verified against type +
+uuid + exact extent), and fall back to the full `descendants` walk only when
+that verification fails. It then threaded the hint through all ten text-object
+FLOAT bodies, whose write-backs run on every keystroke in the mirror.
+
+It did not reach the Examples-panel card, which asks the identical question on
+the identical schedule. The card held a private `doc.descendants` copy of the
+finder with no hint parameter, so typing in an expanded example card walked the
+whole paper per press — in a file whose own comment above that function said
+callers "MUST NOT run it per keystroke". The comment was right about the
+RE-SEED direction, which is genuinely event-gated; the write-back two hundred
+lines down was the caller it forbade. Four things had to miss it and all four
+did: TypeScript (two independent functions), the tests (the card's suite pins
+the main→card direction's keystroke silence, never the card→main direction's
+cost), the reviewer (the comment reads as a statement that the rule is
+observed), and task 140 itself (it fixed every call site of the function it was
+holding).
+
+Resolved at the class, not the call site (task 723): the card's copy is
+DELETED, and both surfaces reach the one resolver. The card cannot keep its
+hint the way a float does — `useFloatMainSync` maps the range on every main
+transaction, and a docked panel renders one card per example, so that would be
+N subscribers on the typing path — so it re-stamps instead, through
+`findAndTrackSourceNode`: every resolution the card makes (the re-seed effect,
+and the write-back, which knows the exact extent it just wrote) leaves the hint
+true for the next one, and a hint gone stale after a foreign edit self-heals
+after ONE fallback walk.
+
+**Measure the SCAN, never the write.** The write-back is correct and wanted; it
+was the resolution in front of it that was doc-proportional. Debouncing or
+throttling the write would have traded a latency bug for a lost-edit bug, which
+the write-path law forbids.
+
+CI:
+[mirror-writeback-hint-census.test.ts](../../../src/lib/__tests__/mirror-writeback-hint-census.test.ts)
+— the population is DERIVED (every module declaring a `writeBackTo*` door), so
+a new mirror body is policed by existing rather than by being remembered. R1: no
+mirror body declares its own by-uuid walk. R2: every resolution inside a
+write-back door carries a hint ref **in its arguments** — stated over the call,
+not the door's text, because the first draft stated it over the text and passed
+a door that stamped its ref after resolving without it. Plus
+[example-card-writeback-cost.test.tsx](../../../src/panels/Examples/__tests__/example-card-writeback-cost.test.tsx),
+which drives the same keystroke burst through the card over a 4-block and a
+400-block document and counts the resolver's node visits (scoped to the
+resolver, so the main editor's own plugins reacting to the write cannot swamp
+the measurement): 7212 visits before, 0 after.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).

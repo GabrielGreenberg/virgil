@@ -7,7 +7,6 @@ import {
   type Editor,
   type JSONContent,
 } from "@tiptap/react";
-import type { Node as PMNode } from "@tiptap/pm/model";
 import type { ExampleInfo, EditorHandle } from "@/components/Editor";
 // The `<cardKind>:<cardId>` grammar has one builder (task 202) — the panel
 // card carries the same `data-link-card` token its in-editor marker does, and
@@ -37,6 +36,11 @@ import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { applyExpexWidthVars, computeExpexWidths } from "@/lib/tiptap/expex";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
+import {
+  findAndTrackSourceNode,
+  findSourceNodeByUuid,
+  type SourceRange,
+} from "@/lib/float-source-range";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
 import { iconHint } from "@/components/Hint";
 
@@ -55,25 +59,16 @@ export interface ExampleCardProps {
   extraDataAttrs?: Record<string, string>;
 }
 
-// ── Source resolution (shared with example-block-body.tsx) ─────────────
-// Find the live `exampleBlock` in the main doc by uuid. Early-bails once
-// found; worst-case O(doc), so callers MUST NOT run it per keystroke (the
-// card re-seeds only on the `rev.examples` structural counter, below).
-function findExampleBlockByUuid(
-  doc: PMNode,
-  uuid: string,
-): { start: number; end: number; node: PMNode } | null {
-  let result: { start: number; end: number; node: PMNode } | null = null;
-  doc.descendants((node, pos) => {
-    if (result) return false;
-    if (node.type.name === "exampleBlock" && node.attrs?.uuid === uuid) {
-      result = { start: pos, end: pos + node.nodeSize, node };
-      return false;
-    }
-    return true;
-  });
-  return result;
-}
+// ── Source resolution ──────────────────────────────────────────────────
+// There is ONE door to "where is this exampleBlock in the main doc?" —
+// `findSourceNodeByUuid` (`@/lib/float-source-range`), the hinted resolver
+// every example/list/figure FLOAT body has resolved through since task 140.
+// This card used to hand-roll a private `doc.descendants` copy of it with no
+// hint parameter, so task 140's fix reached one of the two surfaces that
+// needed it and the card silently kept the O(doc)-per-keystroke write-back
+// (task 723). `findAndTrackSourceNode` is the same resolver plus the ref
+// re-stamp the card needs in place of a float's per-transaction range
+// tracking — see its docblock for why the card cannot take that subscription.
 
 const EMPTY_BLOCK: JSONContent = {
   type: "exampleBlock",
@@ -101,13 +96,17 @@ const EMPTY_BLOCK: JSONContent = {
  * Glosses + nested xlists round-trip because the WHOLE block JSON is seeded
  * and written back (the old `BorrowedMainText` projection dropped them).
  *
- * KEYSTROKE SANCTITY: this does NOT subscribe to the main editor's per-
- * transaction stream (that would do O(doc) `findExampleBlockByUuid` work per
- * keystroke, fanned out across every open card). Instead it re-seeds from the
- * main doc only when the `rev.examples` STRUCTURAL counter bumps — i.e. an
- * example was added / removed / structurally changed (`onExamplesRecomputable`).
- * A plain keystroke inside an unrelated paragraph fires no example structural
- * event → no re-seed → no per-card doc walk. Own write-backs are tagged with
+ * KEYSTROKE SANCTITY, both directions. MAIN→CARD: this does NOT subscribe to
+ * the main editor's per-transaction stream (that would be one subscriber per
+ * rendered card on the typing path). It re-seeds only when the `rev.examples`
+ * STRUCTURAL counter bumps — an example added / removed / structurally changed
+ * (`onExamplesRecomputable`) — or when THIS example's `contentRev` bumps. A
+ * plain keystroke inside an unrelated paragraph fires neither, so this card
+ * never re-seeds. CARD→MAIN: the write-back resolves its target through the
+ * HINTED shared resolver (`findAndTrackSourceNode`), so typing in the card
+ * costs O(depth) per press instead of the O(doc) walk the card's own private
+ * finder used to pay (task 723) — the full walk survives only as the
+ * cold-start / stale-hint fallback. Own write-backs are tagged with
  * `FLOAT_WRITE_META`; we skip the immediate echo re-seed they would trigger by
  * comparing serialized JSON before pushing.
  */
@@ -173,11 +172,27 @@ function ExampleCardEditor({
   const initialDoc = useMemo<JSONContent>(() => {
     let blockJson: JSONContent | null = null;
     if (mainEditor) {
-      const src = findExampleBlockByUuid(mainEditor.state.doc, exampleId);
+      // Cold start: no hint exists yet, and a ref must not be written during
+      // render — the re-seed effect below stamps it on its first pass, which
+      // runs before any keystroke can reach the write-back.
+      const src = findSourceNodeByUuid(
+        mainEditor.state.doc,
+        exampleId,
+        "exampleBlock",
+        null,
+      );
       if (src) blockJson = src.node.toJSON() as JSONContent;
     }
     return { type: "doc", content: [blockJson ?? EMPTY_BLOCK] };
   }, [exampleId, mainEditor]);
+
+  // The card's live position hint (task 723). Maintained by the card's own
+  // resolutions — the re-seed effect stamps it, and each write-back stamps
+  // the extent it just wrote — so the write-back never walks the document on
+  // a steady-state keystroke. A float keeps the identical ref live through
+  // `useFloatMainSync`'s per-transaction `trackSourceRange`; the card cannot
+  // take that subscription (one per rendered card), so it re-stamps instead.
+  const sourceRangeRef = useRef<SourceRange | null>(null);
 
   const floatId = `example-card:${exampleId}`;
 
@@ -193,7 +208,15 @@ function ExampleCardEditor({
   function writeBackToMain(doc: JSONContent) {
     const ed = editorRef.current?.getEditor();
     if (!ed) return;
-    const src = findExampleBlockByUuid(ed.state.doc, exampleId);
+    // The live source range doubles as this write's position hint (task 140's
+    // ladder, reached from the card since task 723), so the card→main
+    // direction stops walking the doc per card keystroke.
+    const src = findAndTrackSourceNode(
+      ed.state.doc,
+      exampleId,
+      "exampleBlock",
+      sourceRangeRef,
+    );
     if (!src) return;
     const incoming = doc.content ?? [];
     const first = incoming[0];
@@ -211,6 +234,14 @@ function ExampleCardEditor({
       tr.setMeta("addToHistory", false);
       tr.setMeta(FLOAT_WRITE_META, floatId);
       if (tr.docChanged) ed.view.dispatch(tr);
+      // This write is the one edit whose effect on the range we know exactly:
+      // the block now occupies `start … start + newNode.nodeSize`. Stamping it
+      // here is what keeps the NEXT keystroke hinted — a write that grows or
+      // shrinks the block would otherwise invalidate the hint it just used.
+      sourceRangeRef.current = {
+        from: src.start,
+        to: src.start + newNode.nodeSize,
+      };
       // The write reached the doc — clear any prior rejection banner.
       setWriteError((prev) => (prev === null ? prev : null));
     } catch (err) {
@@ -296,7 +327,15 @@ function ExampleCardEditor({
   const lastSyncedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!editor || !mainEditor) return;
-    const src = findExampleBlockByUuid(mainEditor.state.doc, exampleId);
+    // Hinted like the write-back, and the stamp that primes it: this effect
+    // runs at mount and on every example signal, so the hint is live before
+    // the first keystroke and re-trued after every foreign edit that fires one.
+    const src = findAndTrackSourceNode(
+      mainEditor.state.doc,
+      exampleId,
+      "exampleBlock",
+      sourceRangeRef,
+    );
     if (!src) return; // block gone — leave last content; close drops it cleanly
     const nextDoc: JSONContent = {
       type: "doc",
