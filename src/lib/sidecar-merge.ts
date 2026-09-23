@@ -117,6 +117,11 @@ export interface SidecarCollectionSpec {
  * task's own census forbids any other production file from even spelling the
  * filename. `virgil.json` is present with no collection because it is written
  * by the doc BUNDLE rather than by a sidecar hook.
+ *
+ * A `legacy` row (`sidecar-value.ts`) is absent by DERIVATION, not by hand:
+ * nothing writes the file, so there is no write to merge. The totality leg
+ * subtracts those rows itself, so retiring a sidecar never means remembering
+ * to delete a merge rule (task 726).
  */
 export const SIDECAR_COLLECTIONS: Readonly<
   Record<string, readonly SidecarCollectionSpec[]>
@@ -136,7 +141,6 @@ export const SIDECAR_COLLECTIONS: Readonly<
   // beside it (task 715). No record list; the structural key merge is the whole
   // answer, and it is why an agent-written key now survives a concurrent save.
   "document-settings.json": [],
-  "examples.json": [{ key: "examples", idFields: ["id"] }],
   "footnotes.json": [{ key: "footnotes", idFields: ["id"] }],
   "notes.json": [{ key: "cards", idFields: ["id"] }],
   "orphaned-footnotes.json": [{ key: "orphans", idFields: ["footnoteId"] }],

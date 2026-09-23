@@ -8,7 +8,11 @@
  * renders, and loses the sidecar only when the disk is slow. Two such
  * reconciles (`useExamples` / `useFootnotes`) sat exported with no production
  * caller and no `loaded` gate of their own, one mount effect away from the
- * citations defect; they are DELETED (WIRE-it-or-DELETE-it). So this file reads
+ * citations defect; they are DELETED (WIRE-it-or-DELETE-it). Task 726 finished
+ * the `useExamples` half: 570 took the reconcile and left the HOOK standing,
+ * still caller-less, so the whole file is deleted now and the retired-reconcile
+ * leg below reads only its surviving sibling. (The rule that keeps the next one
+ * from accumulating is `sidecar-hook-caller-census.test.ts`.) So this file reads
  * source and pins:
  *
  * 1. every production `syncFromEditor` DECLARATION enters `updateWhenLoaded`
@@ -25,7 +29,7 @@
  * Allowlists EMPTY. A hit is MIGRATE-it onto the door.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import fs, { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   REPO_ROOT,
@@ -85,7 +89,6 @@ describe("census · a load-time reconcile enters the door", () => {
     for (const f of [
       "src/hooks/useCitations.ts",
       "src/hooks/usePersistentState.ts",
-      "src/hooks/useExamples.ts",
       "src/hooks/useFootnotes.ts",
       "src/components/EditorPane.tsx",
     ]) {
@@ -145,11 +148,16 @@ describe("census · a load-time reconcile enters the door", () => {
     expect(declaring.sort()).toEqual(["src/hooks/useCitations.ts"]);
   });
 
-  it("the retired reconciles stay retired: useExamples / useFootnotes spell no syncFromEditor in code", () => {
-    for (const f of ["src/hooks/useExamples.ts", "src/hooks/useFootnotes.ts"]) {
-      const code = codeOnly(read(path.join(REPO_ROOT, f)));
-      expect(code.includes("syncFromEditor"), f).toBe(false);
-    }
+  it("the retired reconciles stay retired: useFootnotes spells no syncFromEditor, useExamples is gone entirely", () => {
+    const code = codeOnly(read(path.join(REPO_ROOT, "src/hooks/useFootnotes.ts")));
+    expect(code.includes("syncFromEditor")).toBe(false);
+    // `useExamples` lost its reconcile in 570 and its last reason to exist in
+    // 726 — the file itself is the retirement now. A re-created hook of that
+    // name would also have to face the caller census.
+    expect(
+      fs.existsSync(path.join(REPO_ROOT, "src/hooks/useExamples.ts")),
+      "useExamples.ts is deleted (task 726) — a re-created one needs a production caller",
+    ).toBe(false);
   });
 
   it("the door has ONE implementation: its held derivation is spelled only in usePersistentState", () => {

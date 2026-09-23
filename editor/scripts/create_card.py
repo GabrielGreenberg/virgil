@@ -614,10 +614,11 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
 # example — the one tex-only kind.
 #
 # An example *is* a TextObject in the .tex (expex `\vexid{}\ex…\xe`, or `\pex`
-# with `\vxid{}\a` rows); examples.json is an app-derived metadata *shadow*
-# (useExamples.syncFromEditor regenerates it on every parse), so the skill
-# writes ONLY the .tex — no card append, and `examples` is intentionally absent
-# from apply_response.PANEL_TO_SIDECAR. example has no Task lifecycle
+# with `\vxid{}\a` rows), and since task 726 it is the ONLY representation: the
+# app neither reads nor writes examples.json (that sidecar is retired — see
+# `legacy` in src/lib/sidecar-value.ts), so the skill writes ONLY the .tex — no
+# card append, and `examples` is intentionally absent from
+# apply_response.PANEL_TO_SIDECAR. example has no Task lifecycle
 # (docs/workspace/cards.md → lifecycle "none"), so the splice rides the
 # contract's virtual-requestId path and synthesizes no Task.
 #

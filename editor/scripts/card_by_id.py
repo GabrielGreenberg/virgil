@@ -12,8 +12,10 @@ card-hosting sidecars that are intentionally writeback-exempt (so they have no
 `PANEL_TO_SIDECAR` row — see tools/check-coherence.mjs Check 5):
 
   - `archive.json` · `snippets`  — `restore-card` reads it; `archive-card` lands here.
-  - `examples.json` · `examples` — an app-derived `.tex` shadow; surfaced for
-    completeness (read-only — the mutation ops refuse to touch it).
+  - `examples.json` · `examples` — RETIRED (task 726): the app neither reads nor
+    writes it, so a row here can only be residue a pre-726 folder still holds.
+    Still searched, read-only, so a lookup of such an id reports what it finds
+    rather than "not found"; every mutation op refuses it.
 
 CLI:
   card_by_id.py <docPath> <cardId>

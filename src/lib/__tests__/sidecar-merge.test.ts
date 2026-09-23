@@ -15,7 +15,7 @@ import {
   mergeSidecarState,
   sidecarCollections,
 } from "../sidecar-merge";
-import { SIDECAR_VALUE } from "../sidecar-value";
+import { LEGACY_SIDECAR_FILENAMES, SIDECAR_VALUE } from "../sidecar-value";
 
 interface Card {
   id: string;
@@ -197,10 +197,16 @@ describe("deepEqual is structural, not textual", () => {
 });
 
 describe("census — the table is TOTAL over the content tier", () => {
-  // The one deliberate absence: `ai-requests.json` has owned its serialized
-  // authority since task 220, and that task's census forbids any other
-  // production file from even spelling the filename.
-  const EXEMPT = new Set(["ai-requests.json"]);
+  // The one deliberate HAND absence: `ai-requests.json` has owned its
+  // serialized authority since task 220, and that task's census forbids any
+  // other production file from even spelling the filename. Every other absence
+  // is DERIVED — a `legacy` row is a file nothing writes, so there is no write
+  // to merge (task 726), and retiring a sidecar therefore never means
+  // remembering to come here and delete a rule.
+  const EXEMPT = new Set([
+    "ai-requests.json",
+    ...LEGACY_SIDECAR_FILENAMES,
+  ]);
 
   it("every content-tier sidecar declares its record collections (an empty array is an answer)", () => {
     const missing = Object.entries(SIDECAR_VALUE)
@@ -208,6 +214,15 @@ describe("census — the table is TOTAL over the content tier", () => {
       .map(([f]) => f)
       .filter((f) => !EXEMPT.has(f) && !(f in SIDECAR_COLLECTIONS));
     expect(missing, "declare these in SIDECAR_COLLECTIONS").toEqual([]);
+  });
+
+  it("a legacy row claims NO merge rule (nothing writes it)", () => {
+    // The falsifying direction of the exemption above: it may excuse a legacy
+    // row from HAVING a rule, but a legacy row that KEEPS one is a table still
+    // describing a writer that no longer exists.
+    for (const f of LEGACY_SIDECAR_FILENAMES) {
+      expect(f in SIDECAR_COLLECTIONS, `${f} is retired but still declares a merge rule`).toBe(false);
+    }
   });
 
   it("declares nothing the value table has never heard of", () => {
