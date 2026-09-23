@@ -62,6 +62,10 @@ import {
 } from "@/lib/tiptap/schema-mount";
 import StarterKit from "@tiptap/starter-kit";
 import ListItem from "@tiptap/extension-list-item";
+import BulletList from "@tiptap/extension-bullet-list";
+import OrderedList from "@tiptap/extension-ordered-list";
+import Blockquote from "@tiptap/extension-blockquote";
+import { withWrapperGate } from "@/lib/tiptap/wrapper-gate";
 import {
   CARD_BODY_BLOCK_ATOMS,
   MAIN_STARTERKIT_NODE_ATTRS,
@@ -114,6 +118,14 @@ export const CARD_STARTER_KIT_CONFIG = {
   // The paragraph is registered by `buildCardBodySchema` as `CardParagraph`
   // (same node, same attrs, plus the `p-cmd-only` NodeView stamp — task 430).
   paragraph: false as const,
+  // The two list WRAPPERS are registered by `buildCardBodySchema` as
+  // `withWrapperGate(BulletList|OrderedList, …)` — the same node, the same
+  // attrs, with its `Mod-Shift-8/7` chord and its `- ` / `1. ` markdown rule
+  // routed through the wrapper door (task 731). Inheriting them from StarterKit
+  // is what let the card-body TOOLBAR grey its bullet button on a non-listable
+  // block while the chord coerced that same block into a list item.
+  bulletList: false as const,
+  orderedList: false as const,
 };
 
 /**
@@ -148,6 +160,15 @@ export const EXCERPT_STARTER_KIT_CONFIG = {
   // check reads.
   paragraph: false as const,
   listItem: false as const,
+  // …and the three WRAPPERS, which `buildCardBodySchema` re-registers through
+  // `withWrapperGate` (task 731). A vocabulary SUBTRACTION this is not: the
+  // nodes are still mounted, still with StarterKit's own spec and (via
+  // `ExcerptDocumentAttrs`, which keys on the node NAME) the main editor's
+  // attrs — only their two ungated bindings change. The fourth axis after
+  // vocabulary / attrs / content: which SURFACES a mirrored node ships.
+  bulletList: false as const,
+  orderedList: false as const,
+  blockquote: false as const,
 };
 
 /**
@@ -243,10 +264,33 @@ const ExcerptListItem = ListItem.extend({
   content: MAIN_STARTERKIT_NODE_CONTENT.listItem,
 });
 
+/**
+ * The card body's three list/quote WRAPPERS (task 731) — StarterKit's own
+ * `BulletList` / `OrderedList` / `Blockquote`, unchanged but for the ONE thing
+ * a card body must not inherit: the ungated `Mod-Shift-8/7/b` chord and the
+ * ungated `- ` / `1. ` / `> ` markdown rule.
+ *
+ * Both scope configs above turn the StarterKit keys off and these come back in
+ * their place, so a card body cannot mount a wrapper whose keyboard disagrees
+ * with its toolbar. `RichTextField`'s two list buttons have asked
+ * `wrapperSafeInState` for their `disabled` since task 427 — a card body mounts
+ * `codeBlock`, the block-atom previews and (at excerpt scope) `heading` and the
+ * expex family, so a non-listable block and a wrapper-refusing container are
+ * both reachable here, exactly as in the main document.
+ *
+ * `blockquote` is excerpt-only, because `CARD_STARTER_KIT_CONFIG` has always
+ * withheld the NODE at card scope; gating changes which surfaces a mounted node
+ * ships, never which nodes a scope mounts.
+ */
+const CardBulletList = withWrapperGate(BulletList, "bulletList");
+const CardOrderedList = withWrapperGate(OrderedList, "orderedList");
+const CardBlockquote = withWrapperGate(Blockquote, "blockquote");
+
 function buildExcerptOnlySchema(): AnyExtension[] {
   return [
     ExcerptDocumentAttrs,
     ExcerptListItem,
+    CardBlockquote,
     Highlight.configure({ multicolor: true }),
     TextColor,
     // ── expex example family ────────────────────────────────────────────
@@ -286,11 +330,14 @@ export function buildCardBodySchema(
   // editor's paragraph uses (task 430). It rides THIS builder — the door every
   // card surface enters — rather than the atom list, so a surface that mounts
   // `LatexCommandMark` mounts a paragraph that stamps by construction.
-  if (scope !== "excerpt") return [...buildBorrowedAtomSchema(opts), CardParagraph];
+  if (scope !== "excerpt")
+    return [...buildBorrowedAtomSchema(opts), CardParagraph, CardBulletList, CardOrderedList];
   return [
     ...buildBorrowedAtomSchema({ ...opts, includeLabelRefFootnote: true }),
     ...buildExcerptOnlySchema(),
     CardParagraph,
+    CardBulletList,
+    CardOrderedList,
   ];
 }
 
