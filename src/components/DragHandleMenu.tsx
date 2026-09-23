@@ -26,6 +26,8 @@
 
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
+import type { DragHandleRef } from "@/components/editor-layout/card-actions/drag-handle-actions";
+import { useLiveGrabTarget } from "@/components/editor-layout/card-actions/grab-menu-target";
 import {
   type FloatingMenuPlacement,
 } from "@/hooks/useFloatingMenuPosition";
@@ -76,20 +78,26 @@ const DRAG_HANDLE_PLACEMENTS: FloatingMenuPlacement[] = [
 interface Props {
   /** Bounding rect of the handle that triggered the menu — used to anchor the popover. */
   anchorRect: DOMRect | { left: number; top: number; right: number; bottom: number; width: number; height: number };
-  onSelect: (action: DragHandleAction) => void;
+  /** The chosen action, with the ref to act on NOW (task 737): the target
+   *  followed through every document change made while the menu was open —
+   *  a selection re-issued at its mapped span — never the snapshot taken at
+   *  open. Absent only for a legacy viewless caller (no `ref`/`editor`). */
+  onSelect: (action: DragHandleAction, ref?: DragHandleRef) => void;
   onClose: () => void;
   /** The kind that opened the menu. Drives the registry's per-kind `applies()`
    *  grey-out. `"selection"` is the gesture-input case. A bare `kind` with no
-   *  `ref`/`editor` exposes the full action list for a selection (the legacy
+   *  `target`/`editor` exposes the full action list for a selection (the legacy
    *  viewless fallback — kept for the menu-render tests). Prefer passing the
-   *  full `ref` + `editor` below so a selection resolves its containing block. */
+   *  full `target` + `editor` below so a selection resolves its containing block. */
   kind?: TextObjectKind | "selection";
   /** The REAL ref the handle opened on (task 145). For a `"selection"` ref this
    *  carries the live `from`/`to`, so — paired with `editor` — the decoration
    *  resolves the selection's CONTAINING block kind and greys per that block's
    *  curated `actions` set (matching the block-ref path + the lightning twin,
-   *  task 061). Omit to fall back to synthesizing a ref from `kind`. */
-  ref?: ActionRef;
+   *  task 061). Omit to fall back to synthesizing a ref from `kind`.
+   *  (Named `target`, not `ref`, since task 737: the React Compiler reads a
+   *  prop called `ref` as a React ref and refuses every render-time read.) */
+  target?: ActionRef;
   /** The live editor (task 145). Threaded so the decoration `ctx` carries a
    *  `view` — `cardActionAllowedForCtx` needs it to resolve a selection ref's
    *  containing block via `posBlockAllowsAction`. Without it a selection ref
@@ -116,7 +124,16 @@ interface Props {
   canEdit?: boolean;
 }
 
-export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, editor, canEdit = true }: Props) {
+export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, target, editor, canEdit = true }: Props) {
+  // TASK 737 — the menu FOLLOWS the live document while it is open: the target
+  // span is mapped through every transaction, the anchor re-derives from the
+  // target's live position (and on scroll/resize), the rows re-ask `applies()`
+  // once per frame the document changed, and a selection whose text was edited
+  // or removed closes the menu. See `grab-menu-target.ts`.
+  const followable: DragHandleRef | undefined =
+    target && target.kind !== "cursor" ? target : undefined;
+  const live = useLiveGrabTarget(editor, followable, anchorRect, onClose);
+
   // Render the CARD action rows straight off the registry (the SSOT) and
   // decorate each with its per-kind disabled state from the row's own
   // `applies()`. Disabled entries stay in the list (visible-disabled
@@ -133,7 +150,8 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, edito
     // the per-kind grey-out, which keys off `kind` alone); `"selection"` / no
     // kind / an unknown kind → a live selection ref.
     const resolvedRef: ActionRef =
-      ref ??
+      live?.ref ??
+      target ??
       (kind && kind !== "selection" && isTextObjectKind(kind)
         ? { kind, id: "" }
         : { kind: "selection", from: 0, to: 1, paragraphId: "" });
@@ -167,10 +185,22 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, edito
       destructive: row.destructive,
       disabled: row.applies(ctx) === "disabled",
       run: () => {
-        onSelect(row.id as DragHandleAction);
+        if (!live) {
+          onSelect(row.id as DragHandleAction);
+          return;
+        }
+        // Asked at CLICK time, not render time: a transaction that landed
+        // since the last frame is already folded in. Null = the target went
+        // stale in that gap — refuse by closing, never act on shifted text.
+        const now = live.current();
+        if (!now) {
+          onClose();
+          return;
+        }
+        onSelect(row.id as DragHandleAction, now);
       },
     }));
-  }, [ref, kind, editor, canEdit, onSelect]);
+  }, [target, kind, editor, canEdit, onSelect, onClose, live]);
 
   if (typeof document === "undefined") return null;
 
@@ -180,7 +210,8 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, edito
       layout="list"
       role="menu"
       portal
-      anchorRect={anchorRect}
+      anchorRect={live?.anchorRect ?? anchorRect}
+      trackAnchor={live?.trackAnchor}
       placements={DRAG_HANDLE_PLACEMENTS}
       letterShortcuts
       getActiveDescendantHost={caretEditableHost}

@@ -101,6 +101,8 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
     "[cost: O(1)/tx; debounced body O(doc) walk off-path] 300 ms debounce, then the full doc walk — the per-keystroke cost is just the timer reset. Legacy flag-off path only (docProductsEnabled passes null).",
   "lib/code-pane-bridge.ts":
     "[cost: O(1)/tx; debounced body O(doc) serialize off-path] TipTap→code sync: docChanged-gated + own-write ('syncing') filtered, then a debounced serialize.",
+  "components/editor-layout/card-actions/grab-menu-target.ts":
+    "[cost: O(steps)/tx, open-only; RAF body 1 coordsAtPos/nodeDOM + rows' applies() O(depth)] The OPEN grab menu follows its target (task 737): mounted only while the menu is open; the handler maps the target span through the transaction's (and appendedTransactions') step maps — the selection-staleness test rides the same pass — and a RAF-coalesced ≤1/frame publish re-derives the anchor (one layout read) and the rows' applies() (per-kind / O(depth) container resolve). The one uuid walk that seeds a node ref's span runs once, at open, never per tx.",
   "lib/doc-products/pipeline.ts":
     "[cost: O(1)/tx; tiered bodies O(changed)→O(doc) off-path] THE single DocProducts subscriber (perf Wave 1): the update handler is a dirty flag + one timer reset; all O(doc)/O(changed) product work (per-block toJSON/serialize misses, assembly tails, word counts) runs in the 300 ms interactive tier or the requestLowPriority idle tier, off the keystroke path. Flag-on it REPLACES the useLatexSource + useWordCount + EditorPane outline-tick + editor-ops latestDoc subscribers (those entries remain while the flag-off legacy path exists; deleted in Wave-1 S6).",
   "lib/float-sync.tsx":
