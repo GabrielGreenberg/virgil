@@ -3458,6 +3458,35 @@ persists a card through a sidecar write no filter can reach.
 
 CI: `drop-commit-seam.test.ts`.
 
+### The grab-bar half (task 735) — the DOCUMENT first, then the cards
+
+The grab-bar dispatcher's compounds (Archive, Delete, Duplicate, every
+card-creating leg with a Mode-B mark) are the same two-phase commit, and they
+ran the IRREVERSIBLE half first: card lifecycle deletes and the Mode-A retarget
+before an unmeasured delete, clones before `tr.doc.check()`, a note written
+against a `linkedAnchor` a filter had dropped. The rule, stated once:
+
+- **`commitDocThenCards(ed, tr, cards)`** (`commit-seam.ts`) — re-ask
+  editability at the seam (after every `await`: a confirm or settle prompt is
+  unbounded user time), dispatch, MEASURE, and only then run the sidecar half.
+- **`commitRangeDelete`** (`delete-range.ts`) is phase two of a range gesture
+  through that door: the range's `tr.delete` lands first, and the card deletes
+  read the PRE-delete population afterwards. This also retired F2's stale-range
+  arithmetic by construction — no card strip can precede the range any more.
+- **Duplicate's clones MINT the slice's ids**, so its card half cannot follow.
+  It validates a DRY build first (a dry lifecycle mints nothing; the slice has
+  the real shape): schema check, editability, and `transactionAdmitted`
+  (`src/lib/tiptap/transaction-admitted.ts`, a pure probe of every
+  `filterTransaction`). Only then the real walk, through a recording lifecycle
+  that can roll back if the measured dispatch refuses anyway.
+- **`tryCreateLinkedAnchor`** reports `not-applicable` (fall back to Mode A) vs
+  `filtered` (abort the card) — `chain().run()`'s boolean is applicability, not
+  landing.
+- The dispatcher's promise never rejects: a throw reaches the user through the
+  same `notify` door as a refusal.
+
+CI: `grab-commit-door.test.tsx` (each leg paired with a positive control).
+
 ### The dialect half: ONE capture, THREE derived forms, and each door consumes its own
 
 Same law read at the *other* end (tasks 488 → 694 → 696). A capture is not one

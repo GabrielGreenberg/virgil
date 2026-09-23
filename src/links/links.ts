@@ -35,6 +35,7 @@ import type { Link, LinkResolution } from "./_shared/types";
 import { isModeB, isRangedModeB } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { generateEntityId } from "@/lib/uuid";
+import { transactionAdmitted } from "@/lib/tiptap/transaction-admitted";
 import {
   linkCardKeyFromToken,
   linkCardSelector,
@@ -791,9 +792,30 @@ export function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
 }
 
 /**
+ * Why a linked anchor was not created (task 735). The two refusals mean
+ * different things to a caller:
+ *
+ *  - `"not-applicable"` — there was nothing to mark (an empty range) or the
+ *    mark command does not apply there. The document is fine; a caller may fall
+ *    back to a block-level (Mode-A) anchor.
+ *  - `"filtered"` — the command applied, but the transaction carrying the mark
+ *    was REFUSED by a `filterTransaction` (the `readOnlyEnforcer`) and dropped
+ *    silently. The document cannot be changed right now; a caller must not
+ *    create anything that pretends otherwise.
+ */
+export type LinkedAnchorRefusal = "not-applicable" | "filtered";
+
+export type LinkedAnchorAttempt =
+  | { ok: true; record: LinkedAnchorRecord }
+  | { ok: false; reason: LinkedAnchorRefusal };
+
+/**
  * Apply a `linkedAnchor` mark to the current selection (or the given
  * range), returning the new record. When `cardId` is provided, the mark
  * carries `linkCard="<cardKind>:<cardId>"` so it's self-describing.
+ *
+ * `null` for EITHER refusal — see {@link tryCreateLinkedAnchor} for a caller
+ * that must tell them apart.
  */
 export function createLinkedAnchor(
   editor: Editor,
@@ -802,11 +824,33 @@ export function createLinkedAnchor(
   cardId?: string,
   opts?: { tintColor?: string | null },
 ): LinkedAnchorRecord | null {
+  const attempt = tryCreateLinkedAnchor(editor, kind, range, cardId, opts);
+  return attempt.ok ? attempt.record : null;
+}
+
+/**
+ * {@link createLinkedAnchor}, reporting WHY it created nothing.
+ *
+ * `chain().run()`'s boolean reports command APPLICABILITY, not whether the
+ * transaction landed: a `filterTransaction` veto drops the transaction after
+ * the command has already answered `true`. So the landing is MEASURED — the
+ * document reference before and after, the same question `dispatchLanded`
+ * asks — and a record (with its fresh `anchorId`) is returned only for a mark
+ * that is actually in the document. Before task 735 a note or highlight could
+ * be written against an anchor that existed nowhere.
+ */
+export function tryCreateLinkedAnchor(
+  editor: Editor,
+  kind: LinkedAnchorKind,
+  range?: { from: number; to: number },
+  cardId?: string,
+  opts?: { tintColor?: string | null },
+): LinkedAnchorAttempt {
   const sel = range ?? {
     from: editor.state.selection.from,
     to: editor.state.selection.to,
   };
-  if (sel.to <= sel.from) return null;
+  if (sel.to <= sel.from) return { ok: false, reason: "not-applicable" };
   const anchorId = generateEntityId();
   const text = editor.state.doc.textBetween(sel.from, sel.to, " ");
   // Task 488: the RICH twin, taken BEFORE the mark is applied, through the
@@ -833,27 +877,48 @@ export function createLinkedAnchor(
   const paragraphId = paragraphUuidAt(editor.state.doc, sel.from) ?? "";
   const cardKind = legacyKindToCardKindString(kind);
   const linkCard = cardId ? linkCardKeyFromToken(cardKind, cardId) : "";
+  const markAttrs = {
+    anchorId,
+    kind,
+    linkId: anchorId,
+    linkKind: "anchor",
+    linkCard,
+    tintColor: opts?.tintColor ?? null,
+  };
+  // Ask BEFORE running which refusal this would be: a mark that lands nowhere
+  // (no text in the range admits it) is NOT-APPLICABLE; one that would change
+  // the document but that a plugin filter refuses is FILTERED. The probe is the
+  // mark step alone — the selection moves around it change no document.
+  const markType = editor.schema.marks.linkedAnchor;
+  if (!markType) return { ok: false, reason: "not-applicable" };
+  const probe = editor.state.tr.addMark(
+    sel.from,
+    sel.to,
+    markType.create(markAttrs),
+  );
+  if (!probe.docChanged) return { ok: false, reason: "not-applicable" };
+  if (!transactionAdmitted(editor, probe)) return { ok: false, reason: "filtered" };
+  const docBefore = editor.state.doc;
   const ok = editor
     .chain()
     .setTextSelection(sel)
-    .setMark("linkedAnchor", {
-      anchorId,
-      kind,
-      linkId: anchorId,
-      linkKind: "anchor",
-      linkCard,
-      tintColor: opts?.tintColor ?? null,
-    })
+    .setMark("linkedAnchor", markAttrs)
     .setTextSelection(sel.from)
     .run();
-  if (!ok) return null;
+  if (!ok) return { ok: false, reason: "not-applicable" };
+  // Measured, not assumed: the probe above and the dispatch share the same
+  // filters, so this only fires if one of them disagrees with its own probe.
+  if (editor.state.doc === docBefore) return { ok: false, reason: "filtered" };
   return {
-    anchorId,
-    paragraphId,
-    text,
-    content: capturedContent,
-    ...(capturedLatex == null ? {} : { latex: capturedLatex }),
-    createdAt: new Date().toISOString(),
+    ok: true,
+    record: {
+      anchorId,
+      paragraphId,
+      text,
+      content: capturedContent,
+      ...(capturedLatex == null ? {} : { latex: capturedLatex }),
+      createdAt: new Date().toISOString(),
+    },
   };
 }
 
@@ -1122,6 +1187,7 @@ export function reanchorByText(
   // `revision-suggestion:<id>`); fall back to the kind-derived token otherwise.
   const cardKind = opts?.linkCardToken ?? legacyKindToCardKindString(kind);
   const linkCard = cardId ? linkCardKeyFromToken(cardKind, cardId) : "";
+  const docBefore = editor.state.doc;
   const ok = editor
     .chain()
     // Load-time / gesture-time correction: not an undoable user edit.

@@ -11,9 +11,10 @@
  *      the user explicitly answers for. Every declinable obligation a card in
  *      the range carries is discharged HERE, before anything is destroyed, and
  *      a decline aborts the entire gesture with the document untouched.
- *   2. DO — `cleanupAndComputeDeleteRange` (→ `cleanupLinksInRange`) and the
- *      caller's `tr.delete`. Synchronous and unconditional; nothing in it can
- *      refuse, because phase one already asked.
+ *   2. DO — `commitRangeDelete`: the range's `tr.delete`, MEASURED, and only
+ *      once it has landed `cleanupLinksInRange`. Synchronous; nothing in the
+ *      card half can refuse, because phase one already asked — and nothing in
+ *      it runs at all when the DOCUMENT half was refused (task 735).
  *
  * Both phases enumerate the SAME population through `collectRangeCardTargets`,
  * so the gesture can never ask about one set of cards and destroy another.
@@ -47,6 +48,8 @@ import { parseLinkCardKey } from "@/links/link-dom-contract";
 import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import { settleAppliedSpliceForCard } from "@/cards/lifecycle/run-event";
 import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
+import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
+import { commitDocThenCards } from "@/components/drop-mode/commit-seam";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -127,47 +130,40 @@ export function expandCascadeRange(
 }
 
 // ---------------------------------------------------------------------------
-// Cleanup-then-delete range correction — the F2 data-loss fix.
+// Phase two: the DOCUMENT first, then the cards (task 735).
 //
-// THE BUG IT FIXES
-// The Archive / Delete dispatch computes a deletion range `[from, to)` against
-// the live doc, THEN calls `cleanupLinksInRange`, which — for an inline atom
-// inside the range (a `\cite` / `\footnote` whose card lifecycle owns a live
-// doc node) — SYNCHRONOUSLY dispatches its own transaction that strips the atom
-// from the doc. That shrinks the targeted block, so the editor's state advances
-// while the originally-computed `to` does not. The stale `to` then over-reaches
-// past the (now-shorter) block and into whatever sits immediately after it.
-// When the next sibling is a size-1 block atom (`graphicsBlock`, `displayMath`,
-// `texBlock`, …) the over-reach swallows it WHOLE — silent data loss (F2:
-// deleting a paragraph that precedes a `graphicsBlock` removed the graphics
-// too). A `figureBlock` survived only incidentally: the demo paragraph above it
-// happened to carry no atom to clean up, so the range never went stale.
+// F2, AND WHY IT IS NOW UNREPRESENTABLE. Phase two used to run the card
+// cleanup FIRST: `cleanupLinksInRange` fired each kind's lifecycle `delete`,
+// and for an inline atom (a `\cite`) that delete SYNCHRONOUSLY dispatched its
+// own transaction stripping the atom — shrinking the block while the caller's
+// pre-computed `to` stayed put, so the stale range over-reached into the next
+// sibling (a size-1 `graphicsBlock` vanished whole). The fix was an arithmetic
+// correction (`cleanupAndComputeDeleteRange`).
 //
-// THE FIX (whole-class, not the one node type)
-// Every removal `cleanupLinksInRange` triggers is, by construction, STRICTLY
-// INSIDE `[from, to)` — it only deletes inline atoms / linkedAnchor-marked text
-// that the walker found within the range, never the block boundaries
-// themselves. So the block's opening boundary (`from`) never moves, and `to`
-// shifts left by exactly the total document-size delta. We capture the doc size
-// before cleanup and subtract the delta afterward. Ref-kind-agnostic (works for
-// a TextObject paragraph delete AND a selection-range delete) and atom-kind-
-// agnostic (citation, footnote, or any future atom whose lifecycle removes a
-// doc node). The caller dispatches `tr.delete(from, correctedTo)` against the
-// post-cleanup `ed.state`, so positions are internally consistent.
+// Task 735 found the deeper defect in that same ordering: the card half is the
+// IRREVERSIBLE half, and it ran before anyone knew whether the document half
+// would land. `view.dispatch` returns nothing, and a transaction refused by a
+// `filterTransaction` (the `readOnlyEnforcer`) is dropped silently — so a
+// refused delete left the passage in place with its footnote / citation /
+// Mode-B cards already destroyed.
+//
+// Reversing the order fixes both at once. The range's `tr.delete` is dispatched
+// FIRST, against the settled range — it removes every inline atom inside the
+// range along with the text, so no strip ever moves `to` — and it is MEASURED.
+// Only a landed delete lets the card half run, and the card half deletes the
+// population collected from the PRE-delete document (an atom's lifecycle
+// delete finds no node left to strip and removes only its sidecar record).
 // ---------------------------------------------------------------------------
 
 /**
  * Correct a range for a mutation the gesture ITSELF performed strictly inside
- * that range. The one arithmetic, shared by the two steps that mutate inside a
- * range before deleting it:
+ * that range. Since task 735 there is ONE such step: a
+ * SETTLE's `revert`, which splices the pre-suggestion original back over the
+ * applied text (task 636) — `delta` of either sign, since the original may be
+ * longer than what replaced it. (The F2 inline-atom strip that used to share
+ * it is gone — see `commitRangeDelete`.)
  *
- *   • the cleanup walk's inline-atom strips (the F2 case above) — `delta < 0`;
- *   • a SETTLE's `revert`, which splices the pre-suggestion original back over
- *     the applied text (task 636) — `delta` of either sign, since the original
- *     may be longer than what replaced it.
- *
- * Both are, by construction, strictly INSIDE `[from, to)`: the walk only ever
- * touches atoms/marked text it found within the range, and a settle only ever
+ * It is, by construction, strictly INSIDE `[from, to)`: a settle only ever
  * rewrites the anchor range of a card the walk found there. So `from` never
  * moves and `to` shifts by exactly the document-size delta. Clamped at both
  * ends so a degenerate input can only ever shrink the range, never grow it into
@@ -185,39 +181,38 @@ export function correctRangeForInnerDelta(
 }
 
 /**
- * Run `cleanupLinksInRange` over `[from, to)` and return the range corrected
- * for any doc mutation the cleanup's card-lifecycle deletes performed. The
- * returned `{ from, to }` is valid against the POST-cleanup `editor.state.doc`
- * and is what the Delete / Archive `tr.delete(...)` must use.
+ * PHASE TWO of a destructive range gesture: delete `[from, to)` from the
+ * document, and — only if that transaction LANDED — fire each card's lifecycle
+ * `delete` for every sidecar-bearing element the range held.
  *
- * `from` is returned unchanged: cleanup never touches positions at or before
- * the block's opening boundary. `to` is reduced by the doc-size delta, since
- * every cleanup removal lands strictly inside the range.
+ * `from`/`to` must be the SETTLED range (`settleRangeCardObligations`), so no
+ * declinable question remains. `beforeCards` runs after the landing and before
+ * the card deletes: the archive leg re-homes its displaced Mode-A anchors and
+ * mints its snippet there, so those sidecar writes share the document's fate
+ * too. (Both precede the `setTimeout(0)` orphan sweeps the delete schedules, so
+ * they still win the race they used to win by running before the dispatch.)
  *
- * IT IS THE SECOND HALF OF A TWO-PHASE GESTURE (task 636). Everything it does
- * is UNCONDITIONAL — the lifecycle deletes it fires cannot be refused by the
- * time it runs, because `settleRangeCardObligations` has already asked every
- * declinable question over this range and the caller has already aborted on a
- * decline. Calling it without that first phase is the bug task 636 fixed: the
- * card delete was asynchronous and declinable while the text delete on the next
- * statement was synchronous and unconditional, so the paragraph vanished while
- * the user was still being asked what to do about it.
+ * Returns `false` when the compound was refused as a unit — the surface was not
+ * editable at the seam, or the transaction was filtered. Then NOTHING ran: no
+ * card delete, no `beforeCards`. The caller owns telling the user.
  */
-export function cleanupAndComputeDeleteRange(
+export function commitRangeDelete(
   editor: Editor,
   from: number,
   to: number,
   lifecycle: CardLifecycleApi,
-): { from: number; to: number } {
-  const sizeBefore = editor.state.doc.content.size;
-  cleanupLinksInRange(editor.state.doc, from, to, lifecycle);
-  const delta = editor.state.doc.content.size - sizeBefore;
-  return correctRangeForInnerDelta(
-    from,
-    to,
-    delta,
-    editor.state.doc.content.size,
-  );
+  beforeCards?: () => void,
+): boolean {
+  const before = editor.state.doc;
+  // Tag the removal as deliberate so `MarginaliaAnchorGuard` does not resurrect
+  // an anchored block as an empty same-uuid placeholder.
+  const tr = editor.state.tr
+    .delete(from, to)
+    .setMeta(LIFECYCLE_DELETE_META, true);
+  return commitDocThenCards(editor, tr, () => {
+    beforeCards?.();
+    cleanupLinksInRange(before, from, to, lifecycle);
+  });
 }
 
 /** One sidecar-bearing card the walk found inside a range. */
@@ -280,7 +275,7 @@ export function collectRangeCardTargets(
  * `{from, to}` is the range corrected for whatever those answers moved.
  *
  * It is a PRECONDITION IN VALUE FORM. A caller can only reach the unconditional
- * second phase (`cleanupAndComputeDeleteRange` + the `tr.delete`) by holding one
+ * second phase (`commitRangeDelete`) by holding one
  * of these, and the only way to hold one is to have awaited the ask.
  */
 export interface RangeSettlement {
@@ -370,6 +365,10 @@ export async function settleRangeCardObligations(
  * delete here can refuse. A delete that refuses anyway is a contract breach (a
  * new declinable obligation the ask does not know about), and says so in dev
  * rather than silently mutilating a card the user chose to keep.
+ *
+ * `doc` is the PRE-delete document: `commitRangeDelete` calls this only after
+ * the range's own transaction has landed (task 735), so the population is read
+ * from the snapshot it held before dispatching.
  */
 export function cleanupLinksInRange(
   doc: PMNode,

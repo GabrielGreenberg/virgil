@@ -8017,7 +8017,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               onSelect={(action) => {
                 const ref = dragHandleMenuState.ref;
                 closeDragHandleMenu();
-                dragHandleActions.dispatch(action, ref);
+                // Never rejects — the dispatcher reports its own failures
+                // (task 735).
+                void dragHandleActions.dispatch(action, ref);
               }}
               onClose={closeDragHandleMenu}
             />

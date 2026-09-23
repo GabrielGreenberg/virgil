@@ -256,7 +256,8 @@ export function ActionsMenuPanel({
             from: range.from,
             to: range.to,
           };
-    dragHandleMenu.dispatch(action, ref);
+    // Never rejects — the dispatcher reports its own failures (task 735).
+    void dragHandleMenu.dispatch(action, ref);
     onClose();
   };
 

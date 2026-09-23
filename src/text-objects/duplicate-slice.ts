@@ -42,6 +42,7 @@ import { Slice, Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { isTextObjectKind } from "./text-object-registry";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
+import type { CardKind } from "@/panels/_shared/types";
 import { generateEntityId, generateShortId } from "@/lib/uuid";
 import { linkCardKey, parseLinkCardKey } from "@/links/link-dom-contract";
 import { remintNestedAtomIds } from "@/lib/inline-content";
@@ -277,4 +278,71 @@ function transformNode(
   }
 
   return node.type.create(newAttrs, newContent, newMarks);
+}
+
+// ---------------------------------------------------------------------------
+// Staging the walk's card half (task 735).
+//
+// `lifecycle.clone` MINTS the id the duplicated slice must carry, so the walk
+// cannot produce a slice without first creating sidecar cards. A caller that
+// has to ask "will this transaction even land?" before creating anything walks
+// TWICE: once DRY — every clone answers a placeholder and writes nothing, so the
+// slice has the real one's exact shape (a dry clone never answers null, and the
+// real walk's null only ever strips a mark or keeps the atom under a fresh id)
+// — and, only once the dry build is admitted, for real, through a RECORDING
+// lifecycle that can take back what it minted if the commit is refused anyway.
+// ---------------------------------------------------------------------------
+
+/** The placeholder a dry clone answers. Never persisted: the dry slice is only
+ *  ever validated and probed, never dispatched. */
+const DRY_CLONE_ID = "dry-clone";
+
+/**
+ * A lifecycle with the SAME kind coverage as `real` whose clones mint nothing.
+ * Coverage matters: a kind the real registry lacks strips its mark in the real
+ * walk, so the dry walk must strip it too.
+ */
+export function dryCloneLifecycle(real: CardLifecycleApi): CardLifecycleApi {
+  return {
+    get: (kind) => {
+      const entry = real.get(kind);
+      if (!entry) return null;
+      return { clone: () => DRY_CLONE_ID, delete: () => {} };
+    },
+  };
+}
+
+/** A pass-through lifecycle that remembers every clone it minted. */
+export interface RecordingCloneLifecycle {
+  api: CardLifecycleApi;
+  /** Delete every clone minted through `api` — the compensation for a commit
+   *  that refused after the real walk ran. */
+  rollback(): void;
+}
+
+export function recordingCloneLifecycle(
+  real: CardLifecycleApi,
+): RecordingCloneLifecycle {
+  const minted: Array<{ kind: CardKind; id: string }> = [];
+  return {
+    api: {
+      get: (kind) => {
+        const entry = real.get(kind);
+        if (!entry) return null;
+        return {
+          ...entry,
+          clone: (sourceId) => {
+            const id = entry.clone(sourceId);
+            if (id != null) minted.push({ kind, id });
+            return id;
+          },
+        };
+      },
+    },
+    rollback: () => {
+      for (const { kind, id } of minted.splice(0)) {
+        void real.get(kind)?.delete(id);
+      }
+    },
+  };
 }
