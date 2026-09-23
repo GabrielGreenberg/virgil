@@ -5228,3 +5228,71 @@ planted selection-dropping handler passed until the slice was tightened). A
 handler may still name its OWN kind: that is the FROM argument, the same kind
 the component writes in `kind="…"` two lines above. What it may not do is
 decide the TARGET.
+
+#### The forwarding half: a host re-deriving what its child already decided
+
+Task 724 — the chooser half one layer out, and the same tell: the value the
+child handed up is consulted, or never named at all, and the host answers the
+question again for itself.
+
+A card component tells its host two things — *"I was activated"* and *"jump to
+me, here is my element."* `src/cards/floats/index.tsx` mounts fifteen card
+bodies for the popped-out window and forwards both for ten of them. **Five
+re-derived them**, and each re-derivation was wrong:
+
+```tsx
+onSelect={() => ctx.setSelectedFootnoteId(isSelected ? null : fn.footnoteId)}   // ×4
+onJump={() => ctx.editorRef.current?.scrollToExample(ex.exampleId)}             // ×1
+```
+
+The first is the **C15 toggle**. `useAnchoredCard.onBodyActivate` is monotonic
+by construction: it `store.select(ref)`s first, mirrors the host slot second,
+and jumps only when the card was not already selected. A host slot that can say
+`null` therefore reaches into the one selection authority and undoes the select
+that ran three lines earlier — so the second click of a popped-out footnote,
+footnote-ref, citation or example card dropped its halo and its in-text marker
+highlight, and the third click, finding `wasSelected` false again, re-scrolled
+the document. `body-activate-composition.test.tsx` had forbidden exactly this
+since C15. It stayed green throughout, because it only ever exercised a
+SYNTHETIC host. **A rule stated against a stand-in polices nothing; it has to be
+read off the real call sites.**
+
+The second drops the element `ExampleCard` resolved with `closest('[data-card]')`
+— and `scrollToExample` branches on it: *with* an element it aligns the block to
+the card's Y only if needed; *without* one it focuses the main editor, plants the
+caret inside the example block and scrolls unconditionally. `Examples/omni.tsx`
+carries a comment documenting that same drop as a defect it already fixed
+(EX-F3-03). The float was the surface the fix never reached — which is the
+argument for a guard rather than a sixth careful edit.
+
+The fix makes forwarding the only representable option
+(`src/cards/floats/body-contract.ts`):
+
+- `selectMirror(slot, id)` holds the panel setter through `SelectSlot =
+  (id: string) => void`. The real setters are
+  `Dispatch<SetStateAction<string | null>>` and legitimately clear from
+  click-away, so the narrowing is at the BODY's end of the slot, where `null` is
+  never right — and the toggle stops compiling rather than stopping being
+  written.
+- `editorJump(ref, door, id)` names the door and the id and never the parameter,
+  so the element cannot be discarded on the way through. `IdJumpDoor` is derived
+  from `EditorHandle` (every `(id, sourceEl?) => void` member), not hand-listed.
+
+CI: `float-body-contract-census.test.ts`, over every `.tsx` under `panels/`,
+`cards/` and `components/editor-layout/` — R1, no card-body `onSelect`
+expression can resolve to `null`; R2, every card-body `onJump` forwards its
+element (a bound parameter must appear in the body AFTER the arrow; a handler
+binding none may not CALL anything, since `() => {}` is the inert stand-in a
+draft or unanchored card legitimately passes and `() => jump(id)` is a dropped
+element). Planted in all three directions against the real tree. The type half
+is pinned by a `@ts-expect-error` on `selectMirror(slot, null)`, which fails the
+build if the narrowing is ever widened back.
+
+One exemption, and it is DERIVED rather than granted: the two Errors mounts pass
+`() => jump.jump(err)` because the capability they forward (`ErrorJump.jump`)
+has no element parameter to put one in, and neither does the door beneath it
+(`scrollToParagraphId(uuid)`) — a missing CHANNEL in another authority, not a
+host recomputing its card's answer. The census reads `error-jump.ts` for that
+signature, so the exemption evaporates the day the channel exists, and it is
+pinned to exactly those two sites so a third element-less jump cannot borrow a
+reason written for them.
