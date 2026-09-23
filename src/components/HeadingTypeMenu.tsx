@@ -27,6 +27,7 @@ import { HEADING_TYPES } from "@/lib/heading-types";
 import { CLASS_COMMANDS } from "@/lib/document-class";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import { caretEditableHost } from "./menu/caret-host";
 import { useMenuItem } from "./menu/useMenuItem";
 
 const MENU_W = 200;
@@ -49,19 +50,6 @@ interface Props {
   documentClass: string | null;
   onPick: (pick: HeadingTypePick) => void;
   onClose: () => void;
-}
-
-/** The PM view's focused contentEditable holds the caret while the menu is
- *  open (the menu never steals focus — roving aria-activedescendant only). Use
- *  it as the activedescendant host so a screen reader tracks the active item
- *  without the caret moving; fall back to null (the provider then no-ops the
- *  attribute write) if focus isn't on an editable element. Mirrors
- *  `DragHandleMenu`'s resolver. */
-function getActiveDescendantHost(): HTMLElement | null {
-  if (typeof document === "undefined") return null;
-  const el = document.activeElement;
-  if (el instanceof HTMLElement && el.isContentEditable) return el;
-  return null;
 }
 
 interface HeadingRowProps {
@@ -146,7 +134,7 @@ export function HeadingTypeMenu({ anchorRect, currentLevel, documentClass, onPic
       anchorRect={anchorRect}
       placements={HEADING_TYPE_PLACEMENTS}
       gap={4}
-      getActiveDescendantHost={getActiveDescendantHost}
+      getActiveDescendantHost={caretEditableHost}
       onClose={onClose}
       ariaLabel="Heading type"
       containerStyle={{

@@ -11,6 +11,9 @@
  *     `stopPropagation()` ONLY on consumed keys (Arrows / Home / End / Enter /
  *     Space / bare-letter shortcuts) so the editor caret never moves and those
  *     keys never reach PM's `handleKeyDown`; every other key passes through.
+ *     A key typed into an editable that is NOT this menu's own
+ *     activedescendant host (an unrelated field) passes through too — the
+ *     host getter is the menu's ownership statement, see the bail below.
  *   - Input-bearing comboboxes (label-ref / bib-picker): NO window listener.
  *     The owned `<input>`'s `onKeyDown` is routed through `handleKeyDown` (real
  *     focus stays in the input). B1 ships the window source for the list menu;
@@ -232,6 +235,18 @@ export function useMenuKeyboard(
     if (source !== "window") return;
     if (!open || !isTop) return;
     if (typeof window === "undefined") return;
+    // Does this keydown belong to the editable THIS menu parked the caret in?
+    // Resolved once per keydown (not per render) off the host getter the
+    // provider already passes down. Narrowed to a contentEditable host on
+    // purpose: a menu whose focus lives in an owned `<input>` declares that
+    // through the combobox keyboard SOURCE, which installs no window listener
+    // at all — so an input host never reaches this predicate legitimately.
+    const ownsEditableTarget = (target: EventTarget | null): boolean => {
+      const host = stateRef.current.getActiveDescendantHost?.();
+      if (!host || !host.isContentEditable) return false;
+      if (target === host) return true;
+      return target instanceof Node && host.contains(target);
+    };
     const onKey = (e: KeyboardEvent) => {
       // Leave Escape to useMenuDismiss; ignore modifier combos for nav keys.
       if (e.key === "Escape") return;
@@ -248,7 +263,25 @@ export function useMenuKeyboard(
       // input, which is a deliberate opt-in rather than a global reach — the
       // same `target === currentTarget` line `keyEventFromInteractiveControl`
       // draws.
-      if (isEditableEventTarget(e.target)) return;
+      //
+      // But "editable" alone asks the wrong question (task 734). An
+      // editor-anchored menu DELIBERATELY parks the caret in the PM view's
+      // contentEditable and never takes focus — so in its designed, normal
+      // state EVERY keydown targets an editable, and the bare check declined
+      // the menu's whole advertised keyboard contract: nav, the letter
+      // fast-path visible on every row, the Backspace/Delete alias. Worse, the
+      // declined key did not vanish — it reached ProseMirror, so a user who
+      // pressed the `F` the menu was showing them replaced their selected
+      // passage with the letter "f".
+      //
+      // The question the bail MEANS is "is this a field whose keys are not
+      // this menu's to take?", and the menu already answers it: the editable
+      // it writes `aria-activedescendant` onto (`getActiveDescendantHost`, the
+      // shared `caretEditableHost`) IS its ownership statement. So: bail when
+      // the target is editable AND is not this menu's own host. Task 386's
+      // protection is untouched — an unrelated `<input>` / `<textarea>` /
+      // card-title field is never the host, so its keys still reach it.
+      if (isEditableEventTarget(e.target) && !ownsEditableTarget(e.target)) return;
       if (consume(e)) {
         e.preventDefault();
         e.stopPropagation();

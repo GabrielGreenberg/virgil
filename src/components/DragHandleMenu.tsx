@@ -37,6 +37,7 @@ import {
   type ActionRef,
 } from "@/lib/actions/action-registry";
 import { MenuProvider } from "./menu/MenuProvider";
+import { caretEditableHost } from "./menu/caret-host";
 import {
   MenuItemsFromRegistry,
   type DecoratedMenuRow,
@@ -107,18 +108,6 @@ interface Props {
   canEdit?: boolean;
 }
 
-/** The PM view's focused contentEditable holds the caret while the menu is
- *  open (the menu never steals focus — roving aria-activedescendant only). Use
- *  it as the activedescendant host so a screen reader tracks the active item
- *  without the caret moving; fall back to null (the provider then no-ops the
- *  attribute write) if focus isn't on an editable element. */
-function getActiveDescendantHost(): HTMLElement | null {
-  if (typeof document === "undefined") return null;
-  const el = document.activeElement;
-  if (el instanceof HTMLElement && el.isContentEditable) return el;
-  return null;
-}
-
 export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, editor, canEdit = true }: Props) {
   // Render the CARD action rows straight off the registry (the SSOT) and
   // decorate each with its per-kind disabled state from the row's own
@@ -178,7 +167,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, edito
       anchorRect={anchorRect}
       placements={DRAG_HANDLE_PLACEMENTS}
       letterShortcuts
-      getActiveDescendantHost={getActiveDescendantHost}
+      getActiveDescendantHost={caretEditableHost}
       onClose={onClose}
       ariaLabel="Passage actions"
       containerStyle={{
