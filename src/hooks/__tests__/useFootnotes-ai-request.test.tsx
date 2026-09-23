@@ -172,7 +172,7 @@ describe("useFootnotes — per-card AI-request flag (BUG #55)", () => {
     expect(drainable).toBe(true);
   });
 
-  it("setFootnoteAiRequest(false) drops the bridged request and clears the flag", async () => {
+  it("setFootnoteAiRequest(false) withdraws the bridged request and clears the flag", async () => {
     beginDocPipeline(DOC);
     DISK["footnotes.json"] = {
       footnotes: [
@@ -211,7 +211,14 @@ describe("useFootnotes — per-card AI-request flag (BUG #55)", () => {
     });
     await waitFor(() => {
       const q = lastWrite("ai-requests.json") as AiRequestsState | undefined;
-      expect(q!.requests).toHaveLength(0);
+      // CLOSED, not removed (task 720) — a skill holding `req-1` must be able
+      // to read what became of it.
+      expect(q!.requests).toHaveLength(1);
+      expect(q!.requests[0]).toMatchObject({
+        id: "req-1",
+        status: "complete",
+        result: "withdrawn",
+      });
     });
   });
 

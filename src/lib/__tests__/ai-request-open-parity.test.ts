@@ -220,15 +220,79 @@ describe("terminate-mode CLOSE arity ↔ close_linked_request parity", () => {
     expect(py).toContain('r["status"] = STATUS_COMPLETE');
     expect(py).toContain('r["result"] = result');
     // The caller that means "the card is gone" passes the same result token the
-    // TS terminate branch hard-codes.
+    // TS terminate branch names.
     const apply = pySource("editor/scripts/apply_response.py").replace(/\s+/g, " ");
     expect(apply).toContain("RESULT_AUTO_APPLIED = \"auto-applied\"");
     expect(apply).toContain("result=RESULT_AUTO_APPLIED, force=True");
+    // The TS stamp itself now lives once, in `closeRequestRow` (task 720) —
+    // the shape both terminal transitions write — and the terminate branch
+    // names the same `"auto-applied"` token through it.
+    const openSrc = readFileSync(
+      join(repoRoot(), "src/lib/ai-request-open.ts"),
+      "utf8",
+    ).replace(/\s+/g, " ");
+    expect(openSrc).toContain('return { ...r, status: "complete", result };');
     const bridge = readFileSync(
       join(repoRoot(), "src/lib/ai-request-bridge.ts"),
       "utf8",
     ).replace(/\s+/g, " ");
-    expect(bridge).toContain('status: "complete", result: "auto-applied"');
+    expect(bridge).toContain('closeRequestRow(r, "auto-applied")');
+  });
+});
+
+/**
+ * Result-vocabulary parity (task 720).
+ *
+ * `status` had a cross-language pin from task 043 on; `result` never did — so
+ * `"withdrawn"`, which the APP writes and no skill ever does, could have landed
+ * on one side only, and a Python reader validating `--result` would have
+ * refused a token its own file already carried. The two vocabularies are the
+ * same set, and this reads both live.
+ */
+describe("AiRequestResult ↔ apply_response ALL_RESULTS", () => {
+  /** Every member of the TS `AiRequestResult` union, read from its source. */
+  function tsResults(): string[] {
+    const src = readFileSync(join(repoRoot(), "src/lib/types.ts"), "utf8");
+    const start = src.indexOf("export type AiRequestResult =");
+    expect(start).toBeGreaterThan(-1);
+    const body = src.slice(start, src.indexOf(";", start));
+    return [...body.matchAll(/\|\s*"([a-z-]+)"/g)].map((m) => m[1]).sort();
+  }
+
+  /** Every member of the Python `ALL_RESULTS` set, resolved through `RESULT_*`. */
+  function pyResults(): string[] {
+    const src = pySource("editor/scripts/apply_response.py");
+    const consts = new Map(
+      [...src.matchAll(/^(RESULT_[A-Z_]+) = "([a-z-]+)"$/gm)].map((m) => [m[1], m[2]]),
+    );
+    const start = src.indexOf("ALL_RESULTS = {");
+    expect(start).toBeGreaterThan(-1);
+    const body = src.slice(start, src.indexOf("}", start));
+    return [...body.matchAll(/RESULT_[A-Z_]+/g)]
+      .map((m) => {
+        const v = consts.get(m[0]);
+        expect(v, `${m[0]} has no RESULT_* literal`).toBeDefined();
+        return v!;
+      })
+      .sort();
+  }
+
+  it("names exactly the same outcome tokens on both sides", () => {
+    expect(tsResults()).toEqual(pyResults());
+  });
+
+  it("includes the app-only withdrawal token", () => {
+    expect(tsResults()).toContain("withdrawn");
+    expect(pyResults()).toContain("withdrawn");
+  });
+
+  it("reflect.py maps every outcome to a tier", () => {
+    const reflect = pySource("editor/scripts/reflect.py");
+    const start = reflect.indexOf("RESULT_TIER = {");
+    expect(start).toBeGreaterThan(-1);
+    const body = reflect.slice(start, reflect.indexOf("\n}", start));
+    const mapped = [...body.matchAll(/"([a-z-]+)":\s*TIER_/g)].map((m) => m[1]).sort();
+    expect(mapped).toEqual(tsResults());
   });
 });
 

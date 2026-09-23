@@ -41,7 +41,7 @@ function req(overrides: Partial<AiRequest> = {}): AiRequest {
 const NOOPS = {
   cancelBibReview: () => {},
   removeEntryRequest: () => {},
-  deletePanelAiRequest: () => {},
+  withdrawPanelAiRequest: () => {},
   clearLinkedAiRequest: () => {},
   // task 697: these rows' links all resolve — the default for suites that
   // aren't about the stranded case.

@@ -78,7 +78,7 @@ describe("ai-requests inbox live-sync (D3)", () => {
     unsub();
   });
 
-  it("publishes the reduced list on a successful REMOVE (value=false)", async () => {
+  it("publishes the CLOSED list on a successful withdrawal (value=false)", async () => {
     seeded.state = {
       requests: [
         {
@@ -97,7 +97,16 @@ describe("ai-requests inbox live-sync (D3)", () => {
     await bridgeCardAiRequestFlag(DOC, "todo", "card-1", false, { text: "" }, "toggle");
 
     expect(events).toHaveLength(1);
-    expect(events[0]).toEqual([]); // the linked request was dropped
+    // Withdrawal CLOSES the row rather than dropping it (task 720), so what the
+    // inbox publishes is the same list with that row terminal — the point of
+    // this pin is that the publish carries the post-write list, whatever shape
+    // the mutation gave it.
+    expect(events[0]).toHaveLength(1);
+    expect(events[0][0]).toMatchObject({
+      id: "req-1",
+      status: "complete",
+      result: "withdrawn",
+    });
     unsub();
   });
 

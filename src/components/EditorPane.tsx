@@ -758,7 +758,7 @@ export interface PaneState {
   deleteArchiveSnippet: ReturnType<typeof useArchive>["deleteSnippet"];
   addRequest: ReturnType<typeof useAiRequests>["addRequest"];
   updateRequestText: ReturnType<typeof useAiRequests>["updateRequestText"];
-  deleteRequest: ReturnType<typeof useAiRequests>["deleteRequest"];
+  withdrawRequest: ReturnType<typeof useAiRequests>["withdrawRequest"];
   // The search-panel highlight range. EditorPane is the canonical owner —
   // SearchHost mounts INSIDE EditorPane and writes this local, and EditorPane's
   // own <Editor> renders the highlight overlay. It bubbles up so EditorLayout
@@ -5840,7 +5840,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       deleteArchiveSnippet: archiveHook.deleteSnippet,
       addRequest: aiRequestsHook.addRequest,
       updateRequestText: aiRequestsHook.updateRequestText,
-      deleteRequest: aiRequestsHook.deleteRequest,
+      withdrawRequest: aiRequestsHook.withdrawRequest,
       saveWithDelimiters: docHook.saveWithDelimiters,
       latexErrors: allLatexErrors,
       selectedErrorId,
@@ -5889,7 +5889,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     archiveHook.deleteSnippet,
     aiRequestsHook.addRequest,
     aiRequestsHook.updateRequestText,
-    aiRequestsHook.deleteRequest,
+    aiRequestsHook.withdrawRequest,
     docHook.saveWithDelimiters,
     allLatexErrors,
     selectedErrorId,
@@ -6164,14 +6164,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
 
   // AIWindow "cancel" of a card-linked request (task 222): the exact INVERSE of
-  // checking the card's AI box — a `value=false` TOGGLE-off drops the queue row
-  // AND lowers the card's flag together, so the Notes/Todos card checkbox can't
-  // be left lit over a row the skill drain will never serve (the queue→card
-  // twin of the delete-leg leak, task 219). NOT terminate: cancel is a
-  // retraction, not an archive — the card stays put, only its request is
-  // withdrawn, so the row is removed (matching the unlinked composer cancel's
-  // raw delete) rather than parked `complete`. `kind` is already resolved from
-  // the request's `(kind, linkPanel)` pair in `buildRequests`.
+  // checking the card's AI box — a `value=false` TOGGLE-off WITHDRAWS the queue
+  // row AND lowers the card's flag together, so the Notes/Todos card checkbox
+  // can't be left lit over a row the skill drain will never serve (the
+  // queue→card twin of the delete-leg leak, task 219). Still NOT terminate:
+  // cancel is a retraction, not an archive — the card stays put, so an
+  // answered-L3 row keeps its `resultId` (task 043) and only the OPEN row ends.
+  // What changed in task 720 is HOW it ends: the row is CLOSED
+  // (`complete`/`"withdrawn"`) rather than deleted, because a skill may already
+  // be holding its id. `kind` is already resolved from the request's
+  // `(kind, linkPanel)` pair in `buildRequests`.
   const clearLinkedAiRequest = useCallback(
     (kind: CardKind, cardId: string) => setAiRequestForKind(kind, cardId, false, "toggle"),
     [setAiRequestForKind],
@@ -6537,7 +6539,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               panelAiRequestsLoaded={aiRequestsHook.loaded}
               panelAiRequestsLoadError={aiRequestsHook.loadError}
               addPanelAiRequest={aiRequestsHook.addRequest}
-              deletePanelAiRequest={aiRequestsHook.deleteRequest}
+              withdrawPanelAiRequest={aiRequestsHook.withdrawRequest}
               clearLinkedAiRequest={clearLinkedAiRequest}
               cardLinkResolves={cardLinkResolves}
               requestBibReview={bibReviewHook.requestReview}

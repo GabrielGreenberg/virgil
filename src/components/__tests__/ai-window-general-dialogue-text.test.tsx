@@ -160,7 +160,7 @@ function props(over: Partial<AIWindowProps> = {}): AIWindowProps {
     panelAiRequestsLoaded: true,
     panelAiRequestsLoadError: false,
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
-    deletePanelAiRequest: noop,
+    withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
     cardLinkResolves: () => true, // task 697
     requestBibReview: noop,
@@ -350,7 +350,7 @@ describe("a text-seeded general comment is committed at birth and servable", () 
       panelAiRequests: [],
       cancelBibReview: () => {},
       removeEntryRequest: () => {},
-      deletePanelAiRequest: () => {},
+      withdrawPanelAiRequest: () => {},
       clearLinkedAiRequest: () => {},
       cardLinkResolves: () => true, // task 697
     });

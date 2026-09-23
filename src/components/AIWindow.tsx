@@ -325,12 +325,13 @@ export interface BuildArgs {
   panelAiRequests: AiRequest[];
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   removeEntryRequest: (id: string) => void;
-  deletePanelAiRequest: (id: string) => void;
-  // Cancel a CARD-LINKED panel request: drops the queue row AND lowers the
-  // owning card's `aiRequest` flag together (the queue→card twin of archive's
-  // both-faces clear). Kind is already resolved from the request's
-  // `(kind, linkPanel)` pair; cardId is `linkedTo.cardId`. Unlinked
-  // composer-created requests keep the raw `deletePanelAiRequest` path.
+  withdrawPanelAiRequest: (id: string) => void;
+  // Cancel a CARD-LINKED panel request: WITHDRAWS the queue row (closes it
+  // `complete`/`"withdrawn"`) AND lowers the owning card's `aiRequest` flag
+  // together (the queue→card twin of archive's both-faces clear). Kind is
+  // already resolved from the request's `(kind, linkPanel)` pair; cardId is
+  // `linkedTo.cardId`. Unlinked composer-created requests take the by-id
+  // `withdrawPanelAiRequest` path — same ending, no card flag to lower.
   clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
   /**
    * Does this row's `linkedTo` actually RESOLVE to a card the owning panel
@@ -409,10 +410,11 @@ const FAMILY_CANCEL: {
   "bib-review": (r, a) => () => a.cancelBibReview(r.bibKey, r.type),
   "bib-entry": (r, a) => () => a.removeEntryRequest(r.id),
   // A revision comment IS a card-linked request (it bridges under
-  // `(suggestion, revisions)`), so retracting it must clear BOTH faces — drop
-  // the queue row AND lower the card's `aiRequest` flag — exactly as task 222
-  // established for the panel leg below. The raw `deletePanelAiRequest` would
-  // leave the card's AI box lit over a request the drain never serves.
+  // `(suggestion, revisions)`), so retracting it must clear BOTH faces —
+  // withdraw the queue row AND lower the card's `aiRequest` flag — exactly as
+  // task 222 established for the panel leg below. The by-id
+  // `withdrawPanelAiRequest` would leave the card's AI box lit over a request
+  // the drain never serves.
   "revision-comment": ({ card }, a) => () =>
     a.clearLinkedAiRequest("revision-comment", card.id),
   panel: (r, a) => {
@@ -420,15 +422,19 @@ const FAMILY_CANCEL: {
     // `(kind, linkPanel)` PAIR — `linkPanel` alone is ambiguous
     // (note/highlight, cutter/revision). An UNLINKED composer row, a corrupt
     // link whose kind can't resolve, OR a link that resolves to NO CARD
-    // (task 697) keeps the raw delete: there is no card flag to lower, and a
-    // stranded row is exactly what this affordance exists to clear.
+    // (task 697) takes the by-id path: there is no card flag to lower, and a
+    // stranded row is exactly what this affordance exists to clear. Both legs
+    // now END the row the same way — CLOSED, never filtered out of the file
+    // (task 720) — because there is no claim step, so an unlinked row a skill
+    // is actively working still reads `pending`, and "nobody is holding this"
+    // is not a fact the row can tell us.
     const linkedKind = r.linkedTo
       ? linkedCardKindFrom(r.kind, r.linkedTo.panel)
       : null;
     const linkedCardId = r.linkedTo?.cardId;
     return linkedKind && linkedCardId && a.cardLinkResolves(linkedKind, linkedCardId)
       ? () => a.clearLinkedAiRequest(linkedKind, linkedCardId)
-      : () => a.deletePanelAiRequest(r.id);
+      : () => a.withdrawPanelAiRequest(r.id);
   },
 };
 
@@ -697,7 +703,7 @@ export interface AIWindowProps {
    */
   panelAiRequestsLoadError: boolean;
   addPanelAiRequest: (kind: PanelAiRequestKind, text?: string) => AiRequest;
-  deletePanelAiRequest: (id: string) => void;
+  withdrawPanelAiRequest: (id: string) => void;
   // Cancel a card-linked panel request — clears both the queue row and the
   // owning card's `aiRequest` flag (task 222). See BuildArgs.
   clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
@@ -746,7 +752,7 @@ export default function AIWindow({
   panelAiRequestsLoaded,
   panelAiRequestsLoadError,
   addPanelAiRequest,
-  deletePanelAiRequest,
+  withdrawPanelAiRequest,
   clearLinkedAiRequest,
   cardLinkResolves,
   requestBibReview,
@@ -779,7 +785,7 @@ export default function AIWindow({
         panelAiRequests,
         cancelBibReview,
         removeEntryRequest,
-        deletePanelAiRequest,
+        withdrawPanelAiRequest,
         clearLinkedAiRequest,
         cardLinkResolves,
       }),
@@ -790,7 +796,7 @@ export default function AIWindow({
       panelAiRequests,
       cancelBibReview,
       removeEntryRequest,
-      deletePanelAiRequest,
+      withdrawPanelAiRequest,
       clearLinkedAiRequest,
       cardLinkResolves,
     ],

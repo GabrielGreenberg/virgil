@@ -26,7 +26,7 @@
  * a change on either side trips a test instead of silently re-drifting.
  */
 
-import type { AiRequest, AiRequestStatus } from "@/lib/types";
+import type { AiRequest, AiRequestResult, AiRequestStatus } from "@/lib/types";
 
 /**
  * The terminal-status SSOT: `complete` / `failed` are the v1 terminal
@@ -47,6 +47,40 @@ import type { AiRequest, AiRequestStatus } from "@/lib/types";
  */
 export function isTerminalStatus(s: AiRequestStatus): boolean {
   return s === "complete" || s === "failed";
+}
+
+/**
+ * CLOSE a row: the ONE spelling of "this request ended", shared by every
+ * terminal transition the app owns.
+ *
+ * Three user actions end a request from a skill's point of view — **delete**
+ * the card, **archive** it, **withdraw** the request (untick the "AI request"
+ * box, or Cancel it in the AI window). All three are the same event to the
+ * out-of-process reader holding the id, so all three write the same shape and
+ * differ only in the `result` token that says WHICH ending it was:
+ *
+ *   - delete / archive → `"auto-applied"` (the card is gone; the bridge's
+ *     `"terminate"` mode, the UI twin of Python `close_linked_request(force=True)`).
+ *   - withdraw        → `"withdrawn"` (the card stays; the user retracted the ask).
+ *
+ * Withdrawal used to be spelled as an ERASURE instead — the toggle-off leg
+ * filtered the row out of the file and the AI window's cancel deleted it
+ * outright — so a skill that had already claimed the id came back to a file
+ * with no such row and died on `die("request id not found")` after all its
+ * work, exit 2, nothing written and no idempotent-skip branch to land in
+ * (task 720). A request the user withdrew is a request that ENDED; the holder
+ * of its id must always be able to read what became of it. Nothing that a
+ * reader outside this process may be holding is ever removed from the file.
+ *
+ * Pure, and safe to run over a row that is already terminal — but callers
+ * gate first (`isLinkedNonTerminal` / `isRequestOpen`) so an idempotent
+ * re-close writes nothing at all.
+ */
+export function closeRequestRow(
+  r: AiRequest,
+  result: AiRequestResult,
+): AiRequest {
+  return { ...r, status: "complete", result };
 }
 
 /**

@@ -98,9 +98,13 @@ describe("bridgeFlagForCard — the card is needed for the CONTEXT, not the CALL
     bridgeFlagForCard("doc", "todo", "card-1", false, "toggle", null, context);
     await settle();
 
-    // The row is gone…
+    // The row is CLOSED — withdrawal is a state, not an erasure (task 720)…
     expect(written).toHaveLength(1);
-    expect(written[0].data.requests).toEqual([]);
+    expect(written[0].data.requests).toHaveLength(1);
+    expect(written[0].data.requests[0]).toMatchObject({
+      status: "complete",
+      result: "withdrawn",
+    });
     // …and the context builder was never asked for something it could not build.
     expect(context).not.toHaveBeenCalled();
   });

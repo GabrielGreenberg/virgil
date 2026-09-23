@@ -92,7 +92,7 @@ function panelReq(o: Partial<AiRequest> = {}): AiRequest {
 interface Spies {
   cancelBibReview?: (bibKey: string, type: "fields" | "notes") => void;
   removeEntryRequest?: (id: string) => void;
-  deletePanelAiRequest?: (id: string) => void;
+  withdrawPanelAiRequest?: (id: string) => void;
   clearLinkedAiRequest?: (kind: CardKind, cardId: string) => void;
   cardLinkResolves?: (kind: CardKind, cardId: string) => boolean;
 }
@@ -113,7 +113,7 @@ function build(
     panelAiRequests: args.panelAiRequests ?? [],
     cancelBibReview: spies.cancelBibReview ?? (() => {}),
     removeEntryRequest: spies.removeEntryRequest ?? (() => {}),
-    deletePanelAiRequest: spies.deletePanelAiRequest ?? (() => {}),
+    withdrawPanelAiRequest: spies.withdrawPanelAiRequest ?? (() => {}),
     clearLinkedAiRequest: spies.clearLinkedAiRequest ?? (() => {}),
     // task 697 — default: the link resolves (today's behaviour). The suites
     // that exercise a STRANDED row pass `() => false` explicitly.
@@ -305,15 +305,15 @@ describe("a comment row carries a cancel affordance, routed like its siblings", 
     // task 222's coupling: a comment IS a card-linked request, so retracting it
     // must lower the card's `aiRequest` flag too, not just drop the queue row.
     const clearLinkedAiRequest = vi.fn();
-    const deletePanelAiRequest = vi.fn();
+    const withdrawPanelAiRequest = vi.fn();
     const rows = build(
       { comments: [comment()], panelAiRequests: [bridged("c1")] },
-      { clearLinkedAiRequest, deletePanelAiRequest },
+      { clearLinkedAiRequest, withdrawPanelAiRequest },
     );
     expect(rows[0].onCancel).toBeTypeOf("function");
     rows[0].onCancel!();
     expect(clearLinkedAiRequest).toHaveBeenCalledExactlyOnceWith("revision-comment", "c1");
-    expect(deletePanelAiRequest).not.toHaveBeenCalled();
+    expect(withdrawPanelAiRequest).not.toHaveBeenCalled();
   });
 
   it("responded and resolved rows expose NO cancel — the ONE rule, every family", () => {

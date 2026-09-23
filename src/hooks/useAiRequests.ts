@@ -17,6 +17,7 @@ import {
   type AiRequestsMutator,
 } from "@/lib/ai-requests-store";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
+import { closeRequestRow, isTerminalStatus } from "@/lib/ai-request-open";
 import {
   SIDECAR_CHANGED_EVENT,
   type SidecarChangedDetail,
@@ -347,10 +348,29 @@ export function useAiRequests(docId: string | null) {
     });
   }, [applyMutation]);
 
-  const deleteRequest = useCallback((id: string) => {
+  /**
+   * WITHDRAW a row by id — the AI window's Cancel for a request with no card
+   * behind it to untick: an unlinked composer row, a corrupt link, or a link
+   * that resolves to no card (task 697).
+   *
+   * It CLOSES the row (`complete` / `"withdrawn"`, the shared
+   * `closeRequestRow`); it used to `filter` it out of the file, which is the
+   * same defect the card-flag untick had — a skill that had already claimed
+   * the id found no such row and died on `die("request id not found")` after
+   * all its work (task 720). There is no claim step, so an unlinked row a
+   * skill is actively working still reads `pending`: "nobody has it" is not
+   * derivable, and erasure is never the safe guess. Withdrawal is a state.
+   *
+   * Idempotent: an unknown id, or a row that is already terminal, returns
+   * `null` — no write, no publish, no second stamp.
+   */
+  const withdrawRequest = useCallback((id: string) => {
     applyMutation((requests) => {
-      if (!requests.some((r) => r.id === id)) return null;
-      return requests.filter((r) => r.id !== id);
+      const idx = requests.findIndex((r) => r.id === id);
+      if (idx < 0 || isTerminalStatus(requests[idx].status)) return null;
+      return requests.map((r, i) =>
+        i === idx ? closeRequestRow(r, "withdrawn") : r,
+      );
     });
   }, [applyMutation]);
 
@@ -378,7 +398,7 @@ export function useAiRequests(docId: string | null) {
       addRequest,
       addStyleMergeRequest,
       updateRequestText,
-      deleteRequest,
+      withdrawRequest,
       relinkRequests,
     }),
     [
@@ -388,7 +408,7 @@ export function useAiRequests(docId: string | null) {
       addRequest,
       addStyleMergeRequest,
       updateRequestText,
-      deleteRequest,
+      withdrawRequest,
       relinkRequests,
     ],
   );
