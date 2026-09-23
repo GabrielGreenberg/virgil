@@ -263,8 +263,8 @@ function mountArmed() {
     { uuid: "li1", el: itemEl },
     { uuid: "ul1", el: listEl },
   ]);
-  const editorRef = { current: fakeEditor() };
-  render(<TextObjectGrabHandle editorRef={editorRef} />);
+  const handleEditor = fakeEditor();
+  render(<TextObjectGrabHandle editor={handleEditor} />);
   // Arm the pointer where the user left it after clicking into the list.
   moveMouse();
   flushFrames();
@@ -325,8 +325,7 @@ describe("the grab handle answers hover from POINTER input only (task 336)", () 
     // selection must keep moving its handle while the user types.
     blocksAtY.mockImplementation(() => []);
     const editor = fakeEditor();
-    const editorRef = { current: editor };
-    render(<TextObjectGrabHandle editorRef={editorRef} />);
+    render(<TextObjectGrabHandle editor={editor} />);
 
     // Typing modality on, then a real (non-empty) selection appears — a
     // shift-arrow extension, which is keyboard-driven and must still move its
@@ -354,8 +353,8 @@ describe("per-placement read cost for a LIST hover (task 336)", () => {
       { uuid: "li1", el: itemEl },
       { uuid: "ul1", el: listEl },
     ]);
-    const editorRef = { current: fakeEditor() };
-    render(<TextObjectGrabHandle editorRef={editorRef} />);
+    const handleEditor = fakeEditor();
+    render(<TextObjectGrabHandle editor={handleEditor} />);
     rectReads = [];
     styleReads = [];
     moveMouse();

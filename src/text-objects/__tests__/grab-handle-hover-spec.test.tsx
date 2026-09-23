@@ -145,8 +145,8 @@ function hoverRow(i: number) {
     { uuid: `li${i + 1}`, el: items[i] },
     { uuid: "ul1", el: listEl },
   ]);
-  const editorRef = { current: fakeEditor() };
-  render(<TextObjectGrabHandle editorRef={editorRef} />);
+  const handleEditor = fakeEditor();
+  render(<TextObjectGrabHandle editor={handleEditor} />);
   act(() => {
     document.dispatchEvent(new MouseEvent("mousemove", {
       clientX: 400, clientY: (ROWS[i].t + ROWS[i].b) / 2, bubbles: true }));
@@ -328,7 +328,7 @@ describe("task 425 — a wrapped first item is still the list's top row", () => 
       { uuid: "li1", el: items[0] },
       { uuid: "ul1", el: listEl },
     ]);
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     // y=360: inside item 1 (300-380) but on its second visual line (~340-380).
     movePointerTo(360);
     const owners = OWNERS();
@@ -343,7 +343,7 @@ describe("task 425 — a wrapped first item is still the list's top row", () => 
       { uuid: "li2", el: items[1] },
       { uuid: "ul1", el: listEl },
     ]);
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     movePointerTo(400);
     expect(OWNERS().map((o) => o.uuid)).toEqual(["li2"]);
   });
@@ -457,7 +457,7 @@ describe("task 425 — nested list: a container's handle only on its own top row
   });
 
   it("hovering liA (the outer list's top row) paints liA + ulOuter, both on that row", () => {
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     movePointerTo(320);
     const owners = OWNERS();
     expect(owners.map((o) => o.uuid).sort()).toEqual(["liA", "ulOuter"].sort());
@@ -468,7 +468,7 @@ describe("task 425 — nested list: a container's handle only on its own top row
   });
 
   it("hovering liB's own line (outer row 2, not a top row) paints liB only", () => {
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     movePointerTo(360);
     const owners = OWNERS();
     expect(owners.map((o) => o.uuid)).toEqual(["liB"]);
@@ -476,7 +476,7 @@ describe("task 425 — nested list: a container's handle only on its own top row
   });
 
   it("hovering liC (the INNER list's top row) paints liC + ulInner — never liB, never ulOuter", () => {
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     movePointerTo(400);
     const owners = OWNERS();
     expect(
@@ -500,7 +500,7 @@ describe("task 425 — nested list: a container's handle only on its own top row
     // inner list, item — each at its own first line. Gabriel's 2026-08-22
     // rule: off a top row you get ONE handle, the hovered item's. Inverted,
     // this is the canary: it FAILS on the 394 tree.
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     movePointerTo(440);
     const owners = OWNERS();
     expect(owners.map((o) => o.uuid), "the wrong set of handles is painted").toEqual(["liD"]);
@@ -519,7 +519,7 @@ describe("task 425 — nested list: a container's handle only on its own top row
     const liBPara = nestEls.liB.querySelector(":scope > p") as HTMLElement;
     const readB = vi.fn(liBPara.getBoundingClientRect);
     liBPara.getBoundingClientRect = readB;
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     movePointerTo(440);
     expect(OWNERS().map((o) => o.uuid)).toEqual(["liD"]);
     expect(readA, "ulOuter's placement was computed and discarded").not.toHaveBeenCalled();
@@ -533,7 +533,7 @@ describe("task 425 — nested list: a container's handle only on its own top row
     // deliberately: hovering row 3 shows no list handle; to grab the list you
     // go to row 1. What survives is that the handle, once you arrive, sits
     // where 394 put it — the list's own top row, outboard of its first item.
-    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    render(<TextObjectGrabHandle editor={fakeEditor()} />);
     movePointerTo(440);
     expect(OWNERS().find((o) => o.uuid === "ulOuter"), "outer list lit on a deep row").toBeUndefined();
 

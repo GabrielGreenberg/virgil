@@ -325,8 +325,8 @@ afterEach(() => {
 /** Hover a row and return every painted handle, keyed by owner uuid. */
 function hover(levels: Array<{ uuid: string; el: HTMLElement }>, y = (ROW_TOP + ROW_BOTTOM) / 2) {
   blocksAtY.mockImplementation(() => levels);
-  const editorRef = { current: fakeEditor() };
-  render(<TextObjectGrabHandle editorRef={editorRef} />);
+  const handleEditor = fakeEditor();
+  render(<TextObjectGrabHandle editor={handleEditor} />);
   act(() => {
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 400, clientY: y, bubbles: true }));
   });

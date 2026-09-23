@@ -22,7 +22,7 @@
  *  - {@link TextObjectGrabHandle} (left side) for the drag-to-lift gesture.
  */
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
@@ -173,9 +173,16 @@ function placementsEqual(a: Placement, b: Placement): boolean {
 }
 
 export function SelectionActionsMenu({
-  editorRef,
+  editor,
 }: {
-  editorRef: RefObject<Editor | null>;
+  /** The live editor as a TRACKED value (task 736 — the grab handle's
+   *  sibling). A ref the parent fills in an effect is still null when this
+   *  child renders, so the viewport frame, the PM subscriptions and the
+   *  scroll-parent listener all bound to nothing; a RAF wait-loop rescued the
+   *  subscriptions but not the scroll listener, and nothing re-bound on an
+   *  editor swap. As a prop, arrival/swap is one render per editor lifetime and
+   *  every binding below re-keys on it — nothing per-transaction flows here. */
+  editor: Editor | null;
 }) {
   const [placement, setPlacement] = useState<Placement>(INVISIBLE_PLACEMENT);
   const [menuTarget, setMenuTarget] = useState<{
@@ -219,7 +226,7 @@ export function SelectionActionsMenu({
   const isVisible = useIsVisible();
   const visibleRef = useIsVisibleRef();
   const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
-    editorRef.current,
+    editor,
   );
 
   // Single RAF-coalesced compute on every event that could move or hide
@@ -240,8 +247,6 @@ export function SelectionActionsMenu({
   // the portaled button.
   useEffect(() => {
     let rafId = 0;
-    let readyRaf = 0;
-    let subscribed: Editor | null = null;
     let mouseDownInEditor = false;
     let scrollIdleTimer: number | null = null;
     const SCROLL_IDLE_MS = 120;
@@ -254,9 +259,8 @@ export function SelectionActionsMenu({
     const isSuppressed = () =>
       mouseDownInEditor || scrollIdleTimer !== null || gestureActive;
     const run = () => {
-      const ed = editorRef.current;
-      const next = ed && !ed.isDestroyed
-        ? computePlacement(ed, cacheRef.current)
+      const next = editor && !editor.isDestroyed
+        ? computePlacement(editor, cacheRef.current)
         : INVISIBLE_PLACEMENT;
       // Scroll-anchor stability probe (task 042): one record per coalesced
       // frame — a stable RAF-gated portal reports ≤1 distinct top/frame.
@@ -294,10 +298,9 @@ export function SelectionActionsMenu({
     const onMouseDown = (e: MouseEvent) => {
       // The engine's start gate (SSOT, never re-derived).
       if (!isPrimaryDragStart(e)) return;
-      const ed = editorRef.current;
-      if (!ed) return;
+      if (!editor) return;
       const t = e.target as Node | null;
-      if (t && ed.view.dom.contains(t)) {
+      if (t && editor.view.dom.contains(t)) {
         mouseDownInEditor = true;
         suppress();
       }
@@ -318,31 +321,13 @@ export function SelectionActionsMenu({
         settle();
       }, SCROLL_IDLE_MS);
     };
-    const subscribe = (ed: Editor) => {
-      subscribed = ed;
-      ed.on("selectionUpdate", update);
-      ed.on("update", update);
-      ed.on("focus", update);
-      ed.on("blur", update);
-    };
-    const unsubscribe = () => {
-      if (!subscribed) return;
-      subscribed.off("selectionUpdate", update);
-      subscribed.off("update", update);
-      subscribed.off("focus", update);
-      subscribed.off("blur", update);
-      subscribed = null;
-    };
-    const waitForEditor = () => {
-      const ed = editorRef.current;
-      if (ed) {
-        subscribe(ed);
-        run();
-        return;
-      }
-      readyRaf = requestAnimationFrame(waitForEditor);
-    };
-    waitForEditor();
+    if (editor) {
+      editor.on("selectionUpdate", update);
+      editor.on("update", update);
+      editor.on("focus", update);
+      editor.on("blur", update);
+    }
+    run();
     // Mousedown/mouseup at window scope: the drag may originate inside
     // the editor and complete outside, so we need both ends. Captured
     // phase to beat React's bubbling cleanup.
@@ -351,9 +336,7 @@ export function SelectionActionsMenu({
     // Scroll: the editor's scroll parent only. Window-scope previously
     // fired this handler for every panel/list scroll in the app even
     // though the menu only tracks the editor's vertical scroll.
-    const scrollParent = findEditorScrollFor(
-      editorRef.current?.view.dom ?? null,
-    );
+    const scrollParent = findEditorScrollFor(editor?.view.dom ?? null);
     scrollParent?.addEventListener("scroll", onScroll, { passive: true });
     // Resize is a genuinely global event. It stays a raw listener because a
     // ONE-SHOT resize (maximize, zoom, DPR change) must still reposition
@@ -373,16 +356,20 @@ export function SelectionActionsMenu({
     });
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      if (readyRaf) cancelAnimationFrame(readyRaf);
       if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
-      unsubscribe();
+      if (editor) {
+        editor.off("selectionUpdate", update);
+        editor.off("update", update);
+        editor.off("focus", update);
+        editor.off("blur", update);
+      }
       offGesture();
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("mouseup", onMouseUp, true);
       scrollParent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
     };
-  }, [editorRef, cacheRef, visibleRef]);
+  }, [editor, cacheRef, visibleRef]);
 
   // Recompute at the settled viewport-cache geometry. Out of the effect above
   // on purpose — see `updateRef`.
@@ -437,7 +424,7 @@ export function SelectionActionsMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "/" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)
         return;
-      const ed = editorRef.current;
+      const ed = editor;
       if (!ed || ed.isDestroyed) return;
       // Already open → toggle it closed (cursor stays; editor kept focus).
       if (menuOpenRef.current) {
@@ -467,13 +454,12 @@ export function SelectionActionsMenu({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [editorRef]);
+  }, [editor]);
 
   const hint = useHint({ keys: "Mod+/" });
 
   if (typeof document === "undefined") return null;
 
-  const editor = editorRef.current;
   if (!editor) return null;
 
   // The RESTING bolt paints only at a logically-visible placement AND while not

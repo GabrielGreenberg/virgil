@@ -19,7 +19,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent, act } from "@testing-library/react";
-import { createRef } from "react";
 import type { Editor } from "@tiptap/react";
 
 const h = vi.hoisted(() => {
@@ -160,9 +159,7 @@ function openViaBolt(container: HTMLElement) {
 
 describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () => {
   it("keeps the OPEN menu mounted across a scroll suppress→idle cycle", () => {
-    const ref = createRef<Editor | null>();
-    ref.current = makeEditor();
-    const { baseElement } = render(<SelectionActionsMenu editorRef={ref} />);
+    const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
 
     openViaBolt(baseElement as HTMLElement);
     expect(
@@ -197,9 +194,7 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
   });
 
   it("closes the menu when the anchored selection scrolls fully off-screen", () => {
-    const ref = createRef<Editor | null>();
-    ref.current = makeEditor();
-    const { baseElement } = render(<SelectionActionsMenu editorRef={ref} />);
+    const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
 
     openViaBolt(baseElement as HTMLElement);
     expect(
@@ -226,9 +221,7 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
   // (jsdom applies no stylesheet, so :hover computed styles aren't meaningful):
   // the affordance class is present AND no inline background shadows it.
   it("keeps the resting bolt's hover affordance live (no inline bg shadow)", () => {
-    const ref = createRef<Editor | null>();
-    ref.current = makeEditor();
-    const { baseElement } = render(<SelectionActionsMenu editorRef={ref} />);
+    const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
     const bolt = baseElement.querySelector(
       'button[aria-label="Open actions menu"]',
     ) as HTMLButtonElement | null;
@@ -247,11 +240,10 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
   });
 
   it("Cmd+/ with an off-screen caret calls scrollIntoView and opens on-screen", () => {
-    const ref = createRef<Editor | null>();
-    ref.current = makeEditor();
+    const editor = makeEditor();
     // Caret starts off-screen: no bolt, no menu.
     h.coords = { left: 200, top: -80, bottom: -60 };
-    const { baseElement } = render(<SelectionActionsMenu editorRef={ref} />);
+    const { baseElement } = render(<SelectionActionsMenu editor={editor} />);
     act(() => {
       vi.advanceTimersByTime(50);
     });
@@ -283,5 +275,40 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
     expect(panel, "Cmd+/ opens the menu after the caret scrolls in").toBeTruthy();
     expect(panel?.getAttribute("data-left")).not.toBe("0");
     expect(panel?.getAttribute("data-top")).not.toBe("0");
+  });
+});
+
+describe("SelectionActionsMenu — tracked editor binding (task 736)", () => {
+  const listenerCount = (ed: Editor) =>
+    (ed as unknown as { __count: () => number }).__count();
+  function countingEditor(): Editor {
+    const ed = makeEditor();
+    let n = 0;
+    const on = ed.on.bind(ed);
+    const off = ed.off.bind(ed);
+    return Object.assign(ed, {
+      on: (e: string, cb: () => void) => { n += 1; return on(e as never, cb as never); },
+      off: (e: string, cb: () => void) => { n -= 1; return off(e as never, cb as never); },
+      __count: () => n,
+    });
+  }
+
+  it("binds when the editor arrives AFTER first render, and re-binds on a swap", () => {
+    const { baseElement, rerender } = render(<SelectionActionsMenu editor={null} />);
+    expect(baseElement.querySelector('button[aria-label="Open actions menu"]')).toBeNull();
+
+    const a = countingEditor();
+    rerender(<SelectionActionsMenu editor={a} />);
+    act(() => { vi.advanceTimersByTime(50); });
+    expect(listenerCount(a), "the arrived editor is subscribed").toBe(4);
+    expect(
+      baseElement.querySelector('button[aria-label="Open actions menu"]'),
+      "the bolt resolves against the arrived editor",
+    ).toBeTruthy();
+
+    const b = countingEditor();
+    rerender(<SelectionActionsMenu editor={b} />);
+    expect(listenerCount(a), "the swapped-out editor is released").toBe(0);
+    expect(listenerCount(b), "the swapped-in editor is subscribed").toBe(4);
   });
 });

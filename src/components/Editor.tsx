@@ -471,10 +471,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // `readOnlyRef` (editableRef.current === !readOnlyRef.current).
   const editableRef = useRef(editable);
   editableRef.current = editable;
-  // Stable ref to the live TipTap editor instance — used by the
-  // TextObjectGrabHandle to subscribe to selectionUpdate / coords without
-  // re-renders. Populated below via useEffect once `useEditor` returns
-  // the instance.
+  // Stable ref to the live TipTap editor instance — read at event time by
+  // the slash popup and active-text-object context. Populated below via
+  // useEffect once `useEditor` returns the instance. (The grab handle and
+  // the selection-actions menu take `editor` as a tracked PROP instead —
+  // task 736: this ref fills AFTER children render, so a render-time read
+  // of it, or an effect keyed on the ref object, binds to null and never
+  // re-binds on a swap.)
   const editorInstanceRef = useRef<Editor | null>(null);
   // docId mirror — FigureBlock / GraphicsBlock NodeViews read it via
   // `extension.options.docIdRef.current` to resolve `\includegraphics`
@@ -1750,8 +1753,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     applyHighlight();
   }, [highlightText, highlightRange, applyHighlight]);
 
-  // Keep the stable editor ref in sync for TextObjectGrabHandle and
-  // anything else that needs a non-rerendering handle.
+  // Keep the stable editor ref in sync for anything that needs a
+  // non-rerendering handle.
   useEffect(() => {
     editorInstanceRef.current = editor;
     return () => {
@@ -1820,8 +1823,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     <ActiveTextObjectProvider editorRef={editorInstanceRef}>
       <div className="flex flex-col flex-1 min-w-0">
         <EditorContent editor={editor} />
-        <TextObjectGrabHandle editorRef={editorInstanceRef} />
-        <SelectionActionsMenu editorRef={editorInstanceRef} />
+        <TextObjectGrabHandle editor={editor} />
+        <SelectionActionsMenu editor={editor} />
         <SlashCommandPopup editorRef={editorInstanceRef} />
       </div>
     </ActiveTextObjectProvider>

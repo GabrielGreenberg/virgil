@@ -508,7 +508,7 @@ describe("the rendered handle names its owner", () => {
   it("a whole-block selection renders the BLOCK's handle, not a selection handle", () => {
     const doc = flatList();
     const beta = itemGaps(doc, "beta");
-    render(<TextObjectGrabHandle editorRef={{ current: handleEditor({ from: beta.before + 2, to: beta.after - 2 }) }} />);
+    render(<TextObjectGrabHandle editor={handleEditor({ from: beta.before + 2, to: beta.after - 2 })} />);
     flushFrames();
     expect(owners()).toEqual([{ kind: "listItem", uuid: "beta" }]);
   });
@@ -516,7 +516,7 @@ describe("the rendered handle names its owner", () => {
   it("CONTROL: a partial selection still renders a SELECTION handle", () => {
     const doc = flatList();
     const beta = itemGaps(doc, "beta");
-    render(<TextObjectGrabHandle editorRef={{ current: handleEditor({ from: beta.before + 3, to: beta.after - 2 }) }} />);
+    render(<TextObjectGrabHandle editor={handleEditor({ from: beta.before + 3, to: beta.after - 2 })} />);
     flushFrames();
     expect(owners()).toEqual([{ kind: "selection", uuid: null }]);
   });
