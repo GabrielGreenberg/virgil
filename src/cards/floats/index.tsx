@@ -57,6 +57,7 @@ import { snapshotCard } from "@/lib/stack/snapshot";
 import type { FootnoteRef } from "@/lib/types";
 import { buildFloatKey } from "@/floats/float-key";
 import type { CardFloatCtx } from "../card-float-ctx";
+import { editorJump, selectMirror } from "./body-contract";
 import type { CardKind } from "../types";
 import { CARD_REGISTRY, morphOptionsFor, registerCardFloatable } from "../card-registry";
 import { hasCollabClaims } from "../predicates";
@@ -295,8 +296,8 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
       <FootnoteCard
         footnote={fn}
         isSelected={isSelected}
-        onSelect={() => ctx.setSelectedFootnoteId(isSelected ? null : fn.footnoteId)}
-        onJump={(sourceEl) => ctx.editorRef.current?.scrollToFootnote(fn.footnoteId, sourceEl)}
+        onSelect={selectMirror(ctx.setSelectedFootnoteId, fn.footnoteId)}
+        onJump={editorJump(ctx.editorRef, "scrollToFootnote", fn.footnoteId)}
         onEdit={(json) => ctx.handleEditFootnote(fn.footnoteId, json)}
         onDelete={() => ctx.handleDeleteFootnote(fn.footnoteId)}
         onEditTitle={(title) => ctx.handleEditFootnoteTitle(fn.footnoteId, title)}
@@ -336,7 +337,7 @@ function unanchoredFootnoteFloatable(id: string, ctx: CardFloatCtx): Floatable |
       <UnanchoredFootnoteCard
         footnote={ref}
         isSelected={isSelected}
-        onSelect={() => ctx.setSelectedFootnoteId(isSelected ? null : ref.id)}
+        onSelect={selectMirror(ctx.setSelectedFootnoteId, ref.id)}
         onEdit={(json) => ctx.handleEditFootnote(ref.id, json)}
         onDelete={() => ctx.handleDeleteUnanchoredFootnote(ref.id)}
         onEditTitle={(title) => ctx.handleEditFootnoteTitle(ref.id, title)}
@@ -629,7 +630,7 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
         bibEntries={ctx.bibEntries}
         bibPackage={ctx.bibPackage}
         getDisplayText={ctx.getCitationDisplayText}
-        onSelect={() => ctx.setSelectedCitationId(isSelected ? null : cit.id)}
+        onSelect={selectMirror(ctx.setSelectedCitationId, cit.id)}
         onJump={(sourceEl) => {
           ctx.setSelectedCitationId(cit.id);
           ctx.editorRef.current?.scrollToCitation(cit.id, sourceEl);
@@ -743,10 +744,8 @@ registerCardFloatable("example", (id, ctx: CardFloatCtx) => {
       <ExampleCard
         example={ex}
         isSelected={ctx.selectedExampleId === ex.exampleId}
-        onSelect={() =>
-          ctx.setSelectedExampleId(ctx.selectedExampleId === ex.exampleId ? null : ex.exampleId)
-        }
-        onJump={() => ctx.editorRef.current?.scrollToExample(ex.exampleId)}
+        onSelect={selectMirror(ctx.setSelectedExampleId, ex.exampleId)}
+        onJump={editorJump(ctx.editorRef, "scrollToExample", ex.exampleId)}
         isPoppedOut
       />
     ),
