@@ -35,6 +35,8 @@ import { paragraphUuidAt } from "@/links/links";
 import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
 import { setHeadingLevelInRange } from "@/lib/tiptap/heading-level";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
+import { classAllowsHeadingLevel, headingLevelOptions } from "@/lib/document-class";
+import { HEADING_TYPES } from "@/lib/heading-types";
 import { iconHint } from "@/components/Hint";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
@@ -117,16 +119,30 @@ interface MenuBarProps {
   showEditItems?: boolean;
 }
 
-const BLOCK_TYPES = [
-  { value: "p", label: "Body text" },
-  { value: "0", label: "Part" },
-  { value: "1", label: "Chapter" },
-  { value: "2", label: "Section" },
-  { value: "3", label: "Subsection" },
-  { value: "4", label: "Subsubsection" },
-  { value: "5", label: "Paragraph heading" },
-  { value: "6", label: "Subparagraph heading" },
-];
+/** The dropdown's rows: "Body text", then every heading level DERIVED from
+ *  `headingLevelOptions` — the vocabulary × the document class, the same rows
+ *  the heading lozenge's `HeadingTypeMenu` maps (task 752). This used to be a
+ *  hand-listed 0..6 that never learned the class table, so it offered a live
+ *  `\chapter` in an `article` the lozenge greyed out. A class-unsupported
+ *  level stays VISIBLE (greyed, arrow-skipped, inert) exactly as there. */
+interface BlockTypeOption {
+  value: string;
+  label: string;
+  disabled: boolean;
+  hint?: string;
+}
+const BODY_TEXT_VALUE = "p";
+function blockTypeOptions(documentClass: string | null | undefined): BlockTypeOption[] {
+  return [
+    { value: BODY_TEXT_VALUE, label: "Body text", disabled: false },
+    ...headingLevelOptions(documentClass).map((o) => ({
+      value: String(o.level),
+      label: o.menuLabel,
+      disabled: o.disabled,
+      hint: o.hint,
+    })),
+  ];
+}
 
 /** The BlockType dropdown's heading levels that have a canonical registry row
  *  (CHIP 5a): \chapter(1)…\subsubsection(4). Levels 0 (Part), 5 (Paragraph
@@ -245,13 +261,23 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
 /** Apply a BlockType row's pick — the shared verb behind a click AND an
  *  Enter activation (so keyboard + mouse take the identical path).
  *  Exported for the task-153 container-gate regression test. */
-export function pickBlockType(editor: Editor, value: string): void {
+export function pickBlockType(
+  editor: Editor,
+  value: string,
+  documentClass?: string | null,
+): void {
   // CHIP 7b + task 733: the uniform read-only gate, both axes — a block-type
   // change (incl. 'Body' → setParagraph) refuses when the partner holds the pen
   // OR the host mounted this surface read-only. No over-gating: an ordinary
   // non-collab, host-writable doc is always editable.
   if (!surfaceEditableNow(editor)) return;
-  if (value === "p") {
+  // Task 752 fail-safe: the greyed row is inert, but the VERB also refuses a
+  // level the document class does not define, so no path to it (a keyboard
+  // activation, a menu left open across a class change) can write a
+  // sectioning command that fails to compile.
+  if (value !== BODY_TEXT_VALUE && !classAllowsHeadingLevel(documentClass, parseInt(value)))
+    return;
+  if (value === BODY_TEXT_VALUE) {
     // 'Body' is the explicit way OUT of heading-hood — setParagraph,
     // no toggle needed (CHIP 5a: the heading items no longer toggle
     // off, so 'Body' is the canonical return-to-paragraph).
@@ -272,27 +298,46 @@ function BlockTypeRow({
   value,
   label,
   current,
+  disabled,
+  hint,
   onPick,
 }: {
   value: string;
   label: string;
   current: boolean;
+  /** Class-unsupported heading level: visible, greyed, arrow-skipped, inert
+   *  — the lozenge `HeadingTypeMenu`'s treatment of the same row. */
+  disabled: boolean;
+  hint?: string;
   onPick: () => void;
 }) {
   const { active, getItemProps } = useMenuItem({
     id: value,
     region: "list",
     role: "menuitemcheckbox",
+    disabled,
     run: onPick,
   });
   return (
     <button
       {...getItemProps()}
       type="button"
+      disabled={disabled}
       aria-checked={current}
       data-current={current ? "" : undefined}
-      className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      data-hint={hint}
+      aria-description={hint}
+      className={
+        disabled
+          ? "w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] flex items-center gap-2"
+          : "w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
+      }
+      style={{
+        background: active && !disabled ? "var(--menu-roving-bg)" : undefined,
+        color: disabled ? "var(--ink-subtle)" : undefined,
+        cursor: disabled ? "not-allowed" : undefined,
+        opacity: disabled ? 0.55 : undefined,
+      }}
     >
       <span className="w-4 text-center text-xs">
         {current ? "✓" : ""}
@@ -352,7 +397,15 @@ const VIEW_MENU_PLACEMENTS: FloatingMenuPlacement[] = [
  * provider's window keydown is live — so the grid's keys and this menu's keys
  * never double-fire. The provider stack handles that automatically.
  */
-export function BlockTypeDropdown({ editor }: { editor: Editor }) {
+export function BlockTypeDropdown({
+  editor,
+  documentClass = null,
+}: {
+  editor: Editor;
+  /** The document's `\documentclass` (EditorPane's `documentClassName`), or
+   *  null when unknown — decides which heading rows are greyed (task 752). */
+  documentClass?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   // The trigger as STATE too, for `excludeRefs`: a mousedown on it must not
@@ -364,21 +417,13 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
   }, []);
   const anchor = useCallback(() => elementAnchor(triggerRef.current)(), []);
 
-  const current = editor.isActive("heading", { level: 0 })
-    ? "0"
-    : editor.isActive("heading", { level: 1 })
-      ? "1"
-      : editor.isActive("heading", { level: 2 })
-        ? "2"
-        : editor.isActive("heading", { level: 3 })
-          ? "3"
-          : editor.isActive("heading", { level: 4 })
-            ? "4"
-            : editor.isActive("heading", { level: 5 })
-              ? "5"
-              : editor.isActive("heading", { level: 6 })
-                ? "6"
-                : "p";
+  // The checked row, over the SAME vocabulary the rows derive from (task 752
+  // retired the hand-spelled seven-step 0..6 ladder). Compared by level, never
+  // by truthiness — `\part` is level 0.
+  const activeLevel = HEADING_TYPES.find((h) =>
+    editor.isActive("heading", { level: h.level }),
+  )?.level;
+  const current = activeLevel === undefined ? BODY_TEXT_VALUE : String(activeLevel);
 
   // The activedescendant host: the focusable trigger button. The window-capture
   // keyboard controller fires regardless of focus, but a screen reader tracks
@@ -425,14 +470,16 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
           containerClassName={dropdownClassName}
         >
           <div>
-            {BLOCK_TYPES.map((bt) => (
+            {blockTypeOptions(documentClass).map((bt) => (
               <BlockTypeRow
                 key={bt.value}
                 value={bt.value}
                 label={bt.label}
                 current={current === bt.value}
+                disabled={bt.disabled}
+                hint={bt.hint}
                 onPick={() => {
-                  pickBlockType(editor, bt.value);
+                  pickBlockType(editor, bt.value, documentClass);
                   setOpen(false);
                 }}
               />

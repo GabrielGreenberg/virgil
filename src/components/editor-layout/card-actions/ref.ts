@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 
 import type { Editor } from "@tiptap/react";
 import type { EditorHandle } from "../../Editor";
 import type { LabelInfo } from "../../LabelRefPopover";
+import { headingTypeName } from "@/lib/heading-types";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import {
@@ -13,9 +14,6 @@ import {
   type RefTargetIndex,
 } from "@/lib/ref-display";
 import type { ActiveRef, RefNodeIdentity } from "@/lib/tiptap/label";
-
-// Indexed by heading level 0..6 (Part..Subparagraph).
-const HEADING_TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
 
 const LABEL_RE = /\\label\{([^}]+)\}/g;
 
@@ -103,7 +101,7 @@ export function useRefActions(deps: {
           if (child.isText && child.text) titleParts.push(child.text);
         });
         const level = nd.attrs.level as number;
-        const typeName = HEADING_TYPE_NAMES[Math.max(0, Math.min(level, 6))];
+        const typeName = headingTypeName(level);
         const secNum = index.targets.get(nd.attrs.label as string)?.number || "?";
         pushUnique({
           label: nd.attrs.label,

@@ -12,7 +12,7 @@ import {
   projectLiveLatex,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
-import type { SectioningCommand } from "@/lib/heading-types";
+import { HEADING_TYPES, type SectioningCommand } from "@/lib/heading-types";
 
 // The vocabulary lives in the import-free leaf so the lexer's sectioning door
 // can read it too (task 376). Re-exported here because this module's public
@@ -111,6 +111,64 @@ export const CLASS_COMMANDS: Record<string, Set<SectioningCommand>> = {
   letter: new Set(),
   beamer: new Set(["part", "section", "subsection", "subsubsection"]),
 };
+
+/** One row of a heading-level picker: the vocabulary entry joined with the
+ *  current class's verdict on it. */
+export interface HeadingLevelOption {
+  level: number;
+  /** The vocabulary name ("Paragraph"). */
+  name: string;
+  /** The name as a picker that also offers "Body text" shows it
+   *  ("Paragraph heading"); equals `name` where no qualifier is needed. */
+  menuLabel: string;
+  command: SectioningCommand;
+  /** True when `documentClass` is known and does NOT define `command` —
+   *  writing it would fail to compile with "Undefined control sequence". */
+  disabled: boolean;
+  /** Why the row is disabled, for the row's hover hint; undefined otherwise. */
+  hint?: string;
+}
+
+/**
+ * The ONE answer to "which heading levels can this document carry?" — the
+ * heading vocabulary (`HEADING_TYPES`) × this class's `CLASS_COMMANDS` row.
+ * Every heading-level picker (the lozenge's `HeadingTypeMenu`, the ¶
+ * `BlockTypeDropdown`) maps it rather than joining the two tables itself: until
+ * task 752 the dropdown hand-listed the levels and never learned the class
+ * table, so it offered a live `\chapter` in an `article` that the lozenge
+ * greyed out.
+ *
+ * Unknown or absent class (a custom `.cls`, a journal template, no style yet)
+ * → nothing disabled: we cannot know what it defines, so we don't guess.
+ */
+export function headingLevelOptions(documentClass: string | null | undefined): HeadingLevelOption[] {
+  const supported = documentClass && isKnownClass(documentClass) ? CLASS_COMMANDS[documentClass] : null;
+  return HEADING_TYPES.map((entry) => {
+    const disabled = supported ? !supported.has(entry.command) : false;
+    return {
+      level: entry.level,
+      name: entry.name,
+      menuLabel: entry.menuLabel ?? entry.name,
+      command: entry.command,
+      disabled,
+      hint: disabled
+        ? `Not supported by \`${documentClass}\` class — switch the document class to use ${entry.name}`
+        : undefined,
+    };
+  });
+}
+
+/** Whether a picker may write heading `level` under `documentClass` — the
+ *  fail-safe a pick's VERB asks, so a path that bypasses the greyed row (a
+ *  keyboard activation, a stale menu) still cannot write an undefined
+ *  sectioning command. Same rule as `headingLevelOptions`. */
+export function classAllowsHeadingLevel(
+  documentClass: string | null | undefined,
+  level: number,
+): boolean {
+  const option = headingLevelOptions(documentClass).find((o) => o.level === level);
+  return option ? !option.disabled : true;
+}
 
 /**
  * Classes that, between them, cover every sectioning command users

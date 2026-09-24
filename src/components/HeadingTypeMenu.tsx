@@ -23,8 +23,7 @@
  */
 
 import type { CSSProperties } from "react";
-import { HEADING_TYPES } from "@/lib/heading-types";
-import { CLASS_COMMANDS } from "@/lib/document-class";
+import { headingLevelOptions } from "@/lib/document-class";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
 import type { LiveAnchor } from "./menu/live-anchor";
@@ -123,9 +122,10 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
 }
 
 export function HeadingTypeMenu({ anchorRect, trackAnchor, currentLevel, documentClass, onPick, onClose }: Props) {
-  const supported = documentClass && Object.prototype.hasOwnProperty.call(CLASS_COMMANDS, documentClass)
-    ? CLASS_COMMANDS[documentClass]
-    : null;
+  // The rows AND their per-class verdicts come from the ONE derivation the ¶
+  // block-type dropdown also maps (task 752), so the two heading pickers can
+  // no longer disagree about which levels this document can carry.
+  const options = headingLevelOptions(documentClass);
 
   if (typeof document === "undefined") return null;
 
@@ -146,24 +146,18 @@ export function HeadingTypeMenu({ anchorRect, trackAnchor, currentLevel, documen
         padding: `${MENU_PAD_Y}px 0`,
       }}
     >
-      {HEADING_TYPES.map((entry) => {
-        const disabled = supported ? !supported.has(entry.command) : false;
-        const hint = disabled
-          ? `Not supported by \`${documentClass}\` class — switch the document class to use ${entry.name}`
-          : undefined;
-        return (
-          <HeadingRow
-            key={entry.level}
-            id={`level-${entry.level}`}
-            label={entry.name}
-            disabled={disabled}
-            current={entry.level === currentLevel}
-            hint={hint}
-            showCheckGutter
-            run={() => onPick({ kind: "level", level: entry.level })}
-          />
-        );
-      })}
+      {options.map((option) => (
+        <HeadingRow
+          key={option.level}
+          id={`level-${option.level}`}
+          label={option.name}
+          disabled={option.disabled}
+          current={option.level === currentLevel}
+          hint={option.hint}
+          showCheckGutter
+          run={() => onPick({ kind: "level", level: option.level })}
+        />
+      ))}
       <div
         aria-hidden
         style={{
