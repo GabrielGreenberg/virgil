@@ -44,7 +44,6 @@
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import {
@@ -59,6 +58,7 @@ import {
 } from "@/lib/editor-geometry";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { useIsVisible, useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
+import { PaneOverlayPortal } from "@/lib/keep-alive/PaneOverlayPortal";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import {
   GRABBABLE_CHILD_SELECTOR,
@@ -517,18 +517,20 @@ export function PendingChangePill({
 
   if (gestureActive) return null;
   if (!placement.visible || placement.targetKey === null) return null;
-  if (typeof document === "undefined") return null;
   const target = index.get(placement.targetKey);
   if (!target) return null;
 
-  return createPortal(
-    <PendingChangePillBody
-      target={target}
-      targetKey={placement.targetKey}
-      right={placement.right}
-      top={placement.top}
-    />,
-    document.body,
+  // Through the pane-overlay door (task 753): a hidden keep-alive pane paints
+  // no pill over the shown one.
+  return (
+    <PaneOverlayPortal>
+      <PendingChangePillBody
+        target={target}
+        targetKey={placement.targetKey}
+        right={placement.right}
+        top={placement.top}
+      />
+    </PaneOverlayPortal>
   );
 }
 

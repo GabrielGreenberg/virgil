@@ -24,7 +24,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
-import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { resolveAnchorableNode, resolveAnchorUuidAndKind } from "@/lib/anchor-uuid";
@@ -38,6 +37,7 @@ import {
 } from "@/lib/editor-geometry";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { useIsVisible, useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
+import { PaneOverlayPortal } from "@/lib/keep-alive/PaneOverlayPortal";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
@@ -383,8 +383,13 @@ export function SelectionActionsMenu({
   }, [cacheVersion]);
 
   // Shown again → settle the placement a hidden-pane resize skipped (task 598).
+  // Hidden → close the open menu (task 753): it anchors to a bolt the hidden
+  // pane no longer paints, and its actions would dispatch into a document the
+  // user cannot see. The render gate below unmounts it this frame; clearing
+  // the target keeps it from springing back open on re-show.
   useEffect(() => {
     if (isVisible) updateRef.current();
+    else setMenuTarget(null);
   }, [isVisible]);
 
   // Close the menu when the anchored *identity* changes — selection moved,
@@ -504,8 +509,13 @@ export function SelectionActionsMenu({
   // `ActionsMenuPanel` below, which rides the `<Menu>` primitive's CHROME_Z
   // (2000, = OPEN_CHROME_MENU_Z) and therefore stays on top of EVERYTHING,
   // floats included. Never demote the open menu — only the resting trigger.
+  //
+  // Both the bolt and the open menu go through the pane-overlay door (task
+  // 753): a body portal escapes the hidden KeepAliveSlot's `display:none`, so
+  // a hidden pane must not render them at all.
   const buttonPortal = showBolt
-    ? createPortal(
+    ? (
+    <PaneOverlayPortal>
     <button
       ref={buttonRef}
       type="button"
@@ -551,8 +561,8 @@ export function SelectionActionsMenu({
       }}
     >
       <IconZap size={16} />
-    </button>,
-    document.body,
+    </button>
+    </PaneOverlayPortal>
       )
     : null;
 
@@ -560,7 +570,7 @@ export function SelectionActionsMenu({
   // `suppressed` — so scroll/drag can't unmount an open menu (task 154). The
   // `placement.visible` conjunction narrows `menuTarget` to non-null AND keeps
   // the panel off the 0,0 corner when the anchor is off-screen.
-  if (!menuTarget || !placement.visible) return buttonPortal;
+  if (!menuTarget || !placement.visible || !isVisible) return buttonPortal;
 
   return (
     <>
