@@ -30,7 +30,6 @@ import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 // citation atom can't land in a `titleField` / non-prose block where the
 // curated set greys `citation` out. Resolved by the block kind at the caret.
 import {
-  blockKindAllowsAction,
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
 // Task 232: structural DOM facets (`data-type` / `class`) come from the atom
@@ -173,18 +172,12 @@ export const Citation = Node.create<CitationOptions>({
 
             const { state } = view;
             const $from = state.doc.resolve(from);
-            // Task 061: refuse the synchronous citation-atom insert when the
-            // caret's containing block greys `citation` out (a `titleField` —
-            // whose text round-trips into `\title{…}` and re-expands under
-            // `\maketitle` — or any non-prose block). Covers BOTH the full
-            // `\cite{key}` and bare `\cite ` branches (they share `$from`).
-            if (!blockKindAllowsAction($from.parent.type.name, "citation")) {
-              return false;
-            }
-            // Task 396 — the SCHEMA half beside the POLICY half above (see the
-            // twin in `footnote.ts`): the two coincide for the markless verbatim
-            // blocks only by construction of the curated set, so the SSOT is asked
-            // too. Covers BOTH branches below (they share this `$from`).
+            // The ONE inline-atom door (task 740) — it asks BOTH halves: the
+            // curated POLICY (task 061: a `titleField` greys `citation` out,
+            // since its text round-trips into `\title{…}` and re-expands under
+            // `\maketitle`) and the SCHEMA (task 396: a markless `text*` block
+            // would be torn). Covers BOTH the full `\cite{key}` and bare
+            // `\cite ` branches below (they share this `$from`).
             // Caret form, deliberately (task 428): the typed match lies inside
             // ONE textblock, so `from` names every block the rule reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;

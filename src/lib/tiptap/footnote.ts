@@ -51,7 +51,6 @@ import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 // IS allowed in a `titleField` (see TITLE_FIELD_ACTIONS) but NOT in a non-prose
 // block, resolved by the caret's containing block kind.
 import {
-  blockKindAllowsAction,
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
 
@@ -171,21 +170,12 @@ export const Footnote = Node.create<FootnoteOptions>({
             if (text !== "}") return false;
             const { state } = view;
             const $from = state.doc.resolve(from);
-            // Task 061: refuse the synchronous footnote-atom insert when the
-            // caret's containing block greys `footnote` out (a non-prose block —
-            // codeBlock / displayMath / figure / graphics). A `titleField`
-            // permits footnotes, so this stays allowed there.
-            if (!blockKindAllowsAction($from.parent.type.name, "footnote")) {
-              return false;
-            }
-            // Task 396 — the SCHEMA half, beside the POLICY half above. The two
-            // questions are different (may a footnote be created here? / can this
-            // textblock hold an inline node at all?) and they COINCIDE for the two
-            // markless verbatim blocks only by construction of the curated set
-            // (MARKLESS_BLOCK_ACTIONS subtracts INLINE_INSERT_ACTIONS). Asking the
-            // SSOT too costs nothing today (measured: both already refuse) and is
-            // what keeps a future markless kind, or an edit to the curated set,
-            // from silently re-opening the truncate-and-eject corruption.
+            // The ONE inline-atom door (task 740) — it asks BOTH halves: the
+            // curated POLICY (task 061: a non-prose block greys `footnote` out;
+            // a `titleField` permits it) and the SCHEMA (task 396: a markless
+            // `text*` block would be torn). The two are different questions
+            // that coincide for the markless verbatim blocks only by
+            // construction of the curated set, which is why the door asks both.
             // Caret form, deliberately (task 428): the typed match lies inside
             // ONE textblock, so `from` names every block the rule reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;

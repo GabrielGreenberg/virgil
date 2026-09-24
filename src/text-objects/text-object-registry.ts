@@ -30,6 +30,7 @@ import type {
 import type { EditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/core";
 import { headingTypeName } from "@/lib/heading-types";
+import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import {
   getSectionRangeByUuid,
@@ -1704,6 +1705,19 @@ function blockTypeHostsInlineAtom(
  * answer: can an inline atom of type `atomType` land here WITHOUT corrupting
  * the container? `pos` is clamped into the doc so a stale caret can't throw.
  *
+ * **BOTH HALVES, ONE DOOR (task 740).** "May this inline atom land here?" is
+ * a SCHEMA question (can the textblock hold an inline node at all — below) AND
+ * a curated POLICY question (does the block kind permit this atom's card
+ * action — `blockKindAllowsAction`, e.g. task 061's `titleField` greying
+ * `citation` out so no `\cite` rides into `\title{…}`). Until 740 the door
+ * asked only the schema half and each surface paired it with the policy half
+ * by hand — the typed rules and commands did, the two DROP paths
+ * (`Editor.tsx` citation drop, drop-mode's `inline-host.ts`) did not, so a
+ * citation card dropped on the title planted `\cite` in `\title{}` and minted
+ * a card. The policy half is derived per atom by `inlineAtomPolicyAction`;
+ * `inline-atom-door-census.test.ts` pins that no surface asks it beside the
+ * door again.
+ *
  * Consumers (task 396 — before it, this had exactly ONE, which is how three
  * later surfaces inherited the retired premise that "an inline atom never
  * splits"; see `docs/agents/laws/a-registry-earns-its-name-by-being-read.md` → "A registry earns its name by being read"):
@@ -1770,7 +1784,28 @@ export function inlineRangeAllowsAtom(
 ): boolean {
   const targets = rangeTextblockTypes(doc, from, to);
   if (targets.length === 0) return true; // a gap — PM wraps, nothing to corrupt
-  return targets.every((type) => blockTypeHostsInlineAtom(type, atomType));
+  const policyAction = inlineAtomPolicyAction(atomType);
+  return targets.every(
+    (type) =>
+      blockTypeHostsInlineAtom(type, atomType) &&
+      (policyAction === null || blockKindAllowsAction(type.name, policyAction)),
+  );
+}
+
+/**
+ * The curated POLICY action an inline atom's insert answers to, or `null` when
+ * the atom has none (task 740). DERIVED, never hand-listed: an atom whose
+ * `ATOM_REGISTRY` kind is an {@link INLINE_INSERT_ACTIONS} member (today
+ * `footnote`, `citation`) is gated by that action's curated per-kind set; the
+ * id-less atoms (`labelRef`, `inlineMath`) have no card action and so answer
+ * to the schema half alone — which is what keeps inline math legal in a
+ * `titleField`.
+ */
+function inlineAtomPolicyAction(atomType: NodeType): DragHandleAction | null {
+  const kind = atomMetaForNodeName(atomType.name)?.kind;
+  return kind && INLINE_INSERT_ACTIONS.has(kind as DragHandleAction)
+    ? (kind as DragHandleAction)
+    : null;
 }
 
 /**
