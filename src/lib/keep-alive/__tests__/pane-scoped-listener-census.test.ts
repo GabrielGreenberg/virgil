@@ -102,7 +102,7 @@ const LEDGER: Record<string, Row> = {
   "components/SlashCommandPopup.tsx": {
     scope: "open-state",
     events: ["window.resize"],
-    why: "mounted only while the slash popup is open in the focused editor",
+    why: "armed only while THIS editor's own slash popup is open — the store is keyed by the owning editor (task 750; pinned by slash-popup-owner-scope.test.tsx)",
   },
   "components/drop-mode/card-drop-gesture.ts": {
     scope: "gesture",

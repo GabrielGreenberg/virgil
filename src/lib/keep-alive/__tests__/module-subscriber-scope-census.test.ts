@@ -74,7 +74,6 @@ const LEDGER: Record<string, Row> = {
   "components/drop-mode/inline-atom-ghost.ts#_listeners": { scope: "gesture", why: "one inline-atom drag ghost at a time" },
   "components/drop-mode/controller.ts#sessionListeners": { scope: "gesture", why: "one drop-mode session at a time" },
   "components/drop-mode/controller.ts#sessionEndListeners": { scope: "gesture", why: "same session, its end edge" },
-  "lib/slash-popup-store.ts#_listeners": { scope: "gesture", why: "one `\\`-command popup open at a time" },
   "lib/spell/spell-menu-store.ts#listeners": { scope: "gesture", why: "one spelling menu open at a time" },
   "lib/stack/stack-drop-target.ts#listeners": { scope: "gesture", why: "the Stack drop target of the one live drag" },
   "components/editor-layout/dock-drag.ts#listeners": { scope: "gesture", why: "the dock target of the one live drag" },

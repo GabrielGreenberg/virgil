@@ -1,16 +1,26 @@
 "use client";
 
 /**
- * Module-scope store for the inline `\`-command popup. The ProseMirror
- * plugin owns the canonical state (see slash-popup.ts) and mirrors it
- * here on every transaction. The popup React component subscribes via
- * `useSlashPopupState()` and re-renders.
+ * Per-EDITOR store for the inline `\`-command popup. The ProseMirror plugin
+ * owns the canonical state (see slash-popup.ts) and publishes it here from its
+ * plugin VIEW (never from `apply`, so a `state.apply` dry run publishes
+ * nothing). The popup React component subscribes via
+ * `useSlashPopupState(editor)` and re-renders.
  *
- * Same shape as anchored-card-store.ts — `useSyncExternalStore` keeps
- * us dependency-free and works across portals / popped-out surfaces.
+ * Task 750 — a REGISTRY keyed by the owning editor, never a single slot. N
+ * `EditorPane`s are mounted at once under multi-doc keep-alive, each with its
+ * own `<SlashCommandPopup>`. When this was one module-level `_state`, typing
+ * `\` in the visible doc opened the popup in EVERY pane, and each hidden
+ * (`display:none`) pane portalled a dead copy of it to the window's top-left
+ * corner (its `coordsAtPos` answers an all-zero rect). Keyed by owner, a
+ * pane's popup can only ever read its OWN plugin's state — the "per-doc
+ * services under multi-pane keep-alive" law.
+ *
+ * `useSyncExternalStore` keeps us dependency-free and works across portals /
+ * popped-out surfaces.
  */
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export type SlashPopupState =
   | { open: false }
@@ -33,26 +43,52 @@ export type SlashPopupState =
       disabled: string[];
     };
 
-let _state: SlashPopupState = { open: false };
-const _listeners = new Set<() => void>();
+/**
+ * The popup's owner — the TipTap `Editor` whose `SlashPopupExtension` plugin
+ * publishes, and whose `<SlashCommandPopup>` reads. Typed as a bare object so
+ * this module stays free of editor imports; any stable per-editor identity works.
+ */
+export type SlashPopupOwner = object;
 
-function subscribe(fn: () => void): () => void {
-  _listeners.add(fn);
-  return () => _listeners.delete(fn);
+interface Entry {
+  state: SlashPopupState;
+  listeners: Set<() => void>;
 }
 
-function emit(): void {
-  for (const fn of _listeners) fn();
+const CLOSED: SlashPopupState = { open: false };
+
+/** Owner → its popup. Weak, so a destroyed editor's entry is collected. */
+const _entries = new WeakMap<SlashPopupOwner, Entry>();
+
+function entryFor(owner: SlashPopupOwner): Entry {
+  let e = _entries.get(owner);
+  if (!e) {
+    e = { state: CLOSED, listeners: new Set() };
+    _entries.set(owner, e);
+  }
+  return e;
 }
 
 export const slashPopupStore = {
-  getState: (): SlashPopupState => _state,
-  set(next: SlashPopupState): void {
-    if (statesEqual(_state, next)) return;
-    _state = next;
-    emit();
+  /** This owner's popup state; `CLOSED` for an owner that never published. */
+  getState(owner: SlashPopupOwner | null | undefined): SlashPopupState {
+    if (!owner) return CLOSED;
+    return _entries.get(owner)?.state ?? CLOSED;
   },
-  subscribe,
+  /** Publish `next` for `owner`; notifies ONLY that owner's subscribers. */
+  set(owner: SlashPopupOwner, next: SlashPopupState): void {
+    const e = entryFor(owner);
+    if (statesEqual(e.state, next)) return;
+    e.state = next;
+    for (const fn of e.listeners) fn();
+  },
+  subscribe(owner: SlashPopupOwner, fn: () => void): () => void {
+    const e = entryFor(owner);
+    e.listeners.add(fn);
+    return () => {
+      e.listeners.delete(fn);
+    };
+  },
 };
 
 function statesEqual(a: SlashPopupState, b: SlashPopupState): boolean {
@@ -72,8 +108,15 @@ function statesEqual(a: SlashPopupState, b: SlashPopupState): boolean {
   return true;
 }
 
-const getServerSnapshot = () => ({ open: false }) as SlashPopupState;
+const getServerSnapshot = () => CLOSED;
+const noopUnsubscribe = () => {};
 
-export function useSlashPopupState(): SlashPopupState {
-  return useSyncExternalStore(subscribe, slashPopupStore.getState, getServerSnapshot);
+/** The popup state of `owner`'s editor (closed while `owner` is null). */
+export function useSlashPopupState(owner: SlashPopupOwner | null | undefined): SlashPopupState {
+  const subscribe = useCallback(
+    (fn: () => void) => (owner ? slashPopupStore.subscribe(owner, fn) : noopUnsubscribe),
+    [owner],
+  );
+  const getSnapshot = useCallback(() => slashPopupStore.getState(owner), [owner]);
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
