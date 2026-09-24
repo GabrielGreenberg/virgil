@@ -541,3 +541,23 @@ applied-suggestion Original/Suggested toggle, is keyed by card id alone. Two ope
 papers that share an id share its display state. It sits in the census as
 `residual-per-paper-key` until a doc or pane key is threaded through
 `pending-change-actions.ts`.
+
+### The popup half (task 750)
+
+A popup whose RENDERER is mounted once per pane is not a "gesture" just because
+only one is open at a time. `slash-popup-store.ts` was declared `gesture` in the
+census ("one `\`-command popup open at a time"), but every `VirgilEditor` mounts its
+own `<SlashCommandPopup>` and all of them read the one slot — so typing `\` in the
+visible doc painted a dead copy in each hidden pane (`coordsAtPos` on a
+`display:none` editor answers an all-zero rect → top-left corner). The `gesture`
+scope is honest only when the renderer is mounted ONCE (the spell menu: one
+`<SpellSuggestionMenu>` at the layout root, its request carrying the view + port).
+
+Fix: the store is a `WeakMap` registry keyed by the owning `Editor`; the plugin
+publishes from its plugin-view `update` (so `apply` is pure and a `state.apply`
+dry run publishes nothing) and `destroy` closes only its own entry. With no
+module-level Set left, the ledger row is gone. CI:
+[slash-popup-owner-scope.test.tsx](../../../src/components/__tests__/slash-popup-owner-scope.test.tsx)
+— two real editors; opening A leaves B closed and B's component paints nothing;
+destroying B leaves A open; a dry-run `apply` publishes nothing (all four legs fail
+on the one-slot store).
