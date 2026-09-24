@@ -11,8 +11,10 @@
 > **The ONE deliberate exception — `SlashCommandPopup`** (user decision, 2026-06-16): it stays a
 > ProseMirror plugin and is NOT migrated. It already has full arrow nav; absorbing it onto the
 > primitive (the R2 dual-backend `registryFor` seam, §2.3/§6 R2) is consistency-only with real risk
-> and zero user-facing change. The `registryFor` adapter + contract type remain in the primitive as
-> the available seam if absorption is ever wanted.
+> and zero user-facing change. **The `registryFor` table itself is DELETED (task 748):** it was
+> write-only (every provider published, nothing read) and a process-global slot keyed by menu id,
+> which multi-pane keep-alive makes wrong by construction. If absorption is ever wanted, the second
+> backend gets a registry keyed by its OWNER, not a module slot; §2.3 below is historical design.
 >
 > **Deferred polish** (functional today via Enter/click/Up-Down; Left/Right is the ideal affordance):
 > (a) `ViewMenu` Right=expand/Left=collapse — needs a list `onArrowHorizontal(dir, activeId)` hook in
@@ -154,7 +156,7 @@ per `cardActionRows(...)` row, carrying `row.run` / `row.letter` / the resolved
 So `DragHandleMenu` and the lightning list share one renderer. Both sources populate
 the **same** snapshot; the nav controller is source-agnostic.
 
-### 2.3 `registryFor(menuId)` — the PM-slash adapter
+### 2.3 `registryFor(menuId)` — the PM-slash adapter (HISTORICAL — never built; table deleted, task 748)
 
 A non-React function returning the registry contract the slash plugin drives:
 
