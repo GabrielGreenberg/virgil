@@ -81,7 +81,10 @@ export function isMissedRelease(e: { buttons: number }): boolean {
  * listener already registered on the SAME target in the SAME phase, so an
  * open menu's `window`+capture Escape handlers (`useMenuDismiss`,
  * `useMenuKeyboard`) still run. That is accepted: a menu is dismissed by the
- * divider's own `pointerdown` long before Escape is pressed, and
+ * divider's own `pointerdown` long before Escape is pressed (`useMenuDismiss`
+ * reads the outside press on `pointerdown` since task 746 — on `mousedown`, a
+ * divider's preventDefaulted pointerdown suppressed it and the menu stayed
+ * open), and
  * `stopImmediatePropagation()` — the only thing that would reach them — would
  * also silence unrelated same-target listeners the app depends on
  * (`input-modality`'s typing tracker is exactly the shape AGENTS.md says must

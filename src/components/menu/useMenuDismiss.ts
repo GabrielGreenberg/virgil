@@ -4,8 +4,11 @@
  * `useMenuDismiss` — the ONE deferred capture-phase click-outside +
  * Escape-dismissal effect that replaces the per-menu copies (design §3.2).
  *
- *   - A capture-phase `mousedown` listener installed on a `setTimeout(…, 0)`
+ *   - A capture-phase outside-PRESS listener installed on a `setTimeout(…, 0)`
  *     defer, so the click that OPENED the menu can't immediately self-close it.
+ *     The press is read on `pointerdown` (see "The press is the pointerdown"
+ *     below), with `mousedown` kept only as the fallback for a press that
+ *     arrives without one.
  *   - "Inside" = `containerRef.contains(target)` OR any registered exclude
  *     element contains it (the lightning color popover, a combobox's external
  *     input, a nested provider's container). Exemptions are real refs, not
@@ -30,12 +33,31 @@
  * decided — by each popover. `src/panels/Citations/CitationCreatePopover.tsx`
  * is the live member; `escape-means-cancel-census.test.ts` pins the class.
  *
+ * ── The press is the POINTERDOWN (task 746) ──────────────────────────────────
+ * Until task 746 the outside press was read on `mousedown`. But a surface that
+ * `preventDefault()`s its `pointerdown` — every pane divider (the resize engine
+ * does exactly that), grab handles, drag starts — SUPPRESSES the compatibility
+ * `mousedown` in Chromium, so pressing a divider with a menu open left the menu
+ * open, and one Escape during the drag then ended TWO things (the gesture and
+ * the menu; `pointer-invariants.ts` states why a gesture cannot stop a
+ * same-target capture listener). `pointerdown` on window+capture runs before
+ * any target handler can cancel anything, so every press is seen. The compat
+ * `mousedown` that follows an ordinary press is the SAME gesture and is
+ * skipped; a `mousedown` with no pointerdown before it (a synthetic dispatch,
+ * a pointer-event-less host) still dismisses.
+ *
+ * And the subscription keys on `[open, containerRef]` only — `onClose` is read
+ * through a ref. Callers pass a fresh inline `onClose` per render
+ * (`SelectionActionsMenu`, `ActionsMenuPanel`), and keying on it tore the
+ * listener down and re-armed it a `setTimeout(0)` later on EVERY render: a
+ * press landing in that gap was silently ignored.
+ *
  * Keystroke sanctity: both listeners are mounted only while the menu is open
  * and bail O(1) on any non-Escape key / inside click. Neither touches the
  * editor transaction path.
  */
 
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 
 export interface UseMenuDismissOptions {
@@ -97,26 +119,51 @@ export function useMenuDismiss(opts: UseMenuDismissOptions): void {
   const stopProp = escape?.stopPropagation ?? true;
   const onEscape = escape?.onEscape;
 
+  // The DISMISS door, read through a ref so a fresh inline `onClose` per
+  // render never re-subscribes the outside-press listener (task 746).
+  const onCloseRef = useRef(onClose);
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     if (typeof window === "undefined") return;
 
+    // A press seen on `pointerdown` marks its own compat `mousedown` (dispatched
+    // in the same task) as already handled; the mark clears on the next task.
+    let pressHandled = false;
+    let clearMark: number | undefined;
+    const onPress = (e: Event) => {
+      if (isInside(e.target as Node | null, containerRef, getExcludes)) return;
+      onCloseRef.current();
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      pressHandled = true;
+      window.clearTimeout(clearMark);
+      clearMark = window.setTimeout(() => {
+        pressHandled = false;
+      }, 0);
+      onPress(e);
+    };
     const onMouseDown = (e: MouseEvent) => {
-      if (!isInside(e.target as Node | null, containerRef, getExcludes)) {
-        onClose();
-      }
+      if (pressHandled) return;
+      onPress(e);
     };
     // Defer so the opening click doesn't self-close.
     const t = window.setTimeout(() => {
+      window.addEventListener("pointerdown", onPointerDown, true);
       window.addEventListener("mousedown", onMouseDown, true);
     }, 0);
     return () => {
       window.clearTimeout(t);
+      window.clearTimeout(clearMark);
+      window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("mousedown", onMouseDown, true);
     };
-    // getExcludes is a stable getter the caller controls.
+    // getExcludes is a stable getter the caller controls; onClose rides a ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, onClose, containerRef]);
+  }, [open, containerRef]);
 
   useEffect(() => {
     if (!open || !ownsEscape) return;

@@ -227,3 +227,72 @@ describe("useMenuDismiss — Escape is the CANCEL door", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+// Task 746 — the outside press is read on POINTERDOWN. A surface that
+// preventDefaults its pointerdown (every pane divider) suppresses the compat
+// mousedown, so a mousedown-only listener never saw the press; and onClose is
+// read through a ref, so a fresh inline onClose per render opens no gap.
+describe("useMenuDismiss — the press is the pointerdown (task 746)", () => {
+  function pointerdownOn(el: Element, opts?: { preventDefault?: boolean }) {
+    act(() => {
+      const e = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+      if (opts?.preventDefault) {
+        // The pane-resize engine's own handler: cancel the compat mouse events.
+        el.addEventListener("pointerdown", (ev) => ev.preventDefault(), { once: true });
+      }
+      el.dispatchEvent(e);
+    });
+  }
+
+  it("closes on an outside pointerdown the target preventDefaults (no compat mousedown follows)", () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />);
+    flushDeferred();
+    const divider = document.createElement("div");
+    document.body.appendChild(divider);
+    pointerdownOn(divider, { preventDefault: true });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    divider.remove();
+    vi.useRealTimers();
+  });
+
+  it("an ordinary press (pointerdown + its compat mousedown) dismisses exactly once", () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />);
+    flushDeferred();
+    pointerdownOn(document.body);
+    mousedownOn(document.body);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // The next gesture is a fresh press.
+    flushDeferred();
+    pointerdownOn(document.body);
+    expect(onClose).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("does NOT close on a pointerdown inside the container", () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const { getByTestId } = render(<Harness onClose={onClose} />);
+    flushDeferred();
+    pointerdownOn(getByTestId("inside"));
+    expect(onClose).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("a new onClose identity per render opens no listener gap and calls the LATEST onClose", () => {
+    vi.useFakeTimers();
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = render(<Harness onClose={first} />);
+    flushDeferred();
+    rerender(<Harness onClose={second} />);
+    // No timers flushed: the listener must still be live after the re-render.
+    pointerdownOn(document.body);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+});
