@@ -75,14 +75,11 @@ export interface MenuNode {
 export type NavDir = "up" | "down" | "left" | "right" | "home" | "end";
 
 /**
- * The registry contract the slash plugin (Phase C) drives behind the SAME
- * `{ items(), move(), activate() }` seam the React backend satisfies (§2.3).
- * Implemented FULLY by the React backend here; the PM-slash backend will
- * satisfy this type in Phase C (it reads the plugin's live `filtered` +
- * `selectedIndex` as the snapshot+cursor). This is the design's known leaky
- * seam (R2): `move()` is sync setState in React vs. async tx-dispatch in PM —
- * enforced by this shared type + a coverage test, with the React view a
- * one-way subscriber to the cursor.
+ * The registry contract the keyboard controller drives:
+ * `{ items(), move(), activate() }` (§2.2). `MenuRegistry` is its one
+ * implementation. (The design's second, PM-slash backend never landed — the
+ * slash popup keeps its own plugin-owned keys — so this is a seam with one
+ * side, task 748.)
  */
 export interface MenuRegistryHandle {
   /** Ordered, region-tagged snapshot. */

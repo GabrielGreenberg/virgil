@@ -10,24 +10,12 @@
  *
  * Items inside these wrappers register their `region` ("grid" | "list") +
  * grid `coords` via `useMenuItem` — the wrappers don't re-tag children; they
- * only lay them out. The MenuGridContext lets a grid cell read the column
- * count if it derives its `coords` from a flat index.
+ * only lay them out. (A `useMenuGrid()` column-count context once shipped here
+ * for cells that might derive coords from a flat index; no cell ever did, so
+ * it went with task 748 — every grid cell passes explicit `coords`.)
  */
 
-import { createContext, useContext, type CSSProperties, type ReactNode } from "react";
-
-export interface MenuGridContextValue {
-  cols: number;
-}
-const MenuGridContext = createContext<MenuGridContextValue | null>(null);
-
-/** Read the enclosing grid's column count (for cells deriving coords from a
- *  flat index). Throws if used outside a `<MenuGrid>`. */
-export function useMenuGrid(): MenuGridContextValue {
-  const ctx = useContext(MenuGridContext);
-  if (!ctx) throw new Error("useMenuGrid must be used inside a <MenuGrid>");
-  return ctx;
-}
+import type { CSSProperties, ReactNode } from "react";
 
 export interface MenuGridProps {
   cols: number;
@@ -38,19 +26,17 @@ export interface MenuGridProps {
 
 export function MenuGrid({ cols, style, className, children }: MenuGridProps): ReactNode {
   return (
-    <MenuGridContext.Provider value={{ cols }}>
-      <div
-        role="presentation"
-        className={className}
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-          ...style,
-        }}
-      >
-        {children}
-      </div>
-    </MenuGridContext.Provider>
+    <div
+      role="presentation"
+      className={className}
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
   );
 }
 

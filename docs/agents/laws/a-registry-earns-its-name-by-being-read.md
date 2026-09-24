@@ -5648,3 +5648,9 @@ ORDERING claim (`archive`/`delete` stop before the confirm, the anchored-card
 cleanup and the anchor retarget, which "the doc is unchanged" alone cannot
 make, since the enforcer produces that outcome anyway while every irreversible
 side effect still runs). Twelve of its legs fail when either gate is reverted.
+
+## The menu half — a seam with one side (task 748)
+
+The menu primitive shipped a cross-backend lookup table (`registryFor(menuId)` + `publishRegistry` / `unpublishRegistry`) for a ProseMirror-slash backend that was never built: every `<MenuProvider>` published into it on mount, and its only readers were its own suite and the `menu/index.ts` barrel — the exact pair the shared census discounts. It was also a process-global slot keyed by menu id, so under multi-pane keep-alive two panes' same-id menus overwrote each other; harmless only because nothing read it. Beside it, `useMenuGrid()` — a column-count context "shipped now" for grid cells that might derive coords from a flat index — had no reader either. Both are deleted, with the Phase-C prose that promised the missing side. If a second backend ever arrives, it gets a registry keyed by its OWNER (per the per-doc-services law), not a module slot.
+
+CI: [menu-export-census.test.ts](../../../src/components/menu/__tests__/menu-export-census.test.ts) — the shared export census over the WHOLE of `src/components/menu/**` (git-tracked, tests excluded, so a new module is censused the day it lands), empty allowlist, plus a real-files canary and the scanner's swallow self-check. Measured against the pre-fix `registry.ts` / `regions.tsx` / barrel: it names all four dead exports.

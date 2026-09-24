@@ -14,9 +14,8 @@
  *   - stamps the ONE menu SURFACE (`.menu-surface`: bg + border + shadow +
  *     radius off the `--menu-*` tier) on its container, so no consumer
  *     re-authors menu chrome (task 295; `surface="none"` opts out, allowlisted);
- *   - publishes itself to `registryFor(id)` (the cross-backend seam) and, when
- *     nested inside a parent `<MenuProvider>`, auto-registers its container
- *     into the parent's click-outside exclude set (R8).
+ *   - when nested inside a parent `<MenuProvider>`, auto-registers its
+ *     container into the parent's click-outside exclude set (R8).
  *
  * The core supports list / grid / composite layouts NOW (the nav controller +
  * registry are layout-agnostic) so B2 (lightning) can mount a composite menu
@@ -48,7 +47,7 @@ import {
   type MenuContextValue,
   type MenuStackController,
 } from "./context";
-import { MenuRegistry, publishRegistry, unpublishRegistry } from "./registry";
+import { MenuRegistry } from "./registry";
 import { useMenuDismiss } from "./useMenuDismiss";
 import { useMenuKeyboard } from "./useMenuKeyboard";
 import type {
@@ -320,12 +319,6 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     },
     [positionRef],
   );
-
-  // ── publish to the cross-backend table (§2.3) ──
-  useEffect(() => {
-    publishRegistry(id, registry);
-    return () => unpublishRegistry(id, registry);
-  }, [id, registry]);
 
   // ── auto-register into the parent's exclude set on mount ──
   useEffect(() => {

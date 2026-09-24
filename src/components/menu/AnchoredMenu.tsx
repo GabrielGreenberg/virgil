@@ -307,8 +307,8 @@ export function AnchoredMenu({
   // rather than per consumer for the reason the whole shell exists: the eight
   // consumers would each have to re-derive it, and seven would forget.
   const activeDescendantHost = useCallback(() => triggerEl, [triggerEl]);
-  // Unique per instance so two momentarily-coexisting menus don't collide in
-  // the cross-backend registry table (`publishRegistry`).
+  // Unique per instance so two momentarily-coexisting menus never share the
+  // activedescendant / listbox DOM ids derived from the menu id.
   const menuId = useId();
 
   const close = useCallback(() => {

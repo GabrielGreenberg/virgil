@@ -1,17 +1,11 @@
 // MenuRegistry: the React-backend registry that satisfies MenuRegistryHandle
 // (design §2.2/§2.3). Tests the snapshot, version bumps (keystroke sanctity:
 // re-snapshot only on a registration-version change), active-id navigation,
-// activation, the registryFor() cross-backend lookup seam, and the contract
-// shape both backends must satisfy (R2).
+// activation, and the MenuRegistryHandle contract shape the keyboard
+// controller drives.
 
 import { describe, it, expect, vi } from "vitest";
-import {
-  MenuRegistry,
-  registryFor,
-  publishRegistry,
-  unpublishRegistry,
-  type MenuItemRegistration,
-} from "../registry";
+import { MenuRegistry, type MenuItemRegistration } from "../registry";
 import type { MenuRegistryHandle } from "../types";
 
 function reg(over: Partial<MenuItemRegistration> = {}): MenuItemRegistration {
@@ -235,30 +229,10 @@ describe("MenuRegistry — setOrder (combobox re-rank: snapshot follows live VIS
   });
 });
 
-describe("registryFor — the cross-backend lookup seam (§2.3)", () => {
-  it("publish / lookup / unpublish round-trips", () => {
-    const r = new MenuRegistry("seam-test", "list");
-    expect(registryFor("seam-test")).toBeNull();
-    publishRegistry("seam-test", r);
-    expect(registryFor("seam-test")).toBe(r);
-    unpublishRegistry("seam-test", r);
-    expect(registryFor("seam-test")).toBeNull();
-  });
-
-  it("unpublish only clears when the published handle still matches (remount race)", () => {
-    const r1 = new MenuRegistry("race", "list");
-    const r2 = new MenuRegistry("race", "list");
-    publishRegistry("race", r1);
-    publishRegistry("race", r2); // r2 claims the id
-    unpublishRegistry("race", r1); // stale unpublish — must NOT clear r2
-    expect(registryFor("race")).toBe(r2);
-    unpublishRegistry("race", r2);
-    expect(registryFor("race")).toBeNull();
-  });
-
+describe("the MenuRegistryHandle contract", () => {
   it("the MenuRegistry satisfies the MenuRegistryHandle contract (R2)", () => {
-    // A compile-time + runtime assertion that the React backend implements the
-    // same contract the PM-slash backend (Phase C) must satisfy.
+    // A compile-time + runtime assertion that the registry implements the
+    // contract the keyboard controller drives.
     const handle: MenuRegistryHandle = new MenuRegistry("contract", "list");
     expect(typeof handle.items).toBe("function");
     expect(typeof handle.move).toBe("function");

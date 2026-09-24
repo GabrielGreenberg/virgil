@@ -27,7 +27,7 @@ export type {
 } from "./MenuItemsFromRegistry";
 export { MenuToggleRow } from "./MenuToggleRow";
 export type { MenuToggleRowProps } from "./MenuToggleRow";
-export { MenuGrid, MenuList, useMenuGrid } from "./regions";
+export { MenuGrid, MenuList } from "./regions";
 export type { MenuGridProps, MenuListProps } from "./regions";
 export { useMenuItem } from "./useMenuItem";
 export type { UseMenuItemOptions } from "./useMenuItem";
@@ -44,12 +44,7 @@ export type {
 } from "./useMenuKeyboard";
 export { useMenuDismiss } from "./useMenuDismiss";
 export type { UseMenuDismissOptions } from "./useMenuDismiss";
-export {
-  MenuRegistry,
-  registryFor,
-  publishRegistry,
-  unpublishRegistry,
-} from "./registry";
+export { MenuRegistry } from "./registry";
 export type { MenuItemRegistration } from "./registry";
 export {
   computeNextActive,
