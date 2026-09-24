@@ -37,6 +37,7 @@
  */
 
 import { useRef, useState } from "react";
+import { useLiveEditorSignature } from "@/lib/tiptap/use-live-editor-signature";
 import type { Editor } from "@tiptap/react";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { DragHandleAction } from "./DragHandleMenu";
@@ -118,6 +119,21 @@ const GRID_COLS = 4;
 // Highlight in cursor mode, applied at render below. The row list is constant,
 // so it's computed once at module load (an 11-row registry view).
 const LIGHTNING_CARD_ROWS = cardActionRows("lightning");
+
+// Task 738: what the grid PAINTS from the live editor — every `isActive(…)`
+// and every `gridCellDisabled(…)` the render below makes, by literal name. The
+// live signature re-asks exactly these after each transaction while the panel
+// is open, so the painted state follows the document instead of freezing at
+// the panel's last render. `live-format-state.test.tsx` pins these lists to the
+// call sites (a new cell that is missing here would freeze again).
+export const LIGHTNING_ACTIVE_MARKS = [
+  "bold", "italic", "strike", "code", "bulletList", "orderedList", "blockquote",
+] as const;
+export const LIGHTNING_GRID_CELL_IDS = [
+  "bold", "italic", "strike", "code", "bullet-list", "ordered-list", "blockquote",
+  "example", "inline-math", "display-math", "text-color", "tex", "figure",
+  "graphics", "ref", "forest",
+] as const satisfies readonly ActionId[];
 
 export interface ActionsMenuPanelProps {
   editor: Editor;
@@ -381,8 +397,6 @@ export function ActionsMenuPanel({
     stashedRangeRef.current = null;
   };
 
-  if (typeof document === "undefined") return null;
-
   const isActive = (name: string, attrs?: Record<string, unknown>) =>
     editor.isActive(name, attrs);
 
@@ -445,7 +459,7 @@ export function ActionsMenuPanel({
   // item content). The asymmetry is by design, not a bug to "fix" — and since
   // BOTH derive from the ONE `menuTarget` (same `paragraphUuid`, same
   // `nodeKind`/`range`), they cannot diverge on anchor identity.
-  const cardRows: DecoratedMenuRow[] = LIGHTNING_CARD_ROWS.map((entry) => {
+  const cardRowDisabled = (entry: (typeof LIGHTNING_CARD_ROWS)[number]): boolean => {
     const applyRef =
       mode === "cursor"
         ? { kind: "cursor" as const, pos: range.from, paragraphId: paragraphUuid }
@@ -461,8 +475,12 @@ export function ActionsMenuPanel({
     // gesture ref short-circuited to "allow", so the lightning bolt let you add
     // a citation to a `titleField` / footnote to a codeBlock — the SAME
     // corruption the grab-bar already greyed out. Now all four surfaces agree.
-    const disabled =
-      entry.applies({ ref: applyRef, canEdit, view: editor.view } as ActionContext) === "disabled";
+    return (
+      entry.applies({ ref: applyRef, canEdit, view: editor.view } as ActionContext) === "disabled"
+    );
+  };
+  const cardRows: DecoratedMenuRow[] = LIGHTNING_CARD_ROWS.map((entry) => {
+    const disabled = cardRowDisabled(entry);
     return {
       id: entry.id,
       label: entry.label,
@@ -478,6 +496,26 @@ export function ActionsMenuPanel({
       run: () => runAction(entry.id as DragHandleAction),
     };
   });
+
+  // Task 738 — the painted state FOLLOWS the live editor while the panel is
+  // open. A format click deliberately keeps the menu open (see `runGridAction`)
+  // and sets no React state, and nothing above re-renders on a mark toggle
+  // (the parent's placement bails on an unchanged rect), so every cell's
+  // `active` and `disabled`, and the card rows' grey-out, were a snapshot of the
+  // last render: click B, the word turns bold, the cell stays unlit. The
+  // signature re-asks the SAME reads the render makes, ≤1/frame, and
+  // re-renders only when one of them changed. The subscription lives exactly as
+  // long as this panel, which exists only while the menu is open.
+  useLiveEditorSignature(editor, () =>
+    [
+      canEdit ? "e" : "r",
+      LIGHTNING_ACTIVE_MARKS.map((n) => (isActive(n) ? 1 : 0)).join(""),
+      LIGHTNING_GRID_CELL_IDS.map((id) => (gridCellDisabled(id) ? 1 : 0)).join(""),
+      LIGHTNING_CARD_ROWS.map((entry) => (cardRowDisabled(entry) ? 1 : 0)).join(""),
+    ].join("|"),
+  );
+
+  if (typeof document === "undefined") return null;
 
   return (
     <>
@@ -897,6 +935,7 @@ function FmtBtn({
       type="button"
       {...iconHint({ label: title })}
       disabled={disabled}
+      data-format-active={active ? "true" : undefined}
       className={gridCellClassName(disabled)}
       style={{
         ...gridCellShellStyle({
