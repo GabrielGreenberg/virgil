@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useState, useRef, useEffect, type ReactNode } from "react";
+import { memo, useCallback, useState, useRef, type ReactNode } from "react";
 import { Editor } from "@tiptap/react";
 import type { DividerLevel } from "@/hooks/useViewPrefs";
 import {
@@ -16,6 +16,7 @@ import { useMenuItem } from "./menu/useMenuItem";
 import { MenuToggleRow } from "./menu/MenuToggleRow";
 import { MenuSeparator, MenuSectionLabel } from "./menu/MenuChrome";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
+import { elementAnchor } from "./menu/live-anchor";
 // CHIP 5a: the BlockType dropdown's heading items route through the canonical
 // `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
 // the `\chapter`…`\subsubsection` slash commands call. The dropdown used to
@@ -301,37 +302,50 @@ function BlockTypeRow({
   );
 }
 
-// The docked dropdown is positioned by `absolute` placement classes inside the
-// trigger's `relative` wrapper (the toolbar stacking context — design §3.3 R4
-// keeps `portal={false}`). `placements` is unused on the docked path (the
-// inline branch ignores `useFloatingMenuPosition`); a satisfier list is passed
-// to keep the primitive's prop contract.
-const DOCKED_PLACEHOLDER_PLACEMENTS: FloatingMenuPlacement[] = [{ side: "below", align: "start" }];
-
-// `anchorRect` is required by the provider's prop contract but UNUSED on the
-// docked `portal={false}` path (the inline branch never calls
-// `useFloatingMenuPosition`); positioning comes from the `absolute` placement
-// classes. A static zero rect satisfies the type without reading a ref during
-// render (the `react-hooks/refs` rule). Frozen so it's a stable identity.
-const DOCKED_ZERO_RECT = Object.freeze({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+// Both MenuBar dropdowns are ordinary PORTALED menus (task 751): the ONE
+// placement owner (`useFloatingMenuPosition`, via `<MenuProvider>`) flips,
+// clamps and — with `maxHeight` — caps them to the space the chosen side has,
+// scrolling the rest. They used to dock inline (`portal={false}`, design §3.3
+// R4) and each hand-rolled its own RAF `getBoundingClientRect` flip into
+// placement classes: the View menu dropped the height clamp (fully expanded it
+// ran off the window with its last rows unreachable), and the block-type
+// dropdown's `absolute` classes lost to the docked branch's inline
+// `position: relative`, so it rendered in flow and its flip never applied. R4's
+// own stated exit ("consider the portal+hook path if drift appears") is taken:
+// the docked path is deleted from the primitive, and the menus' anchors are the
+// LIVE trigger rects (`elementAnchor`), so they follow a scrolled or dragged
+// host by the sanctioned RAF-coalesced re-anchor.
+//
+// When NO placement fits, the positioner (with `maxHeight`) takes the side with
+// the most room, so order here is preference, not a fallback-of-last-resort.
+const BLOCK_TYPE_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below", align: "start" },
+  { side: "above", align: "start" },
+  { side: "below", align: "end" },
+  { side: "above", align: "end" },
+];
+const VIEW_MENU_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below", align: "end" },
+  { side: "below", align: "start" },
+  { side: "above", align: "end" },
+  { side: "above", align: "start" },
+];
 
 /**
- * Block-type dropdown — migrated onto the `<Menu>` primitive (Phase C, the
- * docked `portal={false}` path / design §3.3 R4 + §4 the BlockTypeDropdown
- * row). The provider owns click-outside dismissal, the Escape handler, the
+ * Block-type dropdown — migrated onto the `<Menu>` primitive (Phase C,
+ * design §4 the BlockTypeDropdown row; portaled since task 751). The provider owns click-outside dismissal, the Escape handler, the
  * keyboard controller, and the ARIA wiring. Each block-type row calls
  * `useMenuItem` and spreads `getItemProps()` onto its `<button>` (no markup
  * rewrite). GAINS Up/Down/Home/End arrow nav + Enter; PRESERVES the
- * current-level checkmark (now also `aria-checked`/`data-current`), the docked
- * flip-up/flip-left positioning, click-outside + Escape close, and the collab
+ * current-level checkmark (now also `aria-checked`/`data-current`),
+ * click-outside + Escape close, and the collab
  * read-only gate.
  *
- * Docked positioning: `portal={false}` renders the menu inline (position
- * relative) so `useFloatingMenuPosition` is bypassed; the flip logic stays a
- * tiny placement-class chooser (the old `getBoundingClientRect` math →
- * `top-full`/`bottom-full` + `left-0`/`right-0`), applied via
- * `containerClassName`. This reproduces today's docked anchoring exactly while
- * the primitive owns nav/dismissal/keyboard.
+ * Positioning: a portaled menu anchored to the LIVE trigger rect; the
+ * primitive's one positioner owns the flip, clamp and height cap (task 751 —
+ * see `BLOCK_TYPE_PLACEMENTS`). It overlays the lightning grid rather than
+ * pushing it, and as a nested provider it registers itself into the grid
+ * menu's click-outside excludes (R8), so a pick never dismisses the grid.
  *
  * Note: when this dropdown ALSO appears as a nested cell in the lightning grid
  * (a future sub-menu trigger), the R6 nested-key gating means only the topmost
@@ -340,10 +354,15 @@ const DOCKED_ZERO_RECT = Object.freeze({ left: 0, top: 0, right: 0, bottom: 0, w
  */
 export function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [placement, setPlacement] = useState<{ v: "below" | "above"; h: "left" | "right" }>({ v: "below", h: "left" });
+  // The trigger as STATE too, for `excludeRefs`: a mousedown on it must not
+  // dismiss (it toggles), and a ref can't be read during render.
+  const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
+  const setTrigger = useCallback((el: HTMLButtonElement | null) => {
+    triggerRef.current = el;
+    setTriggerEl(el);
+  }, []);
+  const anchor = useCallback(() => elementAnchor(triggerRef.current)(), []);
 
   const current = editor.isActive("heading", { level: 0 })
     ? "0"
@@ -361,50 +380,25 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
                 ? "6"
                 : "p";
 
-  // Recompute the docked placement on open — the same flip-up/flip-left intent
-  // the old `getBoundingClientRect` math had, now expressed as `absolute`
-  // placement classes inside the relative wrapper. The measure + setState is
-  // RAF-deferred (not synchronous in the effect body) so it reads the laid-out
-  // dropdown and doesn't cascade-render (react-hooks/set-state-in-effect).
-  useEffect(() => {
-    if (!open) return;
-    const raf = requestAnimationFrame(() => {
-      if (!triggerRef.current || !dropdownRef.current) return;
-      const tr = triggerRef.current.getBoundingClientRect();
-      const dr = dropdownRef.current.getBoundingClientRect();
-      const GAP = 4;
-      const v: "below" | "above" =
-        tr.bottom + dr.height + GAP > window.innerHeight && tr.top > dr.height + GAP ? "above" : "below";
-      const h: "left" | "right" =
-        tr.left + dr.width > window.innerWidth - 4 && window.innerWidth - tr.right > dr.width ? "right" : "left";
-      setPlacement((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [open]);
-
   // The activedescendant host: the focusable trigger button. The window-capture
   // keyboard controller fires regardless of focus, but a screen reader tracks
   // the active row via this host (NO `.focus()` on the rows).
   const getActiveDescendantHost = useCallback(() => triggerRef.current, []);
   // Stable close so the provider's dismissal effect doesn't re-subscribe its
-  // capture listener every time the placement state re-renders.
+  // capture listener on re-render.
   const close = useCallback(() => setOpen(false), []);
 
-  // Placement + sizing ONLY — the surface (bg / border / shadow / radius) is
+  // Sizing ONLY — the surface (bg / border / shadow / radius) is
   // the primitive's `.menu-surface` (task 295). This string used to carry a
   // hand-copy of `MENU_SURFACE_CLASS`, which is how the header dropdowns came
   // to wear a different border grey and a heavier shadow than the editor's own
   // menus while every test stayed green.
-  const dropdownClassName = [
-    "absolute py-1 min-w-[160px]",
-    placement.v === "below" ? "top-full mt-1" : "bottom-full mb-1",
-    placement.h === "left" ? "left-0" : "right-0",
-  ].join(" ");
+  const dropdownClassName = "py-1 min-w-[160px]";
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <button
-        ref={triggerRef}
+        ref={setTrigger}
         onClick={() => setOpen((o) => !o)}
         data-hint="Block type"
         aria-haspopup="menu"
@@ -419,15 +413,18 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
           id="block-type"
           layout="list"
           role="menu"
-          portal={false}
-          anchorRect={DOCKED_ZERO_RECT}
-          placements={DOCKED_PLACEHOLDER_PLACEMENTS}
+          anchorRect={anchor}
+          trackAnchor={anchor}
+          placements={BLOCK_TYPE_PLACEMENTS}
+          gap={4}
+          maxHeight
+          excludeRefs={[triggerEl]}
           getActiveDescendantHost={getActiveDescendantHost}
           onClose={close}
           ariaLabel="Block type"
           containerClassName={dropdownClassName}
         >
-          <div ref={dropdownRef}>
+          <div>
             {BLOCK_TYPES.map((bt) => (
               <BlockTypeRow
                 key={bt.value}
@@ -534,12 +531,12 @@ function ViewActionRow({ id, label, onRun }: { id: string; label: string; onRun:
  *  flips above when it would overflow the bottom of the viewport.
  *
  *  ── MENU-PRIMITIVE MIGRATION (Phase C, the R5 expandable-tree case) ──
- *  Migrated onto the `<Menu>` primitive (`portal={false}` docked, design §3.3
- *  R4 + §4 the ViewMenu row + §6 R5). The provider owns click-outside
+ *  Migrated onto the `<Menu>` primitive (design §4 the ViewMenu row + §6 R5;
+ *  portaled since task 751). The provider owns click-outside
  *  dismissal, the Escape handler, the keyboard controller, and the ARIA wiring;
  *  every visible row registers via `useMenuItem` so the snapshot grows/shrinks
  *  as groups expand. GAINS Up/Down/Home/End + Enter nav (none today). All
- *  toggles + expand/collapse + the docked flip positioning are preserved. See
+ *  toggles + expand/collapse are preserved; placement is the primitive's (task 751). See
  *  the ViewMenu-rows block comment for the Right=expand / Left=collapse tree
  *  navigation, wired via the primitive's `onArrowHorizontal` seam below.
  *
@@ -568,35 +565,19 @@ export function ViewMenu({
   const [highlightsExpanded, setHighlightsExpanded] = useState(false);
   const [dividersExpanded, setDividersExpanded] = useState(false);
   const [dividerPrefsExpanded, setDividerPrefsExpanded] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [placement, setPlacement] = useState<{ v: "below" | "above"; h: "right" | "left" }>({ v: "below", h: "right" });
-
-  // Docked flip placement — unchanged from the pre-migration positioner; the
-  // provider's `portal={false}` inline render bypasses `useFloatingMenuPosition`
-  // so the flip stays a placement-class chooser (re-run when a group expands and
-  // changes the dropdown height). The measure + setState is RAF-deferred (not
-  // synchronous in the effect body) so it reads the laid-out dropdown and
-  // doesn't cascade-render (react-hooks/set-state-in-effect). Click-outside
-  // dismissal + Escape are now owned by the provider (the old `mousedown`
-  // effect is removed).
-  useEffect(() => {
-    if (!open) return;
-    const raf = requestAnimationFrame(() => {
-      if (!triggerRef.current || !dropdownRef.current) return;
-      const tr = triggerRef.current.getBoundingClientRect();
-      const pr = dropdownRef.current.getBoundingClientRect();
-      const GAP = 6;
-      const v: "below" | "above" = tr.bottom + pr.height + GAP > window.innerHeight && tr.top > pr.height + GAP ? "above" : "below";
-      const h: "right" | "left" = tr.right - pr.width < 4 && window.innerWidth - tr.left > pr.width ? "left" : "right";
-      setPlacement((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [open, marginaliaExpanded, highlightsExpanded, dividersExpanded, dividerPrefsExpanded]);
+  const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
+  const setTrigger = useCallback((el: HTMLButtonElement | null) => {
+    triggerRef.current = el;
+    setTriggerEl(el);
+  }, []);
+  // Placement (flip, clamp, height cap + scroll) is the primitive's — see
+  // `VIEW_MENU_PLACEMENTS`. Expanding a group grows the menu; the positioner's
+  // ResizeObserver re-measures it, so no per-group effect deps are needed.
+  const anchor = useCallback(() => elementAnchor(triggerRef.current)(), []);
 
   // Stable close so the provider's dismissal effect doesn't re-subscribe its
-  // capture listener every time the placement/expand state re-renders.
+  // capture listener every time the expand state re-renders.
   const close = useCallback(() => setOpen(false), []);
 
   // The activedescendant host: the focusable trigger button (the window-capture
@@ -604,17 +585,13 @@ export function ViewMenu({
   // reader — NO `.focus()` on the rows).
   const getActiveDescendantHost = useCallback(() => triggerRef.current, []);
 
-  // Placement + sizing ONLY; surface chrome is `.menu-surface` (task 295).
-  const dropdownClass = [
-    "w-52 py-1",
-    placement.v === "below" ? "top-full mt-1.5" : "bottom-full mb-1.5",
-    placement.h === "right" ? "right-0" : "left-0",
-  ].join(" ");
+  // Sizing ONLY; surface chrome is `.menu-surface` (task 295).
+  const dropdownClass = "w-52 py-1";
 
   return (
-    <div className="relative flex items-center" ref={ref}>
+    <div className="relative flex items-center">
       <button
-        ref={triggerRef}
+        ref={setTrigger}
         onClick={() => setOpen(!open)}
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"} focus-ring`}
         {...iconHint({ label: "View options" })}
@@ -657,16 +634,18 @@ export function ViewMenu({
             if (dir === "right" && !expanded) setExpanded(true);
             else if (dir === "left" && expanded) setExpanded(false);
           }}
-          portal={false}
-          anchorRect={DOCKED_ZERO_RECT}
-          placements={DOCKED_PLACEHOLDER_PLACEMENTS}
+          anchorRect={anchor}
+          trackAnchor={anchor}
+          placements={VIEW_MENU_PLACEMENTS}
+          gap={6}
+          maxHeight
+          excludeRefs={[triggerEl]}
           getActiveDescendantHost={getActiveDescendantHost}
           onClose={close}
           ariaLabel="View options"
           containerClassName={dropdownClass}
-          containerStyle={{ position: "absolute" }}
         >
-        <div ref={dropdownRef}>
+        <div>
           <MenuSectionLabel>Display</MenuSectionLabel>
           {/* Every row below reads its value as `viewPrefs[<registry key>]` and
               writes through one of the three registry-driven writers, so the

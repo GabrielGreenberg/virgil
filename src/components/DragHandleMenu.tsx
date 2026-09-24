@@ -209,7 +209,6 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, target, ed
       id="grab"
       layout="list"
       role="menu"
-      portal
       anchorRect={live?.anchorRect ?? anchorRect}
       trackAnchor={live?.trackAnchor}
       placements={DRAG_HANDLE_PLACEMENTS}

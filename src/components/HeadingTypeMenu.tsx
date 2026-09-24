@@ -134,7 +134,6 @@ export function HeadingTypeMenu({ anchorRect, trackAnchor, currentLevel, documen
       id="heading-type"
       layout="list"
       role="menu"
-      portal
       anchorRect={anchorRect}
       trackAnchor={trackAnchor}
       placements={HEADING_TYPE_PLACEMENTS}

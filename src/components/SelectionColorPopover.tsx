@@ -113,7 +113,6 @@ export function SelectionColorPopover({
       // item-role resolution falls to "menuitem" (menuRole !== "listbox"), which
       // is the correct role for the swatch/clear command buttons.
       role={"dialog" as MenuRole}
-      portal
       anchorRect={anchorRect}
       trackAnchor={trackAnchor}
       placements={COLOR_POPOVER_PLACEMENTS}

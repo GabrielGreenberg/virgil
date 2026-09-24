@@ -391,7 +391,6 @@ export function AnchoredMenu({
           layout={layout}
           orientation={orientation}
           role={role}
-          portal
           anchorRect={anchorRect}
           placements={ANCHORED_MENU_PLACEMENTS[align]}
           gap={gap}

@@ -147,7 +147,6 @@ export function TabPlusMenu({
       id="tab-plus"
       layout="list"
       role="menu"
-      portal
       anchorRect={anchorRect}
       placements={TAB_PLUS_PLACEMENTS}
       gap={4}

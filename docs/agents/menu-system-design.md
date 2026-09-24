@@ -98,7 +98,7 @@ keyboard controller.
   role="menu"                          // "menu" | "listbox" (drives ARIA fork, §3.3)
   anchorRect={rect}                    // DOMRect | () => DOMRect  (thunk for caret-anchored)
   placements={[{ side: "below", align: "start" }, { side: "above" }]}
-  portal                               // default true; false => docked inline (MenuBar)
+  // (portal — REMOVED, task 751: every menu portals to document.body)
   letterShortcuts                      // enable the bare-key O(1) fast-path
   dismissOn={{ escape: { stopPropagation: true } }}   // see §3.2; default true editor-anchored
   excludeRefs={[colorPopoverRef]}      // extra click-outside exemptions (nested popovers)
@@ -306,6 +306,8 @@ signature verified) and merges its returned `ref` + `style` into the container v
 
 `portal` defaults `true` (createPortal to `document.body`, the norm); `portal={false}`
 skips the portal and renders inline-relative for MenuBar's docked dropdowns.
+**Superseded (task 751):** the `portal` prop is gone — every menu portals, and
+MenuBar's two dropdowns anchor to their live trigger rect (see R4).
 
 ### 3.4 The composite grid→list seam (explicit, graft from A)
 
@@ -442,7 +444,7 @@ In the dev preview (load `virgil-data/doc_devtest`), per the preview-internals m
 | **R1** | ~~`aria-activedescendant` on a container while a `contentEditable` PM view holds focus is unverified.~~ **RESOLVED — pre-build R1 spike PASSED live (2026-06-16):** no focus steal, window-capture intercepts before PM (stopPropagation), emit delta 0 (see §3.1). | Mechanics proven; native-caret suppression (spec-standard) gets a real-keypress check in Phase B/D. The fallbacks (focusable proxy / take-focus-restore-on-close) are no longer needed. |
 | **R2** | **Dual-backend `registryFor()` leak.** `move()` is sync setState (React) vs. async tx-dispatch (PM). Timing/async semantics differ; the two can drift. | Shared TS contract type + a coverage test asserting both backends satisfy `{ items(), move(), activate() }`; the React view is strictly a one-way subscriber to the cursor (mirrors the existing `slashPopupStore` flow). |
 | **R3** | **Composite cross-region edge** (`lastGridCol` memory, disabled-skip at the seam, partial-last-row clamp). New logic in no current menu; a wrong index strands the user. | The §3.4 edge is authored (graft from A) + a focused unit test matrix in Phase B (every grid corner ↔ list head, with disabled rows at the seam, with a partial last row). |
-| **R4** | **MenuBar docked (`portal={false}`) is the least-exercised path** — in-tree absolute placement may drift from today's `top-full`/`right-0` CSS. | Migrate the docked dropdowns **last** (Phase C); keep `portal={false}` to preserve the stacking context; only consider the portal+hook path (clean option ii) if drift appears. |
+| **R4** | **MenuBar docked (`portal={false}`) is the least-exercised path** — in-tree absolute placement may drift from today's `top-full`/`right-0` CSS. | Migrate the docked dropdowns **last** (Phase C); keep `portal={false}` to preserve the stacking context; only consider the portal+hook path (clean option ii) if drift appears. **Resolved (task 751): drift appeared** — the View menu lost its height cap, the block-type dropdown's placement classes were inert — so both took option ii and the docked path was deleted from `MenuProvider`. |
 | **R5** | **ViewMenu's arbitrary-depth expandable tree strains the flat `region`+`coords` model.** | Treat ViewMenu as the honest tree case: register/unregister expanded children so the snapshot mutates; if the flat model proves insufficient, add parent/child links to `MenuNode` rather than forcing coords. Scoped to one file, done last. |
 | **R6** | **Nested provider key-ownership.** If parent + child both capture `window` keydown, arrows double-fire. | A `MenuStackContext`: only the topmost provider's controller is live; others early-return on `!isTopOfStack`. Escape pops one level. Verified in Phase D.2. |
 | **R7** | **Escape `stopPropagation` default must be right per menu** or either the editor blurs (`tab-indent.ts`) or Escape stops working in a parent. | Default `true` for editor-anchored menus (reproduces `ActionsMenuPanel.tsx:338`, verified); per-menu audit in the migration; Phase D.3 regression check. |

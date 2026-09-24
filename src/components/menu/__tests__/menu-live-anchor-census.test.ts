@@ -13,8 +13,14 @@
 //
 // So: every portaled `<MenuProvider>` call site must pass `trackAnchor` (see
 // `live-anchor.ts` for the three anchor shapes), or sit on
-// `PERMITTED_FROZEN_ANCHORS` with the reason its rect is already live. A
-// docked `portal={false}` menu moves with its host by layout and is exempt.
+// `PERMITTED_FROZEN_ANCHORS` with the reason its rect is already live. Every
+// `<MenuProvider>` portals — the docked `portal={false}` path was deleted in
+// task 751 — so there is no exemption.
+//
+// Task 751's second clause: a file that mounts a `<MenuProvider>` does not
+// place the menu itself. The docked path's two consumers each re-derived
+// placement by hand (a RAF `getBoundingClientRect` flip into placement
+// classes) and each dropped a different guard; placement has ONE owner.
 //
 // Stated limit: the census reads the OPEN TAG, so it proves a thunk is PASSED,
 // not that it re-reads the right thing — `menu-live-anchor.test.tsx` drives the
@@ -63,12 +69,30 @@ function portaledSites(): Site[] {
   for (const f of [...walk(SRC), ...walk(LIBRARY)]) {
     const src = commentsStripped(readFileSync(f, "utf8"));
     for (const hit of elementsNamed(src, "MenuProvider")) {
-      if (/\bportal=\{false\}/.test(hit.tag)) continue;
       out.push({ file: rel(f), tag: hit.tag });
     }
   }
   return out;
 }
+
+/** A hand-rolled placement: a placement state setter, or a bespoke flip read
+ *  against the viewport — the shape both MenuBar hand-rolls had. */
+const HAND_PLACEMENT = /\bsetPlacement\s*\(|\bwindow\.innerHeight\b/;
+
+describe("menu placement has one owner (task 751)", () => {
+  it("no <MenuProvider> call site computes its menu's placement by hand", () => {
+    const offenders: string[] = [];
+    for (const f of [...walk(SRC), ...walk(LIBRARY)]) {
+      const src = commentsStripped(readFileSync(f, "utf8"));
+      if (elementsNamed(src, "MenuProvider").length === 0) continue;
+      if (HAND_PLACEMENT.test(src)) offenders.push(rel(f));
+    }
+    expect(
+      offenders,
+      "these files mount a <MenuProvider> AND place a menu by hand — pass `placements` (+ `maxHeight`) and a live anchor, and let useFloatingMenuPosition own the flip/clamp",
+    ).toEqual([]);
+  });
+});
 
 describe("menu live-anchor census (task 747)", () => {
   const sites = portaledSites();

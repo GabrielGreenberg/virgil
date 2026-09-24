@@ -15,7 +15,7 @@
  * ── MENU-PRIMITIVE MIGRATION (Phase C) ──
  * Migrated onto the `<Menu>` primitive's COMBOBOX path (`src/components/menu/`,
  * design `docs/agents/menu-system-design.md` §3.5 + §4 the BibEntryPicker row).
- * It renders via `<MenuProvider layout="combobox" role="listbox" portal>`; the
+ * It renders via `<MenuProvider layout="combobox" role="listbox">`; the
  * provider owns positioning (the old `useLayoutEffect` coord math + viewport
  * clamp → `placements` + the `maxHeight` clamp passthrough), click-outside
  * dismissal (the old `mousedown` effect → the provider's `useMenuDismiss`, with
@@ -222,7 +222,6 @@ function BibEntryPickerMenuInner({
       id="bib-entry-picker"
       layout="combobox"
       role="listbox"
-      portal
       anchorRect={anchorThunk}
       trackAnchor={anchorThunk}
       placements={BIB_PICKER_PLACEMENTS}

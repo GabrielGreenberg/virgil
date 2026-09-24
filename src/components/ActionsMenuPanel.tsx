@@ -9,7 +9,7 @@
  * ── MENU-PRIMITIVE MIGRATION (Phase B2) ──
  * This is the COMPOSITE reference for the `<Menu>` primitive
  * (`src/components/menu/`, design `docs/agents/menu-system-design.md`). It now
- * renders via `<MenuProvider layout="composite" role="menu" portal
+ * renders via `<MenuProvider layout="composite" role="menu"
  * id="lightning">` with a `<MenuGrid cols={4}>` of the bespoke format-grid
  * cells ABOVE a `<MenuList>` rendering the card actions via
  * `<MenuItemsFromRegistry>`. The provider owns positioning
@@ -32,8 +32,9 @@
  * migrates them). The color popover portals to `document.body` separately, so it
  * is registered into the provider's `excludeRefs` (a real element ref, NOT the
  * old `querySelector('div[aria-label="Text color"]')` string) so a click into it
- * doesn't dismiss the lightning panel. The BlockTypeDropdown renders in-tree
- * (a DOM descendant of the menu container), so it needs no exclusion.
+ * doesn't dismiss the lightning panel. The BlockTypeDropdown is a NESTED
+ * `<MenuProvider>` (portaled, task 751), which registers its own container into
+ * this provider's exclude set (R8), so it needs no explicit exclusion.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -527,7 +528,6 @@ export function ActionsMenuPanel({
         id="lightning"
         layout="composite"
         role="menu"
-        portal
         anchorRect={triggerRect}
         placements={PANEL_PLACEMENTS}
         gap={4}
@@ -1048,9 +1048,9 @@ function ColorGridCell({
 
 /**
  * The BlockType dropdown grid cell — a nested-menu trigger (kept bespoke for
- * Phase C). The `BlockTypeDropdown` owns its own button + open state + in-tree
- * dropdown (a DOM descendant of the menu container, so click-outside needs no
- * exclusion for it). We wrap it in a registered grid cell so arrows can land on
+ * Phase C). The `BlockTypeDropdown` owns its own button + open state + its
+ * nested, portaled dropdown (which auto-registers into this menu's click-outside
+ * excludes, R8). We wrap it in a registered grid cell so arrows can land on
  * it; Enter/Space (and click) open the dropdown by clicking the inner trigger.
  */
 function BlockTypeGridCell({

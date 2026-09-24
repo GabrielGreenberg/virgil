@@ -41,14 +41,16 @@ const MENUBAR_SRC = readFileSync(path.resolve(here, "../MenuBar.tsx"), "utf8");
 describe("ViewMenu — no hand-rolled useState feeds a view toggle", () => {
   it("the only useState in MenuBar's ViewMenu are the disclosure expand/collapse flags", () => {
     // Collect every `useState` call in MenuBar source. The ViewMenu is allowed
-    // to keep disclosure useState (group expand/collapse + the open flag +
-    // placement), which are UI posture, NOT persisted prefs. Any useState whose
+    // to keep disclosure useState (group expand/collapse + the open flag) and
+    // the trigger element (the menu's click-outside exemption — task 751,
+    // which also retired the hand-rolled `placement` state), which are UI
+    // posture, NOT persisted prefs. Any useState whose
     // setter name looks like a pref toggle (`setShow*`) is the bug we forbid.
     const useStateNames = [...MENUBAR_SRC.matchAll(/const \[\s*([A-Za-z0-9_]+)\s*,\s*set([A-Za-z0-9_]+)\s*\]\s*=\s*useState/g)]
       .map((m) => m[1]);
     // Forbid a checked-state useState (a pref read backed by local component
-    // state). The legitimate ones are: open, *Expanded, placement.
-    const ALLOWED = /^(open|placement|.*Expanded)$/;
+    // state). The legitimate ones are: open, *Expanded, triggerEl.
+    const ALLOWED = /^(open|triggerEl|.*Expanded)$/;
     const offenders = useStateNames.filter((n) => !ALLOWED.test(n));
     expect(offenders).toEqual([]);
   });

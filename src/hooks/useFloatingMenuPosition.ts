@@ -292,13 +292,39 @@ export function useFloatingMenuPosition(
       }
     }
     if (!chosen) {
-      const last =
+      // Nothing fits. Without a height clamp the LAST placement is the stated
+      // fallback. WITH one, the menu is about to be capped to its side's room,
+      // so take the placement whose side has the MOST room (first wins a tie):
+      // a list taller than the window must not fall back to the side with no
+      // space and clamp to a sliver (task 751 — a top-of-pane kebab whose last
+      // placement is "above").
+      let fallback: FloatingMenuPlacement =
         placements[placements.length - 1] ?? {
           side: "below" as FloatingMenuSide,
         };
-      const coords = computeCoords(anchor, size, last, gap);
-      chosen = clampToViewport(coords, size, vw, vh, margin);
-      chosenSide = last.side;
+      if (maxHeight && placements.length > 0) {
+        let best = -1;
+        for (const placement of placements) {
+          const room = availableHeightFor(anchor, placement.side, vh, gap, margin);
+          if (room > best) {
+            best = room;
+            fallback = placement;
+          }
+        }
+      }
+      // Place by the height the menu WILL have once capped, so an "above"
+      // fallback sits flush over its anchor instead of clamping off the top.
+      const placedSize: Size = maxHeight
+        ? { w: size.w, h: Math.min(size.h, availableHeightFor(anchor, fallback.side, vh, gap, margin)) }
+        : size;
+      chosen = clampToViewport(
+        computeCoords(anchor, placedSize, fallback, gap),
+        placedSize,
+        vw,
+        vh,
+        margin,
+      );
+      chosenSide = fallback.side;
     }
     const next = chosen;
     // Scroll-anchor stability probe (task 042): one record per coalesced frame

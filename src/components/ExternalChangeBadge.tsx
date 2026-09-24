@@ -413,7 +413,6 @@ function ExternalChangeBadge() {
         id="external-change-menu"
         layout="list"
         role="menu"
-        portal
         anchorRect={anchorRect}
         placements={MENU_PLACEMENTS}
         gap={4}
