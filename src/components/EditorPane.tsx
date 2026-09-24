@@ -1349,14 +1349,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     };
   }, [viewPrefs, orphanedFootnotesStore]);
 
-  // W2d (T4 D6 seam) — the card-lifecycle reconciler. Consumes the
-  // `card-deleted` / `card-morphed` signal `runCardLifecycleEvent` publishes and
-  // prunes / re-keys the global `cardStore` for the SIDECAR-backed kinds
+  // W2d (T4 D6 seam) — the card-lifecycle reconciler. Returns THIS pane's sink
+  // for the `card-deleted` / `card-morphed` signal `runCardLifecycleEvent`
+  // reports, threaded into every lifecycle door below as `signal` (task 739 —
+  // it used to subscribe a module channel every open pane shared, so a delete
+  // in one paper pruned the same-id card in another). It prunes / re-keys this
+  // doc's `cardStore` for the SIDECAR-backed kinds
   // (report/note/cutter/revision), whose lifecycle the DocStructureBus never
   // sees. Unflagged (correct-by-construction; no bus subscription) — keeps a
   // morphed report's selection halo (REP-F6-02 / OMNI-F6-02) and clears a
   // deleted card's stale halo regardless of the inline-atom-lifecycle flag.
-  useCardLifecycleReconciler(cardStoreInst);
+  const cardLifecycleSignal = useCardLifecycleReconciler(cardStoreInst);
 
   // W2c — the citation add/resync reconciler, registered as a POLICY on the
   // same single consumer (NOT a new subscription; the +1-not-+3 invariant). The
@@ -1619,6 +1622,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           // or reverted) before the kind flips, so it can't outlive the record
           // that manages it (task 238). Inert for every other kind.
           appliedSplice: appliedSpliceOps,
+          // SIGNAL — this pane's own cardStore re-key (task 739).
+          signal: cardLifecycleSignal,
           mutate: () => {
             // Dispatch to the owning panel hook with its expected data toKind.
             // Keyed on the RESOLVED TARGET, never on the FROM kind: the data
@@ -1670,7 +1675,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow, cardLifecycleSignal],
   );
   // The ONE kind-chevron handler every morphing card is wired to — docked,
   // omni and float chrome alike. It is the chokepoint itself, minus the promise.
@@ -1713,8 +1718,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         rawDelete: revisionsHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
+        signal: cardLifecycleSignal,
       }),
-    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
+    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const deleteCutterCard = useMemo(
     () =>
@@ -1727,8 +1733,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         rawDelete: cutterHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
+        signal: cardLifecycleSignal,
       }),
-    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
+    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: morphCard, deleteCard: deleteRevisionCard }),
@@ -1783,8 +1790,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         rawDelete: reportsHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
+        signal: cardLifecycleSignal,
       }),
-    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
+    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const reportsHook = useMemo(
     () => ({
@@ -1807,8 +1815,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         rawDelete: notesHookRaw.deleteNote,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
+        signal: cardLifecycleSignal,
       }),
-    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps],
+    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: morphCard, deleteNote: deleteNoteCard }),
@@ -1826,8 +1835,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         rawDelete: todosHookRaw.deleteItem,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
+        signal: cardLifecycleSignal,
       }),
-    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeAiRequestRow, appliedSpliceOps],
+    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   // The Todo panel's SECOND destructive door — "clear done" — composed from the
   // wired single delete above rather than re-implemented (task 681). It used to

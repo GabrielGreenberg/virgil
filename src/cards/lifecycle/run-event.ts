@@ -57,7 +57,7 @@
 import { CARD_REGISTRY } from "../card-registry";
 import { describeDrops, morphDropsTone } from "../morph-drop-fields";
 import type { CardKind } from "../types";
-import { publishCardDeleted, publishCardMorphed } from "./card-lifecycle-signal";
+import type { CardLifecycleSink } from "./card-lifecycle-signal";
 import {
   ownsAppliedSplice,
   type AppliedSpliceOps,
@@ -104,6 +104,12 @@ export interface CardLifecycleDeps {
    *  EVERY event whose kind `ownsAppliedSplice`, so no per-kind wiring exists
    *  to forget. */
   appliedSplice?: AppliedSpliceOps;
+  /** The D6 SIGNAL obligation: where the committed delete/morph is reported so
+   *  the pane's `cardStore` is pruned / re-keyed. REQUIRED, and bound per pane
+   *  (`useCardLifecycleReconciler` returns it) — never a module channel, so an
+   *  event can only reach the store of the pane that ran it (task 739). A door
+   *  that forgets it is a compile error, not a cross-doc leak. */
+  signal: CardLifecycleSink;
 }
 
 export type LifecycleEvent =
@@ -377,8 +383,9 @@ export async function runCardLifecycleEvent(
     // 4. MUTATE (the per-doc hook flips the on-disk kind via the morph transform).
     await deps.mutate();
 
-    // 5. SIGNAL — the D6 seam: W2b re-keys cardStore {fromKind,id}→{toKind,id}.
-    publishCardMorphed(ev.fromKind, morph.to, ev.id);
+    // 5. SIGNAL — the D6 seam: the pane's sink re-keys ITS cardStore
+    //    {fromKind,id}→{toKind,id} (task 739: this pane's, never every pane's).
+    deps.signal({ type: "card-morphed", fromKind: ev.fromKind, toKind: morph.to, id: ev.id });
     return true;
   }
 
@@ -413,7 +420,8 @@ export async function runCardLifecycleEvent(
   // 4. MUTATE.
   await deps.mutate();
 
-  // 5. SIGNAL — the D6 seam: W2b prunes any cardStore ref keyed on {kind,id}.
-  publishCardDeleted(ev.kind, ev.id);
+  // 5. SIGNAL — the D6 seam: the pane's sink prunes any ref keyed on {kind,id}
+  //    in ITS cardStore (task 739).
+  deps.signal({ type: "card-deleted", kind: ev.kind, id: ev.id });
   return true;
 }

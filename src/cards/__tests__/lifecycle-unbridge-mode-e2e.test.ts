@@ -137,6 +137,7 @@ describe("a flag-dropping morph closes an ANSWERED-L3 row (313)", () => {
         { type: "morph", fromKind: m.from, id: "card-1" },
         {
           confirm: async () => true,
+          signal: () => {},
           unbridgeAiRequest: forwardToBridge,
           mutate: () => {},
         },
@@ -177,6 +178,7 @@ describe("a flag-dropping morph closes an ANSWERED-L3 row (313)", () => {
       { type: "morph", fromKind: m.from, id: "card-1" },
       {
         confirm: async () => true,
+        signal: () => {},
         unbridgeAiRequest: forwardToBridge,
         mutate: () => {},
       },
@@ -210,6 +212,7 @@ describe("a flag-dropping morph closes an ANSWERED-L3 row (313)", () => {
       { type: "morph", fromKind: m.from, id: "card-1" },
       {
         confirm: async () => true,
+        signal: () => {},
         unbridgeAiRequest: forwardToBridge,
         mutate: () => {},
       },
@@ -228,6 +231,7 @@ describe("a flag-dropping morph closes an ANSWERED-L3 row (313)", () => {
       { type: "morph", fromKind: m.from, id: "card-1" },
       {
         confirm: async () => true,
+        signal: () => {},
         unbridgeAiRequest: forwardToBridge,
         mutate: () => {},
       },
@@ -248,6 +252,7 @@ describe("a flag-dropping morph closes an ANSWERED-L3 row (313)", () => {
       { type: "morph", fromKind: m.from, id: "card-1" },
       {
         confirm: async () => true,
+        signal: () => {},
         // deliberately NOT forwarding the executor's mode
         unbridgeAiRequest: (kind, id) =>
           bridgeCardAiRequestFlag(DOC, kind, id, false, { text: "" }, "toggle"),
@@ -268,6 +273,7 @@ describe("the DELETE leg keeps its terminate semantics through the same forwarde
       { type: "delete", kind: "revision-comment", id: "card-1", hasContent: false },
       {
         confirm: async () => true,
+        signal: () => {},
         unbridgeAiRequest: forwardToBridge,
         mutate: () => {},
       },

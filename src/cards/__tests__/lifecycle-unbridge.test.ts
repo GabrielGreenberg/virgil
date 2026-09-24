@@ -43,6 +43,7 @@ function makeDeps(): {
     unbridgeModes,
     d: {
       confirm: vi.fn(async () => true),
+      signal: () => {},
       unbridgeAiRequest: vi.fn(
         async (kind: CardKind, id: string, mode: AiRequestSyncMode) => {
           order.push("unbridge");

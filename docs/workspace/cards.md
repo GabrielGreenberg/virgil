@@ -269,14 +269,18 @@ RE-KEYED `{fromKind→toKind, id}` (morph). The sidecar-backed kinds (report /
 note / cutter / revision) have no doc-node the `DocStructureBus` reports, so the
 single delete/morph executor `runCardLifecycleEvent`
 ([src/cards/lifecycle/run-event.ts](../../src/cards/lifecycle/run-event.ts))
-PUBLISHES a `card-deleted` / `card-morphed` signal
-([card-lifecycle-signal.ts](../../src/cards/lifecycle/card-lifecycle-signal.ts)),
-and `useCardLifecycleReconciler(store)`
+hands a `card-deleted` / `card-morphed` signal
+([card-lifecycle-signal.ts](../../src/cards/lifecycle/card-lifecycle-signal.ts) —
+the signal's shape only) to its REQUIRED injected `deps.signal` sink.
+`useCardLifecycleReconciler(store)`
 ([useCardLifecycleReconciler.ts](../../src/cards/lifecycle/useCardLifecycleReconciler.ts),
-mounted once per pane, threaded **this doc's** store from `getCardStore(docId)`
-— the singleton was scoped per-doc behind a `CardStoreContext` seam so a
-delete/morph in doc B never touches doc A's selection under multi-doc
-keep-alive) prunes/re-keys that store. This is an explicit
+called once per pane with **this doc's** store from `getCardStore(docId)`)
+RETURNS that sink, and EditorPane threads it into the morph chokepoint and all
+five `makeUnbridgingDelete` doors — so a delete/morph can only prune/re-key the
+store of the pane that ran it. (Task 739: it used to be a module-level listener
+Set every pane subscribed to, so under multi-doc keep-alive a delete in one
+paper pruned the same-id card in every open paper; a duplicated folder shares
+card ids.) This is an explicit
 user-action channel — NOT a `DocStructureBus` subscription, so it doesn't touch
 keystroke sanctity or the +1-not-+3 invariant.
 

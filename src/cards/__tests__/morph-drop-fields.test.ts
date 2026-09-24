@@ -141,6 +141,7 @@ describe("the executor FORWARDS the tone (the guard that catches the original sh
         confirm,
         unbridgeAiRequest: vi.fn(async () => {}),
         mutate: vi.fn(() => {}),
+        signal: () => {},
       },
       confirm,
     };

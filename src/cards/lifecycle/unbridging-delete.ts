@@ -47,6 +47,7 @@
 import type { CardKind } from "../types";
 import { runCardLifecycleEvent } from "./run-event";
 import type { AppliedSpliceOps } from "./applied-splice";
+import type { CardLifecycleSink } from "./card-lifecycle-signal";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 
 export interface UnbridgingDeleteDeps {
@@ -73,6 +74,10 @@ export interface UnbridgingDeleteDeps {
    *  no per-kind wiring decision to get wrong when a kind later joins the
    *  pending-change family. Omitted → the step is skipped. */
   appliedSplice?: AppliedSpliceOps;
+  /** The pane's card-lifecycle sink, forwarded to the executor's SIGNAL step.
+   *  Required: the pane that owns the delete is the only one whose `cardStore`
+   *  it may prune (task 739). */
+  signal: CardLifecycleSink;
 }
 
 /**
@@ -113,6 +118,7 @@ export function makeUnbridgingDelete(
         unbridgeAiRequest: deps.unbridge,
         mutate: () => deps.rawDelete(id),
         appliedSplice: deps.appliedSplice,
+        signal: deps.signal,
       },
     );
   };
