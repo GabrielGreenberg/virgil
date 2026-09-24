@@ -1,4 +1,4 @@
-<!-- last-verified: 5e91fe15 2026-09-23 -->
+<!-- last-verified: 29125562 2026-09-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -28,7 +28,12 @@ element *within* a TextObject — finer than a TextObject, not itself one. It is
 A footnote Atom is **two adjacent `.tex` tokens**: `\vfid{<4hex>}` immediately
 before the authored `\footnote{...}` (or `\thanks{...}`, the title-page
 acknowledgement variant, which threads the Footnotes panel but doesn't consume the
-footnote counter). The Atom carries `footnoteId` ← `\vfid`. The trigger vocabulary
+footnote counter). That numbering rule (a `\thanks` takes number 0 and renders `A`) has ONE owner
+since task 725, [footnote-numbering.ts](../../src/lib/footnote-numbering.ts):
+`footnoteNumbersFor` (the pure rule, called by the parser at load) and
+`writeFootnoteNumbers` (equality-bailed, size-preserving; called by the extension's
+numberer and the typed-`\footnote{}` input rule). `EditorHandle.renumberFootnotes` is
+deleted. CI: `footnote-number-authority.test.ts`. The Atom carries `footnoteId` ← `\vfid`. The trigger vocabulary
 is the SSOT `FOOTNOTE_RE_FULL` in `src/lib/footnote-commands.ts` (the footnote
 analog of `cite-commands.ts`), shared by the typed-`\footnote{}` input rule and the
 action registry so both recognize the same pattern.

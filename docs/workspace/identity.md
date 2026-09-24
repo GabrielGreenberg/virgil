@@ -1,4 +1,4 @@
-<!-- last-verified: 5e91fe15 2026-09-23 -->
+<!-- last-verified: 29125562 2026-09-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -71,6 +71,8 @@ decide *which* blocks get one:
 - A **non-empty paragraph** gets one unless its immediate parent DEFERS
   (`DEFERRING_PARENTS` / `deferringParent`: `listItem`, `blockquote`, `codeBlock`,
   `exampleItem`, `exampleBlock`) — paragraph identity is the one conditional case.
+  The paragraph NodeView's title chrome reads the SAME set (task 741), so the editor
+  never offers a `parTitle` (e.g. inside a blockquote) that the next load erases.
 - **Everything else that declares a `uuid` attr** gets one **by default** — headings,
   titleFields, and every atom-like block (displayMath, latexComment, codeBlock,
   texBlock, exampleBlock, exampleItem, figureBlock, graphicsBlock,

@@ -1,4 +1,4 @@
-<!-- last-verified: 5e91fe15 2026-09-23 -->
+<!-- last-verified: 29125562 2026-09-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -57,7 +57,9 @@ schema** (tasks 343/346). The two sets are close but not identical: it adds
 `maketitleMarker` and omits `linkedRange` (a mark, not a node). Its siblings
 `TITLED_NODE_TYPES` / `COLLAPSIBLE_NODE_TYPES` decide what the `virgil.json`
 sidecar round-trips, `DEFERRING_PARENTS` decides which inner paragraphs
-yield their identity to the container above them, and `LABEL_DECLARING_NODE_TYPES`
+yield their identity to the container above them (read by BOTH the load path and,
+since task 741, the paragraph NodeView's chrome gate — so a quoted paragraph is
+offered no title the next load would erase), and `LABEL_DECLARING_NODE_TYPES`
 (task 553, schema-pinned like the rest) answers *which node types absorb a
 `\label{}` into a `label` attr* — `heading`, `figureBlock`, `exampleBlock`,
 `exampleItem`. That set is what the label registry (`collectLabelKeys`) and the
@@ -87,8 +89,13 @@ are detailed in [atoms.md](atoms.md). The ontological facts a skill needs:
   the container gate, and the collab read-only gate (`collabReadOnly`, asked at the
   same seam so the deferred create-popover's commit cannot outrun it) — so a caller that mints a Card
   after the splice must READ that report, or it registers a Card with no Atom.
-  This is a DIFFERENT question from the block gate: a `titleField` is
-  `content: "inline*"` and legitimately hosts inline math.
+  Since task 740 the door also asks the curated POLICY half
+  (`blockKindAllowsAction`, derived per atom by `inlineAtomPolicyAction` for the
+  card-bearing atoms `footnote` / `citation`) beside the SCHEMA half, so no
+  surface — typed rule, slash command, or drop — pairs them by hand, and a
+  citation can no longer be dropped into a `titleField`. The id-less atoms
+  answer to the schema half alone: a `titleField` is `content: "inline*"` and
+  legitimately hosts inline math.
 
 ## Cards — the parallel structure
 

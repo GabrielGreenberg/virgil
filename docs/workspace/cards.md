@@ -1,4 +1,4 @@
-<!-- last-verified: 5e91fe15 2026-09-23 -->
+<!-- last-verified: 29125562 2026-09-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -116,7 +116,7 @@ load. ADDITIVE/optional; mechanism in [anchoring.md](anchoring.md).
 | `revision-suggestion` | Revisions (poly) | `revisions.json` · `cards` | `"suggestion"` | anchor (A or B) | `status`; `author` |
 | `report` | Reports (poly) | `reports.json` · `cards` | `"report"` | anchor (A or B) | `author` byline (human/ai) |
 | `report-request` | Reports (poly) | `reports.json` · `cards` | `"report-request"` | anchor (A or B) | `aiRequest` → Task `report` |
-| `example` | Examples | `examples.json` · `examples` | — | **is a TextObject** (`exampleBlock`, `\vexid`/`\vxid`); sidecar is a metadata *shadow* | none |
+| `example` | Examples | *(none — `examples.json` retired, task 726)* | — | **is a TextObject** (`exampleBlock`, `\vexid`/`\vxid`); the card is a projection of the live block | none |
 | `error` | Errors | *(not persisted)* | — | maps to a `.tex` line / paragraph | ephemeral — re-derived each lint pass |
 
 The **Task** (`ai-requests.json` · `requests`) is **not a CardKind** — it persists
@@ -135,7 +135,11 @@ that ALSO count — e.g. `title` on note/report/footnote, `text` on todo/report,
 `keys` on citation), and `aiPrefilledFields` (the suggestion family's AI-filled
 `original_text`/`suggested_text` — named for the coverage assertion but NEVER
 counted as user content). `null` for the no-user-content kinds (`highlight` /
-`bib` / `error`) — a `null` descriptor always reports "no content."
+`bib` / `error` / `example`) — a `null` descriptor always reports "no content."
+Who MAY declare `null` is DERIVED (task 726, `mayDeclareContentNull`): any kind
+with `lifecycle.delete === false` (bib, error, example — no card-level delete, so
+nothing for a confirm to guard), plus the one granted exemption in
+`CONFIRMLESS_BY_GRANT` (`highlight`, a tint over a range, not typed text).
 
 One walker reads it: `cardHasContent(kind, card)`
 ([src/cards/has-content.ts](../../src/cards/has-content.ts)), consumed by BOTH

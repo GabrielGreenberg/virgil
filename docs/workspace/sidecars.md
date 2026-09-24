@@ -1,4 +1,4 @@
-<!-- last-verified: 5e91fe15 2026-09-23 -->
+<!-- last-verified: 29125562 2026-09-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -13,7 +13,7 @@
 > shape is owned by [anchoring.md](anchoring.md) and only referenced here.
 
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
-The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **59** exported
+The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **57** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
 if they ever disagree, the code wins). The full type index — every exported type,
 grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
@@ -36,7 +36,7 @@ below carry only what's *distinctive*:
 - **`text: string`** — a plain-text **mirror** of `content`, kept in sync on every
   write (present on the comment/suggestion/report kinds, for cheap search/preview).
 - **`links: Link[]`** — the anchor(s). Present on every **anchored** card; **absent**
-  on atom-linked cards (`FootnoteRef`, `CitationRef`) and on `ExampleRef`. The
+  on atom-linked cards (`FootnoteRef`, `CitationRef`). The
   `Link` shape and Mode A/B are [anchoring.md](anchoring.md).
 - **`selectedText?: string`** — the Mode-B captured text (undefined for
   paragraph-only / unanchored cards). It is `doc.textBetween`, so it drops every
@@ -70,7 +70,7 @@ below carry only what's *distinctive*:
   for a todo, the body `text`) was machine-supplied and may be stripped on load;
   `false` ≡ user-owned, never strip; `undefined` ≡ pre-T6 record (`resolveLoadedTitle`
   falls back to the shape heuristic once, then self-stamps the bit). Present on
-  `UserNote` / `ReportCard` / `TodoItem` / `ExampleRef` / `ArchivedSnippet`.
+  `UserNote` / `ReportCard` / `TodoItem` / `ArchivedSnippet`.
 
 - **The sidecar envelope** — keys neither language knows are CARRIED, not dropped,
   at BOTH levels: per RECORD (`carryUnknownKeys`, task 712) and at the FILE's own
@@ -233,15 +233,14 @@ ReportRequestCard { kind: "report-request"; id; createdAt; text; content;
 
 Kind semantics + lifecycle: [cards.md → the Reports panel](cards.md#the-reports-panel).
 
-**`examples.json` — `ExamplesState { examples: ExampleRef[] }`:**
-
-```ts
-ExampleRef { id; tag; label; title; titleAuto?; createdAt }  // shadow, no links
-```
-
-`ExampleRef` is a **shadow** of an `exampleBlock` whose canonical form is the
-`.tex` (`\ex…\xe`); `id` is the `\vexid{}` uuid, `tag`/`label` mirror node attrs,
-`title` is a panel-only override that does **not** serialize back.
+**`examples.json` — RETIRED (task 726).** There is no example card record and
+no `…State` type for it: an example's canonical and ONLY representation is the
+`exampleBlock` in the `.tex` (`\vexid{}\ex…\xe`), which the Examples panel
+projects from the live editor; its per-block title is a paragraph-title block
+attribute (`virgil.json`). The file keeps a `legacy: true` row in
+[src/lib/sidecar-value.ts](../../src/lib/sidecar-value.ts) (`mount: false`) only so
+a stray `examples (conflicted copy …).json` stays recognisable; nothing reads or
+writes it, and skills must not either.
 
 **`archive.json` — `ArchiveState { snippets: ArchivedSnippet[] }`:**
 
@@ -279,7 +278,7 @@ MERGES against a base inside the write's critical section. `SIDECAR_COLLECTIONS`
 `mergeSidecarState` ([src/lib/sidecar-merge.ts](../../src/lib/sidecar-merge.ts))
 behind the one door `writeSidecarMerged`
 ([src/lib/sidecar-merged-write.ts](../../src/lib/sidecar-merged-write.ts)), used by
-`usePersistentState` and by `useFootnotes` / `useExamples` / `useBibReview`. The
+`usePersistentState` and by `useFootnotes` / `useBibReview`. The
 merge is THREE-WAY, not a union — deletion is derived from the base, and the base
 is the SUBMITTED payload, never the merged result — and a write the dirty-guard
 defers is REMEMBERED and replayed when writes drain, rather than discarded.
@@ -471,7 +470,7 @@ the type exists, and check 2 now holds it to that.
 
 This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
 field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
-forward-points to. All **59** exported types are named below (schema above, or
+forward-points to. All **57** exported types are named below (schema above, or
 doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
@@ -482,8 +481,8 @@ doc-of-record noted), grouped by family:
   `CutterSuggestionCard`, `CutterCard`, `CutterGoal`, `CutterState`,
   `CutItemLegacy`. Revisions: `RevisionRequestCard`, `RevisionSuggestionCard`,
   `RevisionCard`, `RevisionsTracker`, `RevisionsState`. Reports: `ReportCard`,
-  `ReportRequestCard`, `ReportItem`, `ReportsState`. Examples: `ExampleRef`,
-  `ExamplesState`. Archive: `ArchivedSnippet`, `ArchiveState`.
+  `ReportRequestCard`, `ReportItem`, `ReportsState`. Archive: `ArchivedSnippet`,
+  `ArchiveState`. (Examples have no type — the sidecar shadow was retired, task 726.)
 - **The Task surface** — `AiRequest`, `AiRequestKind`, `AiRequestKindOnDisk`,
   `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`,
   `AiRequestsState`.

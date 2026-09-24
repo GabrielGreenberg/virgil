@@ -1,4 +1,4 @@
-<!-- last-verified: 5e91fe15 2026-09-23 -->
+<!-- last-verified: 29125562 2026-09-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -66,8 +66,11 @@ reported — [The daemon half](../agents/laws/cross-window-store-stability.md).
   `version.txt` (the change counter the writeback bumps).
 - **Card sidecars** (one per card-bearing panel): `notes.json`, `todos.json`,
   `footnotes.json`, `citations.json`, `cutter.json`, `revisions.json`,
-  `reports.json`, `examples.json`, `archive.json`, plus the bibliography support
+  `reports.json`, `archive.json`, plus the bibliography support
   files `bib-settings.json` / `bib-review-requests.json` / `annotations.json`.
+  (`examples.json` is RETIRED since task 726 — the app neither reads nor writes it;
+  an example exists only as its `\ex … \xe` block in the `.tex`. It stays a
+  `legacy` row in `SIDECAR_VALUE` so an old folder's copy is still recognised.)
   (`reports.json` was renamed from `quotations.json` in the card-system refactor;
   a few legacy `suggestions.json` / `comments.json` survive. **Errors are not
   persisted** — they re-derive from the live LaTeX lint.)

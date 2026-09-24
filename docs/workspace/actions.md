@@ -1,4 +1,4 @@
-<!-- last-verified: 5e91fe15 2026-09-23 -->
+<!-- last-verified: 29125562 2026-09-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -56,7 +56,7 @@ per-family `Record<<Family>ActionId, ActionSpec>` row tables (task 639 added
 so a new `ActionId` is a compile error at its family's table, not a hand-list to
 remember. (`assertActionCoverage`'s step-5 leg now compares two derived sets, so
 it checks for a derivation fork, not completeness.) The card-action slice is
-**11** rows; the `DragHandleAction` union ([DragHandleMenu.tsx:39](../../src/components/DragHandleMenu.tsx))
+**11** rows; the `DragHandleAction` union ([DragHandleMenu.tsx:57](../../src/components/DragHandleMenu.tsx))
 stays as the shared action-id union the dispatcher + the per-kind
 `TEXT_OBJECT_REGISTRY[kind].actions` lists speak. Each row's menu presentation
 (label, single-`letter` shortcut, `icon`, `separator` / `destructive` flags)
@@ -205,9 +205,17 @@ capture/schema-symmetry predicate asked of the SLICE
 "did the harvest come back empty?" proxy that waved through every MIXED selection;
 what a capture cannot carry reads from `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`, hoisted
 into the registry it derives from. `posHostsInlineAtom` is the SSOT for INLINE-atom inserts (inline-math `$x$`, `\ref`,
-citation, footnote) — greying them inside the `text*` verbatim blocks only
-(`contentMatch.matchType`), leaving them valid in a `titleField`, which is a
-`content: "inline*"` node that legitimately hosts inline math. Its narrow type-only twin
+citation, footnote) — greying them inside the `text*` verbatim blocks
+(`contentMatch.matchType`), a `titleField` staying a legal host, since it is a
+`content: "inline*"` node that legitimately hosts inline math. **Since task 740 the
+door asks BOTH halves**: beside that schema half, an atom whose `ATOM_REGISTRY` kind is
+an `INLINE_INSERT_ACTIONS` member (`citation`, `footnote`) also answers to the curated
+POLICY half (`blockKindAllowsAction`, derived in `inlineAtomPolicyAction`) — so a
+citation is refused in a `titleField` at every surface entering the door (the
+`Editor.tsx` citation/bib drop, drop-mode's inline host, the create-popover commit),
+while inline math, cross-refs and footnotes stay legal there. The typed `\cite` /
+`\footnote` rules and the `/cite` / `/footnote` commands dropped their hand-paired
+policy checks and ask the door alone. Its narrow type-only twin
 `blockTypeHostsInlineAtom` was made **private** in task 396: a type-only helper cannot clamp
 a stale caret, every real consumer holds a position, and an exported one is an invitation to
 ask the smaller question. The same gate is consulted by the slash/menu heading conversion (`headingRun` in
@@ -263,7 +271,14 @@ were not universally consulted, which is the shape all three share:
   the toolbar coerced a card body's `codeBlock` into a list. The gate moved to a leaf
   ([wrapper-gate.ts](../../src/lib/tiptap/wrapper-gate.ts), `wrapperSafeInState`); the
   `.extend()` owns the binding and the binding asks the predicate
-  (`guardWrapperShortcuts` / `guardWrapperInputRules`). A refused chord is CONSUMED; a
+  (`guardWrapperShortcuts` / `guardWrapperInputRules`). **Task 731 moved the gate onto
+  the NODE**: `withWrapperGate(node, name)` is the one door every wrapper enters every
+  schema through — the main factories `.extend()` the gated base, and the card-body
+  scopes turn StarterKit's `bulletList` / `orderedList` (and at excerpt scope
+  `blockquote`) OFF and `buildCardBodySchema` re-registers them gated, so the card
+  bodies' inherited ungated chords are gone. CI: `wrapper-surfaces-guard.test.ts`
+  (no hand-extended wrapper; every StarterKit-mounting file is a named surface; every
+  wrapper node in each named stack carries the gate). A refused chord is CONSUMED; a
   refused input-rule match answers `null`, so the typed characters stay text. The
   **input rules were REFUTED** — upstream's `wrappingInputRule` asks `findWrapping` first
   and already declined; they are routed through the door anyway so every surface answers
@@ -327,7 +342,17 @@ is still `VIRGIL_ACTION_REGISTRY`, unchanged. The same primitive backs the
 migrated `SelectionColorPopover`, `LabelRefPopover`, `HeadingTypeMenu`,
 `TabPlusMenu`, `BibEntryPickerMenu` (combobox path), and MenuBar's
 `BlockTypeDropdown` + `ViewMenu`. The slash popup is a **documented exception**
-(not migrated).
+(not migrated). The four caret-parking menus (`DragHandleMenu`, `ActionsMenuPanel`,
+`HeadingTypeMenu`, `SelectionColorPopover`) resolve their editable through ONE
+`caretEditableHost` ([caret-host.ts](../../src/components/menu/caret-host.ts)), and
+`useMenuKeyboard`'s window-capture handler takes only keys arriving at THAT editable
+(task 734). **An open menu follows the live document** (tasks 737–738): the grab menu's
+target span is mapped through every transaction and its anchor re-derived
+([grab-menu-target.ts](../../src/components/editor-layout/card-actions/grab-menu-target.ts),
+`useLiveGrabTarget`; an edit inside the span closes the menu), and the lightning grid
+re-asks its painted `isActive` / `applies()` reads via `useLiveEditorSignature`
+([use-live-editor-signature.ts](../../src/lib/tiptap/use-live-editor-signature.ts)) —
+both open-only, ≤1 re-ask per frame.
 
 | Trigger | Component | Mounts | Visibility |
 |---|---|---|---|
@@ -345,9 +370,9 @@ whose value is wired in `EditorPane` as
 - `dispatch(action, ref)` runs an action with no popover step (the toolbar path; both `ActionsMenuPanel` triggers call it directly).
 
 `dispatch` is owned by **`useDragHandleActions`**
-([drag-handle-actions.ts:167](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:180](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the single `switch (action)` over all 11 actions
-([drag-handle-actions.ts:381](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
+([drag-handle-actions.ts:426](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
 It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 `notify`, view-prefs) and resolves the ref before acting:
 
@@ -370,7 +395,14 @@ It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 - **Scope by action class** (`resolveRefRange` + `actionClass`): annotation
   actions (`H N F C T E X R`) act on the heading *line* for headings; lifecycle
   actions (`D A ⌫`) act on the whole *section*. Non-heading kinds yield the same
-  range either way.
+  range either way. Since task 732 the rule has ONE owner,
+  [action-scope.ts](../../src/text-objects/action-scope.ts): `LIFECYCLE_ACTION_IDS`
+  (the drag-handle `LIFECYCLE_ACTIONS` derives from it; the registry's hand-kept
+  `CARD_LIFECYCLE_ACTIONS` copy is deleted), `actionScopeClass`, and the kind-agnostic
+  hook read `collectScopeOverride` / `scopeOverrideRange` — so `resolveRefRange`,
+  `outerRangeFor` and the registry's `cardResolveScope` all honour a
+  `collectMoveSource` / `collectAnnotationRange` hook on ANY kind (today only
+  `heading` declares one).
 - **Destructive confirm** — Archive / Delete consult the kind's
   `confirmDestructive` registry slot; Heading × Duplicate warns via
   `confirmHeadingLifecycle` (a whole-section copy is wide enough to disorient).
@@ -382,16 +414,23 @@ It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
   never the whole gate: both menus dispatch card rows through
   `useDragHandleActions().dispatch` and never call `spec.run()`, and the deferred
   create-popovers commit seconds after their OPEN was gated. The pen question is
-  now asked at the four seams every mutation actually crosses — the card
-  dispatcher, `insertInlineAtom` (beside task 396's container gate), the two slash
-  doors in `commands.ts`, and the five typed input rules — through one door,
-  `collabReadOnly` ([collab-read-only-gate.ts](../../src/lib/tiptap/collab-read-only-gate.ts)),
+  now asked at the seams every mutation actually crosses — `insertInlineAtom`
+  (beside task 396's container gate), the two slash doors in `commands.ts`, and
+  the typed input rules — through `collabReadOnly`
+  ([collab-read-only-gate.ts](../../src/lib/tiptap/collab-read-only-gate.ts)),
   which generalizes the retired `typed-latex-read-only-gate.ts`. Each reads the
   LIVE editor at the moment of the mutation, so no snapshot can go stale; the
-  `run()`-side gates stay as belt-and-suspenders. **It is not host writability**:
-  `view.editable` is the PEN, and the Reader's own editable-card axis has its own
-  SSOT (`writableSidecarsFor` / `isCardMutationAllowed`; `surfaceIsEditable` is
-  the conjunction the affordances ask). `insertTexBlock` and
+  `run()`-side gates stay as belt-and-suspenders. **Task 733 split the seams by
+  what can escape `filterTransaction`**: on MAIN `view.editable` is pinned `true`
+  (the user-facing answer lives in `editableRef`), so `collabReadOnly` is a
+  constant there — fine where the mutation is pure ProseMirror (`readOnlyEnforcer`
+  drops it), wrong where a sidecar write / card registration rides along. The card
+  dispatcher and the drop gestures (`commit-seam.ts`, `hit-test.ts`) therefore ask
+  `surfaceEditableNow` ([surface-editable.ts](../../src/lib/tiptap/surface-editable.ts)),
+  the pen ∧ host conjunction resolved from the editor's `readOnlyEnforcer` storage
+  (`surfaceIsEditable` is the ref-taking form). **Neither is sidecar writability**:
+  the Reader's editable-card axis has its own SSOT (`writableSidecarsFor` /
+  `isCardMutationAllowed`). `insertTexBlock` and
   `wrapSelectionInExample` — the two private `ActionContext` builders that could
   forget — are DELETED; the `\tex` cell routes through `runGridAction("tex")`
   like every other cell.
@@ -400,14 +439,19 @@ It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
   cross-editor move could delete the source while its insert died (or duplicate
   the atom, the veto being mounted on the `isMain` arm alone).
   [commit-seam.ts](../../src/components/drop-mode/commit-seam.ts) is the one door
-  — ask `collabReadOnly` for BOTH ends before either is touched, dispatch, then
+  — ask `surfaceEditableNow` (`commitSurfacesWritable`) for BOTH ends before either is touched, dispatch, then
   measure the EFFECT (`dispatchLanded`, on doc reference identity, the
   post-dispatch twin of the pre-dispatch `insertLanded`), and refuse as a UNIT.
   Routed through `commitCrossEditorMove`: the inline-atom move and both branches
   of `text-range-move`. Atoms are named by DURABLE ID where `ATOM_REGISTRY.idAttr`
   gives one (the captured position is only a hint, confirmed via `findAtomById`),
   because kind is not identity and `\cite{a}\cite{b}` puts a valid impostor at
-  `pos ± 1`.
+  `pos ± 1`. **Task 735 extends it to the grab bar**: Archive / Delete dispatch the
+  range delete FIRST through `commitRangeDelete` (`commitDocThenCards`: re-ask
+  editability, dispatch, measure) and only a landed delete runs the card deletes,
+  the Mode-A retarget and the archive snippet; Duplicate probes a DRY build with
+  `transactionAdmitted` ([transaction-admitted.ts](../../src/lib/tiptap/transaction-admitted.ts))
+  before minting any sidecar clone.
 
 The lower-level action hooks the dispatcher / `useCardCreation` compose live
 beside it in [editor-layout/card-actions/](../../src/components/editor-layout/card-actions):
@@ -504,7 +548,9 @@ selections. It realizes the [Ontology](../architecture/VIRGIL.md#ontology)
 - **No-drag click** → opens the `DragHandleMenu` (Family 1).
 - **Drag past the lift threshold** → hands off to the shared **`LiftHost`** (below), which mounts a lifted-overlay ghost and begins a drop session. Two modes by cursor location: **ghost mode** (cursor in the content zone → release commits a placement via drop-mode) and **popout mode** (cursor outside → spawns a real floating window).
 
-The grab handle now keeps only the **shell** — the `is-pressed` toggle, the 5px
+Since task 736 the handle (and `SelectionActionsMenu`) take the live `editor` as a
+PROP from `Editor.tsx` and key every binding on it — the old ref-read-during-render,
+50 ms poll and `ensureSubscribed` are deleted. The grab handle now keeps only the **shell** — the `is-pressed` toggle, the 5px
 lift-threshold gate, the no-drag → menu fallback, and `SelectionRef`→`TextObjectRef`
 hydration. The post-threshold core (the lifted overlay, the drop-session /
 popout-spawn logic, anchor-DOM resolution, float-policy chrome) was extracted
@@ -621,7 +667,7 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 
 ### Inherited TipTap defaults (enabled in StarterKit)
 
-`StarterKit.configure({…})` ([editor-extensions.ts:1815](../../src/lib/editor-extensions.ts))
+`StarterKit.configure({…})` ([editor-extensions.ts:1661](../../src/lib/editor-extensions.ts))
 **disables** the block nodes (`heading`, `paragraph`, `bulletList`,
 `orderedList`, `listItem`, `blockquote`, `codeBlock`) and replaces each with a
 Virgil builder that `.extend()`s the base — so they keep the inherited keymaps
@@ -634,8 +680,8 @@ their default bindings survive:
 | `Mod-Z` / `Mod-Shift-Z`, `Mod-Y` | Undo / Redo | StarterKit history |
 | `Shift-Enter`, `Mod-Enter` | hard line break | StarterKit `HardBreak` |
 | `Mod-Alt-1…6` | set heading level | `createHeadingWithLabel` (extends `Heading`) |
-| `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote — **gated** since task 427: `guardWrapperShortcuts` wraps the parent binding and CONSUMES the key where `wrapperSafeInState` refuses (an expex item, a `codeBlock`, a heading) | the list/blockquote builders (extend the base) + [wrapper-gate.ts](../../src/lib/tiptap/wrapper-gate.ts) |
-| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1939](../../src/lib/editor-extensions.ts)) |
+| `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote — **gated** since task 427 (on the node via `withWrapperGate` since 731): `guardWrapperShortcuts` wraps the parent binding and CONSUMES the key where `wrapperSafeInState` refuses (an expex item, a `codeBlock`, a heading) | the list/blockquote builders (extend the base) + [wrapper-gate.ts](../../src/lib/tiptap/wrapper-gate.ts) |
+| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1784](../../src/lib/editor-extensions.ts)) |
 
 > The `Mod-Shift-H` **mark** (a text-background tint) is distinct from the
 > Family-1 **Highlight card** action (`H`), which creates a `HighlightCard`
