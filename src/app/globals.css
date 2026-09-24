@@ -2946,14 +2946,13 @@ textarea,
   color: var(--blockquote-text, #6b6560);
 }
 
-/* Vertical bar runs only along the text body, not the paragraph-title
-   annotation above it. When paragraphs are wrapped in a par-title-wrapper
-   node view, the bar lives on the body container so it starts at the first
-   text line. Fallback selector covers bare <p> children.
+/* Vertical bar along the quoted text. A blockquote's inner paragraph is a
+   DEFERRING child (node-attr-sets `DEFERRING_PARENTS`), so its NodeView
+   renders a bare <p> with no par-title-wrapper (task 741) — this one
+   selector is the whole rule.
 
    The negative margin-left + matching extra padding-left shifts the grey
    bar a little further into the margin without moving the text. */
-.tiptap blockquote .par-body-container,
 .tiptap blockquote > p {
   margin-left: -0.3em;
   border-left: 3px solid var(--blockquote-border, #d4cfc8);
