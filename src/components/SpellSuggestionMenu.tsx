@@ -118,7 +118,6 @@ export function SpellSuggestionMenu() {
       id="spell"
       layout="list"
       role="menu"
-      portal
       anchorRect={request.rect}
       trackAnchor={trackAnchor}
       placements={PLACEMENTS}

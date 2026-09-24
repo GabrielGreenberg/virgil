@@ -9,8 +9,11 @@
  *     positioned container;
  *   - mounts the single dismissal effect (`useMenuDismiss`) and the keyboard
  *     controller (`useMenuKeyboard`);
- *   - portals to `document.body` (default) or docks inline (`portal={false}`,
- *     for MenuBar's stacking context);
+ *   - portals to `document.body` — ALWAYS. There is no docked/inline path:
+ *     its two consumers (MenuBar's View + block-type menus) each had to
+ *     hand-roll the placement the primitive owns here, and each dropped a
+ *     different guard (task 751). A menu is placed by this one owner or not
+ *     at all;
  *   - stamps the ONE menu SURFACE (`.menu-surface`: bg + border + shadow +
  *     radius off the `--menu-*` tier) on its container, so no consumer
  *     re-authors menu chrome (task 295; `surface="none"` opts out, allowlisted);
@@ -92,8 +95,6 @@ export interface MenuProviderProps {
   maxHeight?: boolean;
   /** RAF-coalesced scroll/resize re-anchor (§3.3). */
   trackAnchor?: () => DOMRect | AnchorRectLike | null;
-  /** Portal to body (default true) or dock inline (false, MenuBar). */
-  portal?: boolean;
   /** Enable the bare-key O(1) letter fast-path. */
   letterShortcuts?: boolean;
   /** Dismissal config (§3.2). */
@@ -140,15 +141,15 @@ export interface MenuProviderProps {
    * menu-surface-guardrail.test.ts with a stated reason.
    *
    * `containerClassName` / `containerStyle` still compose on top — but for
-   * WIDTH, PADDING and docked-anchor placement only. A caller that re-authors
+   * WIDTH and PADDING only (placement is the positioner's). A caller that re-authors
    * a background / border / shadow / radius is the drift this exists to end,
    * and the same census fails it.
    */
   surface?: "menu" | "none";
-  /** Container style overrides (width / padding / docked-anchor placement).
+  /** Container style overrides (width / padding).
    *  NOT chrome — see `surface`. */
   containerStyle?: CSSProperties;
-  /** Container className (width / padding / docked-anchor placement). NOT
+  /** Container className (width / padding). NOT
    *  chrome — see `surface`. */
   containerClassName?: string;
   /** The menu items (bespoke JSX + `<MenuItemsFromRegistry>` / `<MenuGrid>` /
@@ -183,7 +184,6 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     margin,
     maxHeight = false,
     trackAnchor,
-    portal = true,
     letterShortcuts = false,
     dismissOn,
     onEscape,
@@ -388,7 +388,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   if (typeof document === "undefined") return null;
 
   // The surface class comes FIRST so a caller's own classes read as the
-  // overrides they are (width floors, padding, docked-anchor placement) rather
+  // overrides they are (width floors, padding) rather
   // than losing a same-specificity tie to the primitive by source order.
   const surfaceClassName =
     surface === "menu"
@@ -405,7 +405,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
       aria-label={ariaLabel}
       className={surfaceClassName}
       style={{
-        ...(portal ? positionStyle : { position: "relative" as const }),
+        ...positionStyle,
         zIndex: CHROME_Z,
         ...containerStyle,
       }}
@@ -459,5 +459,5 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     </div>
   );
 
-  return portal ? createPortal(container, document.body) : container;
+  return createPortal(container, document.body);
 }

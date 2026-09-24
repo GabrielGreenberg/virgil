@@ -241,7 +241,6 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
         id="preservation-notice-menu"
         layout="list"
         role="menu"
-        portal
         anchorRect={anchorRect}
         placements={MENU_PLACEMENTS}
         gap={4}

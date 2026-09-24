@@ -2308,8 +2308,11 @@ for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
 
 - **positioning** — the single `useFloatingMenuPosition` call (measured, viewport-
   clamped, `placements` tried in order, RAF-coalesced `trackAnchor` re-anchor);
-- **portal** — body-portaled by default (escapes the sticky-bar / stacking-context
-  trap above), or docked inline with `portal={false}` (MenuBar's own context);
+- **portal** — always body-portaled (escapes the sticky-bar / stacking-context
+  trap above). There is no docked/inline mode (task 751): a menu that must
+  follow a toolbar trigger passes a LIVE anchor (`elementAnchor`) and lets the
+  positioner flip, clamp and — with `maxHeight` — cap it; never a hand-rolled
+  flip into placement classes;
 - **z-tier** — `OPEN_CHROME_MENU_Z` (2000), so it composes above the float layer;
 - **dismissal** — one mousedown-outside + Escape controller (`useMenuDismiss`),
   with `excludeRefs` to exempt an outside trigger and nested popovers;

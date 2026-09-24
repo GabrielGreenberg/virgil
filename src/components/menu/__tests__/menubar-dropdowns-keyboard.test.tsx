@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
-// MenuBar's BlockTypeDropdown + ViewMenu on the <Menu> primitive (Phase C, the
-// docked `portal={false}` path + the R5 expandable-tree case). Drives the REAL
+// MenuBar's BlockTypeDropdown + ViewMenu on the <Menu> primitive (Phase C + the
+// R5 expandable-tree case; portaled since task 751). Drives the REAL
 // components through the full primitive stack (MenuProvider + useMenuItem +
 // useMenuKeyboard), mirroring heading-type-menu-keyboard.test.tsx:
 //
@@ -11,7 +11,8 @@
 //   - Up/Down/Home/End arrow nav moves a visible data-active highlight; Enter
 //     activates the active row;
 //   - Escape closes; click-outside dismisses;
-//   - the menu is DOCKED (rendered inline in the trigger wrapper, not portaled).
+//   - the menu is PORTALED and placed by the primitive (task 751): out of
+//     flow, flipped/capped by `useFloatingMenuPosition`, never inline.
 //
 //   ViewMenu (the expandable tree):
 //   - checkbox rows toggle (aria-checked) — Display rows close the menu, in-group
@@ -39,16 +40,14 @@ vi.mock("@/text-objects/text-object-registry", async (importActual) => ({
   posHostsBlockInsert: () => true,
 }));
 
-// jsdom has no ResizeObserver; useFloatingMenuPosition measures with one (the
-// docked path bypasses positioning, but the provider still constructs the hook).
+// jsdom has no ResizeObserver; useFloatingMenuPosition measures with one.
 class ResizeObserverStub {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
-// jsdom has no rAF in some configs; the placement effect uses it. Provide a
-// shim (via setTimeout) so the effect's measure runs.
+// jsdom has no rAF in some configs; the positioner's re-anchor uses it.
 (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= ((cb: FrameRequestCallback) =>
   Number(setTimeout(() => cb(0), 0))) as typeof requestAnimationFrame;
 (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame ??= ((id: number) =>
@@ -146,16 +145,19 @@ function labelOf(b: HTMLButtonElement | undefined): string {
   return (b?.textContent ?? "").replace("✓", "").trim();
 }
 
-describe("BlockTypeDropdown — docked render + click selection", () => {
-  it("renders docked (inline, not portaled to body's end) once opened", () => {
+describe("BlockTypeDropdown — portaled render + click selection", () => {
+  it("renders portaled to <body>, out of flow (never inline in the grid cell)", () => {
     const { editor } = makeEditor(2);
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
-    const menu = document.querySelector('[role="menu"]');
+    const menu = document.querySelector('[role="menu"]') as HTMLElement;
     expect(menu).toBeTruthy();
-    // Docked: the menu lives inside the component's own relative wrapper, which
-    // is inside the rendered container — NOT a direct child of <body>.
-    expect(container.contains(menu)).toBe(true);
+    // Task 751: the docked branch stamped an inline `position: relative` that
+    // beat the dropdown's `absolute` class, so it rendered IN FLOW, pushing the
+    // lightning grid. Portaled, it cannot touch its host's layout.
+    expect(container.contains(menu)).toBe(false);
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu.style.position).not.toBe("relative");
   });
 
   it("renders all 8 block types with the current level marked", () => {
@@ -361,7 +363,7 @@ describe("ViewMenu — checkbox rows (toggle + close/keep-open split)", () => {
     // The write travels BY KEY through the one registry-driven toggler.
     expect(props.onToggleViewPref).toHaveBeenCalledTimes(1);
     expect(props.onToggleViewPref).toHaveBeenCalledWith("showParTitles");
-    expect(container.querySelector('[role="menu"]')).toBeNull(); // closed
+    expect(document.querySelector('[role="menu"]')).toBeNull(); // closed
   });
 
   it("an in-group sub-toggle toggles WITHOUT closing the menu", () => {
@@ -514,9 +516,9 @@ describe("ViewMenu — Escape + click-outside", () => {
   it("Escape closes", () => {
     const props = makeViewProps();
     const { container } = openViewMenu(props);
-    expect(container.querySelector('[role="menu"]')).toBeTruthy();
+    expect(document.querySelector('[role="menu"]')).toBeTruthy();
     key("Escape");
-    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(document.querySelector('[role="menu"]')).toBeNull();
   });
 
   it("click outside dismisses (after the deferred mount)", () => {
@@ -529,7 +531,7 @@ describe("ViewMenu — Escape + click-outside", () => {
     act(() => {
       document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     });
-    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(document.querySelector('[role="menu"]')).toBeNull();
     vi.useRealTimers();
   });
 

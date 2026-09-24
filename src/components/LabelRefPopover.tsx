@@ -142,7 +142,6 @@ export default function LabelRefPopover({
       id="label-ref"
       layout="combobox"
       role="listbox"
-      portal
       anchorRect={anchorRect}
       trackAnchor={trackAnchor}
       placements={LABEL_REF_PLACEMENTS}

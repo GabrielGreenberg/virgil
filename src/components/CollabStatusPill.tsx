@@ -215,7 +215,6 @@ function CollabStatusPill({
         id="collab-status-menu"
         layout="list"
         role="menu"
-        portal
         anchorRect={anchorRect}
         placements={MENU_PLACEMENTS}
         gap={4}
