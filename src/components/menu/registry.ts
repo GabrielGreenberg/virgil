@@ -11,9 +11,13 @@
  * never per keystroke. Its ORDER is the rows' live DOM order (task 745). Subscribers (the React view + the controller) read the
  * memoized snapshot; arrowing is pure index math over it.
  *
- * `registryFor(menuId)` returns a process-global handle keyed by menu id so the
- * future PM-slash backend (Phase C) can be looked up behind the same contract.
- * For B1 only the React backend is implemented; the lookup table is the seam.
+ * There is no cross-instance lookup: a registry is reached only through the
+ * `<MenuProvider>` that owns it (context + the keyboard controller). The old
+ * process-global menu-id → handle table — built for a PM-slash backend
+ * that never landed, and keyed by id alone, so two keep-alive panes' same-id
+ * menus overwrote each other — was write-only and is gone (task 748). A second
+ * backend, if one ever arrives, gets a registry keyed by its OWNER (per the
+ * multi-pane keep-alive law), not a module slot.
  */
 
 import { computeNextActive, freshNavMemory, type NavMemory } from "./nav-core";
@@ -303,31 +307,4 @@ export class MenuRegistry implements MenuRegistryHandle {
   private notify(): void {
     for (const fn of this.listeners) fn();
   }
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// registryFor(menuId) — the cross-backend lookup seam (§2.3).
-//
-// A process-global table mapping a stable menu id to its live registry handle.
-// The React backend registers itself here on mount; the future PM-slash
-// backend (Phase C) will register a handle satisfying the SAME
-// `MenuRegistryHandle` contract. Returns null when no backend is mounted for
-// the id.
-// ───────────────────────────────────────────────────────────────────────────
-
-const REGISTRY_TABLE = new Map<string, MenuRegistryHandle>();
-
-export function publishRegistry(menuId: string, handle: MenuRegistryHandle): void {
-  REGISTRY_TABLE.set(menuId, handle);
-}
-
-export function unpublishRegistry(menuId: string, handle: MenuRegistryHandle): void {
-  // Only clear if the published handle is still the one we own (guards a
-  // remount race where a new provider already claimed the id).
-  if (REGISTRY_TABLE.get(menuId) === handle) REGISTRY_TABLE.delete(menuId);
-}
-
-/** Look up the live registry handle for a menu id, or null. */
-export function registryFor(menuId: string): MenuRegistryHandle | null {
-  return REGISTRY_TABLE.get(menuId) ?? null;
 }
