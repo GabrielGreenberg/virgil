@@ -15,17 +15,28 @@
  * their `cardStore` obligation has no owner.
  *
  * THE SEAM. `runCardLifecycleEvent` (the single delete/morph executor) is the
- * one place every sidecar-card lifecycle event flows through. It PUBLISHES a
- * `card-deleted` / `card-morphed` signal here; W2b's reconciler SUBSCRIBES and
- * prunes/re-keys `cardStore` accordingly. T4 owns the emission; T2/W2b owns the
- * prune (the seam both docs flag). One emitter, one consumer.
+ * one place every sidecar-card lifecycle event flows through. It hands a
+ * `card-deleted` / `card-morphed` signal to its injected `deps.signal` sink;
+ * the pane's reconciler (`useCardLifecycleReconciler`) is what BUILDS that sink,
+ * bound to the pane's own `cardStore`, and prunes/re-keys it. One emitter, one
+ * consumer — and they share an owner (the EditorPane), so the signal travels
+ * as an injected dep, never a channel.
  *
  * THIS IS NOT A `DocStructureBus` SUBSCRIPTION. It is a synchronous, explicit
  * user-action channel (fired only on a trash/morph click), so it does NOT touch
  * keystroke sanctity and does NOT count against the +1-not-+3 invariant — the
- * single inline-atom bus consumer is unchanged. Module-scoped (like
- * `cardStore`) so the executor (in EditorPane) and the reconciler (in EditorPane
- * too, but a different effect) share it without a common ancestor.
+ * single inline-atom bus consumer is unchanged.
+ *
+ * NO MODULE BUS (task 739). This file used to hold ONE module-level listener
+ * Set that every mounted EditorPane subscribed its own store to. Under
+ * multi-doc keep-alive every pane then received every other pane's events, and
+ * card ids are only unique per paper — a duplicated paper folder shares them —
+ * so deleting note X in the copy collapsed the original's note X, and morphing
+ * it re-keyed the original's still-a-note to a kind it isn't. The signal is now
+ * DATA only; delivery is the required `CardLifecycleDeps.signal` sink, so a
+ * lifecycle event can reach only the store of the pane that ran it, by
+ * construction (`module-subscriber-scope-census.test.ts` keeps a future
+ * per-doc module bus from reappearing without a doc key).
  */
 
 import type { CardKind } from "../types";
@@ -50,41 +61,7 @@ export interface CardMorphedSignal {
 
 export type CardLifecycleSignal = CardDeletedSignal | CardMorphedSignal;
 
-type Listener = (signal: CardLifecycleSignal) => void;
-
-const _listeners = new Set<Listener>();
-
-/** Subscribe to card-lifecycle signals. Returns an unsubscribe fn (effect-
- *  cleanup friendly). */
-export function subscribeCardLifecycle(fn: Listener): () => void {
-  _listeners.add(fn);
-  return () => {
-    _listeners.delete(fn);
-  };
-}
-
-/** Publish a card-lifecycle signal to every subscriber. Synchronous; a throwing
- *  listener must not strand the rest (DATA-LOSS isolation, mirrors the bus
- *  consumer's per-policy try/catch). */
-export function publishCardLifecycle(signal: CardLifecycleSignal): void {
-  for (const fn of _listeners) {
-    try {
-      fn(signal);
-    } catch (err) {
-      console.error("card-lifecycle signal listener threw:", err);
-    }
-  }
-}
-
-/** Convenience emitters (the executor's vocabulary). */
-export function publishCardDeleted(kind: CardKind, id: string): void {
-  publishCardLifecycle({ type: "card-deleted", kind, id });
-}
-
-export function publishCardMorphed(
-  fromKind: CardKind,
-  toKind: CardKind,
-  id: string,
-): void {
-  publishCardLifecycle({ type: "card-morphed", fromKind, toKind, id });
-}
+/** Where the executor hands a lifecycle signal: the ONE pane's own card store
+ *  (task 739). A required `CardLifecycleDeps` field, bound per pane by
+ *  `useCardLifecycleReconciler` — never a module-level channel. */
+export type CardLifecycleSink = (signal: CardLifecycleSignal) => void;

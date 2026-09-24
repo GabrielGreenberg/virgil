@@ -25,12 +25,10 @@
 // "mounted per pane" — module singletons appear and are declared as such.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { commentsStripped, trackedFiles } from "@/lib/__tests__/_source-scan";
-
-const SRC = path.resolve(__dirname, "../../..");
-const ROOT = "components/EditorPane.tsx";
+import { SRC, paneImportClosure, relToSrc } from "./_pane-closure";
 
 type Scope =
   /** Answers only while its pane is shown (`usePaneScopedListener`, or a
@@ -328,43 +326,8 @@ const LEDGER: Record<string, Row> = {
 
 // ── the closure ──────────────────────────────────────────────────────────────
 
-function resolveSpec(from: string, spec: string): string | null {
-  let base: string;
-  if (spec.startsWith("@/")) base = path.join(SRC, spec.slice(2));
-  else if (spec.startsWith(".")) base = path.resolve(path.dirname(from), spec);
-  else return null;
-  for (const c of [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")]) {
-    if (existsSync(c) && statSync(c).isFile()) return c;
-  }
-  return null;
-}
-
-const IMPORT_RE = /(?:^|\n)\s*(?:import|export)\s+(type\s+)?[^;]*?from\s+["']([^"']+)["']/g;
-const DYNAMIC_RE = /import\(\s*["']([^"']+)["']\s*\)/g;
-
-function closure(): Map<string, string> {
-  const code = new Map<string, string>();
-  const stack = [path.join(SRC, ROOT)];
-  while (stack.length) {
-    const f = stack.pop()!;
-    if (code.has(f)) continue;
-    const src = readFileSync(f, "utf8");
-    code.set(f, commentsStripped(src));
-    for (const m of src.matchAll(IMPORT_RE)) {
-      if (m[1]) continue; // `import type` erases at build time
-      const r = resolveSpec(f, m[2]);
-      if (r) stack.push(r);
-    }
-    for (const m of src.matchAll(DYNAMIC_RE)) {
-      const r = resolveSpec(f, m[1]);
-      if (r) stack.push(r);
-    }
-  }
-  return code;
-}
-
-const rel = (f: string) => path.relative(SRC, f).split(path.sep).join("/");
-const CODE = closure();
+const rel = relToSrc;
+const CODE = paneImportClosure();
 
 const fileOf = (key: string) => key.split("#")[0];
 /** The ledger's events per FILE, all of its rows merged. */

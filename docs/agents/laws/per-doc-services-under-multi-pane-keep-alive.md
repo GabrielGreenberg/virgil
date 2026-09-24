@@ -498,3 +498,46 @@ and whose consumption by the bridge is checked.
 **Owed, not claimed:** FSA-masking applies (anchor / AI-request-inbox). A real-prod
 eyeball is owed — type `\cite{` inside a note card's body and confirm the citation
 card anchors to the card, not to the main text.
+
+### The MODULE-BUS half: a signal between two things that share a pane is a DEP, not a channel (task 739)
+
+Task 598's listener census sees `window`/`document` listeners. It does not see a
+**module-level subscriber Set** — the same defect one layer in: every mounted pane
+subscribes, so every pane hears every other pane's publish. The card-lifecycle
+signal was one. `runCardLifecycleEvent` published `card-deleted` / `card-morphed`
+`{kind, id}` with no document identity onto one module Set, and each EditorPane
+subscribed its OWN card store. Card ids are unique only within a paper (a duplicated
+folder shares them), so deleting note X in the copy collapsed the original's note X,
+and morphing it re-keyed the original's still-a-note to a kind it isn't.
+
+The emitter (the executor, driven from EditorPane) and the consumer (the reconciler,
+in the same EditorPane) already share an owner, so the bus is deleted outright rather
+than keyed: `CardLifecycleDeps.signal` is a REQUIRED sink,
+`useCardLifecycleReconciler(store)` RETURNS it bound to the pane's own store, and the
+pane threads it into the morph chokepoint and all five `makeUnbridgingDelete` doors.
+A door that forgets it is a compile error. `card-lifecycle-signal.ts` now exports
+types only.
+
+**Rule:** a module-level subscriber collection reachable from EditorPane carries
+either an app-wide value, one gesture at a time, or a doc/owner key. A per-doc value
+with none of those is this bug. When publisher and subscriber share a pane, inject
+the sink; don't key a channel.
+
+CI:
+[card-lifecycle-signal.test.ts](../../../src/cards/__tests__/card-lifecycle-signal.test.ts)
+runs a delete, a morph and a wrapped delete through the executor wired to store A of
+two stores holding the same `{note, X}`. A is pruned or re-keyed, and B is untouched.
+The leg with teeth is
+[module-subscriber-scope-census.test.ts](../../../src/lib/keep-alive/__tests__/module-subscriber-scope-census.test.ts).
+It walks the same import closure as 598 (now shared through `_pane-closure.ts`) and
+requires every top-level `Set<fn>` / `Map<K, Set<fn>>` to be declared `app-wide`,
+`gesture`, `doc-keyed` or `owner-keyed`, with a source check per scope. A function
+type is recognised inline, by a `…Listener` name, or through a local alias.
+Re-adding a module bus to `run-event.ts` fails 2 of its 6 legs. The first neuter
+slipped past a `type L = …` alias, which is why aliases are now resolved.
+
+**Residual (declared, not blessed):** `links/pending-preview-store.ts`, the
+applied-suggestion Original/Suggested toggle, is keyed by card id alone. Two open
+papers that share an id share its display state. It sits in the census as
+`residual-per-paper-key` until a doc or pane key is threaded through
+`pending-change-actions.ts`.

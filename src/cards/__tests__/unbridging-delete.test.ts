@@ -86,6 +86,7 @@ describe("makeUnbridgingDelete", () => {
         resolveKind: () => kind,
         rawDelete: spies.rawDelete,
         unbridge: spies.unbridge,
+        signal: () => {},
       });
       del("card-1");
       // The wrapper is fire-and-forget over an async executor; let its
@@ -109,6 +110,7 @@ describe("makeUnbridgingDelete", () => {
         resolveKind: () => kind,
         rawDelete: spies.rawDelete,
         unbridge: spies.unbridge,
+        signal: () => {},
       });
       del("card-1");
       await flush();
@@ -124,6 +126,7 @@ describe("makeUnbridgingDelete", () => {
       resolveKind: () => null,
       rawDelete: spies.rawDelete,
       unbridge: spies.unbridge,
+      signal: () => {},
     });
     del("ghost");
     await flush();

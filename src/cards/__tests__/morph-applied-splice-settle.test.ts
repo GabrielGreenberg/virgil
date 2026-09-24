@@ -62,6 +62,7 @@ function deps(
     d: {
       confirm: async () => true,
       unbridgeAiRequest: async () => {},
+      signal: () => {},
       mutate,
       appliedSplice,
     },

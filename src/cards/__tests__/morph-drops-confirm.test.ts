@@ -5,7 +5,7 @@ import {
   runCardLifecycleEvent,
   type CardLifecycleDeps,
 } from "../lifecycle/run-event";
-import { subscribeCardLifecycle, type CardLifecycleSignal } from "../lifecycle/card-lifecycle-signal";
+import type { CardLifecycleSignal, CardLifecycleSink } from "../lifecycle/card-lifecycle-signal";
 // Importing the morphs barrel registers every converter onto CARD_REGISTRY +
 // runs the boot assertions — so the converter↔drops pin below sees real transforms.
 import { applyCardMorph } from "../morphs";
@@ -19,10 +19,15 @@ import type { ReportCard, ReportRequestCard, UserNote, HighlightCard } from "@/l
  * declared contract says so.
  */
 
+// The executor hands its signal to the injected `deps.signal` sink (task 739 —
+// no module channel); `deps()` routes that sink to whichever capture is live.
+let activeSink: CardLifecycleSink = () => {};
 function captureSignals(): { signals: CardLifecycleSignal[]; stop: () => void } {
   const signals: CardLifecycleSignal[] = [];
-  const stop = subscribeCardLifecycle((s) => signals.push(s));
-  return { signals, stop };
+  activeSink = (s) => {
+    signals.push(s);
+  };
+  return { signals, stop: () => (activeSink = () => {}) };
 }
 
 function deps(over: Partial<CardLifecycleDeps> = {}): {
@@ -35,7 +40,7 @@ function deps(over: Partial<CardLifecycleDeps> = {}): {
   const unbridge = vi.fn(async () => {});
   const mutate = vi.fn(() => {});
   return {
-    d: { confirm, unbridgeAiRequest: unbridge, mutate, ...over },
+    d: { confirm, unbridgeAiRequest: unbridge, mutate, signal: (s) => activeSink(s), ...over },
     confirm,
     unbridge,
     mutate,

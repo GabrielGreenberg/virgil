@@ -101,6 +101,7 @@ function buildDoor(items: Todo[]) {
     },
     unbridge: (kind: CardKind, id: string, mode) =>
       bridgeCardAiRequestFlag(DOC, kind, id, false, { text: "" }, mode),
+    signal: () => {},
   });
   const bulk = makeUnbridgingBulkDelete(deleteOne);
   return async (ids?: readonly string[]) => {
