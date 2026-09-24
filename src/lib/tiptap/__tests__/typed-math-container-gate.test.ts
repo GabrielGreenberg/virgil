@@ -190,6 +190,20 @@ describe("typed `$$` display-math honors the containing block (task 150)", () =>
     editor.destroy();
   });
 
+  // Task 744: the seed below (`$$x$`) is only REACHABLE because the inline
+  // rule refuses a `$$` opener — before that fix the inline rule claimed the
+  // third `$` and this closing branch was dead under real typing while this
+  // control stayed green. This step pins the reachability; the full
+  // keystroke-by-keystroke path lives in `typed-math-sequential.test.ts`.
+  it("reachability: the `$` after `$$x` is claimed by NO rule (falls through to `$$x$`)", () => {
+    const { editor, caret } = mountWithSeed("paragraph", "$$x");
+    const fired = typeClosingDollar(editor, caret);
+    expect(fired, "neither `$` rule may claim a `$$` opener's first close").toBe(false);
+    expect(countOfType(editor, "inlineMath")).toBe(0);
+    expect(countOfType(editor, "displayMath")).toBe(0);
+    editor.destroy();
+  });
+
   it("positive control: `$$x$$`-closing in a plain paragraph DOES insert displayMath", () => {
     const { editor, caret } = mountWithSeed("paragraph", "$$x$");
     const fired = typeClosingDollar(editor, caret);

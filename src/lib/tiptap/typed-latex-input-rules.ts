@@ -69,8 +69,14 @@ export const TYPED_LATEX_INPUT_RULES = {
   /** `\footnote{body}` → a footnote atom (`footnote.ts`). */
   footnote: FOOTNOTE_RE_FULL,
   /** `$x$` → an inline-math atom (`math.ts`, `inlineMathInput`). The body class
-   *  excludes U+FFFC so a `$` pair can never swallow an inline atom (task 578). */
-  "inline-math": /\$([^$￼]+)$/,
+   *  excludes U+FFFC so a `$` pair can never swallow an inline atom (task 578).
+   *  The lookbehind REFUSES an opener that is itself preceded by `$`: a `$$`
+   *  opener belongs to display math, so typing `$$x$` falls through here and
+   *  the next `$` reaches the display rule's closing branch (task 744 — without
+   *  it the inline rule claimed `$x` one keystroke early and `$$x$$` was
+   *  unreachable by real typing). Zero-width, so `match[0]` still spans exactly
+   *  the replaced `$body`. */
+  "inline-math": /(?<!\$)\$([^$￼]+)$/,
   /** `$$x$$` → a display-math block (`math.ts`, `displayMathInput`). This is the
    *  CLOSING form; the rule's other branch opens an empty block on a bare `$$`
    *  at the start of a paragraph. */
