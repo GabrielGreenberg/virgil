@@ -432,6 +432,27 @@ census leg when the slash `\footnote` is reverted to the caret form.
 **Owed, not claimed:** the preview eyeball — drag-select from a paragraph into
 a code block, open the bolt: `$x$` and Cross-ref greyed. Not FSA-masked.
 
+##### The policy half rides the same door (task 740)
+
+"May this inline atom land here?" has a SCHEMA half (above) and a curated
+POLICY half — `blockKindAllowsAction`, e.g. task 061's `titleField` greying
+`citation` out so no `\cite` rides into `\title{…}`. Until 740 the door asked
+only the schema half and every surface paired the policy half by hand: the
+typed rules and commands did, the `Editor.tsx` citation drop (which also MINTS
+a card) and drop-mode's `inline-host.ts` did not — a citation card dropped on
+the title landed there.
+
+> **`posHostsInlineAtom` / `inlineRangeAllowsAtom` ask BOTH halves.** The
+> policy action is DERIVED per atom (`inlineAtomPolicyAction`: an
+> `ATOM_REGISTRY` kind that is an `INLINE_INSERT_ACTIONS` member — today
+> footnote, citation); id-less atoms (`labelRef`, `inlineMath`) answer to the
+> schema half alone, which keeps inline math legal in a title. No surface asks
+> `blockKindAllowsAction(…, "citation"|"footnote")` beside the door.
+
+CI: [inline-atom-door.test.ts](../../../src/lib/tiptap/__tests__/inline-atom-door.test.ts)
+(door + drop-mode legs, and the census pinning the policy half inside the door;
+measured by reverting the registry: 3 legs fail).
+
 ##### The drop half: the AFFORDANCE is where a per-payload container question is asked
 
 Same law, the DRAG carrier (task 414) — and the case where the SSOT was the one

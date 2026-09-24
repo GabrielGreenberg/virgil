@@ -492,9 +492,17 @@ describe("every inline splice refuses rather than tear the block", () => {
     // in-text grab configures no `createAtom`, so an unresolvable source is
     // ALSO a `no-op` with an unchanged document). Same spec, same stash, same
     // ctx; only the target block differs.
-    const inProse = caretAt(editor, midOf(editor, "titleField"));
+    // The target is a figure CAPTION — an `inline*` textblock whose kind
+    // permits a citation. Not the title: since task 740 the inline-atom door
+    // carries the curated POLICY half too, and a `titleField` greys `citation`
+    // out (task 061), so the title refuses the move — asserted as its own leg.
+    const inProse = caretAt(editor, midOf(editor, "figureCaption"));
     expect(inTextAtomGrabSpec.classifyDrop(inProse, "atom-grab:tok", ctx)).toEqual({
       kind: "apply",
+    });
+    const intoTitle = caretAt(editor, midOf(editor, "titleField"));
+    expect(inTextAtomGrabSpec.classifyDrop(intoTitle, "atom-grab:tok", ctx)).toEqual({
+      kind: "no-op",
     });
   });
 
@@ -643,11 +651,17 @@ describe("every inline splice refuses rather than tear the block", () => {
     textRangeMoveDropSpec.applyDrop(placement, key, ctx);
     expect(tex(editor)).toBe(before);
 
-    // CONTROL — the same marked run into the TITLE (an `inline*` textblock)
-    // lands, so the refusal above is this gate and not `locateRange` failing.
+    // CONTROL — the same marked run into a figure CAPTION (an `inline*`
+    // textblock whose kind permits a citation) lands, so the refusal above is
+    // this gate and not `locateRange` failing. The TITLE refuses it since task
+    // 740: the run carries a citation, which a `titleField` greys out (061).
+    const intoCaption = caretAt(editor, midOf(editor, "figureCaption"));
+    expect(textRangeMoveDropSpec.classifyDrop(intoCaption, key, ctx)).toEqual({
+      kind: "apply",
+    });
     const intoTitle = caretAt(editor, midOf(editor, "titleField"));
     expect(textRangeMoveDropSpec.classifyDrop(intoTitle, key, ctx)).toEqual({
-      kind: "apply",
+      kind: "no-op",
     });
   });
 });

@@ -40,7 +40,6 @@ import type { Transaction } from "@tiptap/pm/state";
 // `view.editable` early-return); `/footnote` inserts its atom synchronously
 // BEFORE the bridge call, so its gate MUST be here to prevent an orphan atom.
 import {
-  blockKindAllowsAction,
   inlineRangeAllowsAtom,
 } from "@/text-objects/text-object-registry";
 
@@ -207,7 +206,17 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // synchronous atom insert — it needn't precede the collab gate: the CHIP 7b
       // `view.editable` refusal lives in `runBridgeAction` (which bails before any
       // dispatch, so the popover never opens on a read-only view either way).
-      if (!blockKindAllowsAction(view.state.selection.$from.parent.type.name, "citation")) return;
+      // Asked through the ONE inline-atom door (task 740), which carries the
+      // policy half (061) and the schema half (396) together.
+      {
+        const { doc, selection, schema } = view.state;
+        const citationType = schema.nodes.citation;
+        if (
+          !citationType ||
+          !inlineRangeAllowsAtom(doc, selection.from, selection.to, citationType)
+        )
+          return;
+      }
       // Citation creation popover (deferred-commit): `/cite` no longer inserts a
       // blank `\cite{}` atom + pristine card up front. It routes through the
       // registry's `citation.run` (surface "slash") with NO payload, which opens
@@ -229,17 +238,12 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // editable here), so the bridge-dispatch boilerplate isn't re-inlined.
       if (!view.editable) return;
       const { state } = view;
-      // Task 061: refuse the synchronous footnote-atom insert when the caret's
-      // containing block greys `footnote` out (a non-prose block). MUST gate
-      // here — the atom is inserted below BEFORE the bridge's `applies()` gate
-      // runs, so relying on the bridge alone would leave an orphan atom.
-      if (!blockKindAllowsAction(state.selection.$from.parent.type.name, "footnote")) return;
       const footnoteNodeType = state.schema.nodes.footnote;
       if (!footnoteNodeType) return;
-      // Task 396 — the SCHEMA half beside the POLICY half above (the twin in
-      // `footnote.ts` / `citation.ts` states why both are asked). `\cite` above
-      // needs none: it opens a popover whose COMMIT goes through
-      // `insertInlineAtom`, which carries the gate at the door.
+      // The ONE inline-atom door (task 740): the policy half (061 — a non-prose
+      // block greys `footnote` out) and the schema half (396) together. MUST
+      // gate here — the atom is inserted below BEFORE the bridge's `applies()`
+      // gate runs, so relying on the bridge alone would leave an orphan atom.
       // RANGE form (task 428): `replaceSelectionWith` below REPLACES the live
       // selection, so every textblock it reaches must host the atom.
       if (
