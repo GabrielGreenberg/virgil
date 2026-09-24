@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import type { NodeType, ResolvedPos } from "@tiptap/pm/model";
 import katex from "katex";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { chromeOnly } from "@/lib/view-only-chrome";
@@ -290,6 +291,24 @@ export const InlineMath = Node.create<MathOptions>({
   },
 });
 
+/**
+ * Where a typed display-math BLOCK's replace range starts (task 744). A block
+ * dropped INSIDE a textblock splits it; when the typed `$$…` begins at the very
+ * start of that textblock the split's left half is an EMPTY paragraph the user
+ * never asked for. So a match that begins at the textblock's start widens to
+ * the textblock's OPENING token: the left half vanishes, the right half (the
+ * text after the caret, where the caret lands) survives. Mid-block matches keep
+ * the split — the text before them is real.
+ */
+function blockReplaceStart($from: ResolvedPos, start: number, type: NodeType): number {
+  if (start !== $from.start() || $from.depth < 1) return start;
+  // Widen only where the textblock's own parent takes the block BEFORE it
+  // (a list item whose first child must be a paragraph does not) — otherwise
+  // keep the split the container gate already approved.
+  const index = $from.index(-1);
+  return $from.node(-1).canReplaceWith(index, index, type) ? $from.before() : start;
+}
+
 export const DisplayMath = Node.create<MathOptions>({
   name: "displayMath",
   group: "block textObject",
@@ -353,9 +372,8 @@ export const DisplayMath = Node.create<MathOptions>({
 
             // Case 1: $$ on an empty/start of paragraph → empty display math block
             if (textBefore === "$") {
-              const start = from - 1;
               const tr = state.tr.replaceWith(
-                start,
+                blockReplaceStart($from, from - 1, nodeType),
                 from,
                 nodeType.create({ latex: "" })
               );
@@ -371,7 +389,7 @@ export const DisplayMath = Node.create<MathOptions>({
             const start = from - match[0].length;
             if (!rangeHoldsOnlyText(state.doc, start, from)) return false;
             const tr = state.tr.replaceWith(
-              start,
+              blockReplaceStart($from, start, nodeType),
               from,
               nodeType.create({ latex })
             );
