@@ -442,6 +442,23 @@ describe("ViewMenu — expandable groups (click + Enter; snapshot grows/shrinks)
     expect(expandedOf(viewRowByLabel("Marginalia"))).toBe(false);
   });
 
+  it("ArrowDown after an expand lands on the group's FIRST CHILD — nav order is visual order (task 745)", () => {
+    const props = makeViewProps();
+    openViewMenu(props);
+    let guard = 0;
+    while (labelText(activeViewRow()) !== "Marginalia" && guard++ < 20) key("ArrowDown");
+    expect(labelText(activeViewRow())).toBe("Marginalia");
+    key("ArrowRight"); // expand — children mount while the menu is open
+    expect(viewRowByLabel("Show marginalia")).toBeDefined();
+    // The children register AFTER every other row; nav must still step to the
+    // row drawn directly beneath the group, not to the next group.
+    key("ArrowDown");
+    expect(labelText(activeViewRow())).toBe("Show marginalia");
+    // And back up returns to the group row.
+    key("ArrowUp");
+    expect(labelText(activeViewRow())).toBe("Marginalia");
+  });
+
   it("collapsing a group removes its children from the snapshot", () => {
     const props = makeViewProps();
     openViewMenu(props);

@@ -23,6 +23,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useMenuContext } from "./context";
+import type { MenuItemRegistration } from "./registry";
 import type { MenuItemProps, MenuRegion, MenuCoords, UseMenuItemResult } from "./types";
 
 export interface UseMenuItemOptions {
@@ -52,13 +53,12 @@ export interface UseMenuItemOptions {
    */
   keepMenuOpen?: boolean;
   /**
-   * Live VISUAL index (the row's position in the rendered list). Pass this from
-   * a list whose rows REORDER without remounting — a fuzzy-ranked combobox whose
-   * React `key` survives a re-rank — so nav follows what the user sees. The
-   * registry's default insertion `order` is correct only while DOM order ==
-   * registration order; this republishes the live index via `registry.setOrder`
-   * whenever it changes, so arrow-nav steps strictly through visual order. Omit
-   * for static menus (their DOM order already equals registration order).
+   * Live VISUAL index (the row's position in the rendered list). Pass this ONLY
+   * from a list whose rows REORDER without remounting — a fuzzy-ranked combobox
+   * whose React `key` survives a re-rank. Nav order is read from the DOM
+   * (task 745), but such a re-rank changes no registration, so nothing else
+   * would tell the registry to re-read it; a changed index does. Rows that
+   * mount, unmount or flip `disabled` never need it.
    */
   order?: number;
 }
@@ -103,36 +103,47 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     if (!keepOpenRef.current) activatedRef.current?.(idRef.current);
   }, []);
 
-  // Register / update on the nav-relevant fields. The registry de-dupes
-  // no-op updates (only bumps its version when something nav-structural
-  // changed), so this effect is cheap on re-render.
+  // Registration is TWO effects (task 745). Presence — register on mount,
+  // unregister on unmount — keys on `[registry, id]` only. A nav-field change
+  // (disabled / letter / coords / region / aliases) is an UPSERT through the
+  // second effect: `register` is idempotent and keeps the row's ref, its
+  // fallback order and (unless the row turned inert) the highlight. Folding the
+  // fields into the presence effect made every live flip an unmount — its
+  // cleanup deleted the ref (`setRef`'s stable identity means React never
+  // re-attaches it) and dropped the highlight.
   const coordsRow = coords?.row;
   const coordsCol = coords?.col;
   const aliasesKey = (letterAliases ?? []).join(",");
+  const registration = (): MenuItemRegistration => ({
+    id,
+    region,
+    coords:
+      coordsRow != null && coordsCol != null
+        ? { row: coordsRow, col: coordsCol }
+        : undefined,
+    disabled,
+    letter,
+    letterAliases,
+    run: stableRun,
+  });
+  const registrationRef = useRef(registration);
+  registrationRef.current = registration;
   useEffect(() => {
-    registry.register({
-      id,
-      region,
-      coords:
-        coordsRow != null && coordsCol != null
-          ? { row: coordsRow, col: coordsCol }
-          : undefined,
-      disabled,
-      letter,
-      letterAliases,
-      run: stableRun,
-    });
+    registry.register(registrationRef.current());
     return () => registry.unregister(id);
+  }, [registry, id]);
+  useEffect(() => {
+    registry.register(registrationRef.current());
     // aliasesKey stands in for the array identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registry, id, region, coordsRow, coordsCol, disabled, letter, aliasesKey, stableRun]);
 
-  // Republish the live visual index (reorderable lists only). Kept SEPARATE
-  // from the register effect on purpose: a re-rank changes only `order`, so this
-  // updates the sort key WITHOUT the register effect's unregister/re-register
-  // churn (which would transiently clear `active` and drop the highlight). The
-  // registry no-ops when the order is unchanged, so this is inert for the
-  // common (index-stable) re-render and entirely absent for menus that omit it.
+  // Republish the live visual index (reorderable lists only). Nav order is read
+  // from the DOM, but a key-stable re-rank moves DOM nodes WITHOUT any
+  // registration change, so nothing would bump the snapshot; `setOrder` is that
+  // bump (and the element-less fallback key). The registry no-ops when the
+  // order is unchanged, so this is inert for the common re-render and absent
+  // for menus that omit it.
   useEffect(() => {
     if (order == null) return;
     registry.setOrder(id, order);
