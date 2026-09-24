@@ -1825,7 +1825,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       <div className="flex flex-col flex-1 min-w-0">
         <EditorContent editor={editor} />
         <TextObjectGrabHandle editor={editor} />
-        <SelectionActionsMenu editor={editor} />
+        <SelectionActionsMenu editor={editor} documentClass={documentClass ?? null} />
         <SlashCommandPopup editor={editor} />
       </div>
     </ActiveTextObjectProvider>

@@ -169,6 +169,9 @@ export interface ActionsMenuPanelProps {
     height: number;
   };
   onClose: () => void;
+  /** The document's `\documentclass` (null = unknown), for the ¶ block-type
+   *  dropdown's per-class heading rows (task 752). */
+  documentClass?: string | null;
 }
 
 const PANEL_PLACEMENTS: FloatingMenuPlacement[] = [
@@ -184,6 +187,7 @@ export function ActionsMenuPanel({
   mode,
   triggerRect,
   onClose,
+  documentClass = null,
 }: ActionsMenuPanelProps) {
   const dragHandleMenu = useDragHandleMenu();
   // CHIP 7b: the UNIFORM collab read-only signal for the lightning surface,
@@ -619,6 +623,7 @@ export function ActionsMenuPanel({
             row={1}
             col={0}
             editor={editor}
+            documentClass={documentClass}
           />
           <FmtBtn
             id="bullet-list"
@@ -1057,10 +1062,12 @@ function BlockTypeGridCell({
   row,
   col,
   editor,
+  documentClass,
 }: {
   row: number;
   col: number;
   editor: Editor;
+  documentClass: string | null;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const { active: roving, getItemProps } = useMenuItem({
@@ -1090,7 +1097,7 @@ function BlockTypeGridCell({
         background: roving ? "var(--menu-roving-bg)" : "transparent",
       }}
     >
-      <BlockTypeDropdown editor={editor} />
+      <BlockTypeDropdown editor={editor} documentClass={documentClass} />
     </div>
   );
 }

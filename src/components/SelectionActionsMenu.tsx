@@ -174,6 +174,7 @@ function placementsEqual(a: Placement, b: Placement): boolean {
 
 export function SelectionActionsMenu({
   editor,
+  documentClass = null,
 }: {
   /** The live editor as a TRACKED value (task 736 — the grab handle's
    *  sibling). A ref the parent fills in an effect is still null when this
@@ -183,6 +184,10 @@ export function SelectionActionsMenu({
    *  editor swap. As a prop, arrival/swap is one render per editor lifetime and
    *  every binding below re-keys on it — nothing per-transaction flows here. */
   editor: Editor | null;
+  /** The document's `\documentclass`, threaded to the lightning grid's ¶
+   *  block-type dropdown so it greys the heading levels the class cannot
+   *  carry (task 752). */
+  documentClass?: string | null;
 }) {
   const [placement, setPlacement] = useState<Placement>(INVISIBLE_PLACEMENT);
   const [menuTarget, setMenuTarget] = useState<{
@@ -575,6 +580,7 @@ export function SelectionActionsMenu({
           height: BUTTON_SIZE,
         }}
         onClose={() => setMenuTarget(null)}
+        documentClass={documentClass}
       />
     </>
   );

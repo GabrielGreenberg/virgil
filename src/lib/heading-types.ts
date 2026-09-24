@@ -21,6 +21,12 @@ export interface HeadingTypeEntry {
   level: number;
   name: string;
   command: SectioningCommand;
+  /** A display qualifier for a picker that ALSO offers a "Body text" row
+   *  (the ¶ block-type dropdown), where a bare "Paragraph" would read as a
+   *  synonym of body text. Pickers read it through `headingLevelOptions`
+   *  (`document-class.ts`) as `menuLabel` — the ONE place the qualifier is
+   *  spelled, so the dropdown no longer keeps a second list (task 752). */
+  menuLabel?: string;
 }
 
 export const HEADING_TYPES: readonly HeadingTypeEntry[] = [
@@ -29,8 +35,8 @@ export const HEADING_TYPES: readonly HeadingTypeEntry[] = [
   { level: 2, name: "Section",       command: "section" },
   { level: 3, name: "Subsection",    command: "subsection" },
   { level: 4, name: "Subsubsection", command: "subsubsection" },
-  { level: 5, name: "Paragraph",     command: "paragraph" },
-  { level: 6, name: "Subparagraph",  command: "subparagraph" },
+  { level: 5, name: "Paragraph",     command: "paragraph",    menuLabel: "Paragraph heading" },
+  { level: 6, name: "Subparagraph",  command: "subparagraph", menuLabel: "Subparagraph heading" },
 ] as const;
 
 /** The outermost sectioning level (`\part` = 0), DERIVED from the table.

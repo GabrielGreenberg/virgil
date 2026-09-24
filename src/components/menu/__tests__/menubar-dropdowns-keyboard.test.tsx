@@ -352,6 +352,66 @@ function activeViewRow(): HTMLButtonElement | undefined {
   return viewRows().find((b) => b.getAttribute("data-active") === "");
 }
 
+describe("BlockTypeDropdown — heading rows follow the document class (task 752)", () => {
+  it("in an `article`, Chapter is visible but disabled, arrow-skipped and inert", () => {
+    const { editor, chain } = makeEditor(null);
+    const { container } = render(<BlockTypeDropdown editor={editor} documentClass="article" />);
+    fireEvent.click(container.querySelector("button")!);
+    expect(blockButtons()).toHaveLength(8); // stays visible — full vocabulary
+    const chapter = blockButtonByLabel("Chapter")!;
+    expect(chapter.getAttribute("aria-disabled")).toBe("true");
+    expect(chapter.getAttribute("data-hint")).toContain("article");
+    // Every other level stays live.
+    const disabled = blockButtons().filter((b) => b.getAttribute("aria-disabled") === "true");
+    expect(disabled.map(labelOf)).toEqual(["Chapter"]);
+
+    // Arrow nav skips it: Body text → Part → Section.
+    key("ArrowDown");
+    key("ArrowDown");
+    expect(labelOf(activeBlockButton())).toBe("Part");
+    key("ArrowDown");
+    expect(labelOf(activeBlockButton())).toBe("Section");
+
+    // A click is inert: no write, menu stays open.
+    fireEvent.click(chapter);
+    expect(chain.command).not.toHaveBeenCalled();
+    expect(chain.run).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="menu"]')).toBeTruthy();
+  });
+
+  it("with no known class, every row is enabled", () => {
+    const { editor } = makeEditor(null);
+    const { container } = render(<BlockTypeDropdown editor={editor} documentClass={null} />);
+    fireEvent.click(container.querySelector("button")!);
+    expect(blockButtons().some((b) => b.getAttribute("aria-disabled") === "true")).toBe(false);
+  });
+
+  it("in a `letter`, every heading row is disabled but Body text stays live", () => {
+    const { editor } = makeEditor(null);
+    const { container } = render(<BlockTypeDropdown editor={editor} documentClass="letter" />);
+    fireEvent.click(container.querySelector("button")!);
+    const live = blockButtons().filter((b) => b.getAttribute("aria-disabled") !== "true");
+    expect(live.map(labelOf)).toEqual(["Body text"]);
+  });
+
+  it("the checkmark tracks a level-0 (\\part) heading — no falsy-zero trap", () => {
+    const { editor } = makeEditor(0);
+    const { container } = render(<BlockTypeDropdown editor={editor} documentClass="article" />);
+    fireEvent.click(container.querySelector("button")!);
+    expect(blockButtonByLabel("Part")!.getAttribute("aria-checked")).toBe("true");
+    expect(blockButtonByLabel("Body text")!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("pickBlockType refuses a class-unsupported level even when called directly", async () => {
+    const { pickBlockType } = await import("../../MenuBar");
+    const { editor, chain } = makeEditor(null);
+    pickBlockType(editor, "0", "letter"); // \part in a letter
+    expect(chain.command).not.toHaveBeenCalled();
+    pickBlockType(editor, "0", "article"); // allowed
+    expect(chain.command).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("ViewMenu — checkbox rows (toggle + close/keep-open split)", () => {
   it("Display rows are menuitemcheckbox with aria-checked; toggling closes the menu", () => {
     const props = makeViewProps({ showParTitles: true });

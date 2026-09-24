@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
+  classAllowsHeadingLevel,
   detectDocumentClassMismatch,
+  headingLevelOptions,
   extractDocumentClass,
   findSectioningCommands,
   rewriteDocumentClass,
   unsupportedSectioningFor,
 } from "@/lib/document-class";
+import { HEADING_TYPES } from "@/lib/heading-types";
 
 describe("extractDocumentClass", () => {
   it("reads a plain class", () => {
@@ -231,5 +234,34 @@ describe("rewriteDocumentClass — live-offset awareness", () => {
     expect(rewriteDocumentClass(src, "book")).toBe(
       "% \\documentclass{article}\n\\documentclass{book}\n\\begin{document}",
     );
+  });
+});
+
+describe("headingLevelOptions — the ONE heading-picker derivation (task 752)", () => {
+  const disabledOf = (cls: string | null) =>
+    headingLevelOptions(cls).filter((o) => o.disabled).map((o) => o.command);
+
+  it("article disables exactly \\chapter", () => {
+    expect(disabledOf("article")).toEqual(["chapter"]);
+  });
+  it("letter disables every level", () => {
+    expect(disabledOf("letter")).toHaveLength(HEADING_TYPES.length);
+  });
+  it("an unknown or absent class disables nothing", () => {
+    expect(disabledOf(null)).toEqual([]);
+    expect(disabledOf("acmart")).toEqual([]);
+  });
+  it("rows mirror HEADING_TYPES; a disabled row carries a hint, menuLabel qualifies 5/6", () => {
+    const rows = headingLevelOptions("article");
+    expect(rows.map((r) => r.level)).toEqual(HEADING_TYPES.map((h) => h.level));
+    expect(rows.find((r) => r.command === "chapter")!.hint).toContain("`article`");
+    expect(rows.find((r) => r.command === "section")!.hint).toBeUndefined();
+    expect(rows.find((r) => r.level === 5)!.menuLabel).toBe("Paragraph heading");
+    expect(rows.find((r) => r.level === 2)!.menuLabel).toBe("Section");
+  });
+  it("classAllowsHeadingLevel agrees with the rows", () => {
+    expect(classAllowsHeadingLevel("article", 1)).toBe(false);
+    expect(classAllowsHeadingLevel("article", 2)).toBe(true);
+    expect(classAllowsHeadingLevel(null, 1)).toBe(true);
   });
 });
