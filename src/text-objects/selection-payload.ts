@@ -41,7 +41,7 @@
 import type { Editor } from "@tiptap/react";
 import { NodeSelection, type Selection } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { isTextObjectKind } from "./text-object-registry";
+import { isNodeTextObjectKind } from "./text-object-registry";
 import type { SelectionRef, TextObjectKind, TextObjectRef } from "./types";
 
 /** The uuid-bearing TextObject that OWNS a resolved position, plus where it sits. */
@@ -60,7 +60,7 @@ export function selectionOwner(doc: PMNode, pos: number): SelectionOwner | null 
   for (let d = $pos.depth; d >= 0; d--) {
     const node = $pos.node(d);
     const name = node.type.name;
-    if (!isTextObjectKind(name) || name === "linkedRange") continue;
+    if (!isNodeTextObjectKind(name)) continue;
     const uuid = node.attrs?.uuid as string | null | undefined;
     if (!uuid) continue;
     return {

@@ -170,7 +170,7 @@ export function exampleItemDropAdapter(
 // content is `(paragraph | graphicsBlock | displayMath)+` (expex.ts, the true
 // root) — text, picture, equation. Every place that gates the into-example drop
 // derives from THIS set, never a hand-kept parallel literal:
-//   • the `isCompatibleParent` if-chain below consumes it (`kind ∈ set`), and
+//   • `isCompatibleParent` (text-object-registry.ts) consumes it, and
 //   • `hit-test.ts` imports it as its `EXPEX_DROP_KINDS` gate.
 // The registry facet `dropAdapter === blockIntoExpexDropAdapter` is the natural
 // SSOT for the SAME fact; the registry imports THIS module (cycle), so it cannot
@@ -237,38 +237,10 @@ export function blockIntoExpexDropAdapter(
 }
 
 // ---------------------------------------------------------------------------
-// Compatibility check — does this parent kind accept this sub-object?
-// Used by drop hit-testing to classify the target context before calling
-// the adapter.
+// Compatibility check (`isCompatibleParent`) lives in text-object-registry.ts
+// since task 743: the sub-object half is the registry's `parentKinds` facet,
+// and the registry imports THIS module, so the reader sits on that side.
 // ---------------------------------------------------------------------------
-
-export function isCompatibleParent(
-  childKind: TextObjectKind,
-  parentKind: TextObjectKind,
-): boolean {
-  if (childKind === "listItem") {
-    return parentKind === "bulletList" || parentKind === "orderedList";
-  }
-  if (childKind === "exampleItem") {
-    // exampleItem's true parent is `exampleItemList`, which lives inside
-    // `exampleBlock`. Drop sites typically classify by the visible
-    // enclosing block, so report `exampleBlock` as compatible too.
-    return parentKind === "exampleBlock";
-  }
-  if (EXPEX_INNER_KINDS.has(childKind)) {
-    // Feature A1 — text (paragraph), picture (graphicsBlock) and equation
-    // (displayMath) are each schema-valid inside an exampleItem (expex.ts,
-    // `(paragraph | graphicsBlock | displayMath)+`). None is a valid DIRECT
-    // child of the exampleBlock (which holds items via exampleItemList) — that
-    // between-items case routes to a wrap in `blockIntoExpexDropAdapter`.
-    // Reporting exampleItem-only compatibility here is gated downstream by the
-    // hit-test resolver firing only inside an exampleBlock, so a paragraph
-    // dropped anywhere else still classifies incompatible → drop-direct
-    // (its non-expex placement, unchanged).
-    return parentKind === "exampleItem";
-  }
-  return false;
-}
 
 // ---------------------------------------------------------------------------
 // Wrap construction — build a fresh single-item parent of `parentKind`

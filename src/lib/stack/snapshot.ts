@@ -17,6 +17,7 @@ import { getSectionRangeByUuid } from "@/lib/section-range";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import type { TextObjectKind, TextObjectRef } from "@/text-objects/types";
+import { isRangeKind } from "@/text-objects/text-object-registry";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -296,7 +297,7 @@ export function snapshotTextObject(
   if (ref.kind === "heading") {
     return snapshotHeadingSection(editor, ref.id, source);
   }
-  if (ref.kind === "linkedRange") {
+  if (isRangeKind(ref.kind)) {
     return snapshotLinkedRange(editor, ref.id, source);
   }
   if (SUB_OBJECT_KINDS.has(ref.kind)) {

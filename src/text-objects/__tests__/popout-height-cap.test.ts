@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { POPOUT_MAX_VH, capPopoutHeight } from "../text-object-registry";
+import { capPopoutHeight } from "../text-object-registry";
+import { POPOUT_MAX_VH } from "@/floats/float-policy";
 
 // Issue-13: a lifted-section popout was spawned at ~the section's full visible
 // height and ran off the bottom of the screen. The fix imposes a GENERAL

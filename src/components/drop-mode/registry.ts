@@ -19,6 +19,7 @@ import { STACK_PULL_PREFIX } from "@/lib/stack/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { isCardKind } from "@/cards/predicates";
+import { isRangeKind, isTextObjectKind } from "@/text-objects/text-object-registry";
 // Fold every card kind's DropSpec onto CARD_REGISTRY[kind].dropSpec.
 import "@/cards/drop-specs";
 
@@ -60,8 +61,8 @@ export const MODULE_DROP_SPECS: ReadonlyArray<{
  * `parseAnyKey` reads the `float:<domain>:<kind>:<id>` grammar AND the legacy
  * `<prefix>:<id>` / `textobject:<kind>:<id>` shapes.
  *
- *  - text-object → `textObjectDropSpec`, except a plain text selection
- *    (`linkedRange`) which moves as a SLICE at an inline caret → the
+ *  - text-object → `textObjectDropSpec`, except a RANGE kind (registry
+ *    `isRange` — today the plain text selection, `linkedRange`) which moves as a SLICE at an inline caret → the
  *    `text-range-move` spec (L3f-2).
  *  - card kind → the folded `CARD_REGISTRY[kind].dropSpec` (both revision kinds
  *    share `revisionDropSpec`; `bib`/`ai`/`error` have none → `undefined`).
@@ -75,7 +76,9 @@ export function lookupSpec(cardKey: string): DropSpec | undefined {
     return TRANSIENT_SPECS[sep === -1 ? cardKey : cardKey.slice(0, sep)];
   }
   if (parsed.domain === "textobject") {
-    if (parsed.kind === "linkedRange") return textRangeMoveDropSpec;
+    if (isTextObjectKind(parsed.kind) && isRangeKind(parsed.kind)) {
+      return textRangeMoveDropSpec;
+    }
     return textObjectDropSpec;
   }
   if (isCardKind(parsed.kind)) {

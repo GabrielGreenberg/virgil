@@ -70,6 +70,7 @@ import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
+  isRangeKind,
   blockRangeAllowsAction,
   MEANINGFUL_BLOCK_ATOM_NODE_NAMES,
   inlineInsertPos,
@@ -391,7 +392,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       let paragraphId: string;
       if (ref.kind === "selection") {
         paragraphId = ref.paragraphId;
-      } else if (ref.kind === "linkedRange") {
+      } else if (isRangeKind(ref.kind)) {
         paragraphId = paragraphUuidAt(ed.state.doc, resolved.from) ?? "";
       } else {
         paragraphId = ref.id;
@@ -405,7 +406,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       // selection semantics (the mark wraps text inside a paragraph),
       // so we record `paragraph` here too.
       const targetKind: import("@/text-objects/types").TextObjectKind =
-        ref.kind === "selection" || ref.kind === "linkedRange"
+        ref.kind === "selection" || isRangeKind(ref.kind)
           ? "paragraph"
           : ref.kind;
       // Only the selection / linkedRange refs hold a literal text range
@@ -415,7 +416,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       // list, listItem, …) anchor at the block level — no mark.
       const wantRangeAnchor =
         text.length > 0 &&
-        (ref.kind === "selection" || ref.kind === "linkedRange");
+        (ref.kind === "selection" || isRangeKind(ref.kind));
 
       let panelId: PanelId | null = null;
 

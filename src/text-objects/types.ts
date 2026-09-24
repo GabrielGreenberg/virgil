@@ -253,10 +253,14 @@ export interface TextObjectMeta {
   /** Sub-object kinds wrap into a fresh single-item parent when dropped
    *  outside their natural context. */
   isSubObject: boolean;
-  /** For sub-objects: the parent kind they wrap into by default. For
-   *  `listItem`, the source-context's parent kind (`bulletList` vs
-   *  `orderedList`) overrides this. */
-  parentKind?: TextObjectKind;
+  /** For sub-objects: EVERY parent kind this kind is a natural child of, the
+   *  default wrap kind FIRST. `listItem` → `["bulletList", "orderedList"]`
+   *  (an ordered item's parent is `orderedList`; the source-context's parent
+   *  kind picks between them when wrapping). Read by `isCompatibleParent`
+   *  (the drop hit-test's child→parent classification) and pinned by
+   *  `first-line-target-census.test.ts` as exactly the text-line container
+   *  set — so it is a facet with readers, not a comment (task 743). */
+  parentKinds?: readonly TextObjectKind[];
 
   /** SELECTION-MODE facet — whether the grab-handle / Duplicate / ref-resolve
    *  treat this block as a whole-node `NodeSelection` (true) rather than dropping

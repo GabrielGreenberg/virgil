@@ -45,7 +45,7 @@ vi.mock("@/lib/storage", async () =>
 );
 
 import { Editor, getSchema } from "@tiptap/core";
-import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import type { Node as PMNode, NodeType, Schema } from "@tiptap/pm/model";
 import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
@@ -58,12 +58,78 @@ import {
 import {
   TEXT_OBJECT_REGISTRY,
   INLINE_INSERT_ACTIONS,
-  typeHostsInlineInsert,
+  NO_INLINE_LANDING_INSIDE,
   inlineInsertPos,
   blockRangeAllowsAction,
 } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
+
+/**
+ * Can an inline insert of `action` land ANYWHERE in a node of type `root` —
+ * read from the SCHEMA, by walking every node type the content expressions can
+ * reach from `root` and asking each textblock whether it admits the payload?
+ *
+ * This is the premise the curated `actions` sets state per kind and cannot
+ * check for themselves (the registry is editor-coupled and has no schema). It is
+ * this suite's ORACLE, so it lives here beside its only caller (task 743 — it
+ * was a production export with no production reader); it reads the SAME
+ * `NO_INLINE_LANDING_INSIDE` set the landing resolver does, so it cannot drift
+ * from what a real insert refuses. CI asks it of every kind: a set may drop one of the three only
+ * where this returns false, or where the kind + action pair is a stated POLICY
+ * exclusion. Hand-bucketing four prose-bodied containers as "structural
+ * containers with no place to embed inline insertions" is precisely how task
+ * 148 shipped, and this is the check that would have caught it.
+ *
+ * Payload per action, all schema-read: `footnote`/`citation` need a textblock
+ * whose content expression admits that inline NODE (so `inline*` yes, the
+ * verbatim `text*` no); `suggest-edit` needs one that admits the `linkedAnchor`
+ * MARK (so a `marks: ""` node no).
+ */
+function typeHostsInlineInsert(
+  root: NodeType,
+  action: DragHandleAction,
+): boolean {
+  if (!INLINE_INSERT_ACTIONS.has(action)) return true;
+  const schema = root.schema;
+  const atom = action === "suggest-edit" ? null : schema.nodes[action];
+  const mark = action === "suggest-edit" ? schema.marks.linkedAnchor : null;
+  if (action === "suggest-edit" ? !mark : !atom) return false;
+  const seenTypes = new Set<string>();
+  const stack: NodeType[] = [root];
+  while (stack.length > 0) {
+    const type = stack.pop()!;
+    if (seenTypes.has(type.name)) continue;
+    seenTypes.add(type.name);
+    // The landing resolver will not descend here, so neither may the premise —
+    // otherwise a kind whose ONLY inline-hosting descendant is off limits (a
+    // `figureBlock`, whose sole child is its caption) would read as hostable
+    // while every real insert refused.
+    if (type !== root && NO_INLINE_LANDING_INSIDE.has(type.name)) continue;
+    if (type.isTextblock) {
+      const admits = atom
+        ? type.contentMatch.matchType(atom) != null
+        : type.inlineContent && !!mark && type.allowsMarkType(mark);
+      if (admits) return true;
+    }
+    // Every node type this type's content expression can reach, via the
+    // ContentMatch automaton's edges (the schema-level answer — no live node
+    // needed, so an empty container answers the same as a populated one).
+    const seenMatches = new Set<unknown>();
+    const matches = [type.contentMatch];
+    while (matches.length > 0) {
+      const match = matches.pop()!;
+      if (seenMatches.has(match)) continue;
+      seenMatches.add(match);
+      for (let i = 0; i < match.edgeCount; i++) {
+        const edge = match.edge(i);
+        stack.push(edge.type);
+        matches.push(edge.next);
+      }
+    }
+  }
+  return false;
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Real editor stack

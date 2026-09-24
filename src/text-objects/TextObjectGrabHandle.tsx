@@ -82,7 +82,7 @@ import {
 import { LAYOUT_SITE_GRAB_HANDLE } from "@/lib/layout-gesture-probe";
 import {
   TEXT_OBJECT_REGISTRY,
-  isTextObjectKind,
+  isNodeTextObjectKind,
   textObjectPopoutKey,
 } from "./text-object-registry";
 import { isTopRowOf, resolveBlockFrame } from "./block-frame";
@@ -461,7 +461,7 @@ function resolveTextObjectsAtMouse(
       const refs: ResolvedRef[] = [];
       for (const { uuid, el } of hits) {
         const kind = el.getAttribute("data-text-object-kind");
-        if (kind && isTextObjectKind(kind) && kind !== "linkedRange") {
+        if (kind && isNodeTextObjectKind(kind)) {
           refs.push({ ref: { kind, id: uuid }, el });
         }
       }
@@ -496,8 +496,7 @@ function resolveTextObjectsAtMouse(
     if (
       id &&
       kind &&
-      isTextObjectKind(kind) &&
-      kind !== "linkedRange" &&
+      isNodeTextObjectKind(kind) &&
       !seen.has(id)
     ) {
       // Carry the resolved element through to placement — no doc walk to
@@ -597,7 +596,7 @@ function computePlacement(
     let blockNodePos = -1;
     for (let d = $from.depth; d >= 0; d--) {
       const node = $from.node(d);
-      if (!isTextObjectKind(node.type.name) || node.type.name === "linkedRange") continue;
+      if (!isNodeTextObjectKind(node.type.name)) continue;
       if (!(node.attrs?.uuid as string | null)) continue;
       blockNodePos = d === 0 ? 0 : $from.before(d);
       break;
@@ -735,7 +734,7 @@ function resolveSelectionChromeAnchor(
     for (let d = $from.depth; d >= 0; d--) {
       const node = $from.node(d);
       const name = node.type.name;
-      if (!isTextObjectKind(name) || name === "linkedRange") continue;
+      if (!isNodeTextObjectKind(name)) continue;
       if (!(node.attrs?.uuid as string | null)) continue;
       return TEXT_OBJECT_REGISTRY[name].chromeAnchor;
     }
@@ -992,8 +991,7 @@ export function TextObjectGrabHandle({ editor }: Props) {
         const node = sel.node;
         const name = node.type.name;
         if (
-          isTextObjectKind(name) &&
-          name !== "linkedRange" &&
+          isNodeTextObjectKind(name) &&
           (node.attrs?.uuid as string | null)
         ) {
           // O(1) DOM resolve: sel.from is the position right before the node.

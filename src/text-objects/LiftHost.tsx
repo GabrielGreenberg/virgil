@@ -67,6 +67,7 @@ import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import {
   TEXT_OBJECT_REGISTRY,
+  isRangeKind,
   capPopoutHeight,
 } from "./text-object-registry";
 import {
@@ -750,7 +751,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
             // and the mark has no further job. GUARDED, so a grab that reused
             // a REAL annotation's range never deletes that note. Same call the
             // move and float terminals make.
-            if (liveRef.kind === "linkedRange") {
+            if (isRangeKind(liveRef.kind)) {
               removeTransientAnchor(editor, liveRef.id);
             }
             liveOverlay = null;
@@ -773,7 +774,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // a plain selection grab now that its move committed/cancelled — see
           // the grab branch below for the full rationale. GUARDED, so a grab
           // that reused a REAL annotation's range never deletes that note.
-          if (liveRef.kind === "linkedRange") {
+          if (isRangeKind(liveRef.kind)) {
             removeTransientAnchor(editor, liveRef.id);
           }
           liveOverlay = null;
@@ -861,7 +862,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // never deletes that note/highlight/cut/revision. (L3f-1 deferred
           // this move/cancel cleanup; popout-close is handled by the
           // `useTransientAnchorCleanup` poppedOutCards watcher.)
-          if (liveRef.kind === "linkedRange") {
+          if (isRangeKind(liveRef.kind)) {
             removeTransientAnchor(editor, liveRef.id);
           }
         }
@@ -898,7 +899,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // (move) and popout paths already nulled `liveOverlay` before
           // calling cleanup, so they don't double-handle here: move strips via
           // the onUp branch above, popout-close via the watcher.
-          if (liveOverlay.ref.kind === "linkedRange") {
+          if (isRangeKind(liveOverlay.ref.kind)) {
             removeTransientAnchor(editor, liveOverlay.ref.id);
           }
           liveOverlay = null;

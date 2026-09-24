@@ -73,12 +73,12 @@ describe("TEXT_OBJECT_REGISTRY", () => {
 
   it("classifies sub-objects correctly", () => {
     expect(TEXT_OBJECT_REGISTRY.listItem.isSubObject).toBe(true);
-    expect(TEXT_OBJECT_REGISTRY.listItem.parentKind).toBe("bulletList");
+    expect(TEXT_OBJECT_REGISTRY.listItem.parentKinds).toEqual(["bulletList", "orderedList"]);
     expect(TEXT_OBJECT_REGISTRY.exampleItem.isSubObject).toBe(true);
-    expect(TEXT_OBJECT_REGISTRY.exampleItem.parentKind).toBe("exampleBlock");
-    // Top-level kinds have no parentKind.
+    expect(TEXT_OBJECT_REGISTRY.exampleItem.parentKinds).toEqual(["exampleBlock"]);
+    // Top-level kinds have no parentKinds.
     expect(TEXT_OBJECT_REGISTRY.paragraph.isSubObject).toBe(false);
-    expect(TEXT_OBJECT_REGISTRY.paragraph.parentKind).toBeUndefined();
+    expect(TEXT_OBJECT_REGISTRY.paragraph.parentKinds).toBeUndefined();
   });
 
   it("classifies the range kind", () => {
@@ -95,9 +95,9 @@ describe("TEXT_OBJECT_REGISTRY", () => {
     // hugs the block's MEASURED markerLeft from block-frame.ts. What remains is
     // the sub-object identity (used for the markerless-container step-out).
     expect(TEXT_OBJECT_REGISTRY.listItem.isSubObject).toBe(true);
-    expect(TEXT_OBJECT_REGISTRY.listItem.parentKind).toBe("bulletList");
+    expect(TEXT_OBJECT_REGISTRY.listItem.parentKinds).toEqual(["bulletList", "orderedList"]);
     expect(TEXT_OBJECT_REGISTRY.exampleItem.isSubObject).toBe(true);
-    expect(TEXT_OBJECT_REGISTRY.exampleItem.parentKind).toBe("exampleBlock");
+    expect(TEXT_OBJECT_REGISTRY.exampleItem.parentKinds).toEqual(["exampleBlock"]);
     expect(TEXT_OBJECT_REGISTRY.paragraph.isSubObject).toBe(false);
     expect(TEXT_OBJECT_REGISTRY.heading.isSubObject).toBe(false);
     // The retired field is gone from every entry.

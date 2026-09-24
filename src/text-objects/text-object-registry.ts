@@ -45,6 +45,7 @@ import {
   listItemDropAdapter,
   exampleItemDropAdapter,
   blockIntoExpexDropAdapter,
+  EXPEX_INNER_KINDS,
 } from "./drop-adapters";
 import type {
   ConfirmDescriptor,
@@ -60,10 +61,10 @@ import type {
  * Shared "how tall can a popout be" policy. **Relocated to the AF float
  * subsystem** (`@/floats/float-policy`) — it is a *float* policy (Issue-13),
  * consumed by both the lifted-overlay capture cap in `TextObjectGrabHandle`
- * and the instant-popout auto-fit grow cap in the float window. Re-exported
- * here so existing `text-object-registry` importers keep resolving.
+ * and the instant-popout auto-fit grow cap in the float window. `capPopoutHeight`
+ * is re-exported here for `LiftHost`, its registry-side reader.
  */
-export { POPOUT_MAX_VH, capPopoutHeight } from "@/floats/float-policy";
+export { capPopoutHeight } from "@/floats/float-policy";
 
 // ---------------------------------------------------------------------------
 // Per-kind action sets — see ACTION-MENU-DIAGNOSIS.md cluster C1.
@@ -831,7 +832,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   listItem: {
     label: "List item",
     isSubObject: true,
-    parentKind: "bulletList",
+    parentKinds: ["bulletList", "orderedList"],
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
     isRange: false,
@@ -894,7 +895,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   exampleItem: {
     label: "Example item",
     isSubObject: true,
-    parentKind: "exampleBlock",
+    parentKinds: ["exampleBlock"],
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
     isRange: false,
@@ -1191,19 +1192,49 @@ export function isTextObjectKind(name: string): name is TextObjectKind {
 }
 
 /**
- * If the node is a TextObject (its name matches a persistent-node kind),
- * return a `TextObjectRef`. Returns null for nodes that aren't in the
- * `textObject` schema group (or that lack a uuid attr).
- *
- * Range kind (`linkedRange`) is NOT resolved here — it's mark-backed.
- * Use `textObjectForLinkedAnchor` (Phase E) for that.
+ * Is `kind` a RANGE text object (mark-backed, no node of its own)? The ONE
+ * spelling of range-ness: it reads the registry's `isRange` facet, so a second
+ * range kind is picked up everywhere by setting that facet — never by hunting
+ * `=== "linkedRange"` literals (task 743; `range-kind-census.test.ts` forbids
+ * new ones outside this module).
  */
-export function textObjectForNode(node: PMNode): TextObjectRef | null {
-  const name = node.type.name;
-  if (!isTextObjectKind(name) || name === "linkedRange") return null;
-  const id = node.attrs.uuid as string | null | undefined;
-  if (!id) return null;
-  return { kind: name, id };
+export function isRangeKind(kind: TextObjectKind): boolean {
+  return TEXT_OBJECT_REGISTRY[kind].isRange;
+}
+
+/**
+ * Is `name` a NODE-backed text-object kind — a registered kind that is not a
+ * range kind? The question every "walk up the ancestors / read the DOM kind
+ * attribute to find the enclosing text object" site asks.
+ */
+export function isNodeTextObjectKind(name: string): name is TextObjectKind {
+  return isTextObjectKind(name) && !isRangeKind(name);
+}
+
+/**
+ * Does `parentKind` accept `childKind` as a natural child? The drop hit-test's
+ * child→parent classification (`classifyParent` in the text-object drop spec).
+ *
+ * Sub-objects answer from the registry's `parentKinds` facet. The expex-inner
+ * block kinds (`EXPEX_INNER_KINDS`) are compatible with an `exampleItem` — a
+ * report gated downstream by the hit-test resolver firing only inside an
+ * exampleBlock, so a paragraph dropped anywhere else still classifies
+ * incompatible → drop-direct. Whether a bare block may land DIRECTLY in a
+ * single example's widened body (A2, expex.ts) is not this function's call:
+ * the adapters ask the schema at the true immediate parent first
+ * (`resolveWrapOrDirect` rung 1, drop-adapters.ts).
+ *
+ * Lives beside the registry (not in drop-adapters.ts, which the registry
+ * imports) so it can read `parentKinds` without an import cycle.
+ */
+export function isCompatibleParent(
+  childKind: TextObjectKind,
+  parentKind: TextObjectKind,
+): boolean {
+  const parents = TEXT_OBJECT_REGISTRY[childKind].parentKinds;
+  if (parents) return parents.includes(parentKind);
+  if (EXPEX_INNER_KINDS.has(childKind)) return parentKind === "exampleItem";
+  return false;
 }
 
 /**
@@ -1264,7 +1295,7 @@ export function blockKindAllowsAction(
  *     standing, deliberately, because closing it means TIGHTENING a surface the
  *     resolved decision said to leave permissive.
  */
-const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
+export const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
   "exampleGloss",
   "figureCaption",
 ]);
@@ -1450,69 +1481,6 @@ export function posBlockAllowsAction(
   action: DragHandleAction,
 ): boolean {
   return blockRangeAllowsAction(doc, pos, pos, action);
-}
-
-/**
- * Can an inline insert of `action` land ANYWHERE in a node of type `root` —
- * read from the SCHEMA, by walking every node type the content expressions can
- * reach from `root` and asking each textblock whether it admits the payload?
- *
- * This is the premise the curated `actions` sets state per kind and cannot
- * check for themselves (the registry is editor-coupled and has no schema — see
- * the header). CI asks it of every kind: a set may drop one of the three only
- * where this returns false, or where the kind + action pair is a stated POLICY
- * exclusion. Hand-bucketing four prose-bodied containers as "structural
- * containers with no place to embed inline insertions" is precisely how task
- * 148 shipped, and this is the check that would have caught it.
- *
- * Payload per action, all schema-read: `footnote`/`citation` need a textblock
- * whose content expression admits that inline NODE (so `inline*` yes, the
- * verbatim `text*` no); `suggest-edit` needs one that admits the `linkedAnchor`
- * MARK (so a `marks: ""` node no).
- */
-export function typeHostsInlineInsert(
-  root: NodeType,
-  action: DragHandleAction,
-): boolean {
-  if (!INLINE_INSERT_ACTIONS.has(action)) return true;
-  const schema = root.schema;
-  const atom = action === "suggest-edit" ? null : schema.nodes[action];
-  const mark = action === "suggest-edit" ? schema.marks.linkedAnchor : null;
-  if (action === "suggest-edit" ? !mark : !atom) return false;
-  const seenTypes = new Set<string>();
-  const stack: NodeType[] = [root];
-  while (stack.length > 0) {
-    const type = stack.pop()!;
-    if (seenTypes.has(type.name)) continue;
-    seenTypes.add(type.name);
-    // The landing resolver will not descend here, so neither may the premise —
-    // otherwise a kind whose ONLY inline-hosting descendant is off limits (a
-    // `figureBlock`, whose sole child is its caption) would read as hostable
-    // while every real insert refused.
-    if (type !== root && NO_INLINE_LANDING_INSIDE.has(type.name)) continue;
-    if (type.isTextblock) {
-      const admits = atom
-        ? type.contentMatch.matchType(atom) != null
-        : type.inlineContent && !!mark && type.allowsMarkType(mark);
-      if (admits) return true;
-    }
-    // Every node type this type's content expression can reach, via the
-    // ContentMatch automaton's edges (the schema-level answer — no live node
-    // needed, so an empty container answers the same as a populated one).
-    const seenMatches = new Set<unknown>();
-    const matches = [type.contentMatch];
-    while (matches.length > 0) {
-      const match = matches.pop()!;
-      if (seenMatches.has(match)) continue;
-      seenMatches.add(match);
-      for (let i = 0; i < match.edgeCount; i++) {
-        const edge = match.edge(i);
-        stack.push(edge.type);
-        matches.push(edge.next);
-      }
-    }
-  }
-  return false;
 }
 
 /**
@@ -1807,19 +1775,6 @@ function inlineAtomPolicyAction(atomType: NodeType): DragHandleAction | null {
     ? (kind as DragHandleAction)
     : null;
 }
-
-/**
- * **THE list/quote WRAPPER container SSOT** (task 397) — the THIRD member of the
- * container family, beside `posHostsBlockInsert` (a block atom lands BESIDE the
- * caret's textblock) and `posHostsInlineAtom` (an inline atom lands INSIDE it).
- * Since task 427 it LIVES in the import-free leaf `@/lib/tiptap/wrapper-gate`
- * (beside the identity half and the whole-question door `wrapperSafeInState`),
- * because the three `.extend()`ed StarterKit factories and the card-body
- * toolbar — surfaces that fire the wrapper toggles without entering the action
- * registry — cannot import this editor-coupled module. Re-exported here so the
- * container family keeps one home for its readers.
- */
-export { selectionHostsWrapper } from "@/lib/tiptap/wrapper-gate";
 
 /**
  * Construct the canonical float key for a TextObject — the
