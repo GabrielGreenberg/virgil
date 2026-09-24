@@ -8,8 +8,10 @@
  * Escape, or typing past any prefix match dismisses.
  *
  * The ProseMirror plugin in {@link SlashPopupExtension} owns the
- * canonical state and mirrors it to {@link slashPopupStore}; this
- * component subscribes via {@link useSlashPopupState}.
+ * canonical state and publishes it to {@link slashPopupStore} keyed by its
+ * editor; this component subscribes to ITS OWN editor's entry via
+ * {@link useSlashPopupState} (task 750 — a hidden keep-alive pane's popup
+ * reads its own, closed, state, so it can never paint a stray copy).
  *
  * Task 398: the plugin also carries the registry's `applies()` verdict
  * (`state.disabled`), and this component RENDERS it — a command that
@@ -21,7 +23,7 @@
  * commit ACCEPTS.
  */
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { useSlashPopupState } from "@/lib/slash-popup-store";
@@ -49,12 +51,8 @@ interface Coords {
   bottom: number;
 }
 
-export function SlashCommandPopup({
-  editorRef,
-}: {
-  editorRef: RefObject<Editor | null>;
-}) {
-  const state = useSlashPopupState();
+export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
+  const state = useSlashPopupState(editor);
   const [coords, setCoords] = useState<Coords | null>(null);
 
   const rafRef = useRef<number>(0);
@@ -63,7 +61,6 @@ export function SlashCommandPopup({
   // is the settle.
   const gestureActive = useLayoutGestureActive();
   useEffect(() => {
-    const editor = editorRef.current;
     if (!editor) return;
     if (!state.open) {
       setCoords(null);
@@ -123,7 +120,7 @@ export function SlashCommandPopup({
         rafRef.current = 0;
       }
     };
-  }, [state.open, state.open ? state.slashPos : -1, editorRef, gestureActive]);
+  }, [state.open, state.open ? state.slashPos : -1, editor, gestureActive]);
 
   if (!state.open || !coords || gestureActive) return null;
 
@@ -179,7 +176,6 @@ export function SlashCommandPopup({
             type="button"
             disabled={isDisabled}
             onClick={() => {
-              const editor = editorRef.current;
               if (!editor) return;
               executeSlashSelectionAt(editor.view, i);
               editor.commands.focus();

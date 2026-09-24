@@ -1826,7 +1826,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         <EditorContent editor={editor} />
         <TextObjectGrabHandle editor={editor} />
         <SelectionActionsMenu editor={editor} />
-        <SlashCommandPopup editorRef={editorInstanceRef} />
+        <SlashCommandPopup editor={editor} />
       </div>
     </ActiveTextObjectProvider>
   );

@@ -231,6 +231,10 @@ export const SlashPopupExtension = Extension.create({
     // reads (doc / selection / schema) comes from the transaction's NEW state,
     // NOT from `view.state` — inside `apply` the view still holds the OLD one.
     let pluginView: EditorView | null = null;
+    // The popup store's OWNER (task 750): this editor, the same identity its
+    // `<SlashCommandPopup>` reads by. Never a module slot — N keep-alive panes
+    // each publish to, and each paint from, their own entry.
+    const owner = this.editor;
     return [
       new Plugin<PluginState>({
         key: slashPopupKey,
@@ -240,15 +244,10 @@ export const SlashPopupExtension = Extension.create({
           },
           apply(tr, value, _oldState, newState): PluginState {
             const meta = tr.getMeta(META_KEY) as PluginState | undefined;
-            if (meta) {
-              slashPopupStore.set(meta);
-              return meta;
-            }
+            if (meta) return meta;
             if (!value.open) return value; // closed ⇒ O(1); no verdict work while typing
             const mappedSlashPos = tr.mapping.map(value.slashPos, -1);
-            const next = reSync(value, newState, pluginView, mappedSlashPos);
-            slashPopupStore.set(next);
-            return next;
+            return reSync(value, newState, pluginView, mappedSlashPos);
           },
         },
         props: {
@@ -342,13 +341,22 @@ export const SlashPopupExtension = Extension.create({
           };
           view.dom.addEventListener("blur", onBlur);
           return {
+            // Publish from the VIEW, not from `apply` (task 750): only the live
+            // view's own state reaches the store, so a `state.apply` dry run
+            // publishes nothing and `apply` stays side-effect-free. O(1) per
+            // transaction — the store's by-value bail absorbs an unchanged state.
+            update(v, prevState) {
+              const next = slashPopupKey.getState(v.state);
+              if (next && next !== slashPopupKey.getState(prevState)) {
+                slashPopupStore.set(owner, next);
+              }
+            },
             destroy() {
               view.dom.removeEventListener("blur", onBlur);
               if (pluginView === view) pluginView = null;
-              const cur = slashPopupKey.getState(view.state);
-              if (cur && cur.open) {
-                slashPopupStore.set(CLOSED);
-              }
+              // Owner-scoped: closing THIS editor's entry can never close
+              // another pane's open popup.
+              slashPopupStore.set(owner, CLOSED);
             },
           };
         },
