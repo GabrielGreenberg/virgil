@@ -9,6 +9,8 @@ import {
   resolveLabelDisplay,
   resolveRefTarget,
   type RefCommand,
+  type RefTarget,
+  type RefTargetIndex,
 } from "@/lib/ref-display";
 import type { ActiveRef, RefNodeIdentity } from "@/lib/tiptap/label";
 
@@ -17,40 +19,34 @@ const HEADING_TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubs
 
 const LABEL_RE = /\\label\{([^}]+)\}/g;
 
-/**
- * Classify a raw-latex blob containing a `\label{...}` by looking for
- * the enclosing environment. Returns the `LabelInfo` kind + badge to
- * show in the ref popover; falls back to a generic "Label" when no
- * recognized environment wraps the declaration.
- */
-function classifyRawLatex(text: string): {
-  kind: LabelInfo["kind"];
-  typeLabel: string;
-} {
-  if (/\\begin\{figure\*?\}/.test(text)) return { kind: "figure", typeLabel: "Figure" };
-  if (/\\begin\{table\*?\}/.test(text)) return { kind: "table", typeLabel: "Table" };
-  if (
-    /\\begin\{(equation|align|gather|multline|eqnarray)\*?\}/.test(text)
-  ) {
-    return { kind: "equation", typeLabel: "Equation" };
+/** The picker badge for a raw-source target, read off the ONE index the chip
+ *  itself resolves through (task 742) — so the badge and the rendered `\ref`
+ *  can never disagree about an equation's number. */
+function rawTypeLabel(target: RefTarget | undefined): Pick<LabelInfo, "kind" | "typeLabel"> {
+  switch (target?.kind) {
+    case "equation":
+      return { kind: "equation", typeLabel: `Equation (${target.number})` };
+    case "table":
+      return { kind: "table", typeLabel: `Table ${target.number}` };
+    case "figure":
+      return { kind: "figure", typeLabel: `Figure ${target.number}` };
+    default:
+      return { kind: "label", typeLabel: "Label" };
   }
-  return { kind: "label", typeLabel: "Label" };
 }
 
 /**
  * Collect every `\label{...}` occurrence from a raw-latex blob (figure
  * body, math source, stray command, etc.) into LabelInfo entries. A
- * single blob can declare several labels; each becomes its own entry.
+ * single blob can declare several labels; each becomes its own entry,
+ * badged by the kind and number the ref-target index assigns it.
  */
-function extractLabelsFromRaw(text: string, fallbackKind: LabelInfo["kind"], fallbackTypeLabel: string): LabelInfo[] {
+function extractLabelsFromRaw(text: string, index: RefTargetIndex<unknown>): LabelInfo[] {
   const out: LabelInfo[] = [];
-  const classified = classifyRawLatex(text);
-  const kind = classified.kind === "label" ? fallbackKind : classified.kind;
-  const typeLabel = classified.kind === "label" ? fallbackTypeLabel : classified.typeLabel;
   LABEL_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = LABEL_RE.exec(text)) !== null) {
-    out.push({ label: m[1], kind, typeLabel, title: "" });
+    out.push({ label: m[1], ...rawTypeLabel(index.targets.get(m[1])), title: "" });
   }
   return out;
 }
@@ -212,7 +208,7 @@ export function useRefActions(deps: {
       if (nd.type.name === "displayMath") {
         const src = (nd.attrs.latex as string | undefined) ?? "";
         if (src.includes("\\label{")) {
-          for (const info of extractLabelsFromRaw(src, "equation", "Equation")) {
+          for (const info of extractLabelsFromRaw(src, index)) {
             pushUnique(info);
           }
         }
@@ -223,7 +219,7 @@ export function useRefActions(deps: {
       // paragraphs (figure/table/unknown environments, or stray
       // commands) as well as labels typed mid-prose.
       if (nd.isText && nd.text && nd.text.includes("\\label{")) {
-        for (const info of extractLabelsFromRaw(nd.text, "label", "Label")) {
+        for (const info of extractLabelsFromRaw(nd.text, index)) {
           pushUnique(info);
         }
       }

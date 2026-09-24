@@ -43,6 +43,7 @@ import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { rawCountersTouched } from "@/lib/tiptap/raw-counter-gate";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { ensureAnchorUuid, mintDocUuid } from "@/lib/anchor-uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
@@ -1480,9 +1481,9 @@ export function createHeadingWithLabel(
         focusViewPlugin(),
         new Plugin({
           key: new PluginKey("sectionNumbers"),
-          // [cost: O(1)/tx — docChanged + observer-diff structural gate (headings / figures / examples / labels); deferred body O(doc) (one descendants walk building the shared ref-target index) only on such a change] (task 433 census)
+          // [cost: O(touched blocks)/tx — docChanged + observer-diff structural gate (headings / figures / examples / labels) + a per-touched-block raw counter signature (task 742: `rawCountersTouched`, old vs new node of each diff-named uuid, substring pre-check before any scan); deferred body O(doc) (one descendants walk building the shared ref-target index) only on such a change] (task 433 census)
           // A plain keystroke inside a paragraph publishes contentChangedUuids only and bails before any walk. With no observer diff (pending === null: the observer is not installed, e.g. a bare test stack) the numberer runs whole — a stated, tagged exemption. The walk itself lives in `@/lib/ref-display` (`buildRefTargetIndexPM`) — an IMPORTED helper, which the task-433 census states it cannot follow, so this tag is the site's whole justification.
-          appendTransaction(transactions, _oldState, newState) {
+          appendTransaction(transactions, oldState, newState) {
             if (!transactions.some((tr) => tr.docChanged)) return null;
 
             // Gate: skip the entire numberer unless the observer says
@@ -1513,7 +1514,12 @@ export function createHeadingWithLabel(
                 pending.removedExamples.length > 0 ||
                 pending.exampleStructureChanged ||
                 pending.addedLabels.length > 0 ||
-                pending.removedLabels.length > 0;
+                pending.removedLabels.length > 0 ||
+                // Raw-source declarations (an equation's `\label`, an
+                // `align` row, a `table` caption — task 742) change inside
+                // a block's CONTENT, which the diff reports only as touched
+                // uuids: compare each touched block's counter signature.
+                rawCountersTouched(pending, oldState, newState);
               if (!structuralChange) return null;
             }
 

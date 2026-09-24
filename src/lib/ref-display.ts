@@ -5,6 +5,12 @@ import {
   type ExampleNodeAccessors,
 } from "@/lib/example-refs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import {
+  RAW_SOURCE_INERT_NODE_TYPES,
+  scanDisplayMathCounters,
+  scanRawTextCounters,
+  type RawCounterEvent,
+} from "@/lib/latex-counters";
 
 /**
  * REF DISPLAY — the ONE answer to "what does `\ref{label}` show?" (task 550).
@@ -38,7 +44,8 @@ import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
  * Import discipline: type-only TipTap imports plus two light leaves
  * (`example-refs`, `figures/env-body`), so the TipTap-free parser can read it.
  *
- * Precedence, stated once: heading > example > figure for a key that two
+ * Precedence, stated once: heading > example > figure > raw-source unit
+ * (equation / table / raw figure) > inherited raw label, for a key that two
  * kinds both declare (a duplicate `\label` is a LaTeX error either way; the
  * order is the numberer's and the parser's). Within a kind, the FIRST
  * declaration in document order wins. The dotted `parent.sub` form is asked
@@ -47,7 +54,10 @@ import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 
 export type RefCommand = "ref" | "getref" | "getfullref";
 
-export type RefTargetKind = "heading" | "example" | "figure";
+/** `equation` / `table` — numbered from raw source (`@/lib/latex-counters`,
+ *  task 742); `label` — a raw `\label` no unit numbers, which takes LaTeX's
+ *  `\@currentlabel` (the enclosing unit's number, else the last heading's). */
+export type RefTargetKind = "heading" | "example" | "figure" | "equation" | "table" | "label";
 
 export interface RefIndexAccessors<N> extends ExampleNodeAccessors<N> {
   attrs: (n: N) => Record<string, unknown>;
@@ -62,6 +72,10 @@ export interface RefIndexAccessors<N> extends ExampleNodeAccessors<N> {
   /** Whether this `figureBlock` will carry a `\caption` — LaTeX's own rule for
    *  whether the float takes a number (task 319). */
   figureEmitsCaption: (n: N) => boolean;
+  /** A textblock's raw text (its direct text children, concatenated), or null
+   *  for any other node — where a raw `\label` / unmodelled environment lives
+   *  (task 742). */
+  textblockText: (n: N) => string | null;
 }
 
 export interface HeadingNumberRow<N> {
@@ -130,23 +144,46 @@ export function buildRefTargetIndex<N>(
   const examples: { node: N; pos: number }[] = [];
   const figuresRaw: { node: N; pos: number }[] = [];
   const refs: { node: N; pos: number }[] = [];
+  // Document order across every kind that steps a counter or declares a raw
+  // label — the ONE sequence figure / equation / table numbers and the
+  // inherited `\@currentlabel` are read off (task 742).
+  type Step =
+    | { k: "heading"; i: number }
+    | { k: "figure"; i: number }
+    | { k: "raw"; pos: number; events: RawCounterEvent[] };
+  const order: Step[] = [];
 
   acc.descendants(root, (n, pos) => {
     switch (acc.typeName(n)) {
       case "heading":
+        order.push({ k: "heading", i: headingsRaw.length });
         headingsRaw.push({ node: n, pos });
-        return;
+        return; // its label is its attr; walk on only for `labelRef` atoms
       case "exampleBlock":
         examples.push({ node: n, pos });
         return false; // its items are walked below, per block
       case "figureBlock":
+        order.push({ k: "figure", i: figuresRaw.length });
         figuresRaw.push({ node: n, pos });
         return false; // a figureCaption holds no nested declarations
       case "labelRef":
         refs.push({ node: n, pos });
         return false;
-      default:
+      case "displayMath": {
+        const events = scanDisplayMathCounters(str(acc.attrs(n).latex));
+        if (events.length) order.push({ k: "raw", pos, events });
+        return false;
+      }
+      default: {
+        // Verbatim and commented-out source declares nothing.
+        if (RAW_SOURCE_INERT_NODE_TYPES.has(acc.typeName(n))) return false;
+        const text = acc.textblockText(n);
+        if (text) {
+          const events = scanRawTextCounters(text);
+          if (events.length) order.push({ k: "raw", pos, events });
+        }
         return;
+      }
     }
   });
 
@@ -178,20 +215,56 @@ export function buildRefTargetIndex<N>(
     h.number = parts.join(".");
   }
 
-  // ── Figures: sequential numbering over the floats that emit a caption
-  let figureCounter = 0;
+  // ── Document-order counters: figures (modelled floats AND raw `figure`
+  // environments share LaTeX's one counter), equations, tables, and the
+  // `\@currentlabel` an unnumbered raw label inherits — the last numbered
+  // heading's, since every environment is a TeX group that restores it.
   const figures: FigureNumberRow<N>[] = figuresRaw.map(({ node, pos }) => {
     const a = acc.attrs(node);
-    const takesNumber = a.numbered !== false && acc.figureEmitsCaption(node);
-    const number = takesNumber ? ++figureCounter : null;
     return {
       node,
       pos,
       label: str(a.label) || null,
       current: normalizeFigureNumber(a.figureNumber),
-      number,
+      number: null,
     };
   });
+  const seqCounters: Record<"figure" | "equation" | "table", number> = { figure: 0, equation: 0, table: 0 };
+  const rawUnits: { key: string; target: RefTarget }[] = [];
+  const rawInherited: { key: string; target: RefTarget }[] = [];
+  let currentHeading: string | null = null;
+  for (const step of order) {
+    if (step.k === "heading") {
+      const h = headings[step.i];
+      if (h.number) currentHeading = h.number;
+      continue;
+    }
+    if (step.k === "figure") {
+      const f = figures[step.i];
+      const node = figuresRaw[step.i].node;
+      if (acc.attrs(node).numbered !== false && acc.figureEmitsCaption(node)) {
+        f.number = ++seqCounters.figure;
+      }
+      continue;
+    }
+    const unitNumbers: string[] = [];
+    for (const ev of step.events) {
+      if (ev.type === "unit") {
+        const number = ev.tag ?? String(++seqCounters[ev.counter]);
+        unitNumbers.push(number);
+        for (const key of ev.labels) {
+          rawUnits.push({ key, target: { kind: ev.counter, number, pos: step.pos } });
+        }
+      } else {
+        unitNumbers.push("");
+        const local = ev.local ? unitNumbers[ev.local.unitIndex] : null;
+        // No heading above and no enclosing unit: LaTeX prints nothing; the
+        // key itself is shown rather than claim a declared target is broken.
+        const number = local || currentHeading || ev.key;
+        rawInherited.push({ key: ev.key, target: { kind: "label", number, pos: step.pos } });
+      }
+    }
+  }
 
   // ── The target table. Heading > example > figure; first declaration wins.
   const targets = new Map<string, RefTarget>();
@@ -249,6 +322,10 @@ export function buildRefTargetIndex<N>(
     }
   }
 
+  // Raw source: numbered units first, then labels that inherit a number.
+  for (const { key, target } of rawUnits) claim(key, target);
+  for (const { key, target } of rawInherited) claim(key, target);
+
   return { headings, figures, refs, targets, exampleItems };
 }
 
@@ -304,6 +381,17 @@ function pmChildren(n: PMNode): PMNode[] {
   return kids;
 }
 
+/** A textblock's direct text children, concatenated — the raw source a
+ *  `\label` lives in. One text child (the common case) is read without a copy. */
+export function pmTextblockText(n: PMNode): string {
+  if (n.childCount === 1) return n.firstChild!.text ?? "";
+  let out = "";
+  n.forEach((c) => {
+    if (c.isText) out += c.text;
+  });
+  return out;
+}
+
 export const PM_REF_INDEX_ACCESSORS: RefIndexAccessors<PMNode> = {
   typeName: (n) => n.type.name,
   subLabel: (n) => (n.attrs.subLabel as string | undefined) ?? null,
@@ -314,6 +402,7 @@ export const PM_REF_INDEX_ACCESSORS: RefIndexAccessors<PMNode> = {
     root.descendants((nd, pos) => visit(nd, pos) !== false);
   },
   figureEmitsCaption: (n) => figureNodeEmitsCaption(n),
+  textblockText: (n) => (n.isTextblock ? pmTextblockText(n) : null),
 };
 
 export function buildRefTargetIndexPM(doc: PMNode): RefTargetIndex<PMNode> {
@@ -362,6 +451,13 @@ export const JSON_REF_INDEX_ACCESSORS: RefIndexAccessors<JSONContent> = {
   // scan, so `hasCaption === false` implies an empty caption child and the
   // content arm could never change the answer (the parser's stated reason).
   figureEmitsCaption: (n) => n.attrs?.hasCaption !== false,
+  textblockText: (n) => {
+    const kids = n.content;
+    if (!kids || !kids.some((c) => c.type === "text")) return null;
+    let out = "";
+    for (const c of kids) if (c.type === "text") out += c.text ?? "";
+    return out;
+  },
 };
 
 export function buildRefTargetIndexJSON(doc: JSONContent): RefTargetIndex<JSONContent> {
