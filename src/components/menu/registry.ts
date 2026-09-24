@@ -8,7 +8,7 @@
  *
  * Keystroke sanctity: the ordered snapshot (`items()`) is rebuilt only on a
  * REGISTRATION-VERSION bump (mount / unmount / disabled-flip / coords change),
- * never per keystroke. Subscribers (the React view + the controller) read the
+ * never per keystroke. Its ORDER is the rows' live DOM order (task 745). Subscribers (the React view + the controller) read the
  * memoized snapshot; arrowing is pure index math over it.
  *
  * `registryFor(menuId)` returns a process-global handle keyed by menu id so the
@@ -51,12 +51,13 @@ export class MenuRegistry implements MenuRegistryHandle {
   // vertical so every existing vertical menu is unaffected.
   private orientation: MenuOrientation = "vertical";
 
-  // Insertion-ordered records. A Map preserves insertion order, but bespoke
-  // JSX items mount in DOM order and the registry-mapper appends in row order,
-  // so we additionally sort the snapshot by a stable `order` we stamp at
-  // registration (DOM order ≈ registration order for both sources). A consumer
-  // whose rows REORDER without remount (a fuzzy-ranked combobox) breaks that
-  // equivalence and republishes its live visual index via `setOrder` (see there).
+  // Records, keyed by item id. Nav order is READ FROM THE DOM, not stamped
+  // (task 745): `items()` sorts rows by their live elements' document
+  // position, so a row that mounts while the menu is open (the View menu's
+  // expanded group children) or re-registers (a live disabled-flip) sits where
+  // it is DRAWN, not at the end. The stamped `order` (first-registration
+  // sequence, or a consumer's `setOrder`) is only the FALLBACK for a registry
+  // whose rows have no connected element (a PM-backed / unit-test registry).
   private records = new Map<string, Omit<MenuNode, "ref"> & { order: number }>();
   private nextOrder = 0;
 
@@ -66,8 +67,10 @@ export class MenuRegistry implements MenuRegistryHandle {
   // in a passive effect that fires AFTER: seeding the ref onto the record at
   // register time would always read null (the record doesn't exist yet when
   // `setRef` first runs, and `setRef`'s stable identity means React never
-  // re-invokes it). Decoupling makes ref capture order-independent and survives
-  // the unregister→register churn on a disabled-flip. `setRef` writes here
+  // re-invokes it). Decoupling makes ref capture order-independent. A nav-field
+  // change (disabled / letter / coords) is an UPSERT through `register`, never
+  // an unregister→register (see `useMenuItem`), so the ref survives it; only a
+  // real unmount (`unregister`) clears the entry. `setRef` writes here
   // unconditionally and still does NOT bump the version (a ref set is not
   // nav-structural — keystroke sanctity).
   private refs = new Map<string, HTMLElement>();
@@ -133,6 +136,11 @@ export class MenuRegistry implements MenuRegistryHandle {
       existing.coords?.col !== next.coords?.col ||
       (existing.letter ?? "") !== (next.letter ?? "");
     this.records.set(reg.id, next);
+    // A row that turns inert while highlighted drops the highlight — the same
+    // rule `setActive` applies to a pointer entering an inert row.
+    if (this.active === reg.id && (next.disabled || next.region === "widget")) {
+      this.active = null;
+    }
     if (changed) this.bump();
   }
 
@@ -146,21 +154,19 @@ export class MenuRegistry implements MenuRegistryHandle {
   }
 
   /**
-   * Override an item's sort `order` from the consumer's live RENDERED INDEX.
+   * Signal that a row's VISUAL position changed without any registration
+   * change, and record it as the row's fallback sort key.
    *
-   * `items()` otherwise sorts by the insertion `order` stamped once at first
-   * registration (`register`) — correct only while DOM order == registration
-   * order. A key-stable list that REORDERS its rows without remounting breaks
-   * that: a fuzzy-ranked combobox renders `key={citekey}`, so React reorders the
-   * DOM nodes on a re-rank without unmount/remount, and `useMenuItem`'s register
-   * effect (whose deps exclude the visual index) never re-fires — leaving the
-   * snapshot frozen in stale insertion order. Arrow-nav then walks that stale
-   * order and the roving highlight SKIPS visually non-adjacent rows. So such a
-   * consumer publishes its live index here and `items()` re-sorts to visual
-   * order. Bumps only on an actual change (idempotent → keystroke-safe) and —
-   * unlike `unregister` — NEVER clears `active`, so the highlight survives a
-   * re-rank. Consumers whose DOM order already equals registration order (every
-   * static menu) never call this, so their behavior is unchanged.
+   * `items()` reads nav order from the DOM, but it re-sorts only on a version
+   * bump. A key-stable list that REORDERS its rows without remounting (a
+   * fuzzy-ranked combobox renders `key={citekey}`, so React moves the DOM nodes
+   * on a re-rank with no unmount/remount) changes DOM order while no
+   * registration changes — so such a consumer publishes its live index here,
+   * which bumps and makes the next snapshot re-read the DOM. The index is also
+   * kept as the fallback key for an element-less registry. Bumps only on an
+   * actual change (idempotent → keystroke-safe) and NEVER clears `active`, so
+   * the highlight survives a re-rank. Rows that only mount/unmount/flip never
+   * need this — those already bump.
    */
   setOrder(id: string, order: number): void {
     const rec = this.records.get(id);
@@ -187,9 +193,7 @@ export class MenuRegistry implements MenuRegistryHandle {
 
   items(): MenuNode[] {
     if (this.snapshotVersion !== this.version) {
-      this.snapshot = Array.from(this.records.values())
-        .sort((a, b) => a.order - b.order)
-        .map((rec): MenuNode => ({
+      this.snapshot = this.sortedRecords().map((rec): MenuNode => ({
           id: rec.id,
           region: rec.region,
           coords: rec.coords,
@@ -206,6 +210,29 @@ export class MenuRegistry implements MenuRegistryHandle {
       this.snapshotVersion = this.version;
     }
     return this.snapshot;
+  }
+
+  /**
+   * Records in NAV order: DOM document order when every row has a connected
+   * element (the React backend, always, by the time a bump is observed — refs
+   * attach at commit, before the passive register effect bumps), else the
+   * stamped `order` (element-less registries). All-or-nothing on purpose: a
+   * comparator mixing the two keys would not be transitive.
+   */
+  private sortedRecords(): Array<Omit<MenuNode, "ref"> & { order: number }> {
+    const recs = Array.from(this.records.values());
+    const els = recs.map((rec) => this.refs.get(rec.id));
+    const allLive = els.every(
+      (el) => !!el && typeof el.compareDocumentPosition === "function" && el.isConnected,
+    );
+    if (!allLive || recs.length < 2) return recs.sort((a, b) => a.order - b.order);
+    const elFor = new Map(recs.map((rec, i) => [rec.id, els[i] as HTMLElement]));
+    return recs.sort((a, b) => {
+      const pos = elFor.get(a.id)!.compareDocumentPosition(elFor.get(b.id)!);
+      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      return a.order - b.order;
+    });
   }
 
   activeId(): string | null {

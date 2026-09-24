@@ -70,20 +70,29 @@ describe("MenuRegistry — snapshot + versioning", () => {
     expect(r.refFor("a")).toBeNull();
   });
 
-  it("refFor survives an unregister→register churn (disabled-flip re-register keeps no stale ref)", () => {
+  it("a nav-field UPSERT keeps the ref; only a real unmount (unregister) clears it", () => {
+    // `useMenuItem` routes a disabled-flip through `register` as an upsert (no
+    // unregister) since task 745 — the full hook path is pinned in
+    // menu-item-live-flip.test.tsx; this pins the registry half.
     const r = new MenuRegistry("m", "list");
     const el = {} as HTMLElement;
     r.register(reg({ id: "a" }));
     r.setRef("a", el);
     expect(r.refFor("a")).toBe(el);
-    // A disabled-flip in useMenuItem unregisters then re-registers. The ref map
-    // is independent of the record, so it is only cleared by an explicit
-    // unregister (real unmount) — a bare re-register must NOT strand the ref.
     r.register(reg({ id: "a", disabled: true }));
     expect(r.refFor("a")).toBe(el);
-    // A real unmount (unregister) DOES clear the ref map entry.
     r.unregister("a");
     expect(r.refFor("a")).toBeNull();
+  });
+
+  it("an upsert that makes the ACTIVE row disabled drops the highlight", () => {
+    const r = new MenuRegistry("m", "list");
+    r.register(reg({ id: "a" }));
+    r.setActive("a");
+    r.register(reg({ id: "a", disabled: false, letter: "x" }));
+    expect(r.activeId()).toBe("a"); // a non-inert change keeps it
+    r.register(reg({ id: "a", disabled: true }));
+    expect(r.activeId()).toBeNull();
   });
 
   it("reuses the cached snapshot until the version changes", () => {
