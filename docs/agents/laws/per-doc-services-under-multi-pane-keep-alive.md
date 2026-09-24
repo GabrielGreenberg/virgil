@@ -561,3 +561,30 @@ module-level Set left, the ledger row is gone. CI:
 — two real editors; opening A leaves B closed and B's component paints nothing;
 destroying B leaves A open; a dry-run `apply` publishes nothing (all four legs fail
 on the one-slot store).
+
+### The OVERLAY half: a pane-owned body portal renders only while its pane is shown (task 753)
+
+A hidden pane is `display:none` on its `KeepAliveSlot`, which hides the slot's
+own subtree and nothing else. A `createPortal(…, document.body)` from a
+component mounted per pane escapes that hide. The ⚡ margin bolt and the
+pending-change pill re-placed themselves on the pane's SHOW edge (task 598), but
+nothing fires on the HIDE edge — the geometry service's hidden-pane bail emits
+no frame by design — so after a tab switch with a live selection, the hidden
+doc's bolt stayed painted, and clickable, over the shown doc; its menu
+dispatched into a document the user could not see.
+
+The door is [`PaneOverlayPortal`](../../../src/lib/keep-alive/PaneOverlayPortal.tsx):
+it renders its portal only while `useIsVisible()` is true, so a hidden pane
+paints nothing outside itself BY CONSTRUCTION. The owner stays mounted (its
+placement state survives) and its show-edge re-place still settles it. An owner
+whose overlay has OPEN state closes it on the hide edge (the bolt clears
+`menuTarget`) so it does not spring back open on re-show.
+
+CI: [pane-overlay-portal-census.test.ts](../../../src/lib/keep-alive/__tests__/pane-overlay-portal-census.test.ts)
+walks the same `EditorPane` import closure and requires every other
+`createPortal(` to carry a LEDGER row — `in-pane` (target inside the pane's DOM;
+may not name `document.body`), `visible` (returns null while hidden), `gesture`,
+`open-state` or `app-wide` — counts exact in both directions.
+[SelectionActionsMenu-hidden-pane.test.tsx](../../../src/components/__tests__/SelectionActionsMenu-hidden-pane.test.tsx)
+drives the real component through hide → show; its hide leg fails on the pre-753
+source.
