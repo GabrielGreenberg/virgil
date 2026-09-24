@@ -33,6 +33,7 @@ import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
 import {
+  DEFERRING_PARENTS,
   MAIN_STARTERKIT_NODE_ATTRS,
   MAIN_STARTERKIT_NODE_CONTENT,
 } from "@/lib/node-attr-sets";
@@ -174,10 +175,15 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
         // (src/text-objects/TextObjectGrabHandle.tsx) handles every block
         // kind now via the registry-driven, cursor/hover-following handle.
 
-        // Detect if this paragraph is inside a list item or an expex example
-        // block — skip title controls + drag handle so the inner text reads
-        // as plain prose. The example block itself carries its own chrome
-        // (number + drag handle) via the exampleBlock node view.
+        // A paragraph under a DEFERRING parent (list item, blockquote, expex
+        // example, …) has no identity of its own — skip the title controls so
+        // the inner text reads as plain prose; the container carries its own
+        // chrome. The set is `DEFERRING_PARENTS`, the SAME one the load path
+        // (`assignUuids`) reads when it ERASES such a paragraph's uuid and
+        // `parTitle` — so the editor can never offer a title the next load
+        // strips (task 741: a hand list here omitted `blockquote`). The walk
+        // stays an ANCESTOR walk: it can only hide chrome more eagerly than
+        // the immediate-parent rule erases, never less.
         const pos = typeof getPos === "function" ? getPos() : null;
         let skipChrome = false;
         let parentNode: PMNode | null = null;
@@ -186,7 +192,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           parentNode = resolved.parent;
           for (let d = resolved.depth; d >= 0; d--) {
             const name = resolved.node(d).type.name;
-            if (name === "listItem" || name === "exampleBlock" || name === "exampleItem") {
+            if (DEFERRING_PARENTS.has(name)) {
               skipChrome = true;
               break;
             }
