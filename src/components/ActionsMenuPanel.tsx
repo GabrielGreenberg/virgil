@@ -36,7 +36,7 @@
  * (a DOM descendant of the menu container), so it needs no exclusion.
  */
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useLiveEditorSignature } from "@/lib/tiptap/use-live-editor-signature";
 import type { Editor } from "@tiptap/react";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
@@ -58,6 +58,7 @@ import { IconExample } from "./editor-layout/panel-icons";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import { elementAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
 import { MenuGrid, MenuList } from "./menu/regions";
 import {
@@ -241,6 +242,9 @@ export function ActionsMenuPanel({
     persistPalette(next.slice(0, 7));
   };
   const [colorPopoverAnchor, setColorPopoverAnchor] = useState<DOMRect | null>(null);
+  // The color cell's element, so the popover re-anchors on scroll (task 747).
+  const colorCellRef = useRef<HTMLButtonElement | null>(null);
+  const colorCellAnchor = useCallback(() => elementAnchor(colorCellRef.current)(), []);
   // The spawned color popover's live container element — registered into the
   // provider's click-outside exclude set so the lightning panel does NOT close
   // when a click lands in the color popover (it portals to document.body, so
@@ -708,6 +712,7 @@ export function ActionsMenuPanel({
             col={3}
             disabled={gridCellDisabled("text-color")}
             lastAppliedColor={lastAppliedColor}
+            cellRef={colorCellRef}
             run={(rect) => runGridAction("text-color", { anchorRect: rect })}
           />
 
@@ -831,6 +836,7 @@ export function ActionsMenuPanel({
         {colorPopoverAnchor && (
           <SelectionColorPopover
             anchorRect={colorPopoverAnchor}
+            trackAnchor={colorCellAnchor}
             palette={palette}
             onApply={applyColor}
             onClear={clearColor}
@@ -970,12 +976,15 @@ function ColorGridCell({
   col,
   disabled,
   lastAppliedColor,
+  cellRef,
   run,
 }: {
   row: number;
   col: number;
   disabled: boolean;
   lastAppliedColor: string;
+  /** Mirrors the cell element out for the popover's live anchor (task 747). */
+  cellRef?: { current: HTMLButtonElement | null };
   run: (rect: DOMRect) => void;
 }) {
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -996,6 +1005,7 @@ function ColorGridCell({
       {...itemProps}
       ref={(el) => {
         btnRef.current = el;
+        if (cellRef) cellRef.current = el;
         itemProps.ref(el);
       }}
       type="button"

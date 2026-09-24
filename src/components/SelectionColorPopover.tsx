@@ -45,6 +45,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import type { LiveAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
 import { useMenuItem } from "./menu/useMenuItem";
 import type { MenuRole } from "./menu/types";
@@ -64,6 +65,9 @@ const COLOR_POPOVER_PLACEMENTS: FloatingMenuPlacement[] = [
 interface Props {
   /** Bounding rect of the Color button that triggered the popover. */
   anchorRect: DOMRect;
+  /** Live re-read of that button (task 747) — the popover follows it on
+   *  scroll instead of staying where the button WAS. See `menu/live-anchor`. */
+  trackAnchor?: LiveAnchor;
   palette: string[];
   /** Apply a color: dispatches the mark to the live selection AND notifies
    *  the parent to bump MRU + persist. */
@@ -85,6 +89,7 @@ interface Props {
 
 export function SelectionColorPopover({
   anchorRect,
+  trackAnchor,
   palette,
   onApply,
   onClear,
@@ -110,6 +115,7 @@ export function SelectionColorPopover({
       role={"dialog" as MenuRole}
       portal
       anchorRect={anchorRect}
+      trackAnchor={trackAnchor}
       placements={COLOR_POPOVER_PLACEMENTS}
       gap={6}
       getActiveDescendantHost={caretEditableHost}

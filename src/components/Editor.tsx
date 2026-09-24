@@ -165,6 +165,7 @@ interface EditorProps {
    */
   onOpenHeadingTypeMenu?: (params: {
     anchorRect: DOMRect;
+    anchorEl?: HTMLElement;
     currentLevel: number;
     onPick: (pick: HeadingTypePick) => void;
   }) => void;

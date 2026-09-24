@@ -28,9 +28,10 @@
  * checking path is designed never to pay.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "@/components/menu/MenuProvider";
+import { elementAnchor, type LiveAnchor } from "@/components/menu/live-anchor";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { MenuSectionLabel, MenuSeparator } from "@/components/menu/MenuChrome";
 import { closeSpellMenu, useSpellMenuRequest } from "@/lib/spell/spell-menu-store";
@@ -69,6 +70,27 @@ export function SpellSuggestionMenu() {
   }, [word, port]);
   const suggestions = result && result.word === word ? result.list : null;
 
+  // The menu follows its word on scroll (task 747): the squiggle span while it
+  // is mounted, else — a decoration redraw replaced the span — the word's live,
+  // mapped range. Scroll-driven only (the provider RAF-coalesces the re-read),
+  // never on the keystroke path. `null` falls back to the rect at open.
+  const trackAnchor = useMemo<LiveAnchor | undefined>(() => {
+    if (!request) return undefined;
+    const fromElement = elementAnchor(request.anchorEl);
+    return () => {
+      const r = fromElement();
+      if (r) return r;
+      const live = liveSpellRange(request.view.state, request.spec);
+      if (!live) return null;
+      try {
+        const c = request.view.coordsAtPos(live.from);
+        return { left: c.left, top: c.top, right: c.right, bottom: c.bottom, width: 0, height: c.bottom - c.top };
+      } catch {
+        return null;
+      }
+    };
+  }, [request]);
+
   if (!request || typeof document === "undefined") return null;
 
   const close = () => closeSpellMenu();
@@ -98,6 +120,7 @@ export function SpellSuggestionMenu() {
       role="menu"
       portal
       anchorRect={request.rect}
+      trackAnchor={trackAnchor}
       placements={PLACEMENTS}
       onClose={close}
       ariaLabel={`Spelling suggestions for “${request.word}”`}

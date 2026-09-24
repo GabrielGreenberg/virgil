@@ -27,6 +27,7 @@ import { HEADING_TYPES } from "@/lib/heading-types";
 import { CLASS_COMMANDS } from "@/lib/document-class";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import type { LiveAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
 import { useMenuItem } from "./menu/useMenuItem";
 
@@ -46,6 +47,9 @@ export type HeadingTypePick = { kind: "level"; level: number } | { kind: "no-hea
 
 interface Props {
   anchorRect: DOMRect | { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  /** Live re-read of the lozenge chip (task 747) — the menu follows it on
+   *  scroll. See `menu/live-anchor`. */
+  trackAnchor?: LiveAnchor;
   currentLevel: number;
   documentClass: string | null;
   onPick: (pick: HeadingTypePick) => void;
@@ -118,7 +122,7 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
   );
 }
 
-export function HeadingTypeMenu({ anchorRect, currentLevel, documentClass, onPick, onClose }: Props) {
+export function HeadingTypeMenu({ anchorRect, trackAnchor, currentLevel, documentClass, onPick, onClose }: Props) {
   const supported = documentClass && Object.prototype.hasOwnProperty.call(CLASS_COMMANDS, documentClass)
     ? CLASS_COMMANDS[documentClass]
     : null;
@@ -132,6 +136,7 @@ export function HeadingTypeMenu({ anchorRect, currentLevel, documentClass, onPic
       role="menu"
       portal
       anchorRect={anchorRect}
+      trackAnchor={trackAnchor}
       placements={HEADING_TYPE_PLACEMENTS}
       gap={4}
       getActiveDescendantHost={caretEditableHost}

@@ -32,8 +32,11 @@ export interface SpellMenuRequest {
   to: number;
   /** The squiggle's identity, mapped through every transaction by the plugin. */
   spec: { readonly word: string };
-  /** Viewport rect of the word, for anchoring. */
+  /** Viewport rect of the word AT OPEN — the fallback anchor. */
   rect: DOMRect;
+  /** The squiggle's own element, re-read so the menu follows the word on
+   *  scroll (task 747). Optional: a caller without one anchors on `rect`. */
+  anchorEl?: Element;
   view: EditorView;
   /** The document's own dictionaries + the shared engine. */
   port: SpellcheckPort;

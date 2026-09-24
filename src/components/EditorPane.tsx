@@ -253,6 +253,7 @@ import { useFootnoteOrphanBridges } from "./editor-layout/event-bridges/footnote
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
+import { elementAnchor, type LiveAnchor } from "./menu/live-anchor";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { labelRenameConfirmCopy } from "@/lib/tiptap/label-rename";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
@@ -4664,12 +4665,26 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // route the user's pick back through the callback into the node view.
   const [headingTypeMenuState, setHeadingTypeMenuState] = useState<{
     anchorRect: DOMRect;
+    // Live re-read of the chip (task 747), minted once per open so the menu
+    // follows the lozenge on scroll.
+    trackAnchor?: LiveAnchor;
     currentLevel: number;
     onPick: (pick: HeadingTypePick) => void;
   } | null>(null);
   const openHeadingTypeMenu = useCallback(
-    (params: { anchorRect: DOMRect; currentLevel: number; onPick: (pick: HeadingTypePick) => void }) => {
-      setHeadingTypeMenuState(params);
+    ({
+      anchorEl,
+      ...params
+    }: {
+      anchorRect: DOMRect;
+      anchorEl?: HTMLElement;
+      currentLevel: number;
+      onPick: (pick: HeadingTypePick) => void;
+    }) => {
+      setHeadingTypeMenuState({
+        ...params,
+        trackAnchor: anchorEl ? elementAnchor(anchorEl) : undefined,
+      });
     },
     [],
   );
@@ -8040,6 +8055,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           {headingTypeMenuState && (
             <HeadingTypeMenu
               anchorRect={headingTypeMenuState.anchorRect}
+              trackAnchor={headingTypeMenuState.trackAnchor}
               currentLevel={headingTypeMenuState.currentLevel}
               documentClass={documentClassName}
               onPick={(pick) => {
