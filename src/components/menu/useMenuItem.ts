@@ -114,7 +114,7 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
   const coordsRow = coords?.row;
   const coordsCol = coords?.col;
   const aliasesKey = (letterAliases ?? []).join(",");
-  const registration = (): MenuItemRegistration => ({
+  const registration: MenuItemRegistration = {
     id,
     region,
     coords:
@@ -125,15 +125,15 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     letter,
     letterAliases,
     run: stableRun,
-  });
-  const registrationRef = useRef(registration);
-  registrationRef.current = registration;
+  };
   useEffect(() => {
-    registry.register(registrationRef.current());
+    registry.register(registration);
     return () => registry.unregister(id);
+    // Presence only: the fields ride the upsert effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registry, id]);
   useEffect(() => {
-    registry.register(registrationRef.current());
+    registry.register(registration);
     // aliasesKey stands in for the array identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registry, id, region, coordsRow, coordsCol, disabled, letter, aliasesKey, stableRun]);

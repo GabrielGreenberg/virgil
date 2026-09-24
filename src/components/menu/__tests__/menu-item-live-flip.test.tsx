@@ -8,6 +8,7 @@
 // stable identity, React never re-attaches it) and (c) dropped the highlight.
 
 import { describe, it, expect, afterEach } from "vitest";
+import { useEffect } from "react";
 import { render, cleanup, act } from "@testing-library/react";
 import { MenuProvider } from "../MenuProvider";
 import { useMenuContext } from "../context";
@@ -35,9 +36,12 @@ function key(k: string) {
   });
 }
 
-let registry: MenuRegistry | null = null;
+const held: { registry: MenuRegistry | null } = { registry: null };
 function Grab() {
-  registry = useMenuContext().registry as MenuRegistry;
+  const { registry } = useMenuContext();
+  useEffect(() => {
+    held.registry = registry as MenuRegistry;
+  }, [registry]);
   return null;
 }
 
@@ -62,7 +66,7 @@ function Menu({ bDisabled = false, showMid = false }: { bDisabled?: boolean; sho
   );
 }
 
-const ids = () => registry!.items().map((n) => n.id);
+const ids = () => held.registry!.items().map((n) => n.id);
 const active = () =>
   (document.querySelector('[data-active=""]') as HTMLElement | null)?.getAttribute("data-test-id") ?? null;
 
@@ -83,7 +87,7 @@ describe("menu nav order = visual order (task 745)", () => {
     rerender(<Menu />); // b: disabled → enabled while open
     expect(ids()).toEqual(["a", "b", "c"]);
     const bEl = document.querySelector('[data-test-id="b"]');
-    expect(registry!.refFor("b")).toBe(bEl);
+    expect(held.registry!.refFor("b")).toBe(bEl);
     key("ArrowDown");
     key("ArrowDown");
     expect(active()).toBe("b");
@@ -93,7 +97,7 @@ describe("menu nav order = visual order (task 745)", () => {
     // Disabling the active row drops the highlight (inert rows can't be active).
     rerender(<Menu bDisabled />);
     expect(active()).toBeNull();
-    expect(registry!.refFor("b")).toBe(bEl);
+    expect(held.registry!.refFor("b")).toBe(bEl);
     expect(ids()).toEqual(["a", "b", "c"]);
   });
 });
