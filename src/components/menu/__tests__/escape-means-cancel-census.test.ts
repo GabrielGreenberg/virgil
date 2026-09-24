@@ -139,8 +139,10 @@ describe("Escape means cancel — the surface census", () => {
     // Escape ends through the cancel door…
     expect(code).toMatch(/const\s+endOnEscape\s*=\s*onCancel\s*\?\?\s*onClose/);
     expect(code).toMatch(/endOnEscape\(\)/);
-    // …and the dismiss door is still onClose (click-outside is unchanged).
-    expect(code).toMatch(/if\s*\(!isInside\([\s\S]{0,120}?onClose\(\)/);
+    // …and the dismiss door is still onClose (click-outside is unchanged) —
+    // read through a ref since task 746, so the subscription never keys on it.
+    expect(code).toMatch(/isInside\([\s\S]{0,120}?onCloseRef\.current\(\)/);
+    expect(code).toMatch(/onCloseRef\.current\s*=\s*onClose/);
     // Escape must NOT still reach onClose directly.
     const escapeEffect = code.slice(code.indexOf('e.key !== "Escape"'));
     expect(escapeEffect).not.toMatch(/\bonClose\(\)/);

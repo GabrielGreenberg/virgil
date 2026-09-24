@@ -131,8 +131,8 @@ const LEDGER: Record<string, Row> = {
   },
   "components/menu/useMenuDismiss.ts": {
     scope: "open-state",
-    events: ["window.mousedown", "window.keydown"],
-    why: "click-away / Escape for an open menu",
+    events: ["window.pointerdown", "window.mousedown", "window.keydown"],
+    why: "click-away (pointerdown; mousedown fallback, task 746) / Escape for an open menu",
   },
   "components/menu/useMenuKeyboard.ts": {
     scope: "open-state",
