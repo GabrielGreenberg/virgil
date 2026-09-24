@@ -188,6 +188,7 @@ import { EditorChromeProvider } from "./editor-layout/chrome-context";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
+import { caretAnchor, nodeAnchor } from "./menu/live-anchor";
 import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover";
 import type { AtomCreateRequest } from "@/lib/actions/atom-create";
 import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
@@ -1358,6 +1359,19 @@ export default function EditorLayout() {
   // this in a later chip — for now only `kind: "citation"` is dispatched.
   const [atomCreateRequest, setAtomCreateRequest] =
     useState<AtomCreateRequest | null>(null);
+  // Live anchors (task 747): the `\ref` popovers follow their chip / caret on
+  // scroll instead of staying where it was when they opened. One per request.
+  const activeRefAnchor = useMemo(
+    () => (activeRef ? nodeAnchor(activeRef.editor, activeRef.pos) : undefined),
+    [activeRef],
+  );
+  const atomCreateAnchor = useMemo(
+    () =>
+      atomCreateRequest
+        ? caretAnchor(atomCreateRequest.editor, atomCreateRequest.pos)
+        : undefined,
+    [atomCreateRequest],
+  );
   // ── Math popover state ──
   const [activeMath, setActiveMath] = useState<{
     kind: "inline" | "display";
@@ -3856,6 +3870,7 @@ export default function EditorLayout() {
         <LabelRefPopover
           label={activeRef.label}
           anchorRect={activeRef.rect}
+          trackAnchor={activeRefAnchor}
           labels={gatherLabels()}
           refCommand={activeRef.refCommand}
           // Both writes address the CLICKED chip (identity), never the label.
@@ -3889,6 +3904,7 @@ export default function EditorLayout() {
         <LabelRefPopover
           label=""
           anchorRect={atomCreateRequest.rect}
+          trackAnchor={atomCreateAnchor}
           labels={gatherLabels()}
           refCommand={atomCreateRequest.refCommand ?? "ref"}
           onJumpToLabel={handleRefJump}

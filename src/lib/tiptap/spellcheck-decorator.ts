@@ -400,6 +400,7 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
                 from: hit.from,
                 to: hit.to,
                 rect: target.getBoundingClientRect(),
+                anchorEl: target,
                 view,
                 port,
               });

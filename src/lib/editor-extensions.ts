@@ -118,6 +118,8 @@ type LabelRenameHandler = (
 type HeadingDeleteHandler = (typeName: string) => Promise<boolean>;
 type HeadingTypeMenuOpener = (params: {
   anchorRect: DOMRect;
+  /** The chip element itself, so the menu can follow it on scroll (task 747). */
+  anchorEl?: HTMLElement;
   currentLevel: number;
   onPick: (pick: HeadingTypePick) => void;
 }) => void;
@@ -1350,6 +1352,7 @@ export function createHeadingWithLabel(
           const rect = target.getBoundingClientRect();
           opener({
             anchorRect: rect,
+            anchorEl: target,
             currentLevel: currentNode.attrs.level as number,
             onPick: (pick) => {
               if (pick.kind === "no-heading") {

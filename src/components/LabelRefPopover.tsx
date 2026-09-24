@@ -38,6 +38,7 @@ import {
 } from "react";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import type { LiveAnchor } from "./menu/live-anchor";
 import { useMenuItem } from "./menu/useMenuItem";
 import { useMenuCombobox } from "./menu/useMenuCombobox";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
@@ -68,6 +69,9 @@ interface Props {
   label: string;
   /** Screen-space rect of the clicked ref node */
   anchorRect: DOMRect;
+  /** Live re-read of that anchor (task 747) — the popover follows it on
+   *  scroll. See `menu/live-anchor`. */
+  trackAnchor?: LiveAnchor;
   /** All labels available in the document */
   labels: LabelInfo[];
   /** Current ref-command of the clicked labelRef (for the tri-toggle). */
@@ -106,6 +110,7 @@ function optionId(kind: "h" | "e", label: string): string {
 export default function LabelRefPopover({
   label,
   anchorRect,
+  trackAnchor,
   labels,
   refCommand = "ref",
   onChangeLabel,
@@ -139,6 +144,7 @@ export default function LabelRefPopover({
       role="listbox"
       portal
       anchorRect={anchorRect}
+      trackAnchor={trackAnchor}
       placements={LABEL_REF_PLACEMENTS}
       gap={6}
       keyboardSource="input"
