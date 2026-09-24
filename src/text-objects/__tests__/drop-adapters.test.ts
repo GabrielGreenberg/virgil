@@ -3,11 +3,10 @@ import {
   EXPEX_INNER_KINDS,
   blockIntoExpexDropAdapter,
   exampleItemDropAdapter,
-  isCompatibleParent,
   listItemDropAdapter,
   topLevelDropAdapter,
 } from "../drop-adapters";
-import { TEXT_OBJECT_REGISTRY } from "../text-object-registry";
+import { TEXT_OBJECT_REGISTRY, isCompatibleParent } from "../text-object-registry";
 import type { TextObjectKind } from "../types";
 
 describe("listItemDropAdapter", () => {
@@ -347,6 +346,45 @@ describe("isCompatibleParent", () => {
       expect(isCompatibleParent(child, parent)).toBe(expected);
     });
   }
+});
+
+// Task 743 — the sub-object adapters' DEFAULT wrap kind (no source context,
+// no schema evidence) is the registry's first declared parent, and every kind
+// they can wrap into is a declared parent. The adapters stay per-kind builders;
+// this pins them to the `parentKinds` facet so the two cannot drift.
+describe("sub-object wrap defaults ↔ registry parentKinds (task 743)", () => {
+  it("listItem wraps into parentKinds[0] by default and into each declared parent from context", () => {
+    const parents = TEXT_OBJECT_REGISTRY.listItem.parentKinds!;
+    expect(
+      listItemDropAdapter(
+        { kind: "listItem", id: "x", sourceContext: {} },
+        { kind: "top-level" },
+      ),
+    ).toEqual({ kind: "wrap", parentKind: parents[0] });
+    for (const p of parents) {
+      expect(
+        listItemDropAdapter(
+          { kind: "listItem", id: "x", sourceContext: { parentKind: p } },
+          { kind: "top-level" },
+        ),
+      ).toEqual({ kind: "wrap", parentKind: p });
+    }
+  });
+
+  it("exampleItem wraps into parentKinds[0]", () => {
+    expect(
+      exampleItemDropAdapter(
+        { kind: "exampleItem", id: "x", sourceContext: {} },
+        { kind: "top-level" },
+      ),
+    ).toEqual({ kind: "wrap", parentKind: TEXT_OBJECT_REGISTRY.exampleItem.parentKinds![0] });
+  });
+
+  it("every sub-object declares parentKinds, and only sub-objects do", () => {
+    for (const [kind, meta] of Object.entries(TEXT_OBJECT_REGISTRY)) {
+      expect(!!meta.parentKinds?.length, kind).toBe(meta.isSubObject);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

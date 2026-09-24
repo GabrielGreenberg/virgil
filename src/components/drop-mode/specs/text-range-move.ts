@@ -65,7 +65,10 @@
 import { TextSelection } from "@tiptap/pm/state";
 import type { Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
-import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
+import {
+  isRangeKind,
+  parseTextObjectPopoutKey,
+} from "@/text-objects/text-object-registry";
 import {
   findLinkedAnchorRange,
   rangeSliceToBlocks,
@@ -103,7 +106,7 @@ interface RangeSource {
 function locateRange(cardKey: string, mainEditor: Editor | null): RangeSource | null {
   if (!mainEditor) return null;
   const ref = parseTextObjectPopoutKey(cardKey);
-  if (!ref || ref.kind !== "linkedRange") return null;
+  if (!ref || !isRangeKind(ref.kind)) return null;
   const range = findLinkedAnchorRange(mainEditor.state.doc, ref.id);
   if (!range) return null;
   return { editor: mainEditor, from: range.from, to: range.to };

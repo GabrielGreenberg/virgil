@@ -14,7 +14,7 @@ import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
 import {
   TEXT_OBJECT_REGISTRY,
-  isTextObjectKind,
+  isNodeTextObjectKind,
 } from "./text-object-registry";
 import type {
   SelectionRef,
@@ -92,8 +92,7 @@ function resolveFromSelection(editor: Editor): ActiveTextObjectRef {
     const node = sel.node;
     const name = node.type.name;
     if (
-      isTextObjectKind(name) &&
-      name !== "linkedRange" &&
+      isNodeTextObjectKind(name) &&
       (node.attrs?.uuid as string | null)
     ) {
       return { kind: name, id: node.attrs.uuid as string };
@@ -104,7 +103,7 @@ function resolveFromSelection(editor: Editor): ActiveTextObjectRef {
   for (let d = $from.depth; d >= 0; d--) {
     const node = $from.node(d);
     const name = node.type.name;
-    if (!isTextObjectKind(name) || name === "linkedRange") continue;
+    if (!isNodeTextObjectKind(name)) continue;
     const id = node.attrs?.uuid as string | null;
     if (!id) continue;
     const meta = TEXT_OBJECT_REGISTRY[name as TextObjectKind];

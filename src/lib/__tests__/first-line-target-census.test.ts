@@ -22,7 +22,7 @@
 //      are PINNED to `TEXT_OBJECT_REGISTRY`: `TEXTLESS_BLOCK_NODE_TYPES` is
 //      exactly the registry's `chromeAnchor: "block-top"` set, and
 //      `TEXT_LINE_CONTAINER_NODE_TYPES` is exactly its sub-object
-//      `parentKind`s plus `orderedList`. A kind added to the registry without
+//      `parentKinds`. A kind added to the registry without
 //      an answer here fails, which is what turns "we remembered `latexComment`"
 //      into "it cannot be forgotten".
 //
@@ -88,17 +88,14 @@ describe("first-line answer — the vocabulary census", () => {
     expect([...TEXTLESS_BLOCK_NODE_TYPES].sort()).toEqual([...blockTop].sort());
   });
 
-  it("TEXT_LINE_CONTAINER_NODE_TYPES is exactly the registry's sub-object parentKinds, plus orderedList", () => {
+  it("TEXT_LINE_CONTAINER_NODE_TYPES is exactly the registry's sub-object parentKinds", () => {
+    // Since task 743 `listItem` declares BOTH list kinds, so `orderedList` is
+    // derived like every other member — no stated exception remains.
     const parents = new Set(
-      Object.values(TEXT_OBJECT_REGISTRY)
-        .map((meta) => (meta as { parentKind?: string }).parentKind)
-        .filter((k): k is string => typeof k === "string"),
+      Object.values(TEXT_OBJECT_REGISTRY).flatMap(
+        (meta) => (meta.parentKinds ?? []) as readonly string[],
+      ),
     );
-    // `orderedList` declares no sub-object of its own (a `listItem`'s
-    // `parentKind` names `bulletList` for both), and it is structurally
-    // identical — so it is the one member stated rather than derived, and it is
-    // stated HERE so a third such kind cannot arrive silently.
-    parents.add("orderedList");
     expect([...TEXT_LINE_CONTAINER_NODE_TYPES].sort()).toEqual(
       [...parents].sort(),
     );

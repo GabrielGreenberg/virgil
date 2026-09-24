@@ -16,7 +16,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import { isTextObjectKind } from "./text-object-registry";
+import { isNodeTextObjectKind } from "./text-object-registry";
 import { buildFloatKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import type { TextObjectKind } from "./types";
 
@@ -33,8 +33,7 @@ function resolveUuidToKind(
   editor.state.doc.descendants((node) => {
     if (result) return false;
     if (
-      isTextObjectKind(node.type.name) &&
-      node.type.name !== "linkedRange" &&
+      isNodeTextObjectKind(node.type.name) &&
       (node.attrs?.uuid as string | null) === uuid
     ) {
       result = node.type.name as TextObjectKind;

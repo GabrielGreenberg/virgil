@@ -246,9 +246,9 @@ export const TEXTLESS_BLOCK_NODE_TYPES: ReadonlySet<string> = new Set([
  * the first child's first line makes a container and its first item produce
  * the SAME anchor by construction.
  *
- * Mirrors the sub-object `parentKind`s in `TEXT_OBJECT_REGISTRY`
- * (`listItem`→`bulletList`, `exampleItem`→`exampleBlock`), plus `orderedList`,
- * which is structurally identical to `bulletList`.
+ * Mirrors the sub-object `parentKinds` in `TEXT_OBJECT_REGISTRY`
+ * (`listItem`→`bulletList`/`orderedList`, `exampleItem`→`exampleBlock`);
+ * `first-line-target-census.test.ts` pins the two equal.
  */
 export const TEXT_LINE_CONTAINER_NODE_TYPES: ReadonlySet<string> = new Set([
   "bulletList",
