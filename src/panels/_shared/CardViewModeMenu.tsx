@@ -11,7 +11,7 @@
  * These were three bare `<button onMouseDown={preventDefault; setView}>`s: not
  * registered, so the enclosing provider's registry was empty and the shared
  * keyboard controller consumed Enter/Space/every arrow at window capture and
- * activated nothing. They are `MenuToggleRow`s now, in the `menuitemradio`
+ * activated nothing. They are radio rows now (`MenuRadioGroup`, task 770) — the `menuitemradio`
  * spelling — picking one un-picks the others, which is what distinguishes this
  * set from an independent checkbox — so arrow-nav crosses them, Enter picks the
  * active one, and `aria-checked` says which is current.
@@ -24,14 +24,14 @@
  */
 
 import { MenuSeparator } from "@/components/menu/MenuChrome";
-import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
+import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { useCardArchiveView, type CardArchiveView } from "./card-archive-view";
 import type { PanelKind } from "./types";
 
-const OPTIONS: { mode: CardArchiveView; label: string }[] = [
-  { mode: "active", label: "View Active" },
-  { mode: "archived", label: "View Archives" },
-  { mode: "all", label: "View All" },
+const OPTIONS: { value: CardArchiveView; label: string }[] = [
+  { value: "active", label: "View Active" },
+  { value: "archived", label: "View Archives" },
+  { value: "all", label: "View All" },
 ];
 
 export function CardViewModeMenuItems({ kind }: { kind: PanelKind }) {
@@ -40,16 +40,13 @@ export function CardViewModeMenuItems({ kind }: { kind: PanelKind }) {
   return (
     <>
       <MenuSeparator />
-      {OPTIONS.map((o) => (
-        <MenuToggleRow
-          key={o.mode}
-          id={`view-${o.mode}`}
-          role="menuitemradio"
-          label={o.label}
-          checked={current === o.mode}
-          onToggle={() => setView(kind, o.mode)}
-        />
-      ))}
+      <MenuRadioGroup
+        idPrefix="view-"
+        ariaLabel="View"
+        options={OPTIONS}
+        value={current}
+        onPick={(mode) => setView(kind, mode)}
+      />
     </>
   );
 }

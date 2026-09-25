@@ -8,7 +8,7 @@ import { Input, Textarea } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
-import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
+import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { bibFieldDisplay, serializeBibForExport } from "@/lib/bib-parser";
@@ -113,6 +113,12 @@ interface BibliographyPanelProps {
   bibFilter?: "cited" | "all";
   onSetBibFilter?: (v: "cited" | "all") => void;
 }
+
+/** The kebab's Display pair — a pick-ONE set (task 770 `MenuRadioGroup`). */
+const BIB_FILTER_OPTIONS = [
+  { value: "cited", label: "Cited entries only" },
+  { value: "all", label: "Full bibliography" },
+] as const;
 
 function BibliographyPanel({
   citations,
@@ -633,19 +639,12 @@ function BibliographyPanel({
       </div>
       <MenuSeparator />
       <MenuSectionLabel>Display</MenuSectionLabel>
-      <MenuToggleRow
-        id="filter-cited"
-        role="menuitemradio"
-        label="Cited entries only"
-        checked={filter === "cited"}
-        onToggle={() => setFilter("cited")}
-      />
-      <MenuToggleRow
-        id="filter-all"
-        role="menuitemradio"
-        label="Full bibliography"
-        checked={filter === "all"}
-        onToggle={() => setFilter("all")}
+      <MenuRadioGroup
+        idPrefix="filter-"
+        ariaLabel="Display"
+        options={BIB_FILTER_OPTIONS}
+        value={filter}
+        onPick={setFilter}
       />
       <MenuSeparator />
       <MenuActionRow

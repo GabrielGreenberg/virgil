@@ -54,13 +54,21 @@ export interface MenuToggleRowProps {
   keepMenuOpen?: boolean;
   /**
    * ARIA fork for a MUTUALLY-EXCLUSIVE set (task 477): `menuitemradio` where
-   * picking one un-picks the others (a card panel's View Active / Archives /
-   * All, Bibliography's Cited-only / Full, Citations' package and style), and
-   * the default `menuitemcheckbox` for an independent toggle. Both carry
-   * `aria-checked`; only the ROLE tells a screen-reader user whether the row's
-   * siblings move with it.
+   * picking one un-picks the others, and the default `menuitemcheckbox` for an
+   * independent toggle. Both carry `aria-checked`; only the ROLE tells a
+   * screen-reader user whether the row's siblings move with it.
+   *
+   * Set ONLY by `<MenuRadioGroup>` (task 770): a pick-one set goes through that
+   * door, which derives the role from its single `value`, rather than spelling
+   * it here and relying on every author to remember
+   * (`menu-radio-census.test.ts`).
    */
   role?: "menuitemcheckbox" | "menuitemradio";
+  /** Visible, greyed, inert and arrow-skipped (task 770 — the ¶ block-type
+   *  rows' class-unsupported heading levels). */
+  disabled?: boolean;
+  /** Tooltip + `aria-description`, e.g. why a row is disabled. */
+  hint?: string;
   onToggle: () => void;
 }
 
@@ -72,12 +80,15 @@ export function MenuToggleRow({
   indent = 0,
   keepMenuOpen = false,
   role = "menuitemcheckbox",
+  disabled = false,
+  hint,
   onToggle,
 }: MenuToggleRowProps) {
   const { active, getItemProps } = useMenuItem({
     id,
     region: "list",
     role,
+    disabled,
     run: onToggle,
     keepMenuOpen,
   });
@@ -91,9 +102,12 @@ export function MenuToggleRow({
         itemProps.onClick(e);
       }}
       type="button"
+      disabled={disabled || undefined}
       aria-checked={checked}
-      className={`w-full text-left ${pad} py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3`}
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      data-hint={hint}
+      aria-description={hint}
+      className={`w-full text-left ${pad} py-1.5 text-xs flex items-center justify-between gap-3 ${disabled ? "text-ink-subtle cursor-not-allowed opacity-55" : "text-ink-body hover-on-light"}`}
+      style={{ background: active && !disabled ? "var(--menu-roving-bg)" : undefined }}
     >
       {/* Markup stays byte-identical without a `leading` node — the wrapper
           only appears when there is something to sit beside the label, since

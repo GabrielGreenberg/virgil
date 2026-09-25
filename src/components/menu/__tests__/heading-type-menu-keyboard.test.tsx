@@ -44,7 +44,7 @@ function key(k: string, opts: KeyboardEventInit = {}) {
 
 function menuButtons(): HTMLButtonElement[] {
   return Array.from(
-    document.querySelectorAll('[role="menu"] button[role="menuitem"]'),
+    document.querySelectorAll('[role="menu"] button[role="menuitem"], [role="menu"] button[role="menuitemradio"]'),
   ) as HTMLButtonElement[];
 }
 
