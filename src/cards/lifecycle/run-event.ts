@@ -56,6 +56,7 @@
 
 import { CARD_REGISTRY } from "../card-registry";
 import { describeDrops, morphDropsTone } from "../morph-drop-fields";
+import { morphDropsHeld } from "../has-content";
 import type { CardKind } from "../types";
 import type { CardLifecycleSink } from "./card-lifecycle-signal";
 import {
@@ -114,7 +115,15 @@ export interface CardLifecycleDeps {
 
 export type LifecycleEvent =
   | { type: "delete"; kind: CardKind; id: string; hasContent: boolean }
-  | { type: "morph"; fromKind: CardKind; id: string };
+  | {
+      type: "morph";
+      fromKind: CardKind;
+      id: string;
+      /** The FROM-kind record as it stands before the morph, so the CONFIRM can
+       *  name only what THIS card holds (task 755). Omitted → the confirm fails
+       *  safe to the full declared `drops` (never a silent loss). */
+      card?: unknown;
+    };
 
 /**
  * The MODE half of the UNBRIDGE obligation (task 313) — the executor's answer to
@@ -185,8 +194,13 @@ export function unbridgeModeFor(
 
 /**
  * Build the generated morph-confirm copy from the declared `drops` set — never
- * hand-mirrored, so it can't drift from the salvage (REP-F6-03). Returns null
- * when nothing drops (a non-lossy morph needs no confirm).
+ * hand-mirrored, so it can't drift from the salvage (REP-F6-03) — FILTERED to
+ * the fields this card actually holds (`morphDropsHeld`, task 755). Returns
+ * null when nothing drops: a non-lossy morph, OR a lossy one over a card that
+ * holds none of what it could lose (an empty note → highlight, an unticked
+ * request → report). That is the same value-aware question the DELETE confirm
+ * asks through `cardHasContent`, so morph and delete agree about an empty card.
+ * `card` omitted → the full declared set (fail safe: warn, never under-warn).
  *
  * The TONE ships with the copy (task 303) rather than being picked at the
  * confirm call site: both are answers to the same question — how much does this
@@ -195,24 +209,28 @@ export function unbridgeModeFor(
  * morph confirmed calmly, including the one that discards a whole rich body,
  * while an identical DELETE of that body went red).
  */
-export function morphConfirmMessage(fromKind: CardKind): {
+export function morphConfirmMessage(fromKind: CardKind, card?: unknown): {
   title: string;
   message: string;
   confirmLabel: string;
   tone: "default" | "danger";
 } | null {
   const morph = CARD_REGISTRY[fromKind].morph;
-  if (!morph || morph.drops.length === 0) return null;
+  if (!morph) return null;
+  // Copy AND tone derive from the filtered set, so a title-only loss is calm
+  // and a body loss stays red — for this card, not for its kind.
+  const drops = morphDropsHeld(fromKind, card);
+  if (drops.length === 0) return null;
   const toLabel = CARD_REGISTRY[morph.to].label;
   // Human-readable phrase for the dropped fields, generated from `drops`.
-  const phrase = describeDrops(morph.drops);
+  const phrase = describeDrops(drops);
   return {
     title: `Change to ${toLabel}?`,
     message: `This drops ${phrase} (a ${toLabel} can't hold ${
-      morph.drops.length > 1 ? "them" : "it"
+      drops.length > 1 ? "them" : "it"
     }); the text anchor stays. Continue?`,
     confirmLabel: `Make it a ${toLabel}`,
-    tone: morphDropsTone(morph.drops),
+    tone: morphDropsTone(drops),
   };
 }
 
@@ -351,7 +369,7 @@ export async function runCardLifecycleEvent(
     if (!morph) return false; // non-morphing kind — defensive no-op
 
     // 1. CONFIRM (generated from drops).
-    const copy = morphConfirmMessage(ev.fromKind);
+    const copy = morphConfirmMessage(ev.fromKind, ev.card);
     if (copy) {
       const ok = await deps.confirm({
         title: copy.title,
@@ -374,7 +392,10 @@ export async function runCardLifecycleEvent(
     // 3. UNBRIDGE — fire BEFORE the mutation so the pending inbox entry is
     //    cleared in the same logical step. Only when the morph DROPS aiRequest
     //    (the FROM kind had routing, the TO kind doesn't — assertMorphCoverage
-    //    pins that "aiRequest" is only declared in exactly that case). The MODE
+    //    pins that "aiRequest" is only declared in exactly that case). Read off
+    //    the DECLARED drops, never the confirm's value-filtered set: an unticked
+    //    flag can still have a row in flight (task 720), and the TO kind can
+    //    never clear it (task 755 keeps this leg declaration-driven). The MODE
     //    comes from the event, not the caller (313).
     if (morph.drops.includes("aiRequest")) {
       await deps.unbridgeAiRequest(ev.fromKind, ev.id, unbridgeModeFor(ev.type));

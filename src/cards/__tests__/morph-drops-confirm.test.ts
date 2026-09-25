@@ -256,3 +256,88 @@ describe("converter ↔ drops pin (the real salvage drops exactly what drops nam
     expect(morphConfirmMessage("highlight")).toBeNull();
   });
 });
+
+/**
+ * Task 755 — the confirm is decided from the card's VALUES, not its kind. The
+ * registry says what a morph CAN drop; `morphDropsHeld` filters that to what
+ * THIS card holds, and copy + tone derive from the filtered set.
+ */
+describe("morphConfirmMessage — value-aware (task 755)", () => {
+  const body = (text: string, marks?: unknown[]) => ({
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text, ...(marks ? { marks } : {}) }] }],
+  });
+  const emptyBody = { type: "doc", content: [{ type: "paragraph" }] };
+
+  it("an empty, untitled note → highlight asks nothing (agrees with delete)", () => {
+    expect(morphConfirmMessage("note", { id: "n", content: emptyBody, title: "" })).toBeNull();
+  });
+
+  it("a body-bearing note → danger confirm naming the body only", () => {
+    const copy = morphConfirmMessage("note", { id: "n", content: body("hello"), title: "" })!;
+    expect(copy.tone).toBe("danger");
+    expect(copy.message).toContain("the body");
+    expect(copy.message).not.toContain("the title");
+  });
+
+  it("a titled-only note → calm confirm naming the title only", () => {
+    const copy = morphConfirmMessage("note", { id: "n", content: emptyBody, title: "Idea" })!;
+    expect(copy.tone).toBe("default");
+    expect(copy.message).toContain("the title");
+    expect(copy.message).not.toContain("the body");
+  });
+
+  it("report-request with aiRequest:false asks nothing; with true, names the flag", () => {
+    expect(morphConfirmMessage("report-request", { id: "q", aiRequest: false, content: body("x") })).toBeNull();
+    const copy = morphConfirmMessage("report-request", { id: "q", aiRequest: true })!;
+    expect(copy.message).toContain("the AI-request flag");
+  });
+
+  it("report → request: untitled human report asks nothing; an AI byline is named", () => {
+    expect(morphConfirmMessage("report", { id: "r", author: "human", title: "", content: body("x") })).toBeNull();
+    const copy = morphConfirmMessage("report", { id: "r", author: "ai", title: "" })!;
+    expect(copy.message).toContain("the author byline");
+    expect(copy.message).not.toContain("the title");
+  });
+
+  it("comment → suggestion: plain prose flattens losslessly; marks or atoms are formatting", () => {
+    expect(
+      morphConfirmMessage("revision-comment", { id: "c", aiRequest: false, content: body("plain") }),
+    ).toBeNull();
+    const bold = morphConfirmMessage("revision-comment", {
+      id: "c",
+      aiRequest: false,
+      content: body("b", [{ type: "bold" }]),
+    })!;
+    expect(bold.message).toContain("the rich formatting");
+    expect(bold.message).not.toContain("the AI-request flag");
+    const atom = morphConfirmMessage("cutter-comment", {
+      id: "c",
+      aiRequest: true,
+      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "inlineMath", attrs: { latex: "x" } }] }] },
+    })!;
+    expect(atom.message).toContain("the rich formatting and the AI-request flag");
+    expect(atom.tone).toBe("danger");
+  });
+
+  it("the executor raises no confirm for an empty note but still mutates", async () => {
+    const { d, confirm, mutate } = deps();
+    const ok = await runCardLifecycleEvent(
+      { type: "morph", fromKind: "note", id: "n1", card: { id: "n1", content: emptyBody, title: "" } },
+      d,
+    );
+    expect(ok).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(mutate).toHaveBeenCalled();
+  });
+
+  it("UNBRIDGE stays declaration-driven: an unticked request's in-flight row is still cleared", async () => {
+    const { d, confirm, unbridge } = deps();
+    await runCardLifecycleEvent(
+      { type: "morph", fromKind: "report-request", id: "q1", card: { id: "q1", aiRequest: false } },
+      d,
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(unbridge).toHaveBeenCalledWith("report-request", "q1", "terminate");
+  });
+});

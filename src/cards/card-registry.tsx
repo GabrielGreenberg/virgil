@@ -555,8 +555,9 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     droppable: true,
     dropPlacement: "margin",
     // note → highlight discards the rich note body + title (the highlight has
-    // none) → lossy. The reverse direction is also lossy (a highlight has no
-    // body to seed the note with); a confirm guards the body-dropping case.
+    // none) → lossy. The reverse direction is NOT lossy (`highlight.morph`: the
+    // converter seeds an empty note). The confirm names only what THIS note
+    // holds (`morphDropsHeld`), so an empty note morphs without one (task 755).
     morph: { to: "highlight", lossy: true, drops: ["body", "title"] },
     bodyClass: "sans",
     bodySchema: "card",

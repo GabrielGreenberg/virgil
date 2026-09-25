@@ -43,7 +43,7 @@
  */
 
 import { CARD_REGISTRY } from "./card-registry";
-import type { CardKind } from "./types";
+import type { CardKind, MorphDropField } from "./types";
 import { jsonCarriesContent } from "@/lib/node-attr-sets";
 
 /** Card-kind discriminator used by `cardHasContent`. Retained as a NARROW alias
@@ -118,4 +118,78 @@ export function cardHasContent(kind: CardKind, card: unknown): boolean {
     }
   }
   return false;
+}
+
+/** Nodes a plain-text field can hold without loss: the paragraph skeleton, its
+ *  text, and a line break (a newline in the flattened mirror). Anything else —
+ *  a citation, math, a list — survives only in the rich body. */
+const PLAIN_TEXT_NODE_TYPES: ReadonlySet<string> = new Set([
+  "doc",
+  "paragraph",
+  "text",
+  "hardBreak",
+]);
+
+/** True iff a rich body carries something a flattening to plain text would
+ *  lose: a node outside the plain skeleton, or a marked text run. A body of
+ *  unmarked paragraphs flattens losslessly (the prose itself carries across —
+ *  the comment → suggestion converter seeds `user_text` from the `text`
+ *  mirror), so it holds no "formatting" to drop. */
+function jsonCarriesFormatting(json: unknown): boolean {
+  const walk = (n: unknown): boolean => {
+    if (!n || typeof n !== "object") return false;
+    if (Array.isArray(n)) return n.some(walk);
+    const node = n as { type?: unknown; marks?: unknown; content?: unknown };
+    if (typeof node.type === "string" && !PLAIN_TEXT_NODE_TYPES.has(node.type)) return true;
+    if (Array.isArray(node.marks) && node.marks.length > 0) return true;
+    return walk(node.content);
+  };
+  return walk(json);
+}
+
+/**
+ * Does THIS card hold a value under each droppable field? Keyed on the whole
+ * `MorphDropField` union, so a new drop token is a compile error until someone
+ * states what "holding it" means — the same exhaustiveness `MORPH_DROP_FIELDS`
+ * owns for the token's noun and severity (task 755).
+ *
+ * Emptiness follows `cardHasContent`'s rules where the field is one it reads
+ * (the rich body through `jsonCarriesContent`, strings trimmed, arrays by
+ * length). The two it doesn't read:
+ *  - `byline` — a report's `author`. `"human"` is the default every report is
+ *    re-stamped with (`requestToReport`), so only an AI byline is a fact the
+ *    target loses. Same normalization as `isAiAuthored`.
+ *  - `aiRequest` — held only when the flag is literally ticked. An unticked
+ *    card has no flag to lose (its inbox row, if one is still in flight, is
+ *    the UNBRIDGE step's concern, which reads the DECLARED drops — task 720).
+ */
+const MORPH_DROP_HELD: Record<
+  MorphDropField,
+  (rec: Record<string, unknown>, bodyField: string | null) => boolean
+> = {
+  body: (rec, bodyField) => bodyField !== null && jsonCarriesContent(rec[bodyField]),
+  formatting: (rec, bodyField) => bodyField !== null && jsonCarriesFormatting(rec[bodyField]),
+  title: (rec) => textFieldHasContent(rec, "title"),
+  keys: (rec) => textFieldHasContent(rec, "keys"),
+  byline: (rec) => isAiAuthored(rec),
+  aiRequest: (rec) => rec.aiRequest === true,
+};
+
+/**
+ * The subset of `CARD_REGISTRY[kind].morph.drops` this card ACTUALLY holds —
+ * what its morph would really destroy. The registry says what a morph CAN drop;
+ * whether this one drops anything is a property of the card's values, the same
+ * altitude `cardHasContent` answers the delete confirm at, so morph and delete
+ * can no longer disagree about the same empty card (task 755).
+ *
+ * Declared order is preserved (the generated copy is reproducible). A missing
+ * record FAILS SAFE to the full declared set — a caller that could not find the
+ * card gets the warning, never a silent loss.
+ */
+export function morphDropsHeld(kind: CardKind, card: unknown): readonly MorphDropField[] {
+  const drops = CARD_REGISTRY[kind].morph?.drops ?? [];
+  if (!card || typeof card !== "object") return drops;
+  const rec = card as Record<string, unknown>;
+  const bodyField = CARD_REGISTRY[kind].content?.bodyField ?? null;
+  return drops.filter((d) => MORPH_DROP_HELD[d](rec, bodyField));
 }
