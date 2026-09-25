@@ -209,4 +209,34 @@ describe("PaperHeader — AI-request state re-syncs without a remount (task 132)
     await act(flush);
     expect(checkedItems()).toEqual(["Index"]);
   });
+
+  it("task 765: an in-place citekey change clears the per-paper note", async () => {
+    // A popped paper tab switched to another paper swaps `entry` in place.
+    // Paper A's half-typed note must not become paper B's next `ctx.note`.
+    for (const key of ["alpha2020", "beta2021"]) {
+      disk.files.set(`${key}-deepindex.json`, {
+        kind: "deepIndex",
+        status: "requested",
+        citekey: key,
+      });
+    }
+    const { default: PaperHeader } = await import("../PaperHeader");
+    const props = {
+      handle: HANDLE,
+      bib: null,
+      viewMode: "text" as const,
+      onViewModeChange: () => {},
+      pdfAvailable: true,
+      indexedState: "indexed" as const,
+    };
+    const { rerender } = render(<PaperHeader {...props} entry={ENTRY} />);
+    await act(flush);
+    fireEvent.change(screen.getByLabelText("instructions"), {
+      target: { value: "note meant for alpha" },
+    });
+
+    rerender(<PaperHeader {...props} entry={{ ...ENTRY, citekey: "beta2021" }} />);
+    await act(flush);
+    expect((screen.getByLabelText("instructions") as HTMLTextAreaElement).value).toBe("");
+  });
 });

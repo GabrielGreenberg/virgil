@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import type { CatalogEntry } from "@library/lib/catalog";
+import { paperContentRevision, type CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { queueBibEdit } from "@library/lib/bib-edit";
 import { refreshQueueState } from "@library/lib/queue-state-store";
@@ -451,6 +451,7 @@ export default function RightDetail({
             handle={handle}
             citekey={entry.citekey}
             indexedState={entry.indexed.state}
+            contentRevision={paperContentRevision(entry)}
             scope={scope}
             panel={panel}
             onReaderRefs={onReaderRefs}

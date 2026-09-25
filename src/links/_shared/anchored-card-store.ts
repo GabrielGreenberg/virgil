@@ -57,6 +57,7 @@ import {
   createContext,
   createElement,
   useContext,
+  useEffect,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -255,10 +256,20 @@ export function createCardStore(): CardStore {
 // ── Per-doc registry ──────────────────────────────────────────────────────────
 // Lazy Map<docId, store>. The SHELL (EditorLayout) and the per-pane provider
 // both resolve a doc's store through here, so there is exactly one instance per
-// docId. Pruned on a TRUE doc unmount (LRU evict / tab close) via the same
-// `pruneDocMaps` hook that prunes the per-doc editorInstance/paneState maps.
+// docId.
+//
+// LIFETIME IS REF-COUNTED (task 765). One docId can be mounted by SEVERAL
+// holders at once — the Library Reader's LRU slot for `library-paper:X` and a
+// popped-out paper tab for the same paper — so "a holder unmounted" is not
+// "the doc is gone". Every mount site that owns a doc's lifetime takes a LEASE
+// (`useCardStoreLease` / `retainCardStore`); the store leaves the registry only
+// when the LAST lease is released. The zero-count drop is deferred one
+// microtask and re-checked, so a release→retain in the same commit (StrictMode's
+// effect double-invoke, a same-id remount) keeps the instance the pane already
+// resolved in render instead of orphaning it.
 
 const _stores = new Map<string, CardStore>();
+const _leases = new Map<string, number>();
 
 /** Resolve (creating on first touch) the interaction store for a doc. */
 export function getCardStore(docId: string): CardStore {
@@ -270,11 +281,35 @@ export function getCardStore(docId: string): CardStore {
   return store;
 }
 
-/** Drop a doc's store on a real unmount (LRU evict / tab close). A subsequent
- *  cold re-open gets a fresh store — interaction state legitimately resets on a
- *  cold reload; warm (still-mounted) docs keep their instance. */
-export function disposeCardStore(docId: string): void {
-  _stores.delete(docId);
+/** Take a lease on a doc's store; returns the (idempotent) release. When the
+ *  last lease is released the store is dropped, so a subsequent cold re-open
+ *  gets a fresh store — interaction state legitimately resets on a cold reload,
+ *  while any doc still held by some mount keeps its instance. */
+export function retainCardStore(docId: string): () => void {
+  getCardStore(docId);
+  _leases.set(docId, (_leases.get(docId) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const n = (_leases.get(docId) ?? 1) - 1;
+    if (n > 0) {
+      _leases.set(docId, n);
+      return;
+    }
+    _leases.delete(docId);
+    queueMicrotask(() => {
+      if (!_leases.has(docId)) _stores.delete(docId);
+    });
+  };
+}
+
+/** Hold a lease on `docId`'s store for this component's mounted lifetime. The
+ *  ONE door every doc-lifetime owner (DocKeepAliveSlot, the Reader LRU slot,
+ *  the popped-out paper view) uses — a true unmount releases, a keep-alive
+ *  display:none hide does not. */
+export function useCardStoreLease(docId: string): void {
+  useEffect(() => retainCardStore(docId), [docId]);
 }
 
 // ── Fallback + context ────────────────────────────────────────────────────────

@@ -16,24 +16,23 @@
 // flushed by usePersistentState's unmount flushPending before the pipeline ends.
 
 import { libraryPaperCitekey, libraryPaperDocId } from "@/lib/host-writability";
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { BibAuthState, CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useKeepAliveLRU } from "@/lib/keep-alive/useKeepAliveLRU";
 import { KeepAliveSlot } from "@/lib/keep-alive/KeepAliveSlot";
-import { disposeCardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStoreLease } from "@/links/_shared/anchored-card-store";
 import PaperFileBody from "./PaperFileBody";
 
 /**
- * KeepAliveSlot + a true-unmount hook that drops THIS reader paper's per-doc
- * interaction store (the canonical <EditorPane> it mounts resolves
- * `getCardStore(docId)`). Mirrors the main app's DocKeepAliveSlot →
- * disposeCardStore: on LRU tail eviction (a real unmount, NOT a display:none
- * hide) the store leaves the registry, so a re-opened paper gets a fresh store
- * (no stale selection/expansion halo) and the registry doesn't grow unbounded.
- * The cleanup is keyed on the stable `docId` (= the React key), so a
- * display:none visibility flip never fires it.
+ * KeepAliveSlot + a lease on THIS reader paper's per-doc interaction store (the
+ * canonical <EditorPane> it mounts resolves `getCardStore(docId)`). Same door
+ * as the main app's DocKeepAliveSlot: on LRU tail eviction (a real unmount, NOT
+ * a display:none hide) the lease is released, and the store leaves the
+ * registry only when NO other holder — e.g. a popped-out tab of the same paper
+ * (task 765) — still has it. A re-opened paper then gets a fresh store and the
+ * registry doesn't grow unbounded.
  */
 function ReaderKeepAliveSlot({
   docId,
@@ -44,7 +43,7 @@ function ReaderKeepAliveSlot({
   isVisible: boolean;
   children: ReactNode;
 }) {
-  useEffect(() => () => disposeCardStore(docId), [docId]);
+  useCardStoreLease(docId);
   return <KeepAliveSlot isVisible={isVisible}>{children}</KeepAliveSlot>;
 }
 

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   createCardStore,
   getCardStore,
-  disposeCardStore,
+  retainCardStore,
   type AnchoredCardRef,
   type CardStore,
 } from "../anchored-card-store";
@@ -139,7 +139,9 @@ describe("anchored-card-store — per-doc isolation", () => {
     expect(docB.getState().expandedSet).toEqual([]);
   });
 
-  it("getCardStore is per-docId and stable; disposeCardStore resets a doc", () => {
+  it("getCardStore is per-docId and stable; releasing the last lease resets a doc", async () => {
+    const release1 = retainCardStore("doc-1");
+    const release2 = retainCardStore("doc-2");
     const s1 = getCardStore("doc-1");
     const s2 = getCardStore("doc-2");
     // Same docId → same instance (idempotent registry).
@@ -153,13 +155,46 @@ describe("anchored-card-store — per-doc isolation", () => {
 
     // A true unmount drops the store; the next resolve is a fresh instance with
     // reset interaction state (cold re-open semantics).
-    disposeCardStore("doc-1");
+    release1();
+    await Promise.resolve();
     const s1b = getCardStore("doc-1");
     expect(s1b).not.toBe(s1);
     expect(s1b.getState().selected).toBeNull();
 
-    // Clean up the registry so these ids don't leak into other tests.
-    disposeCardStore("doc-1");
-    disposeCardStore("doc-2");
+    release2();
+    await Promise.resolve();
+  });
+
+  it("task 765: a store held by two mounts survives one release", async () => {
+    const readerSlot = retainCardStore("library-paper:X");
+    const poppedTab = retainCardStore("library-paper:X");
+    const store = getCardStore("library-paper:X");
+    store.select(a);
+
+    // The Reader LRU evicts its slot; the popped-out tab still holds the doc.
+    readerSlot();
+    readerSlot(); // idempotent — a double release must not steal the other lease
+    await Promise.resolve();
+    expect(getCardStore("library-paper:X")).toBe(store);
+    expect(store.getState().selected).toEqual(a);
+
+    // Last holder leaves → disposed.
+    poppedTab();
+    await Promise.resolve();
+    expect(getCardStore("library-paper:X")).not.toBe(store);
+    const r = retainCardStore("library-paper:X");
+    r();
+    await Promise.resolve();
+  });
+
+  it("task 765: release→retain in one commit (StrictMode) keeps the instance", async () => {
+    const r1 = retainCardStore("doc-sm");
+    const store = getCardStore("doc-sm");
+    r1();
+    const r2 = retainCardStore("doc-sm");
+    await Promise.resolve();
+    expect(getCardStore("doc-sm")).toBe(store);
+    r2();
+    await Promise.resolve();
   });
 });
