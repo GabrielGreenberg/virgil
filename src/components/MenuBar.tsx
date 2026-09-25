@@ -14,6 +14,7 @@ import {
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import { MenuToggleRow } from "./menu/MenuToggleRow";
+import { MenuRadioGroup } from "./menu/MenuRadioGroup";
 import { MenuSeparator, MenuSectionLabel } from "./menu/MenuChrome";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { elementAnchor } from "./menu/live-anchor";
@@ -290,63 +291,6 @@ export function pickBlockType(
   }
 }
 
-/** One BlockType row. Registers into the `<Menu>` registry via `useMenuItem`
- *  and spreads `getItemProps()` onto its existing `<button>` so it GAINS arrow
- *  nav + the `data-active` highlight without a markup rewrite. The current
- *  block level carries the checkmark + `aria-checked`/`data-current`. */
-function BlockTypeRow({
-  value,
-  label,
-  current,
-  disabled,
-  hint,
-  onPick,
-}: {
-  value: string;
-  label: string;
-  current: boolean;
-  /** Class-unsupported heading level: visible, greyed, arrow-skipped, inert
-   *  — the lozenge `HeadingTypeMenu`'s treatment of the same row. */
-  disabled: boolean;
-  hint?: string;
-  onPick: () => void;
-}) {
-  const { active, getItemProps } = useMenuItem({
-    id: value,
-    region: "list",
-    role: "menuitemcheckbox",
-    disabled,
-    run: onPick,
-  });
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      disabled={disabled}
-      aria-checked={current}
-      data-current={current ? "" : undefined}
-      data-hint={hint}
-      aria-description={hint}
-      className={
-        disabled
-          ? "w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] flex items-center gap-2"
-          : "w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
-      }
-      style={{
-        background: active && !disabled ? "var(--menu-roving-bg)" : undefined,
-        color: disabled ? "var(--ink-subtle)" : undefined,
-        cursor: disabled ? "not-allowed" : undefined,
-        opacity: disabled ? 0.55 : undefined,
-      }}
-    >
-      <span className="w-4 text-center text-xs">
-        {current ? "✓" : ""}
-      </span>
-      {label}
-    </button>
-  );
-}
-
 // Both MenuBar dropdowns are ordinary PORTALED menus (task 751): the ONE
 // placement owner (`useFloatingMenuPosition`, via `<MenuProvider>`) flips,
 // clamps and — with `maxHeight` — caps them to the space the chosen side has,
@@ -445,10 +389,10 @@ export function BlockTypeDropdown({
       <button
         ref={setTrigger}
         onClick={() => setOpen((o) => !o)}
-        data-hint="Block type"
+        {...iconHint({ label: "Block type" })}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="px-1.5 py-0.5 rounded text-sm text-[var(--muted)] hover-on-light hover:text-ink-body flex items-center gap-1"
+        className="px-1.5 py-0.5 rounded text-sm text-[var(--muted)] hover-on-light hover:text-ink-body flex items-center gap-1 focus-ring"
       >
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
@@ -469,22 +413,18 @@ export function BlockTypeDropdown({
           ariaLabel="Block type"
           containerClassName={dropdownClassName}
         >
-          <div>
-            {blockTypeOptions(documentClass).map((bt) => (
-              <BlockTypeRow
-                key={bt.value}
-                value={bt.value}
-                label={bt.label}
-                current={current === bt.value}
-                disabled={bt.disabled}
-                hint={bt.hint}
-                onPick={() => {
-                  pickBlockType(editor, bt.value, documentClass);
-                  setOpen(false);
-                }}
-              />
-            ))}
-          </div>
+          {/* Pick-ONE (a block is exactly one type), so the rows are radios by
+              construction — task 770; they were hand-built checkboxes. */}
+          <MenuRadioGroup
+            idPrefix=""
+            ariaLabel="Block type"
+            options={blockTypeOptions(documentClass)}
+            value={current}
+            onPick={(v) => {
+              pickBlockType(editor, v, documentClass);
+              setOpen(false);
+            }}
+          />
         </MenuProvider>
       )}
     </div>
@@ -755,16 +695,16 @@ export function ViewMenu({
                     />
                   ))}
                   <ViewGroupRow id="divider-prefs-group" label={VIEW_PREF_REGISTRY.dividerWidth.label} expanded={dividerPrefsExpanded} indent={1} onToggle={() => setDividerPrefsExpanded((p) => !p)} />
-                  {dividerPrefsExpanded && VIEW_PREF_REGISTRY.dividerWidth.values.map((w) => (
-                    <MenuToggleRow
-                      key={w}
-                      id={`divider-width-${w}`}
-                      label={DIVIDER_WIDTH_LABELS[w]}
-                      checked={viewPrefs.dividerWidth === w}
+                  {dividerPrefsExpanded && (
+                    <MenuRadioGroup
+                      idPrefix="divider-width-"
+                      ariaLabel={VIEW_PREF_REGISTRY.dividerWidth.label}
+                      options={VIEW_PREF_REGISTRY.dividerWidth.values.map((w) => ({ value: w, label: DIVIDER_WIDTH_LABELS[w] }))}
+                      value={viewPrefs.dividerWidth}
                       indent={2}
-                      onToggle={() => onSetViewPref("dividerWidth", w)}
+                      onPick={(w) => onSetViewPref("dividerWidth", w)}
                     />
-                  ))}
+                  )}
                 </>
               )}
             </>

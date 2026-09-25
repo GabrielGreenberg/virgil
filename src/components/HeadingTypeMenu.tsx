@@ -75,6 +75,9 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
   const { active, getItemProps } = useMenuItem({
     id,
     region: "list",
+    // The level rows are a pick-ONE set — `menuitemradio` (task 770; a plain
+    // `menuitem` may not carry `aria-checked`). "No heading" is a command.
+    role: showCheckGutter ? "menuitemradio" : undefined,
     disabled,
     run,
   });

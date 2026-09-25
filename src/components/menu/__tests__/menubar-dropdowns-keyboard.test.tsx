@@ -7,7 +7,7 @@
 //
 //   BlockTypeDropdown:
 //   - click selects a block type ('Body' → setParagraph, 'Part' → setNode);
-//   - the current level carries the ✓ marker + aria-checked/data-current;
+//   - the current level carries the ✓ marker + aria-checked (rows are menuitemradio, task 770);
 //   - Up/Down/Home/End arrow nav moves a visible data-active highlight; Enter
 //     activates the active row;
 //   - Escape closes; click-outside dismisses;
@@ -126,7 +126,7 @@ function makeEditor(currentLevel: number | null) {
 
 function blockButtons(): HTMLButtonElement[] {
   return Array.from(
-    document.querySelectorAll('[role="menu"] button[role="menuitemcheckbox"]'),
+    document.querySelectorAll('[role="menu"] button[role="menuitemradio"]'),
   ) as HTMLButtonElement[];
 }
 function blockButtonByLabel(label: string): HTMLButtonElement | undefined {
@@ -167,11 +167,12 @@ describe("BlockTypeDropdown — portaled render + click selection", () => {
     expect(blockButtons()).toHaveLength(8);
     const section = blockButtonByLabel("Section")!;
     expect(section.getAttribute("aria-checked")).toBe("true");
-    expect(section.hasAttribute("data-current")).toBe(true);
+    // Task 770: pick-ONE, so a radio — never an independent checkbox.
+    expect(section.getAttribute("role")).toBe("menuitemradio");
     expect(section.textContent).toContain("✓");
     const body = blockButtonByLabel("Body text")!;
     expect(body.getAttribute("aria-checked")).toBe("false");
-    expect(body.hasAttribute("data-current")).toBe(false);
+    expect(body.getAttribute("role")).toBe("menuitemradio");
   });
 
   it("clicking 'Body text' calls setParagraph + closes", () => {

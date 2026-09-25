@@ -2408,8 +2408,8 @@ worse than no controller at all — the key the focused row needed is
 `preventDefault()`ed on its behalf and nothing runs (task 477; it shipped that
 way on every panel header ⋮ and every card ⋮ for a release cycle). Reach for
 `<MenuActionRow>` (a command; `tone="danger"` for a destructive one, `leading`
-for a glyph), `<MenuToggleRow>` (a checkbox, or `role="menuitemradio"` for a
-mutually-exclusive set), or `useMenuItem` + `getItemProps()` on whatever the row
+for a glyph), `<MenuToggleRow>` (a checkbox), `<MenuRadioGroup>` (a mutually-exclusive
+set), or `useMenuItem` + `getItemProps()` on whatever the row
 already renders. Both row primitives share one metric — `px-3 py-1.5 text-xs` —
 so a menu holding both kinds reads as one list. A native form control inside a
 menu is the exception and stays a focus ISLAND (`region: "widget"`: skipped by
@@ -2443,12 +2443,17 @@ every panel-header kebab now goes through `ItemMenu align="left"`.
 **Checkbox/toggle rows use `<MenuToggleRow>`** (`src/components/menu/`) — one
 row implementation for MenuBar's ViewMenu and every panel kebab: label left,
 accent ✓ right, `aria-checked`, registered via `useMenuItem` so arrow-nav and
-the roving highlight come for free. Its ROLE is a fork rather than a constant:
-`menuitemcheckbox` (the default) for an independent toggle, `menuitemradio` for
-a mutually-exclusive set where picking one un-picks the others — the three
-View Active / Archives / All rows, Bibliography's Cited-only / Full pair,
-Citations' package and style groups. Both spellings carry `aria-checked`; only
-the role tells a screen-reader user whether the row's siblings move with it.
+the roving highlight come for free (`disabled` + `hint` for a greyed, inert,
+explained row). It is `menuitemcheckbox` — an independent toggle. **A pick-ONE
+set renders through `<MenuRadioGroup>`** (task 770): hand it the options and ONE
+`value`, and every row is `menuitemradio` inside a `role="group"`, checked iff it
+equals `value` — the ¶ block-type rows, divider width, View Active / Archives /
+All, Bibliography's Cited-only / Full pair, Citations' package and style groups.
+The role is derived from the input's shape, not remembered: the block-type and
+divider-width sets once shipped as checkboxes because nobody spelled the role.
+`menu-radio-census.test.ts` fails a `<MenuToggleRow>` checked by equality or
+given a `role` by hand. Both roles carry `aria-checked`; only the role tells a
+screen-reader user whether the row's siblings move with it.
 Closing stays the caller's business (MenuBar's Display rows close from inside
 their own `onToggle`); pass `keepMenuOpen` inside `ItemMenu`, which otherwise
 dismisses on activation — a run of independent toggles should not close the menu

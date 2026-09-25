@@ -17,7 +17,7 @@ import PanelThemePicker from "@/components/PanelThemePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { citeNotesDroppedByPackage } from "@/lib/cite-command-model";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
-import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
+import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
@@ -367,28 +367,22 @@ function CitationsPanel({
               ONE citation style — so both take the `menuitemradio` spelling. */}
           <MenuSeparator />
           <MenuSectionLabel>Package</MenuSectionLabel>
-          {BIB_PACKAGES.map((p) => (
-            <MenuToggleRow
-              key={p.value}
-              id={`package-${p.value}`}
-              role="menuitemradio"
-              label={p.label}
-              checked={bibPackage === p.value}
-              onToggle={() => requestBibPackage(p.value)}
-            />
-          ))}
+          <MenuRadioGroup
+            idPrefix="package-"
+            ariaLabel="Package"
+            options={BIB_PACKAGES}
+            value={bibPackage}
+            onPick={requestBibPackage}
+          />
           <MenuSeparator />
           <MenuSectionLabel>Style</MenuSectionLabel>
-          {STYLES.map((s) => (
-            <MenuToggleRow
-              key={s.value}
-              id={`style-${s.value}`}
-              role="menuitemradio"
-              label={s.label}
-              checked={citationStyle === s.value}
-              onToggle={() => onSetStyle(s.value)}
-            />
-          ))}
+          <MenuRadioGroup
+            idPrefix="style-"
+            ariaLabel="Style"
+            options={STYLES}
+            value={citationStyle}
+            onPick={onSetStyle}
+          />
           <CardViewModeMenuItems kind="citations" />
         </ItemMenu>
       }
