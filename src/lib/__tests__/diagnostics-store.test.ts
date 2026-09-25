@@ -1,43 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  createOrdinalMinter,
-  mintDiagnosticId,
-  pruneDismissed,
-} from "@/lib/diagnostics-store";
-
-describe("createOrdinalMinter", () => {
-  it("returns a monotonic sequence starting at 0", () => {
-    const m = createOrdinalMinter();
-    expect(m.next()).toBe(0);
-    expect(m.next()).toBe(1);
-    expect(m.next()).toBe(2);
-  });
-});
-
-describe("mintDiagnosticId — id uniqueness", () => {
-  it("mints distinct ids for identical (source,line,col,message) tuples", () => {
-    const m = createOrdinalMinter();
-    const parts = { source: "compile" as const, line: 0, message: "boom" };
-    const a = mintDiagnosticId(m, parts);
-    const b = mintDiagnosticId(m, parts);
-    const c = mintDiagnosticId(m, parts);
-    expect(new Set([a, b, c]).size).toBe(3);
-  });
-
-  it("folds the salt into the id so the same tuple differs across runs", () => {
-    const parts = { source: "compile" as const, line: 5, message: "x" };
-    const run1 = mintDiagnosticId(createOrdinalMinter(), { ...parts, salt: "r1:" });
-    const run2 = mintDiagnosticId(createOrdinalMinter(), { ...parts, salt: "r2:" });
-    expect(run1).not.toBe(run2);
-  });
-
-  it("is stable for the same (tuple, ordinal, salt)", () => {
-    const parts = { source: "lint" as const, line: 3, column: 2, message: "m", salt: "s:" };
-    const a = mintDiagnosticId({ next: () => 7 }, parts);
-    const b = mintDiagnosticId({ next: () => 7 }, parts);
-    expect(a).toBe(b);
-  });
-});
+import { pruneDismissed } from "@/lib/diagnostics-store";
 
 describe("pruneDismissed", () => {
   it("drops dismissed ids absent from the live set", () => {

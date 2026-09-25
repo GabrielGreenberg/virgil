@@ -8,8 +8,7 @@
  */
 
 import type { LatexError } from "@/lib/latex-errors";
-import { makeErrorId } from "@/lib/latex-errors";
-import { createOrdinalMinter } from "@/lib/diagnostics-store";
+import { assignContentIds, makeErrorId } from "@/lib/latex-errors";
 import { runSyntaxChecks } from "@/lib/syntax-check";
 
 interface VFileMessage {
@@ -26,13 +25,6 @@ export async function runLint(
   knownBibKeys?: readonly string[],
 ): Promise<LatexError[]> {
   const bibKeys = knownBibKeys ? new Set(knownBibKeys) : undefined;
-  // One ordinal minter for the whole pass so every id is unique even when two
-  // records share an identical (source, line, col, message) tuple — the line-0
-  // collision class (parse-failure + a line-0 stylistic warning both hashing to
-  // the same key before). We re-mint at the end so syntax-check's own ids join
-  // the same ordinal sequence.
-  const minter = createOrdinalMinter();
-
   // The pure-text syntactic checker runs first and synchronously — it
   // doesn't need the unified-latex bundle, so any structural errors
   // surface immediately even if the dynamic import below is slow.
@@ -92,13 +84,13 @@ export async function runLint(
       })
       .filter((x): x is LatexError => x !== null);
 
-    return remintOrdinals([...syntaxErrors, ...stylisticErrors], minter);
+    return assignContentIds([...syntaxErrors, ...stylisticErrors], text);
   } catch (err) {
     // unified-latex pipeline threw — still return the pure-text syntax
     // errors so the user isn't left without any feedback.
-    return remintOrdinals(
+    return assignContentIds(
       [...syntaxErrors, failureRecord("Parse error", err)],
-      minter,
+      text,
     );
   }
 }
@@ -116,26 +108,4 @@ function failureRecord(prefix: string, err: unknown): LatexError {
     message: `${prefix}: ${detail}`,
     ruleId: "parse-failure",
   };
-}
-
-/**
- * Re-mint every id in a lint pass with a shared ordinal minter so no two
- * records collide — the ordinal is the only thing that distinguishes two
- * line-0 records with the same message (e.g. a parse-failure alongside a line-0
- * stylistic warning). Preserves order.
- */
-function remintOrdinals(
-  errors: LatexError[],
-  minter: ReturnType<typeof createOrdinalMinter>,
-): LatexError[] {
-  return errors.map((e) => ({
-    ...e,
-    id: makeErrorId({
-      source: e.source,
-      line: e.line,
-      column: e.column,
-      message: e.message,
-      ordinal: minter.next(),
-    }),
-  }));
 }
