@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { readJsonFile, SUBDIRS } from "@library/lib/library-storage";
-import type { NotificationInbox, NotificationItem } from "@library/lib/queue";
+import { readNotificationItems, type NotificationItem } from "@library/lib/queue";
 import {
   subscribeToStorageKey,
   writeStorageIfChanged,
@@ -13,17 +12,20 @@ const SEEN_AT_KEY = "virgil-notification-seen-at";
 
 export function useNotificationStream(handle: FileSystemDirectoryHandle | null) {
   const [items, setItems] = useState<NotificationItem[]>([]);
-  const seenAtRef = useRef<string | null>(null);
+  // undefined = not read from storage yet; null = NO mark exists (first run
+  // or cleared storage); a string (possibly "" for an empty inbox) = the
+  // newest `at` already surfaced.
+  const seenAtRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!handle) return;
     let stopped = false;
 
-    if (seenAtRef.current === null) {
+    if (seenAtRef.current === undefined) {
       try {
-        seenAtRef.current = localStorage.getItem(SEEN_AT_KEY) ?? "";
+        seenAtRef.current = localStorage.getItem(SEEN_AT_KEY);
       } catch {
-        seenAtRef.current = "";
+        seenAtRef.current = null;
       }
     }
 
@@ -31,7 +33,7 @@ export function useNotificationStream(handle: FileSystemDirectoryHandle | null) 
     // the mark here too, so this window does not re-show it (task 599).
     const offPeer = subscribeToStorageKey(SEEN_AT_KEY, () => {
       try {
-        seenAtRef.current = localStorage.getItem(SEEN_AT_KEY) ?? "";
+        seenAtRef.current = localStorage.getItem(SEEN_AT_KEY);
       } catch {
         /* keep the cached mark */
       }
@@ -39,18 +41,20 @@ export function useNotificationStream(handle: FileSystemDirectoryHandle | null) 
 
     const tick = async () => {
       if (stopped) return;
-      const inbox = await readJsonFile<NotificationInbox>(
-        handle,
-        `${SUBDIRS.notifications}/inbox.json`,
-      );
-      if (!inbox) return;
-      const newest = inbox.items[inbox.items.length - 1]?.at ?? "";
-      if (newest !== seenAtRef.current) {
-        const prev = seenAtRef.current!;
-        seenAtRef.current = newest;
-        writeStorageIfChanged(SEEN_AT_KEY, newest);
-        setItems(inbox.items.filter((i) => i.at > prev));
-      }
+      // Shape-checked reader: a malformed inbox (`{}`) is an empty one, not
+      // an unhandled rejection every POLL_MS (task 764).
+      const items = await readNotificationItems(handle);
+      if (stopped) return;
+      const newest = items[items.length - 1]?.at ?? "";
+      if (newest === seenAtRef.current) return;
+      const prev = seenAtRef.current;
+      seenAtRef.current = newest;
+      writeStorageIfChanged(SEEN_AT_KEY, newest);
+      // No mark yet (first run / cleared storage): adopt the newest item as
+      // the baseline WITHOUT toasting the whole history (task 764). Only
+      // items newer than a real mark are news.
+      if (prev == null) return;
+      setItems(items.filter((i) => i.at > prev));
     };
 
     void tick();

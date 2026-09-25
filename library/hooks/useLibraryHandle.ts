@@ -16,7 +16,19 @@ export type FolderState =
   | { kind: "loading" }
   | { kind: "none" }
   | { kind: "needs-permission"; handle: FileSystemDirectoryHandle }
-  | { kind: "ready"; handle: FileSystemDirectoryHandle };
+  | { kind: "ready"; handle: FileSystemDirectoryHandle }
+  /** Reading the stored handle (IndexedDB) or its permission REJECTED. A
+   *  terminal state the gate renders with a Retry — never a "Loading…" that
+   *  never ends (task 764). */
+  | { kind: "error"; message: string };
+
+/** Worded for the gate when the browser answers a grant with "denied".
+ *  Chrome remembers a denial per site, so re-clicking cannot re-prompt; the
+ *  way back is the site's own permission settings (task 764). */
+export const GRANT_DENIED_MESSAGE =
+  "Access to your library folder was denied, so the browser won't ask again from this button. " +
+  "Open this site's settings (the icon left of the address bar → Site settings), allow file editing, " +
+  "then click Grant access — or pick a different folder.";
 
 /** A surfaced skill-bundle sync failure for the library folder. Drives a
  *  dismissible banner in LibraryView so a failed sync is a visible, fixable
@@ -28,7 +40,7 @@ export interface SkillSyncError {
   message: string;
 }
 
-function describeSyncError(err: unknown): string {
+function describeError(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
   return String(err);
 }
@@ -97,7 +109,7 @@ export function useLibraryHandle() {
           permission,
           message: permission
             ? "Virgil lost permission to write the skill bundle into your library folder (this can happen after reinstalling the app). Click Retry to re-grant access."
-            : `Virgil couldn't sync the skill bundle into your library: ${describeSyncError(err)}. Your cowork commands may be out of date — click Retry.`,
+            : `Virgil couldn't sync the skill bundle into your library: ${describeError(err)}. Your cowork commands may be out of date — click Retry.`,
         });
         console.error("[skill-sync] failed", err);
       }
@@ -149,14 +161,27 @@ export function useLibraryHandle() {
 
   const refresh = useCallback(async () => {
     console.log("[library] refresh: reading stored handle from IDB");
-    const handle = await getLibraryHandle();
-    if (!handle) {
-      console.log("[library] refresh: no handle stored — state -> none");
-      setState({ kind: "none" });
+    let handle: FileSystemDirectoryHandle | null | undefined;
+    let perm: PermissionState;
+    try {
+      handle = await getLibraryHandle();
+      if (!handle) {
+        console.log("[library] refresh: no handle stored — state -> none");
+        setState({ kind: "none" });
+        return;
+      }
+      console.log("[library] refresh: handle present — querying permission");
+      perm = await queryReadWritePermission(handle);
+    } catch (err) {
+      // An IndexedDB / permission-query rejection is a terminal state with
+      // a voice, not a pane stuck on "Loading…" (task 764).
+      console.error("[library] refresh failed", err);
+      setState({
+        kind: "error",
+        message: `Virgil couldn't read your saved library folder: ${describeError(err)}.`,
+      });
       return;
     }
-    console.log("[library] refresh: handle present — querying permission");
-    const perm = await queryReadWritePermission(handle);
     console.log("[library] refresh: permission =", perm);
     if (perm === "granted") {
       await becameReady(handle);
@@ -164,6 +189,12 @@ export function useLibraryHandle() {
       setState({ kind: "needs-permission", handle });
     }
   }, [becameReady]);
+
+  /** Retry from the error state: back to "loading", then re-read. */
+  const retry = useCallback(async () => {
+    setState({ kind: "loading" });
+    await refresh();
+  }, [refresh]);
 
   useEffect(() => {
     void refresh();
@@ -185,6 +216,11 @@ export function useLibraryHandle() {
     let result;
     try {
       result = await pickLibraryFolder();
+    } catch (err) {
+      // pickLibraryFolder classifies the picker's own errors; anything else
+      // still ends in a message, never an unhandled rejection from onClick.
+      setPickerError(`Virgil couldn't open the folder picker: ${describeError(err)}.`);
+      return;
     } finally {
       pickerInFlightRef.current = false;
     }
@@ -223,12 +259,24 @@ export function useLibraryHandle() {
         );
         return;
       }
-      throw err;
+      // Anything else ends in a message too — this runs from an onClick
+      // whose promise nobody awaits, so a rethrow was an unhandled
+      // rejection and a gate that looked unchanged (task 764).
+      setPickerError(`Virgil couldn't get access to your library folder: ${describeError(err)}.`);
+      return;
     } finally {
       pickerInFlightRef.current = false;
     }
     if (perm === "granted") {
       await becameReady(state.handle);
+    } else {
+      // "denied" (or a prompt dismissed back to "prompt"): say so — the gate
+      // otherwise looks exactly as it did before the click.
+      setPickerError(
+        perm === "denied"
+          ? GRANT_DENIED_MESSAGE
+          : "Access wasn't granted. Click Grant access and choose Allow in the browser's prompt.",
+      );
     }
   }, [state, becameReady]);
 
@@ -258,6 +306,7 @@ export function useLibraryHandle() {
     grant,
     reset,
     refresh,
+    retry,
     lastSync,
     pickerError,
     syncError,

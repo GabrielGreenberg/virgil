@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { readJsonFile, SUBDIRS } from "@library/lib/library-storage";
-import type { NotificationInbox } from "@library/lib/queue";
+import { readNotificationItems } from "@library/lib/queue";
 import {
   hasQueuedRequest,
   useQueueState,
@@ -99,13 +98,9 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
 async function scanLatestNotifAt(
   handle: FileSystemDirectoryHandle,
 ): Promise<Map<string, string>> {
-  const inbox = await readJsonFile<NotificationInbox>(
-    handle,
-    `${SUBDIRS.notifications}/inbox.json`,
-  );
+  const items = await readNotificationItems(handle);
   const out = new Map<string, string>();
-  if (!inbox?.items) return out;
-  for (const item of inbox.items) {
+  for (const item of items) {
     if (!item.citekey) continue;
     const cur = out.get(item.citekey);
     if (!cur || item.at > cur) out.set(item.citekey, item.at);
