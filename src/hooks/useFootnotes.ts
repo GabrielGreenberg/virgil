@@ -214,13 +214,23 @@ export function useFootnotes(
   /** A stack pull's footnote door (task 705): the whole surviving record —
    *  `content` AND `title` — lands, never a hand-picked field. Mirrors
    *  `useNotes.addNoteFromSeed`: fresh identity wins over anything the seed
-   *  carries (defence in depth behind `NON_TRAVELLING_FIELDS`). */
+   *  carries (defence in depth behind `NON_TRAVELLING_FIELDS`).
+   *
+   *  It lands `unanchored` (task 754). A footnote's pull is `GAP_ONLY`
+   *  (`CARD_PLACEMENTS`) and synthesizes no `\footnote` atom, so the record is
+   *  ATOMLESS — and an atomless ref no list can see unless it declares that
+   *  intent (`selectAtomlessFootnoteRefs`: `archived || unanchored`). Without
+   *  the flag the pull saved the user's text to `footnotes.json` and showed it
+   *  nowhere: not the panel, not Omni, not the float. Same decision as
+   *  `useArchive.archiveFromSeed`'s born-free branch — THIS pull's placement
+   *  decides it, never the source record (`unanchored` is non-travelling). */
   const addFootnoteFromSeed = useCallback((seed: PullSeed<"footnote">): FootnoteRef => {
     const ref: FootnoteRef = {
       ...seed,
       id: generateShortId(),
       content: normalizeRichContent(seed.content ?? ""),
       createdAt: new Date().toISOString(),
+      unanchored: true,
     };
     if (!ref.title) delete ref.title;
     const next = { footnotes: [...stateRef.current.footnotes, ref] };

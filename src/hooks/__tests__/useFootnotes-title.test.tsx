@@ -163,7 +163,10 @@ describe("the stack-pull footnote door carries the title (task 705)", () => {
     expect(created!.id).not.toBe(src.id);
     expect(created!.archived).toBeFalsy();
     expect(created!.aiRequest).toBeFalsy();
-    expect(created!.unanchored).toBeFalsy();
+    // Not CARRIED (non-travelling), but DECIDED by this pull: a gap-only,
+    // atomless landing must read unanchored or no footnote list selects it
+    // (task 754 — this line used to pin the invisible-card bug as `falsy`).
+    expect(created!.unanchored).toBe(true);
     expect(refOnDisk(created!.id)?.title).toBe(src.title);
   });
 });

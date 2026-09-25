@@ -395,7 +395,9 @@ export interface StackPullApi {
   ) => CutterCard;
   /** Register a footnote ref (without inline marker insertion — v1
    *  stack-pull only adds the ref so the body content survives; the
-   *  inline atom belongs to a future enhancement). */
+   *  inline atom belongs to a future enhancement). Being atomless, the ref
+   *  MUST land `unanchored: true`, or no footnote list selects it (task 754;
+   *  pinned by `stack-pull-reachability.test.tsx`). */
   addFootnote: (seed: PullSeed<"footnote">) => FootnoteRef;
   /** Add an unanchored citation; v1 stack-pull creates citations as
    *  unanchored entries in the panel. */
