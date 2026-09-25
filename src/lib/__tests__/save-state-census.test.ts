@@ -469,10 +469,14 @@ describe("census · ONE tone table for every surface that presents an interrupti
    *  a menu row's destructive-CHOICE ink, which is task 528's family (a
    *  button's paint describes what pressing it DOES), not a state's register. */
   const EXEMPT = "interruption-tone-exempt:";
+  /** The ONE bar pill (task 769) paints for every badge, so it is scanned
+   *  with the presenters although it reads no vocabulary itself. */
+  const BAR_PILL = "src/components/status/BarStatusPill.tsx";
+  const scanned = () => [...presenters(), BAR_PILL];
   const hits = () => {
     const spellers: string[] = [];
     const excused: string[] = [];
-    for (const rel of presenters()) {
+    for (const rel of scanned()) {
       const lines = strip(read(rel), true, true).split("\n");
       const rawLines = read(rel).split("\n");
       for (let i = 0; i < lines.length; i++) {
@@ -491,15 +495,15 @@ describe("census · ONE tone table for every surface that presents an interrupti
     expect(hits().spellers, "a surface presenting an interruption paints its own palette").toEqual([]);
   });
 
-  it("every exemption marker still excuses a real hit, and the excused set is exactly the two menu rows", () => {
+  it("every exemption marker still excuses a real hit, and the excused set is exactly the one shared menu row", () => {
     // A marker that has stopped excusing anything is a standing licence for
     // the next literal added beneath it — so the excused set is pinned EXACTLY,
-    // and each marker must sit above a hit.
+    // and each marker must sit above a hit. Pre-769 the row was copied into
+    // two badges (and a third copy lacked the ink); it is ONE row now.
     expect(hits().excused.map((h) => h.split(" · ")[0].replace(/:\d+$/, "")).sort()).toEqual([
-      "src/components/ExternalChangeBadge.tsx",
-      "src/components/PreservationNoticeBadge.tsx",
+      BAR_PILL,
     ]);
-    for (const rel of presenters()) {
+    for (const rel of scanned()) {
       const rawLines = read(rel).split("\n");
       const stripped = strip(read(rel), true, true).split("\n");
       rawLines.forEach((line, i) => {
@@ -520,7 +524,13 @@ describe("census · ONE tone table for every surface that presents an interrupti
       "src/components/SoftwareUpdateBanner.tsx":
         "reads describeBlockReason(...).sentence into the blocked list; paints no interruption tone",
     };
-    const painters = presenters().filter((rel) => codeOnlyLines(read(rel)).includes("paletteForTone("));
+    // A presenter paints by asking the door directly, or — since task 769 —
+    // by handing its tone to the ONE bar pill, which asks it.
+    expect(codeOnlyLines(read(BAR_PILL))).toContain("paletteForTone(");
+    const painters = presenters().filter((rel) => {
+      const code = codeOnlyLines(read(rel));
+      return code.includes("paletteForTone(") || code.includes("<BarStatusPill");
+    });
     const silent = presenters().filter((rel) => !painters.includes(rel));
     expect(silent.sort()).toEqual(Object.keys(NON_PAINTERS).sort());
     expect(painters.sort()).toEqual(
@@ -558,7 +568,9 @@ describe("census · ONE tone table for every surface that presents an interrupti
   it("the badge and the vocabulary both READ the table — neither re-derives a tone from the tier", () => {
     const badge = codeOnlyLines(read("src/components/SaveStateBadge.tsx"));
     expect(badge).toContain("desc.tone");
-    expect(badge).toContain("paletteForTone(");
+    // Since task 769 the badge hands its tone to the ONE bar pill, which
+    // paints it through `paletteForTone` (the painters leg below).
+    expect(badge).toContain("tone={tone}");
     // The retired shape: a colour chosen by `blocked ? … : …`.
     expect(badge).not.toMatch(/blocked\s*\?\s*\{?\s*background/);
     const vocab = codeOnlyLines(read("src/lib/save-state.ts"));

@@ -114,3 +114,29 @@ export const TONE_PALETTE: Readonly<Record<InterruptionTone, TonePalette>> = Obj
 export function paletteForTone(tone: InterruptionTone): TonePalette {
   return TONE_PALETTE[tone];
 }
+
+/** How a surface presenting a tone ANNOUNCES itself to assistive tech. */
+export interface ToneAnnouncement {
+  role: "alert" | "status";
+  "aria-live": "assertive" | "polite";
+}
+
+/**
+ * Tone → announcement, spelled ONCE (task 769). The alarm ramp interrupts
+ * (`alert` + assertive): the user's work is on no disk and nothing is coming
+ * to put it there. Every other register waits its turn (`status` + polite).
+ * Pre-769 the in-document band stated this pairing inline and the bar pills
+ * each chose for themselves — two of seven carried a role at all, so a
+ * screen-reader user heard neither the conflict pause nor the recovery offer.
+ */
+export const TONE_ANNOUNCEMENT: Readonly<Record<InterruptionTone, ToneAnnouncement>> =
+  Object.freeze({
+    live: Object.freeze({ role: "status", "aria-live": "polite" }),
+    warning: Object.freeze({ role: "status", "aria-live": "polite" }),
+    info: Object.freeze({ role: "status", "aria-live": "polite" }),
+    danger: Object.freeze({ role: "alert", "aria-live": "assertive" }),
+  });
+
+export function announcementForTone(tone: InterruptionTone): ToneAnnouncement {
+  return TONE_ANNOUNCEMENT[tone];
+}

@@ -325,6 +325,20 @@ describe("census — the perf claim is STRUCTURAL, not careful", () => {
         }
       }
     }
+    // Task 769: the six data-integrity badges render through ONE pill,
+    // `BarStatusPill`, which spells the chrome once as a constant and takes
+    // NO className passthrough (the re-minting door the note above warns
+    // of). Each resident that renders it is a pill of that shape.
+    const SHARED = "src/components/status/BarStatusPill.tsx";
+    const shared = withStrings(SHARED).match(/BAR_STATUS_PILL_CLASS\s*=\s*"([^"]*)"/)?.[1];
+    expect(shared, "BarStatusPill must spell its chrome as BAR_STATUS_PILL_CLASS").toBeTruthy();
+    for (const need of SHAPE) {
+      expect(shared!.split(/\s+/), `${SHARED} — the bar pill must spell ${need}`).toContain(need);
+    }
+    expect(withStrings(SHARED)).not.toMatch(/className\?:/);
+    for (const name of residents) {
+      if (withStrings(`src/components/${name}.tsx`).includes("<BarStatusPill")) pills += 1;
+    }
     expect(pills).toBeGreaterThan(3);
   });
 

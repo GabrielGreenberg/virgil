@@ -55,29 +55,26 @@
  * `window.__virgilBusStats().emitCount` flat.
  */
 
-import {
-  memo,
-  useCallback,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { memo, useCallback } from "react";
 import { useExternalChangesOrNull } from "@/hooks/useExternalChanges";
 import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
 import { useConfirmDialog } from "./ConfirmDialog";
-import { MenuProvider } from "./menu/MenuProvider";
-import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
-import { useMenuItem } from "./menu/useMenuItem";
+import {
+  BarStatusAction,
+  BarStatusMenuDetail,
+  BarStatusMenuRow,
+  BarStatusPill,
+  useBarStatusMenu,
+} from "./status/BarStatusPill";
 import type {
   ExternalChangeState,
   FileChange,
 } from "@/lib/disk-watcher";
 import type { ConflictChoice } from "@/lib/conflict-resolution";
-import { iconHint } from "@/components/Hint";
 import { StatusDot } from "./StatusDot";
 import { useUnsavedAgeLabel } from "@/hooks/useUnsavedWork";
 import { describeAge } from "@/lib/save-state";
-import { paletteForTone, toneForInterruptionKind } from "@/lib/interruption-tone";
+import { toneForInterruptionKind } from "@/lib/interruption-tone";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 import { useDocumentInterruption } from "@/hooks/useDocumentInterruption";
 import {
@@ -85,11 +82,6 @@ import {
   interruptionPillLabel,
   type DocumentInterruption,
 } from "@/lib/document-interruption";
-
-// Drop below the trigger, flip above near the viewport bottom — the ONE
-// button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
-// fourth copy of this table cannot drift from the other three.
-const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
 
 /** RefreshCw — a 16px stroke-only circular-arrows glyph (the "reload" affordance). */
 function ReloadIcon() {
@@ -129,16 +121,6 @@ function ConflictIcon() {
       <path d="M5 3h9l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
       <path d="M12 11v3" />
       <path d="M12 17h.01" />
-    </svg>
-  );
-}
-
-function KebabIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="1.6" />
-      <circle cx="12" cy="12" r="1.6" />
-      <circle cx="19" cy="12" r="1.6" />
     </svg>
   );
 }
@@ -204,45 +186,6 @@ function deriveCopy(
   };
 }
 
-/** A single menu row — registers into the provider so arrow nav reaches it. */
-function MenuRow({
-  id,
-  label,
-  detail,
-  danger,
-  run,
-}: {
-  id: string;
-  label: string;
-  detail?: string;
-  danger?: boolean;
-  run: () => void;
-}) {
-  const { active, getItemProps } = useMenuItem({ id, region: "list", run });
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      className="w-full flex flex-col items-start gap-0.5 px-3 py-1.5 text-left hover-on-light"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
-    >
-      <span
-        className="text-[12px]"
-        // interruption-tone-exempt: a destructive-CHOICE ink for this menu row —
-        // task 528's family ("a button's paint describes what pressing it
-        // DOES"), not an interruption register; the row paints a choice, never
-        // the state the pill above it presents.
-        style={{ color: danger ? "var(--danger)" : "var(--ink-strong)" }}
-      >
-        {label}
-      </span>
-      {detail && (
-        <span className="text-[10px] text-ink-subtle leading-snug">{detail}</span>
-      )}
-    </button>
-  );
-}
-
 function ExternalChangeBadge() {
   // Nullable variants: the badge renders in the topbar even on the no-document
   // landing screen, where DiskWatcherProviderGate mounts NO provider (it needs a
@@ -263,42 +206,14 @@ function ExternalChangeBadge() {
   const resolveConflict = diskCtx?.resolveConflict;
   const { confirm, dialog } = useConfirmDialog();
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  // The pill wrapper is held in STATE (not a ref) so it can be passed to the
-  // menu provider's `excludeRefs` without reading a ref during render.
-  const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
-  const kebabRef = useRef<HTMLButtonElement | null>(null);
-
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-    setAnchorRect(null);
-  }, []);
-
-  const toggleMenu = useCallback(() => {
-    setMenuOpen((o) => {
-      const next = !o;
-      setAnchorRect(
-        next ? (kebabRef.current?.getBoundingClientRect() ?? null) : null,
-      );
-      return next;
-    });
-  }, []);
-
-  const trackAnchor = useCallback(
-    () => kebabRef.current?.getBoundingClientRect() ?? null,
-    [],
-  );
+  const menuCtl = useBarStatusMenu();
+  const { closeMenu, openMenu } = menuCtl;
 
   // TASK 392 — "Save now" on a CONFLICT-blocked document routes here rather
   // than re-attempting the write the 364 guard is deliberately holding. This
   // badge owns the two doors that answer it, so the button asks it to open
   // itself; only `describeBlockReason` decides which surface a reason leads to,
   // so the two halves cannot disagree.
-  const openMenu = useCallback(() => {
-    setMenuOpen(true);
-    setAnchorRect(kebabRef.current?.getBoundingClientRect() ?? null);
-  }, []);
   useBlockingFlowRequest(diskCtx?.activeDocId, "external-change", openMenu);
 
   const isConflict = state.severity === "conflict";
@@ -364,20 +279,14 @@ function ExternalChangeBadge() {
   // re-grant. Renders as a quiet grey pill.
   if (state.paused) {
     return (
-      <div className="inline-flex items-center" data-external-change-badge="paused">
-        <span
-          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border text-ink-subtle"
-          style={{
-            background: "var(--surface)",
-            borderColor: "var(--border-light)",
-          }}
-          data-hint="Disk watching paused — file access was lost"
-          aria-label="Disk watching paused"
-        >
-          <PausedDot />
-          <span className="truncate max-w-[160px]">Watching paused</span>
-        </span>
-      </div>
+      <BarStatusPill
+        tone="quiet"
+        glyph={<PausedDot />}
+        label="Watching paused"
+        ariaLabel="Disk watching paused"
+        hint="Disk watching paused — file access was lost"
+        data={{ "data-external-change-badge": "paused" }}
+      />
     );
   }
 
@@ -396,150 +305,90 @@ function ExternalChangeBadge() {
   // destroys content with no net, and after task 364 neither door does); a
   // change with nothing unsaved is `info`. Text uses a legible ink on the soft
   // tinted background, with the icon/border carrying the hue.
-  const palette = paletteForTone(toneForInterruptionKind(isConflict ? "conflict" : "disk-change"));
-  const tone = {
-    bg: palette.bg,
-    border: palette.edge,
-    icon: palette.edge,
-    actionText: palette.ink,
-  };
-
-  const reloadLabel = "Reload";
-  const dismissLabel = "Dismiss";
-
-  const menu: ReactNode =
-    menuOpen && anchorRect && typeof document !== "undefined" ? (
-      <MenuProvider
-        id="external-change-menu"
-        layout="list"
-        role="menu"
-        anchorRect={anchorRect}
-        placements={MENU_PLACEMENTS}
-        gap={4}
-        trackAnchor={trackAnchor}
-        // The kebab trigger lives outside the portaled menu, so exempt the pill
-        // wrapper from click-outside (else the toggle click self-closes it).
-        excludeRefs={[wrapEl]}
-        onClose={closeMenu}
-        ariaLabel="External change actions"
-        // Body-portaled at the menu primitive's CHROME_Z (z:2000-tier) so the
-        // sticky topbar's z-30 stacking context can't clip the dropdown; its
-        // surface chrome is the primitive's `.menu-surface` (task 295).
-        containerClassName="min-w-[240px] max-w-[320px] py-1"
-      >
-        {isConflict ? (
-          <>
-            <MenuRow
-              id="keep-mine"
-              label="Keep my version"
-              detail="Saves what's in the editor over the file on disk. The disk version is kept in virgil/.history/."
-              run={() => void runConflictChoice("keep-mine")}
-            />
-            <MenuRow
-              id="take-disk"
-              label="Load the disk version"
-              detail="Loads the file as it is on disk. Your unsaved edits are kept in virgil/.history/."
-              run={() => void runConflictChoice("take-disk")}
-            />
-          </>
-        ) : (
-          <>
-            <MenuRow
-              id="reload"
-              label="Reload from disk"
-              run={() => void handleReload()}
-            />
-            <MenuRow
-              id="dismiss"
-              label={dismissLabel}
-              detail="Dismiss — keep your version; the next save overwrites the disk change."
-              run={() => void handleDismiss()}
-            />
-          </>
-        )}
-        {copy.detail && (
-          <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
-            {copy.detail}
-          </div>
-        )}
-      </MenuProvider>
-    ) : null;
+  const tone = toneForInterruptionKind(isConflict ? "conflict" : "disk-change");
 
   return (
-    <div
-      ref={setWrapEl}
-      className="relative inline-flex items-center gap-1"
-      data-external-change-badge={state.severity}
-      data-external-writer={writer}
+    <BarStatusPill
+      tone={tone}
+      glyph={isConflict ? <ConflictIcon /> : <ReloadIcon />}
+      label={copy.label}
+      ariaLabel={copy.label}
+      hint="Changed outside Virgil"
+      data={{
+        "data-external-change-badge": state.severity,
+        "data-external-writer": writer,
+      }}
+      // The action(s). A conflict offers BOTH doors inline — the whole point
+      // of task 364 is that the user's own side is reachable without opening a
+      // menu; the kebab carries the full labels and the loss-side sentences.
+      actions={
+        isConflict ? (
+          <>
+            <BarStatusAction
+              onClick={() => void runConflictChoice("keep-mine")}
+              hint="Save your version over the disk one — the disk version is kept in virgil/.history/"
+            >
+              Keep mine
+            </BarStatusAction>
+            <BarStatusAction
+              onClick={() => void runConflictChoice("take-disk")}
+              hint="Load the version on disk — your unsaved edits are kept in virgil/.history/"
+            >
+              Use disk
+            </BarStatusAction>
+          </>
+        ) : (
+          <BarStatusAction onClick={() => void handleReload()} hint="Reload the on-disk version">
+            Reload
+          </BarStatusAction>
+        )
+      }
+      // Kebab — the secondary action (Dismiss / Keep my version) + detail.
+      menu={{
+        controller: menuCtl,
+        id: "external-change-menu",
+        ariaLabel: "External change actions",
+        kebabLabel: "External change options",
+        containerClassName: "min-w-[240px] max-w-[320px] py-1",
+        children: (
+          <>
+            {isConflict ? (
+              <>
+                <BarStatusMenuRow
+                  id="keep-mine"
+                  label="Keep my version"
+                  detail="Saves what's in the editor over the file on disk. The disk version is kept in virgil/.history/."
+                  run={() => void runConflictChoice("keep-mine")}
+                />
+                <BarStatusMenuRow
+                  id="take-disk"
+                  label="Load the disk version"
+                  detail="Loads the file as it is on disk. Your unsaved edits are kept in virgil/.history/."
+                  run={() => void runConflictChoice("take-disk")}
+                />
+              </>
+            ) : (
+              <>
+                <BarStatusMenuRow
+                  id="reload"
+                  label="Reload from disk"
+                  run={() => void handleReload()}
+                />
+                <BarStatusMenuRow
+                  id="dismiss"
+                  label="Dismiss"
+                  detail="Dismiss — keep your version; the next save overwrites the disk change."
+                  run={() => void handleDismiss()}
+                />
+              </>
+            )}
+            {copy.detail && <BarStatusMenuDetail>{copy.detail}</BarStatusMenuDetail>}
+          </>
+        ),
+      }}
     >
-      <span
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[260px]"
-        style={{
-          background: tone.bg,
-          borderColor: tone.border,
-          color: "var(--ink-strong)",
-        }}
-        data-hint="Changed outside Virgil"
-        aria-label={copy.label}
-      >
-        <span aria-hidden style={{ color: tone.icon, display: "inline-flex" }}>
-          {isConflict ? <ConflictIcon /> : <ReloadIcon />}
-        </span>
-        <span className="truncate">{copy.label}</span>
-      </span>
-
-      {/* The action(s). A conflict offers BOTH doors inline — the whole point of
-          task 364 is that the user's own side is reachable without opening a
-          menu; the kebab carries the full labels and the loss-side sentences. */}
-      {isConflict ? (
-        <>
-          <button
-            type="button"
-            onClick={() => void runConflictChoice("keep-mine")}
-            className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors hover:bg-[var(--accent-light)]"
-            style={{ color: tone.actionText }}
-            data-hint="Save your version over the disk one — the disk version is kept in virgil/.history/"
-          >
-            Keep mine
-          </button>
-          <button
-            type="button"
-            onClick={() => void runConflictChoice("take-disk")}
-            className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors hover:bg-[var(--accent-light)]"
-            style={{ color: tone.actionText }}
-            data-hint="Load the version on disk — your unsaved edits are kept in virgil/.history/"
-          >
-            Use disk
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => void handleReload()}
-          className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors hover:bg-[var(--accent-light)]"
-          style={{ color: tone.actionText }}
-          data-hint="Reload the on-disk version"
-        >
-          {reloadLabel}
-        </button>
-      )}
-
-      {/* Kebab — the secondary action (Dismiss / Keep my version) + detail. */}
-      <button
-        ref={kebabRef}
-        type="button"
-        onClick={toggleMenu}
-        className="w-5 h-5 inline-flex items-center justify-center rounded hover-on-dark text-ink-subtle focus-ring"
-        {...iconHint({ label: "External change options" })}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-      >
-        <KebabIcon />
-      </button>
-
-      {menu}
       {dialog}
-    </div>
+    </BarStatusPill>
   );
 }
 
