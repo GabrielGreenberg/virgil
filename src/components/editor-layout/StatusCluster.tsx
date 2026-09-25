@@ -435,7 +435,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         <span
           aria-hidden
           className="self-center h-5 w-px mx-2"
-          style={{ background: "var(--edge-strong, #a8a29e)" }}
+          style={{ background: "var(--edge-strong)" }}
         />
       )}
       {/* Zen mode toggle — render-gates editor chrome so the document area

@@ -117,7 +117,7 @@ export default function CollaboratorIdentityDialog({
                     className="w-6 h-6 rounded-full border-2 transition-transform focus-ring"
                     style={{
                       background: c.hex,
-                      borderColor: selected ? "#1a1a1a" : "transparent",
+                      borderColor: selected ? "var(--foreground)" : "transparent",
                       transform: selected ? "scale(1.1)" : undefined,
                     }}
                   />

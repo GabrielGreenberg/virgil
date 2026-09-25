@@ -37,7 +37,7 @@ export default function CollabPresenceDots({ presences, withTooltip = true }: Pr
             width: 6,
             height: 6,
             backgroundColor: p.color,
-            boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
+            boxShadow: "0 0 0 1px color-mix(in srgb, var(--surface) 70%, transparent)",
           }}
         />
       ))}
