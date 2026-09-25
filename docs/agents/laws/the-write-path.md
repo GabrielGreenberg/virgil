@@ -2391,3 +2391,18 @@ inputs, and the totality census over the content tier),
 over a real in-memory disk, asserting the BYTES), and
 `usePersistentState-inflight-dirty-guard.test.tsx` (569's legs, now draining
 into the replay).
+
+## The stored-state half (task 757)
+
+> **A stored blob is untrusted input with a size bound.** Every slot family of
+> the shared `virgil`/`kv` IndexedDB store is declared once, with its bound, in
+> `STORED_STATE_REGISTRY` ([src/lib/stored-state.ts](../../../src/lib/stored-state.ts));
+> a store that grows with use is capped at WRITE time (tex-asset total, mirror
+> per-slot chars + slot count), and its reads go through `readStoredValue`,
+> which answers ABSENT on a failed read, a failed shape check or an over-bound
+> value — reporting the slot and, by default, clearing it so the next open does
+> not pay again. The tex-asset provisioning read re-enforces the cap (newest
+> kept). `window.__storageStats()` reports every family's count/bytes,
+> undeclared keys, localStorage per key, the quota estimate and this session's
+> refusals. CI: `stored-state.test.ts` (door legs + owner/slot census),
+> `tex-assets.test.ts` (task-757 block).
