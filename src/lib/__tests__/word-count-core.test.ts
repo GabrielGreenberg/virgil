@@ -54,7 +54,22 @@ const doc: JSONContent = {
           text: "\\centering\\caption{Nice figure caption}",
           marks: [{ type: "latexCommand" }],
         },
-        { type: "footnote", attrs: { content: "footnote words here" } },
+        // The REAL footnote shape: rich JSONContent (task 767 — the old
+        // string fixture is what masked "[object Object]" = 2 words).
+        {
+          type: "footnote",
+          attrs: {
+            content: {
+              type: "doc",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "footnote words here" }],
+                },
+              ],
+            },
+          },
+        },
         { type: "citation", attrs: { keys: "burke1969" } },
         { type: "hardBreak" },
         { type: "text", text: "delta" },
@@ -179,5 +194,166 @@ describe("per-category character parity (the task-121 contract)", () => {
         `with "${off}" off`,
       ).toBe(characters - (characterCategories[off] ?? 0));
     }
+  });
+});
+
+// ── task 767: the walker's vocabulary is the SCHEMA's, not a name list ──────
+
+const para = (text: string): JSONContent => ({
+  type: "paragraph",
+  content: [{ type: "text", text }],
+});
+const words = (d: JSONContent) => computeCategoryCounts(d).words;
+
+describe("footnote bodies are WALKED, not stringified (task 767)", () => {
+  it("a rich JSON footnote counts its real words and characters", () => {
+    const d: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Main" },
+            {
+              type: "footnote",
+              attrs: {
+                content: {
+                  type: "doc",
+                  content: [para("seven words live inside this long footnote")],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const c = computeCategoryCounts(d);
+    expect(c.words.footnotes).toBe(7);
+    expect(c.characters.footnotes).toBe(
+      "sevenwordsliveinsidethislongfootnote".length,
+    );
+    expect(c.words.mainText).toBe(1);
+  });
+
+  it("inline math / citations inside a footnote follow the main-text rules", () => {
+    const d: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "footnote",
+              attrs: {
+                content: {
+                  type: "doc",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [
+                        { type: "text", text: "see " },
+                        { type: "citation", attrs: { keys: "x" } },
+                        { type: "text", text: " where " },
+                        { type: "inlineMath", attrs: { latex: "x" } },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const w = words(d);
+    expect(w.footnotes).toBe(3); // see / where / x — the citation adds nothing
+    expect(w.math).toBe(0);
+  });
+
+  it("a LEGACY string footnote body still counts", () => {
+    const d: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "footnote", attrs: { content: "legacy plain words" } },
+          ],
+        },
+      ],
+    };
+    expect(words(d).footnotes).toBe(3);
+  });
+});
+
+describe("textblocks the old switch never named now count (task 767)", () => {
+  const d: JSONContent = {
+    type: "doc",
+    content: [
+      {
+        type: "titleField",
+        attrs: { field: "title" },
+        content: [{ type: "text", text: "A five word title here" }],
+      },
+      para("three main words"),
+      {
+        type: "figureBlock",
+        content: [
+          {
+            type: "figureCaption",
+            content: [{ type: "text", text: "native caption text" }],
+          },
+        ],
+      },
+      {
+        type: "exampleBlock",
+        content: [
+          {
+            type: "exampleGloss",
+            content: [
+              {
+                type: "alignedGlossRow",
+                content: [
+                  { type: "glossCell", content: [{ type: "text", text: "a" }] },
+                  { type: "glossCell", content: [{ type: "text", text: "b" }] },
+                ],
+              },
+            ],
+          },
+          {
+            type: "proseGlossRow",
+            content: [{ type: "text", text: "free translation words" }],
+          },
+        ],
+      },
+    ],
+  };
+  const w = words(d);
+  it("titleField → headings", () => expect(w.headings).toBe(5));
+  it("native figureCaption → captions", () => expect(w.captions).toBe(3));
+  it("gloss rows and cells → the surrounding context", () =>
+    expect(w.mainText).toBe(3 + 2 + 3));
+});
+
+describe("a word split by a mark change is ONE word (task 767)", () => {
+  it("adjacent text runs glue; an atom between them still separates", () => {
+    const d: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "un" },
+            { type: "text", text: "believ", marks: [{ type: "bold" }] },
+            { type: "text", text: "able words" },
+            { type: "inlineMath", attrs: { latex: "x" } },
+            { type: "text", text: "tail" },
+          ],
+        },
+        para("next"),
+      ],
+    };
+    // unbelievable / words / x / tail / next
+    expect(words(d).mainText).toBe(5);
   });
 });
