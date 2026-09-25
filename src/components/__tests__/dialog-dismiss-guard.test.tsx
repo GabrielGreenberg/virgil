@@ -160,6 +160,9 @@ describe("StyleEditorModal: a dismissal cannot silently discard an edited preamb
 
     const scrim = scrimOf(screen.getByTestId("cm"));
     act(() => {
+      // A real backdrop click: the whole press lands on the scrim (task 763 —
+      // a click alone may be the tail of a drag that began inside the frame).
+      scrim.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       scrim.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
@@ -267,6 +270,9 @@ describe("StyleEditorModal: a dismissal cannot silently discard an edited preamb
 
     const scrim = scrimOf(screen.getByTestId("cm"));
     act(() => {
+      // A real backdrop click: the whole press lands on the scrim (task 763 —
+      // a click alone may be the tail of a drag that began inside the frame).
+      scrim.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       scrim.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();

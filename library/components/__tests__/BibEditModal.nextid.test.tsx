@@ -78,12 +78,13 @@ describe("BibEditModal — extra-row id allocator survives a raw→form switch",
     expect(keyInputs.map((i) => i.value)).toEqual(["customa", "customb", "customc"]);
     expect(valueInputs.map((i) => i.value)).toEqual(["Alpha", "Beta", "Gamma"]);
 
-    // On save, consolidateFields must emit all three custom fields correctly.
+    // On save, consolidateFields must emit all three custom fields correctly —
+    // as the diff's `set`, since none was in the entry the modal opened on.
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    const [, savedFields] = onSave.mock.calls[0] as [string, Record<string, string>];
-    expect(savedFields.customa).toBe("Alpha");
-    expect(savedFields.customb).toBe("Beta");
-    expect(savedFields.customc).toBe("Gamma");
+    const [payload] = onSave.mock.calls[0] as [{ set: Record<string, string> }];
+    expect(payload.set.customa).toBe("Alpha");
+    expect(payload.set.customb).toBe("Beta");
+    expect(payload.set.customc).toBe("Gamma");
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FONT_SERIF } from "@/lib/font-stacks";
+import { useBackdropPress } from "@/lib/backdrop-press";
 
 interface Props {
   /** Names of the files that were just imported (for the confirmation copy). */
@@ -47,6 +48,8 @@ export default function PdfDropIntroDialog({ fileNames, onClose }: Props) {
     dialogRef.current?.focus();
   }, []);
 
+  const backdropPress = useBackdropPress(() => onClose(dontShowAgain));
+
   const count = fileNames.length;
   const label =
     count === 1 ? fileNames[0] : `${count} files`;
@@ -56,7 +59,7 @@ export default function PdfDropIntroDialog({ fileNames, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="File added to your library"
-      onClick={() => onClose(dontShowAgain)}
+      {...backdropPress}
       style={{
         position: "fixed",
         inset: 0,

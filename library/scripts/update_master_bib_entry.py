@@ -11,6 +11,7 @@ Usage:
       [--bib-state <state>]
       [--library <path>]
       [--merge-existing] [--allow-field-drop]
+      [--base-raw-file <path> --base-type <type>]
 
 **The write is a WHOLE-BLOCK REPLACEMENT, not a diff.** `_tools.update_master_bib_entry`
 finds the brace-balanced `@<type>{<citekey>, ...}` block and replaces it with a block
@@ -83,6 +84,22 @@ Three ways past it, per intent:
                       every current field, leaving nothing omitted. Reach for
                       --drop-field there instead.
 
+Per-field base check (`--base-raw-file`, requires --merge-existing)
+------------------------------------------------------------------
+A caller holding a DIFF computed against an earlier read of the entry (the
+Library's manual bib edit — task 763) names that read: `--base-raw-file` is the
+block as it was read, `--base-type` its entry type. Every field the write would
+set (`--fields-file`) or remove (`--drop-field`) is then checked against it: if
+the field's value on disk is no longer the base value — someone changed it since
+— and is not already the value this write wants, that field is REFUSED (the
+newer on-disk value is kept) and the rest of the write proceeds. A type change is
+held the same way, and an UNCHANGED type (`--entry-type` == `--base-type`) keeps
+whatever type is on disk now. Refusals are listed on stderr and the shim exits 5
+(after writing whatever was not refused); if nothing was left to write, nothing
+is written. The entry must still exist — a diff cannot be appended (exit 2).
+Values compare with whitespace runs collapsed, both sides read by this same
+parser, so a base read by a different parser can never manufacture a conflict.
+
 Field names are compared case-insensitively (`read_master_bib` lowercases them,
 an incoming `DOI` and an on-file `doi` are the same field). The citekey is
 resolved under Unicode normalization too, so a diacritic entry stored NFD is
@@ -94,12 +111,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import citekey_matches, master_entry_for, update_master_bib_entry
+from _tools import (
+    citekey_matches,
+    master_entry_for,
+    read_master_bib,
+    update_master_bib_entry,
+)
 
 
 def main() -> int:
@@ -166,6 +189,21 @@ def main() -> int:
         "--drop-field instead.",
     )
     ap.add_argument(
+        "--base-raw-file",
+        type=Path,
+        default=None,
+        help="The entry's BibTeX block as the caller read it before computing its "
+        "change-set. Each field set or dropped is refused (kept as on disk) if it "
+        "changed since. Requires --merge-existing; pair with --base-type.",
+    )
+    ap.add_argument(
+        "--base-type",
+        default="",
+        help="The entry type in the --base-raw-file read. An --entry-type equal to "
+        "it keeps the type on disk; a different one is refused if the disk type "
+        "also moved.",
+    )
+    ap.add_argument(
         "--allow-downgrade",
         action="store_true",
         help="Permit --bib-state to LOWER a settled state (authenticated / "
@@ -192,6 +230,40 @@ def main() -> int:
     existing_entry = master_entry_for(library, args.citekey)
     is_append = existing_entry is None
 
+    drop_fields = list(args.drop_field)
+    entry_type = args.entry_type
+    refused: list[str] = []
+    if args.base_raw_file is not None:
+        if not args.merge_existing:
+            print("--base-raw-file requires --merge-existing (it checks a "
+                  "change-set, not a complete entry)", file=sys.stderr)
+            return 2
+        if is_append:
+            print(f"refusing to update {args.citekey}: the entry is no longer in "
+                  f"master.bib, and a change-set cannot recreate it.", file=sys.stderr)
+            return 2
+        base = _read_base_entry(args.base_raw_file)
+        if base is None:
+            print(f"refusing to update {args.citekey}: --base-raw-file holds no "
+                  f"readable BibTeX entry, so no field can be checked against it.",
+                  file=sys.stderr)
+            return 2
+        fields, drop_fields, entry_type, refused = _hold_changed_since_base(
+            base_fields=base.get("fields") or {},
+            base_type=args.base_type or base.get("type") or "",
+            disk_fields=existing_entry.get("fields") or {},
+            disk_type=existing_entry.get("type") or entry_type,
+            fields=fields,
+            drop_fields=drop_fields,
+            entry_type=entry_type,
+        )
+        if not fields and not drop_fields and \
+                entry_type.lower() == (existing_entry.get("type") or "").lower():
+            _report_refused(args.citekey, refused)
+            if not refused:
+                print(f"nothing to change in master.bib entry for {args.citekey}")
+            return 5 if refused else 0
+
     # Field-preservation guard — only for a REPLACE. The write below is a
     # whole-block replacement, so any currently-non-empty field missing from
     # `fields` is destroyed. Refuse rather than lose it; `--merge-existing`
@@ -201,7 +273,7 @@ def main() -> int:
     # the upsert may silently lose data.
     if not is_append:
         current = existing_entry.get("fields") or {}
-        drop_names = {d.lower() for d in args.drop_field}
+        drop_names = {d.lower() for d in drop_fields}
         if args.merge_existing:
             # Incoming wins per field; everything else survives.
             merged = {k: str(v) for k, v in current.items() if str(v).strip()}
@@ -242,7 +314,7 @@ def main() -> int:
         # Lazy import to avoid any import cycle through _tools.
         from dedup_index import find_work_in_library
         match = find_work_in_library(
-            fields, args.entry_type, library,
+            fields, entry_type, library,
             incoming_citekey=args.citekey,
             include_uncertain=False,   # only a hard `same`/alias refuses
         )
@@ -262,7 +334,7 @@ def main() -> int:
             return 3
 
     written_state = update_master_bib_entry(
-        library, args.citekey, args.entry_type, fields,
+        library, args.citekey, entry_type, fields,
         bib_state=args.bib_state,
         allow_downgrade=args.allow_downgrade,
     )
@@ -274,7 +346,73 @@ def main() -> int:
             "--allow-downgrade for a deliberate downgrade.",
             file=sys.stderr,
         )
+    if refused:
+        _report_refused(args.citekey, refused)
+        return 5
     return 0
+
+
+def _norm(v: object) -> str:
+    return " ".join(str(v or "").split())
+
+
+def _read_base_entry(path: Path) -> "dict | None":
+    """Parse the caller's base block with the SAME parser that reads the disk
+    entry, so an unchanged field compares equal by construction."""
+    parsed = read_master_bib(Path(os.devnull), text=path.read_text())
+    return next(iter(parsed.values()), None)
+
+
+def _hold_changed_since_base(
+    *,
+    base_fields: dict,
+    base_type: str,
+    disk_fields: dict,
+    disk_type: str,
+    fields: dict[str, str],
+    drop_fields: list[str],
+    entry_type: str,
+) -> tuple[dict[str, str], list[str], str, list[str]]:
+    """Drop from the change-set every field that moved on disk since the base.
+
+    A field is held when its disk value differs from the base value AND from the
+    value this write wants (an edit that already matches the disk is no
+    conflict). Returns (fields, drop_fields, entry_type, refusal lines)."""
+    base = {k.lower(): _norm(v) for k, v in base_fields.items()}
+    disk = {k.lower(): _norm(v) for k, v in disk_fields.items()}
+    refused: list[str] = []
+    kept: dict[str, str] = {}
+    for k, v in fields.items():
+        cur, was = disk.get(k.lower(), ""), base.get(k.lower(), "")
+        if cur != was and cur != _norm(v):
+            refused.append(f"{k}: changed on disk since the edit was opened "
+                           f"(now {cur or '(empty)'!r}); your value {v!r} was not applied")
+        else:
+            kept[k] = v
+    kept_drops: list[str] = []
+    for k in drop_fields:
+        cur, was = disk.get(k.lower(), ""), base.get(k.lower(), "")
+        if cur != was and cur:
+            refused.append(f"{k}: changed on disk since the edit was opened "
+                           f"(now {cur!r}); not removed")
+        else:
+            kept_drops.append(k)
+    if not base_type or entry_type.lower() == base_type.lower():
+        entry_type = disk_type            # the user left the type alone
+    elif disk_type.lower() not in (base_type.lower(), entry_type.lower()):
+        refused.append(f"entry type: changed on disk to @{disk_type} since the edit "
+                       f"was opened; @{entry_type} was not applied")
+        entry_type = disk_type
+    return kept, kept_drops, entry_type, refused
+
+
+def _report_refused(citekey: str, refused: list[str]) -> None:
+    if not refused:
+        return
+    print(f"held {len(refused)} change(s) to {citekey} that the entry had "
+          f"already moved past:", file=sys.stderr)
+    for line in refused:
+        print(f"  - {line}", file=sys.stderr)
 
 
 def _resolve_library(explicit: Path | None) -> Path:

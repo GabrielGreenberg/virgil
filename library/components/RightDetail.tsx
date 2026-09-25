@@ -293,9 +293,9 @@ export default function RightDetail({
   // pending or has failed on a real 10 MB master.bib, it falls back to a `raw`
   // synthesized from the slim browse record (type:"misc" + ~12 browse fields).
   // BibEditModal seeds its form from `entry.type`+`entry.fields` (NOT `raw`) and
-  // onSave REPLACES the whole master.bib block — so editing a synthesized entry
-  // would overwrite the real entry with a lossy `@misc` block, silently dropping
-  // the real type + all non-browse fields. So `canEdit` requires a non-empty raw
+  // queues its edit as a diff AGAINST that entry (task 763) — so editing a
+  // synthesized entry would diff against a lossy `@misc` base: the type flip
+  // and every browse-field normalization would land on the real entry. So `canEdit` requires a non-empty raw
   // that is NOT synthesized; while the full entry is pending/failed, edit stays
   // disabled. (Display still uses the synthesized `bib`, so the card always
   // renders formatted text.) A `bib.raw` arriving from a real full entry — or any
@@ -393,8 +393,8 @@ export default function RightDetail({
             <BibEditModal
               entry={bib}
               onClose={() => setEditOpen(false)}
-              onSave={async (type, fields) => {
-                await queueBibEdit(handle, entry.citekey!, { type, fields });
+              onSave={async (payload) => {
+                await queueBibEdit(handle, entry.citekey!, payload);
                 // A bib edit is a queue write: push it through the queue's one
                 // notification channel so the row dot lights immediately.
                 await refreshQueueState();
@@ -461,8 +461,8 @@ export default function RightDetail({
           <BibEditModal
             entry={bib}
             onClose={() => setEditOpen(false)}
-            onSave={async (type, fields) => {
-              await queueBibEdit(handle, entry.citekey!, { type, fields });
+            onSave={async (payload) => {
+              await queueBibEdit(handle, entry.citekey!, payload);
               await refreshQueueState();
               onBibChanged?.();
             }}

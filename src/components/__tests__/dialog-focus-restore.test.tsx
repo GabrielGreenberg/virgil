@@ -258,6 +258,7 @@ describe("closing a dialog returns focus to whatever held it", () => {
     // The scrim is the frame's parent; a click whose target IS the scrim closes.
     const scrim = document.querySelector('[role="dialog"][aria-modal="true"]');
     expect(scrim).toBeTruthy();
+    mouseDown(scrim!);
     click(scrim!);
 
     expect(document.activeElement).toBe(sentinel);

@@ -354,8 +354,8 @@ directory).
    > currently has, so an omission can no longer say "remove this" —
    > `--drop-field` is applied after the merge and is the only removal
    > signal that composes with it. (`--allow-field-drop`, which trusts
-   > omission as removal, is inert here; that flag is for
-   > `/library/apply-bib-edit`, where the user hands a complete entry.)
+   > omission as removal, is inert here — and no skill should reach for
+   > it: even `/library/apply-bib-edit` now holds a diff, not an entry.)
 
    **Entry type — use the helper's `proposed_type` when it set one.**
    `AuthResult.proposed_type` is non-empty when Crossref's type

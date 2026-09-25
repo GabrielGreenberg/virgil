@@ -12,8 +12,9 @@ import {
   removePendingReview,
   normalizeQueueEntry,
   type QueueEntry,
-  type BibEditPayload,
+  type BibEditDiffPayload,
 } from "./queue";
+import type { BibEntry } from "./types";
 import { deleteFile, readJsonFile, SUBDIRS } from "./library-storage";
 
 // READS live in `queue-state-store.ts`, not here. This module owns the WRITE
@@ -26,7 +27,7 @@ import { deleteFile, readJsonFile, SUBDIRS } from "./library-storage";
 export async function queueBibEdit(
   root: FileSystemDirectoryHandle,
   citekey: string,
-  payload: BibEditPayload,
+  payload: BibEditDiffPayload,
 ): Promise<string> {
   const entry: QueueEntry = {
     kind: "bib-edit",
@@ -37,6 +38,55 @@ export async function queueBibEdit(
     bibEdit: payload,
   };
   return writeQueueEntry(root, entry);
+}
+
+/** Reduce an edit to what the USER did: the diff between the entry the modal
+ *  opened on (`base`) and the complete field set it ends with (`type`,
+ *  `fields`). Keys compare case-insensitively (BibTeX field names are), values
+ *  after trimming. A base field absent from `fields` is a removal — the modal
+ *  only omits a field the user cleared, deleted or renamed away. Everything
+ *  the user left alone stays out of the payload, so the apply side cannot
+ *  overwrite or drop it (task 763). */
+export function buildBibEditDiff(
+  base: BibEntry,
+  type: string,
+  fields: Record<string, string>,
+): BibEditDiffPayload {
+  const baseByLower = new Map<string, string>();
+  for (const [k, v] of Object.entries(base.fields)) {
+    if (typeof v === "string" && v.trim().length > 0) {
+      baseByLower.set(k.toLowerCase(), v.trim());
+    }
+  }
+  const set: Record<string, string> = {};
+  const kept = new Set<string>();
+  for (const [k, v] of Object.entries(fields)) {
+    const value = (v ?? "").trim();
+    if (!value) continue;
+    const lower = k.toLowerCase();
+    kept.add(lower);
+    if (baseByLower.get(lower) !== value) set[k] = value;
+  }
+  const remove = Object.keys(base.fields).filter((k) => {
+    const lower = k.toLowerCase();
+    return baseByLower.has(lower) && !kept.has(lower);
+  });
+  return {
+    type,
+    baseType: base.type,
+    set,
+    remove,
+    ...(base.raw ? { baseRaw: base.raw } : {}),
+  };
+}
+
+/** True when a diff changes nothing — the modal can close without queueing. */
+export function isEmptyBibEditDiff(d: BibEditDiffPayload): boolean {
+  return (
+    Object.keys(d.set).length === 0 &&
+    d.remove.length === 0 &&
+    d.type.toLowerCase() === d.baseType.toLowerCase()
+  );
 }
 
 /** Enqueue an AI review of the bib entry. Reuses `/authenticate-bib`,

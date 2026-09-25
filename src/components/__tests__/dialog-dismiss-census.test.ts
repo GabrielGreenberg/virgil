@@ -118,8 +118,11 @@ describe("every draft-holding dialog declares what a dismissal costs", () => {
     const shell = commentsStripped(
       readFileSync(join(ROOT, "components/system-dialog.tsx"), "utf8"),
     );
-    // Escape, the scrimless outside-mousedown, and the modal backdrop.
-    expect(shell.match(/requestDismiss\(\)/g)?.length ?? 0).toBe(3);
+    // Escape and the scrimless outside-mousedown call it; the modal backdrop
+    // hands it to `useBackdropPress`, which calls it for a whole press on the
+    // scrim (task 763).
+    expect(shell.match(/requestDismiss\(\)/g)?.length ?? 0).toBe(2);
+    expect(shell).toMatch(/useBackdropPress\(requestDismiss\)/);
     // And the door is the only thing that reaches `onClose` for a dismissal:
     // the pre-530 paths called it directly, which is exactly the shape that
     // let one path be guarded and another not.

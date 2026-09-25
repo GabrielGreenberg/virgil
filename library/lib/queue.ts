@@ -57,10 +57,33 @@ export interface QueueEntry {
   companionOf?: "deepIndex";
 }
 
-export interface BibEditPayload {
-  type: string;                       // "article", "book", ...
-  fields: Record<string, string>;     // title, author, year, ...
+/** A manual bib edit, as the Library's "Edit entry" modal queues it.
+ *
+ *  It is a field-level DIFF against a named base, never a whole entry (task
+ *  763). A whole entry trusted its omissions: every field the modal did not
+ *  carry — one `/library/authenticate-bib` added while the modal was open or the
+ *  edit sat queued — was deleted on apply. So the payload names exactly what the
+ *  user changed (`set`) and removed (`remove`), plus the entry as it was when the
+ *  modal opened (`baseRaw`, `baseType`); `/library/apply-bib-edit` splices only
+ *  those fields into the CURRENT block and refuses any of them that changed on
+ *  disk since the base, rather than overwriting the newer value. */
+export interface BibEditDiffPayload {
+  type: string;                       // the entry type to end up with
+  baseType: string;                   // the type when the modal opened
+  set: Record<string, string>;        // fields the user added or changed
+  remove: string[];                   // fields the user removed
+  baseRaw?: string;                   // the block as the modal read it
 }
+
+/** The pre-763 shape: a complete entry. Still readable so an edit queued
+ *  before the change drains — but applied as a MERGE (no field is dropped by
+ *  omission), since its omissions are exactly what cannot be trusted. */
+export interface LegacyBibEditPayload {
+  type: string;
+  fields: Record<string, string>;
+}
+
+export type BibEditPayload = BibEditDiffPayload | LegacyBibEditPayload;
 
 /** Thrown when a slot refuses a write: the request already there is being
  *  worked (`status: "running"`), or a legacy occupant of another kind holds
