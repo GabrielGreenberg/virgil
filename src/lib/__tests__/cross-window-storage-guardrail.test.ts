@@ -171,6 +171,12 @@ describe("cross-window storage guardrail — the contract itself", () => {
 // a generic helper defined in ANOTHER file (no `localStorage.getItem` of its
 // own) is invisible here — none exists today; `subscribed-by` is the ledger
 // form for the split that does exist (a read-fresh lib + a caching hook).
+//
+// The split's OTHER half is checked (task 768): a `read-fresh` lib is only
+// read-fresh if no IMPORTER snapshots its loader into React state —
+// `useState(() => load())`, `useRef(load())`, `setX(... load() ...)` — without
+// subscribing. `useCollab` did exactly that to `loadIdentity` while the ledger
+// called collab.ts read-fresh, so a peer window's identity edit never arrived.
 
 type StoreLedgerEntry =
   | { kind: "read-fresh"; reason: string }
@@ -179,16 +185,20 @@ type StoreLedgerEntry =
 
 const STORE_LEDGER: Record<string, StoreLedgerEntry> = {
   "src/lib/collab.ts": {
-    kind: "read-fresh",
-    reason: "`loadIdentity`/`saveIdentity` — one whole value, re-read by every caller that needs it.",
+    kind: "subscribed-by",
+    by: "src/hooks/useCollab.ts",
+    reason:
+      "Read-fresh lib; useCollab caches the identity in state + identityRef (heartbeat, claims, unload release) and re-reads it on the storage event (task 768).",
   },
   "library/lib/list-columns.ts": {
     kind: "read-fresh",
     reason: "Load/save helpers only; the cached copy lives in view-session-store, which subscribes to these keys.",
   },
   "library/lib/row-viewed-store.ts": {
-    kind: "read-fresh",
-    reason: "`markViewedNow` re-reads the map and merges ONE key per write — no whole-snapshot write from a stale base.",
+    kind: "subscribed-by",
+    by: "library/hooks/useRowDotState.ts",
+    reason:
+      "`markViewedNow` merges ONE key per write, but useRowDotState caches the map for the row dots and re-reads it on the storage event (task 768).",
   },
   "src/components/InstallPwaPrompt.tsx": {
     kind: "write-once",
@@ -242,19 +252,66 @@ function writtenValues(code: string): string[] {
   return out;
 }
 
+/** The exported LOADERS of `code`: exported functions whose own body (up to
+ *  the next top-level `export`) reads `localStorage`. Pure helpers exported
+ *  beside them are not loaders, so a caller putting their result in state
+ *  caches nothing from storage. */
+function exportedLoaders(code: string): string[] {
+  const out: string[] = [];
+  const re = /^export\s+(?:async\s+)?function\s+(\w+)|^export\s+const\s+(\w+)\s*=\s*(?:async\s*)?\(/gm;
+  const heads: { name: string; at: number }[] = [];
+  for (let m = re.exec(code); m; m = re.exec(code)) heads.push({ name: m[1] ?? m[2], at: m.index });
+  heads.forEach((h, i) => {
+    const rest = code.slice(h.at + 1);
+    const next = rest.search(/^export\s/m);
+    const body = next < 0 ? rest : rest.slice(0, next);
+    if (READS_LS.test(body)) out.push(h.name);
+  });
+  return out;
+}
+
+/** Importers of `rel` among `files` that snapshot one of its exported
+ *  loaders into React state and never subscribe — the hidden cache that
+ *  makes a `read-fresh` claim false (task 768). */
+export function snapshottingImporters(
+  rel: string,
+  files: readonly string[],
+  read: (rel: string) => string,
+): string[] {
+  const base = path.basename(rel).replace(/\.tsx?$/, "");
+  const importRe = new RegExp(`from\\s+["'][^"']*/${base}["']`);
+  const fns = exportedLoaders(read(rel));
+  if (fns.length === 0) return [];
+  const alt = fns.join("|");
+  const snapshot = new RegExp(
+    `\\buse(?:State|Ref)\\s*(?:<[^>]*>)?\\s*\\((?:\\s*\\(\\)\\s*=>)?\\s*(?:${alt})\\s*\\(` +
+      `|\\bset[A-Z]\\w*\\([^;]*\\b(?:${alt})\\s*\\(`,
+  );
+  return files.filter((f) => {
+    if (f === rel) return false;
+    const code = read(f);
+    return importRe.test(code) && snapshot.test(code) && !SUBSCRIBES.test(code);
+  });
+}
+
 /** Why `entry` does NOT hold for `rel`, or null when it does. */
 export function ledgerViolation(
   rel: string,
   entry: StoreLedgerEntry,
   read: (rel: string) => string,
+  files: readonly string[] = [],
 ): string | null {
   const code = read(rel);
   switch (entry.kind) {
-    case "read-fresh":
+    case "read-fresh": {
       if (/^let\s/m.test(code)) return "declares module-scope `let` state";
       if (/\buse(?:State|Ref|Reducer|SyncExternalStore)\s*[<(]/.test(code))
         return "holds React state/refs";
+      const cachers = snapshottingImporters(rel, files, read);
+      if (cachers.length > 0)
+        return `${cachers.join(", ")} snapshots its loader into React state without subscribing`;
       return null;
+    }
     case "write-once": {
       const vals = writtenValues(code);
       if (vals.length === 0) return "no write call could be parsed";
@@ -298,7 +355,7 @@ export function storeCensus(
   const badArguments = Object.entries(ledger)
     .filter(([rel]) => nonSubscribing.has(rel))
     .map(([rel, e]) => {
-      const why = ledgerViolation(rel, e, read);
+      const why = ledgerViolation(rel, e, read, files);
       return why ? `${rel} (${e.kind}): ${why}` : null;
     })
     .filter((x): x is string => x !== null);
@@ -373,6 +430,43 @@ describe("cross-window storage guardrail — store-shape census (task 599)", () 
     expect(r.unsubscribed).toEqual(
       ["bus-only.ts", "cached-ref.ts", "flag-writer.tsx", "lazy-state.tsx", "module-singleton.ts", "stateful-lib.ts"],
     );
+  });
+
+  // The split-store shapes (task 768), kept apart from FIXTURES because the
+  // lib half is itself a non-subscribing store.
+  const SPLIT: Record<string, string> = {
+    "fresh-lib.ts": `
+      export function loadName() { return localStorage.getItem("n"); }
+      export function saveName(v) { localStorage.setItem("n", v); }`,
+    "caching-hook.tsx": `
+      import { loadName } from "@/lib/fresh-lib";
+      const [name, setName] = useState(() => loadName());`,
+    "effect-hook.tsx": `
+      import { loadName } from "@/lib/fresh-lib";
+      useEffect(() => { setState((s) => ({ ...s, name: loadName() })); }, []);`,
+    "one-shot-reader.tsx": `
+      import { loadName } from "@/lib/fresh-lib";
+      const existing = loadName();
+      if (existing) setDraft(existing);`,
+  };
+  const readSplit = (rel: string) => commentsStripped(SPLIT[rel].replace(/^[ \t]+/gm, ""));
+
+  it("a read-fresh claim fails when an importer snapshots the loader into state (task 768)", () => {
+    const files = ["fresh-lib.ts", "caching-hook.tsx", "effect-hook.tsx", "one-shot-reader.tsx"];
+    expect(snapshottingImporters("fresh-lib.ts", files, readSplit)).toEqual([
+      "caching-hook.tsx",
+      "effect-hook.tsx",
+    ]);
+    expect(
+      ledgerViolation("fresh-lib.ts", { kind: "read-fresh", reason: "a lie" }, readSplit, files),
+    ).toBe("caching-hook.tsx, effect-hook.tsx snapshots its loader into React state without subscribing");
+    // Reading fresh at the moment of use is not a cache.
+    expect(
+      ledgerViolation("fresh-lib.ts", { kind: "read-fresh", reason: "true" }, readSplit, [
+        "fresh-lib.ts",
+        "one-shot-reader.tsx",
+      ]),
+    ).toBeNull();
   });
 
   it("checks each ledger argument against the code", () => {
