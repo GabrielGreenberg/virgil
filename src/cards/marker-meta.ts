@@ -155,6 +155,17 @@ export function cardKindsForMarkerType(t: MarkerType): CardKind[] {
   return kindsByMarkerType.get(t) ?? [];
 }
 
+/** The user-facing name a marker of type `t` carries — the card's OWN
+ *  `CARD_REGISTRY.label` when exactly one kind owns the namespace (note,
+ *  archive, todo, error), so a todo is "Task" on its marker exactly as on its
+ *  card (task 756). `null` for a namespace shared by several kinds (revision,
+ *  cut, report) — no single card label names it, so `MARKER_META` declares
+ *  the umbrella word itself. */
+export function markerLabelForMarkerType(t: MarkerType): string | null {
+  const kinds = cardKindsForMarkerType(t);
+  return kinds.length === 1 ? CARD_REGISTRY[kinds[0]].label : null;
+}
+
 /** The panel that owns marker namespace `t` — derived from the registry
  *  `.panel` of its card kinds (asserted unique per type). */
 export function panelForMarkerType(t: MarkerType): PanelKind {

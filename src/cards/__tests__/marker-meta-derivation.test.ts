@@ -186,3 +186,40 @@ describe("marker-meta derivation (A6/R17)", () => {
     expect(pinned).toBe(true);
   });
 });
+
+/**
+ * Task 756 — a marker names its item in the card's own words. Every marker
+ * type owned by exactly one card kind carries that kind's `CARD_REGISTRY.label`
+ * (a todo is "Task" on its card AND its marker); only a namespace shared by
+ * several kinds declares an umbrella label. And EditorPane's empty-card marker
+ * titles read the registry, never a literal.
+ */
+describe("marker labels derive from CARD_REGISTRY.label (task 756)", () => {
+  it("single-kind marker types carry their card's registry label", () => {
+    for (const t of ALL_MARKER_TYPES) {
+      const kinds = cardKindsForMarkerType(t);
+      if (kinds.length !== 1) continue;
+      expect(MARKER_META[t].label, t).toBe(CARD_REGISTRY[kinds[0]].label);
+    }
+    expect(MARKER_META.todo.label).toBe(CARD_REGISTRY.todo.label);
+    expect(MARKER_META.archive.label).toBe(CARD_REGISTRY.archive.label);
+  });
+
+  it("EditorPane's marker-title fallbacks are registry reads, not literals", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../../components/EditorPane.tsx"),
+      "utf8",
+    );
+    // A `title: … || "<Word>"` fallback, or a card-label literal in the marker
+    // title ternaries, is the drift this task retired.
+    const labels = new Set(
+      (Object.keys(CARD_REGISTRY) as CardKind[]).map((k) => CARD_REGISTRY[k].label),
+    );
+    for (const w of [...labels, "Todo", "Archived", "Report request", "Suggestion", "Comment"]) {
+      const re = new RegExp(`\\|\\|\\s*"${w}"`);
+      expect(re.test(src), `literal fallback "${w}"`).toBe(false);
+    }
+  });
+});
