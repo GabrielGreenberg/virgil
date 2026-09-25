@@ -9,8 +9,10 @@ import {
 import {
   loadViewedMap,
   markViewedNow,
+  ROW_VIEWED_KEY,
   type ViewedMap,
 } from "@library/lib/row-viewed-store";
+import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 
 export type RowDotTone = "red" | "green" | null;
 
@@ -37,9 +39,13 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
   // instead of waiting out a poll (task 132).
   const queueSnapshot = useQueueState(handle);
 
-  // Hydrate viewed map on mount (client-only).
+  // Hydrate viewed map on mount (client-only), and re-hydrate when a peer
+  // window marks a row viewed — otherwise this window's dot stays green for a
+  // notification the user already acknowledged elsewhere (task 768).
   useEffect(() => {
-    setState((s) => ({ ...s, viewed: loadViewedMap() }));
+    const hydrate = () => setState((s) => ({ ...s, viewed: loadViewedMap() }));
+    hydrate();
+    return subscribeToStorageKey(ROW_VIEWED_KEY, hydrate);
   }, []);
 
   // Stable refs so the polling loop doesn't churn.

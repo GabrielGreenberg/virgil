@@ -37,6 +37,7 @@ import {
   EMPTY_COLLAB_SIDECAR,
   derivePen,
   ensureParticipant,
+  COLLAB_IDENTITY_KEY,
   findClaim,
   loadIdentity,
   saveIdentity,
@@ -53,6 +54,7 @@ import {
 // wire-READ side (`@/lib/collab`) deliberately stays `string` — disk data is
 // untyped.
 import type { PanelThemeKey } from "@/lib/panel-theme";
+import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 import {
   COWORK_PEN_CONTEXT_PATH,
   clearCoworkPen,
@@ -178,6 +180,19 @@ export function useCollab(docId: string | null): CollabHook {
   docIdRef.current = docId;
   const identityRef = useRef(identity);
   identityRef.current = identity;
+  // Task 768 — the identity is per-BROWSER, not per-window: an "Edit identity"
+  // in a peer window must reach this one too, or its pen heartbeat, claims,
+  // unload release and `mergeKeepingSelf` keep writing under the OLD name (and
+  // the pills judge `iHavePen` against it). Re-read through the one door.
+  useEffect(
+    () =>
+      subscribeToStorageKey(COLLAB_IDENTITY_KEY, () => {
+        const next = loadIdentity();
+        identityRef.current = next;
+        setIdentityState(next);
+      }),
+    [],
+  );
   const lastActivityWriteRef = useRef(0);
   const lastSelectionRef = useRef<string>("");
   const lastCursorRef = useRef<string | null>(null);

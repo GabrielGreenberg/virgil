@@ -7,14 +7,14 @@
  * Per-browser via localStorage; no writes back to the library folder.
  */
 
-const KEY = "virgil-library-row-viewed-at";
+export const ROW_VIEWED_KEY = "virgil-library-row-viewed-at";
 
 export type ViewedMap = Record<string, string>;
 
 export function loadViewedMap(): ViewedMap {
   if (typeof localStorage === "undefined") return {};
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(ROW_VIEWED_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -28,7 +28,7 @@ export function loadViewedMap(): ViewedMap {
 
 export function saveViewedMap(map: ViewedMap): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(map));
+    localStorage.setItem(ROW_VIEWED_KEY, JSON.stringify(map));
   } catch {
     // ignore
   }
