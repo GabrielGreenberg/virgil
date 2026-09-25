@@ -40,10 +40,14 @@ import {
 } from "@/links/card-anchor-rows";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import {
+  blockCarriesProse,
   buildProseIndex,
+  collectProseRuns,
   proseOffsetToPos,
   spanAtOffset,
+  type ProseBlockSpan,
 } from "@/lib/prose-index";
+import { useDocSettledRevision } from "@/hooks/useDocSettledRevision";
 import { SCOPE_DISPATCH } from "@/panels/Search/scope-dispatch";
 import {
   resolveLiveBlockRange,
@@ -445,10 +449,111 @@ export function resolveAnchoredHighlight(
   editor: Editor | null,
   blockId: BlockRangeId,
   baked: { from: number; to: number },
+  expect?: MatchExpectation,
 ): { from: number; to: number } | null {
   const live = resolveLiveBlockRange(editor, blockId);
   if (live === undefined) return baked;
-  return live;
+  if (live === null || !expect || !editor) return live;
+  return revalidateInBlock(editor, blockId, live, expect);
+}
+
+/** What a main-text hit MATCHED — the query that found it and the exact
+ *  characters it found. Card hits carry no expectation (their `blockId` names
+ *  the card's paragraph, not a run of its text). */
+export interface MatchExpectation {
+  re: RegExp;
+  match: string;
+}
+
+/**
+ * Task 759 — the SAME-block half of the live re-resolution.
+ *
+ * `{blockUuid, offset}` survives edits in EARLIER blocks (the block's `pos`
+ * is re-mapped) but not an edit inside the matched block BEFORE the match:
+ * the offset is intra-block, so "the cat sat" → "the big cat sat" leaves it
+ * pointing at "big". So the click asks the literal question — do the live
+ * coordinates still hold the matched characters? — and, when they don't,
+ * re-runs the query over THAT block's prose (the prose index's per-block
+ * runs; O(block), a discrete click) and takes the occurrence nearest the old
+ * offset. No surviving occurrence → `null`: the match was deleted, and the
+ * caller no-ops exactly as for a deleted block. Never other characters.
+ */
+function revalidateInBlock(
+  editor: Editor,
+  blockId: BlockRangeId,
+  live: { from: number; to: number },
+  expect: MatchExpectation,
+): { from: number; to: number } | null {
+  // A match across a block boundary (a query containing the "\n" separator)
+  // was clamped to its start block at search time; its text is not one
+  // block's, so there is nothing single-block to re-validate against.
+  if (expect.match.includes("\n") || expect.match.length === 0) return live;
+
+  const doc = editor.state.doc;
+  const blockPos = live.from - 1 - blockId.offset;
+  const node = blockPos >= 0 && blockPos < doc.content.size ? doc.nodeAt(blockPos) : null;
+  if (!node || !blockCarriesProse(node)) return null;
+  const contentStart = blockPos + 1;
+  const { runs, text } = collectProseRuns(node, contentStart);
+  const span: ProseBlockSpan = {
+    uuid: blockId.blockUuid,
+    contentStart,
+    textStart: 0,
+    textEnd: text.length,
+    runs,
+  };
+
+  const re = new RegExp(expect.re.source, expect.re.flags);
+  let best: { from: number; to: number } | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m[0].length === 0) {
+      re.lastIndex++;
+      continue;
+    }
+    if (m[0] !== expect.match) continue;
+    const from = proseOffsetToPos(span, m.index, "start");
+    const to = proseOffsetToPos(span, m.index + m[0].length, "end");
+    if (from === live.from && to === live.to) return live;
+    if (!best || Math.abs(from - live.from) < Math.abs(best.from - live.from)) {
+      best = { from, to };
+    }
+  }
+  return best;
+}
+
+/** Same hit across a settle refresh (task 759): the identity a cursor may
+ *  follow — scope, item, field, anchor block and matched text. */
+function sameHitIdentity(a: SearchHit, b: SearchHit): boolean {
+  return (
+    a.scope === b.scope &&
+    a.itemId === b.itemId &&
+    a.field === b.field &&
+    a.match === b.match &&
+    a.blockId?.blockUuid === b.blockId?.blockUuid
+  );
+}
+
+/** Where the selected hit went after the list refreshed: the same-identity hit
+ *  nearest its old intra-block offset (or position), else `null`. Exported for
+ *  tests. */
+export function followSelectedHit(
+  results: readonly SearchHit[],
+  was: SearchHit,
+): number | null {
+  const key = (h: SearchHit) => h.blockId?.offset ?? h.from;
+  let best: number | null = null;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (!sameHitIdentity(r, was)) continue;
+    if (
+      best === null ||
+      Math.abs(key(r) - key(was)) < Math.abs(key(results[best]) - key(was))
+    ) {
+      best = i;
+    }
+  }
+  return best;
 }
 
 function SearchPanel({
@@ -588,13 +693,29 @@ function SearchPanel({
   const deferred = useDeferredValue(searchInputs);
   const searchPending = deferred !== searchInputs;
 
+  // The ONE compiled query: the results memo searches with it, and a click
+  // re-validates a main-text hit against it (task 759).
+  const deferredRe = useMemo(
+    () =>
+      compileQuery(deferred.query, {
+        caseSensitive: deferred.caseSensitive,
+        wholeWord: deferred.wholeWord,
+      }),
+    [deferred],
+  );
+
+  // Task 759 — the document is an INPUT to the search. `editor` identity never
+  // changes on an edit, so without this the main-text hits froze at query time
+  // (a new occurrence never listed, a deleted one never dropped). The search
+  // is O(doc), so it may not re-run per keystroke: the revision bumps once per
+  // SETTLE (a typing pause), and only while there is a query to refresh.
+  const docRev = useDocSettledRevision(editor, { enabled: query !== "" });
+
   const { results: searchedResults, totalResults: searchedTotal } = useMemo(() => {
     const none = { results: [] as SearchResult[], totalResults: 0 };
+    void docRev; // an input by design — see `useDocSettledRevision` above
     if (!editor) return none;
-    const re = compileQuery(deferred.query, {
-      caseSensitive: deferred.caseSensitive,
-      wholeWord: deferred.wholeWord,
-    });
+    const re = deferredRe;
     if (!re) return none;
     const scopes = new Set(deferred.scopes);
 
@@ -654,8 +775,10 @@ function SearchPanel({
     return { results, totalResults: hits.length };
   }, [
     editor,
+    docRev,
     cardAnchorPass,
     deferred,
+    deferredRe,
     footnotes,
     orphanedFootnotes,
     notes,
@@ -693,10 +816,16 @@ function SearchPanel({
         // anchored card hits (their resolved paragraph, task 758) take this
         // door, so neither scrolls to a position baked before an edit.
         onHighlightRange(
-          resolveAnchoredHighlight(editor, result.blockId, {
-            from: result.from,
-            to: result.to,
-          }),
+          resolveAnchoredHighlight(
+            editor,
+            result.blockId,
+            { from: result.from, to: result.to },
+            // A main-text hit names characters, so the click checks the live
+            // range still holds them (task 759); a card hit names a paragraph.
+            result.scope === "mainText" && deferredRe
+              ? { re: deferredRe, match: result.match }
+              : undefined,
+          ),
         );
       } else {
         // Footnote/citation hits carry their atom's search-time position (no
@@ -718,7 +847,7 @@ function SearchPanel({
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
     },
-    [editor, onHighlightRange, onOpenItem],
+    [editor, onHighlightRange, onOpenItem, deferredRe],
   );
 
   // `useCycle` owns the live result cursor and clamps it on READ against the
@@ -749,6 +878,44 @@ function SearchPanel({
   // the results really swap, never mid-defer against a stale list — and not on
   // the results array (which also changes on a structural edit, where we must
   // NOT drop a live selection). Skips the initial mount.
+  // Task 759 — a SETTLE refresh swaps the list under a live selection. The
+  // cursor follows its hit (same identity, nearest old offset) rather than
+  // silently re-pointing at whatever now sits at that index; a hit the edit
+  // deleted clears the cursor. Declared BEFORE the query-change reset below,
+  // so on a new query that reset has the last word.
+  // Tracks the selected HIT (not its index), because the index `useCycle`
+  // exposes is already clamped against the NEW list by the time we look — and
+  // the index it had, so a cursor the USER moved (in the same render as a list
+  // swap) is recorded rather than dragged back to its old hit.
+  const followRef = useRef<{
+    results: SearchResult[];
+    idx: number | null;
+    hit: SearchResult | null;
+  }>({ results, idx: null, hit: null });
+  useEffect(() => {
+    const prev = followRef.current;
+    const now = selectedIdx != null ? (results[selectedIdx] ?? null) : null;
+    const cursorHeld =
+      selectedIdx === prev.idx || (selectedIdx === null && prev.idx !== null);
+    if (prev.results !== results && prev.hit && cursorHeld) {
+      const stayed =
+        now !== null &&
+        sameHitIdentity(now, prev.hit) &&
+        now.blockId?.offset === prev.hit.blockId?.offset;
+      if (!stayed) {
+        const next = followSelectedHit(results, prev.hit);
+        followRef.current = {
+          results,
+          idx: next,
+          hit: next != null ? results[next] : null,
+        };
+        setCycleIdx(next);
+        return;
+      }
+    }
+    followRef.current = { results, idx: selectedIdx, hit: now };
+  }, [results, selectedIdx, setCycleIdx]);
+
   const searchKey = `${deferred.query}\0${deferred.caseSensitive}\0${deferred.wholeWord}\0${deferred.scopes.join(",")}`;
   const prevSearchKeyRef = useRef(searchKey);
   useEffect(() => {
