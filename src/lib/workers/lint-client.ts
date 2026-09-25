@@ -9,14 +9,43 @@
  * simply resolves both promises with their own results — the *consumer*
  * (useLatexLint) already supersedes stale results by its own runId, so no
  * cancellation protocol is needed here.
+ *
+ * CONTRACT (task 760): every call SETTLES WITH A REAL ANSWER. A pending run
+ * keeps its own request (text + bibKeys), so when the worker dies, or
+ * reports that a pass failed, the run is re-done on the main thread — never
+ * resolved empty. An empty list is indistinguishable from "this paper has no
+ * errors", and the consumer would show exactly that until the next edit.
  */
 
 import type { LatexError } from "@/lib/latex-errors";
 
+interface PendingRun {
+  text: string;
+  bibKeys?: readonly string[];
+  resolve: (errors: LatexError[]) => void;
+}
+
+type WorkerReply =
+  | { runId: number; errors: LatexError[] }
+  | { runId: number; failed: true };
+
 let worker: Worker | null = null;
 let workerBroken = false;
 let nextRunId = 1;
-const pending = new Map<number, (errors: LatexError[]) => void>();
+const pending = new Map<number, PendingRun>();
+
+/** The main-thread path. `runLint` never rejects, so this always settles. */
+async function lintOnMainThread(
+  text: string,
+  bibKeys?: readonly string[],
+): Promise<LatexError[]> {
+  const { runLint } = await import("./latex-lint-core");
+  return runLint(text, bibKeys);
+}
+
+function settleOnMainThread(run: PendingRun): void {
+  void lintOnMainThread(run.text, run.bibKeys).then(run.resolve);
+}
 
 function getWorker(): Worker | null {
   if (workerBroken) return null;
@@ -30,33 +59,23 @@ function getWorker(): Worker | null {
     // instead, shipping RAW TypeScript that dies at parse time in the worker
     // and drops every lint onto the main thread via the fallback below.
     worker = new Worker(new URL("./latex-lint.worker", import.meta.url));
-    worker.onmessage = (
-      e: MessageEvent<{ runId: number; errors: LatexError[] }>,
-    ) => {
-      const resolve = pending.get(e.data.runId);
-      if (resolve) {
-        pending.delete(e.data.runId);
-        resolve(e.data.errors);
-      }
+    worker.onmessage = (e: MessageEvent<WorkerReply>) => {
+      const run = pending.get(e.data.runId);
+      if (!run) return;
+      pending.delete(e.data.runId);
+      if ("errors" in e.data) run.resolve(e.data.errors);
+      else settleOnMainThread(run);
     };
     worker.onerror = () => {
-      // Construction succeeded but the worker died (CSP, bundling issue).
-      // Fail every pending run over to the main-thread path and stop using
-      // the worker for future calls.
+      // Construction succeeded but the worker died (CSP, bundling issue,
+      // OOM). Stop using it, and re-run every stranded request on the main
+      // thread — each pending entry carries its own text for exactly this.
       workerBroken = true;
-      const stranded = [...pending.entries()];
+      const stranded = [...pending.values()];
       pending.clear();
       worker?.terminate();
       worker = null;
-      for (const [, resolve] of stranded) {
-        // Resolve with a re-run on the main thread rather than dropping.
-        void import("./latex-lint-core").then(({ runLint }) => {
-          // Text is gone — the consumer's next debounce re-runs anyway;
-          // resolve empty to unblock.
-          void runLint;
-          resolve([]);
-        });
-      }
+      for (const run of stranded) settleOnMainThread(run);
     };
     return worker;
   } catch {
@@ -70,13 +89,11 @@ export async function lintInWorker(
   bibKeys?: readonly string[],
 ): Promise<LatexError[]> {
   const w = getWorker();
-  if (!w) {
-    const { runLint } = await import("./latex-lint-core");
-    return runLint(text, bibKeys);
-  }
+  if (!w) return lintOnMainThread(text, bibKeys);
   const runId = nextRunId++;
   return new Promise<LatexError[]>((resolve) => {
-    pending.set(runId, resolve);
+    pending.set(runId, { text, bibKeys, resolve });
     w.postMessage({ runId, text, bibKeys });
   });
 }
+

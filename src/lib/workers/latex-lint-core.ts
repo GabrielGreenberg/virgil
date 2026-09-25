@@ -36,7 +36,17 @@ export async function runLint(
   // The pure-text syntactic checker runs first and synchronously — it
   // doesn't need the unified-latex bundle, so any structural errors
   // surface immediately even if the dynamic import below is slow.
-  const syntaxErrors = runSyntaxChecks(text, { knownBibKeys: bibKeys });
+  //
+  // CONTRACT (task 760): `runLint` never rejects. A throwing check becomes a
+  // `parse-failure` record rather than a rejection — a rejected pass has no
+  // answer to deliver, so in the worker it strands the client's pending run
+  // forever and on the main thread it surfaces as an unhandled rejection.
+  let syntaxErrors: LatexError[];
+  try {
+    syntaxErrors = runSyntaxChecks(text, { knownBibKeys: bibKeys });
+  } catch (err) {
+    syntaxErrors = [failureRecord("Syntax check failed", err)];
+  }
 
   try {
     const [{ unified }, parseMod, { lints }, { VFile }] = await Promise.all([
@@ -86,22 +96,26 @@ export async function runLint(
   } catch (err) {
     // unified-latex pipeline threw — still return the pure-text syntax
     // errors so the user isn't left without any feedback.
-    const message = err instanceof Error ? err.message : "LaTeX parse failed";
     return remintOrdinals(
-      [
-        ...syntaxErrors,
-        {
-          id: makeErrorId({ source: "lint", line: 0, message }),
-          source: "lint",
-          severity: "error",
-          line: 0,
-          message: `Parse error: ${message}`,
-          ruleId: "parse-failure",
-        },
-      ],
+      [...syntaxErrors, failureRecord("Parse error", err)],
       minter,
     );
   }
+}
+
+/** The one shape a failed lint stage reports as: a line-0 `parse-failure`
+ *  error record, so the Errors panel says the pass failed instead of going
+ *  quiet. */
+function failureRecord(prefix: string, err: unknown): LatexError {
+  const detail = err instanceof Error ? err.message : "LaTeX parse failed";
+  return {
+    id: makeErrorId({ source: "lint", line: 0, message: detail }),
+    source: "lint",
+    severity: "error",
+    line: 0,
+    message: `${prefix}: ${detail}`,
+    ruleId: "parse-failure",
+  };
 }
 
 /**
