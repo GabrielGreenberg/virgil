@@ -126,7 +126,7 @@ export type ViewPrefDef = ToggleDef | EnumDef<string> | SetDef<string | number>;
  * label — it can no longer ship invisible.
  *
  * Declared rather than derived from `MARKER_META.label`: those are singular
- * marker names ("Note", "Archived") and reading them would make this
+ * marker names ("Note", "Task") and reading them would make this
  * dependency-light module import the marginalia UI lib. Menu plurals are a
  * menu concern.
  */

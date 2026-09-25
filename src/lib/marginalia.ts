@@ -477,7 +477,7 @@ import {
   IconErrors,
 } from "@/components/editor-layout/panel-icons";
 import { DEFAULT_PANEL_COLORS, markerPaletteFromAccent } from "@/lib/panel-theme";
-import { panelThemeKeyForMarkerType } from "@/cards/marker-meta";
+import { markerLabelForMarkerType, panelThemeKeyForMarkerType } from "@/cards/marker-meta";
 
 const MARGIN_ICON_SIZE = 16;
 
@@ -493,32 +493,44 @@ const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
  *  `CARD_REGISTRY` via `src/cards/marker-meta.ts` (R17); the default SIDE is
  *  no longer a row at all (task 205 — see the `MarkerMeta` note above: it
  *  lives once on `PANEL_REGISTRY.defaultStripSide` and is read through
- *  `marginSideForMarkerType`). Only the marginalia-local presentation fields
- *  (label / icon) are declared per-row here. All markers share the same
- *  `markerPaletteFromAccent` math so a user color override on a panel
- *  re-tints its margin icon automatically. */
+ *  `marginSideForMarkerType`). The LABEL derives too wherever one card kind
+ *  owns the type (`markerLabelForMarkerType`, task 756 — a hand-typed "Todo"
+ *  here contradicted the card's own "Task"); only a namespace SHARED by
+ *  several kinds declares its umbrella `label`, and the icon is always local.
+ *  All markers share the same `markerPaletteFromAccent` math so a user color
+ *  override on a panel re-tints its margin icon automatically. */
 function meta(
   type: MarkerType,
-  base: { label: string; icon: React.ReactNode },
+  base: { label?: string; icon: React.ReactNode },
 ): MarkerMeta {
   const palette = markerPaletteFromAccent(
     DEFAULT_PANEL_COLORS[panelThemeKeyForMarkerType(type)],
   );
-  return { ...base, ...palette };
+  const derived = markerLabelForMarkerType(type);
+  const label = derived ?? base.label;
+  if (label === undefined) {
+    throw new Error(
+      `[MarkerMeta] "${type}" is shared by several card kinds and must declare its umbrella label.`,
+    );
+  }
+  return { icon: base.icon, label, ...palette };
 }
 
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
-  note:     meta("note",     { label: "Note",      icon: NoteIcon }),
-  archive:  meta("archive",  { label: "Archived",  icon: ArchiveIcon }),
+  // Single-kind types: the label IS the card's registry label.
+  note:     meta("note",     { icon: NoteIcon }),
+  archive:  meta("archive",  { icon: ArchiveIcon }),
+  todo:     meta("todo",     { icon: TodoIcon }),
+  // Shared namespaces (comment + suggestion, report + request): the umbrella
+  // word no single card label supplies.
   revision: meta("revision", { label: "Revision",  icon: RevisionIcon }),
   cut:      meta("cut",      { label: "Cut",       icon: CutIcon }),
-  todo:     meta("todo",     { label: "Todo",      icon: TodoIcon }),
   report:   meta("report",   { label: "Report",    icon: ReportIcon }),
   // error derives from the registry "error" theme key — byte-identical to the
   // old hand-pointed footnote rust accent (DEFAULT_PANEL_COLORS.error ===
   // DEFAULT_PANEL_COLORS.footnote, pinned in marker-meta-derivation.test.ts);
   // same color family as footnotes, distinguished by the icon glyph.
-  error:    meta("error",    { label: "Error",     icon: ErrorIcon }),
+  error:    meta("error",    { icon: ErrorIcon }),
 };
 
 /** Number of icon columns per row in the margin grid */

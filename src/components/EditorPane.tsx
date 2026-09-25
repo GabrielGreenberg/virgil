@@ -3795,7 +3795,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           entityKind: "note",
           type: "note",
           textObjectId: pid,
-          title: n.title || "Note",
+          title: n.title || CARD_REGISTRY.note.label,
           unanchored,
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(n, pid)),
@@ -3816,7 +3816,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           entityKind: "archive",
           type: "archive",
           textObjectId: pid,
-          title: "Archived snippet",
+          title: CARD_REGISTRY.archive.label,
           unanchored,
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(snippet, pid)),
@@ -3858,7 +3858,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           entityKind: revKind,
           type: "revision",
           textObjectId: pid,
-          title: r.selectedText || "Revision",
+          title: r.selectedText || CARD_REGISTRY[revKind].label,
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
@@ -3874,8 +3874,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     for (const c of cutterHook.cards) {
       const cardAnchor = getTextAnchor(c);
       const title = c.kind === "suggestion"
-        ? c.explanation || "Suggestion"
-        : c.text || "Comment";
+        ? c.explanation || CARD_REGISTRY["cutter-suggestion"].label
+        : c.text || CARD_REGISTRY["cutter-comment"].label;
       const cutKind: EntityKind =
         c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
       // An APPLIED cutter suggestion (flag-ON) keeps its ordinary `cut` marker —
@@ -3905,8 +3905,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     for (const c of reportsHook.cards) {
       const cardAnchor = getTextAnchor(c);
       const title = c.kind === "report"
-        ? (c.title || c.text || "Report")
-        : (c.text || "Report request");
+        ? (c.title || c.text || CARD_REGISTRY.report.label)
+        : (c.text || CARD_REGISTRY["report-request"].label);
       for (const { pid, unanchored, cardPids } of resolveMarkerPids(c)) {
         result.push({
           id: `${c.id}:${pid}`,
@@ -3935,7 +3935,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           entityKind: "todo",
           type: "todo",
           textObjectId: pid,
-          title: item.text || "Todo",
+          title: item.text || CARD_REGISTRY.todo.label,
           muted: item.done,
           unanchored,
           onClick: (clickY?: number) =>
