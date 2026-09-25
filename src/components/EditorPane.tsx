@@ -1581,7 +1581,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // morph carries `links` across UNCHANGED, so the anchorId is stable; we
       // read it now (while the source card is still in its FROM-kind sidecar) to
       // restamp the in-doc mark below. Mode-A cards return null → no restamp.
-      const morphAnchorId = ((): string | null => {
+      // The FROM-kind record itself, read ONCE: the anchorId restamp below needs
+      // it, and so does the confirm, which names only what THIS card holds
+      // (task 755 — an empty note → highlight asks nothing).
+      const morphSource = ((): CardWithLinks | null => {
         let cards: readonly CardWithLinks[];
         switch (fromCardKind) {
           case "note":
@@ -1603,9 +1606,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           default:
             return null;
         }
-        const card = cards.find((c) => c.id === id);
-        return card ? getTextAnchor(card)?.anchorId ?? null : null;
+        return cards.find((c) => c.id === id) ?? null;
       })();
+      const morphAnchorId = morphSource
+        ? getTextAnchor(morphSource)?.anchorId ?? null
+        : null;
       // The morph chokepoint now routes through `runCardLifecycleEvent` (T4
       // §3.3): the confirm copy is GENERATED from `morph.drops` (never
       // direction-blind — REP-F6-03), the aiRequest inbox is UNBRIDGED when the
@@ -1613,7 +1618,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // hook mutation is the `mutate` step, and a `card-morphed` signal is
       // published (the D6 seam W2b consumes to re-key cardStore — REP-F6-02).
       const committed = await runCardLifecycleEvent(
-        { type: "morph", fromKind: fromCardKind, id },
+        { type: "morph", fromKind: fromCardKind, id, card: morphSource ?? undefined },
         {
           confirm: confirmMorph,
           // The SAME forwarder the delete leg uses — the executor decides the
