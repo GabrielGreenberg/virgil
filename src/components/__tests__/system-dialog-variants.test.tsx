@@ -66,6 +66,12 @@ describe("SystemDialog — modal variant (default)", () => {
     // Clicking the scrim itself closes; clicking inside content does not.
     fireEvent.click(screen.getByTestId("content"));
     expect(onClose).not.toHaveBeenCalled();
+    // A press released on the scrim that BEGAN inside the frame (a selection
+    // drag) is not a backdrop click (task 763).
+    fireEvent.mouseDown(screen.getByTestId("content"));
+    fireEvent.click(dialog);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.mouseDown(dialog);
     fireEvent.click(dialog);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

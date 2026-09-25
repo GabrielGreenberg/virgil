@@ -17,16 +17,22 @@ import {
   CORE_FIELDS,
   IDENTIFIER_FIELDS,
   PUBLICATION_FIELDS_BY_TYPE,
+  buildBibEditDiff,
   emitBibEntry,
+  isEmptyBibEditDiff,
   knownFieldsForType,
 } from "@library/lib/bib-edit";
+import type { BibEditDiffPayload } from "@library/lib/queue";
+import { useBackdropPress } from "@/lib/backdrop-press";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 interface Props {
   entry: BibEntry;
-  /** Called when the user confirms the edit. The component formats the
-   *  payload (entry type + cleaned fields) and hands it back. */
-  onSave: (type: string, fields: Record<string, string>) => Promise<void>;
+  /** Called when the user confirms an edit that changes something. The payload
+   *  is the DIFF against `entry` (what the user set and removed), never the
+   *  whole entry — a whole entry would delete every field added on disk since
+   *  the modal opened (task 763). */
+  onSave: (payload: BibEditDiffPayload) => Promise<void>;
   onClose: () => void;
 }
 
@@ -45,6 +51,12 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(seedExtraRows(entry).nextId);
+  // The keys the "Other fields" rows were seeded with. Such a key is the USER's
+  // to keep or remove through its row — ✕ or a rename takes it out — so the
+  // hidden-field carry-over in `consolidateFields` must never re-add it (task
+  // 763: it did, which made ✕ on a custom field inert).
+  const seededExtraKeys = useRef(new Set(seedExtraRows(entry).rows.map((r) => r.key)));
+  const backdropPress = useBackdropPress(onClose);
 
   // Close on Escape, lock body scroll while open.
   useEffect(() => {
@@ -87,14 +99,17 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
       const k = r.key.trim();
       if (k && r.value.trim().length > 0) out[k] = r.value.trim();
     }
-    // Preserve any unknown original fields the user didn't touch via
-    // extra rows (defensive — shouldn't normally happen since seedExtraRows
-    // captures them all).
+    // Carry over fields the form does not SHOW — e.g. `journal` after the
+    // type changes @article → @book: no longer a form field for the new type,
+    // never an extra row. The user did not remove those, so they stay. A key
+    // that had its own extra row is excluded: its row is the only say it gets,
+    // and a row the user deleted or renamed is a removal (task 763).
     const known = knownFieldsForType(type);
     const extraKeys = new Set(extraRows.map((r) => r.key.trim()));
     for (const [k, v] of Object.entries(fields)) {
       if (known.has(k)) continue;
       if (extraKeys.has(k)) continue;
+      if (seededExtraKeys.current.has(k)) continue;
       if (v && v.trim().length > 0) out[k] = v.trim();
     }
     return out;
@@ -117,6 +132,7 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
       setFields(parsed.fields);
       const seeded = seedExtraRowsFromFields(parsed.type, parsed.fields);
       setExtraRows(seeded.rows);
+      seededExtraKeys.current = new Set(seeded.rows.map((r) => r.key));
       // Resync the shared allocator so the next "+ Add field" can't collide
       // with a re-seeded row id (task 128).
       nextId.current = seeded.nextId;
@@ -144,7 +160,9 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
         outType = type;
         outFields = consolidateFields();
       }
-      await onSave(outType, outFields);
+      const diff = buildBibEditDiff(entry, outType, outFields);
+      // Nothing changed → nothing to queue; the Save is just a close.
+      if (!isEmptyBibEditDiff(diff)) await onSave(diff);
       onClose();
     } catch (e) {
       setSaveError((e as Error).message);
@@ -160,7 +178,9 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label={`Edit bib entry ${entry.key}`}
-      onClick={onClose}
+      // Only a press that begins AND ends on the backdrop closes: a selection
+      // drag out of the abstract textarea must not discard the edit (task 763).
+      {...backdropPress}
       style={{
         position: "fixed",
         inset: 0,

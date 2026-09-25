@@ -113,6 +113,7 @@ import {
   type DialogToken,
 } from "./dialog-stack";
 import { isPlainEnter, resolveDialogEnter } from "./dialog-enter-policy";
+import { useBackdropPress } from "@/lib/backdrop-press";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
    The one object you edit to re-skin every system dialog. Tailwind-class
@@ -767,12 +768,9 @@ export default function SystemDialog({
     requestDismiss,
   ]);
 
-  const handleBackdrop = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) requestDismiss();
-    },
-    [requestDismiss],
-  );
+  // A backdrop dismissal needs the whole PRESS on the scrim — a text-selection
+  // drag released past the frame's edge is not a click on the backdrop (task 763).
+  const backdropPress = useBackdropPress(requestDismiss);
 
   if (!open || !mounted) return null;
 
@@ -835,7 +833,7 @@ export default function SystemDialog({
         aria-modal="true"
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
-        onClick={handleBackdrop}
+        {...backdropPress}
       >
         <div
           ref={modalFrameRef}

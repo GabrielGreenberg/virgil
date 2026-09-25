@@ -3,9 +3,10 @@ description: |
   Save a manual bib edit the user made through the library UI's "Edit"
   button. Triggers on: "apply the bib edit for <citekey>", "save my
   manual edit", or when the queue has a `<citekey>-bibedit.json` entry
-  to drain. Reads `.virgil/queue/<citekey>-bibedit.json` for the new
-  entry type + field map, rewrites the master.bib block, re-emits
-  references.bib, and bumps the catalog version. Does NOT trigger for
+  to drain. Reads `.virgil/queue/<citekey>-bibedit.json` for the user's
+  field-level diff, splices exactly those fields into the CURRENT
+  master.bib block (holding any that changed on disk since the edit was
+  opened), resyncs references.bib, and bumps the catalog version. Does NOT trigger for
   external-source verification (use /library/authenticate-bib) or for
   bibliography cleanup of a paper (use /library/clean-bibliography). Light —
   safe to invoke from a paper session with --library. Args:
@@ -85,44 +86,68 @@ All paths below are relative to the library root.
      "attempts": 0,
      "bibEdit": {
        "type": "article",
-       "fields": { "title": "...", "author": "...", ... }
+       "baseType": "article",
+       "set": { "title": "...", "note": "..." },
+       "remove": ["keywords"],
+       "baseRaw": "@article{<citekey>,\n  title = {...},\n ...\n}\n"
      }
    }
    ```
-   If the file is missing or malformed, stop and report the error.
+   It is a **DIFF, not an entry** (task 763): `set` holds only the fields the
+   user added or changed, `remove` only the fields they removed, and
+   `baseRaw`/`baseType` the entry as the Edit modal read it. Every field the
+   user did not touch is absent — and must stay exactly as it is on disk now,
+   including any field another skill added after the modal opened. If the
+   file is missing or malformed, stop and report the error.
 
-2. **Replace the entry block in `master.bib`.** Do **not** Read/Write
+   **Legacy shape.** An edit queued before task 763 carries
+   `"bibEdit": { "type": "...", "fields": { ... } }` — a whole entry whose
+   omissions cannot be trusted. Apply it as `set = fields`, `remove = []`, no
+   base (step 2 without the two `--base-*` flags). It then cannot remove a
+   field, which is the price of not deleting ones it never saw.
+
+2. **Splice the diff into `master.bib`.** Do **not** Read/Write
    `master.bib` directly — it's shared across all skills and a
    concurrent index/auth run could overwrite this skill's edit (or
    vice versa). Call the locked CLI shim instead:
 
    ```bash
-   cat > "/tmp/$CITEKEY-bibedit-fields.json" <<'EOF'
-   { "title": "...", "author": "...", "year": "...", ... }
+   cat > "/tmp/$CITEKEY-bibedit-set.json" <<'EOF'
+   { "title": "...", "note": "..." }
+   EOF
+   cat > "/tmp/$CITEKEY-bibedit-base.bib" <<'EOF'
+   <bibEdit.baseRaw, verbatim>
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "$CITEKEY" \
-     --entry-type "<type>" \
-     --fields-file "/tmp/$CITEKEY-bibedit-fields.json" \
-     --allow-field-drop
-   rm "/tmp/$CITEKEY-bibedit-fields.json"
+     --entry-type "<bibEdit.type>" \
+     --fields-file "/tmp/$CITEKEY-bibedit-set.json" \
+     --merge-existing \
+     --drop-field "<one per name in bibEdit.remove>" \
+     --base-raw-file "/tmp/$CITEKEY-bibedit-base.bib" \
+     --base-type "<bibEdit.baseType>"
+   rm "/tmp/$CITEKEY-bibedit-set.json" "/tmp/$CITEKEY-bibedit-base.bib"
    ```
 
-   The script holds `lock_master_bib`, finds the existing
-   `@<oldType>{<citekey>, ...}` block (brace-balanced) and replaces
-   it verbatim with the freshly emitted block — or appends a new
-   block if none exists. Omit any field whose value is empty /
-   whitespace-only from `--fields-file`. Never include a `citekey`
-   field; the script always uses the positional argument and won't
-   accept it being overridden via the fields map.
+   Repeat `--drop-field` once per name in `remove` (none when it is empty).
+   Write `set` exactly as queued (an empty `{}` is fine). If `baseRaw` is
+   absent, omit both `--base-*` flags. Never include a `citekey` field.
+   **Never pass `--allow-field-drop`** — that flag trusts omissions, and a
+   diff's omissions are the fields the user left alone.
 
-   Because the write is a whole-block replacement, the shim normally
-   **refuses** one that drops a currently-non-empty field — that guard
-   is what stops a caller holding a mere change-set from destroying the
-   rest of the entry. This skill is the one place where dropping is the
-   *point*: the user's edit is a complete entry, and a field they
-   cleared is a field they meant to remove. Hence `--allow-field-drop`.
-   (A caller that only computed a diff wants `--merge-existing`
-   instead — that's the auth/backfill form, not this one.)
+   `--merge-existing` keeps every field nobody named; `--drop-field` removes
+   the named ones; `--base-raw-file` checks each named field against the
+   entry the user was looking at. Exit codes:
+
+   - **0** — applied.
+   - **5** — applied EXCEPT the changes stderr lists as held: those fields
+     changed on disk since the modal opened (someone else edited them), so
+     the newer value was kept rather than overwritten. Not an error — carry
+     the held lines into the reply (and step 6's summary) so the user can
+     redo them against the current entry. Continue with steps 3–7.
+   - **2** — refused, nothing written (the entry is gone from master.bib, or
+     `baseRaw` is unreadable). Report stderr verbatim and **skip to step 7**
+     — the edit cannot be applied, and leaving it queued only re-fails.
+   - **anything else** — nothing written; report it verbatim and stop.
 
    **Do not** pass `--bib-state`: a manual edit doesn't invalidate
    prior authentication. The existing `% bib.state = ...` comment is
@@ -159,8 +184,9 @@ All paths below are relative to the library root.
    destroys a deep-indexed paper's whole bibliography — and the loss
    propagates silently into the next `/library/merge-bibs` (task 168).
 
-4. **Update `.virgil/catalog.json`** via the locked CLI shim. Compute
-   the field changes first (compare old vs new for each field).
+4. **Update `.virgil/catalog.json`** via the locked CLI shim. The field
+   changes are the diff's `set` and `remove` minus anything step 2 held
+   (`from` = the base value, `to` = the new value or `""` for a removal).
    Construct a patch:
 
    ```bash
@@ -256,6 +282,9 @@ All paths below are relative to the library root.
 
 One line:
 > `Applied bib edit for <citekey>: <N> field changes.`
+
+If step 2 held changes (exit 5), append them on the same line:
+> `Applied bib edit for <citekey>: <N> field changes; held <M> that changed on disk since the edit was opened (<field>, …).`
 
 For a reference-only entry (step 4 exited 1), say so on the same line:
 > `Applied bib edit for <citekey>: <N> field changes (reference-only — no catalog row).`
