@@ -402,8 +402,9 @@ export default function LibraryView({
   // Wrap libraryTabs.addEntryToLibrary so drops onto a per-doc Project
   // library tab dispatch a window event with the resolved bib entries —
   // `LibraryTabView` listens and appends to the doc's references.bib in
-  // a single read-modify-write. Custom-library drops fall through to
-  // the registry mutation (functional setState — safe to call in a loop).
+  // a single read-modify-write. Custom-library drops go through the
+  // batched `addEntriesToLibrary` — ONE op on the manifest store's
+  // mutation door, so the whole drop lands as one write (task 762).
   // Central / paper / unknown libIds are no-ops.
   //
   // The batched signature (string[] instead of string) is critical: a
@@ -426,9 +427,9 @@ export default function LibraryView({
         );
         return;
       }
-      for (const k of entryKeys) libraryTabs.addEntryToLibrary(libId, k);
+      libraryTabs.addEntriesToLibrary(libId, entryKeys);
     },
-    [bibByKey, libraryTabs.addEntryToLibrary],
+    [bibByKey, libraryTabs.addEntriesToLibrary],
   );
 
   // Synthesize catalog rows from three extra sources so the list reflects

@@ -7,6 +7,7 @@ import {
   ensureLibrariesDir,
   fileExists,
   listLibraryManifests,
+  readLibrariesStamp,
   SUBDIRS,
   writeLibraryManifest,
   writeTextFile,
@@ -25,6 +26,12 @@ import {
   slugifyLibraryLabel,
   type Library,
 } from "@library/lib/library-store";
+import {
+  announceManifestChange,
+  enqueueManifestIo as enqueueIo,
+  MANIFEST_CHANNEL_NAME,
+  newManifestToken,
+} from "@library/lib/manifest-io";
 
 /**
  * Single source of truth for custom-library state, fed from
@@ -36,22 +43,36 @@ import {
  * That matches the long-standing surface of `useLibraryTabs`
  * (callers like `LibrariesNavigator.handleCreate` consume the new
  * id immediately) and means failures during disk I/O are logged but
- * never throw at the call site. Eventual-consistency: another window
- * sees the change within ≤ 6 s (the catalog-version poll interval),
- * or instantly within the same window via REGISTRY_CHANGED_EVENT.
+ * never throw at the call site.
+ *
+ * **ONE mutation door (task 762).** Every mutator is an OP — a pure
+ * transform of one library's record — pushed onto a pending list. The
+ * in-memory view is always `replay(base, pending)`, where `base` is the
+ * last state confirmed on disk; it is recomputed SYNCHRONOUSLY inside the
+ * door, so N mutators called in one handler compose (never "each starts
+ * from the same render-time snapshot"). Disk I/O runs on ONE serial chain
+ * (module-level, so every hook instance in the window shares it): a flush
+ * RE-READS the manifests and replays the pending ops onto that fresh base
+ * before writing — so another window's edit is rebased onto, never
+ * clobbered, and a stale filename (renamed elsewhere) is never re-created.
+ * A reload rides the same chain and only ever replaces `base`; pending ops
+ * are replayed over it, so a reload can never drop an in-flight mutation.
+ *
+ * **Cross-window.** Every flush that wrote announces it
+ * (`announceManifestChange`): the store's stamp `.virgil/libraries/.version`,
+ * a `BroadcastChannel` post, and the same-window `REGISTRY_CHANGED_EVENT`.
+ * Another window reloads instantly via the channel, or within ≤ 6 s via
+ * the poll (which reads the stamp alongside `catalog-version.txt`).
  *
  * Responsibilities:
- *  - Load every manifest on mount and on each catalog-version bump.
+ *  - Load every manifest on mount and on each change signal.
  *  - One-time migration from the legacy localStorage registry.
  *  - Stale-`sourceBibFile` cleanup (clear when the source `.bib` is
  *    no longer in `unsorted/`).
- *  - Cross-window / cross-instance sync via the existing
- *    `REGISTRY_CHANGED_EVENT` window event.
  *
  * `handle === null` (no FSA permission yet) means the hook is
- * dormant: `libraries` stays empty and every mutation is a no-op
- * that logs at most a debug-level warning. Once the handle becomes
- * available, the mount effect fires the initial load.
+ * dormant: nothing is read, and mutations stay pending in memory until
+ * the handle arrives (the load that follows flushes them).
  */
 
 const POLL_MS = 6000;
@@ -85,6 +106,66 @@ export interface DiskLibrariesApi {
 interface ManifestRecord {
   filename: string;
   manifest: LibraryManifest;
+}
+
+type Records = ReadonlyMap<string, ManifestRecord>;
+
+const DELETE = Symbol("delete");
+
+/** One mutation: a pure transform of library `id`'s record, given every
+ *  record (for slug de-duplication). `null` = no change; `DELETE` = remove.
+ *  Must be safe to replay against a different base — it is applied once to
+ *  the in-memory view and again, at flush time, to a fresh disk read. */
+interface PendingOp {
+  id: string;
+  opName: string;
+  apply: (
+    rec: ManifestRecord | undefined,
+    all: Records,
+  ) => ManifestRecord | null | typeof DELETE;
+}
+
+function replay(base: Records, ops: readonly PendingOp[]): Map<string, ManifestRecord> {
+  const out = new Map(base);
+  for (const op of ops) {
+    const r = op.apply(out.get(op.id), out);
+    if (r === DELETE) out.delete(op.id);
+    else if (r) out.set(op.id, r);
+  }
+  return out;
+}
+
+/** Same consumer-visible content (everything but `updatedAt`, which
+ *  differs between an optimistic replay and the flushed one). */
+function recordsEqual(a: Records, b: Records): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, ra] of a) {
+    const rb = b.get(id);
+    if (!rb) return false;
+    if (ra === rb) continue;
+    const ma = ra.manifest;
+    const mb = rb.manifest;
+    if (
+      ra.filename !== rb.filename ||
+      ma.label !== mb.label ||
+      ma.createdAt !== mb.createdAt ||
+      ma.pinned !== mb.pinned ||
+      ma.sourceBibFile !== mb.sourceBibFile ||
+      ma.citekeys.length !== mb.citekeys.length ||
+      ma.citekeys.some((k, i) => k !== mb.citekeys[i])
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function slugsExcept(all: Records, id: string): Set<string> {
+  const s = new Set<string>();
+  for (const r of all.values()) {
+    if (r.manifest.id !== id) s.add(r.filename.replace(/\.json$/i, ""));
+  }
+  return s;
 }
 
 function manifestToLibrary(m: LibraryManifest): Library {
@@ -127,13 +208,8 @@ function makeManifest(args: {
   };
 }
 
-function fanOutChange(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.dispatchEvent(new CustomEvent(REGISTRY_CHANGED_EVENT));
-  } catch {
-    /* ignore */
-  }
+function isCustomId(id: string): boolean {
+  return !(isBuiltin(id) || isPaperId(id) || isProjectDocId(id));
 }
 
 export function useDiskLibraries(
@@ -147,28 +223,125 @@ export function useDiskLibraries(
   );
   const [hydrated, setHydrated] = useState(false);
   const versionRef = useRef<string>("");
+  const stampRef = useRef<string>("");
   const migratedRef = useRef(false);
+  const sourceRef = useRef<string>("");
+  if (!sourceRef.current) sourceRef.current = newManifestToken();
 
   const handleRef = useRef<FileSystemDirectoryHandle | null>(handle);
   handleRef.current = handle;
 
-  // Mirror records in a ref so sync mutators can read latest state
-  // without going through setState's update queue.
-  const recordsRef = useRef(records);
-  recordsRef.current = records;
+  // The door's state. `base` = last state confirmed on disk; `pending` =
+  // ops not yet flushed; `view` = replay(base, pending), the authority every
+  // sync mutator reads (updated in the door, never via render).
+  const baseRef = useRef<Map<string, ManifestRecord>>(new Map());
+  const pendingRef = useRef<PendingOp[]>([]);
+  const viewRef = useRef<Map<string, ManifestRecord>>(new Map());
+
+  const publish = useCallback(() => {
+    const next = replay(baseRef.current, pendingRef.current);
+    // Equality bail: a flush confirming what the optimistic view already
+    // showed (or a reload that found nothing new) keeps the old identity,
+    // so consumers don't re-render twice per mutation.
+    if (recordsEqual(viewRef.current, next)) return;
+    viewRef.current = next;
+    setRecords(next);
+  }, []);
 
   // ---------- Load + migrate ----------
 
-  const loadFromDisk = useCallback(async (): Promise<Map<string, ManifestRecord>> => {
-    const root = handleRef.current;
-    if (!root) return new Map();
-    const list = await listLibraryManifests(root);
-    const next = new Map<string, ManifestRecord>();
-    for (const item of list) {
-      next.set(item.manifest.id, item);
-    }
-    return next;
+  const loadFromDisk = useCallback(
+    async (root: FileSystemDirectoryHandle): Promise<Map<string, ManifestRecord>> => {
+      const list = await listLibraryManifests(root);
+      const next = new Map<string, ManifestRecord>();
+      for (const item of list) {
+        next.set(item.manifest.id, item);
+      }
+      return next;
+    },
+    [],
+  );
+
+  const signalChange = useCallback(async (root: FileSystemDirectoryHandle) => {
+    stampRef.current = await announceManifestChange(root, sourceRef.current);
   }, []);
+
+  /** Drain the pending ops: re-read disk, replay the batch onto that fresh
+   *  base, write exactly the records that changed. Runs on the io chain. */
+  const flush = useCallback(async (): Promise<void> => {
+    const root = handleRef.current;
+    if (!root || pendingRef.current.length === 0) return;
+    const batch = pendingRef.current.slice();
+    let disk: Map<string, ManifestRecord>;
+    try {
+      await ensureLibrariesDir(root);
+      disk = await loadFromDisk(root);
+    } catch (err) {
+      // Leave the ops pending; the next flush/reload retries them.
+      console.error("[library] flush: failed to read manifests", err);
+      return;
+    }
+    const result = replay(disk, batch);
+    let wrote = false;
+    let failed = false;
+    for (const [id, rec] of result) {
+      const before = disk.get(id);
+      if (before === rec) continue;
+      try {
+        await writeLibraryManifest(root, rec.filename, rec.manifest);
+        wrote = true;
+        if (before && before.filename !== rec.filename) {
+          await deleteLibraryManifest(root, before.filename);
+        }
+      } catch (err) {
+        failed = true;
+        console.error(`[library] failed to write ${rec.filename}`, err);
+      }
+    }
+    for (const [id, before] of disk) {
+      if (result.has(id)) continue;
+      try {
+        await deleteLibraryManifest(root, before.filename);
+        wrote = true;
+      } catch (err) {
+        failed = true;
+        console.error(`[library] failed to delete ${before.filename}`, err);
+      }
+    }
+    // The batch is a prefix of `pending` (only this chain removes ops, and
+    // the door only appends), so later ops survive untouched.
+    pendingRef.current = pendingRef.current.slice(batch.length);
+    if (failed) {
+      try {
+        baseRef.current = await loadFromDisk(root);
+      } catch {
+        baseRef.current = disk;
+      }
+    } else {
+      baseRef.current = result;
+    }
+    publish();
+    if (wrote) await signalChange(root);
+  }, [loadFromDisk, publish, signalChange]);
+
+  const scheduleFlush = useCallback(() => {
+    void enqueueIo(flush);
+  }, [flush]);
+
+  /** THE door. Applies `op` to the view synchronously (so back-to-back
+   *  calls compose) and queues its write. Returns the op's result on the
+   *  view, or null when it changed nothing (nothing is queued then). */
+  const commit = useCallback(
+    (op: PendingOp): ManifestRecord | typeof DELETE | null => {
+      const r = op.apply(viewRef.current.get(op.id), viewRef.current);
+      if (r === null) return null;
+      pendingRef.current = [...pendingRef.current, op];
+      publish();
+      scheduleFlush();
+      return r;
+    },
+    [publish, scheduleFlush],
+  );
 
   /** One-shot migration from `localStorage["virgil-library-registry"]`.
    *  Runs only when:
@@ -176,84 +349,86 @@ export function useDiskLibraries(
    *    - the migration sentinel `.migrated` is not present, AND
    *    - localStorage has at least one `kind: "custom"` library.
    *  Writes a sentinel after success so the migration is idempotent. */
-  const migrateFromLocalStorage = useCallback(async (): Promise<void> => {
-    const root = handleRef.current;
-    if (!root) return;
-    const sentinelPath = `${SUBDIRS.libraries}/${MIGRATION_SENTINEL}`;
-    if (await fileExists(root, sentinelPath)) return;
+  const migrateFromLocalStorage = useCallback(
+    async (root: FileSystemDirectoryHandle): Promise<void> => {
+      const sentinelPath = `${SUBDIRS.libraries}/${MIGRATION_SENTINEL}`;
+      if (await fileExists(root, sentinelPath)) return;
 
-    const reg = loadRegistry();
-    const customs = reg.libraries.filter((l) => l.kind === "custom");
-    if (customs.length === 0) {
-      // Still write the sentinel so we don't re-attempt forever.
+      const reg = loadRegistry();
+      const customs = reg.libraries.filter((l) => l.kind === "custom");
+      if (customs.length === 0) {
+        // Still write the sentinel so we don't re-attempt forever.
+        try {
+          await writeTextFile(root, sentinelPath, JSON.stringify(reg));
+        } catch {
+          /* ignore — best effort */
+        }
+        return;
+      }
+
+      const usedSlugs = new Set<string>();
+      let writtenCount = 0;
+      for (const lib of customs) {
+        const slug = dedupeSlug(slugifyLibraryLabel(lib.label), usedSlugs);
+        usedSlugs.add(slug);
+        const filename = libraryManifestFilename(slug);
+        const manifest = makeManifest({
+          id: lib.id,
+          label: lib.label,
+          citekeys: lib.entryKeys ?? [],
+          sourceBibFile: lib.sourceBibFile,
+          pinned: lib.pinned === true,
+          createdAt: lib.createdAt || Date.now(),
+        });
+        try {
+          await writeLibraryManifest(root, filename, manifest);
+          writtenCount += 1;
+        } catch (err) {
+          console.error(
+            `[library] migration: failed to write ${filename}; continuing`,
+            err,
+          );
+        }
+      }
+
+      // Sentinel: dump the source registry so the user has a recovery
+      // path if anything went wrong.
       try {
         await writeTextFile(root, sentinelPath, JSON.stringify(reg));
       } catch {
         /* ignore — best effort */
       }
-      return;
-    }
 
-    const usedSlugs = new Set<string>();
-    let writtenCount = 0;
-    for (const lib of customs) {
-      const slug = dedupeSlug(slugifyLibraryLabel(lib.label), usedSlugs);
-      usedSlugs.add(slug);
-      const filename = libraryManifestFilename(slug);
-      const manifest = makeManifest({
-        id: lib.id,
-        label: lib.label,
-        citekeys: lib.entryKeys ?? [],
-        sourceBibFile: lib.sourceBibFile,
-        pinned: lib.pinned === true,
-        createdAt: lib.createdAt || Date.now(),
-      });
+      // Strip migrated custom rows out of localStorage so the legacy
+      // path doesn't fight the new one. Built-in / paper / project
+      // entries are left alone (the loader filters non-custom on read
+      // anyway, but cleaning up here keeps storage tidy).
       try {
-        await writeLibraryManifest(root, filename, manifest);
-        writtenCount += 1;
-      } catch (err) {
-        console.error(
-          `[library] migration: failed to write ${filename}; continuing`,
-          err,
+        saveRegistry({
+          libraries: reg.libraries.filter((l) => l.kind !== "custom"),
+        });
+      } catch {
+        /* ignore */
+      }
+
+      if (writtenCount > 0) {
+        console.log(
+          `[library] migrated ${writtenCount} custom librar${
+            writtenCount === 1 ? "y" : "ies"
+          } to .virgil/libraries/`,
         );
       }
-    }
-
-    // Sentinel: dump the source registry so the user has a recovery
-    // path if anything went wrong.
-    try {
-      await writeTextFile(root, sentinelPath, JSON.stringify(reg));
-    } catch {
-      /* ignore — best effort */
-    }
-
-    // Strip migrated custom rows out of localStorage so the legacy
-    // path doesn't fight the new one. Built-in / paper / project
-    // entries are left alone (the loader filters non-custom on read
-    // anyway, but cleaning up here keeps storage tidy).
-    try {
-      saveRegistry({
-        libraries: reg.libraries.filter((l) => l.kind !== "custom"),
-      });
-    } catch {
-      /* ignore */
-    }
-
-    if (writtenCount > 0) {
-      console.log(
-        `[library] migrated ${writtenCount} custom librar${
-          writtenCount === 1 ? "y" : "ies"
-        } to .virgil/libraries/`,
-      );
-    }
-  }, []);
+    },
+    [],
+  );
 
   /** Drop `sourceBibFile` from any manifest whose source `.bib` is no
-   *  longer in `unsorted/`. */
+   *  longer in `unsorted/`. Runs inside a reload, i.e. on the io chain. */
   const cleanupStaleSourceBibFiles = useCallback(
-    async (current: Map<string, ManifestRecord>): Promise<Map<string, ManifestRecord>> => {
-      const root = handleRef.current;
-      if (!root) return current;
+    async (
+      root: FileSystemDirectoryHandle,
+      current: Map<string, ManifestRecord>,
+    ): Promise<Map<string, ManifestRecord>> => {
       let next: Map<string, ManifestRecord> | null = null;
       for (const [id, rec] of current) {
         const src = rec.manifest.sourceBibFile;
@@ -281,54 +456,73 @@ export function useDiskLibraries(
     [],
   );
 
+  /** Re-read disk into `base`. Ordered on the io chain behind every write
+   *  enqueued before it; pending ops are replayed over the result, so a
+   *  reload never drops an in-flight mutation. */
   const reload = useCallback(async () => {
-    const root = handleRef.current;
-    if (!root) {
-      setRecords(new Map());
-      setHydrated(true);
-      return;
-    }
-    try {
-      await ensureLibrariesDir(root);
-      if (!migratedRef.current) {
-        migratedRef.current = true;
-        const initial = await loadFromDisk();
-        if (initial.size === 0) {
-          await migrateFromLocalStorage();
-        }
+    await enqueueIo(async () => {
+      const root = handleRef.current;
+      if (!root) {
+        baseRef.current = new Map();
+        publish();
+        setHydrated(true);
+        return;
       }
-      let next = await loadFromDisk();
-      next = await cleanupStaleSourceBibFiles(next);
-      setRecords(next);
       try {
-        versionRef.current = await readCatalogVersion(root);
-      } catch {
-        /* ignore */
+        await ensureLibrariesDir(root);
+        if (!migratedRef.current) {
+          migratedRef.current = true;
+          const initial = await loadFromDisk(root);
+          if (initial.size === 0) {
+            await migrateFromLocalStorage(root);
+          }
+        }
+        let next = await loadFromDisk(root);
+        next = await cleanupStaleSourceBibFiles(root, next);
+        baseRef.current = next;
+        publish();
+        try {
+          versionRef.current = await readCatalogVersion(root);
+          stampRef.current = await readLibrariesStamp(root);
+        } catch {
+          /* ignore */
+        }
+      } catch (err) {
+        console.error("[library] useDiskLibraries: reload failed", err);
+      } finally {
+        setHydrated(true);
       }
-    } catch (err) {
-      console.error("[library] useDiskLibraries: reload failed", err);
-    } finally {
-      setHydrated(true);
-    }
-  }, [cleanupStaleSourceBibFiles, loadFromDisk, migrateFromLocalStorage]);
+    });
+    // Ops made while dormant (no handle) or left by a failed read flush now.
+    if (pendingRef.current.length > 0) scheduleFlush();
+  }, [
+    cleanupStaleSourceBibFiles,
+    loadFromDisk,
+    migrateFromLocalStorage,
+    publish,
+    scheduleFlush,
+  ]);
 
   // Mount: initial load.
   useEffect(() => {
     void reload();
   }, [handle, reload]);
 
-  // Catalog-version polling.
+  // Poll: `catalog-version.txt` (Python skills) + the manifest store's own
+  // stamp (another window's manifest write).
   useEffect(() => {
     if (!handle) return;
     let stopped = false;
     const tick = async () => {
-      if (stopped || !handleRef.current) return;
+      const root = handleRef.current;
+      if (stopped || !root) return;
       try {
-        const v = await readCatalogVersion(handleRef.current);
-        if (v !== versionRef.current) {
+        const v = await readCatalogVersion(root);
+        const s = await readLibrariesStamp(root);
+        if (v !== versionRef.current || s !== stampRef.current) {
           versionRef.current = v;
-          const next = await loadFromDisk();
-          setRecords(next);
+          stampRef.current = s;
+          await reload();
         }
       } catch {
         /* ignore */
@@ -342,206 +536,139 @@ export function useDiskLibraries(
       window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [handle, loadFromDisk]);
+  }, [handle, reload]);
 
-  // Cross-instance / cross-window registry-changed event.
+  // Instant change signals: other hook instances in this window (window
+  // event) and other windows (BroadcastChannel). Our own posts are skipped.
   useEffect(() => {
-    const onChange = () => {
-      void loadFromDisk().then(setRecords);
+    const isOwn = (source: unknown) => source === sourceRef.current;
+    const onChange = (e: Event) => {
+      if (isOwn((e as CustomEvent<{ source?: string }>).detail?.source)) return;
+      void reload();
     };
     window.addEventListener(REGISTRY_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(REGISTRY_CHANGED_EVENT, onChange);
-  }, [loadFromDisk]);
+    let channel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== "undefined") {
+      try {
+        channel = new BroadcastChannel(MANIFEST_CHANNEL_NAME);
+        channel.onmessage = (e: MessageEvent<{ source?: string }>) => {
+          if (isOwn(e.data?.source)) return;
+          void reload();
+        };
+      } catch {
+        channel = null;
+      }
+    }
+    return () => {
+      window.removeEventListener(REGISTRY_CHANGED_EVENT, onChange);
+      channel?.close();
+    };
+  }, [reload]);
 
-  // ---------- Sync mutators ----------
+  // ---------- Sync mutators (all through `commit`) ----------
 
-  /** Local optimistic update. Returns the next records map (or null
-   *  if the transform decided no change). Does NOT write to disk. */
-  const applyLocal = useCallback(
-    (
-      id: string,
-      transform: (rec: ManifestRecord) => ManifestRecord | null,
-    ): ManifestRecord | null => {
-      const cur = recordsRef.current.get(id);
-      if (!cur) return null;
-      const updated = transform(cur);
-      if (!updated) return null;
-      setRecords((prev) => {
-        const next = new Map(prev);
-        next.set(id, updated);
-        return next;
+  const createWith = useCallback(
+    (manifest: LibraryManifest): Library => {
+      commit({
+        id: manifest.id,
+        opName: "create",
+        apply: (rec, all) => {
+          if (rec) return null;
+          const slug = dedupeSlug(
+            slugifyLibraryLabel(manifest.label),
+            slugsExcept(all, manifest.id),
+          );
+          return { filename: libraryManifestFilename(slug), manifest };
+        },
       });
-      return updated;
+      return manifestToLibrary(manifest);
     },
-    [],
+    [commit],
   );
 
-  const create = useCallback((label: string): Library => {
-    const id = newLibraryId();
-    const trimmed = (label || "").trim() || "Untitled";
-    const usedSlugs = new Set(
-      Array.from(recordsRef.current.values()).map((r) =>
-        r.filename.replace(/\.json$/i, ""),
+  const create = useCallback(
+    (label: string): Library =>
+      createWith(
+        makeManifest({
+          id: newLibraryId(),
+          label: (label || "").trim() || "Untitled",
+          citekeys: [],
+        }),
       ),
-    );
-    const slug = dedupeSlug(slugifyLibraryLabel(trimmed), usedSlugs);
-    const filename = libraryManifestFilename(slug);
-    const manifest = makeManifest({ id, label: trimmed, citekeys: [] });
-    setRecords((prev) => {
-      const next = new Map(prev);
-      next.set(id, { filename, manifest });
-      return next;
-    });
-    const root = handleRef.current;
-    if (root) {
-      void writeLibraryManifest(root, filename, manifest)
-        .then(fanOutChange)
-        .catch((err) => {
-          console.error(
-            `[library] create: failed to write ${filename}`,
-            err,
-          );
-        });
-    } else {
-      console.warn(
-        "[library] create: no FSA handle yet; library exists only in memory until handle becomes available",
-      );
-    }
-    return manifestToLibrary(manifest);
-  }, []);
+    [createWith],
+  );
 
   const createFromBib = useCallback(
     (args: {
       label: string;
       sourceBibFile: string;
       citekeys: readonly string[];
-    }): Library => {
-      const id = newLibraryId();
-      const trimmed = (args.label || "").trim() || "Untitled";
-      const usedSlugs = new Set(
-        Array.from(recordsRef.current.values()).map((r) =>
-          r.filename.replace(/\.json$/i, ""),
-        ),
-      );
-      const slug = dedupeSlug(slugifyLibraryLabel(trimmed), usedSlugs);
-      const filename = libraryManifestFilename(slug);
-      const manifest = makeManifest({
-        id,
-        label: trimmed,
-        citekeys: args.citekeys,
-        sourceBibFile: args.sourceBibFile,
-      });
-      setRecords((prev) => {
-        const next = new Map(prev);
-        next.set(id, { filename, manifest });
-        return next;
-      });
-      const root = handleRef.current;
-      if (root) {
-        void writeLibraryManifest(root, filename, manifest)
-          .then(fanOutChange)
-          .catch((err) => {
-            console.error(
-              `[library] createFromBib: failed to write ${filename}`,
-              err,
-            );
-          });
-      }
-      return manifestToLibrary(manifest);
-    },
-    [],
+    }): Library =>
+      createWith(
+        makeManifest({
+          id: newLibraryId(),
+          label: (args.label || "").trim() || "Untitled",
+          citekeys: args.citekeys,
+          sourceBibFile: args.sourceBibFile,
+        }),
+      ),
+    [createWith],
   );
 
-  const rename = useCallback((id: string, newLabel: string) => {
-    if (isBuiltin(id) || isPaperId(id) || isProjectDocId(id)) return;
-    const trimmed = (newLabel || "").trim() || "Untitled";
-    const cur = recordsRef.current.get(id);
-    if (!cur) return;
-    if (trimmed === cur.manifest.label) return;
-    const otherSlugs = new Set(
-      Array.from(recordsRef.current.values())
-        .filter((r) => r.manifest.id !== id)
-        .map((r) => r.filename.replace(/\.json$/i, "")),
-    );
-    const newSlug = dedupeSlug(slugifyLibraryLabel(trimmed), otherSlugs);
-    const newFilename = libraryManifestFilename(newSlug);
-    const updated: LibraryManifest = {
-      ...cur.manifest,
-      label: trimmed,
-      updatedAt: Date.now(),
-    };
-    const oldFilename = cur.filename;
-    setRecords((prev) => {
-      const next = new Map(prev);
-      next.set(id, { filename: newFilename, manifest: updated });
-      return next;
-    });
-    const root = handleRef.current;
-    if (!root) return;
-    void (async () => {
-      try {
-        await writeLibraryManifest(root, newFilename, updated);
-        if (newFilename !== oldFilename) {
-          await deleteLibraryManifest(root, oldFilename);
-        }
-        fanOutChange();
-      } catch (err) {
-        console.error(
-          `[library] rename: failed to write ${newFilename}`,
-          err,
-        );
-      }
-    })();
-  }, []);
-
-  const remove = useCallback((id: string) => {
-    if (isBuiltin(id) || isPaperId(id) || isProjectDocId(id)) return;
-    const cur = recordsRef.current.get(id);
-    if (!cur) return;
-    const filename = cur.filename;
-    setRecords((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-    const root = handleRef.current;
-    if (!root) return;
-    void deleteLibraryManifest(root, filename)
-      .then(fanOutChange)
-      .catch((err) => {
-        console.error(`[library] remove: failed to delete ${filename}`, err);
+  const rename = useCallback(
+    (id: string, newLabel: string) => {
+      if (!isCustomId(id)) return;
+      const trimmed = (newLabel || "").trim() || "Untitled";
+      commit({
+        id,
+        opName: "rename",
+        apply: (rec, all) => {
+          if (!rec || rec.manifest.label === trimmed) return null;
+          const slug = dedupeSlug(
+            slugifyLibraryLabel(trimmed),
+            slugsExcept(all, id),
+          );
+          return {
+            filename: libraryManifestFilename(slug),
+            manifest: { ...rec.manifest, label: trimmed, updatedAt: Date.now() },
+          };
+        },
       });
-  }, []);
+    },
+    [commit],
+  );
 
-  /** Internal helper: sync update + background write for any
-   *  field-level mutation. */
+  const remove = useCallback(
+    (id: string) => {
+      if (!isCustomId(id)) return;
+      commit({ id, opName: "remove", apply: (rec) => (rec ? DELETE : null) });
+    },
+    [commit],
+  );
+
+  /** Field-level mutation: transform the manifest, keep its filename. */
   const mutate = useCallback(
     (
       id: string,
       transform: (m: LibraryManifest) => LibraryManifest | null,
       opName: string,
     ) => {
-      if (isBuiltin(id) || isPaperId(id) || isProjectDocId(id)) return;
-      const updated = applyLocal(id, (rec) => {
-        const next = transform(rec.manifest);
-        if (!next) return null;
-        const stamped: LibraryManifest = { ...next, updatedAt: Date.now() };
-        return { filename: rec.filename, manifest: stamped };
+      if (!isCustomId(id)) return;
+      commit({
+        id,
+        opName,
+        apply: (rec) => {
+          if (!rec) return null;
+          const next = transform(rec.manifest);
+          if (!next) return null;
+          return {
+            filename: rec.filename,
+            manifest: { ...next, updatedAt: Date.now() },
+          };
+        },
       });
-      if (!updated) return;
-      const root = handleRef.current;
-      if (!root) return;
-      void writeLibraryManifest(root, updated.filename, updated.manifest)
-        .then(fanOutChange)
-        .catch((err) => {
-          console.error(
-            `[library] ${opName}: failed to write ${updated.filename}`,
-            err,
-          );
-        });
     },
-    [applyLocal],
+    [commit],
   );
 
   const addEntries = useCallback(
