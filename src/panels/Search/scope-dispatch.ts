@@ -19,6 +19,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
 import {
   type SearchScope,
   type SearchHit,
@@ -52,9 +53,12 @@ import type {
 export interface ScopeSearchCtx {
   editor: Editor;
   re: RegExp;
-  /** Lazily-built UUID→pos map, shared across the anchored-collection scopes
-   *  (notes/todos/archive/cuts) so the doc is walked once, not per scope. */
-  uuidPos: Map<string, number>;
+  /** The pane's card-anchor authority (`CardAnchorPass.resolve`, task 369) —
+   *  the SAME resolution the margin marker and omni card read. Every card
+   *  scope asks it "where is this card anchored?"; none re-derives it (task
+   *  758). The pass is built once per structural change by its owner, so a
+   *  search run walks no doc for card positions. */
+  resolveCardAnchor: CardAnchorResolver;
   footnotes: FootnoteSearchItem[];
   orphanedFootnotes: OrphanedFootnote[];
   notes: UserNote[];
@@ -83,7 +87,7 @@ export type ScopeSearchFn = (ctx: ScopeSearchCtx) => SearchHit[];
 export const SCOPE_DISPATCH: Record<SearchScope, ScopeSearchFn> = {
   mainText: (c) => c.searchMainText(c.editor, c.re),
   footnotes: (c) => searchFootnotes(c.footnotes, c.orphanedFootnotes, c.re),
-  notes: (c) => searchNotes(c.notes, c.editor, c.uuidPos, c.re),
+  notes: (c) => searchNotes(c.notes, c.resolveCardAnchor, c.re),
   citations: (c) =>
     searchCitations(
       c.citations,
@@ -91,21 +95,10 @@ export const SCOPE_DISPATCH: Record<SearchScope, ScopeSearchFn> = {
       c.getCitationDisplayText,
       c.re,
     ),
-  todos: (c) => searchTodos(c.todos, c.uuidPos, c.re),
-  archive: (c) => searchArchive(c.archiveSnippets, c.uuidPos, c.re),
-  cuts: (c) => searchCutter(c.cutterCards, c.editor, c.uuidPos, c.re),
-  reports: (c) => searchReports(c.reportCards, c.editor, c.uuidPos, c.re),
-  revisions: (c) => searchComments(c.comments, c.editor, c.re),
+  todos: (c) => searchTodos(c.todos, c.resolveCardAnchor, c.re),
+  archive: (c) => searchArchive(c.archiveSnippets, c.resolveCardAnchor, c.re),
+  cuts: (c) => searchCutter(c.cutterCards, c.resolveCardAnchor, c.re),
+  reports: (c) => searchReports(c.reportCards, c.resolveCardAnchor, c.re),
+  revisions: (c) => searchComments(c.comments, c.resolveCardAnchor, c.re),
   bibliography: (c) => searchBibliography(c.bibEntries, c.re),
 };
-
-/** Scopes that need the shared UUID→pos map. The panel builds the map only
- *  when one of these is enabled (the doc walk isn't free). Derived so a new
- *  uuid-anchored scope can't be forgotten — see the test. */
-export const UUID_POS_SCOPES: readonly SearchScope[] = [
-  "notes",
-  "todos",
-  "archive",
-  "cuts",
-  "reports",
-];

@@ -666,7 +666,7 @@ export function paragraphRangeByUuid(
  * (src/lib/linked-anchor-range.ts) so atom-split (a mark interrupted by an
  * inline atom) and cross-block anchors resolve to their WHOLE span, not just
  * the first contiguous run (task 071). Every caller here — resolveLink's
- * textRange branch, removeLinkedAnchorMark, resolveAnchorRange,
+ * textRange branch, removeLinkedAnchorMark,
  * removeTransientAnchor, updateLinkedAnchorCard, apply-linked-anchors — hands
  * the range to nodesBetween / setTextSelection / unsetMark and wants the full
  * extent.
@@ -920,14 +920,6 @@ export function tryCreateLinkedAnchor(
       createdAt: new Date().toISOString(),
     },
   };
-}
-
-/** Locate the contiguous run carrying `anchorId`. Returns null if missing. */
-export function resolveAnchorRange(
-  editor: Editor,
-  anchorId: string,
-): { from: number; to: number } | null {
-  return resolveTextRangeByAnchorId(editor, anchorId);
 }
 
 /** Remove the `linkedAnchor` mark for `anchorId` wherever it appears. */

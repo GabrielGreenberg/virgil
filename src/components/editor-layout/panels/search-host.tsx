@@ -13,6 +13,7 @@ import type { ArchivedSnippet, OrphanedFootnote, ReportItem } from "@/lib/types"
 import type { FootnoteInfo } from "../../Editor";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+import { useCardAnchorPass } from "../contexts/card-anchor";
 import { useEditorChrome } from "../chrome-context";
 
 type NotesHook = ReturnType<typeof useNotes>;
@@ -42,6 +43,10 @@ export interface SearchHostProps {
 export function SearchHost(p: SearchHostProps) {
   const { editorInstance } = useEditorRefContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
+  // Task 758 — the pane's ONE card-anchor pass, the same one the sibling
+  // docked hosts, the margin markers and the omni cards read. Search's card
+  // scopes resolve "where is this card?" through it rather than re-deriving.
+  const cardAnchorPass = useCardAnchorPass();
   // Task 485 — the HOST resolves "which scopes may this surface offer?" and
   // the panel renders what it is given. Every scope but `mainText` jumps into
   // a PANEL, so the answer is DERIVED from the same whitelist the strip
@@ -70,6 +75,7 @@ export function SearchHost(p: SearchHostProps) {
       comments={p.comments}
       bibEntries={p.bibEntries}
       onOpenItem={p.openItemInPanel}
+      cardAnchorPass={cardAnchorPass}
       availableScopes={availableScopes}
       state={p.searchState}
       onStateChange={p.setSearchState}

@@ -32,15 +32,19 @@ import {
   SCOPE_TO_CARD_THEME,
   scopeDotBackground,
   compileQuery,
-  buildUuidPosMap,
 } from "@/lib/search-sources";
+import {
+  buildCardAnchorPass,
+  type CardAnchorPass,
+  type CardAnchorResolver,
+} from "@/links/card-anchor-rows";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import {
   buildProseIndex,
   proseOffsetToPos,
   spanAtOffset,
 } from "@/lib/prose-index";
-import { SCOPE_DISPATCH, UUID_POS_SCOPES } from "@/panels/Search/scope-dispatch";
+import { SCOPE_DISPATCH } from "@/panels/Search/scope-dispatch";
 import {
   resolveLiveBlockRange,
   type BlockRangeId,
@@ -102,6 +106,14 @@ interface SearchPanelProps {
   comments: RevisionCard[];
   bibEntries: BibEntry[];
   onOpenItem: (panel: PanelId, itemId: string) => void;
+  /**
+   * The pane's card-anchor authority (task 369; `useCardAnchorPass()` in
+   * `SearchHost`) — the SAME pass the margin markers and omni cards read, so a
+   * card's search hit is anchored exactly where its marker is (task 758). Absent (a test
+   * mount) → the panel builds its own pass lazily, once per search run, only
+   * if a card scope actually asks.
+   */
+  cardAnchorPass?: CardAnchorPass | null;
   /**
    * Which scopes this HOST may offer — `scopesForVisiblePanels(chrome
    * .visiblePanelKinds)`, resolved by `SearchHost`. REQUIRED, never defaulted:
@@ -455,6 +467,7 @@ function SearchPanel({
   comments,
   bibEntries,
   onOpenItem,
+  cardAnchorPass,
   availableScopes,
   state,
   onStateChange,
@@ -585,18 +598,19 @@ function SearchPanel({
     if (!re) return none;
     const scopes = new Set(deferred.scopes);
 
-    // Build the shared UUID→pos map once, only if a uuid-anchored scope is on
-    // (the doc walk isn't free). `UUID_POS_SCOPES` is the single source of
-    // truth for which scopes need it (see scope-dispatch.ts).
-    const needsUuidMap = UUID_POS_SCOPES.some((s) => scopes.has(s));
-    const uuidPos = needsUuidMap
-      ? buildUuidPosMap(editor)
-      : new Map<string, number>();
+    // Every card scope reads the ONE card-anchor authority (task 758). The
+    // host hands us the pane's pass (already built behind the structural
+    // counters); without one, build it lazily — at most once per run, and
+    // only if a card scope actually resolves a card.
+    let ownPass: CardAnchorPass | null = null;
+    const resolveCardAnchor: CardAnchorResolver =
+      cardAnchorPass?.resolve ??
+      ((card) => (ownPass ??= buildCardAnchorPass(editor)).resolve(card));
 
     const ctx = {
       editor,
       re,
-      uuidPos,
+      resolveCardAnchor,
       footnotes,
       orphanedFootnotes,
       notes,
@@ -640,6 +654,7 @@ function SearchPanel({
     return { results, totalResults: hits.length };
   }, [
     editor,
+    cardAnchorPass,
     deferred,
     footnotes,
     orphanedFootnotes,
@@ -674,7 +689,9 @@ function SearchPanel({
       } else if (result.blockId) {
         // Live re-resolution + the deleted-block no-op — the full policy
         // (including why the baked fallback is reserved for the no-snapshot
-        // case) lives on `resolveAnchoredHighlight`.
+        // case) lives on `resolveAnchoredHighlight`. Main-text hits AND
+        // anchored card hits (their resolved paragraph, task 758) take this
+        // door, so neither scrolls to a position baked before an edit.
         onHighlightRange(
           resolveAnchoredHighlight(editor, result.blockId, {
             from: result.from,
@@ -682,9 +699,9 @@ function SearchPanel({
           }),
         );
       } else {
-        // Collection hits (footnote/citation/etc.) anchor on a paragraph; the
-        // baked `from` was resolved at search time. They scroll-to + open their
-        // native panel; the editor highlight is best-effort.
+        // Footnote/citation hits carry their atom's search-time position (no
+        // block identity to re-resolve). They scroll-to + open their native
+        // panel; the editor highlight is best-effort.
         onHighlightRange({ from: result.from, to: result.to });
       }
 
