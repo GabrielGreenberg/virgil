@@ -160,7 +160,6 @@ import { CitationDisplayProvider } from "./editor-layout/contexts/citation-displ
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
 import {
   getCardStore,
-  disposeCardStore,
   defaultCardStore,
 } from "@/links/_shared/anchored-card-store";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
@@ -895,11 +894,9 @@ export default function EditorLayout() {
     });
     onEditorReadyCacheRef.current.delete(slotDocId);
     onPaneStateCacheRef.current.delete(slotDocId);
-    // Drop this doc's interaction store on a TRUE unmount (LRU evict / tab
-    // close — NOT a keep-alive hide), mirroring the per-doc map prune above. A
-    // warm hidden doc keeps its store, so its selection/expansion survives the
-    // tab-switch; a cold re-open gets a fresh store.
-    disposeCardStore(slotDocId);
+    // The doc's interaction store is NOT dropped here: DocKeepAliveSlot holds
+    // a ref-counted lease on it (`useCardStoreLease`, task 765), released on
+    // this same true unmount.
   }, []);
 
   // Keep-alive LRU of authored docs. Only a GRANTED, active doc may lead the
@@ -3675,7 +3672,10 @@ export default function EditorLayout() {
       {/* Main area */}
       {activePane === "paper" && currentPaperCitekey ? (
         <div className="flex flex-1 overflow-hidden bg-[var(--background)]">
-          <PaperOuterView citekey={currentPaperCitekey} />
+          {/* Keyed by citekey: switching popped paper tabs swaps papers, and
+              every piece of per-paper state below (header note, reader load)
+              must start fresh rather than carry across (task 765). */}
+          <PaperOuterView key={currentPaperCitekey} citekey={currentPaperCitekey} />
         </div>
       ) : activePane === "library-outer" &&
         currentLibraryOuterId === OUTER_LIBRARY_ROOT_ID ? (

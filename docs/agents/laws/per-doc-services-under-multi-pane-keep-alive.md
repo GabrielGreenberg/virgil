@@ -588,3 +588,16 @@ may not name `document.body`), `visible` (returns null while hidden), `gesture`,
 [SelectionActionsMenu-hidden-pane.test.tsx](../../../src/components/__tests__/SelectionActionsMenu-hidden-pane.test.tsx)
 drives the real component through hide → show; its hide leg fails on the pre-753
 source.
+
+### The shared-holder half (task 765)
+
+One docId can have SEVERAL mounts at once — the Library Reader's LRU slot for
+`library-paper:X` and a popped-out tab of the same paper. So "a holder
+unmounted" is not "the doc is gone": a per-doc registry entry whose lifetime a
+mount owns is REF-COUNTED, and a departing holder releases only its own lease.
+The card store's door is `useCardStoreLease(docId)` / `retainCardStore`
+([anchored-card-store.ts](../../../src/links/_shared/anchored-card-store.ts);
+the drop is deferred one microtask and re-checked so a same-commit
+release→retain keeps the instance); the paper folder's doc-handle row is leased
+the same way inside `PaperRender`. Pinned by `anchored-card-store.test.ts` and
+`PaperRender.content-revision.test.tsx`.

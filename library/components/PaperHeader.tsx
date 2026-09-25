@@ -113,6 +113,18 @@ export default function PaperHeader({
   const [instructions, setInstructions] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<RequestKind, boolean>>(ALL_FALSE);
+  // Everything above is PER-PAPER state. A mount site that swaps `entry` in
+  // place (rather than keying the header by citekey) must not carry paper A's
+  // half-typed AI-request note onto paper B's next enqueue (task 765) — so a
+  // citekey change resets it, during render, before any handler can read it.
+  const [stateCitekey, setStateCitekey] = useState(citekey);
+  if (stateCitekey !== citekey) {
+    setStateCitekey(citekey);
+    setExpanded(false);
+    setInstructions("");
+    setFlash(null);
+    setBusy(ALL_FALSE);
+  }
 
   const isIndexed = indexedState === "indexed" || indexedState === "deepIndexed";
   const indexNeeded = indexedState === "none" || indexedState === "failed";

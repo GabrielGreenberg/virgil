@@ -23,10 +23,43 @@ import PageScrollLozenge from "./PageScrollLozenge";
 import PagePicker from "./PagePicker";
 import { FONT_MONO } from "@/lib/font-stacks";
 
+// The paper folder's doc-handle row (`library-paper:<citekey>` → its folder) is
+// shared by every mount of the same paper — the Library Reader's LRU slot AND a
+// popped-out paper tab can hold it at once. Ref-counted so the first mount to
+// leave doesn't delete the row from under the other (task 765 — the same
+// "a holder unmounting is not the doc going away" class as the card store).
+const _paperHandleLeases = new Map<string, number>();
+
+async function retainLibraryPaperHandle(
+  docId: string,
+  dir: FileSystemDirectoryHandle,
+): Promise<() => void> {
+  _paperHandleLeases.set(docId, (_paperHandleLeases.get(docId) ?? 0) + 1);
+  await setDocHandle(docId, dir);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const n = (_paperHandleLeases.get(docId) ?? 1) - 1;
+    if (n > 0) {
+      _paperHandleLeases.set(docId, n);
+      return;
+    }
+    _paperHandleLeases.delete(docId);
+    void deleteDocHandle(docId);
+  };
+}
+
 interface Props {
   handle: FileSystemDirectoryHandle | null;
   citekey: string | null;
   indexedState: IndexedState;
+  /** The paper's CONTENT identity as the catalog knows it
+   *  (`paperContentRevision(entry)`). A background re-index rewrites
+   *  `main.tex` and moves this; the Reader then re-reads the file and swaps
+   *  in the new text if it changed (task 765). `indexedState` alone can't
+   *  carry that — `indexed → deepIndexed` leaves "is it indexed?" true. */
+  contentRevision?: string;
   /** View-session scope ('' inline / 'outer:<libId>' tear-out) + panel.
    *  The reader scroll is persisted under (scope, panel, paper:<citekey>). */
   scope: string;
@@ -88,6 +121,7 @@ export default function PaperRender({
   handle,
   citekey,
   indexedState,
+  contentRevision,
   scope,
   panel,
   onReaderRefs,
@@ -105,18 +139,32 @@ export default function PaperRender({
   // `setDocHandle` resolves, those hooks call `requireDocHandle` against
   // an unregistered docId, the read throws, the `.catch(() => {})`
   // swallows it, and the Bibliography / Citations panels come up empty.
+  // `texRef` mirrors the loaded text for the revision probe below;
+  // `loadedRevRef` is the catalog revision the loaded text was read under.
+  const texRef = useRef<string | null>(null);
+  texRef.current = tex;
+  const loadedRevRef = useRef<string | undefined>(undefined);
+  const revisionRef = useRef(contentRevision);
+  revisionRef.current = contentRevision;
+
   useEffect(() => {
     setTex(null);
     setParseError(null);
     if (!handle || !citekey || !isIndexed) return;
     const docId = libraryPaperDocId(citekey);
+    loadedRevRef.current = revisionRef.current;
     let cancelled = false;
+    let release: (() => void) | null = null;
     (async () => {
       try {
         const papersDir = await handle.getDirectoryHandle("papers");
         const paperDir = await papersDir.getDirectoryHandle(citekey);
         if (cancelled) return;
-        await setDocHandle(docId, paperDir);
+        release = await retainLibraryPaperHandle(docId, paperDir);
+        if (cancelled) {
+          release();
+          return;
+        }
         const t = await readTextFile(handle, `papers/${citekey}/main.tex`);
         if (cancelled) return;
         setTex(t ?? "");
@@ -130,9 +178,38 @@ export default function PaperRender({
     })();
     return () => {
       cancelled = true;
-      void deleteDocHandle(docId);
+      release?.();
     };
   }, [handle, citekey, isIndexed]);
+
+  // Re-read on a CONTENT-revision change (task 765). The load above is keyed on
+  // "which paper, is it indexed" — a deep-index rewriting `main.tex` changes
+  // neither, so without this the Reader kept the pre-index text (and notes
+  // anchored to its stale parse) until evicted. Compare-gated: a catalog row
+  // touched for any other reason (tags, bib state) re-reads the file and finds
+  // it unchanged, so nothing remounts. The Reader never edits `main.tex`
+  // (read-only; only note sidecars persist), so there is no local draft to
+  // clobber — a swap is always safe.
+  useEffect(() => {
+    if (!handle || !citekey || !isIndexed) return;
+    if (contentRevision === loadedRevRef.current) return;
+    if (texRef.current === null) return; // initial load still in flight
+    loadedRevRef.current = contentRevision;
+    let cancelled = false;
+    (async () => {
+      try {
+        const t = (await readTextFile(handle, `papers/${citekey}/main.tex`)) ?? "";
+        if (cancelled || t === texRef.current) return;
+        setParseError(null);
+        setTex(t);
+      } catch (e) {
+        console.warn(`Failed to re-read Library paper ${citekey}`, e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [handle, citekey, isIndexed, contentRevision]);
 
   if (!citekey) return null;
 
@@ -212,6 +289,9 @@ function PaperReader({
   pgmarkPages,
 }: PaperReaderProps) {
   const [content, setContent] = useState<JSONContent | null>(null);
+  // Bumped with every fresh parse, so a re-indexed paper's new text REMOUNTS
+  // the pipeline below (EditorPane takes `initialContent` once) — task 765.
+  const [contentRev, setContentRev] = useState(0);
   // PageScrollLozenge needs the live TipTap Editor instance to compute
   // page-mark scroll positions. Editor.tsx hands one back via
   // `onEditorReady`; we keep it in state (not a ref) so the lozenge
@@ -360,6 +440,7 @@ function PaperReader({
       // tex directly so we run it here.
       assignUuids(doc);
       setContent(doc);
+      setContentRev((r) => r + 1);
       onParseError(null);
     } catch (e) {
       onParseError(e instanceof Error ? e.message : String(e));
@@ -456,8 +537,9 @@ function PaperReader({
             handle is never used for writes, but `useDocument` will throw
             without an ancestor — this wrap satisfies the architectural
             contract and gives the Reader the same `key=`-driven remount
-            on docId change as the main app. */}
-        <DocPipeline key={docId} docId={docId}>
+            on docId change as the main app — plus one per fresh parse
+            (`contentRev`), so a re-indexed paper's new text mounts. */}
+        <DocPipeline key={`${docId}#${contentRev}`} docId={docId}>
           {/* EditorChromeProvider here (above EditorPane) so EditorPane's
               OWN body hooks — useNotes/useTodos/useReports/... and the
               persistent-state write-guard inside them — resolve READER_CHROME

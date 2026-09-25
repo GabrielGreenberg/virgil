@@ -8,6 +8,8 @@ import LibraryFolderGate from "@library/components/LibraryFolderGate";
 import PaperFileBody from "@library/components/PaperFileBody";
 import type { BibEntry } from "@library/lib/types";
 import { paperReaderScope } from "@/components/editor-layout/reader-host";
+import { libraryPaperDocId } from "@/lib/host-writability";
+import { useCardStoreLease } from "@/links/_shared/anchored-card-store";
 
 interface Props {
   /** Citekey backing this outer tab. */
@@ -40,6 +42,11 @@ function ReadyView({
   handle: FileSystemDirectoryHandle;
   citekey: string;
 }) {
+  // This tab mounts the SAME docId (`library-paper:<citekey>`) the Library
+  // Reader's LRU may also hold, so it takes its own lease on the paper's card
+  // store — the Reader evicting its slot can't dispose it from under this tab,
+  // and this tab closing releases what it held (task 765).
+  useCardStoreLease(libraryPaperDocId(citekey));
   // Shared catalog poll (catalog-store) rather than a second per-view loop.
   const { entries: catalogEntries } = useCatalogItems();
   const { entries: bibEntries, reload: reloadBib } = useMasterBib(handle);

@@ -19,6 +19,7 @@ import {
   type KeepAliveEntry,
 } from "@/lib/keep-alive/useKeepAliveLRU";
 import { KeepAliveSlot } from "@/lib/keep-alive/KeepAliveSlot";
+import { useCardStoreLease } from "@/links/_shared/anchored-card-store";
 
 /** 1 visible + 2 warm. Each warm doc holds a live ProseMirror editor + parsed
  *  doc + per-doc sidecar hooks + a DiskWatcher, so this is materially heavier
@@ -60,6 +61,11 @@ export function DocKeepAliveSlot({
   onUnmount: (slotDocId: string) => void;
   children: ReactNode;
 }) {
+  // Lease this doc's interaction store for the slot's mounted lifetime — a
+  // keep-alive hide keeps it (selection/expansion survive a tab switch), a
+  // true unmount releases it (task 765: ref-counted, shared with any other
+  // holder of the same docId).
+  useCardStoreLease(slotDocId);
   const onUnmountRef = useRef(onUnmount);
   onUnmountRef.current = onUnmount;
   useEffect(() => {

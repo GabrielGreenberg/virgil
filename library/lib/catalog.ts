@@ -167,6 +167,14 @@ export async function readCatalog(
  *  rich-index → deep-index rename leaves on-disk catalogs with
  *  `indexed.state === "richIndexed"`; the rest of the codebase only
  *  knows about "deepIndexed", so we translate here. Idempotent. */
+/** The paper's CONTENT identity as the catalog knows it — moves whenever a
+ *  skill run may have rewritten `papers/<citekey>/main.tex` (index state,
+ *  its timestamp, the row's own update stamp). Consumers treat a change as
+ *  "re-read and compare", never as proof the text changed (task 765). */
+export function paperContentRevision(e: CatalogEntry): string {
+  return `${e.indexed.state}|${e.indexed.lastIndexedAt ?? ""}|${e.updatedAt}`;
+}
+
 export function normalizeCatalogEntry(e: CatalogEntry): CatalogEntry {
   const legacyState = (e.indexed?.state as string | undefined);
   if (legacyState === "richIndexed") {
