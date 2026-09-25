@@ -171,8 +171,9 @@ function requestedEqual(
 // ---------------------------------------------------------------------------
 
 /** The library root every consumer reads through. The Library tab and a
- *  standalone outer paper tab each run their own `useLibraryHandle`, so the
- *  same directory arrives under two object identities — which is why adopting
+ *  standalone outer paper tab share ONE library root (task 766), but a
+ *  re-resolve from IndexedDB (another window's pick, a remount) can still hand
+ *  the same directory over under a new object identity — which is why adopting
  *  a new handle re-reads but never INVALIDATES the snapshot (both handles
  *  answer for the same bytes; a genuinely different folder converges on the
  *  next scan). */

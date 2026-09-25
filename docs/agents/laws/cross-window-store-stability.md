@@ -729,3 +729,18 @@ CI: [view-prefs-peer-sync-normalization.test.tsx](../../../src/hooks/__tests__/v
 Measured by neutering the handler back to the raw merge: both peer-sync legs
 fail. **Owed, not claimed:** a real two-window eyeball — multi-window
 behaviour masks in a single preview tab.
+
+## The out-of-band half: state that does NOT live in localStorage (task 766)
+
+Some app-wide facts live in IndexedDB — above all the Library folder handle
+(`library/lib/library-folder.ts`), which no `storage` event can carry. Such a
+fact is still ONE store per window (`library/lib/library-root-store.ts`: every
+`useLibraryHandle` subscribes; pick / reset / grant publish there, with a
+newest-ticket-wins guard so a slow resolve can't publish over a newer reset),
+and its doors signal peers with `postStorageStamp(key)` from
+[src/lib/cross-window-storage.ts](../../../src/lib/cross-window-storage.ts): a
+nonce under a declared non-flag key, which peers hear through
+`subscribeToStorageKey` and answer by re-reading the real source. The stamp
+carries no data. Never hold such a fact in one component's `useState` — a
+second mounted surface then keeps reading and writing the old value.
+CI: `library/hooks/__tests__/library-root-shared.test.tsx`.

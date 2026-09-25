@@ -1,26 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  getLibraryHandle,
-  pickLibraryFolder,
-  ensureReadWritePermission,
-  queryReadWritePermission,
-  clearLibraryHandle,
-  resolveLibraryRootPath,
-} from "@library/lib/library-folder";
-import { ensureLibraryStructure } from "@library/lib/library-storage";
-import { syncSkillBundle, type SyncResult } from "@library/lib/skill-sync";
+// The Library folder gate's hook — a thin adapter over the ONE app-level
+// library root (`library-root-store.ts`, task 766). Every surface that calls
+// it — the Library tab, each torn-out Library outer tab, each popped-out
+// paper tab — reads the same root, so a Reset or re-pick in any of them moves
+// all of them (and, via the stamp, every other window). Only `pickerError` is
+// per-surface: it belongs to the gate whose button was clicked.
 
-export type FolderState =
-  | { kind: "loading" }
-  | { kind: "none" }
-  | { kind: "needs-permission"; handle: FileSystemDirectoryHandle }
-  | { kind: "ready"; handle: FileSystemDirectoryHandle }
-  /** Reading the stored handle (IndexedDB) or its permission REJECTED. A
-   *  terminal state the gate renders with a Retry — never a "Loading…" that
-   *  never ends (task 764). */
-  | { kind: "error"; message: string };
+import { useCallback, useState } from "react";
+import {
+  useLibraryRoot,
+  resolveLibraryRoot,
+  retryLibraryRoot,
+  pickLibraryRoot,
+  grantLibraryRoot,
+  resetLibraryRoot,
+  resyncLibrarySkills,
+  dismissLibrarySyncError,
+} from "@library/lib/library-root-store";
+
+export type { FolderState, SkillSyncError } from "@library/lib/library-root-store";
 
 /** Worded for the gate when the browser answers a grant with "denied".
  *  Chrome remembers a denial per site, so re-clicking cannot re-prompt; the
@@ -30,287 +29,60 @@ export const GRANT_DENIED_MESSAGE =
   "Open this site's settings (the icon left of the address bar → Site settings), allow file editing, " +
   "then click Grant access — or pick a different folder.";
 
-/** A surfaced skill-bundle sync failure for the library folder. Drives a
- *  dismissible banner in LibraryView so a failed sync is a visible, fixable
- *  event rather than a silent console.error. */
-export interface SkillSyncError {
-  /** True for a revoked/denied FSA permission (NotAllowedError) — the
-   *  banner words it as a permission problem and Retry re-grants. */
-  permission: boolean;
-  message: string;
-}
+const PICKER_BUSY_MESSAGE =
+  "A file picker dialog from your previous click is still open — but it may be hidden behind the window, on another macOS Space, or on a secondary display. Find and dismiss it (or fully quit and reopen this app), then try again.";
 
-function describeError(err: unknown): string {
-  if (err instanceof Error && err.message) return err.message;
-  return String(err);
-}
+const GRANT_BUSY_MESSAGE =
+  "The browser permission prompt is already active (or stuck from a previous attempt). " +
+  "Dismiss any open dialog, then try again. If nothing visible is open, fully quit and reopen the app window.";
 
 export function useLibraryHandle() {
-  const [state, setState] = useState<FolderState>({ kind: "loading" });
-  const [lastSync, setLastSync] = useState<SyncResult | null>(null);
-  // Surfaced sync failure (driven into LibraryView's banner). Makes a
-  // failed skill sync loud + retryable instead of a silent console.error.
-  const [syncError, setSyncError] = useState<SkillSyncError | null>(null);
-  // Last error from the picker (or grant) flow. Cleared on each fresh
-  // attempt; surfaced to the UI so a stuck Chrome picker lock or a
-  // permission-prompt rejection isn't a silent no-op.
+  const { state, lastSync, syncError } = useLibraryRoot();
+  // Last error from THIS gate's picker (or grant) flow. Cleared on each fresh
+  // attempt; surfaced so a stuck Chrome picker lock or a permission-prompt
+  // rejection isn't a silent no-op.
   const [pickerError, setPickerError] = useState<string | null>(null);
-  // De-dupe sync across StrictMode double-mounts and rapid re-renders.
-  const syncedHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
-  // Guard against clicking the picker button twice while the first
-  // showDirectoryPicker / requestPermission call is still awaiting
-  // user input. Without this, the second click triggers Chrome's
-  // "file picker already active" NotAllowedError because the OS
-  // dialog from the first click is technically still open (often
-  // behind the window or on another macOS Space, where the user
-  // can't see it).
-  const pickerInFlightRef = useRef(false);
-
-  /**
-   * Write the Virgil skill bundle into the library folder. Best-effort on
-   * the auto path (library-open), but never silent: any failure becomes a
-   * surfaced `syncError` and a successful sync clears it + records lastSync.
-   *
-   * `regrant` re-acquires a possibly-revoked FSA permission first (e.g.
-   * after a PWA reinstall); its prompt must ride a user gesture, so it's
-   * only passed from the Re-sync / Retry click, never the auto path.
-   */
-  const runSkillSync = useCallback(
-    async (
-      handle: FileSystemDirectoryHandle,
-      opts: { dedupe?: boolean; regrant?: boolean } = {},
-    ) => {
-      if (opts.dedupe && syncedHandleRef.current === handle) return;
-      syncedHandleRef.current = handle;
-      try {
-        if (opts.regrant) {
-          const perm = await ensureReadWritePermission(handle);
-          if (perm !== "granted") {
-            setSyncError({
-              permission: true,
-              message:
-                "Virgil couldn't get permission to write the skill bundle into your library folder. Grant access and try again.",
-            });
-            return;
-          }
-        }
-        // Library folder writes its own library-path.json pointing to
-        // itself. In dev-storage we have the abs path via the dev API;
-        // in production FSA we leave it null (handled gracefully by
-        // library_path.py's resolution chain).
-        const libraryRoot = (await resolveLibraryRootPath()) ?? null;
-        const result = await syncSkillBundle(handle, { libraryRoot });
-        setSyncError(null);
-        setLastSync(result);
-      } catch (err) {
-        const permission =
-          err instanceof DOMException && err.name === "NotAllowedError";
-        setSyncError({
-          permission,
-          message: permission
-            ? "Virgil lost permission to write the skill bundle into your library folder (this can happen after reinstalling the app). Click Retry to re-grant access."
-            : `Virgil couldn't sync the skill bundle into your library: ${describeError(err)}. Your cowork commands may be out of date — click Retry.`,
-        });
-        console.error("[skill-sync] failed", err);
-      }
-    },
-    [],
-  );
-
-  const becameReady = useCallback(async (handle: FileSystemDirectoryHandle) => {
-    console.log("[library] becameReady: starting ensureLibraryStructure");
-    // Watchdog: if any FSA call inside ensureLibraryStructure stalls
-    // without throwing or resolving (rare but observed under some
-    // platform conditions — iCloud Drive sync, locked folders, OS
-    // permission prompts that never close), Promise.race lets us
-    // proceed to a usable "ready" state instead of stranding the user
-    // on the "Loading…" screen forever.
-    const STRUCTURE_TIMEOUT_MS = 8000;
-    let timedOut = false;
-    const timeout = new Promise<"timeout">((resolve) =>
-      setTimeout(() => {
-        timedOut = true;
-        resolve("timeout");
-      }, STRUCTURE_TIMEOUT_MS),
-    );
-    try {
-      const result = await Promise.race([
-        ensureLibraryStructure(handle).then(() => "ok" as const),
-        timeout,
-      ]);
-      if (result === "timeout") {
-        console.warn(
-          `[library] ensureLibraryStructure did not finish within ${STRUCTURE_TIMEOUT_MS}ms — proceeding to "ready" anyway. ` +
-            "This usually means a File System Access call is stuck (iCloud sync, locked folder, OS permission prompt). " +
-            "The library will load in degraded mode; some bootstrap files may be missing.",
-        );
-      } else {
-        console.log("[library] becameReady: ensureLibraryStructure done");
-      }
-    } catch (err) {
-      // Don't gate library load on bootstrap. The handle is permissioned;
-      // give the user a usable view (degraded if seeds are missing) rather
-      // than stranding them on an unhandled rejection.
-      console.error("[library] ensureLibraryStructure failed; loading anyway", err);
-    }
-    setState({ kind: "ready", handle });
-    console.log("[library] becameReady: state set to ready", { timedOut });
-    // Best-effort, deduped, and never silent — failures surface via syncError.
-    void runSkillSync(handle, { dedupe: true });
-  }, [runSkillSync]);
-
-  const refresh = useCallback(async () => {
-    console.log("[library] refresh: reading stored handle from IDB");
-    let handle: FileSystemDirectoryHandle | null | undefined;
-    let perm: PermissionState;
-    try {
-      handle = await getLibraryHandle();
-      if (!handle) {
-        console.log("[library] refresh: no handle stored — state -> none");
-        setState({ kind: "none" });
-        return;
-      }
-      console.log("[library] refresh: handle present — querying permission");
-      perm = await queryReadWritePermission(handle);
-    } catch (err) {
-      // An IndexedDB / permission-query rejection is a terminal state with
-      // a voice, not a pane stuck on "Loading…" (task 764).
-      console.error("[library] refresh failed", err);
-      setState({
-        kind: "error",
-        message: `Virgil couldn't read your saved library folder: ${describeError(err)}.`,
-      });
-      return;
-    }
-    console.log("[library] refresh: permission =", perm);
-    if (perm === "granted") {
-      await becameReady(handle);
-    } else {
-      setState({ kind: "needs-permission", handle });
-    }
-  }, [becameReady]);
-
-  /** Retry from the error state: back to "loading", then re-read. */
-  const retry = useCallback(async () => {
-    setState({ kind: "loading" });
-    await refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   const pick = useCallback(async () => {
-    console.log("[library] pick: click received");
-    if (pickerInFlightRef.current) {
-      console.warn(
-        "[library] pick: ignoring click — a picker dialog is already open. Look for a hidden file dialog (Mission Control, other Spaces, secondary display).",
-      );
-      setPickerError(
-        "A file picker dialog from your previous click is still open — but it may be hidden behind the window, on another macOS Space, or on a secondary display. Find and dismiss it (or fully quit and reopen this app), then try again.",
-      );
-      return;
-    }
     setPickerError(null);
-    pickerInFlightRef.current = true;
-    let result;
-    try {
-      result = await pickLibraryFolder();
-    } catch (err) {
-      // pickLibraryFolder classifies the picker's own errors; anything else
-      // still ends in a message, never an unhandled rejection from onClick.
-      setPickerError(`Virgil couldn't open the folder picker: ${describeError(err)}.`);
-      return;
-    } finally {
-      pickerInFlightRef.current = false;
-    }
-    if (result.kind === "ok") {
-      await becameReady(result.handle);
-    } else if (result.kind === "cancelled") {
-      // User dismissed the dialog — silent.
-    } else {
-      // "locked" or "error" — surface to the UI.
-      setPickerError(result.message);
-    }
-  }, [becameReady]);
+    const r = await pickLibraryRoot();
+    if (r.kind === "busy") setPickerError(PICKER_BUSY_MESSAGE);
+    else if (r.kind === "error") setPickerError(r.message);
+    // "cancelled" — the user dismissed the dialog: silent.
+  }, []);
 
   const grant = useCallback(async () => {
-    if (state.kind !== "needs-permission") return;
-    if (pickerInFlightRef.current) {
-      setPickerError(
-        "A permission prompt from your previous click is still open — but it may be hidden behind the window, on another macOS Space, or on a secondary display. Find and dismiss it (or fully quit and reopen this app), then try again.",
-      );
-      return;
-    }
     setPickerError(null);
-    pickerInFlightRef.current = true;
-    let perm: PermissionState;
-    try {
-      perm = await ensureReadWritePermission(state.handle);
-    } catch (err) {
-      const name = (err as DOMException)?.name;
-      // Chrome's "file picker already active" can fire from
-      // requestPermission too. Don't crash — let the user retry.
-      if (name === "AbortError") return;
-      if (name === "NotAllowedError") {
-        setPickerError(
-          "The browser permission prompt is already active (or stuck from a previous attempt). " +
-            "Dismiss any open dialog, then try again. If nothing visible is open, fully quit and reopen the app window.",
-        );
-        return;
-      }
-      // Anything else ends in a message too — this runs from an onClick
-      // whose promise nobody awaits, so a rethrow was an unhandled
-      // rejection and a gate that looked unchanged (task 764).
-      setPickerError(`Virgil couldn't get access to your library folder: ${describeError(err)}.`);
-      return;
-    } finally {
-      pickerInFlightRef.current = false;
-    }
-    if (perm === "granted") {
-      await becameReady(state.handle);
-    } else {
+    const r = await grantLibraryRoot();
+    if (r.kind === "busy") setPickerError(GRANT_BUSY_MESSAGE);
+    else if (r.kind === "error") setPickerError(r.message);
+    else if (r.kind === "not-granted") {
       // "denied" (or a prompt dismissed back to "prompt"): say so — the gate
       // otherwise looks exactly as it did before the click.
       setPickerError(
-        perm === "denied"
+        r.perm === "denied"
           ? GRANT_DENIED_MESSAGE
           : "Access wasn't granted. Click Grant access and choose Allow in the browser's prompt.",
       );
     }
-  }, [state, becameReady]);
-
-  const reset = useCallback(async () => {
-    await clearLibraryHandle();
-    syncedHandleRef.current = null;
-    setLastSync(null);
-    setPickerError(null);
-    setSyncError(null);
-    setState({ kind: "none" });
   }, []);
 
-  /** Manually re-run the skill sync for the library. Clears the per-handle
-   *  dedup so the write happens even if this folder already synced, and
-   *  re-grants permission from the click. Idempotent. */
-  const resyncSkills = useCallback(async () => {
-    if (state.kind !== "ready") return;
-    syncedHandleRef.current = null;
-    await runSkillSync(state.handle, { regrant: true });
-  }, [state, runSkillSync]);
-
-  const dismissSyncError = useCallback(() => setSyncError(null), []);
+  const reset = useCallback(async () => {
+    setPickerError(null);
+    await resetLibraryRoot();
+  }, []);
 
   return {
     state,
     pick,
     grant,
     reset,
-    refresh,
-    retry,
+    refresh: resolveLibraryRoot,
+    retry: retryLibraryRoot,
     lastSync,
     pickerError,
     syncError,
-    resyncSkills,
-    dismissSyncError,
+    resyncSkills: resyncLibrarySkills,
+    dismissSyncError: dismissLibrarySyncError,
   };
 }

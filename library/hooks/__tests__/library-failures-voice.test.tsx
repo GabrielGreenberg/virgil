@@ -32,6 +32,7 @@ vi.mock("@library/lib/queue", async () => {
 });
 
 import { useLibraryHandle, GRANT_DENIED_MESSAGE } from "../useLibraryHandle";
+import { __resetLibraryRootStoreForTests } from "@library/lib/library-root-store";
 import { useDropPdf } from "../useDropPdf";
 import { useNotificationStream } from "../useNotificationStream";
 import { readNotificationItems } from "@library/lib/queue";
@@ -45,6 +46,7 @@ beforeEach(() => {
   queueMock.dropUnsortedSource.mockReset();
   lf.resolveLibraryRootPath.mockResolvedValue(null);
   localStorage.clear();
+  __resetLibraryRootStoreForTests();
 });
 afterEach(() => {
   cleanup();

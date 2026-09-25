@@ -25,7 +25,7 @@ library/
 │   ├── TopBar.tsx, Toaster.tsx, DropZone.tsx
 │   └── LibraryFolderPicker.tsx, LibraryPermissionGate.tsx
 ├── hooks/               React hooks (state machines + polling)
-│   ├── useLibraryHandle.ts, useLibraryTabs.ts
+│   ├── useLibraryHandle.ts (adapter over lib/library-root-store.ts — ONE library root, task 766), useLibraryTabs.ts
 │   ├── useCatalog.ts, useMasterBib.ts, useUnsortedPdfs.ts
 │   ├── useDropPdf.ts
 │   ├── useNotificationStream.ts, useRowDotState.ts

@@ -255,6 +255,7 @@ export function isFlagKey(key: string): key is FlagKey {
 export const NON_FLAG_VIRGIL_KEYS: Readonly<Record<string, string>> = {
   "virgil:bug-report-draft": "stored draft text of an unsent bug report",
   "virgil:bug-report-machine": "the machine label a bug report is filed under",
+  "virgil:library-root-stamp": "nonce a window posts when it changes the library folder handle (IndexedDB), so peer windows re-resolve it",
   "virgil:suppressed-confirms": "set of confirm dialogs the user chose not to see again",
   "virgil:install-prompt-dismissed": "timestamp of the dismissed PWA install prompt",
   "virgil:selection-menu-color-palette": "the selection menu's last-used colour palette",
