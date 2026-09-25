@@ -229,9 +229,9 @@ export const REGISTRY_CHANGED_EVENT = "virgil-library-registry-changed";
  * library without owning a `useLibraryTabs` instance.
  *
  * Sync-from-the-caller's-view: the disk read-modify-write fires in
- * the background. After the disk write succeeds, the function
- * dispatches `REGISTRY_CHANGED_EVENT` so every in-window consumer
- * re-reads. No-ops when the FSA handle isn't available, when the
+ * the background, on the manifest store's one io chain; after the
+ * write lands, `announceManifestChange` tells every hook instance and
+ * other windows to re-read. No-ops when the FSA handle isn't available, when the
  * target id is built-in / project / paper-kind, or when the disk
  * doesn't have a matching manifest (a stale tab id from another
  * folder).
@@ -255,26 +255,30 @@ export function addEntryToLibraryGlobal(libId: string, entryKey: string): void {
       const { listLibraryManifests, writeLibraryManifest } = await import(
         "./library-storage"
       );
+      const { announceManifestChange, enqueueManifestIo } = await import(
+        "./manifest-io"
+      );
       const handle = await getLibraryHandle();
       if (!handle) return;
       const perm = await queryReadWritePermission(handle);
       if (perm !== "granted") return;
-      const list = await listLibraryManifests(handle);
-      const match = list.find((item) => item.manifest.id === libId);
-      if (!match) return;
-      const cur = match.manifest.citekeys;
-      if (cur.includes(entryKey)) return;
-      const updated = {
-        ...match.manifest,
-        citekeys: [...cur, entryKey],
-        updatedAt: Date.now(),
-      };
-      await writeLibraryManifest(handle, match.filename, updated);
-      try {
-        window.dispatchEvent(new CustomEvent(REGISTRY_CHANGED_EVENT));
-      } catch {
-        /* ignore */
-      }
+      // On the manifest store's ONE io chain (task 762): the read-modify-
+      // write cannot interleave with a `useDiskLibraries` flush, and the
+      // announcement reaches every hook instance and other windows.
+      await enqueueManifestIo(async () => {
+        const list = await listLibraryManifests(handle);
+        const match = list.find((item) => item.manifest.id === libId);
+        if (!match) return;
+        const cur = match.manifest.citekeys;
+        if (cur.includes(entryKey)) return;
+        const updated = {
+          ...match.manifest,
+          citekeys: [...cur, entryKey],
+          updatedAt: Date.now(),
+        };
+        await writeLibraryManifest(handle, match.filename, updated);
+        await announceManifestChange(handle);
+      });
     } catch (err) {
       console.error(
         "[library] addEntryToLibraryGlobal: failed to write manifest",

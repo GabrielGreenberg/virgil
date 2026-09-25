@@ -416,6 +416,29 @@ export async function deleteLibraryManifest(
   await deleteFile(root, `${SUBDIRS.libraries}/${filename}`);
 }
 
+/** The manifest store's cross-window change signal:
+ *  `.virgil/libraries/.version`, rewritten with a fresh token after every
+ *  manifest write/delete/rename (task 762). A dotfile, so
+ *  `listLibraryManifests` skips it. Deliberately NOT `catalog-version.txt`:
+ *  that counter is read-modify-written by the Python skills under a flock
+ *  the browser cannot take, and bumping it would also re-read catalog.json
+ *  in every window for a membership edit. A unique token needs no
+ *  read-modify-write, so two writers can never collapse into one value. */
+export const LIBRARIES_STAMP_PATH = `${SUBDIRS.libraries}/.version`;
+
+export async function readLibrariesStamp(
+  root: FileSystemDirectoryHandle,
+): Promise<string> {
+  return (await readTextFile(root, LIBRARIES_STAMP_PATH))?.trim() ?? "";
+}
+
+export async function writeLibrariesStamp(
+  root: FileSystemDirectoryHandle,
+  token: string,
+): Promise<void> {
+  await writeTextFile(root, LIBRARIES_STAMP_PATH, token);
+}
+
 /** Rename a manifest file. FSA has no native rename, so this is a
  *  read → write-new → delete-old sequence. Returns silently if
  *  `oldFilename` is missing or `oldFilename === newFilename`. */
