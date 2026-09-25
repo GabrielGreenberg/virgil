@@ -22,7 +22,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { SCOPE_DISPATCH, UUID_POS_SCOPES, type ScopeSearchCtx } from "@/panels/Search/scope-dispatch";
+import { SCOPE_DISPATCH, type ScopeSearchCtx } from "@/panels/Search/scope-dispatch";
 import { SCOPE_ORDER, type SearchScope, type SearchHit } from "@/lib/search-sources";
 import type { ReportItem } from "@/lib/types";
 
@@ -69,14 +69,14 @@ describe("SCOPE_DISPATCH.reports — runs searchReports against report cards", (
       } as unknown as ReportItem,
     ];
 
-    // Minimal ctx — reports search uses cards + editor + uuidPos + re. The
-    // editor anchor resolution falls back to lowestPos (empty map) → unanchored,
-    // which is fine for asserting the MATCH fired.
+    // Minimal ctx — reports search uses cards + the card-anchor resolver + re.
+    // A resolver that binds nothing leaves the hit unanchored, which is fine
+    // for asserting the MATCH fired.
     const fakeEditor = {} as ScopeSearchCtx["editor"];
     const ctx: ScopeSearchCtx = {
       editor: fakeEditor,
       re: /UNICORN/g,
-      uuidPos: new Map(),
+      resolveCardAnchor: () => ({ rows: [], anchored: false }),
       footnotes: [],
       orphanedFootnotes: [],
       notes: [],
@@ -99,10 +99,3 @@ describe("SCOPE_DISPATCH.reports — runs searchReports against report cards", (
   });
 });
 
-describe("UUID_POS_SCOPES — honest about which scopes need the uuid→pos map", () => {
-  it("every listed scope is a real SearchScope", () => {
-    for (const s of UUID_POS_SCOPES) {
-      expect(SCOPE_ORDER).toContain(s);
-    }
-  });
-});

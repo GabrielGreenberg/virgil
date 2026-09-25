@@ -6,13 +6,12 @@
  * returns partial hits that the panel enriches with breadcrumbs + UI.
  */
 
-import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
 import { DEFAULT_PANEL_COLORS, type PanelThemeKey } from "./panel-theme";
 import type { PanelKind } from "@/panels/_shared/types";
-import { resolveAnchorRange, getLinkedTextObjectIds, getTextAnchor } from "@/links/links";
-import type { Link } from "@/links/_shared/types";
+import type { CardWithLinks } from "@/links/links";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
 import type {
   ArchivedSnippet,
   CitationRef,
@@ -66,8 +65,13 @@ export interface SearchHit {
    *  stable uuid + the char offset of the match within that block + the match
    *  length. `navigateToResult` re-resolves this to a LIVE PM range via the
    *  DocStructure snapshot, so a click highlights the correct CURRENT text
-   *  even after the user typed in an earlier paragraph. Absent for collection
-   *  scopes (those re-resolve through their anchor / the live-pos resolver). */
+   *  even after the user typed in an earlier paragraph.
+   *
+   *  Anchored CARD hits (notes/todos/archive/cuts/reports/revisions) carry the
+   *  same identity for the paragraph the card-anchor authority RESOLVED them to
+   *  (`offset: 0, length: 0` — a caret at the paragraph's start), so their
+   *  click is live by the same door rather than scrolling to the baked `from`
+   *  (task 758). Absent for footnote/citation/bibliography hits. */
   blockId?: { blockUuid: string; offset: number; length: number };
 }
 
@@ -287,42 +291,33 @@ function scanText(
   return out;
 }
 
-/** Build a map from paragraph/heading UUID → first doc position it appears at. */
-export function buildUuidPosMap(editor: Editor): Map<string, number> {
-  const map = new Map<string, number>();
-  editor.state.doc.descendants((node, pos) => {
-    const uuid = node.attrs?.uuid as string | undefined;
-    if (uuid && !map.has(uuid)) map.set(uuid, pos);
-    return true;
-  });
-  return map;
+/**
+ * Where is this card anchored, for search? — read off the ONE card-anchor
+ * authority (`buildCardAnchorPass().resolve`, task 369's four-rung ladder:
+ * live uuid → surviving Mode-B mark → RC1 self-heal → snapshot relocation),
+ * the same resolution the margin marker and the omni card render from.
+ *
+ * Task 758: search used to hand-roll three partial answers (text-anchor →
+ * bare uuid for notes/cuts/reports; bare uuid only for todos/archive; text
+ * anchor only for revisions), so a paragraph-pinned revision or a
+ * snapshot-recovered archive clip had a margin marker while its search hit
+ * read "(unanchored)". Every card scope now goes through here — there is no
+ * second rule to drift. `rows[0]` is the RESOLVED paragraph (the authority
+ * seeds its rows with it). An anchored verdict with no position (the mount
+ * gap, where the pass has no index) is honestly unanchored for ordering.
+ */
+interface CardAnchor {
+  pos: number;
+  pid: string;
 }
 
-function lowestPos(
-  uuidPos: Map<string, number>,
-  ids: string[] | undefined,
-): number | null {
-  if (!ids || ids.length === 0) return null;
-  let best: number | null = null;
-  for (const id of ids) {
-    const p = uuidPos.get(id);
-    if (p == null) continue;
-    if (best == null || p < best) best = p;
-  }
-  return best;
-}
-
-function resolveItemPos(
-  editor: Editor,
-  uuidPos: Map<string, number>,
-  item: { id: string; links?: Link[] },
-): number | null {
-  const anchor = getTextAnchor(item);
-  if (anchor) {
-    const r = resolveAnchorRange(editor, anchor.anchorId);
-    if (r) return r.from;
-  }
-  return lowestPos(uuidPos, getLinkedTextObjectIds(item));
+function cardAnchor(
+  resolve: CardAnchorResolver,
+  card: CardWithLinks,
+): CardAnchor | null {
+  const { rows, anchored } = resolve(card);
+  const row = anchored ? rows[0] : undefined;
+  return row && row.pos != null ? { pos: row.pos, pid: row.pid } : null;
 }
 
 /** Turn a matched string + context into a SearchHit. `archived` is the
@@ -331,12 +326,14 @@ function resolveItemPos(
 function hitFromMatch(
   scope: SearchScope,
   itemId: string | undefined,
-  pos: number | null,
+  at: number | CardAnchor | null,
   field: SearchHit["field"],
   m: { start: number; end: number; match: string; before: string; after: string },
   archived?: boolean,
 ): SearchHit {
-  const anchored = pos != null;
+  const anchored = at != null;
+  const pos = typeof at === "number" ? at : at?.pos;
+  const card = typeof at === "object" ? at : null;
   return {
     scope,
     itemId,
@@ -348,6 +345,7 @@ function hitFromMatch(
     field,
     unanchored: !anchored,
     archived: archived || undefined,
+    ...(card ? { blockId: { blockUuid: card.pid, offset: 0, length: 0 } } : {}),
   };
 }
 
@@ -388,13 +386,12 @@ export function searchFootnotes(
 
 export function searchNotes(
   notes: UserNote[],
-  editor: Editor,
-  uuidPos: Map<string, number>,
+  resolve: CardAnchorResolver,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const n of notes) {
-    const pos = resolveItemPos(editor, uuidPos, n);
+    const pos = cardAnchor(resolve, n);
     if (n.title) {
       for (const m of scanText(n.title, re)) {
         out.push(hitFromMatch("notes", n.id, pos, "title", m, n.archived));
@@ -454,12 +451,12 @@ export function searchCitations(
 
 export function searchTodos(
   todos: TodoItem[],
-  uuidPos: Map<string, number>,
+  resolve: CardAnchorResolver,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const t of todos) {
-    const pos = lowestPos(uuidPos, getLinkedTextObjectIds(t));
+    const pos = cardAnchor(resolve, t);
     for (const m of scanText(t.text, re)) {
       out.push(hitFromMatch("todos", t.id, pos, "text", m, t.archived));
     }
@@ -476,12 +473,12 @@ export function searchTodos(
 
 export function searchArchive(
   snippets: ArchivedSnippet[],
-  uuidPos: Map<string, number>,
+  resolve: CardAnchorResolver,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const s of snippets) {
-    const pos = lowestPos(uuidPos, getLinkedTextObjectIds(s));
+    const pos = cardAnchor(resolve, s);
     if (s.title) {
       for (const m of scanText(s.title, re)) {
         out.push(hitFromMatch("archive", s.id, pos, "title", m, s.archived));
@@ -499,13 +496,12 @@ export function searchArchive(
 
 export function searchCutter(
   cards: CutterCard[],
-  editor: Editor,
-  uuidPos: Map<string, number>,
+  resolve: CardAnchorResolver,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const c of cards) {
-    const pos = resolveItemPos(editor, uuidPos, c);
+    const pos = cardAnchor(resolve, c);
     if (c.kind === "comment") {
       const body = c.text || richJsonToPlainText(c.content);
       for (const m of scanText(body, re)) {
@@ -530,13 +526,12 @@ export function searchCutter(
 
 export function searchReports(
   cards: ReportItem[],
-  editor: Editor,
-  uuidPos: Map<string, number>,
+  resolve: CardAnchorResolver,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const c of cards) {
-    const pos = resolveItemPos(editor, uuidPos, c);
+    const pos = cardAnchor(resolve, c);
     if (c.kind === "report" && c.title) {
       for (const m of scanText(c.title, re)) {
         out.push(hitFromMatch("reports", c.id, pos, "title", m, c.archived));
@@ -554,20 +549,17 @@ export function searchReports(
 
 export function searchComments(
   cards: RevisionCard[],
-  editor: Editor,
+  resolve: CardAnchorResolver,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const c of cards) {
-    const ta = getTextAnchor(c);
-    const range = ta ? resolveAnchorRange(editor, ta.anchorId) : null;
-    const pos = range?.from ?? null;
+    const pos = cardAnchor(resolve, c);
     if (c.kind === "comment") {
       for (const m of scanText(c.text, re)) {
         out.push(hitFromMatch("revisions", c.id, pos, "body", m, c.archived));
       }
     } else {
-      const fields: Array<keyof RevisionCard & string> = [];
       const checks: Array<{ value: string }> = [
         { value: c.original_text },
         { value: c.suggested_text },
@@ -580,7 +572,6 @@ export function searchComments(
           out.push(hitFromMatch("revisions", c.id, pos, "body", m, c.archived));
         }
       }
-      void fields;
     }
   }
   return out;

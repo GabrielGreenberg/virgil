@@ -19,7 +19,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import type { Editor } from "@tiptap/react";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
 import {
   searchNotes,
   searchCitations,
@@ -42,11 +42,10 @@ import type {
 } from "@/lib/types";
 
 const RE = /UNICORN/g;
-// Anchor resolution falls back to lowestPos over an empty uuid map →
-// unanchored, which is orthogonal to what we assert here. The fake editor is
-// never dereferenced on that path (no textRange links on the fixtures).
-const fakeEditor = {} as Editor;
-const uuidPos = new Map<string, number>();
+// Anchor resolution is the card-anchor authority's job (task 758); a resolver
+// that binds nothing leaves every hit unanchored, which is orthogonal to what
+// we assert here.
+const resolve: CardAnchorResolver = () => ({ rows: [], anchored: false });
 
 const doc = (text: string) => ({
   type: "doc",
@@ -71,7 +70,7 @@ describe("collection search fns stamp the item's archived flag onto hits", () =>
       { kind: "note", id: "n-act", title: "UNICORN note",
         content: doc("UNICORN body"), links: [] },
     ] as unknown as UserNote[];
-    expectStamped(searchNotes(notes, fakeEditor, uuidPos, RE), "n-arch", "n-act");
+    expectStamped(searchNotes(notes, resolve, RE), "n-arch", "n-act");
   });
 
   it("citations (persisted, incl. the display-text field)", () => {
@@ -91,7 +90,7 @@ describe("collection search fns stamp the item's archived flag onto hits", () =>
         notes: "UNICORN detail", links: [] },
       { id: "t-act", text: "UNICORN todo", links: [] },
     ] as unknown as TodoItem[];
-    expectStamped(searchTodos(todos, uuidPos, RE), "t-arch", "t-act");
+    expectStamped(searchTodos(todos, resolve, RE), "t-arch", "t-act");
   });
 
   it("archive snippets (a snippet card itself can be archived)", () => {
@@ -101,7 +100,7 @@ describe("collection search fns stamp the item's archived flag onto hits", () =>
       { id: "s-act", title: "UNICORN clip",
         content: doc("UNICORN text"), createdAt: "", links: [] },
     ] as unknown as ArchivedSnippet[];
-    expectStamped(searchArchive(snippets, uuidPos, RE), "s-arch", "s-act");
+    expectStamped(searchArchive(snippets, resolve, RE), "s-arch", "s-act");
   });
 
   it("cutter cards (comment + suggestion kinds)", () => {
@@ -112,7 +111,7 @@ describe("collection search fns stamp the item's archived flag onto hits", () =>
         suggested_text: "UNICORN suggested", explanation: "UNICORN why",
         user_text: "", instructions: "", links: [] },
     ] as unknown as CutterCard[];
-    expectStamped(searchCutter(cards, fakeEditor, uuidPos, RE), "cut-arch", "cut-act");
+    expectStamped(searchCutter(cards, resolve, RE), "cut-arch", "cut-act");
   });
 
   it("reports", () => {
@@ -122,7 +121,7 @@ describe("collection search fns stamp the item's archived flag onto hits", () =>
       { kind: "report", id: "rep-act", title: "UNICORN report",
         text: "UNICORN body", content: doc("UNICORN body"), links: [] },
     ] as unknown as ReportItem[];
-    expectStamped(searchReports(cards, fakeEditor, uuidPos, RE), "rep-arch", "rep-act");
+    expectStamped(searchReports(cards, resolve, RE), "rep-arch", "rep-act");
   });
 
   it("revision cards (comment + suggestion kinds)", () => {
@@ -133,7 +132,7 @@ describe("collection search fns stamp the item's archived flag onto hits", () =>
         suggested_text: "", explanation: "", user_text: "", instructions: "",
         links: [] },
     ] as unknown as RevisionCard[];
-    expectStamped(searchComments(cards, fakeEditor, RE), "rev-arch", "rev-act");
+    expectStamped(searchComments(cards, resolve, RE), "rev-arch", "rev-act");
   });
 
   it("footnotes carry no archived flag (live + orphans are never archived; the archived refs are atomless and not in the search corpus)", () => {
