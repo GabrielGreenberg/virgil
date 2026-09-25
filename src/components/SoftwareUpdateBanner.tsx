@@ -184,6 +184,7 @@ function SoftwareUpdateBannerImpl() {
   return (
     <>
       <button
+        type="button"
         onClick={() => void handleClick()}
         className="topbarbtn"
         data-hint={hint}

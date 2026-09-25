@@ -29,23 +29,23 @@
  * editor subscription, no per-keystroke work.
  */
 
-import { memo, useCallback, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback } from "react";
 import { usePreservationNotice } from "@/hooks/usePreservationNotice";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
-import { paletteForTone, toneForInterruptionKind } from "@/lib/interruption-tone";
+import { toneForInterruptionKind } from "@/lib/interruption-tone";
 import { useConfirmDialog } from "./ConfirmDialog";
-import { MenuProvider } from "./menu/MenuProvider";
-import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
-import { useMenuItem } from "./menu/useMenuItem";
-import { iconHint } from "@/components/Hint";
+import {
+  BarStatusMenuDetail,
+  BarStatusMenuRow,
+  BarStatusPill,
+  useBarStatusMenu,
+} from "./status/BarStatusPill";
 
 /** The refusal's register — `danger`, from the one kind → tone table
  *  (`interruption-tone.ts`, task 571): the user's work is on no disk and
  *  nothing is coming to put it there. */
-const PALETTE = paletteForTone(toneForInterruptionKind("preservation"));
-
-const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
+const TONE = toneForInterruptionKind("preservation");
 
 /** ShieldAlert — a 16px stroke-only shield-with-alert glyph. */
 function ShieldIcon() {
@@ -68,94 +68,16 @@ function ShieldIcon() {
   );
 }
 
-function KebabIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="1.6" />
-      <circle cx="12" cy="12" r="1.6" />
-      <circle cx="19" cy="12" r="1.6" />
-    </svg>
-  );
-}
-
-/** A single menu row — registers into the provider so arrow nav reaches it. */
-function MenuRow({
-  id,
-  label,
-  detail,
-  danger,
-  run,
-}: {
-  id: string;
-  label: string;
-  detail?: string;
-  danger?: boolean;
-  run: () => void;
-}) {
-  const { active, getItemProps } = useMenuItem({ id, region: "list", run });
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      className="w-full flex flex-col items-start gap-0.5 px-3 py-1.5 text-left hover-on-light"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
-    >
-      <span
-        className="text-[12px]"
-        // interruption-tone-exempt: a destructive-CHOICE ink for this menu row —
-        // task 528's family ("a button's paint describes what pressing it
-        // DOES"), not an interruption register; the row paints a choice, never
-        // the state the pill above it presents.
-        style={{ color: danger ? "var(--danger)" : "var(--ink-strong)" }}
-      >
-        {label}
-      </span>
-      {detail && (
-        <span className="text-[10px] text-ink-subtle leading-snug">{detail}</span>
-      )}
-    </button>
-  );
-}
-
 function PreservationNoticeBadge({ docId }: { docId: string | null }) {
   const notice = usePreservationNotice(docId);
   const { confirm, dialog } = useConfirmDialog();
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  // Held in STATE (not a ref) so it can be passed to the menu provider's
-  // `excludeRefs` without reading a ref during render — same as the
-  // external-change badge.
-  const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
-  const kebabRef = useRef<HTMLButtonElement | null>(null);
-
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-    setAnchorRect(null);
-  }, []);
-
-  const toggleMenu = useCallback(() => {
-    setMenuOpen((o) => {
-      const next = !o;
-      setAnchorRect(
-        next ? (kebabRef.current?.getBoundingClientRect() ?? null) : null,
-      );
-      return next;
-    });
-  }, []);
-
-  const trackAnchor = useCallback(
-    () => kebabRef.current?.getBoundingClientRect() ?? null,
-    [],
-  );
+  const menuCtl = useBarStatusMenu();
+  const { closeMenu, openMenu } = menuCtl;
 
   // TASK 392 — "Save now" on a document a preservation gate is refusing routes
   // here: the way out is the informed acknowledgement this menu offers, and a
   // Save button is not entitled to make that call on the user's behalf.
-  const openMenu = useCallback(() => {
-    setMenuOpen(true);
-    setAnchorRect(kebabRef.current?.getBoundingClientRect() ?? null);
-  }, []);
   useBlockingFlowRequest(docId, "preservation", openMenu);
 
   const lost = notice?.lost ?? 0;
@@ -235,83 +157,47 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
       `it. Open the code view to see the source, or fix the file in another editor ` +
       `and reopen it.`;
 
-  const menu: ReactNode =
-    menuOpen && anchorRect && typeof document !== "undefined" ? (
-      <MenuProvider
-        id="preservation-notice-menu"
-        layout="list"
-        role="menu"
-        anchorRect={anchorRect}
-        placements={MENU_PLACEMENTS}
-        gap={4}
-        excludeRefs={[wrapEl]}
-        onClose={closeMenu}
-        ariaLabel="Preservation notice actions"
-        trackAnchor={trackAnchor}
-        containerClassName="min-w-[260px] max-w-[340px] py-1"
-      >
-        {isSerialize ? null : (
-        <MenuRow
-          id="save-anyway"
-          label={
-            isMount
-              ? "Save anyway — writes an EMPTY document"
-              : "Save anyway — drops the missing text"
-          }
-          detail="Writes the editor's version over the file on disk. A copy of the current file is kept in virgil/.history/."
-          danger
-          run={() => void handleSaveAnyway()}
-        />
-        )}
-        <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
-          {detail}
-        </div>
-      </MenuProvider>
-    ) : null;
-
   return (
-    <div
-      ref={setWrapEl}
-      className="relative inline-flex items-center gap-1"
-      data-preservation-notice={notice.source}
+    <BarStatusPill
+      tone={TONE}
+      glyph={<ShieldIcon />}
+      label={
+        isSerialize
+          ? "Not saving — Virgil can't write this document"
+          : isMount
+            ? "Not saving — this file didn't open"
+            : "Not saving — this file didn't fully load"
+      }
+      ariaLabel="Not saving — Virgil could not fully read this file"
+      hint="Virgil could not fully read this file — it is not saving"
+      data={{ "data-preservation-notice": notice.source }}
+      menu={{
+        controller: menuCtl,
+        id: "preservation-notice-menu",
+        ariaLabel: "Preservation notice actions",
+        kebabLabel: "Preservation notice options",
+        children: (
+          <>
+            {isSerialize ? null : (
+              <BarStatusMenuRow
+                id="save-anyway"
+                label={
+                  isMount
+                    ? "Save anyway — writes an EMPTY document"
+                    : "Save anyway — drops the missing text"
+                }
+                detail="Writes the editor's version over the file on disk. A copy of the current file is kept in virgil/.history/."
+                danger
+                run={() => void handleSaveAnyway()}
+              />
+            )}
+            <BarStatusMenuDetail>{detail}</BarStatusMenuDetail>
+          </>
+        ),
+      }}
     >
-      <span
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[280px]"
-        style={{
-          background: PALETTE.bg,
-          borderColor: PALETTE.edge,
-          color: PALETTE.ink,
-        }}
-        data-hint="Virgil could not fully read this file — it is not saving"
-        aria-label="Not saving — Virgil could not fully read this file"
-      >
-        <span aria-hidden style={{ color: PALETTE.edge, display: "inline-flex" }}>
-          <ShieldIcon />
-        </span>
-        <span className="truncate">
-          {isSerialize
-            ? "Not saving — Virgil can't write this document"
-            : isMount
-              ? "Not saving — this file didn't open"
-              : "Not saving — this file didn't fully load"}
-        </span>
-      </span>
-
-      <button
-        ref={kebabRef}
-        type="button"
-        onClick={toggleMenu}
-        className="w-5 h-5 inline-flex items-center justify-center rounded hover-on-dark text-ink-subtle focus-ring"
-        {...iconHint({ label: "Preservation notice options" })}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-      >
-        <KebabIcon />
-      </button>
-
-      {menu}
       {dialog}
-    </div>
+    </BarStatusPill>
   );
 }
 

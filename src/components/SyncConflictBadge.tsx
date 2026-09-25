@@ -58,9 +58,7 @@ import {
   memo,
   useCallback,
   useMemo,
-  useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { useSyncConflictNotice } from "@/hooks/useSyncConflictNotice";
 import { dismissSyncConflictNotice } from "@/lib/sync-conflict-notice";
@@ -74,12 +72,12 @@ import {
   scanSyncConflicts,
 } from "@/lib/sync-conflict-scan";
 import { useConfirmDialog } from "./ConfirmDialog";
-import { MenuProvider } from "./menu/MenuProvider";
-import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
-import { useMenuItem } from "./menu/useMenuItem";
-import { iconHint } from "@/components/Hint";
-
-const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
+import {
+  BarStatusMenuDetail,
+  BarStatusMenuRow,
+  BarStatusPill,
+  useBarStatusMenu,
+} from "./status/BarStatusPill";
 
 /** Copy — a 16px stroke-only two-sheets glyph (the "there are two of these" idea). */
 function ForkIcon() {
@@ -101,72 +99,12 @@ function ForkIcon() {
   );
 }
 
-function KebabIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="1.6" />
-      <circle cx="12" cy="12" r="1.6" />
-      <circle cx="19" cy="12" r="1.6" />
-    </svg>
-  );
-}
-
-function MenuRow({
-  id,
-  label,
-  run,
-  disabled,
-}: {
-  id: string;
-  label: string;
-  run: () => void;
-  disabled?: boolean;
-}) {
-  const { active, getItemProps } = useMenuItem({ id, region: "list", run });
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      disabled={disabled}
-      className="w-full px-3 py-1.5 text-left text-[12px] hover-on-light disabled:opacity-50"
-      style={{
-        background: active ? "var(--menu-roving-bg)" : undefined,
-        color: "var(--ink-strong)",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 function SyncConflictBadge({ docId }: { docId: string | null }) {
   const notice = useSyncConflictNotice(docId);
   const { confirm, dialog } = useConfirmDialog();
   const [cleaning, setCleaning] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
-  const kebabRef = useRef<HTMLButtonElement | null>(null);
-
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-    setAnchorRect(null);
-  }, []);
-
-  const toggleMenu = useCallback(() => {
-    setMenuOpen((o) => {
-      const next = !o;
-      setAnchorRect(
-        next ? (kebabRef.current?.getBoundingClientRect() ?? null) : null,
-      );
-      return next;
-    });
-  }, []);
-
-  const trackAnchor = useCallback(
-    () => kebabRef.current?.getBoundingClientRect() ?? null,
-    [],
-  );
+  const menuCtl = useBarStatusMenu();
+  const { closeMenu } = menuCtl;
 
   const handleDismiss = useCallback(() => {
     closeMenu();
@@ -310,116 +248,88 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
       ? `${total} conflicted ${total === 1 ? "copy" : "copies"} · ${contentTotal} with content`
       : `${total} conflicted ${total === 1 ? "copy" : "copies"}`;
 
-  const menu: ReactNode =
-    menuOpen && anchorRect && typeof document !== "undefined" ? (
-      <MenuProvider
-        id="sync-conflict-menu"
-        layout="list"
-        role="menu"
-        anchorRect={anchorRect}
-        placements={MENU_PLACEMENTS}
-        gap={4}
-        excludeRefs={[wrapEl]}
-        onClose={closeMenu}
-        ariaLabel="Sync conflict details"
-        trackAnchor={trackAnchor}
-        containerClassName="min-w-[280px] max-w-[360px] py-1"
-      >
-        {plan.length > 0 && (
-          <MenuRow
-            id="cleanup"
-            label={
-              cleaning
-                ? "Deleting…"
-                : `Delete ${plan.length} file${plan.length === 1 ? "" : "s"} that carry nothing…`
-            }
-            run={handleCleanup}
-            disabled={cleaning}
-          />
-        )}
-        <MenuRow id="recheck" label="Check the folder again" run={handleRecheck} />
-        <MenuRow id="dismiss" label="Dismiss for this session" run={handleDismiss} />
-        <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
-          {writer} could not merge two versions of these files, so it kept both
-          and renamed one aside. Virgil is using the un-renamed one.
-          {contentTotal > 0 && (
-            <>
-              {" "}
-              The files marked below hold your writing, so a copy may contain
-              notes or cards you cannot see in the app. Virgil does not merge or
-              delete them — open the paper&apos;s <code>virgil/</code> folder in
-              Finder to compare and clean up. Virgil checks the folder again
-              each time you come back to this tab.
-            </>
-          )}
-        </div>
-        <ul className="px-3 pt-1.5 pb-1 text-[10px] text-ink-subtle leading-snug list-none">
-          {groups.map((g) => (
-            <li key={g.base} className="flex items-baseline justify-between gap-2">
-              <span
-                className="font-mono truncate"
-                style={g.tier === "content" ? { color: "var(--ink-body)" } : undefined}
-              >
-                {g.base}
-              </span>
-              <span className="shrink-0">
-                {g.siblings.length}
-                {g.tier === "content" ? " · content" : ""}
-              </span>
-            </li>
-          ))}
-          {swapFiles.length > 0 && (
-            <li className="mt-1 pt-1 border-t border-edge-subtle">
-              {swapFiles.length} leftover <code>.crswap</code> temp{" "}
-              {swapFiles.length === 1 ? "file" : "files"} (not your data — safe
-              to delete)
-            </li>
-          )}
-        </ul>
-      </MenuProvider>
-    ) : null;
-
   return (
-    <div
-      ref={setWrapEl}
-      className="relative inline-flex items-center gap-1"
-      data-sync-conflict-notice={String(total)}
+    <BarStatusPill
+      // The informational amber — the same register the external-change
+      // badge's 'change' tier uses. This is a warning about the FOLDER, never
+      // an alarm about the document: red stays reserved for an action that
+      // would destroy content with no net. Pre-769 this pill hand-copied the
+      // `info` tokens; it now names the TONE.
+      tone="info"
+      glyph={<ForkIcon />}
+      label={label}
+      ariaLabel={`${label} in this paper's sidecar folder`}
+      hint="A sync service left conflicted copies in this paper's virgil/ folder"
+      data={{ "data-sync-conflict-notice": String(total) }}
+      menu={{
+        controller: menuCtl,
+        id: "sync-conflict-menu",
+        ariaLabel: "Sync conflict details",
+        kebabLabel: "Conflicted copy details",
+        containerClassName: "min-w-[280px] max-w-[360px] py-1",
+        children: (
+          <>
+            {plan.length > 0 && (
+              <BarStatusMenuRow
+                id="cleanup"
+                label={
+                  cleaning
+                    ? "Deleting…"
+                    : `Delete ${plan.length} file${plan.length === 1 ? "" : "s"} that carry nothing…`
+                }
+                // Deleting is permanent (Virgil keeps no copy), so the row carries
+                // the destructive-CHOICE ink and says what it leaves alone.
+                detail="Only files Virgil can prove carry nothing: view-state copies and browser temp files. Your writing is never touched."
+                danger
+                run={handleCleanup}
+                disabled={cleaning}
+              />
+            )}
+            <BarStatusMenuRow id="recheck" label="Check the folder again" run={handleRecheck} />
+            <BarStatusMenuRow id="dismiss" label="Dismiss for this session" run={handleDismiss} />
+            <BarStatusMenuDetail>
+              {writer} could not merge two versions of these files, so it kept both
+              and renamed one aside. Virgil is using the un-renamed one.
+              {contentTotal > 0 && (
+                <>
+                  {" "}
+                  The files marked below hold your writing, so a copy may contain
+                  notes or cards you cannot see in the app. Virgil does not merge or
+                  delete them — open the paper&apos;s <code>virgil/</code> folder in
+                  Finder to compare and clean up. Virgil checks the folder again
+                  each time you come back to this tab.
+                </>
+              )}
+            </BarStatusMenuDetail>
+            <ul className="px-3 pt-1.5 pb-1 text-[10px] text-ink-subtle leading-snug list-none">
+              {groups.map((g) => (
+                <li key={g.base} className="flex items-baseline justify-between gap-2">
+                  <span
+                    className="font-mono truncate"
+                    style={g.tier === "content" ? { color: "var(--ink-body)" } : undefined}
+                  >
+                    {g.base}
+                  </span>
+                  <span className="shrink-0">
+                    {g.siblings.length}
+                    {g.tier === "content" ? " · content" : ""}
+                  </span>
+                </li>
+              ))}
+              {swapFiles.length > 0 && (
+                <li className="mt-1 pt-1 border-t border-edge-subtle">
+                  {swapFiles.length} leftover <code>.crswap</code> temp{" "}
+                  {swapFiles.length === 1 ? "file" : "files"} (not your data — safe
+                  to delete)
+                </li>
+              )}
+            </ul>
+          </>
+        ),
+      }}
     >
-      <span
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[280px]"
-        style={{
-          // The same warm amber family the external-change badge's 'change'
-          // tier uses — this is a warning about the FOLDER, never an alarm
-          // about the document. Red stays reserved for an action that would
-          // destroy content with no net.
-          background: "var(--amber-50)",
-          borderColor: "var(--amber-200)",
-          color: "var(--ink-strong)",
-        }}
-        data-hint="A sync service left conflicted copies in this paper's virgil/ folder"
-        aria-label={`${label} in this paper's sidecar folder`}
-      >
-        <span aria-hidden style={{ color: "var(--amber-500)", display: "inline-flex" }}>
-          <ForkIcon />
-        </span>
-        <span className="truncate">{label}</span>
-      </span>
-
-      <button
-        ref={kebabRef}
-        type="button"
-        onClick={toggleMenu}
-        className="w-5 h-5 inline-flex items-center justify-center rounded hover-on-dark text-ink-subtle focus-ring"
-        {...iconHint({ label: "Conflicted copy details" })}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-      >
-        <KebabIcon />
-      </button>
-
-      {menu}
       {dialog}
-    </div>
+    </BarStatusPill>
   );
 }
 

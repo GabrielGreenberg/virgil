@@ -282,6 +282,37 @@ neither is guessable from inside the component. This is the *Buttons* rule
 ("spell the treatment ONCE per control family, not once per button") applied to
 a pair that had drifted into two files under two names.
 
+### The bar status pill (Virgil-bar data-integrity badges)
+
+Every badge the Virgil bar's status cluster mounts — cowork pen, preservation
+notice, mirror recovery, sync conflict, external change, save state — renders
+through ONE primitive,
+[`BarStatusPill`](components/status/BarStatusPill.tsx) (task 769). A badge
+states its **tone**, **glyph**, **label**, **actions** and **menu**; the pill
+decides everything else:
+
+- **Colour** — `paletteForTone` (the alarm family's register, above). A badge
+  never spells a token; a state the tone table does not model names its TONE.
+  The pill adds one register of its own, `quiet` (surface ground, light
+  hairline, subtle ink), for a non-actionable statement that is not an
+  interruption (the disk watcher paused by a permission loss).
+- **Announcement** — `announcementForTone`: `alert` + `assertive` for
+  `danger`, `status` + `polite` otherwise. The same table the in-document
+  interruption band reads, so a state is announced the same way in both places.
+- **Glyph** — 14–16px stroke, inked with the tone's `edge`.
+- **Width** — ONE cap, 280px, on the labelled span; the label truncates and the
+  full sentence lives on `data-hint` and in the menu's detail block.
+- **Actions** — SIBLINGS of the labelled span, never inside it (a button inside
+  a labelled span competes with the span's name), in the bar's one button
+  style (`.topbarbtn`, via `BarStatusAction`), always `type="button"`.
+- **Kebab** — one kebab, one row (`BarStatusMenuRow`: label, optional detail
+  line, destructive-choice ink for a row that deletes), one detail block.
+
+The census is `bar-status-pill.test.tsx`: every cluster badge renders through
+the pill, and no `*Badge.tsx` spells the raw pill class or a private
+kebab/row. `CollabStatusPill` (presence, not data integrity) and the library's
+`StatusPill` (entry state, below) are different families.
+
 ### The status-pill tone family (library entry state)
 
 Five tones, three rungs each — `--pill-{green,amber,red,gray,blue}-{bg,fg,edge}`

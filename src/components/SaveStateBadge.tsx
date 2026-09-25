@@ -54,7 +54,8 @@ import {
   describeLandedAt,
   isSaveTierProtected,
 } from "@/lib/save-state";
-import { paletteForTone, type InterruptionTone } from "@/lib/interruption-tone";
+import { type InterruptionTone } from "@/lib/interruption-tone";
+import { BarStatusAction, BarStatusPill, barStatusAnnouncement } from "./status/BarStatusPill";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 
 function SaveIcon() {
@@ -115,6 +116,9 @@ function SaveStateBadgeImpl({
       <span
         className="inline-flex items-center px-2 text-[11px] text-ink-subtle whitespace-nowrap"
         data-save-state="clean"
+        // Task 769: the quiet tiers are statements too — announced politely,
+        // through the pill's one role table, rather than left role-less.
+        {...barStatusAnnouncement("quiet")}
         aria-label={describeLandedAt(view.lastLandedAt)}
       >
         {describeLandedAt(view.lastLandedAt)}
@@ -126,6 +130,9 @@ function SaveStateBadgeImpl({
       <span
         className="inline-flex items-center px-2 text-[11px] text-ink-subtle whitespace-nowrap"
         data-save-state="pending"
+        // Task 769: the quiet tiers are statements too — announced politely,
+        // through the pill's one role table, rather than left role-less.
+        {...barStatusAnnouncement("quiet")}
         aria-label="Saving"
       >
         Saving…
@@ -143,51 +150,41 @@ function SaveStateBadgeImpl({
   // The register: a blocked reason's own tone; the unsaved tier is the warm
   // WARNING family (nothing has declined the write, it merely has not landed).
   const tone: InterruptionTone = desc ? desc.tone : "warning";
-  const palette = paletteForTone(tone);
 
   return (
-    <span
-      className="inline-flex items-center gap-1"
-      data-save-state={blocked ? "blocked" : "unsaved"}
-      data-save-tone={tone}
-      data-save-escalated={view.escalated ? "true" : undefined}
-    >
-      <span
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border whitespace-nowrap"
-        style={{
-          background: palette.bg,
-          borderColor: palette.edge,
-          color: palette.ink,
-        }}
-        role="status"
-        aria-label={label}
-        data-hint={desc ? desc.sentence : "This document's recent changes are not on disk yet"}
-      >
-        <span aria-hidden style={{ color: palette.edge, display: "inline-flex" }}>
-          <SaveIcon />
-        </span>
-        <span>{label}</span>
-      </span>
-      {view.escalated && (
-        <span className="text-[10px] text-ink-subtle max-w-[420px] leading-snug">
-          {desc
-            ? desc.sentence
-            : "Virgil has not managed to write this paper to disk. Save now, or copy your recent work somewhere safe."}
-        </span>
-      )}
-      {action !== null && (
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={busy}
-          className="topbarbtn"
-          data-save-now
-          aria-label={action}
-        >
-          {busy ? "Saving…" : action}
-        </button>
-      )}
-    </span>
+    <BarStatusPill
+      tone={tone}
+      glyph={<SaveIcon />}
+      label={label}
+      ariaLabel={label}
+      hint={desc ? desc.sentence : "This document's recent changes are not on disk yet"}
+      data={{
+        "data-save-state": blocked ? "blocked" : "unsaved",
+        "data-save-tone": tone,
+        "data-save-escalated": view.escalated ? "true" : undefined,
+      }}
+      aside={
+        view.escalated && (
+          <span className="text-[10px] text-ink-subtle max-w-[420px] leading-snug">
+            {desc
+              ? desc.sentence
+              : "Virgil has not managed to write this paper to disk. Save now, or copy your recent work somewhere safe."}
+          </span>
+        )
+      }
+      actions={
+        action !== null && (
+          <BarStatusAction
+            onClick={() => void handleSave()}
+            disabled={busy}
+            data-save-now
+            ariaLabel={action}
+          >
+            {busy ? "Saving…" : action}
+          </BarStatusAction>
+        )
+      }
+    />
   );
 }
 

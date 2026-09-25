@@ -361,10 +361,10 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
    *  `hover:bg-surface-muted` (#fafaf9) — a near-white LIGHTEN on a mid-grey
    *  bar, i.e. the wrong direction as well as the wrong token. */
   it.each([
-    "src/components/SyncConflictBadge.tsx",
-    "src/components/ExternalChangeBadge.tsx",
+    // Task 769: the three data-integrity badges' kebabs are ONE kebab now,
+    // owned by the bar pill.
+    "src/components/status/BarStatusPill.tsx",
     "src/components/CollabStatusPill.tsx",
-    "src/components/PreservationNoticeBadge.tsx",
   ])("hovers %s's kebab on the DARK variant, like its siblings", (rel) => {
     const src = strip(readFileSync(path.join(REPO_ROOT, rel), "utf8"), true);
     expect(src).toContain("rounded hover-on-dark text-ink-subtle focus-ring");

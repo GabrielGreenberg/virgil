@@ -65,7 +65,7 @@ import {
   type DocumentInterruption,
   type InterruptionAction,
 } from "@/lib/document-interruption";
-import { paletteForTone } from "@/lib/interruption-tone";
+import { announcementForTone, paletteForTone } from "@/lib/interruption-tone";
 import { clearSidecarRefusal } from "@/lib/sidecar-refusal";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -237,8 +237,9 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
       className="doc-interruption-band shrink-0"
       data-doc-interruption-band={view.kind}
       data-doc-interruption-writer={view.writer}
-      role={view.tone === "danger" ? "alert" : "status"}
-      aria-live={view.tone === "danger" ? "assertive" : "polite"}
+      // The tone → role/aria-live pairing is the leaf's (task 769), shared
+      // with every bar pill through `BarStatusPill`.
+      {...announcementForTone(view.tone)}
       style={{
         background: palette.bg,
         borderBottom: `1px solid ${palette.edge}`,

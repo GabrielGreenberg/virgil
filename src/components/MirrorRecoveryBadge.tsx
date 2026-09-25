@@ -30,8 +30,8 @@ import { memo, useCallback, useState } from "react";
 import { useMirrorRecoveryOffer } from "@/hooks/useMirrorRecovery";
 import { getRecoveryActions } from "@/lib/mirror-recovery";
 import { describeAge } from "@/lib/save-state";
-import { paletteForTone } from "@/lib/interruption-tone";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
 
 function LifebuoyIcon() {
   return (
@@ -137,49 +137,36 @@ function MirrorRecoveryBadgeImpl({ docId }: { docId: string | null }) {
   if (!offer) return null;
 
   return (
-    <>
-      <span
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[360px]"
-        style={{
-          // The WARNING register, read off the ONE tone → palette table
-          // (`interruption-tone.ts`, task 571) — one step below the alarm ramp,
-          // because nothing here destroys anything and RED means "no net"
-          // (STYLE_GUIDE). Both answers this badge offers have one. A recovery
-          // offer is not an `InterruptionKind`, so it names its TONE directly,
-          // the same read the save badge makes for its unsaved tier.
-          background: paletteForTone("warning").bg,
-          borderColor: paletteForTone("warning").edge,
-          color: paletteForTone("warning").ink,
-        }}
-        data-mirror-recovery={offer.entry.reason ?? "aging"}
-        data-hint="Virgil kept a copy of work that never reached disk"
-        aria-label={`Unsaved work recovered from ${takenAt}`}
-      >
-        <span aria-hidden style={{ display: "inline-flex" }}>
-          <LifebuoyIcon />
-        </span>
-        <span className="truncate">
-          Unsaved work from {takenAt} — never saved to disk
-        </span>
-        <button
-          type="button"
-          className="underline underline-offset-2 disabled:opacity-50"
-          disabled={busy}
-          onClick={() => void handleRestore()}
-        >
-          Restore
-        </button>
-        <button
-          type="button"
-          className="underline underline-offset-2 disabled:opacity-50"
-          disabled={busy}
-          onClick={() => void handleDiscard()}
-        >
-          Discard
-        </button>
-      </span>
+    <BarStatusPill
+      // The WARNING register, read off the ONE tone → palette table
+      // (`interruption-tone.ts`, task 571) — one step below the alarm ramp,
+      // because nothing here destroys anything and RED means "no net"
+      // (STYLE_GUIDE). Both answers this badge offers have one. A recovery
+      // offer is not an `InterruptionKind`, so it names its TONE directly,
+      // the same read the save badge makes for its unsaved tier.
+      tone="warning"
+      glyph={<LifebuoyIcon />}
+      label={`Unsaved work from ${takenAt} — never saved to disk`}
+      ariaLabel={`Unsaved work recovered from ${takenAt}`}
+      hint="Virgil kept a copy of work that never reached disk"
+      data={{ "data-mirror-recovery": offer.entry.reason ?? "aging" }}
+      // Task 769: the two answers are SIBLINGS of the labelled span in the
+      // bar's one button style — they used to be underlined links nested
+      // INSIDE it, so the span's name and the buttons' competed and neither
+      // carried a focus ring.
+      actions={
+        <>
+          <BarStatusAction disabled={busy} onClick={() => void handleRestore()}>
+            Restore
+          </BarStatusAction>
+          <BarStatusAction disabled={busy} onClick={() => void handleDiscard()}>
+            Discard
+          </BarStatusAction>
+        </>
+      }
+    >
       {dialog}
-    </>
+    </BarStatusPill>
   );
 }
 

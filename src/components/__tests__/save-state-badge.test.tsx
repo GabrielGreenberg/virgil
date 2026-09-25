@@ -122,7 +122,11 @@ describe("SaveStateBadge · the REGISTER (task 571)", () => {
   // ONE kind → tone → palette table; these legs read the SPECIFIED style
   // (jsdom resolves no CSS vars, so a computed read cannot tell `--amber-100`
   // from `--danger-soft`). No pre-571 leg asserted the palette at all.
-  const swatch = () => screen.getByRole("status").getAttribute("style") ?? "";
+  // The labelled span is found by the pill's own marker, not by role: since
+  // task 769 the role IS the tone's (`alert` for the alarm ramp, `status`
+  // otherwise), which the a11y leg below asserts on its own.
+  const swatch = () =>
+    document.querySelector("[data-bar-status-label]")?.getAttribute("style") ?? "";
   const tone = () => pill()?.getAttribute("data-save-tone");
 
   it("a COWORK hold is the LIVE warm family, and offers NO button", () => {
@@ -171,6 +175,8 @@ describe("SaveStateBadge · the REGISTER (task 571)", () => {
       render(<SaveStateBadge docId={DOC} />);
       expect(tone(), reason).toBe("danger");
       expect(swatch(), reason).toContain("--danger-soft");
+      // …and the alarm ramp INTERRUPTS (task 769): alert + assertive.
+      expect(screen.getByRole("alert").getAttribute("aria-live"), reason).toBe("assertive");
       expect(saveBtn(), reason).not.toBeNull();
     }
   });

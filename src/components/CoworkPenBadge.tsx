@@ -45,7 +45,8 @@ import {
   type CoworkPenState,
 } from "@/lib/cowork-pen";
 import { deriveDocumentInterruption, interruptionPillLabel } from "@/lib/document-interruption";
-import { paletteForTone, toneForInterruptionKind } from "@/lib/interruption-tone";
+import { toneForInterruptionKind } from "@/lib/interruption-tone";
+import { BarStatusPill } from "./status/BarStatusPill";
 import { deriveSaveState } from "@/lib/save-state";
 
 /** The clean external snapshot: this pill is about the PEN alone, and the
@@ -57,8 +58,9 @@ const NO_EXTERNAL = Object.freeze({
   paused: false,
 });
 
-/** The cowork hold's register — `live`, from the one kind → tone table. */
-const PALETTE = paletteForTone(toneForInterruptionKind("cowork-hold"));
+/** The cowork hold's register — `live`, from the one kind → tone table. The
+ *  pill (task 769) reads the palette and the announcement off it. */
+const TONE = toneForInterruptionKind("cowork-hold");
 
 /** A 16px stroke-only quill/pen glyph — the pen, literally. */
 function PenIcon() {
@@ -110,31 +112,17 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
   const hint = view?.body ?? "";
 
   return (
-    <div
-      className="relative inline-flex items-center"
-      data-cowork-pen={pen.source}
-    >
-      <span
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[280px]"
-        style={{
-          background: PALETTE.bg,
-          borderColor: PALETTE.edge,
-          color: PALETTE.ink,
-        }}
-        data-hint={hint}
-        role="status"
-        aria-label="Virgil is editing this paper — the text is read-only and saving is paused"
-      >
-        <span
-          aria-hidden
-          style={{ color: PALETTE.edge, display: "inline-flex" }}
-          className="cowork-pen-pulse"
-        >
-          <PenIcon />
-        </span>
-        <span className="truncate">{label}</span>
-      </span>
-    </div>
+    <BarStatusPill
+      tone={TONE}
+      glyph={<PenIcon />}
+      // The breathing glyph is what separates `live` from `warning` — same
+      // tokens, one animated dot (interruption-tone.ts).
+      glyphClassName="cowork-pen-pulse"
+      label={label}
+      ariaLabel="Virgil is editing this paper — the text is read-only and saving is paused"
+      hint={hint}
+      data={{ "data-cowork-pen": pen.source }}
+    />
   );
 }
 
