@@ -21,7 +21,10 @@ export default function Toaster({ items }: { items: NotificationItem[] }) {
   useEffect(() => {
     const newOnes: ToastEntry[] = [];
     for (const item of items) {
-      const uid = `${item.at}-${item.kind}-${item.citekey ?? ""}`;
+      // The summary is part of identity: several failures minted in one
+      // gesture (a multi-file drop, task 764) share `at`/`kind` and carry no
+      // citekey, and must not collapse into one toast.
+      const uid = `${item.at}-${item.kind}-${item.citekey ?? ""}-${item.summary}`;
       if (seenRef.current.has(uid)) continue;
       seenRef.current.add(uid);
       newOnes.push({ ...item, uid });

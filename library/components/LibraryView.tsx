@@ -565,9 +565,18 @@ export default function LibraryView({
       const results = await dropPdf(files);
       void refreshCatalogStore();
       void reloadUnsorted();
+      // Every file that didn't import says so, on the same toast channel the
+      // row actions use (task 764) — an unsupported type, a drop before the
+      // folder is ready, or a write/queue failure all used to vanish.
+      const at = new Date().toISOString();
+      const failed = results.flatMap((r) =>
+        r.ok
+          ? []
+          : [{ kind: "failed" as const, at, summary: `${r.name}: ${r.reason}` }],
+      );
+      if (failed.length > 0) setQueueToasts((cur) => [...cur, ...failed]);
       // Surface the first-time intro notice only when at least one source
-      // actually imported (dropPdf filters non-source files + reports per-file
-      // ok/error), and only while the user hasn't opted out for good.
+      // actually imported, and only while the user hasn't opted out for good.
       const imported = results.filter((r) => r.ok).map((r) => r.name);
       if (imported.length > 0 && !pdfIntroDismissed) {
         setDropIntro({ fileNames: imported });

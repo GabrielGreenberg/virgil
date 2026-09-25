@@ -373,6 +373,30 @@ export interface NotificationInbox {
   items: NotificationItem[];
 }
 
+function isNotificationItem(v: unknown): v is NotificationItem {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.at === "string" && typeof o.summary === "string" && typeof o.kind === "string";
+}
+
+/** The ONE reader for `notifications/inbox.json` (task 764). Returns the
+ *  well-formed items, `[]` for a missing/empty/malformed inbox (`{}`, a
+ *  non-array `items`, junk rows) — never throws on shape, so a poller built
+ *  on it cannot die in its interval tick. Shared by the toast stream and the
+ *  row-dot scanner. */
+export async function readNotificationItems(
+  root: FileSystemDirectoryHandle,
+): Promise<NotificationItem[]> {
+  let inbox: NotificationInbox | null | undefined;
+  try {
+    inbox = await readJsonFile<NotificationInbox>(root, `${SUBDIRS.notifications}/inbox.json`);
+  } catch {
+    return [];
+  }
+  const items = (inbox as { items?: unknown } | null)?.items;
+  return Array.isArray(items) ? items.filter(isNotificationItem) : [];
+}
+
 // ---------------------------------------------------------------------------
 // Pending-reviews aggregate — a flat manifest of all queued authenticate
 // requests so the AI reviewer can find them without scanning individual

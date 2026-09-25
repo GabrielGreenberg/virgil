@@ -4,8 +4,7 @@ import { useMemo } from "react";
 import { useLibraryHandle } from "@library/hooks/useLibraryHandle";
 import { useCatalogItems, refreshCatalogStore } from "@library/lib/catalog-store";
 import { useMasterBib } from "@library/hooks/useMasterBib";
-import LibraryFolderPicker from "@library/components/LibraryFolderPicker";
-import LibraryPermissionGate from "@library/components/LibraryPermissionGate";
+import LibraryFolderGate from "@library/components/LibraryFolderGate";
 import PaperFileBody from "@library/components/PaperFileBody";
 import type { BibEntry } from "@library/lib/types";
 import { paperReaderScope } from "@/components/editor-layout/reader-host";
@@ -25,25 +24,13 @@ interface Props {
 export default function PaperOuterView({ citekey }: Props) {
   const lib = useLibraryHandle();
 
-  if (lib.state.kind === "loading") {
-    return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ color: "var(--muted)" }}
-      >
-        Loading…
-      </div>
-    );
-  }
-  if (lib.state.kind === "none") {
-    return <LibraryFolderPicker onPick={lib.pick} />;
-  }
-  if (lib.state.kind === "needs-permission") {
-    return (
-      <LibraryPermissionGate onGrant={lib.grant} onReset={lib.reset} />
-    );
-  }
-  return <ReadyView handle={lib.state.handle} citekey={citekey} />;
+  // The shared gate renders every non-ready state — including pickerError
+  // and the refresh-failure state this surface used to drop (task 764).
+  return (
+    <LibraryFolderGate lib={lib}>
+      {(handle) => <ReadyView handle={handle} citekey={citekey} />}
+    </LibraryFolderGate>
+  );
 }
 
 function ReadyView({

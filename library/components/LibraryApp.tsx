@@ -7,9 +7,7 @@
 import type { ReactNode } from "react";
 import { useLibraryHandle } from "@library/hooks/useLibraryHandle";
 import type { UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
-import LibraryFolderPicker from "./LibraryFolderPicker";
-import LibraryPaneFill from "./LibraryPaneFill";
-import LibraryPermissionGate from "./LibraryPermissionGate";
+import LibraryFolderGate from "./LibraryFolderGate";
 import LibraryView from "./LibraryView";
 
 interface Props {
@@ -23,35 +21,29 @@ interface Props {
   belowNavigator?: ReactNode;
 }
 
-export default function LibraryApp({ tabsOptions, showNavigator, belowNavigator }: Props = {}) {
-  const { state, pick, grant, reset, lastSync, pickerError, syncError, resyncSkills, dismissSyncError } =
-    useLibraryHandle();
-
-  if (state.kind === "loading") {
-    return (
-      <LibraryPaneFill center style={{ color: "var(--muted)" }}>
-        Loading…
-      </LibraryPaneFill>
-    );
-  }
-
-  if (state.kind === "none") return <LibraryFolderPicker onPick={pick} pickerError={pickerError} />;
-
-  if (state.kind === "needs-permission") {
-    return <LibraryPermissionGate onGrant={grant} onReset={reset} pickerError={pickerError} />;
-  }
+export default function LibraryApp({
+  tabsOptions,
+  showNavigator,
+  belowNavigator,
+}: Props = {}) {
+  const lib = useLibraryHandle();
+  const { lastSync, syncError, resyncSkills, dismissSyncError, reset } = lib;
 
   return (
-    <LibraryView
-      handle={state.handle}
-      onReset={reset}
-      lastSync={lastSync}
-      syncError={syncError}
-      onResync={resyncSkills}
-      onDismissSyncError={dismissSyncError}
-      tabsOptions={tabsOptions}
-      showNavigator={showNavigator}
-      belowNavigator={belowNavigator}
-    />
+    <LibraryFolderGate lib={lib}>
+      {(handle) => (
+        <LibraryView
+          handle={handle}
+          onReset={reset}
+          lastSync={lastSync}
+          syncError={syncError}
+          onResync={resyncSkills}
+          onDismissSyncError={dismissSyncError}
+          tabsOptions={tabsOptions}
+          showNavigator={showNavigator}
+          belowNavigator={belowNavigator}
+        />
+      )}
+    </LibraryFolderGate>
   );
 }
