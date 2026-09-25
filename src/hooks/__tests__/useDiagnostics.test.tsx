@@ -23,7 +23,11 @@ import {
 import { renderHook, act, cleanup } from "@testing-library/react";
 import type { RefObject } from "react";
 
-import { makeErrorId, type LatexError } from "@/lib/latex-errors";
+import {
+  assignContentIds,
+  makeErrorId,
+  type LatexError,
+} from "@/lib/latex-errors";
 
 // ── Controllable lint output ────────────────────────────────────────────────
 let MOCK_LINT_ERRORS: LatexError[] = [];
@@ -345,5 +349,49 @@ describe("useDiagnostics", () => {
       rerender(props);
     });
     expect(result.current).toBe(before);
+  });
+
+  it("task 761: a lint card's dismissal/selection/expansion survives a new error ABOVE it and a newline above it", () => {
+    // Realistic ids — minted the way runLint mints them (content, not position),
+    // NOT the `ordinal: line` fixture above, which hid the positional re-key.
+    const lintPass = (text: string, errs: LatexError[]) => assignContentIds(errs, text);
+    const B = (line: number): LatexError => ({
+      id: "",
+      source: "lint",
+      severity: "error",
+      line,
+      message: "B problem",
+      ruleId: "b-rule",
+    });
+    const A = (line: number): LatexError => ({ ...B(line), message: "A problem", ruleId: "a-rule" });
+
+    const pass1 = lintPass(SOURCE_TEXT, [B(4), A(5)]);
+    MOCK_LINT_ERRORS = pass1;
+    const { result, rerender } = renderHook(
+      (props: UseDiagnosticsOptions) => useDiagnostics(props),
+      { initialProps: baseOptions() },
+    );
+    const [idB, idA] = pass1.map((e) => e.id);
+    act(() => {
+      result.current.dismissError(idB);
+      result.current.setSelectedErrorId(idA);
+      result.current.expandError(idA);
+    });
+
+    // A new error appears on line 1 (earlier in the list) …
+    const pass2 = lintPass(SOURCE_TEXT, [lintErr(1, "new, earlier"), B(4), A(5)]);
+    MOCK_LINT_ERRORS = pass2;
+    act(() => rerender(baseOptions()));
+    // … then a blank line is added at the top (every line shifts by one).
+    const shifted = "\n" + SOURCE_TEXT;
+    const pass3 = lintPass(shifted, [lintErr(2, "new, earlier"), B(5), A(6)]);
+    MOCK_LINT_ERRORS = pass3;
+    act(() => rerender(baseOptions({ sourceText: shifted })));
+
+    expect(pass3[1].id).toBe(idB);
+    expect(pass3[2].id).toBe(idA);
+    expect(result.current.dismissedErrorIds.has(idB)).toBe(true);
+    expect(result.current.selectedErrorId).toBe(idA);
+    expect(result.current.expandedErrorIds.has(idA)).toBe(true);
   });
 });
