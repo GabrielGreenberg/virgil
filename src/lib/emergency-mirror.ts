@@ -64,10 +64,11 @@
  * module.
  */
 
-import { get, set, del, keys, createStore } from "idb-keyval";
+import { set, del, keys, createStore } from "idb-keyval";
 import type { JSONContent } from "@tiptap/react";
 
 import { hashContent } from "@/lib/disk-ledger";
+import { readStoredValue, type StoredVerdict } from "@/lib/stored-state";
 import {
   getUnsavedWork,
   type UnsavedBlockReason,
@@ -95,6 +96,19 @@ export const MIRROR_ARM_AFTER_MS = 8_000;
 /** A mirror older than this is debris — the paper was almost certainly saved
  *  from elsewhere, or abandoned. Swept on the first read of a session. */
 export const MIRROR_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Task 757 — the per-slot WRITE cap, in characters of the model's JSON (which
+ * the ticker computes anyway, for its fingerprint). A model this large is not
+ * a paper a person typed; mirroring it would put tens of MB into IndexedDB on
+ * a 5 s clock and hand the next open the same allocation to read back. Over
+ * the cap the tick declines (and says so once) rather than writing.
+ */
+export const MIRROR_MAX_CHARS = 16 * 1024 * 1024;
+
+/** Task 757 — the session sweep keeps at most this many slots, newest first.
+ *  One slot per paper ever left dirty; the count must not grow with use. */
+export const MIRROR_MAX_SLOTS = 24;
 
 export interface EmergencyMirrorEntry {
   docId: string;
@@ -142,18 +156,49 @@ export function shouldMirror(
   return now - state.dirtySince >= MIRROR_ARM_AFTER_MS;
 }
 
-/** Read this document's mirror, sweeping it if it has aged out. */
+/**
+ * Task 757 — the mirror slot's shape check. A slot that is not a mountable
+ * mirror (wrong doc, no model, a model that is not a `doc` node, missing
+ * fingerprint) is refused and CLEARED: it cannot be restored anyway, and a
+ * slot the open path trips on must not survive to trip the next open.
+ */
+export function validateMirrorEntry(
+  value: unknown,
+  docId?: string,
+): StoredVerdict {
+  if (typeof value !== "object" || value === null) {
+    return { why: "invalid", detail: "not an object" };
+  }
+  const e = value as Partial<EmergencyMirrorEntry>;
+  if (typeof e.docId !== "string") return { why: "invalid", detail: "no docId" };
+  if (docId !== undefined && e.docId !== docId) {
+    return { why: "invalid", detail: `slot holds ${e.docId}` };
+  }
+  if (typeof e.savedAt !== "number" || !Number.isFinite(e.savedAt)) {
+    return { why: "invalid", detail: "no savedAt" };
+  }
+  if (typeof e.hash !== "string") return { why: "invalid", detail: "no hash" };
+  const c = e.content as { type?: unknown; content?: unknown } | undefined;
+  if (!c || typeof c !== "object" || c.type !== "doc") {
+    return { why: "invalid", detail: "content is not a doc model" };
+  }
+  if (c.content !== undefined && !Array.isArray(c.content)) {
+    return { why: "invalid", detail: "doc content is not an array" };
+  }
+  return true;
+}
+
+/** Read this document's mirror, sweeping it if it has aged out. Through the
+ *  stored-state door (task 757): an unreadable or malformed slot is ABSENT
+ *  and cleared, never a throw. */
 export async function readMirror(
   docId: string,
   now = Date.now(),
 ): Promise<EmergencyMirrorEntry | null> {
-  let entry: EmergencyMirrorEntry | undefined;
-  try {
-    entry = await get<EmergencyMirrorEntry>(keyFor(docId), store);
-  } catch (err) {
-    console.warn("[emergency-mirror] read failed", err);
-    return null;
-  }
+  const entry = await readStoredValue<EmergencyMirrorEntry>(keyFor(docId), {
+    store,
+    validate: (v) => validateMirrorEntry(v, docId),
+  });
   if (!entry) return null;
   if (now - entry.savedAt > MIRROR_MAX_AGE_MS) {
     await clearMirror(docId);
@@ -179,13 +224,19 @@ export async function clearMirror(docId: string): Promise<void> {
   }
 }
 
+let prunedThisSession = false;
+
 /**
- * Sweep mirrors that have aged past {@link MIRROR_MAX_AGE_MS}. Cheap (the
- * keyspace holds at most one entry per paper ever opened) and run once per
- * session from the recovery surface, so a document that is never reopened
- * cannot leak its slot forever.
+ * Sweep mirror slots: aged past {@link MIRROR_MAX_AGE_MS}, malformed, or
+ * beyond the newest {@link MIRROR_MAX_SLOTS}. Runs ONCE per session (task 757:
+ * it was re-run on every paper open, reading every slot's whole model each
+ * time), so a document that is never reopened cannot leak its slot forever
+ * and the slot count cannot grow with use. Reads one slot at a time and keeps
+ * only its timestamp.
  */
 export async function pruneExpiredMirrors(now = Date.now()): Promise<number> {
+  if (prunedThisSession) return 0;
+  prunedThisSession = true;
   let allKeys: IDBValidKey[];
   try {
     allKeys = await keys(store);
@@ -193,19 +244,37 @@ export async function pruneExpiredMirrors(now = Date.now()): Promise<number> {
     return 0;
   }
   let dropped = 0;
+  const live: { key: string; savedAt: number }[] = [];
   for (const k of allKeys) {
     if (typeof k !== "string" || !k.startsWith(KEY_PREFIX)) continue;
-    try {
-      const entry = await get<EmergencyMirrorEntry>(k, store);
-      if (!entry || now - entry.savedAt > MIRROR_MAX_AGE_MS) {
-        await del(k, store);
-        dropped++;
-      }
-    } catch {
-      /* one unreadable slot must not strand the sweep */
+    const entry = await readStoredValue<EmergencyMirrorEntry>(k, {
+      store,
+      validate: (v) => validateMirrorEntry(v),
+    });
+    if (!entry) {
+      dropped++;
+      continue;
+    }
+    if (now - entry.savedAt > MIRROR_MAX_AGE_MS) {
+      await del(k, store).catch(() => {});
+      dropped++;
+      continue;
+    }
+    live.push({ key: k, savedAt: entry.savedAt });
+  }
+  if (live.length > MIRROR_MAX_SLOTS) {
+    live.sort((a, b) => b.savedAt - a.savedAt);
+    for (const { key } of live.slice(MIRROR_MAX_SLOTS)) {
+      await del(key, store).catch(() => {});
+      dropped++;
     }
   }
   return dropped;
+}
+
+/** Test helper — let the next sweep run again. */
+export function __resetMirrorPruneForTests(): void {
+  prunedThisSession = false;
 }
 
 /**
@@ -222,7 +291,7 @@ export interface MirrorTicker {
     now?: number;
     /** See {@link shouldMirror} — arm regardless of age. */
     force?: boolean;
-  }): Promise<"written" | "unchanged" | "not-armed" | "no-model">;
+  }): Promise<"written" | "unchanged" | "not-armed" | "no-model" | "oversized">;
   /** Forget the last-mirrored fingerprint (after a landed save clears the
    *  slot, the next armed tick must write again even at identical content). */
   reset(): void;
@@ -242,6 +311,7 @@ export function createMirrorTicker(opts: {
   const readState = opts.readState ?? getUnsavedWork;
   let lastRef: JSONContent | null = null;
   let lastHash: string | null = null;
+  let warnedOversize = false;
 
   return {
     reset() {
@@ -258,7 +328,20 @@ export function createMirrorTicker(opts: {
       // docJson is identity-stable for an unchanged document, so a quiet
       // armed tick costs one compare and no serialization.
       if (lastRef !== null && model === lastRef) return "unchanged";
-      const hash = hashContent(JSON.stringify(model));
+      const json = JSON.stringify(model);
+      if (json.length > MIRROR_MAX_CHARS) {
+        // Task 757 — the write-time cap. Remember the ref so an unchanged
+        // oversized model is not re-serialized every 5 s.
+        if (!warnedOversize) {
+          warnedOversize = true;
+          console.warn(
+            `[emergency-mirror] model is ${json.length} chars (cap ${MIRROR_MAX_CHARS}); not mirroring`,
+          );
+        }
+        lastRef = model;
+        return "oversized";
+      }
+      const hash = hashContent(json);
       if (hash === lastHash) {
         lastRef = model;
         return "unchanged";

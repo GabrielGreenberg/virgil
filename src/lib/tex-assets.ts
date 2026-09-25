@@ -31,6 +31,7 @@
  */
 
 import { get, set, keys, del, createStore } from "idb-keyval";
+import { readStoredValue, type StoredVerdict } from "@/lib/stored-state";
 
 import { hashContent } from "@/lib/disk-ledger";
 import { enqueueWrite } from "@/lib/write-queue";
@@ -241,13 +242,69 @@ function indexFrom(records: readonly TexAssetRecord[]): SizeIndex {
   return { sizes, total };
 }
 
-/** Full scan of the persisted records. Call ONLY inside a queue task. */
+/**
+ * Task 757 — a persisted record is untrusted input. One that is not a record
+ * (a pre-cap build's leftovers, a torn write, a record whose bytes alone exceed
+ * the whole cache's cap) is refused and cleared by the stored-state door.
+ */
+export function validateTexAssetRecord(value: unknown): StoredVerdict {
+  if (typeof value !== "object" || value === null) {
+    return { why: "invalid", detail: "not an object" };
+  }
+  const r = value as Partial<TexAssetRecord>;
+  if (typeof r.cacheKey !== "string" || typeof r.fileid !== "string") {
+    return { why: "invalid", detail: "no cacheKey/fileid" };
+  }
+  if (!(r.bytes instanceof Uint8Array)) {
+    return { why: "invalid", detail: "bytes are not a Uint8Array" };
+  }
+  if (r.bytes.byteLength > CACHE_SIZE_CAP_BYTES) {
+    return { why: "oversized", detail: `${r.bytes.byteLength}B record` };
+  }
+  return true;
+}
+
+/**
+ * Full scan of the persisted records. Call ONLY inside a queue task.
+ *
+ * Task 757 — the READ re-enforces the write-time cap. Records are read one at a
+ * time through the stored-state door; if the survivors still total more than
+ * {@link CACHE_SIZE_CAP_BYTES} (a store filled by a build that predates the
+ * cap, or by a second window racing this one's index), the newest are kept up
+ * to the cap and the rest are deleted — so provisioning can never hand the
+ * worker more than the cap, however the store came to hold it.
+ */
 async function scanPersistedRecords(): Promise<TexAssetRecord[]> {
   const storeKeys = await persistedStoreKeys();
-  const recs = await Promise.all(
-    storeKeys.map((k) => get(k, store) as Promise<TexAssetRecord | undefined>),
+  const recs: TexAssetRecord[] = [];
+  let total = 0;
+  for (const k of storeKeys) {
+    const rec = await readStoredValue<TexAssetRecord>(k, {
+      store,
+      validate: validateTexAssetRecord,
+    });
+    if (!rec) continue;
+    recs.push(rec);
+    total += rec.bytes.byteLength;
+  }
+  if (total <= CACHE_SIZE_CAP_BYTES) return recs;
+  recs.sort((a, b) => (b.fetchedAt ?? 0) - (a.fetchedAt ?? 0));
+  const kept: TexAssetRecord[] = [];
+  let keptBytes = 0;
+  for (const rec of recs) {
+    if (keptBytes + rec.bytes.byteLength <= CACHE_SIZE_CAP_BYTES) {
+      kept.push(rec);
+      keptBytes += rec.bytes.byteLength;
+    } else {
+      await del(cacheKeyToStoreKey(rec.cacheKey), store).catch(() => {});
+    }
+  }
+  console.warn(
+    `[tex-assets] persisted cache held ${total}B (cap ${CACHE_SIZE_CAP_BYTES}B); evicted ${
+      recs.length - kept.length
+    } oldest record(s)`,
   );
-  return recs.filter((r): r is TexAssetRecord => !!r && !!r.bytes);
+  return kept;
 }
 
 /** Every persisted record, read under the queue; primes the size index. */

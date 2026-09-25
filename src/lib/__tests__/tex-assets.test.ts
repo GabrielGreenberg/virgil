@@ -384,3 +384,46 @@ describe("task 577 — the size index + one serial decision", () => {
     expect(await listCachedKeys()).toEqual(["1/c.sty"]);
   });
 });
+
+describe("task 757 — the provisioning READ is untrusted input with a bound", () => {
+  async function backingMap(): Promise<Map<string, unknown>> {
+    await listCachedKeys(); // materializes the store's backing map
+    return [...stores.values()][0];
+  }
+  function rec(cacheKey: string, bytes: Uint8Array, fetchedAt: number): TexAssetRecord {
+    return { cacheKey, fileid: cacheKey, bytes, hash: "h", fetchedAt };
+  }
+
+  it("a malformed record is refused, cleared, and never seeded", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const m = await backingMap();
+    m.set("tex-asset/26/ok.sty", rec("26/ok.sty", new Uint8Array([1, 2]), 1));
+    m.set("tex-asset/26/torn.sty", { cacheKey: "26/torn.sty", fileid: "x", bytes: "not bytes" });
+    m.set("tex-asset/26/junk.sty", "garbage");
+
+    const engine = new FakeEngine();
+    await provisionEngine(engine);
+
+    expect(engine.seeded.map((s) => s.cacheKey)).toContain("26/ok.sty");
+    expect(engine.seeded.map((s) => s.cacheKey)).not.toContain("26/torn.sty");
+    expect(m.has("tex-asset/26/torn.sty")).toBe(false);
+    expect(m.has("tex-asset/26/junk.sty")).toBe(false);
+    expect(m.has("tex-asset/26/ok.sty")).toBe(true);
+  });
+
+  it("a store holding MORE than the cap (a pre-cap build, a racing window) is trimmed on read — newest kept, the rest deleted", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const m = await backingMap();
+    const mb40 = 40 * 1024 * 1024;
+    m.set("tex-asset/old.sty", rec("old.sty", new Uint8Array(mb40), 1));
+    m.set("tex-asset/new.sty", rec("new.sty", new Uint8Array(mb40), 2));
+
+    const engine = new FakeEngine();
+    await provisionEngine(engine);
+
+    const seeded = engine.seeded.map((s) => s.cacheKey);
+    expect(seeded).toContain("new.sty");
+    expect(seeded).not.toContain("old.sty");
+    expect(m.has("tex-asset/old.sty")).toBe(false);
+  }, 30_000);
+});
