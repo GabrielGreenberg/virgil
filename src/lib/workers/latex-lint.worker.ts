@@ -3,7 +3,10 @@
  * off the main thread. The parse of a large doc measured multi-second on
  * the main thread at 2,883 blocks; here it costs the UI nothing.
  *
- * Protocol: { runId, text, bibKeys } in → { runId, errors } out. The client
+ * Protocol: { runId, text, bibKeys } in → { runId, errors } out, or
+ * { runId, failed: true } when the pass rejected anyway (`runLint` is
+ * contracted never to reject — this is belt-and-braces so EVERY request
+ * settles; the client re-runs a failed one on the main thread). The client
  * (lint-client.ts) matches runIds; stale results are dropped there.
  */
 
@@ -17,7 +20,9 @@ interface LintRequest {
 
 self.onmessage = (e: MessageEvent<LintRequest>) => {
   const { runId, text, bibKeys } = e.data;
-  void runLint(text, bibKeys).then((errors) => {
-    (self as unknown as Worker).postMessage({ runId, errors });
-  });
+  const post = (msg: unknown) => (self as unknown as Worker).postMessage(msg);
+  void runLint(text, bibKeys).then(
+    (errors) => post({ runId, errors }),
+    () => post({ runId, failed: true }),
+  );
 };
