@@ -1,4 +1,4 @@
-<!-- last-verified: 29125562 2026-09-24 -->
+<!-- last-verified: db05316e 2026-09-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -48,7 +48,12 @@ schema group. Members (SSOT: the `TextObjectKind` union +
 `exampleItem`.
 
 `linkedRange` is a TextObject too, but lives **outside** the node group — it is a
-mark range (the `linkedAnchor` mark), not a node.
+mark range (the `linkedAnchor` mark), not a node. That range-ness is a registry
+FACET (`isRange`), asked through `isRangeKind(kind)` / `isNodeTextObjectKind(name)`
+in `text-object-registry.ts` — never spelled `kind === "linkedRange"`
+(task 743, `range-kind-census.test.ts`). Likewise a sub-object's natural parents
+are its `parentKinds` facet (`listItem` → `bulletList` + `orderedList`), read by
+`isCompatibleParent`.
 
 The parallel question — *which node types carry a `uuid` attr* — is answered by
 `UUID_BEARING_NODE_TYPES` in `src/lib/node-attr-sets.ts`, an import-free leaf the
@@ -113,7 +118,8 @@ A Card is "almost everything else." Operationally:
   (`cardHasContent`) reads it so a delete-confirm can never miss content; the
   `null` descriptor is the no-user-content kinds (`bib`/`error`/`highlight`).
   A kind's `morph` carries a `drops` field listing the fields the target shape
-  can't hold (drives the confirm copy + the lossy-morph unbridge). The `CardKind`
+  can't hold (drives the confirm copy — filtered to what the card holds, task 755 —
+  + the lossy-morph unbridge). The `CardKind`
   union itself is unchanged — this is data-model metadata, not a new kind.
 - **Tasks** live in `ai-requests.json` with a lifecycle the others lack
   (`status` / `result` / `safetyLevel`); the Inbox surfaces them. (The legacy

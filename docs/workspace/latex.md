@@ -1,4 +1,4 @@
-<!-- last-verified: 29125562 2026-09-24 -->
+<!-- last-verified: db05316e 2026-09-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -224,7 +224,9 @@ The **on-disk** form of display math is `\[…\]` — the serializer emits it an
 block parser recognizes only it. `$$…$$` is the **editor-side** register (the
 `displayMath` node's DOM form + its `$$` input rule); it is normalized to `\[…\]`
 on save. So: a `.tex` on disk uses `\[…\]`; `$$…$$` appears only live in the
-editor.
+editor. Typed `$$x$$` reaches that rule because the inline `$` rule refuses an
+opener preceded by `$` (task 744); a typed block at a textblock's start leaves no
+empty paragraph above it.
 
 ## Citation vocabulary
 

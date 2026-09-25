@@ -1,4 +1,4 @@
-<!-- last-verified: 29125562 2026-09-24 -->
+<!-- last-verified: db05316e 2026-09-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -148,6 +148,12 @@ archive, a code-view retype, a paste), `EditorPane`'s flag-independent reconcile
 (`staleAtomIntentIds`, [src/links/_shared/live-atom-intent.ts](../../src/links/_shared/live-atom-intent.ts))
 clears the stale `archived`/`unanchored` flag through `markAnchored` — the same
 rule for citations.
+
+A footnote PULLED from the Stack into a gap lands `unanchored: true` (task 754):
+the pull is gap-only and synthesizes no `\footnote` atom, and every footnote list
+selects an atomless ref only when it declares `archived || unanchored`, so
+`addFootnoteFromSeed` sets the flag from THIS pull's placement (the source's flag
+does not travel). CI: `stack-pull-reachability.test.tsx` (total over `StackCardKind`).
 
 When a footnote's in-text marker is deleted but its body/title might still be
 wanted, it becomes an **orphan**. The `Footnote` plugin

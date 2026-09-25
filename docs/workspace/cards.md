@@ -1,4 +1,4 @@
-<!-- last-verified: 29125562 2026-09-24 -->
+<!-- last-verified: db05316e 2026-09-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -333,7 +333,7 @@ polymorphic-panel map:
 
 | Panel | Hosts | Shared key/theme | Morph |
 |---|---|---|---|
-| **Notes** | `note` + `highlight` | each its own accent | `note` ⇄ `highlight`, **lossy both ways** (a highlight has no body/title) — a confirm guards both flips (`morph.lossy` is true in both directions) |
+| **Notes** | `note` + `highlight` | each its own accent | `note` ⇄ `highlight`, **lossy both ways** (a highlight has no body/title) — `morph.lossy` is true in both directions, but the confirm fires only when the card HOLDS a dropped field (task 755) |
 | **Revisions** | `revision-comment` + `revision-suggestion` | the `revision` key | comment→suggestion lossy (`drops: formatting + aiRequest`); suggestion→comment non-lossy (body rides into `user_text` and back) |
 | **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | comment→suggestion lossy (`drops: formatting + aiRequest`); suggestion→comment non-lossy |
 | **Reports** | `report` + `report-request` | `report` | `report` ⇄ `report-request`, lossy both ways — [below](#the-reports-panel) |
@@ -351,7 +351,7 @@ card header (and the popped float's title control), backed by a transform
 registered through `registerCardMorph`
 ([card-registry.tsx](../../src/cards/card-registry.tsx)). `drops` enumerates the
 `MorphDropField`s the TO shape can't hold (`title` / `byline` / `aiRequest` /
-`body` / `keys`) — it drives the generated confirm copy AND the unbridge:
+`body` / `keys`) — it drives the generated confirm copy AND the unbridge. The CONFIRM is value-aware (task 755): `morphConfirmMessage(kind, card)` filters `drops` through `morphDropsHeld` ([has-content.ts](../../src/cards/has-content.ts)), so it names only what THIS card holds and an empty note → highlight or an unticked request → report raises no confirm, agreeing with delete; the UNBRIDGE stays declaration-driven:
 `drops.includes("aiRequest")` is the declarative trigger to clear the orphaned
 `ai-requests.json` entry (the `report-request`→`report` flip, plus — since task
 198 — the `revision-comment`→`revision-suggestion` and

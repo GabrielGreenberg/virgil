@@ -1,4 +1,4 @@
-<!-- last-verified: 29125562 2026-09-24 -->
+<!-- last-verified: db05316e 2026-09-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -73,12 +73,20 @@ labelRef is a pure cross-reference.
 Display text comes from **ONE table** — `buildRefTargetIndex` /
 `resolveRefDisplay` ([src/lib/ref-display.ts](../../src/lib/ref-display.ts), task
 550), read by the `.tex` parser (at load), the live numberer (on every structural
-change) and the `\ref` popover (at insert / re-point). It resolves three target
-kinds — a **heading**'s section number, an **example**'s `(N)` / `(Na)` (flat
-sub-items and the dotted `parent.sub` form included), a **figure**'s number — with
-precedence heading > example > figure and, within a kind, first declaration in
-document order. It also carries the heading/figure *numbering* rows, so "what
+change) and the `\ref` popover (at insert / re-point). It resolves a
+**heading**'s section number, an **example**'s `(N)` / `(Na)` (flat
+sub-items and the dotted `parent.sub` form included), a **figure**'s number and —
+since task 742 — an **equation** / **table** number read off RAW source (a
+`displayMath`'s latex, an unmodelled `equation`/`align`/`table` carrier) by
+[src/lib/latex-counters.ts](../../src/lib/latex-counters.ts) (LaTeX's numbering
+rules stated once; modelled and raw figures share one counter; an unnumbered raw
+`\label` inherits `\@currentlabel` — target kind `label`). Precedence heading >
+example > figure > raw unit > inherited raw label and, within a kind, first
+declaration in document order. It also carries the heading/figure *numbering* rows, so "what
 number does this heading have" and "what does a ref to it show" cannot disagree.
+The numberer's structural gate also compares each touched block's raw-counter
+signature ([raw-counter-gate.ts](../../src/lib/tiptap/raw-counter-gate.ts), O(block)),
+so typing inside an equation never wakes the O(doc) renumber.
 The three private copies it replaced (`resolveRefs` in the parser, the numberer's
 `resolveRef`, the popover's `resolveLabelDisplay`) are **retired**; an unresolved
 key renders `??`.
