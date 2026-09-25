@@ -68,6 +68,22 @@ export function subscribeToStorageKey(
 }
 
 /**
+ * Tell every PEER window that state stored OUTSIDE `localStorage` changed
+ * (e.g. an IndexedDB record such as the library folder handle, task 766).
+ * Writes a fresh nonce under `key`, so peers subscribed through
+ * {@link subscribeToStorageKey} hear a `storage` event and re-read their real
+ * source. The value carries no data — it is only the signal. Best-effort: a
+ * blocked storage leaves this window correct and peers catching up on reload.
+ */
+export function postStorageStamp(key: string): void {
+  try {
+    localStorage.setItem(key, `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  } catch {
+    // Storage unavailable — nothing to signal through.
+  }
+}
+
+/**
  * Multi-key form of {@link subscribeToStorageKey} — one listener covering a
  * store that spans several keys (`usePreferences` writes three; `useLibraryTabs`
  * five). Returns a single unsubscribe.
