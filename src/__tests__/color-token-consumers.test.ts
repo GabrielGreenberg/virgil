@@ -793,3 +793,45 @@ describe("an icon button states its ink through an iconbtn- VARIANT", () => {
     expect(hits).toEqual([]);
   });
 });
+
+/**
+ * Virgil-bar collab/status chrome reads tokens, not colour literals
+ * (task 2026-09-25-771).
+ *
+ * Task 315 tokenized `CollabStatusPill` and left its siblings behind — the
+ * identity dialog's selected-swatch ring (`#1a1a1a`, which IS `--foreground`),
+ * the presence dots' white halo (an `rgba(255,255,255,…)` that assumed a white
+ * surface) and StatusCluster's divider (a hex fallback on an always-defined
+ * token). Same class as this file's header: the token existed, the consumers
+ * were never swept. The census is FAMILY-scoped (every `Collab*.tsx`, not a
+ * named list) so a new collab component is covered on arrival.
+ *
+ * Not a hit: a user's own colour with an alpha suffix (`${color}22` in
+ * CollabClaimPill) — that is data, not a design-system literal.
+ */
+describe("collab/status chrome carries no raw colour literal", () => {
+  const files = [
+    ...trackedFiles("src/components", /^Collab.*\.tsx$/)
+      .filter((p) => !p.includes("__tests__"))
+      .map((p) => path.relative(REPO_ROOT, p)),
+    "src/components/editor-layout/StatusCluster.tsx",
+  ];
+  const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(/;
+
+  it("scans the whole family (non-vacuous)", () => {
+    expect(files.length).toBeGreaterThanOrEqual(5);
+    expect(files).toContain("src/components/CollaboratorIdentityDialog.tsx");
+    expect(files).toContain("src/components/CollabPresenceDots.tsx");
+  });
+
+  it("leaves no hex / rgb() literal in code (comments ignored)", () => {
+    const hits = files.flatMap((rel) =>
+      strip(read(rel), true, true)
+        .split("\n")
+        .map((line, i) => ({ line, at: `${rel}:${i + 1}` }))
+        .filter(({ line }) => LITERAL.test(line))
+        .map(({ line, at }) => `${at}  ${line.trim().slice(0, 90)}`),
+    );
+    expect(hits).toEqual([]);
+  });
+});
