@@ -23,15 +23,23 @@
  *   - text marked `latexCommand` / `latexVerbatim` is raw LaTeX, not prose — only its
  *     `\caption{...}` payloads count (as captions);
  *   - citations are reference markers, never prose;
- *   - footnote content → footnotes, latexComment text → comments.
+ *   - footnote content → footnotes (its rich body WALKED under these same
+ *     rules), latexComment text → comments;
+ *   - titleField (\\title / \\author / \\date) → headings; a native
+ *     figureCaption → captions (task 767);
+ *   - every other node's text counts in the SURROUNDING context — text is
+ *     prose wherever it sits (gloss rows, gloss cells, any new textblock).
  *
- * Pure module: no React, no DOM — operates on TipTap JSONContent so the
+ * Pure module: no React, no DOM (a LEGACY HTML-string footnote body goes
+ * through `normalizeRichContent`, whose DOMParser use is window-guarded) —
+ * operates on TipTap JSONContent so the
  * PmNode consumer (`useWordCount`) converts via `doc.toJSON()` inside its
  * already-debounced recount (off the keystroke path).
  */
 
 import type { JSONContent } from "@tiptap/react";
 import { LATEX_COMMENT_TAIL_MARK, LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
+import { normalizeRichContent } from "@/lib/footnote-content";
 
 export type Category =
   | "mainText"
@@ -177,16 +185,24 @@ export function extractCaptionText(raw: string): string[] {
   return results;
 }
 
-/** All descendant text of a JSON node, concatenated (PmNode.textContent). */
-function flattenText(n: JSONContent): string {
-  if (n.text) return n.text;
-  return (n.content ?? []).map(flattenText).join("");
-}
-
 /**
  * Walk a JSON doc (or any block subtree) and collect its raw text parts per
  * category. THE canonical walker — every categorized word-count surface
  * derives from this.
+ *
+ * SHAPE-DRIVEN, not name-driven (task 767). It used to be two hand-listed
+ * switches — a block switch that ran the inline collector only for the
+ * textblocks it NAMED (`paragraph` / `heading` / `codeBlock`) and recursed
+ * everything else as if it were a container. A `text` child reaching that
+ * recursion had no arm and no `content`, so its words vanished: the title,
+ * a native figure's caption and every expex gloss row/cell counted ZERO, and
+ * each new textblock kind the schema grew would have joined them silently.
+ * Now there is ONE walk, and its only structural rule is the prose index's
+ * (`src/lib/prose-index.ts`): text is prose WHEREVER it sits, in whatever
+ * bucket the nearest enclosing context names. The named arms are the
+ * exceptions that change the bucket or declare a node non-prose — never the
+ * list of places prose may live. `word-count-core.test.ts`'s schema sweep
+ * pins that no textblock the live schema declares can count zero.
  */
 export function collectCategoryParts(node: JSONContent): Record<Category, string[]> {
   const cats: Record<Category, string[]> = {
@@ -198,8 +214,18 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
     comments: [],
   };
 
-  const collectInline = (n: JSONContent, bucket: string[]) => {
-    if (n.type === "text" && n.text) {
+  // The bucket the LAST prose text run went into, when nothing has been
+  // visited since. Adjacent text nodes are one run split only by a mark
+  // change (ProseMirror merges same-mark neighbours), so "un**believ**able"
+  // is one word — joining the parts with a space counted it as three. Any
+  // other node visited in between (an atom, a carrier run, a new block)
+  // clears it, so atoms keep separating exactly as they always did.
+  let glue: string[] | null = null;
+
+  const walk = (n: JSONContent, ctx: Category) => {
+    if (n.type === "text") {
+      const text = n.text ?? "";
+      if (!text) return;
       // An inline `%` comment TAIL is a comment, not prose — the same bucket
       // its `latexComment` block sibling goes to below, so the two carriers of
       // one construct are counted alike (task 347). Checked first: a comment is
@@ -212,7 +238,8 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
       // written — as a comment. This branch needs no guard of its own; a
       // demoted run simply arrives unmarked and falls through to prose.
       if (n.marks?.some((m) => m.type === LATEX_COMMENT_TAIL_MARK)) {
-        cats.comments.push(n.text);
+        glue = null;
+        cats.comments.push(text);
         return;
       }
       // Text marked as latexCommand — or as the byte-literal `latexVerbatim`
@@ -220,46 +247,51 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
       // Extract any \caption{...} text into captions, skip the rest.
       if (
         n.marks?.some(
-          (m) =>
-            m.type === "latexCommand" || m.type === LATEX_VERBATIM_MARK,
+          (m) => m.type === "latexCommand" || m.type === LATEX_VERBATIM_MARK,
         )
       ) {
-        for (const c of extractCaptionText(n.text)) cats.captions.push(c);
+        glue = null;
+        for (const c of extractCaptionText(text)) cats.captions.push(c);
         return;
       }
-      bucket.push(n.text);
+      const bucket = cats[ctx];
+      if (glue === bucket && bucket.length > 0) {
+        bucket[bucket.length - 1] += text;
+      } else {
+        bucket.push(text);
+        glue = bucket;
+      }
       return;
     }
-    if (n.type === "inlineMath") {
-      // Inline math reads as part of the sentence → surrounding context
-      // bucket. The "math" category is displayMath only.
-      const latex = (n.attrs?.latex as string) || "";
-      if (latex) bucket.push(latex);
-      return;
-    }
-    if (n.type === "citation") return; // reference markers, not prose
-    if (n.type === "footnote") {
-      const content = (n.attrs?.content as string) || "";
-      if (content) cats.footnotes.push(content);
-      return;
-    }
-    if (n.type === "hardBreak") {
-      bucket.push(" ");
-      return;
-    }
-    for (const child of n.content ?? []) collectInline(child, bucket);
-  };
 
-  const walkBlock = (n: JSONContent, ctx: Category) => {
+    glue = null;
     switch (n.type) {
-      case "heading":
-        collectInline(n, cats.headings);
+      case "inlineMath": {
+        // Inline math reads as part of the sentence → surrounding context
+        // bucket. The "math" category is displayMath only.
+        const latex = (n.attrs?.latex as string) || "";
+        if (latex) cats[ctx].push(latex);
         return;
-      case "blockquote":
-      case "bulletList":
-      case "orderedList":
-      case "listItem":
-        for (const child of n.content ?? []) walkBlock(child, ctx);
+      }
+      case "citation":
+        return; // reference markers, not prose
+      case "footnote":
+        // The body is rich JSONContent (legacy: an HTML/plain string), so it is
+        // WALKED — inline math, carriers and citations inside a footnote follow
+        // the same rules as the main text. Reading it as a string is what made
+        // every footnote "[object Object]" = 2 words (task 767).
+        walk(normalizeRichContent(n.attrs?.content), "footnotes");
+        glue = null;
+        return;
+      case "hardBreak":
+        cats[ctx].push(" ");
+        return;
+      case "heading":
+      case "titleField": // \title / \author / \date — display text, like a heading
+        for (const child of n.content ?? []) walk(child, "headings");
+        return;
+      case "figureCaption": // a native figure's caption — the same bucket as a raw `\caption{…}` payload
+        for (const child of n.content ?? []) walk(child, "captions");
         return;
       case "displayMath": {
         const latex = (n.attrs?.latex as string) || "";
@@ -271,31 +303,34 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
         if (text) cats.comments.push(text);
         return;
       }
-      case "paragraph":
-      case "codeBlock": // code blocks count as surrounding context
-        collectInline(n, cats[ctx]);
-        return;
       case "texBlock":
       case "forestBlock":
       case "graphicsBlock":
         // Source-carrying ATOMS: the bytes live in an attr, not in child
         // content, and they are raw LaTeX rather than prose — the same answer
-        // the `latexCommand`/`latexVerbatim` branch gives a carrier run, and
-        // the same answer these three already got by falling through the
-        // default arm onto an empty child list. Stated explicitly so the rule
-        // is visible rather than emergent, and so a future arm that starts
-        // walking attrs has to decide deliberately. Byte-neutral: every
-        // category tally is unchanged.
+        // the `latexCommand`/`latexVerbatim` branch gives a carrier run.
+        // Stated explicitly so the rule is visible rather than emergent, and so
+        // a future arm that starts walking attrs has to decide deliberately.
         return;
       default:
-        // doc, titleField, maketitleMarker, horizontalRule, etc.
-        for (const child of n.content ?? []) walkBlock(child, ctx);
+        // Every other node — doc, paragraph, codeBlock (counts as surrounding
+        // context), lists, blockquote, gloss rows/cells, any container or
+        // textblock the schema grows — contributes its descendants in the
+        // CURRENT context. Leaf atoms simply have no content.
+        for (const child of n.content ?? []) walk(child, ctx);
+        glue = null;
         return;
     }
   };
 
-  walkBlock(node, "mainText");
+  walk(node, "mainText");
   return cats;
+}
+
+/** All descendant text of a JSON node, concatenated (PmNode.textContent). */
+function flattenText(n: JSONContent): string {
+  if (n.text) return n.text;
+  return (n.content ?? []).map(flattenText).join("");
 }
 
 /** Per-category WORD counts for one block (or any subtree). Deliberately not
