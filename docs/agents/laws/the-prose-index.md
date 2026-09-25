@@ -75,6 +75,15 @@ Seven rules it earned:
   a single "is this raw LaTeX" predicate cannot express it. It remains the
   third half-answer and MAY migrate later — deliberately, not in passing. It
   is the census's one exemption, scoped to that reason.
+  **It does, however, share this law's BLOCK rule (task 767).** Its walker was
+  a hand list of textblock NAMES, so every textblock it did not name
+  (`titleField`, native `figureCaption`, expex `proseGlossRow`/`glossCell`)
+  counted zero, and it read the rich-JSON footnote body as a string
+  ("[object Object]" = 2 words). It is now ONE shape-driven walk — text is
+  prose wherever it sits, bucketed by the nearest enclosing context; named
+  arms only switch the bucket or declare a node non-prose — and
+  `word-count-schema-sweep.test.ts` asks the LIVE schema for every textblock
+  and fails if any counts zero.
 
 **Cost class.** `buildProseIndex` is O(doc) and is a DERIVED PRODUCT: a
 consumer re-derives EVENT-DRIVEN (the `DocStructureBus` counters, a
