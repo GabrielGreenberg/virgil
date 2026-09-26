@@ -489,6 +489,36 @@ describe("3 · the example family through the REAL save pipeline", () => {
     expect(c1).toContain("\\begin{exe}\n\\ex Susan left.\n\\ex Bill stayed.\n\\end{exe}");
   });
 
+  // Task 780 — the standard gb4e sub-example idiom. gb4e defines `xlist`
+  // itself; the `xlistenv` shim is written in expex's `\pex`/`\xe`, so it
+  // must be refused whenever expex is (its registry `dependsOn`).
+  const XLIST_BODY =
+    "\\begin{exe}\n\\ex Main.\n\\begin{xlist}\n\\ex a.\n\\ex b.\n\\end{xlist}\n\\end{exe}";
+  const XLIST_SHIM = "\\newenvironment{xlist}{\\pex}{\\xe}";
+
+  for (const [name, pkg] of [
+    ["GB4E", GB4E],
+    ["LINGUEX", LINGUEX],
+  ] as const) {
+    it(`a ${name} paper's \\begin{xlist} never injects the expex xlist shim — only the family conflict is reported`, () => {
+      const { out, conflicts } = conflictsOf(tex(XLIST_BODY, pkg));
+      expect(preambleOf(out)).not.toContain(XLIST_SHIM);
+      expect(usepackageCount(out, "expex")).toBe(0);
+      expect(conflicts).toEqual([
+        { family: "example", declared: "expex", preambleHas: pkg.slice(12, -1) },
+      ]);
+      expect(save(out)).toBe(out);
+    });
+  }
+
+  it("CONTROL — an expex preamble with a nested xlist still gets the shim, once", () => {
+    const out = ensurePreambleRequirements(
+      `\\documentclass{article}\n${EXPEX}\n\\begin{document}\n`,
+      detectBodyRequirements(XLIST_BODY),
+    );
+    expect(out.split(XLIST_SHIM)).toHaveLength(2);
+  });
+
   it("BOTH loaded (Gabriel's own shape) with a mixed body: nothing injected, no conflict", () => {
     const { out, conflicts } = conflictsOf(
       tex(`${EXPEX_BODY}\n\n${LINGUEX_BODY}`, `${EXPEX}\n${LINGUEX}`),
@@ -535,5 +565,15 @@ describe("3 · the example family through the REAL save pipeline", () => {
       { declaredBibFamily: "biblatex", onRequirementConflict: (c) => (conflict = c) },
     );
     expect(conflict).toEqual({ family: "bib", declared: "biblatex", preambleHas: "natbib" });
+  });
+});
+
+describe("4 · a shim's `dependsOn` names a real registry id (task 780)", () => {
+  it("every dependency edge resolves, and xlistenv is written over expex", () => {
+    const ids = new Set(LATEX_REQUIREMENTS.map((r) => r.id));
+    for (const r of LATEX_REQUIREMENTS) {
+      if (r.dependsOn) expect(ids.has(r.dependsOn), r.id).toBe(true);
+    }
+    expect(LATEX_REQUIREMENTS.find((r) => r.id === "xlistenv")?.dependsOn).toBe("expex");
   });
 });
