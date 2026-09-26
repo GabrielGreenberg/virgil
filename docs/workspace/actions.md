@@ -1,4 +1,4 @@
-<!-- last-verified: db05316e 2026-09-25 -->
+<!-- last-verified: beedb319 2026-09-26 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -337,7 +337,10 @@ the menu **surface** itself, so no menu authors its own chrome. Since task 687
 can keep click-away = commit while Escape = cancel ([laws/escape-means-cancel.md](../agents/laws/escape-means-cancel.md)). Its `<AnchoredMenu>`
 trigger half states the button contract once (renders the `<button>`, captures +
 re-reads the anchor rect, `maxHeight` on by default, `excludeRefs` self-close
-guard, `aria-haspopup`/`aria-expanded`); the action vocabulary
+guard, `aria-haspopup`/`aria-expanded`); a pick-one row set goes through
+`<MenuRadioGroup>` (options + ONE value → every row `menuitemradio`, task 770; the
+MenuBar block-type and divider-width rows, `CardViewModeMenu`, the Citations/Bibliography
+selectors), pinned by `menu-radio-census.test.ts`; the action vocabulary
 is still `VIRGIL_ACTION_REGISTRY`, unchanged. The same primitive backs the
 migrated `SelectionColorPopover`, `LabelRefPopover`, `HeadingTypeMenu`,
 `TabPlusMenu`, `BibEntryPickerMenu` (combobox path), the lightning panel's
@@ -610,7 +613,9 @@ glyph) shown per `CardMeta.droppable`, mounted on both the docked card header
 and the popped-out card float's chrome. One shared mousedown→session helper,
 **`beginCardDropGesture`** ([drop-mode/card-drop-gesture.ts](../../src/components/drop-mode/card-drop-gesture.ts)),
 drives every drop-button surface (docked header, float chrome, and the
-gutter-pin re-anchor, now folded onto the controller). The legacy **Shift-grab**
+gutter-pin re-anchor, now folded onto the controller); its commit-on-release goes
+through the controller's one door `armReleaseCommit`, whose listener dies with its
+own session (fired, Escape, failsafe or teardown — task 772). The legacy **Shift-grab**
 on a float header is **retired** (req-7), and the panel→gutter **native HTML5
 drag-and-drop** was **removed** (the `panel-drops.ts` / `anchor-rebind.ts`
 event-bridges + `Revisions/mime.ts` are deleted) — the drop button is now the
@@ -643,7 +648,12 @@ wrap-validity gate, `DropTarget.canPlaceHere(kind)` (computed once in
 fabricated wrapper would be invalid at the TRUE immediate parent — killing the
 cross-kind-into-foreign-container-gap duplicate-uuid corruption. The expex case
 lets `paragraph` / `displayMath` / `graphicsBlock` land inside an `exampleItem`
-(schema-driven via the drop target's `canDropDirect` / `canPlaceHere`).
+(schema-driven via the drop target's `canDropDirect` / `canPlaceHere`). The
+between-blocks fit question every block-shaped drop ends in — bare, wrapped, or
+refused — is `fitNodeInContainer` in
+[container-fit.ts](../../src/text-objects/container-fit.ts) (task 776, split out of
+`drop-adapters.ts`), whose `WRAP_TARGET_KINDS` is DERIVED from the registry's
+`parentKinds` facet (items first), not hand-listed.
 
 ---
 
