@@ -565,9 +565,9 @@ function consumeAccentBase(
 ): { glyph: string; end: number } | null {
   if (pos >= text.length) return null;
 
-  // Braced base: `{x}` or `{\i}` or `{}` (empty → accent over a space-less
-  // nothing; LaTeX treats `\'{}` as a bare accent — we render the combining
-  // mark on its own, which NFC leaves as the bare combining char).
+  // Braced base: `{x}` or `{\i}`. An EMPTY base (`\'{}`, `\^{}`, `\~{}`) is
+  // NOT an accent over nothing — `resolveAccentBase` refuses it (task 779 M1),
+  // so the whole construct falls through to the carrier and stays verbatim.
   if (text[pos] === "{") {
     const close = findMatchingBrace(text, pos);
     if (close === -1) return null;
@@ -584,7 +584,12 @@ function consumeAccentBase(
       const key = sp[0];
       const glyph = SPECIAL_LETTER_TABLE.find((e) => e.key === key)?.glyph;
       if (glyph) {
-        return { glyph: composeAccent(combining, glyph), end: pos + 1 + key.length };
+        // The base is a control WORD, so it swallows its terminator exactly as
+        // a standalone `\i` does — `\"\i ve` is "ïve", not "ï ve" (task 779 M3).
+        return {
+          glyph: composeAccent(combining, glyph),
+          end: consumeControlWordTerminator(text, pos + 1 + key.length),
+        };
       }
     }
     return null;
@@ -605,7 +610,13 @@ function consumeAccentBase(
  */
 function resolveAccentBase(inner: string): string | null {
   const trimmed = inner;
-  if (trimmed === "") return ""; // \'{} → bare accent
+  // `\'{}` / `\^{}` / `\~{}` — an accent over an EMPTY group is TeX's idiom for
+  // the SPACING accent glyph (a printed caret or tilde), not a diacritic. There
+  // is no base to compose onto: minting the lone combining mark let it attach
+  // to the PREVIOUS letter on the next save (`x\^{}2` → `\^{x}2`) or reach the
+  // .tex raw. Refuse, so the caller falls through to the byte-verbatim carrier
+  // (task 779 M1).
+  if (trimmed === "") return null;
   // Nested ACCENT command: {\d{a}} {\^{a}} … — a stacked diacritic. This is
   // the canonical spelling our serializer emits for a glyph with 2+ combining
   // marks (Vietnamese ặ → `\u{\d{a}}`); the parse side must compose it
@@ -652,15 +663,22 @@ export function matchSpecialLetter(
   const word = wordMatch[0];
   const entry = SPECIAL_LETTER_TABLE.find((e) => e.key === word);
   if (!entry) return null;
-  let end = start + 1 + word.length;
-  // Consume the token-break `{}` if present (`\ss{}`), else an optional
-  // single trailing space that LaTeX uses to terminate the control word.
-  if (text[end] === "{" && text[end + 1] === "}") {
-    end += 2;
-  } else if (text[end] === " ") {
-    end += 1;
-  }
-  return { glyph: entry.glyph, end };
+  return {
+    glyph: entry.glyph,
+    end: consumeControlWordTerminator(text, start + 1 + word.length),
+  };
+}
+
+/**
+ * THE control-word terminator rule for a special letter, read by both the
+ * standalone matcher (`\ss{}`) and an accent's bare base (`\"\i ve`): consume
+ * the token-break `{}` if present, else ONE trailing space — the space TeX
+ * swallows to end the control word, so it never prints. Returns the new end.
+ */
+function consumeControlWordTerminator(text: string, end: number): number {
+  if (text[end] === "{" && text[end + 1] === "}") return end + 2;
+  if (text[end] === " ") return end + 1;
+  return end;
 }
 
 /**
@@ -803,6 +821,15 @@ export function typographyToLatex(text: string): string {
   let out = "";
   for (let i = 0; i < decomposed.length; i++) {
     const ch = decomposed[i];
+    // A combining mark reached as a BASE stands alone — at the start of the
+    // run, or after a mark this table does not know. Emit the spacing-accent
+    // spelling rather than the raw codepoint (task 779: no path writes a
+    // standalone combining mark into the .tex).
+    const loneMark = ACCENT_BY_COMBINING.get(ch);
+    if (loneMark) {
+      out += `\\${loneMark.key}{}`;
+      continue;
+    }
     // Gather the FULL run of consecutive combining marks we recognize that
     // follow this base char. Stacked diacritics (Vietnamese ặ = a + breve +
     // dot-below, ấ = a + circ + acute) decompose under NFD to a base followed
@@ -824,6 +851,14 @@ export function typographyToLatex(text: string): string {
       // the fold is the only reason the string was decomposed at all, so a base
       // it declines must be handed back in the form it arrived in. See
       // `isLatinAccentBase` for why the script is the right question (349 M7).
+      // A base that is not a LETTER at all (space, digit, punctuation) is no
+      // base: the marks stand alone and would otherwise be written raw. Emit
+      // each as its spacing-accent spelling after the character (task 779).
+      if (!/\p{L}/u.test(ch)) {
+        out += ch + marks.map((m) => `\\${m.key}{}`).join("");
+        i = j - 1;
+        continue;
+      }
       if (!isLatinAccentBase(ch)) {
         out += (ch + marks.map((m) => m.combining).join("")).normalize("NFC");
         i = j - 1;
@@ -894,11 +929,17 @@ export function smartenStraightQuotes(text: string): string {
       .replace(QUOTE_GLYPH_RE, (g) => TEX_BY_QUOTE_GLYPH.get(g)!)
       // Straight `"` → smart LaTeX pair. Opening if at start or after
       // whitespace / opening punctuation (incl. `/`) / a dash glyph;
-      // otherwise closing.
-      .replace(/(^|[\s([{/—–])"/g, "$1``")
-      .replace(/"/g, "''")
+      // otherwise closing. An ESCAPED `"` (odd backslash run — `\"u`, the
+      // umlaut accent inside a raw `latexCommand` run) is not a quote at all
+      // and passes through: THE escape rule, `isEscaped` (task 779 M2).
+      .replace(/"/g, (q, i: number, s: string) =>
+        isEscaped(s, i) ? q : i === 0 || SMART_QUOTE_OPENER_PREV.test(s[i - 1]) ? "``" : "''",
+      )
   );
 }
+
+/** The character before a straight `"` that makes it an OPENING quote. */
+const SMART_QUOTE_OPENER_PREV = /[\s([{/—–]/;
 
 // ─────────────────────────────────────────────────────────────────────────
 // LaTeX quote pairs ↔ curly quotes
