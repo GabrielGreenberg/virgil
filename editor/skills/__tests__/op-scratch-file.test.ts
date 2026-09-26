@@ -332,6 +332,7 @@ describe("op-json delivery — the CENSUS (allowlist EMPTY)", () => {
     expect(inlineOwners).toEqual([
       "accept-suggestion.md",
       "answer-bib-review.md", // the bare `complete-only` with no bibEdit
+      "answer-todo-request.md", // step 4's `update {cardId, set:{done:true}}` (task 785)
       "archive-card.md",
       "link-cards.md",
       "move-card.md",

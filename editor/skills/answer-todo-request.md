@@ -143,24 +143,36 @@ matters" (write a note). Read the todo and dispatch.
      it creates no card.
 
 4. **Finalize the source todo by the returned outcome** — don't mark a proposal
-   done:
-   - **Sibling note with `status: complete`** (a direct / silent / auto-applied
-     create) **or complete-with-limit**: set `done: true` on the source todo in
-     `<docPath>/virgil/todos.json` after the create returns. `aiRequest` is
-     already cleared by the contract; the contract has no `flipDone` op yet, so
-     this stays a small post-step Edit (a future chip routes it through the
-     `update` op).
-   - **Sibling note with `status: in-progress`** (a level-3 **proposal**): leave
-     the todo `done: false` and open — the note is drafted for review, and a
-     later `/editor/review` re-lists the Task until the user accepts. Don't flip
-     `done` on an answer the user hasn't accepted.
-   - **Suggestion card** path: no — leave `done: false`; the accept flow flips
-     it when the user accepts the suggestion.
+   done. The rule is keyed on the JSON `status` the landing call returned, not
+   on which branch you took:
+   - **`status: complete`** (a sibling note created direct / silent /
+     auto-applied, the tier-1 footnote, or complete-with-limit): mark the source
+     todo done through the contract's `update` op — the same door
+     [`/editor/edit-card`](edit-card.md) `<docPath> <cardId> --field done=true`
+     uses (atomic, pen-protected, version-bumped). The op carries only an id
+     and a boolean, so it stays inline (see [`_op-json.md`](_op-json.md)):
+     ```bash
+     python3 editor/scripts/apply_response.py <docPath> update '{"cardId":"<cardId>","set":{"done":true}}'
+     ```
+     `aiRequest` is already cleared by the landing call. **Never** flip `done`
+     with a file-editing tool on `todos.json` — a raw write races the app's
+     autosave of that sidecar and skips the version bump.
+   - **`status: in-progress`** (a level-3 **proposal** — a note or a suggestion
+     card): leave the todo `done: false`. Don't flip `done` on an answer the
+     user hasn't accepted. Know what that leaves behind: the contract stamps the
+     card's id as the Task's `resultId`, and an `in-progress` Task WITH a
+     `resultId` counts as **answered** (`is_request_open`), so `/editor/review`
+     does **not** re-list it, and no accept path (the editor's, or
+     `/editor/accept-suggestion`) marks the originating todo done today. The
+     user closes the todo themselves once they accept the proposal — say so in
+     the reply.
+   - **Citation handoff:** nothing to finalize here — `/editor/find-citation`
+     owns the Task from this point.
 
 5. **Reply.** Use the path-specific template:
    - Suggestion card path (awaiting review):
      ```
-     Done: drafted suggestion <newId> for todo <cardId>, request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, todos.json aiRequest cleared, notifications, version).
+     Done: drafted suggestion <newId> for todo <cardId>, request <requestId> — awaiting review (accept/reject in the editor; tick the todo done once you accept). Output: revisions.json (+ ai-requests.json status=in-progress, todos.json aiRequest cleared, notifications, version).
      ```
    - Sibling note path (`status: complete`):
      ```
@@ -168,11 +180,11 @@ matters" (write a note). Read the todo and dispatch.
      ```
    - Sibling note path (`status: in-progress`, a level-3 proposal):
      ```
-     Drafted note <newId> as a proposal for todo <cardId>, request <requestId> — awaiting review (todo left open). Output: notes.json (+ ai-requests.json status, todos.json aiRequest cleared, notifications, version).
+     Drafted note <newId> as a proposal for todo <cardId>, request <requestId> — awaiting review (todo left open; tick it done once you accept the note). Output: notes.json (+ ai-requests.json status, todos.json aiRequest cleared, notifications, version).
      ```
    - Footnote path (tier 1, one hop):
      ```
-     Done: drafted footnote <footnoteId> for todo <cardId>, request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json, todos.json aiRequest cleared, notifications, version).
+     Done: drafted footnote <footnoteId> for todo <cardId>, request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json, todos.json done+aiRequest, notifications, version).
      ```
    - Citation path (tier 2, handed off):
      ```
