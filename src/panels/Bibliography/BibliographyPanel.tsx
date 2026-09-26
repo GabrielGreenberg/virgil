@@ -928,7 +928,7 @@ function BibliographyPanel({
               {new Date(req.createdAt).toLocaleDateString()}
               {req.status === "pending" && (
                 <span className="ml-1.5 inline-flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 motion-safe:animate-pulse" />
                   Pending
                 </span>
               )}

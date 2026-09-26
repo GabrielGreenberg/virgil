@@ -1162,6 +1162,24 @@ first card clears the chrome by exactly the inter-card gap. Never a z-index
 nudge, never a constant — a constant lies the moment a band docks above the
 bins.
 
+### Motion (task 775)
+
+**Every MOVEMENT opts in; fades do not need to.** A transition or keyframe
+that moves something — `transform`, position (`top`/`left`/`inset`), size
+(`width`/`height`), margin, or `all` — is written inside
+`@media (prefers-reduced-motion: no-preference)`, or with Tailwind's
+`motion-safe:` variant (the same query). There is no global `reduce` reset,
+so absent the opt-in the motion simply plays for a user who asked the OS not
+to see it; with the opt-in, the element snaps. Colour and opacity fades are
+not movement and stay unconditional. A LOOPING animation (pulse, ping,
+breathe) opts in too; a progress spinner (`animate-spin`) is exempt because
+it carries state. An inline `style` transition is out of reach of any media
+query, so movement never goes inline — give it a class. Gesture feedback
+matters most: the drop bars and the strip drop line re-place on most frames
+of a drag. Census: `src/__tests__/reduced-motion-census.test.ts` (both
+stylesheets, inline styles, Tailwind tokens; one allowlisted site, the
+Button press nudge).
+
 ## Cards & themes
 
 A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,

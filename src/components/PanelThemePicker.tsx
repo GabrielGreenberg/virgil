@@ -211,7 +211,7 @@ function PresetSwatch({
       {...getItemProps()}
       type="button"
       {...iconHint({ label: name })}
-      className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${
+      className={`w-5 h-5 rounded border motion-safe:transition-transform hover:scale-110 ${
         active ? "ring-2 ring-offset-1 ring-edge-strong" : "border-edge-hover"
       } ${roving ? "outline outline-2 outline-offset-1 outline-[var(--accent-blue)]" : ""}`}
       style={{ background: hex }}

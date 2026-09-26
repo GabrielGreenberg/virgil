@@ -227,6 +227,9 @@ function PositionHighlight({ scrollRef, attr, color }: {
   // reads over the hover without eating clicks or hiding the text.
   return (
     <div
+      // The glide is movement, so it rides `motion-safe:` (task 775) — an
+      // inline `transition` is out of reach of any reduced-motion query.
+      className="motion-safe:transition-[transform,height] duration-200 ease-out"
       style={{
         position: "absolute",
         left: 0,
@@ -236,7 +239,6 @@ function PositionHighlight({ scrollRef, attr, color }: {
         transform: `translateY(${pos.y}px)`,
         height: pos.h,
         borderRadius: "var(--radius-md)",
-        transition: "transform 200ms ease-out, height 200ms ease-out",
         pointerEvents: "none",
         zIndex: 6,
       }}
@@ -718,7 +720,7 @@ function OutlineNode({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+              className={`motion-safe:transition-transform ${isCollapsed ? "" : "rotate-90"}`}
             >
               <path d="M4.5 2l4 4-4 4" />
             </svg>
@@ -1038,7 +1040,7 @@ const EditablePod = memo(function EditablePod({
         draggable
         onDragStart={(e) => onDragStart(pod, e)}
         onDragEnd={onDragEnd}
-        className={`flex items-center gap-1.5 rounded-md border transition-all cursor-grab active:cursor-grabbing ${
+        className={`flex items-center gap-1.5 rounded-md border transition-[color,background-color,border-color,opacity,box-shadow] cursor-grab active:cursor-grabbing ${
           isDragging
             ? "opacity-30 border-edge-hover bg-surface-muted-strong"
             : isParTitle
@@ -1075,7 +1077,7 @@ const EditablePod = memo(function EditablePod({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+              className={`motion-safe:transition-transform ${isCollapsed ? "" : "rotate-90"}`}
             >
               <path d="M4.5 2l4 4-4 4" />
             </svg>

@@ -114,7 +114,7 @@ export default function CollaboratorIdentityDialog({
                     type="button"
                     onClick={() => setColor(c.hex)}
                     {...iconHint({ label: c.name })}
-                    className="w-6 h-6 rounded-full border-2 transition-transform focus-ring"
+                    className="w-6 h-6 rounded-full border-2 motion-safe:transition-transform focus-ring"
                     style={{
                       background: c.hex,
                       borderColor: selected ? "var(--foreground)" : "transparent",
