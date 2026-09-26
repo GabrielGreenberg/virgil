@@ -15,6 +15,11 @@ import { describe, expect, it } from "vitest";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
+import {
+  extractFigureSources,
+  withReplacedFigurePath,
+  withUpdatedFigureWidth,
+} from "@/lib/figures/parse-attrs";
 import { extractBraced, findMatchingBrace, matchCommandArgumentRun } from "@/lib/latex-lexer";
 
 const PRE = "\\documentclass{article}\n\\begin{document}\n";
@@ -130,5 +135,27 @@ describe("task 777 M3 — the scanner itself", () => {
 
   it("an escaped \\% is literal", () => {
     expect(findMatchingBrace("{5\\% x} y", 0)).toBe(6);
+  });
+});
+
+describe("task 777 M4 — the figure readers ignore a commented-out \\includegraphics", () => {
+  const BODY =
+    "\\centering\n% \\includegraphics[width=.3\\textwidth]{draft.png}\n\\includegraphics[width=0.5\\textwidth]{final.png}\n\\caption{C}";
+
+  it("extractFigureSources sees only the live one", () => {
+    expect(extractFigureSources(BODY).map((s) => s.path)).toEqual(["final.png"]);
+  });
+
+  it("the width editor edits the live line and leaves the comment alone", () => {
+    const out = withUpdatedFigureWidth(BODY, 80);
+    expect(out).toContain("% \\includegraphics[width=.3\\textwidth]{draft.png}");
+    expect(out).toContain("\\includegraphics[width=0.8\\textwidth]{final.png}");
+  });
+
+  it("the path editor swaps the live path", () => {
+    const out = withReplacedFigurePath(BODY, "new.png");
+    expect(out).toContain("{draft.png}");
+    expect(out).toContain("{new.png}");
+    expect(out).not.toContain("{final.png}");
   });
 });

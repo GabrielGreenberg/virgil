@@ -3,6 +3,8 @@
 // structured attrs that drive figure display, and by the tex-mode popover
 // to re-extract attrs when the user edits the source.
 
+import { projectLiveLatex } from "@/lib/latex-lexer";
+
 export interface FigureSource {
   /** Path argument of `\includegraphics{...}` — may lack an extension. */
   path: string;
@@ -162,12 +164,30 @@ export function graphicsCommandEnd(bytes: string): number | null {
   return matchIncludegraphics(bytes, start)?.end ?? null;
 }
 
-/** Walk an env body string and pull out all `\includegraphics` commands. */
+/**
+ * The view of `text` to SEARCH for `\includegraphics` in, so only the ones TeX
+ * would actually read are found (task 777 M4). A raw `indexOf` also found a
+ * `% \includegraphics[width=.3\textwidth]{draft.png}` the author had commented
+ * out above the real one, so the preview showed the draft and the width/path
+ * editors rewrote the COMMENTED line. It is the lexer's offset-preserving live
+ * projection (comment tails and inline `\verb` runs blanked), so an index found
+ * in it is an index into `text`, where `matchIncludegraphics` reads the raw bytes.
+ * Stated residual, the projection's own: a raw `%` inside a `\url{…a%20b}`
+ * blanks the rest of ITS line, so an `\includegraphics` sharing that line is
+ * not seen.
+ */
+function liveGraphicsView(text: string): string {
+  if (!text.includes("%") && !text.includes("\\verb")) return text;
+  return projectLiveLatex(text, { inlineVerb: true, preserveOffsets: true });
+}
+
+/** Walk an env body string and pull out all LIVE `\includegraphics` commands. */
 export function extractFigureSources(envContent: string): FigureSource[] {
   const sources: FigureSource[] = [];
+  const live = liveGraphicsView(envContent);
   let i = 0;
   while (i < envContent.length) {
-    const idx = envContent.indexOf("\\includegraphics", i);
+    const idx = live.indexOf("\\includegraphics", i);
     if (idx === -1) break;
     const m = matchIncludegraphics(envContent, idx);
     if (!m) {
@@ -703,7 +723,7 @@ function rebuildIncludegraphics(
 }
 
 /** Splice an updated `\includegraphics` command into a larger text string
- *  (a graphicsBlock `command` or a figureBlock `raw`). Locates the first
+ *  (a graphicsBlock `command` or a figureBlock `raw`). Locates the first LIVE
  *  `\includegraphics` and replaces it with `build(match)`. Returns null
  *  when no `\includegraphics` is found. */
 function withUpdatedFirstGraphics(
@@ -714,7 +734,7 @@ function withUpdatedFirstGraphics(
     path: string;
   }) => string | null,
 ): string | null {
-  const idx = text.indexOf("\\includegraphics");
+  const idx = liveGraphicsView(text).indexOf("\\includegraphics");
   if (idx === -1) return null;
   const m = matchIncludegraphics(text, idx);
   if (!m) return null;
