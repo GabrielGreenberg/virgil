@@ -13,7 +13,8 @@ description: |
 
 # /editor/find-citation $ARGUMENTS
 
-Resolve one AI request whose kind is `citation`. The user has described
+Resolve one AI request whose kind is `citation` — or a todo asking for a
+source, handed off by `/editor/answer-todo-request` (step 0). The user has described
 a paper they want to cite ("a recent post-2020 paper on the Hypothes.is
 annotation platform that I can cite in §6"); your job is to identify a
 real source, add it to the bibliography, and surface a `CitationRef`
@@ -40,15 +41,36 @@ card so the user can drag it into the document.
 
 ## Procedure
 
-0. **Validate.** Before doing anything, check the request:
-   - `kind == "citation"` (otherwise refuse).
-   - the status is open (not the terminal `complete` / `failed` —
-     re-running a terminal Task is a no-op).
+0. **Validate.** Before doing anything, check the request. This skill
+   answers exactly two Task shapes — anything else, refuse:
+   - **A `citation` Task** — `kind == "citation"`, a row in
+     `ai-requests.json` (the AIWindow's citation affordance).
+   - **A todo handed off by [`/editor/answer-todo-request`](answer-todo-request.md)**
+     — its tier-2 re-route ([_ask-shape.md](_ask-shape.md)): a todo asking
+     for a source. The id is either a real `kind == "todo"` row in
+     `ai-requests.json`, or `virtual:todos:<cardId>` (a pre-bridge todo
+     flag, which has **no** `ai-requests.json` row). Admit it; the writeback
+     in step 6 drains it the same way — `apply_response.py complete-task`
+     completes a real todo Task and, for a virtual id, splits it into
+     `{panel: "todos", cardId}` and clears that todo's `aiRequest` flag.
+     Any other kind is not a hand-off this skill accepts — refuse.
+   - For a real row: the status is open (not the terminal `complete` /
+     `failed` — re-running a terminal Task is a no-op). A virtual id is open
+     by construction (`list_requests.py` only emits one while the card's flag
+     is still set).
 
-   `paragraphIds` is optional for citation requests (the resulting
-   card is `unanchored: true` — the user drags it to anchor).
+   `paragraphIds` is optional (the resulting card is `unanchored: true` —
+   the user drags it to anchor), so no `--anchor` is needed here even for a
+   virtual id: the citation card is never anchored at create time.
 
-1. **Load.** Read the request from `<docPath>/virgil/ai-requests.json`.
+1. **Load.** The request's text and `paragraphIds`:
+   - a real id → its row in `<docPath>/virgil/ai-requests.json`;
+   - `virtual:todos:<cardId>` → its row from
+     `python3 editor/scripts/list_requests.py <docPath>` (the only place a
+     virtual row exists — it carries `text`, `paragraphIds` and
+     `selectedText` read off the source todo). The ask is the todo's `text`
+     plus its `notes` in `todos.json`.
+
    Fetch paragraph context so the citation makes sense in place:
    - If the request has `paragraphIds`, run
      `get_para_context.py` on the first id with `--neighbors=2`.
@@ -272,12 +294,12 @@ card so the user can drag it into the document.
    `apply_response.py` is the only writeback path.
 
    `clearSourceFlag: true` is the contract's default and every
-   linked-completion path passes it. A `citation` Task is unbridged today (no
-   `CARD_REGISTRY` kind routes to it in `ai_request_routing.json`), so the
-   flag resolves to nothing here — but "inert by accident" is not a reason to
-   state a different answer from the contract: the moment a bridged Task
-   reaches this skill (a todo asking for a citation), a `false` would leave
-   the source card wearing a pending-AI flag it no longer has.
+   linked-completion path passes it. A `citation` Task is unbridged (no
+   `CARD_REGISTRY` kind routes to it in `ai_request_routing.json`), so there
+   the flag resolves to nothing — but a todo handed off by
+   `/editor/answer-todo-request` (step 0) IS bridged: its `linkedTo` (or its
+   `virtual:todos:` id) names the source todo, and a `false` would leave that
+   todo wearing a pending-AI flag it no longer has.
 
 7. **Reply.**
    ```

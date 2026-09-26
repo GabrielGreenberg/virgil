@@ -47,16 +47,17 @@ matters" (write a note). Read the todo and dispatch.
    - **Footnote** ("footnote this claim", "add a note on X") → **tier 1**
      ([_ask-shape.md](_ask-shape.md) §4): the builder is self-sufficient, so
      compose the footnote prose yourself and land it in one hop —
-     `create_card.py --kind=footnote --accept-task-kind todo --body "…"`.
-     It allocates the `\vfid`, writes `footnotes.json`, splices the `.tex`
-     and drains the todo Task, all atomically. See step 3.
+     `create_card.py --kind=footnote --accept-task-kind todo --anchor <uuid>
+     --body "…"`. It allocates the `\vfid`, writes `footnotes.json`, splices
+     the `.tex` and drains the todo Task, all atomically. See step 3.
    - **Citation** ("find a source for this", "cite X here") → **tier 2**:
      `create_card.py --kind=citation` requires a `--citekey` already present
      in `references.bib` and hard-refuses a missing one, and you do not hold
      one — sourcing the work is a different job. **Hand off to
      [`/editor/find-citation`](find-citation.md) `<docPath> <requestId>`**,
      which searches, writes the `.bib` entry and the citation card, and
-     drains this same Task. Do not compose a `\cite*{}` for a key you have
+     drains this same Task — real todo id and `virtual:todos:<cardId>` alike
+     (its step 0 admits exactly this hand-off). Do not compose a `\cite*{}` for a key you have
      not verified. A todo asking to *pull a quoted passage* has no dedicated
      kind: hand off to `/editor/find-citation` if the ask is really "where is
      this from", otherwise emit a sibling **note/report** carrying the quote.
@@ -74,7 +75,13 @@ matters" (write a note). Read the todo and dispatch.
      "check the dataset"): mark complete with a note explaining the
      limit; don't pretend.
 
-3. **Land the result** per the chosen shape:
+3. **Land the result** per the chosen shape. **Every `create_card.py` call
+   below passes `--anchor <uuid>`, taken from the row's `paragraphIds[0]`** —
+   one call shape for a real todo id and a `virtual:todos:<cardId>` alike
+   ([_ask-shape.md](_ask-shape.md) §4). A virtual id has no Task row to read
+   an anchor off, and `create_card.py` dies without the flag; on a real id it
+   is byte-identical to the fallback it would have applied. No
+   `paragraphIds` at all → HALT and say so.
 
    - **Analysis / explanation → sibling note** *(migrated to the contract)*.
      Compose the note in chat, then land it via `create_card.py --kind=note`.
@@ -84,12 +91,8 @@ matters" (write a note). Read the todo and dispatch.
      `status`/`result`, clears the todo's `aiRequest` flag, and bumps the version
      — atomically under the pen:
      ```bash
-     # real todo requestId (bridged flag, kind=todo):
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
-         --accept-task-kind todo --body "<your note>" --title "<subject>"
-     # virtual:todos:<cardId> (pre-bridge flag — anchor from the source todo):
-     python3 editor/scripts/create_card.py <docPath> virtual:todos:<cardId> \
-         --kind=note --body "<your note>" --title "<subject>" --anchor <uuid>
+         --accept-task-kind todo --anchor <uuid> --body "<your note>" --title "<subject>"
      ```
      `create_card.py` picks the subcommand from the Task's `safetyLevel` — none →
      direct create, 1 → silent, 2 → +comment, 3 → **propose** — you don't pick it.
@@ -131,7 +134,7 @@ matters" (write a note). Read the todo and dispatch.
      the todo Task itself, so there is nothing else to land:
      ```bash
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=footnote \
-         --accept-task-kind todo --body "<composed footnote prose>"
+         --accept-task-kind todo --anchor <uuid> --body "<composed footnote prose>"
      ```
    - **Citation → handoff.** Nothing lands here: `/editor/find-citation`
      drains the Task. Say in your reply which skill you handed to.

@@ -129,8 +129,10 @@ const EXCLUDED_NON_FLAG_TARGETS: Record<string, string> = {
     "(rebase this preamble onto that style). No card flag, no manifest row.",
   "editor/skills/find-citation.md":
     "free-text, but single-shape BY CONSTRUCTION: `citation` has no manifest " +
-    "row, so the only way to file one is the AIWindow's citation affordance, " +
-    "whose ask *is* \"find me a source\". The never-fabricate half of the same " +
+    "row, so it is filed only by the AIWindow's citation affordance, whose ask " +
+    "*is* \"find me a source\" — or handed a todo by answer-todo-request, whose " +
+    "own shape step already classified the ask as a citation (task 784; the " +
+    "hand-off census below pins that it ADMITS it). The never-fabricate half of the same " +
     "question is already governed by `_find-or-surface.md`, which it carries. " +
     "The marginal member — considered and left out, not missed. If `citation` " +
     "ever gains a per-card flag (a comment box on an existing citation card), " +
@@ -575,4 +577,148 @@ describe("ask-shape doctrine (SSOT + referencing responders)", () => {
       expect(read(s)).toMatch(/--kind=report/);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// A DOOR A RESPONDER NAMES MUST ACCEPT THE CALL (task 784).
+//
+// Task 451 taught `answer-todo-request` to re-route a footnote todo one hop
+// through `create_card.py` and a citation todo to `/editor/find-citation`. Both
+// doors refused the call they were handed: the footnote hop carried no
+// `--anchor`, so a `virtual:todos:<cardId>` id — which the skill itself says it
+// is "often" given — died in `create_card.py`'s virtual branch; and
+// find-citation's step 0 said `kind == "citation"` "(otherwise refuse)", while
+// a todo Task is `kind: todo` and a virtual id has no `ai-requests.json` row
+// for its step 1 to load. The legs above could not see either: the virtual leg
+// inspected only `--kind=report` fences, and nothing checked that a hand-off
+// TARGET admits what it is handed. Both halves are censuses, derived from the
+// skills and the routing table, never hand-listed.
+// ---------------------------------------------------------------------------
+
+/** Every `create_card.py` invocation in a file's bash fences, one logical line
+ *  each (backslash continuations joined, comment lines dropped). */
+function createCardCalls(src: string): string[] {
+  return [...src.matchAll(/```bash\n([\s\S]*?)```/g)]
+    .flatMap((m) => m[1].replace(/\\\n\s*/g, " ").split("\n"))
+    .filter((l) => /create_card\.py/.test(l) && !/^\s*#/.test(l));
+}
+
+/** Kinds whose card is never anchored at create time — `--anchor` is moot. */
+const UNANCHORED_KINDS = new Set(["citation"]);
+
+/** `skill:kind` pairs a virtual-capable responder lands WITHOUT an anchored
+ *  call shape, and why a virtual id can never reach that call. EXACT SET, and
+ *  each claim is checked: the file must still route the virtual id elsewhere. */
+const VIRTUAL_UNREACHABLE_CALLS: Record<string, { reason: string; routesVirtual: RegExp }> = {
+  "editor/skills/draft-footnote.md:footnote": {
+    reason:
+      "the create-a-NEW-footnote call answers only an unbridged footnote Task; " +
+      "a `virtual:footnotes:<cardId>` id names an EXISTING footnote and is " +
+      "routed to act-on-existing (step E1), which revises via edit-card.",
+    routesVirtual: /virtual:footnotes:<cardId>`? → \*\*act-on-existing\*\*/,
+  },
+};
+
+describe("responder doors accept the call (task 784)", () => {
+  it("finds the virtual-capable responders, the todo one among them", () => {
+    expect(VIRTUAL_CAPABLE_SKILLS).toContain("editor/skills/answer-todo-request.md");
+    expect(VIRTUAL_CAPABLE_SKILLS.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it.each(VIRTUAL_CAPABLE_SKILLS)(
+    "%s: every kind it lands via create_card.py has an anchored call shape",
+    (skill) => {
+      // Per KIND, not per call: a responder may document a real-id call and a
+      // `virtual:` sibling that carries `--anchor` (answer-note-request), or
+      // the one-shape call that carries it always (answer-todo-request) —
+      // either survives a virtual id. What may not exist is a kind whose
+      // EVERY documented call is anchorless: that is a door that dies on
+      // exactly the ids this responder is handed.
+      const calls = createCardCalls(read(skill));
+      const byKind = new Map<string, string[]>();
+      for (const c of calls) {
+        const k = /--kind=([a-z-]+)/.exec(c)?.[1];
+        if (!k || k.startsWith("<") || UNANCHORED_KINDS.has(k)) continue;
+        byKind.set(k, [...(byKind.get(k) ?? []), c]);
+      }
+      const naked = [...byKind]
+        .filter(([, cs]) => !cs.some((c) => /--anchor\b/.test(c)))
+        .map(([k]) => k)
+        .filter((k) => !(`${skill}:${k}` in VIRTUAL_UNREACHABLE_CALLS))
+        .sort();
+      expect(
+        naked,
+        `${skill}: create_card.py --kind=<k> documented with no --anchor anywhere. ` +
+          `Handed a virtual:<panel>:<cardId> id, create_card.py dies with ` +
+          `"--anchor <uuid> is required for a virtual (card-flag) request id". ` +
+          `Pass the row's paragraphIds[0] (one call shape — _ask-shape.md §4).`,
+      ).toEqual([]);
+    },
+  );
+
+  it.each(Object.entries(VIRTUAL_UNREACHABLE_CALLS))(
+    "exemption %s still holds",
+    (key, { reason, routesVirtual }) => {
+      const [skill, kind] = key.split(":");
+      expect(VIRTUAL_CAPABLE_SKILLS).toContain(skill);
+      const calls = createCardCalls(read(skill)).filter((c) =>
+        new RegExp(`--kind=${kind}\\b`).test(c),
+      );
+      // It still excuses something — an anchorless call of that kind exists…
+      expect(calls.some((c) => !/--anchor\b/.test(c))).toBe(true);
+      // …and the routing that makes it unreachable is still stated.
+      expect(flat(skill), reason).toMatch(routesVirtual);
+    },
+  );
+
+  // THE HAND-OFF CENSUS. A responder that says "hand off to /editor/<target>"
+  // passes <target> its OWN Task id — of the kind(s) `/editor/review` routes
+  // to it, and (if it is virtual-capable) a `virtual:<panel>:` id for each
+  // manifest panel it answers. The target's step 0 must ADMIT each of those,
+  // by name; an admission that isn't written down is a refusal waiting for a
+  // literal reader.
+  const HANDOFF = /hand(?:s)? off to\s*\*{0,2}\s*\[?`\/editor\/([a-z-]+)`/gi;
+  const handoffs = readdirSync(join(repoRoot, "editor/skills"))
+    .filter((f) => f.endsWith(".md") && !f.startsWith("_"))
+    .flatMap((f) => {
+      const from = `editor/skills/${f}`;
+      return [...new Set([...flat(from).matchAll(HANDOFF)].map((m) => m[1]))]
+        .filter((t) => `editor/skills/${t}.md` !== from)
+        .map((t) => ({ from, to: `editor/skills/${t}.md` }));
+    });
+
+  it("the census finds the todo → find-citation hand-off", () => {
+    expect(handoffs).toContainEqual({
+      from: "editor/skills/answer-todo-request.md",
+      to: "editor/skills/find-citation.md",
+    });
+  });
+
+  it.each(handoffs.map((h) => [h.from, h.to] as const))(
+    "%s → %s: the target's step 0 admits what it is handed",
+    (from, to) => {
+      const src = flat(to);
+      const step0 = /## Procedure (.*?) 1\. \*\*/.exec(src)?.[1] ?? "";
+      expect(step0, `${to} has no step-0 validation to admit a hand-off`).toMatch(/Validate/);
+      const kinds = [...new Set(routes.filter((r) => r.file === from).map((r) => r.kind))];
+      expect(kinds.length, `${from} is not a dispatch target`).toBeGreaterThan(0);
+      for (const k of kinds) {
+        expect(step0, `${to} step 0 does not admit a \`${k}\` Task from ${from}`).toMatch(
+          new RegExp(`kind == "${k}"`),
+        );
+      }
+      if (VIRTUAL_CAPABLE_SKILLS.includes(from)) {
+        const panels = Object.values(manifest.routing)
+          .filter((r) => routeForPair(routes, r.kind, r.linkPanel)?.file === from)
+          .map((r) => r.linkPanel);
+        for (const p of panels) {
+          expect(
+            step0,
+            `${to} step 0 does not admit a virtual:${p}: id — ${from} is handed ` +
+              `one, and passes it on`,
+          ).toMatch(new RegExp(`virtual:${p}:`));
+        }
+      }
+    },
+  );
 });
