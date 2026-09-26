@@ -87,7 +87,7 @@ the user can accept (which queues the textual replacement).
         "anchor": { ...COPIED VERBATIM from the source comment's first-link anchor... },
         "target": {
            "type": "card",
-           "ref": {"kind": "suggestion", "id": "<new-uuid>"}
+           "ref": {"kind": "cutter-suggestion", "id": "<new-uuid>"}
         },
         "createdAt": "<ISO now>"
      }],
@@ -103,9 +103,12 @@ the user can accept (which queues the textual replacement).
    mode and the paragraph id(s) in one move; do **not**
    hand-rebuild it into the retired `type: "anchor"`/`paragraphIds` form.
    Then generate a fresh link `id`, set `target.ref.kind` to
-   `"suggestion"`, and set `target.ref.id` to the new card's own id
+   `"cutter-suggestion"`, and set `target.ref.id` to the new card's own id
    (self-target — how the editor matches the card to its anchor at
-   render time).
+   render time). The self-link's `ref.kind` is the card's **spine kind**, not
+   the record's `kind: "suggestion"`; `apply_response.py` stamps it from the
+   panel + record kind on every write anyway (task 783), so a wrong token is
+   overwritten rather than shipped.
 
    `aiOriginRequestId` is **load-bearing**: `/editor/accept-suggestion`
    reads it to complete the originating Task on accept. Emit it for a real

@@ -742,6 +742,30 @@ def _jsoncontent(body: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _stamp_self_link_kind(panel: str, card: dict) -> None:
+    """Task 783 — the contract, not the skill markdown, owns a self-link's
+    `target.ref.kind`. Every link on `card` that targets the card ITSELF gets the
+    spine CardKind derived from (panel, record kind); a hand-restated token (the
+    panel-local `"suggestion"` discriminant was the live case, making the
+    anchor → card jump match nothing) is overwritten rather than trusted. Links
+    to OTHER cards are left alone. Mutates `card` in place."""
+    from card_by_id import spine_card_kind
+
+    card_id = card.get("id")
+    links = card.get("links")
+    if not card_id or not isinstance(links, list):
+        return
+    kind = None
+    for link in links:
+        target = link.get("target") if isinstance(link, dict) else None
+        ref = target.get("ref") if isinstance(target, dict) else None
+        if not isinstance(ref, dict) or ref.get("id") != card_id:
+            continue
+        if kind is None:
+            kind = spine_card_kind(panel, card)
+        ref["kind"] = kind
+
+
 class _Txn:
     def __init__(self, doc: Path):
         self.doc = doc
@@ -772,6 +796,7 @@ class _Txn:
             state[list_key] = []
         if card.get("id") and any(c.get("id") == card.get("id") for c in state[list_key]):
             die(f"card id already present in {filename}: {card.get('id')}")
+        _stamp_self_link_kind(panel, card)
         state[list_key].append(card)
         self.mark(path)
 

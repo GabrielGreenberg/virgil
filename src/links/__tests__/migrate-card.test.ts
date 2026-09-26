@@ -299,14 +299,16 @@ describe("migrateCardLinks", () => {
           {
             ...legacyRevisionLink,
             id: "lk-quotation",
-            target: { type: "card", ref: { kind: "quotation", id: "q1" } },
+            // Targets ANOTHER card: a self-link's unknown token is healed to
+            // the loading kind instead (task 783, tested below).
+            target: { type: "card", ref: { kind: "quotation", id: "q-other" } },
           },
         ],
       });
       expect(result).toHaveLength(1);
       // Unknown token preserved verbatim — the runtime-total crosswalk
       // accessors are the backstop, not the funnel.
-      expect(result[0].target.ref).toEqual({ kind: "quotation", id: "q1" });
+      expect(result[0].target.ref).toEqual({ kind: "quotation", id: "q-other" });
       // Anchor migration still applies to the kept link.
       expect(result[0].anchor.type).toBe("textObject");
     });
@@ -416,5 +418,46 @@ describe("task 664 — one canonical multi-anchor shape", () => {
       anchorText: "hello world",
     });
     expect(shapeOf(fromLegacyLinks)).toEqual(shapeOf(fromBareFields));
+  });
+});
+
+describe("task 783 — a self-link's non-CardKind ref.kind heals to the loading kind", () => {
+  const selfLink = (id: string, refKind: string, refId = id) => ({
+    id: `${id}@p1`,
+    kind: "anchor" as const,
+    anchor: {
+      type: "textObject" as const,
+      targetKind: "paragraph" as const,
+      textObjectIds: ["p1"],
+    },
+    target: { type: "card" as const, ref: { kind: refKind, id: refId } },
+    createdAt: "2026-09-26T00:00:00Z",
+  });
+
+  it.each(["cutter-suggestion", "revision-suggestion"] as const)(
+    "%s: an agent-written `suggestion` self-link becomes the spine kind",
+    (kind) => {
+      const [l] = migrateCardLinks(kind, { id: "s1", links: [selfLink("s1", "suggestion")] });
+      expect(l.target.ref).toEqual({ kind, id: "s1" });
+    },
+  );
+
+  it("a link targeting ANOTHER card keeps its token", () => {
+    const [l] = migrateCardLinks("cutter-suggestion", {
+      id: "s1",
+      links: [selfLink("s1", "suggestion", "other")],
+    });
+    expect(l.target.ref.kind).toBe("suggestion");
+  });
+
+  it("a known legacy token still goes through the crosswalk, not the heal", () => {
+    const [l] = migrateCardLinks("cutter-comment", { id: "c1", links: [selfLink("c1", "cut")] });
+    expect(l.target.ref.kind).toBe("cutter-comment");
+  });
+
+  it("a spine kind passes through untouched", () => {
+    const raw = selfLink("s1", "revision-suggestion");
+    const [l] = migrateCardLinks("revision-suggestion", { id: "s1", links: [raw] });
+    expect(l).toEqual(raw);
   });
 });
