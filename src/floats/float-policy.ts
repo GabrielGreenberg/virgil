@@ -96,15 +96,16 @@ export { FLOATING_PANEL_Z_BASE };
  *                                       inline-atom drag ghost; a BOUNDED band
  *                                       whose MRU offset saturates at
  *                                       FLOAT_Z_MAX so it never overruns the
- *                                       dialog tier; CSS mirror at z-index:1200
- *                                       in globals.css)
+ *                                       dialog tier; CSS mirror is the ONE
+ *                                       `--float-z-base` var in globals.css,
+ *                                       pinned by float-policy.test.ts)
  *   open chrome menus           2000   (OPEN_CHROME_MENU_Z — the <Menu>
  *                                       primitive's CHROME_Z; a transient open
  *                                       menu, e.g. the ActionsMenuPanel that the
  *                                       margin bolt opens, MUST stay on top of
  *                                       everything INCLUDING floats)
- *   drop-mode indicator         9999   (DROP_INDICATOR_Z — the blue insertion
- *                                       bar; above floats and ghosts during a
+ *   drop-mode indicator         9999   (DROP_INDICATOR_Z — every insertion
+ *                                       bar, content AND panel-strip; above floats and ghosts during a
  *                                       move, Issue-11)
  *   modal scrim + dialogs      10000   (MODAL_SCRIM_Z — the SystemDialog
  *                                       backdrop and every centered dialog;

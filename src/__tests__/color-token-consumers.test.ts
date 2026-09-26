@@ -105,6 +105,36 @@ describe("drag glow layers derive from the --drag-highlight preference", () => {
 });
 
 /**
+ * Task 774 — ONE meaning, ONE colour. "Your drop lands here" was drawn in two
+ * blues and a brown: the drop-mode content bar read --accent-blue (with a
+ * #2563eb fallback), the panel/strip bar --drag-highlight, the paper-tab bar
+ * --accent. All three now read --insertion-bar, which DERIVES from the user's
+ * Drag highlight preference, so a retint moves every bar together.
+ */
+describe("every insertion bar reads the one --insertion-bar token", () => {
+  const BARS = [
+    "src/components/drop-mode/Indicator.tsx",
+    "src/components/editor-layout/drag-drop.tsx",
+    "src/components/editor-layout/PaperDropIndicator.tsx",
+  ];
+
+  it("derives --insertion-bar from the --drag-highlight preference", () => {
+    expect(globals).toMatch(/--insertion-bar:\s*var\(--drag-highlight\);/);
+  });
+
+  it.each(BARS)("%s paints its bar with var(--insertion-bar)", (rel) => {
+    expect(read(rel)).toContain("var(--insertion-bar)");
+  });
+
+  it("leaves no hex fallback on an always-defined accent token", () => {
+    for (const rel of [...BARS, "src/components/stack/StackIcon.tsx"]) {
+      expect(read(rel), rel).not.toMatch(/var\(--accent-blue,\s*#/);
+    }
+    expect(globals).not.toMatch(/var\(--accent-blue,\s*#/);
+  });
+});
+
+/**
  * ErrorCard's `info` severity color (task 2026-08-07-310).
  *
  * `#7191b0` was the last untokenized status literal in a *.tsx — a

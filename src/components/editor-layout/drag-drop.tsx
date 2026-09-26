@@ -5,6 +5,7 @@ import { scrollEntryIntoView } from "./layout-scroll";
 import { measureOmniGap } from "./panel-column";
 import { paneStrip } from "./pane-dom";
 import { onLayoutGestureSetChange } from "@/lib/pane-resize";
+import { DROP_INDICATOR_Z } from "@/floats/float-policy";
 // The two pointer invariants every held gesture in the app takes from the ONE
 // SSOT — imported, never re-derived (docs/agents/laws/pane-drag-stability.md "Pane-drag stability"; the
 // census's no-twins allowlist is EMPTY).
@@ -344,8 +345,8 @@ export function StripButton({
         ind = document.createElement("div");
         ind.id = "virgil-drop-indicator";
         ind.style.cssText = `
-          position: fixed; left: 0; top: 0; z-index: 9998; pointer-events: none;
-          height: 2px; background: var(--drag-highlight); border-radius: 1px;
+          position: fixed; left: 0; top: 0; z-index: ${DROP_INDICATOR_Z}; pointer-events: none;
+          height: 2px; background: var(--insertion-bar); border-radius: 1px;
           will-change: transform; transition: transform 0.1s ease;
         `;
         document.body.appendChild(ind);

@@ -54,7 +54,7 @@ export function DropModeIndicator() {
         willChange: "transform",
         pointerEvents: "none",
         zIndex: DROP_INDICATOR_Z,
-        background: "var(--accent-blue, #2563eb)",
+        background: "var(--insertion-bar)",
         borderRadius: 1,
       }}
     />,

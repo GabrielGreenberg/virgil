@@ -55,10 +55,10 @@
      user-overridable link / selection / mark / CTA accent; this is the
      button-fill aesthetic. White label text clears AA (4.5:1) on the taupe. */
   --btn-primary: var(--control-selected);
-  /* Blue accent for drop-mode placement indicators (paragraph-side
-     bar, between-blocks line, inline-cursor). Distinct from --accent
-     so the gesture reads as "placing a popped item" rather than
-     "editing in place". */
+  /* Blue accent for selection-state chrome (menu roving cursor, active
+     swatch rings, the stack icon's drag-target ring). NOT the insertion
+     bar — every "your drop lands here" bar reads --insertion-bar (below),
+     which follows the user's Drag highlight preference (task 774). */
   --accent-blue: #2563eb;
 
   /* App Chrome
@@ -473,6 +473,19 @@
 
   /* Drag */
   --drag-highlight: #3b82f6;
+  /* The INSERTION BAR — the one colour for "your drop lands here", read by
+     every drop bar: the drop-mode content bar (drop-mode/Indicator.tsx), the
+     panel/strip button bar (editor-layout/drag-drop.tsx) and the paper-tab
+     bar (PaperDropIndicator.tsx). Derived from --drag-highlight, the user's
+     "Drag highlight — indicator shown when dragging items" preference, so a
+     retint moves every bar at once (task 774: they were two blues + a brown). */
+  --insertion-bar: var(--drag-highlight);
+  /* Card / text-object float band base — the CSS MIRROR of FLOAT_Z_BASE
+     (src/floats/float-policy.ts). CSS can't import TS, so this is the ONE
+     literal; every float-band rule (.lifted-text-overlay, its header,
+     .inline-atom-ghost) reads the var, and float-policy.test.ts pins the
+     mirror to the symbol. */
+  --float-z-base: 1200;
 
   /* Drag glow/ring layers — DERIVED from --drag-highlight, never
      re-spelled. This is not cosmetic tidying: --drag-highlight is a USER
@@ -2507,7 +2520,7 @@ textarea,
      (see note above). */
   position: fixed;
   pointer-events: none;
-  z-index: 1200;
+  z-index: var(--float-z-base);
   box-sizing: border-box;
   /* Base = ghost: no chrome, only semi-opaque text. */
   opacity: 0.6;
@@ -2574,7 +2587,7 @@ textarea,
      the header + body stack as one unit above the Virgil bar — they're
      portal siblings in the root context, so equal z + DOM order keeps the
      header (rendered last) flush atop the body's top edge (Issue-11). */
-  z-index: 1200;
+  z-index: var(--float-z-base);
   box-sizing: border-box;
   padding: 0 8px;
   align-items: center;
@@ -4530,7 +4543,7 @@ body.perf-contain .static-borrowed-text {
  * the atom's own class-based look via the `.tiptap` wrapper. */
 .inline-atom-ghost {
   position: fixed;
-  z-index: 1200;
+  z-index: var(--float-z-base);
   pointer-events: none;
   opacity: 0.85;
   filter: var(--shadow-drag-ghost-filter);
@@ -4850,7 +4863,7 @@ body.perf-contain .static-borrowed-text {
 .label-ref-popover-option.active,
 .label-ref-popover-option.active:hover {
   background: var(--menu-roving-bg);
-  box-shadow: inset 2px 0 0 var(--accent-blue, #2563eb);
+  box-shadow: inset 2px 0 0 var(--accent-blue);
 }
 
 .label-ref-option-label {

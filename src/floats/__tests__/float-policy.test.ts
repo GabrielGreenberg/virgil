@@ -263,6 +263,28 @@ describe("task 032 consumer wiring", () => {
     expect(src).not.toContain("zIndex: 9999");
   });
 
+  it("the panel/strip drop bar sits on DROP_INDICATOR_Z, not an unnamed 9998 rung (task 774)", () => {
+    const src = readFileSync(
+      path.join(SRC, "components/editor-layout/drag-drop.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("z-index: ${DROP_INDICATOR_Z}");
+    expect(src).not.toMatch(/z-index:\s*9998/);
+  });
+
+  it("the float band's CSS rules read --float-z-base, which mirrors FLOAT_Z_BASE (task 774)", () => {
+    const css = readFileSync(path.join(SRC, "app/globals.css"), "utf8");
+    expect(css).toContain(`--float-z-base: ${FLOAT_Z_BASE};`);
+    // No float-band rule re-spells the base as a bare literal.
+    expect(css).not.toMatch(new RegExp(`z-index:\\s*${FLOAT_Z_BASE};`));
+    for (const sel of [".lifted-text-overlay {", ".lifted-text-overlay__header {", ".inline-atom-ghost {"]) {
+      const at = css.indexOf(sel);
+      expect(at, sel).toBeGreaterThan(-1);
+      const body = css.slice(at, css.indexOf("}", at));
+      expect(body, sel).toContain("z-index: var(--float-z-base);");
+    }
+  });
+
   it("the .hint-bubble CSS literal still mirrors HINT_Z (CSS can't import TS)", () => {
     const css = readFileSync(path.join(SRC, "app/globals.css"), "utf8");
     // The SSOT is HINT_Z; the CSS rule mirrors its value. If HINT_Z moves, this
