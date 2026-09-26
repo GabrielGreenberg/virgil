@@ -1017,7 +1017,7 @@ export function parseInlineContent(
         // arguments and the paper stopped compiling. The bounds, the fail-closed
         // scanners and the `{[}`-protection rule all live at that door, which
         // the card/footnote fork reads too (task 341's twin rule).
-        const args = matchCommandArgumentRun(text, unknownCmd.end);
+        const args = matchCommandArgumentRun(text, unknownCmd.end, unknownCmd.name);
         nodes.push({
           type: "text",
           text: "\\" + unknownCmd.name + args.raw,

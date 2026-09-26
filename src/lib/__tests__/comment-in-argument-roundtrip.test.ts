@@ -50,6 +50,8 @@ describe("task 777 — a comment inside an argument is carried, never escaped", 
     ["\\section", "\\section{Title% note\n more}"],
     ["\\footnote", "x\\footnote{a% note\n b} c"],
     ["\\verb inside a footnote", "x\\footnote{\\verb|a  b|} y"],
+    ["a brace inside the comment is not the close (M3)", "x\\footnote{First % old ending}\n rest.} y"],
+    ["a bracket inside the comment is not the close (M3)", "\\begin{itemize}\n  \\item[a% old]\n b] text\n\\end{itemize}"],
   ])("%s", (_label, input) => {
     expectStable(input);
   });
@@ -87,5 +89,16 @@ describe("task 777 M2 — the card/footnote fork", () => {
 
   it("a tail that ends the body is closed by a newline, so the brace stays live", () => {
     expect(richJsonToLatex(richLatexToJson("x% end"))).toBe("x% end\n");
+  });
+});
+
+describe("task 777 M3 — the group scanners read comments, and verbatim arguments stay blind", () => {
+  it.each([
+    ["\\url's %20 is a URL byte", "See \\url{http://ex.com/a%20b} and {y} more."],
+    ["\\url inside a footnote", "x\\footnote{See \\url{http://ex.com/a%20b}.\n More.} y"],
+    ["\\href's first argument", "\\href{http://ex.com/a%20b}{the link} c"],
+    ["an escaped \\% is literal", "\\emph{grew 5\\% fast} c"],
+  ])("%s", (_label, input) => {
+    expectStable(input);
   });
 });

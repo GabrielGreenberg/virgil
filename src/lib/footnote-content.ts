@@ -964,7 +964,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         // parser, no `{[}`-protection check at all, so a prose bracket abutting
         // a command was folded into it here and not there. One door closes all
         // three divergences (the task-341 twin rule).
-        const args = matchCommandArgumentRun(text, unknownCmd.end);
+        const args = matchCommandArgumentRun(text, unknownCmd.end, unknownCmd.name);
         flush();
         nodes.push({
           type: "text",

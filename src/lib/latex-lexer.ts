@@ -1347,49 +1347,164 @@ export function findDocumentBoundary(latex: string): DocumentBoundary {
 // ---------------------------------------------------------------------------
 
 /**
+ * Commands whose argument TeX reads with `%` (and `#`, `~`, …) re-catcoded to
+ * ordinary characters, as a count of their leading VERBATIM brace arguments —
+ * `\url{http://ex.com/a%20b}` is a URL, not `\url{http://ex.com/a` plus a
+ * comment. THE list (task 777): every group scanner below skips these
+ * arguments comment-BLIND, and {@link matchCommandArgumentRun} scans a named
+ * command's own leading groups the same way, so the two cannot disagree about
+ * where a URL ends.
+ */
+export const VERBATIM_ARGUMENT_COMMANDS: Readonly<Record<string, number>> = {
+  url: 1,
+  nolinkurl: 1,
+  path: 1,
+  href: 1,
+};
+
+/** Options for the group scanners. `verbatim`: the group is a
+ *  {@link VERBATIM_ARGUMENT_COMMANDS} argument — `%` is an ordinary byte. */
+export interface GroupScanOptions {
+  verbatim?: boolean;
+}
+
+/** The comment-BLIND close scan — the pre-777 rule, kept as the fail-closed
+ *  answer and as the verbatim-argument rule. `open` holds `{` or `[`. */
+function blindGroupClose(text: string, open: number): number {
+  const bracket = text[open] === "[";
+  let depth = bracket ? 0 : 1;
+  for (let i = open + 1; i < text.length; i++) {
+    const ch = text[i];
+    if ((ch !== "{" && ch !== "}" && ch !== "]") || isEscaped(text, i)) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (!bracket && depth === 0) return i;
+    } else if (bracket && depth <= 0) return i;
+  }
+  return -1;
+}
+
+/** If a {@link VERBATIM_ARGUMENT_COMMANDS} command starts at `i` (a `\`),
+ *  the index just past its verbatim argument groups; else -1. */
+function skipVerbatimArgumentsAt(text: string, i: number): number {
+  const word = matchCommandToken(text, i);
+  if (!word) return -1;
+  const count = VERBATIM_ARGUMENT_COMMANDS[word.name];
+  if (!count) return -1;
+  let p = word.end;
+  for (let k = 0; k < count; k++) {
+    if (text[p] !== "{") break;
+    const close = blindGroupClose(text, p);
+    if (close === -1) return -1;
+    p = close + 1;
+  }
+  return p;
+}
+
+/**
+ * THE group-close scan (task 777): the index of the `}` (or, for a `[` at
+ * `open`, the `]`) that closes the group, or -1.
+ *
+ * TeX's rule: an unescaped `%` comments to end of line WHEREVER it stands —
+ * inside braces too — so a `}` or `]` in a comment is not a delimiter, and the
+ * argument continues on the next line. Before 777 every scanner here counted
+ * braces inside comments, so `\footnote{First % old ending}\n rest.}` closed
+ * inside the comment and the real `}` was escaped into printed text. The
+ * comment is read by the SAME `matchCommentTailAt` / `isEscaped` pair as the
+ * rest of the lexer, so `\%` stays literal. An inline `\verb` run and a
+ * {@link VERBATIM_ARGUMENT_COMMANDS} argument are skipped whole — TeX changes
+ * `%`'s catcode there.
+ *
+ * Why this is not the task-338 hazard (`startsLineComment`'s narrowing): that
+ * one is a construct-TERMINATOR scan over a whole body, where a wrong comment
+ * reading swallows the rest of the document. A group scan is BOUNDED, and it
+ * FAILS CLOSED twice: if the comment-aware reading finds no close, or finds one
+ * only across a blank line (a `\par`, which no argument Virgil models may
+ * contain in its comment-aware reading), the answer is the comment-BLIND close
+ * — byte-for-byte the pre-777 behaviour. The aware reading is only ever taken
+ * where it names a close inside the same paragraph.
+ */
+export function findGroupClose(
+  text: string,
+  open: number,
+  opts: GroupScanOptions = {},
+): number {
+  const openCh = text[open];
+  if (openCh !== "{" && openCh !== "[") return -1;
+  if (opts.verbatim) return blindGroupClose(text, open);
+  const bracket = openCh === "[";
+  let depth = bracket ? 0 : 1;
+  let skipped = false;
+  let aware = -1;
+  for (let i = open + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "%") {
+      const tail = matchCommentTailAt(text, i);
+      if (tail) {
+        skipped = true;
+        i = tail.end - 1;
+        continue;
+      }
+    } else if (ch === "\\" && !isEscaped(text, i)) {
+      const verb = matchInlineVerbAt(text, i);
+      const past = verb !== -1 ? verb : skipVerbatimArgumentsAt(text, i);
+      if (past !== -1) {
+        skipped = true;
+        i = past - 1;
+      }
+      continue;
+    }
+    if ((ch !== "{" && ch !== "}" && ch !== "]") || isEscaped(text, i)) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (!bracket && depth === 0) {
+        aware = i;
+        break;
+      }
+    } else if (bracket && depth <= 0) {
+      aware = i;
+      break;
+    }
+  }
+  if (!skipped) return aware;
+  if (aware !== -1 && !/\n[ \t]*\n/.test(text.slice(open, aware))) return aware;
+  return blindGroupClose(text, open);
+}
+
+/**
  * Find the index of the `}` matching the `{` at `open`. Returns -1 if the
  * char at `open` is not `{` or the group is unbalanced. `\{`/`\}` are treated
  * as literal (an escaped brace does not change depth), with escaping decided
  * by the shared `isEscaped` backslash-run parity rule — so `\\{`/`\\}` (a
- * `\\` line break followed by a REAL delimiter) balances correctly.
+ * `\\` line break followed by a REAL delimiter) balances correctly. Comments
+ * are skipped per {@link findGroupClose}.
  */
-export function findMatchingBrace(text: string, open: number): number {
+export function findMatchingBrace(
+  text: string,
+  open: number,
+  opts?: GroupScanOptions,
+): number {
   if (text[open] !== "{") return -1;
-  let depth = 1;
-  let i = open + 1;
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch === "{" && !isEscaped(text, i)) depth++;
-    else if (ch === "}" && !isEscaped(text, i)) {
-      depth--;
-      if (depth === 0) return i;
-    }
-    i++;
-  }
-  return -1;
+  return findGroupClose(text, open, opts);
 }
 
 /**
  * Extract the contents of the `{...}` group starting at `startOfBrace`.
  * Returns `{ content, end }` where `end` is the index just past the closing
  * `}`, or null if the char at `startOfBrace` is not `{` or the group is
- * unbalanced. `\{`/`\}` are treated as literal — same shared `isEscaped`
- * parity rule as `findMatchingBrace`.
+ * unbalanced. Same close rule as {@link findMatchingBrace}.
  */
 export function extractBraced(
   text: string,
   startOfBrace: number,
+  opts?: GroupScanOptions,
 ): { content: string; end: number } | null {
   if (text[startOfBrace] !== "{") return null;
-  let depth = 1;
-  let i = startOfBrace + 1;
-  while (i < text.length && depth > 0) {
-    if (text[i] === "{" && !isEscaped(text, i)) depth++;
-    if (text[i] === "}" && !isEscaped(text, i)) depth--;
-    i++;
-  }
-  if (depth !== 0) return null;
-  return { content: text.slice(startOfBrace + 1, i - 1), end: i };
+  const close = findGroupClose(text, startOfBrace, opts);
+  if (close === -1) return null;
+  return { content: text.slice(startOfBrace + 1, close), end: close + 1 };
 }
 
 /**
@@ -1405,14 +1520,15 @@ export function extractBraced(
  * the item body, and one captured from a `]` that was never a delimiter eats
  * prose.
  *
- * Two rules the naive `indexOf("]")` gets wrong, both borrowed verbatim from
- * the brace scanners above so the three agree:
+ * Three rules the naive `indexOf("]")` gets wrong, all shared with the brace
+ * scanners above through {@link findGroupClose}:
  *
  * - **Brace-aware.** A `]` inside a balanced `{...}` group is ordinary text,
  *   not the delimiter — `\item[\textbf{a]b}]` closes at the LAST bracket.
  * - **Escape parity.** `\]` is literal, decided by the shared `isEscaped`
  *   backslash-run rule, so `\\]` (a `\\` line break followed by a REAL
  *   delimiter) still closes.
+ * - **Comment-aware** (task 777). A `]` inside a `%` comment is not a delimiter.
  *
  * FAILS CLOSED: an unterminated argument (`\item[a{b`) answers null rather
  * than guessing a delimiter, so the caller leaves the bytes where they are as
@@ -1424,22 +1540,12 @@ export function extractBraced(
 export function extractBracketed(
   text: string,
   startOfBracket: number,
+  opts?: GroupScanOptions,
 ): { content: string; end: number } | null {
   if (text[startOfBracket] !== "[") return null;
-  let braceDepth = 0;
-  let i = startOfBracket + 1;
-  while (i < text.length) {
-    const ch = text[i];
-    if (!isEscaped(text, i)) {
-      if (ch === "{") braceDepth++;
-      else if (ch === "}") braceDepth--;
-      else if (ch === "]" && braceDepth <= 0) {
-        return { content: text.slice(startOfBracket + 1, i), end: i + 1 };
-      }
-    }
-    i++;
-  }
-  return null;
+  const close = findGroupClose(text, startOfBracket, opts);
+  if (close === -1) return null;
+  return { content: text.slice(startOfBracket + 1, close), end: close + 1 };
 }
 
 // ---------------------------------------------------------------------------
@@ -1993,7 +2099,11 @@ export interface CommandArgumentRun {
 export function matchCommandArgumentRun(
   text: string,
   pos: number,
+  name?: string,
 ): CommandArgumentRun {
+  // A verbatim-argument command's leading groups are read comment-BLIND
+  // (task 777): `\url{a%20b}`'s `%` is a URL byte, not a comment.
+  const verbatimCount = (name && VERBATIM_ARGUMENT_COMMANDS[name]) || 0;
   let p = pos;
   const starred = text[p] === "*";
   if (starred) p++;
@@ -2003,8 +2113,11 @@ export function matchCommandArgumentRun(
     if (ch !== "{" && ch !== "[") break;
     // A protected prose bracket group is not an argument — see above.
     if (ch === "{" && matchCharEscapeAt(text, p)) break;
+    const verbatim = ch === "{" && groups.filter((g) => g.kind === "brace").length < verbatimCount;
     const group =
-      ch === "{" ? extractBraced(text, p) : extractBracketed(text, p);
+      ch === "{"
+        ? extractBraced(text, p, { verbatim })
+        : extractBracketed(text, p);
     if (!group) break;
     if (/\n[ \t]*\n/.test(group.content)) break;
     groups.push({
@@ -2363,7 +2476,7 @@ export function scanRawLatexSpans(text: string): RawLatexSpan[] {
     }
     const word = matchCommandToken(text, i);
     if (word) {
-      push(matchCommandArgumentRun(text, word.end).end);
+      push(matchCommandArgumentRun(text, word.end, word.name).end);
       continue;
     }
     const accent = matchAccent(text, i);
