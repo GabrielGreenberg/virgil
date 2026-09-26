@@ -1360,7 +1360,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // sees. Unflagged (correct-by-construction; no bus subscription) — keeps a
   // morphed report's selection halo (REP-F6-02 / OMNI-F6-02) and clears a
   // deleted card's stale halo regardless of the inline-atom-lifecycle flag.
-  const cardLifecycleSignal = useCardLifecycleReconciler(cardStoreInst);
+  // It also owns the popped FLOAT's half of the same obligation (task 789):
+  // delete closes `float:card:<kind>:<id>` (+ its rect), morph remaps it — so no
+  // door hand-remaps beside the executor and no deleted card leaves a dead key.
+  const cardLifecycleSignal = useCardLifecycleReconciler(cardStoreInst, viewPrefs);
 
   // W2c — the citation add/resync reconciler, registered as a POLICY on the
   // same single consumer (NOT a new subscription; the +1-not-+3 invariant). The
@@ -1552,8 +1555,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // It (1) optionally confirms when the morph is `lossy` (drops fields the
   // target shape can't hold), (2) calls the owning panel hook's `convertCard`
   // (which flips the on-disk data kind via the registered morph transform),
-  // and (3) in lockstep remaps the card's popout key IF it's currently floated.
-  // The stored `float:card:<kind>:<id>` key bakes the kind, and
+  // and (3) in lockstep remaps the card's popout key IF it's currently floated
+  // — via the `card-morphed` signal, whose float half this pane's lifecycle
+  // sink owns (task 789). The stored `float:card:<kind>:<id>` key bakes the kind, and
   // `FloatHost.resolveFloatable` re-derives kind from the key, so without the
   // remap a popped-then-morphed card silently vanishes. `remapCardPopKey`
   // no-ops when the card isn't floated, so this is safe from every trigger
@@ -1679,9 +1683,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         const ed = editorInstanceRef.current;
         if (ed) restampLinkedAnchorForKind(ed, morphAnchorId, toCardKind, id);
       }
-      viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
+      // The popout-key remap is the `card-morphed` signal's float half, owned
+      // by this pane's lifecycle sink (task 789) — not re-done here.
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow, cardLifecycleSignal],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow, cardLifecycleSignal],
   );
   // The ONE kind-chevron handler every morphing card is wired to — docked,
   // omni and float chrome alike. It is the chokepoint itself, minus the promise.

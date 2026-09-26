@@ -6,6 +6,7 @@ import { makeCardLifecycleSink } from "../lifecycle/useCardLifecycleReconciler";
 import { runCardLifecycleEvent, type CardLifecycleDeps } from "../lifecycle/run-event";
 import { makeUnbridgingDelete } from "../lifecycle/unbridging-delete";
 import type { CardLifecycleSink } from "../lifecycle/card-lifecycle-signal";
+import { cardPopKey } from "@/panels/panel-registry";
 
 /**
  * The D6 seam (T4 §3.3 step 3 / PLAN §1 D6). `runCardLifecycleEvent` hands a
@@ -144,5 +145,93 @@ describe("two open papers sharing a card id (task 739 — per-pane by constructi
     const threaded = (pane.match(/signal: cardLifecycleSignal,/g) ?? []).length;
     expect(doors).toBeGreaterThan(0);
     expect(threaded).toBe(doors);
+  });
+});
+
+describe("the sink's FLOAT half (task 789 — a deleted card's popped window closes)", () => {
+  // A faithful model of the prefs pair the pane's viewPrefs owns: the popped
+  // key list (the Cmd-W focus stack is derived from it, newest last) and the
+  // saved rects. Mirrors `closeCardPopout` / `remapCardPopKey` in useViewPrefs.
+  function makeFloats(keys: string[]) {
+    const state = {
+      poppedOutCards: [...keys],
+      cardFloatPositions: Object.fromEntries(
+        keys.map((k) => [k, { x: 1, y: 2, width: 3, height: 4 }]),
+      ) as Record<string, { x: number; y: number; width: number; height: number }>,
+    };
+    return {
+      state,
+      closeCardPopout: vi.fn((key: string) => {
+        state.poppedOutCards = state.poppedOutCards.filter((k) => k !== key);
+        delete state.cardFloatPositions[key];
+      }),
+      remapCardPopKey: vi.fn((oldKey: string, newKey: string) => {
+        if (!state.poppedOutCards.includes(oldKey)) return;
+        state.poppedOutCards = state.poppedOutCards.map((k) => (k === oldKey ? newKey : k));
+        state.cardFloatPositions[newKey] = state.cardFloatPositions[oldKey];
+        delete state.cardFloatPositions[oldKey];
+      }),
+    };
+  }
+
+  it("card-deleted closes the card's float key AND drops its rect; the next live float is the Cmd-W target", () => {
+    const floats = makeFloats([cardPopKey("report", "r0"), cardPopKey("note", "n1")]);
+    const sink = makeCardLifecycleSink(createCardStore(), () => floats);
+    sink({ type: "card-deleted", kind: "note", id: "n1" });
+    expect(floats.state.poppedOutCards).toEqual([cardPopKey("report", "r0")]);
+    expect(floats.state.cardFloatPositions[cardPopKey("note", "n1")]).toBeUndefined();
+    // Top of the stack (Cmd-W's target) is now the live float, not a ghost.
+    expect(floats.state.poppedOutCards.at(-1)).toBe(cardPopKey("report", "r0"));
+  });
+
+  it("card-morphed remaps the float key in lockstep (rect follows)", () => {
+    const floats = makeFloats([cardPopKey("report", "r1")]);
+    const sink = makeCardLifecycleSink(createCardStore(), () => floats);
+    sink({ type: "card-morphed", fromKind: "report", toKind: "report-request", id: "r1" });
+    expect(floats.state.poppedOutCards).toEqual([cardPopKey("report-request", "r1")]);
+    expect(floats.state.cardFloatPositions[cardPopKey("report-request", "r1")]).toBeDefined();
+  });
+
+  it("every delete door reaches it — a todo deleted through makeUnbridgingDelete closes its float", async () => {
+    const floats = makeFloats([cardPopKey("todo", "t1")]);
+    const del = makeUnbridgingDelete({
+      resolveKind: () => "todo",
+      rawDelete: () => {},
+      unbridge: async () => {},
+      signal: makeCardLifecycleSink(createCardStore(), () => floats),
+    });
+    expect(await del("t1")).toBe(true);
+    expect(floats.state.poppedOutCards).toEqual([]);
+  });
+
+  it("the morph executor's signal carries the remap (no hand remap beside it)", async () => {
+    const floats = makeFloats([cardPopKey("note", "n1")]);
+    const ok = await runCardLifecycleEvent(
+      { type: "morph", fromKind: "note", id: "n1" },
+      depsFor(makeCardLifecycleSink(createCardStore(), () => floats)),
+    );
+    expect(ok).toBe(true);
+    expect(floats.state.poppedOutCards).toEqual([cardPopKey("highlight", "n1")]);
+  });
+
+  it("a throwing float op does not skip the cardStore prune (each half guarded)", () => {
+    const store = createCardStore();
+    store.select({ kind: "note", id: "n1" });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sink = makeCardLifecycleSink(store, () => ({
+      closeCardPopout: () => {
+        throw new Error("boom");
+      },
+      remapCardPopKey: () => {},
+    }));
+    sink({ type: "card-deleted", kind: "note", id: "n1" });
+    expect(store.getState().selected).toBeNull();
+    err.mockRestore();
+  });
+
+  it("EditorPane hands the sink its viewPrefs and no longer hand-remaps the morph", () => {
+    const src = readFileSync(join(__dirname, "../../components/EditorPane.tsx"), "utf8");
+    expect(src).toMatch(/useCardLifecycleReconciler\(cardStoreInst, viewPrefs\)/);
+    expect(src).not.toMatch(/remapCardPopKey\(cardPopKey\(fromCardKind/);
   });
 });
