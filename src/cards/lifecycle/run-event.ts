@@ -44,9 +44,10 @@
  * not a `drops` entry. It applies to DELETE as well as morph: both end the
  * record, so both orphan the range.
  *
- * The actual data mutation (the per-doc sidecar `convertCard` / `delete`) and
- * the float-key remap stay with the caller (`convertCardWithRemap` in
- * EditorPane), which owns the per-doc hooks; the executor orchestrates the
+ * The actual data mutation (the per-doc sidecar `convertCard` / `delete`)
+ * stays with the caller (`convertCardWithRemap` in EditorPane), which owns the
+ * per-doc hooks; the popped-float close/remap rides the SIGNAL (the pane's sink
+ * owns it — task 789); the executor orchestrates the
  * cross-store obligations around them. It is PURE (no React, no editor) and
  * unit-testable with plain stubs.
  *
@@ -405,7 +406,8 @@ export async function runCardLifecycleEvent(
     await deps.mutate();
 
     // 5. SIGNAL — the D6 seam: the pane's sink re-keys ITS cardStore
-    //    {fromKind,id}→{toKind,id} (task 739: this pane's, never every pane's).
+    //    {fromKind,id}→{toKind,id} (task 739: this pane's, never every pane's)
+    //    and remaps its popped float key in lockstep (789).
     deps.signal({ type: "card-morphed", fromKind: ev.fromKind, toKind: morph.to, id: ev.id });
     return true;
   }
@@ -442,7 +444,7 @@ export async function runCardLifecycleEvent(
   await deps.mutate();
 
   // 5. SIGNAL — the D6 seam: the pane's sink prunes any ref keyed on {kind,id}
-  //    in ITS cardStore (task 739).
+  //    in ITS cardStore (task 739) and closes the card's popped float (789).
   deps.signal({ type: "card-deleted", kind: ev.kind, id: ev.id });
   return true;
 }
