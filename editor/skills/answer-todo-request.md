@@ -69,6 +69,9 @@ matters" (write a note). Read the todo and dispatch.
          --accept-task-kind todo --anchor <uuid> --author ai \
          --title "<short title>" --body "<findings>"
      ```
+     That call lands the report and drains the todo Task, so step 3 has
+     nothing more to land for it — **continue at step 4** to mark the source
+     todo done by the returned `status`.
    - **Analysis / explanation** ("why does this matter", "how does
      this connect to X") → emit a sibling **note** card.
    - **Action you can't take** ("get permission from coauthor",
@@ -136,6 +139,9 @@ matters" (write a note). Read the todo and dispatch.
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=footnote \
          --accept-task-kind todo --anchor <uuid> --body "<composed footnote prose>"
      ```
+   - **Verification / lookup → report.** Already landed by step 2's
+     `create_card.py --kind=report` call; nothing lands here. Its returned
+     `status` drives step 4 like any other branch.
    - **Citation → handoff.** Nothing lands here: `/editor/find-citation`
      drains the Task. Say in your reply which skill you handed to.
    - **Action you can't take → complete-with-note:** unchanged (step 2) —
@@ -146,7 +152,8 @@ matters" (write a note). Read the todo and dispatch.
    done. The rule is keyed on the JSON `status` the landing call returned, not
    on which branch you took:
    - **`status: complete`** (a sibling note created direct / silent /
-     auto-applied, the tier-1 footnote, or complete-with-limit): mark the source
+     auto-applied, the tier-1 footnote, the verification report, or
+     complete-with-limit): mark the source
      todo done through the contract's `update` op — the same door
      [`/editor/edit-card`](edit-card.md) `<docPath> <cardId> --field done=true`
      uses (atomic, pen-protected, version-bumped). The op carries only an id
@@ -185,6 +192,10 @@ matters" (write a note). Read the todo and dispatch.
    - Footnote path (tier 1, one hop):
      ```
      Done: drafted footnote <footnoteId> for todo <cardId>, request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json, todos.json done+aiRequest, notifications, version).
+     ```
+   - Verification report path (`status: complete`):
+     ```
+     Done: drafted report <newId> for todo <cardId>, request <requestId> (a todo Task answered as a report). Output: reports.json (+ ai-requests.json, todos.json done+aiRequest, notifications, version).
      ```
    - Citation path (tier 2, handed off):
      ```

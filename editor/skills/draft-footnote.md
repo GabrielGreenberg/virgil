@@ -106,7 +106,10 @@ card:
 
      That one call drains the Task, so emit the report **instead of** a
      footnote, never alongside one (§4), and name both kinds in the `Done:`
-     line so the redirect is visible.
+     line so the redirect is visible. **Then skip 0b, branch E and steps 1–3,
+     and go straight to the re-route reply in step 4** — the Task is already
+     `complete`, and a footnote written after it is a second answer the user
+     never asked for (task 787).
    - Does the ask want the footnote's **prose** written, revised, expanded,
      tightened, re-toned, or a cite added to it? → that is what this skill
      does; carry on to the shape branch.

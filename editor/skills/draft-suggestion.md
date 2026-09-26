@@ -83,7 +83,8 @@ this skill.
    ```
    That one call drains the `suggestion` Task, so do **not** also emit a
    suggestion — name both kinds in the `Done:` line so the redirect is
-   visible. On a genuine coin-flip the panel wins: draft the suggestion and
+   visible, then **skip steps 4–6 and go straight to the report reply in
+   step 7**. On a genuine coin-flip the panel wins: draft the suggestion and
    put the answer in its `explanation`.
 
 4. **Compose.**
@@ -188,10 +189,15 @@ this skill.
    read as a fourth answer to a question the contract had already settled, and
    left a bridged source comment wearing a pending-AI flag it no longer had.
 
-7. **Reply.**
-   ```
-   Done: drafted suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
-   ```
+7. **Reply.** On success:
+   - Suggestion (awaiting review):
+     ```
+     Done: drafted suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
+     ```
+   - Report — the step-3 re-route (created by its own `create_card.py`):
+     ```
+     Done: drafted report <newId> for request <requestId> (a suggestion Task answered as a report). Output: reports.json (+ ai-requests.json status/result, notifications, version).
+     ```
 
 ## Safety
 

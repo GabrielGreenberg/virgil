@@ -80,7 +80,9 @@ two paths:
      Declare the Task's **own** kind — this skill drains `note` *and*
      `highlight` (a flagged passage, routed here by `/editor/review`), and the
      flag is repeatable, so pass both rather than guessing. Emit the report
-     *instead of* a note, and name both kinds in the `Done:` line.
+     *instead of* a note, and name both kinds in the `Done:` line. That call
+     drains the Task, so **skip steps 3–4 and go straight to the path-(b)
+     reply in step 5**.
    - **(c)** Else, is there a source note (`linkedTo` set OR
      `virtual:notes:<cardId>` id)? → emit a **sibling note** titled
      `Re: <source title>` anchored to the same paragraph(s).
@@ -92,8 +94,10 @@ two paths:
    one to three short paragraphs. Match the user's tone (academic,
    conversational — read the source note first to gauge).
 
-4. **Land it via the contract** *(paths (c)/(d))*. The composition above is this
-   skill's job; the mechanical write is not. Hand the body to
+4. **Land it via the contract** *(paths (a)/(c)/(d))*. Path (b) — the report —
+   was already landed by step 2's call and needs nothing here. Paths (c)/(d)
+   come first below; path (a)'s suggestion propose follows them. The
+   composition above is this skill's job; the mechanical write is not. Hand the body to
    `create_card.py --kind=note` — it builds the `UserNote`, anchors it (Mode A),
    stamps the `aiOriginRequestId` back-pointer, flips the Task's `status`/`result`,
    clears the source flag, and bumps the version, all atomically under the pen.

@@ -16,7 +16,8 @@ Resolve one AI request originating from a Cutter-panel comment with
 `aiRequest: true`. The Cutter panel is for drafting cuts to text; the
 comment usually asks "is this paragraph really pulling its weight?"
 or "trim this part." Default response is a **CutterSuggestionCard**
-the user can accept (which queues the textual replacement).
+the user can accept (accepting splices the replacement into the `.tex` at
+once — see step 5).
 
 > **Allowable-LaTeX doctrine.** Any LaTeX you compose or edit must stick to
 > the vocabulary Virgil renders meaningfully — read
@@ -60,7 +61,10 @@ the user can accept (which queues the textual replacement).
        --title "<short title>" --body "<findings>"
    ```
    That call drains the Task; emit the report *instead of* a cut, and name
-   both kinds in the `Done:` line. On a genuine coin-flip the panel wins.
+   both kinds in the `Done:` line. **Then skip steps 3–5 and go straight to
+   the report reply in step 6** — the Task is already `complete`, and a cut
+   proposal landed after it is refused by the contract (task 787) rather
+   than written. On a genuine coin-flip the panel wins.
 
 3. **Compose.** Identify the slice of the anchored paragraph(s) you'd
    cut or rewrite. Mode B: if `selectedText` is set on the comment,
@@ -144,10 +148,29 @@ the user can accept (which queues the textual replacement).
    `clearSourceFlag: true` flips the source comment's `aiRequest` to `false`;
    the textual replacement rides `/editor/accept-suggestion`, not this draft.
 
-6. **Reply.**
-   ```
-   Done: drafted cutter suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: cutter.json (+ ai-requests.json status=in-progress, notifications, version).
-   ```
+6. **Reply.** On success:
+   - Cut — suggestion (awaiting review):
+     ```
+     Done: drafted cutter suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: cutter.json (+ ai-requests.json status=in-progress, notifications, version).
+     ```
+   - Report — the step-2 re-route (created by its own `create_card.py`):
+     ```
+     Done: drafted report <newId> for cutter comment request <requestId> (a suggestion Task answered as a report). Output: reports.json (+ ai-requests.json status/result, notifications, version).
+     ```
+
+## Idempotency
+
+If a cutter suggestion with `aiOriginRequestId == <requestId>` already exists
+(the cut path — the proposal carries that back-pointer) **or** the request is
+already `status: "complete"` (the report path completed the Task), skip with:
+```
+Skipped <requestId> (already answered).
+```
+A cut proposal leaves the Task `in-progress` (awaiting review), **not**
+`complete` — so the *card-existence* check, not the status check, is what
+prevents a double-draft. (`list_requests.py` already stops surfacing an
+`in-progress`-with-`resultId` proposal, and `apply_response.py` refuses any
+landing on a terminal Task — belt-and-suspenders against a duplicate dispatch.)
 
 ## Safety
 
