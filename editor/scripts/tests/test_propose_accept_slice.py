@@ -222,5 +222,38 @@ check(task["status"] == "complete" and task.get("result") == "rejected", "Task �
 check(hashlib.sha256(tex_of(sb).encode()).hexdigest() == tex_before,
       "document.tex byte-for-byte unchanged (reject never edits the .tex)")
 
+# ===== task 787: a DRAINED Task stays drained — a stray second landing is refused
+print("\n=== drained Task: report re-route drains it, a stray cut proposal is REFUSED ===")
+sb = sandbox()
+add_request(sb, {"id": "sug-cut-787", "kind": "suggestion", "text": "is this quote sourced?",
+                 "createdAt": ISO, "status": "pending", "paragraphIds": ["5505"],
+                 "linkedTo": {"panel": "cutter", "cardId": "no-such-card"}})
+# answer-cutter-comment's step-2 report branch: the one call that drains the Task.
+r = run(str(SCRIPTS / "create_card.py"), str(sb), "sug-cut-787", "--kind=report",
+        "--accept-task-kind", "suggestion", "--anchor", "5505", "--author", "ai",
+        "--title", "Quote check", "--body", "The quote is sourced to p. 12.")
+check(r.returncode == 0, f"report re-route exited 0 (stderr={r.stderr.strip()[:160]})")
+drained = req_by_id(sb, "sug-cut-787")
+check(drained["status"] == "complete", "report re-route DRAINED the Task (complete)")
+cutter_before = (sb / "virgil" / "cutter.json").read_bytes()
+ar_before = (sb / "virgil" / "ai-requests.json").read_bytes()
+# The fall-through the skill text used to permit: step 5's cut proposal.
+r = draft_proposal(sb, panel="cutter", card_id="cut-787", kind_label="cutter-suggestion",
+                   task_id="sug-cut-787", anchor="5505",
+                   original=live_first_sentence(sb, "5505"), suggested="stray")
+check(r.returncode != 0 and "terminal" in r.stderr,
+      f"stray propose on a drained Task REFUSED (rc={r.returncode}, stderr={r.stderr.strip()[:160]})")
+check(req_by_id(sb, "sug-cut-787")["status"] == "complete",
+      "Task NOT re-opened as in-progress (the pre-787 regression)")
+check((sb / "virgil" / "cutter.json").read_bytes() == cutter_before, "no stray cut card written")
+check((sb / "virgil" / "ai-requests.json").read_bytes() == ar_before, "ai-requests.json byte-unchanged")
+# complete-only on the same row is refused the same way (one door, one rule) …
+r = run(APPLY, str(sb), "complete-only", "sug-cut-787")
+check(r.returncode != 0 and "terminal" in r.stderr, "complete-only on a drained Task REFUSED")
+# … while revert — the ONE sanctioned re-open — still works.
+r = run(APPLY, str(sb), "revert", "sug-cut-787")
+check(r.returncode == 0 and req_by_id(sb, "sug-cut-787")["status"] == "pending",
+      f"revert still re-opens a terminal Task (stderr={r.stderr.strip()[:160]})")
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

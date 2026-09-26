@@ -1675,6 +1675,21 @@ def cmd_write(
             else (None, None)
         )
         if req is not None:
+            # A drained Task stays drained (task 787). Every write reaching here
+            # would OVERWRITE a terminal status — a stray second landing (a
+            # responder whose classify branch already drained the Task, then
+            # fell through to its default card) re-opened a `complete` row as
+            # `in-progress` and appended a second answer. No legitimate flow
+            # writes a terminal row through this door: `create_card.py` no-ops
+            # on one before calling, accept/reject finalize a NON-terminal
+            # proposal in their own ops, and `cmd_revert` — the one sanctioned
+            # re-open — is its own transaction. Refuse before any byte lands.
+            if is_terminal_status(req.get("status")):
+                die(
+                    f"request {request_id} is already {req.get('status')} (a terminal "
+                    "state) — it was drained by an earlier landing; nothing was written. "
+                    "Do not land a second answer: report the first one."
+                )
             reflect_kind = req.get("kind")
             req["status"] = status
             if result is not None:

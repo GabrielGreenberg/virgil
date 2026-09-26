@@ -15,7 +15,7 @@ description: |
 Resolve one AI request originating from a Revisions-panel request with
 `aiRequest: true`. The Revisions panel holds two polymorphic card
 kinds: `comment` and `suggestion` (parallel to Cutter — see
-`src/lib/types.ts:76`). This skill responds to a flagged request by
+the `RevisionCard` union in `src/lib/types.ts`). This skill responds to a flagged request by
 appending a **sibling card** to `revisions.json` — never mutates the
 source request in place.
 
@@ -76,7 +76,9 @@ source request in place.
          --accept-task-kind suggestion --anchor <uuid> --author ai \
          --title "<short title>" --body "<findings>"
      ```
-     Emit the report *instead of* a suggestion, not alongside one.
+     Emit the report *instead of* a suggestion, not alongside one. That call
+     drains the Task, so **skip steps 3–5 and go straight to the path-(b)
+     reply in step 6**.
    - **(c)** Else (a take, a meta-remark, a question about the argument
      rather than about a source) → emit a sibling **RevisionRequestCard**
      with `aiRequest: false`, anchored to the same paragraphs.
