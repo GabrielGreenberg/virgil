@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
+import { extractBraced, findMatchingBrace, matchCommandArgumentRun } from "@/lib/latex-lexer";
 
 const PRE = "\\documentclass{article}\n\\begin{document}\n";
 const POST = "\n\\end{document}\n";
@@ -100,5 +101,34 @@ describe("task 777 M3 — the group scanners read comments, and verbatim argumen
     ["an escaped \\% is literal", "\\emph{grew 5\\% fast} c"],
   ])("%s", (_label, input) => {
     expectStable(input);
+  });
+});
+
+describe("task 777 M3 — the scanner itself", () => {
+  it("a } inside a comment is skipped; the close is on the next line", () => {
+    const t = "{First % old ending}\n rest.} y";
+    expect(findMatchingBrace(t, 0)).toBe(t.indexOf("rest.}") + 5);
+  });
+
+  it("an outer group skips a \\url argument whole — its % is not a comment", () => {
+    const t = "{See \\url{a%20b} now}\nmore}} y";
+    expect(findMatchingBrace(t, 0)).toBe(t.indexOf("now}") + 3);
+  });
+
+  it("\\url's own argument is read comment-blind", () => {
+    const t = "\\url{a%20b}.\n More.} y";
+    const run = matchCommandArgumentRun(t, "\\url".length, "url");
+    expect(run.raw).toBe("{a%20b}");
+    // the unnamed (generic) reading would take the comment and close late
+    expect(extractBraced(t, 4)?.content).toBe("a%20b}.\n More.");
+  });
+
+  it("fails closed: no close in the same paragraph → the blind close", () => {
+    const t = "{a% note}\n\nnext }";
+    expect(findMatchingBrace(t, 0)).toBe(t.indexOf("}"));
+  });
+
+  it("an escaped \\% is literal", () => {
+    expect(findMatchingBrace("{5\\% x} y", 0)).toBe(6);
   });
 });
