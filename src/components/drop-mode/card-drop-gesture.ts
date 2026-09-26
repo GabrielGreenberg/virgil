@@ -17,10 +17,10 @@
  *        a float dims itself via FloatChrome, not this helper).
  *      - `externalCommit` skips the controller's own mouseup so THIS helper
  *        owns commit-vs-cancel — matching the atom-grab / lifted-overlay path.
- *   2. Install a ONE-SHOT `window` mouseup that calls `commitDropSession()`
- *      and self-removes. Esc / leaving the window still cancel through the
- *      controller's own keydown/mouseleave listeners; `commitDropSession`
- *      no-ops cleanly if the session was already cancelled.
+ *   2. Arm the controller's one-shot commit-on-release (`armReleaseCommit`).
+ *      Its lifetime is the SESSION's (task 772): Escape, the missed-release
+ *      failsafe and a teardown all disarm it, so a stale release can never
+ *      commit a later gesture's session.
  *
  * The button itself owns the press-swallow (stopPropagation + preventDefault +
  * `draggable=false` + dragstart swallow) so the header drag-lift and the
@@ -31,7 +31,7 @@
  * domain-neutral FloatChrome and the margin pin to call.
  */
 
-import { beginDropSession, commitDropSession } from "./controller";
+import { armReleaseCommit, beginDropSession } from "./controller";
 
 export interface CardDropGestureOpts {
   /** The canonical `float:card:<kind>:<id>` key of the card being (re)anchored.
@@ -58,15 +58,6 @@ export function beginCardDropGesture(opts: CardDropGestureOpts): boolean {
   });
   if (!started) return false;
 
-  if (typeof window !== "undefined") {
-    const onUp = () => {
-      window.removeEventListener("mouseup", onUp);
-      // Owns the commit (session started with `externalCommit`). Safe if Esc /
-      // window-leave already cancelled — `commitDropSession` no-ops without a
-      // live session.
-      void commitDropSession();
-    };
-    window.addEventListener("mouseup", onUp);
-  }
+  armReleaseCommit();
   return true;
 }
