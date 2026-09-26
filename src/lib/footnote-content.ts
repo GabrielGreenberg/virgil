@@ -37,13 +37,16 @@ import {
   QUOTE_PAIR_LEADS,
 } from "@/lib/latex-typography";
 import {
+  commentTailMark,
   findMatchingBrace,
+  hasCommentTailMark,
   hasVerbatimMark,
   matchBraceGroupAt,
   matchCommandToken,
   matchCommandArgumentRun,
   matchControlSymbolAt,
   matchInlineMathAt,
+  matchCommentTailAt,
   matchInlineVerbAt,
   matchLineBreakAt,
   verbatimMark,
@@ -381,20 +384,19 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
  * `code` wrapper (memo §A). Both carriers used to sit here as an early `return`
  * ABOVE the wrapper loop, which DELETED whatever wrapped the run: a footnote
  * reading `\textbf{\textsc{x}}` came back `\textsc{x}`, a fixed point.
- * This fork PRODUCES no comment tails at all — a card body is itself a braced
- * ARGUMENT, so its parser never makes one. It can still RECEIVE one (the mark
- * is registered on card surfaces, and an archived excerpt captures a document
- * slice), and there the missing arm is the RIGHT answer rather than the
- * inverse of task 347: everything this fork emits lands inside `\footnote{…}`,
- * so a raw `%` would comment out the closing brace and the rest of that source
- * line. Escaping it prints the annotation, which is visible and recoverable;
- * emitting it raw breaks the document. The main serializer can emit one raw
- * only because `serializeInlineSequence` discharges the carrier's LINE
- * obligation (`closeCommentTail`), and a braced argument has nowhere to put
- * that newline.
+ *  - `latexCommentTail` — a `%` comment, emitted RAW and checked first (the
+ *    stricter promise: not typeset at all). Before task 777 this fork escaped
+ *    it on the premise that a card body, being a braced ARGUMENT, had nowhere
+ *    to put the newline a raw `%` needs. The premise was false: TeX comments
+ *    to end of line inside `{…}` too, and the closing brace is normally on a
+ *    later line — so escaping PRINTED the user's private note. The line
+ *    obligation is discharged by `composeInlineRun` (the newline right after a
+ *    tail), exactly as in the main serializer, and `normalizeBodyWhitespace`
+ *    below does not collapse that newline away.
  */
 function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
+  if (hasCommentTailMark(marks)) return text;
   if (hasVerbatimMark(marks)) return text;
   if (marks.some((m) => m.type === "latexCommand")) {
     return smartenStraightQuotes(text);
@@ -503,7 +505,73 @@ export function richJsonToLatex(json: JSONContent): string {
     return "";
   }
 
-  return walk(json).replace(/\s+/g, " ").trim();
+  return normalizeBodyWhitespace(walk(json));
+}
+
+/**
+ * A card body is written as ONE inline run, so its whitespace is collapsed to
+ * single spaces and trimmed — but never across bytes whose whitespace is
+ * MEANING (task 777). Before 777 this was a blind `.replace(/\s+/g, " ")`,
+ * which collapsed:
+ *
+ *  - the newline that ENDS a `%` comment — so `a% note\n b` came back
+ *    `a% note b` and the comment swallowed the rest of the body, closing brace
+ *    included; and
+ *  - the spaces inside a `\verb` run, whose payload is byte-literal.
+ *
+ * So the scan reads the lexer's own matchers: a `\verb` run and a comment tail
+ * are copied verbatim, and so is the whitespace run that follows a tail (the
+ * line end TeX needs, plus the next line's indentation, which TeX ignores and
+ * the user wrote), and a line break that puts a comment at the start of its
+ * line. Mis-reading some other `%` as a tail here costs nothing:
+ * this pass only ever decides whether to COLLAPSE whitespace, so the worst case
+ * is whitespace kept as written.
+ */
+function normalizeBodyWhitespace(s: string): string {
+  let out = "";
+  let i = 0;
+  const isWs = (c: string) => c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+  while (i < s.length) {
+    const c = s[i];
+    if (c === "\\" && i + 1 < s.length && !isWs(s[i + 1])) {
+      const verbEnd = matchInlineVerbAt(s, i);
+      if (verbEnd !== -1) {
+        out += s.slice(i, verbEnd);
+        i = verbEnd;
+        continue;
+      }
+      // A control symbol (`\%`, `\\`) is two bytes the scan steps over whole,
+      // so an escaped `%` is never read as a tail below. (A control SPACE —
+      // `\` then whitespace — falls through and collapses like any run.)
+      out += s.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (c === "%") {
+      const tail = matchCommentTailAt(s, i);
+      if (tail) {
+        let j = tail.end;
+        while (j < s.length && isWs(s[j])) j++;
+        out += s.slice(i, j);
+        i = j;
+        continue;
+      }
+    }
+    if (isWs(c)) {
+      let j = i;
+      while (j < s.length && isWs(s[j])) j++;
+      const run = s.slice(i, j);
+      // A line break that puts a comment at the START of its line is kept:
+      // `a\n% whole line` would otherwise become `a % whole line`.
+      if (out !== "" && run.includes("\n") && matchCommentTailAt(s, j)) out += run;
+      else if (out !== "" && j < s.length) out += " ";
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
 }
 
 /** Walk callback a container-shaped block atom uses for its own children. */
@@ -626,9 +694,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
     }
 
     // A BARE `{…}` GROUP → braces on the raw-LaTeX carrier, content as prose
-    // (task 349 M6) — the twin of the main parser's branch. A card body is
-    // itself a braced ARGUMENT, so this fork recognizes no comment tails at
-    // all; the group's own recursion therefore has no opt to thread.
+    // (task 349 M6) — the twin of the main parser's branch.
     {
       const group = matchBraceGroupAt(text, i);
       if (group) {
@@ -664,6 +730,22 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         flush();
         nodes.push({ type: "inlineMath", attrs: { latex: math.latex } });
         i = math.end;
+        continue;
+      }
+    }
+
+    // `%` COMMENT TAIL → the byte-literal comment carrier, the twin of the main
+    // parser's branch at the same position (after verb/math, before any
+    // command; `\%` enters the `\` branch below and never reaches here). A
+    // card body is a braced argument, and TeX comments to end of line inside
+    // one exactly as in a paragraph (task 777). The newline is the USER's byte
+    // and stays in the buffer — the carrier represents, it does not read.
+    if (text[i] === "%") {
+      const tail = matchCommentTailAt(text, i);
+      if (tail) {
+        flush();
+        nodes.push({ type: "text", text: tail.raw, marks: [commentTailMark()] });
+        i = tail.end;
         continue;
       }
     }
@@ -882,7 +964,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         // parser, no `{[}`-protection check at all, so a prose bracket abutting
         // a command was folded into it here and not there. One door closes all
         // three divergences (the task-341 twin rule).
-        const args = matchCommandArgumentRun(text, unknownCmd.end);
+        const args = matchCommandArgumentRun(text, unknownCmd.end, unknownCmd.name);
         flush();
         nodes.push({
           type: "text",
