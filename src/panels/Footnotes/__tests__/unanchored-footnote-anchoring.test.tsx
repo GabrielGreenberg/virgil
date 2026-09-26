@@ -39,6 +39,16 @@ const commitDropSession = vi.fn(async (..._args: unknown[]) => {});
 vi.mock("@/components/drop-mode/controller", () => ({
   beginDropSession: (...args: unknown[]) => beginDropSession(...args),
   commitDropSession: (...args: unknown[]) => commitDropSession(...args),
+  // The release-commit door (task 772): a one-shot mouseup that commits, as
+  // the real one does for a live session.
+  armReleaseCommit: () => {
+    const up = () => {
+      window.removeEventListener("mouseup", up);
+      void commitDropSession();
+    };
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  },
 }));
 
 class ResizeObserverStub {

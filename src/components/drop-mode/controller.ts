@@ -192,6 +192,10 @@ export function __resetDropCtxRegistry(): void {
 // ── Active session signal ────────────────────────────────────────────
 
 let session: DropSession | null = null;
+// The session's IDENTITY. `session` itself is re-spread on every placement
+// update, so object identity cannot name "the gesture this release belongs
+// to"; a serial minted once per `beginDropSession` can (task 772).
+let sessionSerial = 0;
 const sessionListeners = new Set<() => void>();
 
 function emitSession() {
@@ -227,6 +231,41 @@ export function onDropSessionEnd(cb: () => void): () => void {
   return () => {
     sessionEndListeners.delete(cb);
   };
+}
+
+/**
+ * Arm the one-shot "commit on release" for the CURRENT session — the door for
+ * a producer that begins with `externalCommit` only to own the mouseup, not to
+ * decide commit-vs-something-else (the card drop button; a producer that
+ * DECIDES, like the lifted overlay's popout branch, keeps its own handler).
+ *
+ * The listener's lifetime is the session's, by construction (task 772): it is
+ * removed by firing AND by the session's end, however it ends — Escape, the
+ * missed-release failsafe, a provider teardown. A hand-rolled
+ * `window.addEventListener("mouseup", …)` removed only by firing survived
+ * those three, and the stale listener — registered first, so run first —
+ * committed the NEXT gesture's session (a text lift, an atom grab) before that
+ * gesture's owner could decide. The release additionally commits only the
+ * session it was armed for (serial match), never "whatever session is live".
+ *
+ * Returns a disarm (idempotent). No session → a no-op disarm; nothing armed.
+ */
+export function armReleaseCommit(): () => void {
+  if (typeof window === "undefined" || !session) return () => {};
+  const armedFor = sessionSerial;
+  let offEnd: (() => void) | null = null;
+  const disarm = () => {
+    window.removeEventListener("mouseup", onRelease);
+    offEnd?.();
+    offEnd = null;
+  };
+  const onRelease = () => {
+    disarm();
+    if (session && sessionSerial === armedFor) void commitDropSession();
+  };
+  window.addEventListener("mouseup", onRelease);
+  offEnd = onDropSessionEnd(disarm);
+  return disarm;
 }
 
 export function getDropSession(): DropSession | null {
@@ -307,6 +346,7 @@ export function beginDropSession(opts: {
   // resolvers reach the same `readEnvelope`, i.e. a second whole-localStorage
   // parse at mousedown for a payload that can never use it.
   const placements = resolveSessionPlacements(spec, opts.cardKey);
+  sessionSerial += 1;
   session = {
     cardKey: opts.cardKey,
     kind,
