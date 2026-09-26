@@ -55,8 +55,11 @@ export interface LatexRequirement {
   kind: LatexRequirementKind;
   /** Exact line injected into the preamble when missing. */
   injectLine: string;
-  /** Matches a preamble that already satisfies the requirement. */
-  satisfiedRe: RegExp;
+  /** Does this (already projected, live) preamble satisfy the requirement?
+   *  A package asks the lexer's one "does the preamble load X?" reader
+   *  (`preambleListLoadsPackage`, task 781); a shim matches its own
+   *  definition. */
+  isSatisfied: (livePreamble: string) => boolean;
   /**
    * The requirement this one is written IN TERMS OF — a shim over a package's
    * primitives (`xlistenv` defines `xlist` with expex's `\pex`/`\xe`). When a
@@ -74,26 +77,20 @@ function packageReq(name: string): LatexRequirement {
     id: name,
     kind: "package",
     injectLine: `\\usepackage{${name}}`,
-    // Word-boundary match INSIDE the brace group, so one regex recognizes
-    // the package in every load shape:
-    //   \usepackage{name}                  — the plain form (our injectLine)
-    //   \usepackage[opts]{a, name ,b}      — comma-separated package lists
-    //   \RequirePackage{name}              — class/package-style loads
-    //   \usepackage[authordate]{name-chicago} — wrapper packages (`-` is a
-    //     word boundary; wrappers like biblatex-chicago load their core, so
-    //     they satisfy — and must gate — the core requirement).
-    satisfiedRe: new RegExp(
-      `\\\\(?:usepackage|RequirePackage)(?:\\[[^\\]]*\\])?\\{[^}]*\\b${name}\\b[^}]*\\}`,
-    ),
+    // The lexer's ONE load reader (task 781): `\RequirePackage`, options,
+    // comma lists, whitespace between the pieces, and wrapper packages
+    // (`biblatex-chicago` loads — so satisfies and gates — `biblatex`).
+    isSatisfied: (live) => preambleListLoadsPackage(live, name),
   };
 }
 
 function shimReq(name: string): LatexRequirement {
+  const defined = new RegExp(`\\\\(?:provide|new|renew)command\\{\\\\${name}\\}`);
   return {
     id: name,
     kind: "shim",
     injectLine: `\\providecommand{\\${name}}[1]{}`,
-    satisfiedRe: new RegExp(`\\\\(?:provide|new|renew)command\\{\\\\${name}\\}`),
+    isSatisfied: (live) => defined.test(live),
   };
 }
 
@@ -155,7 +152,7 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
     kind: "shim",
     dependsOn: "expex",
     injectLine: "\\newenvironment{xlist}{\\pex}{\\xe}",
-    satisfiedRe: /\\(?:new|renew)environment\{xlist\}/,
+    isSatisfied: (live) => /\\(?:new|renew)environment\{xlist\}/.test(live),
   },
   ...SHIM_COMMAND_NAMES.map(shimReq),
 ];
@@ -267,17 +264,31 @@ function projectDetectableBody(bodyLatex: string): string {
  *    → natbib (baseline default); bare \cite/\nocite are kernel commands →
  *    no requirement.
  */
-export function detectBodyRequirements(bodyLatex: string): Set<string> {
+export function detectBodyRequirements(bodyLatex: string): BodyRequirements {
   const scannable = projectDetectableBody(bodyLatex);
-  const required = new Set<string>();
+  const required: BodyRequirements = new Set<string>();
   for (const d of BODY_DETECTORS) {
     if (d.re.test(scannable)) required.add(d.id);
   }
   if (NATBIB_ONLY_RE.test(scannable)) required.add("natbib");
   else if (BIBLATEX_ONLY_RE.test(scannable)) required.add("biblatex");
-  else if (SHARED_NON_KERNEL_RE.test(scannable)) required.add("natbib");
+  else if (SHARED_NON_KERNEL_RE.test(scannable)) {
+    required.add("natbib");
+    required.bibFamilyDefaulted = true;
+  }
   return required;
 }
+
+/**
+ * The detector's answer: requirement ids, plus the PROVENANCE of a `natbib`
+ * among them (task 781). When only shared cites (`\citeauthor`, `\citeyear`)
+ * put it there, natbib is the baseline DEFAULT for "some bib package", not a
+ * pin — so a preamble that already loads biblatex, or a foreign citation
+ * package (apacite, …), satisfies it with no injection and no conflict. The
+ * flag rides the set so every caller (serializer, compile copy) that hands the
+ * detector's result to `ensurePreambleRequirements` carries it unchanged.
+ */
+export type BodyRequirements = Set<string> & { bibFamilyDefaulted?: boolean };
 
 // ---------------------------------------------------------------------------
 // Preamble injection
@@ -369,7 +380,13 @@ export function ensurePreambleRequirements(
 
   // Reconcile against the preamble's loaded family — inject the RIGHT family,
   // never delete a needed one; warn on a hard conflict.
-  const reconcile = reconcileBibFamily(declaredFamily, scannable);
+  // A natbib the detector only DEFAULTED from shared cites is "any family"
+  // (task 781): an explicitly declared family is always a pin.
+  const pinned = !(
+    opts?.declaredBibFamily == null &&
+    (required as BodyRequirements).bibFamilyDefaulted === true
+  );
+  const reconcile = reconcileBibFamily(declaredFamily, scannable, { pinned });
   // Drop BOTH families from the effective set first, then re-add only the
   // effective (reconciled) one — so we never inject the wrong family, and never
   // co-load two. A conflict yields effectiveFamily === null → neither injected
@@ -436,7 +453,7 @@ export function ensurePreambleRequirements(
 
   // Registry order = packages first, then shims.
   const missing = LATEX_REQUIREMENTS.filter(
-    (r) => effective.has(r.id) && !r.satisfiedRe.test(scannable),
+    (r) => effective.has(r.id) && !r.isSatisfied(scannable),
   );
   if (missing.length === 0) return preamble;
 

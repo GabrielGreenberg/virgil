@@ -24,7 +24,11 @@
  * `\ref`/`\bibliography` never inflates the pass count.
  */
 
-import { projectLiveLatex, VERBATIM_ENVS_FULL } from "@/lib/latex-lexer";
+import {
+  preambleListLoadsPackage,
+  projectLiveLatex,
+  VERBATIM_ENVS_FULL,
+} from "@/lib/latex-lexer";
 
 export interface PassPlan {
   /** Number of compile passes to run (1, 2, or 3). */
@@ -42,9 +46,18 @@ const REFERENCE_RE =
 const TOC_RE = /\\(?:tableofcontents|listoffigures|listoftables)(?![a-zA-Z])/;
 const MANUAL_BIB_RE = /\\begin\{thebibliography\}/;
 
-// A bib BACKEND (bibtex/biber runs between passes) — needs a THIRD pass.
-const BIB_BACKEND_RE =
-  /\\usepackage(?:\[[^\]]*\])?\{natbib\}|\\usepackage(?:\[[^\]]*\])?\{biblatex\}|\\RequirePackage(?:\[[^\]]*\])?\{(?:natbib|biblatex)\}|\\bibliography\{|\\addbibresource\{/;
+// A bib BACKEND (bibtex/biber runs between passes) — needs a THIRD pass. The
+// package half asks the lexer's ONE load reader (task 781), so a spaced
+// `\usepackage {biblatex}` or a comma list counts; the resource commands are
+// matched directly.
+const BIB_RESOURCE_RE = /\\bibliography\{|\\addbibresource\{/;
+function loadsBibBackend(live: string): boolean {
+  return (
+    preambleListLoadsPackage(live, "natbib") ||
+    preambleListLoadsPackage(live, "biblatex") ||
+    BIB_RESOURCE_RE.test(live)
+  );
+}
 
 /**
  * Decide how many compile passes the given (already-projected-or-not) source
@@ -64,7 +77,7 @@ export function detectPassPlan(projectedSource: string): PassPlan {
   // A bib backend runs bibtex between passes → 3 passes (pass 1 writes
   // \citation to .aux, bibtex builds the .bbl, pass 2 folds it in, pass 3
   // stabilises the now-present back-references / numbering).
-  if (BIB_BACKEND_RE.test(live)) {
+  if (loadsBibBackend(live)) {
     return { passes: 3, reason: "bib backend (bibtex/biber runs between passes)" };
   }
 

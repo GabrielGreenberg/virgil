@@ -1266,8 +1266,27 @@ export function preambleLoadsPackage(tex: string, name: string): boolean {
   return preambleListLoadsPackage(livePreamble(tex), name);
 }
 
-/** The {@link preambleLoadsPackage} question asked of an ALREADY-projected
- *  preamble, for a caller that has one in hand (and must not project twice). */
+/**
+ * The {@link preambleLoadsPackage} question asked of an ALREADY-projected
+ * preamble, for a caller that has one in hand (and must not project twice).
+ *
+ * THE one reader of "does this preamble load package X?" (task 781). Bib-family
+ * detection, requirement satisfaction and the example-family check all ask it
+ * here; before 781 two of them carried hand-synced regexes that required the
+ * `\usepackage[opts]{list}` pieces to ABUT, so the legal spaced spellings
+ * (`\usepackage {biblatex}`, options on one line and the list on the next) read
+ * as "not loaded" and natbib was injected beside a live biblatex. It accepts:
+ *
+ *  - `\usepackage` and `\RequirePackage`, with whitespace (newlines included)
+ *    between the command, its `[options]` and its `{list}`;
+ *  - comma-separated lists, each entry trimmed;
+ *  - WRAPPER packages — an entry `<name>-<suffix>` (`biblatex-chicago`,
+ *    `tikz-cd`) loads its core, so it satisfies, and must gate, the core. Only
+ *    the PREFIX form counts: `biblatex-chicago` is not the `chicago` package.
+ *
+ * Comments and verbatim are the caller's projection's business (the input is
+ * already live bytes).
+ */
 export function preambleListLoadsPackage(
   livePreambleText: string,
   name: string,
@@ -1275,7 +1294,10 @@ export function preambleListLoadsPackage(
   const re = /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(livePreambleText)) !== null) {
-    if (m[1].split(",").some((p) => p.trim() === name)) return true;
+    for (const entry of m[1].split(",")) {
+      const p = entry.trim();
+      if (p === name || p.startsWith(name + "-")) return true;
+    }
   }
   return false;
 }

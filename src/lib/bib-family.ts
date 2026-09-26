@@ -29,6 +29,7 @@ import {
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
 import {
+  preambleListLoadsPackage,
   preambleSliceOfProjected,
   projectDetectableLatex,
 } from "@/lib/latex-lexer";
@@ -113,19 +114,28 @@ function normalizeCiteName(command: string): string | null {
 // Preamble family detection
 // ---------------------------------------------------------------------------
 
-/** Matches a preamble that loads a given package family via `\usepackage`,
- *  `\RequirePackage`, comma-lists, options, and wrapper packages (`-` is a
- *  word boundary, so `biblatex-chicago` satisfies `biblatex`). Kept in sync
- *  with `packageReq().satisfiedRe` in latex-requirements.ts — this is the one
- *  place that answers "does the preamble hard-load family X?". */
-function familyLoadRe(name: BibFamily): RegExp {
-  return new RegExp(
-    `\\\\(?:usepackage|RequirePackage)(?:\\[[^\\]]*\\])?\\{[^}]*\\b${name}\\b[^}]*\\}`,
-  );
-}
+/**
+ * Citation packages OUTSIDE the natbib|biblatex family that define the shared
+ * author/year cites (`\citeauthor`, `\citeyear`) themselves and clash with a
+ * natbib loaded on top of them (task 781). apacite's documented route to
+ * natbib is its own `natbibapa` option, which Virgil must not second-guess.
+ *
+ * A preamble that loads one of these OWNS its citation machinery:
+ * `reconcileBibFamily` ensures no family and surfaces no conflict (the doc
+ * compiled before Virgil touched it; injecting natbib is what would break it).
+ * Data, not a branch — a new package is one more row.
+ */
+export const FOREIGN_CITE_PACKAGES: readonly string[] = [
+  "apacite",
+  "harvard",
+  "chicago",
+  "jurabib",
+];
 
-const NATBIB_LOAD_RE = familyLoadRe("natbib");
-const BIBLATEX_LOAD_RE = familyLoadRe("biblatex");
+/** Does this (projected) preamble load a {@link FOREIGN_CITE_PACKAGES} member? */
+export function preambleLoadsForeignCitePackage(preamble: string): boolean {
+  return FOREIGN_CITE_PACKAGES.some((p) => preambleListLoadsPackage(preamble, p));
+}
 
 /** Alternation over a command bucket + capitalized sentence-start variants,
  *  longest-first, boundary-guarded (same convention as cite-commands.ts). */
@@ -167,8 +177,10 @@ export function detectCommandBibFamily(source: string): BibFamily | null {
  * preamble before calling `reconcileBibFamily`.
  */
 export function detectPreambleBibFamily(preamble: string): BibFamily | null {
-  if (BIBLATEX_LOAD_RE.test(preamble)) return "biblatex";
-  if (NATBIB_LOAD_RE.test(preamble)) return "natbib";
+  // The lexer's ONE load reader (task 781) — whitespace between the pieces,
+  // comma lists, `\RequirePackage`, wrappers (`biblatex-chicago`).
+  if (preambleListLoadsPackage(preamble, "biblatex")) return "biblatex";
+  if (preambleListLoadsPackage(preamble, "natbib")) return "natbib";
   return null;
 }
 
@@ -241,6 +253,9 @@ export interface BibFamilyReconcileResult {
  * loads.
  *
  *  - No declared need → nothing to ensure, no conflict.
+ *  - Preamble loads a {@link FOREIGN_CITE_PACKAGES} member (apacite, harvard,
+ *    …) and neither family → the doc owns its cite machinery: ensure nothing,
+ *    surface nothing (task 781).
  *  - Preamble loads no family → ensure the declared family (inject it).
  *  - Preamble already loads the SAME family → satisfied, nothing to inject.
  *  - Preamble loads the OTHER family → KEEP the user's cite commands and the
@@ -256,13 +271,28 @@ export interface BibFamilyReconcileResult {
  *
  * `preamble` may be raw; pass the inert-stripped form when comment-safety
  * matters (the requirements caller does).
+ *
+ * `pinned: false` (task 781) says `declared` is only the baseline DEFAULT for
+ * "some bib package" — the body uses nothing but shared cites (`\citeauthor`,
+ * `\citeyear`), which both families define. Then a preamble that loads EITHER
+ * family satisfies the need: the loaded one is kept, nothing is injected, and
+ * no conflict is raised (there is none to raise).
  */
 export function reconcileBibFamily(
   declared: BibFamily | null,
   preamble: string,
+  opts?: { pinned?: boolean },
 ): BibFamilyReconcileResult {
   if (!declared) return { effectiveFamily: null };
   const loaded = detectPreambleBibFamily(preamble);
+  if (loaded !== null && opts?.pinned === false) {
+    return { effectiveFamily: loaded };
+  }
+  if (loaded === null && preambleLoadsForeignCitePackage(preamble)) {
+    // A non-family citation package (apacite, harvard, …) already provides
+    // the cites; natbib on top of it clashes. Inject nothing, warn nothing.
+    return { effectiveFamily: null };
+  }
   if (loaded === null) {
     // Nothing loaded yet — ensure the declared family.
     return { effectiveFamily: declared };
