@@ -19,18 +19,29 @@
  * trailing mouseup, so without it the ghost would linger after the blue bar
  * has already vanished. With it, the ghost disappears in the same tick as
  * the bar.
+ *
+ * React renders on EDGES only (task 773): lift, end, session change. The
+ * per-move placement is an imperative `translate3d` the store's motion channel
+ * writes to this node (registered through `attachGhostNode`), so a mousemove
+ * costs no render and no `left`/`top` layout write.
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDropSession } from "./controller";
-import { useInlineAtomGhost } from "./inline-atom-ghost";
+import { attachGhostNode, useInlineAtomGhost } from "./inline-atom-ghost";
 
 export function InlineAtomGhost() {
   const ghost = useInlineAtomGhost();
   const session = useDropSession();
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const el = ghost?.el ?? null;
+  // Stable identity, so React calls it only on mount/unmount — never per
+  // render, which would re-register the node and re-flush the channel.
+  const setBodyRef = useCallback((node: HTMLDivElement | null) => {
+    bodyRef.current = node;
+    attachGhostNode(node);
+  }, []);
 
   // The clone is an HTMLElement, not a React tree — attach it directly via a
   // ref rather than dangerouslySetInnerHTML (a string round-trip would mangle
@@ -48,33 +59,19 @@ export function InlineAtomGhost() {
   if (typeof document === "undefined") return null;
   if (!ghost || !session) return null;
 
-  // Displace the ghost off the cursor so it never covers the insert point (the
-  // cursor and the blue inline bar share the same spot). Default above the
-  // cursor; flip below when the cursor is near the viewport top so the ghost
-  // can't clip off-screen. translateY's % resolves against the ghost's own
-  // content-sized height, so no measurement is needed. (grabOffsetX still pins
-  // it horizontally near where the atom was grabbed.)
-  const GHOST_GAP = 14;
-  const ghostTransform =
-    ghost.cursorY < 60
-      ? `translateY(${GHOST_GAP}px)`
-      : `translateY(calc(-100% - ${GHOST_GAP}px))`;
-
   return createPortal(
     <div
-      ref={bodyRef}
+      ref={setBodyRef}
       // `tiptap` re-establishes the editor's content scope so the atom's
       // class-based styling (and global KaTeX CSS) resolves on the clone even
       // though the portal lives outside `.tiptap`'s ancestor chain — same
       // reasoning as LiftedTextOverlay's `.tiptap`-wrapped body.
       className="inline-atom-ghost tiptap"
       aria-hidden="true"
-      style={{
-        position: "fixed",
-        left: ghost.cursorX - ghost.grabOffsetX,
-        top: ghost.cursorY,
-        transform: ghostTransform,
-      }}
+      // Base box pinned at the viewport origin; the whole placement (grab
+      // offset + the off-cursor displacement) is the channel's transform,
+      // which React never owns — see `ghostTransform`.
+      style={{ position: "fixed", left: 0, top: 0 }}
     />,
     document.body,
   );
