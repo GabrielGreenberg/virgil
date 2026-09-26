@@ -123,7 +123,7 @@ this skill.
            "targetKind": "paragraph",
            "textObjectIds": ["<the anchored paragraph uuid>"]
         },
-        "target": { "type": "card", "ref": { "kind": "suggestion", "id": "<new-uuid>" } },
+        "target": { "type": "card", "ref": { "kind": "revision-suggestion", "id": "<new-uuid>" } },
         "createdAt": "<ISO now>"
      }],
      "aiOriginRequestId": "<requestId, if not virtual:-prefixed>"
@@ -135,7 +135,10 @@ this skill.
    — *not* the retired `type: "anchor"`/`paragraphIds` form. Set
    `textObjectIds` to the request's anchored paragraph uuid
    (`paragraphIds[0]`) and `target.ref.id` to this card's own id (self-target,
-   how the editor matches the card to its anchor). The anchor carries NO
+   how the editor matches the card to its anchor). `target.ref.kind` is the
+   card's spine kind `revision-suggestion` — never the record's own
+   `kind: "suggestion"`; `apply_response.py` stamps it from the panel + record
+   kind on every write (task 783). The anchor carries NO
    `margin` — the side a card's chrome sits on follows its panel's dock and is
    resolved live by the app (`src/lib/margin-side.ts`).
 

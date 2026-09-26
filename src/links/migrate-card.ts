@@ -40,7 +40,9 @@ export function migrateCardLinks(kind: CardKind, raw: unknown): Link[] {
   };
   const cardId = typeof r.id === "string" ? r.id : "";
   if (Array.isArray(r.links) && r.links.length > 0) {
-    return (r.links as Link[]).flatMap((l) => migrateLink(l, cardId));
+    return (r.links as Link[]).flatMap((l) =>
+      migrateLink(healSelfLinkKind(l, kind, cardId), cardId),
+    );
   }
   return derivedLinksForCard(kind, {
     id: cardId,
@@ -69,6 +71,34 @@ function normalizeLinkTargetKind(link: Link): Link {
   const spine = normalizeLegacyCardKind(ref.kind);
   if (spine === null || spine === ref.kind) return link;
   return { ...link, target: { ...link.target, ref: { ...ref, kind: spine } } };
+}
+
+/**
+ * Heal a SELF-link whose `target.ref.kind` is not a spine `CardKind` (task
+ * 783). A card's own anchor link points back at the card itself
+ * (`target.ref.id === card.id`), so the loading hook's `kind` argument IS the
+ * right token — the only place that fact is unambiguous. The motivating case:
+ * agent-written suggestion cards stamped the panel-local record discriminant
+ * `"suggestion"`, which is ambiguous between `cutter-suggestion` and
+ * `revision-suggestion` and therefore can NOT live in the global crosswalk;
+ * `linkCardSelector("suggestion", id)` matched no rendered card, so the
+ * anchor → card jump silently did nothing.
+ *
+ * Runs BEFORE `normalizeLinkTargetKind`, and only for a token that is not a
+ * CardKind AND not a known legacy token — a known legacy token keeps its one
+ * crosswalk owner. A link targeting ANOTHER card keeps its token untouched:
+ * this card's kind says nothing about it. The write door
+ * (`apply_response.append_card`) derives the same token, so new writes never
+ * need this; it heals what is already on disk, persisted on the next write.
+ */
+function healSelfLinkKind(link: Link, kind: CardKind, cardId: string): Link {
+  const ref = link?.target?.ref;
+  if (!ref || !cardId || ref.id !== cardId) return link;
+  // A spine kind or a known legacy token has its owner already.
+  if (typeof ref.kind === "string" && normalizeLegacyCardKind(ref.kind) !== null) {
+    return link;
+  }
+  return { ...link, target: { ...link.target, ref: { ...ref, kind } } };
 }
 
 /**

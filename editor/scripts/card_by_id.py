@@ -137,6 +137,18 @@ def card_kind(hit: CardHit) -> str:
     return disk or hit.panel
 
 
+def spine_card_kind(panel: str, card: dict) -> str:
+    """The SPINE `CardKind` token a card's self-link `target.ref.kind` must carry
+    (task 783) — the Python statement of TS `cardKindFromRecord`
+    (src/cards/predicates.ts). Differs from `card_kind` in ONE place on purpose:
+    a revisions comment is `revision-comment` here, whereas `card_kind` keeps the
+    legacy `comment` its callers' tables key on. A link token must be a spine
+    kind: `linkCardSelector(kind, id)` is how the anchor finds its card."""
+    if panel == "revisions":
+        return "revision-suggestion" if card.get("kind") == "suggestion" else "revision-comment"
+    return card_kind(CardHit(card=card, panel=panel, filename="", list_key="", index=-1))
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="card_by_id.py")
     p.add_argument("doc")

@@ -112,7 +112,7 @@ source request in place.
         "anchor": { ...COPIED VERBATIM from the source request's first-link anchor... },
         "target": {
            "type": "card",
-           "ref": {"kind": "comment", "id": "<new-uuid>"}
+           "ref": {"kind": "revision-comment", "id": "<new-uuid>"}
         },
         "createdAt": "<ISO now>"
      }]
@@ -127,6 +127,10 @@ source request in place.
    mode and paragraph id(s) in one move; do **not** hand-rebuild it
    into the retired `type: "anchor"`/`paragraphIds` form. Then mint a fresh
    link `id`, and set `target.ref.id` to the new card's own id (self-target).
+   The self-link's `target.ref.kind` is the card's spine kind —
+   `revision-comment` / `revision-suggestion` — never the record's own
+   `kind` (`comment` / `suggestion`); `apply_response.py` stamps it from the
+   panel + record kind on every write (task 783).
 
    For path (a) — RevisionSuggestionCard: see `/editor/draft-suggestion`
    for the full schema. Required: `kind: "suggestion"`, `id`,
@@ -134,7 +138,7 @@ source request in place.
    excluding the `%!v:<uuid>` marker — it is the accept-time stale-guard
    key), `suggested_text`, `explanation`, `user_text: ""`,
    `instructions: "<request.text>"`, `status: "pending"`, `links[]` (the
-   verbatim-copy anchor rule above, `target.ref.kind: "suggestion"`), and
+   verbatim-copy anchor rule above, `target.ref.kind: "revision-suggestion"`), and
    `aiOriginRequestId: <requestId>` (load-bearing — `accept-suggestion`
    reads it) if the id doesn't start with `virtual:`.
 
