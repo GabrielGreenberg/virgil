@@ -66,7 +66,7 @@
  *     the boundary the gap line actually is. F5, below.
  *  2. **FILTER** ({@link filterInsertCandidates}) — keep only the LEGAL
  *     landings, which is two questions. The CONTAINER one runs rungs 1 and 2 of
- *     the SSOT ladder `fitNodeInContainer` (`@/text-objects/drop-adapters`): the
+ *     the SSOT ladder `fitNodeInContainer` (`@/text-objects/container-fit`): the
  *     parent accepts the bare node, or a wrapper in `buildWrap`'s vocabulary is
  *     both valid there and able to hold it. The IDENTITY one (task 480) drops a
  *     candidate that is the source's OWN gap, through `self-drop.ts` — because
@@ -106,7 +106,7 @@
 
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { fitNodeInContainer } from "@/text-objects/drop-adapters";
+import { fitNodeInContainer } from "@/text-objects/container-fit";
 import type { BlockDropPayload } from "./block-payload";
 import { type DropSourceRange, isSelfDrop } from "./self-drop";
 
@@ -411,20 +411,4 @@ export function chooseInsertCandidate(
     if (cursorX >= cand.rect.left) return cand;
   }
   return byDepth[byDepth.length - 1] ?? null;
-}
-
-/**
- * TEST/DIAGNOSTIC — the fit verdict per candidate, without filtering. Used by
- * the matrix suite to classify a cell as offered / refused rather than merely
- * counting bars.
- */
-export function candidateFits(
-  editor: Editor,
-  cand: InsertCandidate,
-  payload: BlockDropPayload,
-  sourceRange: DropSourceRange | null,
-): boolean {
-  return (
-    filterInsertCandidates(editor, [cand], payload, sourceRange).length === 1
-  );
 }

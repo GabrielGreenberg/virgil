@@ -49,7 +49,7 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { fitNodeInContainer } from "@/text-objects/drop-adapters";
+import { fitNodeInContainer } from "@/text-objects/container-fit";
 import { blockMoveSpec } from "../util/block-move";
 import { fitNodesAtInsert } from "../specs/drop-context";
 import { stackPullDropSpec } from "../specs/stack-pull";

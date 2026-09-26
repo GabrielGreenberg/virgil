@@ -33,7 +33,11 @@ import { markAnchorMint } from "@/lib/anchor-mint-signal";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { contentSpanFor } from "./move-geometry";
 import { EXPEX_INNER_KINDS } from "@/text-objects/drop-adapters";
-import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
+import {
+  parseTextObjectPopoutKey,
+  TEXT_OBJECT_REGISTRY,
+} from "@/text-objects/text-object-registry";
+import type { TextObjectKind } from "@/text-objects/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { findEditorAtPoint } from "./target-registry";
 import { winningPlacementKind } from "./placement-policy";
@@ -397,6 +401,15 @@ function hasAnchorableAncestor($pos: ResolvedPos): boolean {
  */
 const EXPEX_DROP_KINDS = EXPEX_INNER_KINDS;
 
+/**
+ * The expex item kind and its container, the relation READ from the registry's
+ * `parentKinds` facet (task 776) — the same facet the container-fit wrap
+ * vocabulary derives from — rather than a second spelling of it here.
+ */
+const EXPEX_ITEM_KIND = "exampleItem" satisfies TextObjectKind;
+const EXPEX_CONTAINER_KIND: TextObjectKind | undefined =
+  TEXT_OBJECT_REGISTRY[EXPEX_ITEM_KIND].parentKinds?.[0];
+
 /** Thickness (px) of the expex drop bar — the WIDTH of the vertical into-item
  *  bar AND the HEIGHT of the horizontal new-item bar. Tunable. */
 const EXPEX_BAR_WIDTH = 3;
@@ -530,7 +543,7 @@ export function resolveBlockIntoExpex(
   // Find the enclosing exampleBlock.
   let exampleBlockDepth = -1;
   for (let d = $pos.depth; d >= 1; d--) {
-    if ($pos.node(d).type.name === "exampleBlock") {
+    if ($pos.node(d).type.name === EXPEX_CONTAINER_KIND) {
       exampleBlockDepth = d;
       break;
     }
@@ -620,7 +633,7 @@ function collectExpexItems(
     exampleBlockPos,
     exampleBlockPos + exampleBlock.nodeSize,
     (node, nodePos) => {
-      if (node.type.name !== "exampleItem") return true; // descend to the items
+      if (node.type.name !== EXPEX_ITEM_KIND) return true; // descend to the items
       structuralCount++;
       const dom = editor.view.nodeDOM(nodePos);
       if (dom instanceof HTMLElement) {
