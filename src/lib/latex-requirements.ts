@@ -57,6 +57,16 @@ export interface LatexRequirement {
   injectLine: string;
   /** Matches a preamble that already satisfies the requirement. */
   satisfiedRe: RegExp;
+  /**
+   * The requirement this one is written IN TERMS OF — a shim over a package's
+   * primitives (`xlistenv` defines `xlist` with expex's `\pex`/`\xe`). When a
+   * family pass in `ensurePreambleRequirements` refuses to inject the
+   * dependency (the preamble loads a rival family member), every requirement
+   * that depends on it — transitively — is refused with it: a shim over a
+   * package that will not be loaded is an undefined-command error waiting to
+   * happen (task 780). Read by `dropRequirement`, never restated in a pass.
+   */
+  dependsOn?: string;
 }
 
 function packageReq(name: string): LatexRequirement {
@@ -136,10 +146,14 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   // terms of expex's own nesting primitive: a nested `\pex … \xe` inside an
   // `\a` item is the sanctioned expex way to make a sublist, so `xlist` ==
   // `{\pex}{\xe}`. Injected only when the body actually uses `\begin{xlist}`
-  // (which also pins the expex package via the same detector).
+  // (which also pins the expex package via the same detector). It DEPENDS on
+  // expex: under a gb4e or linguex preamble the example-family pass refuses
+  // expex, and this shim goes with it (gb4e defines `xlist` itself, and
+  // `\pex`/`\xe` exist under neither — task 780).
   {
     id: "xlistenv",
     kind: "shim",
+    dependsOn: "expex",
     injectLine: "\\newenvironment{xlist}{\\pex}{\\xe}",
     satisfiedRe: /\\(?:new|renew)environment\{xlist\}/,
   },
@@ -147,6 +161,18 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
 ];
 
 const REQUIREMENT_BY_ID = new Map(LATEX_REQUIREMENTS.map((r) => [r.id, r]));
+
+/**
+ * Refuse `id` AND every requirement that depends on it, transitively (the
+ * registry's `dependsOn` edges). The one door the family passes drop through,
+ * so a shim can never outlive the package it is written in terms of.
+ */
+function dropRequirement(effective: Set<string>, id: string): void {
+  if (!effective.delete(id)) return;
+  for (const r of LATEX_REQUIREMENTS) {
+    if (r.dependsOn === id) dropRequirement(effective, r.id);
+  }
+}
 
 /**
  * Ensured on EVERY serialize regardless of body content: the shims (a stray
@@ -348,9 +374,19 @@ export function ensurePreambleRequirements(
   // effective (reconciled) one — so we never inject the wrong family, and never
   // co-load two. A conflict yields effectiveFamily === null → neither injected
   // (the user's preamble family stays; the warning is surfaced).
+  // (A plain delete, not `dropRequirement`: this is drop-then-re-add, and a
+  // dependent of the RE-ADDED family must survive. Dependents of a family
+  // that ends up refused are dropped right after.)
+  const hadBibFamily = ["natbib", "biblatex"].filter((f) => effective.has(f));
   effective.delete("natbib");
   effective.delete("biblatex");
   if (reconcile.effectiveFamily) effective.add(reconcile.effectiveFamily);
+  for (const f of hadBibFamily) {
+    if (!effective.has(f)) {
+      effective.add(f);
+      dropRequirement(effective, f);
+    }
+  }
   if (reconcile.conflict) {
     opts?.onRequirementConflict?.({ family: "bib", ...reconcile.conflict });
   }
@@ -374,7 +410,7 @@ export function ensurePreambleRequirements(
   if (loadedExample.length > 0) {
     for (const dialect of neededExample) {
       if (loadedExample.includes(dialect)) continue;
-      effective.delete(dialect);
+      dropRequirement(effective, dialect);
       opts?.onRequirementConflict?.({
         family: "example",
         declared: dialect,
@@ -389,7 +425,7 @@ export function ensurePreambleRequirements(
     // conflict it is about to become.
     for (const dialect of neededExample) {
       if (dialect === "expex") continue;
-      effective.delete(dialect);
+      dropRequirement(effective, dialect);
       opts?.onRequirementConflict?.({
         family: "example",
         declared: dialect,
