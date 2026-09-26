@@ -802,13 +802,54 @@ const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
   "^\\\\(" +
     HEADING_TYPES.map((t) => t.command).join("|") +
     "|" +
-    "begin|end|\\[|hrulefill|title|author|date|maketitle|includegraphics|" +
-    "noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|" +
+    "begin|end|\\[|title|author|date|maketitle|" +
+    "newcounter|setcounter|renewcommand|newcommand|" +
     "usepackage|bibliographystyle|bibliography|tableofcontents|appendix|" +
     "clearpage|newpage|par|ex|pex|xe|" +
     BLOCK_TEX_MARKERS.map((m) => m.command).join("|") +
     "|begingl|endgl)\\b",
 );
+
+/**
+ * The paragraph-boundary vocabulary, by TIER (task 778). One table, because the
+ * three answers are one question — "does this command end the paragraph I am
+ * reading?" — asked at three kinds of position, and hand-listing the tiers in
+ * the parser is how a horizontal command came to split paragraphs:
+ *
+ *  - `anywhere` (`BLOCK_BOUNDARY_COMMAND_RE` above): commands that end a
+ *    paragraph wherever TeX meets them — `\par`, sectioning, `\begin`/`\end`,
+ *    Virgil's block markers. Asked at a line start and mid-line alike.
+ *  - `lineBlock`: commands TeX reads INLINE but that Virgil models as a block
+ *    node when one stands ALONE on its line (`\includegraphics` → graphicsBlock,
+ *    `\hrulefill` → horizontalRule), which is exactly how Virgil writes them.
+ *    With prose beside them on the line they are prose-level commands and stay
+ *    in their paragraph as carried runs; mid-line they never break.
+ *  - `horizontal`: commands that are never a boundary — `\hspace`, `\noindent`,
+ *    `\vspace` (deferred to after the current line in TeX; it issues no `\par`).
+ *    Pre-778 these sat in the boundary set, so `Name\hspace{2em}Date` was saved
+ *    as two paragraphs. Listed so the exclusion is a stated decision, not an
+ *    absence someone "fixes" by adding them back.
+ */
+export const BLOCK_BOUNDARY_TIERS = {
+  lineBlock: ["includegraphics", "hrulefill"],
+  horizontal: ["hspace", "noindent", "vspace"],
+} as const;
+
+const LINE_BLOCK_COMMANDS: ReadonlySet<string> = new Set(
+  BLOCK_BOUNDARY_TIERS.lineBlock,
+);
+
+/**
+ * True iff `text` opens with a `lineBlock` command (whole control word + its
+ * argument run) followed by nothing but whitespace and an optional `%` comment
+ * (Virgil's `%!v:` anchor rides there) to the end of the line.
+ */
+export function isLoneLineBlockCommand(text: string): boolean {
+  const tok = matchCommandToken(text, 0);
+  if (!tok || !LINE_BLOCK_COMMANDS.has(tok.name)) return false;
+  const run = matchCommandArgumentRun(text, tok.end, tok.name);
+  return /^[ \t]*(?:%[^\n]*)?(?:\n|$)/.test(text.slice(run.end));
+}
 
 /**
  * True iff `text` OPENS with a construct that ends the paragraph above it.
@@ -828,7 +869,29 @@ const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
  * paragraph continues through it (task 347).
  */
 export function startsBlockBoundary(text: string): boolean {
-  return text.startsWith("\\[") || BLOCK_BOUNDARY_COMMAND_RE.test(text);
+  return (
+    text.startsWith("\\[") ||
+    BLOCK_BOUNDARY_COMMAND_RE.test(text) ||
+    isLoneLineBlockCommand(text)
+  );
+}
+
+/**
+ * The POSITIONAL form of {@link startsBlockBoundary}, for a scan that meets a
+ * backslash anywhere in a paragraph (task 778). `startsBlockBoundary` is a
+ * LINE-START question — its other callers (the list-item tail separator, the
+ * linguex example end) only ever ask it of a line's head — and `readParagraph`
+ * was asking it at every position, so a mid-line `\includegraphics` ended the
+ * paragraph. At a line start (only spaces/tabs back to the newline) the answer
+ * is `startsBlockBoundary`'s; mid-line only the `anywhere` tier ends it.
+ */
+export function endsParagraphAt(src: string, pos: number): boolean {
+  let p = pos - 1;
+  while (p >= 0 && (src[p] === " " || src[p] === "\t")) p--;
+  const atLineStart = p < 0 || src[p] === "\n";
+  const rest = src.slice(pos);
+  if (atLineStart) return startsBlockBoundary(rest);
+  return rest.startsWith("\\[") || BLOCK_BOUNDARY_COMMAND_RE.test(rest);
 }
 
 /**

@@ -73,6 +73,8 @@ import {
   matchCommentTailAt,
   startsLineComment,
   startsBlockBoundary,
+  endsParagraphAt,
+  isLoneLineBlockCommand,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
 import {
@@ -1919,7 +1921,10 @@ function parseBody(
     // wrapped in a `figure` env. The render path is identical to a
     // single-image figureBlock, so we emit a dedicated `graphicsBlock`
     // node and let the shared NodeView handle display.
-    if (rest.startsWith("\\includegraphics")) {
+    // Only when the command stands ALONE on its line (task 778): with prose
+    // beside it, `Click \includegraphics[height=1em]{icon} here.` is an inline
+    // icon, and claiming it as a block split one paragraph into three.
+    if (isLoneLineBlockCommand(rest)) {
       const incl = matchIncludegraphics(ctx.src, ctx.pos);
       if (incl) {
         ctx.pos = incl.end;
@@ -2329,8 +2334,13 @@ function parseBody(
       continue;
     }
 
-    // \hrulefill
-    if (rest.startsWith("\\hrulefill")) {
+    // \hrulefill — a whole control word alone on its line (task 778). The old
+    // `startsWith` read a user macro `\hrulefillx` as a rule plus prose "x",
+    // and `\hrulefill\quad Signature` as a rule plus a new paragraph.
+    if (
+      matchCommandToken(rest, 0)?.name === "hrulefill" &&
+      isLoneLineBlockCommand(rest)
+    ) {
       parent.content.push({ type: "horizontalRule" });
       ctx.pos += "\\hrulefill".length;
       continue;
@@ -2760,7 +2770,11 @@ function readParagraph(ctx: ParseContext): string {
       // halves disagreeing is what merged an item's second paragraph into its
       // first on every open (task 348). `\[` and `\includegraphics` are covered
       // there — see that predicate for why `\[` needs its own test.
-      if (startsBlockBoundary(ctx.src.slice(ctx.pos))) {
+      //
+      // POSITIONAL since task 778 (`endsParagraphAt`): `startsBlockBoundary` is
+      // a line-start question, and asking it mid-line split `Name\hspace{2em}`
+      // and `Click \includegraphics{icon} here.` into separate paragraphs.
+      if (endsParagraphAt(ctx.src, ctx.pos)) {
         // Don't break if the previous content ends with \\ (a hardBreak
         // continuation from shift+enter). Otherwise multi-line LaTeX joined by
         // soft line breaks would get split into separate paragraphs on reload.
