@@ -121,7 +121,7 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
       : hover && !contentDragActive
         ? "var(--pod-toolbar, #f5f3ef)"
         : "var(--surface, #ffffff)";
-  const borderColor = illuminated ? "var(--accent-blue, #2563eb)" : ringColor;
+  const borderColor = illuminated ? "var(--accent-blue)" : ringColor;
   const borderWidth = illuminated ? 2 : 1;
   const boxShadow = illuminated
     ? "0 0 0 4px rgba(37, 99, 235, 0.18), var(--card-shadow-ambient, 0 2px 6px rgba(0,0,0,0.10))"
@@ -171,9 +171,9 @@ function StackGlyph({ illuminated }: { illuminated: boolean }) {
   // against the warm-tinted button background without going to harsh
   // black. Fill stays paper-white so each page reads as a discrete
   // sheet.
-  const stroke = illuminated ? "var(--accent-blue, #2563eb)" : "var(--virgil-bar-text, #78716c)";
+  const stroke = illuminated ? "var(--accent-blue)" : "var(--virgil-bar-text, #78716c)";
   const fill = illuminated
-    ? "color-mix(in srgb, var(--accent-blue, #2563eb) 8%, var(--surface, #ffffff))"
+    ? "color-mix(in srgb, var(--accent-blue) 8%, var(--surface, #ffffff))"
     : "var(--surface, #ffffff)";
   return (
     <svg

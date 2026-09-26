@@ -2632,7 +2632,18 @@ Three categories.
    shared `textObjectSideReanchorSpec`. The per-panel anchor MIMEs
    (`MIME_REPORT`/`MIME_NOTE`/`MIME_TODO`/`MIME_ARCHIVE_ANCHOR`/`MIME_CUT`/
    the Revisions MIME) are gone. `MIME_MARGINALIA_MOVE` remains only as a
-   legacy `ANCHOR_DRAG_TYPES` member. Drop indicator: 2px solid blue line.
+   legacy `ANCHOR_DRAG_TYPES` member. Drop indicator: the drop-mode bar
+   (`drop-mode/Indicator.tsx`) — a 2px gap line between blocks, a paragraph-
+   side bar, an inline caret bar, or a tall vertical bar (expex), painted in
+   `--insertion-bar` at `DROP_INDICATOR_Z`.
+
+   **One insertion-bar colour (task 774).** Every "your drop lands here" bar —
+   the drop-mode content bar, the panel/strip button bar (`drag-drop.tsx`),
+   the paper-tab bar (`PaperDropIndicator.tsx`) — reads `--insertion-bar`,
+   which derives from the user's `--drag-highlight` preference. Never
+   `--accent-blue` (selection-state chrome) or `--accent` (brown), and never a
+   hex fallback on the token. A floating bar takes `DROP_INDICATOR_Z`, not a
+   neighbouring literal.
 2. **Inline insert drag** (text-only). MIMEs:
    `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`. Ghost: white pill
    with ellipsis text. Drop indicator: ProseMirror native cursor. Of
