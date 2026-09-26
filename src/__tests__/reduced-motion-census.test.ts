@@ -2,11 +2,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import postcss, { type AtRule, type ChildNode, type Declaration } from "postcss";
 import { describe, expect, it } from "vitest";
-import {
-  REPO_ROOT,
-  commentsStripped,
-  trackedFiles,
-} from "@/lib/__tests__/_source-scan";
+import { REPO_ROOT, strip, trackedFiles } from "@/lib/__tests__/_source-scan";
+
+/** Comments blanked, strings kept (the needles live in class strings), and
+ *  LINE-ALIGNED so a hit reports its real `file:line`. */
+const scanView = (src: string) => strip(src, true, true);
 
 /**
  * REDUCED MOTION — every MOVEMENT opts in (task 775).
@@ -198,12 +198,12 @@ describe("reduced motion — every movement opts in (task 775)", () => {
   });
 
   it("no inline-style transition carries movement", () => {
-    const hits = sourceFiles().flatMap((f) => inlineViolations(f, commentsStripped(readFileSync(f, "utf8"))));
+    const hits = sourceFiles().flatMap((f) => inlineViolations(f, scanView(readFileSync(f, "utf8"))));
     expect(hits).toEqual([]);
   });
 
   it("every movement-bearing Tailwind transition/loop rides motion-safe:", () => {
-    const hits = sourceFiles().flatMap((f) => tailwindViolations(f, commentsStripped(readFileSync(f, "utf8"))));
+    const hits = sourceFiles().flatMap((f) => tailwindViolations(f, scanView(readFileSync(f, "utf8"))));
     expect(hits).toEqual([]);
   });
 
