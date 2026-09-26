@@ -179,7 +179,10 @@ describe("the `suggestion` responders agree about clearSourceFlag", () => {
     // flag block cannot run — and it must SAY so at the site, or an exemption
     // that has stopped excusing anything becomes a standing licence.
     const EXEMPT: Record<string, RegExp> = {
-      "editor/skills/answer-bib-review.md": /one sanctioned exception/i,
+      // Pinned on the REASON, not on "the one sanctioned exception" (task 786):
+      // `create_card.py`'s `virtual:examples:` insert sends `false` for the
+      // same shape reason, so "one" was never true of the whole write path.
+      "editor/skills/answer-bib-review.md": /exempt by SHAPE/,
     };
     const skills = [
       "answer-bib-review", "answer-cutter-comment", "answer-note-request",

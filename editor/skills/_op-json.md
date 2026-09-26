@@ -120,3 +120,14 @@ skip the rule where it actually matters.
 If you are unsure which side a payload falls on, use the file. The cost of a
 needless scratch file is four lines; the cost of a mis-escaped one is the
 user's prose.
+
+### The rule is about the payload, so it reaches past op-json
+
+Any free-text payload a skill writes to a file obeys the same rule, whether or
+not `apply_response.py` is what reads it: a bib entry's `fields` handed to
+`bib_auth.py --fields-file`, a note drafted for a helper script. Never a
+`printf` / `echo` of a single-quoted placeholder redirected into the file — it
+breaks on the first apostrophe exactly as an inline op does (task 786). Either pipe the
+payload straight from the script that produced it, so nobody retypes it, or
+write it through a quoted heredoc; and the file is `mktemp` scratch in
+`$TMPDIR`, never a fixed name.

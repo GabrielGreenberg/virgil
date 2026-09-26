@@ -81,15 +81,24 @@ Three modes:
 
 2. **For `type: "fields"`:**
    - Look up the entry against Crossref → OpenAlex → Semantic Scholar
-     → arXiv (in that order). Try the library's auth helper. Write
-     step 1's `fields` object to a file and hand it over **verbatim,
-     with no cleanup** — the DOI, arXiv-ID and ISBN fast-paths read
-     those fields, and they are what fix bad metadata, so pre-tidying
-     defeats them:
+     → arXiv (in that order). Try the library's auth helper. Hand it
+     step 1's `fields` object **verbatim, with no cleanup** — the DOI,
+     arXiv-ID and ISBN fast-paths read those fields, and they are what
+     fix bad metadata, so pre-tidying defeats them. So don't retype the
+     object at all: pipe it from `bib_resolve.py` straight into a
+     `mktemp` scratch file. Field values are free text (an `O'Neill`,
+     a possessive title, a `{\"o}`), so a hand-quoted
+     `printf '<fields>'` breaks on the first apostrophe — the same
+     hazard, and the same `$TMPDIR`-scratch rule, as
+     [`_op-json.md`](_op-json.md):
      ```bash
-     printf '%s' '<the fields object from bib_resolve.py>' > /tmp/<bibKey>-fields.json
-     python3 "$scripts_library/bib_auth.py" --fields-file /tmp/<bibKey>-fields.json \
-                                            --type "<the entry's @type>"
+     fields=$(mktemp -t virgil-fields)
+     python3 "$scripts_editor/bib_resolve.py" <docPath> <bibKey> \
+       | python3 -c 'import json, sys; json.dump(json.load(sys.stdin)["fields"], sys.stdout, ensure_ascii=False)' \
+       > "$fields"
+     python3 "$scripts_library/bib_auth.py" --fields-file "$fields" \
+                                            --type "<the entry's @type>"; rc=$?
+     rm -f "$fields"
      ```
      It prints an `AuthResult` — `state`, `matched_record`,
      `field_changes`. (`--title` / `--author` override the file's
@@ -190,10 +199,14 @@ Three modes:
      ```
 
 3a. **For `--library-sync <libraryCitekey>`:**
-   - Resolve the library root. The script directories were already
-     established at the top of the procedure (`$scripts_editor`,
+   - Resolve the library root. Bind `LIBRARY` from the `--library <path>`
+     argument **explicitly** — nothing else sets it, and a caller that passes
+     one (`/editor/sync-bib-to-library` always does) means THAT library, not
+     whichever one `library_path.py --get` would pick. The script directories
+     were already established at the top of the procedure (`$scripts_editor`,
      `$scripts_library`); we reuse them here:
      ```bash
+     LIBRARY="<the --library path, or empty if none was passed>"
      if [ -n "$LIBRARY" ]; then
        library_root="$LIBRARY"
      else
@@ -250,13 +263,14 @@ Three modes:
      rm -f "$op"
      exit "$rc"
      ```
-     (The contract resolves `references.bib`, `document.tex`, and
-     `citations.json` itself.)
-     `clearSourceFlag: false` is the **one sanctioned exception** in this skill
-     set, and it is exempt by SHAPE rather than by preference: this is a
-     `complete-only` *writes-only* op carrying no `requestId`, so there is no
-     Task and no `linkedTo` — the contract's flag block never runs, whatever
-     the value. Every op that DOES carry a `requestId` passes `true`, which is
+     (The contract resolves `references.bib`, `document.tex`, and every
+     citekey-keyed sidecar itself.)
+     `clearSourceFlag: false` here is exempt by SHAPE rather than by
+     preference: this is a `complete-only` *writes-only* op carrying no
+     `requestId`, so there is no Task and no `linkedTo` — the contract's flag
+     block never runs, whatever the value. (`create_card.py`'s example insert
+     sends `false` for the same reason: its `virtual:examples:` id synthesizes
+     no Task.) Every op that carries a real `requestId` passes `true`, which is
      the contract's default (`apply_response.py`, the `clearSourceFlag` block).
      - **If `<bibKey> == <libraryCitekey>`** (same key, just refreshing the
        entry body), OMIT `renameCitekey` entirely — there is nothing to rename;
@@ -271,7 +285,7 @@ Three modes:
      above — there is no separate one-liner, and **no separate
      `rename_citekey.py` step**: its pure rewriters now ride the contract inside
      the same atomic commit as the `.bib` swap.
-   - Reply: `Done: library-sync <bibKey> -> <libraryCitekey>. Output: references.bib, document.tex, virgil/citations.json.` (Omit any file that wasn't actually changed.)
+   - Reply: `Done: library-sync <bibKey> -> <libraryCitekey>. Output: references.bib, document.tex, virgil/citations.json, virgil/annotations.json, virgil/bib-review-requests.json.` The three `virgil/` files are the citekey-keyed sidecars a rename re-keys — the list is `citekey_keyed_sidecars.json`, so name whatever it lists. (Omit any file that wasn't actually changed; with no `renameCitekey`, only `references.bib` is.)
 
 4. **Completion is part of the contract call — nothing to do here.** The
    `complete-only` op in step 2 / 3 already flipped the matching
