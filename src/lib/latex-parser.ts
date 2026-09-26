@@ -1729,55 +1729,55 @@ function parseBody(
       // Where the opener BEGINS, so an unterminated example can put it back —
       // see the fail-closed branch below.
       const exOpenStart = ctx.pos;
-      ctx.pos = exStartMatch.end;
-
-      // Optional [opts]. `exno=` is INTERPRETED (the renumberer reads it); every
-      // other key is CARRIED raw — see `rawOptions` (task 356 site 4).
-      let exnoOverride: string | null = null;
-      let rawOptions = "";
-      while (ctx.pos < ctx.src.length && ctx.src[ctx.pos] === "[") {
-        const close = ctx.src.indexOf("]", ctx.pos);
-        if (close === -1) break;
-        const optStr = ctx.src.slice(ctx.pos + 1, close);
-        const exnoMatch = optStr.match(/exno\s*=\s*([^,\s]+)/);
-        if (exnoMatch) exnoOverride = exnoMatch[1];
-        rawOptions += ctx.src.slice(ctx.pos, close + 1);
-        ctx.pos = close + 1;
-      }
-      // Optional <tag>  (angle-bracket tag)
-      let tag = "";
-      if (ctx.src[ctx.pos] === "<") {
-        const close = ctx.src.indexOf(">", ctx.pos);
-        if (close !== -1) {
-          tag = ctx.src.slice(ctx.pos + 1, close);
-          ctx.pos = close + 1;
-        }
-      }
-      // Optional \label{…} immediately after (no body parsing yet)
-      let label = "";
-      while (true) {
-        const afterHeader = ctx.src.slice(ctx.pos);
-        const labelMatch = afterHeader.match(/^[ \t]*\n?[ \t]*\\label\{([^}]*)\}/);
-        if (labelMatch) {
-          label = labelMatch[1];
-          ctx.pos += labelMatch[0].length;
-          continue;
-        }
-        // Optional [opts] again (expex tolerates them either side of the tag)
-        const optsMatch = afterHeader.match(/^[ \t]*\[([^\]]*)\]/);
-        if (optsMatch) {
-          const exnoMatch = optsMatch[1].match(/exno\s*=\s*([^,\s]+)/);
-          if (exnoMatch && !exnoOverride) exnoOverride = exnoMatch[1];
-          rawOptions += `[${optsMatch[1]}]`;
-          ctx.pos += optsMatch[0].length;
-          continue;
-        }
-        break;
-      }
+      // `[opts]* <tag>? \label?` — the shared header grammar (task 782).
+      // `exno=` is INTERPRETED (the renumberer reads it); every other key is
+      // CARRIED raw — see `rawOptions` (task 356 site 4).
+      const header = readExpexHeader(ctx.src, exStartMatch.end, "line");
+      const { tag, label, exnoOverride, rawOptions } = header;
+      ctx.pos = header.end;
+      // A header that goes ON past that prefix — a second `\label`, or an
+      // `[opts]` after the tag/label — has no representation in the node: the
+      // pre-782 loop kept the LAST label (deleting the first, and every
+      // `\ref` to it) and moved late options in front. Refused below.
+      const headerUnrepresentable = expexHeaderContinues(ctx.src, ctx.pos);
 
       // Consume the body up to the matching \xe (handling nested \ex/\pex).
       const bodyStart = ctx.pos;
       const bodyEnd = findMatchingXe(ctx.src, bodyStart);
+      if (bodyEnd !== -1 && headerUnrepresentable) {
+        // REFUSED (task 782) — the gloss refusal's shape and for its reason:
+        // carry the WHOLE construct as ONE byte-literal carrier, so the next
+        // parse meets the identical bytes and refuses identically (a fixed
+        // point from cycle 1). Not the prose fall-through: `\xe`-bounded
+        // content split into paragraphs would acquire blank lines inside the
+        // example. A pending `\vexid` is Virgil's own marker, not the user's
+        // bytes; it is dropped rather than leaked onto the NEXT example.
+        ctx.pendingExampleId = null;
+        let exEnd = bodyEnd + "\\xe".length;
+        // Re-absorb the carrier's own trailing `%!v:` anchor (the serializer
+        // appends one to the paragraph pushed here) — see the gloss twin.
+        let exUuid: string | null = null;
+        {
+          const uuidMatch = ctx.src.slice(exEnd).match(NODE_UUID_ANCHOR);
+          if (uuidMatch) {
+            exUuid = uuidMatch[1];
+            exEnd += uuidMatch[0].length;
+          }
+        }
+        parent.content.push({
+          type: "paragraph",
+          ...(exUuid ? { attrs: { uuid: exUuid } } : {}),
+          content: [
+            {
+              type: "text",
+              text: ctx.src.slice(exOpenStart, bodyEnd + "\\xe".length),
+              marks: [verbatimMark("carrier")],
+            },
+          ],
+        });
+        ctx.pos = exEnd;
+        continue;
+      }
       if (bodyEnd === -1) {
         // FAIL CLOSED (task 350 defect B). An `\ex` with no `\xe` is not an
         // example: put the cursor back on the opener and let it be carried as
@@ -2800,6 +2800,86 @@ function readParagraph(ctx: ParseContext): string {
 // expex helpers
 // ---------------------------------------------------------------------------
 
+/** What an expex header (`\ex` / `\pex` opener, or an `\a` part) can hold —
+ *  exactly the shape `serializeExampleBlock` / `serializeExampleItem` emit. */
+interface ExpexHeader {
+  /** Index just past the last header byte consumed. */
+  end: number;
+  /** The `[…]` runs, verbatim and in order (task 356 site 4). */
+  rawOptions: string;
+  /** The one key the renumberer INTERPRETS; the LAST occurrence wins, as it
+   *  does for keyval in TeX. */
+  exnoOverride: string | null;
+  tag: string;
+  label: string;
+}
+
+/**
+ * **The expex header reader** (task 782) — ONE grammar for every expex
+ * header, the opener's and each `\a` part's alike, and it is the grammar the
+ * serializer writes: `[opts]*` then `<tag>?` then `\label{…}?`, in that order,
+ * each at most once (options may repeat; they are carried as one raw run).
+ *
+ * It reads that canonical prefix and stops. It never "keeps reading" past a
+ * part it has already filled — the pre-782 opener loop did, so a second
+ * `\label` overwrote the first ("last one wins": `\ex\label{a}\label{b}` lost
+ * `a`, and every `\ref{a}` in the paper went to `??`), and an `[opts]` written
+ * after the label or tag was appended to the options run and re-emitted
+ * BEFORE them (a silent reorder). What follows the canonical prefix is the
+ * caller's to decide: an `\a` part leaves it in the item's text (carried
+ * verbatim), and the opener asks `expexHeaderContinues` and REFUSES.
+ *
+ * `labelLead` is the whitespace allowed before the label: the opener has
+ * always tolerated one line break there (`\ex\n\label{…}`), a part does not.
+ */
+function readExpexHeader(
+  src: string,
+  pos: number,
+  labelLead: "line" | "inline",
+): ExpexHeader {
+  let cursor = pos;
+  let exnoOverride: string | null = null;
+  let rawOptions = "";
+  while (cursor < src.length && src[cursor] === "[") {
+    const close = src.indexOf("]", cursor);
+    if (close === -1) break;
+    const m = src.slice(cursor + 1, close).match(/exno\s*=\s*([^,\s]+)/);
+    if (m) exnoOverride = m[1];
+    rawOptions += src.slice(cursor, close + 1);
+    cursor = close + 1;
+  }
+  let tag = "";
+  if (src[cursor] === "<") {
+    const close = src.indexOf(">", cursor);
+    if (close !== -1) {
+      tag = src.slice(cursor + 1, close);
+      cursor = close + 1;
+    }
+  }
+  let label = "";
+  const labelRe =
+    labelLead === "line"
+      ? /^[ \t]*\n?[ \t]*\\label\{([^}]*)\}/
+      : /^[ \t]*\\label\{([^}]*)\}/;
+  const labelMatch = src.slice(cursor).match(labelRe);
+  if (labelMatch) {
+    label = labelMatch[1];
+    cursor += labelMatch[0].length;
+  }
+  return { end: cursor, rawOptions, exnoOverride, tag, label };
+}
+
+/** True when an opener's header CONTINUES past its canonical prefix with a
+ *  part the node has no second slot for — another `\label`, or an `[opts]`
+ *  after the tag/label (which the serializer would move in front of them).
+ *  The opener refuses such a header to the byte-literal carrier: task 356's
+ *  rule, *never keep the fraction you recognise*. */
+function expexHeaderContinues(src: string, pos: number): boolean {
+  return /^[ \t]*(?:\n?[ \t]*\\label\{[^}]*\}|\[[^\]]*\])/.test(
+    src.slice(pos, pos + 512),
+  );
+}
+
 /** Split a `\pex` body into [preambleText, ...itemSegments] where each
  *  itemSegment starts just after an `\a` (with its option/tag consumed). */
 function splitPexBody(
@@ -2924,36 +3004,12 @@ function splitPexBody(
       if (after === undefined || /[\s<\[\\]/.test(after)) {
         if (firstAt === -1) firstAt = pos;
         flushCurrent(pos);
-        let cursor = pos + 2;
-        // Optional [opts] — `exno=` interpreted, the rest carried (task 356).
-        let exnoOverride: string | null = null;
-        let rawOptions = "";
-        while (cursor < body.length && body[cursor] === "[") {
-          const close = body.indexOf("]", cursor);
-          if (close === -1) break;
-          const optStr = body.slice(cursor + 1, close);
-          const m = optStr.match(/exno\s*=\s*([^,\s]+)/);
-          if (m) exnoOverride = m[1];
-          rawOptions += body.slice(cursor, close + 1);
-          cursor = close + 1;
-        }
-        // Optional <tag>
-        let tag = "";
-        if (body[cursor] === "<") {
-          const close = body.indexOf(">", cursor);
-          if (close !== -1) {
-            tag = body.slice(cursor + 1, close);
-            cursor = close + 1;
-          }
-        }
-        // Optional \label{…}
-        let label = "";
-        const afterHdr = body.slice(cursor);
-        const labelMatch = afterHdr.match(/^[ \t]*\\label\{([^}]*)\}/);
-        if (labelMatch) {
-          label = labelMatch[1];
-          cursor += labelMatch[0].length;
-        }
+        // `[opts]* <tag>? \label?` — the shared header grammar (task 782).
+        // Anything after it stays in the item's text, carried verbatim.
+        const hdr = readExpexHeader(body, pos + 2, "inline");
+        const { tag, label, exnoOverride } = hdr;
+        const rawOptions = hdr.rawOptions;
+        let cursor = hdr.end;
         // Consume one leading space for cleanliness
         while (cursor < body.length && /[ \t]/.test(body[cursor])) cursor++;
         current = {
