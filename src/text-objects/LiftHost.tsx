@@ -78,6 +78,7 @@ import {
   TEXT_FLOAT_BORDER,
 } from "@/floats/float-policy";
 import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
+import { createTransformChannel } from "@/lib/transform-channel";
 import { LiftedTextOverlay } from "./LiftedTextOverlay";
 import type { TextObjectKind, TextObjectRef } from "./types";
 
@@ -583,55 +584,25 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
       // closure vars below; the release handlers read those.
       let liveCursorX = origin.x;
       let liveCursorY = origin.y;
-      let motionRaf = 0;
-      /** What the last frame actually WROTE, and to which nodes — the
-       *  equality bail (task 334). `FloatingPanel`'s `applyTranslate` has had
-       *  one since task 330 and this copy did not, which is the divergence
-       *  that task filed: a lift gesture whose pointer re-enters the same
-       *  coordinate (a hold, a jitter, an auto-scroll frame re-running the
-       *  hit-test at a parked cursor) rewrote both nodes' `transform` for a
-       *  delta that had not changed.
-       *
-       *  It records the TARGET NODES alongside the delta, and it records
-       *  NOTHING when neither node is mounted yet — the two ways a naive
-       *  `{dx,dy}` bail turns into a missed write: a frame that ran before
-       *  the overlay's portal committed would otherwise claim the delta as
-       *  applied and the node would never receive it. */
-      let appliedMotion: {
-        dx: number;
-        dy: number;
-        root: HTMLElement | null;
-        header: HTMLElement | null;
-      } | null = null;
-      const applyMotion = () => {
-        motionRaf = 0;
-        const dx = liveCursorX - origin.x;
-        const dy = liveCursorY - origin.y;
-        const { root, header } = motionTargetsRef.current;
-        if (!root && !header) return; // nothing mounted — nothing applied
-        const prev = appliedMotion;
-        if (
-          prev &&
-          prev.dx === dx &&
-          prev.dy === dy &&
-          prev.root === root &&
-          prev.header === header
-        ) {
-          return;
-        }
-        appliedMotion = { dx, dy, root, header };
-        // Same rest value as the float shell's: an empty string at zero
-        // rather than an identity transform (`willChange` already holds the
-        // layer, so nothing is lost by dropping the property).
-        const t =
-          dx === 0 && dy === 0 ? "" : `translate3d(${dx}px, ${dy}px, 0)`;
-        if (root) root.style.transform = t;
-        if (header) header.style.transform = t;
-      };
-      const scheduleMotion = () => {
-        if (motionRaf) return;
-        motionRaf = requestAnimationFrame(applyMotion);
-      };
+      /** The per-move write channel — the shared cursor-following shape
+       *  (`@/lib/transform-channel`, task 773): RAF-coalesced, equality-bailed
+       *  on the delta AND the target nodes (task 334 — a node swapped by a
+       *  ghost↔popout flip must be written even at an unchanged delta), and
+       *  recording NOTHING when neither node is mounted yet, so a frame that
+       *  ran before the portal committed never claims the delta as applied.
+       *  The rest value at zero delta is an empty string rather than an
+       *  identity transform (`willChange` already holds the layer) — the same
+       *  rest as the float shell's. */
+      const motion = createTransformChannel({
+        targets: () => {
+          const { root, header } = motionTargetsRef.current;
+          return [root, header];
+        },
+        format: (dx, dy) =>
+          dx === 0 && dy === 0 ? "" : `translate3d(${dx}px, ${dy}px, 0)`,
+      });
+      const scheduleMotion = () =>
+        motion.set(liveCursorX - origin.x, liveCursorY - origin.y);
 
       const onMove = (mv: MouseEvent) => {
         // Triggered + lifted-overlay path → drive overlay cursor + mode.
@@ -875,8 +846,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         document.documentElement.removeEventListener("mouseleave", onDocLeave);
-        if (motionRaf) cancelAnimationFrame(motionRaf);
-        motionRaf = 0;
+        motion.cancel();
         // Task 456: the Stack ring is cleared HERE — the ONE end path every
         // ending funnels through (capture, popout, move-commit, doc-leave,
         // Escape, and the missed-release bail, which returns without ever

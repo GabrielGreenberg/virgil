@@ -104,15 +104,10 @@ const LEDGER: Record<string, Row> = {
     events: ["window.resize"],
     why: "armed only while THIS editor's own slash popup is open — the store is keyed by the owning editor (task 750; pinned by slash-popup-owner-scope.test.tsx)",
   },
-  "components/drop-mode/card-drop-gesture.ts": {
-    scope: "gesture",
-    events: ["window.mouseup"],
-    why: "one-shot commit of a drop session the pane started",
-  },
   "components/drop-mode/controller.ts": {
     scope: "gesture",
-    events: ["window.mousemove", "window.mouseup", "window.keydown"],
-    why: "drop-mode session listeners, torn down when the session ends",
+    events: ["window.mousemove", "window.mouseup", "window.keydown", "window.mouseup"],
+    why: "drop-mode session listeners, torn down when the session ends; the second mouseup is armReleaseCommit's one-shot (task 772), disarmed by firing or by the session's end",
   },
   "components/editor-layout/editor-scrollbar.tsx": {
     scope: "visible",
