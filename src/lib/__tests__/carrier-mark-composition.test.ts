@@ -349,19 +349,52 @@ describe("mark-composition — the shared rule", () => {
     expect(out).toBe("\\textbf{a}|\\textbf{b}");
   });
 
-  it("a standalone node is emitted whole and flushes the run", () => {
-    const out = composeInlineRun<{ marks?: { type: string }[]; t: string }>(
-      [
-        { t: "a", marks: [{ type: "bold" }] },
-        { t: "%c", marks: [{ type: "bold" }] },
-        { t: "b", marks: [{ type: "bold" }] },
-      ],
-      {
-        inner: (n) => n.t,
-        standalone: (n) => (n.t.startsWith("%") ? n.t : null),
-      },
+  // Task 777 — the comment rule belongs to the walker. Pre-777 a tail was a
+  // `standalone` node that broke the run, which emitted `\textbf{a}%c\textbf{b}`:
+  // the tail commented out the second `\textbf{` (and this test pinned it).
+  const tail = (t: string, extra: { type: string }[] = []) => ({
+    t,
+    marks: [...extra, { type: "latexCommentTail" }],
+  });
+  const run = (
+    nodes: { t: string; marks?: { type: string }[] }[],
+    opts: { lineFinal?: boolean; trailer?: string } = {},
+  ) =>
+    composeInlineRun(nodes, {
+      inner: (n) => n.t,
+      lineFinal: opts.lineFinal,
+      trailer: opts.trailer === undefined ? undefined : () => opts.trailer!,
+    });
+
+  it("a tail joins its wrapper's run and the user's own newline follows it", () => {
+    const bold = [{ type: "bold" }];
+    expect(
+      run([{ t: "a", marks: bold }, tail("% c", bold), { t: "\n b", marks: bold }]),
+    ).toBe("\\textbf{a% c\n b}");
+  });
+
+  it("a newline is INSERTED before a closing brace, an atom, or a trailer", () => {
+    const bold = [{ type: "bold" }];
+    expect(run([{ t: "a", marks: bold }, tail("% c", bold)])).toBe("\\textbf{a% c\n}");
+    expect(run([tail("% c"), { t: "x" }])).toBe("% c\nx");
+    expect(run([tail("% c")], { lineFinal: true, trailer: "\\vlidend{q}" })).toBe(
+      "% c\n\\vlidend{q}",
     );
-    expect(out).toBe("\\textbf{a}%c\\textbf{b}");
+  });
+
+  it("the user's newline moves ahead of a wrapper change, never doubling", () => {
+    expect(run([tail("% c"), { t: "\n b", marks: [{ type: "bold" }] }])).toBe(
+      "% c\n\\textbf{ b}",
+    );
+  });
+
+  it("`lineFinal` lets a final, unwrapped tail end the line itself", () => {
+    expect(run([{ t: "a" }, tail("% c")], { lineFinal: true })).toBe("a% c");
+    expect(run([{ t: "a" }, tail("% c")])).toBe("a% c\n");
+  });
+
+  it("a tail's own interior newline is re-commented", () => {
+    expect(run([tail("% c\nd")], { lineFinal: true })).toBe("% c\n%d");
   });
 });
 

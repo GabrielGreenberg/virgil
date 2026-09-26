@@ -370,6 +370,12 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
   return nodes;
 }
 
+/** The one comment-tail opt-OUT (task 777): a gloss tier's text reaches the
+ *  inline parser already cut on whitespace by a comment-blind tokenizer, so a
+ *  `%` there is a fragment of a comment, not a whole one. See
+ *  `parseInlineContent`'s header. */
+const GLOSS_INLINE = { commentTails: false } as const;
+
 /**
  * Parse a run of inline LaTeX into Tiptap inline nodes.
  *
@@ -382,16 +388,22 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
  * `generateShortId()` for legacy `.tex` files without markers — first
  * save will anchor the generated id back into the source.
  *
- * `opts.commentTails` opts this run in to recognizing a `%` COMMENT TAIL as
- * the byte-literal carrier it is (task 347). It is OFF by default, and the
- * default is the load-bearing half: a comment tail owns everything to the end
- * of its LINE, so it may only be recognized where the emitted form actually
- * ends a line. Inside a braced ARGUMENT (`\texttt{5% off}`, a `\footnote{}`
- * body, a gloss cell, a figure caption) the very next byte the serializer
- * writes is the closing `}` — a carrier there would comment out the brace and
- * break the user's document. So the block-level paragraph callers opt IN, the
- * six recursive argument calls below inherit the OFF default, and a new caller
- * has to state that its content is line-final before it can get one.
+ * A `%` COMMENT TAIL is recognized as the byte-literal carrier it is (task
+ * 347) at EVERY depth — a paragraph, and equally a `\emph{…}` / `\section{…}`
+ * / `\caption{…}` argument, a nested mark, a bare group (task 777). In TeX a
+ * `%` comments to end of line wherever it stands, braces included, and the
+ * closing brace is normally on a LATER line; task 347 opted only paragraphs
+ * in, on the premise that "the next byte inside an argument is `}`", and so an
+ * argument's comment was escaped to `\%` and PRINTED. What made that premise
+ * feel necessary — a raw `%` commenting out the brace the serializer writes
+ * next — is discharged on the emit side, once, by `composeInlineRun`'s comment
+ * rule: the byte after a tail is always a newline.
+ *
+ * `opts.commentTails: false` opts a run OUT, and only a caller whose TEXT was
+ * already cut by a comment-blind splitter may take it: the gloss tiers
+ * (`glossCell` / `proseGlossRow`) are tokenized on whitespace upstream, so a
+ * tail there would be a fragment of a comment, not a comment (a residual of the
+ * gloss scanner, not of this rule).
  *
  * `inCode` says the run sits inside a `\texttt{}` CODE SPAN, where `--` is two
  * literal hyphens and an accent command stays raw (memo §A exclusion). It is
@@ -545,9 +557,8 @@ export function parseInlineContent(
     // `\%` enters the `\` branch and is consumed by `matchCharEscapeAt`, so a
     // percent the user genuinely wrote still round-trips as `\%`.
     //
-    // Gated on `opts.commentTails` — see the header for why OFF is the default
-    // and which callers may turn it on.
-    if (opts?.commentTails && text[i] === "%") {
+    // At every depth (task 777) — see the header for the one opt-out.
+    if (opts?.commentTails !== false && text[i] === "%") {
       const tail = matchCommentTailAt(text, i);
       if (tail) {
         flush();
@@ -2334,7 +2345,7 @@ function parseBody(
         const para = readParagraph(ctx);
         if (para) {
           const { text: paraText, uuid } = stripUuidAnchor(para);
-          const content = parseInlineContent(paraText, false, PARAGRAPH_INLINE);
+          const content = parseInlineContent(paraText);
           if (content.length > 0) {
             const attrs: Record<string, unknown> = { parTitle: inner.content };
             if (uuid) attrs.uuid = uuid;
@@ -2354,7 +2365,7 @@ function parseBody(
     const para = readParagraph(ctx);
     if (para) {
       const { text: paraText, uuid } = stripUuidAnchor(para);
-      const content = parseInlineContent(paraText, false, PARAGRAPH_INLINE);
+      const content = parseInlineContent(paraText);
       if (content.length > 0) {
         const node: JSONContent = { type: "paragraph", content };
         if (uuid) node.attrs = { uuid };
@@ -2364,15 +2375,6 @@ function parseBody(
   }
   closePendingSpan();
 }
-
-/**
- * The inline-parse options a BLOCK-level paragraph reads its content with:
- * a `%` here begins a real comment tail, because what the serializer writes
- * after this content is a newline. Named once so the two paragraph call sites
- * cannot drift, and so the difference from the six ARGUMENT recursions (which
- * take the OFF default) is legible at both ends — see `parseInlineContent`.
- */
-const PARAGRAPH_INLINE = { commentTails: true } as const;
 
 /**
  * Strip the trailing `%!v:xxxx` anchor(s) from block text, returning the text
@@ -3760,7 +3762,7 @@ function buildGlossFromBody(
       rows.push({
         type: "proseGlossRow",
         attrs: { tier: cur.tier },
-        content: parseInlineContent(segment),
+        content: parseInlineContent(segment, false, GLOSS_INLINE),
       });
     }
   }
@@ -3853,7 +3855,7 @@ function tokenizeGlossCells(text: string): JSONContent[] {
     }
     cells.push({
       type: "glossCell",
-      content: parseInlineContent(token),
+      content: parseInlineContent(token, false, GLOSS_INLINE),
     });
   }
   return cells;

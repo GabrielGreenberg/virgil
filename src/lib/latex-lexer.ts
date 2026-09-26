@@ -44,6 +44,7 @@ import {
   matchCharEscapeAt,
 } from "@/lib/latex-typography";
 import { BLOCK_TEX_MARKERS } from "@/lib/latex-markers";
+import { COMMENT_TAIL_MARK_NAME } from "@/lib/mark-composition";
 import { HEADING_TYPES } from "@/lib/heading-types";
 import type { SectioningCommand } from "@/lib/heading-types";
 
@@ -295,7 +296,7 @@ export function hasVerbatimMark(
  *  end of its line, which LaTeX discards. Lives here beside the verbatim
  *  carrier and reachable from the tiptap-free parser/serializer; the TipTap
  *  `Mark.create` in `src/lib/tiptap/latex-command.ts` reads it. */
-export const LATEX_COMMENT_TAIL_MARK = "latexCommentTail";
+export const LATEX_COMMENT_TAIL_MARK = COMMENT_TAIL_MARK_NAME;
 
 /** The mark object every comment-tail-emitting parser branch pushes. */
 export function commentTailMark(): { type: string } {

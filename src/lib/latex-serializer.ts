@@ -1257,7 +1257,7 @@ function serializeLinguexExample(node: JSONContent): string {
   }
   // A BLANK LINE inside a linguex example is its TERMINATOR, so no piece may
   // end with a newline of its own (task 378). The comment carrier's serializer
-  // appends one — `closeCommentTail`, task 347's "a comment owns its line"
+  // appends one — `composeInlineRun`'s comment rule, task 347's "a comment owns its line"
   // rule — so a `% note` inside the example emitted `…\n\n` and the NEXT save
   // read everything after it as ordinary prose: the parts fell OUT of the
   // example, their `\vxid` identity with them. The join below re-adds exactly
@@ -1520,70 +1520,36 @@ export function containsInternalMarker(text: string): boolean {
  * is an `outerPrefix`, and a non-empty prefix BREAKS the wrapped run, so a
  * marker can never land between one set of braces.
  */
-/**
- * THE comment carrier's line obligation (task 347).
- *
- * A `%` comment runs to the end of its LINE, so a comment tail is the one
- * carrier that owns the rest of the line it is written on. Two things follow,
- * and both are byte-neutral for content the parser produced — it always reads
- * a tail up to (never across) a newline, and always leaves that newline at the
- * head of the next prose run:
- *
- *  - a tail carrying an interior newline must re-comment its continuation
- *    lines, or the bytes after the newline stop being a comment and start
- *    TYPESETTING (reachable by editing, not by parsing);
- *  - anything emitted after a tail on the same line is swallowed by it, so a
- *    tail not already followed by a newline gets one.
- *
- * Without the second rule the failure is the one this whole task is about,
- * arriving from the keyboard instead of from save: type a word after a comment
- * chip and the word stops appearing in the PDF, silently, while round-tripping
- * perfectly (the re-parse simply reads it back as more comment).
- */
-function closeCommentTail(raw: string, restStartsWithNewline: boolean): string {
-  const recommented = raw.split("\n").join("\n%");
-  return restStartsWithNewline ? recommented : `${recommented}\n`;
-}
-
 function serializeInlineSequence(
   nodes: JSONContent[],
   opts?: { lineFinal?: boolean },
 ): string {
   const open = new Set<string>();
   // WRAPPERS COMPOSE OVER A RUN, NOT A NODE (task 377). `composeInlineRun`
-  // owns that rule for both inline serializers; this call supplies the three
-  // things that are this walker's own business — what a node's inner bytes
-  // are, which node may never join a run, and what must sit OUTSIDE a wrapper.
-  let out = composeInlineRun<JSONContent>(nodes, {
+  // owns that rule for both inline serializers; this call supplies the things
+  // that are this walker's own business — what a node's inner bytes are, what
+  // must sit OUTSIDE a wrapper, and what it appends after the sequence.
+  return composeInlineRun<JSONContent>(nodes, {
     declareXcolor: () => need("xcolor"),
 
-    // The comment carrier owns the rest of its LINE, so it can never be merged
-    // into a wrapped run: bytes emitted after it inside `\textbf{…}` — the
-    // closing brace included — would be commented out. It also carries no
-    // anchor bookkeeping: closing an open `linkedAnchor` range across a comment
-    // is not representable (the close marker would land inside the comment), so
-    // a tail is emitted with the ranges left open and the trailing flush below
-    // still closes them at the end of the sequence.
-    standalone: (node, idx) => {
-      if (node.type !== "text" || !hasCommentTailMark(node.marks)) return null;
-      const raw = inlineTextBytes(node.text || "", node.marks);
-      const next = nodes[idx + 1];
-      const nextText = next?.type === "text" ? (next.text ?? "") : "";
-      // `lineFinal` is the caller's promise that what it appends after this
-      // sequence is comment bytes and then a newline — true at exactly ONE
-      // site, the `paragraph` case, whose tail is `anchor + "\n\n"` and whose
-      // anchor is a `%!v:` comment. There the tail may end the line itself and
-      // let the anchor ride inside it, which is both fewer bytes and what the
-      // user wrote. Every other consumer wraps the sequence in BRACES
-      // (heading, titleField, figure caption, an example's `\ex …` head), and
-      // a tail there would comment out the closing brace — so the default is
-      // the fail-safe newline. The parser's `PARAGRAPH_INLINE` opt-in is the
-      // same rule read from the other end: the sites that may PRODUCE a tail
-      // are the sites that may END a line with one.
-      const lineFinal = opts?.lineFinal && idx === nodes.length - 1;
-      return lineFinal
-        ? raw.split("\n").join("\n%")
-        : closeCommentTail(raw, nextText.startsWith("\n"));
+    // THE comment carrier's line obligation (task 347) is the run walker's
+    // own rule since task 777 — `composeInlineRun` places a newline right after
+    // every tail, at any wrapper depth, so a tail joins `\emph{…}` like any
+    // node. What stays this caller's is the promise below. `lineFinal` says what
+    // it appends after the sequence is comment bytes and then a newline — true
+    // at the `paragraph` case, whose tail is `anchor + "\n\n"` and whose anchor
+    // is a `%!v:` comment, so a final tail may end the line itself and let the
+    // anchor ride inside it (fewer bytes, and what the user wrote). Every
+    // brace-wrapping consumer (heading, titleField, figure caption) takes the
+    // fail-safe default.
+    lineFinal: opts?.lineFinal,
+    trailer: () => {
+      let closes = "";
+      for (const id of open) {
+        closes += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
+      }
+      open.clear();
+      return closes;
     },
 
     // `\vlid{id}` / `\vlidend{id}` transitions around `linkedAnchor` marks.
@@ -1631,10 +1597,6 @@ function serializeInlineSequence(
           // back as a bare `\citep{x}`.
           serializeNode(node),
   });
-  for (const id of open) {
-    out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
-  }
-  return out;
 }
 
 /**
