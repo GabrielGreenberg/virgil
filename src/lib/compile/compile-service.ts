@@ -48,6 +48,7 @@ import {
   writeEngineFile,
   type EngineCloseMode,
 } from "@/lib/swiftlatex";
+import { preambleListLoadsPackage } from "@/lib/latex-lexer";
 import { captureNewAssets } from "@/lib/tex-assets";
 import { parseTexLog } from "@/lib/parse-tex-log";
 import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-file";
@@ -123,7 +124,9 @@ const TEXT_EXTS = new Set([
 // the old hook — the service is the sole rewriter now.)
 function rewriteBiblatexBackend(text: string): string {
   return text.replace(
-    /\\usepackage(?:\[([^\]]*)\])?\{biblatex\}/g,
+    // Whitespace-tolerant (task 781): `\usepackage {biblatex}` and options on
+    // one line with the list on the next are the same load to TeX.
+    /\\usepackage\s*(?:\[([^\]]*)\])?\s*\{\s*biblatex\s*\}/g,
     (match, opts?: string) => {
       if (!opts) return "\\usepackage[backend=bibtex]{biblatex}";
       if (/\bbackend\s*=\s*bibtex\b/.test(opts)) return match;
@@ -549,8 +552,10 @@ class CompileService {
       if ("text" in d) decoded.set(f.path, d.text);
     }
 
+    // The lexer's ONE load reader (task 781) — spaced spellings, comma lists,
+    // `\RequirePackage` and wrappers all count.
     const hasBiblatex = [...decoded.values()].some((t) =>
-      /\\usepackage(?:\[[^\]]*\])?\{biblatex\}/.test(t),
+      preambleListLoadsPackage(t, "biblatex"),
     );
 
     for (const f of files) {
