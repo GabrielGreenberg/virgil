@@ -166,8 +166,9 @@ function LegacyCutterGoalStrip({
         </button>
       </div>
       <div className="h-1.5 w-full rounded-full bg-edge-subtle overflow-hidden">
+        {/* task 775: the bar's width glide opts in under reduced motion. */}
         <div
-          className={`h-full ${reached ? "bg-emerald-500" : "bg-[var(--accent)]"} transition-[width] duration-200`}
+          className={`h-full ${reached ? "bg-emerald-500" : "bg-[var(--accent)]"} motion-safe:transition-[width] duration-200`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -299,8 +300,9 @@ function LegacyRevisionsTrackerStrip({
         </button>
       </div>
       <div className="h-1.5 w-full rounded-full bg-edge-subtle overflow-hidden">
+        {/* task 775: the bar's width glide opts in under reduced motion. */}
         <div
-          className={`h-full ${reached ? "bg-emerald-500" : "bg-[var(--accent)]"} transition-[width] duration-200`}
+          className={`h-full ${reached ? "bg-emerald-500" : "bg-[var(--accent)]"} motion-safe:transition-[width] duration-200`}
           style={{ width: `${pct}%` }}
         />
       </div>

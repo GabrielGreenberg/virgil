@@ -347,7 +347,7 @@ export function StripButton({
         ind.style.cssText = `
           position: fixed; left: 0; top: 0; z-index: ${DROP_INDICATOR_Z}; pointer-events: none;
           height: 2px; background: var(--insertion-bar); border-radius: 1px;
-          will-change: transform; transition: transform 0.1s ease;
+          will-change: transform;
         `;
         document.body.appendChild(ind);
         indicatorRef.current = ind;

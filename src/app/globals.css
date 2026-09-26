@@ -1568,9 +1568,14 @@ textarea,
    button (not the SVG — CSS transform on root <svg> is flaky in some
    browsers) to show the correct direction. */
 .heading-fold-chevron {
-  transition: color 0.15s, transform 0.15s ease;
   /* Expanded: chevron points down */
   transform: rotate(90deg);
+}
+/* The rotation is movement, so it eases only under the opt-in (task 775). */
+@media (prefers-reduced-motion: no-preference) {
+  .heading-fold-chevron {
+    transition: color 0.15s, transform 0.15s ease;
+  }
 }
 
 .heading-fold-chevron.is-folded {
@@ -1721,10 +1726,15 @@ textarea,
   border: none;
   cursor: pointer;
   color: var(--muted-light, #b5b0aa);
-  transition: color 0.15s, transform 0.15s ease;
+  transition: color 0.15s; /* + transform under the opt-in just below */
   /* Expanded: chevron points down. */
   transform: rotate(90deg);
   z-index: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .source-pod-fold-chevron {
+    transition: color 0.15s, transform 0.15s ease;
+  }
 }
 .source-pod-fold-chevron:hover {
   color: var(--muted, #8a8580);
@@ -4496,13 +4506,13 @@ body.perf-contain .static-borrowed-text {
  *   paragraph instead of teleporting. Each placement kind transitions
  *   only the axes it actually moves on (vertical bars: top/height;
  *   horizontal gap line: top; the bar's left + width snap instantly so
- *   the bar's geometric identity reads stable). */
-.dropmode-bar-gap,
-.dropmode-bar-side,
-.dropmode-bar-inline {
-  animation: dropmode-bar-fadein 0.08s ease-out;
-}
-/* The bar is positioned by `transform: translate3d(...)` (Indicator.tsx), so
+ *   the bar's geometric identity reads stable).
+ * - All of it OPTED IN under `prefers-reduced-motion: no-preference`
+ *   (task 775; STYLE_GUIDE "Motion"): a drag changes placement on most
+ *   frames, so for a reduced-motion user the glide is a continuous slide for
+ *   the whole gesture. Absent the opt-in the bar simply snaps.
+ *
+ * The bar is positioned by `transform: translate3d(...)` (Indicator.tsx), so
  * its EASE is composite-only. Easing `top` on a position:fixed element — the
  * pre-351 form — ran an 80 ms main-thread LAYOUT animation after every
  * placement change, and a drag through a dense list changes placement on most
@@ -4511,21 +4521,36 @@ body.perf-contain .static-borrowed-text {
  * float shell and the lift overlay already follow. `height` is still a layout
  * property and stays eased only on the bars that CHANGE height as they snap
  * (the side / inline / vertical forms); the horizontal gap line is 2px tall
- * always, so it eases transform alone. */
-.dropmode-bar-side,
-.dropmode-bar-inline {
-  transition: transform 0.08s ease, height 0.08s ease;
-}
-.dropmode-bar-gap {
-  transition: transform 0.08s ease;
-}
-/* Feature A1 — the expex unified-drop bar reuses `.dropmode-bar-gap` but is
- * VERTICAL (a tall left-edge bar). It snaps between a full-item-height bar and a
- * short new-item tick, so ease `height` too (the horizontal gap line only moves
- * on `top`). Slightly rounded so the tall bar reads as a clean rule. */
+ * always, so it eases transform alone.
+ *
+ * Feature A1 — the expex unified-drop bar reuses `.dropmode-bar-gap` but is
+ * VERTICAL (a tall left-edge bar). It snaps between a full-item-height bar and
+ * a short new-item tick, so ease `height` too (the horizontal gap line only
+ * moves on `top`). Slightly rounded so the tall bar reads as a clean rule.
+ *
+ * `#virgil-drop-indicator` is the Virgil-bar strip's drop line
+ * (drag-drop.tsx) — it moves by `transform` too, and takes the same opt-in
+ * here rather than an inline `transition` no media query can reach. */
 .dropmode-bar-vertical {
-  transition: transform 0.08s ease, height 0.08s ease;
   border-radius: var(--radius-xs);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dropmode-bar-gap,
+  .dropmode-bar-side,
+  .dropmode-bar-inline {
+    animation: dropmode-bar-fadein 0.08s ease-out;
+  }
+  .dropmode-bar-side,
+  .dropmode-bar-inline {
+    transition: transform 0.08s ease, height 0.08s ease;
+  }
+  .dropmode-bar-gap,
+  #virgil-drop-indicator {
+    transition: transform 0.08s ease;
+  }
+  .dropmode-bar-vertical {
+    transition: transform 0.08s ease, height 0.08s ease;
+  }
 }
 @keyframes dropmode-bar-fadein {
   from { opacity: 0; }
@@ -5673,9 +5698,18 @@ html {
   background: var(--edge-hover);
   /* Hidden at rest (bug sweep #2); the hover/drag rules below raise it. */
   opacity: 0;
-  transition: background 120ms ease, opacity 120ms ease, width 120ms ease,
-    height 120ms ease;
+  /* The pill's GROW (width/height) is movement, so it eases only under the
+     reduced-motion opt-in just below (task 775); the colour/opacity fade
+     always does. */
+  transition: background 120ms ease, opacity 120ms ease;
   pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .drag-gap-h.band-grip::before,
+  .drag-gap-v.band-grip::after {
+    transition: background 120ms ease, opacity 120ms ease, width 120ms ease,
+      height 120ms ease;
+  }
 }
 
 /* Horizontal gutter — a wide-short pill (28×4) that widens along its WIDTH. */

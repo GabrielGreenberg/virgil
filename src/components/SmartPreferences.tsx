@@ -333,7 +333,7 @@ function Section({
           width="10"
           height="10"
           viewBox="0 0 10 10"
-          className={`text-ink-muted transition-transform ${open ? "rotate-90" : ""}`}
+          className={`text-ink-muted motion-safe:transition-transform ${open ? "rotate-90" : ""}`}
           fill="none"
           stroke="currentColor"
           strokeWidth="1.5"

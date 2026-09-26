@@ -145,7 +145,7 @@ const PERMITTED_HAND_ROLLED_STATUS_DOTS: ReadonlyArray<[file: string, fragment: 
   ],
   [
     "src/panels/Bibliography/BibliographyPanel.tsx",
-    "bg-amber-400 animate-pulse",
+    "bg-amber-400 motion-safe:animate-pulse",
     "pending pulse in raw Tailwind amber-400 (#fbbf24), which matches no token; also the only ANIMATED dot, a capability the primitive does not model",
   ],
   [

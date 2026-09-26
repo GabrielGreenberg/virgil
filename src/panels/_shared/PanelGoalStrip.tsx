@@ -179,7 +179,7 @@ export function PanelGoalStrip({
       </div>
       <div className="h-1.5 w-full rounded-full bg-edge-subtle overflow-hidden">
         <div
-          className={`h-full ${reached ? "bg-[var(--positive)]" : "bg-[var(--accent)]"} transition-[width] duration-200`}
+          className={`h-full ${reached ? "bg-[var(--positive)]" : "bg-[var(--accent)]"} motion-safe:transition-[width] duration-200`}
           style={{ width: `${pct}%` }}
         />
       </div>

@@ -691,9 +691,9 @@ function BibEntryPickerRow({
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              className="motion-safe:transition-transform duration-[120ms] ease-[ease]"
               style={{
                 transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 120ms ease",
               }}
             >
               <polyline points="6 9 12 15 18 9" />

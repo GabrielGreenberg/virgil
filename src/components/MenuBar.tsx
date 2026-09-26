@@ -491,7 +491,7 @@ function ViewGroupRow({
       style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
     >
       <span>{label}</span>
-      <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="w-3 h-3 text-ink-muted motion-safe:transition-transform" style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M2.5 1L5.5 4L2.5 7" />
       </svg>
     </button>

@@ -2241,7 +2241,7 @@ export function Chevron({ expanded }: { expanded: boolean }) {
       strokeWidth="2.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`transition-transform duration-150 flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
+      className={`motion-safe:transition-transform duration-150 flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
     >
       <polyline points="9 18 15 12 9 6" />
     </svg>
