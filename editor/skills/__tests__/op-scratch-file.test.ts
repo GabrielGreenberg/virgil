@@ -423,3 +423,94 @@ describe("op-json delivery — every free-text site points at the SSOT", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK 786 — the rule reaches past op-json: ANY free-text payload a skill writes
+// to a file.
+//
+// `answer-bib-review` handed a bib entry's `fields` object to
+// `bib_auth.py --fields-file` via `printf '%s' '<the fields object …>' >
+// /tmp/<bibKey>-fields.json` — a single-quoted PLACEHOLDER (so free text by
+// construction: nobody has seen its bytes) that breaks on the first `O'Neill`,
+// truncating the file and costing the DOI/arXiv/ISBN fast-paths. The 468 census
+// above could not see it: it only classifies `apply_response.py` invocations.
+//
+// This census does: every `printf`/`echo` whose argument is a single-quoted
+// `'<…>'` placeholder AND whose output goes to a file or a pipe, across BOTH
+// skill silos (editor + library). Allowlist EMPTY — a hit is CONVERT-it (pipe
+// from the producing script, or a quoted heredoc to `mktemp` scratch).
+
+const SKILL_SILOS = ["editor/skills", "library/skills"] as const;
+/** `printf`/`echo` with a `'<placeholder>'` argument, redirected or piped. */
+const INLINE_PLACEHOLDER_WRITE =
+  /\b(?:printf|echo)\b[^\n]*'<[^'\n]*>'[^\n]*(?:>|\|)/;
+
+function inlinePlaceholderWrites(rel: string): string[] {
+  return read(rel)
+    .split("\n")
+    .flatMap((line, i) =>
+      INLINE_PLACEHOLDER_WRITE.test(line) ? [`${rel}:${i + 1}: ${line.trim().slice(0, 100)}`] : [],
+    );
+}
+
+const siloFiles = () =>
+  SKILL_SILOS.flatMap((dir) =>
+    readdirSync(join(REPO, dir))
+      .filter((f) => f.endsWith(".md"))
+      .sort()
+      .map((f) => `${dir}/${f}`),
+  );
+
+describe("free-text scratch payloads — the CENSUS (allowlist EMPTY)", () => {
+  it("no skill writes a placeholder payload through an inline single-quoted printf/echo", () => {
+    const offenders = siloFiles().flatMap(inlinePlaceholderWrites);
+    expect(
+      offenders,
+      "a free-text payload written as a hand-quoted `printf '<…>' > file`. It" +
+        " breaks on the first apostrophe. Pipe it straight from the script that" +
+        " produced it, or write it through a quoted heredoc to `mktemp` scratch" +
+        " — see `editor/skills/_op-json.md`, \"it reaches past op-json\".",
+    ).toEqual([]);
+  });
+
+  it("the census looks at both silos (non-vacuous)", () => {
+    const files = siloFiles();
+    expect(files.filter((f) => f.startsWith("editor/")).length).toBeGreaterThan(10);
+    expect(files.filter((f) => f.startsWith("library/")).length).toBeGreaterThan(10);
+  });
+
+  it("the needle sees the retired shape and spares the sanctioned ones (canary)", () => {
+    // Synthetic, never a live line.
+    const violations = [
+      "     printf '%s' '<the fields object from bib_resolve.py>' > /tmp/<bibKey>-fields.json",
+      "echo '<the note you drafted>' >> \"$f\"",
+      "printf '%s' '<entry>' | python3 helper.py",
+    ];
+    const spared = [
+      "     fields=$(mktemp -t virgil-fields)",
+      "     python3 \"$scripts_editor/bib_resolve.py\" <docPath> <bibKey> \\",
+      "echo \"No library set up. Pick a library in Virgil first.\"",
+      "printf '%s\\n' \"$x\" > \"$f\"",
+      "cat > \"$op\" <<'JSON'",
+    ];
+    for (const line of violations) expect(INLINE_PLACEHOLDER_WRITE.test(line), line).toBe(true);
+    for (const line of spared) expect(INLINE_PLACEHOLDER_WRITE.test(line), line).toBe(false);
+  });
+
+  it("answer-bib-review pipes the fields object from bib_resolve into mktemp scratch", () => {
+    const src = read(`${SKILLS}/answer-bib-review.md`);
+    expect(src).toMatch(/fields=\$\(mktemp -t virgil-fields\)/);
+    expect(src).toMatch(/bib_resolve\.py" <docPath> <bibKey> \\\n\s*\| python3 -c [^\n]*\["fields"\]/);
+    expect(src).toContain('--fields-file "$fields"');
+    expect(src).toMatch(/rm -f "\$fields"/);
+    expect(src).not.toMatch(/\/tmp\/<bibKey>/);
+  });
+
+  it("answer-bib-review binds --library before it tests $LIBRARY", () => {
+    const src = read(`${SKILLS}/answer-bib-review.md`);
+    const bind = src.indexOf('LIBRARY="<the --library path');
+    const test = src.indexOf('if [ -n "$LIBRARY" ]');
+    expect(bind).toBeGreaterThan(-1);
+    expect(test).toBeGreaterThan(bind);
+  });
+});
