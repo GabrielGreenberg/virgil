@@ -22,7 +22,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
 import { adoptNodeIntoSchema } from "../schema-adopt";
-import { fitNodeInContainer } from "@/text-objects/drop-adapters";
+import { fitNodeInContainer } from "@/text-objects/container-fit";
 import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
 
@@ -69,7 +69,7 @@ export function canDropDirectAt(
 }
 
 /**
- * The editor-level face of `fitNodeInContainer` (drop-adapters.ts) — the ONE
+ * The editor-level face of `fitNodeInContainer` (container-fit.ts) — the ONE
  * gate every between-blocks insert passes through, whatever produced the
  * payload: a whole-node move (`textobject.ts`, `util/block-move.ts`), a text
  * SLICE converted to blocks (`text-range-move.ts`), or a stack pull

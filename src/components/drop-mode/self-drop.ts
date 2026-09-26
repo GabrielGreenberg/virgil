@@ -98,7 +98,7 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/react";
-import { fitNodeInContainer } from "@/text-objects/drop-adapters";
+import { fitNodeInContainer } from "@/text-objects/container-fit";
 
 import { refuseOnThrow } from "./planned-spec";
 import type { DropCtx, DropSpec } from "./types";
