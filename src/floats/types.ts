@@ -109,10 +109,6 @@ export interface Floatable {
    *  thin draggable frame. */
   bareWindow?: boolean;
 
-  /** Whether the window participates in the panel dock flow (redock proximity
-   *  + dock outline). Cards/text-objects: false (panels only). Defaults false. */
-  canRedock?: boolean;
-
   /** Reveal where this thing actually lives (scroll-to + select). */
   jumpToSource(): void;
   /** Whether the float shows the jump affordance (some cards have no anchor). */

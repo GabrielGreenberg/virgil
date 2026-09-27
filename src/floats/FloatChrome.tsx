@@ -24,8 +24,8 @@ import { iconHint } from "@/components/Hint";
  *     dot, AI checkbox, …). For cards this is a `CardChromeTrailing` element
  *     that hosts its own `CardClaimContext`, so FloatChrome stays neutral.
  *
- * `redock` is intentionally absent — cards/text-objects never dock
- * (`canRedock=false`); panels keep their own chrome.
+ * `redock` is intentionally absent — cards/text-objects never dock; panels
+ * keep their own chrome (so `Floatable` carries no dock field — task 791).
  *
  * ## Two mounts, one CONTENT (task 437)
  *
