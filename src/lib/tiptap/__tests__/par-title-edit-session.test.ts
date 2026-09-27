@@ -66,7 +66,9 @@ import {
   PAR_TITLE_OVERLAY_CLASS,
   PAR_TITLE_EDITING_CLASS,
   PAR_TITLE_BLUR_ARM_MS,
+  createParTitleSession,
 } from "@/lib/tiptap/title-edit-session";
+import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
 
 // ---------------------------------------------------------------------------
 // Harness (the 548 shape — the REAL main extension stack)
@@ -605,4 +607,46 @@ describe("task 552 — census: the vanilla strips enter the ONE door", () => {
     expect(src).not.toMatch(/generateShortId\(\s*\)/);
     expect(src).toContain("mintDocUuid");
   });
+});
+
+describe("task 805 — setup is ATOMIC: a throw in setup leaves no orphan", () => {
+  // Pre-805 the lifetime's first frame threw "Illegal invocation" in every
+  // real browser, AFTER the body placement had mounted its full-viewport
+  // click-away overlay and BEFORE any handler existed — the app froze.
+  const throwingLifetime = () => {
+    const lt = createViewLifetime();
+    return {
+      ...lt,
+      requestAnimationFrame: () => {
+        throw new TypeError("Illegal invocation");
+      },
+    } as typeof lt;
+  };
+
+  for (const placement of ["body", "inline"] as const) {
+    it(`${placement} placement: a failed setup unmounts what it mounted and ends the session`, () => {
+      const wrapper = document.createElement("div");
+      const titleAnnot = document.createElement("div");
+      wrapper.appendChild(titleAnnot);
+      document.body.appendChild(wrapper);
+      const render = vi.fn();
+      const session = createParTitleSession({
+        wrapper,
+        titleAnnot,
+        lifetime: throwingLifetime(),
+        placement,
+        placeholder: "title",
+        getTitle: () => null,
+        render,
+        commit: () => {},
+      });
+      expect(() => session.begin()).toThrow("Illegal invocation");
+      expect(session.editing).toBe(false);
+      expect(document.querySelector(`.${PAR_TITLE_OVERLAY_CLASS}`)).toBeNull();
+      expect(document.querySelector(`.${PAR_TITLE_INPUT_CLASS}`)).toBeNull();
+      expect(wrapper.classList.contains(PAR_TITLE_EDITING_CLASS)).toBe(false);
+      expect(render).toHaveBeenCalled();
+      wrapper.remove();
+    });
+  }
 });

@@ -1026,8 +1026,16 @@ export function createHeadingWithLabel(
           return headingTypeName(n.attrs.level as number);
         }
 
+        // The label edit SESSION flag (task 805). Re-entry and `update()`'s
+        // don't-clobber gate ask this, never `annot.querySelector("input")`:
+        // an input left in the DOM by a setup that threw is not a session,
+        // and gating on its presence wedged the strip until the NodeView was
+        // recreated (the "label field freezes" report).
+        let labelEditing = false;
+
         function enterEditMode(targetSpan: HTMLElement) {
-          if (annot.querySelector("input")) return;
+          if (labelEditing) return;
+          labelEditing = true;
 
           const input = document.createElement("input");
           input.type = "text";
@@ -1035,8 +1043,28 @@ export function createHeadingWithLabel(
           input.value = (currentNode.attrs.label as string) || "";
           input.placeholder = "label key";
 
+          const finish = () => {
+            labelEditing = false;
+            renderAnnot();
+          };
+
           // Replace the target span with the input inline
           targetSpan.replaceWith(input);
+
+          // Setup is ATOMIC (task 805): everything below wires the input's
+          // handlers. A throw part-way (pre-805, `autoSizeInput`'s frame threw
+          // "Illegal invocation" in every real browser) must not leave a
+          // handler-less input wedged in the strip — a failed setup ends the
+          // session and restores the annotation.
+          try {
+            wireLabelInput();
+          } catch (err) {
+            input.remove();
+            finish();
+            throw err;
+          }
+
+          function wireLabelInput() {
 
           // Auto-size to content (must be in DOM first for font measurement)
           const sizer = autoSizeInput(input, 2, lifetime);
@@ -1105,7 +1133,7 @@ export function createHeadingWithLabel(
               }
               committed = true;
               cleanupSizer();
-              renderAnnot();
+              finish();
               return;
             }
 
@@ -1113,13 +1141,13 @@ export function createHeadingWithLabel(
             cleanupSizer();
 
             if (oldLabel === newLabel) {
-              renderAnnot();
+              finish();
               return;
             }
 
             // Restore the annotation display before awaiting a modal so
             // the user isn't staring at a stale editable input behind it.
-            renderAnnot();
+            finish();
 
             // ONE door for every label rename (task 534): collects the `\ref`s
             // naming the old key over the WHOLE target document, asks the
@@ -1145,7 +1173,7 @@ export function createHeadingWithLabel(
 
           input.addEventListener("keydown", (ev) => {
             if (ev.key === "Enter") { ev.preventDefault(); void commit("enter"); }
-            if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanupSizer(); renderAnnot(); }
+            if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanupSizer(); finish(); }
           });
 
           let armed = false;
@@ -1161,6 +1189,7 @@ export function createHeadingWithLabel(
               input.select();
             }
           });
+          }
         }
 
         // Memo of the last-rendered annotation inputs (typeName derives from
@@ -1452,7 +1481,7 @@ export function createHeadingWithLabel(
             // Don't overwrite annot if an input is active; skip when the
             // rendered inputs (numbered, label) are unchanged.
             if (
-              !annot.querySelector("input") &&
+              !labelEditing &&
               ((updatedNode.attrs.numbered !== false) !== lastAnnotNumbered ||
                 (updatedNode.attrs.label as string | null) !== lastAnnotLabel)
             ) {
