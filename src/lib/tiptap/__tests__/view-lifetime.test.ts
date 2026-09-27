@@ -108,4 +108,70 @@ describe("createViewLifetime", () => {
     lt.dispose();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  // Task 805 — the receiver guard. A real browser's timer verbs are
+  // receiver-checked (`this` must be the window or undefined); Node's and
+  // jsdom's are not, which is how a detached `{ setTimeout: globalThis.setTimeout }
+  // .setTimeout(…)` shipped for ~10 releases throwing "Illegal invocation" in
+  // Chrome while every suite passed. Stub all six globals with receiver-checking
+  // fakes (delegating to the fake clock) so the blind spot is representable.
+  describe("receiver guard — every platform verb is called with a legal `this`", () => {
+    const VERBS = [
+      "setTimeout",
+      "clearTimeout",
+      "setInterval",
+      "clearInterval",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+    ] as const;
+    type Verb = (typeof VERBS)[number];
+    let saved: Record<Verb, unknown>;
+
+    beforeEach(() => {
+      const g = globalThis as unknown as Record<Verb, (...a: unknown[]) => unknown>;
+      saved = {} as Record<Verb, unknown>;
+      for (const verb of VERBS) {
+        const real = g[verb];
+        saved[verb] = real;
+        g[verb] = function (this: unknown, ...args: unknown[]) {
+          if (this !== globalThis && this !== undefined) {
+            throw new TypeError("Illegal invocation");
+          }
+          return real.apply(globalThis, args);
+        };
+      }
+    });
+    afterEach(() => {
+      const g = globalThis as unknown as Record<Verb, unknown>;
+      for (const verb of VERBS) g[verb] = saved[verb];
+    });
+
+    it("arms, fires, clears and disposes all three kinds without an Illegal invocation", () => {
+      const lt = createViewLifetime();
+      const fired: string[] = [];
+      lt.setTimeout(() => fired.push("timeout"), 5);
+      lt.requestAnimationFrame(() => fired.push("frame"));
+      const iv = lt.setInterval(() => fired.push("interval"), 5);
+      vi.advanceTimersByTime(20);
+      expect(fired).toContain("timeout");
+      expect(fired).toContain("frame");
+      expect(fired).toContain("interval");
+      lt.clear(iv);
+
+      const t = lt.setTimeout(() => fired.push("late-timeout"), 5);
+      const f = lt.requestAnimationFrame(() => fired.push("late-frame"));
+      lt.clear(t);
+      lt.clear(f);
+      lt.setTimeout(() => {}, 5);
+      lt.setInterval(() => {}, 5);
+      lt.requestAnimationFrame(() => {});
+      expect(lt.pending).toBe(3);
+      lt.dispose();
+      expect(lt.pending).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(100);
+      expect(fired).not.toContain("late-timeout");
+      expect(fired).not.toContain("late-frame");
+    });
+  });
 });

@@ -95,15 +95,27 @@ type Platform = {
  * timers swap the globals after this module is evaluated, and a lifetime that
  * captured the real ones would arm real timers under a fake clock — which is
  * exactly the shape that hides a leak from a `getTimerCount()` probe.
+ *
+ * Every verb is a WRAPPER that invokes the global as a plain call, never a
+ * detached reference invoked as a method of this object. The DOM timer
+ * functions are receiver-checked (`this` must be the window or undefined):
+ * `{ setTimeout: globalThis.setTimeout }.setTimeout(…)` throws
+ * `TypeError: Illegal invocation` in every real browser, while Node's and
+ * jsdom's timers accept any receiver — so the detached shape passed every
+ * suite and broke every consumer in production (task 805). The receiver guard
+ * in `view-lifetime.test.ts` stubs the globals with receiver-checking fakes so
+ * that blind spot is closed for this module.
  */
 function platform(): Platform {
   return {
-    setTimeout: globalThis.setTimeout,
-    clearTimeout: globalThis.clearTimeout,
-    setInterval: globalThis.setInterval,
-    clearInterval: globalThis.clearInterval,
-    requestAnimationFrame: globalThis.requestAnimationFrame,
-    cancelAnimationFrame: globalThis.cancelAnimationFrame,
+    setTimeout: ((cb: () => void, ms?: number) =>
+      globalThis.setTimeout(cb, ms)) as typeof globalThis.setTimeout,
+    clearTimeout: (id) => globalThis.clearTimeout(id),
+    setInterval: ((cb: () => void, ms?: number) =>
+      globalThis.setInterval(cb, ms)) as typeof globalThis.setInterval,
+    clearInterval: (id) => globalThis.clearInterval(id),
+    requestAnimationFrame: (cb) => globalThis.requestAnimationFrame(cb),
+    cancelAnimationFrame: (id) => globalThis.cancelAnimationFrame(id),
   };
 }
 
