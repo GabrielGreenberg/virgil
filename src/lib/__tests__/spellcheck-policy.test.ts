@@ -24,6 +24,7 @@ import {
   VIRGIL_CHECKED_ATTRS,
   SPELLCHECK_ATTR,
   applyNativeSpellcheck,
+  dropNativeSpellMarkers,
 } from "@/lib/spellcheck-policy";
 import { VIEW_PREF_REGISTRY, toggleRowsInMenuGroup } from "@/lib/view-prefs/registry";
 import {
@@ -54,6 +55,26 @@ describe("the switch is one attribute on <body>", () => {
     applyNativeSpellcheck(true);
     applyNativeSpellcheck(true);
     expect(document.body.hasAttribute(SPELLCHECK_ATTR)).toBe(false);
+  });
+
+  it("dropNativeSpellMarkers re-edges a declining element and never turns a checker ON (task 806)", () => {
+    const el = document.createElement("div");
+    const writes: string[] = [];
+    const orig = el.setAttribute.bind(el);
+    el.setAttribute = (n: string, v: string) => {
+      if (n === SPELLCHECK_ATTR) writes.push(v);
+      orig(n, v);
+    };
+    // Not declining: nothing to clear, and nothing written.
+    dropNativeSpellMarkers(el);
+    expect(writes).toEqual([]);
+    expect(el.hasAttribute(SPELLCHECK_ATTR)).toBe(false);
+    // Declining: through `true` and back, ending where it started.
+    orig(SPELLCHECK_ATTR, "false");
+    dropNativeSpellMarkers(el);
+    expect(writes).toEqual(["true", "false"]);
+    expect(el.getAttribute(SPELLCHECK_ATTR)).toBe("false");
+    dropNativeSpellMarkers(null);
   });
 
   it("a deliberate opt-out is a DESCENDANT false, so it survives either position", () => {

@@ -391,6 +391,92 @@ describe("a squiggle is a view, never document content", () => {
   });
 });
 
+// ── C2. ownership is not "a pass has finished" (task 806) ────────────────────
+
+describe("the hand-off holds from the FIRST render (task 806)", () => {
+  /** Spellcheck-attribute writes on `el`, in order. */
+  function spyAttr(el: Element): string[] {
+    const writes: string[] = [];
+    const orig = el.setAttribute.bind(el);
+    vi.spyOn(el, "setAttribute").mockImplementation((name, value) => {
+      if (name === "spellcheck") writes.push(value);
+      orig(name, value);
+    });
+    return writes;
+  }
+
+  it("an enabled port owns the surface before any pass resolves", () => {
+    const { ref, port } = makePort();
+    // The dictionary never arrives — the fresh-machine first fetch, frozen.
+    port.ensure = () => new Promise<void>(() => {});
+    const ed = mount("The quick teh fox.", ref);
+    // No timer advanced: no debounce, no fetch, no worker round trip.
+    expect(spellcheckPluginKey.getState(ed.state)!.active).toBe(true);
+    expect(ed.view.dom.getAttribute("spellcheck")).toBe("false");
+    expect(port.ensureCalls).toBe(0);
+    expect(flagged(ed)).toEqual([]);
+  });
+
+  it("a disabled (or failed) port leaves the surface to the browser from the start", async () => {
+    const { ref, port } = makePort();
+    port.setEnabled(false);
+    const ed = mount("The quick teh fox.", ref);
+    expect(ed.view.dom.hasAttribute("spellcheck")).toBe(false);
+    await settle();
+    expect(ed.view.dom.hasAttribute("spellcheck")).toBe(false);
+  });
+
+  it("a read-only surface is not claimed at init", () => {
+    const { ref } = makePort();
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const ctx = {
+      surface: "main",
+      editableRef: { current: false },
+      cardContext: false,
+      callbacks: {},
+      docIdRef: { current: null },
+      anchoredUuidsRef: { current: new Set<string>() },
+      host: null,
+      spellcheckPortRef: ref,
+    } as unknown as EditorExtensionsCtx;
+    editor = new Editor({
+      element,
+      editable: true,
+      extensions: buildEditorExtensions(ctx),
+      content: parseLatex(
+        "\\documentclass{article}\n\\begin{document}\nThe teh fox.\n\\end{document}\n",
+      ) as never,
+    });
+    expect(spellcheckPluginKey.getState(editor.state)!.active).toBe(false);
+  });
+
+  it("a recovery CLAIMS at once — before the pass — and nudges the browser's markers off, once", async () => {
+    const { ref, port } = makePort();
+    port.setEnabled(false);
+    const ed = mount("The quick teh fox.", ref);
+    await settle();
+    expect(ed.view.dom.hasAttribute("spellcheck")).toBe(false);
+
+    const writes = spyAttr(ed.view.dom);
+    port.ensure = () => new Promise<void>(() => {});
+    port.setEnabled(true);
+    port.invalidate();
+    // One microtask, no timers: the claim does not wait for the debounce.
+    await Promise.resolve();
+    expect(ed.view.dom.getAttribute("spellcheck")).toBe("false");
+    // The nudge: through an explicit `true` and back to `false`.
+    expect(writes.slice(-2)).toEqual(["true", "false"]);
+
+    // …and it is an EDGE: typing does not repeat it.
+    const count = writes.length;
+    ed.chain().setTextSelection(3).insertContent("xyz").run();
+    await Promise.resolve();
+    expect(writes.filter((v) => v === "true")).toHaveLength(1);
+    expect(writes.length).toBe(count);
+  });
+});
+
 // ── D. a squiggle's ground can move (task 581) and requests can overlap (582) ─
 
 describe("a squiggle never outlives the prose it was painted on (task 581)", () => {

@@ -68,6 +68,10 @@ interface ToggleDef<D extends boolean = boolean> {
   label: string;
   menu: ViewPrefMenuGroup;
   menuRowId: string;
+  /** The row's tooltip + `aria-description` — what the toggle governs when
+   *  the label alone would mislead (task 806: "Check spelling" also silences
+   *  the BROWSER's checker). Optional; rendered by the Display block. */
+  hint?: string;
   promote?: boolean;
 }
 interface EnumDef<V extends string> {
@@ -154,7 +158,8 @@ export const VIEW_PREF_REGISTRY = {
   // Reflected onto <body> by `spellcheck-policy.ts` — a single inherited HTML
   // attribute rather than a prop threaded into twelve `editorProps.attributes`
   // blocks. Default ON = today's behaviour; task 518's own checker flips it.
-  checkSpelling:        { kind: "toggle", scope: "global", default: true, label: "Check spelling",      menu: "display", menuRowId: "check-spelling" },
+  checkSpelling:        { kind: "toggle", scope: "global", default: true, label: "Check spelling",      menu: "display", menuRowId: "check-spelling",
+                          hint: "Virgil's spelling underline (a thin wavy line) — turning this off also stops the browser's own spellcheck (its dotted underline) everywhere in Virgil. Virgil has no grammar check." },
   // The CURATED typo table (task 519), and deliberately its own row rather
   // than a second meaning for `checkSpelling`: underlining a word and
   // REWRITING it are different permissions, and a user may want either
@@ -258,12 +263,12 @@ export type ViewPrefMember<K extends SetViewPrefKey> = RegistryPrefs[K][number];
  *  registry row and zero MenuBar edits (task 274). */
 export function toggleRowsInMenuGroup(
   group: ViewPrefMenuGroup,
-): ReadonlyArray<{ key: ToggleViewPrefKey; id: string; label: string }> {
+): ReadonlyArray<{ key: ToggleViewPrefKey; id: string; label: string; hint?: string }> {
   return Object.entries(VIEW_PREF_REGISTRY)
     .filter(([, d]) => d.kind === "toggle" && d.menu === group)
     .map(([key, d]) => {
       const def = d as ToggleDef;
-      return { key: key as ToggleViewPrefKey, id: def.menuRowId, label: def.label };
+      return { key: key as ToggleViewPrefKey, id: def.menuRowId, label: def.label, hint: def.hint };
     });
 }
 

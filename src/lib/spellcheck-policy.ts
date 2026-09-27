@@ -58,10 +58,22 @@
  *   - `VIRGIL_CHECKED_ATTRS` — "VIRGIL underlines this surface, so the browser
  *     must not". Contributed by the plugin that PAINTS
  *     (`spellcheck-decorator.ts`), which is what makes the pair honest: it
- *     appears exactly while Virgil's checker is live and vanishes the moment
+ *     appears from the surface's FIRST render whenever Virgil's checker is
+ *     enabled — not after its first pass (task 806) — and vanishes the moment
  *     the preference goes off, the surface goes read-only, or the DICTIONARY
  *     FAILS TO LOAD — handing the surface back rather than leaving it with no
  *     checker at all.
+ *
+ * What is NOT Virgil-checked stays the browser's: the panel `<textarea>`s and
+ * `<input>`s (suggestion fields, Todo rows, bib entry fields …) carry no
+ * decorator, so they inherit `<body>` — checked natively while the preference
+ * is on, silenced with everything else when it is off. Declining the browser
+ * there would leave them with no checker at all.
+ *
+ * Virgil has NO grammar check. A grammar underline, or a squiggle under a word
+ * Virgil's dictionary accepts, is the browser's (on macOS, the system
+ * checker's) — telling the two apart is `STYLE_GUIDE.md` → "Spelling
+ * underline".
  *
  * The preference stays ONE control for the pair. `checkSpelling` off means no
  * underline from either; on means Virgil checks the prose surfaces and the
@@ -106,6 +118,22 @@ export const VIRGIL_CHECKED_ATTRS: { readonly spellcheck: "false" } = {
 
 /** The attribute this policy writes on `<body>`. */
 export const SPELLCHECK_ATTR = "spellcheck";
+
+/**
+ * Make the browser drop the squiggles it already painted on `el` (task 806).
+ * Chrome re-evaluates a subtree's markers when its `spellcheck` ENABLEMENT
+ * changes, but a surface that goes from "inherited on" to `false` may keep
+ * what it drew while nothing was declining it. So flip the attribute through
+ * an explicit `true` and back — the transition to `false` is what clears. Only
+ * acts on an element that currently declines, so it can never turn a checker
+ * ON. O(1); called once on a surface's ownership-claim EDGE, never per
+ * keystroke.
+ */
+export function dropNativeSpellMarkers(el: Element | null | undefined): void {
+  if (!el || el.getAttribute(SPELLCHECK_ATTR) !== "false") return;
+  el.setAttribute(SPELLCHECK_ATTR, "true");
+  el.setAttribute(SPELLCHECK_ATTR, "false");
+}
 
 /**
  * Reflect the preference onto `<body>`. ON removes the attribute rather than
