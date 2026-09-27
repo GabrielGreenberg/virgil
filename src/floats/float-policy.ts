@@ -85,7 +85,9 @@ export { FLOATING_PANEL_Z_BASE };
  *
  *   text / content              ~1–31  (editor prose, sticky pod caps, Virgil
  *                                       bar — local z's inside the editor)
+ *   below-panel chrome           999   (DOCK_OUTLINE_Z, STACK_CHROME_Z — task 793)
  *   panel band                  1000   (FLOATING_PANEL_Z_BASE — docked panels)
+ *   card-lift source outline    1100   (LIFT_OUTLINE_Z — below the float it spawns)
  *   RESTING margin triggers     1199   (RESTING_MARGIN_TRIGGER_Z — the margin
  *                                       bolt / drag handle at rest: ABOVE
  *                                       content + panels so it's clickable, but
@@ -104,6 +106,9 @@ export { FLOATING_PANEL_Z_BASE };
  *                                       menu, e.g. the ActionsMenuPanel that the
  *                                       margin bolt opens, MUST stay on top of
  *                                       everything INCLUDING floats)
+ *   inline edit overlay    2001–2002   (INLINE_EDIT_OVERLAY_Z / _INPUT_Z — the
+ *                                       paragraph-title edit session)
+ *   drag ghosts                 9998   (DRAG_GHOST_Z — strictly below the bar)
  *   drop-mode indicator         9999   (DROP_INDICATOR_Z — every insertion
  *                                       bar, content AND panel-strip; above floats and ghosts during a
  *                                       move, Issue-11)
@@ -163,6 +168,47 @@ export const OPEN_CHROME_MENU_Z = 2000;
 export const DROP_INDICATOR_Z = 9999;
 export const MODAL_SCRIM_Z = 10000;
 export const HINT_Z = 10010;
+
+/**
+ * The OVERLAY rungs — task 793. Each was a bare literal at its site, outside the
+ * ladder; naming them here lets the ordering test pin where each sits, and the
+ * z-literal census (`src/floats/__tests__/z-literal-census.test.ts`) fails on any
+ * NEW bare z-index ≥ 100 anywhere in `src/`, so the next overlay derives a rung
+ * instead of re-typing 9999.
+ *
+ *   BELOW-PANEL chrome        999   one under FLOATING_PANEL_Z_BASE:
+ *     DOCK_OUTLINE_Z                  the dock-target outline — the dragged
+ *                                     floating panel (≥ the panel band) paints
+ *                                     over it;
+ *     STACK_CHROME_Z                  the Stack icon + its thumbnail strip —
+ *                                     viewport chrome that a floating panel or
+ *                                     card may cover.
+ *   LIFT_OUTLINE_Z           1100   the card-lift source outline: above the
+ *                                     panel band (a docked source card shows its
+ *                                     outline) but below the float layer, so the
+ *                                     spawned float occludes it as it lifts off.
+ *   INLINE_EDIT_OVERLAY_Z    2001   the paragraph-title edit session's
+ *   INLINE_EDIT_INPUT_Z      2002   click-away overlay + its floating input: a
+ *                                     transient editor over every float and the
+ *                                     open-menu tier (the menu that launched it
+ *                                     is closing), far below drag feedback and
+ *                                     modals. Was 9998/9999 — sharing the
+ *                                     drop-indicator rung by accident.
+ *   DRAG_GHOST_Z             9998   every cursor-following drag ghost (the
+ *                                     strip-button ghost, the clamped HTML5
+ *                                     ghost): strictly BELOW DROP_INDICATOR_Z, so
+ *                                     the insertion bar paints over the ghost by
+ *                                     the ladder, not by DOM append order (the
+ *                                     strip ghost TIED the bar at 9999; the
+ *                                     clamped ghost sat at 99999 — above modals
+ *                                     and hints).
+ */
+export const DOCK_OUTLINE_Z = FLOATING_PANEL_Z_BASE - 1;
+export const STACK_CHROME_Z = FLOATING_PANEL_Z_BASE - 1;
+export const LIFT_OUTLINE_Z = FLOAT_Z_BASE - 100;
+export const INLINE_EDIT_OVERLAY_Z = OPEN_CHROME_MENU_Z + 1;
+export const INLINE_EDIT_INPUT_Z = INLINE_EDIT_OVERLAY_Z + 1;
+export const DRAG_GHOST_Z = DROP_INDICATOR_Z - 1;
 
 /**
  * Shared "how tall can a popout be" policy — the maximum height of any

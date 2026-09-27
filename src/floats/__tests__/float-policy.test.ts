@@ -20,16 +20,22 @@ import {
   DOCKED_CARD_BORDER,
   DOCKED_CARD_HEADER_H,
   DOCKED_CARD_SEPARATOR_H,
+  DOCK_OUTLINE_Z,
+  DRAG_GHOST_Z,
   DRAGGABLE_DIALOG_Z,
   DROP_INDICATOR_Z,
   FLOAT_Z_BASE,
   FLOAT_Z_MAX,
   FLOATING_PANEL_Z_BASE,
   HINT_Z,
+  INLINE_EDIT_INPUT_Z,
+  INLINE_EDIT_OVERLAY_Z,
+  LIFT_OUTLINE_Z,
   MODAL_SCRIM_Z,
   OPEN_CHROME_MENU_Z,
   POPOUT_MAX_VH,
   RESTING_MARGIN_TRIGGER_Z,
+  STACK_CHROME_Z,
   capPopoutHeight,
   cardFloatZ,
   liftSpawnRect,
@@ -285,11 +291,56 @@ describe("task 032 consumer wiring", () => {
     }
   });
 
-  it("the .hint-bubble CSS literal still mirrors HINT_Z (CSS can't import TS)", () => {
+  it("the .hint-bubble rule reads --hint-z, which mirrors HINT_Z (CSS can't import TS; task 793)", () => {
     const css = readFileSync(path.join(SRC, "app/globals.css"), "utf8");
-    // The SSOT is HINT_Z; the CSS rule mirrors its value. If HINT_Z moves, this
+    // The SSOT is HINT_Z; the ONE CSS literal is the var. If HINT_Z moves, this
     // fails until the mirror is updated.
-    expect(css).toContain(`z-index: ${HINT_Z}`);
+    expect(css).toContain(`--hint-z: ${HINT_Z};`);
+    const at = css.indexOf(".hint-bubble {");
+    expect(at).toBeGreaterThan(-1);
+    expect(css.slice(at, css.indexOf("}", at))).toContain("z-index: var(--hint-z);");
+  });
+});
+
+// Task 793 — the overlay rungs that used to be bare literals at their sites.
+// The census (z-literal-census.test.ts) stops a literal coming back; these pin
+// WHERE each rung sits relative to its neighbours.
+describe("overlay rungs (task 793)", () => {
+  it("below-panel chrome sits one under the panel band", () => {
+    expect(DOCK_OUTLINE_Z).toBe(FLOATING_PANEL_Z_BASE - 1);
+    expect(STACK_CHROME_Z).toBe(FLOATING_PANEL_Z_BASE - 1);
+  });
+
+  it("the card-lift outline sits above the panel band but below every float", () => {
+    expect(LIFT_OUTLINE_Z).toBeGreaterThan(FLOATING_PANEL_Z_BASE);
+    expect(LIFT_OUTLINE_Z).toBeLessThan(RESTING_MARGIN_TRIGGER_Z);
+    expect(LIFT_OUTLINE_Z).toBeLessThan(FLOAT_Z_BASE);
+  });
+
+  it("the inline title edit sits over floats + open menus, below drag feedback", () => {
+    expect(INLINE_EDIT_OVERLAY_Z).toBeGreaterThan(OPEN_CHROME_MENU_Z);
+    expect(INLINE_EDIT_INPUT_Z).toBeGreaterThan(INLINE_EDIT_OVERLAY_Z);
+    expect(INLINE_EDIT_INPUT_Z).toBeLessThan(DRAG_GHOST_Z);
+  });
+
+  it("drag ghosts sit strictly BELOW the drop indicator (by the ladder, not DOM order)", () => {
+    expect(DRAG_GHOST_Z).toBeGreaterThan(OPEN_CHROME_MENU_Z);
+    expect(DRAG_GHOST_Z).toBeLessThan(DROP_INDICATOR_Z);
+  });
+
+  it("the strip-button ghost reads DRAG_GHOST_Z and builds its chrome from tokens", () => {
+    const HERE = path.dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      path.resolve(HERE, "../../components/editor-layout/drag-drop.tsx"),
+      "utf8",
+    );
+    const at = src.indexOf('ghost.id = "virgil-drag-ghost"');
+    expect(at).toBeGreaterThan(-1);
+    const css = src.slice(at, src.indexOf("`;", at));
+    expect(css).toContain("z-index: ${DRAG_GHOST_Z}");
+    expect(css).toContain("background: var(--surface)");
+    expect(css).toContain("box-shadow: var(--shadow-float)");
+    expect(css).not.toMatch(/background:\s*white|rgba\(/);
   });
 });
 

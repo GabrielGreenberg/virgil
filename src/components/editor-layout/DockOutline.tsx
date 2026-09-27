@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { DOCK_OUTLINE_Z } from "@/floats/float-policy";
 import { useDockDragTarget, type DockDragTarget } from "./dock-drag";
 
 /** Quick fade — snappy, but readable as a transition. */
@@ -20,7 +21,7 @@ const OUTLINE_GLOW = "var(--drag-glow-outline)";
  * put even after the panel undocks and the underlying slot DOM changes
  * shape or unmounts.
  *
- * Stacking: the outline sits at z-index 999, just below
+ * Stacking: the outline sits at DOCK_OUTLINE_Z (999), just below
  * FLOATING_PANEL_Z_BASE (1000). The actively-dragged floating panel
  * therefore occludes the outline as it lifts off the source dock or
  * slides into a target dock — the panel reads as "in front of" the
@@ -98,7 +99,7 @@ export function DockOutline() {
         position: "fixed",
         inset: 0,
         pointerEvents: "none",
-        zIndex: 999,
+        zIndex: DOCK_OUTLINE_Z,
         // Initial opacity 0; WAAPI animates it to 1.
         opacity: 0,
       }}

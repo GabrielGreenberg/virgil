@@ -2608,17 +2608,30 @@ number. Full ladder, low → high:
 | tier | z | constant |
 | --- | --- | --- |
 | content / editor prose | 0–99 | (local) |
+| below-panel chrome (dock-target outline; Stack icon + strip) | 999 | `DOCK_OUTLINE_Z`, `STACK_CHROME_Z` (= `FLOATING_PANEL_Z_BASE - 1`) |
 | docked panel band | 1000 | `FLOATING_PANEL_Z_BASE` |
+| card-lift source outline | 1100 | `LIFT_OUTLINE_Z` (= `FLOAT_Z_BASE - 100`) |
 | resting margin trigger | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
 | float layer (popped cards, lift overlay) — BOUNDED band | 1200–1204 | `FLOAT_Z_BASE` … `FLOAT_Z_MAX` (via `cardFloatZ`) |
 | draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` (= `FLOAT_Z_MAX + 1`) |
 | open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |
+| inline title-edit overlay + input | 2001–2002 | `INLINE_EDIT_OVERLAY_Z`, `INLINE_EDIT_INPUT_Z` |
+| drag ghosts (strip-button ghost, clamped HTML5 ghost) | 9998 | `DRAG_GHOST_Z` (= `DROP_INDICATOR_Z - 1`) |
 | drop-mode indicator | 9999 | `DROP_INDICATOR_Z` |
 | modal scrim + centered dialogs | 10000 | `MODAL_SCRIM_Z` |
 | hint / tooltip bubble | 10010 | `HINT_Z` |
 
 `HINT_Z` has no TS consumer — the only site is the `.hint-bubble` CSS rule
-(CSS can't import TS), which mirrors the value; the test guards the mirror.
+(CSS can't import TS), which reads the `--hint-z` var; `--float-z-base` does the
+same for the float band. Those `:root` vars are the ONLY CSS spellings of a rung,
+and `float-policy.test.ts` pins each to its symbol.
+
+**Enforced by census, not by list (task 793).** `z-literal-census.test.ts` walks
+every non-test `.ts`/`.tsx`/`.css` under `src/` and fails on any bare z-index
+≥ 100 — `zIndex: 999`, `style.zIndex = "99999"`, `z-index:9998` in a cssText,
+`z-[9999]` — outside `float-policy.ts` and a short allowlist whose every entry
+states why it is local stacking, not a rung. A new overlay names its rung here
+and in `float-policy.ts`; it does not re-type 9999.
 
 ## Drag
 

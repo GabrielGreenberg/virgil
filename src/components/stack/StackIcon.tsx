@@ -21,6 +21,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { STACK_CHROME_Z } from "@/floats/float-policy";
 import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-target";
 import {
   parkDuringLayoutGesture,
@@ -151,7 +152,7 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 999,
+        zIndex: STACK_CHROME_Z,
         padding: 0,
         transition:
           "background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out",

@@ -486,6 +486,8 @@
      .inline-atom-ghost) reads the var, and float-policy.test.ts pins the
      mirror to the symbol. */
   --float-z-base: 1200;
+  /* Hint-bubble tier — the CSS MIRROR of HINT_Z (same pattern, same pin). */
+  --hint-z: 10010;
 
   /* Drag glow/ring layers — DERIVED from --drag-highlight, never
      re-spelled. This is not cosmetic tidying: --drag-highlight is a USER
@@ -5560,9 +5562,9 @@ html {
   position: fixed;
   /* HINT_Z — above modals (MODAL_SCRIM_Z = 10000) so a hint on a modal
      control shows over the dialog. SSOT for this tier lives in
-     src/floats/float-policy.ts (HINT_Z); CSS can't import TS, so this literal
-     mirrors it — keep both in sync. */
-  z-index: 10010;
+     src/floats/float-policy.ts (HINT_Z); CSS can't import TS, so this rule
+     reads the --hint-z mirror, pinned by float-policy.test.ts. */
+  z-index: var(--hint-z);
   display: inline-flex;
   align-items: center;
   gap: 6px;

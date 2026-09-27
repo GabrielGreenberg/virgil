@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { STACK_CHROME_Z } from "@/floats/float-policy";
 import type { StackItem } from "@/lib/stack/types";
 import { StackThumbnail } from "./StackThumbnail";
 import { STACK_INSET_LEFT, STACK_INSET_BOTTOM } from "./StackIcon";
@@ -91,7 +92,7 @@ export function StackStrip({ open, items, onRemove }: StackStripProps) {
         gap: ITEM_GAP,
         overflowX: "auto",
         overflowY: "hidden",
-        zIndex: 999,
+        zIndex: STACK_CHROME_Z,
       }}
     >
       {items.length === 0 ? (
