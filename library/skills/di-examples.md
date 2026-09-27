@@ -113,6 +113,13 @@ PDF text) to `\begingl…\endgl`.
 > without a `\vexid` between runs, only that example gets a fresh
 > UUID; existing canonical examples are untouched.)
 
+> **Preamble shim.** Minting the first `\vexid` makes this pass the
+> owner of its declaration: ensure `\providecommand{\vexid}[1]{}` sits
+> in the preamble (just before `\begin{document}`) unless something
+> already declares `\vexid`. `bulk_convert_numbered_examples.py --apply`
+> does this for you; when you mint by hand, add the line yourself. See
+> [_latex-output.md](_latex-output.md) → "Minimal preamble".
+
 **Bias toward NOT converting** in these genres:
 
 - **Book genre** — typically zero numbered examples; this step is a
