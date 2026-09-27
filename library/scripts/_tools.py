@@ -1317,14 +1317,125 @@ def invalidate_changed_imports(library: Path) -> list[str]:
 
 
 # ── inbox ────────────────────────────────────────────────────────────
+#
+# The inbox `kind` vocabulary is OWNED BY THE DOOR (task 799). Before it, the
+# enum lived only in skill prose ("`kind` is the frontend's toast enum, NOT the
+# bib.state enum") and `append_inbox_item` appended verbatim, so any writer
+# could re-commit the bug the prose warned about — and the merge engine did:
+# it sent raw `bib.state` values, so every `unverified` merge fell through the
+# Toaster's severity lookup to the 5 s `info` toast instead of the 11 s
+# `attention` one. The same fall-through hid every per-writer kind
+# (`triage-needs-title`, `duplicate-work`, …) behind `info`, action-needed or
+# not.
+#
+# So the door now (1) maps a `bib.state` value onto the enum through ONE
+# function, (2) refuses a kind nobody declared, and (3) STAMPS `severity` on
+# the item from the one table below, which the Toaster honours before its own
+# five-kind fallback. The writer's intent reaches the pixel without the app
+# having to learn every writer's vocabulary.
+
+#: The frontend's own toast kinds and their severity — `NotificationItem`'s
+#: `NOTIFICATION_SEVERITY` in `library/lib/queue.ts`, held EQUAL by
+#: `library/lib/__tests__/notification-kind-parity.test.ts` (the two silos
+#: cannot import each other; the `queue_slot.SLOT_SUFFIX` precedent, task 618).
+NOTIFICATION_CORE_SEVERITY: dict[str, str] = {
+    "indexed": "info",
+    "authenticated": "info",
+    "triaged": "info",
+    "failed": "attention",
+    "setup-needed": "attention",
+}
+
+#: Every other kind a writer may append, with its severity — `attention` iff
+#: the user must act. The toast header shows the kind itself, so these stay
+#: fine-grained rather than collapsing onto the core five. A new writer kind
+#: is declared HERE or the door refuses it.
+NOTIFICATION_WRITER_SEVERITY: dict[str, str] = {
+    # index_paper.py
+    "duplicate-work": "attention",
+    # repair_etal_citekeys.py
+    "citekey-merged": "info",
+    "citekey-renamed": "info",
+    # fuse_alternate.py (LOG_TAG_FUSED)
+    "fused": "info",
+    # triage_apply.py (its NOTIFICATION_KINDS; census-tested to be covered)
+    "triage-filename-mismatch": "attention",
+    "triage-duplicate-work": "attention",
+    "triage-needs-title": "attention",
+    "triage-needs-metadata": "attention",
+    "triage-needs-chapter-info": "attention",
+    "triage-bib-imported": "info",
+    "triage-bib-summary": "info",
+    "triage-bib-folded-duplicate": "info",
+    "triage-bib-parse-failed": "attention",
+    "triage-bib-cleanup-failed": "attention",
+}
+
+#: Kind FAMILIES: head → (severity, the set the tail must belong to).
+NOTIFICATION_KIND_FAMILIES: dict[str, tuple[str, frozenset[str]]] = {
+    # triage_apply.NOTIFICATION_KIND_FAMILY_HEAD — the settled state that won.
+    "triage-bib-ignored-": ("info", TERMINAL_BIB_STATES),
+}
+
+
+class InboxKindError(ValueError):
+    """An inbox item's `kind` is neither declared nor a `bib.state` value."""
+
+
+def bib_state_to_notification_kind(state: str) -> str:
+    """Map a SETTLED `bib.state` onto the toast enum by whether the user must
+    act: a terminal state (`authenticated` / `canonical` / `manuscript`) is
+    `authenticated`, the neutral done toast; everything else (`unverified`,
+    `failed`, `needs-reauth`, `none`) is `failed`, the attention toast. The
+    fine-grained state belongs in the item's `state` / `summary`."""
+    if state not in CANONICAL_BIB_STATES:
+        raise InboxKindError(f"not a bib.state value: {state!r}")
+    return "authenticated" if state in TERMINAL_BIB_STATES else "failed"
+
+
+def notification_severity(kind: str) -> str:
+    """The declared severity of `kind`; raises `InboxKindError` if undeclared."""
+    if kind in NOTIFICATION_CORE_SEVERITY:
+        return NOTIFICATION_CORE_SEVERITY[kind]
+    if kind in NOTIFICATION_WRITER_SEVERITY:
+        return NOTIFICATION_WRITER_SEVERITY[kind]
+    for head, (severity, tails) in NOTIFICATION_KIND_FAMILIES.items():
+        if kind.startswith(head) and kind[len(head):] in tails:
+            return severity
+    raise InboxKindError(
+        f"undeclared inbox kind {kind!r} — declare it in "
+        "_tools.NOTIFICATION_WRITER_SEVERITY (or pass a bib.state value)"
+    )
+
+
+def resolve_inbox_item(item: dict) -> dict:
+    """The door's normalization: a `bib.state` passed as `kind` is mapped onto
+    the enum (the raw state kept in `state`), the kind is validated, and
+    `severity` is stamped from the declared table (a caller's own `severity`
+    is overwritten — the door owns it). Returns a new dict."""
+    kind = item.get("kind")
+    if not isinstance(kind, str) or not kind:
+        raise InboxKindError(f"inbox item has no kind: {item!r}")
+    out = dict(item)
+    if kind not in NOTIFICATION_CORE_SEVERITY and kind in CANONICAL_BIB_STATES:
+        out.setdefault("state", kind)
+        kind = bib_state_to_notification_kind(kind)
+    out["kind"] = kind
+    out["severity"] = notification_severity(kind)
+    return out
 
 
 def append_inbox_item(library: Path, item: dict, *, cap: int = 200) -> None:
     """Append `item` to `.virgil/notifications/inbox.json`. Self-locks.
 
+    The item passes `resolve_inbox_item` first: a `bib.state` kind is mapped,
+    an undeclared kind raises `InboxKindError` BEFORE anything is written, and
+    `severity` is stamped.
+
     Caps the ring buffer at `cap` items so it doesn't grow forever.
     Tolerates missing/malformed inbox by starting fresh.
     """
+    item = resolve_inbox_item(item)
     with lock_inbox(library):
         inbox_path = library / ".virgil" / "notifications" / "inbox.json"
         inbox: dict = {"items": []}

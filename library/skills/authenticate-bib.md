@@ -619,36 +619,23 @@ directory).
    the master.bib write it made instead schedules the `bib-index.json`
    rebuild the Library list actually reads for that entry.)
 
-   > **`kind` is the frontend's toast enum, NOT the bib.state enum.**
-   > The only values the Library UI knows are `"indexed"`,
-   > `"authenticated"`, `"failed"`, `"triaged"`, `"setup-needed"`
-   > (`NotificationItem["kind"]` in `library/lib/queue.ts`). Nothing
-   > rejects an off-list value — `append_inbox_item.py` appends
-   > verbatim — it just falls through `notificationSeverity()` to the
-   > default `info`, so a `"unverified"` toast that should linger for
-   > 11 s as an *attention* row is rendered as a routine 5 s one and the
-   > user misses the entry that needed them. So map step 7's **settled
-   > state** (never the verdict you asked for — a held re-run is not a
-   > failure) onto the enum by **whether the user must act**, and keep the
-   > fine-grained state in the summary:
-   >
-   > | terminal state | `kind` | why |
-   > |---|---|---|
-   > | `authenticated` | `authenticated` | done, neutral toast |
-   > | `canonical` | `authenticated` | descriptor, not a give-up — no action needed |
-   > | `manuscript` | `authenticated` | terminal, no action needed |
-   > | `unverified` | `failed` | "manual review recommended" — needs the attention TTL |
-   > | `failed` | `failed` | needs the attention TTL |
-   >
-   > Reusing `authenticated` as the family's neutral kind rather than
-   > widening the enum is the same call `/library/apply-bib-edit` makes.
+   > **Pass step 7's settled `bib.state` as `kind`; the door maps it.**
+   > The Library UI's toast enum is `NotificationItem["kind"]` in
+   > `library/lib/queue.ts`, and `append_inbox_item.py` OWNS it (task
+   > 799): a `bib.state` value is mapped by
+   > `_tools.bib_state_to_notification_kind` — terminal
+   > (`authenticated` / `canonical` / `manuscript`) → `authenticated`,
+   > anything the user must still act on (`unverified` / `failed`) →
+   > `failed`, the lingering attention toast — the raw state is kept in
+   > `state`, and an off-enum kind is refused with exit 2 (nothing is
+   > written). Use the **settled** state, never the verdict you asked for
+   > — a held re-run is not a failure.
 
    ```bash
    cat > /tmp/<citekey>-auth-notify.json <<'EOF'
-   { "kind": "<authenticated|failed per the table above>",
+   { "kind": "<settled state from step 7>",
      "citekey": "<citekey>",
      "at": "<now ISO>",
-     "state": "<settled state from step 7>",
      "summary": "<citekey>: <settled state> via <sources> (<N> field changes)" }
    EOF
    python3 .virgil/scripts/library/append_inbox_item.py \

@@ -48,6 +48,7 @@ from _tools import (  # noqa: E402
     admit_catalog_row,
     settle_catalog_bib,
     append_inbox_item,
+    bib_state_to_notification_kind,
     citekey_matches,
     lock_catalog,
     is_terminal_bib_state,
@@ -607,7 +608,8 @@ def _process_no_dup(
                         master_entry={"type": proposed_type, "fields": final_fields})
 
     append_inbox_item(library, {
-        "kind": result.state,
+        "kind": bib_state_to_notification_kind(result.state),
+        "state": result.state,
         "citekey": e_ck,
         "at": _now(),
         "summary": (
@@ -691,7 +693,8 @@ def _process_dup_unauth(
         _upsert_catalog_row(library, dup["citekey"], bib_status,
                             master_entry={"type": proposed_type, "fields": final_fields})
         append_inbox_item(library, {
-            "kind": result.state,
+            "kind": bib_state_to_notification_kind(result.state),
+            "state": result.state,
             "citekey": dup["citekey"],
             "at": _now(),
             "summary": (
@@ -784,7 +787,8 @@ def _process_dup_unauth(
                         master_entry={"type": e_proposed, "fields": e_final})
 
     append_inbox_item(library, {
-        "kind": "authenticated" if e_result.state == "authenticated" else e_result.state,
+        "kind": bib_state_to_notification_kind(e_result.state),
+        "state": e_result.state,
         "citekey": entry["citekey"],
         "at": _now(),
         "summary": (

@@ -229,12 +229,10 @@ empty.
 
 ### 6. Notify
 
-Append a notification via the locked CLI shim. `kind` must be a member of
-`NotificationItem["kind"]` in `library/lib/queue.ts` — `"indexed"`,
-`"authenticated"`, `"failed"`, `"triaged"`, `"setup-needed"`. An off-list
-value is appended verbatim but falls through `notificationSeverity()` to the
-default `info`, so it renders as an anonymous short toast; `"indexed"` is the
-neutral member that fits a fuse. The specifics belong in `summary`.
+Append a notification via the locked CLI shim. The shim OWNS the `kind`
+vocabulary (task 799): an undeclared kind is refused with exit 2 and nothing
+is written. `"indexed"` is the neutral member of the toast enum that fits a
+fuse; the specifics belong in `summary`.
 
 ```bash
 cat > /tmp/$ARGUMENTS-fuse-notify.json <<'EOF'

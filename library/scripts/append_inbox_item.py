@@ -15,6 +15,12 @@ The item file is a JSON object describing a single notification, e.g.:
     "at": "2026-05-11T20:06:20Z",
     "summary": "Deep-indexed smith1998"
   }
+
+`kind` is validated by the door (`_tools.resolve_inbox_item`, task 799): a
+declared kind passes, a settled `bib.state` value (`unverified`, `canonical`,
+…) is mapped onto the toast enum by `bib_state_to_notification_kind` (the raw
+state kept in `state`), and anything else is REFUSED with exit 2 — nothing is
+written. `severity` is stamped by the door; don't supply it.
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import append_inbox_item
+from _tools import InboxKindError, append_inbox_item, resolve_inbox_item
 
 
 def main() -> int:
@@ -53,8 +59,13 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    append_inbox_item(library, item)
-    print(f"appended notification {item.get('kind', '?')} to {library}")
+    try:
+        resolved = resolve_inbox_item(item)
+    except InboxKindError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    append_inbox_item(library, resolved)
+    print(f"appended notification {resolved['kind']} ({resolved['severity']}) to {library}")
     return 0
 
 
