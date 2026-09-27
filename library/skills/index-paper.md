@@ -219,8 +219,19 @@ you to disambiguate something.
      --fields-file /tmp/<citekey>-doiback-fields.json \
      --bib-state authenticated \
      --merge-existing
+   rc=$?
    rm /tmp/<citekey>-doiback-fields.json
+   echo "exit=$rc"
    ```
+
+   **Branch on the exit code** (the ONE table:
+   `update_master_bib_entry.py --help`, task 796). Only on **0** go on to the
+   catalog patch below. **6** — the entry is not in master.bib (a change-set
+   cannot create one): report it and skip the backfill. **2** (mis-built
+   command), **7** (unbalanced braces — needs a human repair) or anything
+   else — nothing was written: report stderr verbatim and skip the catalog
+   patch, so the catalog never claims an `authenticated` state master.bib
+   does not hold.
 
    Then set `bib.state = "authenticated"` and `bib.doiVerified = true`
    in `.virgil/catalog.json`:
@@ -419,8 +430,15 @@ you to disambiguate something.
      --entry-type "<type>" \
      --fields-file /tmp/<citekey>-tier-fields.json \
      --merge-existing
+   rc=$?
    rm /tmp/<citekey>-tier-fields.json
+   echo "exit=$rc"
    ```
+
+   Same exit branch as step 3's backfill (`--help` table): continue only on
+   **0**; on **6** (entry not in master.bib), **2** (mis-built command),
+   **7** (unbalanced braces) or anything else, nothing was written — report
+   stderr verbatim and skip the `references.bib` / `main.tex` sync below.
 
    Then sync this paper's own row in `papers/<citekey>/references.bib`
    to match (use `_resync_references_bib` from `index_paper`, like

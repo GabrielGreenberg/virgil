@@ -1752,6 +1752,7 @@ def update_master_bib_entry(
     bib_state: str = "",
     *,
     allow_downgrade: bool = False,
+    compose: "Callable[[dict | None], tuple[str, dict[str, str]] | None] | None" = None,
 ) -> str:
     """Replace (or append) one entry in master.bib. Self-locks.
 
@@ -1775,6 +1776,20 @@ def update_master_bib_entry(
     Citekeys with diacritics are matched under both NFC and NFD forms
     (1976-Tichý memo: the file may hold either normalization). The
     writeback uses NFC for consistency.
+
+    **`compose` — decide the write from what the write will replace** (task
+    796). A caller whose write DEPENDS on the entry's current content (a merge
+    of a change-set over it, a per-field stale-base check, a field-drop or
+    duplicate guard) passes `compose(existing)` instead of trusting a read it
+    made earlier: it is called INSIDE this function's lock with the entry as
+    `master_entry_for` reads it from the very text about to be spliced (None
+    when absent), and returns `(entry_type, fields)` to write — overriding the
+    positional pair — or None to write NOTHING. It may raise to refuse; the
+    exception propagates with the file untouched. Reading outside the lock and
+    writing inside it let a concurrent writer's field (an auth pass's `doi`)
+    land in between and be erased by a merge that never saw it. The lock is
+    not re-entrant (`flock` on a fresh descriptor), so `compose` must not take
+    `lock_master_bib` itself.
     """
     import unicodedata
     master_path = library / "master.bib"
@@ -1792,6 +1807,11 @@ def update_master_bib_entry(
         # entry raises `BibEntryUnbalanced` here, file untouched: its extent
         # is a GUESS about malformed bytes, and a writer may not act on one.
         span = locate_master_entry(text, citekey)
+        if compose is not None:
+            composed = compose(master_entry_for(library, citekey, text=text))
+            if composed is None:
+                return span.state if span else ""
+            entry_type, fields = composed
         if span:
             entry_start = span.block_start
             entry_end = span.end

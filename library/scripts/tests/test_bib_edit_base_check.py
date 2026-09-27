@@ -135,10 +135,13 @@ def test_type_change_lands(tmp_path):
 
 
 def test_base_check_requires_merge_and_an_existing_entry(tmp_path):
+    # A vanished entry is a refusal about the ENTRY (6, retire) — never
+    # argparse's 2, which means a mis-built command (task 796).
     lib = _lib(tmp_path, "")
     r = _apply(lib, {"title": "X"})
-    assert r.returncode == 2
+    assert r.returncode == 6, r.stderr
     assert "no longer in master.bib" in r.stderr
+    assert (lib / "master.bib").read_text() == ""
 
 
 def test_base_type_is_read_from_the_base_block_not_the_flag(tmp_path):

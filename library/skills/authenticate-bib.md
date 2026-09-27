@@ -83,7 +83,22 @@ Run the bib authentication subprocess for ONE citekey. Useful when:
 All paths below are relative to the library root (the current working
 directory).
 
-1. **Read the citekey's current fields** from `master.bib`.
+1. **Read the citekey's current fields** from `master.bib`, and keep the
+   block you read as the **base** for step 5's write. The lookups below take
+   minutes; a manual bib edit (`/library/apply-bib-edit`) can land in that
+   window, and step 5 must not overwrite a field the user changed since this
+   read (task 796):
+   ```bash
+   python3 - "<citekey>" > "/tmp/<citekey>-auth-base.bib" <<'PY'
+   import sys; from pathlib import Path
+   sys.path.insert(0, ".virgil/scripts/library")
+   from _tools import master_entry_for
+   e = master_entry_for(Path("."), sys.argv[1])
+   sys.stdout.write(e["raw"] if e else "")
+   PY
+   ```
+   An empty file means the entry is not in master.bib — stop and report it;
+   there is nothing to authenticate. Read the fields from that same file.
 
 2. **Coherence pre-flight — ADVISORY, never a gate.** Run the cross-field
    checker *before* the network search, so an internally-incoherent entry is
@@ -387,14 +402,38 @@ directory).
      --entry-type "<proposed_type or entry_type>" \
      --fields-file /tmp/<citekey>-auth-fields.json \
      --bib-state "<final_state>" \
-     --merge-existing
-   rm /tmp/<citekey>-auth-fields.json
+     --merge-existing \
+     --base-raw-file "/tmp/<citekey>-auth-base.bib" \
+     --base-type "<entry_type as read in step 1>"
+   rc=$?
+   rm /tmp/<citekey>-auth-fields.json "/tmp/<citekey>-auth-base.bib"
+   echo "exit=$rc"
    ```
 
    `--bib-state` updates the `% bib.state = <X>` comment preceding the
    entry to the terminal state (`authenticated` / `unverified` /
    `canonical` / `failed`) in the same locked write — no separate
-   step-10 marker-comment edit is needed.
+   step-10 marker-comment edit is needed. `--base-raw-file` is step 1's
+   read: any field you set or drop that changed on disk since then (a
+   user's manual edit landed mid-lookup) is HELD — the user's newer value
+   is kept — and the rest of the write lands.
+
+   **Branch on the exit code** — the ONE table is
+   `update_master_bib_entry.py --help` (task 796):
+
+   - **0** — applied. Continue with step 6.
+   - **5** — applied EXCEPT the changes stderr lists as held. Continue with
+     step 6, but drop the held fields from what you record in step 7 and
+     name them in the reply ("kept your edit to `title`").
+   - **6** — nothing written: the entry left master.bib mid-run. Report
+     it, then skip to step 9 (retiring is right — a retry re-fails).
+   - **2** (bad invocation — fix the command and re-run it), **4** (the
+     write would drop fields — you left out `--merge-existing`), **7**
+     (master.bib's entry has unbalanced braces — needs a human repair),
+     or **anything else** — nothing written. Report stderr verbatim and
+     **STOP**: do not run steps 6–9. The catalog must not record a state
+     or field change that never reached master.bib, and the queued
+     request must stay queued so it runs again after the fix.
 
    Record only the changes you actually applied in `bib.fieldChanges`
    (step 7). If you applied a type change, say so in the reply.
