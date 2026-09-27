@@ -5,9 +5,11 @@ shelling out to `index_paper.py`. Updates queue file states (.done /
 .failed / .poisoned) on the way. Prints a per-entry classified summary
 at the end.
 
-Out of scope (skipped, with a note): `bib-edit`, `triage`, `authenticate`
-kinds — those are handled by their respective skill prompts. Run this
-script first; rerun the skills afterwards for the remaining kinds.
+Out of scope (skipped, with a note): every kind but `index`/`reindex`
+(`queue_slot.DRAIN_NATIVE_KINDS`) — those are handled by their respective
+skill prompts (index-pending.md step 2). Run this script first; rerun the
+skills afterwards for the remaining kinds. What counts as a queue entry at
+all is `queue_slot.request_files` (task 794).
 
 Usage:
   python3 drain_queue.py [--library ~/Virgil-Library]
@@ -28,7 +30,14 @@ from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import unlink_tolerant  # noqa: E402
-from queue_slot import done_retires, retire_done  # noqa: E402
+from queue_slot import (  # noqa: E402
+    DRAIN_NATIVE_KINDS,
+    PENDING_STATUS,
+    done_retires,
+    normalize_kind,
+    request_files,
+    retire_done,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -48,8 +57,14 @@ KIND_PRIORITY = {
 }
 
 # Kinds this script processes natively. Others get reported and skipped
-# so the caller (skill) can dispatch them.
-NATIVE_KINDS = {"index", "reindex"}
+# so the caller (skill) can dispatch them. Owned by `queue_slot` so the
+# skill's `queue_slot.py pending --native` poll counts the same set.
+NATIVE_KINDS = set(DRAIN_NATIVE_KINDS)
+
+# Statuses the drain works: a fresh request, and a failed one it retries
+# (`_bump_attempts` poisons it on the third failure). `running` is in flight
+# elsewhere, `poisoned` is given up on — both are skipped and counted.
+WORK_STATUSES = (PENDING_STATUS, "failed")
 
 
 def _now() -> str:
@@ -87,16 +102,20 @@ def _peek_kind(p: Path) -> str:
 def _list_pending(library: Path, skip_counts: Optional[dict[str, int]] = None) -> list[dict[str, Any]]:
     """Return queue entries ready to process. Mutates `skip_counts` in
     place (when provided) with reasons entries were skipped, so the caller
-    can surface them in the summary."""
+    can surface them in the summary.
+
+    Which files are requests at all is `queue_slot.request_files` (task 794):
+    the `pending-reviews.json` manifest and `*.done.json` markers are never
+    entries."""
     qdir = library / ".virgil" / "queue"
-    if not qdir.exists():
-        return []
     if skip_counts is None:
         skip_counts = {}
+
+    def skip(reason: str) -> None:
+        skip_counts[reason] = skip_counts.get(reason, 0) + 1
+
     out: list[dict[str, Any]] = []
-    for p in sorted(qdir.glob("*.json")):
-        if p.name.endswith(".done.json"):
-            continue
+    for p in request_files(qdir):
         # A `.done` sibling is either the retirement of THIS request (its
         # entry unlink was refused — genuinely done) or a stale marker from an
         # EARLIER request in the same slot, which must never hide a new one
@@ -105,23 +124,34 @@ def _list_pending(library: Path, skip_counts: Optional[dict[str, int]] = None) -
         done_sibling = p.with_suffix(".done")
         if done_sibling.exists():
             if done_retires(p, done_sibling):
-                skip_counts["already-done"] = skip_counts.get("already-done", 0) + 1
+                skip("already-done")
                 continue
             if retire_done(qdir, p.stem):
-                skip_counts["rotated-done"] = skip_counts.get("rotated-done", 0) + 1
+                skip("rotated-done")
         # Skip if .lock sibling is fresh.
         lock_sibling = p.with_suffix(".lock")
         if lock_sibling.exists() and not _is_lock_stale(lock_sibling):
-            skip_counts["locked"] = skip_counts.get("locked", 0) + 1
+            skip("locked")
             continue
         try:
             data = json.loads(p.read_text())
         except Exception as e:
             out.append({"_path": p, "_error": str(e), "kind": "?"})
             continue
-        if data.get("status") == "poisoned":
-            skip_counts["poisoned"] = skip_counts.get("poisoned", 0) + 1
+        if not isinstance(data, dict):
+            out.append({"_path": p, "_error": "not a JSON object", "kind": "?"})
             continue
+        status = data.get("status")
+        if status == "poisoned":
+            skip("poisoned")
+            continue
+        if status not in WORK_STATUSES:
+            skip("running" if status == "running" else "other-status")
+            continue
+        if not data.get("kind"):
+            out.append({"_path": p, "_error": "entry has no `kind`", "kind": "?"})
+            continue
+        data["kind"] = normalize_kind(str(data["kind"]))
         data["_path"] = p
         out.append(data)
     return out
@@ -211,9 +241,13 @@ def _process_one(entry: dict, library: Path) -> dict:
 
     if kind not in NATIVE_KINDS:
         return {
-            "citekey": citekey,
+            # A triage stub has no citekey; name it by its unsorted file.
+            "citekey": citekey or entry.get("filename", "") or path.name,
             "kind": kind,
             "status": "skipped-non-native",
+            # A user note routes the request to /library/ai-requests
+            # (index-pending.md step 2, ai-requests.md "What counts").
+            "noted": bool(str(entry.get("note") or "").strip()),
             "summary": f"{kind!r} not handled by drain_queue; needs skill",
         }
 
@@ -275,11 +309,18 @@ def main() -> int:
     if rotated:
         print(f"  (rotated {rotated} stale .done sibling(s) out of the way)")
     if not pending:
-        already_done = skip_counts.get("already-done", 0)
-        if already_done:
-            print(f"queue empty ({already_done} entries skipped — already done)")
-        else:
-            print("queue empty")
+        notes = [
+            f"{skip_counts[k]} {label}"
+            for k, label in (
+                ("already-done", "already done"),
+                ("locked", "locked"),
+                ("running", "running"),
+                ("poisoned", "poisoned"),
+                ("other-status", "with an unrecognised status"),
+            )
+            if skip_counts.get(k)
+        ]
+        print("queue empty" + (f" ({', '.join(notes)} skipped)" if notes else ""))
         return 0
 
     pending.sort(key=_sort_key)
@@ -306,7 +347,8 @@ def main() -> int:
         if status == "skipped-non-native":
             counts["skipped-non-native"] += 1
             deferred.append(result)
-            print(f"  [defer]  {citekey:30s} kind={result['kind']!r} (skill needed)")
+            noted = " [note]" if result.get("noted") else ""
+            print(f"  [defer]  {citekey:30s} kind={result['kind']!r}{noted} (skill needed)")
             continue
 
         native_processed += 1
@@ -348,13 +390,18 @@ def main() -> int:
         skip_extras.append(f"{skip_counts['locked']} locked (in-flight elsewhere)")
     if skip_counts.get("poisoned"):
         skip_extras.append(f"{skip_counts['poisoned']} poisoned (max attempts exceeded)")
+    if skip_counts.get("running"):
+        skip_extras.append(f"{skip_counts['running']} running (in flight elsewhere)")
+    if skip_counts.get("other-status"):
+        skip_extras.append(f"{skip_counts['other-status']} with an unrecognised status")
     if skip_extras:
         print("  (skipped: " + ", ".join(skip_extras) + ")")
 
     if deferred:
         print("\nRemaining (need skill dispatch):")
         for r in deferred:
-            print(f"  - {r['kind']} for {r.get('citekey','?')}")
+            noted = " [note]" if r.get("noted") else ""
+            print(f"  - {r['kind']} for {r.get('citekey','?')}{noted}")
 
     return 0 if failed == 0 else 1
 

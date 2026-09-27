@@ -99,8 +99,11 @@ A queue entry is an AI request when **any** of these is true:
 
 ## Procedure
 
-1. **Find the candidates.** List `.virgil/queue/*.json`, read each, and select
-   the ones matching the criteria above. Build a working list with
+1. **Find the candidates.** List the pending requests with
+   `python3 .virgil/scripts/library/queue_slot.py pending` (one JSON line per
+   request, naming its `file`; `pending-reviews.json` and `.done` markers are
+   not requests and never appear), read each file, and select the ones
+   matching the criteria above. Build a working list with
    citekey, kind, scope (`bib` or `paper`), and note.
 
 2. **For each request — surface the note prominently and act on it.**

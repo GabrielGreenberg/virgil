@@ -573,14 +573,19 @@ rm /tmp/$ARGUMENTS-deepindex-notify.json
 
 ### 7. Mark done
 
-Delete `.virgil/queue/$ARGUMENTS-deepindex.json` (or the legacy
-`.virgil/queue/$ARGUMENTS-richindex.json`) if it exists. If a coexisting
-`.virgil/queue/$ARGUMENTS-paperreview.json` was also processed, delete that too.
+Retire the request through the queue-slot door (task 618) — never delete
+the queue file by hand:
 
-If neither queue file exists but a `.json.done` marker is present
-(e.g. `<citekey>-richindex.json.done` left behind by a prior pass),
-that's the steady state — leave the marker alone, do not delete it,
-and do not treat its absence as an error.
+```bash
+python3 .virgil/scripts/library/queue_slot.py retire --kind deepIndex --citekey $ARGUMENTS
+```
+
+It finds the request in `<citekey>-deepindex.json` or the legacy
+`<citekey>-richindex.json`, leaves a `<slot>.done` marker and removes the
+entry. If a coexisting `paper-review` request was also processed in this
+pass, retire it the same way (`--kind paper-review`). `{"result":
+"nothing-queued"}` is fine — a deep index run directly, not from the queue,
+has nothing to retire.
 
 ### 8. Log
 
