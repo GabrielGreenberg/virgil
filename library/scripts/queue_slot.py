@@ -39,10 +39,19 @@ The contract, stated once:
    it (`pending --native`), and the app's reader (`scanQueue`) mirrors the
    exclusion set as `QUEUE_NON_REQUEST_FILENAMES` — pinned by
    `queue-slot-parity.test.ts`.
+7. **A deep index brings its own index** (task 809). `/library/deep-index`
+   needs an indexed paper, so `write_deep_index` mirrors the app's
+   `queueDeepIndex` (`library/lib/bib-edit.ts`): when `papers/<citekey>/main.tex`
+   is absent it also plants an `index` request tagged
+   `companionOf: "deepIndex"` — only into an EMPTY index slot, so an index
+   the user already queued (or one in flight) is left exactly as it is. The
+   CLI's `write --kind deepIndex` goes through it, which makes this the one
+   enqueue a skill prompt (the front door's Queue branch) needs.
 
 CLI (the door for skill prompts that enqueue work)::
 
     python3 queue_slot.py write --kind index --citekey smith2020 [--library .]
+    python3 queue_slot.py write --kind deepIndex --citekey smith2020 [--note "…"]
     python3 queue_slot.py retire --kind index --citekey smith2020
     python3 queue_slot.py pending [--native] [--count]
 
@@ -51,8 +60,10 @@ CLI (the door for skill prompts that enqueue work)::
 kinds `drain_queue.py` processes itself (`DRAIN_NATIVE_KINDS`) — the count a
 detached drain drives to zero while the kinds it defers to skills stay queued.
 
-`write` prints one JSON line `{"result": ..., "file": ...}` and exits 0 when a
-request is (or already was) queued, 3 when the slot refused it.
+`write` prints one JSON line `{"result": ..., "file": ...}` (plus
+`"companion": {"result", "file"}` when a deep index planted or found its index)
+and exits 0 when a request is (or already was) queued, 3 when the slot refused
+it.
 """
 
 from __future__ import annotations
@@ -273,6 +284,39 @@ def write_request(
     return WRITTEN, path
 
 
+def paper_indexed(library: Path, citekey: str) -> bool:
+    """True when the paper has an extracted `main.tex` — the precondition
+    `/library/deep-index` checks before it will run."""
+    return (Path(library) / "papers" / citekey / "main.tex").is_file()
+
+
+def write_deep_index(
+    library: Path,
+    citekey: str,
+    *,
+    note: Optional[str] = None,
+    replace_requested: bool = False,
+) -> tuple[str, Path, Optional[tuple[str, Path]]]:
+    """Queue a deep index the way the app's `queueDeepIndex` does (contract
+    item 7). Returns `(result, path, companion)`; `companion` is the index
+    write's `(result, path)` — `(ALREADY_QUEUED, path)` when an index request
+    was already there — or None when the paper is indexed or the deep index
+    itself was refused (a slot being worked means a paper under way, and
+    nothing the user asked for was queued to need it)."""
+    extra = {"note": note.strip()} if note and note.strip() else None
+    result, path = write_request(
+        library, "deepIndex", citekey, extra=extra, replace_requested=replace_requested,
+    )
+    if result in REFUSED_RESULTS or paper_indexed(library, citekey):
+        return result, path, None
+    existing = find_request(library, "index", citekey)
+    if existing is not None:
+        return result, path, (ALREADY_QUEUED, existing)
+    return result, path, write_request(
+        library, "index", citekey, extra={"companionOf": "deepIndex"},
+    )
+
+
 def find_request(library: Path, kind: str, citekey: str) -> Optional[Path]:
     """The file holding a pending `kind` request for `citekey`, looking in the
     per-kind slot, (for legacy kinds) the bare slot, and any legacy slot
@@ -343,6 +387,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     w.add_argument("--library", default=str(Path.cwd()))
     w.add_argument("--replace", action="store_true",
                    help="replace a pending request of the same kind")
+    w.add_argument("--note", default=None,
+                   help="the user's own words, carried on the request")
     r = sub.add_parser("retire", help="mark a finished request done")
     r.add_argument("--kind", required=True)
     r.add_argument("--citekey", required=True)
@@ -369,10 +415,22 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0
 
     if args.cmd == "write":
-        result, path = write_request(
-            library, args.kind, args.citekey, replace_requested=args.replace,
-        )
-        print(json.dumps({"result": result, "file": path.name}))
+        if normalize_kind(args.kind) == "deepIndex":
+            result, path, companion = write_deep_index(
+                library, args.citekey, note=args.note, replace_requested=args.replace,
+            )
+        else:
+            note = args.note.strip() if args.note else ""
+            result, path = write_request(
+                library, args.kind, args.citekey,
+                extra={"note": note} if note else None,
+                replace_requested=args.replace,
+            )
+            companion = None
+        out: dict[str, Any] = {"result": result, "file": path.name}
+        if companion is not None:
+            out["companion"] = {"result": companion[0], "file": companion[1].name}
+        print(json.dumps(out))
         return 3 if result in REFUSED_RESULTS else 0
 
     path = find_request(library, args.kind, args.citekey)
