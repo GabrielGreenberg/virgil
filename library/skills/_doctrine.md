@@ -4,8 +4,9 @@
      autonomous-execution, persistence and metadata contracts. It is
      reached by LINK, never transcluded — no builder implements any
      include syntax; the bundle simply ships this file beside the skills
-     (`library/build/build-skill-bundle.mjs`, "every `*.md` under
-     `library/skills/` ships"), which is what makes
+     (which files ship is decided by `shippedSkillNames` in
+     `library/build/bundle-sources.mjs` — read it there, not here), which
+     is what makes
      `[_doctrine.md](_doctrine.md)` resolve on a user's library. Do not
      paraphrase this doctrine back into a skill; link to it.
 

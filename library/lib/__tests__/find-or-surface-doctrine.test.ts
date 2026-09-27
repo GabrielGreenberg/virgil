@@ -246,6 +246,21 @@ describe("find-or-surface doctrine (cross-silo SSOT)", () => {
     expect(pop).toContain("editor/skills/sync-bib-to-library.md");
   });
 
+  // The block is the ONE ordered list (task 804): §3's prose once restated
+  // it as a `→` chain "in that order of preference" and put Internet Archive
+  // before WorldCat while the block said the opposite. Prose may name
+  // databases as a set; it may not sequence them.
+  it("states the preference order only in the source-databases block", () => {
+    const prose = read(LIBRARY_DOCTRINE)
+      .replace(/```source-databases\n[\s\S]*?```/, "")
+      .replace(/\s+/g, " ");
+    const alt = sourceDatabases()
+      .map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    expect(prose).not.toMatch(new RegExp(`(${alt})\\s*(→|->)\\s*(${alt})`));
+    expect(prose).not.toMatch(/in that order of preference/);
+  });
+
   // Hop 2 is only as good as its names resolving: a typo in a §4 bullet
   // would silently shrink the population instead of failing.
   it("every skill §4 names by failure path exists in a silo", () => {

@@ -101,9 +101,9 @@ in both silos — a documented flag no script declares fails CI, and that
 includes the interpreter-less forms written here.
 
 **3. Then external authoritative sources.** If the Library has no match,
-search Crossref → OpenAlex → Semantic Scholar → arXiv (and
-OpenLibrary / Google Books / Internet Archive / WorldCat for books) — in
-that order of preference. Each skill's own acceptance bar (DOI-verified,
+search the external databases in the preference order of the
+`source-databases` block below (articles first, then the book catalogues)
+— that block is the one list; this paragraph deliberately names none. Each skill's own acceptance bar (DOI-verified,
 multi-source agreement thresholds, the pre-digital route) governs what
 counts as "found"; the doctrine does not relax it — a per-skill tier
 ladder is what the doctrine EXPECTS a member to have, never evidence the
@@ -114,7 +114,11 @@ database added here widens the census automatically; a skill that starts
 naming one is covered by shipping.
 
 ```source-databases
-# one name per line; `#` starts a comment. Order = preference order.
+# one name per line; `#` starts a comment. Order = preference order: which
+# source's answer to trust first when they disagree. It is POLICY, not a
+# query schedule — `bib_auth.py` consults several engines per run and ranks
+# their records by match score, so the sequence it happens to call them in
+# (e.g. Google Books before OpenLibrary) is not a competing order.
 Crossref            # articles / preprints
 OpenAlex
 Semantic Scholar
