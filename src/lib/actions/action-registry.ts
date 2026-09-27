@@ -355,6 +355,7 @@ export type FormatActionId =
   | "bold"
   | "italic"
   | "strike"
+  | "small-caps"
   | "code"
   | "bullet-list"
   | "ordered-list"
@@ -3100,6 +3101,10 @@ function formatToggleRow(
 const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold(), { mark: "bold" });
 const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic(), { mark: "italic" });
 const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike(), { mark: "strike" });
+// Small caps (task 808) — `\textsc{…}`, a row of the wrapper-mark vocabulary
+// table. Its Mod-Shift-K chord is the mark's own binding (`SmallCaps`), like
+// every mark toggle's (Mod-B / Mod-I are StarterKit's).
+const SMALL_CAPS_ACTION_ROW = formatToggleRow("small-caps", "Small caps", (c) => c.toggleSmallCaps(), { mark: "smallCaps" });
 const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode(), { mark: "code" });
 const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: "bulletList", slash: { name: "list", aliases: ["itemize"] }, keybinding: "Mod-Shift-8", inputRulePattern: bulletListInputRegex });
 const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: "orderedList", slash: { name: "enumerate" }, keybinding: "Mod-Shift-7", inputRulePattern: orderedListInputRegex });
@@ -3150,6 +3155,7 @@ const FORMAT_ACTION_ROWS: Readonly<Record<FormatActionId, ActionSpec>> = {
   bold: BOLD_ACTION_ROW,
   italic: ITALIC_ACTION_ROW,
   strike: STRIKE_ACTION_ROW,
+  "small-caps": SMALL_CAPS_ACTION_ROW,
   code: CODE_ACTION_ROW,
   "bullet-list": BULLET_LIST_ACTION_ROW,
   "ordered-list": ORDERED_LIST_ACTION_ROW,

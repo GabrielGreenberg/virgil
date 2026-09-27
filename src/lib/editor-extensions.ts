@@ -96,6 +96,8 @@ import {
   VirgilListKeymap,
   PgMarkChip,
   TextColor,
+  SmallCaps,
+  MarkSpellingAttrs,
   TexBlock,
   ForestBlock,
   FigureBlock,
@@ -1825,6 +1827,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // TextColor: SHARED core (FCU Chip C1, decision 4). Colored text now
     // renders in popouts; main keeps it at the same position (order unchanged).
     TextColor,
+    // Small caps + the italic `spelling` attr (task 808): the wrapper-mark
+    // vocabulary's two schema halves. SHARED like TextColor — both card-body
+    // scopes register them too (`buildBorrowedAtomSchema`), because the
+    // footnote reader produces them and a mark a schema lacks blanks the body.
+    SmallCaps,
+    MarkSpellingAttrs,
     // Per-surface so the atom's single-node-float selection chrome stays
     // MAIN-only (R2). The click→edit bridge (`virgil-math-click` → MathPopover
     // → handleMathSave) no longer keys off `surface`: it carries the owning

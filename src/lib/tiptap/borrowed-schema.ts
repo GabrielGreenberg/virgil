@@ -98,6 +98,8 @@ import {
   TitleField,
   MaketitleMarker,
   TextColor,
+  SmallCaps,
+  MarkSpellingAttrs,
 } from "@/lib/tiptap-extensions";
 import { CardParagraph } from "./cmd-only-paragraph";
 
@@ -515,6 +517,12 @@ export function buildBorrowedAtomSchema(
     LatexCommandMark,
     LatexVerbatimMark,
     LatexCommentTailMark,
+    // Wrapper marks beyond StarterKit's (task 808): the card/footnote reader
+    // parses `\textsc{…}` and stamps `\textit`'s spelling, so BOTH scopes must
+    // mount them — a mark the schema lacks makes TipTap load an EMPTY doc
+    // (capture/schema-symmetry law).
+    SmallCaps,
+    MarkSpellingAttrs,
     DisplayMath,
     // ── Block-atom previews (cardContext: compact static preview) ────────
     // These mirror the main editor's schema so JSONContent carrying a block

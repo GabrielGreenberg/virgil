@@ -130,11 +130,12 @@ const LIGHTNING_CARD_ROWS = cardActionRows("lightning");
 // call sites (a new cell that is missing here would freeze again).
 export const LIGHTNING_ACTIVE_MARKS = [
   "bold", "italic", "strike", "code", "bulletList", "orderedList", "blockquote",
+  "smallCaps",
 ] as const;
 export const LIGHTNING_GRID_CELL_IDS = [
   "bold", "italic", "strike", "code", "bullet-list", "ordered-list", "blockquote",
   "example", "inline-math", "display-math", "text-color", "tex", "figure",
-  "graphics", "ref", "forest",
+  "graphics", "ref", "forest", "small-caps",
 ] as const satisfies readonly ActionId[];
 
 export interface ActionsMenuPanelProps {
@@ -800,6 +801,22 @@ export function ActionsMenuPanel({
               <circle cx="8" cy="2.75" r="1.1" fill="currentColor" stroke="none" />
               <circle cx="4" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
               <circle cx="12" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
+          </FmtBtn>
+          {/* Small caps (task 808) — `\textsc{…}`, a mark toggle like the
+              row-0 cells; placed after `forest` so no existing cell moves. */}
+          <FmtBtn
+            id="small-caps"
+            row={4}
+            col={1}
+            title="Small caps (⇧⌘K)"
+            active={isActive("smallCaps")}
+            disabled={gridCellDisabled("small-caps")}
+            run={() => runGridAction("small-caps")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1.5 12.5 L4.5 3.5 L7.5 12.5 M2.6 9.5 H6.4" />
+              <path d="M9 12.5 L11.25 6.5 L13.5 12.5 M9.8 10.4 H12.7" />
             </svg>
           </FmtBtn>
         </MenuGrid>

@@ -72,11 +72,13 @@ export interface LatexRequirement {
   dependsOn?: string;
 }
 
-function packageReq(name: string): LatexRequirement {
+function packageReq(name: string, options?: string): LatexRequirement {
   return {
     id: name,
     kind: "package",
-    injectLine: `\\usepackage{${name}}`,
+    injectLine: options
+      ? `\\usepackage[${options}]{${name}}`
+      : `\\usepackage{${name}}`,
     // The lexer's ONE load reader (task 781): `\RequirePackage`, options,
     // comma lists, whitespace between the pieces, and wrapper packages
     // (`biblatex-chicago` loads — so satisfies and gates — `biblatex`).
@@ -134,6 +136,11 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   // declaration in the serializer's `forestBlock` arm plus the
   // `PACKAGE_DETECTORS` fallback for hand-typed passthrough.
   packageReq("forest"),
+  // `ulem` — the `strike` mark's `\sout{…}` (task 808; declared from the
+  // wrapper-mark table's `package` column at the emit). Loaded `[normalem]`:
+  // bare `ulem` redefines `\emph` as an underline, which would restyle every
+  // italic in the paper the moment one word was struck.
+  packageReq("ulem", "normalem"),
   // `xlist` is how Virgil serializes a nested example tier (latex-serializer.ts)
   // and how it parses one back (latex-parser.ts). It is NOT an expex
   // environment — despite the comments elsewhere calling it one, current expex

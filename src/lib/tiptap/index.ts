@@ -42,6 +42,7 @@ export { TabIndent } from "./tab-indent";
 // imported from the module itself by its own contract suite.
 export { VirgilListKeymap } from "./list-keymap";
 export { TextColor } from "./text-color";
+export { SmallCaps, MarkSpellingAttrs } from "./small-caps";
 export { TexBlock, collectTexBlockUuids, freshTexBlockAttrs } from "./tex-block";
 export { ForestBlock } from "./forest-block";
 export { freshForestSource } from "@/lib/forest/grammar";
