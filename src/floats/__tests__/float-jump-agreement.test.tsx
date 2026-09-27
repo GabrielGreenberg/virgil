@@ -612,6 +612,33 @@ describe("task 665 — an unrecoverable anchor offers no Jump, in every popped k
     },
   );
 
+  // Task 790 — the chevron is one half of the popped card's jump; a BODY click
+  // (`useAnchoredCard.onBodyActivate`) is the other, and it jumps only if the
+  // registration handed the body an `onJump`. The two revision builders handed
+  // none, so their body click selected without scrolling. Read the body the
+  // builder actually mounts and require it agree with the chevron, forwarding
+  // the element it is given.
+  it.each(ANCHORED_KINDS.map((e) => [e.kind, e] as const))(
+    "%s: the popped BODY is handed the same gated jump as the chevron",
+    (_kind, entry) => {
+      const jump = vi.fn();
+      const bodyCtx = { setTitle: () => {}, windowKey: "k" };
+      const live = anchoredFloatable(entry, LIVE665, jump);
+      const body = live!.renderBody(bodyCtx) as { props: { onJump?: (el?: HTMLElement | null) => void } };
+      expect(typeof body.props.onJump).toBe("function");
+      const el = document.createElement("div");
+      body.props.onJump!(el);
+      expect(jump).toHaveBeenCalledTimes(1);
+      expect(jump.mock.calls[0][1]).toBe(el);
+
+      const deadJump = vi.fn();
+      const dead = anchoredFloatable(entry, DEAD665, deadJump);
+      const deadBody = dead!.renderBody(bodyCtx) as { props: { onJump?: () => void } };
+      deadBody.props.onJump?.();
+      expect(deadJump).not.toHaveBeenCalled();
+    },
+  );
+
   it("the sweep is non-vacuous: the two anchors really do classify apart", () => {
     const resolve = resolverWithLive({ [LIVE665]: 42 });
     expect(resolve({ links: [paraLink(DEAD665)] } as never).anchored).toBe(false);
