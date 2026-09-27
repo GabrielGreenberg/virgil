@@ -281,7 +281,27 @@ def _pdf_page_count(pdf: Path) -> int:
 
 
 def apply(citekey: str, dry_run: bool = False) -> dict:
+    """Run the policy; EVERY result carries `metadataLock: true|false`.
+
+    The lock's STATUS is answered independently of the policy's gates
+    (task 802). Blocking stays where it was — after the kind and
+    page-count gates, see `_apply` — but "is this row pinned?" is read
+    first and reported on every exit, error exits included. Otherwise the
+    documented confirmation recipe (`--dry-run`, `_doctrine.md` §4) said
+    nothing about the lock on every locked row whose mismatch kind the
+    policy does not act on — the common case — and an operator read the
+    silence as "the lock isn't live".
+    """
     library = _resolve_library_root()
+    catalog_row = _read_catalog_row(library, citekey)
+    result = _apply(library, citekey, catalog_row, dry_run)
+    result[METADATA_LOCK_KEY] = _has_metadata_lock(catalog_row)
+    return result
+
+
+def _apply(
+    library: Path, citekey: str, catalog_row: dict | None, dry_run: bool,
+) -> dict:
     paper_dir = library / "papers" / citekey
     pdf_path = paper_dir / f"{citekey}.pdf"
     tex_path = paper_dir / "main.tex"
@@ -333,7 +353,6 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
     # paper — including one with no metadata conflict at all. It is still
     # ahead of every read and every write, so a locked row never reaches
     # the cover page.
-    catalog_row = _read_catalog_row(library, citekey)
     if _has_metadata_lock(catalog_row):
         return {
             "applied": False,
@@ -460,6 +479,10 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     result = apply(args.citekey, args.dry_run)
+    # The lock's status, on every run and ahead of every verdict — the
+    # answer the §4 "confirm the lock is live" recipe reads (task 802).
+    lock = "true" if result.get(METADATA_LOCK_KEY) else "false"
+    print(f"{METADATA_LOCK_KEY}: {lock}")
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
