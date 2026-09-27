@@ -1,4 +1,4 @@
-<!-- last-verified: beedb319 2026-09-26 -->
+<!-- last-verified: b0f37c03 2026-09-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -284,7 +284,10 @@ five `makeUnbridgingDelete` doors — so a delete/morph can only prune/re-key th
 store of the pane that ran it. (Task 739: it used to be a module-level listener
 Set every pane subscribed to, so under multi-doc keep-alive a delete in one
 paper pruned the same-id card in every open paper; a duplicated folder shares
-card ids.) This is an explicit
+card ids.) The same sink owns the **float half** (task 789): delete closes the
+card's popped float key (`float:card:<kind>:<id>` + its saved rect), morph remaps
+it in lockstep (`reconcileCardFloat`, via the pane's `CardLifecycleFloatOps`) — a
+deleted card no longer leaves a ghost Cmd-W target or a persisted dead key. This is an explicit
 user-action channel — NOT a `DocStructureBus` subscription, so it doesn't touch
 keystroke sanctity or the +1-not-+3 invariant.
 

@@ -1,4 +1,4 @@
-<!-- last-verified: db05316e 2026-09-25 -->
+<!-- last-verified: b0f37c03 2026-09-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -70,7 +70,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\\*`, `\\[2pt]`, `\\*[1ex]` | carried on `latexCommand` — Virgil doesn't model break spacing, so the whole token + its argument run rides the carrier (`matchLineBreakAt`, task 349 M4) |
 | `~` (tie) | **U+00A0** in the document, re-emitted as `~`. A tie is a `"glyph"` member of `CHAR_ESCAPE_TABLE`, so provenance lives as two distinct code points; a prose-typed ASCII `~` still emits `\textasciitilde{}` (task 349 M5) |
 | a BARE `{ … }` group | braces carried on `latexCommand`, content stays editable prose (`matchBraceGroupAt`, task 349 M6). An escaped `\{` is still a literal brace |
-| a mid-line `% …` tail | text under the **`latexCommentTail`** mark — *not typeset at all*, re-emitted verbatim (`matchCommentTailAt`, task 347). A comment line between two prose lines does NOT break the paragraph, because LaTeX doesn't break there |
+| a mid-line `% …` tail | text under the **`latexCommentTail`** mark — *not typeset at all*, re-emitted verbatim (`matchCommentTailAt`, task 347). A comment line between two prose lines does NOT break the paragraph, because LaTeX doesn't break there. Since task 777 a tail is recognized at EVERY inline depth (inside `\emph{}` / `\section{}` / `\caption{}`, and in footnote / card bodies) — never escaped to a printed `\%`; brace matching is comment-aware through the lexer's one `findGroupClose` (verbatim-argument commands `\url`/`\href`/`\path`/`\nolinkurl` stay blind) |
 | `\verb<d>…<d>` | text under the **`latexVerbatim`** mark (byte-literal — no typography, no escaping) |
 
 ## The opaque fallbacks
@@ -168,6 +168,11 @@ gb4e paper (which Virgil never models; its `\begin{exe}` is carried raw) has
 paper. Operational consequence for a skill: **never add an example package
 yourself**, and don't read a missing `\usepackage{expex}` as a bug — it may be a
 surfaced conflict.
+A shim over a package is dropped WITH it (task 780): `LatexRequirement.dependsOn`
+(`xlistenv` → `expex`) makes every family drop go through `dropRequirement`, so a
+gb4e / linguex paper no longer gets an `xlist` shim it cannot compile. An expex
+`\ex` header has ONE grammar (task 782); a header with a second `\label` or late
+`[opts]` is refused whole to the byte-literal carrier.
 
 ## Serialization and escaping
 
@@ -217,6 +222,20 @@ surfaced conflict.
   a `\begin{verbatim}` no longer injects a package the document never runs
   (tasks 344 / 345). The declaration side reads the same vocabulary
   (`PACKAGE_DETECTORS`, `src/lib/latex-requirement-collector.ts`).
+  "Does the preamble load package P?" has ONE reader (task 781): the lexer's
+  wrapper-aware `preambleListLoadsPackage`, read by bib-family detection,
+  requirement satisfaction, the example-family check and the compile-side
+  biblatex/pass-plan detectors. A cite package that owns its own machinery
+  (`FOREIGN_CITE_PACKAGES`: apacite / harvard / chicago / jurabib,
+  `src/lib/bib-family.ts`) gets no natbib injected.
+- **Paragraph boundaries are POSITIONAL** (task 778): `BLOCK_BOUNDARY_TIERS` in
+  the lexer — `anywhere`, `lineBlock` (`\includegraphics`, `\hrulefill`: a block
+  only alone on its line), `horizontal` (`\hspace`, `\noindent`, `\vspace`: never)
+  — read by the parser through `endsParagraphAt(src, pos)`, so a mid-line
+  horizontal command no longer writes a blank line (a real `\par`) on open.
+- **Accents never rewrite the user's LaTeX** (task 779): an empty-base accent
+  (`\^{}`, `\~{}`) rides the byte-verbatim carrier, and no standalone combining
+  mark is ever emitted.
 
 ## Display-math source form
 
