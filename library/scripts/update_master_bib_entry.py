@@ -88,7 +88,8 @@ Per-field base check (`--base-raw-file`, requires --merge-existing)
 ------------------------------------------------------------------
 A caller holding a DIFF computed against an earlier read of the entry (the
 Library's manual bib edit — task 763) names that read: `--base-raw-file` is the
-block as it was read, `--base-type` its entry type. Every field the write would
+block as it was read, `--base-type` its entry type (a fallback only — the type
+parsed from the base block wins, task 795). Every field the write would
 set (`--fields-file`) or remove (`--drop-field`) is then checked against it: if
 the field's value on disk is no longer the base value — someone changed it since
 — and is not already the value this write wants, that field is REFUSED (the
@@ -250,7 +251,12 @@ def main() -> int:
             return 2
         fields, drop_fields, entry_type, refused = _hold_changed_since_base(
             base_fields=base.get("fields") or {},
-            base_type=args.base_type or base.get("type") or "",
+            # The type IN the base block wins over `--base-type`: the block is
+            # what was read, the flag only a caller's report of it — and a
+            # caller that reported a projected type (`@inbook` as
+            # `incollection`) fabricated a "type changed on disk" hold on
+            # every type change (task 795).
+            base_type=base.get("type") or args.base_type or "",
             disk_fields=existing_entry.get("fields") or {},
             disk_type=existing_entry.get("type") or entry_type,
             fields=fields,

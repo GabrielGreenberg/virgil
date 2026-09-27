@@ -15,6 +15,7 @@ import {
   type BibEditDiffPayload,
 } from "./queue";
 import type { BibEntry } from "./types";
+import { bibEditBase } from "./bib-raw-entry";
 import { deleteFile, readJsonFile, SUBDIRS } from "./library-storage";
 
 // READS live in `queue-state-store.ts`, not here. This module owns the WRITE
@@ -46,12 +47,18 @@ export async function queueBibEdit(
  *  after trimming. A base field absent from `fields` is a removal — the modal
  *  only omits a field the user cleared, deleted or renamed away. Everything
  *  the user left alone stays out of the payload, so the apply side cannot
- *  overwrite or drop it (task 763). */
+ *  overwrite or drop it (task 763).
+ *
+ *  The base is re-read from its own `raw` (`bibEditBase`) — idempotent for a
+ *  caller that already did, and the guarantee for one that did not: a diff
+ *  against the CSL projection names a projected `baseType` and projected
+ *  values, i.e. fabricates holds and re-keys fields (task 795). */
 export function buildBibEditDiff(
-  base: BibEntry,
+  shown: BibEntry,
   type: string,
   fields: Record<string, string>,
 ): BibEditDiffPayload {
+  const base = bibEditBase(shown);
   const baseByLower = new Map<string, string>();
   for (const [k, v] of Object.entries(base.fields)) {
     if (typeof v === "string" && v.trim().length > 0) {

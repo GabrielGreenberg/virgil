@@ -141,6 +141,18 @@ def test_base_check_requires_merge_and_an_existing_entry(tmp_path):
     assert "no longer in master.bib" in r.stderr
 
 
+def test_base_type_is_read_from_the_base_block_not_the_flag(tmp_path):
+    """Task 795: the modal once named a CSL-PROJECTED base type (`@inbook` as
+    `incollection`). The type written in `--base-raw-file` is what was read, so
+    it wins: a type change on an `@inbook` lands instead of being held as
+    "changed on disk to @inbook"."""
+    lib = _lib(tmp_path, _DISK.replace("@article", "@inbook"))
+    (lib / "_base.bib").write_text(_BASE.replace("@article", "@inbook"))
+    r = _apply(lib, {}, type_="book", base_type="incollection")
+    assert r.returncode == 0, r.stderr
+    assert _entry(lib)["type"] == "book"
+
+
 if __name__ == "__main__":
     from _standalone import main
 
