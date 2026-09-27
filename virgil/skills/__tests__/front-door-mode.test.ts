@@ -372,51 +372,50 @@ describe("Step 4 is reachable, and its Queue branch states the entry", () => {
     ).toBe(true);
   });
 
-  it("the Queue branch states `status: \"requested\"`", () => {
-    // The member this task could not ship without. `queue-state-store.ts`
-    // skips any entry whose status is not "requested" (no queued badge), and
-    // `cancelDeepIndex` requires the same value (the user cannot cancel) —
-    // while `drain_queue.py` defers on `kind` alone, so the request still
-    // RUNS. Invisible and unstoppable is the worst of both.
+  it("the Queue branch enqueues through queue_slot.py, never by hand (task 809)", () => {
+    // Task 475 gave this branch a hand-typed JSON entry because no reusable
+    // Python writer existed; task 618 then built one — `queue_slot.py write`,
+    // "the door for skill prompts that enqueue work" — and this branch never
+    // moved. The hand write lost what the door owns: it clobbered a deep
+    // index already `running`, and omitted the companion `index` the app's
+    // `queueDeepIndex` plants for an un-indexed paper (so the queued job
+    // failed its way to poisoned after the user was told "Queued").
     const s4 = stepFour();
     expect(
-      /"status"\s*:\s*"requested"/.test(s4),
-      `Step 4's Queue branch tells the model to write a queue entry without ` +
-        `stating status: "requested". Un-deadening the branch without the ` +
-        `shape turns a dead write into a broken one.`,
+      /queue_slot\.py write[\s\\]*--kind deepIndex/.test(s4),
+      `Step 4's Queue branch does not enqueue through ` +
+        `\`queue_slot.py write --kind deepIndex\`:\n\n${s4}`,
     ).toBe(true);
+    for (const banned of [/os\.replace/, /tempfile/, /"kind"\s*:/, /"status"\s*:/]) {
+      expect(
+        banned.test(s4),
+        `Step 4's Queue branch still teaches a hand-written queue entry ` +
+          `(${banned}) — the slot contract lives in queue_slot.py.`,
+      ).toBe(false);
+    }
   });
 
-  it("the Queue branch states every REQUIRED field of QueueEntry", () => {
-    // Derived from the TypeScript SSOT rather than restated: `queue.ts`'s
-    // `QueueEntry` marks optional members with `?`, so the required set is
-    // whatever is left. A field added there without a note here is a queue
-    // entry the front door writes incomplete.
-    const iface = readFileSync(join(repoRoot, "library/lib/queue.ts"), "utf8")
-      .match(/export interface QueueEntry \{([\s\S]*?)\n\}/);
-    expect(iface, "library/lib/queue.ts has no QueueEntry interface").not.toBeNull();
-    const required = [...iface![1].matchAll(/^\s{2}([A-Za-z]+)(\??):/gm)]
-      .filter((m) => m[2] !== "?")
-      .map((m) => m[1]);
-    expect(required.sort()).toEqual(["attempts", "kind", "requestedAt", "status"]);
+  it("the Queue branch reports every result the door can return for it", () => {
+    // Derived from the door, not restated: a deep-index slot is per-kind, so
+    // the only results it can print are WRITTEN, ALREADY_QUEUED and
+    // IN_FLIGHT (OCCUPIED is the bare slot's). "Queued" for a refused write
+    // is the lie this leg exists to keep out.
+    const py = readFileSync(join(repoRoot, "library/scripts/queue_slot.py"), "utf8");
+    const results = ["WRITTEN", "ALREADY_QUEUED", "IN_FLIGHT"].map((c) => {
+      const m = py.match(new RegExp(`^${c} = "([a-z-]+)"`, "m"));
+      expect(m, `queue_slot.py no longer defines ${c}`).not.toBeNull();
+      return m![1];
+    });
+    expect(/def write_deep_index\(/.test(py), "queue_slot.py lost write_deep_index").toBe(true);
+    expect(/"--note"/.test(py), "queue_slot.py write lost --note").toBe(true);
     const s4 = stepFour();
-    const missing = required.filter((f) => !new RegExp(`"${f}"\\s*:`).test(s4));
+    const unreported = results.filter((r) => !s4.includes(`"result": "${r}"`));
     expect(
-      missing,
-      `Step 4's Queue branch omits required QueueEntry field(s): ` +
-        `${missing.join(", ")}. The shape is library/lib/queue.ts.`,
+      unreported,
+      `Step 4's Queue branch does not say what to report for door result(s): ` +
+        `${unreported.join(", ")}.`,
     ).toEqual([]);
-    // `citekey` is optional on the interface (triage entries have none) and
-    // REQUIRED for this filename — `queueFilename` throws without it.
-    expect(/"citekey"\s*:/.test(s4), "Step 4 omits citekey").toBe(true);
-  });
-
-  it("the Queue branch cites the schema SSOT by path", () => {
-    expect(
-      stepFour().includes("library/lib/queue.ts"),
-      `Step 4 states a JSON shape without naming where it is defined. A ` +
-        `shape stated with no SSOT to check it against is the next drift.`,
-    ).toBe(true);
+    expect(s4.includes('"companion"'), "Step 4 ignores the companion index").toBe(true);
   });
 
   it("the declared invariant is true of the shipped file", () => {

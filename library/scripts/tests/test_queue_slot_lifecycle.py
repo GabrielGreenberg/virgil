@@ -353,6 +353,57 @@ def test_retire_finds_legacy_richindex_slot(tmp_path, capsys):
     assert (q / "a-richindex.done").exists()
 
 
+# ── task 809: the deep-index door carries the app's companion rule ───────
+
+def _write(lib: Path, capsys, *extra: str) -> tuple[int, dict]:
+    code = queue_slot.main(["write", "--kind", "deepIndex", "--citekey", "a",
+                            "--library", str(lib), *extra])
+    return code, json.loads(capsys.readouterr().out)
+
+
+def test_deep_index_on_unindexed_paper_plants_companion_index(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    code, out = _write(tmp_path, capsys, "--note", "  fix the footnotes ")
+    assert code == 0 and out["result"] == "written"
+    assert out["companion"] == {"result": "written", "file": "a.json"}
+    deep = _read(q / "a-deepindex.json")
+    assert deep["kind"] == "deepIndex" and deep["status"] == "requested"
+    assert deep["note"] == "fix the footnotes"
+    idx = _read(q / "a.json")
+    assert idx["kind"] == "index" and idx["companionOf"] == "deepIndex"
+    assert idx["status"] == "requested"
+
+
+def test_deep_index_leaves_an_existing_index_untouched(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _put(q / "a.json", kind="index", status="requested", citekey="a",
+         requestedAt="2026-01-01T00:00:00Z", attempts=0)
+    code, out = _write(tmp_path, capsys)
+    assert code == 0 and out["companion"]["result"] == "already-queued"
+    idx = _read(q / "a.json")
+    assert "companionOf" not in idx and idx["requestedAt"] == "2026-01-01T00:00:00Z"
+
+
+def test_deep_index_on_indexed_paper_plants_no_companion(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    (tmp_path / "papers" / "a").mkdir(parents=True)
+    (tmp_path / "papers" / "a" / "main.tex").write_text("x")
+    code, out = _write(tmp_path, capsys)
+    assert code == 0 and out["result"] == "written" and "companion" not in out
+    assert not (q / "a.json").exists()
+    assert "note" not in _read(q / "a-deepindex.json")
+
+
+def test_deep_index_refuses_an_in_flight_slot(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _put(q / "a-deepindex.json", kind="deepIndex", status="running", citekey="a",
+         requestedAt="2026-01-01T00:00:00Z", attempts=1)
+    code, out = _write(tmp_path, capsys)
+    assert code == 3 and out["result"] == "in-flight" and "companion" not in out
+    assert _read(q / "a-deepindex.json")["status"] == "running"
+    assert not (q / "a.json").exists()
+
+
 if __name__ == "__main__":
     from _standalone import main
 

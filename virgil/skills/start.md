@@ -314,39 +314,35 @@ Branches:
   deep-index is the only heavy op the queue represents; the others *are*
   drainers or are library-wide with no citekey to key on):
 
-  Write `<library-root>/.virgil/queue/<citekey>-deepindex.json`. A direct
-  atomic write via Python `tempfile` + `os.replace` is fine — a deep-index
-  entry touches neither `master.bib` nor `catalog.json`, so there is no
-  flock to take.
+  Enqueue through the library's queue-slot door — the one writer every
+  skill prompt uses, pinned to the app's own queue code:
 
-  **State the whole entry; the app reads every field.** The shape is
-  `library/lib/queue.ts` (`QueueEntry`) — check it there if you are unsure,
-  and mirror what `queueDeepIndex` in `library/lib/bib-edit.ts` writes:
-
-  ```json
-  {
-    "kind": "deepIndex",
-    "status": "requested",
-    "citekey": "<citekey>",
-    "requestedAt": "<ISO-8601 UTC, e.g. 2026-08-25T18:24:00.000Z>",
-    "attempts": 0
-  }
+  ```bash
+  python3 <library-root>/.virgil/scripts/library/queue_slot.py write \
+    --kind deepIndex --citekey <citekey> --library <library-root> \
+    [--note "<the user's own words, if they gave any>"]
   ```
 
-  `status: "requested"` is **not** optional and is the field a hand-written
-  entry loses first. `library/lib/queue-state-store.ts` skips any entry whose
-  status is not `"requested"`, so without it the Library UI shows no queued
-  badge; `cancelDeepIndex` in `library/lib/bib-edit.ts` requires the same
-  value, so without it the user cannot cancel the request you just told them
-  you made. The drainer keys on `kind` alone, so the entry would still run —
-  invisible and unstoppable, which is the worst of both. (An optional `note`
-  string may carry the user's own words; nothing else belongs in the file.)
+  Never hand-write the queue file. The door owns what a hand-typed entry
+  gets wrong: it refuses to overwrite a deep index the library session is
+  already running, retires a stale `.done` so the request is not skipped,
+  and — exactly as the app's own Deep-index button does — queues the
+  plain index a not-yet-indexed paper needs first.
 
-  - Report:
+  It prints one JSON line. Report what it says, not what you hoped:
+
+  - `"result": "written"` →
     ```
-    Queued <op> for <citekey> at <library-root>/.virgil/queue/.
+    Queued deep-index for <citekey> at <library-root>/.virgil/queue/.
     Your library session (or the next `/loop /library/index-pending` tick) will pick this up.
     ```
+    If the line also carries `"companion": {"result": "written", …}`, add:
+    `It isn't indexed yet, so a plain index was queued to run first.`
+  - `"result": "already-queued"` → *A deep index of <citekey> is already
+    waiting in the queue — nothing new was added.*
+  - `"result": "in-flight"` (exit 3) → *Your library session is deep-indexing
+    <citekey> right now; nothing was queued. Ask again once it finishes if
+    you want another pass.*
 - **Run here anyway** → dispatch the specialist inline as a subagent, having
   said what it costs. The choice was surfaced; that is the invariant, not a
   refusal.
