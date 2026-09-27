@@ -34,7 +34,7 @@
  * to check a word merely because a footnote marker follows it would give up
  * most of the checkable text in a real paper. An excluded TEXT run is
  * different: it is characters the user typed which this index deliberately did
- * not read, so `un` + `\textsc{clear}` leaves `un` looking like a two-letter
+ * not read, so `un` + `\textsf{clear}` leaves `un` looking like a two-letter
  * misspelling when it is half a word. So a segment records, per edge, whether
  * the child immediately across the gap was TEXT, and a token touching such an
  * edge is a FRAGMENT and is not checked. (`hardBreak` is a non-text node and
@@ -71,6 +71,7 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { blockCarriesProse, inlineIsProse } from "@/lib/prose-index";
+import { SMALL_CAPS_MARK } from "@/lib/mark-composition";
 
 /**
  * A maximal PM-CONTIGUOUS stretch of prose inside one block.
@@ -196,11 +197,51 @@ export function tokenizeSegment(seg: ProseSegment): SpellToken[] {
   return out;
 }
 
+/**
+ * A GLOSS ABBREVIATION — the one spell-check rule that reads a MARK (task 808).
+ *
+ * Linguistics glosses set grammatical labels in small caps from lowercase
+ * source: `\textsc{nom}`, `\textsc{pl}`, `\textsc{acc}`, `\textsc{3sg}`. They are
+ * the small-caps twin of the all-uppercase acronym rule above, and a stock
+ * dictionary knows none of them. So a token that lies wholly under `smallCaps`,
+ * is all-lowercase and is at most four letters is not checked. Longer or cased
+ * small-caps text (`\textsc{Smith}`, a small-caps heading) IS checked — it is
+ * ordinary prose in a different face. This is a spell-check decision only:
+ * small-caps text is prose to the prose index, so search still finds it.
+ */
+export function isGlossAbbreviation(word: string): boolean {
+  return [...word].length <= 4 && word === word.toLowerCase() && word !== word.toUpperCase();
+}
+
 /** Every checkable token of one block, in document order. O(the block). */
 export function tokenizeBlock(block: PMNode, contentStart: number): SpellToken[] {
   const out: SpellToken[] = [];
   for (const seg of proseSegmentsOf(block, contentStart)) {
     out.push(...tokenizeSegment(seg));
   }
-  return out;
+  if (out.length === 0) return out;
+  const smallCaps = smallCapsRangesOf(block, contentStart);
+  if (smallCaps.length === 0) return out;
+  return out.filter(
+    (t) =>
+      !(
+        isGlossAbbreviation(t.word) &&
+        smallCaps.some(([from, to]) => t.from >= from && t.to <= to)
+      ),
+  );
+}
+
+/** The block's small-caps text as merged `[from, to)` document ranges (adjacent
+ *  small-caps text nodes — split by some OTHER mark — merge). O(the block). */
+function smallCapsRangesOf(block: PMNode, contentStart: number): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  block.forEach((child, offset) => {
+    if (!child.isText || !child.marks.some((m) => m.type.name === SMALL_CAPS_MARK)) return;
+    const from = contentStart + offset;
+    const to = from + child.nodeSize;
+    const last = ranges[ranges.length - 1];
+    if (last && last[1] === from) last[1] = to;
+    else ranges.push([from, to]);
+  });
+  return ranges;
 }

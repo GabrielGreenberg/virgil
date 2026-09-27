@@ -161,6 +161,12 @@ function FormatToolbar({
         className={`${btnClass} underline`}
         data-hint="Underline"
       >U</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleSmallCaps().run(); }}
+        className={btnClass}
+        style={{ fontVariantCaps: "small-caps" }}
+        data-hint="Small caps"
+      >Sc</button>
       <div className={dividerClass} />
       <button
         onMouseDown={(e) => { e.preventDefault(); runWrapper("bulletList"); }}

@@ -205,6 +205,7 @@ const SAMPLE_FOR: Record<string, string> = {
   xcolor: "\\textcolor[HTML]{FF0000}{red}",
   forest: "\\begin{forest}[S [NP] [VP]]\\end{forest}",
   linguex: "\\ex. one",
+  ulem: "\\sout{struck}",
 };
 
 describe("the vocabulary sweep covers every member", () => {

@@ -13,7 +13,7 @@
 //   - a SETTLED unmodelled command is ONE text node wearing `latexCommand`
 //     (`["Alpha ", []] ["\\label{teh}", [latexCommand]] [" beta.", []]`), which
 //     the mark rung sees;
-//   - an IN-FLIGHT one is TWO nodes — `["\\textsc", [latexCommand]] ["{teh", []]`
+//   - an IN-FLIGHT one is TWO nodes — `["\\textsf", [latexCommand]] ["{teh", []]`
 //     — because `scanRawLatexSpans` fails CLOSED on an unbalanced group and so
 //     claims the command NAME only. The mark rung sees nothing there, and one
 //     keystroke later (the closing brace) the same bytes become raw LaTeX. A
@@ -229,12 +229,12 @@ describe("the gate: a word swap never reaches raw LaTeX", () => {
     expect(bodyOf(serializeToLatex(ed.getJSON() as JSONContent))).toContain("\\label{teh }");
   });
 
-  it("SETTLED — an unmodelled `\\textsc{teh}` likewise", () => {
+  it("SETTLED — an unmodelled `\\textsf{teh}` likewise", () => {
     const { ref } = makePort();
-    const ed = mount(docFromTex("Alpha \\textsc{teh} beta."), ref);
+    const ed = mount(docFromTex("Alpha \\textsf{teh} beta."), ref);
     caretAfter(ed, "teh");
     typeChar(ed, " ");
-    expect(textOf(ed, "paragraph")).toBe("Alpha \\textsc{teh } beta.");
+    expect(textOf(ed, "paragraph")).toBe("Alpha \\textsf{teh } beta.");
   });
 
   it("SETTLED — a THREE-argument command, which only the MARK rung can see", () => {
@@ -257,16 +257,16 @@ describe("the gate: a word swap never reaches raw LaTeX", () => {
     );
   });
 
-  it("IN FLIGHT — typing `\\textsc{teh ` declines, although nothing is marked yet", () => {
-    // Rung 2. At the trigger the document is `["\\textsc" latexCommand]
+  it("IN FLIGHT — typing `\\textsf{teh ` declines, although nothing is marked yet", () => {
+    // Rung 2. At the trigger the document is `["\\textsf" latexCommand]
     // ["{teh" NO MARKS]`, so rung 1 sees nothing: the loose scanner is the only
     // thing that can answer, and it is the same one the grey span is painted
     // from.
     const { ref } = makePort();
     const ed = mount(emptyPara(), ref);
     caretAtEndOf(ed, "paragraph");
-    typeText(ed, "\\textsc{teh ");
-    expect(textOf(ed, "paragraph")).toBe("\\textsc{teh ");
+    typeText(ed, "\\textsf{teh ");
+    expect(textOf(ed, "paragraph")).toBe("\\textsf{teh ");
   });
 
   it("IN FLIGHT — the task's own `\\emph{teh ` example", () => {

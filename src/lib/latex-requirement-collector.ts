@@ -121,6 +121,10 @@ export const PACKAGE_DETECTORS: ReadonlyArray<{
   // A nested example tier needs the `xlist` environment defined (see the
   // `xlistenv` requirement); expex itself does not provide it.
   { id: "xlistenv", re: /\\begin\{xlist\}/ },
+  // `ulem`'s commands — the `strike` mark emits `\sout` (task 808); the rest
+  // reach the body only as hand-typed raw LaTeX, and need the package just as
+  // much.
+  { id: "ulem", re: /\\(?:sout|xout|uline|uuline|uwave|dashuline|dotuline)(?![a-zA-Z])/ },
   { id: "graphicx", re: /\\includegraphics(?![a-zA-Z])/ },
   { id: "tikz", re: TIKZ_RE },
   { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },

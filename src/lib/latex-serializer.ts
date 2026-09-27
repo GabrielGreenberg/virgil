@@ -383,7 +383,7 @@ function serializeMarks(
   // A comment tail is not typeset AT ALL, so nothing may wrap it: a closing
   // brace emitted after it would itself be commented out.
   if (hasCommentTailMark(marks ?? undefined)) return inner;
-  return applyWrapperMarks(inner, marks, { declareXcolor: () => need("xcolor") });
+  return applyWrapperMarks(inner, marks, { declare: need });
 }
 
 /**
@@ -945,7 +945,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         !node.attrs?.thanks && typeof override === "string"
           ? `[${override}]`
           : "";
-      return `${idMarker}\\${cmd}${optArg}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
+      return `${idMarker}\\${cmd}${optArg}{${richJsonToLatex(normalizeRichContent(node.attrs?.content), { declare: need })}}`;
     }
 
     case "latexComment": {
@@ -1530,7 +1530,7 @@ function serializeInlineSequence(
   // that are this walker's own business — what a node's inner bytes are, what
   // must sit OUTSIDE a wrapper, and what it appends after the sequence.
   return composeInlineRun<JSONContent>(nodes, {
-    declareXcolor: () => need("xcolor"),
+    declare: need,
 
     // THE comment carrier's line obligation (task 347) is the run walker's
     // own rule since task 777 — `composeInlineRun` places a newline right after

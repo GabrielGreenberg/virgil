@@ -81,6 +81,7 @@ import {
   DEFAULT_EXAMPLE_DIALECT,
   type ExampleDialect,
 } from "@/lib/example-dialect";
+import { matchWrapperCommandAt } from "@/lib/mark-composition";
 
 interface ParseContext {
   pos: number;
@@ -614,120 +615,28 @@ export function parseInlineContent(
         continue;
       }
 
-      // \textbf{...}
-      const boldMatch = rest.match(/^\\textbf\{/);
-      if (boldMatch) {
+      // Wrapper-mark commands (`\textbf`, `\emph`/`\textit`, `\underline`,
+      // `\sout`, `\textsc`, `\texttt`, `\textcolor[HTML]{…}`) — vocabulary,
+      // argument grammar and the mark each applies all come from the ONE table
+      // in mark-composition.ts, the same recognizer the card/footnote parser
+      // calls (task 808). This was five copy-pasted blocks plus a `\textcolor`
+      // one, which is how `\textit` came to parse to a mark that emits `\emph`
+      // and `\textsc` came to be on no list at all. A command that `opensCode`
+      // (`\texttt`) parses its body with typography suppressed (`--` literal,
+      // accent commands raw — memo §A); every other one INHERITS `inCode`.
+      const wrapper = matchWrapperCommandAt(text, i);
+      if (wrapper) {
         flush();
-        const inner = extractBraced(text, i + "\\textbf".length);
+        const inner = extractBraced(text, wrapper.bodyOpen);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content, inCode);
+          const innerNodes = parseInlineContent(
+            inner.content,
+            wrapper.row.opensCode === true || inCode,
+          );
           for (const n of innerNodes) {
             nodes.push({
               ...n,
-              marks: [...(n.marks || []), { type: "bold" }],
-            });
-          }
-          i = inner.end;
-          continue;
-        }
-      }
-
-      // \emph{...}
-      const emphMatch = rest.match(/^\\emph\{/);
-      if (emphMatch) {
-        flush();
-        const inner = extractBraced(text, i + "\\emph".length);
-        if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content, inCode);
-          for (const n of innerNodes) {
-            nodes.push({
-              ...n,
-              marks: [...(n.marks || []), { type: "italic" }],
-            });
-          }
-          i = inner.end;
-          continue;
-        }
-      }
-
-      // \underline{...}
-      const ulMatch = rest.match(/^\\underline\{/);
-      if (ulMatch) {
-        flush();
-        const inner = extractBraced(text, i + "\\underline".length);
-        if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content, inCode);
-          for (const n of innerNodes) {
-            nodes.push({
-              ...n,
-              marks: [...(n.marks || []), { type: "underline" }],
-            });
-          }
-          i = inner.end;
-          continue;
-        }
-      }
-
-      // \textit{...}
-      const textitMatch = rest.match(/^\\textit\{/);
-      if (textitMatch) {
-        flush();
-        const inner = extractBraced(text, i + "\\textit".length);
-        if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content, inCode);
-          for (const n of innerNodes) {
-            nodes.push({
-              ...n,
-              marks: [...(n.marks || []), { type: "italic" }],
-            });
-          }
-          i = inner.end;
-          continue;
-        }
-      }
-
-      // \texttt{...}
-      const ttMatch = rest.match(/^\\texttt\{/);
-      if (ttMatch) {
-        flush();
-        const inner = extractBraced(text, i + "\\texttt".length);
-        if (inner !== null) {
-          // Code span: suppress typographic transforms (`--` is literal,
-          // accent commands stay raw) — memo §A exclusion. `true` rather than
-          // `inCode` because THIS is the command that opens a code span.
-          const innerNodes = parseInlineContent(inner.content, true);
-          for (const n of innerNodes) {
-            nodes.push({
-              ...n,
-              marks: [...(n.marks || []), { type: "code" }],
-            });
-          }
-          i = inner.end;
-          continue;
-        }
-      }
-
-      // \textcolor[HTML]{RRGGBB}{...} — emitted by the textColor mark.
-      // Named-color variants (\textcolor{red}{...}) are intentionally
-      // skipped; they fall through to the raw-LaTeX latexCommand carrier
-      // (bytes preserved, rendered grey), not to plain text.
-      const tcMatch = rest.match(/^\\textcolor\[HTML\]\{([0-9A-Fa-f]{6})\}\{/);
-      if (tcMatch) {
-        flush();
-        const colorHex = tcMatch[1].toUpperCase();
-        // tcMatch[0] ends with the opening "{" of the inner arg; rewind
-        // one char so extractBraced lands on that brace.
-        const argStart = i + tcMatch[0].length - 1;
-        const inner = extractBraced(text, argStart);
-        if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content, inCode);
-          for (const n of innerNodes) {
-            nodes.push({
-              ...n,
-              marks: [
-                ...(n.marks || []),
-                { type: "textColor", attrs: { color: `#${colorHex}` } },
-              ],
+              marks: [...(n.marks || []), wrapper.mark],
             });
           }
           i = inner.end;

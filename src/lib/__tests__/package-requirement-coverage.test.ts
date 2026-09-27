@@ -202,10 +202,11 @@ const MARK_FIXTURES: Record<string, { body: string } | { exempt: string }> = {
   latexVerbatim: { body: "\\verb|x|" },
   latexCommentTail: { body: "text % tail" },
   linkedAnchor: { body: "a \\vlid{ab12}ranged\\vlidend{ab12} b" },
-  strike: {
-    exempt:
-      "StarterKit mark with no serializer arm — `applyWrapperMarks` drops it, so it emits no bytes and needs no package",
-  },
+  // Task 808: strike used to be exempt here — "`applyWrapperMarks` drops it" —
+  // which was a content-loss defect recorded as a licence. It now emits
+  // `\sout{…}` and declares `ulem` from the vocabulary table.
+  strike: { body: "\\sout{x}" },
+  smallCaps: { body: "\\textsc{x}" },
   link: {
     exempt:
       "StarterKit mark with no serializer arm — dropped by `applyWrapperMarks`, emits nothing",

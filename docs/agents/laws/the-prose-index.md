@@ -198,7 +198,7 @@ Seven rules the pair earned:
   finished word, and refusing to check one merely because a footnote marker
   follows it would give up most of the checkable text in a real paper. An
   excluded text run is different: it is characters the user typed that the index
-  deliberately did not read, so `un` + `\textsc{clear}` is a FRAGMENT and is not
+  deliberately did not read, so `un` + `\textsf{clear}` is a FRAGMENT and is not
   checked. So a segment records, per edge, whether the child immediately across
   the gap was TEXT. (`hardBreak` is a non-text node and correctly ends a word.)
 - **ONE authority for "this word is fine."**
@@ -399,7 +399,7 @@ Seven rules it earned:
   finished** ([typed-prose-gate.ts](../../../src/lib/tiptap/typed-prose-gate.ts)).
   MEASURED on the real stack: a SETTLED `\label{teh}` is ONE text node wearing
   `latexCommand`, which rung 1 (`isRawLatexMarkName`, the task-517 SSOT) sees;
-  an IN-FLIGHT `\textsc{teh` is `["\textsc" latexCommand] ["{teh" NO MARKS]`,
+  an IN-FLIGHT `\textsf{teh` is `["\textsf" latexCommand] ["{teh" NO MARKS]`,
   because `scanRawLatexSpans` fails CLOSED on an unbalanced group and claims
   the command NAME only. One keystroke later the brace closes and the same
   bytes ARE raw LaTeX — so **a verdict that depends on how far through a

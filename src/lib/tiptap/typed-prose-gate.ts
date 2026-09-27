@@ -31,10 +31,10 @@
  * The document's answer to "is this prose?" must not depend on how far through
  * a construct the user has typed. MEASURED against the real stack:
  *
- *   - SETTLED — a parsed or completed `\textsc{teh}` / `\label{teh}` is ONE
+ *   - SETTLED — a parsed or completed `\textsf{teh}` / `\label{teh}` is ONE
  *     text node wearing `latexCommand`. Rung 1 (the mark) sees it.
- *   - IN FLIGHT — typing `\textsc{teh` leaves the document as
- *     `["\textsc" latexCommand] ["{teh" NO MARKS]`, because `scanRawLatexSpans`
+ *   - IN FLIGHT — typing `\textsf{teh` leaves the document as
+ *     `["\textsf" latexCommand] ["{teh" NO MARKS]`, because `scanRawLatexSpans`
  *     fails CLOSED on an unbalanced group and so claims the command NAME only.
  *     Rung 1 sees nothing. One keystroke later the brace closes and the whole
  *     run is raw LaTeX — so a gate with only rung 1 answers PROSE and then
@@ -89,7 +89,7 @@ function precedingRunIsRawLatex($pos: ResolvedPos): boolean {
  * decoration paints them, unclosed braces included) COVER this position?
  *
  * Asked of the BLOCK's text rather than of the one text node the caret sits
- * in, because that is exactly where the in-flight case splits: `\textsc` takes
+ * in, because that is exactly where the in-flight case splits: `\textsf` takes
  * the carrier mark the instant it is typed, so the argument the user is still
  * writing lands in a SEPARATE, unmarked text node with no backslash of its own.
  * A per-text-node scan — which is right for the decoration, whose job is to
@@ -110,7 +110,7 @@ function bareCommandCovers($pos: ResolvedPos): boolean {
   forEachBareCommand(text, (offset, len) => {
     // Strictly after the run's first character: a position AT the backslash is
     // outside the run it opens. Inclusive at the end, so the caret sitting just
-    // past an unclosed `\textsc{teh` — which is where the trigger character
+    // past an unclosed `\textsf{teh` — which is where the trigger character
     // lands — is inside it.
     if (offset < at && at <= offset + len) covered = true;
   });

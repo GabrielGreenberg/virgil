@@ -167,6 +167,7 @@ describe("DA-5 selection-mode taxonomy — the declarative `selection` field", (
     bold: "ignored",
     italic: "ignored",
     strike: "ignored",
+    "small-caps": "ignored",
     code: "ignored",
     "bullet-list": "ignored",
     "ordered-list": "ignored",

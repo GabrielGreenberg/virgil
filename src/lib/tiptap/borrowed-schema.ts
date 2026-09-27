@@ -98,6 +98,8 @@ import {
   TitleField,
   MaketitleMarker,
   TextColor,
+  SmallCaps,
+  MarkSpellingAttrs,
 } from "@/lib/tiptap-extensions";
 import { CardParagraph } from "./cmd-only-paragraph";
 
@@ -283,6 +285,9 @@ const ExcerptListItem = ListItem.extend({
  * ships, never which nodes a scope mounts.
  */
 const CardBulletList = withWrapperGate(BulletList, "bulletList");
+/** Read at CALL time, not module load: `borrowed-schema` and the extension
+ *  barrel import each other, so a module-scope array would capture `undefined`. */
+const cardWrapperMarks = (): AnyExtension[] => [SmallCaps, MarkSpellingAttrs];
 const CardOrderedList = withWrapperGate(OrderedList, "orderedList");
 const CardBlockquote = withWrapperGate(Blockquote, "blockquote");
 
@@ -330,10 +335,24 @@ export function buildCardBodySchema(
   // editor's paragraph uses (task 430). It rides THIS builder — the door every
   // card surface enters — rather than the atom list, so a surface that mounts
   // `LatexCommandMark` mounts a paragraph that stamps by construction.
+  //
+  // The wrapper-mark vocabulary's schema half beyond StarterKit's marks (task
+  // 808) rides the same door, at BOTH scopes: the card/footnote reader parses
+  // `\textsc{…}` to `smallCaps` and stamps `\textit`'s `spelling` attr, and a
+  // mark the schema lacks makes TipTap load an EMPTY doc (capture/schema-
+  // symmetry law). `mark-vocabulary.test.ts` pins every card-scope row's mark
+  // against `cardBodySchemaFor`.
   if (scope !== "excerpt")
-    return [...buildBorrowedAtomSchema(opts), CardParagraph, CardBulletList, CardOrderedList];
+    return [
+      ...buildBorrowedAtomSchema(opts),
+      ...cardWrapperMarks(),
+      CardParagraph,
+      CardBulletList,
+      CardOrderedList,
+    ];
   return [
     ...buildBorrowedAtomSchema({ ...opts, includeLabelRefFootnote: true }),
+    ...cardWrapperMarks(),
     ...buildExcerptOnlySchema(),
     CardParagraph,
     CardBulletList,

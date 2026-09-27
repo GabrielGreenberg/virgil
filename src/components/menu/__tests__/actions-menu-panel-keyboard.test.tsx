@@ -237,12 +237,13 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
   it("ArrowUp off the list TOP re-enters the grid at the remembered column, CLAMPED to the last row's extent", () => {
     renderPanel();
     // Enter the grid at column 2 (Strike) and descend. Since task 385 the last
-    // row is PARTIAL (only `forest`, col 0), so every vertical move through it
-    // clamps to col 0 — nav-core's R3 rule, which is what keeps a partial row
-    // reachable at all. RENEGOTIATED rather than re-scoped: the pre-385 leg
-    // asserted a full last row could hand the remembered column straight back,
-    // and the memory itself is still live (the col-2 walk below proves it) —
-    // what changed is that the row it re-enters has no col 2 to offer.
+    // row is PARTIAL (since task 808: `forest` col 0 + `small-caps` col 1), so
+    // a vertical move from col 2 into it clamps to col 1 — nav-core's R3 rule,
+    // which is what keeps a partial row reachable at all. RENEGOTIATED rather
+    // than re-scoped: the pre-385 leg asserted a full last row could hand the
+    // remembered column straight back, and the memory itself is still live (the
+    // col-2 walk below proves it) — what changed is that the row it re-enters
+    // has no col 2 to offer.
     key("ArrowDown"); // Bold (0,0)
     key("ArrowRight");
     key("ArrowRight"); // Strike (0,2)
@@ -250,12 +251,12 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
     key("ArrowDown"); // Display math (2,2)
     key("ArrowDown"); // graphics (3,2)
     expect(activeHint()).toBe("Insert image");
-    key("ArrowDown"); // forest (4,0) — clamped, the only cell in the last row
-    expect(activeHint()).toBe("Insert syntax tree (forest)");
+    key("ArrowDown"); // small caps (4,1) — clamped to the last row's extent
+    expect(activeHint()).toBe("Small caps (⇧⌘K)");
     key("ArrowDown"); // → first card
     expect(activeCardLabel()).toBe(cardActionRows("lightning")[0].label);
     key("ArrowUp"); // back into the grid at {maxRow, clamped}
-    expect(activeHint()).toBe("Insert syntax tree (forest)");
+    expect(activeHint()).toBe("Small caps (⇧⌘K)");
   });
 
   it("ArrowDown/Up navigate WITHIN the card list once inside it", () => {

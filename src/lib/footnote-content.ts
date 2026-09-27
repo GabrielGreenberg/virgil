@@ -21,6 +21,8 @@ import { matchCiteCommandAt } from "@/lib/cite-commands";
 import {
   composeInlineRun,
   isCodeWrapped,
+  matchWrapperCommandAt,
+  wrapperMarkForHtmlElement,
   type MarkLike,
 } from "@/lib/mark-composition";
 import {
@@ -215,7 +217,7 @@ export function htmlToJson(html: string): JSONContent {
 
   function inlineFromNodes(
     nodes: NodeListOf<ChildNode> | ChildNode[],
-    activeMarks: { type: string }[] = []
+    activeMarks: MarkLike[] = []
   ): JSONContent[] {
     const out: JSONContent[] = [];
     nodes.forEach((n) => {
@@ -262,21 +264,12 @@ export function htmlToJson(html: string): JSONContent {
         return;
       }
 
-      // Mark wrappers
-      if (tag === "strong" || tag === "b") {
-        out.push(...inlineFromNodes(el.childNodes, [...activeMarks, { type: "bold" }]));
-        return;
-      }
-      if (tag === "em" || tag === "i") {
-        out.push(...inlineFromNodes(el.childNodes, [...activeMarks, { type: "italic" }]));
-        return;
-      }
-      if (tag === "u") {
-        out.push(...inlineFromNodes(el.childNodes, [...activeMarks, { type: "underline" }]));
-        return;
-      }
-      if (tag === "code") {
-        out.push(...inlineFromNodes(el.childNodes, [...activeMarks, { type: "code" }]));
+      // Mark wrappers — the tags each wrapper row declares, plus small caps
+      // as the web writes it (`font-variant: small-caps`), read from the one
+      // vocabulary table (task 808).
+      const wrapperMark = wrapperMarkForHtmlElement(el);
+      if (wrapperMark) {
+        out.push(...inlineFromNodes(el.childNodes, [...activeMarks, wrapperMark]));
         return;
       }
 
@@ -383,7 +376,7 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
  * Everything else is prose and is escaped, with typography suppressed inside a
  * `code` wrapper (memo §A). Both carriers used to sit here as an early `return`
  * ABOVE the wrapper loop, which DELETED whatever wrapped the run: a footnote
- * reading `\textbf{\textsc{x}}` came back `\textsc{x}`, a fixed point.
+ * reading `\textbf{\textsf{x}}` came back `\textsf{x}`, a fixed point.
  *  - `latexCommentTail` — a `%` comment, emitted RAW and checked first (the
  *    stricter promise: not typeset at all). Before task 777 this fork escaped
  *    it on the premise that a card body, being a braced ARGUMENT, had nowhere
@@ -444,9 +437,13 @@ function serializeInlineNode(node: JSONContent): string {
  * It is also what carries an ATOM's own marks: `\emph{\citep{x}}` used to come
  * back as a bare `\vcid{…}\citep{x}` because this walker discarded them.
  */
-function serializeInlineRun(nodes: JSONContent[]): string {
+function serializeInlineRun(
+  nodes: JSONContent[],
+  declare?: (requirementId: string) => void,
+): string {
   return composeInlineRun<JSONContent>(nodes, {
     inner: (node) => serializeInlineNode(node),
+    declare,
   });
 }
 
@@ -456,16 +453,26 @@ function serializeInlineRun(nodes: JSONContent[]): string {
  * paragraphs are joined with single spaces — same conventions the legacy
  * htmlToLatex helper used.
  */
-export function richJsonToLatex(json: JSONContent): string {
+export function richJsonToLatex(
+  json: JSONContent,
+  opts?: {
+    /** The main serializer's package declaration, for a body emitted INTO the
+     *  document (a `\footnote{}` argument): a struck run's `\sout` needs `ulem`
+     *  exactly as it does in a paragraph (requirements-by-emission, task 808).
+     *  A card body serialized for its own sidecar passes nothing. */
+    declare?: (requirementId: string) => void;
+  },
+): string {
   if (!json) return "";
+  const declare = opts?.declare;
 
   function walk(node: JSONContent): string {
     if (!node) return "";
     if (node.type === "text" || node.type === "inlineMath" || node.type === "citation" || node.type === "hardBreak") {
-      return serializeInlineRun([node]);
+      return serializeInlineRun([node], declare);
     }
     if (node.type === "paragraph") {
-      return serializeInlineRun(node.content || []);
+      return serializeInlineRun(node.content || [], declare);
     }
     if (node.type === "bulletList" || node.type === "orderedList") {
       const items = (node.content || []).map((li) => {
@@ -775,30 +782,26 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         continue;
       }
 
-      // Mark commands: \textbf{...}, \textit{...}, \emph{...}, \underline{...}, \texttt{...}
-      const markMatch = rest.match(/^\\(textbf|textit|emph|underline|texttt)\{/);
-      if (markMatch) {
-        const cmdName = markMatch[1];
-        const open = i + markMatch[0].length;
-        const closed = findClose(text, open - 1);
+      // Wrapper-mark commands — the SAME recognizer the main inline parser
+      // calls (`matchWrapperCommandAt`, the vocabulary table in
+      // mark-composition.ts; task 808). This was a regex of five names plus a
+      // ternary mapping them to marks, which is how `\textit` parsed to a mark
+      // that emits `\emph` and `\textsc`/`\sout` were never claimed. Card scope:
+      // a row whose mark the card-body schema lacks (`textColor`) stays raw
+      // here, because a mark the schema does not have blanks the body.
+      // A command that `opensCode` (`\texttt{}`) OPENS a code span; every other
+      // INHERITS the enclosing one. Pre-377 the else-branch was `false`, so a
+      // command nested inside a code span had its body typographied and a raw
+      // U+2013 / U+00E9 was written into the `.tex` (task 341's twin rule).
+      const wrapper = matchWrapperCommandAt(text, i, { scope: "card" });
+      if (wrapper) {
+        const closed = findClose(text, wrapper.bodyOpen);
         if (closed !== -1) {
           flush();
-          const inner = text.slice(open, closed);
-          // `\texttt{}` is a code span — suppress typography in its body.
-          // `\texttt{}` OPENS a code span; every other mark command INHERITS
-          // the enclosing one. Pre-377 the else-branch was `false`, so a
-          // command nested inside a code span had its body typographied and a
-          // raw U+2013 / U+00E9 was written into the `.tex` — the identical gap
-          // the main parser had (task 341's twin rule).
-          const innerNodes = parseInlineLatex(inner, cmdName === "texttt" || inCode);
-          const markType =
-            cmdName === "textbf" ? "bold" :
-            cmdName === "textit" ? "italic" :
-            cmdName === "emph" ? "italic" :
-            cmdName === "underline" ? "underline" :
-            "code";
+          const inner = text.slice(wrapper.bodyOpen + 1, closed);
+          const innerNodes = parseInlineLatex(inner, wrapper.row.opensCode === true || inCode);
           for (const n of innerNodes) {
-            const marks = [...((n as JSONContent).marks || []) as { type: string }[], { type: markType }];
+            const marks = [...((n as JSONContent).marks || []), wrapper.mark];
             nodes.push({ ...n, marks });
           }
           i = closed + 1;

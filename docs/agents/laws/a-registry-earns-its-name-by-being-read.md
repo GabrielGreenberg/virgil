@@ -3238,7 +3238,41 @@ Sharing a common wrapper SUFFIX would restore byte-identity there, and it is
 deliberately not done here: the phenomenon this task closes is DELETION, the
 split form loses nothing and is idempotent, and suffix-sharing turns a linear
 fold into a hierarchical build over interleaved mark orders — more risk than the
-verbosity is worth.
+verbosity is worth. **RETIRED by task 808** (below): modeling small caps made
+`\emph{see \textsc{Smith} 1990}` an everyday shape, so the residual stopped
+being rare.
+
+**The vocabulary half (task 808): the table is the parse AND the emit.** The
+emit had an SSOT; the PARSE side was hand-coded three times (five copy-pasted
+blocks in `latex-parser.ts`, a regex + ternary in the footnote reader, a tag
+chain in its HTML reader), so parse and emit disagreed: `strike` existed in the
+editor with no emit arm (struck text saved UNSTRUCK — a coverage-suite
+"exemption"), `\textit{x}` came back `\emph{x}`, and `\textsc` was modeled
+nowhere. Now `WRAPPER_MARK_ROWS` (mark-composition.ts) states per mark its
+command spellings (emit first), `opensCode`, `package`, the `\textcolor`
+argument grammar, `cardBody: false` for a mark the card schema lacks, and HTML
+tags; `matchWrapperCommandAt` is the ONE recognizer both parsers call, and
+`applyWrapperMarks` emits from the row. Rules it earned:
+
+- **A mark with two spellings records which one it was parsed from** (`spelling`
+  attr, registered by `MarkSpellingAttrs` on every schema) and emits it back; a
+  typed mark has none and emits the canonical spelling. Claiming a DECLARATION
+  (`{\scshape …}`) for a command mark would rewrite the source — so it stays raw.
+- **Nesting is chosen by RUN, not by mark order.** In ProseMirror a node's marks
+  are sorted by schema RANK, not by source nesting, so `composeInlineRun` wraps
+  with whichever of the node's wrappers extends the LONGEST run (ties → the
+  node's outermost, which keeps identical-signature runs byte-identical to the
+  pre-808 emit) and recurses inside. `\emph{a \textbf{b} c}` now round-trips.
+- **A mark the card reader can produce must be in the card schema** (a missing
+  mark blanks the body). `buildCardBodySchema` registers the non-StarterKit
+  wrapper marks at BOTH scopes; `mark-vocabulary.test.ts` pins every row against
+  the main, card and excerpt schemas.
+- **A package-bound row declares at the emit**, footnote bodies included
+  (`richJsonToLatex(…, { declare })`); `ulem` is injected `[normalem]` so `\emph`
+  stays italic.
+
+CI: [mark-vocabulary.test.ts](../../../src/lib/__tests__/mark-vocabulary.test.ts),
+[package-requirement-coverage.test.ts](../../../src/lib/__tests__/package-requirement-coverage.test.ts).
 
 CI: [carrier-mark-composition.test.ts](../../../src/lib/__tests__/carrier-mark-composition.test.ts).
 Every leg drives the REAL save pipeline over TWO cycles and over BOTH surfaces
