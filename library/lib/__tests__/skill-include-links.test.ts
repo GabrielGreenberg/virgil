@@ -5,11 +5,10 @@
 // Every `_`-prefixed doctrine include in `editor/skills/` and
 // `library/skills/` is reached the same way: the bundle ships the file next
 // to the skills, and a skill reaches it through an ordinary markdown link.
-// `library/build/build-skill-bundle.mjs` states the design intent outright —
-// "every `*.md` under `library/skills/` ships in the published bundle,
-// including include files like `_doctrine.md` that other skills reference via
-// markdown links — agents reading a skill on a user's library must be able to
-// resolve those links locally."
+// Which files ship is decided in ONE place — `shippedSkillNames` in
+// `library/build/bundle-sources.mjs` (`_`-includes ship in both of these
+// silos; repo-only skills do not) — so this comment points there rather than
+// quoting it (task 804: an earlier quote here had drifted from the code).
 //
 // THE MYTH THIS RETIRES. The two OLDEST include headers asserted the
 // opposite: `_doctrine.md` claimed it was "Transcluded by every subskill via

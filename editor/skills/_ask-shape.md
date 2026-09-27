@@ -20,8 +20,10 @@
 Which panel a request arrived from tells you **where the user's cursor
 was**, not what they asked for. The routing table
 (`editor/scripts/ai_request_routing.json`) is a frozen projection of
-`CARD_REGISTRY` — it maps card kind → request kind → responder, and it is
-structurally incapable of reading the request text. It must not be
+`CARD_REGISTRY` — it maps card kind → request kind (+ link panel); the
+responder for each pair is `/editor/review`'s step-3 dispatch table, pinned
+against this same manifest. Neither is structurally capable of reading the
+request text. It must not be
 hand-edited, and it could not carry this signal even if it were.
 
 So **the ask-shape question is the responder's to answer**, and it is
