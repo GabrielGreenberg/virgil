@@ -242,7 +242,7 @@ What do you want to do?
 ```
 
 No wizard, no checklist. The Virgil app itself is the visual onboarding —
-the panel rail on the right shows everything available. Your job is just
+the panel rails on either side show everything available. Your job is just
 to be a friendly keyword-trigger and dispatch.
 
 If the user follows up with a concrete request, jump to Step 2.
@@ -388,7 +388,7 @@ Done: oriented user. Output: state-summary.
 
 ## Pairing with /loop
 
-`/loop /virgil/start <docPath>` is the right shape for "babysit my Virgil
-session" — every tick re-checks the inbox and surfaces any new requests
-that landed. Use sparingly: most users want a single-turn dispatch, not
-a polling loop.
+The front door is single-turn: it has no inbox re-check step, so a loop of
+it just re-orients. To babysit open requests, loop the skill that owns the
+inbox — `/loop /editor/review <docPath>` (its own "Pairing with /loop" is
+the SSOT).
