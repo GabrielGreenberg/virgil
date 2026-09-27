@@ -246,7 +246,6 @@ function useStack(editor: Editor) {
     prefs: { placements: [], activeLeft: null, activeRight: null } as never,
     expandLeft: () => {},
     expandRight: () => {},
-    clearBlankIfSet: () => {},
   };
 
   const { dispatch } = useDragHandleActions(deps);

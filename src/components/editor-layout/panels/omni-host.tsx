@@ -178,7 +178,6 @@ export interface OmniHostProps {
   deleteReportCard: ReportsHook["deleteCard"];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
-  getOmniHideAll: (side: Side) => boolean;
   /** Each omni category's LIVE strip side (`deriveCategorySides`, task 381) —
    *  the PLACEMENT fact, independent of the filter menu's hidden set. Read only
    *  by the applied-pending header gate (`appliedPendingSide`, task 420) and,
@@ -780,7 +779,6 @@ export function OmniHost(p: OmniHostProps) {
       editor={editorInstance}
       enabledCategories={enabledForSide}
       categorySides={p.categorySides}
-      hideAllCards={p.getOmniHideAll(p.side)}
       dimResting={p.omniDimResting}
       onBackgroundClick={handleBackgroundClick}
       onCardFocus={handleCardFocus}

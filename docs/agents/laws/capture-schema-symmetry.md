@@ -3142,7 +3142,9 @@ Six rules it earned:
   that says it is disabled must not be a tab stop). `readOnly` renders no
   button at all: the float's chip stays static markup (Issue-10).
 - **The NAME is stable across a toggle; `aria-pressed` is the state channel and
-  the tooltip is what flips** — the `OmniBlankToggle` contract, taken by both
+  the tooltip is what flips** — the contract first set by the (since retired,
+  task 807) omni blank-gutter toggle, and now pinned on the figure `#` by
+  `accessible-name-agrees-with-visible-control.test.tsx` member 3; taken by both
   `#`s (`iconHint({ label: "Figure number", hint })`), so the two channels
   cannot double-announce.
 - **Hover-revealed chrome is `:focus-within`-revealed too, or it is not a tab

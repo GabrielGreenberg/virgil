@@ -158,10 +158,6 @@ interface OmniViewPanelProps {
    *  argument — an absent category falls back to its registry default side, so
    *  an omitted prop means "registry defaults", never "placed nowhere". */
   categorySides?: Partial<Record<OmniCategory, "left" | "right">>;
-  /** When true, suppresses all card rendering regardless of enabled
-   *  categories. Driven by the per-side dashed-square button in the
-   *  presentation-tools pod. */
-  hideAllCards?: boolean;
   /** When true, omni cards rest in a recessed/dimmed surface and brighten
    *  to full on hover (the inverse of the default bright-rest / dim-hover).
    *  Stamps `data-omni-dim="true"` on the cascade root; the inversion is
@@ -692,7 +688,6 @@ function OmniViewPanel({
   editor,
   enabledCategories,
   categorySides = EMPTY_CATEGORY_SIDES,
-  hideAllCards,
   dimResting,
   onBackgroundClick,
   onCardFocus,
@@ -720,12 +715,11 @@ function OmniViewPanel({
   );
 
   const visibleItems = useMemo(() => {
-    if (hideAllCards) return [];
     return items.filter((item) => {
       const cat = categoryOf(item);
       return cat == null || enabledCategories.has(cat);
     });
-  }, [items, enabledCategories, hideAllCards]);
+  }, [items, enabledCategories]);
 
   // Live-position resolver (T5 Pillar A). Entity-anchored kinds (footnote /
   // citation / example) resolve their live pos from the DocStructureObserver
@@ -781,8 +775,8 @@ function OmniViewPanel({
   // questions `enabledCategories` fuses SEPARATELY, because it wants opposite
   // answers to them:
   //
-  //  • VISIBILITY — never consulted. The "hide all cards" toggle and the
-  //    category filter are preferences about the CASCADE (what is shown beside
+  //  • VISIBILITY — never consulted. The category filter is a preference
+  //    about the CASCADE (what is shown beside
   //    the text), and a card with no place in the text is not a cascade card.
   //    Task 410's rule for the pod-header chip, arriving at the surface that
   //    replaces it: an affordance that exists so a card cannot vanish must not

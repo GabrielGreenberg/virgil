@@ -79,10 +79,19 @@ Six rules it earned:
   lists categories the side already owns. `resetOmniSide(side)` keeps its side
   because the AFFORDANCE is per-menu; what it resets is visibility, since side
   membership is derived and has no default to restore.
-- **`omniHideAllCards` stays per-SIDE, and the suite says why.** It describes a
-  COLUMN ("show nothing in this gutter"), not a category, so it has no panel
-  whose placement it could derive from — pinned so a later sweep does not fold it
-  into the side-free set by symmetry.
+- **`omniHideAllCards` is RETIRED (task 807), and `blankLeft/Right` with it.**
+  It was per-SIDE (a COLUMN's "show nothing in this gutter", no panel to derive
+  from). Gabriel asked for omni view always on, and the retirement is this law's
+  exact case twice over: `blankLeft/Right` had NO caller of its only setter and
+  no render gate — it lived on as a load migration and clearers that read it to
+  clear it — and a surgical "unmount the button, force the getter false" would
+  have left `omniHideAllCards` a key nothing reads, cron-refreshed forever by the
+  promote whitelist. Both keys are in `RETIRED_PREF_KEYS`; the standalone
+  `virgil-omni-hide-all-cards` key is removed at load; `card-side-derivation`
+  pins the retirement. It also retired a latent bug: the post-create soft-routes
+  never consulted it, so under the shipped `{left:true}` a new left-side
+  footnote was invisible. "Reveal omni for a panel" now has one owner,
+  `omniSideToReveal` (a folded gutter is the only hiding state).
 - **A shipped default change is INERT without a migration, and worse than inert
   with the cron.** `loadPrefs` merges `DEFAULT_PREFS.placements` only for ids the
   blob is MISSING, so flipping `reports` to RIGHT (Gabriel's ask) reaches nobody

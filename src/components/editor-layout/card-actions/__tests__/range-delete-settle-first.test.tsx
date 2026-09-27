@@ -231,7 +231,6 @@ function makeHarness(editor: Editor, appliedSplice: AppliedSpliceOps) {
     prefs: { placements: [], activeLeft: null, activeRight: null } as never,
     expandLeft: () => {},
     expandRight: () => {},
-    clearBlankIfSet: () => {},
   };
 
   const { result } = renderHook(() => useDragHandleActions(deps));

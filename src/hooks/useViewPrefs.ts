@@ -71,12 +71,14 @@ export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type DividerWidth = "full" | "mid" | "text";
 
 /** Every persisted panel slot: the canonical `PanelKind` set (the registry
- *  SSOT) plus the layout-only `"blank"` sentinel. PINNED to `PanelKind` (was a
+ *  SSOT). The layout-only `"blank"` sentinel it once carried was retired with
+ *  omni-hide (task 807); a stored `"blank"` is dropped at load
+ *  (`clampStack`, `realPanel`, `validPanelId`). PINNED to `PanelKind` (was a
  *  hand-typed parallel union) so a panel added to / removed from the registry
  *  flows here automatically and the two can never diverge silently — the
  *  unchecked `as PanelId` casts at the `PanelKind→PanelId` boundaries in
  *  EditorPane would otherwise mask a missing member (audit-059). */
-export type PanelId = PanelKind | "blank";
+export type PanelId = PanelKind;
 
 /* The HIGHLIGHT vocabulary moved to the zero-import leaf
  * `@/lib/view-prefs/highlight-types` (task 677) so the view-pref REGISTRY can
@@ -143,10 +145,6 @@ export interface ViewPrefs extends RegistryPrefs {
    *  its dockStack. Replaces the old `activeLeft === null` sentinel. */
   collapsedLeft: boolean;
   collapsedRight: boolean;
-  /** Whether each side suppresses the omni background (a clean, empty
-   *  column). Replaces the old `activeLeft === "blank"` sentinel. */
-  blankLeft: boolean;
-  blankRight: boolean;
   panelWidths: Record<string, number>; // keyed by `${side}`
   /** 0..1 — *editor* pane ratio when the Code pane split is engaged
    *  (split-with-code primitive). 0.55 = editor slightly wider than code.
@@ -207,12 +205,6 @@ export interface ViewPrefs extends RegistryPrefs {
    *  declaration, with no default list to keep in step and nothing to migrate.
    *  Combined with the derived sides by `omniCategoriesForSide`. */
   omniHiddenCategories: OmniCategory[];
-  /** Sticky "hide all cards in omni-view" toggle per side.
-   *
-   *  Stays per-SIDE deliberately: it describes a COLUMN ("show nothing in this
-   *  gutter"), not a category, so it has no panel whose placement it could
-   *  derive from. */
-  omniHideAllCards: { left: boolean; right: boolean };
   /** Ids of the one-shot prefs migrations already applied in this browser
    *  profile (`PANEL_SIDE_MIGRATIONS`). GLOBAL, like the `placements` it
    *  guards — a per-window marker would let each window re-apply a flip over a
@@ -274,13 +266,33 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
  *    read one; the field was only validated, renamed, reset and re-persisted,
  *    always empty. Retired in task 678 along with the `Half` type it was the
  *    sole referent of.
+ *  - `omniHideAllCards`: the per-side "Blank this gutter" toggle, which hid
+ *    every omni card in a column while leaving the gutter open. Omni view is
+ *    now always on (task 807): the only ways to thin a column are folding the
+ *    gutter (`collapsedLeft/Right`) and the per-category Filter kebab
+ *    (`omniHiddenCategories`). The shipped default hid the LEFT side, and the
+ *    post-create soft-routes that reveal omni after a new footnote/citation
+ *    never consulted it — so a new left-side footnote was invisible. A user
+ *    who had a side hidden simply sees it again; no value is carried across.
+ *  - `blankLeft` / `blankRight`: the split-model residue of the same idea (the
+ *    old `activeLeft === "blank"` sentinel). Its only setter had no caller and
+ *    no render gate read it; it survived only as a load migration and a string
+ *    of clearers that read it to clear it. Retired with the toggle (task 807).
  */
 const RETIRED_PREF_KEYS = [
   "editorSplit",
   "editorSplitRatio",
   "suppressArchiveAtomWarning",
   "poppedOutOrigins",
+  "omniHideAllCards",
+  "blankLeft",
+  "blankRight",
 ] as const;
+
+/** Pre-blob standalone localStorage keys whose feature is retired — removed at
+ *  load rather than folded. `virgil-omni-hide-all-cards` held the ancestor of
+ *  `omniHideAllCards` (task 807). */
+const RETIRED_LEGACY_STORAGE_KEYS = ["virgil-omni-hide-all-cards"] as const;
 
 const DEFAULT_PREFS: ViewPrefs = {
   // Registry defaults FIRST so the 8 promoted decoration/highlight fields
@@ -669,14 +681,6 @@ export function normalizeGlobalSlice(raw: unknown): Pick<ViewPrefs, GlobalPrefKe
         ? hiddenFromLegacySides(blob.omniCategories)
         : DEFAULT_PREFS.omniHiddenCategories),
   );
-  const hideAll = blob.omniHideAllCards;
-  out.omniHideAllCards =
-    hideAll != null && typeof hideAll === "object"
-      ? {
-          left: Boolean((hideAll as Record<string, unknown>).left),
-          right: Boolean((hideAll as Record<string, unknown>).right),
-        }
-      : { ...DEFAULT_PREFS.omniHideAllCards };
 
   /* Migration ids: a list of strings, nothing else. */
   out.appliedPrefMigrations = Array.isArray(blob.appliedPrefMigrations)
@@ -790,15 +794,11 @@ export function loadPrefs(): ViewPrefs {
           return hiddenFromLegacySides(parsed);
         },
       },
-      {
-        key: "virgil-omni-hide-all-cards",
-        field: "omniHideAllCards",
-        parse: (r) => {
-          const parsed = JSON.parse(r);
-          return { left: Boolean(parsed?.left), right: Boolean(parsed?.right) };
-        },
-      },
     ];
+    // Standalone keys whose feature is retired: nothing to fold, only to
+    // remove, so they cannot sit orphaned in the profile forever. The
+    // standalone twin of `RETIRED_PREF_KEYS`.
+    for (const key of RETIRED_LEGACY_STORAGE_KEYS) localStorage.removeItem(key);
     const legacyGlobalPatch: Record<string, unknown> = {};
     let legacyTouched = false;
     for (const m of legacyMigrations) {
@@ -957,9 +957,10 @@ export function loadPrefs(): ViewPrefs {
     // Old persisted shape: activeLeft/Right (top/only) + active*Bottom
     // (split 2nd). New shape: dockStack (top→bottom, ≤MAX_STACK). When a
     // saved blob already carries dockStack (post-rework), clamp + use it;
-    // otherwise coerce the legacy fields. Collapse/blank carry forward
-    // from the old activeLeft sentinels (null = collapsed, "blank" = hidden
-    // omni). The dead split keys are deleted so they never round-trip.
+    // otherwise coerce the legacy fields. Collapse carries forward from the
+    // old activeLeft sentinel (null = collapsed); the old "blank" sentinel
+    // (hidden omni) is retired with omni-hide (task 807) and simply dropped.
+    // The dead split keys are deleted so they never round-trip.
     const realPanel = (x: unknown): x is PanelId =>
       typeof x === "string" && x !== "omni" && x !== "blank";
     const legacyStack = (top: unknown, bottom: unknown): PanelId[] => {
@@ -979,8 +980,6 @@ export function loadPrefs(): ViewPrefs {
     ) as ViewPrefs["dockStack"];
     const collapsedLeft = parsed.collapsedLeft ?? parsed.activeLeft === null;
     const collapsedRight = parsed.collapsedRight ?? parsed.activeRight === null;
-    const blankLeft = parsed.blankLeft ?? parsed.activeLeft === "blank";
-    const blankRight = parsed.blankRight ?? parsed.activeRight === "blank";
     for (const k of [
       "activeLeft", "activeRight", "activeLeftBottom", "activeRightBottom",
       "splitLeftRatio", "splitRightRatio", "splitLeftOrigin", "splitRightOrigin",
@@ -1051,8 +1050,6 @@ export function loadPrefs(): ViewPrefs {
           : {},
       collapsedLeft,
       collapsedRight,
-      blankLeft,
-      blankRight,
       poppedOutPanels: survivingPoppedPanels,
       panelModes: parsed.panelModes ?? {},
       floatPositions: parsed.floatPositions ?? {},
@@ -1346,7 +1343,7 @@ export function useViewPrefs(opts?: {
    * caller's one-shot measurement of the side's omni gap (docked path).
    */
   const openPanel = useCallback((id: PanelId, side?: Side, freeSpacePx?: number) => {
-    if (id === "omni" || id === "blank") return;
+    if (id === "omni") return;
     update((p) => {
       if (isPanelOpen(p, id)) return p;
       return openInMode(p, id, resolveSide(p, id, side), freeSpacePx);
@@ -1369,7 +1366,7 @@ export function useViewPrefs(opts?: {
    */
   const openPanelDocked = useCallback(
     (id: PanelId, side?: Side, freeSpacePx?: number) => {
-      if (id === "omni" || id === "blank") return;
+      if (id === "omni") return;
       update((p) => {
         if (isPanelOpen(p, id)) return p;
         return placeInStack(p, id, resolveSide(p, id, side), { freeSpacePx });
@@ -1381,15 +1378,15 @@ export function useViewPrefs(opts?: {
   // Legacy dock setters — kept as shims that route through openPanelFloat
   // so existing callers (marker clicks, search jump, command-input bridges,
   // etc.) get the new float-open behavior without per-call refactors.
-  // Passing "omni"/"blank"/null is a no-op (those used to be valid dock
+  // Passing "omni"/null is a no-op (those used to be valid dock
   // states; in the always-float model the column always shows omni).
   const setActiveLeft = useCallback((id: PanelId | null) => {
-    if (!id || id === "omni" || id === "blank") return;
+    if (!id || id === "omni") return;
     openPanelFloat(id, "left");
   }, [openPanelFloat]);
 
   const setActiveRight = useCallback((id: PanelId | null) => {
-    if (!id || id === "omni" || id === "blank") return;
+    if (!id || id === "omni") return;
     openPanelFloat(id, "right");
   }, [openPanelFloat]);
 
@@ -1418,25 +1415,6 @@ export function useViewPrefs(opts?: {
     update((p) => ({ ...closeAllPanelsIn(p), poppedOutCards: [] }));
   }, [update]);
 
-  /** Suppress the omni background on a side (a clean, empty column).
-   *  No-op for fully-collapsed sides. */
-  const setBlank = useCallback((side: Side) => {
-    update((p) => {
-      if (side === "left") return p.collapsedLeft ? p : { ...p, blankLeft: true };
-      return p.collapsedRight ? p : { ...p, blankRight: true };
-    });
-  }, [update]);
-
-  /** Restore the omni background on any side currently blanked. Called
-   *  when the user does something that should re-reveal omni (opens a
-   *  panel, creates a card). */
-  const clearBlankIfSet = useCallback(() => {
-    update((p) => {
-      if (!p.blankLeft && !p.blankRight) return p;
-      return { ...p, blankLeft: false, blankRight: false };
-    });
-  }, [update]);
-
   // Strip-click toggle: open if closed, close if open. "Open" means
   // either docked (in a stack) or floating — closing removes the panel
   // from its stack and/or poppedOutPanels. The saved float rect persists
@@ -1444,7 +1422,7 @@ export function useViewPrefs(opts?: {
   // one-shot omni-gap measurement for the docked-open fit check.
   const togglePanel = useCallback(
     (id: PanelId, side?: Side, freeSpacePx?: number) => {
-      if (id === "omni" || id === "blank") return;
+      if (id === "omni") return;
       update((p) =>
         isPanelOpen(p, id)
           ? closePanel(p, id)
@@ -1653,13 +1631,6 @@ export function useViewPrefs(opts?: {
     },
     [update],
   );
-
-  const toggleOmniHideAllCards = useCallback((side: "left" | "right") => {
-    update((p) => ({
-      ...p,
-      omniHideAllCards: { ...p.omniHideAllCards, [side]: !p.omniHideAllCards[side] },
-    }));
-  }, [update]);
 
   /* ── Card archive view ──────────────────────────────────────────── */
 
@@ -1879,8 +1850,6 @@ export function useViewPrefs(opts?: {
     expandLeft,
     expandRight,
     closeAllPanels,
-    setBlank,
-    clearBlankIfSet,
     togglePanel,
     movePanel,
     setPanelWidth,
@@ -1900,7 +1869,6 @@ export function useViewPrefs(opts?: {
     toggleViewPrefMember,
     toggleOmniCategory,
     resetOmniSide,
-    toggleOmniHideAllCards,
     setCardArchiveView,
     togglePopout,
     closePopout,

@@ -52,6 +52,7 @@ import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import type { CardCreationApi } from "./card-creation";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
+import { omniSideToReveal } from "@/hooks/view-prefs-derived";
 import type { AnchorRetargetApi } from "@/cards/retarget-anchors";
 import {
   captureParagraphSnapshot,
@@ -163,7 +164,6 @@ export interface DragHandleActionsDeps {
   prefs: ViewPrefs;
   expandLeft: () => void;
   expandRight: () => void;
-  clearBlankIfSet: () => void;
 }
 
 /**
@@ -190,35 +190,22 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     prefs,
     expandLeft,
     expandRight,
-    clearBlankIfSet,
   } = deps;
 
+  // Reveal omni for a panel's new card: the ONE hiding state is a folded
+  // gutter (task 807), and `omniSideToReveal` owns which side that is.
+  const { placements, collapsedLeft, collapsedRight } = prefs;
   const ensureOmniActiveForPanel = useCallback(
     (panelId: PanelId) => {
-      const placement = prefs.placements.find((p) => p.id === panelId);
-      const side = placement?.side ?? "right";
-      const collapsed =
-        side === "left" ? prefs.collapsedLeft : prefs.collapsedRight;
-      const blank = side === "left" ? prefs.blankLeft : prefs.blankRight;
-      if (collapsed) {
-        if (side === "left") expandLeft();
-        else expandRight();
-        return;
-      }
-      if (blank) {
-        clearBlankIfSet();
-      }
+      const side = omniSideToReveal(
+        { placements, collapsedLeft, collapsedRight },
+        panelId,
+        "right",
+      );
+      if (side === "left") expandLeft();
+      else if (side === "right") expandRight();
     },
-    [
-      prefs.placements,
-      prefs.collapsedLeft,
-      prefs.collapsedRight,
-      prefs.blankLeft,
-      prefs.blankRight,
-      expandLeft,
-      expandRight,
-      clearBlankIfSet,
-    ],
+    [placements, collapsedLeft, collapsedRight, expandLeft, expandRight],
   );
 
   const dispatchUnguarded = useCallback(

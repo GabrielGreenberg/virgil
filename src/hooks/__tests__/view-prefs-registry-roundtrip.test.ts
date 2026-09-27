@@ -223,3 +223,36 @@ describe("task 675 — a retired panel id is scrubbed from EVERY carrier on load
     expect(loaded.panelWidths).toEqual({ left: 320, right: 288 });
   });
 });
+
+describe("task 807 — omni-hide is retired; omni view is always on", () => {
+  it("a stored omniHideAllCards / blankLeft/Right / \"blank\" slot does not survive the load", () => {
+    writeBlob(GLOBAL_KEY, { omniHideAllCards: { left: true, right: true } });
+    writeBlob(WINDOW_KEY, {
+      blankLeft: true,
+      blankRight: true,
+      dockStack: { left: ["blank"], right: [] },
+      placements: [{ id: "notes", side: "right" }],
+    });
+    const loaded = loadPrefs() as unknown as Record<string, unknown>;
+    // A user who had omni hidden now sees it — by construction, no mapping.
+    expect("omniHideAllCards" in loaded).toBe(false);
+    expect("blankLeft" in loaded).toBe(false);
+    expect("blankRight" in loaded).toBe(false);
+    expect((loaded.dockStack as { left: string[] }).left).not.toContain("blank");
+  });
+
+  it("a legacy `activeLeft: \"blank\"` split-model blob loads without resurrecting blank", () => {
+    writeBlob(WINDOW_KEY, { activeLeft: "blank", activeRight: null });
+    const loaded = loadPrefs() as unknown as Record<string, unknown>;
+    expect("blankLeft" in loaded).toBe(false);
+    expect(loaded.collapsedRight).toBe(true);
+    expect((loaded.dockStack as { left: string[] }).left).toEqual([]);
+  });
+
+  it("the legacy standalone `virgil-omni-hide-all-cards` key is removed, not folded", () => {
+    localStorage.setItem("virgil-omni-hide-all-cards", JSON.stringify({ left: true }));
+    const loaded = loadPrefs() as unknown as Record<string, unknown>;
+    expect(localStorage.getItem("virgil-omni-hide-all-cards")).toBeNull();
+    expect("omniHideAllCards" in loaded).toBe(false);
+  });
+});

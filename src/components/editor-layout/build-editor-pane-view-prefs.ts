@@ -143,7 +143,6 @@ export interface EditorPaneViewDerivations {
   zenLeftMargin: number;
   zenRightMargin: number;
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
-  getOmniHideAll: (side: Side) => boolean;
   setOmniSideToDefault: (side: Side) => void;
   categorySides: Record<OmniCategory, Side>;
   /** Lockstep-remap a card popout key. EditorLayout supplies its own (the
@@ -230,8 +229,6 @@ export function buildEditorPaneViewPrefs(
 
     // ── OmniHost helpers ────────────────────────────────────────────
     getOmniEnabled: view.getOmniEnabled,
-    getOmniHideAll: view.getOmniHideAll,
-    toggleOmniHideAllCards: vp.toggleOmniHideAllCards,
 
     // ── Card archive view + bib filter ──────────────────────────────
     setCardArchiveView: editorHandlers.setCardArchiveView,
@@ -274,8 +271,6 @@ export function buildEditorPaneViewPrefs(
     collapseRight: vp.collapseRight,
     expandLeft: vp.expandLeft,
     expandRight: vp.expandRight,
-    setBlank: vp.setBlank,
-    clearBlankIfSet: vp.clearBlankIfSet,
     openPanelDocked: vp.openPanelDocked,
     toggleOmniCategory: vp.toggleOmniCategory,
     setOmniSideToDefault: view.setOmniSideToDefault,

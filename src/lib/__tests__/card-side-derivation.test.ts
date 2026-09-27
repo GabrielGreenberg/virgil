@@ -380,15 +380,43 @@ describe("card side — no second speller", () => {
     }
   });
 
-  it("`omniHideAllCards` stays per-SIDE, and says so", () => {
-    // It describes a COLUMN ("show nothing in this gutter"), not a category, so
-    // it has no panel whose placement it could derive from. Pinned so a future
-    // sweep doesn't fold it into the side-free set by symmetry.
+  it("`omniHideAllCards` (and `blankLeft/Right`) are RETIRED — omni is always on (task 807)", () => {
+    // The per-side "Blank this gutter" toggle is gone: a folded gutter and the
+    // category filter are the only ways to thin a column. The key must be
+    // scrubbed at load (RETIRED_PREF_KEYS), absent from the type, the shipped
+    // defaults, the structural-globals table and the promote whitelist — a key
+    // the code no longer reads, left on the whitelist, is cron-refreshed
+    // forever (task 326's aiMarker shape).
     const src = fs.readFileSync(
       path.join(REPO, "src/hooks/useViewPrefs.ts"),
       "utf8",
     );
-    expect(src).toMatch(/omniHideAllCards: \{ left: boolean; right: boolean \}/);
+    const retired = src.slice(
+      src.indexOf("const RETIRED_PREF_KEYS = ["),
+      src.indexOf("] as const;", src.indexOf("const RETIRED_PREF_KEYS = [")),
+    );
+    for (const k of ["omniHideAllCards", "blankLeft", "blankRight"]) {
+      expect(retired, `${k} must be a retired key`).toContain(`"${k}"`);
+      expect(src).not.toMatch(new RegExp(`^\\s*${k}: `, "m"));
+    }
+    expect(src).toContain('"virgil-omni-hide-all-cards"');
+    const json = JSON.parse(
+      fs.readFileSync(path.join(REPO, "src/hooks/useViewPrefs.defaults.json"), "utf8"),
+    ) as Record<string, unknown>;
+    for (const k of ["omniHideAllCards", "blankLeft", "blankRight"]) {
+      expect(k in json, `${k} must not ship in the defaults`).toBe(false);
+    }
+    const registry = JSON.parse(
+      fs.readFileSync(path.join(REPO, "src/lib/dev-prefs-registry.json"), "utf8"),
+    ) as { promotable: { whitelist?: string[] }[] };
+    for (const p of registry.promotable) {
+      expect(p.whitelist ?? []).not.toContain("omniHideAllCards");
+    }
+    const globals = fs.readFileSync(
+      path.join(REPO, "src/lib/view-prefs/structural-globals.ts"),
+      "utf8",
+    );
+    expect(globals).not.toContain("omniHideAllCards");
   });
 
   it("the promote-defaults whitelist tracks the live key", () => {

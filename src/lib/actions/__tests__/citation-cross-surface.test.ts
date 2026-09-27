@@ -28,7 +28,7 @@
 //   4. DURABILITY — typed insert lands the atom even with the card host
 //      unmounted; slash with no host no-ops cleanly (no atom, no throw).
 //   5. SOFT-ROUTE — the COMMIT surfaces OMNI only when the citations side is
-//      collapsed/blank (backlog #2). The prefs-inspecting route lives in
+//      collapsed (backlog #2). The prefs-inspecting route lives in
 //      `citation.run`'s commit branch.
 //
 // (The extension barrel transitively imports `@/lib/storage`; stub it — the
@@ -136,26 +136,24 @@ let setActiveLeft: ReturnType<typeof vi.fn>;
 let setActiveRight: ReturnType<typeof vi.fn>;
 let expandLeft: ReturnType<typeof vi.fn>;
 let expandRight: ReturnType<typeof vi.fn>;
-let clearBlankIfSet: ReturnType<typeof vi.fn>;
 let focusCard: ReturnType<typeof vi.fn>;
 
-/** A prefs object with the citations panel docked on `side`, in one of three
+/** A prefs object with the citations panel docked on `side`, in one of two
  *  visibility states for that side (backlog #2 band-stack model):
  *   - "collapsed" ⇒ the column is folded away; soft-route un-collapses it.
- *   - "blank"     ⇒ the "show nothing" overlay is set; soft-route clears it.
  *   - "shown"     ⇒ omni is already visible behind any docked bands; no-op.
+ *  (The third, "blank", was retired with omni-hide in task 807 — omni is
+ *  always on, so a folded gutter is the only state that hides it.)
  *  The OTHER side is always "shown" so a soft-route never touches it. */
 function prefsWith(
   side: "left" | "right",
-  state: "collapsed" | "blank" | "shown",
+  state: "collapsed" | "shown",
 ): ViewPrefs {
   return {
     placements: [{ id: "citations", side }],
     dockStack: { left: [], right: [] },
     collapsedLeft: side === "left" && state === "collapsed",
     collapsedRight: side === "right" && state === "collapsed",
-    blankLeft: side === "left" && state === "blank",
-    blankRight: side === "right" && state === "blank",
   } as unknown as ViewPrefs;
 }
 
@@ -187,7 +185,6 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
           setActiveRight: setActiveRight as (id: unknown) => void,
           expandLeft: expandLeft as () => void,
           expandRight: expandRight as () => void,
-          clearBlankIfSet: clearBlankIfSet as () => void,
           focusCard: focusCard as (key: string) => void,
         } as unknown as ActionContext["panelRouting"],
       };
@@ -279,7 +276,6 @@ beforeEach(() => {
   setActiveRight = vi.fn();
   expandLeft = vi.fn();
   expandRight = vi.fn();
-  clearBlankIfSet = vi.fn();
   focusCard = vi.fn();
 });
 
@@ -484,7 +480,7 @@ describe("popover commit (citation.run with payload)", () => {
 // (7) backlog #2 soft-route — fires on the COMMIT (run with payload), where the
 //     card is actually registered. In the band-stack model omni is the always-on
 //     background, so the soft-route REVEALS omni only when the citations side is
-//     HIDDEN: un-collapse a collapsed side, or un-blank a blanked side. An
+//     HIDDEN — i.e. collapsed (omni-hide is retired, task 807). An
 //     already-shown side is a no-op, and the OTHER side is never touched.
 // ---------------------------------------------------------------------------
 
@@ -502,28 +498,18 @@ describe("soft-route into omni (backlog #2)", () => {
     runCommit(prefsWith("right", "collapsed"));
     expect(expandRight).toHaveBeenCalledTimes(1);
     expect(expandLeft).not.toHaveBeenCalled();
-    expect(clearBlankIfSet).not.toHaveBeenCalled();
-  });
-
-  it("clears the blank when the citations side is blank", () => {
-    runCommit(prefsWith("right", "blank"));
-    expect(clearBlankIfSet).toHaveBeenCalledTimes(1);
-    expect(expandLeft).not.toHaveBeenCalled();
-    expect(expandRight).not.toHaveBeenCalled();
   });
 
   it("leaves the side ALONE when it's already shown (omni already behind any bands)", () => {
     runCommit(prefsWith("right", "shown"));
     expect(expandLeft).not.toHaveBeenCalled();
     expect(expandRight).not.toHaveBeenCalled();
-    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("respects a LEFT dock placement for the citations panel", () => {
     runCommit(prefsWith("left", "collapsed"));
     expect(expandLeft).toHaveBeenCalledTimes(1);
     expect(expandRight).not.toHaveBeenCalled();
-    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 });
 

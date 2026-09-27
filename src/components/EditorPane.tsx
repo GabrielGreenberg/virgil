@@ -310,7 +310,6 @@ import {
 import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
-import { OmniBlankToggle } from "./editor-layout/omni-blank-toggle";
 import {
   OmniFilterMenu,
   type OmniBulkPendingChanges,
@@ -549,8 +548,6 @@ export interface EditorPaneViewPrefs {
 
   // ── OmniHost helpers ────────────────────────────────────────────
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
-  getOmniHideAll: (side: Side) => boolean;
-  toggleOmniHideAllCards: (side: Side) => void;
 
   // ── Card archive view (per-panel View Active/Archives/All) ──────
   setCardArchiveView: (
@@ -615,11 +612,6 @@ export interface EditorPaneViewPrefs {
   collapseRight: () => void;
   expandLeft: () => void;
   expandRight: () => void;
-  /** Suppresses the default omni-view on a side ("blank" mode). */
-  setBlank: (side: Side) => void;
-  /** Clears the blank state on whichever side(s) have it set. Used by
-   *  flows that open a new card and need to drop "show nothing" first. */
-  clearBlankIfSet: () => void;
   /** Force-docks a panel into its gutter band (appends at the bottom of
    *  the side's stack; evicts the LRU band if there's no room). The
    *  optional `freeSpacePx` lets the caller pass the omni gap from
@@ -2957,8 +2949,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         panelMRU: { left: [], right: [] },
         collapsedLeft: false,
         collapsedRight: false,
-        blankLeft: false,
-        blankRight: false,
         panelWidths: {},
         poppedOutPanels: [],
         floatPositions: {},
@@ -4418,7 +4408,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     prefs: viewPrefs?.prefs ?? readerPrefs,
     expandLeft: viewPrefs?.expandLeft ?? stubSetActive,
     expandRight: viewPrefs?.expandRight ?? stubSetActive,
-    clearBlankIfSet: viewPrefs?.clearBlankIfSet ?? stubSetActive,
   });
   const [dragHandleMenuState, setDragHandleMenuState] = useState<{
     ref: DragHandleRef;
@@ -4462,13 +4451,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const bridgeRoutingPrefs = viewPrefs?.prefs ?? readerPrefs;
   const bridgeSetActiveLeft = viewPrefs?.setActiveLeft ?? stubSetActive;
   const bridgeSetActiveRight = viewPrefs?.setActiveRight ?? stubSetActive;
-  // Backlog #2 soft-route reveal: un-collapse / un-blank the panel's docked
+  // Backlog #2 soft-route reveal: un-collapse the panel's docked
   // side so a freshly-created card shows in omni. The Reader pane has no rail,
   // so these fall back to the no-op `stubSetActive` (a `\cite`/`\footnote` in
   // the Reader has nothing to reveal).
   const bridgeExpandLeft = viewPrefs?.expandLeft ?? stubSetActive;
   const bridgeExpandRight = viewPrefs?.expandRight ?? stubSetActive;
-  const bridgeClearBlankIfSet = viewPrefs?.clearBlankIfSet ?? stubSetActive;
   const bridgeDepsRef = useRef<{
     cardCreation: typeof cardCreation;
     dispatch: typeof dragHandleActions.dispatch;
@@ -4477,7 +4465,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     setActiveRight: (id: PanelId) => void;
     expandLeft: () => void;
     expandRight: () => void;
-    clearBlankIfSet: () => void;
     setSelectedExampleId: typeof setSelectedExampleId;
   }>({
     cardCreation,
@@ -4487,7 +4474,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     setActiveRight: bridgeSetActiveRight,
     expandLeft: bridgeExpandLeft,
     expandRight: bridgeExpandRight,
-    clearBlankIfSet: bridgeClearBlankIfSet,
     setSelectedExampleId,
   });
   bridgeDepsRef.current = {
@@ -4498,7 +4484,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     setActiveRight: bridgeSetActiveRight,
     expandLeft: bridgeExpandLeft,
     expandRight: bridgeExpandRight,
-    clearBlankIfSet: bridgeClearBlankIfSet,
     setSelectedExampleId,
   };
   // Publish on editor-mount; clear on unmount (or when the editor instance
@@ -4627,13 +4612,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             setActiveLeft: deps.setActiveLeft,
             setActiveRight: deps.setActiveRight,
             focusCard: focusNewCard,
-            // Backlog #2 soft-route reveal: un-collapse / un-blank the panel's
+            // Backlog #2 soft-route reveal: un-collapse the panel's
             // docked side so the new card is visible in the always-on omni
             // background (`setActiveX("omni")` is a no-op in the band-stack
             // model — omni is never an "active panel").
             expandLeft: deps.expandLeft,
             expandRight: deps.expandRight,
-            clearBlankIfSet: deps.clearBlankIfSet,
             // CHIP 5c: the example soft-select. `exampleRun` calls this with the
             // new block's uuid so an ALREADY-open Examples panel scrolls to it
             // (backlog #2 — never force-opens). Maps to the Examples panel's
@@ -6650,7 +6634,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               // close button bound to this panel id (in the always-
               // float model, "close" means "drop the float").
               const panelInner =
-                pid === "blank" || pid === "omni" ? (
+                pid === "omni" ? (
                   <PaneRailBody
                     side={panelSide}
                     panelKind={pid as PanelKind}
@@ -8315,10 +8299,6 @@ function IconStrip({
             <line x1={isLeft ? 9 : 15} y1="4" x2={isLeft ? 9 : 15} y2="20" />
           </svg>
         </button>
-        <OmniBlankToggle
-          hidden={viewPrefs.getOmniHideAll(side)}
-          onToggle={() => viewPrefs.toggleOmniHideAllCards(side)}
-        />
       </div>
       {stripItems.map((p) => (
         <StripButton
@@ -8524,7 +8504,6 @@ function PaneRail({
           setRequestAiRequest={reportsHook.setRequestAiRequest}
           deleteReportCard={reportsHook.deleteCard}
           getOmniEnabled={viewPrefs.getOmniEnabled}
-          getOmniHideAll={viewPrefs.getOmniHideAll}
           categorySides={viewPrefs.categorySides}
           focusState={viewPrefs.focusState}
           onVisibleCardsChange={setOmniCardCount}

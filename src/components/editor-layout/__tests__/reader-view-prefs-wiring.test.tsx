@@ -155,12 +155,10 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
       "openPanelDocked",
       "movePanel",
       "toggleCardPopout",
-      "toggleOmniHideAllCards",
       // The Bibliography filter is written through the ONE registry-driven
       // setter (task 274) — there is no bespoke `setBibFilter` any more.
       "setViewPref",
       "getOmniEnabled",
-      "getOmniHideAll",
       "remapCardPopKey",
     ] as const) {
       expect(typeof bundle[member]).toBe("function");

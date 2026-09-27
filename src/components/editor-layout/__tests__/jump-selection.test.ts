@@ -83,7 +83,7 @@ describe("jump-selection — exhaustiveness over SCOPE_PANEL", () => {
 
   it("returns null for panel ids without a native selection slot", () => {
     const setters = spySetters();
-    for (const panel of ["omni", "search", "outline", "blank"] as const) {
+    for (const panel of ["omni", "search", "outline"] as const) {
       expect(jumpSelectionFor(setters, panel)).toBeNull();
     }
   });

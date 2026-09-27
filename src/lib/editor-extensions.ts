@@ -1260,8 +1260,9 @@ export function createHeadingWithLabel(
           if (!isNumbered) numToggle.classList.add("is-off");
           numToggle.dataset.action = "toggle-numbered";
           // The NAME is stable across the toggle; `aria-pressed` is the state
-          // channel and the tooltip is what flips (the `OmniBlankToggle`
-          // contract) — a name that restated the state would double-announce.
+          // channel and the tooltip is what flips (the figure `#`'s
+          // contract, pinned in accessible-name-agrees-with-visible-control)
+          // — a name that restated the state would double-announce.
           numToggle.setAttribute("aria-label", "Section number");
           numToggle.setAttribute("aria-pressed", isNumbered ? "true" : "false");
           numToggle.title = isNumbered ? "Hide section number" : "Show section number";

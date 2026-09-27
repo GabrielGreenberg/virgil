@@ -23,13 +23,17 @@
 //   2. **A name/polarity question.** The strip's blank-gutter toggle was
 //      `iconHint({ label: "Omni view" })` — named for the surface it
 //      SUPPRESSES, so a screen-reader user heard "Omni view, toggle button,
-//      pressed" at exactly the moment the omni view was empty. A general
-//      "aria-pressed polarity matches the label" census is not automatable
-//      (it requires reading intent), so this is honestly a PER-SITE pin, and
-//      says so.
+//      pressed" at exactly the moment the omni view was empty. The fix set a
+//      contract: a toggle's NAME is stable, `aria-pressed` is the state
+//      channel, and only the sighted tooltip flips. That toggle was retired
+//      with omni-hide (task 807); the contract lives on in the figure-number
+//      (and heading-number) `#` toggles, so member 3 now pins it there. A
+//      general "aria-pressed polarity matches the label" census is not
+//      automatable (it requires reading intent), so this is honestly a
+//      PER-SITE pin, and says so.
 //
-// Measured by neutering each half in turn: restoring the pills' `aria-label`
-// fails 3 legs; restoring `label: "Omni view"` fails 2.
+// Measured (task 424) by neutering each half in turn: restoring the pills'
+// `aria-label` fails 3 legs.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@testing-library/react";
@@ -40,7 +44,7 @@ vi.mock("@/lib/storage", async () =>
 );
 
 import { OmniUnanchoredBin, OmniOutsideFocusBin } from "@/panels/Omni/OmniViewPanel";
-import { OmniBlankToggle } from "@/components/editor-layout/omni-blank-toggle";
+import FigureAnnotation from "@/components/FigureAnnotation";
 import type { OmniItem } from "@/panels/_shared/types";
 
 afterEach(() => {
@@ -140,36 +144,38 @@ describe("member 1 — an omni bin pill announces its own text, count included",
   });
 });
 
-describe("member 3 — the blank-gutter toggle is named for what it does", () => {
+describe("member 3 — the figure-number toggle's name is stable; the tooltip flips", () => {
   // A PER-SITE pin, deliberately: whether a toggle's name agrees with its
   // `aria-pressed` polarity requires reading intent, so no census can ask it.
-  const NAMES_THE_SUPPRESSED_SURFACE = /^omni view$/i;
+  // (Re-homed from the retired omni blank-gutter toggle, task 807.)
+  const toggleOf = (numbered: boolean) => {
+    const { container } = render(
+      createElement(FigureAnnotation, { label: "fig:a", numbered }),
+    );
+    return container.querySelector<HTMLButtonElement>(
+      "button.figure-annotation-numbered-toggle",
+    )!;
+  };
 
-  for (const hidden of [false, true]) {
-    it(`names the MODE, not the omni view (hidden=${hidden})`, () => {
-      const { container } = render(
-        createElement(OmniBlankToggle, { hidden, onToggle: () => {} }),
-      );
-      const btn = container.querySelector("button")!;
+  for (const numbered of [false, true]) {
+    it(`names the CONTROL, not its state (numbered=${numbered})`, () => {
+      const btn = toggleOf(numbered);
       const name = accessibleName(btn);
-      expect(name).not.toMatch(NAMES_THE_SUPPRESSED_SURFACE);
-      expect(name.toLowerCase()).toMatch(/blank/);
+      expect(name).toBe("Figure number");
       // `aria-pressed` is the state channel; the name is stable across it, so
       // the two cannot double-announce or contradict each other.
-      expect(btn.getAttribute("aria-pressed")).toBe(String(hidden));
+      expect(btn.getAttribute("aria-pressed")).toBe(String(numbered));
       // The sighted user's tooltip DOES flip — it has no state channel of its
       // own — and always says what pressing it does.
       const hint = btn.getAttribute("data-hint") ?? "";
-      expect(hint.toLowerCase()).toMatch(hidden ? /show/ : /hide|blank/);
+      expect(hint.toLowerCase()).toMatch(numbered ? /hide/ : /show/);
     });
   }
 
   it("keeps one stable name across the toggle", () => {
-    const a = render(createElement(OmniBlankToggle, { hidden: false, onToggle: () => {} }));
-    const nameOff = accessibleName(a.container.querySelector("button")!);
+    const nameOff = accessibleName(toggleOf(false));
     cleanup();
-    const b = render(createElement(OmniBlankToggle, { hidden: true, onToggle: () => {} }));
-    const nameOn = accessibleName(b.container.querySelector("button")!);
+    const nameOn = accessibleName(toggleOf(true));
     expect(nameOn).toBe(nameOff);
   });
 });

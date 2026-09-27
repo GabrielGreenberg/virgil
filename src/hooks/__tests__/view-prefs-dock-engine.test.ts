@@ -63,8 +63,6 @@ function prefs(over: Partial<ViewPrefs> = {}): ViewPrefs {
     panelModes: {},
     collapsedLeft: false,
     collapsedRight: false,
-    blankLeft: false,
-    blankRight: false,
     ...over,
   } as unknown as ViewPrefs;
 }
@@ -79,25 +77,23 @@ describe("placeInStack — THE insertion SSOT", () => {
     expect(p.panelMRU.left).toEqual([B]);
   });
 
-  it("clears the collapse AND blank sentinel of the target side only (task 272)", () => {
+  it("clears the collapse sentinel of the target side only (task 272)", () => {
     // The invariant every inline copy is apt to drop: a docked band's
-    // `[data-dock-slot]` portal target only exists in an expanded, non-blank
+    // `[data-dock-slot]` portal target only exists in an expanded
     // column, so a placement onto a collapsed side must expand it or the
     // panel renders nothing. Owning it HERE is what retires the class —
     // redock gets it for free rather than re-deriving it.
     const base = prefs({
       collapsedLeft: true,
       collapsedRight: true,
-      blankLeft: true,
-      blankRight: true,
     });
     const left = placeInStack(base, A, "left");
-    expect([left.collapsedLeft, left.blankLeft]).toEqual([false, false]);
-    expect([left.collapsedRight, left.blankRight]).toEqual([true, true]);
+    expect(left.collapsedLeft).toBe(false);
+    expect(left.collapsedRight).toBe(true);
 
     const right = placeInStack(base, A, "right");
-    expect([right.collapsedRight, right.blankRight]).toEqual([false, false]);
-    expect([right.collapsedLeft, right.blankLeft]).toEqual([true, true]);
+    expect(right.collapsedRight).toBe(false);
+    expect(right.collapsedLeft).toBe(true);
   });
 
   it("splices at an explicit index and clamps one out of range", () => {
@@ -225,7 +221,6 @@ describe("removeFromStack / closePanel — THE removal SSOTs", () => {
         poppedOutPanels: [C],
         poppedOutCards: ["note:1"],
         collapsedLeft: true,
-        blankRight: true,
       }),
     );
     expect(p.dockStack).toEqual({ left: [], right: [] });
@@ -233,7 +228,7 @@ describe("removeFromStack / closePanel — THE removal SSOTs", () => {
     expect(p.poppedOutPanels).toEqual([]);
     // Card floats are a different axis; the sides keep their sentinels.
     expect(p.poppedOutCards).toEqual(["note:1"]);
-    expect([p.collapsedLeft, p.blankRight]).toEqual([true, true]);
+    expect(p.collapsedLeft).toBe(true);
   });
 });
 

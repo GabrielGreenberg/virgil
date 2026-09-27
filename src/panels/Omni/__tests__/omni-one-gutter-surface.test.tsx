@@ -13,8 +13,9 @@
 // The shape of the fix, and what each leg pins:
 //
 //  • The BIN reads the side's WHOLE item list (legs 1-2). It used to read the
-//    view-filtered `visibleItems`, so hiding all cards on a side — or
-//    filtering a category out — emptied the bin, and the only surface that
+//    view-filtered `visibleItems`, so hiding all cards on a side (the
+//    "hide all cards" toggle, retired in task 807) — or filtering a category
+//    out — emptied the bin, and the only surface that
 //    still showed the card was the chip. With the chip gone, the bin inherits
 //    task 410's rule: an affordance that exists so a card cannot vanish is
 //    not hideable by a layout preference.
@@ -128,15 +129,16 @@ const BOTH_ON_RIGHT = { notes: "right", footnotes: "right" } as const;
 // ===========================================================================
 
 describe("the no-anchor bin is not hideable by a layout preference", () => {
-  it("leg 1: 'hide all cards' empties the cascade and NOT the bin", () => {
+  it("leg 1: filtering EVERY category out empties the cascade and NOT the bin", () => {
+    // (Was the "hide all cards" toggle; task 807 retired it, so the one way
+    // left to empty a whole cascade is the category filter.)
     const { container } = render(
       <OmniViewPanel
         side="right"
         items={[anchoredNote, freeNote, orphanFootnote]}
         editor={liveEditor}
-        enabledCategories={NOTES_ONLY}
+        enabledCategories={NOTHING}
         categorySides={BOTH_ON_RIGHT}
-        hideAllCards
       />,
     );
     // The cascade is empty…
@@ -233,7 +235,6 @@ describe("the no-anchor bin is not hideable by a layout preference", () => {
         items={[freeNote]}
         editor={liveEditor}
         enabledCategories={NOTHING}
-        hideAllCards
         onVisibleCardsChange={(n) => seen.push(n)}
       />,
     );

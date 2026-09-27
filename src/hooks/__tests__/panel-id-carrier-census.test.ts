@@ -125,7 +125,6 @@ describe("PANEL_ID_CARRIERS — the SUBTRACTIVE half covers every classified car
       panelWidths: { left: 320, right: 280 },
       cardFloatPositions: { "float:margin:note:abc": { x: 1, y: 2, width: 3, height: 4 } },
       poppedOutCards: ["float:margin:note:abc"],
-      omniHideAllCards: { left: true, right: false },
       appliedPrefMigrations: ["some-migration-id"],
     };
     expect(scrubUnknownPanelIds(blob)).toBe(blob);

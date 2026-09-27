@@ -192,11 +192,9 @@ export function placeInStack(
     ...p,
     panelModes: { ...p.panelModes, [id]: "docked" as PanelMode },
     // Invariant 1 — a docked band's portal target only exists in an
-    // expanded, non-blank column.
+    // expanded column.
     collapsedLeft: side === "left" ? false : p.collapsedLeft,
     collapsedRight: side === "right" ? false : p.collapsedRight,
-    blankLeft: side === "left" ? false : p.blankLeft,
-    blankRight: side === "right" ? false : p.blankRight,
     poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
   };
   // Relocation (redock from the other side, movePanel, a re-place at a new
