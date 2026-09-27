@@ -1281,7 +1281,7 @@ class FieldChange:
 
 @dataclass
 class AuthResult:
-    state: str  # authenticated | unverified | failed | manuscript
+    state: str  # authenticated | unverified | canonical | failed | manuscript
     doi_verified: bool = False
     sources: list[str] = field(default_factory=list)
     field_changes: list[dict] = field(default_factory=list)
@@ -2256,6 +2256,81 @@ def _norm_title(s: str) -> str:
     return re.sub(r"[^\w\s]", "", re.sub(r"\s+", " ", (s or "").lower())).strip()
 
 
+# Tier-1 corroboration sources an operator may cite in `/library/authenticate-bib`
+# step 4. Two or more of them agreeing is as authoritative as the helper's own
+# two-API agreement, which is sometimes too strict for a DOI-less book.
+TIER1_AUTHORITATIVE_SOURCES: frozenset[str] = frozenset({
+    "internet-archive", "worldcat", "publisher-page", "crossref-raw",
+})
+
+
+def settle_auth_verdict(result: dict, tier1_changes: "list[dict] | None" = None,
+                        *, now: str | None = None) -> dict:
+    """THE run's verdict as a catalog `bib` block — computed BEFORE the write.
+
+    Task 797. `/library/authenticate-bib` used to derive its tier-1 upgrade in
+    step 7's inline Python, AFTER step 5 had already stamped master.bib with
+    the helper's raw state — so the upgrade reached the catalog row and never
+    master.bib. The skill now calls this once, before step 5, and passes the
+    SAME block's `state` to the master write and the whole block to step 7.
+
+    Upgrade rule: an `unverified` or `canonical` verdict (canonical is a
+    descriptor since F#3, not a give-up) becomes `authenticated` when the
+    operator's tier-1 changes cite ≥2 distinct `TIER1_AUTHORITATIVE_SOURCES`.
+
+    `fieldChanges` is THIS run's list only — the helper's plus tier-1. The
+    prior row's history is appended by `_tools.settle_catalog_bib`, the one
+    place that owns it; pre-merging it here is how it doubled.
+    """
+    tier1 = list(tier1_changes or [])
+    t1_auth = sorted({c.get("source", "") for c in tier1}
+                     & TIER1_AUTHORITATIVE_SOURCES)
+    state = result.get("state", "") or ""
+    sources = list(result.get("sources") or [])
+    if state in ("unverified", "canonical") and len(t1_auth) >= 2:
+        state = "authenticated"
+        sources = sources + [s for s in t1_auth if s not in sources]
+    status = {
+        "state": state,
+        "doiVerified": bool(result.get("doi_verified")),
+        "sources": sources,
+        "fieldChanges": list(result.get("field_changes") or []) + tier1,
+        "score": result.get("score", 0.0),
+        "note": result.get("note", ""),
+    }
+    if state == "authenticated":
+        status["authenticatedAt"] = now or time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return status
+
+
+def _settle_verdict_main(argv: list[str]) -> int:
+    """`bib_auth.py settle-verdict --result-file R [--tier1-file T]` — prints
+    `settle_auth_verdict`'s block as JSON."""
+    import argparse
+    import json
+    import sys
+    ap = argparse.ArgumentParser(prog="bib_auth.py settle-verdict")
+    ap.add_argument("--result-file", required=True,
+                    help="The AuthResult JSON step 3 printed.")
+    ap.add_argument("--tier1-file",
+                    help="JSON list of step-4 tier-1 field changes (may be omitted).")
+    args = ap.parse_args(argv)
+    try:
+        result = json.loads(Path(args.result_file).read_text(encoding="utf-8"))
+        tier1 = (json.loads(Path(args.tier1_file).read_text(encoding="utf-8"))
+                 if args.tier1_file else [])
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"settle-verdict: {e}", file=sys.stderr)
+        return 2
+    if not isinstance(result, dict) or not isinstance(tier1, list):
+        print("settle-verdict: --result-file must hold an object and "
+              "--tier1-file a list", file=sys.stderr)
+        return 2
+    print(json.dumps(settle_auth_verdict(result, tier1), indent=2))
+    return 0
+
+
 def _build_arg_parser():
     import argparse
 
@@ -2302,6 +2377,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     import json
     import sys
 
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv[:1] == ["settle-verdict"]:
+        return _settle_verdict_main(argv[1:])
     ap = _build_arg_parser()
     args = ap.parse_args(argv)
 

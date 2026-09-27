@@ -2017,13 +2017,103 @@ def catalog_row_bib_state(row: dict) -> str:
     return ((row.get("bib") or {}).get("state")) or ""
 
 
+# The keys of a catalog `bib` block that describe ONE RUN'S VERDICT — as
+# opposed to `fieldChanges`, which records field values that actually landed
+# in master.bib. When the write door HELD a settled state against a weaker
+# verdict, that verdict never reached master.bib, so none of these may reach
+# the row either: a row saying `authenticated` with a `failed` run's
+# `sources`/`note` would describe an evidence trail the state never saw.
+_BIB_VERDICT_KEYS = frozenset({
+    "state", "doiVerified", "sources", "score", "note", "authenticatedAt",
+})
+
+
+def settle_catalog_bib(
+    library: Path,
+    citekey: str,
+    prior: "dict | None",
+    patch: "dict | None",
+    *,
+    effective_state: "str | None" = None,
+) -> dict:
+    """THE catalog `bib` block after one run — composed in ONE place (task 797).
+
+    Every catalog writer used to spell this by hand, and they disagreed:
+
+    * **State is READ BACK, never asserted.** The row's `state` is what
+      master.bib's `% bib.state` comment says after the run's write
+      (`effective_state`, or read here from master.bib when not supplied) —
+      never the state the caller asked for. `update_master_bib_entry` HOLDS a
+      settled state against a weaker one (task 621), so the requested state is
+      a request, and a row that recorded the request showed "Unverified" for an
+      entry master.bib still called authenticated. Falls back to the patch's
+      state only when master.bib has no comment at all.
+    * **A held verdict is dropped whole** (`_BIB_VERDICT_KEYS`); the prior
+      row's verdict stands beside the state it earned.
+    * **History is appended HERE and only here.** `fieldChanges` = the prior
+      row's list + the patch's list, so a caller passes only THIS run's
+      changes. When one caller pre-merged prior history and the door appended
+      it again, the list doubled every run.
+    """
+    prior = dict(prior or {})
+    patch = dict(patch or {})
+    requested = patch.get("state") or ""
+    if effective_state is None:
+        entry = master_entry_for(library, citekey)
+        effective_state = (entry or {}).get("state") or ""
+    effective = effective_state or requested
+
+    merged = dict(prior)
+    held = bool(requested) and effective != requested
+    for k, v in patch.items():
+        if k == "fieldChanges":
+            continue
+        if held and k in _BIB_VERDICT_KEYS:
+            continue
+        merged[k] = v
+    if effective:
+        merged["state"] = effective
+    history = list(prior.get("fieldChanges") or []) + list(
+        patch.get("fieldChanges") or [])
+    if history or "fieldChanges" in prior or "fieldChanges" in patch:
+        merged["fieldChanges"] = history
+    return merged
+
+
+def settle_master_bib_state(library: Path, citekey: str, state: str) -> str:
+    """Stamp `state` onto `citekey`'s master.bib entry through the write door,
+    and return the state the entry carries AFTERWARDS ("" when absent).
+
+    Writes only the `% bib.state` comment: the entry's type and fields are
+    taken from what the door is about to replace (`compose`, task 796), inside
+    its lock, so a field another writer landed since the caller last read the
+    file is never re-emitted from a stale copy. `state` falsy or `"none"`
+    writes nothing and just reports the current state — "no verdict" never
+    overwrites a settled one.
+    """
+    if not state or state == "none":
+        entry = master_entry_for(library, citekey)
+        return (entry or {}).get("state") or ""
+    if state not in CANONICAL_BIB_STATES:
+        raise ValueError(
+            f"bib.state {state!r} is not canonical (see CANONICAL_BIB_STATES)")
+
+    def _keep(existing: "dict | None"):
+        if existing is None:
+            return None
+        return existing.get("type", "misc"), dict(existing.get("fields") or {})
+
+    return update_master_bib_entry(
+        library, citekey, "misc", {}, bib_state=state, compose=_keep)
+
+
 def ensure_bib_state_comment(
     library: Path,
     citekey: str,
     entry_type: str,
     fields: dict[str, str],
     state: str,
-) -> None:
+) -> str:
     """Write/refresh the `% bib.state = <state>` comment for `citekey` in
     master.bib WITHOUT minting a catalog row (the F#4 reference-only path).
 
@@ -2037,7 +2127,8 @@ def ensure_bib_state_comment(
             f"bib.state {state!r} is not canonical (see CANONICAL_BIB_STATES); "
             "the bib-index reader would drop it to 'none'."
         )
-    update_master_bib_entry(library, citekey, entry_type, fields, bib_state=state)
+    return update_master_bib_entry(
+        library, citekey, entry_type, fields, bib_state=state)
 
 
 # ── F#4 WRITE side: ONE door, asked before every catalog row is minted ─
@@ -2110,8 +2201,9 @@ def admit_catalog_row(
     not 2. One door, one rule, three writers.)
 
     `bib` is the row's `bib` block for the refresh, defaulting to just the
-    state; its `fieldChanges` are APPENDED to whatever the row already holds,
-    so history accumulates across runs exactly as it does on a holdings row.
+    state; it is composed by `settle_catalog_bib` — `fieldChanges` APPENDED
+    to whatever the row already holds (so pass only THIS run's changes), and
+    `state` read back from what the discharge settled, never the request.
     `top` is any top-level fields (title/authors/year/doi) the caller has
     derived — passed only by a caller that used to write them, because the
     three writers derive them differently and this door is not entitled to
@@ -2134,8 +2226,10 @@ def admit_catalog_row(
     """
     if paper_has_holdings(library, citekey):
         return True
+    effective: "str | None" = None
     if bib_state and bib_state != "none":
-        ensure_bib_state_comment(library, citekey, entry_type, fields, bib_state)
+        effective = ensure_bib_state_comment(
+            library, citekey, entry_type, fields, bib_state)
     patch = dict(bib) if bib else ({"state": bib_state} if bib_state else None)
     if patch or top:
         with lock_catalog(library):
@@ -2144,13 +2238,11 @@ def admit_catalog_row(
                 if not citekey_matches(e.get("citekey", ""), citekey):
                     continue
                 if patch:
-                    merged = dict(e.get("bib") or {})
-                    merged.update(patch)
-                    prior = (e.get("bib") or {}).get("fieldChanges") or []
-                    fresh = patch.get("fieldChanges") or []
-                    if prior or fresh:
-                        merged["fieldChanges"] = list(prior) + list(fresh)
-                    e["bib"] = merged
+                    # The row's state is what the discharge SETTLED, not what
+                    # was asked (task 797); history appends in the one place.
+                    e["bib"] = settle_catalog_bib(
+                        library, citekey, e.get("bib"), patch,
+                        effective_state=effective)
                 for k, v in (top or {}).items():
                     e[k] = v
                 e["updatedAt"] = _now()

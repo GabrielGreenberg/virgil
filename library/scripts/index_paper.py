@@ -56,6 +56,8 @@ from _tools import (
     is_terminal_bib_state,
     master_entry_for,
     resolve_paper_source,
+    settle_catalog_bib,
+    settle_master_bib_state,
     update_master_bib_entry,
     upsert_catalog_entry,
     write_catalog,
@@ -125,7 +127,7 @@ def _resync_references_bib(library: Path, citekey: str) -> bool:
 
 
 def _sync_catalog_entry_from_master(library: Path, citekey: str,
-                                    bib_status: dict) -> None:
+                                    bib_status: dict) -> str:
     """Sync catalog.json top-level fields from master.bib so they can't drift.
 
     F#4 holdings-only gate (task 443). This is `/library/authenticate-bib`
@@ -145,10 +147,21 @@ def _sync_catalog_entry_from_master(library: Path, citekey: str,
     defect from the other side), and answers False — so there is nothing left
     to do here. For a real holding it answers True and the row is written
     exactly as before.
+
+    **Returns the state master.bib SETTLED** — the one the row now carries
+    (task 797). `bib_status` is this run's verdict and this run's
+    `fieldChanges` only: the state in it is a REQUEST, stamped through the
+    write door, which holds a settled state against a weaker one; the row
+    then takes the state back from master.bib and `settle_catalog_bib`
+    appends the history. So a holding's state reaches master.bib too (the
+    door's True arm writes nothing, and before this the tier-1 upgrade the
+    skill computed after its own master write never got there), and a caller
+    reports what landed, not what it asked for. "" when master.bib has no
+    entry.
     """
     entry = master_entry_for(library, citekey)
     if not entry:
-        return
+        return ""
     fields = entry["fields"]
     authors_str = fields.get("author", "")
     authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
@@ -171,11 +184,19 @@ def _sync_catalog_entry_from_master(library: Path, citekey: str,
         bib=bib_status,
         top=top,
     ):
-        return
+        return settle_master_bib_state(library, citekey, "")
+    effective = settle_master_bib_state(
+        library, citekey, (bib_status or {}).get("state", ""))
     with lock_catalog(library):
         catalog = read_catalog(library)
-        upsert_catalog_entry(catalog, citekey, bib=bib_status, **top)
+        prior = next((e.get("bib") for e in catalog.get("entries", [])
+                      if citekey_matches(e.get("citekey", ""), citekey)), None)
+        bib = settle_catalog_bib(library, citekey, prior, bib_status,
+                                 effective_state=effective)
+        row = upsert_catalog_entry(catalog, citekey, **top)
+        row["bib"] = bib
         write_catalog(library, catalog)
+    return effective or bib.get("state", "")
 
 
 def _sha256(p: Path) -> str:
@@ -666,6 +687,11 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         )
     with lock_catalog(library):
         catalog = read_catalog(library)
+        prior_bib = next((e.get("bib") for e in catalog.get("entries", [])
+                          if citekey_matches(e.get("citekey", ""), citekey)), None)
+        # State read back from master.bib, history appended (task 797).
+        run_changes = len(bib_status.get("fieldChanges") or [])
+        bib_status = settle_catalog_bib(library, citekey, prior_bib, bib_status)
         entry = upsert_catalog_entry(
             catalog,
             citekey,
@@ -675,9 +701,9 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             doi=fields.get("doi") or None,
             pdf=source_status,
             indexed=indexed_block,
-            bib=bib_status,
             **({"duplicateOf": duplicate_of} if duplicate_of else {}),
         )
+        entry["bib"] = bib_status
         write_catalog(library, catalog)
 
     # 10. Logs + notifications + version bump.
@@ -694,7 +720,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         f"- Extractor: **{extractor_used}**\n"
         + pages_line +
         f"- Blocks emitted: **{len(extracted['blocks'])}**\n"
-        f"- Bib auth: **{bib_status.get('state', '?')}** ({len(bib_status.get('fieldChanges', []))} field changes)\n"
+        f"- Bib auth: **{bib_status.get('state', '?')}** ({run_changes} field changes)\n"
         f"- Output: `papers/{citekey}/main.tex`\n"
     )
     (log_dir / f"{slug}-index.summary.md").write_text(summary)
