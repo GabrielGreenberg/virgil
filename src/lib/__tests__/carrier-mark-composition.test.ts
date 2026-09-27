@@ -13,10 +13,10 @@
 // POINT from cycle 1, all of it landing on OPEN (`readDocBundle` runs this same
 // pipeline and then fires `writeReStampedTexOnLoad` unconditionally):
 //
-//   M1  \textbf{\textsc{Smith}}              -> \textsc{Smith}          (\textbf DELETED)
-//       \textcolor[HTML]{FF0000}{\textsc{x}} -> \textsc{x}              (the colour DELETED)
+//   M1  \textbf{\textsf{Smith}}              -> \textsf{Smith}          (\textbf DELETED)
+//       \textcolor[HTML]{FF0000}{\textsf{x}} -> \textsf{x}              (the colour DELETED)
 //       \textbf{\verb|a|}                    -> \verb|a|
-//       \emph{a \textsc{b} c}                -> \emph{a }\textsc{b}\emph{ c}
+//       \emph{a \textsf{b} c}                -> \emph{a }\textsf{b}\emph{ c}
 //   M2  the same, in the card/footnote fork
 //   M3  \emph{\citep{smith}}                 -> \vcid{…}\citep{smith}   (\emph gone)
 //       \emph{$x^2$} / \emph{\ref{fig:1}}    -> the atom, bare
@@ -46,7 +46,10 @@ import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
 import {
+  WRAPPER_MARK_ROWS,
   WRAPPER_MARK_TYPES,
+  matchWrapperCommandAt,
+  type WrapperMarkRow,
   markWrapSignature,
   wrapperMarksOf,
   applyWrapperMarks,
@@ -119,16 +122,17 @@ const firstParagraph = (tex: string): JSONContent | undefined =>
 // ── M1 · a wrapper around a CARRIER, main surface ────────────────────────────
 
 describe("M1 — a formatting mark wrapped around a carrier survives (main)", () => {
-  // `\textsc` is unmodeled — it is the standard small-caps / gloss-abbreviation
-  // command, so this is ordinary linguistics and philosophy prose.
+  // `\textsf` (sans-serif) is unmodeled, so it rides the raw-LaTeX carrier.
+  // Until task 808 these legs used `\textsc`, which is now a modeled wrapper
+  // mark (small caps) — see the "nested wrappers" legs below.
   it("\\textbf around an unmodeled command", () => {
-    expectStable(mainCycles("\\textbf{\\textsc{Smith}}"), "\\textbf{\\textsc{Smith}}");
+    expectStable(mainCycles("\\textbf{\\textsf{Smith}}"), "\\textbf{\\textsf{Smith}}");
   });
 
   it("\\textcolor around an unmodeled command", () => {
     expectStable(
-      mainCycles("\\textcolor[HTML]{FF0000}{\\textsc{x}}"),
-      "\\textcolor[HTML]{FF0000}{\\textsc{x}}",
+      mainCycles("\\textcolor[HTML]{FF0000}{\\textsf{x}}"),
+      "\\textcolor[HTML]{FF0000}{\\textsf{x}}",
     );
   });
 
@@ -139,7 +143,7 @@ describe("M1 — a formatting mark wrapped around a carrier survives (main)", ()
   // The RUN case: pre-377 the carrier in the middle split one `\emph{…}` into
   // two and dropped the wrapper from the middle piece.
   it("a carrier INSIDE a wrapped run does not split the wrapper", () => {
-    expectStable(mainCycles("\\emph{a \\textsc{b} c}"), "\\emph{a \\textsc{b} c}");
+    expectStable(mainCycles("\\emph{a \\textsf{b} c}"), "\\emph{a \\textsf{b} c}");
   });
 
   it("CONTROL — plain bold round-trips (it always did)", () => {
@@ -155,7 +159,7 @@ describe("M1 — a formatting mark wrapped around a carrier survives (main)", ()
 
 describe("M2 — the fork composes the same way", () => {
   it("\\textbf around an unmodeled command, through the fork's own doors", () => {
-    expectStable(forkCycles("\\textbf{\\textsc{x}}"), "\\textbf{\\textsc{x}}");
+    expectStable(forkCycles("\\textbf{\\textsf{x}}"), "\\textbf{\\textsf{x}}");
   });
 
   it("\\textbf around an inline \\verb, through the fork's own doors", () => {
@@ -163,11 +167,11 @@ describe("M2 — the fork composes the same way", () => {
   });
 
   it("a carrier inside a wrapped run, through the fork's own doors", () => {
-    expectStable(forkCycles("\\emph{a \\textsc{b} c}"), "\\emph{a \\textsc{b} c}");
+    expectStable(forkCycles("\\emph{a \\textsf{b} c}"), "\\emph{a \\textsf{b} c}");
   });
 
   it("a real \\footnote{} body in a real document", () => {
-    expectStable(footnoteBodyCycles("\\textbf{\\textsc{x}}"), "\\textbf{\\textsc{x}}");
+    expectStable(footnoteBodyCycles("\\textbf{\\textsf{x}}"), "\\textbf{\\textsf{x}}");
   });
 
   it("CONTROL — plain bold in the fork (it always did)", () => {
@@ -420,26 +424,34 @@ const PRODUCTION_TS = (() => {
 })();
 
 /** The EMIT spelling of each wrapper command — a JS string literal writing the
- *  command, which the parser's own `/^\\textbf\{/` (whose brace is escaped) and
- *  `"\\textbf".length` cannot match. Derived from the vocabulary, so a sixth
- *  wrapper mark joins the census by declaring itself. */
-const EMIT_NEEDLES: Record<string, string> = {
-  bold: "\\\\textbf{",
-  italic: "\\\\emph{",
-  underline: "\\\\underline{",
-  code: "\\\\texttt{",
-  textColor: "\\\\textcolor[HTML]{",
-};
+ *  command, which a regex (whose brace is escaped) cannot match. DERIVED from
+ *  the vocabulary table (task 808), so a new wrapper mark — or a new spelling
+ *  of one — joins the census by declaring itself. */
+const EMIT_NEEDLES: Record<string, string> = Object.fromEntries(
+  (WRAPPER_MARK_ROWS as readonly WrapperMarkRow[]).flatMap((r) =>
+    r.commands.map((c) => [
+      `${r.mark}:${c}`,
+      r.colorArg ? `\\\\${c}[HTML]{` : `\\\\${c}{`,
+    ]),
+  ),
+);
 
 describe("census — the wrapper vocabulary has ONE speller", () => {
   it("every declared wrapper mark has an emit needle", () => {
-    expect(Object.keys(EMIT_NEEDLES).sort()).toEqual([...WRAPPER_MARK_TYPES].sort());
+    const marks = new Set(Object.keys(EMIT_NEEDLES).map((k) => k.split(":")[0]));
+    expect([...marks].sort()).toEqual([...WRAPPER_MARK_TYPES].sort());
   });
 
-  it("every declared wrapper mark has a case in the applier", () => {
-    const src = read("src/lib/mark-composition.ts");
-    for (const t of WRAPPER_MARK_TYPES) {
-      expect(src).toContain(`case "${t}":`);
+  it("every spelling of every row round-trips through the ONE recognizer and the ONE applier", () => {
+    for (const row of WRAPPER_MARK_ROWS as readonly WrapperMarkRow[]) {
+      for (const cmd of row.commands) {
+        const src = row.colorArg ? `\\${cmd}[HTML]{FF0000}{x}` : `\\${cmd}{x}`;
+        const m = matchWrapperCommandAt(src, 0);
+        expect(m, src).not.toBeNull();
+        expect(m!.row.mark).toBe(row.mark);
+        expect(src[m!.bodyOpen]).toBe("{");
+        expect(applyWrapperMarks("x", [m!.mark])).toBe(src);
+      }
     }
   });
 
@@ -461,7 +473,7 @@ describe("census — the wrapper vocabulary has ONE speller", () => {
     const synthetic = commentsStripped(
       'const x = `\\\\textbf{${inner}}`; // not a real site\n',
     );
-    expect(synthetic).toContain(EMIT_NEEDLES.bold);
+    expect(synthetic).toContain(EMIT_NEEDLES["bold:textbf"]);
   });
 
   it("CANARY — the stripper does not swallow the file", () => {

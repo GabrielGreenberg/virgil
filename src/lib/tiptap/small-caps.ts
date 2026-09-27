@@ -1,6 +1,7 @@
 import { Extension, Mark, mergeAttributes } from "@tiptap/react";
 import {
   isSmallCapsStyle,
+  SMALL_CAPS_MARK,
   SPELLING_ATTR,
   SPELLING_MARK_TYPES,
 } from "@/lib/mark-composition";
@@ -16,7 +17,7 @@ import {
  * it would rewrite the source to `\textsc` on save. It stays raw LaTeX.
  */
 export const SmallCaps = Mark.create({
-  name: "smallCaps",
+  name: SMALL_CAPS_MARK,
 
   parseHTML() {
     return [

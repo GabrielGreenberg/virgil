@@ -376,7 +376,7 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
  * Everything else is prose and is escaped, with typography suppressed inside a
  * `code` wrapper (memo §A). Both carriers used to sit here as an early `return`
  * ABOVE the wrapper loop, which DELETED whatever wrapped the run: a footnote
- * reading `\textbf{\textsc{x}}` came back `\textsc{x}`, a fixed point.
+ * reading `\textbf{\textsf{x}}` came back `\textsf{x}`, a fixed point.
  *  - `latexCommentTail` — a `%` comment, emitted RAW and checked first (the
  *    stricter promise: not typeset at all). Before task 777 this fork escaped
  *    it on the premise that a card body, being a braced ARGUMENT, had nowhere

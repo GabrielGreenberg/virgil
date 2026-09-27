@@ -100,6 +100,7 @@ const FORMAT_IDS = [
   "bold",
   "italic",
   "strike",
+  "small-caps",
   "code",
   "bullet-list",
   "ordered-list",
@@ -173,7 +174,7 @@ describe("card-action rows", () => {
     }
     // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
     // (CHIP 5a) PLUS the `tex` (CHIP 5b) + `example` (CHIP 5c) + the 4 block-atom
-    // rows (CHIP 6a) PLUS the 8 format rows (CHIP 6b) PLUS — as of CHIP 7a — the
+    // rows (CHIP 6a) PLUS the 9 format rows (CHIP 6b) PLUS — as of CHIP 7a — the
     // `ref` atom + the 3 title-field rows PLUS — as of task 639 — the typed-only
     // `latex-comment` row. This is the COMPLETE SSOT: no OTHER rows exist.
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
@@ -224,7 +225,7 @@ describe("card-action rows", () => {
     }
   });
 
-  it("the registry rows enumerate cards (menu order), then headings, the block slice, the 8 format rows, then the CHIP 7a `ref` + title fields LAST", () => {
+  it("the registry rows enumerate cards (menu order), then headings, the block slice, the 9 format rows, then the CHIP 7a `ref` + title fields LAST", () => {
     expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([
       ...CARD_ACTION_ORDER,
       ...HEADING_IDS,
@@ -535,7 +536,7 @@ describe("format rows (CHIP 6b — completes the grid fold)", () => {
     }
   });
 
-  it("formatActionRows() returns the 8 rows in grid render order", () => {
+  it("formatActionRows() returns the 9 rows in grid render order", () => {
     expect(formatActionRows().map((r) => r.id)).toEqual([...FORMAT_IDS]);
   });
 });

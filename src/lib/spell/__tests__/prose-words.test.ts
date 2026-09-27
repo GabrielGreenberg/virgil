@@ -115,11 +115,11 @@ describe("the run gap is the word boundary", () => {
   });
 
   it("an EXCLUDED TEXT run makes the touching token a FRAGMENT — not checked", () => {
-    // `\textsc{…}` is not a command Virgil models, so its name is a CARRIER —
+    // `\textsf{…}` is not a command Virgil models, so its name is a CARRIER —
     // characters the user typed that the index deliberately withheld. `un`
     // beside it is half a word, and flagging it would be a squiggle under
     // prose that is not wrong.
-    const words = wordsOf("The un\\textsc{clear} case.");
+    const words = wordsOf("The un\\textsf{clear} case.");
     expect(words).not.toContain("un");
     // …and the control: the same fixture's untouched words still check.
     expect(words).toContain("case");

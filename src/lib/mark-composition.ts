@@ -106,6 +106,10 @@ export interface WrapperMarkRow {
   readonly html?: readonly string[];
 }
 
+/** The small-caps mark's name — spelled once, here, for the table row, the
+ *  TipTap mark and the spell checker's gloss-abbreviation rule. */
+export const SMALL_CAPS_MARK = "smallCaps";
+
 export const WRAPPER_MARK_ROWS = [
   { mark: "bold", commands: ["textbf"], html: ["strong", "b"] },
   { mark: "italic", commands: ["emph", "textit"], html: ["em", "i"] },
@@ -118,7 +122,7 @@ export const WRAPPER_MARK_ROWS = [
     package: "ulem",
     html: ["s", "del", "strike"],
   },
-  { mark: "smallCaps", commands: ["textsc"] },
+  { mark: SMALL_CAPS_MARK, commands: ["textsc"] },
   { mark: "code", commands: ["texttt"], opensCode: true, html: ["code"] },
   {
     mark: "textColor",
@@ -221,7 +225,7 @@ export function matchWrapperCommandAt(
   if (!row) return null;
   if (opts?.scope === "card" && row.cardBody === false) return null;
   if (row.colorArg) {
-    const m = COLOR_ARG_RE.exec(text.slice(j, j + 14));
+    const m = COLOR_ARG_RE.exec(text.slice(j, j + "[HTML]{RRGGBB}{".length));
     if (!m) return null;
     return {
       row,
@@ -253,8 +257,8 @@ export function wrapperMarkForHtmlElement(el: {
     if (row.cardBody === false) continue;
     if (row.html?.includes(tag)) return { type: row.mark };
   }
-  if (el.getAttribute("data-small-caps") !== null) return { type: "smallCaps" };
-  if (isSmallCapsStyle(el.getAttribute("style"))) return { type: "smallCaps" };
+  if (el.getAttribute("data-small-caps") !== null) return { type: SMALL_CAPS_MARK };
+  if (isSmallCapsStyle(el.getAttribute("style"))) return { type: SMALL_CAPS_MARK };
   return null;
 }
 
@@ -337,7 +341,22 @@ export function applyWrapperMarks(
 
 /**
  * Walk an inline sequence, emitting each maximal adjacent run of nodes that
- * share a wrapper signature as ONE wrapped group.
+ * share a WRAPPER as ONE wrapped group — nested, so a run that shares an outer
+ * wrapper and differs inside it is still one outer group:
+ * `\emph{a \textsc{b} c}` stays one `\emph` around a `\textsc` (task 808).
+ *
+ * ## Nesting is chosen by RUN, not by mark order (task 808)
+ *
+ * Pre-808 a group was a run with an IDENTICAL wrapper signature, so
+ * `\emph{a \textbf{b} c}` came back `\emph{a }\emph{\textbf{b}}\emph{ c}` —
+ * typographically the same, byte-wise a rewrite. It became a daily one the
+ * moment small caps was modeled (`\emph{see \textsc{Smith} 1990}`). The node's
+ * mark ORDER cannot decide the nesting either: once the doc is in ProseMirror a
+ * node's marks are sorted by SCHEMA RANK, not by how the source nested them. So
+ * at each level the walker wraps with whichever of the current node's wrappers
+ * extends the LONGEST run of consecutive nodes (ties → the node's outermost,
+ * which keeps every identical-signature run byte-identical to the pre-808
+ * emit), and recurses inside with that wrapper removed.
  *
  * The two callers differ in what a node's inner bytes ARE and in what
  * bookkeeping rides alongside, so those are the spec's business; the grouping
@@ -391,60 +410,108 @@ export function composeInlineRun<N extends { marks?: MarkLike[] | null }>(
     declare?: (requirementId: string) => void;
   },
 ): string {
-  let out = "";
-  let groupSig: string | null = null;
-  let groupMarks: MarkLike[] | null = null;
-  let groupInner = "";
-  // A tail was the last thing written and its line is still open.
-  let tailOpen = false;
-
-  const flush = () => {
-    if (groupSig === null) return;
-    out += applyWrapperMarks(groupInner, groupMarks, { declare: spec.declare });
-    groupSig = null;
-    groupMarks = null;
-    groupInner = "";
-  };
-
-  /** Close an open tail's line where the tail sits (the current group, whose
-   *  wrapper — if any — has not closed yet). */
-  const closeTailLine = () => {
-    if (!tailOpen) return;
-    if (groupSig !== null) groupInner += "\n";
-    else out += "\n";
-    tailOpen = false;
-  };
-
+  // Stage 1 — each node's bytes, with the comment rule applied IN PLACE: the
+  // newline a tail's line needs is appended to the tail's own bytes, so it
+  // lands right after the tail at whatever wrapper depth the tail sits, before
+  // any prefix or closing brace.
+  const pieces: Piece[] = [];
+  let tail: Piece | null = null;
   for (const [index, node] of nodes.entries()) {
     const isTail = hasCommentTailMark(node.marks);
     let inner = spec.inner(node, index);
     if (isTail) inner = inner.split("\n").join("\n%");
-    if (tailOpen) {
+    if (tail) {
       // The user's own newline moves up to sit right after the tail — before
       // any prefix or closing brace this node's position would put there.
       if (inner.startsWith("\n")) inner = inner.slice(1);
-      closeTailLine();
+      tail.bytes += "\n";
+      tail = null;
     }
-    const prefix = isTail ? "" : (spec.outerPrefix?.(node, index) ?? "");
-    if (prefix) {
-      flush();
-      out += prefix;
-    }
-    const sig = markWrapSignature(node.marks);
-    if (groupSig !== null && groupSig !== sig) flush();
-    if (groupSig === null) {
-      groupSig = sig;
-      groupMarks = node.marks ?? null;
-    }
-    groupInner += inner;
-    tailOpen = isTail;
+    const piece: Piece = {
+      bytes: inner,
+      prefix: isTail ? "" : (spec.outerPrefix?.(node, index) ?? ""),
+      // Outermost first: a node's marks list its wrappers innermost first.
+      wrappers: wrapperMarksOf(node.marks).reverse(),
+    };
+    pieces.push(piece);
+    if (isTail) tail = piece;
   }
   const trailer = spec.trailer?.() ?? "";
-  if (tailOpen && !(spec.lineFinal && trailer === "" && groupSig === "")) {
-    closeTailLine();
+  if (tail && !(spec.lineFinal && trailer === "" && tail.wrappers.length === 0)) {
+    tail.bytes += "\n";
   }
-  flush();
+
+  // Stage 2 — a non-empty prefix sits OUTSIDE every wrapper, so it cuts the
+  // sequence into segments no group may cross; each segment nests by run.
+  let out = "";
+  let segStart = 0;
+  for (let k = 0; k <= pieces.length; k++) {
+    if (k === pieces.length || (k > segStart && pieces[k].prefix)) {
+      out += nestByRun(pieces.slice(segStart, k), spec.declare);
+      segStart = k;
+    }
+    if (k < pieces.length && k === segStart) out += pieces[k].prefix;
+  }
   return out + trailer;
+}
+
+interface Piece {
+  bytes: string;
+  prefix: string;
+  /** This node's wrapper marks still to apply, OUTERMOST first. */
+  wrappers: MarkLike[];
+}
+
+function nestByRun(
+  pieces: readonly Piece[],
+  declare: ((requirementId: string) => void) | undefined,
+): string {
+  let out = "";
+  let i = 0;
+  while (i < pieces.length) {
+    const head = pieces[i];
+    if (head.wrappers.length === 0) {
+      out += head.bytes;
+      i++;
+      continue;
+    }
+    // The wrapper that extends the longest run from here; ties go to the
+    // node's outermost (first in `wrappers`).
+    let best = head.wrappers[0];
+    let bestKey = wrapperKey(best);
+    let bestEnd = runEnd(pieces, i, bestKey);
+    for (const w of head.wrappers.slice(1)) {
+      const key = wrapperKey(w);
+      const end = runEnd(pieces, i, key);
+      if (end > bestEnd) {
+        best = w;
+        bestKey = key;
+        bestEnd = end;
+      }
+    }
+    const inner = nestByRun(
+      pieces.slice(i, bestEnd).map((p) => ({
+        ...p,
+        wrappers: p.wrappers.filter((w) => wrapperKey(w) !== bestKey),
+      })),
+      declare,
+    );
+    out += applyWrapperMarks(inner, [best], { declare });
+    i = bestEnd;
+  }
+  return out;
+}
+
+/** One past the last consecutive piece from `from` that carries `key`. */
+function runEnd(pieces: readonly Piece[], from: number, key: string): number {
+  let j = from;
+  while (j < pieces.length && pieces[j].wrappers.some((w) => wrapperKey(w) === key)) j++;
+  return j;
+}
+
+/** One wrapper's identity for grouping — {@link markWrapSignature} of it alone. */
+function wrapperKey(m: MarkLike): string {
+  return markWrapSignature([m]);
 }
 
 /**
