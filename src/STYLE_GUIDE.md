@@ -2803,6 +2803,15 @@ off"; `VIRGIL_CHECKED_ATTRS` = "Virgil underlines this surface") are the whole
 vocabulary for who marks a misspelling. If Virgil's dictionary fails to load the
 surface is handed BACK to the browser rather than left with no checker at all.
 
+**Spelling underline — telling Virgil's from the browser's (task 806).**
+Virgil's squiggle is a thin, CONTINUOUS wavy line in `var(--danger)` (`.spell-error`
+in `globals.css`); Chrome's is a red DOTTED line, and a green/blue one is a
+grammar check. Virgil has no grammar check at all. A Virgil-checked surface
+declines the browser from its FIRST render (not after the dictionary arrives), so
+a dotted line on the main text or a card body means the dictionary failed and the
+surface was handed back. The Display menu's "Check spelling" row is the one
+control for both checkers, and its hint says so.
+
 **The correction menu** is the `MenuProvider` family's rect-anchored form, opened
 by the CONTEXT MENU over a flagged word (a plain click still just places the
 caret) and offering up to six suggestions plus two named "add to dictionary"

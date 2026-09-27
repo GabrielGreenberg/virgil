@@ -642,6 +642,7 @@ export function ViewMenu({
               key={row.id}
               id={row.id}
               label={row.label}
+              hint={row.hint}
               checked={viewPrefs[row.key]}
               onToggle={() => { onToggleViewPref(row.key); setOpen(false); }}
             />

@@ -48,6 +48,20 @@
  * browser rather than left with no checker at all. That hand-back is the whole
  * reason `spellEngineAvailable()` is published instead of swallowed.
  *
+ * OWNERSHIP IS NOT "A PASS HAS FINISHED" (task 806). `active` answers "who
+ * checks this surface?", and that answer is `port.enabled()` (preference AND
+ * the engine's OPTIMISTIC availability — false only after a real load
+ * failure) on an editable surface. It is decided at `init` and re-claimed the
+ * moment the plugin view sees it change — never after the 300 ms debounce, the
+ * dictionary fetch and a worker round trip. Gating the attribute on the first
+ * pass left every Virgil-checked surface with NO attribute for that whole
+ * window, so the browser's checker painted it (on a fresh machine, for
+ * seconds), and those native squiggles outlived the hand-off. So: the claim is
+ * immediate, and on the claim EDGE (absent → `false`) the plugin view nudges
+ * the browser once to drop what it already painted (`dropNativeSpellMarkers`,
+ * O(1), never per keystroke). The hand-BACK stays where it was — the pass that
+ * finds no port clears the squiggles and the attribute together.
+ *
  * ## Right-click, not click
  *
  * The suggestion menu opens on the CONTEXT MENU over a flagged word, which is
@@ -77,7 +91,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { touchedRanges, touchedTextblocks } from "@/lib/tiptap/changed-ranges";
 import { blockCarriesProse } from "@/lib/prose-index";
-import { VIRGIL_CHECKED_ATTRS } from "@/lib/spellcheck-policy";
+import { VIRGIL_CHECKED_ATTRS, dropNativeSpellMarkers } from "@/lib/spellcheck-policy";
 import { tokenizeBlock, type SpellToken } from "@/lib/spell/prose-words";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { closeSpellMenu, openSpellMenu } from "@/lib/spell/spell-menu-store";
@@ -108,7 +122,21 @@ interface SpellPluginState {
   caretBlock: number | null;
 }
 
-/** The meta a completed pass dispatches. */
+/**
+ * Does Virgil own this surface's underline — the ONE answer (task 806)?
+ * `enabled()` is the preference AND the engine's optimistic availability, so
+ * "not loaded yet" is owned and only a real failure hands back.
+ */
+function ownsSurface(
+  portRef: SpellcheckPortRef,
+  editable: boolean,
+): boolean {
+  const port = portRef.current;
+  return !!port && editable && port.enabled();
+}
+
+/** The meta a completed pass dispatches — or a bare ownership claim
+ *  (`{ active: true }`, nothing else), which touches no decoration. */
 interface SpellResultMeta {
   active: boolean;
   /** Blocks whose decorations are being replaced (positions in the doc the
@@ -288,7 +316,11 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             return {
               decos: DecorationSet.empty,
               dirty: [],
-              active: false,
+              // Owned from the FIRST render (task 806). No view exists yet, so
+              // editability is the ref's answer alone; a surface that is
+              // `editable: false` without a ref is not natively checked by the
+              // browser anyway, and the view re-derives on mount.
+              active: ownsSurface(portRef, editableRef ? !!editableRef.current : true),
               caretBlock: caretBlockPos(state),
             };
           },
@@ -444,10 +476,31 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
           let destroyed = false;
           const needFull = () => doneGen !== fullGen;
 
-          const currentPort = (): SpellcheckPort | null => {
-            const port = portRef.current;
-            if (!port) return null;
-            return port.enabled() && surfaceIsEditable(view, editableRef) ? port : null;
+          const currentPort = (): SpellcheckPort | null =>
+            ownsSurface(portRef, surfaceIsEditable(view, editableRef))
+              ? portRef.current
+              : null;
+
+          /**
+           * CLAIM the surface the moment ownership is true, without waiting
+           * for a pass (task 806). Deferred to a microtask because it is asked
+           * from inside the view's own `update`, where a synchronous dispatch
+           * would re-enter it; a microtask still lands before the next paint.
+           * Re-asked when it runs, so a flip in between claims nothing.
+           */
+          let claimQueued = false;
+          const claimIfOwned = () => {
+            if (claimQueued || destroyed) return;
+            if (spellcheckPluginKey.getState(view.state)?.active) return;
+            if (currentPort() === null) return;
+            claimQueued = true;
+            queueMicrotask(() => {
+              claimQueued = false;
+              if (destroyed) return;
+              if (spellcheckPluginKey.getState(view.state)?.active) return;
+              if (currentPort() === null) return;
+              dispatchMeta({ active: true });
+            });
           };
 
           const schedule = () => {
@@ -588,6 +641,7 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             }
             const state = spellcheckPluginKey.getState(view.state);
             const wantActive = currentPort() !== null;
+            if (wantActive) claimIfOwned();
             if (needFull() || (state && state.dirty.length > 0) || wantActive !== !!state?.active) {
               schedule();
             }
@@ -617,9 +671,18 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
 
           return {
             // [cost: O(1) — a port identity compare, a version compare, a
-            // dirty-length read and a timer reset. The check itself is the
+            // dirty-length read, a timer reset, and on the ownership CLAIM
+            // edge only, one attribute toggle. The check itself is the
             // debounced callback.]
-            update: syncAndSubscribe,
+            update(_view, prevState) {
+              const was = spellcheckPluginKey.getState(prevState)?.active;
+              if (!was && spellcheckPluginKey.getState(view.state)?.active) {
+                // Absent → `false`: the browser may already have painted this
+                // surface. Once, on the edge (task 806).
+                dropNativeSpellMarkers(view.dom);
+              }
+              syncAndSubscribe();
+            },
             destroy() {
               destroyed = true;
               unsubscribe?.();
