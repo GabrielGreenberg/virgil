@@ -65,6 +65,10 @@ export interface IndexedStatus {
   // pdf.filename.
   pgmarkSource?: string;
   footnoteCount?: number;
+  // Top-level numbered examples (`\ex` / `\pex`) — stamped by
+  // /library/deep-index's catalog patch (deep-index.md §8), never by the
+  // indexer.
+  exampleCount?: number;
   warnings?: string[];
 }
 

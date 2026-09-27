@@ -317,11 +317,20 @@ this safely under `lock_catalog`.
 recovery scripts (math-glyph recovery, page-boundary-dropout fixes,
 custom-CMap inversion) that were proposed in PyMuPDF-era streamlining
 memos are no longer needed; marker handles those classes of failure
-natively. If a deep-index pass encounters a paper that was indexed
-pre-marker (visible signal: no marker provenance in `indexed.notes`,
-pervasive math-glyph collapse, dropped trailing sentences), run
-`/library/index-paper <citekey> --re-extract` first so the rest of
-the pipeline isn't compensating for fixed-upstream artifacts.
+natively. If a deep-index pass encounters a PDF-source paper that was
+indexed pre-marker (visible signal: the catalog row's `indexed.extractor`
+is absent or anything but `"marker"` while `pdf.format` is `"pdf"` —
+together with pervasive math-glyph collapse or dropped trailing
+sentences), run `/library/index-paper <citekey> --re-extract` first so
+the rest of the pipeline isn't compensating for fixed-upstream
+artifacts. The flag is REQUIRED, not a nicety: the indexer refuses to
+overwrite a `main.tex` that holds deep-index work (catalog
+`deepIndexed`, or a `.virgil/baselines/<citekey>-pre-deepindex.tex`
+snapshot) without it, and with it backs the old `main.tex` up to
+`.virgil/backups/re-extract/<citekey>/<ISO>/` and retires the baseline.
+Re-extraction discards every deep-index repair — never drop the flag to
+get past the refusal, and do not re-extract a paper whose only problem
+is one deep-index can fix in place.
 
 For the bibliography work specifically: on a second pass, the entries
 already exist in `references.bib` and the body already has `\cite{…}`
