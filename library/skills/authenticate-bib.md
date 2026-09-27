@@ -160,10 +160,12 @@ directory).
    `papers/<citekey>/main.tex`. The Python pipeline lives at
    `.virgil/scripts/library/`.
    ```bash
-   python3 .virgil/scripts/library/bib_auth.py --citekey <citekey> --library .
+   python3 .virgil/scripts/library/bib_auth.py --citekey <citekey> --library . \
+     | tee /tmp/<citekey>-auth-result.json
    ```
    Prints the `AuthResult` as JSON (`state`, `sources`, `score`,
-   `matched_record`, `field_changes`, `proposed_type`).
+   `matched_record`, `field_changes`, `proposed_type`), and keeps it in
+   `/tmp/<citekey>-auth-result.json` for step 4b — don't re-run the helper.
 
    **Don't hand-marshal the seed values.** The entry must reach the helper
    exactly as it appears in `master.bib` — verbatim, no cleanup, no
@@ -310,8 +312,33 @@ directory).
 
    Collect these findings as a separate `tier1_changes` list (same
    shape as the helper's `field_changes`: list of `{field, from, to,
-   source, at}` dicts). They're merged into the catalog row in step 7
-   — keep them outside `result.field_changes`.
+   source, at}` dicts). Step 4b hands them to `settle-verdict`, which
+   folds them into the verdict — keep them outside `result.field_changes`.
+
+4b. **Settle the verdict — BEFORE writing anything.** The run's final state
+   (including the tier-1 upgrade) must be known before step 5 stamps it on
+   master.bib; computing it afterwards is how an upgrade used to reach the
+   catalog row and never master.bib (task 797). Write step 4's tier-1 field
+   changes (same shape as the helper's — `{"field", "from", "to", "source",
+   "at"}`; `[]` when there are none) and let the helper decide:
+   ```bash
+   cat > /tmp/<citekey>-auth-tier1.json <<'EOF'
+   [ ... ]
+   EOF
+   python3 .virgil/scripts/library/bib_auth.py settle-verdict \
+     --result-file /tmp/<citekey>-auth-result.json \
+     --tier1-file /tmp/<citekey>-auth-tier1.json \
+     | tee /tmp/<citekey>-auth-verdict.json
+   ```
+   The printed block's `state` is `<final_state>` for step 5. The upgrade
+   rule lives in `bib_auth.settle_auth_verdict`, not here: an `unverified`
+   or `canonical` verdict becomes `authenticated` when the tier-1 changes
+   cite ≥2 distinct authoritative sources (`internet-archive`, `worldcat`,
+   `publisher-page`, `crossref-raw` — `TIER1_AUTHORITATIVE_SOURCES`), and
+   only when those changes agree with the helper's `matched_record` on
+   title/publisher/ISBN — if they don't, leave that source's changes out of
+   the tier-1 file rather than overriding the helper. Its `fieldChanges` is
+   THIS run's list only; never add the catalog row's prior history to it.
 
 5. **Apply changes** to `master.bib`. **Filter before applying:**
    - Drop any `field_change` whose target field is inapplicable to
@@ -401,7 +428,7 @@ directory).
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<proposed_type or entry_type>" \
      --fields-file /tmp/<citekey>-auth-fields.json \
-     --bib-state "<final_state>" \
+     --bib-state "<final_state from step 4b>" \
      --merge-existing \
      --base-raw-file "/tmp/<citekey>-auth-base.bib" \
      --base-type "<entry_type as read in step 1>"
@@ -423,8 +450,9 @@ directory).
 
    - **0** — applied. Continue with step 6.
    - **5** — applied EXCEPT the changes stderr lists as held. Continue with
-     step 6, but drop the held fields from what you record in step 7 and
-     name them in the reply ("kept your edit to `title`").
+     step 6, but delete the held fields' entries from `fieldChanges` in
+     `/tmp/<citekey>-auth-verdict.json` (step 7 records that file) and name
+     them in the reply ("kept your edit to `title`").
    - **6** — nothing written: the entry left master.bib mid-run. Report
      it, then skip to step 9 (retiring is right — a retry re-fails).
    - **2** (bad invocation — fix the command and re-run it), **4** (the
@@ -468,85 +496,37 @@ directory).
    repair.
 
 7. **Update .virgil/catalog.json** — derive top-level fields from master.bib so
-   they can't drift. Build `bib_status` from the helper's `AuthResult`
-   and the prior catalog row's `fieldChanges` (the helper returns only
-   *this run's* changes; we want the cumulative list):
+   they can't drift, and record step 4b's verdict. The citekey and the
+   verdict file go in as **argv**:
    ```bash
-   python3 -c '
-   import sys, json, time
+   python3 - "<citekey>" /tmp/<citekey>-auth-verdict.json <<'PY'
+   import sys, json
    from pathlib import Path
    sys.path.insert(0, ".virgil/scripts/library")
    from index_paper import _sync_catalog_entry_from_master
-
-   # `r` is the AuthResult dict from step 3 (deserialize the JSON the
-   # helper printed — don't re-run it). `tier1_changes` is the
-   # extra field-change list you produced in step 4 — same shape as
-   # the helper's: list of {"field": str, "from": str, "to": str,
-   # "source": str, "at": ISO8601 str} dicts. May be [].
-   r = <auth_result_dict>
-   tier1_changes = <tier1_field_changes_list_or_[]>
-
-   prior = {}
-   cat = Path(".virgil/catalog.json")
-   if cat.exists():
-       for e in (json.loads(cat.read_text()).get("entries", []) or []):
-           if e.get("citekey") == "<citekey>":
-               prior = (e.get("bib") or {})
-               break
-   prior_changes = prior.get("fieldChanges") or []
-
-   # Tier-1 upgrade: for DOI-less books, the helper's threshold logic
-   # (Crossref+OpenAlex agreement, or Google Books × OpenLibrary
-   # agreement at ≥0.85) is sometimes too strict — a single OL hit
-   # corroborated by Internet Archive + the publisher page is just as
-   # authoritative as a two-API title-search agreement. When state is
-   # `unverified` AND tier1_changes contains corroboration from ≥2
-   # *authoritative* sources (Internet Archive, WorldCat, publisher
-   # page, venue-proceedings page) AND those changes agree with the
-   # helper's matched_record on title/publisher/ISBN, the operator
-   # may upgrade.
-   t1_sources = {c["source"] for c in tier1_changes}
-   AUTHORITATIVE = {"internet-archive", "worldcat", "publisher-page",
-                    "crossref-raw"}  # add venue-proceedings labels as needed
-   final_state = r["state"]
-   final_sources = list(r["sources"])
-   if (r["state"] == "unverified"
-           and len(t1_sources & AUTHORITATIVE) >= 2):
-       final_state = "authenticated"
-       final_sources = list(r["sources"]) + sorted(t1_sources & AUTHORITATIVE)
-   # `canonical` may upgrade — it is NO LONGER terminal (F#3). It now means
-   # "the pre-digital route ran and found no authoritative agreement", so if
-   # YOU have ≥2 authoritative tier-1 corroborations for a `canonical` verdict
-   # (e.g. Internet Archive + a publisher page agreeing on the work), promote
-   # it to `authenticated` the same way as the unverified case — the helper's
-   # pre-digital route simply didn't reach those sources. The deeper fix is to
-   # surface the corroboration to bib_auth.py's pre-digital route; this is the
-   # operator escape hatch.
-   if (r["state"] == "canonical"
-           and len(t1_sources & AUTHORITATIVE) >= 2):
-       final_state = "authenticated"
-       final_sources = list(r["sources"]) + sorted(t1_sources & AUTHORITATIVE)
-
-   bib_status = {
-       "state":         final_state,
-       "doiVerified":   r["doi_verified"],
-       "sources":       final_sources,
-       "fieldChanges":  prior_changes + r["field_changes"] + tier1_changes,
-       "score":         r["score"],
-       "note":          r["note"],
-   }
-   if final_state == "authenticated":
-       bib_status["authenticatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-   _sync_catalog_entry_from_master(Path("."), "<citekey>", bib_status)
-   print(".virgil/catalog.json synced from master.bib")
-   '
+   verdict = json.loads(Path(sys.argv[2]).read_text())
+   settled = _sync_catalog_entry_from_master(Path("."), sys.argv[1], verdict)
+   print(f"settled state: {settled}")
+   PY
+   rm /tmp/<citekey>-auth-result.json /tmp/<citekey>-auth-tier1.json \
+      /tmp/<citekey>-auth-verdict.json
    ```
-   `_sync_catalog_entry_from_master` *replaces* the catalog row's `bib`
-   block wholesale — the merge with `prior_changes` above is what makes
-   `fieldChanges` accumulate across runs. It writes only `bib` and the
-   top-level fields, never `indexed`, so it cannot disturb the warnings
-   written below.
+
+   **`settled state:` is the state this run ENDED with — use it, not
+   `<final_state>`, from here on** (step 8's toast, the Reply). The helper
+   stamps the verdict's state on master.bib through the write door and
+   then reads the result BACK: the door holds a settled state
+   (`authenticated`/`canonical`/`manuscript`) against a weaker verdict, so
+   a re-run that came back `unverified` on a flaky network leaves the entry
+   `authenticated` — and the row, the toast and the reply must all say so.
+   When it held, the row keeps its prior `sources`/`score`/`note` too (they
+   describe the verdict that earned the state); only the field changes that
+   actually landed are appended.
+
+   Pass only THIS run's changes: the helper (`_tools.settle_catalog_bib`)
+   appends them to the row's existing `fieldChanges` itself. It writes only
+   `bib` and the top-level fields, never `indexed`, so it cannot disturb the
+   warnings written below.
 
    **It may write no row at all, and that is the normal case here.** This
    skill deliberately serves entries with no source document on disk, and
@@ -647,8 +627,9 @@ directory).
    > verbatim — it just falls through `notificationSeverity()` to the
    > default `info`, so a `"unverified"` toast that should linger for
    > 11 s as an *attention* row is rendered as a routine 5 s one and the
-   > user misses the entry that needed them. So map the terminal state
-   > onto the enum by **whether the user must act**, and keep the
+   > user misses the entry that needed them. So map step 7's **settled
+   > state** (never the verdict you asked for — a held re-run is not a
+   > failure) onto the enum by **whether the user must act**, and keep the
    > fine-grained state in the summary:
    >
    > | terminal state | `kind` | why |
@@ -667,8 +648,8 @@ directory).
    { "kind": "<authenticated|failed per the table above>",
      "citekey": "<citekey>",
      "at": "<now ISO>",
-     "state": "<terminal state>",
-     "summary": "<citekey>: <terminal state> via <sources> (<N> field changes)" }
+     "state": "<settled state from step 7>",
+     "summary": "<citekey>: <settled state> via <sources> (<N> field changes)" }
    EOF
    python3 .virgil/scripts/library/append_inbox_item.py \
      --item-file /tmp/<citekey>-auth-notify.json
@@ -722,7 +703,9 @@ If step 2 found none:
 If step 2 could not read the entry (`{"error": …}`), that is the whole reply
 — report the message verbatim and stop; the auth step reads the same file.
 
-Then, for the terminal state:
+Then, for the settled state step 7 printed (when it differs from step 4b's
+verdict, the door held — say so: `kept authenticated; this run found only
+unverified`):
 
 If `state == "authenticated"`:
 > `Authenticated <citekey> via <sources>. <N> field changes applied.`

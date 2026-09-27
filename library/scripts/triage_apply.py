@@ -38,6 +38,7 @@ from queue_slot import ALREADY_QUEUED, REFUSED_RESULTS, WRITTEN, write_request  
 from _tools import (
     TERMINAL_BIB_STATES,
     admit_catalog_row,
+    settle_catalog_bib,
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
@@ -301,12 +302,8 @@ def _upsert_catalog_row_bib_only(
                     "pdf": e.get("pdf"),
                     "indexed": e.get("indexed"),
                 }
-                merged_bib = dict(e.get("bib") or {})
-                merged_bib.update(bib_status)
-                existing_changes = (e.get("bib") or {}).get("fieldChanges") or []
-                new_changes = bib_status.get("fieldChanges") or []
-                if existing_changes or new_changes:
-                    merged_bib["fieldChanges"] = existing_changes + new_changes
+                merged_bib = settle_catalog_bib(
+                    library, citekey, e.get("bib"), bib_status)
                 updated = dict(base_row)
                 updated["addedAt"] = preserved["addedAt"]
                 updated["bib"] = merged_bib
@@ -318,6 +315,7 @@ def _upsert_catalog_row_bib_only(
                 return
         # New holdings row: reflect the source file actually present on disk.
         base_row["pdf"] = {"present": True}
+        base_row["bib"] = settle_catalog_bib(library, citekey, None, bib_status)
         catalog["entries"].append(base_row)
         write_catalog(library, catalog)
 

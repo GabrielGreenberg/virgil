@@ -46,6 +46,7 @@ from _bib_parse import read_bib_file  # noqa: E402
 from _tools import (  # noqa: E402
     TERMINAL_BIB_STATES,
     admit_catalog_row,
+    settle_catalog_bib,
     append_inbox_item,
     citekey_matches,
     lock_catalog,
@@ -473,15 +474,11 @@ def _upsert_catalog_row(library: Path, citekey: str, bib_status: dict,
     }
     with lock_catalog(library):
         catalog = read_catalog(library)
-        # Merge prior fieldChanges so they accumulate across runs (same
-        # behavior as /authenticate-bib).
-        prior_changes: list = []
-        for e in catalog.get("entries", []):
-            if citekey_matches(e.get("citekey", ""), citekey):
-                prior_changes = ((e.get("bib") or {}).get("fieldChanges") or [])
-                break
-        merged_bib = dict(bib_status)
-        merged_bib["fieldChanges"] = prior_changes + list(bib_status.get("fieldChanges", []))
+        # ONE composition (task 797): history appended, state read back from
+        # what master.bib settled rather than what this run asked for.
+        prior_bib = next((e.get("bib") for e in catalog.get("entries", [])
+                          if citekey_matches(e.get("citekey", ""), citekey)), None)
+        merged_bib = settle_catalog_bib(library, citekey, prior_bib, bib_status)
         write_fields = {k: v for k, v in top.items() if v not in (None, "", [])}
         # This is a TRUE holding (admit_catalog_row passed above), so its catalog
         # row must carry pdf.present == True — otherwise the merge would mint the row
