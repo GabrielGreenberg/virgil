@@ -3,7 +3,7 @@
 /**
  * bib-display-exempt-file: EDIT SURFACE — every `fields` read in this file is
  * the user's own editable value, and its raw-mode textarea round-trips back
- * through `parseSingleEntry` into the saved fields. Projecting anything here
+ * through `parseBibEntryBlock` into the saved fields. Projecting anything here
  * is the ONE change in the bib-row family (task 409) that would write a
  * rendering into the `.bib` instead of avoiding one.
  */
@@ -23,6 +23,7 @@ import {
   knownFieldsForType,
 } from "@library/lib/bib-edit";
 import type { BibEditDiffPayload } from "@library/lib/queue";
+import { bibEditBase, parseBibEntryBlock } from "@library/lib/bib-raw-entry";
 import { useBackdropPress } from "@/lib/backdrop-press";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
@@ -38,14 +39,21 @@ interface Props {
 
 type Mode = "form" | "raw";
 
-export default function BibEditModal({ entry, onSave, onClose }: Props) {
+export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
+  // The entry this edit is a diff AGAINST: the disk block (`raw`) read
+  // faithfully — type as written, values verbatim, keys as keyed — never the
+  // CSL projection `shown` carries for display (task 795). Seeding the form
+  // from the projection falsely held type changes (`@inbook` read as
+  // `incollection`), stripped the LaTeX of any field the user touched, and
+  // re-keyed `booktitle` as `journal`. Fixed at mount, like the form state.
+  const [entry] = useState<BibEntry>(() => bibEditBase(shown));
   const [mode, setMode] = useState<Mode>("form");
   const [type, setType] = useState<string>(entry.type);
   const [fields, setFields] = useState<Record<string, string>>({ ...entry.fields });
   // One seed at mount feeds BOTH the initial rows and the id allocator, so the
   // two never diverge (task 128). The raw→form re-seed adopts the same source.
   const [extraRows, setExtraRows] = useState<ExtraRow[]>(() => seedExtraRows(entry).rows);
-  const [raw, setRaw] = useState<string>(emitBibEntry(entry.type, entry.key, entry.fields));
+  const [raw, setRaw] = useState<string>(() => emitBibEntry(entry.type, entry.key, entry.fields));
   const [rawError, setRawError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -123,7 +131,7 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
       setRawError(null);
     } else {
       // form ← raw: parse the raw text and update form state.
-      const parsed = parseSingleEntry(raw, entry.key);
+      const parsed = parseBibEntryBlock(raw);
       if (!parsed) {
         setRawError("Couldn't parse this BibTeX. Fix syntax or stay in raw mode.");
         return;
@@ -148,7 +156,7 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
       let outType: string;
       let outFields: Record<string, string>;
       if (mode === "raw") {
-        const parsed = parseSingleEntry(raw, entry.key);
+        const parsed = parseBibEntryBlock(raw);
         if (!parsed) {
           setRawError("Couldn't parse this BibTeX. Fix syntax before saving.");
           setSaving(false);
@@ -227,6 +235,7 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
           {mode === "form" ? (
             <FormView
               type={type}
+              baseType={entry.type}
               setType={setType}
               fields={fields}
               updateField={updateField}
@@ -422,6 +431,7 @@ function Footer({
 
 function FormView({
   type,
+  baseType,
   setType,
   fields,
   updateField,
@@ -431,6 +441,9 @@ function FormView({
   nextId,
 }: {
   type: string;
+  /** The type on disk. Offered even when it is not one of the stock types
+   *  (`@online`, `@booklet`, …) so opening the modal never forces a change. */
+  baseType: string;
   setType: (t: string) => void;
   fields: Record<string, string>;
   updateField: (k: string, v: string) => void;
@@ -448,7 +461,7 @@ function FormView({
             onChange={(e) => setType(e.target.value)}
             style={inputStyle}
           >
-            {BIB_ENTRY_TYPES.map((t) => (
+            {typeOptions(baseType, type).map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
@@ -728,6 +741,15 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
+/** The stock types, plus the disk type and the current pick when either is
+ *  outside them — a `<select>` whose value has no `<option>` silently shows
+ *  (and on the next change submits) a different type. */
+function typeOptions(baseType: string, type: string): string[] {
+  const out: string[] = [...BIB_ENTRY_TYPES];
+  for (const t of [baseType, type]) if (t && !out.includes(t)) out.push(t);
+  return out;
+}
+
 type ExtraRow = { id: number; key: string; value: string };
 
 /** The result of a seed: the rows PLUS the next free id. Both the mount seed
@@ -753,92 +775,3 @@ function seedExtraRowsFromFields(
   // i.e. the next free id — always strictly greater than every seeded row id.
   return { rows, nextId: id };
 }
-
-/** Parse a single BibTeX entry block (the form `@type{key, k=v, ...}`).
- *  Returns null if the block is malformed. The citekey in the parsed
- *  block is ignored — the caller carries the canonical key separately. */
-function parseSingleEntry(
-  raw: string,
-  _canonicalKey: string,
-): { type: string; fields: Record<string, string> } | null {
-  void _canonicalKey;
-  const text = raw.trim();
-  const head = text.match(/^@(\w+)\s*\{\s*([^,]+),/);
-  if (!head) return null;
-  const type = head[1];
-  // Find the matching closing brace for the @type{...} block.
-  const openIdx = text.indexOf("{", head.index! + 1);
-  if (openIdx === -1) return null;
-  let depth = 0;
-  let endIdx = -1;
-  for (let i = openIdx; i < text.length; i++) {
-    const c = text[i];
-    if (c === "{") depth++;
-    else if (c === "}") {
-      depth--;
-      if (depth === 0) {
-        endIdx = i;
-        break;
-      }
-    }
-  }
-  if (endIdx === -1) return null;
-  // Body is everything between the citekey comma and the matching `}`.
-  const afterKey = text.indexOf(",", openIdx);
-  if (afterKey === -1 || afterKey > endIdx) return null;
-  const body = text.slice(afterKey + 1, endIdx);
-
-  const fields: Record<string, string> = {};
-  // Walk fields one at a time. A field is `name = {...}` or `name = "..."`,
-  // separated from the next by a comma. Brace-balanced extraction handles
-  // values that themselves contain `{` / `}`.
-  let i = 0;
-  while (i < body.length) {
-    // Skip whitespace and stray commas.
-    while (i < body.length && /[\s,]/.test(body[i])) i++;
-    if (i >= body.length) break;
-    // Read field name.
-    const nameStart = i;
-    while (i < body.length && /[A-Za-z0-9_-]/.test(body[i])) i++;
-    const name = body.slice(nameStart, i).toLowerCase();
-    if (!name) {
-      // Couldn't read a name where one was expected — bail.
-      return null;
-    }
-    // Skip whitespace + `=`.
-    while (i < body.length && /\s/.test(body[i])) i++;
-    if (body[i] !== "=") return null;
-    i++;
-    while (i < body.length && /\s/.test(body[i])) i++;
-    // Read value.
-    let value: string;
-    if (body[i] === "{") {
-      let d = 0;
-      const start = i;
-      for (; i < body.length; i++) {
-        if (body[i] === "{") d++;
-        else if (body[i] === "}") {
-          d--;
-          if (d === 0) {
-            i++;
-            break;
-          }
-        }
-      }
-      value = body.slice(start + 1, i - 1);
-    } else if (body[i] === '"') {
-      const start = ++i;
-      while (i < body.length && body[i] !== '"') i++;
-      value = body.slice(start, i);
-      if (body[i] === '"') i++;
-    } else {
-      // Unquoted (number / string concat). Read until comma at depth 0.
-      const start = i;
-      while (i < body.length && body[i] !== ",") i++;
-      value = body.slice(start, i).trim();
-    }
-    fields[name] = value;
-  }
-  return { type, fields };
-}
-

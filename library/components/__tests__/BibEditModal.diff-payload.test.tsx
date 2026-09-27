@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { BibEntry } from "@library/lib/types";
 import BibEditModal from "@library/components/BibEditModal";
 import { buildBibEditDiff, isEmptyBibEditDiff } from "@library/lib/bib-edit";
+import { parseBibFile } from "@library/lib/bib-parser";
 
 afterEach(() => cleanup());
 
@@ -119,5 +120,48 @@ describe("BibEditModal — backdrop", () => {
     fireEvent.mouseDown(backdrop);
     fireEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// TASK 795: the modal opens on the DISK entry (`raw`), not the CSL projection
+// the full-entry fetch hands it for display.
+describe("BibEditModal — opens on the disk entry, not the CSL projection", () => {
+  const INBOOK = `@inbook{doe2001,
+  author = {Doe, Jane},
+  title = {The {GB} Theory of \\emph{X}},
+  booktitle = {The Big Book},
+  year = {2001}
+}
+`;
+
+  function renderProjected() {
+    const [projected] = parseBibFile(INBOOK);
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<BibEditModal entry={projected} onSave={onSave} onClose={vi.fn()} />);
+    return { onSave };
+  }
+
+  it("seeds the disk type, the verbatim title and booktitle (no journal row)", () => {
+    renderProjected();
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("inbook");
+    expect(screen.getByDisplayValue("The {GB} Theory of \\emph{X}")).toBeTruthy();
+    expect(screen.getByDisplayValue("The Big Book")).toBeTruthy();
+    expect(screen.queryByText("journal")).toBeNull();
+  });
+
+  it("a type change names the disk type as its base", async () => {
+    const { onSave } = renderProjected();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "book" } });
+    await save();
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.type).toBe("book");
+    expect(payload.baseType).toBe("inbook");
+    expect(payload.set).toEqual({});
+  });
+
+  it("Save with no change on a projected entry queues nothing", async () => {
+    const { onSave } = renderProjected();
+    await save();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
