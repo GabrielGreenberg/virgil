@@ -48,7 +48,13 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { listDir, readJsonFile, SUBDIRS } from "./library-storage";
-import { normalizeQueueEntry, type QueueEntry, type QueueKind } from "./queue";
+import {
+  isQueueRequestFilename,
+  normalizeQueueEntry,
+  QUEUE_PENDING_STATUS,
+  type QueueEntry,
+  type QueueKind,
+} from "./queue";
 
 const POLL_MS = 6000;
 
@@ -126,12 +132,11 @@ async function scanQueue(
   await Promise.all(
     entries.map(async (e) => {
       if (e.kind !== "file") return;
-      if (!e.name.endsWith(".json")) return;
-      // Aggregate manifest, triage entries (no citekey to attach to), and the
-      // rotated-stale-done sibling.
-      if (e.name === "pending-reviews.json") return;
+      // Not a request at all (the review manifest, a `.done` marker) — the
+      // one predicate the drain shares (task 794). Triage stubs ARE requests,
+      // but carry no citekey to attach a row dot to.
+      if (!isQueueRequestFilename(e.name)) return;
       if (e.name.startsWith("_triage-")) return;
-      if (e.name.endsWith(".done.json")) return;
       const entry = normalizeQueueEntry(
         (await readJsonFile<QueueEntry>(
           handle,
@@ -139,7 +144,7 @@ async function scanQueue(
         )) ?? null,
       );
       if (!entry) return;
-      if (entry.status !== "requested") return;
+      if (entry.status !== QUEUE_PENDING_STATUS) return;
       if (!entry.citekey) return;
       let set = out.get(entry.citekey);
       if (!set) {

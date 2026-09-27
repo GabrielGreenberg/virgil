@@ -12,16 +12,22 @@ import {
   SUBDIRS,
 } from "./library-storage";
 
-export type QueueKind =
-  | "triage"
-  | "index"
-  | "authenticate"
-  | "reindex"
-  | "bib-edit"
-  | "paper-review"
-  | "deepIndex"
-  | "import-bib"
-  | "delete";
+/** Every queue request kind. Read by `index-pending-dispatch-census.test.ts`:
+ *  each kind must have a route in `library/skills/index-pending.md` step 2
+ *  (task 794). */
+export const QUEUE_KINDS = [
+  "triage",
+  "index",
+  "authenticate",
+  "reindex",
+  "bib-edit",
+  "paper-review",
+  "deepIndex",
+  "import-bib",
+  "delete",
+] as const;
+
+export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 /** Legacy on-disk kind from before the rich-index → deep-index rename.
  *  Read paths normalize this to "deepIndex"; new writes never use it. */
@@ -245,6 +251,28 @@ export const QUEUE_SLOT_SUFFIX: Record<Exclude<QueueKind, "triage">, string> = {
   "import-bib": "-importbib",
   delete: "-delete",
 };
+
+/** Files in `.virgil/queue/` that are never requests, whatever their
+ *  extension: the bib-review manifest (`addPendingReview`, written and never
+ *  deleted). With `QUEUE_DONE_JSON_SUFFIX` this is the ONE exclusion set —
+ *  `NON_REQUEST_FILENAMES` / `DONE_JSON_SUFFIX` in
+ *  `library/scripts/queue_slot.py`, pinned by `queue-slot-parity.test.ts`
+ *  (task 794). */
+export const QUEUE_NON_REQUEST_FILENAMES: readonly string[] = ["pending-reviews.json"];
+export const QUEUE_DONE_JSON_SUFFIX = ".done.json";
+
+/** The one status that means "waiting to be worked" (`PENDING_STATUS`). */
+export const QUEUE_PENDING_STATUS: QueueStatus = "requested";
+
+/** Can this queue-folder filename hold a request? Mirrors
+ *  `queue_slot.is_request_filename`. */
+export function isQueueRequestFilename(name: string): boolean {
+  return (
+    name.endsWith(".json") &&
+    !name.endsWith(QUEUE_DONE_JSON_SUFFIX) &&
+    !QUEUE_NON_REQUEST_FILENAMES.includes(name)
+  );
+}
 
 /** Sanitize a user-provided filename so the File System Access API will
  *  accept it. FSA forbids `< > : " / \ | ? *` plus control characters,

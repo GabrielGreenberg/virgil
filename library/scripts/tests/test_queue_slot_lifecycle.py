@@ -254,6 +254,105 @@ def test_cli_write_and_retire(tmp_path, capsys):
                             "--library", str(tmp_path)]) == 3
 
 
+
+# ── task 794: ONE answer to "what does the queue hold?" ──────────────────
+
+def _manifest(q: Path) -> None:
+    (q / "pending-reviews.json").write_text(json.dumps(
+        {"pendingReviews": [{"citekey": "smith2020"}], "updatedAt": "x"}))
+
+
+def _run_drain(lib: Path, capsys) -> str:
+    argv = sys.argv
+    sys.argv = ["drain_queue.py", "--library", str(lib)]
+    try:
+        drain_queue.main()
+    finally:
+        sys.argv = argv
+    return capsys.readouterr().out
+
+
+def test_manifest_alone_drains_to_queue_empty(tmp_path, capsys):
+    _manifest(_qdir(tmp_path))
+    assert _pending_names(tmp_path) == []
+    out = _run_drain(tmp_path, capsys)
+    assert out.strip() == "queue empty", out
+
+
+def test_manifest_plus_authenticate_defers_one_with_no_blank_row(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _manifest(q)
+    _put(q / "smith2020-auth.json", kind="authenticate", status="requested",
+         citekey="smith2020", requestedAt="2026-09-01T00:00:00Z", attempts=0,
+         note="check the year")
+    assert _pending_names(tmp_path) == ["smith2020-auth.json"]
+    out = _run_drain(tmp_path, capsys)
+    assert "1 deferred-to-skill" in out, out
+    assert "kind=''" not in out and "- for " not in out, out
+    assert "- authenticate for smith2020 [note]" in out, out
+
+
+def test_triage_stub_is_named_by_its_file(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _put(q / "_triage-foo.json", kind="triage", status="requested",
+         filename="foo.pdf", requestedAt="x", attempts=0)
+    out = _run_drain(tmp_path, capsys)
+    assert "- triage for foo.pdf" in out, out
+
+
+def test_pending_native_count_ignores_deferred_failed_poisoned_manifest(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _manifest(q)
+    base = dict(requestedAt="2026-09-01T00:00:00Z", attempts=0)
+    _put(q / "a.json", kind="index", status="requested", citekey="a", **base)
+    _put(q / "b.json", kind="reindex", status="requested", citekey="b", **base)
+    _put(q / "c.json", kind="index", status="failed", citekey="c", **base)
+    _put(q / "d.json", kind="index", status="poisoned", citekey="d", **base)
+    _put(q / "e-auth.json", kind="authenticate", status="requested", citekey="e", **base)
+    _put(q / "f-richindex.json", kind="richIndex", status="requested", citekey="f", **base)
+    _put(q / "g.done.json", kind="index", status="requested", citekey="g", **base)
+    # retired: .done sibling records this very request
+    _put(q / "h.json", kind="index", status="requested", citekey="h", **base)
+    _put(q / "h.done", kind="index", status="requested", citekey="h", **base)
+
+    native = queue_slot.pending_requests(q, native_only=True)
+    assert sorted(e["_path"].name for e in native) == ["a.json", "b.json"]
+    every = queue_slot.pending_requests(q)
+    assert sorted(e["_path"].name for e in every) == [
+        "a.json", "b.json", "e-auth.json", "f-richindex.json"]
+    assert {e["kind"] for e in every} == {"index", "reindex", "authenticate", "deepIndex"}
+
+    assert queue_slot.main(["pending", "--native", "--count",
+                            "--library", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.strip() == "2"
+    assert queue_slot.main(["pending", "--library", str(tmp_path)]) == 0
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    assert [x["file"] for x in lines] == [
+        "a.json", "b.json", "e-auth.json", "f-richindex.json"]
+
+
+def test_drain_skips_running_and_retries_failed(tmp_path):
+    q = _qdir(tmp_path)
+    base = dict(requestedAt="2026-09-01T00:00:00Z", attempts=1)
+    _put(q / "a.json", kind="index", status="running", citekey="a", **base)
+    _put(q / "b.json", kind="index", status="failed", citekey="b", **base)
+    skips: dict = {}
+    names = sorted(e["_path"].name for e in drain_queue._list_pending(tmp_path, skips))
+    assert names == ["b.json"]
+    assert skips.get("running") == 1
+
+
+def test_retire_finds_legacy_richindex_slot(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _put(q / "a-richindex.json", kind="richIndex", status="requested",
+         citekey="a", requestedAt="x", attempts=0)
+    assert queue_slot.main(["retire", "--kind", "deepIndex", "--citekey", "a",
+                            "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["result"] == "retired"
+    assert not (q / "a-richindex.json").exists()
+    assert (q / "a-richindex.done").exists()
+
+
 if __name__ == "__main__":
     from _standalone import main
 

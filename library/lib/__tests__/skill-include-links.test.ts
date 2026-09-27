@@ -344,7 +344,7 @@ describe("skill include links", () => {
     // hid the other 39, every one spelled inside a code span
     // (`` `/deep-index <citekey>` ``) — the form a skill is MOST likely to
     // use when it is telling the reader what to run, including
-    // `/library/index-pending`'s own five-line dispatch table. A guard that
+    // `/library/index-pending`'s own dispatch table. A guard that
     // cannot see the common spelling is a habit.
     const names = [...silo.keys()].sort((a, b) => b.length - a.length).join("|");
     const BARE = new RegExp(`(?<![A-Za-z0-9_/.-])/(${names})\\b`, "g");

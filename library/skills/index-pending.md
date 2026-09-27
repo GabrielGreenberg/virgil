@@ -59,38 +59,48 @@ directory).
    ```bash
    python3 .virgil/scripts/library/drain_queue.py
    ```
-   This processes every `kind=index` and `kind=reindex` entry in
-   `.virgil/queue/*.json`, grouped by citekey and ordered:
-   1. `bib-edit`
-   2. `authenticate`
-   3. `index` / `reindex`
-   4. `deepIndex` (legacy `richIndex`)
-   5. `import-bib`
-   6. `triage`
+   This walks the pending requests in `.virgil/queue/`, grouped by
+   citekey and ordered `bib-edit`, `authenticate`, `index`/`reindex`,
+   `deepIndex` (legacy `richIndex`), `triage`. Not every `*.json` there is
+   a request: `pending-reviews.json` is the app's bib-review manifest and
+   `*.done.json` a retirement marker — the drain never counts them
+   (`queue_slot.request_files`). To see what is pending without running
+   anything: `python3 .virgil/scripts/library/queue_slot.py pending`.
 
-   Only `index` and `reindex` are native (`drain_queue.py`
-   `NATIVE_KINDS`). **Every other kind is deferred** — `bib-edit`,
-   `authenticate`, `deepIndex` (legacy `richIndex`), `import-bib`, and
-   `triage`: the script lists them in its summary but does not handle
-   them itself. Capture stdout for the per-entry classification table.
+   Only `index` and `reindex` are native (`queue_slot.DRAIN_NATIVE_KINDS`).
+   **Every other kind is deferred**: the drain lists it under
+   "Remaining (need skill dispatch)" as `- <kind> for <citekey>`, with a
+   `[note]` flag when the user attached a note, and leaves the file for
+   step 2. Capture stdout for the per-entry classification table.
 
-2. **Dispatch deferred kinds via skills.** For each kind the drain
-   script reported as deferred:
-   - `kind: "bib-edit"`     → invoke `/library/apply-bib-edit <citekey>`
-   - `kind: "authenticate"` → invoke `/library/authenticate-bib <citekey>`
-   - `kind: "deepIndex"` (or legacy `"richIndex"`) → invoke `/library/deep-index <citekey>`
-   - `kind: "import-bib"`   → invoke `/library/import-bib <citekey>`
-   - `kind: "triage"`       → these are pre-`triage_apply` stubs;
-     normally produced only by the legacy per-file flow. Invoke
-     `/library/triage-pdf <filename>` for each.
+2. **Dispatch deferred kinds.** First the **note override** — a request
+   the user wrote a note on is an AI request, and the note is its spec.
+   **What counts is defined once, in `/library/ai-requests` →
+   "What counts as an AI request"; follow that section, don't re-derive
+   it.** In short:
+   any `paper-review`, and any `authenticate` / `deepIndex` flagged
+   `[note]`, goes to **`/library/ai-requests`** (run it once; it handles
+   every such request in the queue). Then, per kind, for the rest:
 
-   **Tip:** `.virgil/queue/pending-reviews.json` lists all pending authenticate
-   requests as a flat manifest. Use it as a quick check for outstanding
-   AI review requests instead of scanning individual queue files.
+   | Queue kind | Route |
+   |---|---|
+   | `paper-review` | → `/library/ai-requests` (always carries a note) |
+   | `authenticate` | → `/library/authenticate-bib <citekey>` (with `[note]`: → `/library/ai-requests`) |
+   | `deepIndex` | → `/library/deep-index <citekey>`; legacy `richIndex` likewise (with `[note]`: → `/library/ai-requests`) |
+   | `bib-edit` | → `/library/apply-bib-edit <citekey>` |
+   | `import-bib` | → `/library/import-bib <citekey>` |
+   | `triage` | → `/library/triage-pdf <filename>` (pre-`triage_apply` stubs from the legacy per-file flow; the drain prints the filename) |
+   | `index` | → native, step 1 (a leftover is `failed`; see the drain's summary) |
+   | `reindex` | → native, step 1 |
+   | `delete` | → **no skill — do not act.** Deleting a paper folder, its `master.bib` block and catalog row is destructive and has no handling skill yet; list each in the summary as "delete requested — needs the user" and leave the file |
 
-   Order: process `bib-edit` and `authenticate` first (they may
-   improve a future re-index), then `deepIndex`, then any `triage`.
-   Run them sequentially — most queues will have at most a handful.
+   A census test (`index-pending-dispatch-census.test.ts`) fails if a
+   `QueueKind` in `library/lib/queue.ts` has no row here.
+
+   Order: `bib-edit` and `authenticate` first (they may improve a future
+   re-index), then `deepIndex` and `import-bib`, then any `triage`, then
+   `/library/ai-requests` once if any request was routed there. Run them
+   sequentially — most queues will have at most a handful.
 
 3. **If `bib-edit` or `authenticate` skill runs produced changes**,
    re-run `python3 .virgil/scripts/library/drain_queue.py` once more so any
@@ -117,8 +127,11 @@ directory).
 
 ## When the queue is empty
 
-`drain_queue.py` exits with `queue empty` and returns 0 — your reply is
-just that single line, no further work needed.
+`drain_queue.py` prints `queue empty` (with a parenthesised count of any
+`poisoned` / `running` / already-done entries it skipped) and returns 0 —
+your reply is just that line, no further work needed. The
+`pending-reviews.json` manifest does not count as a request, so a library
+that has had a bib review still reaches this branch.
 
 ## Large queues / running from inside a subagent
 
@@ -150,16 +163,28 @@ echo "drain pid=$! log=/tmp/drain_$ts.log"
 The drain now outlives the current shell / agent turn. Capture the
 log path so the next phase can tail it.
 
-**Phase B — wait for the queue to empty, then continue.** From a
-fresh shell context (a follow-up turn, or a sibling Bash background
-command), poll until the queue is empty:
+**Phase B — wait for the NATIVE work to finish, then continue.** The
+drain only ever empties the native kinds: every deferred request (and any
+`failed`/`poisoned` entry, and the review manifest) stays in the folder
+until step 2 runs, so never poll for an empty folder — ask the queue door
+how many native requests are still pending, and use the drain's pid as the
+belt (a drain that died early leaves the count stuck above zero):
 ```bash
-until [ "$(ls <library-root>/.virgil/queue/*.json 2>/dev/null | wc -l | tr -d ' ')" = "0" ]; do
+cd <library-root>
+drain_pid=<pid from Phase A>
+q=".virgil/scripts/library/queue_slot.py"
+until [ "$(python3 $q pending --native --count)" = "0" ]; do
+  kill -0 "$drain_pid" 2>/dev/null || break   # drain exited early
   sleep 30
 done
-echo "drain queue empty $(date -u +%H:%M:%SZ)"
+left="$(python3 $q pending --native --count)"
+echo "native requests left: $left $(date -u +%H:%M:%SZ)"
 ```
-Then run step 2 (deferred-kind dispatch) and step 4 (final summary).
+If `left` is `0`, run step 2 (deferred-kind dispatch), step 3 (re-drain
+if step 2 changed anything), step 4 (refresh the "imported" flags) and
+step 5 (final summary), reading the drain's own summary from the Phase A
+log. If `left` is above `0`, the drain stopped early: `tail` the log for
+the error and re-run Phase A.
 
 If two callers race and start two `drain_queue.py` processes against
 the same library, that's safe — `_process_one` in the drain script

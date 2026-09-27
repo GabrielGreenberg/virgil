@@ -67,13 +67,12 @@ The right answer depends on what kind of folder this is.
 
 1. **Check setup.** Run `python3 -c "import fitz, requests" 2>&1`. If pymupdf or
    requests are missing, run the install command from the **Setup** section.
-2. **Inspect the queue.** List `.virgil/queue/*.json` (skip `_*.lock` and `*.done`).
-3. **Process pending work:**
-   - `kind: "triage"` + `status: "requested"` → `/library:triage-pdf`.
-   - `kind: "index"` + `status: "requested"` → `/library:index-paper`.
-   - `kind: "authenticate"` + `status: "requested"` → `/library:authenticate-bib`.
-   - `kind: "deepIndex"` (or legacy `"richIndex"`) + `status: "requested"` → `/library:deep-index`.
-   - `kind: "paper-review"` or any entry with a user `note` → `/library:ai-requests`.
+2. **Inspect the queue.** Run `python3 .virgil/scripts/library/queue_slot.py pending`
+   — one line per pending request. (Not every `.virgil/queue/*.json` is one:
+   `pending-reviews.json` is a manifest and `*.done.json` a marker.)
+3. **Process pending work:** run `/library:index-pending`. Its step 2 is the
+   one dispatch table — every queue kind has a route there, and a
+   `paper-review` or any entry with a user `note` goes to `/library:ai-requests`.
 4. If the queue is empty, report that and ask the user what to do next.
 
 To poll continuously: `/loop /library:index-pending`.

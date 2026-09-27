@@ -30,11 +30,26 @@ The contract, stated once:
 5. **The drain's belt.** `done_retires(json, done)` says whether a `.done` is
    the retirement of THIS request (same kind + same `requestedAt`), which is
    the only case in which the drain may skip it.
+6. **One answer to "what does the queue hold?"** (task 794). Not every
+   `*.json` in the queue is a request: `pending-reviews.json` is a manifest
+   the app keeps forever, and `*.done.json` is a rotated marker.
+   `is_request_filename` is the file-level predicate and `PENDING_STATUS` the
+   status one; `pending_requests` applies both (plus the done-sibling belt).
+   The drain lists through it, the skill's detached-drain poll counts through
+   it (`pending --native`), and the app's reader (`scanQueue`) mirrors the
+   exclusion set as `QUEUE_NON_REQUEST_FILENAMES` — pinned by
+   `queue-slot-parity.test.ts`.
 
 CLI (the door for skill prompts that enqueue work)::
 
     python3 queue_slot.py write --kind index --citekey smith2020 [--library .]
     python3 queue_slot.py retire --kind index --citekey smith2020
+    python3 queue_slot.py pending [--native] [--count]
+
+`pending` prints the pending requests as JSON lines (`{"kind", "citekey",
+"file"}`), or with `--count` just their number. `--native` limits it to the
+kinds `drain_queue.py` processes itself (`DRAIN_NATIVE_KINDS`) — the count a
+detached drain drives to zero while the kinds it defers to skills stay queued.
 
 `write` prints one JSON line `{"result": ..., "file": ...}` and exits 0 when a
 request is (or already was) queued, 3 when the slot refused it.
@@ -69,6 +84,28 @@ SLOT_SUFFIX: dict[str, Optional[str]] = {
 # Kinds whose requests were written to the bare slot before per-kind slots.
 LEGACY_BARE_SLOT_KINDS = ("authenticate",)
 
+# Legacy kind spellings → the current kind. Read paths normalize through it.
+LEGACY_KIND_ALIASES: dict[str, str] = {"richIndex": "deepIndex"}
+# Legacy slot suffixes still read (never written): kind → extra suffixes.
+LEGACY_SLOT_SUFFIXES: dict[str, tuple[str, ...]] = {"deepIndex": ("-richindex",)}
+
+# Files in the queue folder that are NOT requests, whatever their extension.
+# `pending-reviews.json` is the app's bib-review manifest
+# (`library/lib/queue.ts` `addPendingReview`), written and never deleted.
+# Mirrored by `QUEUE_NON_REQUEST_FILENAMES` in library/lib/queue.ts.
+NON_REQUEST_FILENAMES: tuple[str, ...] = ("pending-reviews.json",)
+# A rotated/legacy retirement marker that happens to end in `.json`.
+DONE_JSON_SUFFIX = ".done.json"
+
+# The one status that means "waiting to be worked". `running` is in flight,
+# `failed` is a retry the drain may pick up again, `poisoned` is given up on,
+# `done` is finished. Mirrored by `scanQueue`'s status test.
+PENDING_STATUS = "requested"
+
+# Kinds `drain_queue.py` processes itself; every other kind is deferred to a
+# skill (index-pending.md step 2).
+DRAIN_NATIVE_KINDS: tuple[str, ...] = ("index", "reindex")
+
 WRITTEN = "written"
 ALREADY_QUEUED = "already-queued"
 IN_FLIGHT = "in-flight"
@@ -88,12 +125,15 @@ def queue_dir(library: Path) -> Path:
     return Path(library) / ".virgil" / "queue"
 
 
+def normalize_kind(kind: str) -> str:
+    return LEGACY_KIND_ALIASES.get(kind, kind)
+
+
 def slot_filename(kind: str, citekey: str) -> str:
     """The queue filename for a (kind, citekey) request."""
     if not citekey:
         raise ValueError("citekey required for a queue slot")
-    if kind == "richIndex":  # legacy spelling of deepIndex
-        kind = "deepIndex"
+    kind = normalize_kind(kind)
     if kind not in SLOT_SUFFIX:
         raise ValueError(f"unknown queue kind {kind!r}")
     return f"{citekey}{SLOT_SUFFIX[kind] or ''}.json"
@@ -235,16 +275,63 @@ def write_request(
 
 def find_request(library: Path, kind: str, citekey: str) -> Optional[Path]:
     """The file holding a pending `kind` request for `citekey`, looking in the
-    per-kind slot and (for legacy kinds) the bare slot."""
+    per-kind slot, (for legacy kinds) the bare slot, and any legacy slot
+    spelling (`-richindex` for deepIndex)."""
     qdir = queue_dir(library)
+    kind = normalize_kind(kind)
     candidates = [qdir / slot_filename(kind, citekey)]
     if kind in LEGACY_BARE_SLOT_KINDS:
         candidates.append(qdir / f"{citekey}.json")
+    candidates += [qdir / f"{citekey}{sfx}.json" for sfx in LEGACY_SLOT_SUFFIXES.get(kind, ())]
     for p in candidates:
         cur = _read(p) if p.exists() else None
-        if cur and cur.get("kind") == kind and cur.get("status") in ("requested", "running"):
+        if (
+            cur
+            and normalize_kind(str(cur.get("kind") or "")) == kind
+            and cur.get("status") in (PENDING_STATUS, "running")
+        ):
             return p
     return None
+
+
+def is_request_filename(name: str) -> bool:
+    """True when a queue-folder filename can hold a request: a `.json` that is
+    neither a known non-request file (the review manifest) nor a `.done`
+    marker. Says nothing about status — see `pending_requests`."""
+    return (
+        name.endswith(".json")
+        and not name.endswith(DONE_JSON_SUFFIX)
+        and name not in NON_REQUEST_FILENAMES
+    )
+
+
+def request_files(qdir: Path) -> list[Path]:
+    """Every file in `qdir` that `is_request_filename` admits, sorted."""
+    if not qdir.is_dir():
+        return []
+    return sorted(p for p in qdir.iterdir() if p.is_file() and is_request_filename(p.name))
+
+
+def pending_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str, Any]]:
+    """The requests waiting to be worked: request files whose entry reads as a
+    dict with `status == PENDING_STATUS`, not already retired by a `.done`
+    sibling (`done_retires`). Each item is the entry with `kind` normalized
+    and `_path` set. `native_only` keeps just `DRAIN_NATIVE_KINDS`.
+
+    Read-only: no stale marker is rotated here (the drain does that)."""
+    out: list[dict[str, Any]] = []
+    for p in request_files(qdir):
+        data = _read(p)
+        if data is None or data.get("status") != PENDING_STATUS:
+            continue
+        if done_retires(p, p.with_suffix(".done")):
+            continue
+        data["kind"] = normalize_kind(str(data.get("kind") or ""))
+        if native_only and data["kind"] not in DRAIN_NATIVE_KINDS:
+            continue
+        data["_path"] = p
+        out.append(data)
+    return out
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -260,8 +347,26 @@ def main(argv: Optional[list[str]] = None) -> int:
     r.add_argument("--kind", required=True)
     r.add_argument("--citekey", required=True)
     r.add_argument("--library", default=str(Path.cwd()))
+    q = sub.add_parser("pending", help="list (or count) the pending requests")
+    q.add_argument("--native", action="store_true",
+                   help="only the kinds drain_queue.py processes itself")
+    q.add_argument("--count", action="store_true", help="print just the number")
+    q.add_argument("--library", default=str(Path.cwd()))
     args = ap.parse_args(argv)
     library = Path(args.library).expanduser()
+
+    if args.cmd == "pending":
+        items = pending_requests(queue_dir(library), native_only=args.native)
+        if args.count:
+            print(len(items))
+        else:
+            for it in items:
+                print(json.dumps({
+                    "kind": it.get("kind", ""),
+                    "citekey": it.get("citekey", ""),
+                    "file": it["_path"].name,
+                }))
+        return 0
 
     if args.cmd == "write":
         result, path = write_request(
