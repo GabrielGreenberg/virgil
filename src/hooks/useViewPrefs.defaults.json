@@ -68,8 +68,6 @@
   },
   "collapsedLeft": false,
   "collapsedRight": false,
-  "blankLeft": false,
-  "blankRight": false,
   "panelWidths": {},
   "codePaneRatio": 0.55,
   "poppedOutPanels": [],
@@ -103,9 +101,5 @@
     0
   ],
   "dividerWidth": "text",
-  "omniHideAllCards": {
-    "left": true,
-    "right": false
-  },
   "omniHiddenCategories": []
 }

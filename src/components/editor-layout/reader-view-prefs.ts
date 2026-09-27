@@ -624,10 +624,6 @@ export function useReaderView(
     (side: Side) => (side === "left" ? leftEnabled : rightEnabled),
     [leftEnabled, rightEnabled],
   );
-  const getOmniHideAll = useCallback(
-    (side: Side) => vp.prefs.omniHideAllCards[side],
-    [vp.prefs.omniHideAllCards],
-  );
 
   // Outline click-to-scroll — the one REAL Reader editor handler. Ported
   // verbatim from the formerly-dead `// Reader path — direct OutlinePanel`
@@ -681,7 +677,6 @@ export function useReaderView(
       zenLeftMargin: 0,
       zenRightMargin: 0,
       getOmniEnabled,
-      getOmniHideAll,
       setOmniSideToDefault: vp.resetOmniSide,
       categorySides,
       // The real engine owns the card-popout-key remap; route it through.
@@ -692,7 +687,7 @@ export function useReaderView(
     // `vp` is referentially stable (useViewPrefs memoizes its return), so
     // listing the whole object — which exhaustive-deps prefers over the
     // individual `vp.*` member reads used here — adds no spurious recompute.
-    [vp, getOmniEnabled, getOmniHideAll, categorySides],
+    [vp, getOmniEnabled, categorySides],
   );
 
   // Reader breadcrumb — the current-session section path you're scrolled into

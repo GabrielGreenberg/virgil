@@ -98,9 +98,6 @@ export function readerHostKind(scope: string): ReaderHostKind {
 export interface ReaderHostProfile {
   /** Seed the panel columns ("gutters") folded IN. A clean reading view. */
   guttersFolded: boolean;
-  /** Omni view ON (⇔ `omniHideAllCards` false) on BOTH sides. When false the
-   *  shipped default stands (`{left:true, right:false}`). */
-  omniOn: boolean;
   /** Panels docked at mount, in order. Each lands on ITS OWN live side
    *  (`resolvePanelSide` over the seed's placements) — a profile names panels,
    *  never sides. Every entry must be inside `READER_CHROME.visiblePanelKinds`
@@ -110,8 +107,10 @@ export interface ReaderHostProfile {
 
 /**
  * The per-host defaults. Gabriel, 2026-08-31: a popped-out paper opens with
- * Outline + Notes docked, omni view on both sides, gutters out; the inline
- * reader and a torn-out Library tab keep the quiet reading defaults.
+ * Outline + Notes docked, gutters out; the inline reader and a torn-out Library
+ * tab keep the quiet reading defaults (gutters folded). Omni view is always on
+ * (task 807 retired its hide axis, and with it this profile's `omniOn` row), so
+ * "quiet" is expressed by the fold alone.
  *
  * `outer-library` and `inline` are byte-identical TODAY and are deliberately
  * separate rows: they are different hosts, and the whole point of naming the
@@ -121,11 +120,10 @@ export interface ReaderHostProfile {
 export const READER_HOST_PROFILES: Readonly<
   Record<ReaderHostKind, ReaderHostProfile>
 > = {
-  inline: { guttersFolded: true, omniOn: false, dock: [] },
-  "outer-library": { guttersFolded: true, omniOn: false, dock: [] },
+  inline: { guttersFolded: true, dock: [] },
+  "outer-library": { guttersFolded: true, dock: [] },
   "popped-paper": {
     guttersFolded: false,
-    omniOn: true,
     dock: ["outline", "notes"],
   },
 };
@@ -137,8 +135,6 @@ export const READER_HOST_PROFILES: Readonly<
  *
  * Pure, and expressed through the engines rather than by hand:
  *  - the fold flags are plain field state;
- *  - `omniOn` writes `omniHideAllCards` (the read `getOmniHideAll` derives
- *    from, and what the "Omni view" toggle flips);
  *  - every dock entry goes through `placeInStack` on its own resolved side,
  *    so the sentinel clear / cap / MRU invariants hold by construction (and
  *    the fold flags are written FIRST, so a docked side's clear wins — a
@@ -154,9 +150,6 @@ export function applyReaderHostProfile(
     collapsedLeft: profile.guttersFolded,
     collapsedRight: profile.guttersFolded,
   };
-  if (profile.omniOn) {
-    next = { ...next, omniHideAllCards: { left: false, right: false } };
-  }
   if (profile.dock.length > 0) {
     const sides = panelSidesFromPlacements(next.placements);
     for (const panel of profile.dock) {

@@ -39,7 +39,7 @@ export const JUMP_SELECTION_PANELS: readonly JumpSelectionPanel[] = [
 
 /** The selection setter for a jump target, or null for panels without a
  *  native selection slot (mainText/heading hits pass no panel; shell ids
- *  like "omni"/"search"/"blank" aren't selection targets). */
+ *  like "omni"/"search" aren't selection targets). */
 export function jumpSelectionFor(
   setters: JumpSelectionSetters,
   panel: PanelId,

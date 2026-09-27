@@ -28,7 +28,7 @@
 //      slash + typed STILL insert the atom (and don't throw); only the card is
 //      skipped. The PM-synchronous insert is the robustness feature.
 //   5. SOFT-ROUTE — slash/typed surface OMNI only when the footnotes side is
-//      collapsed/blank; never when another panel covers it (backlog #2). The
+//      collapsed; never when another panel covers it (backlog #2). The
 //      prefs-inspecting route lives inside `footnote.run`.
 //   6. RETIRED PLUMBING — `virgil-footnote-created` has ZERO emitters AND ZERO
 //      listeners after this chip (asserted by a source-free runtime probe: the
@@ -130,26 +130,24 @@ let setActiveLeft: ReturnType<typeof vi.fn>;
 let setActiveRight: ReturnType<typeof vi.fn>;
 let expandLeft: ReturnType<typeof vi.fn>;
 let expandRight: ReturnType<typeof vi.fn>;
-let clearBlankIfSet: ReturnType<typeof vi.fn>;
 let focusCard: ReturnType<typeof vi.fn>;
 
-/** A prefs object with the footnotes panel docked on `side`, in one of three
+/** A prefs object with the footnotes panel docked on `side`, in one of two
  *  visibility states for that side (backlog #2 band-stack model):
  *   - "collapsed" ⇒ the column is folded away; soft-route un-collapses it.
- *   - "blank"     ⇒ the "show nothing" overlay is set; soft-route clears it.
  *   - "shown"     ⇒ omni is already visible behind any docked bands; no-op.
+ *  (The third, "blank", was retired with omni-hide in task 807 — omni is
+ *  always on, so a folded gutter is the only state that hides it.)
  *  The OTHER side is always "shown" so a soft-route never touches it. */
 function prefsWith(
   side: "left" | "right",
-  state: "collapsed" | "blank" | "shown",
+  state: "collapsed" | "shown",
 ): ViewPrefs {
   return {
     placements: [{ id: "footnotes", side }],
     dockStack: { left: [], right: [] },
     collapsedLeft: side === "left" && state === "collapsed",
     collapsedRight: side === "right" && state === "collapsed",
-    blankLeft: side === "left" && state === "blank",
-    blankRight: side === "right" && state === "blank",
   } as unknown as ViewPrefs;
 }
 
@@ -178,7 +176,6 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
           setActiveRight: setActiveRight as (id: unknown) => void,
           expandLeft: expandLeft as () => void,
           expandRight: expandRight as () => void,
-          clearBlankIfSet: clearBlankIfSet as () => void,
           focusCard: focusCard as (key: string) => void,
         } as unknown as ActionContext["panelRouting"],
       };
@@ -264,7 +261,6 @@ beforeEach(() => {
   setActiveRight = vi.fn();
   expandLeft = vi.fn();
   expandRight = vi.fn();
-  clearBlankIfSet = vi.fn();
   focusCard = vi.fn();
 });
 
@@ -433,8 +429,8 @@ describe("no double-insert", () => {
 // ---------------------------------------------------------------------------
 // (7) backlog #2 soft-route — in the band-stack model omni is the always-on
 //     background, so `setActiveX("omni")` is gone. The soft-route REVEALS omni
-//     only when the footnotes side is HIDDEN: un-collapse a collapsed side, or
-//     un-blank a blanked side. An already-shown side is a no-op (omni's already
+//     only when the footnotes side is HIDDEN — i.e. collapsed (omni-hide is
+//     retired, task 807). An already-shown side is a no-op (omni's already
 //     behind any docked bands), the OTHER side is never touched, and the
 //     dedicated Footnotes panel is never force-opened.
 // ---------------------------------------------------------------------------
@@ -450,28 +446,18 @@ describe("soft-route into omni (backlog #2)", () => {
     runSlash(prefsWith("left", "collapsed"));
     expect(expandLeft).toHaveBeenCalledTimes(1);
     expect(expandRight).not.toHaveBeenCalled();
-    expect(clearBlankIfSet).not.toHaveBeenCalled();
-  });
-
-  it("clears the blank when the footnotes side is blank", () => {
-    runSlash(prefsWith("left", "blank"));
-    expect(clearBlankIfSet).toHaveBeenCalledTimes(1);
-    expect(expandLeft).not.toHaveBeenCalled();
-    expect(expandRight).not.toHaveBeenCalled();
   });
 
   it("leaves the side ALONE when it's already shown (omni already behind any bands)", () => {
     runSlash(prefsWith("left", "shown"));
     expect(expandLeft).not.toHaveBeenCalled();
     expect(expandRight).not.toHaveBeenCalled();
-    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("respects a RIGHT dock placement for the footnotes panel", () => {
     runSlash(prefsWith("right", "collapsed"));
     expect(expandRight).toHaveBeenCalledTimes(1);
     expect(expandLeft).not.toHaveBeenCalled();
-    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("never force-opens the dedicated Footnotes panel", () => {

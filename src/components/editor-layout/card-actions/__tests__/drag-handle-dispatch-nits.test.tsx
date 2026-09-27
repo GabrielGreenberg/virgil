@@ -209,7 +209,6 @@ function makeHarness(editor: Editor): Harness {
     prefs: { placements: [], activeLeft: null, activeRight: null } as never,
     expandLeft: () => {},
     expandRight: () => {},
-    clearBlankIfSet: () => {},
   };
 
   const { result } = renderHook(() => useDragHandleActions(deps));

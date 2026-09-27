@@ -127,10 +127,10 @@ describe("useViewPrefs — dock-eviction victim under session-only MRU (task 251
   });
 });
 
-// redockPanel (drag-a-float-onto-a-dock-slot) must clear the collapse/blank
-// sentinels for the target side, exactly like `dockOpen` (task 272). Pre-fix,
+// redockPanel (drag-a-float-onto-a-dock-slot) must clear the collapse
+// sentinel for the target side, exactly like `dockOpen` (task 272). Pre-fix,
 // `redockPanel` re-implemented stack insertion inline but never touched
-// `collapsedLeft/Right` / `blankLeft/Right`, so dropping a float onto a
+// `collapsedLeft/Right`, so dropping a float onto a
 // COLLAPSED side inserted the band into the stack while the column stayed at
 // 0px — the docked panel's portal target didn't exist, so it "vanished". The
 // visible layout symptom is geometry-masking (a 0px column) and can't be
@@ -161,7 +161,6 @@ describe("useViewPrefs — redockPanel clears the collapsed/blank sentinel (task
     // panel's portal target exists and it renders (mirrors dockOpen).
     expect(result.current.prefs.dockStack.left).toContain(A);
     expect(result.current.prefs.collapsedLeft).toBe(false);
-    expect(result.current.prefs.blankLeft).toBe(false);
   });
 
   it("clears the sentinel on the right side without touching the other side", () => {

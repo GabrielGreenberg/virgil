@@ -17,11 +17,12 @@ import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelId } from "@/hooks/useViewPrefs";
 
-/* ── Member 2: PanelId ↔ PanelKind | "blank" (compile-time, no runtime) ── */
+/* ── Member 2: PanelId ↔ PanelKind (compile-time, no runtime) ──
+ * The layout-only "blank" sentinel was retired with omni-hide (task 807). */
 type AssertTrue<T extends true> = T;
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 // If a PanelKind is added/removed and PanelId falls out of sync, this errors.
-type _PanelIdIsPinned = AssertTrue<Equal<PanelId, PanelKind | "blank">>;
+type _PanelIdIsPinned = AssertTrue<Equal<PanelId, PanelKind>>;
 
 describe("panel taxonomy SSOT pins (audit-059)", () => {
   it("member 1 — PANEL_KIND_TO_BODY_KEY reproduces the historical hand-kept map", () => {
@@ -62,14 +63,14 @@ describe("panel taxonomy SSOT pins (audit-059)", () => {
     }
   });
 
-  it("member 2 — PanelId is exactly the registry PanelKinds plus 'blank'", () => {
+  it("member 2 — PanelId is exactly the registry PanelKinds", () => {
     // Runtime companion to the compile-time pin: the persisted-slot set is the
-    // live registry keys ∪ {blank}. Diverging PanelId from PanelKind now fails
-    // at the type level (see _PanelIdIsPinned above).
-    const expected = new Set<string>([...Object.keys(PANEL_REGISTRY), "blank"]);
+    // live registry keys. Diverging PanelId from PanelKind now fails at the
+    // type level (see _PanelIdIsPinned above).
+    const expected = new Set<string>(Object.keys(PANEL_REGISTRY));
     // Sample values typed as PanelId must all be in the expected set.
-    const samples: PanelId[] = ["notes", "omni", "blank", "search", "errors"];
+    const samples: PanelId[] = ["notes", "omni", "search", "errors"];
     for (const s of samples) expect(expected.has(s)).toBe(true);
-    expect(expected.size).toBe(Object.keys(PANEL_REGISTRY).length + 1);
+    expect(expected.has("blank")).toBe(false);
   });
 });

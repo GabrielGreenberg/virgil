@@ -221,8 +221,8 @@ export default function FigureAnnotation({
           that says it is disabled must not be a tab stop.
           The accessible NAME is stable across the toggle ("Figure number");
           `aria-pressed` is the state channel and the sighted tooltip is what
-          flips, so the two cannot double-announce (the `OmniBlankToggle`
-          contract). */}
+          flips, so the two cannot double-announce (pinned by render in
+          accessible-name-agrees-with-visible-control.test.tsx, member 3). */}
       {interactive ? (
         <button
           type="button"

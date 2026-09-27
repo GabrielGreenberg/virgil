@@ -48,7 +48,7 @@
  *   remembering to skip them — and a new view toggle stays ONE registry row
  *   with zero edits here (task 274).
  * - `poppedOutCards` / `cardFloatPositions` are keyed by float CARD keys, and
- *   `panelWidths` / `omniHideAllCards` by `Side`. They are classified `null`
+ *   `panelWidths` by `Side`. They are classified `null`
  *   below: an answer ("it is keyed by X"), not an omission.
  */
 import type { RegistryPrefs } from "@/lib/view-prefs/registry";
@@ -132,7 +132,6 @@ export const PANEL_ID_CARRIERS: Readonly<
 
   // Not panel-keyed:
   panelWidths: null, // keyed by Side (`"left"` / `"right"`)
-  omniHideAllCards: null, // keyed by Side
   poppedOutCards: null, // keyed by float card key (`float:<domain>:<kind>:<id>`)
   cardFloatPositions: null, // keyed by float card key
   appliedPrefMigrations: null, // keyed by nothing — migration ids, not panels

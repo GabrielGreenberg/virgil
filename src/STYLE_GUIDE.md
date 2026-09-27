@@ -2053,8 +2053,9 @@ render in
 
 **Naming a toggle.** A control with `aria-pressed` announces its state through
 that attribute, so its NAME is a single stable phrase for the MODE, never a
-state-flipped verb — "Blank this gutter, toggle button, pressed", not "Show omni
-cards, pressed", which reads as a control that is already showing. And the name
+state-flipped verb — "Figure number, toggle button, pressed", not "Show figure
+number, pressed", which reads as a control that is already showing (the
+precedent was the omni "Blank this gutter" toggle, retired in task 807). And the name
 is for what pressing it DOES, never for the surface it suppresses. The TOOLTIP
 has no state channel of its own, so it *is* state-dependent — pass it through
 `iconHint`'s `hint` beside the stable `label`, from the one call site.

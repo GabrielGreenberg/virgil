@@ -643,8 +643,6 @@ export default function EditorLayout() {
     expandLeft,
     expandRight,
     closeAllPanels,
-    setBlank,
-    clearBlankIfSet,
     setActiveLeft,
     setActiveRight,
     setPanelHeight,
@@ -678,7 +676,6 @@ export default function EditorLayout() {
     toggleViewPrefMember,
     toggleOmniCategory,
     resetOmniSide,
-    toggleOmniHideAllCards,
     setCardArchiveView,
   } = viewPrefsResult;
   const prefsRef = useRef(prefs);
@@ -1418,11 +1415,10 @@ export default function EditorLayout() {
   // dead. The single live implementation now lives in EditorPane (it docks the
   // target via `viewPrefs.openPanelDocked`, shared by the main app + Reader).
 
-  // Omni-view category prefs + per-side hide-all toggle — sourced from
+  // Omni-view category prefs — sourced from
   // ViewPrefs (global, cross-window, promotable). The toggles arrive as
   // setters from useViewPrefs; here we just derive the read shape.
   const omniHiddenCategories = prefs.omniHiddenCategories;
-  const omniHideAllCards = prefs.omniHideAllCards;
   // Derive which strip side each category's native panel lives on. This is the
   // SAME ladder the margin markers and the strip icons read (`@/lib/panel-side`
   // via `deriveCategorySides`), so a card's marker and its omni card can no
@@ -1454,10 +1450,6 @@ export default function EditorLayout() {
   // Kept as a stable alias for the new useViewPrefs setter so MenuBar's
   // "reset side" wiring doesn't need touching.
   const setOmniSideToDefault = resetOmniSide;
-  const getOmniHideAll = useCallback(
-    (side: "left" | "right") => omniHideAllCards[side],
-    [omniHideAllCards],
-  );
 
   // #27: Inject the in-text anchor accent map onto `:root` from the LIVE theme
   // accents (default or user override). The `.linked-anchor[data-link-card^=…]`
@@ -2723,7 +2715,6 @@ export default function EditorLayout() {
     zenLeftMargin,
     zenRightMargin,
     getOmniEnabled,
-    getOmniHideAll,
     setOmniSideToDefault,
     categorySides,
     remapCardPopKey,
@@ -2736,7 +2727,6 @@ export default function EditorLayout() {
     zenLeftMargin,
     zenRightMargin,
     getOmniEnabled,
-    getOmniHideAll,
     setOmniSideToDefault,
     categorySides,
     remapCardPopKey,

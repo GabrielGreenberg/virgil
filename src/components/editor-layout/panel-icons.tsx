@@ -288,18 +288,6 @@ export function IconOmni({ active }: { active?: boolean }) {
   );
 }
 
-// Blank icon: rounded square with a dashed interior, signaling
-// "suppress omni — leave a truly empty canvas on this side".
-export function IconBlank({ active }: { active?: boolean }) {
-  const c = active ? "var(--accent)" : "currentColor";
-  return (
-    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c}
-      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="4" width="16" height="16" rx="1.5" strokeDasharray="2.5 2.5" />
-    </svg>
-  );
-}
-
 // Exclamation in a triangle — for the "Errors" panel (live LaTeX lint
 // + parsed compile log).
 export function IconErrors({ active, size = 18 }: { active?: boolean; size?: number }) {
@@ -389,13 +377,10 @@ export const PANEL_ICONS: Record<PanelId, (active: boolean) => React.ReactNode> 
   search: (a) => <IconSearch active={a} />,
   wordcount: (a) => <IconWordCount active={a} />,
   errors: (a) => <IconErrors active={a} />,
-  blank: () => null,
   omni: (a) => <IconOmni active={a} />,
 };
 
-/** Display label for a panel id. Reads from PANEL_REGISTRY for real
- *  panels and falls back for the layout-only "blank" slot. */
+/** Display label for a panel id — PANEL_REGISTRY's label. */
 export function panelLabel(id: PanelId): string {
-  if (id === "blank") return "Blank";
   return PANEL_REGISTRY[id].label;
 }

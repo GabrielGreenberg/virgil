@@ -118,12 +118,11 @@ describe("per-host OPENING LAYOUT (through the real useReaderView)", () => {
     sessionStorage.clear();
   });
 
-  it("inline reader: gutters folded, nothing docked, shipped omni default", () => {
+  it("inline reader: gutters folded, nothing docked", () => {
     const prefs = mountReader("inline");
     expect(prefs.collapsedLeft).toBe(true);
     expect(prefs.collapsedRight).toBe(true);
     expect(prefs.dockStack).toEqual({ left: [], right: [] });
-    expect(prefs.omniHideAllCards).toEqual(SHIPPED.omniHideAllCards);
   });
 
   it("torn-out LIBRARY tab keeps the inline reader's quiet defaults", () => {
@@ -131,7 +130,6 @@ describe("per-host OPENING LAYOUT (through the real useReaderView)", () => {
     expect(prefs.collapsedLeft).toBe(true);
     expect(prefs.collapsedRight).toBe(true);
     expect(prefs.dockStack).toEqual({ left: [], right: [] });
-    expect(prefs.omniHideAllCards).toEqual(SHIPPED.omniHideAllCards);
   });
 
   it("popped-out PAPER opens like an editing session (Gabriel's ask)", () => {
@@ -139,8 +137,8 @@ describe("per-host OPENING LAYOUT (through the real useReaderView)", () => {
     // (c) gutters out
     expect(prefs.collapsedLeft).toBe(false);
     expect(prefs.collapsedRight).toBe(false);
-    // (b) omni view ON both sides
-    expect(prefs.omniHideAllCards).toEqual({ left: false, right: false });
+    // (b) omni view ON both sides — by construction since task 807 (omni is
+    // always on; there is no hide axis for a profile to set).
     // (a) the agreed default panel set, each on its own live side
     expect(prefs.dockStack.left).toContain("outline");
     expect(prefs.dockStack.right).toContain("notes");
@@ -154,10 +152,14 @@ describe("per-host OPENING LAYOUT (through the real useReaderView)", () => {
     expect(prefs.panelModes.notes).toBe("docked");
     expect(prefs.panelMRU.left).toContain("outline");
     expect(prefs.panelMRU.right).toContain("notes");
-    // Invariant 1 (sentinel clear): a docked band's portal target only exists
-    // in an expanded, NON-BLANK column.
-    expect(prefs.blankLeft).toBe(false);
-    expect(prefs.blankRight).toBe(false);
+  });
+
+  it("a profile row carries fold + dock only — no omni-hide axis (task 807)", () => {
+    for (const row of Object.values(READER_HOST_PROFILES)) {
+      expect(Object.keys(row).sort()).toEqual(["dock", "guttersFolded"]);
+    }
+    const prefs = mountReader("inline") as unknown as Record<string, unknown>;
+    expect(prefs).not.toHaveProperty("omniHideAllCards");
   });
 
   it("a docked panel lands on ITS OWN live side, not a hard-coded one", () => {

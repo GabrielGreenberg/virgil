@@ -221,8 +221,9 @@ Six rules it earned:
   SSOT still splits free from orphaned; the pill counts both and wears the
   STRONGEST state it holds (error iff any orphaned); the distinction is
   per ROW (`BadgeOrphaned` vs the parked `◌`), orphaned rows first.
-- **The bin reads the side's WHOLE item list.** "Hide all cards" and the
-  category filter are preferences about the CASCADE; 410's rule for the chip
+- **The bin reads the side's WHOLE item list.** The category filter (and,
+  until task 807 retired it, "hide all cards") is a preference about the
+  CASCADE; 410's rule for the chip
   arrives at the surface that replaces it — an affordance that exists so a
   card cannot vanish is not hideable by a layout preference. The column's
   content signal counts bin members for the same reason (the Reader's

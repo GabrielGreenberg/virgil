@@ -262,6 +262,8 @@ export function clampStack(
     const seen = new Set<string>();
     for (const x of arr) {
       if (typeof x !== "string") continue;
+      // "blank" is the retired omni-hide sentinel (task 807): a stored one is
+      // dropped here like any unknown id.
       if (x === "omni" || x === "blank") continue;
       if (!PLACEMENT_ID_ALLOWLIST.has(x)) continue;
       if (seen.has(x) || exclude.has(x)) continue;

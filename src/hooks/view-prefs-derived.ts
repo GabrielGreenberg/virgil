@@ -39,3 +39,24 @@ export function dockStackTop(prefs: ViewPrefs, side: Side): PanelId | null {
 export function isPanelDocked(prefs: ViewPrefs, id: PanelId): boolean {
   return dockedSideOf(prefs, id) !== null;
 }
+
+/**
+ * The side whose omni column must be REVEALED for a card of panel `id` to be
+ * seen, or null when it already is. Omni is the always-mounted background of
+ * every column (a docked band sits OVER it, not instead of it), and since task
+ * 807 retired omni-hide (`omniHideAllCards` + the dead `blankLeft/Right`) the
+ * ONE state that hides it is a folded gutter. So the answer is the panel's
+ * placement side (else `fallback`) when that side is collapsed, and null
+ * otherwise. The single owner of "reveal omni for this panel" — the citation
+ * and footnote post-create soft-routes and the drag-handle
+ * `ensureOmniActiveForPanel` all ask it, then expand the side it names.
+ */
+export function omniSideToReveal(
+  prefs: Pick<ViewPrefs, "placements" | "collapsedLeft" | "collapsedRight">,
+  id: PanelId,
+  fallback: Side,
+): Side | null {
+  const side = prefs.placements.find((pl) => pl.id === id)?.side ?? fallback;
+  const collapsed = side === "left" ? prefs.collapsedLeft : prefs.collapsedRight;
+  return collapsed ? side : null;
+}

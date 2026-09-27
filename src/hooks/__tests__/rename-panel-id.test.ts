@@ -90,16 +90,14 @@ describe("applyPanelRenames — every PanelId-keyed carrier", () => {
     const panelWidths = { left: 300, right: 280 };
     const poppedOutCards = ["float:card:note:abc"];
     const cardFloatPositions = { "float:card:note:abc": { x: 0, y: 0, width: 1, height: 1 } };
-    const omniHideAllCards = { left: false, right: true };
     const out = applyPanelRenames(
-      { panelWidths, poppedOutCards, cardFloatPositions, omniHideAllCards },
+      { panelWidths, poppedOutCards, cardFloatPositions },
       PANEL_RENAMES,
     );
     // Untouched by IDENTITY — no copy was even made.
     expect(out.panelWidths).toBe(panelWidths);
     expect(out.poppedOutCards).toBe(poppedOutCards);
     expect(out.cardFloatPositions).toBe(cardFloatPositions);
-    expect(out.omniHideAllCards).toBe(omniHideAllCards);
   });
 
   it("never rewrites the card-kind vocabularies that COLLIDE by spelling", () => {

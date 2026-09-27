@@ -152,14 +152,13 @@ describe("task 420 — the header is outside every card-filter gate", () => {
     onDismissAll: () => {},
   };
 
-  it("renders with hideAllCards ON and NO enabled categories", () => {
+  it("renders with NO enabled categories (every card filtered out)", () => {
     const { container } = render(
       <OmniViewPanel
         side="right"
         items={[]}
         editor={null}
         enabledCategories={new Set() as Set<OmniCategory>}
-        hideAllCards
         bulkPendingChanges={bulk}
       />,
     );

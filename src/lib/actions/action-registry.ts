@@ -173,6 +173,7 @@ import type { CardCreationApi } from "@/components/editor-layout/card-actions/ca
 // inspects to decide whether to surface OMNI. Importing the TYPE pulls no
 // prefs runtime into this module.
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import { omniSideToReveal } from "@/hooks/view-prefs-derived";
 // The existing resolved-ref union the grab-bar dispatcher already speaks.
 // `DragHandleRef = TextObjectRef | SelectionRef`. We extend it below with a
 // `CursorRef` for the collapsed-caret (slash / typed) case.
@@ -755,15 +756,14 @@ export interface ActionContext {
      * "active panel" — it's the always-mounted background under the docked
      * band stack). So a freshly-created card routed to omni is only INVISIBLE
      * when the panel's docked side is *collapsed* (the whole column is folded
-     * away) or *blanked* (a manual "show nothing here" overlay). The citation /
-     * footnote soft-routes call these to UN-collapse / UN-blank that side so the
-     * new card shows in omni. Per side, with the same `Left`/`Right` split the
+     * away) — omni-hide is retired (task 807), so that is the ONE hiding state.
+     * The citation / footnote soft-routes call these to UN-collapse that side
+     * so the new card shows in omni. Per side, with the same `Left`/`Right` split the
      * rest of the bag uses. Absent on the read-only Reader pane (no rail to
      * reveal) — the soft-route then no-ops, exactly as before.
      */
     expandLeft?: () => void;
     expandRight?: () => void;
-    clearBlankIfSet?: () => void;
     /**
      * Select a newly-created example in the Examples panel (CHIP 5c). The
      * example "card" is NOT a `cardCreation`-minted float keyed by a float key
@@ -1364,25 +1364,27 @@ function cardRun(id: CardActionId, ctx: ActionContext): void {
  * always-mounted background of every column, so the new card lands + selects
  * in omni and is visible the moment the citations side is *shown*. A docked
  * band sits OVER omni (not INSTEAD of it), so any normally-shown side already
- * reveals the card behind its bands — no action needed. The only states that
- * HIDE omni entirely are: the side is *collapsed* (the column is folded away)
- * or *blanked* (a manual "show nothing" overlay). So reveal omni by
- * UN-collapsing / UN-blanking the citations panel's docked side — never the
- * other side, and never when the side is already shown (omni's already there).
+ * reveals the card behind its bands — no action needed. The only state that
+ * HIDES omni is a *collapsed* side (the column is folded away; omni-hide was
+ * retired in task 807), so reveal omni by UN-collapsing the citations panel's
+ * side — never the other side, and never when the side is already shown.
+ * Which side, if any, is `omniSideToReveal`'s single answer.
  */
 function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
-  const { prefs } = routing;
-  const citPlacement = prefs.placements.find((pl) => pl.id === "citations");
-  const side = citPlacement?.side ?? "right";
-  const collapsed = side === "left" ? prefs.collapsedLeft : prefs.collapsedRight;
-  const blank = side === "left" ? prefs.blankLeft : prefs.blankRight;
-  if (collapsed) {
-    if (side === "left") routing.expandLeft?.();
-    else routing.expandRight?.();
-  } else if (blank) {
-    routing.clearBlankIfSet?.();
-  }
-  // Otherwise the side is shown and omni is already visible behind any bands.
+  revealOmniFor(routing, "citations", "right");
+}
+
+/** Expand the side `omniSideToReveal` names for `id`, if any. Shared by the
+ *  citation and footnote soft-routes. */
+function revealOmniFor(
+  routing: NonNullable<ActionContext["panelRouting"]>,
+  id: PanelId,
+  fallback: "left" | "right",
+): void {
+  const side = omniSideToReveal(routing.prefs, id, fallback);
+  if (side === "left") routing.expandLeft?.();
+  else if (side === "right") routing.expandRight?.();
+  // null: the side is shown and omni is already visible behind any bands.
 }
 
 /**
@@ -1485,23 +1487,12 @@ function citationRun(ctx: ActionContext): void {
  * `softRouteCitationToOmni`. Same band-stack reasoning: omni is the always-
  * mounted background of the footnotes side, so the new card is visible the
  * moment that side is *shown* — already-shown sides need nothing. The only
- * states that hide omni are *collapsed* / *blanked*; reveal omni by
- * un-collapsing / un-blanking the footnotes panel's docked side (never the
- * other side, never the dedicated Footnotes panel).
+ * state that hides omni is a *collapsed* side; reveal omni by un-collapsing
+ * the footnotes panel's side (never the other side, never the dedicated
+ * Footnotes panel).
  */
 function softRouteFootnoteToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
-  const { prefs } = routing;
-  const fnPlacement = prefs.placements.find((pl) => pl.id === "footnotes");
-  const side = fnPlacement?.side ?? "left";
-  const collapsed = side === "left" ? prefs.collapsedLeft : prefs.collapsedRight;
-  const blank = side === "left" ? prefs.blankLeft : prefs.blankRight;
-  if (collapsed) {
-    if (side === "left") routing.expandLeft?.();
-    else routing.expandRight?.();
-  } else if (blank) {
-    routing.clearBlankIfSet?.();
-  }
-  // Otherwise the side is shown and omni is already visible behind any bands.
+  revealOmniFor(routing, "footnotes", "left");
 }
 
 /**

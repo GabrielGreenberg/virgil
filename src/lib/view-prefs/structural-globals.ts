@@ -59,7 +59,6 @@ export const STRUCTURAL_GLOBAL_PREFS = {
   // globally for exactly that reason (`ViewPrefs.codePaneRatio`).
   codePaneRatio: { promote: true },
   omniHiddenCategories: { promote: true },
-  omniHideAllCards: { promote: true },
   appliedPrefMigrations: {
     promote: false,
     why: "a fresh profile has applied nothing; baking a migration id into the shipped defaults would mark it done for every new user",
