@@ -125,7 +125,9 @@ All paths below are relative to the library root.
      --drop-field "<one per name in bibEdit.remove>" \
      --base-raw-file "/tmp/$CITEKEY-bibedit-base.bib" \
      --base-type "<bibEdit.baseType>"
-   rm "/tmp/$CITEKEY-bibedit-set.json" "/tmp/$CITEKEY-bibedit-base.bib"
+   rc=$?
+   rm -f "/tmp/$CITEKEY-bibedit-set.json" "/tmp/$CITEKEY-bibedit-base.bib"
+   echo "exit=$rc"
    ```
 
    Repeat `--drop-field` once per name in `remove` (none when it is empty).
@@ -136,7 +138,8 @@ All paths below are relative to the library root.
 
    `--merge-existing` keeps every field nobody named; `--drop-field` removes
    the named ones; `--base-raw-file` checks each named field against the
-   entry the user was looking at. Exit codes:
+   entry the user was looking at. **Branch on the exit code** — the ONE
+   table is `update_master_bib_entry.py --help` (task 796):
 
    - **0** — applied.
    - **5** — applied EXCEPT the changes stderr lists as held: those fields
@@ -144,10 +147,19 @@ All paths below are relative to the library root.
      the newer value was kept rather than overwritten. Not an error — carry
      the held lines into the reply (and step 6's summary) so the user can
      redo them against the current entry. Continue with steps 3–7.
-   - **2** — refused, nothing written (the entry is gone from master.bib, or
+   - **6** — refused, nothing written (the entry is gone from master.bib, or
      `baseRaw` is unreadable). Report stderr verbatim and **skip to step 7**
-     — the edit cannot be applied, and leaving it queued only re-fails.
-   - **anything else** — nothing written; report it verbatim and stop.
+     — the edit cannot be applied, and leaving it queued only re-fails. A
+     legacy edit (no base) on a deleted entry lands here too: a change-set
+     never re-creates an entry.
+   - **2** — BAD INVOCATION: the command was mis-built (argparse's own
+     code). Nothing written. Report it and **STOP without step 7** — the
+     user's edit stays queued; retiring it here would discard it for a typo.
+   - **7** — master.bib's entry has unbalanced braces; nothing written.
+     Report stderr verbatim and **STOP without step 7** (it needs a human
+     repair; the edit runs again after).
+   - **anything else** — nothing written; report it verbatim and stop
+     (without step 7).
 
    **Do not** pass `--bib-state`: a manual edit doesn't invalidate
    prior authentication. The existing `% bib.state = ...` comment is

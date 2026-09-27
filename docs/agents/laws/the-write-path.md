@@ -2406,3 +2406,32 @@ into the replay).
 > undeclared keys, localStorage per key, the quota estimate and this session's
 > refusals. CI: `stored-state.test.ts` (door legs + owner/slot census),
 > `tex-assets.test.ts` (task-757 block).
+
+## The caller half: a door's contract binds its CALLERS (task 796)
+
+`library/scripts/update_master_bib_entry.py` is the one door to `master.bib`,
+and it had grown a good contract (field-preservation guard, duplicate guard,
+the task-763 stale-base check) that its callers did not honour: the auth write
+passed no base and branched on no exit code, so a refused write still reached
+the catalog and retired the queue slot; exit 2 meant both "argparse: bad
+invocation" and "the entry is gone", so a typo retired the user's edit; and the
+door's OWN decision read the entry before taking the lock, so a concurrent
+writer's field was erased by a merge that never saw it.
+
+Rules:
+
+- **Decide under the lock you write under.** Anything whose outcome depends on
+  the entry's current content (merge, base check, both guards) runs in
+  `_tools.update_master_bib_entry(compose=…)`, which calls it inside
+  `lock_master_bib` with the entry parsed from the exact text it splices. The
+  lock is `flock` on a fresh descriptor — NOT re-entrant — so `compose` must
+  never take it again.
+- **ONE exit table, owned by the door.** `EXIT_TABLE` in the shim, rendered by
+  `--help`. Argparse's 2 means only "bad invocation — do not retire". A refusal
+  the door decides has its own code (3 duplicate, 4 would-drop, 5 held,
+  6 nothing to apply to, 7 unbalanced).
+- **A change-set never creates an entry.** `--merge-existing` on a missing
+  citekey is exit 6, not an appended stub.
+- **Every caller branches.** Each fenced shim invocation in `library/skills/`
+  captures `rc=$?` and names its branches (census:
+  `library/scripts/tests/test_bib_write_door_contract.py`).

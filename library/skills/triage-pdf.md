@@ -281,8 +281,21 @@ directory).
      --entry-type "<type>" \
      --fields-file /tmp/<citekey>-triage-fields.json \
      --bib-state unverified
+   rc=$?
    rm /tmp/<citekey>-triage-fields.json
+   echo "exit=$rc"
    ```
+
+   **Branch on the exit code** (the ONE table:
+   `update_master_bib_entry.py --help`, task 796). **0** — added (or the
+   existing entry updated); continue. **3** — the library already holds this
+   work under the citekey stderr names: use THAT citekey for the rest of
+   triage rather than minting a duplicate. **4** — an entry with this
+   citekey exists and your fields would drop some of its fields: it is
+   already in master.bib, so leave it and continue. **2** (mis-built
+   command), **7** (unbalanced braces — needs a human repair) or anything
+   else — nothing was written: report stderr verbatim and stop before
+   queueing the paper.
 
    First, determine the entry type from the source content:
 

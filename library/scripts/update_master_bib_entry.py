@@ -97,9 +97,20 @@ newer on-disk value is kept) and the rest of the write proceeds. A type change i
 held the same way, and an UNCHANGED type (`--entry-type` == `--base-type`) keeps
 whatever type is on disk now. Refusals are listed on stderr and the shim exits 5
 (after writing whatever was not refused); if nothing was left to write, nothing
-is written. The entry must still exist — a diff cannot be appended (exit 2).
+is written. The entry must still exist — a diff cannot be appended (exit 6).
 Values compare with whitespace runs collapsed, both sides read by this same
 parser, so a base read by a different parser can never manufacture a conflict.
+
+One locked decision (task 796)
+------------------------------
+The base check, the merge, and both guards are decided INSIDE the writer's
+`lock_master_bib` critical section (`_tools.update_master_bib_entry(compose=…)`),
+against the exact text the write splices. Read-then-lock let a concurrent writer's
+field land between this shim's read and its write and be erased by the merge.
+
+Exit codes: ONE table, `EXIT_TABLE` below, rendered by `--help`. Every skill that
+invokes this shim branches on it (`tests/test_bib_write_door_contract.py`). 2 is
+argparse's code and means only "bad invocation — do NOT retire the request".
 
 Field names are compared case-insensitively (`read_master_bib` lowercases them,
 an incoming `DOI` and an on-file `doi` are the same field). The citekey is
@@ -119,15 +130,79 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    BibEntryUnbalanced,
     citekey_matches,
-    master_entry_for,
     read_master_bib,
     update_master_bib_entry,
 )
 
 
+# ── The ONE exit table (task 796) ────────────────────────────────────
+#
+# Every caller branches on these — the skills cite `--help`, whose epilog is
+# rendered from this tuple, and `test_bib_write_door_contract.py` holds each
+# skill invocation to it. The codes argparse can produce (2) mean only "bad
+# invocation": a caller bug, nothing written, and the request must NOT be
+# retired — a mis-built command used to share 2 with "the entry is gone" and
+# permanently retire the user's edit. A refusal the shim decides gets its own
+# code above 2.
+EXIT_APPLIED = 0
+EXIT_BAD_INVOCATION = 2
+EXIT_DUPLICATE_WORK = 3
+EXIT_WOULD_DROP_FIELDS = 4
+EXIT_HELD = 5
+EXIT_CANNOT_APPLY = 6
+EXIT_UNBALANCED = 7
+
+# (code, name, wrote?, retire the queued request?, meaning)
+EXIT_TABLE: tuple[tuple[int, str, str, str, str], ...] = (
+    (EXIT_APPLIED, "applied", "yes", "yes",
+     "the write landed in full"),
+    (EXIT_BAD_INVOCATION, "bad-invocation", "no", "NO",
+     "usage error (argparse, or a malformed --fields-file / flag combination) "
+     "— a caller bug; fix the command, keep the request queued"),
+    (EXIT_DUPLICATE_WORK, "duplicate-work", "no", "no",
+     "append refused: the library already holds this work under another "
+     "citekey (stderr names it); update that entry, or --no-guard"),
+    (EXIT_WOULD_DROP_FIELDS, "would-drop-fields", "no", "no",
+     "replace refused: the fields file omits fields the entry has (stderr "
+     "lists them); re-run with --merge-existing / --drop-field"),
+    (EXIT_HELD, "held", "partly", "yes",
+     "written EXCEPT the changes stderr lists as held — they moved on disk "
+     "since --base-raw-file was read; the newer value was kept. Report them"),
+    (EXIT_CANNOT_APPLY, "cannot-apply", "no", "yes",
+     "a change-set with nothing to apply to: the entry is gone from "
+     "master.bib, or --base-raw-file holds no entry. Retrying re-fails"),
+    (EXIT_UNBALANCED, "unbalanced", "no", "NO",
+     "master.bib's entry has unbalanced braces; nothing was touched. Needs a "
+     "human repair — keep the request queued so it runs after"),
+)
+# Anything else (1 = a crash) wrote nothing the shim vouches for: report it
+# verbatim, do not retire.
+
+
+def _exit_epilog() -> str:
+    lines = ["exit codes (the ONE table every caller branches on; any other "
+             "code = crash, report + do not retire):"]
+    for code, name, wrote, retire, meaning in EXIT_TABLE:
+        lines.append(f"  {code}  {name:<18} wrote={wrote:<6} retire={retire:<4} {meaning}")
+    return "\n".join(lines)
+
+
+class _Refused(Exception):
+    """A refusal decided inside the locked write — nothing was written."""
+
+    def __init__(self, code: int, message: str):
+        self.code = code
+        super().__init__(message)
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(
+        description=__doc__.split("\n")[0],
+        epilog=_exit_epilog(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("citekey")
     ap.add_argument(
         "--entry-type",
@@ -169,7 +244,9 @@ def main() -> int:
         "--merge-existing",
         action="store_true",
         help="Merge the incoming fields OVER the entry's current fields instead of "
-        "replacing them wholesale. Use when you hold a change-set, not a complete entry.",
+        "replacing them wholesale. Use when you hold a change-set, not a complete "
+        "entry. A change-set cannot create an entry: if the citekey is not in "
+        "master.bib the write is refused (exit 6).",
     )
     ap.add_argument(
         "--drop-field",
@@ -213,137 +290,169 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    library = _resolve_library(args.library)
-    fields = json.loads(args.fields_file.read_text())
+    # Invocation errors share argparse's code: they are the caller's bug, and a
+    # caller must be able to tell them from a refusal about the ENTRY.
+    try:
+        fields = json.loads(args.fields_file.read_text())
+    except (OSError, ValueError) as e:
+        ap.error(f"--fields-file {args.fields_file}: {e}")
     if not isinstance(fields, dict):
-        print(f"fields file must contain a JSON object, got {type(fields).__name__}",
-              file=sys.stderr)
-        return 2
+        ap.error(f"--fields-file must contain a JSON object, got {type(fields).__name__}")
+    if args.base_raw_file is not None and not args.merge_existing:
+        ap.error("--base-raw-file requires --merge-existing (it checks a "
+                 "change-set, not a complete entry)")
+    library = _resolve_library(args.library)
     # Coerce all values to str — bib fields are textual.
     fields = {k: str(v) for k, v in fields.items() if v not in (None, "")}
 
-    # The one read door (`_tools.master_entry_for`, task 621): the writer's
-    # own locator — NFC then NFD, last entry wins — so the guard below judges
-    # exactly the entry the write will replace. A raw `args.citekey in
-    # read_master_bib(...)` disagreed with the writer on a diacritic citekey
-    # stored in the other normalization: it reported "append", skipped the
-    # guard, and the writer whole-block-replaced the entry anyway.
-    existing_entry = master_entry_for(library, args.citekey)
-    is_append = existing_entry is None
-
-    drop_fields = list(args.drop_field)
-    entry_type = args.entry_type
-    refused: list[str] = []
+    base = None
     if args.base_raw_file is not None:
-        if not args.merge_existing:
-            print("--base-raw-file requires --merge-existing (it checks a "
-                  "change-set, not a complete entry)", file=sys.stderr)
-            return 2
-        if is_append:
-            print(f"refusing to update {args.citekey}: the entry is no longer in "
-                  f"master.bib, and a change-set cannot recreate it.", file=sys.stderr)
-            return 2
-        base = _read_base_entry(args.base_raw_file)
+        try:
+            base = _read_base_entry(args.base_raw_file)
+        except OSError:
+            base = None
         if base is None:
             print(f"refusing to update {args.citekey}: --base-raw-file holds no "
                   f"readable BibTeX entry, so no field can be checked against it.",
                   file=sys.stderr)
-            return 2
-        fields, drop_fields, entry_type, refused = _hold_changed_since_base(
-            base_fields=base.get("fields") or {},
-            # The type IN the base block wins over `--base-type`: the block is
-            # what was read, the flag only a caller's report of it — and a
-            # caller that reported a projected type (`@inbook` as
-            # `incollection`) fabricated a "type changed on disk" hold on
-            # every type change (task 795).
-            base_type=base.get("type") or args.base_type or "",
-            disk_fields=existing_entry.get("fields") or {},
-            disk_type=existing_entry.get("type") or entry_type,
-            fields=fields,
-            drop_fields=drop_fields,
-            entry_type=entry_type,
-        )
-        if not fields and not drop_fields and \
-                entry_type.lower() == (existing_entry.get("type") or "").lower():
-            _report_refused(args.citekey, refused)
-            if not refused:
-                print(f"nothing to change in master.bib entry for {args.citekey}")
-            return 5 if refused else 0
+            return EXIT_CANNOT_APPLY
 
-    # Field-preservation guard — only for a REPLACE. The write below is a
-    # whole-block replacement, so any currently-non-empty field missing from
-    # `fields` is destroyed. Refuse rather than lose it; `--merge-existing`
-    # (I hold a change-set), `--drop-field` (remove this NAMED field) and
-    # `--allow-field-drop` (trust my omissions wholesale) are the sanctioned
-    # ways through. Mirrors the append-side duplicate guard: neither half of
-    # the upsert may silently lose data.
-    if not is_append:
-        current = existing_entry.get("fields") or {}
-        drop_names = {d.lower() for d in drop_fields}
-        if args.merge_existing:
-            # Incoming wins per field; everything else survives.
-            merged = {k: str(v) for k, v in current.items() if str(v).strip()}
-            lowered = {k.lower(): k for k in merged}
-            for k, v in fields.items():
-                merged.pop(lowered.get(k.lower(), ""), None)
-                merged[k] = v
-            fields = merged
-        # Named removals apply AFTER the merge, which is what makes
-        # `--drop-field` the one removal signal that composes with
-        # `--merge-existing` (the merge re-adds every current field, so an
-        # omission can no longer express "remove this").
-        if drop_names:
-            fields = {k: v for k, v in fields.items() if k.lower() not in drop_names}
-        incoming_lower = {k.lower() for k in fields}
-        dropped = sorted(
-            k for k, v in current.items()
-            if str(v).strip()
-            and k.lower() not in incoming_lower
-            and k.lower() not in drop_names   # named = deliberate, not a loss
-        )
-        if dropped and not args.allow_field_drop:
-            print(
-                f"refusing to update {args.citekey}: this write replaces the whole "
-                f"entry, and the fields file omits {len(dropped)} field(s) the entry "
-                f"currently has — {', '.join(dropped)}.\n"
-                f"If you built a change-set rather than a complete entry, re-run with "
-                f"--merge-existing. If a specific field is meant to go, name it: "
-                f"--drop-field <name> (repeatable, composes with --merge-existing). "
-                f"To trust your omissions wholesale, re-run with --allow-field-drop.",
-                file=sys.stderr,
+    refused: list[str] = []
+
+    def compose(existing_entry: "dict | None") -> "tuple[str, dict[str, str]] | None":
+        """Everything that depends on the entry's CURRENT content, decided under
+        the writer's lock against the exact text it will splice (task 796). The
+        base check, the merge and both guards used to read master.bib before the
+        lock, so a concurrent writer's field landing between that read and the
+        write was erased by a merge that never saw it."""
+        nonlocal refused
+        entry_type = args.entry_type
+        new_fields = dict(fields)
+        drop_fields = list(args.drop_field)
+        is_append = existing_entry is None
+
+        if is_append and args.merge_existing:
+            # A change-set is not an entry. Appending it minted a stub holding
+            # only the changed fields (a legacy bib edit on a deleted entry).
+            raise _Refused(EXIT_CANNOT_APPLY,
+                           f"refusing to update {args.citekey}: the entry is no longer "
+                           f"in master.bib, and a change-set cannot recreate it.")
+
+        if base is not None:
+            new_fields, drop_fields, entry_type, refused = _hold_changed_since_base(
+                base_fields=base.get("fields") or {},
+                # The type IN the base block wins over `--base-type`: the block is
+                # what was read, the flag only a caller's report of it — and a
+                # caller that reported a projected type (`@inbook` as
+                # `incollection`) fabricated a "type changed on disk" hold on
+                # every type change (task 795).
+                base_type=base.get("type") or args.base_type or "",
+                disk_fields=existing_entry.get("fields") or {},
+                disk_type=existing_entry.get("type") or entry_type,
+                fields=new_fields,
+                drop_fields=drop_fields,
+                entry_type=entry_type,
             )
-            return 4
+            if not new_fields and not drop_fields and not args.bib_state and \
+                    entry_type.lower() == (existing_entry.get("type") or "").lower():
+                return None
 
-    # Duplicate-work guard — only for an APPEND (new citekey). An in-place
-    # replace of an existing citekey is a legitimate update and is never guarded.
-    if args.guard and is_append:
-        # Lazy import to avoid any import cycle through _tools.
-        from dedup_index import find_work_in_library
-        match = find_work_in_library(
-            fields, entry_type, library,
-            incoming_citekey=args.citekey,
-            include_uncertain=False,   # only a hard `same`/alias refuses
-        )
-        # NFC-insensitive: a match differing only by normalization form is
-        # this very entry, and refusing the append would be a false guard.
-        if match is not None and not citekey_matches(match.citekey, args.citekey):
-            reasons = "; ".join(match.reasons) if match.reasons else match.relation
-            print(
-                f"refusing to append {args.citekey}: the library already holds "
-                f"this work as {match.citekey!r} "
-                f"(relation={match.relation}, confidence={match.confidence:.2f}; "
-                f"{reasons}).\n"
-                f"Re-run with --no-guard to override, or update {match.citekey} "
-                f"in place instead.",
-                file=sys.stderr,
+        # Field-preservation guard — only for a REPLACE. The write is a
+        # whole-block replacement, so any currently-non-empty field missing from
+        # `new_fields` is destroyed. Refuse rather than lose it; `--merge-existing`
+        # (I hold a change-set), `--drop-field` (remove this NAMED field) and
+        # `--allow-field-drop` (trust my omissions wholesale) are the sanctioned
+        # ways through. Mirrors the append-side duplicate guard: neither half of
+        # the upsert may silently lose data.
+        if not is_append:
+            current = existing_entry.get("fields") or {}
+            drop_names = {d.lower() for d in drop_fields}
+            if args.merge_existing:
+                # Incoming wins per field; everything else survives.
+                merged = {k: str(v) for k, v in current.items() if str(v).strip()}
+                lowered = {k.lower(): k for k in merged}
+                for k, v in new_fields.items():
+                    merged.pop(lowered.get(k.lower(), ""), None)
+                    merged[k] = v
+                new_fields = merged
+            # Named removals apply AFTER the merge, which is what makes
+            # `--drop-field` the one removal signal that composes with
+            # `--merge-existing` (the merge re-adds every current field, so an
+            # omission can no longer express "remove this").
+            if drop_names:
+                new_fields = {k: v for k, v in new_fields.items()
+                              if k.lower() not in drop_names}
+            incoming_lower = {k.lower() for k in new_fields}
+            dropped = sorted(
+                k for k, v in current.items()
+                if str(v).strip()
+                and k.lower() not in incoming_lower
+                and k.lower() not in drop_names   # named = deliberate, not a loss
             )
-            return 3
+            if dropped and not args.allow_field_drop:
+                raise _Refused(
+                    EXIT_WOULD_DROP_FIELDS,
+                    f"refusing to update {args.citekey}: this write replaces the whole "
+                    f"entry, and the fields file omits {len(dropped)} field(s) the entry "
+                    f"currently has — {', '.join(dropped)}.\n"
+                    f"If you built a change-set rather than a complete entry, re-run with "
+                    f"--merge-existing. If a specific field is meant to go, name it: "
+                    f"--drop-field <name> (repeatable, composes with --merge-existing). "
+                    f"To trust your omissions wholesale, re-run with --allow-field-drop.",
+                )
 
-    written_state = update_master_bib_entry(
-        library, args.citekey, entry_type, fields,
-        bib_state=args.bib_state,
-        allow_downgrade=args.allow_downgrade,
-    )
+        # Duplicate-work guard — only for an APPEND (new citekey). An in-place
+        # replace of an existing citekey is a legitimate update and is never guarded.
+        if args.guard and is_append:
+            # Lazy import to avoid any import cycle through _tools.
+            from dedup_index import find_work_in_library
+            match = find_work_in_library(
+                new_fields, entry_type, library,
+                incoming_citekey=args.citekey,
+                include_uncertain=False,   # only a hard `same`/alias refuses
+            )
+            # NFC-insensitive: a match differing only by normalization form is
+            # this very entry, and refusing the append would be a false guard.
+            if match is not None and not citekey_matches(match.citekey, args.citekey):
+                reasons = "; ".join(match.reasons) if match.reasons else match.relation
+                raise _Refused(
+                    EXIT_DUPLICATE_WORK,
+                    f"refusing to append {args.citekey}: the library already holds "
+                    f"this work as {match.citekey!r} "
+                    f"(relation={match.relation}, confidence={match.confidence:.2f}; "
+                    f"{reasons}).\n"
+                    f"Re-run with --no-guard to override, or update {match.citekey} "
+                    f"in place instead.",
+                )
+        return entry_type, new_fields
+
+    wrote = False
+
+    def compose_and_mark(existing_entry):
+        nonlocal wrote
+        out = compose(existing_entry)
+        wrote = out is not None
+        return out
+
+    try:
+        written_state = update_master_bib_entry(
+            library, args.citekey, args.entry_type, fields,
+            bib_state=args.bib_state,
+            allow_downgrade=args.allow_downgrade,
+            compose=compose_and_mark,
+        )
+    except _Refused as r:
+        print(str(r), file=sys.stderr)
+        return r.code
+    except BibEntryUnbalanced as e:
+        print(str(e), file=sys.stderr)
+        return EXIT_UNBALANCED
+
+    if not wrote:
+        _report_refused(args.citekey, refused)
+        if not refused:
+            print(f"nothing to change in master.bib entry for {args.citekey}")
+        return EXIT_HELD if refused else EXIT_APPLIED
     print(f"updated master.bib entry for {args.citekey} in {library}")
     if args.bib_state and written_state != args.bib_state:
         print(
@@ -354,8 +463,8 @@ def main() -> int:
         )
     if refused:
         _report_refused(args.citekey, refused)
-        return 5
-    return 0
+        return EXIT_HELD
+    return EXIT_APPLIED
 
 
 def _norm(v: object) -> str:
