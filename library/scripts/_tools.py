@@ -2011,6 +2011,20 @@ def update_master_bib_entry(
 SOURCE_FORMAT_PRIORITY = ("tex", "docx", "pdf")
 
 
+def deep_index_baseline_path(library: Path, citekey: str) -> Path:
+    """`.virgil/baselines/<citekey>-pre-deepindex.tex` — the snapshot
+    `/library/deep-index` takes of main.tex before its first modifying step
+    (deep-index.md §"No prior baseline?"), which `--fresh` restores and
+    `repair_pgmarks.py --resume-baseline` measures against.
+
+    Spelled once here because the indexer reads it too (task 800): its
+    presence means deep-index has STARTED on this paper even when no pass
+    has yet flipped `indexed.state` to `deepIndexed`, and a re-extract has
+    to retire it — a baseline of the old extraction would make the next
+    `--fresh` restore exactly the text the re-extract replaced."""
+    return library / ".virgil" / "baselines" / f"{citekey}-pre-deepindex.tex"
+
+
 def resolve_paper_source(library: Path, citekey: str) -> "tuple[Path, str] | None":
     """Return `(path, ext)` for `citekey`'s highest-priority source, or None.
 

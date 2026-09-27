@@ -1,7 +1,10 @@
 """End-to-end indexer for a single source (PDF or DOCX) in the Virgil Library.
 
 Usage:
-  python index_paper.py <citekey> [--library ~/Virgil-Library]
+  python index_paper.py <citekey> [--library ~/Virgil-Library] [--re-extract]
+
+A main.tex that holds deep-index work is never overwritten without
+`--re-extract` (task 800 — see `check_main_tex_clobber`).
 
 Reads `papers/<citekey>/<citekey>.pdf` or `papers/<citekey>/<citekey>.docx`,
 runs the pipeline, writes:
@@ -50,6 +53,7 @@ from _tools import (
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
+    deep_index_baseline_path,
     detect,
     lock_catalog,
     read_catalog,
@@ -103,6 +107,83 @@ def _now() -> str:
 
 def _slug() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+
+
+# ── The main.tex clobber door (task 800) ────────────────────────────────
+#
+# Step 5 writes `papers/<citekey>/main.tex` from a fresh extraction. On a
+# paper deep-index has worked on, that file is no longer an extraction — it
+# carries every prose / footnote / bibliography / example repair the
+# convergence loop made — and a plain re-run of this script used to replace
+# it silently. The door: past plain `indexed`, an existing main.tex is
+# overwritten ONLY under an explicit `--re-extract`, which first retires the
+# prior text (and the deep-index baseline taken from it) to a timestamped
+# backup. Asked BEFORE extraction, so a refusal costs nothing.
+
+#: Catalog `indexed.state` values whose main.tex is post-extraction work.
+#: `richIndexed` is the legacy spelling of `deepIndexed` (catalog.ts).
+POST_EXTRACTION_STATES = frozenset({"deepIndexed", "richIndexed"})
+
+
+class ReExtractRequired(RuntimeError):
+    """Refusal: main.tex holds deep-index work and `--re-extract` was not asked."""
+
+
+def _catalog_row(library: Path, citekey: str) -> Optional[dict]:
+    try:
+        catalog = read_catalog(library)
+    except Exception:
+        return None
+    return next((e for e in catalog.get("entries", [])
+                 if citekey_matches(e.get("citekey", "") or "", citekey)), None)
+
+
+def main_tex_holds_deep_index_work(library: Path, citekey: str) -> Optional[str]:
+    """Why the existing main.tex is more than an extraction, or None.
+
+    Two signals, either sufficient: the catalog row says the paper is
+    deep-indexed, or a deep-index baseline exists (a pass has STARTED —
+    it may have crashed before flipping the state)."""
+    if not (library / "papers" / citekey / "main.tex").exists():
+        return None
+    row = _catalog_row(library, citekey) or {}
+    state = (row.get("indexed") or {}).get("state", "")
+    if state in POST_EXTRACTION_STATES:
+        return f"catalog indexed.state is {state!r}"
+    if deep_index_baseline_path(library, citekey).exists():
+        return "a deep-index baseline exists (.virgil/baselines/)"
+    return None
+
+
+def check_main_tex_clobber(library: Path, citekey: str, *, re_extract: bool) -> None:
+    """Refuse (raise `ReExtractRequired`) to overwrite deep-index work
+    unless `re_extract`. Makes no write."""
+    reason = main_tex_holds_deep_index_work(library, citekey)
+    if reason and not re_extract:
+        raise ReExtractRequired(
+            f"{citekey}: refusing to overwrite papers/{citekey}/main.tex — "
+            f"{reason}, so it holds deep-index work a fresh extraction would "
+            f"erase. To replace it anyway (the old main.tex and baseline are "
+            f"backed up first), re-run with --re-extract."
+        )
+
+
+def retire_prior_extraction(library: Path, citekey: str, slug: str) -> Optional[Path]:
+    """Back up main.tex (copy) and the deep-index baseline (move) to
+    `.virgil/backups/re-extract/<citekey>/<slug>/`. Returns the backup dir,
+    or None when there was nothing to retire."""
+    main_tex = library / "papers" / citekey / "main.tex"
+    baseline = deep_index_baseline_path(library, citekey)
+    if not main_tex.exists() and not baseline.exists():
+        return None
+    dest = library / ".virgil" / "backups" / "re-extract" / citekey / slug
+    dest.mkdir(parents=True, exist_ok=True)
+    if main_tex.exists():
+        shutil.copy2(main_tex, dest / "main.tex")
+    if baseline.exists():
+        # MOVED, not copied: the next deep-index must baseline the NEW text.
+        shutil.move(str(baseline), str(dest / baseline.name))
+    return dest
 
 
 def _resync_references_bib(library: Path, citekey: str) -> bool:
@@ -361,7 +442,8 @@ def _authenticate_master_entry(library: Path, citekey: str, bib_entry: dict,
 
 def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
                 authenticate_bib: bool = True,
-                fuse_pgmarks: bool = True) -> dict:
+                fuse_pgmarks: bool = True,
+                re_extract: bool = False) -> dict:
     log_lines: list[str] = []
 
     def log(msg: str) -> None:
@@ -389,6 +471,9 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         )
     source_path, source_ext = _source
     log(f"Source: {source_path.name} (format={source_ext})")
+
+    # The clobber door (task 800): refuse BEFORE the expensive extraction.
+    check_main_tex_clobber(library, citekey, re_extract=re_extract)
 
     tools = detect()
     log("Tool detection:\n" + tools.summary())
@@ -498,6 +583,11 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     paper_dir.mkdir(parents=True, exist_ok=True)
     pgmark_warnings: list[str] = []
     pgmark_report = None
+    if re_extract:
+        retired = retire_prior_extraction(library, citekey, _slug())
+        if retired:
+            log(f"Step 5: --re-extract — prior main.tex / deep-index baseline "
+                f"backed up to {retired}")
     if source_ext == "tex":
         log("Step 5: copy .tex source as main.tex (passthrough)")
         shutil.copyfile(source_path, paper_dir / "main.tex")
@@ -754,6 +844,12 @@ def main() -> int:
     )
     p.add_argument("--no-bib-auth", action="store_true",
                    help="Skip the .bib authentication HTTP calls")
+    p.add_argument("--re-extract", action="store_true",
+                   help="Replace a main.tex that holds deep-index work "
+                        "(catalog deepIndexed, or a .virgil/baselines/ "
+                        "snapshot). Without it the indexer refuses. The prior "
+                        "main.tex and baseline are backed up to "
+                        ".virgil/backups/re-extract/<citekey>/<ISO>/ first.")
     p.add_argument("--no-fuse-pgmarks", action="store_true",
                    help="Skip auto-fusion of pgmarks from a PDF alternate "
                         "when the primary source is DOCX or TEX.")
@@ -765,10 +861,14 @@ def main() -> int:
             prefer_extractor=args.extractor,
             authenticate_bib=not args.no_bib_auth,
             fuse_pgmarks=not args.no_fuse_pgmarks,
+            re_extract=args.re_extract,
         )
         return 0
     except Exception as e:
-        traceback.print_exc()
+        if isinstance(e, ReExtractRequired):
+            print(f"REFUSED: {e}", file=sys.stderr)   # a refusal, not a crash
+        else:
+            traceback.print_exc()
         # Append failure notification.
         try:
             append_inbox_item(Path(args.library).expanduser(), {
