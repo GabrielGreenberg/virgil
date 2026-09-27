@@ -15,6 +15,7 @@
 "use client";
 
 import type { DragEvent as ReactDragEvent } from "react";
+import { DRAG_GHOST_Z } from "@/floats/float-policy";
 
 /**
  * Options for {@link buildTextDragGhost}. Every color/size axis defaults to a
@@ -152,7 +153,7 @@ export function attachClampedDragGhost(
   ghost.setAttribute(GHOST_ATTR, "");
   ghost.style.position = "fixed";
   ghost.style.pointerEvents = "none";
-  ghost.style.zIndex = "99999";
+  ghost.style.zIndex = String(DRAG_GHOST_Z);
   ghost.style.left = "-9999px";
   ghost.style.top = "-9999px";
   document.body.appendChild(ghost);

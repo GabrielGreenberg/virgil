@@ -101,6 +101,7 @@ import { autoSizeInput } from "@/lib/autoSizeInput";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import type { ViewLifetime } from "@/lib/tiptap/view-lifetime";
 import { claimGestureKey } from "@/lib/pane-resize/pointer-invariants";
+import { INLINE_EDIT_INPUT_Z, INLINE_EDIT_OVERLAY_Z } from "@/floats/float-policy";
 
 /** The input's own class — the ONE spelling; CSS and every suite read it. */
 export const PAR_TITLE_INPUT_CLASS = "par-title-input";
@@ -168,9 +169,9 @@ export function createParTitleSession(opts: ParTitleSessionOptions): ParTitleSes
       const wrapperRect = wrapper.getBoundingClientRect();
       overlay = document.createElement("div");
       overlay.className = chromeOnly(PAR_TITLE_OVERLAY_CLASS);
-      overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;";
+      overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:${INLINE_EDIT_OVERLAY_Z};`;
       document.body.appendChild(overlay);
-      input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${annotRect.top}px;`;
+      input.style.cssText = `position:fixed;z-index:${INLINE_EDIT_INPUT_Z};left:${wrapperRect.left}px;top:${annotRect.top}px;`;
       document.body.appendChild(input);
     } else {
       titleAnnot.innerHTML = "";

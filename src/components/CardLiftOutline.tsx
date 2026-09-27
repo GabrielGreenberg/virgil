@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { LIFT_OUTLINE_Z } from "@/floats/float-policy";
 import { useCardLiftTarget, type CardLiftTarget } from "./card-lift";
 
 /** Snappy fade-in so the highlight registers immediately on lift-off. */
@@ -80,9 +81,9 @@ export function CardLiftOutline() {
         position: "fixed",
         inset: 0,
         pointerEvents: "none",
-        // Sit below the floating cards (which use zIndex 1200+) so the
-        // spawned float occludes the source-card outline as it lifts off.
-        zIndex: 1100,
+        // Sit below the float layer (FLOAT_Z_BASE) so the spawned float
+        // occludes the source-card outline as it lifts off.
+        zIndex: LIFT_OUTLINE_Z,
         opacity: 0,
       }}
     >
