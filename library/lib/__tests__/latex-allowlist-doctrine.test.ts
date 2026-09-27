@@ -58,6 +58,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
+import {
+  BIBLATEX_ONLY_CITE_COMMANDS,
+  NATBIB_ONLY_CITE_COMMANDS,
+  SHARED_CITE_COMMANDS,
+} from "../../../src/lib/cite-commands";
 
 // library/lib/__tests__/ → repo root is three levels up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -241,4 +246,86 @@ describe("allowable-LaTeX doctrine (cross-silo SSOT)", () => {
       expect(why.length, `${rel} needs a stated reason`).toBeGreaterThan(30);
     }
   });
+});
+
+// The cite FAMILY PARTITION (task 803). check-coherence #6 guards the cite
+// INVENTORY (the union) against KNOWN_CITE_COMMANDS, but not which family the
+// doctrine files each command under — and that grouping is what an agent
+// reads to decide what compiles in a natbib vs a biblatex paper. It once filed
+// the SHARED commands (\citeauthor, \citeyear under natbib; \nocite under
+// biblatex) as one family's, beside a sentence saying each family's commands
+// are undefined under the other. Both the prose list and the inventory block
+// are now checked, bucket for bucket, against cite-commands.ts's three sets.
+type Family = "shared" | "natbib" | "biblatex";
+
+/** Bucket a heading ("shared (both families)", "natbib only", "biblatex only
+ *  (singular)", …) into a family, or null for a non-cite heading. */
+function familyOf(label: string): Family | null {
+  const l = label.toLowerCase();
+  if (l.startsWith("shared")) return "shared";
+  if (l.startsWith("natbib")) return "natbib";
+  if (l.startsWith("biblatex")) return "biblatex";
+  return null;
+}
+
+function emptyPartition(): Record<Family, string[]> {
+  return { shared: [], natbib: [], biblatex: [] };
+}
+
+const cmdsIn = (text: string) =>
+  [...text.matchAll(/\\([A-Za-z]+)/g)].map((m) => m[1]);
+
+/** The inventory block's `# citations (<family>)` sections. */
+function inventoryPartition(): Record<Family, string[]> {
+  const m = /```latex-allowlist\n([\s\S]*?)```/.exec(read(LIBRARY_DOCTRINE));
+  const out = emptyPartition();
+  let fam: Family | null = null;
+  for (const line of (m?.[1] ?? "").split("\n")) {
+    const h = /^#\s*citations\s*\(([^)]*)\)/.exec(line);
+    if (h) fam = familyOf(h[1]);
+    else if (line.startsWith("#")) fam = null;
+    else if (fam) out[fam].push(...cmdsIn(line));
+  }
+  return out;
+}
+
+/** The prose "### Citations" section's `- **<family>:** …` bullets. */
+function prosePartition(): Record<Family, string[]> {
+  const doc = read(LIBRARY_DOCTRINE);
+  const sec = /### Citations[^\n]*\n([\s\S]*?)\n\*\*The document's FAMILY/.exec(doc)?.[1] ?? "";
+  const out = emptyPartition();
+  for (const bullet of sec.split(/\n(?=- \*\*)/)) {
+    const h = /^- \*\*([^*:]+)/.exec(bullet);
+    const fam = h && familyOf(h[1]);
+    // A multi-cite bullet carries its call SHAPE (`\cmd[pre][post]…`) in its
+    // label; only the commands after the label's closing `:**` count.
+    if (fam) out[fam].push(...cmdsIn(bullet.slice(bullet.indexOf(":**"))));
+  }
+  return out;
+}
+
+describe("allowable-LaTeX doctrine — cite family partition (task 803)", () => {
+  const registry: Record<Family, string[]> = {
+    shared: [...SHARED_CITE_COMMANDS].sort(),
+    natbib: [...NATBIB_ONLY_CITE_COMMANDS].sort(),
+    biblatex: [...BIBLATEX_ONLY_CITE_COMMANDS].sort(),
+  };
+
+  it("the registry buckets are non-trivial (can-see canary)", () => {
+    expect(registry.shared).toContain("citeauthor");
+    expect(registry.natbib).toContain("citet");
+    expect(registry.biblatex).toContain("textcite");
+  });
+
+  for (const [where, get] of [
+    ["inventory block", inventoryPartition],
+    ["prose list", prosePartition],
+  ] as const) {
+    it(`the ${where} files every cite command under its registry family`, () => {
+      const doc = get();
+      for (const fam of ["shared", "natbib", "biblatex"] as const) {
+        expect([...new Set(doc[fam])].sort(), `${where}: ${fam}`).toEqual(registry[fam]);
+      }
+    });
+  }
 });
