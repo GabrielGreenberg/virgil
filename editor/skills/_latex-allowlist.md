@@ -64,8 +64,9 @@ glyphs.
   inside).
 - `\verb|…|` — inline verbatim (any single non-letter delimiter).
 - `\textcolor[HTML]{RRGGBB}{…}` — coloured text. Only the `[HTML]{RRGGBB}`
-  form renders as a colour mark; named-colour `\textcolor{red}{…}` round-trips
-  as plain text.
+  form renders as a colour mark. A named colour (`\textcolor{red}{…}`) is NOT
+  in the allowlist: its bytes survive, but only as a grey raw-LaTeX span, so
+  write the `[HTML]{RRGGBB}` form.
 
 ### Math
 
@@ -86,17 +87,20 @@ locator and comma-separated multi-key forms: `\cite[p.~75]{key}`,
 `\citet[pp.~75--80]{key1,key2}`. The tie in `p.~75` / `pp.~75--80` is a
 plain `~` (see the doctrine above), never `\textasciitilde{}`.
 
-- **natbib:** `\cite`, `\citet`, `\citep`, `\citealt`, `\citealp`,
-  `\citeauthor`, `\citeyear`, `\citeyearpar`, `\citetext`, `\citenum`.
-- **biblatex (singular):** `\textcite`, `\parencite`, `\autocite`,
+- **shared (both families):** `\cite`, `\nocite`, `\citeauthor`,
+  `\citeyear`. Safe in any paper; `\cite` and `\nocite` are the LaTeX
+  kernel's own.
+- **natbib only:** `\citet`, `\citep`, `\citealt`, `\citealp`,
+  `\citeyearpar`, `\citetext`, `\citenum`.
+- **biblatex only (singular):** `\textcite`, `\parencite`, `\autocite`,
   `\footcite`, `\smartcite`, `\fullcite`, `\footfullcite`, `\citetitle`,
-  `\citedate`, `\citeurl`, `\nocite`.
-- **biblatex (multi-cite** `\cmd[pre][post]{k1}[pre][post]{k2}`**):**
+  `\citedate`, `\citeurl`.
+- **biblatex only (multi-cite** `\cmd[pre][post]{k1}[pre][post]{k2}`**):**
   `\cites`, `\textcites`, `\parencites`, `\autocites`, `\footcites`,
   `\smartcites`.
 
 **The document's FAMILY is not yours to choose; the VOICE is.** natbib and
-biblatex are mutually exclusive, and each family's own commands are UNDEFINED
+biblatex are mutually exclusive, and each family's ONLY commands are UNDEFINED
 under the other — a `\citet` written into a biblatex paper is not a style
 mismatch, it is "Undefined control sequence" and the paper stops compiling.
 Virgil does not heal it (a preamble that hard-loads the other family raises a
@@ -174,11 +178,13 @@ parser matches them by table, not by a fixed command name.)
 \ref \getref \getfullref
 \ldots \dots
 \textbackslash \textasciitilde \textasciicircum
-# citations (natbib)
-\cite \citet \citep \citealt \citealp \citeauthor \citeyear \citeyearpar \citetext \citenum
-# citations (biblatex singular)
-\textcite \parencite \autocite \footcite \smartcite \fullcite \footfullcite \citetitle \citedate \citeurl \nocite
-# citations (biblatex multi-cite)
+# citations (shared)
+\cite \nocite \citeauthor \citeyear
+# citations (natbib only)
+\citet \citep \citealt \citealp \citeyearpar \citetext \citenum
+# citations (biblatex only, singular)
+\textcite \parencite \autocite \footcite \smartcite \fullcite \footfullcite \citetitle \citedate \citeurl
+# citations (biblatex only, multi-cite)
 \cites \textcites \parencites \autocites \footcites \smartcites
 ```
 

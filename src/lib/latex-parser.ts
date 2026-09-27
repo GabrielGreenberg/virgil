@@ -709,7 +709,8 @@ export function parseInlineContent(
 
       // \textcolor[HTML]{RRGGBB}{...} — emitted by the textColor mark.
       // Named-color variants (\textcolor{red}{...}) are intentionally
-      // skipped; they round-trip as plain text without a mark.
+      // skipped; they fall through to the raw-LaTeX latexCommand carrier
+      // (bytes preserved, rendered grey), not to plain text.
       const tcMatch = rest.match(/^\\textcolor\[HTML\]\{([0-9A-Fa-f]{6})\}\{/);
       if (tcMatch) {
         flush();
