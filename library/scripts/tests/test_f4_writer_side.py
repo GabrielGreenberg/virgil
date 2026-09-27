@@ -157,6 +157,12 @@ def _snap(snap_dir: Path, master_bib: str, catalog: dict) -> None:
     snap_dir.mkdir(parents=True, exist_ok=True)
     (snap_dir / "master.bib").write_text(master_bib)
     (snap_dir / "catalog.json").write_text(json.dumps(catalog))
+    # The preflight's self-describing manifest — postflight refuses a
+    # snapshot without one (task 798: the guard fails closed).
+    (snap_dir / "manifest.json").write_text(json.dumps({"files": [
+        {"name": "master.bib", "present": True},
+        {"name": "catalog.json", "present": True},
+    ]}))
 
 
 def _live(library: Path, master_bib: str, catalog: dict) -> None:

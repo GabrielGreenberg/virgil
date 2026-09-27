@@ -71,6 +71,18 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 
 All paths in the rest of this skill resolve against the library root.
 
+> **Every step is a separate Bash call — the shell does not carry over.**
+> Your Bash tool keeps neither exported variables nor `cd` between calls,
+> and the steps below are separated by whole subagent waves. So nothing is
+> handed between steps through the shell: Step 0's preflight writes the
+> run's state (library root, snapshot dir, filter/force/dry-run, batch) to
+> **`/tmp/merge-bibs-run.json`** plus a sourceable
+> **`/tmp/merge-bibs-run.json.env`**, and every later fenced block begins
+> with `. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"`. A
+> value you `export` in one block is EMPTY in the next — which is exactly
+> how the postflight once compared master.bib with itself and said "clean"
+> (task 798).
+
 ---
 
 ## Args parsing
@@ -97,17 +109,12 @@ The `$ARGUMENTS` string carries optional flags:
 - `--dry-run` — produce reports without writing `master.bib`,
   `catalog.json`, or `inbox.json`.
 
-Parse the args yourself in shell. Track whether `--batch` was given
-explicitly (so preflight can supply the default if not):
-
-```
-BATCH_EXPLICIT=0  # set to 1 if user passed --batch
-BATCH=""          # final value, set after preflight
-FILTER=""
-FORCE=0
-DRY_RUN=0
-ALLOW_PARALLEL_SYNC=0
-```
+Do not parse them into shell variables (they would not survive to the
+next step). Pass them **straight through to the preflight in Step 0**, which
+records them in the run-state file and applies the batch policy: pass
+`--batch N` only if the user gave it (its absence is what lets preflight
+choose the default), and pass each of `--allow-parallel-sync`,
+`--filter <glob>` (quoted), `--force`, `--dry-run` only if given.
 
 ---
 
@@ -119,15 +126,23 @@ explosion. It snapshots the critical state files to a location
 mounted, and refuses to start if another writer is mutating the
 library. **Always run this step.**
 
+Run it in the same Bash call as the `cd` above (or `cd "$library_root"`
+again), substituting the user's flags for `<user flags>`:
+
 ```bash
-preflight_json="$(python3 .virgil/scripts/library/merge_bibs_preflight.py 2>&1)"
+# stdout is the JSON; stderr (retention-prune warnings etc.) goes to its OWN
+# file — merged into stdout it corrupts the JSON and json.load crashes,
+# silently skipping the writer check and the batch policy (task 798).
+python3 .virgil/scripts/library/merge_bibs_preflight.py \
+  --run-state /tmp/merge-bibs-run.json <user flags> \
+  > /tmp/merge-bibs-preflight.json 2> /tmp/merge-bibs-preflight.err
 preflight_rc=$?
 if [ $preflight_rc -ne 0 ]; then
   echo "preflight failed (rc=$preflight_rc):"
-  echo "$preflight_json"
+  cat /tmp/merge-bibs-preflight.err /tmp/merge-bibs-preflight.json
   exit 1
 fi
-echo "$preflight_json" > /tmp/merge-bibs-preflight.json
+[ -s /tmp/merge-bibs-preflight.err ] && { echo "preflight warnings:"; cat /tmp/merge-bibs-preflight.err; }
 ```
 
 Parse the JSON and apply the policy:
@@ -139,7 +154,9 @@ pf = json.load(open("/tmp/merge-bibs-preflight.json"))
 # Surface a short status line for the user.
 print(f"Snapshot:       {pf['snapshot_dir']}")
 print(f"Sync mounted:   {pf['sync_mounted']} ({pf['sync_kind'] or 'n/a'})")
-print(f"Recommended batch: {pf['recommended_batch']}")
+print(f"Batch:          {pf['run']['batch']} (recommended {pf['recommended_batch']})")
+print(f"Filter/force/dry-run: {pf['run']['filter'] or '-'} / {pf['run']['force']} / {pf['run']['dry_run']}")
+print(f"Refuse:         {pf['refuse'] or 'no'}")
 w = pf["other_writers"]
 if pf["any_writers"]:
     print("Other writers detected:")
@@ -152,9 +169,10 @@ if pf["any_writers"]:
 PY
 ```
 
-Now decide whether to bail:
+Now decide whether to bail. The policy is computed by the preflight itself
+(`refuse` and `run.batch` in the JSON) — read it, don't re-derive it:
 
-- **If `any_writers` is `true`**: print the offending pids/files and
+- **If `refuse` is `"other-writers"`** (`any_writers` is `true`): print the offending pids/files and
   bail with this message (do not proceed):
   > Library-wide bib merge refused: other writers are touching this
   > library. Pause `/library:index-pending`, kill stale
@@ -162,8 +180,9 @@ Now decide whether to bail:
   > clear stale `.virgil/queue/*.lock` files. The preflight snapshot
   > at `<snapshot_dir>` is safe.
 
-- **If `sync_mounted` is `true` and the user passed `--batch N` with
-  `N > 1` without `--allow-parallel-sync`**: bail with:
+- **If `refuse` starts with `"parallel-in-sync"`** (`sync_mounted` and
+  the user passed `--batch N` with `N > 1` without
+  `--allow-parallel-sync`): bail with:
   > Library-wide bib merge refused: this is a `<sync_kind>` library
   > and you asked for `--batch <N>`. Parallel writes inside synced
   > folders caused a ~4000-conflict-file explosion on 2026-05-17.
@@ -171,20 +190,17 @@ Now decide whether to bail:
   > `--batch <N> --allow-parallel-sync` if you've paused sync at the
   > OS level first.
 
+- **If `refuse` is `"bad-batch"`**: the user passed `--batch` below 1;
+  bail and ask for a positive batch.
+
 - **If `sync_mounted` is `true` and the user did not pass `--batch`**:
-  set `BATCH=1` (the safe default for synced libraries) and inform
-  the user with a one-liner: *"Sync-mounted library detected;
-  defaulting to --batch 1. Estimated runtime ~2 min/paper."*
+  preflight already chose `run.batch = 1` (the safe default for synced
+  libraries); inform the user with a one-liner: *"Sync-mounted library
+  detected; defaulting to --batch 1. Estimated runtime ~2 min/paper."*
 
-- **Otherwise**: set `BATCH=$preflight_recommended_batch` if the user
-  didn't pass `--batch`, or `BATCH=$user_provided_batch` if they did.
-
-- Always: stash the snapshot path in an env var for postflight.
-
-```bash
-SNAPSHOT_DIR="$(python3 -c 'import json; print(json.load(open("/tmp/merge-bibs-preflight.json"))["snapshot_dir"])')"
-export SNAPSHOT_DIR
-```
+- **Otherwise**: `run.batch` is the user's `--batch` or the recommended
+  default. It, the snapshot path, and the filter/force/dry-run flags are
+  now in `/tmp/merge-bibs-run.json.env` — the ONLY way later steps get them.
 
 If you bail in this step, the snapshot has still been taken — surface
 its path to the user as something they can roll back to if anything
@@ -203,6 +219,7 @@ at import time). Libraries imported before the flag existed fall back to
 the legacy report-mtime check so they aren't needlessly re-scanned.
 
 ```bash
+. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 python3 - <<'PY'
 import fnmatch, json, os, sys
 from pathlib import Path
@@ -268,8 +285,9 @@ print(f"worklist_file={worklist}")
 PY
 ```
 
-Set shell env vars before running so the Python block sees them:
-`MERGE_FILTER`, `MERGE_FORCE`, etc.
+`MERGE_FILTER` / `MERGE_FORCE` arrive from the sourced run-state `.env` —
+never set them by hand in this block (a hand-set name that differs from the
+one read here is how `--filter` once merged everything).
 
 If the worklist is empty, print a one-line summary and stop:
 ```
@@ -280,8 +298,10 @@ Library-wide bib merge: nothing to do (0 papers in worklist).
 
 ## Step 2 — Spawn batched subagents
 
-Read `<library>/.virgil/merge-reports/_worklist.txt` into memory. Walk
-it in chunks of `BATCH`. **For each chunk, emit `BATCH` `Agent` tool
+Read `<library>/.virgil/merge-reports/_worklist.txt` into memory, and
+read the batch size and dry-run flag from the run state (`run.batch`,
+`run.dry_run` in `/tmp/merge-bibs-run.json`) — not from your memory of the
+args. Walk the worklist in chunks of `BATCH`. **For each chunk, emit `BATCH` `Agent` tool
 calls in a single message.** That's how the Claude Code harness
 runs them concurrently — sequential `Agent` calls run one at a time.
 
@@ -331,8 +351,8 @@ user sees progress.
 > - Do not parallelize within this subagent (no nested `Agent` calls).
 >   The orchestrator is responsible for parallelism across papers.
 
-`<dry_run_flag>` is `--dry-run` if the orchestrator was invoked with
-`--dry-run`, otherwise the empty string.
+`<dry_run_flag>` is `--dry-run` if the run state's `run.dry_run` is
+`true`, otherwise the empty string.
 
 After each chunk completes, optionally print a one-line progress
 indicator so the user knows how far the run has progressed:
@@ -355,6 +375,7 @@ key you find — an unknown state then shows up as an extra line, which is visib
 and fixable, instead of vanishing.
 
 ```bash
+. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 python3 - <<'PY'
 import json, os, sys
 from collections import Counter
@@ -422,7 +443,7 @@ PY
 
 `auth_failed[]` entries **were written to master.bib** — the engine routes
 `unverified`/`failed` there instead of `added[]` (`merge_paper_references.py`
-`:614-623`), so they are additions that need attention, not skips. That is what
+`:621-630`), so they are additions that need attention, not skips. That is what
 the skill's headline promise ("Adds even if auth comes back
 `unverified`/`failed`") looks like in the aggregate, so it gets its own row.
 
@@ -471,9 +492,9 @@ re-deriving a verdict from the raw counts:
 
 - **`master.bib` shrank** — real data loss; the merge only appends to it.
 - **An `indexed.state` regression** — a holding lost its indexed status. Only
-  the *real* work states count (`_REAL_INDEX_STATES` at `:103-109`:
+  the *real* work states count (`_REAL_INDEX_STATES`:
   `indexed`, `deepIndexed`, `richIndexed`, `running`, `queued`, `failed`).
-  A drop in `none` is skipped at `:114` — those are the expected F#4
+  A drop in `none` is skipped in `_check_catalog` — those are the expected F#4
   reference-row prunes.
 - **A `present: true` holdings row disappeared** (`present_dropped`, F4W-2) —
   data loss that shows up in neither of the above.
@@ -482,17 +503,24 @@ A **bare `catalog.json` total decline with no state regression is expected and
 clean**, not an alert: the merge removes/never-mints reference-only rows whose
 auth state has moved into the `% bib.state` comment in `master.bib`. The script
 records it as `catalog_shrank_expected: true` and still reports `clean: true`
-(`:166-176`, `:207`). Do **not** tell the user to roll back on that signal
+(`catalog_shrank_expected` / `clean` in `main`). Do **not** tell the user to roll back on that signal
 alone — it would abandon a correct merge.
 
 Roll back only when `alerts[]` is non-empty; the script hands you the exact
 commands in `restore_commands`.
 
 ```bash
-postflight_json="$(python3 .virgil/scripts/library/merge_bibs_postflight.py \
-  --snapshot-dir "$SNAPSHOT_DIR")"
-echo "$postflight_json" > /tmp/merge-bibs-postflight.json
+. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
+python3 .virgil/scripts/library/merge_bibs_postflight.py \
+  --snapshot-dir "$SNAPSHOT_DIR" > /tmp/merge-bibs-postflight.json
+echo "postflight rc=$?"
 ```
+
+The postflight **fails closed**: an empty or bogus `--snapshot-dir` (no
+preflight `manifest.json`, or the library itself) exits 2 with
+`clean: false` and an `error` — it never compares master.bib with itself.
+Treat an `error` exactly like an alert: tell the user the safety check
+could NOT run, and give them the snapshot path from the run state.
 
 Inspect the result:
 
@@ -500,7 +528,9 @@ Inspect the result:
 python3 - <<'PY'
 import json
 p = json.load(open("/tmp/merge-bibs-postflight.json"))
-if p.get("clean"):
+if p.get("error"):
+    print(f"Postflight: COULD NOT RUN — {p['error']}")
+elif p.get("clean"):
     print("Postflight: clean")
 else:
     print("Postflight: ALERT")
@@ -529,6 +559,7 @@ Append one summary notification to the library inbox (skip if
 `--dry-run`):
 
 ```bash
+. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 if [ "$DRY_RUN" != "1" ]; then
   now="$(python3 -c 'import time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))')"
   cat > /tmp/merge-bibs-notify.json <<EOF
@@ -550,6 +581,8 @@ items later. Skip the memo entirely otherwise.
 # MANUAL_REVIEW / MANUAL_PAPERS / DRY_RUN_SEEN come from the file Step 3 wrote —
 # don't hand-transcribe them into the env, that is how this branch silently
 # died (unset MANUAL_REVIEW → `[: : integer expression expected`, rc 2).
+# DRY_RUN + VIRGIL_LIBRARY_ROOT come from the run state the same way.
+. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 . /tmp/merge-bibs-totals.env
 if [ "${MANUAL_REVIEW:-0}" -gt 0 ] && [ "$DRY_RUN" != "1" ]; then
   date="$(date +%Y-%m-%d)"

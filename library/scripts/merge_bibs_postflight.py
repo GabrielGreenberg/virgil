@@ -18,8 +18,17 @@ CLI:
     python3 merge_bibs_postflight.py --snapshot-dir <path> [--library PATH]
 
 Emits JSON to stdout with the shape consumed by merge-bibs.md::Step
-3.5. Exits 0 always — the orchestrator inspects the JSON and decides
-how to surface alerts in its final reply.
+3.5. Exits 0 when the comparison RAN (clean or with alerts — the
+orchestrator decides how to surface them).
+
+**The guard fails CLOSED** (task 798). A snapshot dir that is empty,
+missing, the library itself, or lacks the preflight's
+`manifest.json` is REFUSED — `clean: false`, an `error`, exit 2. An empty
+`--snapshot-dir ""` (a shell variable that did not survive to this Bash
+call) used to resolve to cwd = the library root, compare master.bib with
+itself, and report `clean: true` after the very truncation this step
+exists to catch. Without `--library`, the library is the one the
+snapshot's manifest names, not whatever cwd happens to be.
 """
 
 from __future__ import annotations
@@ -141,6 +150,27 @@ def _check_catalog(snap_dir: Path, library: Path) -> dict:
     }
 
 
+def _validate_snapshot(raw: str) -> tuple[Optional[Path], dict, Optional[str]]:
+    """(snap_dir, manifest, error) — a snapshot is real or it is refused."""
+    if not raw or not raw.strip():
+        return None, {}, ("empty --snapshot-dir (the preflight's snapshot path "
+                          "did not reach this step — source the run-state .env)")
+    snap_dir = Path(raw).expanduser().resolve()
+    if not snap_dir.is_dir():
+        return snap_dir, {}, f"snapshot dir not found: {snap_dir}"
+    mpath = snap_dir / "manifest.json"
+    try:
+        manifest = json.loads(mpath.read_text())
+    except (OSError, json.JSONDecodeError):
+        return snap_dir, {}, f"no preflight manifest.json in {snap_dir}"
+    for f in manifest.get("files", []) or []:
+        if f.get("present") and not (snap_dir / f.get("name", "")).exists():
+            return snap_dir, manifest, (
+                f"snapshot {snap_dir} is missing {f.get('name')} "
+                "that its manifest records")
+    return snap_dir, manifest, None
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--snapshot-dir", required=True,
@@ -148,12 +178,28 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--library", default=None)
     args = ap.parse_args(argv)
 
-    snap_dir = Path(args.snapshot_dir).expanduser().resolve()
-    if not snap_dir.is_dir():
-        print(json.dumps({"error": f"snapshot dir not found: {snap_dir}"}))
-        return 0
-
-    library = _resolve_library(args.library)
+    snap_dir, manifest, error = _validate_snapshot(args.snapshot_dir)
+    library: Optional[Path] = None
+    if error is None:
+        if args.library:
+            library = _resolve_library(args.library)
+        elif manifest.get("library_root"):
+            library = Path(manifest["library_root"]).expanduser().resolve()
+        else:
+            library = _resolve_library(None)
+        if snap_dir == library:
+            error = (f"snapshot dir {snap_dir} is the library itself — "
+                     "not a preflight snapshot")
+    if error is not None:
+        print(json.dumps({
+            "error": error,
+            "snapshot_dir": str(snap_dir) if snap_dir else args.snapshot_dir,
+            "library_root": str(library) if library else None,
+            "alerts": [f"postflight could not run: {error}"],
+            "clean": False,
+            "restore_commands": [],
+        }, indent=2))
+        return 2
     master = _check_master(snap_dir, library)
     catalog = _check_catalog(snap_dir, library)
 

@@ -32,12 +32,24 @@ three jobs in order, each in service of "the user can always recover":
 
 CLI:
 
-    python3 merge_bibs_preflight.py [--library PATH]
+    python3 merge_bibs_preflight.py [--library PATH] [--run-state PATH]
+        [--batch N] [--allow-parallel-sync] [--filter GLOB] [--force]
+        [--dry-run]
 
 Emits JSON to stdout with the shape consumed by merge-bibs.md::Step 0.
 Exits non-zero only on hard errors (missing library, permission
 problems). "Other writers detected" exits zero with the info in the
-JSON — the orchestrator decides what to do.
+JSON (`refuse` names the reason) — the orchestrator surfaces it.
+
+**The run state is a FILE, never the shell** (task 798). The skill's steps
+run as separate Bash calls, separated by subagent waves, and an agent's
+Bash tool keeps neither exported variables nor cwd between calls. So this
+script — the one door every run passes first — resolves the parsed args
+AND the batch/refusal policy, and with `--run-state PATH` writes them to
+PATH (the JSON) plus `PATH` with a `.env` suffix (sourceable `export`
+lines). Every later step starts by sourcing that `.env`. A value handed
+between steps through `export` alone arrives empty — which is how the
+postflight once compared master.bib with itself and reported "clean".
 """
 
 from __future__ import annotations
@@ -274,6 +286,16 @@ def main(argv: list[str]) -> int:
                     help="Library root (default: auto-resolve via library_path.py)")
     ap.add_argument("--skip-snapshot", action="store_true",
                     help="Run safety checks only; don't snapshot. For testing.")
+    # The skill's own args, recorded in the run state so later steps read
+    # them from a file (task 798) rather than from shell variables.
+    ap.add_argument("--batch", type=int, default=None,
+                    help="User-requested batch size (default: policy)")
+    ap.add_argument("--allow-parallel-sync", action="store_true")
+    ap.add_argument("--filter", default="")
+    ap.add_argument("--force", action="store_true")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--run-state", default=None,
+                    help="Write the run state JSON here (+ a sibling .env)")
     args = ap.parse_args(argv)
 
     library = _resolve_library(args.library)
@@ -305,8 +327,74 @@ def main(argv: list[str]) -> int:
         },
         "any_writers": bool(competing or queue_locks or recent_mods),
     }
+    batch, refuse = _batch_policy(
+        requested=args.batch,
+        sync_mounted=sync_mounted,
+        sync_kind=sync_kind,
+        allow_parallel_sync=args.allow_parallel_sync,
+        any_writers=result["any_writers"],
+    )
+    result["run"] = {
+        "filter": args.filter,
+        "force": bool(args.force),
+        "dry_run": bool(args.dry_run),
+        "batch_requested": args.batch,
+        "allow_parallel_sync": bool(args.allow_parallel_sync),
+        "batch": batch,
+    }
+    result["refuse"] = refuse
+    if args.run_state:
+        result["run_state"] = str(_write_run_state(Path(args.run_state), result))
     print(json.dumps(result, indent=2))
     return 0
+
+
+def _batch_policy(
+    *,
+    requested: Optional[int],
+    sync_mounted: bool,
+    sync_kind: str,
+    allow_parallel_sync: bool,
+    any_writers: bool,
+) -> tuple[int, Optional[str]]:
+    """(batch, refuse_reason) — the Step 0 policy, stated once in code."""
+    if any_writers:
+        return 1, "other-writers"
+    if requested is not None and requested < 1:
+        return 1, "bad-batch"
+    if sync_mounted:
+        if requested is None:
+            return 1, None
+        if requested > 1 and not allow_parallel_sync:
+            return requested, f"parallel-in-sync:{sync_kind or 'sync'}"
+        return requested, None
+    return (requested if requested is not None else 5), None
+
+
+def _shell_quote(v: str) -> str:
+    return "'" + v.replace("'", "'\\''") + "'"
+
+
+def _write_run_state(path: Path, result: dict) -> Path:
+    """Persist the run state: PATH (JSON) + PATH.env (sourceable exports)."""
+    path = path.expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2) + "\n")
+    run = result["run"]
+    env = {
+        "VIRGIL_LIBRARY_ROOT": result["library_root"],
+        "SNAPSHOT_DIR": result["snapshot_dir"] or "",
+        "MERGE_FILTER": run["filter"],
+        "MERGE_FORCE": "1" if run["force"] else "0",
+        "DRY_RUN": "1" if run["dry_run"] else "0",
+        "BATCH": str(run["batch"]),
+        "MERGE_RUN_STATE": str(path),
+    }
+    env_path = path.with_name(path.name + ".env")
+    env_path.write_text(
+        "".join(f"export {k}={_shell_quote(v)}\n" for k, v in env.items())
+    )
+    return path
 
 
 if __name__ == "__main__":
