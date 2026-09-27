@@ -236,7 +236,15 @@ describe("the DEEP_INDEX_STALLED enumeration is honest", () => {
 function policyVerdict(
   lockKey: string | null,
   lockValue: unknown,
-): { applied: boolean; blocked?: boolean; reason?: string; error?: string } {
+  kind = "file-is-book-bib-is-chapter",
+): {
+  applied: boolean;
+  blocked?: boolean;
+  reason?: string;
+  error?: string;
+  metadataLock?: boolean;
+  stdout: string;
+} {
   const root = mkdtempSync(join(tmpdir(), "virgil-lock-"));
   try {
     mkdirSync(join(root, ".virgil"), { recursive: true });
@@ -267,16 +275,22 @@ function policyVerdict(
 import json, sys
 sys.path.insert(0, ${JSON.stringify(join(repoRoot, "library", "scripts"))})
 import apply_metadata_mismatch_policy as m
-m._detect_kind = lambda ck: "file-is-book-bib-is-chapter"
+m._detect_kind = lambda ck: ${JSON.stringify(kind)}
 m._pdf_page_count = lambda p: 300
 print(json.dumps(m.apply("k1999", dry_run=True)))
+# The CLI's own report, as the §4 recipe reads it.
+sys.argv = ["apply_metadata_mismatch_policy.py", "k1999", "--dry-run"]
+print("---CLI---")
+rc = m.main()
+print("---RC---", rc)
 `;
     const out = execFileSync("python3", ["-c", driver], {
       encoding: "utf8",
       env: { ...process.env, VIRGIL_LIBRARY_ROOT: root },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    return JSON.parse(out.trim().split("\n").pop() as string);
+    const [json, cli] = out.split("---CLI---\n");
+    return { ...JSON.parse(json.trim()), stdout: cli };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -310,5 +324,56 @@ describe("metadata-lock: the pin actually blocks", () => {
     const v = policyVerdict("metadata-lock", true);
     expect(v.blocked).toBeUndefined();
     expect(v.error).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Is the lock live?" has an answer on EVERY row (task 802).
+//
+// The block sits deliberately AFTER the kind and page-count gates — hoisting
+// it would stall every locked paper's pass. But the §4 confirmation recipe
+// (`--dry-run`) used to print nothing about the lock on a locked row whose
+// kind the policy does not act on — the common case — so the operator read
+// "Policy not applied: kind=…" as "the lock isn't live". The STATUS is now
+// read before the gates and reported on every exit; BLOCKING stays put.
+// ---------------------------------------------------------------------------
+
+describe("metadata-lock: the dry-run confirms the lock on every row", () => {
+  it("a locked row with no mismatch reports the lock, is not applied, and does NOT stall", () => {
+    const v = policyVerdict(KEY, true, "none");
+    expect(v[KEY as "metadataLock"]).toBe(true);
+    expect(v.applied).toBe(false);
+    expect(v.blocked).toBeUndefined();
+    // The CLI's first line is the answer the recipe reads; exit 0, not 2.
+    expect(v.stdout.split("\n")[0]).toBe(`${KEY}: true`);
+    expect(v.stdout).toContain("---RC--- 0");
+  });
+
+  it("a locked row the policy WOULD rewrite reports the lock AND the block (exit 2)", () => {
+    const v = policyVerdict(KEY, true);
+    expect(v[KEY as "metadataLock"]).toBe(true);
+    expect(v.blocked).toBe(true);
+    expect(v.stdout.split("\n")[0]).toBe(`${KEY}: true`);
+    expect(v.stdout).toContain("---RC--- 2");
+  });
+
+  it("an unpinned row reports `false` — including on the error exit", () => {
+    for (const kind of ["none", "file-is-book-bib-is-chapter"]) {
+      const v = policyVerdict(null, null, kind);
+      expect(v[KEY as "metadataLock"]).toBe(false);
+      expect(v.stdout.split("\n")[0]).toBe(`${KEY}: false`);
+    }
+  });
+
+  it("§4 no longer claims an unconditional stall, and its recipe reads the status line", () => {
+    const doctrine = read(DOCTRINE);
+    const section = doctrine.slice(
+      doctrine.indexOf("**4. The only block-the-pass exception"),
+      doctrine.indexOf("**5. Outstanding-work categories"),
+    );
+    // The pre-802 wording: a locked row → emit STALLED, full stop.
+    expect(section).not.toMatch(/catalog `title`\. Emit `DEEP_INDEX_STALLED`/);
+    expect(section).toMatch(/stalls the pass only where the mismatch policy would actually rewrite/);
+    expect(section).toContain(`\`${KEY}: true\` or \`${KEY}: false\``);
   });
 });

@@ -69,11 +69,17 @@ by default:
 
 **4. The only block-the-pass exception is the metadata lock.**
 If the catalog row carries **`metadataLock: true`**, the user has
-explicitly pinned the metadata. Do not touch `master.bib` or the
-catalog `title`. Emit `DEEP_INDEX_STALLED` with a notification of
+explicitly pinned the metadata: a locked row BLOCKS the metadata
+rewrite. Do not touch `master.bib` or the catalog `title`. The lock
+stalls the pass only where the mismatch policy would actually rewrite
+(`apply_metadata_mismatch_policy.py` exits 2, `"blocked": true` —
+[di-preflight.md](di-preflight.md) Step 0.2); then emit
+`DEEP_INDEX_STALLED` with a notification of
 `kind: "deep-index-blocked"` and reason
 `metadataLock: true on catalog row; pass blocked`. This is the
-same exit channel as the three-iteration validator abort.
+same exit channel as the three-iteration validator abort. A locked
+row with no rewrite to block — the common case — runs the pass
+normally; the pin is simply honoured.
 
 **One spelling, two words.** The **catalog key** is `metadataLock`
 (camelCase, like every other catalog field) — that is what
@@ -99,10 +105,13 @@ rm /tmp/$ARGUMENTS-metadata-lock.json
 ```
 
 The patch is a deep merge, so the rest of the row survives. Clearing
-the pin is the same command with `false`. To confirm the lock is live
-before committing to it, run
-`apply_metadata_mismatch_policy.py <citekey> --dry-run` — a locked row
-reports the block instead of a `would_set` payload.
+the pin is the same command with `false`. To confirm the lock is live,
+run `apply_metadata_mismatch_policy.py <citekey> --dry-run` and read
+its first line, `metadataLock: true` or `metadataLock: false` — every
+run reports the row's lock status, whatever the policy's own verdict
+(which is usually "not applied": most rows have no chapter-vs-book
+mismatch to act on). A locked row that WOULD be rewritten additionally
+reports the block (exit 2) instead of a `would_set` payload.
 
 **5. Outstanding-work categories are exactly three.** Allowed
 values: `source-missing`, `figure-reconstruction`,
