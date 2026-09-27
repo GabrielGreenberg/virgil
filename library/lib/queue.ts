@@ -357,11 +357,26 @@ async function exists(
   }
 }
 
+/** The app's own toast kinds. Skills append other, finer-grained kinds too
+ *  (`triage-needs-title`, `duplicate-work`, …) — every one DECLARED at the
+ *  Python inbox door (`_tools.NOTIFICATION_WRITER_SEVERITY`), which refuses an
+ *  undeclared kind and stamps `severity` on the item (task 799). */
+export type NotificationCoreKind =
+  | "indexed"
+  | "authenticated"
+  | "failed"
+  | "triaged"
+  | "setup-needed";
+
 export interface NotificationItem {
-  kind: "indexed" | "authenticated" | "failed" | "triaged" | "setup-needed";
+  /** A core kind, or a writer kind declared at the Python door. */
+  kind: NotificationCoreKind | (string & {});
   citekey?: string;
   at: string;
   summary: string;
+  /** Stamped by the Python door from its declared table; wins over the
+   *  core-kind fallback below. Absent on app-minted and pre-799 items. */
+  severity?: NotificationSeverity;
 }
 
 /** Visual severity of a toast — drives its auto-dismiss TTL (and its accent
@@ -370,7 +385,9 @@ export interface NotificationItem {
  *  have time to read and act on. F#6. */
 export type NotificationSeverity = "info" | "attention";
 
-const NOTIFICATION_SEVERITY: Record<NotificationItem["kind"], NotificationSeverity> = {
+/** Held EQUAL to `_tools.NOTIFICATION_CORE_SEVERITY` by
+ *  `notification-kind-parity.test.ts`. */
+export const NOTIFICATION_SEVERITY: Record<NotificationCoreKind, NotificationSeverity> = {
   indexed: "info",
   authenticated: "info",
   triaged: "info",
@@ -387,14 +404,18 @@ export const NOTIFICATION_TTL_MS: Record<NotificationSeverity, number> = {
   attention: 11000,
 };
 
+/** The item's severity: the door-stamped `severity` when it is a known
+ *  value, else the core-kind table, else `info`. */
 export function notificationSeverity(
-  kind: NotificationItem["kind"],
+  item: Pick<NotificationItem, "kind" | "severity">,
 ): NotificationSeverity {
-  return NOTIFICATION_SEVERITY[kind] ?? "info";
+  const stamped = item.severity;
+  if (stamped === "info" || stamped === "attention") return stamped;
+  return (NOTIFICATION_SEVERITY as Record<string, NotificationSeverity>)[item.kind] ?? "info";
 }
 
-export function notificationTtlMs(kind: NotificationItem["kind"]): number {
-  return NOTIFICATION_TTL_MS[notificationSeverity(kind)];
+export function notificationTtlMs(item: Pick<NotificationItem, "kind" | "severity">): number {
+  return NOTIFICATION_TTL_MS[notificationSeverity(item)];
 }
 
 export interface NotificationInbox {

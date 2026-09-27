@@ -59,8 +59,8 @@ export default function Toaster({ items }: { items: NotificationItem[] }) {
 }
 
 function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
-  const ttl = notificationTtlMs(toast.kind);
-  const severity = notificationSeverity(toast.kind);
+  const ttl = notificationTtlMs(toast);
+  const severity = notificationSeverity(toast);
   const accent = severity === "attention" ? "var(--danger)" : "var(--accent)";
 
   // Each toast owns one timer. Hovering pauses the countdown (we bank the
