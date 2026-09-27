@@ -465,8 +465,19 @@ export function PanelColumn({
   // way. `frameH` is exposed column-wide as `--dock-slot-frame-h` so docked
   // panels (and omni cards) can cap an expanded body at this bound and
   // engage internal scrolling.
+  //
+  // The HEIGHT is the pane's MEASURED scrollport (task 792), not a window
+  // formula: `--scroll-viewport-h` is the row's clientHeight, written by
+  // EditorScrollbar's RO (equality-bailed) on the scroll container that is
+  // an ancestor of this column in every host. The old `100dvh - 32px`
+  // assumed that container is the whole window minus a 32px bar — false in
+  // the Library Reader (shorter by the Library's own chrome) and under WCO
+  // (the bar grows to the OS title-bar strip), where the band's bottom edge,
+  // resize handle and the bin slot fell below the visible pane. The window
+  // formula survives only as the pre-measure fallback, naming the bar token.
   const frameTop = 'var(--pod-gap)';
-  const frameH = 'calc(100dvh - 32px - 2 * var(--pod-gap))';
+  const frameH =
+    'calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - 2 * var(--pod-gap))';
 
   return (
     <div
