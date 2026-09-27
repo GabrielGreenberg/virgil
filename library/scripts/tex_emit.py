@@ -113,19 +113,12 @@ def _can_inline_merge(prev_blk: dict | None, next_blk: dict | None) -> bool:
     return True
 
 
-def emit(
-    blocks: Iterable[dict],
-    title: str = "",
-    authors: str = "",
-    year: str = "",
-    page_map: list[dict] | None = None,
-) -> str:
-    """Produce the .tex source. blocks is a list of dicts as emitted by
-    extract.py (Block.asdict). page_map is the pgmark.py output (used to
-    look up per-page confidence labels)."""
-    blocks = list(blocks)
-    page_map = page_map or []
-
+def preamble_lines(title: str = "", authors: str = "", year: str = "") -> list[str]:
+    """The minimal preamble every indexed paper starts from — everything
+    before `\\begin{document}`. ONE builder: `emit()` calls it, and
+    `_latex-output.md`'s "Minimal preamble" block is held equal to its
+    non-comment lines by `latex-output-preamble-parity.test.ts` (task 801),
+    so the doctrine cannot drift from what the extractor writes."""
     lines: list[str] = []
     # Preamble is intentionally font-agnostic: the Virgil library renderer
     # pins indexed papers to --library-editing-font on the frontend.
@@ -147,6 +140,23 @@ def emit(
     if year:
         lines.append(f"\\date{{{_escape_latex(year)}}}")
     lines.append("")
+    return lines
+
+
+def emit(
+    blocks: Iterable[dict],
+    title: str = "",
+    authors: str = "",
+    year: str = "",
+    page_map: list[dict] | None = None,
+) -> str:
+    """Produce the .tex source. blocks is a list of dicts as emitted by
+    extract.py (Block.asdict). page_map is the pgmark.py output (used to
+    look up per-page confidence labels)."""
+    blocks = list(blocks)
+    page_map = page_map or []
+
+    lines: list[str] = preamble_lines(title, authors, year)
     lines.append("\\begin{document}")
     lines.append("")
     if title:

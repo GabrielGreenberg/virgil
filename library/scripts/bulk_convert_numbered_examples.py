@@ -157,6 +157,27 @@ def _propose(examples: list[dict]) -> list[dict]:
     return out
 
 
+# The no-op declaration that keeps a `\vexid`-bearing .tex compilable under
+# stock LaTeX. The pass that MINTS the first `\vexid` owns guaranteeing it
+# (task 801 — the preamble-requirements-by-emission pattern; the Virgil app's
+# own save path injects the same line via `latex-requirements.ts` shimReq).
+VEXID_SHIM = "\\providecommand{\\vexid}[1]{}"
+_VEXID_DEFINED_RE = re.compile(r"\\(?:provide|new|renew)command\{\\vexid\}")
+_BEGIN_DOCUMENT_RE = re.compile(r"^[ \t]*\\begin\{document\}", re.M)
+
+
+def ensure_vexid_shim(text: str) -> str:
+    """Declare `\\vexid` in the preamble unless something already does.
+    Inserted on its own line just before `\\begin{document}`; a fragment
+    with no `\\begin{document}` is returned unchanged (nothing to own)."""
+    if _VEXID_DEFINED_RE.search(text):
+        return text
+    m = _BEGIN_DOCUMENT_RE.search(text)
+    if not m:
+        return text
+    return text[: m.start()] + VEXID_SHIM + "\n" + text[m.start():]
+
+
 def _apply(text: str, examples: list[dict]) -> str:
     """Rewrite text replacing each example's paragraph with an
     `\\ex` / `\\pex` block with a `\\vexid{<uuid>}` marker. Apply in
@@ -191,7 +212,7 @@ def _apply(text: str, examples: list[dict]) -> str:
                 f"{ex['body']}\n{sub_items}\n\\xe\n"
             )
         new_text = new_text[:start] + replacement + new_text[end_char:]
-    return new_text
+    return ensure_vexid_shim(new_text) if examples else new_text
 
 
 def main() -> int:

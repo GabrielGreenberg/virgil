@@ -134,21 +134,32 @@ renderer pins fonts independently of the source via
 
 ### Minimal preamble
 
-The output preamble should match the minimal preamble emitted by
-`tex_emit.py`:
+The output preamble starts from the minimal preamble emitted by
+`tex_emit.py` (`preamble_lines()` — its comment lines omitted here):
 
 ```latex
 \documentclass{article}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath, amssymb}
-\providecommand{\pgmark}[1]{}
-\providecommand{\vexid}[1]{}
+\providecommand{\pgmark}[2][high]{}
 ```
 
 …plus `\title`/`\author`/`\date` lines. Nothing else font-related.
-(The `\vexid` provide-command keeps the `.tex` valid as a standalone
-LaTeX document — `\vexid{…}` renders as a no-op outside Virgil.
-`\providecommand` for the expex envelope commands themselves
-(`\ex`, `\pex`, `\xe`, etc.) is **not** added; those are not meant to
-typeset under stock LaTeX. Authors who want to compile the file with
-pdflatex should also `\usepackage{expex}` themselves.)
+This block is CI-checked against the builder
+(`latex-output-preamble-parity.test.ts`), so it cannot drift from what the
+extractor writes. The `\pgmark` declaration is the **optional-argument**
+form on purpose: `\pgmark[low]{N}` needs it, and a `[1]` form makes stock
+LaTeX print a stray "low]". Never downgrade it.
+
+**`\vexid` is owned by whoever mints it.** The extractor writes no
+examples, so it declares no `\vexid`. The pass that mints the first
+`\vexid{…}` guarantees `\providecommand{\vexid}[1]{}` in the preamble
+(just before `\begin{document}`, unless something already declares it) —
+`bulk_convert_numbered_examples.py --apply` does this itself; a
+hand-minted `\vexid` (/library/di-examples) adds the line by hand. The Virgil
+app's own save path injects the same no-op for every marker it knows, so
+the line keeps a paper compilable under stock LaTeX before it is ever
+opened in Virgil. `\providecommand` for the expex envelope commands
+themselves (`\ex`, `\pex`, `\xe`, etc.) is **not** added; those are not
+meant to typeset under stock LaTeX. Authors who want to compile the file
+with pdflatex should also `\usepackage{expex}` themselves.
