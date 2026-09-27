@@ -450,4 +450,17 @@ describe("front door — the descriptions are the vocabulary, not a hand list", 
         `was reachable from one.\n\n${trigger}`,
     ).toEqual([]);
   });
+
+  it("does not promise a /loop inbox re-check it has no step for (task 810)", () => {
+    // The front door drains nothing: a `/loop /virgil/start` tick carries only
+    // a docPath, which routes to Onboarding. Inbox babysitting is
+    // /editor/review's, and its "Pairing with /loop" is the SSOT.
+    const start = read("virgil/skills/start.md");
+    expect(
+      /\/loop \/virgil\/start[^\n]*\n?[^\n]*re-checks? the inbox/i.test(start),
+      "start.md claims a /loop of the front door re-checks the inbox",
+    ).toBe(false);
+    expect(start.includes("/loop /editor/review")).toBe(true);
+    expect(read("editor/skills/review.md").includes("/loop /editor/review")).toBe(true);
+  });
 });
