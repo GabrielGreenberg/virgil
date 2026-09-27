@@ -149,6 +149,25 @@ export function createParTitleSession(opts: ParTitleSessionOptions): ParTitleSes
   const begin = (): void => {
     if (editing) return;
     editing = true;
+    // Setup is ATOMIC (task 805). The body placement appends a full-viewport
+    // click-away overlay BEFORE the input's handlers exist; a throw part-way
+    // (pre-805, `autoSizeInput`'s frame threw "Illegal invocation" in every
+    // real browser) left that overlay eating every click — a literal freeze.
+    // A failed setup tears down whatever it mounted and restores the strip.
+    const mounted: Element[] = [];
+    try {
+      setup(mounted);
+    } catch (err) {
+      for (const el of mounted) el.remove();
+      editing = false;
+      wrapper.classList.remove(PAR_TITLE_EDITING_CLASS);
+      render();
+      throw err;
+    }
+  };
+
+  /** Mounts + wires one session; records each element it mounts in `mounted`. */
+  const setup = (mounted: Element[]): void => {
     wrapper.classList.add(PAR_TITLE_EDITING_CLASS);
 
     const original = getTitle() || null;
@@ -171,12 +190,14 @@ export function createParTitleSession(opts: ParTitleSessionOptions): ParTitleSes
       overlay.className = chromeOnly(PAR_TITLE_OVERLAY_CLASS);
       overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:${INLINE_EDIT_OVERLAY_Z};`;
       document.body.appendChild(overlay);
+      mounted.push(overlay);
       input.style.cssText = `position:fixed;z-index:${INLINE_EDIT_INPUT_Z};left:${wrapperRect.left}px;top:${annotRect.top}px;`;
       document.body.appendChild(input);
     } else {
       titleAnnot.innerHTML = "";
       titleAnnot.appendChild(input);
     }
+    mounted.push(input);
 
     // Auto-size to content (must be in the DOM first for the font read); its
     // first measure is a frame the lifetime owns.

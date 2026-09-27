@@ -356,3 +356,39 @@ every React card. The population is not yet known to be general — this card wa
 audited for it and no other has been — and a repo-wide ban would have to
 declare an allowlist for the many legitimate one-shot timers in components that
 cannot outlive their own callback. Widening it is a measurement, not a guess.
+
+### The receiver half: the lifetime calls the platform with a LEGAL `this`
+
+A browser's timer verbs are **receiver-checked** — `setTimeout`,
+`requestAnimationFrame` and the rest throw `TypeError: Illegal invocation` when
+called with `this` other than the window or `undefined`. Node's and jsdom's are
+not. From task 548 until task 805, `view-lifetime.ts`'s `platform()` returned
+`{ setTimeout: globalThis.setTimeout, … }` and invoked those as methods of that
+object: every suite passed, and every real-browser consumer threw on its first
+timer. The visible casualty was every label field — the heading/section label
+strip, the paragraph/list title (whose full-viewport click-away overlay was
+already mounted, so the app appeared frozen) and the expex title/label pods —
+because `autoSizeInput`'s first frame threw before any handler was wired.
+
+Rules (task 805):
+
+- `platform()` returns **wrappers** that invoke the global as a plain call at
+  call time (`(cb, ms) => globalThis.setTimeout(cb, ms)`): legal receiver, and
+  vitest's fake-timer swap is still honoured.
+- A label/title edit session is **setup-atomic**: a throw anywhere in its
+  setup removes what it mounted and ends the session. Re-entry and `update()`'s
+  don't-clobber gate ask a **session flag**, never "is there an `<input>` in
+  the strip" — an input left behind by a failed setup is not a session.
+  (`createParTitleSession` and the heading strip's `labelEditing`; the expex
+  pod already gated on its own `editing` flag and wires handlers before timers.)
+
+CI: [view-lifetime.test.ts](../../../src/lib/tiptap/__tests__/view-lifetime.test.ts)
+— the receiver-guard leg stubs all six globals with receiver-checking fakes and
+fails against the pre-805 `platform()`;
+[detached-host-method-census.test.ts](../../../src/__tests__/detached-host-method-census.test.ts)
+forbids storing a receiver-checked host verb (timers, idle callbacks,
+`queueMicrotask`, `fetch`) by bare reference anywhere in shipped `src/`.
+
+**Residual, stated:** the heading-label and expex-label inputs still run their
+own session code rather than the one `FieldEditSession` door (tasks 552/686);
+converging them is a separate refactor, not needed to close this defect.
