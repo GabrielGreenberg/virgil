@@ -11,7 +11,7 @@ description: |
   safe to invoke from a paper session with --library. Does NOT trigger
   for newly-dropped files in unsorted/ (use /library/triage-pdf first) or for
   cleaning up an already-indexed paper (use /library/deep-index). Args:
-  <citekey> [--library <path>].
+  <citekey> [--library <path>] [--re-extract].
 ---
 
 # /library/index-paper $ARGUMENTS
@@ -36,6 +36,15 @@ description: |
   disk; without it the normal chain
   (`./.virgil/library-path.json` → `VIRGIL_LIBRARY_ROOT` →
   `~/.config/virgil/library-path.json` → `~/Virgil-Library/`) is used.
+- `--re-extract` — replace a `main.tex` that already holds deep-index
+  work. Without it `index_paper.py` REFUSES (exit 1, a `failed` inbox
+  item naming the flag) whenever the catalog row is `deepIndexed` or a
+  `.virgil/baselines/<citekey>-pre-deepindex.tex` snapshot exists. With
+  it, the prior `main.tex` is copied and the baseline moved to
+  `.virgil/backups/re-extract/<citekey>/<ISO>/` before the fresh
+  extraction lands, and the row returns to plain `indexed`. Pass it
+  through to the script (`index_paper.py <citekey> --re-extract`) only
+  when the caller asked for it — never add it to get past a refusal.
 
 See also **Optional flags** below for the extractor / bib-auth switches.
 
@@ -152,6 +161,10 @@ you to disambiguate something.
    ```bash
    python3 .virgil/scripts/library/index_paper.py <citekey>
    ```
+   (append `--re-extract` only if the invocation carried it — see **Args**.
+   A `REFUSED: … --re-extract` exit means the paper's `main.tex` holds
+   deep-index work; report that to the user and stop rather than retrying.)
+
    For PDF sources, this:
    - classifies scanned vs digital; if scanned, OCRs via ocrmypdf (FAILS LOUDLY if ocrmypdf or tesseract are missing — install them via `/library/setup` + `brew install tesseract`)
    - detects printed page numbers via `pymupdf` (header/footer band heuristic)

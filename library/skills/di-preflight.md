@@ -98,12 +98,12 @@ density and prints either "PDF already has text layer; no OCR needed." or
 - **Needs OCR** — the source has no text layer. Block with:
   `extraction-empty-body — body has <N> bytes; PDF has no text layer.
   Recover with: python3 .virgil/scripts/library/recover_ocr_pipeline.py
-  $ARGUMENTS && /library/index-paper $ARGUMENTS`
+  $ARGUMENTS && /library/index-paper $ARGUMENTS --re-extract`
 - **Has a text layer** — extraction failed on a PDF that *does* carry
   text, so OCR is the wrong repair. Block with:
   `extraction-empty-body — body has <N> bytes; source has a text layer,
   so this is an extraction failure. Re-run /library/index-paper
-  $ARGUMENTS.`
+  $ARGUMENTS --re-extract.`
 - **`error: PDF not found`** — the paper's source is a DOCX (or the PDF
   is missing), so the OCR question doesn't arise at all. Same block as
   the text-layer case: it is an extraction failure, and the exit code is

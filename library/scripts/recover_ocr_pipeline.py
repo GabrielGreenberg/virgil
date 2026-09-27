@@ -147,7 +147,10 @@ def recover(
         "needs_ocr": True,
         "ocred": True,
         "archived_original": str(archive_path),
-        "rerun_index_paper": f"/library/index-paper {citekey}",
+        # `--re-extract`: deep-index has usually baselined this main.tex
+        # already, and the indexer refuses to replace it without the flag
+        # (task 800).
+        "rerun_index_paper": f"/library/index-paper {citekey} --re-extract",
     }
 
 

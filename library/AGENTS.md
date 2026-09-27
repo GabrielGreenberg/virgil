@@ -754,7 +754,14 @@ CI:
 scans both silos' skill markdown and fails any flag absent from the invoked
 script's source, or any script that doesn't exist. Both allowlists are EMPTY
 and belong that way — an entry is a skill telling an agent to run something
-that can't work, so build the flag or fix the doc. Three rules it earned:
+that can't work, so build the flag or fix the doc. Its sibling
+[slash-skill-invocation-census.test.ts](lib/__tests__/slash-skill-invocation-census.test.ts)
+(task 800) closes the same boundary one level up: a `/library/<skill> … --flag`
+or `/editor/<skill> … --flag` line must name a skill that exists and a flag
+its markdown documents, and every `indexed.<field>` a skill names must be
+declared on `IndexedStatus` — `_doctrine.md` had sent every deep-index skill to
+`/library/index-paper --re-extract` (no such flag) on the signal
+`indexed.notes` (no such field). Three rules the script census earned:
 
 - **Literal presence, not `add_argument`.** Roughly a third of this pipeline
   hand-rolls its argv walk (`repair_pgmarks.py`, `audit_deepindex.py`,
