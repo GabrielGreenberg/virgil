@@ -179,4 +179,35 @@ describe("card-body contract census (task 724)", () => {
     // The derived exemption covers exactly the two sites it was written for.
     expect([...new Set(exempt)].sort()).toEqual(ELEMENT_LESS_BY_CAPABILITY);
   });
+
+  /**
+   * Task 790 — the rules above check the SHAPE of a jump a body is handed; they
+   * are silent about a body handed NO jump. The two revision registrations sat
+   * under this census that way: their bodies gate `jump` to undefined when
+   * `onJump` is absent, so a popped revision card's body click selected but
+   * never scrolled, while its cutter twin, the same card docked, and the same
+   * card in omni all jumped.
+   *
+   * The set of kinds that owe a body jump is DERIVED, not listed: a builder
+   * that resolves its reachability through `cardJumpGate` is paragraph-anchored
+   * by that very act, and the gate it holds is the one the body's jump must
+   * pass through (`jump.withJump(…)`), so the body agrees with the chrome
+   * chevron the shell derives from the same gate.
+   */
+  it("every paragraph-anchored float registration hands its body the gated jump", () => {
+    const floats = readFileSync(join(ROOT, "cards", "floats", "index.tsx"), "utf8");
+    const starts = [...floats.matchAll(/\bregisterCardFloatable\(\s*"([^"]+)"/g)];
+    const gated: string[] = [];
+    const offenders: string[] = [];
+    starts.forEach((m, i) => {
+      const block = floats.slice(m.index, starts[i + 1]?.index ?? floats.length);
+      if (!/\bcardJumpGate\(/.test(block)) return;
+      gated.push(m[1]);
+      if (!/\bonJump=\{\s*jump\.withJump\(/.test(block)) offenders.push(m[1]);
+    });
+    // Non-vacuous: the anchored population is the bulk of the table.
+    expect(gated.length).toBeGreaterThanOrEqual(10);
+    expect(gated).toEqual(expect.arrayContaining(["revision-comment", "revision-suggestion"]));
+    expect(offenders).toEqual([]);
+  });
 });

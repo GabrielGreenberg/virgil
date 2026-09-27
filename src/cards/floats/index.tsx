@@ -685,6 +685,7 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
         onConvert={ctx.morphCard}
         onDelete={ctx.deleteRevisionCard}
         onSelect={ctx.setSelectedCommentId}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
         isPoppedOut
       />
     ),
@@ -720,6 +721,7 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
         onConvert={ctx.morphCard}
         onDelete={ctx.deleteRevisionCard}
         onSelect={ctx.setSelectedCommentId}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
         isPoppedOut
       />
     ),
