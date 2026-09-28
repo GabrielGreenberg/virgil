@@ -101,7 +101,7 @@ check(text_arg(None) is None, "None passes through")
 print("\n=== footnote (chat path) through heredoc scratch → footnotes.json + .tex ===")
 sb = sandbox()
 r = bash(f"""
-t=$(mktemp -d -t virgil-txt)
+t=$(mktemp -d -t virgil-txt.XXXXXX)
 cat > "$t/body" <<'TXT'
 {HAZARD}
 TXT
@@ -125,7 +125,7 @@ check("O'Neill's `cost`" in json.dumps(syn, ensure_ascii=False), "--task-text @f
 print("\n=== note: --title and --body both @file ===")
 sb = sandbox()
 r = bash(f"""
-t=$(mktemp -d -t virgil-txt)
+t=$(mktemp -d -t virgil-txt.XXXXXX)
 cat > "$t/title" <<'TXT'
 Re: ``gloss'' at $x$
 TXT
