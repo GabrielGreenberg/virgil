@@ -85,6 +85,7 @@ function PodCorner({
     <div className={chromeOnly("source-pod-corner")} contentEditable={false}>
       {hasPreview && (
         <button
+          data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
           className="source-pod-mode-toggle focus-ring"
           onMouseDown={(e) => {
@@ -423,6 +424,7 @@ export default function SourcePodNodeView({
               </span>
               {!collapsed && editable && (
                 <button
+                  data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
                   type="button"
                   className={chromeOnly("par-title-delete focus-ring")}
                   {...iconHint({ label: "Remove title" })}
@@ -475,6 +477,7 @@ export default function SourcePodNodeView({
             exists to close (the same call `.figure-chrome` already makes). */}
         {editable && (
         <button
+          data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
           className={chromeOnly(`source-pod-fold-chevron${collapsed ? " is-folded" : ""} focus-ring`)}
           onClick={(e) => {
@@ -641,7 +644,7 @@ export default function SourcePodNodeView({
             e.preventDefault();
           }}
           {...iconHint({ label: `Delete ${config.kindLabel}` })}
-          className={chromeOnly("source-pod-delete absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover-on-light focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 focus-ring")}
+          className={chromeOnly("source-pod-delete iconbtn-sm iconbtn-danger-hover absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100")}
           contentEditable={false}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

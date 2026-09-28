@@ -16,9 +16,10 @@
  */
 
 /** Default glyph edge in px — matches `JumpChevron`'s 14×14 chevron so the
- *  drop control sits flush beside it in the card header. Sits inside a 16px
- *  (`w-4 h-4`) button in a fixed 24px (`h-6`) header row, so 14 has slack and
- *  changes neither the button box nor the header height. */
+ *  drop control sits flush beside it. Inside the header buttons
+ *  (`CardDropButton`, an `iconbtn-xs`) the utility renders it at 12px — the
+ *  16px box's spec glyph, the same size as the close X beside it (task 826);
+ *  14 is the default for any other caller (the margin pin). */
 const DEFAULT_SIZE = 14;
 
 export function DropChevrons({

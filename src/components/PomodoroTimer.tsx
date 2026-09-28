@@ -239,6 +239,7 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
       data-pomodoro-status={status}
     >
       <button
+        data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
         type="button"
         onClick={onPlayPause}
         className={`${GHOST} focus-ring w-4 h-4`}
@@ -290,6 +291,7 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
       )}
 
       <button
+        data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
         type="button"
         onClick={dismissPomodoro}
         className={`${GHOST} focus-ring w-4 h-4`}

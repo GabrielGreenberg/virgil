@@ -512,7 +512,7 @@ function BibEntryPickerBody({
           <button
             type="button"
             onClick={cancel}
-            className="text-ink-muted hover:text-ink-body p-0.5 shrink-0 focus-ring"
+            className="iconbtn-xs"
             {...iconHint({ label: "Close (Esc)" })}
           >
             <svg
@@ -679,7 +679,7 @@ function BibEntryPickerRow({
               e.stopPropagation();
               onToggleExpand();
             }}
-            className="w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light focus-ring"
+            className="iconbtn-sm"
             {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
           >
             <svg
@@ -823,6 +823,7 @@ function AddButton({
   const title = state === "conflict" ? "Add — citekey conflict" : "Add";
   return (
     <button
+      data-iconbtn-exempt="tinted blue action circle: filled accent, not a neutral icon button"
       type="button"
       onClick={(e) => {
         e.stopPropagation();
@@ -922,7 +923,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
           e.stopPropagation();
           onCopy();
         }}
-        className="text-ink-muted hover:text-ink-body p-0.5 rounded hover-on-light focus-ring"
+        className="iconbtn-xs"
         {...iconHint({ label: copied ? "Copied" : "Copy citekey" })}
       >
         {copied ? (

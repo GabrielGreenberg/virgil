@@ -338,7 +338,7 @@ export function BarStatusPill({
           ref={setKebabEl}
           type="button"
           onClick={toggleMenu}
-          className="w-5 h-5 inline-flex items-center justify-center rounded hover-on-dark text-ink-subtle focus-ring"
+          className="iconbtn-sm iconbtn-on-dark"
           {...iconHint({ label: menu.kebabLabel })}
           aria-haspopup="menu"
           aria-expanded={open}

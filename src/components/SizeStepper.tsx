@@ -65,6 +65,7 @@ export default function SizeStepper({
         style={{ fontVariantNumeric: "tabular-nums" }}
       />
       <button
+        data-iconbtn-exempt="bordered control: its border/fill is the affordance, not a hover lozenge"
         type="button"
         onClick={() => bump(-step)}
         disabled={value <= min}
@@ -74,6 +75,7 @@ export default function SizeStepper({
         −
       </button>
       <button
+        data-iconbtn-exempt="bordered control: its border/fill is the affordance, not a hover lozenge"
         type="button"
         onClick={() => bump(step)}
         disabled={value >= max}

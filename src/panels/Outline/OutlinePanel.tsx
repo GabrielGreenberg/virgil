@@ -699,6 +699,7 @@ function OutlineNode({
       >
         {hasChildren ? (
           <button
+            data-iconbtn-exempt="outline chevron: sub-spec glyph box by design (STYLE_GUIDE)"
             onClick={(e) => {
               e.stopPropagation();
               onToggle(node.heading.id);
@@ -1060,6 +1061,7 @@ const EditablePod = memo(function EditablePod({
       >
         {showChevron ? (
           <button
+            data-iconbtn-exempt="outline chevron: sub-spec glyph box by design (STYLE_GUIDE)"
             onClick={(e) => {
               e.stopPropagation();
               onToggleCollapse(pod.id);
@@ -1832,6 +1834,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       )}
       {focusState?.active && onFocusToggleLock && (
         <button
+          data-iconbtn-exempt="accent-when-active ink (a lock) that iconbtn-* color would override"
           onClick={onFocusToggleLock}
           className={`p-0.5 rounded-md transition-colors ${
             focusState.locked
@@ -1858,8 +1861,9 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
           header, after Focus/Lock (#9). */}
       <span className="w-px h-3.5 bg-[var(--border)] mx-0.5" aria-hidden="true" />
       <button
+        type="button"
         onClick={expandAll}
-        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+        className="iconbtn-xs iconbtn-meta"
         {...iconHint({ label: "Expand all" })}
       >
         <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1868,8 +1872,9 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
         </svg>
       </button>
       <button
+        type="button"
         onClick={collapseAll}
-        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+        className="iconbtn-xs iconbtn-meta"
         {...iconHint({ label: "Collapse all" })}
       >
         <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

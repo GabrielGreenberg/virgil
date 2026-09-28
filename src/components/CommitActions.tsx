@@ -137,6 +137,7 @@ export function CommitActions({
     <>
       {/* Check — keep (finalize the suggested text). */}
       <button
+        data-iconbtn-exempt="commit pair: semantic keep/dismiss tints shared with its text siblings"
         type="button"
         aria-label="Keep change"
         title="Keep"
@@ -149,6 +150,7 @@ export function CommitActions({
       </button>
       {/* Cross — dismiss (restore original + archive; never deletes). */}
       <button
+        data-iconbtn-exempt="commit pair: semantic keep/dismiss tints shared with its text siblings"
         type="button"
         aria-label="Dismiss change"
         title="Dismiss (restores original, archives the card)"

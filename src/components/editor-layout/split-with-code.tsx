@@ -421,6 +421,7 @@ export function SplitWithCode({
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   <button
+                    data-iconbtn-exempt="18px box inside the compressed code gutter: sub-spec by layout"
                     type="button"
                     className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light focus-ring"
                     style={{ width: 18, height: 18 }}
@@ -449,6 +450,7 @@ export function SplitWithCode({
                     style={{ height: 1, background: "var(--border)" }}
                   />
                   <button
+                    data-iconbtn-exempt="18px box inside the compressed code gutter: sub-spec by layout"
                     type="button"
                     className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light focus-ring"
                     style={{ width: 18, height: 18 }}

@@ -169,6 +169,7 @@ export function PanelGoalStrip({
           edit
         </button>
         <button
+          data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
           type="button"
           onClick={onClear}
           className={GHOST_BTN}

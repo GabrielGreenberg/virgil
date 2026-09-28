@@ -1,11 +1,7 @@
 "use client";
 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
-import { PopoutButton } from "@/components/panel-primitives";
-import { DropChevrons } from "@/components/icons/DropChevrons";
-import { JumpChevron } from "@/components/icons/JumpChevron";
-import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
+import { CardDropButton, CardJumpChevron, PopoutButton } from "@/components/panel-primitives";
 import { FONT_SANS } from "@/lib/font-stacks";
 import { iconHint } from "@/components/Hint";
 
@@ -167,68 +163,28 @@ export function FloatChromeContent(props: FloatChromeContentProps) {
       )}
       <span className="flex-1" />
       {trailing}
+      {/* Jump + (re)anchor drop — the SAME components the docked card header
+          renders (task 826: this header used to hand-roll twins whose hover
+          disagreed with the docked pair). `CardDropButton` carries the press
+          guards (primary-only, then stopPropagation + preventDefault +
+          draggable=false + dragstart swallow) so the press can't co-fire the
+          FloatingPanel header drag-lift; `onPress` is the domain dispatch — a
+          caller-supplied `onDropPress` (text-object floats →
+          `LiftHost.beginLift`) replaces the default neutral card drop session.
+          Gated on the static `canDrop` boolean: no per-keystroke work. */}
       {canJump && (
-        <button
-          type="button"
+        <CardJumpChevron
           onClick={preview ? undefined : props.onJump}
-          className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light focus-ring"
-          {...iconHint({ label: `Jump to ${labelNoun}` })}
-        >
-          <JumpChevron />
-        </button>
+          title={`Jump to ${labelNoun}`}
+        />
       )}
-      {/* (Re)anchor drop button — the popped-float twin of the docked
-          `CardDropButton`, rendered LEFT of the close X. The press guards are
-          a verbatim mirror of that button (primary-button-only, then
-          stopPropagation + preventDefault + draggable=false + dragstart
-          swallow) so the press can't co-fire the FloatingPanel header
-          drag-lift. The drop session itself is owned by the shared neutral
-          `beginCardDropGesture` (arms its own one-shot commit-on-mouseup). The
-          `preventDefault` on mousedown is load-bearing — this is a press-DRAG,
-          not a click — and trips the header wrapper's `defaultPrevented`
-          lift-guard. Gated on the static `canDrop` boolean: no per-render /
-          per-keystroke work. */}
       {canDrop && dropCardKey && (
-        <button
-          type="button"
-          onMouseDown={
-            preview
-              ? undefined
-              : (e) => {
-                  // Primary button only — a right/middle press passes through
-                  // (no phantom session). The predicate is the engine's SSOT
-                  // (lib/pane-resize/pointer-invariants), never re-derived.
-                  if (!isPrimaryDragStart(e)) return;
-                  e.stopPropagation();
-                  e.preventDefault();
-                  // Domain dispatch (Chip 2): a caller-supplied `onDropPress`
-                  // wins (text-object floats → `LiftHost.beginLift({policy:
-                  // "float"})`, the lifted-overlay ghost). Absent → the default
-                  // neutral `beginCardDropGesture` (card floats, byte-
-                  // unchanged). The guards above (primary-only /
-                  // stopPropagation / preventDefault) run in BOTH cases so
-                  // neither path co-fires the FloatingPanel header lift.
-                  if (props.onDropPress) {
-                    props.onDropPress(e);
-                  } else {
-                    beginCardDropGesture({
-                      cardKey: dropCardKey,
-                      origin: { x: e.clientX, y: e.clientY },
-                    });
-                  }
-                }
-          }
-          onClick={preview ? undefined : (e) => e.stopPropagation()}
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-          className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light bg-transparent p-0 shrink-0 cursor-grab focus-ring"
-          {...iconHint({ label: `Drop ${labelNoun} into text` })}
-        >
-          <DropChevrons />
-        </button>
+        <CardDropButton
+          cardKey={dropCardKey}
+          inert={preview}
+          onPress={preview ? undefined : props.onDropPress}
+          title={`Drop ${labelNoun} into text`}
+        />
       )}
       <PopoutButton
         isPoppedOut

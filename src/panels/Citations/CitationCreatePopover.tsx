@@ -162,6 +162,7 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
             >
               {key}
               <button
+                data-iconbtn-exempt="glyph inside a chip: sub-spec size set by the chip"
                 type="button"
                 onClick={() => onRemove(key)}
                 className="text-[var(--muted)] hover:text-ink-body leading-none focus-ring"

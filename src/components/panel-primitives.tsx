@@ -1045,24 +1045,31 @@ function CardKindOption({
   );
 }
 
-/** Rightward chevron jump-to-source button. Renders in the card header
- *  only when the card is popped out (matches the popped-text UX in
- *  every TextObject float body — paragraph, heading, list, etc.). */
+/** Rightward chevron jump-to-source button — the ONE jump control for every
+ *  header that shows one: the docked card header (popped out), bib's inline
+ *  `CardJumpTarget`, AND the popped float's chrome (`FloatChrome`). Task 826:
+ *  the float used to hand-roll its own twin, with a hover fill this one
+ *  lacked, so the same control reacted differently docked vs floating. Both
+ *  now render THIS, on `iconbtn-xs` (16px box, 12px glyph, the neutral hover
+ *  fill) — the size the float's close X already wore beside it.
+ *
+ *  `onClick` is optional for the float's inert PREVIEW (the lift ghost): its
+ *  container is `inert` + `pointer-events: none`, so no handler is wired. */
 export function CardJumpChevron({
   onClick,
   title = "Jump to source",
 }: {
-  onClick: (e: React.MouseEvent) => void;
+  onClick?: (e: React.MouseEvent) => void;
   title?: string;
 }) {
   return (
     <button
       type="button"
-      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onClick={onClick && ((e) => { e.stopPropagation(); onClick(e); })}
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0 focus-ring"
+      className="iconbtn-xs"
       {...iconHint({ label: title })}
     >
       <JumpChevron />
@@ -1093,6 +1100,8 @@ export function CardDropButton({
   cardKey,
   disabled = false,
   title = "Drop into text",
+  onPress,
+  inert = false,
 }: {
   /** Canonical `float:card:<kind>:<id>` key — `beginDropSession` looks the
    *  spec up from this. */
@@ -1101,13 +1110,20 @@ export function CardDropButton({
    *  atom (an empty / keyless draft). Footnotes are always enabled. */
   disabled?: boolean;
   title?: string;
+  /** Domain dispatch for the popped-float twin (`FloatChrome`, task 826): a
+   *  caller-supplied press handler REPLACES the default card drop session
+   *  (text-object floats → `LiftHost.beginLift`). The press guards
+   *  (primary-only, stopPropagation, preventDefault) run in BOTH cases. */
+  onPress?: (e: React.MouseEvent) => void;
+  /** The float's inert preview (lift ghost) — no handlers wired at all. */
+  inert?: boolean;
 }) {
   return (
     <button
       type="button"
       // Press must NOT bubble to the header lift or the card-root anchor drag.
       // The button tag already excludes it from the lift; these are defensive.
-      onMouseDown={(e) => {
+      onMouseDown={inert ? undefined : (e) => {
         // Primary button only — a right/middle press must pass through
         // untouched (no phantom drop session), matching every other pointer
         // producer in the app. The predicate is the engine's SSOT
@@ -1118,6 +1134,10 @@ export function CardDropButton({
         e.stopPropagation();
         e.preventDefault();
         if (disabled) return;
+        if (onPress) {
+          onPress(e);
+          return;
+        }
         beginCardDropGesture({
           cardKey,
           origin: { x: e.clientX, y: e.clientY },
@@ -1125,11 +1145,20 @@ export function CardDropButton({
       }}
       // A no-op onClick stopPropagation keeps the trailing click off the
       // header toggle/select (mirrors CardJumpChevron's swallow).
-      onClick={(e) => e.stopPropagation()}
+      onClick={inert ? undefined : (e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       disabled={disabled}
-      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-muted cursor-grab focus-ring"
+      // `iconbtn-xs` owns the box, the hover and the disabled dim. Two things
+      // are stated inline, because the unlayered `.iconbtn-*` rules beat any
+      // Tailwind utility: the GRAB cursor (this is a press-drag, not a click),
+      // and — when disabled — `pointer-events: auto`, undoing the utility's
+      // `[disabled] { pointer-events: none }` for this one control: its
+      // disabled hint ("Add a citation key to anchor") is the only place the
+      // user learns WHY it is off, and HintLayer finds it by `pointerover`.
+      // (A disabled iconbtn paints no hover fill — globals.css.)
+      className="iconbtn-xs"
+      style={disabled ? { cursor: "not-allowed", pointerEvents: "auto" } : { cursor: "grab" }}
       {...iconHint({ label: title, hint: disabled ? "Add a citation key to anchor" : title })}
     >
       <DropChevrons />

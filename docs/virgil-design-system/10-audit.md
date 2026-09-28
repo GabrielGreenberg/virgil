@@ -99,7 +99,7 @@ from `accent` via `deriveCardPalette`. The `override` system disappears
 
 ## 5. Icon buttons are hand-rolled
 
-> **Status — PARTIAL (verified 2026-08-09).** `.iconbtn-xs/-sm/-md/-lg` (+ danger / on-dark / toggle / accent variants) ship at `src/app/globals.css:575-627`, but only ~23 call sites adopted them; ~37 icon-only buttons in `src/` are still hand-rolled, two of them inside `panel-primitives.tsx` itself. No CI guard. **Before reporting one as drift, check the out-of-scope list now in `src/STYLE_GUIDE.md` (Spacing & icons).**
+> **Status — LANDED + GUARDED (task 826, 2026-09-28).** `.iconbtn-xs/-sm/-md/-lg` (+ `-meta` / `-danger` / `-danger-hover` / `-on-dark` / `-toggle` variants) ship in `src/app/globals.css` ("Icon-button utilities"). The sweep finished: the docked and floated jump/drop chevrons are ONE pair of components (`CardJumpChevron` / `CardDropButton`, rendered by both `PanelCard` and `FloatChrome` on `iconbtn-xs`), and the hand-rolled 16/20/24px and loose `p-0.5` boxes moved onto the matching size. Every icon-only button that still differs states WHY at the site with `data-iconbtn-exempt="<reason>"` (formatting toolbars, outline chevrons, accent-when-active locks, bordered/stylesheet-owned node-view controls, inline-styled library chrome …). CI: `icon-button-a11y-guardrail.test.ts` → "an icon-only button takes its geometry from iconbtn-*" (no allowlist). **Before reporting one as drift, check the out-of-scope list in `src/STYLE_GUIDE.md` (Spacing & icons).**
 
 Eight different icon-button implementations across panel headers,
 top bar, card chrome, modal headers, etc. Each differs in hit area
@@ -221,7 +221,7 @@ follow-up.
 | 2 | Hover bg spelled six ways | yes (Pass 3) | landed |
 | 3 | Card-header opacity hacks | yes (Pass 6) | landed |
 | 4 | Theme shape overgrown | yes (Pass 6) | landed |
-| 5 | Icon buttons hand-rolled | yes (Pass 4) | **partial** — primitive shipped, ~37 sites unswept |
+| 5 | Icon buttons hand-rolled | yes (Pass 4) | landed + guarded (task 826) — every holdout states its exemption at the site |
 | 6 | No button variant system | yes (Pass 5) | **partial** — primitive shipped, ~6 sites unswept |
 | 7 | `text-stone-*` everywhere | yes (Pass 7) | landed (1 straggler) |
 | 8 | Footnote rust as 5 hexes | yes (Pass 1) | **partial** — scale shipped, consumers unswept |

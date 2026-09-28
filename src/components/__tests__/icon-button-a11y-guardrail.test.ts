@@ -440,6 +440,79 @@ describe("icon-only buttons announce, once, and focus visibly", () => {
 
 /* ── Leg D: a control that SHOWS text announces that text (task 424) ─── */
 
+/* ── Leg E: an icon-only button takes its GEOMETRY from `iconbtn-*` (task 826) ──
+ *
+ * `.iconbtn-xs/-sm/-md/-lg` (globals.css) shipped with a consumer sweep that
+ * never finished, and nothing stopped the next hand-roll: the SAME jump
+ * chevron was built twice (docked card header vs popped float) with two
+ * hovers, and the 16/20/24px hit areas were each spelled two or three ways
+ * (`w-5 h-5 … rounded … hover-on-light`, `p-0.5`, `rounded-md` …). Items 8
+ * and the neutral hover (task 502) got guards; this was the one that did not.
+ *
+ * The rule: an icon-only `<button>` carries `iconbtn-{size}` or `topbarbtn`
+ * — or states, AT THE SITE, why it cannot: `data-iconbtn-exempt="<reason>"`.
+ * The reason travels with the code, so the next reader sees the exception
+ * where they would otherwise copy it; STYLE_GUIDE → "What `iconbtn-*`
+ * deliberately does NOT model" is the vocabulary those reasons draw on.
+ *
+ * Why an ATTRIBUTE and not a comment: this census reads the comment-STRIPPED
+ * source (so commented-out markup cannot count), and a tag carrying a comment
+ * between its attributes cannot be relocated in the raw file — a comment
+ * exemption would be invisible exactly where it was written inside the tag,
+ * and line-window guessing above the tag drifts. An attribute is part of the
+ * tag the scanner already holds. The token is read from the TAG text, so a
+ * computed className that spells it (`chromeOnly("… iconbtn-sm …")`) passes;
+ * a spread (opaque) or a roving menu row (`tabIndex={-1}` — a menu item, not
+ * an icon button) is skipped, exactly as leg C skips them. */
+const GEOMETRY = /(?<![\w-])(?:iconbtn-(?:xs|sm|md|lg)|topbarbtn)(?![\w-])/;
+const EXEMPT = /(?<![\w-])data-iconbtn-exempt\s*=\s*"[^"]*\w[^"]*"/;
+/** A SCREAMING_CASE constant the tag reads, resolved against a same-file
+ *  `const NAME = "…"` literal — so `className={POPOUT_BUTTON_CLASS}` (whose
+ *  value is `"iconbtn-sm"`) is read as what it is, not as opaque. */
+function constantsWearGeometry(file: string, tag: string): boolean {
+  const raw = fs.readFileSync(path.join(ROOT, file), "utf8");
+  for (const [name] of tag.matchAll(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g)) {
+    const decl = new RegExp(`\\bconst\\s+${name}\\s*=\\s*(["\`])([^"\`]*)\\1`).exec(raw);
+    if (decl && GEOMETRY.test(decl[2])) return true;
+  }
+  return false;
+}
+const wearsGeometry = (s: Site) => GEOMETRY.test(s.tag) || constantsWearGeometry(s.file, s.tag);
+
+describe("an icon-only button takes its geometry from iconbtn-* (task 826)", () => {
+  const sites = ALL.icon.filter((s) => !opaqueSpread(s.tag) && !notATabStop(s.tag));
+
+  it("sees a population worth censusing (self-check)", () => {
+    expect(sites.filter(wearsGeometry).length).toBeGreaterThan(40);
+  });
+
+  it("every icon-only button wears iconbtn-*/topbarbtn or states its exemption at the site", () => {
+    const handRolled = sites
+      .filter((s) => !wearsGeometry(s) && !EXEMPT.test(s.tag))
+      .map(at);
+    // No allowlist. A hit is either `className="iconbtn-{xs|sm|md|lg}"` (+ an
+    // ink variant — `-meta`, `-danger`, `-danger-hover`, `-toggle`,
+    // `-on-dark`) sized to the box it renders today, or an
+    // `data-iconbtn-exempt="<reason>"` the reviewer can argue with.
+    expect(handRolled).toEqual([]);
+  });
+
+  it("an exemption never sits on a button that already wears iconbtn-*", () => {
+    const moot = sites.filter((s) => wearsGeometry(s) && EXEMPT.test(s.tag)).map(at);
+    expect(moot).toEqual([]);
+  });
+
+  it("reads a hand-rolled box as a hit and a stated exemption as a pass (self-check)", () => {
+    const tag = `<button type="button" className="w-5 h-5 flex items-center justify-center rounded hover-on-light">`;
+    expect(GEOMETRY.test(tag)).toBe(false);
+    expect(GEOMETRY.test(`<button className="iconbtn-sm iconbtn-meta">`)).toBe(true);
+    expect(GEOMETRY.test(`<button className="iconbtn-small">`)).toBe(false);
+    expect(EXEMPT.test(`<button data-iconbtn-exempt="10px outline chevron" onClick={f}>`)).toBe(true);
+    expect(EXEMPT.test(`<button data-iconbtn-exempt="" onClick={f}>`)).toBe(false);
+    expect(EXEMPT.test(`<button data-iconbtn-exempt={reason}>`)).toBe(false);
+  });
+});
+
 describe("a button with visible text does not override it with an aria-label", () => {
   const sites = ALL.text;
 

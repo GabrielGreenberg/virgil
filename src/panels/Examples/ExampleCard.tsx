@@ -684,6 +684,7 @@ export function ExampleCard({
       />
       <div className="flex items-center gap-1.5 px-3 py-1 bg-surface-muted/30">
         <button
+          data-iconbtn-exempt="bordered control: its border/fill is the affordance, not a hover lozenge"
           onClick={(e) => {
             e.stopPropagation();
             setShowHelp((v) => !v);

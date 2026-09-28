@@ -153,6 +153,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
           {toast.citekey ? ` · ${toast.citekey}` : ""}
         </div>
         <button
+          data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
           className="focus-ring"
           type="button"
           aria-label="Dismiss notification"
