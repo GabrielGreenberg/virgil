@@ -158,7 +158,9 @@ export function stripComments(source: string): string {
  * coordinates (`Marginalia`'s `OverflowPill` reads its cell from the marginalia
  * registry's layout pass, which is the scroll-anchor law's sanctioned branch
  * (a)) and one whose rect is measured in a different FILE
- * (`StatusCluster`'s hover sub-menu, allowlisted with that noted).
+ * (`StatusCluster`'s hover sub-menu, allowlisted with that noted). Both are out
+ * of the PLACEMENT census only: the surface census reaches a declared menu by
+ * `role="menu"` regardless (`roleMenuDeclarations`, task 819).
  */
 export const POSITIONED =
   /className=[^\n]*\b(?:fixed|absolute)\b|position:\s*["'](?:fixed|absolute)["']/;
@@ -371,6 +373,59 @@ export function isNotAnAnchoredMenu(key: string): boolean {
  *  the list at all, which the anchored census fails on separately). */
 export function handRolledMenus(): Array<{ key: string; block: string }> {
   return censusBothSilos().filter((h) => !isNotAnAnchoredMenu(h.key));
+}
+
+/** A JSX `role="menu"` declaration, in either quoting. A computed `role={x}`
+ *  is not matched — it is a prop threaded into a shell, and the shell is the
+ *  declaration that answers for its chrome. */
+export const ROLE_MENU = /\brole=\{?["']menu["']\}?/;
+
+/**
+ * The SURFACE population (task 819): every declaration that SAYS it is a menu.
+ *
+ * `handRolledMenus()` reaches the surface census through the PLACEMENT census,
+ * so anything the placement census leaves out for a placement reason fell out
+ * of the surface census too — which this file's own allowlist header forbids
+ * ("a holdout on placement is not an exemption from chrome"). It happened:
+ * `Marginalia`'s `OverflowPill` is kept out of the ANCHORED signal on purpose
+ * (its coordinates are prop-threaded from the marginalia layout pass — the
+ * scroll-anchor law's sanctioned branch (a)), and so its `role="menu"` popover
+ * shipped `rounded-lg … shadow-lg`, the retired `MENU_SURFACE_CLASS`
+ * vocabulary, censused by nothing.
+ *
+ * The fix is the task-404 rule again — discover the population by the
+ * QUESTION. "Is this a menu?" has a literal answer the author already wrote:
+ * `role="menu"`. So the surface census reads the UNION of the two populations,
+ * and no placement classification — neither a branch-(a) exemption nor a
+ * `NOT AN ANCHORED MENU` entry — can take a declared menu off it. A declaration
+ * that builds on the primitive is answered by legs 1-3 of the surface
+ * guardrail instead, exactly as in `censusBothSilos`.
+ */
+export function roleMenuDeclarations(): Array<{ key: string; block: string }> {
+  const hits: Array<{ key: string; block: string }> = [];
+  for (const [prefix, root] of [
+    ["src", SRC],
+    ["library", LIBRARY],
+  ] as const) {
+    for (const file of walkSource(root)) {
+      const rel = `${prefix}/${path.relative(root, file).split(path.sep).join("/")}`;
+      const source = stripComments(readFileSync(file, "utf8"));
+      for (const { name, block } of splitDeclarations(source)) {
+        if (!ROLE_MENU.test(block)) continue;
+        if (usesMenuPrimitive(block)) continue;
+        hits.push({ key: `${rel}::${name}`, block });
+      }
+    }
+  }
+  return hits;
+}
+
+/** The population the SURFACE census polices: hand-rolled anchored menus ∪
+ *  declared menus, deduplicated by key. */
+export function surfaceCensusPopulation(): Array<{ key: string; block: string }> {
+  const byKey = new Map<string, { key: string; block: string }>();
+  for (const h of [...handRolledMenus(), ...roleMenuDeclarations()]) byKey.set(h.key, h);
+  return [...byKey.values()];
 }
 
 // ───────────────────────────────────────────────────────────────────────────
