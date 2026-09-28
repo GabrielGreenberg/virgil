@@ -3720,7 +3720,7 @@ export default function EditorLayout() {
             <CompilePaneStatus docId={currentDocId} />
           )}
           {paneState?.pdfStale && paneState?.pdfBlobUrl && (
-            <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
+            <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow-[var(--menu-shadow)] flex items-center gap-1.5 z-10">
               {/* Deliberately still a hand-rolled dot (task 315), and the
                   reasoning is recorded in status-dot-ssot.test.ts's allowlist:
                   this is the SAME signal StatusCluster's pdf-stale dot paints,

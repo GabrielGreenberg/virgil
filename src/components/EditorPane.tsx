@@ -7604,7 +7604,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                           borderRadius: "var(--radius-pill)",
                           background: "var(--surface)",
                           border: "1px solid var(--drag-highlight)",
-                          boxShadow: "0 2px 10px rgba(0,0,0,0.16), var(--drag-ring-faint)",
+                          boxShadow: "var(--menu-shadow), var(--drag-ring-faint)",
                         }}
                       >
                         <span

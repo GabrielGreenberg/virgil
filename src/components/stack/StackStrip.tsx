@@ -85,7 +85,7 @@ export function StackStrip({ open, items, onRemove }: StackStripProps) {
         background: "rgba(28, 25, 23, 0.20)",
         borderRadius: "var(--pod-radius)",
         boxShadow:
-          "0 4px 14px rgba(0,0,0,0.16), 0 1px 4px rgba(0,0,0,0.10)",
+          "var(--shadow-float)",
         padding: STRIP_PADDING,
         display: "flex",
         flexDirection: "row",
