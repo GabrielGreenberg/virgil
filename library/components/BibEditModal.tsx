@@ -8,7 +8,7 @@
  * rendering into the `.bib` instead of avoiding one.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import type { BibEntry } from "@library/lib/types";
 import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
 import {
@@ -24,7 +24,11 @@ import {
 } from "@library/lib/bib-edit";
 import type { BibEditDiffPayload } from "@library/lib/queue";
 import { bibEditBase, parseBibEntryBlock } from "@library/lib/bib-raw-entry";
-import { useBackdropPress } from "@/lib/backdrop-press";
+import SystemDialog, {
+  SystemDialogButton,
+  SystemDialogFooter,
+} from "@/components/system-dialog";
+import { useSystemDialog } from "@/components/system-dialog-host";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 interface Props {
@@ -38,6 +42,14 @@ interface Props {
 }
 
 type Mode = "form" | "raw";
+
+/** What Save would do RIGHT NOW: queue this diff, or refuse on a raw block
+ *  that does not parse. One answer for Save AND for the dismissal guard, so
+ *  "would closing lose anything?" is the literal question "would Save have
+ *  written anything?" (task 820), never a parallel dirty heuristic. */
+type PendingEdit =
+  | { kind: "diff"; diff: BibEditDiffPayload }
+  | { kind: "unparseable" };
 
 export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
   // The entry this edit is a diff AGAINST: the disk block (`raw`) read
@@ -57,33 +69,13 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
   const [rawError, setRawError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const nextId = useRef(seedExtraRows(entry).nextId);
   // The keys the "Other fields" rows were seeded with. Such a key is the USER's
   // to keep or remove through its row — ✕ or a rename takes it out — so the
   // hidden-field carry-over in `consolidateFields` must never re-add it (task
   // 763: it did, which made ✕ on a custom field inert).
   const seededExtraKeys = useRef(new Set(seedExtraRows(entry).rows.map((r) => r.key)));
-  const backdropPress = useBackdropPress(onClose);
-
-  // Close on Escape, lock body scroll while open.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [onClose]);
-
-  // Focus the dialog on open so keyboard nav lands inside.
-  useEffect(() => {
-    dialogRef.current?.focus();
-  }, []);
 
   const updateField = (k: string, v: string) =>
     setFields((cur) => ({ ...cur, [k]: v }));
@@ -123,6 +115,15 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
     return out;
   };
 
+  const pendingEdit = (): PendingEdit => {
+    if (mode === "raw") {
+      const parsed = parseBibEntryBlock(raw);
+      if (!parsed) return { kind: "unparseable" };
+      return { kind: "diff", diff: buildBibEditDiff(entry, parsed.type, parsed.fields) };
+    }
+    return { kind: "diff", diff: buildBibEditDiff(entry, type, consolidateFields()) };
+  };
+
   const handleSwitchMode = (next: Mode) => {
     if (next === mode) return;
     if (next === "raw") {
@@ -153,24 +154,14 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
-      let outType: string;
-      let outFields: Record<string, string>;
-      if (mode === "raw") {
-        const parsed = parseBibEntryBlock(raw);
-        if (!parsed) {
-          setRawError("Couldn't parse this BibTeX. Fix syntax before saving.");
-          setSaving(false);
-          return;
-        }
-        outType = parsed.type;
-        outFields = parsed.fields;
-      } else {
-        outType = type;
-        outFields = consolidateFields();
+      const pending = pendingEdit();
+      if (pending.kind === "unparseable") {
+        setRawError("Couldn't parse this BibTeX. Fix syntax before saving.");
+        setSaving(false);
+        return;
       }
-      const diff = buildBibEditDiff(entry, outType, outFields);
       // Nothing changed → nothing to queue; the Save is just a close.
-      if (!isEmptyBibEditDiff(diff)) await onSave(diff);
+      if (!isEmptyBibEditDiff(pending.diff)) await onSave(pending.diff);
       onClose();
     } catch (e) {
       setSaveError((e as Error).message);
@@ -179,101 +170,122 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
     }
   };
 
+  /* ── The dismissal guard (task 820) ──────────────────────────────────
+     This form is the ONLY copy of what the user typed until Save queues it, so
+     every way out that is not Save ASKS — Escape and the backdrop through the
+     shell's one door (`dismissGuard`), ✕ and Cancel by calling the same guard
+     (a footer button never enters the shell's door; task 530's
+     `StyleEditorModal` shape). Pristine stays FREE: an entry opened and closed
+     untouched never prompts, or the prompt becomes furniture. A raw block that
+     no longer parses is work too — it cannot be measured, so it asks.
+     `danger` tone cues "Keep editing" (task 386), so a moving hand's Enter
+     keeps the draft. */
+  const systemDialog = useSystemDialog();
+  const pending = pendingEdit();
+  const dirty = pending.kind === "unparseable" || !isEmptyBibEditDiff(pending.diff);
+  const confirmDiscard = useCallback(async () => {
+    if (!dirty) return true;
+    return systemDialog.confirm({
+      title: "Discard your changes?",
+      message: `Your edits to ${entry.key} haven't been saved. Discarding them can't be undone.`,
+      confirmLabel: "Discard",
+      cancelLabel: "Keep editing",
+      tone: "danger",
+    });
+  }, [dirty, systemDialog, entry.key]);
+  const requestCancel = () => {
+    void confirmDiscard().then((ok) => {
+      if (ok) onClose();
+    });
+  };
+
   const publicationFields = PUBLICATION_FIELDS_BY_TYPE[type] ?? [];
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Edit bib entry ${entry.key}`}
-      // Only a press that begins AND ends on the backdrop closes: a selection
-      // drag out of the abstract textarea must not discard the edit (task 763).
-      {...backdropPress}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.45)",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        padding: "5vh 16px",
-        zIndex: 200,
-        overflow: "auto",
-      }}
+    <SystemDialog
+      open
+      onClose={onClose}
+      size="xl"
+      labelledBy={titleId}
+      dismissGuard={confirmDiscard}
+      frameClassName="flex flex-col max-h-[90vh]"
     >
+      <Header
+        titleId={titleId}
+        citekey={entry.key}
+        mode={mode}
+        onSwitchMode={handleSwitchMode}
+        onClose={requestCancel}
+      />
+
       <div
-        ref={dialogRef}
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--surface)",
-          border: "var(--pod-border)",
-          borderRadius: "var(--pod-radius)",
-          boxShadow: "var(--pod-shadow)",
-          width: "min(720px, 100%)",
-          maxHeight: "90vh",
-          display: "flex",
-          flexDirection: "column",
-          outline: "none",
+          padding: 16,
+          overflow: "auto",
+          flex: 1,
+          minHeight: 0,
         }}
       >
-        <Header
-          citekey={entry.key}
-          mode={mode}
-          onSwitchMode={handleSwitchMode}
-          onClose={onClose}
-        />
-
-        <div
-          style={{
-            padding: 16,
-            overflow: "auto",
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          {mode === "form" ? (
-            <FormView
-              type={type}
-              baseType={entry.type}
-              setType={setType}
-              fields={fields}
-              updateField={updateField}
-              publicationFields={publicationFields}
-              extraRows={extraRows}
-              setExtraRows={setExtraRows}
-              nextId={nextId}
-            />
-          ) : (
-            <RawView
-              raw={raw}
-              setRaw={setRaw}
-              error={rawError}
-            />
-          )}
-        </div>
-
-        <Footer
-          saving={saving}
-          saveError={saveError}
-          onCancel={onClose}
-          onSave={handleSave}
-        />
+        {mode === "form" ? (
+          <FormView
+            type={type}
+            baseType={entry.type}
+            setType={setType}
+            fields={fields}
+            updateField={updateField}
+            publicationFields={publicationFields}
+            extraRows={extraRows}
+            setExtraRows={setExtraRows}
+            nextId={nextId}
+          />
+        ) : (
+          <RawView
+            raw={raw}
+            setRaw={setRaw}
+            error={rawError}
+          />
+        )}
       </div>
-    </div>
+
+      <SystemDialogFooter>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginRight: "auto" }}>
+          Saved edits queue for the <code style={{ fontFamily: FONT_MONO }}>/apply-bib-edit</code> skill.
+        </div>
+        {saveError && (
+          <span style={{ fontSize: 12, color: "var(--danger)" }}>{saveError}</span>
+        )}
+        <SystemDialogButton
+          variant="secondary"
+          onClick={requestCancel}
+          disabled={saving}
+        >
+          Cancel
+        </SystemDialogButton>
+        <SystemDialogButton
+          variant="primary"
+          onClick={() => void handleSave()}
+          disabled={saving}
+          autoFocus
+        >
+          {saving ? "Saving…" : "Save"}
+        </SystemDialogButton>
+      </SystemDialogFooter>
+    </SystemDialog>
   );
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Header / Footer
+// Header
 // ────────────────────────────────────────────────────────────────────────
 
 function Header({
+  titleId,
   citekey,
   mode,
   onSwitchMode,
   onClose,
 }: {
+  titleId: string;
   citekey: string;
   mode: Mode;
   onSwitchMode: (m: Mode) => void;
@@ -291,7 +303,9 @@ function Header({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>Edit bib entry</div>
+        <div id={titleId} style={{ fontSize: 14, fontWeight: 600 }}>
+          Edit bib entry <span className="sr-only">{citekey}</span>
+        </div>
         <code style={{ fontFamily: FONT_MONO, fontSize: 11, color: "var(--muted)" }}>
           {citekey}
         </code>
@@ -354,73 +368,6 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function Footer({
-  saving,
-  saveError,
-  onCancel,
-  onSave,
-}: {
-  saving: boolean;
-  saveError: string | null;
-  onCancel: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <div
-      style={{
-        padding: "10px 16px",
-        borderTop: "1px solid var(--border)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-      }}
-    >
-      <div style={{ fontSize: 12, color: "var(--muted)" }}>
-        Saved edits queue for the <code style={{ fontFamily: FONT_MONO }}>/apply-bib-edit</code> skill.
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {saveError && (
-          <span style={{ fontSize: 12, color: "var(--danger)" }}>{saveError}</span>
-        )}
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={saving}
-          style={{
-            background: "transparent",
-            border: "1px solid var(--border-light)",
-            borderRadius: "var(--radius-sm)",
-            padding: "5px 12px",
-            fontSize: 12,
-            cursor: saving ? "not-allowed" : "pointer",
-            color: "var(--foreground)",
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving}
-          style={{
-            background: "var(--accent)",
-            color: "white",
-            border: "1px solid var(--accent)",
-            borderRadius: "var(--radius-sm)",
-            padding: "5px 14px",
-            fontSize: 12,
-            cursor: saving ? "wait" : "pointer",
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </div>
     </div>
   );
 }

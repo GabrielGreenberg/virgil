@@ -22,8 +22,19 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { commentsStripped, elementsNamed } from "@/lib/__tests__/_source-scan";
 
-/** `src/` — the walk root. The library silo hosts no dialogs; pinned there. */
+/** `src/` — the app silo's walk root. */
 export const SRC_ROOT = join(__dirname, "..", "..");
+
+/**
+ * `library/` — the Library silo's walk root. Walked beside `src/` since task
+ * 820: the suite used to PIN "the library silo hosts no dialogs", and the pin
+ * held only because the silo's two modals (`BibEditModal`,
+ * `PdfDropIntroDialog`) hand-rolled their own `role="dialog" aria-modal` shell
+ * and so never matched `SystemDialog` — one of them a multi-field draft form
+ * that Escape and the backdrop discarded with no question. A population that
+ * excludes a silo cannot see a dialog door that silo builds for itself.
+ */
+export const LIBRARY_ROOT = join(SRC_ROOT, "..", "library");
 
 /** The shell itself DEFINES the primitives; it declares nothing. */
 export const SHELL = ["components/system-dialog.tsx"];
@@ -41,24 +52,44 @@ export function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * Every production source file in BOTH silos, with the label every census
+ * reports: a path relative to `src/` for the app silo (the historical spelling
+ * each suite's `toContain` pins), `library/…` for the Library silo. ONE list,
+ * so no census over dialogs can walk a smaller world than another.
+ */
+export function productionFiles(): { abs: string; rel: string }[] {
+  const out: { abs: string; rel: string }[] = [];
+  for (const abs of walk(SRC_ROOT)) {
+    out.push({ abs, rel: abs.slice(SRC_ROOT.length + 1).replace(/\\/g, "/") });
+  }
+  for (const abs of walk(LIBRARY_ROOT)) {
+    const rel = abs.slice(LIBRARY_ROOT.length + 1).replace(/\\/g, "/");
+    out.push({ abs, rel: `library/${rel}` });
+  }
+  return out;
+}
+
 export interface DialogSite {
-  /** Path relative to `src/`. */
+  /** Path relative to `src/`, or `library/…` for the Library silo. */
   rel: string;
+  /** Absolute path — read the file through this, never `join(SRC_ROOT, rel)`,
+   *  which cannot resolve a Library-silo site. */
+  abs: string;
   /** The `<SystemDialog …>` open tag. */
   tag: string;
   /** Everything between that tag and its close. */
   subtree: string;
 }
 
-/** Every production `<SystemDialog>` ELEMENT under `src/`. */
+/** Every production `<SystemDialog>` ELEMENT in either silo. */
 export function dialogElements(): DialogSite[] {
   const out: DialogSite[] = [];
-  for (const abs of walk(SRC_ROOT)) {
-    const rel = abs.slice(SRC_ROOT.length + 1).replace(/\\/g, "/");
+  for (const { abs, rel } of productionFiles()) {
     if (SHELL.includes(rel)) continue;
     const src = commentsStripped(readFileSync(abs, "utf8"));
     for (const hit of elementsNamed(src, "SystemDialog")) {
-      out.push({ rel, tag: hit.tag, subtree: hit.subtree ?? "" });
+      out.push({ rel, abs, tag: hit.tag, subtree: hit.subtree ?? "" });
     }
   }
   return out;
@@ -67,14 +98,14 @@ export function dialogElements(): DialogSite[] {
 /* ── The BUTTON population ─────────────────────────────────────────── */
 
 export interface DialogButtonSite {
-  /** Path relative to `src/`. */
+  /** Path relative to `src/`, or `library/…` for the Library silo. */
   rel: string;
   /** The `<SystemDialogButton …>` open tag, attributes and all. */
   tag: string;
 }
 
 /**
- * Every production `<SystemDialogButton>` ELEMENT under `src/`.
+ * Every production `<SystemDialogButton>` ELEMENT in either silo.
  *
  * A SECOND population rather than a filter over `dialogElements()`, and the
  * reason is exactness in both directions. Scanning dialog SUBTREES would
@@ -86,8 +117,7 @@ export interface DialogButtonSite {
  */
 export function dialogButtonElements(): DialogButtonSite[] {
   const out: DialogButtonSite[] = [];
-  for (const abs of walk(SRC_ROOT)) {
-    const rel = abs.slice(SRC_ROOT.length + 1).replace(/\\/g, "/");
+  for (const { abs, rel } of productionFiles()) {
     if (SHELL.includes(rel)) continue;
     const src = commentsStripped(readFileSync(abs, "utf8"));
     for (const hit of elementsNamed(src, "SystemDialogButton")) {
@@ -155,7 +185,7 @@ function componentsHostingTextEntry(): Set<string> {
   const fileHasField = new Map<string, boolean>();
   const primitiveHomes = new Set<string>();
 
-  for (const abs of walk(SRC_ROOT)) {
+  for (const { abs } of productionFiles()) {
     const src = commentsStripped(readFileSync(abs, "utf8"));
     fileHasField.set(abs, hostsTextEntry(src));
     for (const m of src.matchAll(

@@ -142,12 +142,12 @@ describe("SystemDialog positioning taxonomy — every variant has a caller", () 
   });
 
   it("CANARY: an unadorned <SystemDialog> counts as a caller of the DEFAULT", () => {
-    const bare: DialogSite = { rel: "x.tsx", tag: "<SystemDialog open onClose={c}>", subtree: "" };
+    const bare: DialogSite = { rel: "x.tsx", abs: "/x.tsx", tag: "<SystemDialog open onClose={c}>", subtree: "" };
     expect(variantOf(bare)).toBe(defaultVariant());
   });
 
   it("CANARY: both literal spellings resolve, and a dynamic one does not", () => {
-    const mk = (tag: string): DialogSite => ({ rel: "x.tsx", tag, subtree: "" });
+    const mk = (tag: string): DialogSite => ({ rel: "x.tsx", abs: "/x.tsx", tag, subtree: "" });
     expect(variantOf(mk('<SystemDialog open variant="draggable">'))).toBe("draggable");
     expect(variantOf(mk('<SystemDialog open variant={"draggable"}>'))).toBe("draggable");
     expect(variantOf(mk("<SystemDialog open variant={mode}>"))).toBeNull();
