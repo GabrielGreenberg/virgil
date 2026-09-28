@@ -245,6 +245,26 @@ describe("field ownership — the table is DERIVED, and its owners exist", () =>
     }
   });
 
+  it("edit-card's Reserved-fields table names EVERY reserved field (task 812)", () => {
+    // `relatedCards` (link) and `appliedChange` (_app) were reserved-or-owned
+    // with no row there, so the skill an agent reads before a raw --field never
+    // warned. The table is derived; its markdown twin must be exhaustive over it.
+    const t = read(`${SKILLS}/edit-card.md`);
+    const start = t.indexOf("### Reserved fields");
+    expect(start, "edit-card.md must keep its Reserved fields section").toBeGreaterThan(-1);
+    const rows = t
+      .slice(start)
+      .split("\n")
+      .filter((l) => l.startsWith("|"))
+      .map((l) => l.split("|")[1] ?? "");
+    for (const field of OWNERS.keys()) {
+      expect(
+        rows.some((cell) => cell.includes(`\`${field}\``)),
+        `edit-card.md's Reserved fields table has no row for \`${field}\``,
+      ).toBe(true);
+    }
+  });
+
   it("`status` is reserved for the suggestion kinds only", () => {
     const row = TABLE.accept;
     expect(row.fields).toContain("status");

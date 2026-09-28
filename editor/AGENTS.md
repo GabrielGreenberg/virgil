@@ -582,6 +582,14 @@ Five rules the field half earned:
   (`--field`, `"set":`) has to NAME the owning door. Scoped per markdown SEGMENT
   (a bullet plus its continuation lines), because the one violation in the tree sat
   two lines below its own `--field` marker and a line-scoped needle was blind to it.
+- **Exhaustive over ops, and an owner must also REMOVE (task 812).** `link` was
+  the sole writer of `relatedCards` with no row, so a raw `update` wrote a
+  one-sided link at any id; nothing forced the decision. Now every
+  `MUTATION_OPS` member either owns a row or sits in `_OWNS_NO_FIELD`
+  (`_assert_ops_field_exhaustive`, import time), and edit-card's Reserved-fields
+  table is censused against the whole reserved set. Reserving a field whose only
+  REMOVAL path was the raw update would strand it — so the owning door gained the
+  removal leg first (`link` with `"remove": true`) before the row was declared.
 
 CI: [`test_panel_policy_slice.py`](scripts/tests/test_panel_policy_slice.py),
 [`test_field_policy_slice.py`](scripts/tests/test_field_policy_slice.py) (the

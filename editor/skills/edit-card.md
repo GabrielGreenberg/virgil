@@ -109,6 +109,8 @@ transition that a dedicated op performs, and the op refuses those by name:
 | `links` | [`move-card`](move-card.md) | `links` **is** the anchor; the move op validates the target uuid against the `.tex` and refuses an atom-bearing card or a Mode-B range. |
 | `originalPanel` / `originalCard` | [`archive-card`](archive-card.md) / [`restore-card`](restore-card.md) | the origin record `restore` reads verbatim to put a card back where it came from. |
 | `id`, `aiOriginRequestId` | [`create-card`](create-card.md) | `id` **is** the `\v*id` marker id for a footnote/citation; `aiOriginRequestId` is the back-pointer `accept`/`reject` read to pick which Task to complete. |
+| `relatedCards` | [`link-cards`](link-cards.md) | a card↔card relationship lives on BOTH cards; the `link` op writes both ends in one transaction and refuses the stores that would drop one half. To remove one, run `link` with `"remove":true` — a raw set leaves the other card's half dangling. |
+| `appliedChange` on a suggestion | the browser (Keep / Revert) — see [`accept-suggestion`](accept-suggestion.md) | it describes a live blue pending-change range in the `.tex`; only the app's apply path can create the range it names. |
 
 Everything else — `title`, `done`, `author`, `highlightColor`, `suggested_text`,
 `user_text`, `explanation`, `instructions`, `notes`, `aiRequest`, … — stays

@@ -337,6 +337,37 @@ check((a.get("relatedCards") or [{}])[0].get("target", {}).get("ref", {}).get("i
 check((b.get("relatedCards") or [{}])[0].get("target", {}).get("ref", {}).get("id") == NOTE, "note B → note A (same file — both edits survived the single write)")
 
 
+print("\n=== link remove / unlink both ends; tolerant of a vanished partner (task 812) ===")
+sb = sandbox()
+op(sb, "link", {"cardAId": NOTE, "cardBId": TODO, "kind": "followup"})
+op(sb, "link", {"cardAId": NOTE, "cardBId": TODO, "kind": "evidence"})
+r = op(sb, "link", {"cardAId": TODO, "cardBId": NOTE, "kind": "followup", "remove": True})
+check(r.returncode == 0, f"link remove exited 0 (stderr={r.stderr.strip()[:120]})")
+nk = [x.get("kind") for x in by_id(sb, "notes.json", "cards", NOTE).get("relatedCards") or []]
+tk = [x.get("kind") for x in by_id(sb, "todos.json", "items", TODO).get("relatedCards") or []]
+check(nk == ["evidence"] and tk == ["evidence"],
+      "removing one (target, kind) drops it from BOTH cards, leaving the other kind")
+r = op(sb, "link", {"cardAId": NOTE, "cardBId": TODO, "remove": True})
+check(r.returncode == 0, "kind omitted removes every relationship between the pair")
+check("relatedCards" not in by_id(sb, "notes.json", "cards", NOTE)
+      and "relatedCards" not in by_id(sb, "todos.json", "items", TODO),
+      "both cards end with NO relatedCards field (shaped like never-linked)")
+r = op(sb, "link", {"cardAId": NOTE, "cardBId": TODO, "remove": True})
+check(r.returncode != 0 and "no relationship" in r.stderr,
+      "removing a link that isn't there refuses (nothing to unlink)")
+# the dangling half: link, then delete the todo out from under it
+op(sb, "link", {"cardAId": NOTE, "cardBId": TODO})
+todos = load(sb, "todos.json")
+todos["items"] = [t for t in todos["items"] if t.get("id") != TODO]
+(sb / "virgil" / "todos.json").write_text(json.dumps(todos))
+r = op(sb, "link", {"cardAId": NOTE, "cardBId": TODO, "remove": True})
+check(r.returncode == 0, f"remove succeeds on the survivor when the partner is gone (stderr={r.stderr.strip()[:120]})")
+check("relatedCards" not in by_id(sb, "notes.json", "cards", NOTE),
+      "the survivor's dangling half is cleaned")
+r = op(sb, "link", {"cardAId": "missing-a", "cardBId": "missing-b", "remove": True})
+check(r.returncode != 0 and "not found" in r.stderr, "remove refuses when NEITHER card exists")
+
+
 # ───────────────────────────────── atomicity (mutation rolls back fully) ──
 print("\n=== atomicity: injected mid-write failure rolls a mutation back (archive) ===")
 sb = sandbox()

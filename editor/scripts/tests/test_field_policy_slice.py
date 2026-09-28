@@ -265,6 +265,12 @@ for label, cid, filename, list_key, field, value, needle in [
     ("`appliedChange` on a suggestion (a LIVE blue range in the .tex)",
      REV_SUG, "revisions.json", "cards", "appliedChange", {"anchorUuid": "6607"},
      "Keep / Revert"),
+    # task 812 — a one-sided relationship, here aimed at a CITATION the link
+    # policy exists to refuse; the refusal must route to both link and unlink.
+    ("`relatedCards` on a note (the card↔card link cmd_link owns)",
+     NOTE, "notes.json", "cards", "relatedCards",
+     [{"id": "r1", "kind": "related", "target": {"type": "card", "ref": {"kind": "citation", "id": "c1"}}}],
+     '"remove":true'),
 ]:
     sb = sandbox()
     before_side, before_tex = digest(sb, filename), tex_digest(sb)
@@ -359,6 +365,29 @@ except RuntimeError as e:
 
 check(AR._assert_field_ownership(AR.OP_OWNED_FIELDS) is None,
       "the SHIPPED table passes its own assertions")
+
+print("\n=== the OP dimension is exhaustive (task 812) ===")
+check(AR._assert_ops_field_exhaustive(AR.OP_OWNED_FIELDS) is None,
+      "every shipped mutation op owns a field row or is declared in _OWNS_NO_FIELD")
+check(AR.OP_OWNED_FIELDS["link"].fields == frozenset({"relatedCards"}),
+      "`link` owns `relatedCards` — the row whose absence let a raw update write a one-sided link")
+_saved_ops = dict(AR.MUTATION_OPS)
+try:
+    AR.MUTATION_OPS["frobnicate"] = lambda doc, op: {}
+    try:
+        AR._assert_ops_field_exhaustive(AR.OP_OWNED_FIELDS)
+        check(False, "a NEW op with no field decision raises")
+    except RuntimeError as e:
+        check("frobnicate" in str(e), "a NEW op with no field decision raises, naming the op")
+finally:
+    AR.MUTATION_OPS.clear()
+    AR.MUTATION_OPS.update(_saved_ops)
+_no_link = {k: v for k, v in AR.OP_OWNED_FIELDS.items() if k != "link"}
+try:
+    AR._assert_ops_field_exhaustive(_no_link)
+    check(False, "dropping the `link` row raises (the pre-812 table would not have imported)")
+except RuntimeError as e:
+    check("link" in str(e), "dropping the `link` row raises (the pre-812 table would not have imported)")
 
 
 # ══════════ 5. the guard's own semantics ═════════════════════════════════════
