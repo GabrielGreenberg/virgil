@@ -439,7 +439,8 @@ const PINNED_STOCK_RED_SITES: readonly string[] = [
   // third table went with it. This list may only SHRINK; that is what shrinking
   // looks like.
   "src/components/DocPermissionGate.tsx",
-  "src/components/PreferencesModal.tsx",
+  // NOT PreferencesModal.tsx: its preset "Del" button's `hover:text-red-600`
+  // left with the button itself, onto `<Button variant="danger">` (task 827).
   // NOT field-primitives.tsx: its only `border-red-300` is inside the doc
   // comment explaining why the primitive refuses one (task 190). The comment
   // strip is what tells those apart — a raw grep reports it as a live site.

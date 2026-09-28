@@ -28,6 +28,7 @@ import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
 import { iconHint } from "@/components/Hint";
+import { Button } from "./panel-primitives";
 
 // Anchor the kebab dropdown below its trigger, flipping above when the topbar
 // sits near the viewport bottom. Matches ExternalChangeBadge (the sibling
@@ -259,12 +260,9 @@ function CollabStatusPill({
         )}
       </div>
       {actionLabel && onAction && (
-        <button
-          onClick={onAction}
-          className="px-2 py-0.5 rounded text-[11px] font-medium text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors"
-        >
+        <Button variant="warm" size="sm" onClick={onAction}>
           {actionLabel}
-        </button>
+        </Button>
       )}
       {/* Kebab: the only home for "Edit identity" now that the icon
           button is a pure toggle. Renders next to the pen action. The

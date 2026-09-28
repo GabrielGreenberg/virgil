@@ -1227,13 +1227,9 @@ function ConnectWithClaude() {
                 Not yet connected. Sign in to use Claude for requests in this document.
               </div>
             </div>
-            <button
-              disabled
-              className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-muted bg-surface-muted cursor-not-allowed"
-              data-hint="Coming soon"
-            >
+            <Button size="sm" disabled data-hint="Coming soon">
               Sign in
-            </button>
+            </Button>
           </div>
         </div>
 

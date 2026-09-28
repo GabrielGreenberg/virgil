@@ -274,12 +274,13 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // read + the T0 summary wrapper +1 above the first and +22 above these
       // two; task 824 added the neutral selected-border door +10 above these
       // two; task 826 grew the jump/drop chevron docs + the drop button's
-      // `onPress`/`inert` props +29 above these two): the SITES are the
+      // `onPress`/`inert` props +29 above these two; task 827 stated the
+      // disabled-hint note on `BUTTON_BASE` +8 above these two): the SITES are the
       // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
       // variants. `file:line` is this leg's own stated reporting form, so an
       // unrelated edit above a site costs a number update here.
-      "src/components/panel-primitives.tsx:2304",
-      "src/components/panel-primitives.tsx:2310",
+      "src/components/panel-primitives.tsx:2312",
+      "src/components/panel-primitives.tsx:2318",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });

@@ -9,6 +9,7 @@
 
 import type { ReactNode } from "react";
 import type { useLibraryHandle } from "@library/hooks/useLibraryHandle";
+import { Button } from "@/components/panel-primitives";
 import { FONT_SERIF } from "@/lib/font-stacks";
 import LibraryFolderPicker from "./LibraryFolderPicker";
 import LibraryPaneFill from "./LibraryPaneFill";
@@ -52,32 +53,12 @@ export default function LibraryFolderGate({ lib, children }: Props) {
           {state.message}
         </p>
         <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => void lib.retry()}
-            style={{
-              background: "var(--accent)",
-              color: "white",
-              padding: "8px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
+          <Button variant="primary" onClick={() => void lib.retry()}>
             Retry
-          </button>
-          <button
-            onClick={() => void lib.reset()}
-            style={{
-              background: "transparent",
-              color: "var(--muted)",
-              padding: "8px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--border-light)",
-              cursor: "pointer",
-            }}
-          >
+          </Button>
+          <Button variant="secondary" onClick={() => void lib.reset()}>
             Pick a different folder
-          </button>
+          </Button>
         </div>
       </LibraryPaneFill>
     );

@@ -1889,14 +1889,30 @@ variant. Reach for `<Button variant size>`; if you need a new look, extend the
 primitive (that is how `warm` replaced the scattered `bg-blue-100` /
 `bg-emerald-600` patterns). Omitting `variant` is fine: it means `secondary`.
 Same rule for icon buttons — put `.iconbtn-{xs,sm,md,lg}` on the `<button>`
-rather than authoring padding, hover and active classes by hand. Enforcement
-here is by convention only (no CI guard), so older surfaces still carry
-hand-rolled offenders; don't copy them.
+rather than authoring padding, hover and active classes by hand.
+
+**Guarded (task 827).** A raw `<button>` that shows a word and paints a PILL
+(a fill or a full border, plus rounding and horizontal padding — in its
+className or its inline style) fails `icon-button-a11y-guardrail.test.ts`
+("a text-labelled action button renders through <Button>") unless it states
+`data-button-exempt="<reason>"` at the site. No allowlist. There is ONE
+primary fill: the Library's gates used to paint `--accent` brown inline and
+BibCard's Submit borrowed a toggle's pressed fill — three "primaries" for one
+role. `library/` imports `<Button>` from `@/components/panel-primitives` like
+everyone else.
+
+**A disabled `<Button>` keeps its hint.** It keeps pointer events (hover
+and the press nudge are gated on `enabled:`), so the `title` / `data-hint`
+that says WHY it is disabled — "Coming soon", "Library must contain at least
+one style" — still shows. Put the reason on the Button; don't wrap it.
 
 **Out of scope for the five variants:** toggle buttons with stateful
 active styling (sidebar strips, top-bar mode toggles). They don't fit
 `<Button>` and stay hand-rolled — a future `toggle` variant could
-subsume them, but until one exists this is not drift.
+subsume them, but until one exists this is not drift. A toggle announces
+`aria-pressed` (that is also how the census above tells it from an action
+button — the Outline's Edit/Focus and the citation card's Bib toggle gained
+it in task 827).
 
 **The SHAPE may be hand-rolled; the "on" PALETTE never is.** Every toggle
 "on" state in the app reads the `--control-selected*` family, on one of two

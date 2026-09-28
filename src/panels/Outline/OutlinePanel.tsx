@@ -1798,6 +1798,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       {onReorderBlocks && (
         <button
           onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
+          aria-pressed={editMode}
           className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
             editMode
               ? "bg-[var(--control-selected)] text-white"
@@ -1820,6 +1821,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
               onFocusActivate();
             }
           }}
+          aria-pressed={!!focusState?.active}
           className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
             focusState?.active
               ? "bg-[var(--control-selected)] text-white"

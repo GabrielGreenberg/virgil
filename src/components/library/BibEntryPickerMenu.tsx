@@ -71,6 +71,7 @@ import { useMenuItem } from "@/components/menu/useMenuItem";
 import { useMenuCombobox } from "@/components/menu/useMenuCombobox";
 import { useMenuContext } from "@/components/menu/context";
 import { iconHint } from "@/components/Hint";
+import { Button } from "@/components/panel-primitives";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 export type RowState = "addable" | "added" | "conflict";
@@ -542,10 +543,10 @@ function BibEntryPickerBody({
                   : emptyHint.typeToSearch}
             </div>
             {showRawCommit && (
-              <button
-                type="button"
+              <Button
+                size="sm"
                 onClick={() => onCommitRaw?.(trimmedQuery)}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-edge-subtle text-[11px] text-ink-body hover-on-light"
+                className="gap-1.5"
               >
                 <svg
                   width="10"
@@ -561,7 +562,7 @@ function BibEntryPickerBody({
                 </svg>
                 Use <span className="font-mono">{trimmedQuery}</span> as a raw
                 citekey
-              </button>
+              </Button>
             )}
           </div>
         ) : (

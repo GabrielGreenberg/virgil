@@ -24,6 +24,7 @@ import SystemDialog, {
 } from "./system-dialog";
 import StyleEditorModal from "./StyleEditorModal";
 import { Input, Select } from "./field-primitives";
+import { Button } from "./panel-primitives";
 import StyleApplyDialog from "./StyleApplyDialog";
 import DocTypeChangeDialog from "./DocTypeChangeDialog";
 import type { StyleEntry } from "@/lib/document-styles";
@@ -442,15 +443,15 @@ export default function ManageStylesModal({
                             )}
                           </span>
                         ) : (
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => void apply(s.id)}
                             disabled={!!pendingMerge}
-                            className="text-[11px] px-2 py-1 hover-on-light rounded disabled:opacity-40 disabled:cursor-not-allowed"
                             data-hint={pendingMerge ? "AI merge in progress…" : "Apply this style to the current doc"}
                           >
                             Apply
-                          </button>
+                          </Button>
                         )}
                       </div>
                     )}
@@ -492,30 +493,19 @@ export default function ManageStylesModal({
                         </>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-[11px]">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(s.id)}
-                        className="px-2 py-1 hover-on-light rounded"
-                      >
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(s.id)}>
                         Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => duplicateStyle(s.id)}
-                        className="px-2 py-1 hover-on-light rounded"
-                      >
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => duplicateStyle(s.id)}>
                         Duplicate
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => startRename(s)}
-                        className="px-2 py-1 hover-on-light rounded"
-                      >
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => startRename(s)}>
                         Rename
-                      </button>
-                      <button
-                        type="button"
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
                         onClick={() => setConfirmDeleteId(s.id)}
                         disabled={isOnlyOne}
                         data-hint={
@@ -523,10 +513,9 @@ export default function ManageStylesModal({
                             ? "Library must contain at least one style"
                             : undefined
                         }
-                        className="px-2 py-1 hover-on-light rounded text-[var(--danger)] disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 );

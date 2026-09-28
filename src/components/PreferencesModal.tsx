@@ -7,6 +7,7 @@ import type { GlobalTransforms } from "@/lib/color-transforms";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
 import PreferenceTree from "./PreferenceTree";
 import { Input, Select } from "./field-primitives";
+import { Button } from "./panel-primitives";
 import SmartPreferences from "./SmartPreferences";
 import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
 import { iconHint } from "@/components/Hint";
@@ -164,23 +165,26 @@ function PresetBar({
         />
       ) : null}
 
-      <button
+      <Button
+        size="sm"
         onClick={handleSave}
         disabled={saving && !canSaveName}
         title={saving && nameReserved ? `"${trimmedName}" is a built-in preset name` : undefined}
-        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover-on-light whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+        className="whitespace-nowrap"
       >
         {saving ? "OK" : "Save"}
-      </button>
+      </Button>
 
       {canDelete && (
-        <button
+        <Button
+          variant="danger"
+          size="sm"
           onClick={() => { onDelete(target); setTarget(""); }}
           title={`Delete preset "${target}"`}
-          className="text-[11px] text-danger hover:text-red-600 border border-edge-subtle rounded px-2 py-1.5 hover:bg-danger-soft transition-colors max-w-[9rem] truncate"
+          className="max-w-[9rem]"
         >
-          Del &ldquo;{target}&rdquo;
-        </button>
+          <span className="truncate">Del &ldquo;{target}&rdquo;</span>
+        </Button>
       )}
     </div>
   );

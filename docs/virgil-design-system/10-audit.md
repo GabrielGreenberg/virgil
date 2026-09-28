@@ -111,7 +111,7 @@ in `globals.css`. Use them everywhere. See
 
 ## 6. Buttons have no variant system
 
-> **Status — PARTIAL (verified 2026-08-09).** `<Button>` ships with exactly primary/secondary/warm/danger/ghost × sm/md/lg (`panel-primitives.tsx:1568-1612`) and zero `bg-blue-100`/`bg-emerald-100` action buttons survive — but only 11 files use it and ~6 token-based hand-rolled action buttons remain. No CI guard.
+> **Status — LANDED + GUARDED (task 827, 2026-09-28).** `<Button>` ships with exactly primary/secondary/warm/danger/ghost × sm/md/lg (`panel-primitives.tsx`, "Button primitive"). The sweep finished: the ~16 hand-rolled action buttons moved onto it — including the Library folder picker / permission gate / error gate, whose primaries painted `--accent` brown inline (now `<Button primary>`, the ONE taupe `--btn-primary`), and BibCard's Submit, which borrowed its AI-request toggle's `--control-selected` pressed fill. A disabled `<Button>` now keeps pointer events (hover and press gated on `enabled:`), so its `title` / `data-hint` explaining WHY it is disabled is reachable. CI: `icon-button-a11y-guardrail.test.ts` → "a text-labelled action button renders through <Button>" — a raw `<button>` that shows a word and paints a pill is a hit unless it states `data-button-exempt="<reason>"` at the site (no allowlist; zero exemptions at landing). Toggles/selection controls (`aria-pressed` etc.) are out of scope by design.
 
 `bg-blue-100 text-blue-800` for "apply"; `bg-emerald-100 text-emerald-800`
 for "accept"; `bg-stone-200 text-stone-800` for "cancel"; raw
@@ -222,7 +222,7 @@ follow-up.
 | 3 | Card-header opacity hacks | yes (Pass 6) | landed |
 | 4 | Theme shape overgrown | yes (Pass 6) | landed |
 | 5 | Icon buttons hand-rolled | yes (Pass 4) | landed + guarded (task 826) — every holdout states its exemption at the site |
-| 6 | No button variant system | yes (Pass 5) | **partial** — primitive shipped, ~6 sites unswept |
+| 6 | No button variant system | yes (Pass 5) | landed + guarded (task 827) — no hand-rolled action pill survives; exemptions stated at the site |
 | 7 | `text-stone-*` everywhere | yes (Pass 7) | landed (1 straggler) |
 | 8 | Footnote rust as 5 hexes | yes (Pass 1) | **partial** — scale shipped, consumers unswept |
 | 9 | Active-tab swoop noise | deferred | superseded by `FolderTabChrome` |
