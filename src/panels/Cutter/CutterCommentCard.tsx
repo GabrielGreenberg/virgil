@@ -4,7 +4,6 @@ import { useCallback } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
-  AiRequestCheckbox,
   EditableCard,
   makeCompressedSummary,
 } from "@/components/panel-primitives";
@@ -16,7 +15,7 @@ import {
   hasTextAnchor,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
+import { cardBodyPlaceholder, cardPopKey } from "@/panels/panel-registry";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
@@ -133,20 +132,11 @@ export function CutterCommentCard({
       }}
       onDelete={() => onDelete(card.id)}
       aboveBody={excerptBlock}
-      footer={
-        !compressed ? (
-          <div className="px-3 pb-2 -mt-1">
-            <AiRequestCheckbox
-              checked={card.aiRequest}
-              onToggle={(next) => onSetAiRequest(card.id, next)}
-            />
-          </div>
-        ) : undefined
-      }
+      aiRequest={{ checked: card.aiRequest, onToggle: (next) => onSetAiRequest(card.id, next) }}
       value={card.content}
       variant={bodyVariantForCardKind("cutter-comment")}
       panelKey="cut"
-      placeholder={`${cardTypeLabel("cutter-comment")} text…`}
+      placeholder={cardBodyPlaceholder("cutter-comment")}
       onChange={handleChange}
       dataAttr={{ name: "cutter-comment-entry", value: card.id }}
       extraDataAttrs={{

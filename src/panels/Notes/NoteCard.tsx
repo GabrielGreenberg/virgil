@@ -6,14 +6,13 @@ import type { JSONContent } from "@tiptap/react";
 import type { UserNote } from "@/lib/types";
 import {
   EditableCard,
-  AiRequestCheckbox,
   makeCompressedSummary,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { cardPopKey } from "@/panels/panel-registry";
+import { cardBodyPlaceholder, cardPopKey } from "@/panels/panel-registry";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
 import { canMorphNoteToHighlight } from "@/cards/morphs";
@@ -117,20 +116,15 @@ export function NoteCard({
         });
       }}
       onDelete={() => onDelete(note.id)}
-      footer={
-        onSetAiRequest && !compressed ? (
-          <div className="px-3 pb-2 -mt-1">
-            <AiRequestCheckbox
-              checked={!!note.aiRequest}
-              onToggle={(next) => onSetAiRequest(note.id, next)}
-            />
-          </div>
-        ) : undefined
+      aiRequest={
+        onSetAiRequest
+          ? { checked: !!note.aiRequest, onToggle: (next) => onSetAiRequest(note.id, next) }
+          : undefined
       }
       value={note.content}
       variant={bodyVariantForCardKind("note")}
       panelKey="note"
-      placeholder="Text here."
+      placeholder={cardBodyPlaceholder("note")}
       onChange={handleChange}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}

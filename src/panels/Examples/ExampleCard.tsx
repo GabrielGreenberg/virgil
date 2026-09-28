@@ -557,7 +557,7 @@ export function ExampleCard({
                black native-style (N), first line of the body. Promotes to
                the live projection when the near-zone store reports the card
                near (IO-paced; 2s demote dwell the other way). Deliberately
-               NO font-mono — that class is the BARE-mount fallback's
+               NO card-mono — that class is the BARE-mount fallback's
                signature and the collapsed-projection test's discriminator. */
             <div
               data-example-tier="static"
@@ -573,7 +573,7 @@ export function ExampleCard({
             </div>
           ) : (
             <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
-              <span className="font-mono mr-2">
+              <span className="card-mono mr-2">
                 ({example.number || "?"})
               </span>
               {(() => {
@@ -608,7 +608,7 @@ export function ExampleCard({
           // The (N) is left UNCOLORED to match the collapsed black (N) the
           // chip already fixed (no longer teal) — one no-editor look.
           <div className="flex gap-2">
-            <span className="font-mono shrink-0">
+            <span className="card-mono shrink-0">
               ({example.number || "?"})
             </span>
             <div className="min-w-0 flex-1">
@@ -665,7 +665,7 @@ export function ExampleCard({
           </div>
         ) : example.bodyText ? (
           <div className="flex gap-2">
-            <span className="font-mono shrink-0">
+            <span className="card-mono shrink-0">
               ({example.number || "?"})
             </span>
             <div className="leading-snug whitespace-pre-wrap break-words min-w-0 flex-1">
@@ -708,33 +708,33 @@ export function ExampleCard({
             onClick={(e) => e.stopPropagation()}
           >
             <p className="mb-1">
-              <span className="font-mono">\expex</span> renders numbered linguistic examples.
+              <span className="card-mono">\expex</span> renders numbered linguistic examples.
             </p>
             <ul className="list-none m-0 p-0 flex flex-col gap-0.5">
               <li>
-                <span className="font-mono">\ex … \xe</span> — a single numbered example.
+                <span className="card-mono">\ex … \xe</span> — a single numbered example.
               </li>
               <li>
-                <span className="font-mono">\pex … \xe</span> — a multi-part example;
-                use <span className="font-mono">\a</span> to introduce each sub-item
-                (auto-labeled <span className="font-mono">a, b, c…</span>).
+                <span className="card-mono">\pex … \xe</span> — a multi-part example;
+                use <span className="card-mono">\a</span> to introduce each sub-item
+                (auto-labeled <span className="card-mono">a, b, c…</span>).
               </li>
               <li>
-                <span className="font-mono">\label{"{"}name{"}"}</span> on either the
-                top block or a <span className="font-mono">\a</span> item makes it
-                referenceable with <span className="font-mono">\ref{"{"}name{"}"}</span>.
+                <span className="card-mono">\label{"{"}name{"}"}</span> on either the
+                top block or a <span className="card-mono">\a</span> item makes it
+                referenceable with <span className="card-mono">\ref{"{"}name{"}"}</span>.
               </li>
               <li>
-                <span className="font-mono">{"<tag>"}</span> right after
-                <span className="font-mono"> \ex</span> /
-                <span className="font-mono"> \a</span> sets a custom display tag
-                (e.g. <span className="font-mono">\ex{"<*>"}</span> for an
+                <span className="card-mono">{"<tag>"}</span> right after
+                <span className="card-mono"> \ex</span> /
+                <span className="card-mono"> \a</span> sets a custom display tag
+                (e.g. <span className="card-mono">\ex{"<*>"}</span> for an
                 ungrammatical example).
               </li>
               <li>
-                <span className="font-mono">\begingl … \endgl</span> with
-                <span className="font-mono"> \gla / \glb / \glc</span> rows and a
-                <span className="font-mono"> \glft</span> free-translation row
+                <span className="card-mono">\begingl … \endgl</span> with
+                <span className="card-mono"> \gla / \glb / \glc</span> rows and a
+                <span className="card-mono"> \glft</span> free-translation row
                 produces an interlinear gloss.
               </li>
             </ul>

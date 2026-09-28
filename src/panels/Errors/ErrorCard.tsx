@@ -4,6 +4,7 @@ import { useRef } from "react";
 import {
   CARD_THEMES,
   PanelCard,
+  cardTitleStyle,
   compressedBodyStyle,
   useCardDeleteKey,
 } from "@/components/panel-primitives";
@@ -186,10 +187,7 @@ export function ErrorCard({
       {compressed ? (
         <div className="px-3 pt-1.5 pb-1.5 text-xs text-ink-subtle">
           <div style={compressedBodyStyle(compressedLines)}>
-            <span
-              className="font-medium text-[0.78rem] mr-2"
-              style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
-            >
+            <span className="mr-2" style={cardTitleStyle(theme)}>
               {title}
             </span>
             {err.line > 0 && (
@@ -203,15 +201,11 @@ export function ErrorCard({
         </div>
       ) : (
       <div className="px-3 pt-1.5 pb-2">
-        <div
-          className="text-[0.78rem] font-medium mb-1"
-          style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
-          data-hint={title}
-        >
+        <div className="mb-1" style={cardTitleStyle(theme)} data-hint={title}>
           {title}
         </div>
         {snippet && (
-          <div className="text-xs italic text-ink-muted border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 font-mono truncate">
+          <div className="text-xs italic text-ink-muted border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 card-mono truncate">
             {snippet}
           </div>
         )}
@@ -244,7 +238,7 @@ export function ErrorCard({
         </div>
 
         {err.detail && (
-          <div className="text-[11px] font-mono text-ink-muted mt-1 truncate">
+          <div className="text-[10px] card-mono text-ink-muted mt-1 truncate">
             {err.detail}
           </div>
         )}

@@ -659,6 +659,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   todo: {
     label: "Task",
     titleLabel: "Task",
+    // The title carries the task; the body is its notes.
+    bodyPlaceholder: "Notes…",
     themeKey: "todo",
     collabClaims: false,
     aiRequest: { kind: "todo", linkPanel: "todos" }, // R29 — frozen wire contract
@@ -915,6 +917,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   "report-request": {
     label: "Report Request",
     titleLabel: null,
+    // The body is the QUESTION the request asks, so it prompts for one.
+    bodyPlaceholder: "What should Claude report on?",
     themeKey: "report",
     collabClaims: true,
     aiRequest: { kind: "report", linkPanel: "reports" }, // R29 — frozen wire contract

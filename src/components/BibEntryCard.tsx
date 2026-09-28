@@ -13,7 +13,11 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
-import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
+import {
+  AMBER_ATTENTION_INK,
+  AMBER_ATTENTION_STRIP,
+  AMBER_PENDING_CHIP,
+} from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 import { iconHint } from "@/components/Hint";
 import { bibAddressOf } from "@/lib/bib-address";
@@ -564,7 +568,7 @@ export default function BibEntryCard({
 
       {/* Cite key + copy */}
       <div className="mt-1.5 inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <span className="text-xs font-mono text-ink-muted break-all">{entry.key}</span>
+        <span className="text-xs card-mono text-ink-muted break-all">{entry.key}</span>
         <button
           onClick={handleCopyKey}
           className="p-0.5 text-ink-faint hover:text-ink-subtle transition-colors focus-ring"
@@ -596,7 +600,7 @@ export default function BibEntryCard({
             onClick={(e) => { e.stopPropagation(); handleRequestToggle("fields"); }}
             className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
               fieldsReviewStatus === "pending"
-                ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                ? AMBER_PENDING_CHIP
                 : "text-ink-muted hover:text-ink-body hover-on-light"
             }`}
             data-hint={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"} aria-description={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"}
@@ -620,7 +624,7 @@ export default function BibEntryCard({
               {editingBib ? (
                 <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
                   {showBibWarning && (
-                    <div className="text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-1 text-xs">
+                    <div className="text-[var(--amber-600)] bg-[var(--amber-50)] border border-[var(--amber-200)] rounded px-2 py-1 mb-1 text-xs">
                       Warning: editing will modify the .bib file. Changing the
                       key also rewrites every <code>\cite</code> of it in the
                       document, and moves this entry&rsquo;s annotation and
@@ -629,23 +633,23 @@ export default function BibEntryCard({
                   )}
                   {/* Editable @type and key */}
                   <div className="flex gap-1 items-start">
-                    <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">@type:</span>
+                    <span className="card-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">@type:</span>
                     <Input value={editBibType} density="dense"
                       onChange={(e) => setEditBibType(e.target.value)}
-                      className="flex-1 font-mono px-1 py-0.5 text-xs" />
+                      className="flex-1 card-mono px-1 py-0.5 text-xs" />
                   </div>
                   <div className="flex gap-1 items-start">
-                    <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">key:</span>
+                    <span className="card-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">key:</span>
                     <Input value={editBibKey} density="dense"
                       onChange={(e) => setEditBibKey(e.target.value)}
-                      className="flex-1 font-mono px-1 py-0.5 text-xs" />
+                      className="flex-1 card-mono px-1 py-0.5 text-xs" />
                   </div>
                   {Object.entries(editBibFields).map(([field, val]) => (
                     <div key={field} className="flex gap-1 items-start">
-                      <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">{field}:</span>
+                      <span className="card-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">{field}:</span>
                       <Input value={val} density="dense"
                         onChange={(e) => setEditBibFields((prev) => ({ ...prev, [field]: e.target.value }))}
-                        className="flex-1 font-mono px-1 py-0.5 text-xs" />
+                        className="flex-1 card-mono px-1 py-0.5 text-xs" />
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); removeEditBibField(field); }}
@@ -690,12 +694,12 @@ export default function BibEntryCard({
                       editor has to the code pane. Projecting here is the one
                       change that would round-trip a rendering into the file. */}
                   {/* @type{key} shown as first line */}
-                  <div className="break-words font-mono text-ink-muted mb-0.5">
+                  <div className="break-words card-mono text-ink-muted mb-0.5">
                     @{entry.type}{"{" + entry.key + "}"}
                   </div>
                   {Object.entries(entry.fields).map(([field, val]) => (
                     <div key={field} className="break-words" style={{ overflowWrap: "anywhere" }}>
-                      <span className="font-mono text-ink-muted">{field}:</span>{" "}
+                      <span className="card-mono text-ink-muted">{field}:</span>{" "}
                       <span className="text-ink-body">{val}</span>
                     </div>
                   ))}
@@ -729,7 +733,7 @@ export default function BibEntryCard({
         <div className="flex items-center gap-1.5">
           <button onClick={(e) => { e.stopPropagation(); setAnnotationOpen((p) => !p); }}
             className={`flex items-center gap-1.5 text-xs transition-colors ${
-              annotation ? "text-amber-600 hover:text-amber-700" : "text-ink-subtle hover:text-ink-body"
+              annotation ? AMBER_ATTENTION_INK : "text-ink-subtle hover:text-ink-body"
             }`}>
             <Chevron expanded={annotationOpen} />
             <span>Annotations</span>
@@ -738,7 +742,7 @@ export default function BibEntryCard({
             onClick={(e) => { e.stopPropagation(); handleRequestToggle("notes"); }}
             className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
               notesReviewStatus === "pending"
-                ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                ? AMBER_PENDING_CHIP
                 : "text-ink-muted hover:text-ink-body hover-on-light"
             }`}
             data-hint={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"} aria-description={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"}
@@ -878,7 +882,7 @@ export default function BibEntryCard({
       // header click toggles selection just like a body click.
       onHeaderActivate={onClick}
       isCollapsed={compressed}
-      extraCardClass={`cursor-pointer${draggable ? " cursor-grab active:cursor-grabbing" : ""}${!isCited ? " opacity-60" : ""}`}
+      extraCardClass={`cursor-pointer${!isCited ? " opacity-60" : ""}`}
       draggable={draggable}
       onDragStart={draggable ? handleDragStart : undefined}
       onClick={onClick}

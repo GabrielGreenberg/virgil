@@ -173,8 +173,10 @@ describe("panel +Add menus derive card-type labels from the registry SSOT", () =
       }
     }
     // Accepting control: the sweep really reaches the panel sources, so a
-    // future directory move can't make the leg pass vacuously.
-    expect(seen).toBeGreaterThanOrEqual(10);
+    // future directory move can't make the leg pass vacuously. (Task 825 moved
+    // every card-BODY placeholder onto `cardBodyPlaceholder(kind)`, an
+    // expression this literal-only sweep no longer sees, so the floor dropped.)
+    expect(seen).toBeGreaterThanOrEqual(5);
     expect(offenders).toEqual([]);
   });
 

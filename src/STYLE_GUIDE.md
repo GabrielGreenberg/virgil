@@ -1317,8 +1317,11 @@ drifts from the standard chrome.
 once — the card overline, the kind-chevron option, the panel's +Add entry,
 and the morph-confirm verb ("Make it a Revision") — so a kind's type name
 is never re-typed as a literal anywhere, including a card body's
-`placeholder` (`` placeholder={`${cardTypeLabel(kind)} text…`} ``, not
-`"Request text…"`). And where two panels host *structurally identical*
+`placeholder` — a card body reads `cardBodyPlaceholder(kind)`, which
+derives `` `${label} text…` `` and honours a registry-declared
+`bodyPlaceholder` where the body is not "the kind's text" (a report
+request's question, a task's notes; task 825), never a literal like
+`"Request text…"`. And where two panels host *structurally identical*
 twin families — Revisions and Cutter each have a comment kind and a
 suggestion kind with the same morph shape, lifecycle and content facets —
 the pair presents ONE vocabulary: both comment sides read "Request", both
@@ -1422,6 +1425,21 @@ than one that stays quiet. Contract:
 `components/__tests__/card-lift-affordance.test.tsx` — grip present ⇔ a
 real drag pops out, per configuration, plus a census that the glyph has
 exactly one render site and it asks.
+
+**The same rule on the card ROOT (task 825).** A card root that is
+HTML5-draggable (the cross-editor anchor drag) wears the grab cursor, and
+`PanelCard` derives it from the `draggable` it is handed
+(`withDragCursor`) — no kind passes `cursor-grab` through
+`extraCardClass`. A draggable root wears the grab pair INSTEAD of any
+caller `cursor-*` (two cursor utilities resolve by stylesheet order, not
+intent); a root that is not draggable NOW — a draft citation, a focused
+editable body — wears none. Census:
+`components/__tests__/card-chrome-shell-census.test.ts`, which also pins
+the other chrome a kind used to hand-spell: mono via `.card-mono`, the
+AI-request row via `EditableCard`'s `aiRequest` prop / `AiRequestRow`
+(one placement, directly under the body), the empty-body placeholder via
+`cardBodyPlaceholder(kind)`, and the bib card's pending-request amber via
+the `amber-attention` tokens.
 
 **The same rule in CSS: the in-text atom grab (task 524).** The four
 inline atoms (footnote marker, citation, `\ref`, inline math) upgrade

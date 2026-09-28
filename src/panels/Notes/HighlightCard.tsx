@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import type { HighlightCard as HighlightCardData } from "@/lib/types";
 import {
-  AiRequestCheckbox,
+  AiRequestRow,
   CardEmptyText,
   PANEL,
   PanelCard,
@@ -23,6 +23,8 @@ import type { CardMorphHandler } from "@/cards/types";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { FONT_SERIF } from "@/lib/font-stacks";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
+import { CapturedPassage, plainPassageContent } from "@/panels/_shared/captured-passage";
 
 export function HighlightCard({
   card,
@@ -96,6 +98,10 @@ export function HighlightCard({
     color: "var(--editor-text-color)",
   } as const;
   const trimmedAnchor = anchorText.replace(/\s+/g, " ").trim();
+  // Main-text typography for the expanded quote, same as every captured
+  // passage (the archive-card treatment).
+  const passageStyle = usePanelBodyStyle("footnote");
+  const passageContent = useMemo(() => plainPassageContent(trimmedAnchor), [trimmedAnchor]);
   const snippetCap = 80 * Math.max(1, compressedLines);
   const compressedSnippet =
     trimmedAnchor.length > snippetCap
@@ -150,24 +156,30 @@ export function HighlightCard({
         </div>
       ) : (
         <div className={`${PANEL.cardBody} space-y-2`} onClick={(e) => e.stopPropagation()}>
-          <div>
-            <div
-              className="text-sm whitespace-pre-wrap break-words py-1"
-              style={snippetFontStyle}
-            >
-              {trimmedAnchor || (
-                <CardEmptyText label="empty highlight" />
-              )}
-            </div>
-          </div>
+          {/* The highlighted words ARE a quote of the paper, so they render
+              through the one door every quoting card uses (task 825) — the
+              borrowed main-text treatment, not a hand-set serif line. */}
+          {trimmedAnchor ? (
+            <CapturedPassage
+              latex={trimmedAnchor}
+              content={passageContent}
+              bodyStyle={passageStyle}
+              className="py-1 break-words"
+            />
+          ) : (
+            <CardEmptyText label="empty highlight" />
+          )}
 
           {/* R14: the one-way "+ note" morph button is gone — note ↔ highlight
               is now BIDIRECTIONAL via the kind-chevron in the card header. */}
-          <AiRequestCheckbox
-            checked={card.aiRequest}
-            onToggle={(next) => onSetAiRequest(card.id, next)}
-          />
         </div>
+      )}
+      {/* The shell's one AI-request placement, under the body (task 825). */}
+      {!compressed && (
+        <AiRequestRow
+          checked={card.aiRequest}
+          onToggle={(next) => onSetAiRequest(card.id, next)}
+        />
       )}
     </PanelCard>
   );

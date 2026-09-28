@@ -191,6 +191,10 @@ export interface CardMeta {
   label: string;
   /** Auto-title prefix at creation, or `null` to opt out (was `CARD_TITLE_LABELS`). */
   titleLabel: string | null;
+  /** The empty-body placeholder, when the derived `"<label> text…"`
+   *  (`cardBodyPlaceholder`) is not the right prompt — a DECLARED override
+   *  (task 825), e.g. a request kind whose body is a question. */
+  bodyPlaceholder?: string;
   /** `CARD_THEMES` key (was the scattered per-card `themeKey` lookups). */
   themeKey: ThemeKey;
   /** Whether this kind participates in collab focus-claims (R28/D-2): its

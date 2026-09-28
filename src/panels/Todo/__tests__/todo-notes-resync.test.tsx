@@ -74,7 +74,7 @@ beforeEach(() => {
 describe("TodoRow notes external-resync (task 2026-07-12-102)", () => {
   it("an external item.notes change on a mounted, same-id row updates the displayed value", () => {
     const { rerender } = renderRow(makeTodo({ notes: "old note" }));
-    const ta = screen.getByPlaceholderText("Notes...") as HTMLTextAreaElement;
+    const ta = screen.getByPlaceholderText("Notes…") as HTMLTextAreaElement;
     expect(ta.value).toBe("old note");
 
     rerender(
@@ -90,7 +90,7 @@ describe("TodoRow notes external-resync (task 2026-07-12-102)", () => {
         isAnchored={false}
       />,
     );
-    expect((screen.getByPlaceholderText("Notes...") as HTMLTextAreaElement).value).toBe(
+    expect((screen.getByPlaceholderText("Notes…") as HTMLTextAreaElement).value).toBe(
       "AI rewrote this",
     );
   });
@@ -113,14 +113,14 @@ describe("TodoRow notes external-resync (task 2026-07-12-102)", () => {
       />,
     );
     // Focus then blur with no typing — must not revert the external edit.
-    fireEvent.blur(screen.getByPlaceholderText("Notes..."));
+    fireEvent.blur(screen.getByPlaceholderText("Notes…"));
     expect(onUpdateNotes).not.toHaveBeenCalled();
   });
 
   it("a mid-edit local buffer is preserved against a concurrent external write, and wins on commit", () => {
     const onUpdateNotes = vi.fn();
     const { rerender } = renderRow(makeTodo({ notes: "old note" }), onUpdateNotes);
-    const ta = screen.getByPlaceholderText("Notes...") as HTMLTextAreaElement;
+    const ta = screen.getByPlaceholderText("Notes…") as HTMLTextAreaElement;
 
     // User types an uncommitted edit.
     fireEvent.change(ta, { target: { value: "my in-progress edit" } });
@@ -140,11 +140,11 @@ describe("TodoRow notes external-resync (task 2026-07-12-102)", () => {
       />,
     );
     // The user's buffer is NOT clobbered.
-    expect((screen.getByPlaceholderText("Notes...") as HTMLTextAreaElement).value).toBe(
+    expect((screen.getByPlaceholderText("Notes…") as HTMLTextAreaElement).value).toBe(
       "my in-progress edit",
     );
     // On commit, the user's edit wins.
-    fireEvent.blur(screen.getByPlaceholderText("Notes..."));
+    fireEvent.blur(screen.getByPlaceholderText("Notes…"));
     expect(onUpdateNotes).toHaveBeenCalledWith("t1", "my in-progress edit");
   });
 });

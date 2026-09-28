@@ -16,7 +16,7 @@
 // every pre-Wave-3 assertion ran under), tier 2 = near, tier 1 = far.
 //
 // Teeth: the live-projection its assert `.example-card-editor` present +
-// NO `span.font-mono` (the BARE-mount fallback's signature — that branch,
+// NO `span.card-mono` (the BARE-mount fallback's signature — that branch,
 // keyed on a missing editor context, is untouched by tiers). The FAR its
 // assert the static line by its `data-example-tier` marker, `(7)` text, no
 // `.example-card-editor` anywhere, and — the honest tooth that the perf win
@@ -205,10 +205,10 @@ describe("ExampleCard collapsed read-only projection (#43)", () => {
       ".example-card-editor.example-card-editor-collapsed",
     );
     expect(collapsedRoot).not.toBeNull();
-    // Teeth: the STATIC fallback (no-editor path) renders a `span.font-mono`
+    // Teeth: the STATIC fallback (no-editor path) renders a `span.card-mono`
     // (N) and NO `.example-card-editor`. Its absence proves the projection
     // mounted — this assertion fails if the branch regresses to the string.
-    expect(body!.querySelector("span.font-mono")).toBeNull();
+    expect(body!.querySelector("span.card-mono")).toBeNull();
     editor.destroy();
   });
 
@@ -244,8 +244,8 @@ describe("ExampleCard collapsed read-only projection (#43)", () => {
     expect(num).not.toBeNull();
     expect(num!.textContent).toContain("(7)");
     // … NOT the old hand-built mono (N) span (which carried theme.titleColor /
-    // teal). No `font-mono` number lives in the collapsed body.
-    expect(body!.querySelector("span.font-mono")).toBeNull();
+    // teal). No `card-mono` number lives in the collapsed body.
+    expect(body!.querySelector("span.card-mono")).toBeNull();
     editor.destroy();
   });
 
@@ -260,7 +260,7 @@ describe("ExampleCard collapsed read-only projection (#43)", () => {
     expect(
       body!.querySelector(".example-card-editor.example-card-editor-collapsed"),
     ).not.toBeNull();
-    expect(body!.querySelector("span.font-mono")).toBeNull();
+    expect(body!.querySelector("span.card-mono")).toBeNull();
     editor.destroy();
   });
 });
@@ -285,7 +285,7 @@ describe("ExampleCard collapsed FAR tier (Wave 3) — static line, zero editors"
     expect(staticLine!.textContent).toContain("(7)");
     expect(staticLine!.textContent).toContain("Top body.");
     // … in the expex look, NOT the bare-mount fallback's mono signature …
-    expect(body!.querySelector("span.font-mono")).toBeNull();
+    expect(body!.querySelector("span.card-mono")).toBeNull();
     // … with NO editor mounted anywhere in the collapsed body:
     expect(body!.querySelector(".example-card-editor")).toBeNull();
     expect(body!.querySelector(".ProseMirror")).toBeNull();

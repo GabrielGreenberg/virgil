@@ -6,7 +6,7 @@
 // uses), seeded from the live exampleBlock. This suite pins:
 //
 //   • the card renders the REAL expex node classes (.expex-number /
-//     .expex-item-marker) — NOT the old hand-built `font-mono (N)` span;
+//     .expex-item-marker) — NOT the old hand-built `card-mono (N)` span;
 //   • there is no (disabled) EDIT button anymore — the body is directly
 //     editable;
 //   • an edit inside the card writes back to the in-doc exampleBlock,
@@ -226,10 +226,10 @@ describe("ExampleCard directly-editable expex body (#32/#33)", () => {
     // The real expex grid number + sub-item markers from the NodeViews + CSS.
     expect(container.querySelector(".expex-number")).not.toBeNull();
     expect(container.querySelector(".expex-item-marker")).not.toBeNull();
-    // The old hand-built projection used a `font-mono` span for the number
+    // The old hand-built projection used a `card-mono` span for the number
     // inside the body; the editable body has none.
     const body = container.querySelector(".example-card-body");
-    expect(body?.querySelector("span.font-mono")).toBeNull();
+    expect(body?.querySelector("span.card-mono")).toBeNull();
     editor.destroy();
   });
 

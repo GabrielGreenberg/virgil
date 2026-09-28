@@ -7,7 +7,6 @@ import type { CardMorphHandler } from "@/cards/types";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { RevisionRequestCard as RevisionRequestCardData } from "@/lib/types";
 import {
-  AiRequestCheckbox,
   EditableCard,
   makeCompressedSummary,
 } from "@/components/panel-primitives";
@@ -19,7 +18,7 @@ import {
   hasTextAnchor,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { popKey, cardTypeLabel } from "@/panels/panel-registry";
+import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -132,20 +131,11 @@ export function RevisionRequestCard({
       }}
       onDelete={() => onDelete(card.id)}
       aboveBody={excerptBlock}
-      footer={
-        !compressed ? (
-          <div className="px-3 pb-2 -mt-1">
-            <AiRequestCheckbox
-              checked={card.aiRequest}
-              onToggle={(next) => onSetAiRequest(card.id, next)}
-            />
-          </div>
-        ) : undefined
-      }
+      aiRequest={{ checked: card.aiRequest, onToggle: (next) => onSetAiRequest(card.id, next) }}
       value={card.content}
       variant={bodyVariantForCardKind("revision-comment")}
       panelKey="revision"
-      placeholder={`${cardTypeLabel("revision-comment")} text…`}
+      placeholder={cardBodyPlaceholder("revision-comment")}
       onChange={handleChange}
       dataAttr={{ name: "revision-request-entry", value: card.id }}
       extraDataAttrs={{

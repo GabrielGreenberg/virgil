@@ -277,8 +277,8 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
       // variants. `file:line` is this leg's own stated reporting form, so an
       // unrelated edit above a site costs a number update here.
-      "src/components/panel-primitives.tsx:2247",
-      "src/components/panel-primitives.tsx:2253",
+      "src/components/panel-primitives.tsx:2275",
+      "src/components/panel-primitives.tsx:2281",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });
