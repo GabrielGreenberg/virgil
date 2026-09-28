@@ -272,12 +272,13 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // read + prop +2 above these two; tasks 821/822 drifted all three
       // (+24/+22, red on main at dd5c1191); task 823 added the static-safety
       // read + the T0 summary wrapper +1 above the first and +22 above these
+      // two; task 824 added the neutral selected-border door +10 above these
       // two): the SITES are the
       // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
       // variants. `file:line` is this leg's own stated reporting form, so an
       // unrelated edit above a site costs a number update here.
-      "src/components/panel-primitives.tsx:2237",
-      "src/components/panel-primitives.tsx:2243",
+      "src/components/panel-primitives.tsx:2247",
+      "src/components/panel-primitives.tsx:2253",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });

@@ -53,6 +53,31 @@ export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> =
 export const SYSTEM_THEME_KEYS: ReadonlySet<PanelThemeKey> =
   new Set<PanelThemeKey>(["aiRequest", "error"]);
 
+export type PanelThemeFamily = "anchored" | "editorial" | "workflow" | "system";
+
+/** The theme FAMILIES — which role-group each theme belongs to (task 824).
+ *
+ *  This used to exist only as prose, twice (`STYLE_GUIDE.md` and
+ *  `docs/virgil-design-system/05-cards-and-themes.md`), held by no code — and
+ *  both copies had drifted: they listed a dead `quote` theme and the `comment`
+ *  CSS token as if they were keys, omitted the live `highlight` and `report`
+ *  keys, and restated accent hexes nothing pinned. Membership is now a code
+ *  fact: `panel-theme-families.test.ts` asserts these lists PARTITION
+ *  `PanelThemeKey` exactly (every key in one family, none twice) and that the
+ *  guide's family list names only real keys. Accents are deliberately NOT
+ *  restated here — `DEFAULT_PANEL_COLORS` is their one home. */
+export const PANEL_THEME_FAMILIES: Readonly<
+  Record<PanelThemeFamily, { label: string; keys: readonly PanelThemeKey[] }>
+> = Object.freeze({
+  anchored: {
+    label: "Anchored to text",
+    keys: ["footnote", "citation", "bib", "highlight", "example"],
+  },
+  editorial: { label: "Editorial", keys: ["revision", "report", "aiRequest"] },
+  workflow: { label: "Workflow", keys: ["note", "archive", "todo", "cut"] },
+  system: { label: "System", keys: ["error"] },
+});
+
 /** Curated palette for the color picker. */
 export const PRESET_COLORS: { name: string; hex: string }[] = [
   { name: "Amber",    hex: "#d4a843" },

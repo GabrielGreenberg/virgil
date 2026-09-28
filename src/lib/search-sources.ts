@@ -139,12 +139,16 @@ export const SCOPE_PANEL: Partial<Record<SearchScope, SearchJumpPanel>> =
 /** Map a search-result scope to the card theme (panel-theme key) it wears.
  *  This makes the selected border + scope accent track the source kind:
  *  footnote hits red, note hits emerald, citation hits amber, etc. — uniform
- *  with each kind's own panel. mainText results have no source kind, so they
- *  fall through to the revision/purple theme (but render transparent below).
+ *  with each kind's own panel. mainText results have NO source kind, so they
+ *  map to `null` — not to a borrowed theme (STYLE_GUIDE "No theme is
+ *  neutral"; until task 824 this was `"revision"`, so a SELECTED main-text hit
+ *  wore the revision purple border). `null` renders neutral everywhere: a
+ *  transparent accent here and in `useScopeAccent`, and `themedCardStyle`'s
+ *  ink-edge selected border.
  *  This is the SSOT for the scope→kind correspondence; SearchPanel imports it
  *  for the selected-card theme and SCOPE_COLOR derives its accent from it. */
-export const SCOPE_TO_CARD_THEME: Record<SearchScope, PanelThemeKey> = {
-  mainText:     "revision",
+export const SCOPE_TO_CARD_THEME: Record<SearchScope, PanelThemeKey | null> = {
+  mainText:     null,
   footnotes:    "footnote",
   notes:        "note",
   citations:    "citation",
@@ -169,12 +173,10 @@ export const SCOPE_TO_CARD_THEME: Record<SearchScope, PanelThemeKey> = {
  *  `useScopeAccent()` in `panels/Search/SearchPanel.tsx`, which is subscribed to
  *  the override-version counter. Keep this table as the default/drift-pin SSOT. */
 export const SCOPE_COLOR: Record<SearchScope, string> = Object.fromEntries(
-  (Object.keys(SCOPE_TO_CARD_THEME) as SearchScope[]).map((scope) => [
-    scope,
-    scope === "mainText"
-      ? "transparent"
-      : DEFAULT_PANEL_COLORS[SCOPE_TO_CARD_THEME[scope]],
-  ]),
+  (Object.keys(SCOPE_TO_CARD_THEME) as SearchScope[]).map((scope) => {
+    const key = SCOPE_TO_CARD_THEME[scope];
+    return [scope, key === null ? "transparent" : DEFAULT_PANEL_COLORS[key]];
+  }),
 ) as Record<SearchScope, string>;
 
 /** Background FILL for a scope dot (the menu + chip swatches in `SearchPanel`).

@@ -1259,18 +1259,23 @@ is `globals.css` — CSS cannot import TS — so the ~20
 `.linked-anchor` amber fallbacks are pinned instead, by
 `in-text-anchor-accents.test.ts`.
 
-Eleven themes, four families:
+**Theme families are a code fact** (task 824): `PANEL_THEME_FAMILIES` in
+`src/lib/panel-theme.ts` assigns every `PanelThemeKey` to exactly one family,
+and `panel-theme-families.test.ts` pins both that partition and this list —
+a name here that is not a key fails CI. Accents live ONLY in
+`panel-theme.defaults.json`; don't restate hexes here.
 
-- **Anchored-to-text (warm):** `footnote` (rust), `citation` (amber),
-  `bib` (khaki), `quote` (warm-yellow).
-- **Editorial (cool):** `comment`/`revision` (purple), `aiRequest`
-  (sky).
-- **Workflow (neutral):** `note` (green), `archive` (steel-blue),
-  `todo` (stone), `cut` (rust).
-- **Errors:** `error` (rust), `example` (teal — rare).
+- **Anchored to text:** `footnote`, `citation`, `bib`, `highlight`,
+  `example`.
+- **Editorial:** `revision`, `report`, `aiRequest`.
+- **Workflow:** `note`, `archive`, `todo`, `cut`.
+- **System:** `error`.
 
-`cut`, `footnote`, and `error` share the rust accent — they're never
-adjacent in the same surface, and the margin icon distinguishes them.
+`cut`, `footnote`, and `error` share the rust accent. Where they can meet in
+one list — Search is the live mixed surface — the colour is not the cue: every
+row that wears a kind's accent also renders its **scope label** (Search's
+`showScopeLabel` is derived from "the row has a kind"), and elsewhere the
+margin icon distinguishes them. Don't give each its own warm red.
 
 A card renders via `<PanelCard theme={…} selected={…}>`. The frame
 (border, header strip, separator, body, popout, trash) is identical
@@ -1287,7 +1292,11 @@ worked example is `SCOPE_TO_CARD_THEME` (`src/lib/search-sources.ts`), the
 SSOT that `SearchPanel` feeds to `useCardTheme` per result and from which
 the rest-state accent is derived rather than differentiated in parallel; two
 guards pin it (`scope-color-theme.test.ts`,
-`card-theme-override-guardrail.test.ts`). This is about *pointing*, not
+`card-theme-override-guardrail.test.ts`). A row that points at NO kind (a
+main-text hit) maps to `null`, and `useCardTheme(null)` /
+`themedCardStyle(null, …)` render it neutral — transparent accent, the
+`--edge-strong` ink edge when selected — rather than wearing any theme
+(task 824 retired the `mainText: "revision"` stand-in). This is about *pointing*, not
 provenance: `ArchiveCard`'s one `useCardTheme("archive")` over cards that
 came from many panels is correct, because `archive` is the row's own kind.
 

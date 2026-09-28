@@ -628,7 +628,7 @@ export type { CardTheme } from "@/lib/panel-theme";
  *  and selection halo all come from `themedCardStyle()` applied via
  *  inline style at the render site. Unselected cards share the neutral
  *  `CARD_DEFAULT` Tailwind hover behavior. */
-export function themedCard(_theme: CardTheme, selected: boolean, extra?: string): string {
+export function themedCard(_theme: CardTheme | null, selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? "bg-surface" : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
@@ -644,6 +644,9 @@ export function themedCard(_theme: CardTheme, selected: boolean, extra?: string)
  *  ("two mechanisms writing one property, the unlayered/inline one silently
  *  winning"), in its inline edition. */
 const CARD_DROP_TARGET_RING = "0 0 0 2px var(--ring-drag-target)";
+
+/** Selected border for a kind-less card row (`themedCardStyle(null, …)`). */
+export const NEUTRAL_SELECTED_BORDER = "var(--edge-strong)";
 
 /** Single source of truth for card-surface inline style: border color
  *  and ambient lift shadow. PanelCard, SearchPanel result rows, and any
@@ -666,9 +669,14 @@ const CARD_DROP_TARGET_RING = "0 0 0 2px var(--ring-drag-target)";
  *  (`var(--card-shadow-ambient), 0 0 0 1.5px …`).
  *
  *  Pop-out cards get borderless treatment because FloatingPanel adds
- *  its own chrome — and no ambient shadow, so there the ring composes alone. */
+ *  its own chrome — and no ambient shadow, so there the ring composes alone.
+ *
+ *  `theme: null` is a row with NO source kind (a main-text search hit): its
+ *  selected border is the neutral ink edge `var(--edge-strong)`, not any
+ *  panel's accent — "no theme is neutral", so neutrality is spelled here
+ *  rather than borrowed from an existing theme (task 824). */
 export function themedCardStyle(
-  theme: CardTheme,
+  theme: CardTheme | null,
   selected: boolean,
   options?: { isPoppedOut?: boolean; dropTarget?: boolean },
 ): React.CSSProperties {
@@ -680,7 +688,9 @@ export function themedCardStyle(
     };
   }
   return {
-    ...(selected ? { borderColor: theme.borderSelected } : {}),
+    ...(selected
+      ? { borderColor: theme ? theme.borderSelected : NEUTRAL_SELECTED_BORDER }
+      : {}),
     boxShadow: options?.dropTarget
       ? `${CARD_DROP_TARGET_RING}, var(--card-shadow-ambient)`
       : "var(--card-shadow-ambient)",
