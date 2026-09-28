@@ -495,16 +495,17 @@ describe("every declared token has a reader", () => {
       expect(why.length, `${token} needs a stated reason, not an empty string`).toBeGreaterThan(30);
   });
 
-  it("the drag-ghost lift is one token read by both ghosts", () => {
-    // The token this leg was written for. Two consumers, one value, and no
-    // `drop-shadow(` literal left anywhere: the ONLY spelling of the function
-    // in either silo is the declaration itself.
+  it("the drag-ghost lift is one token read through one door per language", () => {
+    // The token this leg was written for. One value, and no `drop-shadow(`
+    // literal left anywhere: the ONLY spelling of the function in either silo
+    // is the declaration itself. Readers: the CSS `.inline-atom-ghost` rule and
+    // the TS door every other ghost is stamped through (task 817).
     const GHOST = "--shadow-drag-ghost-filter";
     expect(DECLARED_TOKENS.has(GHOST), `${GHOST} must be declared`).toBe(true);
     const readers = SOURCES.filter(([, text]) => text.includes(`var(${GHOST})`)).map(([f]) => f);
     expect(readers.sort()).toEqual([
-      "library/components/panel-tabs/PanelTabStrip.tsx",
       "src/app/globals.css",
+      "src/lib/drag-ghost.ts",
     ]);
     const literals: string[] = [];
     for (const [file, text] of SOURCES)

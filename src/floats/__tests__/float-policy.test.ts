@@ -328,7 +328,7 @@ describe("overlay rungs (task 793)", () => {
     expect(DRAG_GHOST_Z).toBeLessThan(DROP_INDICATOR_Z);
   });
 
-  it("the strip-button ghost reads DRAG_GHOST_Z and builds its chrome from tokens", () => {
+  it("the strip-button ghost takes its layer from the drag-ghost door and builds its chrome from tokens", () => {
     const HERE = path.dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(
       path.resolve(HERE, "../../components/editor-layout/drag-drop.tsx"),
@@ -336,10 +336,14 @@ describe("overlay rungs (task 793)", () => {
     );
     const at = src.indexOf('ghost.id = "virgil-drag-ghost"');
     expect(at).toBeGreaterThan(-1);
-    const css = src.slice(at, src.indexOf("`;", at));
-    expect(css).toContain("z-index: ${DRAG_GHOST_Z}");
+    const end = src.indexOf("`;", at);
+    const css = src.slice(at, end);
+    // z + lift come from stampDragGhostLayer (task 817), which reads
+    // DRAG_GHOST_Z — no per-site z and no borrowed --shadow-float.
+    expect(src.slice(end, end + 400)).toContain("stampDragGhostLayer(ghost)");
+    expect(css).not.toContain("z-index");
+    expect(css).not.toContain("shadow");
     expect(css).toContain("background: var(--surface)");
-    expect(css).toContain("box-shadow: var(--shadow-float)");
     expect(css).not.toMatch(/background:\s*white|rgba\(/);
   });
 });

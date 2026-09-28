@@ -1191,7 +1191,6 @@ function EditableOutline({
           bg: "var(--surface, #ffffff)",
           border: "var(--edge-hover, #d6d3d1)",
           ink: "var(--ink-body, #44403c)",
-          shadow: "0 2px 8px rgba(0,0,0,0.12)",
         }),
       cursorOffsetX: 10,
       cursorOffsetY: 14,

@@ -65,7 +65,7 @@ export const PERMITTED_HAND_ROLLED_ANCHORED_SURFACES: Record<string, string> = {
   "src/components/stack/StackThumbnail.tsx::StackThumbnail":
     "NOT AN ANCHORED MENU — a stack card thumbnail: absolutely-positioned card chrome with a shadow, whose rect read feeds the stack's drag/hit-test, not a placement.",
   "library/components/LeftListRow.tsx::LeftListRow":
-    "NOT AN ANCHORED MENU — a catalog list row. Surfaced only when the detectors learned to read a multi-line className (task 181): its rect read builds the DRAG GHOST, and the positioned shadowed surface is that ghost's count badge, written as an inline `style=\"position:absolute;…box-shadow:…\"` string. It opens no popup.",
+    "NOT AN ANCHORED MENU — a catalog list row. Surfaced only when the detectors learned to read a multi-line className (task 181): its rect read builds the DRAG GHOST, and the positioned surface is that ghost's count badge, written as an inline `style=\"position:absolute;…\"` string (its own box-shadow was dropped by task 817 — the ghost's one lift now covers it). It opens no popup.",
   "library/components/RowMenu.tsx::RowMenu":
     "LIBRARY-SILO HOLDOUT (known follow-up, not an exemption). The catalog row kebab: portal + `position:fixed`, `role=\"menu\"`, Escape, and a deferred outside-mousedown — so it is the most complete of the hand-rolls — but it flips off an `items.length * ITEM_HEIGHT` ESTIMATE (the `HeaderAddDropdown` mistake), never flips horizontally, and never re-anchors. The silo CAN import the primitive (`PanelTabStrip` already imports `useFloatingMenuPosition`), so this is a migration nobody has done yet.",
   "library/components/PaperAiRequestsMenu.tsx::PaperAiRequestsMenu":

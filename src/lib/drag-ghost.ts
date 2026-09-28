@@ -39,8 +39,6 @@ export interface TextDragGhostOptions {
   radius?: string;
   /** font-size in px. Default 12. */
   fontSizePx?: number;
-  /** Optional box-shadow. Default none. */
-  shadow?: string;
   /** Padding CSS. Default "4px 8px". */
   padding?: string;
   /** Optional opacity (0–1). Default fully opaque. */
@@ -51,9 +49,9 @@ export interface TextDragGhostOptions {
  * The one home for a text-label drag ghost. Returns a themed `<div>` whose
  * `cssText` reads from design-system tokens by default, so no drag source has
  * to re-author the "cream/neutral card" chrome (or re-drift its palette) by
- * hand. Positioning is owned by {@link attachClampedDragGhost}, which sets
- * `position:fixed` + coordinates after `buildGhost` returns — this builder must
- * NOT set position.
+ * hand. Positioning AND lift are owned by {@link attachClampedDragGhost}, which
+ * stamps the drag-ghost layer ({@link stampDragGhostLayer}) + coordinates after
+ * `buildGhost` returns — this builder must NOT set position or a shadow.
  */
 export function buildTextDragGhost(
   text: string,
@@ -67,7 +65,6 @@ export function buildTextDragGhost(
     ink = "var(--ink-body, #44403c)",
     radius = "var(--radius-xs, 3px)",
     fontSizePx = 12,
-    shadow,
     padding = "4px 8px",
     opacity,
   } = opts;
@@ -80,10 +77,37 @@ export function buildTextDragGhost(
     `max-width:${maxWidthPx}px;padding:${padding};` +
     `background:${bg};border:1px solid ${border};border-radius:${radius};` +
     `font-size:${fontSizePx}px;color:${ink};line-height:1.4;` +
-    (shadow ? `box-shadow:${shadow};` : "") +
     (opacity != null ? `opacity:${opacity};` : "") +
     `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
   return ghost;
+}
+
+/**
+ * The drag-ghost LIFT, spelled once in TS (task 817). The token is authored in
+ * the `filter:` form (`drop-shadow()` hugs a clone's composited alpha where a
+ * box shadow would draw its bounding rect) — so it can only ever be applied as
+ * `filter`, which is why no caller gets to pass a lift of its own.
+ */
+export const DRAG_GHOST_LIFT = "var(--shadow-drag-ghost-filter)";
+
+/**
+ * The ONE door for "this element is a drag ghost": the topmost-drag LAYER
+ * (`DRAG_GHOST_Z`, below the drop indicator), inert to the pointer, and the
+ * ghost lift. A lift is a property of the layer, not of the thing dragged — a
+ * 20px icon and a 150px Library tab take the same reach — so every ghost in
+ * both silos gets it here rather than choosing one by eye (task 817: seven
+ * ghosts had drifted to five lifts, one of them the FLOATING-PANEL token).
+ *
+ * Called by {@link attachClampedDragGhost} for every HTML5 ghost, and directly
+ * by the pointer-driven strip-button ghost (`drag-drop.tsx`), which positions
+ * itself by transform. Does not set `position` — each caller owns its own
+ * placement model — and does not touch a clone's own `box-shadow` (that is the
+ * cloned surface's chrome, not its lift).
+ */
+export function stampDragGhostLayer(el: HTMLElement): void {
+  el.style.zIndex = String(DRAG_GHOST_Z);
+  el.style.pointerEvents = "none";
+  el.style.filter = DRAG_GHOST_LIFT;
 }
 
 export interface AttachClampedDragGhostOptions {
@@ -152,8 +176,7 @@ export function attachClampedDragGhost(
   const ghost = buildGhost();
   ghost.setAttribute(GHOST_ATTR, "");
   ghost.style.position = "fixed";
-  ghost.style.pointerEvents = "none";
-  ghost.style.zIndex = String(DRAG_GHOST_Z);
+  stampDragGhostLayer(ghost);
   ghost.style.left = "-9999px";
   ghost.style.top = "-9999px";
   document.body.appendChild(ghost);

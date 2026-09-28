@@ -438,11 +438,9 @@ export function PanelTabStrip({
           clone.style.width = `${rect.width}px`;
           clone.style.height = `${rect.height}px`;
           clone.style.opacity = "0.92";
-          // The drag-ghost lift tier, shared with `.inline-atom-ghost` — one
-          // role, one token (task 2026-08-25-460). `:root` custom properties
-          // inherit, and library.css is `@import`ed by globals.css, so this
-          // resolves on the body-portaled clone.
-          clone.style.filter = "var(--shadow-drag-ghost-filter)";
+          // No lift here: attachClampedDragGhost stamps the one drag-ghost
+          // layer (z + the ghost lift token) on every ghost it
+          // attaches (task 817).
           return clone;
         },
         cursorOffsetX: e.clientX - rect.left,

@@ -967,7 +967,9 @@ Five states. One implementation each.
   `--shadow-drag-ghost-filter`, authored in the `filter:` form so
   `drop-shadow()` hugs the clone's composited alpha instead of its bounding
   rect; a lift is a LAYER, not a size, so a 20px inline atom and a 150px
-  Library tab take the same reach), not a response to the cursor;
+  Library tab take the same reach — and a TS ghost gets it only through
+  `stampDragGhostLayer`, never from its caller; see "Drag ghosts"), not a
+  response to the cursor;
   there is not one hover-elevation rule in either silo. Border-color hover
   *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
   `edge-strong`) and the omni-bin pill's. The exception is icon buttons
@@ -2665,6 +2667,19 @@ to the viewport so the ghost can ride over the Virgil bar but never into
 OS-controlled space. `buildTextDragGhost` is the token-backed builder for the
 label pill, so no surface re-authors that chrome. CI (`drag-ghost.test.ts`)
 greps both silos and fails on any raw `.setDragImage(` outside the SSOT.
+
+**A ghost's lift and layer are the door's, not the caller's** (task 817).
+`attachClampedDragGhost` stamps every ghost it attaches through
+`stampDragGhostLayer` — `DRAG_GHOST_Z`, `pointer-events:none`, and
+`filter: var(--shadow-drag-ghost-filter)` — whatever the builder returned
+(a text pill, a cloned Library row or tab); the pointer-driven strip-button
+ghost calls the stamp directly. `buildTextDragGhost` has no `shadow` option:
+the token is authored in `filter:` form, so a free-text `box-shadow` knob
+could never have taken it, and seven ghosts had drifted to five lifts (one
+of them the floating-panel `--shadow-float`). The census in
+`drag-ghost.test.ts` fails on any `box-shadow:` / `.style.boxShadow =` /
+`.style.filter =` in a ghost-building file, and on any TS reader of the
+token or `DRAG_GHOST_Z` besides the door.
 
 Stated honestly, the enforced invariant is "*if* you set a drag image it goes
 through the SSOT" — not "every drag has a custom ghost." The library
