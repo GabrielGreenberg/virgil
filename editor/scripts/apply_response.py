@@ -342,7 +342,8 @@ MUTATION_PANEL_POLICY: dict[str, _PanelPolicy] = {
         },
     ),
     # archive — the anchored panel cards only. Atom-bearing cards would orphan
-    # their marker; examples.json is a .tex shadow; archive.json is the target.
+    # their marker; an example lives only in the .tex (examples.json is retired,
+    # task 726); archive.json is the target.
     "archive": _PanelPolicy(
         allow=_ANCHORED_PANEL_CARDS,
         refuse={

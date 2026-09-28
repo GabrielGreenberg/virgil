@@ -66,8 +66,9 @@ is all-or-nothing), with the audit notification + version bump.
   - an **`archive.json` snippet** — dropped when
     [`restore-card`](restore-card.md) re-appends the verbatim `originalCard`.
     Restore it first, then link.
-  - an **`example`** — `examples.json` is the app's `\ex`-derived projection, not
-    a writeback target, and a row lives only as long as its block.
+  - an **`example`** — an example exists ONLY as its `\ex…\xe` block in the
+    `.tex`; there is no example sidecar (`examples.json` is retired, task 726 —
+    the app neither reads nor writes it), so a record there would be read by nobody.
 
 > **Note (manifest gap, flagged).** The manifest defines **no** card↔card
 > relationship field — `links: Link[]` is strictly the card→TextObject anchor (a

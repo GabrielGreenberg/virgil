@@ -46,7 +46,7 @@ createable-kind taxonomy), grouped by linkage class:
 | `todo` | anchored, sidecar-only | `todos.json` · `items` | — | `--body` |
 | `report` | anchored, sidecar-only (poly `kind:"report"`) | `reports.json` · `cards` | — | `--body` |
 | `report-request` | anchored, sidecar-only (poly `kind:"report-request"`) | `reports.json` · `cards` | — | `--body` |
-| `example` | **tex-only** (shadow sidecar) | the `.tex` (`\vexid{}\ex…\xe`) | `\vexid` (+ `\vxid` rows) | `--body` or `--item` |
+| `example` | **tex-only** (no sidecar) | the `.tex` (`\vexid{}\ex…\xe`) | `\vexid` (+ `\vxid` rows) | `--body` or `--item` |
 
 **Not create-card kinds** (don't route them here): the responder kinds
 `comment` / `cutter-comment` / `cutter-suggestion` / `revision-suggestion`
@@ -193,10 +193,10 @@ just decides the inputs and invokes it.
   (`author: "ai"` by default); a `report-request` is an *ask*. Answer a request
   by drafting a **new** `report`, never by overwriting the request.
 - **`example`** is **tex-only**: the example *is* a TextObject in the `.tex`
-  (`\vexid{}\ex…\xe`, or `\pex` with `\vxid{}\a` rows); `examples.json` is an
-  app-derived **shadow** (the app reconciles it from the `.tex` on parse), so the
-  skill writes only the `.tex` — no sidecar append, no Task (its lifecycle is
-  "none"). It is a direct create; `--safety-level` and `<requestId>` don't apply.
+  (`\vexid{}\ex…\xe`, or `\pex` with `\vxid{}\a` rows) and exists ONLY there —
+  there is no example sidecar (`examples.json` is retired, task 726: the app
+  neither reads nor writes it). So the skill writes only the `.tex` — no sidecar
+  append, no Task (its lifecycle is "none"). It is a direct create; `--safety-level` and `<requestId>` don't apply.
 
 ## Safety
 
