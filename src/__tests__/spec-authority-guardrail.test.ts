@@ -108,6 +108,29 @@ describe("the historical design-system record is marked as historical", () => {
     ).toBe(HISTORICAL_MARKER);
   });
 
+  it("a Status line cites code by symbol, not by line", () => {
+    // A historical file's BODY describes its own date and may keep the anchors
+    // it was written with. A `> **Status …**` block is different: it claims to
+    // be VERIFIED against today's code, and readers are told to trust it before
+    // acting. A `file:NNN` anchor in one rots on the next edit to that file —
+    // 10-audit.md's Status lines drifted by hundreds of lines within weeks while
+    // still saying "verified" (task 828). Name the symbol or section instead.
+    const LINE_ANCHOR = /\.(?:tsx?|jsx?|mjs|css)(?::|#L)\d+|`:\d+/;
+    const hits: string[] = [];
+    for (const file of HISTORICAL_DOCS) {
+      let inStatus = false;
+      read(file)
+        .split("\n")
+        .forEach((text, i) => {
+          if (/^>\s*\*\*Status\b/.test(text)) inStatus = true;
+          else if (!text.startsWith(">")) inStatus = false;
+          if (!inStatus || text.includes("spec-authority-allow")) return;
+          if (LINE_ANCHOR.test(text)) hits.push(`${file}:${i + 1} — ${text.trim().slice(0, 100)}`);
+        });
+    }
+    expect(hits, "cite `themedCard` / \"Hover utilities\", not `file.tsx:399`").toEqual([]);
+  });
+
   it("keeps the two removed traps removed", () => {
     // `11-style-guide.md` told the reader to overwrite the live spec with a
     // frozen subset; `patches/` was an unapplied proposal that "defined" two of

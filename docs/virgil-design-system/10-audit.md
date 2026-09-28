@@ -9,13 +9,17 @@
 
 > **This is not a worklist any more.** It *was* the worklist for
 > `MIGRATION.md` in April 2026; the migration ran. Every item below now
-> carries a **Status** line verified against the code on 2026-08-09. Eight
-> landed outright, three landed as a primitive whose consumer sweep is
-> incomplete, one was superseded by a different design — and **two of the
-> three items marked "deferred" have since been decided and built**.
+> carries a **Status** line re-verified against the code on 2026-09-28
+> (task 828). **All twelve are closed:** nine landed (the last three — icon
+> buttons, the button variant system, the destructive reds — each with a CI
+> guard), one was superseded by a different design, and the two remaining
+> "deferred" questions were decided and built.
 >
 > Read the Status line before acting on any item. The body under it describes
-> April 2026, not today.
+> April 2026, not today. Status lines name code by **symbol or section**, never
+> by `file:line` — a line anchor in a historical doc rots on the next edit
+> (CI: `spec-authority-guardrail.test.ts` → "a Status line cites code by
+> symbol, not by line").
 
 Twelve concrete drifts in the code *as of April 2026*, each with a fix
 sentence. Items are in **no specific order** — `MIGRATION.md` grouped them by
@@ -23,7 +27,7 @@ pass.
 
 ## 1. `CARD_SELECTED` (amber default) still exists
 
-> **Status — LANDED (verified 2026-08-09).** `CARD_SELECTED*` and `panelCard()` are gone (deee7dfa). `src/components/panel-primitives.tsx:399/:418` expose `themedCard(theme, selected, extra)` + `themedCardStyle` reading `theme.borderSelected`; a theme is required on every card consumer.
+> **Status — LANDED (verified 2026-08-09; re-verified 2026-09-28).** `CARD_SELECTED*` and `panelCard()` are gone (deee7dfa). `src/components/panel-primitives.tsx` exposes `themedCard(theme, selected, extra)` + `themedCardStyle` reading `theme.borderSelected`; a theme is required on every card consumer.
 
 `src/components/panel-primitives.tsx` defines
 `CARD_SELECTED = "bg-surface border-amber-300 shadow-sm"` plus four
@@ -37,8 +41,8 @@ to pass a theme. Replace the four themed siblings with a single helper
 
 ## 2. Hover backgrounds spelled six ways
 
-> **Status — LANDED (verified 2026-08-09; the VALUE axis only — RENEGOTIATED
-> 2026-08-31, task 502).** `.hover-on-light` / `.hover-on-dark` ship in
+> **Status — LANDED + GUARDED (verified 2026-08-09 on the VALUE axis;
+> RENEGOTIATED 2026-08-31, task 502, on the ROLE axis; re-verified 2026-09-28).** `.hover-on-light` / `.hover-on-dark` ship in
 > `src/app/globals.css` ("Hover utilities"). The 2026-08-09 verdict rested on
 > *"zero raw `hover:bg-stone-*` remain"* — still true, and it measures the wrong
 > axis. That sweep converged the **values** onto tokens and never converged the
@@ -56,8 +60,9 @@ to pass a theme. Replace the four themed siblings with a single helper
 > resting bg always called for), and added the CI guard this line said was
 > missing: `src/__tests__/color-token-consumers.test.ts` → "the neutral hover
 > has ONE spelling per resting bg". Three lines remain hand-rolled, each with a
-> `hover-on-light-exempt:` reason at the site. 2 `hover:bg-amber-*` survive as a
-> deliberate status tint in `BibEntryCard.tsx`.
+> `hover-on-light-exempt:` reason at the site. The two `hover:bg-amber-*` status
+> tints that survived in `BibEntryCard.tsx` are gone too (tasks 500/825) —
+> `src/` holds zero `hover:bg-amber-*`.
 >
 > **The generalizable half:** a LANDED verdict measured on one axis is how the
 > other axis stays un-swept with nobody looking. State the axis in the verdict.
@@ -72,7 +77,7 @@ in custom components.
 
 ## 3. Card-header tints use opacity hacks
 
-> **Status — LANDED (verified 2026-08-09).** Header tints are solid hexes derived by `deriveCardPalette` (`src/lib/panel-theme.ts:191-206`, `blendOverWhite`), and `CARD_THEMES` is now a mechanical fold over `DEFAULT_PANEL_COLORS` (`panel-primitives.tsx:460`). No opacity literal remains on any card header.
+> **Status — LANDED (verified 2026-08-09; re-verified 2026-09-28).** Header tints are solid hexes derived by `deriveCardPalette` (`src/lib/panel-theme.ts`, via `blendOverWhite`), and `CARD_THEMES` (`panel-primitives.tsx`) is now a mechanical fold over `DEFAULT_PANEL_COLORS`. No opacity literal remains on any card header.
 
 `bg-red-100/60`, `bg-emerald-100/50`, `bg-[#fdf8e1]/80`, `bg-[#fef3c3]/40`,
 `bg-stone-100/70` etc. throughout `CARD_THEMES` in
@@ -85,7 +90,7 @@ computed from `accent` via `deriveCardPalette` in `panel-theme.ts`.
 
 ## 4. Theme shape is overgrown
 
-> **Status — LANDED (verified 2026-08-09).** 9c63fc49. A row is still nine members, but eight are DERIVED from one authored `accent` hex (`themeFromAccent`, `src/lib/panel-theme.ts:226`), and the `override` sub-palette plus its three appliers are deleted.
+> **Status — LANDED (verified 2026-08-09; re-verified 2026-09-28).** 9c63fc49. A row is still nine members, but eight are DERIVED from one authored `accent` hex (`themeFromAccent`, `src/lib/panel-theme.ts`), and the `override` sub-palette plus its three appliers are deleted.
 
 `CARD_THEMES` rows have nine fields each, mixing Tailwind classnames,
 hex strings, and an optional `override` palette for user-color-picked
@@ -125,7 +130,7 @@ replace with `<Button>`.
 
 ## 7. `text-stone-*` and `border-stone-*` everywhere
 
-> **Status — LANDED (verified 2026-08-09).** `src/` has zero `text-`/`border-`/`bg-stone-*`. The ink/edge/surface utilities are real Tailwind colors (`globals.css:472` `@theme`) and dominate (495/154/58 uses). One straggler: `ring-stone-500` in `PanelThemePicker.tsx:85`.
+> **Status — LANDED (verified 2026-08-09; re-verified 2026-09-28).** `src/` has zero `text-`/`border-`/`bg-`/`ring-stone-*` outside the style guide's own "forbidden" list. The ink/edge/surface utilities are real Tailwind colors (the `@theme` block in `globals.css`). The one 2026-08-09 straggler — `ring-stone-500` on `PanelThemePicker`'s active swatch — now reads `ring-edge-strong`, with a comment at the site citing this item.
 
 The `--ink-*` and `--edge-*` token scales were added in the last pass,
 but ~200 sites still use raw `text-stone-500`, `border-stone-300`, etc.
@@ -144,7 +149,7 @@ but ~200 sites still use raw `text-stone-500`, `border-stone-300`, etc.
 
 ## 8. Footnote rust appears as 5 different hexes
 
-> **Status — LANDED for the STYLESHEET, residuals recorded (verified 2026-08-12, task 2026-07-20-195).** The consumer sweep ran. `globals.css` now holds **zero** raw reds in a rule body — meaning a hex spelled as a declaration's own value; the ~20 surviving `var(--footnote-color, #b45757)`-style FALLBACKS are deliberately out of scope, being the documented idiom and governed as a pinned census by `phantom-css-var.test.ts`. The count was wrong in two directions: there was a **sixth** hex (`#fff5f5`, the footnote/RTF drop-target wash — folded onto `--footnote-50`), and the family reached well past footnotes.
+> **Status — LANDED + GUARDED (verified 2026-08-12, task 2026-07-20-195; re-verified 2026-09-28).** The one residual below is a deliberate visual decision, not an unswept consumer. The consumer sweep ran. `globals.css` now holds **zero** raw reds in a rule body — meaning a hex spelled as a declaration's own value; the ~20 surviving `var(--footnote-color, #b45757)`-style FALLBACKS are deliberately out of scope, being the documented idiom and governed as a pinned census by `phantom-css-var.test.ts`. The count was wrong in two directions: there was a **sixth** hex (`#fff5f5`, the footnote/RTF drop-target wash — folded onto `--footnote-50`), and the family reached well past footnotes.
 >
 > Two surfaces this item never named were painting the same reds with no token at all — the **figure** chrome (`#cc0000` error text, `#b8261a` chrome-danger hover, `#b45757` conflict/warning/delete-hover) and its **twin**, the *heading* label lozenge, which carries the same four destructive declarations (the two rules differ only in layout: the heading warning is `display:block` + `margin-top`, the figure one `inline-block` + `margin-left`). `.math-error` was a third `#cc0000`. And this item never mentioned `--danger`, which had existed the whole time and served the panel/card chrome one directory over.
 >
@@ -165,7 +170,7 @@ golds).
 
 ## 9. Active-tab "swoop" creates visual noise
 
-> **Status — SUPERSEDED (verified 2026-08-09; token DELETED 2026-08-25).** The pseudo-element swoop + filter chain is gone (tombstone at `globals.css:4437`; no `TabBar` exists). It was not flattened — it was rebuilt as the CI-pinned `FolderTabChrome` geometry SSOT (`folder-tab-geometry.ts:69`). See `src/STYLE_GUIDE.md` → *Folder tabs*. `--shadow-ambient-filter` — named below as the chain's shadow — sat at zero consumers for five more weeks and was **deleted** by task 2026-08-25-460; it no longer exists, so the paragraph below is a historical record, not a pointer. A future composited-alpha shadow mints its own token with its first consumer.
+> **Status — SUPERSEDED (verified 2026-08-09; token DELETED 2026-08-25; re-verified 2026-09-28).** The pseudo-element swoop + filter chain is gone (a "Tab swoops removed" tombstone comment in `globals.css`; no `TabBar` exists). It was not flattened — it was rebuilt as the CI-pinned `FolderTabChrome` geometry SSOT (`src/components/chrome/folder-tab-geometry.ts`). See `src/STYLE_GUIDE.md` → *Folder tabs*. `--shadow-ambient-filter` — named below as the chain's shadow — sat at zero consumers for five more weeks and was **deleted** by task 2026-08-25-460; it no longer exists, so the paragraph below is a historical record, not a pointer. A future composited-alpha shadow mints its own token with its first consumer.
 
 The `<TabBar>` active-tab swoop pseudo-element is cute but visually
 loud and uses a complex SVG-outline + filter-shadow chain
@@ -176,7 +181,7 @@ part of this migration; flagged here so it's tracked.
 
 ## 10. Selection ring on inline atoms is amber-hardcoded
 
-> **Status — LANDED (verified 2026-08-09).** 46dfc5a9, and since superseded upward: no amber rgba literal remains in `src/` or `library/`. `globals.css:3078-3093` paints the atom selection ring from the per-kind `--link-anchor-color` (footnotes) and the `--amber-highlight-*` role tokens (citations) — not `--ring-drag-target`.
+> **Status — LANDED (verified 2026-08-09; re-verified 2026-09-28).** 46dfc5a9, and since superseded upward: no amber rgba literal remains in `src/` or `library/`. The atom selection-ring rules in `globals.css` (`[data-card-selected="true"]`) paint the atom selection ring from the per-kind `--link-anchor-color` (footnotes) and the `--amber-highlight-*` role tokens (citations) — not `--ring-drag-target`.
 
 `.footnote-marker[data-card-selected="true"]` and
 `[data-type="citation"][data-card-selected="true"]` both use
@@ -190,7 +195,7 @@ the literal.
 
 ## 11. 6-dot vs 3-line drag handle distinction
 
-> **Status — RESOLVED (verified 2026-08-09).** Deferred here, but decided since — via option (b), drop text-only. `ec38210` deleted the card text-drag grip from `panel-primitives.tsx`, leaving only the 6-dot grip. `MIME_TEXT_INSERT` survives with zero producers.
+> **Status — RESOLVED (verified 2026-08-09; re-verified 2026-09-28).** Deferred here, but decided since — via option (b), drop text-only. `ec38210` deleted the card text-drag grip from `panel-primitives.tsx`, leaving only the 6-dot grip. The orphaned `MIME_TEXT_INSERT` it left behind was then **deleted** outright by task 590; `src/lib/__tests__/drag-mime-production.test.ts` pins its absence.
 
 Two visually-similar handles do near-identical things (drag entity vs
 drag text-only). Documented in `STYLE_GUIDE.md` but a usability risk.
@@ -201,7 +206,7 @@ for follow-up.
 
 ## 12. Marginalia gutter has no overflow design
 
-> **Status — RESOLVED (verified 2026-08-09).** Deferred here, but built since (2026-06-10, chip-A6/R16): the marginalia grid reserves its last cell for a `+K` overflow pill whose popover lists the hidden markers as fully functional marker buttons — `src/lib/marginalia-grid.ts:155-187` + `src/components/Marginalia.tsx:338-420`.
+> **Status — RESOLVED (verified 2026-08-09; re-verified 2026-09-28).** Deferred here, but built since (2026-06-10, chip-A6/R16): the marginalia grid reserves its last cell for a `+K` overflow pill whose popover lists the hidden markers as fully functional marker buttons — the overflow group in `src/lib/marginalia-grid.ts`, rendered by `src/components/Marginalia.tsx`.
 
 The 2-column grid handles a few markers per paragraph. A heavily-
 reviewed paragraph (12+ markers) overflows or collides with the next
@@ -215,16 +220,16 @@ follow-up.
 
 ## Summary
 
-| # | Drift | In migration? | **Status 2026-08-09** |
+| # | Drift | In migration? | **Status 2026-09-28** |
 |---|---|---|---|
 | 1 | `CARD_SELECTED` amber default | yes (Pass 2) | landed |
-| 2 | Hover bg spelled six ways | yes (Pass 3) | landed |
+| 2 | Hover bg spelled six ways | yes (Pass 3) | landed + guarded (task 502) — value AND role axes |
 | 3 | Card-header opacity hacks | yes (Pass 6) | landed |
 | 4 | Theme shape overgrown | yes (Pass 6) | landed |
 | 5 | Icon buttons hand-rolled | yes (Pass 4) | landed + guarded (task 826) — every holdout states its exemption at the site |
 | 6 | No button variant system | yes (Pass 5) | landed + guarded (task 827) — no hand-rolled action pill survives; exemptions stated at the site |
-| 7 | `text-stone-*` everywhere | yes (Pass 7) | landed (1 straggler) |
-| 8 | Footnote rust as 5 hexes | yes (Pass 1) | **partial** — scale shipped, consumers unswept |
+| 7 | `text-stone-*` everywhere | yes (Pass 7) | landed — the one straggler fixed |
+| 8 | Footnote rust as 5 hexes | yes (Pass 1) | landed + guarded (task 195) — one `--danger` role family; `--par-title-color` deliberately outside |
 | 9 | Active-tab swoop noise | deferred | superseded by `FolderTabChrome` |
 | 10 | Amber selection ring hardcoded | yes (Pass 1) | landed, then superseded upward |
 | 11 | 6-dot vs 3-line drag handles | deferred | **decided** — text-only dropped |
@@ -234,9 +239,12 @@ Nine items rolled into the migration; three were deferred as design
 decisions. All three deferred questions have since been answered — two by
 building the thing, one by rebuilding the surface entirely.
 
-The three **partials** are the only live residue in this file, and they share
-one shape: *the primitive landed and the consumer sweep didn't.* None of them
-has a CI guard, which is why they drifted quietly. If you pick one up, file it
-as its own task — and read `src/STYLE_GUIDE.md` first, because the surfaces
-that are hand-rolled **by design** are enumerated there now (they are not part
-of the remaining sweep).
+There is **no live residue** in this file any more. The three items that sat
+longest as partials (#5, #6, #8) shared one shape — *the primitive landed and
+the consumer sweep didn't* — and drifted quietly because none had a CI guard.
+Each closed the same way: the sweep finished AND a census guard landed with it,
+so a new hand-rolled site fails CI rather than waiting for the next audit. A
+drift you find today is a new finding, not a leftover from this list — file it
+as its own task, and read `src/STYLE_GUIDE.md` first, because the surfaces that
+are hand-rolled **by design** are enumerated there (each also states its
+exemption at the site).
