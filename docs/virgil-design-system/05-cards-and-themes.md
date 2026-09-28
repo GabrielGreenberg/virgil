@@ -43,56 +43,29 @@ style); it can't be added to without editing five places.
 
 The new shape is fully data-driven. To add a new theme, add one row.
 
-## The eleven themes
+## The themes and their families
 
-Grouped into four families. Each family shares a *kind* of color, not a
-specific hex.
+Family membership is a code fact: `PANEL_THEME_FAMILIES` in
+`src/lib/panel-theme.ts`, pinned by `panel-theme-families.test.ts` (it
+partitions `PanelThemeKey` exactly). Accent hexes live only in
+`src/lib/panel-theme.defaults.json` — this doc deliberately does not restate
+them, because an unpinned copy drifts (task 824 found this table naming a
+dead `quote` theme and the `comment` CSS token as keys, missing `highlight`
+and `report`, and quoting a status colour as a panel accent).
 
-### Anchored-to-text (warm)
+- **Anchored to text** — `footnote`, `citation`, `bib`, `highlight`,
+  `example`: "this thing lives in the document."
+- **Editorial** — `revision`, `report`, `aiRequest`. AI = sky is a brand
+  commitment; don't change.
+- **Workflow** — `note`, `archive`, `todo`, `cut`: lower visual urgency; they
+  sit in the gutter and wait.
+- **System** — `error` (with `aiRequest`, one of the two non-overridable
+  `SYSTEM_THEME_KEYS`).
 
-| Theme | accent | role |
-|---|---|---|
-| `footnote` | `#b45757` rust | inline footnote |
-| `citation` | `#d4a843` amber | in-text \cite |
-| `bib` | `#b8a968` khaki | bibliography entry |
-| `quote` | `#a16207` warm-yellow | quotation |
-
-These are the "this thing lives in the document" themes. Warm,
-parchment-adjacent.
-
-### Editorial (cool)
-
-| Theme | accent | role |
-|---|---|---|
-| `comment` / `revision` | `#9333ea` purple | comments, revisions |
-| `aiRequest` | `#0ea5e9` sky | AI request drafts |
-
-Cool, distinct from document-attached items. AI = sky is a brand
-commitment; don't change.
-
-### Workflow (neutral)
-
-| Theme | accent | role |
-|---|---|---|
-| `note` | `#15803d` green | margin note |
-| `archive` | `#7191b0` steel-blue | archived snippet |
-| `todo` | `#44403c` stone | task |
-| `cut` | `#b45757` rust | cutter piece |
-
-Workflow items have lower visual urgency than editorial ones. They sit
-in the gutter and wait.
-
-### Errors
-
-| Theme | accent | role |
-|---|---|---|
-| `error` | `#b45757` rust | LaTeX / parse error |
-| `example` | `#0d9488` teal | placeholder docs (rare) |
-
-Note that `cut`, `footnote`, and `error` all use `#b45757` rust as their
-accent. That's fine — they're never adjacent in the same surface, and
-the gutter icon distinguishes them. Don't try to give each one a unique
-hex; you'll run out of warm reds.
+`cut`, `footnote`, and `error` share one rust accent. Where they meet in one
+list (Search), every kinded row renders its scope label, so the colour is
+never the only cue; elsewhere the gutter icon distinguishes them. Don't try
+to give each a unique hex; you'll run out of warm reds.
 
 ## Pre-mix the tints
 

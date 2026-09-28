@@ -18,10 +18,17 @@ import {
 
 /** Return the fully-derived CardTheme for `key`. The accent comes from
  *  the user's color override when one is set; otherwise from
- *  `DEFAULT_PANEL_COLORS`. Re-derives on color change. */
-export function useCardTheme(key: PanelThemeKey): CardTheme {
+ *  `DEFAULT_PANEL_COLORS`. Re-derives on color change.
+ *
+ *  `null` is the row that POINTS AT no kind (a main-text search hit): it
+ *  subscribes all the same (hooks cannot be conditional) and returns `null`,
+ *  which `themedCardStyle` renders neutral — never a stand-in theme (task 824,
+ *  STYLE_GUIDE "No theme is neutral"). */
+export function useCardTheme(key: PanelThemeKey): CardTheme;
+export function useCardTheme(key: PanelThemeKey | null): CardTheme | null;
+export function useCardTheme(key: PanelThemeKey | null): CardTheme | null {
   useThemeVersion();
-  return themeFromAccent(getPanelColor(key));
+  return key === null ? null : themeFromAccent(getPanelColor(key));
 }
 
 /** Subscribe to the global theme-override version counter.

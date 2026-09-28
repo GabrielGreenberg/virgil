@@ -1157,10 +1157,12 @@ function MoreScopesDropdown({
  *  disagree with the very panel it points at once that panel was re-colored. */
 function useScopeAccent(): (scope: SearchScope) => string {
   const colors = useAllPanelColors();
-  return (scope) =>
-    // mainText has no source kind — it stays transparent (rendered as a neutral
-    // stone dot by each call site), exactly as SCOPE_COLOR encodes.
-    scope === "mainText" ? "transparent" : colors[SCOPE_TO_CARD_THEME[scope]];
+  return (scope) => {
+    // A scope with no source kind (mainText) stays transparent (rendered as a
+    // neutral stone dot by each call site), exactly as SCOPE_COLOR encodes.
+    const key = SCOPE_TO_CARD_THEME[scope];
+    return key === null ? "transparent" : colors[key];
+  };
 }
 
 function ScopeChip({
@@ -1219,9 +1221,14 @@ const ResultCard = memo(function ResultCard({
       : { borderLeftColor: color, borderLeftWidth: 3 };
   const scopeLabel = SCOPE_LABEL[result.scope];
   const fieldLabel = result.field ? FIELD_LABEL[result.field] : undefined;
-  const showScopeLabel = result.scope !== "mainText";
+  // Every row that wears a kind's accent names that kind: Search is a MIXED
+  // surface where footnote and cut hits share the rust accent, so the label —
+  // not the colour — is what tells them apart (STYLE_GUIDE, task 824).
+  const showScopeLabel = SCOPE_TO_CARD_THEME[result.scope] !== null;
   // Version-subscribed: this card is `memo`'d on identity-stable props, so the
   // hook subscription is what re-renders it when its source panel is recolored.
+  // `null` for a scope with no source kind (mainText): the row then takes the
+  // neutral selected treatment, never a borrowed theme (task 824).
   const theme = useCardTheme(SCOPE_TO_CARD_THEME[result.scope]);
 
   return (
