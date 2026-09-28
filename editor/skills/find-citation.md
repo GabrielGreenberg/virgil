@@ -314,7 +314,13 @@ skill are: if you can't confidently find a real source for the
 description, take the failure path (two-field: status `failed`,
 result `impossible` — no `.bib` / card write happens):
 ```bash
-python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --result impossible --note "Could not locate a paper matching <criteria>; user should refine the request."
+t=$(mktemp -d -t virgil-txt)
+cat > "$t/note" <<'TXT'
+Could not locate a paper matching <criteria>; user should refine the request.
+TXT
+python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --result impossible --note "@$t/note"; rc=$?
+rm -rf "$t"
+exit "$rc"
 ```
 And reply:
 ```

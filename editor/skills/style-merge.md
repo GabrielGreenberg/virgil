@@ -150,7 +150,13 @@ Skip everything else.
    failure path through the contract (two-field: status `failed`, result
    `impossible`; no `.tex` / settings write happens):
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --result impossible --note "Style merge validation failed: <reason>; .tex left untouched."
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/note" <<'TXT'
+   Style merge validation failed: <reason>; .tex left untouched.
+   TXT
+   python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --result impossible --note "@$t/note"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
    and move on to the next request.
 
@@ -206,7 +212,9 @@ Skip everything else.
   ```
 - Never write the .tex if the body extraction returns an empty body —
   that's a corrupted source file. Take the failure path:
-  `complete-only <requestId> --result impossible --note "Empty body; source looks corrupted; .tex left untouched."`.
+  `complete-only <requestId> --result impossible --note "Empty body; source looks corrupted; .tex left untouched."`
+  (a fixed literal with nothing for the shell to expand, so it stays inline —
+  a note you COMPOSE goes through scratch, [`_op-json.md`](_op-json.md)).
 - This skill is doc-local. Don't touch anything outside `<docPath>/`.
   Every write goes through `apply_response.py` — no Edit-tool edits of
   the `.tex`, `document-settings.json`, or `ai-requests.json`.

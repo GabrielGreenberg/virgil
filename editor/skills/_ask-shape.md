@@ -70,9 +70,18 @@ documents a call that dies. Three tiers:
   holding. Declare the Task kind you are draining and let the contract do
   the write:
   ```bash
+  t=$(mktemp -d -t virgil-txt)
+  cat > "$t/title" <<'TXT'
+  <short title>
+  TXT
+  cat > "$t/body" <<'TXT'
+  <findings>
+  TXT
   python3 editor/scripts/create_card.py <docPath> <requestId> \
       --kind=report --accept-task-kind suggestion --anchor <uuid> \
-      --author ai --title "<short title>" --body "<findings>"
+      --author ai --title "@$t/title" --body "@$t/body"; rc=$?
+  rm -rf "$t"
+  exit "$rc"
   ```
   `--accept-task-kind` is general (a set union over the default 1:1
   `WORKFLOW_A_KINDS`), so any Task kind may be drained by any carded
@@ -121,8 +130,14 @@ needs finding — file it as a **todo card** through Workflow B (no
 `requestId`; `--anchor` supplies the paragraph, the contract synthesizes
 and completes its own Task):
 ```bash
+t=$(mktemp -d -t virgil-txt)
+cat > "$t/body" <<'TXT'
+<what still needs doing, and why>
+TXT
 python3 editor/scripts/create_card.py <docPath> --kind=todo \
-    --anchor <paragraph-uuid> --body "<what still needs doing, and why>"
+    --anchor <paragraph-uuid> --body "@$t/body"; rc=$?
+rm -rf "$t"
+exit "$rc"
 ```
 It lands atomically under the pen, it is VISIBLE to the user in the Todos
 panel rather than buried in a sidecar they never open, and flagging it

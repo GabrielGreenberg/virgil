@@ -73,9 +73,18 @@ two paths:
      a note's body is for commentary, not for a verification result with
      page cites:
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/title" <<'TXT'
+     <short title>
+     TXT
+     cat > "$t/body" <<'TXT'
+     <findings>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
          --accept-task-kind note --accept-task-kind highlight --anchor <uuid> \
-         --author ai --title "<short title>" --body "<findings>"
+         --author ai --title "@$t/title" --body "@$t/body"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
      Declare the Task's **own** kind — this skill drains `note` *and*
      `highlight` (a flagged passage, routed here by `/editor/review`), and the
@@ -110,25 +119,52 @@ two paths:
      anchor is read from the Task. Title is a short descriptive subject phrase
      (no `Re:`), matching the convention of existing notes in `notes.json`:
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/body" <<'TXT'
+     <your reply>
+     TXT
+     cat > "$t/title" <<'TXT'
+     <subject phrase>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
          --accept-task-kind highlight \
-         --body "<your reply>" --title "<subject phrase>"
+         --body "@$t/body" --title "@$t/title"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
    - **Path (c) — sibling note** answering a source note (title `Re: <source title>`):
      - Real `requestId` (bridged flag, `linkedTo.panel == "notes"`): anchor read
        from the Task —
        ```bash
+       t=$(mktemp -d -t virgil-txt)
+       cat > "$t/body" <<'TXT'
+       <your reply>
+       TXT
+       cat > "$t/title" <<'TXT'
+       Re: <source title>
+       TXT
        python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
            --accept-task-kind highlight \
-           --body "<your reply>" --title "Re: <source title>"
+           --body "@$t/body" --title "@$t/title"; rc=$?
+       rm -rf "$t"
+       exit "$rc"
        ```
      - Virtual id (`virtual:notes:<cardId>`, a pre-bridge flag with no Task row):
        pass the source note's paragraph as `--anchor` (from the request's
        `paragraphIds`, or the source note's anchor link) —
        ```bash
+       t=$(mktemp -d -t virgil-txt)
+       cat > "$t/body" <<'TXT'
+       <your reply>
+       TXT
+       cat > "$t/title" <<'TXT'
+       Re: <source title>
+       TXT
        python3 editor/scripts/create_card.py <docPath> virtual:notes:<cardId> \
-           --kind=note --body "<your reply>" --title "Re: <source title>" \
-           --anchor <uuid>
+           --kind=note --body "@$t/body" --title "@$t/title" \
+           --anchor <uuid>; rc=$?
+       rm -rf "$t"
+       exit "$rc"
        ```
 
    `create_card.py` re-validates the anchor against the `.tex` and refuses if it

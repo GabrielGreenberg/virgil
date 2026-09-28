@@ -72,6 +72,7 @@ from _common import (
     read_json,
     resolve_doc,
     sidecar,
+    text_arg,
     title_fields,
 )
 
@@ -687,11 +688,18 @@ def main(argv: list[str]) -> int:
     p.add_argument("doc")
     p.add_argument("request", nargs="?", help="requestId (Workflow A); omit for chat-initiated")
     p.add_argument("--kind", required=True)
-    p.add_argument("--body", help="card body / example text (user/chat supplied)")
+    # Every FREE-TEXT flag (--body/--task-text/--title/--notes/--item) takes
+    # `@<path>` (task 815, `_common.text_arg`): a skill writes the prose through
+    # a quoted heredoc to $TMPDIR scratch, because inside a double-quoted argv
+    # bash eats ``quotes'' and $math$ silently — and a footnote body is spliced
+    # straight into the .tex. editor/skills/_op-json.md states the rule.
+    p.add_argument("--body", type=text_arg,
+                   help="card body / example text (user/chat supplied); @<path> reads a file")
     p.add_argument("--anchor", help="paragraph UUID to anchor at (required for the chat path)")
     p.add_argument("--safety-level", type=int, choices=[1, 2, 3], dest="safety_level")
     p.add_argument("--synthesize", action="store_true", help="synthesize the Task (chat path)")
-    p.add_argument("--task-text", dest="task_text", help="the user's ask, recorded on a synthesized Task")
+    p.add_argument("--task-text", dest="task_text", type=text_arg,
+                   help="the user's ask, recorded on a synthesized Task; @<path> reads a file")
     p.add_argument("--accept-task-kind", action="append", dest="accept_task_kind",
                    help="extra Task kind(s) a Workflow-A create may drain (cross-kind answer, "
                         "e.g. a `note` answering a `todo` Task). Repeatable.")
@@ -706,9 +714,9 @@ def main(argv: list[str]) -> int:
         help="(deprecated, ignored) the margin side now follows the panel dock",
     )
     # note / report
-    p.add_argument("--title", help="card title (note, report)")
+    p.add_argument("--title", type=text_arg, help="card title (note, report); @<path> reads a file")
     # todo
-    p.add_argument("--notes", help="secondary notes field (todo)")
+    p.add_argument("--notes", type=text_arg, help="secondary notes field (todo); @<path> reads a file")
     # report
     p.add_argument("--author", help="report author: human | ai (default ai)")
     # report-request
@@ -719,7 +727,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--cite-command", dest="cite_command", help="cite command name, e.g. citet/citep; DEFAULTS from the document's bib family (bib_family.py) — citet under natbib, textcite under biblatex")
     # example
     p.add_argument("--label", help="\\label{} for an example block")
-    p.add_argument("--item", action="append", help="an example row (repeatable → \\pex/\\a list)")
+    p.add_argument("--item", action="append", type=text_arg,
+                   help="an example row (repeatable → \\pex/\\a list); @<path> reads a file")
     a = p.parse_args(argv[1:])
 
     doc = resolve_doc(a.doc)

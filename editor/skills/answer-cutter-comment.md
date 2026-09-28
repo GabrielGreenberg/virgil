@@ -56,9 +56,18 @@ once — see step 5).
    actually sourced", "check this quote against the original") belongs in a
    report instead:
    ```bash
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/title" <<'TXT'
+   <short title>
+   TXT
+   cat > "$t/body" <<'TXT'
+   <findings>
+   TXT
    python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
        --accept-task-kind suggestion --anchor <uuid> --author ai \
-       --title "<short title>" --body "<findings>"
+       --title "@$t/title" --body "@$t/body"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
    That call drains the Task; emit the report *instead of* a cut, and name
    both kinds in the `Done:` line. **Then skip steps 3–5 and go straight to

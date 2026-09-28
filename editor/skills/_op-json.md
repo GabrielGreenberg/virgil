@@ -1,5 +1,7 @@
-<!-- Canonical "how an op-json reaches the contract" doctrine for every editor
-     skill that calls `apply_response.py` with a positional op argument.
+<!-- Canonical "how free text reaches a Virgil helper" doctrine for every editor
+     skill that calls `apply_response.py` with a positional op argument, or
+     passes a free-text FLAG (`create_card.py --body/--title/--notes/--item/
+     --task-text`, `apply_response.py complete-only --note`) — task 815.
 
      SSOT: this file is the single source of truth for the inline-vs-`@`-file
      rule. It is referenced by link (like `_ask-shape.md` /
@@ -12,8 +14,9 @@
 
      A drift guard (`editor/skills/__tests__/op-scratch-file.test.ts`) holds
      it: the population of free-text sites is DISCOVERED by classifying every
-     `apply_response.py` op invocation in the silo, so a new skill is covered
-     by shipping. Allowlist EMPTY.
+     `apply_response.py` op invocation in the silo, and every free-text FLAG
+     on a `create_card.py` / `apply_response.py` invocation, so a new skill is
+     covered by shipping. Allowlist EMPTY.
 
      Not a slash command — the leading underscore filters it out of the
      command mirror in both build scripts. -->
@@ -131,3 +134,51 @@ breaks on the first apostrophe exactly as an inline op does (task 786). Either p
 payload straight from the script that produced it, so nobody retypes it, or
 write it through a quoted heredoc; and the file is `mktemp` scratch in
 `$TMPDIR`, never a fixed name.
+
+### Free-text FLAGS: the same rule, the `@` prefix on the flag (task 815)
+
+The rule is stated for **any free-text argument to a Virgil helper**, not only
+for an op-json. `create_card.py` takes its prose as **flags**, and a flag is a
+shell argument like any other:
+
+| helper | free-text flags | id flags (stay inline) |
+|---|---|---|
+| `create_card.py` | `--body`, `--title`, `--notes`, `--item`, `--task-text` | `--kind`, `--anchor`, `--safety-level`, `--label`, `--citekey`, `--cite-command`, `--author`, `--accept-task-kind` |
+| `apply_response.py complete-only` | `--note` | `--result`, the request id |
+
+A double-quoted argv is the **silent** failure mode at its purest. Inside
+`"…"` bash treats a backtick as command substitution and `$x` as a variable,
+so LaTeX prose loses its opening quote marks and its math with **exit 0**:
+
+```
+"As ``annotation'' shows, the cost is $n$."  →  As annotation'' shows, the cost is $.
+```
+
+For `--kind=footnote` that mangled body is spliced into the user's `.tex`
+under the pen, `ok: true`. Single quotes do not rescue it either — they break
+on the first apostrophe.
+
+Every free-text flag therefore accepts **`@<path>`** (the op door's own
+convention; the path is resolved, never joined to the doc, and exactly one
+trailing newline — the one a heredoc always adds — is dropped). Write each
+value through a **quoted** heredoc into one `mktemp -d` scratch directory:
+
+```bash
+t=$(mktemp -d -t virgil-txt)
+cat > "$t/title" <<'TXT'
+<short title>
+TXT
+cat > "$t/body" <<'TXT'
+<composed body>
+TXT
+python3 editor/scripts/create_card.py <docPath> <requestId> --kind=<kind> \
+    --title "@$t/title" --body "@$t/body"; rc=$?
+rm -rf "$t"
+exit "$rc"
+```
+
+The same five load-bearing points as the op block apply: terminator at column
+0, `mktemp` (here `-d`, so several flags share one scratch dir), `$TMPDIR`
+never `<docPath>`, `rm` on both paths with `rc` captured first, and the
+heredoc quoted (`<<'TXT'`). A literal value that starts with `@` must also go
+through a file. Id flags stay inline, as id-only ops do.

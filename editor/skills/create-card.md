@@ -86,12 +86,18 @@ full reasoning.
   such flag. It is the one way to synthesize a fresh Task over a
   `virtual:<panel>:<cardId>` id rather than treating it as a card-flag reply,
   and it requires `--anchor` like any synthesized create.
-- `--task-text "<text>"` — the user's ask, recorded on the **synthesized**
+> **Free-text flags take `@<file>`.** `--task-text`, `--body`, `--title`,
+> `--notes` and `--item` carry prose, so each goes through a quoted-heredoc
+> scratch file and is passed as `--body "@$t/body"` — never as a quoted argv,
+> where bash silently eats ``` ``quotes'' ``` and `$math$`. See
+> [`_op-json.md`](_op-json.md) ("Free-text FLAGS") for the rule and the block.
+
+- `--task-text "@<file>"` — the user's ask, recorded on the **synthesized**
   Task (Workflow B). Inert on Workflow A, where the Task already carries the
   user's text.
-- `--body "<text>"` — the card body, **already composed** by you/chat.
-- `--title "<t>"` — title for `note` / `report`.
-- `--notes "<t>"` — secondary notes field for `todo`.
+- `--body "@<file>"` — the card body, **already composed** by you/chat.
+- `--title "@<file>"` — title for `note` / `report`.
+- `--notes "@<file>"` — secondary notes field for `todo`.
 - `--author human|ai` — `report` byline (default `ai`).
 - `--ai-request` — set a `report-request`'s `aiRequest` flag (default off).
 - `--citekey "k1[,k2…]"` — bib key(s) for `citation` (must already be in
@@ -103,7 +109,7 @@ full reasoning.
   value still wins; one that is family-incompatible lands with a `warnings`
   entry on the result json rather than being rewritten (the app's locked
   "warn, never rewrite" decision for this question).
-- `--label "<l>"` / `--item "<row>"` — `\label{}` / a `\pex` row for `example`
+- `--label <l>` / `--item "@<file>"` — `\label{}` / a `\pex` row for `example`
   (`--item` is repeatable → a `\pex`/`\a` list; otherwise `--body` → a single `\ex`).
 - `--margin left|right` — **deprecated, ignored** (accepted so a stale bundle
   doesn't crash). A card's margin side follows its PANEL's dock and is
@@ -136,29 +142,45 @@ just decides the inputs and invokes it.
 
    Workflow A — a Task already exists (anchor + level read from the request):
    ```bash
-   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=<kind> --body "<composed body>"
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/body" <<'TXT'
+   <composed body>
+   TXT
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=<kind> --body "@$t/body"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
 
    Workflow B — chat-initiated, no pre-existing Task (synthesizes one):
    ```bash
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/body" <<'TXT'
+   <composed body>
+   TXT
+   cat > "$t/ask" <<'TXT'
+   <the user's ask>
+   TXT
    python3 editor/scripts/create_card.py <docPath> --kind=<kind> \
-       --body "<composed body>" --anchor <uuid> [--safety-level N] \
-       --task-text "<the user's ask>"
+       --body "@$t/body" --anchor <uuid> [--safety-level N] \
+       --task-text "@$t/ask"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
 
-   Per-kind examples:
+   Per-kind examples (`$t` is a `mktemp -d` scratch dir whose files you wrote
+   through `<<'TXT'` heredocs exactly as above):
    ```bash
    # citation — \vcid{}\citep{key}; key must be in references.bib already
    create_card.py <doc> <reqId> --kind=citation --citekey smith2020 --cite-command citep
    # note / todo — anchored sidecar cards
-   create_card.py <doc> --kind=note --body "…" --title "…" --anchor 4402
-   create_card.py <doc> --kind=todo --body "…" --notes "…" --anchor 4402
+   create_card.py <doc> --kind=note --body "@$t/body" --title "@$t/title" --anchor 4402
+   create_card.py <doc> --kind=todo --body "@$t/body" --notes "@$t/notes" --anchor 4402
    # report / report-request — same reports.json, different on-disk kind
-   create_card.py <doc> --kind=report --body "…" --title "…" --anchor 1101
-   create_card.py <doc> --kind=report-request --body "…" --anchor 2201
+   create_card.py <doc> --kind=report --body "@$t/body" --title "@$t/title" --anchor 1101
+   create_card.py <doc> --kind=report-request --body "@$t/body" --anchor 2201
    # example — a single \ex, or a \pex list of rows
-   create_card.py <doc> --kind=example --body "…" --label ex:foo --anchor 2207
-   create_card.py <doc> --kind=example --item "first row;" --item "second row." --anchor 2208
+   create_card.py <doc> --kind=example --body "@$t/body" --label ex:foo --anchor 2207
+   create_card.py <doc> --kind=example --item "@$t/item1" --item "@$t/item2" --anchor 2208
    ```
 
    `create_card.py` validates the anchor exists in the `.tex`, allocates a

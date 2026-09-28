@@ -48,7 +48,8 @@ matters" (write a note). Read the todo and dispatch.
      ([_ask-shape.md](_ask-shape.md) §4): the builder is self-sufficient, so
      compose the footnote prose yourself and land it in one hop —
      `create_card.py --kind=footnote --accept-task-kind todo --anchor <uuid>
-     --body "…"`. It allocates the `\vfid`, writes `footnotes.json`, splices
+     --body "@$t/body"` (the prose through heredoc scratch — see step 3's
+     block). It allocates the `\vfid`, writes `footnotes.json`, splices
      the `.tex` and drains the todo Task, all atomically. See step 3.
    - **Citation** ("find a source for this", "cite X here") → **tier 2**:
      `create_card.py --kind=citation` requires a `--citekey` already present
@@ -65,9 +66,18 @@ matters" (write a note). Read the todo and dispatch.
      "is this attribution right", "what does X actually say") → the answer
      is **findings**, so emit a **report**, not a note:
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/title" <<'TXT'
+     <short title>
+     TXT
+     cat > "$t/body" <<'TXT'
+     <findings>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
          --accept-task-kind todo --anchor <uuid> --author ai \
-         --title "<short title>" --body "<findings>"
+         --title "@$t/title" --body "@$t/body"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
      That call lands the report and drains the todo Task, so step 3 has
      nothing more to land for it — **continue at step 4** to mark the source
@@ -94,8 +104,17 @@ matters" (write a note). Read the todo and dispatch.
      `status`/`result`, clears the todo's `aiRequest` flag, and bumps the version
      — atomically under the pen:
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/body" <<'TXT'
+     <your note>
+     TXT
+     cat > "$t/title" <<'TXT'
+     <subject>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
-         --accept-task-kind todo --anchor <uuid> --body "<your note>" --title "<subject>"
+         --accept-task-kind todo --anchor <uuid> --body "@$t/body" --title "@$t/title"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
      `create_card.py` picks the subcommand from the Task's `safetyLevel` — none →
      direct create, 1 → silent, 2 → +comment, 3 → **propose** — you don't pick it.
@@ -136,8 +155,14 @@ matters" (write a note). Read the todo and dispatch.
    - **Footnote → one hop.** The tier-1 call from step 2, verbatim; it drains
      the todo Task itself, so there is nothing else to land:
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/body" <<'TXT'
+     <composed footnote prose>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=footnote \
-         --accept-task-kind todo --anchor <uuid> --body "<composed footnote prose>"
+         --accept-task-kind todo --anchor <uuid> --body "@$t/body"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
    - **Verification / lookup → report.** Already landed by step 2's
      `create_card.py --kind=report` call; nothing lands here. Its returned
@@ -145,8 +170,9 @@ matters" (write a note). Read the todo and dispatch.
    - **Citation → handoff.** Nothing lands here: `/editor/find-citation`
      drains the Task. Say in your reply which skill you handed to.
    - **Action you can't take → complete-with-note:** unchanged (step 2) —
-     `apply_response.py <docPath> complete-only <id> --note "<limit>"`;
-     it creates no card.
+     `apply_response.py <docPath> complete-only <id> --note "@$t/note"`,
+     the limit written to heredoc scratch like any free text
+     ([`_op-json.md`](_op-json.md)); it creates no card.
 
 4. **Finalize the source todo by the returned outcome** — don't mark a proposal
    done. The rule is keyed on the JSON `status` the landing call returned, not
@@ -219,7 +245,7 @@ matters" (write a note). Read the todo and dispatch.
   and a raw write bypasses the pen, the version bump and the notification that
   `apply_response.py` owns. Work you cannot finish in this run is a **todo
   card** (Workflow B: `create_card.py <docPath> --kind=todo --anchor <uuid>
-  --body "…"`), which the user can see and flag for AI later.
+  --body "@$t/body"`, the body in heredoc scratch), which the user can see and flag for AI later.
 - Suggestion cards land via the contract's `complete-task --propose` path with
   `status: "pending"`, the Task left awaiting review — the user always reviews,
   and the `.tex` changes only when they accept (`/editor/accept-suggestion`).

@@ -72,9 +72,18 @@ source request in place.
      right", "what does the source actually say"? → emit a **report**,
      which is where findings belong:
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/title" <<'TXT'
+     <short title>
+     TXT
+     cat > "$t/body" <<'TXT'
+     <findings>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
          --accept-task-kind suggestion --anchor <uuid> --author ai \
-         --title "<short title>" --body "<findings>"
+         --title "@$t/title" --body "@$t/body"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
      Emit the report *instead of* a suggestion, not alongside one. That call
      drains the Task, so **skip steps 3–5 and go straight to the path-(b)
