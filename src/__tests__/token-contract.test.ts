@@ -169,3 +169,32 @@ describe("the live spec agrees with globals.css", () => {
     expect(wrong).toEqual([]);
   });
 });
+
+/**
+ * Task 814 — the panel-header prose names only what ships. The iconbtn
+ * exemption list once exempted a `PanelHeader` "Add (blue) / AI-request (sky)"
+ * pair that no longer existed (the Add button is plain `iconbtn-sm`; AI
+ * requests are per-card), telling auditors to skip a surface whose premise was
+ * gone. And the seamless-header rule's one exception (Outline's hairline) must
+ * be recorded where the rule is stated, for as long as the code draws it.
+ */
+describe("the panel-header spec matches the shipped header", () => {
+  const guide = readFileSync(path.join(ROOT, "src/STYLE_GUIDE.md"), "utf8");
+
+  it("the iconbtn exemption list names no PanelHeader control", () => {
+    const start = guide.indexOf("**What `iconbtn-*` deliberately does NOT model.**");
+    expect(start).toBeGreaterThan(-1);
+    const end = guide.indexOf("\n\n**", start + 1);
+    expect(guide.slice(start, end)).not.toMatch(/PanelHeader/);
+  });
+
+  it("Outline's header divider is sanctioned in the Panels section iff it ships", () => {
+    const outline = readFileSync(
+      path.join(ROOT, "src/panels/Outline/OutlinePanel.tsx"),
+      "utf8",
+    );
+    const ships = /panelExtras=\{<div className="[^"]*\bh-px\b/.test(outline);
+    const sanctioned = guide.includes("**The one sanctioned header divider: Outline.**");
+    expect(sanctioned).toBe(ships);
+  });
+});

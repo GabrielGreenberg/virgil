@@ -874,8 +874,6 @@ a finding:
 - Topbar / sidebar-strip / tab-close buttons with accent-text hover or
   stateful `aria-pressed`-style active styling (`bg-[var(--accent-light)]`
   + inset shadow). Their own utility is `.topbarbtn` (see **Interaction**).
-- `PanelHeader` Add (blue) and AI-request (sky) buttons — the colored
-  accent hover is an intentional category cue.
 - Formatting toolbars (`BibEntryCard`, `RichTextField`, `MenuBar`, the
   floating toolbar shell) — own active-state styling plus a dark-context
   inverted variant `iconbtn-*` can't express.
@@ -1531,6 +1529,17 @@ Panel pods are **borderless warm sheets**: `--pod-panel` fill, a larger
 continuous sheet. Separation between stacked pods comes from the cream
 `--pod-gap` gutter + each sheet's shadow — not a border. Don't add
 backdrops, glows, gradients, a border, or a header divider.
+
+**The one sanctioned header divider: Outline.** `OutlinePanel` passes a
+1px inset hairline (`mx-3 h-px bg-[var(--border)]`) as its `panelExtras`.
+It is deliberate (a 2026-06-22 polish request, the day after the seamless
+rule landed), not drift: Outline's `variant="raw"` body is a dense tree
+that scrolls flush under the header with no card gutter, so without a
+line its first row butts straight against the title. Other `raw` panels
+(Search, Errors) open on a search field / padded list and don't need one.
+The header's own controls are all ordinary `iconbtn-sm` buttons — Add
+included; no header control has a colored category hover. Don't copy the
+divider to another panel; a new case earns its own entry here.
 
 ### The seam — separation by elevation, never by a field moat
 
