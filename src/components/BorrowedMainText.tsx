@@ -189,17 +189,11 @@ export function BorrowedMainText({
   // the declared 15px (or a stepped override).
   useEffect(() => {
     if (!editor) return;
-    // We mutate the live ProseMirror DOM node's inline style, not the `editor`
-    // hook value — React Compiler's `react-hooks/immutability` rule can't tell
-    // the two apart and flags `editor cannot be modified`. RichTextField.tsx
-    // ships this same error on its identical panel-typography effect (the
-    // codebase-accepted norm); we suppress it here so the touched file stays
-    // lint-clean.
     // The four properties come from the ONE mapping the static tiers use
-    // (`borrowed-body-style.ts`, task 823).
-    /* eslint-disable react-hooks/immutability */
+    // (`borrowed-body-style.ts`, task 823). The write goes through a helper
+    // taking the DOM node, so no `react-hooks/immutability` suppression is
+    // needed here any more.
     applyBorrowedBodyStyle(editor.view.dom as HTMLElement, bodyStyle);
-    /* eslint-enable react-hooks/immutability */
   }, [editor, bodyStyle]);
 
   return <EditorContent editor={editor} className={className} style={style} />;

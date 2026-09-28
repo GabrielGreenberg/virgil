@@ -3,7 +3,7 @@
 // Wave-3 T1 — renderBorrowedHtml: the static-HTML render SSOT for collapsed
 // borrowed card bodies. Pins the three contracts the tier system leans on:
 //
-//  1. FIDELITY — the HTML comes from generateHTML over the SAME extension
+//  1. FIDELITY — the HTML comes from a DOMSerializer over the SAME extension
 //     list the live BorrowedMainText mounts (buildCardBodySchema at the
 //     scope), so every borrowed atom serializes with its data-type marker,
 //     citations carry the RESOLVED display text (the refreshCitationDisplay
