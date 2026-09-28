@@ -427,7 +427,10 @@ function parity(
   const norm = tokenized(before);
   return {
     legacy: canonical(norm.html),
-    shipped: canonical(after),
+    // `data-iconbtn-exempt` is the icon-button census's site annotation (task
+    // 826) — a stated reason a control is not on `iconbtn-*`, read by a test,
+    // painting nothing. It is not chrome, so it is not drift.
+    shipped: canonical(after.replace(/ data-iconbtn-exempt="[^"]*"/g, "")),
     substitutions: norm.substitutions,
     a11y: norm.a11y,
   };

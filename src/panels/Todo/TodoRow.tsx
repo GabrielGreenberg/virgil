@@ -40,6 +40,7 @@ export function TodoDoneToggle({
 }) {
   return (
     <button
+      data-iconbtn-exempt="checkbox glyph: its checked/unchecked art is the affordance"
       onClick={(e) => {
         e.stopPropagation();
         onToggle(item.id);

@@ -1545,7 +1545,7 @@ function CitationKeyRow({
                 e.stopPropagation();
                 setPgOpen(false);
               }}
-              className="text-[var(--muted)] hover:text-ink-body p-0.5 focus-ring"
+              className="iconbtn-xs iconbtn-meta"
               {...iconHint({ label: "Close" })}
             >
               <svg
@@ -1660,7 +1660,7 @@ function CitationKeyRow({
                 e.stopPropagation();
                 onRemove();
               }}
-              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-body hover:text-danger hover-on-light opacity-0 group-hover/row:opacity-100 focus-ring"
+              className="iconbtn-sm iconbtn-danger-hover opacity-0 group-hover/row:opacity-100"
               {...iconHint({ label: "Remove this row" })}
             >
               <svg
@@ -1774,9 +1774,9 @@ function CitationKeyRow({
               e.stopPropagation();
               onRemove();
             }}
-            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-[var(--muted)] hover:text-danger hover-on-light opacity-0 group-hover/row:opacity-100 ${
+            className={`iconbtn-sm iconbtn-meta iconbtn-danger-hover opacity-0 group-hover/row:opacity-100 ${
               !canRemove ? "pointer-events-none" : ""
-            } focus-ring`}
+            }`}
             {...iconHint({ label: "Remove this key" })}
           >
             <svg

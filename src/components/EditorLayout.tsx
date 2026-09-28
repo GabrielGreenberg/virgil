@@ -3603,7 +3603,7 @@ export default function EditorLayout() {
                               <button
                                 type="button"
                                 onClick={() => setErrorsSidebarOpen(false)}
-                                className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none focus-ring"
+                                className="iconbtn-sm absolute top-2 right-2 z-10 text-sm leading-none"
                                 {...iconHint({ label: "Hide errors panel" })}
                               >
                                 ×

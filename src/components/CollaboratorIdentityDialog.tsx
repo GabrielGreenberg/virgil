@@ -110,6 +110,7 @@ export default function CollaboratorIdentityDialog({
                 const selected = c.hex.toLowerCase() === color.toLowerCase();
                 return (
                   <button
+                    data-iconbtn-exempt="color swatch: the fill IS the control"
                     key={c.hex}
                     type="button"
                     onClick={() => setColor(c.hex)}

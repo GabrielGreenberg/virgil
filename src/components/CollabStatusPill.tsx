@@ -281,7 +281,7 @@ function CollabStatusPill({
         {...iconHint({ label: "Collaborator options" })}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className="w-5 h-5 inline-flex items-center justify-center rounded hover-on-dark text-ink-subtle focus-ring"
+        className="iconbtn-sm iconbtn-on-dark"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <circle cx="5" cy="12" r="1.6" />

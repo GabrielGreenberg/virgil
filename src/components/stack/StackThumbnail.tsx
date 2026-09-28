@@ -89,6 +89,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
         {summary || "(empty)"}
       </div>
       <button
+        data-iconbtn-exempt="remove badge on a stack thumbnail: inline-styled overlay geometry"
         className="focus-ring"
         type="button"
         data-stack-thumb-x="true"

@@ -66,6 +66,7 @@ export function InstallPwaPrompt() {
       </button>
       <span>for one-click reopens.</span>
       <button
+        data-iconbtn-exempt="inline text glyph sized by its text line, not a box"
         type="button"
         onClick={() => {
           localStorage.setItem(DISMISSED_KEY, "1");

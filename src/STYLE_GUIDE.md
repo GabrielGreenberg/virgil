@@ -866,10 +866,19 @@ Tailwind spacing utility passes only as a `var(…)` or with the `aligns:` note
 (task 821). `--pod-gap: 10px` is the canonical pod-to-pod gap;
 don't override.
 
-Three icon-button sizes: `iconbtn-sm` (20×20), `iconbtn-md` (24×24,
-default), `iconbtn-lg` (32×32). The visual SVG inside is smaller than
-the button (14, 16, 20 respectively); the whitespace is the click
-target.
+Four icon-button sizes: `iconbtn-xs` (16×16 — card/float header
+chevrons, dense-row dismiss X's), `iconbtn-sm` (20×20), `iconbtn-md`
+(24×24, default), `iconbtn-lg` (32×32). The visual SVG inside is smaller
+than the button (12 — forced by the utility —, 14, 16, 20 respectively);
+the whitespace is the click target. Pick the size that matches the box
+the control renders; a loose `p-0.5` around a 10–12px glyph is `xs`.
+
+**Every icon-only `<button>` wears one — or says why not, at the site**
+(task 826). CI (`icon-button-a11y-guardrail.test.ts`, leg E, no allowlist)
+requires `iconbtn-{size}` / `topbarbtn` in the tag, or a
+`data-iconbtn-exempt="<reason>"` attribute naming one of the exceptions
+below (or another real reason a reviewer can argue with). The reason
+travels with the code, so the next copy-paste sees it.
 
 **What `iconbtn-*` deliberately does NOT model.** These are icon-only
 buttons in shape but not in spec terms; each has state or context the
@@ -901,7 +910,7 @@ silent bug where it does not. The vocabulary:
 | `iconbtn-danger` | `--danger` at rest AND hover, on `--danger-soft` — a control that reads destructive at a glance (a card's trash button) |
 | `iconbtn-danger-hover` | default rest, `--danger` on `--danger-soft` when you reach for it — a per-row remove X |
 | `iconbtn-toggle` | the accent-on-tint "this mode is on" state, at `aria-pressed="true"` |
-| `iconbtn-on-dark` | the low-alpha hover fill for a button on a tinted card header (currently unused — see the census) |
+| `iconbtn-on-dark` | the low-alpha hover fill for a button on a tinted parent — the bar-pill kebabs, the Bibliography amber request strip |
 
 **Naming is a rule, not a habit:** `iconbtn-<role>` states the ink at REST (and
 owns its own hover); `iconbtn-<role>-hover` states the HOVER ink only. A rest-ink
@@ -1486,7 +1495,12 @@ it. A non-primary (right/middle) press is guarded out at the top of the
 handler (`if (e.button !== 0) return`) so it passes through with its
 native behavior intact. Inline kinds disable the button (40% opacity,
 not-allowed) while the card is an empty/keyless draft — there is no atom
-to anchor yet.
+to anchor yet; that disabled button keeps pointer events (inline, against
+`.iconbtn-*[disabled]`'s `pointer-events: none`) so its "Add a citation
+key to anchor" hint still shows. **The popped float renders the SAME two
+components** (`FloatChrome` → `CardJumpChevron` / `CardDropButton`, with
+`onPress` for the text-object lift and `inert` for the lift ghost) — one
+box (`iconbtn-xs`), one hover, docked or floating (task 826).
 
 **Same glyph, domain-dispatched gesture core (text-object floats).** The
 drop button is now on **popped-out text-object floats too** (not just

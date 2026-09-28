@@ -126,7 +126,7 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
       <button onMouseDown={(e) => { e.preventDefault(); exec("underline"); }}
         className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-ink-body hover-on-light" data-hint="Underline">U</button>
       <div className="w-px h-4 bg-edge-subtle mx-0.5" />
-      <button onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
+      <button data-iconbtn-exempt="formatting toolbar: own active state + dark-context variant (STYLE_GUIDE)" onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
         className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light focus-ring" {...iconHint({ label: "Bullet list" })}>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="2" cy="4" r="1.5" /><rect x="5" y="3" width="10" height="2" rx="0.5" />
@@ -570,8 +570,9 @@ export default function BibEntryCard({
       <div className="mt-1.5 inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <span className="text-xs card-mono text-ink-muted break-all">{entry.key}</span>
         <button
+          type="button"
           onClick={handleCopyKey}
-          className="p-0.5 text-ink-faint hover:text-ink-subtle transition-colors focus-ring"
+          className="iconbtn-xs iconbtn-meta"
           {...iconHint({ label: "Copy cite key" })}
         >
           {copied ? (
@@ -830,6 +831,7 @@ export default function BibEntryCard({
           onMouseDown={(e) => e.stopPropagation()}
         >
           <button
+            data-iconbtn-exempt="inline text glyph sized by its text line, not a box"
             onClick={(e) => { e.stopPropagation(); occurrenceInfo!.onCycle(-1); }}
             className="hover:text-ink-body flex items-center focus-ring"
             {...iconHint({ label: "Previous occurrence" })}
@@ -840,6 +842,7 @@ export default function BibEntryCard({
           </button>
           <span className="card-mono tabular-nums">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
           <button
+            data-iconbtn-exempt="inline text glyph sized by its text line, not a box"
             onClick={(e) => { e.stopPropagation(); occurrenceInfo!.onCycle(1); }}
             className="hover:text-ink-body flex items-center focus-ring"
             {...iconHint({ label: "Next occurrence" })}

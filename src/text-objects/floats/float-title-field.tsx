@@ -137,6 +137,7 @@ export function FloatTitleField({
         <>
           <span className="par-title-text">{title}</span>
           <button
+            data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
             type="button"
             className="par-title-delete focus-ring"
             {...iconHint({ label: "Remove title" })}

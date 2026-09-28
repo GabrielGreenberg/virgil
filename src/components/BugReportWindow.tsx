@@ -385,6 +385,7 @@ export default function BugReportWindow({
                       className="h-16 w-auto max-w-28 object-cover rounded border border-edge-subtle"
                     />
                     <button
+                      data-iconbtn-exempt="bordered control: its border/fill is the affordance, not a hover lozenge"
                       onClick={() => removeImage(img.id)}
                       disabled={sending}
                       className="focus-ring absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-[var(--surface)] border border-edge-subtle text-ink-muted hover:text-ink-body flex items-center justify-center"

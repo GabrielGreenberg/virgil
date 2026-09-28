@@ -444,6 +444,7 @@ export default function PaperHeader({
               </code>
               {citekey && (
                 <button
+                  data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
                   className="focus-ring"
                   type="button"
                   onClick={() => {

@@ -127,13 +127,6 @@ const PERMITTED_UNPRODUCED_CLASSES: Record<string, Unproduced> = {
       "Its siblings -xs/-sm/-md are all consumed; only -lg has no current caller. " +
       "Dropping a documented step out of a size scale is a design-system decision.",
   },
-  "iconbtn-on-dark": {
-    kind: "routed",
-    why:
-      "A documented `iconbtn-*` variant (dark-overlay hover) that " +
-      "docs/virgil-design-system/questions-for-gabriel.md records as adopted by " +
-      "TargetIcon/TargetFileIcon — a claim that is no longer true. Same call as -lg.",
-  },
   "is-menu-open": {
     kind: "routed",
     why:

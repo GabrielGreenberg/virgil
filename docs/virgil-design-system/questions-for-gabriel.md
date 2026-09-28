@@ -42,7 +42,7 @@ Options:
 
 Pass 6 reworked the card-header shape; this is a Pass 6 follow-up if you want it.
 
-**Resolution.** First option taken. `iconbtn-on-dark` lives at [src/app/globals.css:294-305](src/app/globals.css) and is adopted by `TargetIcon` / `TargetFileIcon` in [src/components/panel-primitives.tsx:1481,1512](src/components/panel-primitives.tsx).
+**Resolution.** First option taken. `iconbtn-on-dark` lives in `src/app/globals.css` ("Dark-context variant"). Its original adopters (`TargetIcon` / `TargetFileIcon`) were deleted; since task 826 it is worn by the bar-pill kebabs (`BarStatusPill`, `CollabStatusPill`) and the Bibliography panel's amber request-strip dismiss X's.
 
 ## 4. Does `iconbtn-*` need an accent / active variant? — `RESOLVED`
 

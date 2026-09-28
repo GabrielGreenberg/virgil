@@ -241,6 +241,7 @@ function LinkEdgeRow({
     <div className="flex items-center gap-2 pl-6 py-0.5 text-[10.5px] text-ink-muted">
       <span className="text-ink-faint">↳</span>
       <button
+        data-iconbtn-exempt="accent-when-active ink (a lock) that iconbtn-* color would override"
         onClick={handleLockToggle}
         className={`shrink-0 p-0.5 rounded transition-colors ${locked ? "text-[var(--accent)]" : "text-ink-faint hover:text-ink-muted"} focus-ring`}
         {...iconHint({ label: locked ? "Unlock: child stays independent" : "Lock: child tracks parent + delta" })}

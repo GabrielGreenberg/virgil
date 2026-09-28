@@ -1105,6 +1105,18 @@ body[data-zen-mode="on"] {
   outline: 2px solid var(--edge-strong);
   outline-offset: 0;
 }
+/* A disabled icon button paints no hover state — the same completion the
+   `.hover-on-light[disabled]:hover` rule states for that family. Moot while
+   the rule below kills pointer events; load-bearing for the one control that
+   re-enables them inline to keep its disabled HINT reachable
+   (`CardDropButton`, task 826). (0,3,0) beats the (0,2,0) hover rules. */
+.iconbtn-xs[disabled]:hover,
+.iconbtn-sm[disabled]:hover,
+.iconbtn-md[disabled]:hover,
+.iconbtn-lg[disabled]:hover {
+  background-color: transparent;
+  color: var(--ink-muted);
+}
 .iconbtn-xs[disabled],
 .iconbtn-sm[disabled],
 .iconbtn-md[disabled],

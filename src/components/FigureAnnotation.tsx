@@ -225,6 +225,7 @@ export default function FigureAnnotation({
           accessible-name-agrees-with-visible-control.test.tsx, member 3). */}
       {interactive ? (
         <button
+          data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
           className={`figure-annotation-numbered-toggle focus-ring${
             canNumber ? (numbered ? "" : " is-off") : " is-unavailable"
@@ -343,6 +344,7 @@ export default function FigureAnnotation({
       )}
       {interactive && (
         <button
+          data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
           className="figure-annotation-delete focus-ring"
           {...iconHint({ label: "Delete figure" })}

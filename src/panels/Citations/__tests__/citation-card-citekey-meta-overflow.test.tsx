@@ -99,6 +99,8 @@ describe("citation card — citekey meta row overflow contract (task 270)", () =
     // Sanity: the trailing remove control is shrink-0 (won't compress) — the
     // reason the row must bound its leading content instead.
     const removeBtn = screen.getByRole("button", { name: "Remove this key" });
-    expect(removeBtn.className).toContain("shrink-0");
+    // Task 826: the box is `.iconbtn-sm`, which declares `flex-shrink: 0`
+    // in globals.css (jsdom reads no stylesheet, so the class is the proof).
+    expect(removeBtn.className).toMatch(/(?<![\w-])(?:shrink-0|iconbtn-(?:xs|sm|md|lg))(?![\w-])/);
   });
 });

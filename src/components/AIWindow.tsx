@@ -1189,6 +1189,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       </div>
       {req.onCancel && (
         <button
+          data-iconbtn-exempt="inline text glyph sized by its text line, not a box"
           onClick={handleCancel}
           className="shrink-0 text-[10px] text-ink-muted hover:text-danger-muted transition-colors px-1 focus-ring"
           {...iconHint({ label: "Cancel" })}

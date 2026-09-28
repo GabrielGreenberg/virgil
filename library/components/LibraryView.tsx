@@ -935,6 +935,7 @@ export default function LibraryView({
             {syncError.permission ? "Grant & retry" : "Retry"}
           </button>
           <button
+            data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
             className="focus-ring"
             onClick={onDismissSyncError}
             aria-label="Dismiss skill-sync error"

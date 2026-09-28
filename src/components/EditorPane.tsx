@@ -7370,8 +7370,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   <div className="absolute top-0 left-0 right-0 h-6 pointer-events-auto" aria-hidden="true" />
                   <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 pointer-events-auto">
                     <button
+                      type="button"
                       onClick={() => innerRef.current?.expandAllSections()}
-                      className="text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+                      className="iconbtn-xs iconbtn-meta"
                       {...iconHint({ label: "Expand all sections" })}
                     >
                       <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -7380,8 +7381,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       </svg>
                     </button>
                     <button
+                      type="button"
                       onClick={() => innerRef.current?.collapseAllSections()}
-                      className="text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+                      className="iconbtn-xs iconbtn-meta"
                       {...iconHint({ label: "Collapse all sections" })}
                     >
                       <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -7622,6 +7624,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                           Margins
                         </span>
                         <button
+                          data-iconbtn-exempt="22px bordered circle in the editor margin: its own round geometry"
                           type="button"
                           onClick={cancelMarginEdit}
                           {...iconHint({ label: "Cancel margin edit", hint: "Discard margin changes (Esc)" })}
@@ -7642,6 +7645,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                           </svg>
                         </button>
                         <button
+                          data-iconbtn-exempt="22px bordered circle in the editor margin: its own round geometry"
                           type="button"
                           onClick={saveMarginEdit}
                           {...iconHint({ label: "Save margins" })}

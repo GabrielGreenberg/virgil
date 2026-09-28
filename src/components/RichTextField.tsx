@@ -169,6 +169,7 @@ function FormatToolbar({
       >Sc</button>
       <div className={dividerClass} />
       <button
+        data-iconbtn-exempt="formatting toolbar: own active state + dark-context variant (STYLE_GUIDE)"
         onMouseDown={(e) => { e.preventDefault(); runWrapper("bulletList"); }}
         className={btnClass}
         disabled={!bulletOk}

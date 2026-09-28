@@ -578,6 +578,7 @@ export function ViewMenu({
   return (
     <div className="relative flex items-center">
       <button
+        data-iconbtn-exempt="formatting toolbar: own active state + dark-context variant (STYLE_GUIDE)"
         ref={setTrigger}
         onClick={() => setOpen(!open)}
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"} focus-ring`}
@@ -788,6 +789,7 @@ function MenuBarContent({
         <div className="flex items-stretch gap-1 flex-row">
           {onParaNavBack && (
             <button
+              data-iconbtn-exempt="16x20 para-nav arrow in the MenuBar pod (MenuBar is toolbar-exempt)"
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               {...iconHint({ label: "Go back" })}
@@ -801,6 +803,7 @@ function MenuBarContent({
           )}
           {onParaNavForward && (
             <button
+              data-iconbtn-exempt="16x20 para-nav arrow in the MenuBar pod (MenuBar is toolbar-exempt)"
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
               {...iconHint({ label: "Go forward" })}

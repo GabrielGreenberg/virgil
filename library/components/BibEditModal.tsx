@@ -313,6 +313,7 @@ function Header({
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <ModeToggle mode={mode} onChange={onSwitchMode} />
         <button
+          data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
           className="focus-ring"
           type="button"
           aria-label="Close"
@@ -594,6 +595,7 @@ function ExtraRows({
             style={inputStyle}
           />
           <button
+            data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
             className="focus-ring"
             type="button"
             onClick={() => removeRow(r.id)}

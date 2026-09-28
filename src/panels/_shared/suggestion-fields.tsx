@@ -198,6 +198,7 @@ export function CopyButton({ text }: { text: string }) {
   };
   return (
     <button
+      data-iconbtn-exempt="inline text glyph sized by its text line, not a box"
       type="button"
       onClick={handle}
       onMouseDown={(e) => e.stopPropagation()}
@@ -242,6 +243,7 @@ export function FieldTitleRow({
       <div className="flex items-center gap-1.5 min-w-0">
         {onToggleFold && (
           <button
+            data-iconbtn-exempt="outline chevron: sub-spec glyph box by design (STYLE_GUIDE)"
             type="button"
             onClick={(e) => {
               e.stopPropagation();

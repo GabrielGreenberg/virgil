@@ -668,11 +668,7 @@ function BibliographyPanel({
       <button
         type="button"
         onClick={handleToggleSearch}
-        className={`w-6 h-6 flex items-center justify-center rounded-md ${
-          showSearch
-            ? "text-ink-body bg-surface-muted"
-            : "text-ink-muted hover:text-ink-body hover-on-light"
-        } focus-ring`}
+        className="iconbtn-md iconbtn-toggle"
         {...iconHint({ label: showSearch ? "Close search" : "Search" })}
         aria-pressed={showSearch}
       >
@@ -772,8 +768,9 @@ function BibliographyPanel({
               </button>
             </div>
             <button
+              type="button"
               onClick={closeSearch}
-              className="text-ink-muted hover:text-ink-body p-0.5 shrink-0 focus-ring"
+              className="iconbtn-xs"
               {...iconHint({ label: "Close search" })}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -854,7 +851,8 @@ function BibliographyPanel({
                 setShowRequestForm(false);
                 setRequestText("");
               }}
-              className="ml-auto text-ink-muted hover:text-ink-body p-0.5 focus-ring"
+              type="button"
+              className="iconbtn-xs iconbtn-on-dark ml-auto"
               {...iconHint({ label: "Cancel" })}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -914,8 +912,9 @@ function BibliographyPanel({
                 {req.description}
               </p>
               <button
+                type="button"
                 onClick={() => onRemoveEntryRequest(req.id)}
-                className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 focus-ring"
+                className="iconbtn-xs iconbtn-on-dark"
                 {...iconHint({ label: "Dismiss", pos: "above" })}
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">

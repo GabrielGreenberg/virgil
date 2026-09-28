@@ -273,12 +273,13 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // (+24/+22, red on main at dd5c1191); task 823 added the static-safety
       // read + the T0 summary wrapper +1 above the first and +22 above these
       // two; task 824 added the neutral selected-border door +10 above these
-      // two): the SITES are the
+      // two; task 826 grew the jump/drop chevron docs + the drop button's
+      // `onPress`/`inert` props +29 above these two): the SITES are the
       // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
       // variants. `file:line` is this leg's own stated reporting form, so an
       // unrelated edit above a site costs a number update here.
-      "src/components/panel-primitives.tsx:2275",
-      "src/components/panel-primitives.tsx:2281",
+      "src/components/panel-primitives.tsx:2304",
+      "src/components/panel-primitives.tsx:2310",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });
@@ -401,7 +402,10 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     "src/components/CollabStatusPill.tsx",
   ])("hovers %s's kebab on the DARK variant, like its siblings", (rel) => {
     const src = strip(readFileSync(path.join(REPO_ROOT, rel), "utf8"), true);
-    expect(src).toContain("rounded hover-on-dark text-ink-subtle focus-ring");
+    // Task 826: the hand-rolled `w-5 h-5 … rounded hover-on-dark` box became
+    // the utility's own context variant — same 20px box, same low-alpha
+    // darken, and `--ink-subtle` === `--ink-muted` at rest.
+    expect(src).toContain(`className="iconbtn-sm iconbtn-on-dark"`);
   });
 });
 
@@ -650,8 +654,8 @@ describe("an icon button states its ink through an iconbtn- VARIANT", () => {
   /** A variant declared with no caller, and the reason it is allowed to stay.
    *  This list may only SHRINK — an entry is a claim, not a habit. */
   const PERMITTED_UNUSED_VARIANTS: Record<string, string> = {
-    "iconbtn-on-dark":
-      "a CONTEXT variant (the hover fill for an icon button on a tinted card header), correct and well-named; its consumers left with the deleted TargetIcon/TargetFileIcon. Whether a tinted-header icon button needs it TODAY is a visual question a worktree cannot answer — routed rather than guessed.",
+    // (empty since task 826: `iconbtn-on-dark` is worn by the two bar-pill
+    // kebabs and the Bibliography panel's amber request-strip dismiss X.)
   };
 
   it("keeps no variant that nothing spells", () => {

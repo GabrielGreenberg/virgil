@@ -890,6 +890,7 @@ function PinButton({
   const activeColor = pinned ? PIN_ACTIVE_COLOR : idleColor;
   return (
     <button
+      data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
       className="focus-ring"
       type="button"
       onClick={(e) => {
@@ -952,6 +953,7 @@ function CloseButton({
 }) {
   return (
     <button
+      data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
       className="focus-ring"
       type="button"
       onClick={(e) => {
@@ -1002,6 +1004,7 @@ const AddTabButton = forwardRef<HTMLButtonElement, { onClick: () => void }>(
   function AddTabButton({ onClick }, ref) {
   return (
     <button
+      data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
       className="focus-ring"
       ref={ref}
       type="button"
@@ -1062,6 +1065,7 @@ function TabMenuTrigger({
       }}
     >
       <button
+        data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
         className="focus-ring"
         ref={btnRef}
         type="button"

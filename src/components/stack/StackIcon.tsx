@@ -130,6 +130,7 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
 
   return createPortal(
     <button
+      data-iconbtn-exempt="portal pill: elevation is inline box-shadow (see unringed allowlist)"
       ref={ref}
       type="button"
       aria-label="Stack"

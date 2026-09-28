@@ -982,6 +982,7 @@ export function FigureChrome({
         data-hint={canScale ? undefined : "Width uses absolute units — edit in code to adjust"} aria-description={canScale ? undefined : "Width uses absolute units — edit in code to adjust"}
       >
         <button
+          data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
           className="figure-scale-btn focus-ring"
           aria-label="Decrease width"
@@ -1033,6 +1034,7 @@ export function FigureChrome({
           onBlur={() => session.commit(commitDraft)}
         />
         <button
+          data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
           className="figure-scale-btn focus-ring"
           aria-label="Increase width"
