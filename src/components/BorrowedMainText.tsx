@@ -48,6 +48,7 @@ import {
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { refreshCitationDisplay } from "@/lib/borrowed-render";
+import { applyBorrowedBodyStyle } from "@/lib/borrowed-body-style";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 
@@ -194,22 +195,10 @@ export function BorrowedMainText({
     // ships this same error on its identical panel-typography effect (the
     // codebase-accepted norm); we suppress it here so the touched file stays
     // lint-clean.
-    const dom = editor.view.dom as HTMLElement;
-    const fontFamily = bodyStyle?.fontFamily;
-    const fontSize = bodyStyle?.fontSize;
-    const color = bodyStyle?.color;
+    // The four properties come from the ONE mapping the static tiers use
+    // (`borrowed-body-style.ts`, task 823).
     /* eslint-disable react-hooks/immutability */
-    if (fontFamily) dom.style.fontFamily = String(fontFamily);
-    else dom.style.removeProperty("font-family");
-    if (fontSize) {
-      dom.style.fontSize = String(fontSize);
-      dom.style.setProperty("--editor-font-size", String(fontSize));
-    } else {
-      dom.style.removeProperty("font-size");
-      dom.style.removeProperty("--editor-font-size");
-    }
-    if (color) dom.style.color = String(color);
-    else dom.style.removeProperty("color");
+    applyBorrowedBodyStyle(editor.view.dom as HTMLElement, bodyStyle);
     /* eslint-enable react-hooks/immutability */
   }, [editor, bodyStyle]);
 

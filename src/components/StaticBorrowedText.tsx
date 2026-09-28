@@ -32,7 +32,8 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
-import { renderBorrowedHtml } from "@/lib/borrowed-render";
+import { renderBorrowedHtml, STATIC_MATH_SELECTORS } from "@/lib/borrowed-render";
+import { borrowedBodyInlineStyle } from "@/lib/borrowed-body-style";
 import { renderMath } from "@/lib/tiptap/math";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import type { CardBodySchemaScope } from "@/lib/tiptap/borrowed-schema";
@@ -78,30 +79,15 @@ export function StaticBorrowedText({
   useEffect(() => {
     const root = rootRef.current;
     if (!root || !html) return;
-    const inline = root.querySelectorAll<HTMLElement>(
-      'span[data-type="inline-math"]',
-    );
+    const inline = root.querySelectorAll<HTMLElement>(STATIC_MATH_SELECTORS.inline);
     for (const el of inline) renderMath(el, el.getAttribute("latex") ?? "", false);
-    const display = root.querySelectorAll<HTMLElement>(
-      'div[data-type="display-math"]',
-    );
+    const display = root.querySelectorAll<HTMLElement>(STATIC_MATH_SELECTORS.display);
     for (const el of display) renderMath(el, el.getAttribute("latex") ?? "", true);
   }, [html]);
 
-  // Panel typography, inline (the live twin writes the same three onto its
-  // editor DOM in an effect; a static div can carry them in render). The
-  // `--editor-font-size` var write is the load-bearing half — see the
-  // header comment.
-  const style = useMemo(() => {
-    const s: React.CSSProperties & Record<string, string> = {};
-    if (bodyStyle?.fontFamily) s.fontFamily = String(bodyStyle.fontFamily);
-    if (bodyStyle?.fontSize) {
-      s.fontSize = String(bodyStyle.fontSize);
-      s["--editor-font-size"] = String(bodyStyle.fontSize);
-    }
-    if (bodyStyle?.color) s.color = String(bodyStyle.color);
-    return s;
-  }, [bodyStyle]);
+  // Panel typography, inline — the ONE mapping the live twin also writes
+  // (`borrowed-body-style.ts`, task 823); a static div carries it in render.
+  const style = useMemo(() => borrowedBodyInlineStyle(bodyStyle), [bodyStyle]);
 
   if (html === null) {
     // Refusal path: the scope's schema can't represent this body — show the
@@ -120,7 +106,7 @@ export function StaticBorrowedText({
   return (
     <div
       ref={rootRef}
-      className={`tiptap rtf-content rtf-content-${variant} borrowed-main-text static-borrowed-text`}
+      className={staticBodyClass(variant)}
       style={style}
       data-static-borrowed="html"
       // The HTML is produced by TipTap's own generateHTML over the card
@@ -128,6 +114,40 @@ export function StaticBorrowedText({
       // editor's DOM, no user-supplied raw HTML.
       dangerouslySetInnerHTML={{ __html: html }}
     />
+  );
+}
+
+/** The class surface every static borrowed body shares — the T1 HTML body
+ *  and the T0 summary alike — so the tier swap changes content, not box. */
+function staticBodyClass(variant: "footnote" | "note"): string {
+  return `tiptap rtf-content rtf-content-${variant} borrowed-main-text static-borrowed-text`;
+}
+
+export interface BorrowedSummaryTextProps {
+  /** The plain-text summary (`makeCompressedSummary`). */
+  text: string;
+  variant?: "footnote" | "note";
+  bodyStyle?: React.CSSProperties;
+}
+
+/**
+ * The T0 tier's body (task 823): the summary string inside the SAME wrapper
+ * and `<p>` the T1 static HTML paints (`.rtf-content` padding / min-height,
+ * `.tiptap` ink and `.tiptap p` metrics), so the doc-open ramp's T0→T1 swap
+ * is geometry- and colour-stable instead of growing and recolouring every
+ * collapsed card one idle tick after open. Costs no render pipeline — the
+ * whole point of T0.
+ */
+export function BorrowedSummaryText({
+  text,
+  variant = "footnote",
+  bodyStyle,
+}: BorrowedSummaryTextProps) {
+  const style = useMemo(() => borrowedBodyInlineStyle(bodyStyle), [bodyStyle]);
+  return (
+    <div className={staticBodyClass(variant)} style={style} data-static-borrowed="summary">
+      <p>{text}</p>
+    </div>
   );
 }
 
