@@ -114,8 +114,11 @@ transition that a dedicated op performs, and the op refuses those by name:
 
 Everything else — `title`, `done`, `author`, `highlightColor`, `suggested_text`,
 `user_text`, `explanation`, `instructions`, `notes`, `aiRequest`, … — stays
-editable here. (`aiRequest` deliberately so: `draft-footnote`'s virtual-request
-branch clears a footnote's flag with exactly this op.)
+editable here. (`aiRequest` deliberately so: the flag is the user's own panel
+checkbox, and both directions are legitimate states. A RESPONDER, though, does
+not lower it with a separate `set` — it passes its `requestId` on the one
+`update` that lands the answer, and the contract completes the Task and lowers
+the source card's flag in that same transaction; see `draft-footnote` step E3.)
 
 > **Enforcement (tasks 156 + 467).** Neither list above is prose the op is
 > trusted to honor — both are TABLES it asks:

@@ -272,13 +272,29 @@ describe("field ownership — the table is DERIVED, and its owners exist", () =>
   });
 
   it("`aiRequest` is NOT reserved — a blanket refusal breaks a shipped feature", () => {
-    // draft-footnote's virtual-request branch clears a footnote's flag with
-    // exactly `update {"set":{"aiRequest":false}}`; the unbridged-card-flag
+    // The flag is the user's own panel checkbox: edit-card teaches both
+    // directions as `update {"set":{"aiRequest":…}}`, and the unbridged-card-flag
     // fallback makes the raised direction first-class too. This is the 156
     // lesson (the naive sibling-copy guard breaks footnote body editing) one
     // granularity in, so it is pinned rather than left to be re-tightened.
     expect([...OWNERS.keys()]).not.toContain("aiRequest");
-    expect(read(`${SKILLS}/draft-footnote.md`)).toContain('"set":{"aiRequest":false}');
+    expect(read(`${SKILLS}/edit-card.md`)).toMatch(/`aiRequest` deliberately so/);
+  });
+
+  it("draft-footnote revises in ONE op that also closes the request (task 816)", () => {
+    // The act-on-existing branch used to land the rewrite, then close the Task /
+    // lower the flag in a SECOND command — a failure between them left the
+    // request open over an already-rewritten footnote. The one `update` now
+    // carries the requestId and `_mutation_commit` closes both in-commit.
+    const skill = read(`${SKILLS}/draft-footnote.md`);
+    const e3 = skill.slice(skill.indexOf("E3."), skill.indexOf("### Direct-create branch"));
+    expect(e3).toContain('"requestId":"<requestId>"');
+    expect(e3).not.toMatch(/apply_response\.py <docPath> complete-task/);
+    expect(e3).not.toContain('"set":{"aiRequest":false}');
+    expect(e3.match(/apply_response\.py <docPath> update/g)).toHaveLength(1);
+    const src = read(CONTRACT);
+    const mc = src.slice(src.indexOf("def _mutation_commit("), src.indexOf("def _apply_body("));
+    expect(mc).toContain("txn.clear_source_flag(linked)");
   });
 
   it("cmd_update asks the field guard, right after the panel guard", () => {

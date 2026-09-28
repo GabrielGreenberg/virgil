@@ -159,39 +159,38 @@ E2. **Load context + compose the revision.** Read the existing footnote body, th
    style as step 2 below (same citation rules apply). Build on the existing
    content; don't discard the user's text unless they asked for a rewrite.
 
-E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existing
-   footnote in place — this updates `footnotes.json` `content` AND the `.tex`
-   `\footnote{}` body in one atomic, pen-protected transaction, and never spawns
-   a duplicate:
-   The op carries FREE TEXT (the footnote body), so it goes through an `@`
-   scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
+E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
+   existing footnote in place AND close the work in the same call: the op carries
+   the `requestId` (the real id, or the `virtual:footnotes:<cardId>` id verbatim),
+   and the contract then updates `footnotes.json` `content`, the `.tex`
+   `\footnote{}` body, completes the Task (`complete` / `auto-applied` — a
+   revision in place created nothing), and lowers the footnote's `aiRequest` flag
+   (the Task's `linkedTo`, or the card the virtual id names) — all in one atomic,
+   pen-protected transaction. It never spawns a duplicate, and it never lands the
+   answer without closing the request: **do not** follow it with a separate
+   `complete-task` or a second `update` to lower the flag. Two commits is how a
+   failure between them left the request open over an already-rewritten
+   footnote, and the next `/editor/review` rewrote it again.
+
+   For a real request, first check `linkedTo.cardId == <cardId>` (E1 took the id
+   from there, so it should); if it names a different card, halt — this branch
+   revises only the footnote the request flags.
+
+   The op carries FREE TEXT (the body and the summary), so it goes through an
+   `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
    op=$(mktemp -t virgil-op)
    cat > "$op" <<'JSON'
-   {"cardId":"<cardId>","body":"<revised footnote body>"}
+   {"cardId":"<cardId>","body":"<revised footnote body>","requestId":"<requestId>","summary":"Revised footnote <cardId>"}
    JSON
    python3 editor/scripts/apply_response.py <docPath> update "@$op"; rc=$?
    rm -f "$op"
    exit "$rc"
    ```
-   Then complete the originating Task + clear the source flag (so the panel
-   checkbox un-toggles and the request leaves the inbox). For a **real** request
-   id, route the completion through the contract — `summary` is composed prose,
-   so this op takes the file form too:
-   ```bash
-   op=$(mktemp -t virgil-op)
-   cat > "$op" <<'JSON'
-   {"requestId":"<requestId>","summary":"Revised footnote <cardId>","clearSourceFlag":true}
-   JSON
-   python3 editor/scripts/apply_response.py <docPath> complete-task "@$op"; rc=$?
-   rm -f "$op"
-   exit "$rc"
-   ```
-   For a `virtual:footnotes:<cardId>` id (no Task row), there is nothing to
-   complete in `ai-requests.json`; instead clear the footnote's `aiRequest` flag
-   via the `update` op (`'{"cardId":"<cardId>","set":{"aiRequest":false}}'`) so
-   the fallback stops surfacing it. Reply with the act-on-existing template
-   (step 4) and skip the direct-create steps below.
+   The door refuses, writing nothing, if the request id is unknown or already
+   terminal (drained by an earlier landing) — report that instead of retrying.
+   Reply with the act-on-existing template (step 4) and skip the direct-create
+   steps below.
 
 ### Direct-create branch
 
@@ -292,7 +291,7 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
      ```
    - Act-on-existing (branch E):
      ```
-     Done: revised footnote <cardId> for request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json status/result, notifications, version).
+     Done: revised footnote <cardId> for request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json complete/auto-applied or the virtual flag lowered, footnotes.json aiRequest cleared, notifications, version).
      ```
    If a missing-bibkey todo was filed: `Filed todo <todoId> for missing bibkey <bibkey> — flag it for AI to route it to /editor/find-citation.`
    On halt (direct create, no `paragraphIds`): `Halted: request <requestId> has no paragraphIds; needs anchor before drafting.`
