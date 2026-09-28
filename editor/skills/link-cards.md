@@ -10,9 +10,11 @@ description: |
   lives in a dedicated field, not the anchor `links` array. REFUSES a store that
   would not keep the record: an archived snippet, an example, or a citation
   (whose anchored entry the app rebuilds from its `.tex` atom on doc open).
-  Restore an archived card first. Does
+  Restore an archived card first. With --remove, UNLINKS the pair (both ends,
+  one transaction) — the only door that removes a relationship, since
+  `relatedCards` is reserved to this op and edit-card refuses it. Does
   NOT anchor a card to text (use /editor/move-card) and does NOT create cards.
-  Args: <docPath> <cardAId> <cardBId> [--kind <relationship>].
+  Args: <docPath> <cardAId> <cardBId> [--kind <relationship>] [--remove].
 ---
 
 # /editor/link-cards $ARGUMENTS
@@ -30,6 +32,8 @@ is all-or-nothing), with the audit notification + version bump.
 - `<cardAId>` `<cardBId>` — the two card ids to link (must differ).
 - `--kind <relationship>` — the relationship label (default `related`); e.g.
   `followup`, `evidence`, `contradicts`, `seealso`. Stored on both records.
+  With `--remove`, omitting it removes **every** relationship between the pair.
+- `--remove` — unlink instead of link (see step 3).
 
 ## Procedure
 
@@ -47,6 +51,19 @@ is all-or-nothing), with the audit notification + version bump.
    createdAt }` to **each** card's `relatedCards`, pointing at the other (so the
    link is addressable from either end). Idempotent — re-linking the same pair +
    kind adds nothing. Prints `{ok, version, op:"link", cardAId, cardBId, kind}`.
+3. **To unlink (`--remove`)**, the same op with `"remove": true`:
+   ```bash
+   python3 editor/scripts/apply_response.py <docPath> link \
+     '{"cardAId":"<a>","cardBId":"<b>","kind":"related","remove":true}'
+   ```
+   It drops the matching record(s) from **both** cards in one transaction.
+   Tolerant of one end being gone already — it cleans the survivor's dangling
+   half. Refuses when neither card exists or neither holds a matching record.
+
+**`relatedCards` is this op's field** (`apply_response.OP_OWNED_FIELDS["link"]`,
+task 812): [`edit-card`](edit-card.md)'s `update` refuses to set it, because a raw
+set writes a one-sided record pointing at anything — a citation included. Add
+and remove relationships only here.
 
 ## Applicability
 

@@ -38,6 +38,7 @@ import { useReports } from "../useReports";
 import { useCutter } from "../useCutter";
 import { useRevisions } from "../useRevisions";
 import { useOrphanedFootnotes } from "../useOrphanedFootnotes";
+import { useFootnotes } from "../useFootnotes";
 import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { migrateArchive } from "../useArchive";
 import { migrateNotes } from "../useNotes";
@@ -151,6 +152,38 @@ describe("every card-sidecar migrator carries unknown keys through a load", () =
       2,
     );
     for (const c of got) expect(c.agentExtension).toEqual(EXT.agentExtension);
+  });
+
+  // Task 812 — the premise the `link` op's panel policy rests on ("footnotes'
+  // sync MERGES, so a relatedCards record survives"). footnotes.json has no
+  // migrator of its own (useFootnotes normalizes content with a spread), so it
+  // was the one link-allowed store with no leg here. Load → a real body edit →
+  // the merged write-back: the agent-written keys must ride all three.
+  it("footnotes.json — relatedCards + an agent key survive the load AND a body-edit write-back", async () => {
+    const related = [
+      { id: "r1", kind: "evidence", target: { type: "card", ref: { kind: "note", id: "n1" } }, createdAt: "2026-09-27T00:00:00.000Z" },
+    ];
+    const sidecar = {
+      footnotes: [
+        { id: "f1", content: { type: "doc", content: [] }, createdAt: "2026-01-01T00:00:00.000Z", relatedCards: related, ...EXT },
+      ],
+    };
+    beginDocPipeline("doc-f");
+    mockRead.mockResolvedValue(sidecar);
+    const { result } = renderHook(() => useFootnotes("doc-f"));
+    await waitFor(() => expect(result.current.footnoteRefs.length).toBe(1));
+    const loaded = result.current.footnoteRefs[0] as unknown as Rec;
+    expect(loaded.relatedCards).toEqual(related);
+    expect(loaded.agentExtension).toEqual(EXT.agentExtension);
+
+    const body = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "edited" }] }] };
+    result.current.updateFootnoteContent("f1", body);
+    await waitFor(() => expect(mockWrite).toHaveBeenCalled());
+    const written = mockWrite.mock.calls.at(-1)![2] as { footnotes: Rec[] };
+    const f1 = written.footnotes.find((f) => f.id === "f1")!;
+    expect(f1.content).toEqual(body);
+    expect(f1.relatedCards).toEqual(related);
+    expect(f1.agentExtension).toEqual(EXT.agentExtension);
   });
 
   it("orphaned-footnotes.json", async () => {

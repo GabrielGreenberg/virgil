@@ -564,6 +564,26 @@ OP_OWNED_FIELDS: dict[str, _FieldOwnership] = {
              "Aiming it by hand aims a restore anywhere. Run $route (/editor/archive-card) "
              "and /editor/restore-card."),
     ),
+    # link — the card↔card relationship. cmd_link is the only writer of
+    # `relatedCards` and is what makes a record correct: it writes BOTH ends in
+    # one transaction, is idempotent per (target, kind), and refuses the stores
+    # whose rebuild would drop one half (MUTATION_PANEL_POLICY["link"]). A raw
+    # set writes a one-sided record at any id — a citation included. Reserving
+    # the field is safe only because the same door also REMOVES (`"remove":
+    # true`, task 812); before that leg existed, a raw update was the only way
+    # to drop a link, which is presumably why the row was never declared.
+    "link": _FieldOwnership(
+        fields=frozenset({"relatedCards"}),
+        ops=frozenset({"link"}),
+        skills=("link-cards",),
+        route=("apply_response.py <doc> link '{\"cardAId\":\"$cardId\",\"cardBId\":\"<id>\"}' "
+               "(add \"remove\":true to unlink)"),
+        why=("update refuses $field on a $kind ($cardId): a card↔card relationship is the link "
+             "op's. `link` writes the record on BOTH cards in one transaction, idempotently, "
+             "and refuses the stores that would silently drop one half (citations, archive, "
+             "examples); a raw set writes a one-sided record pointing at anything. To add or "
+             "remove a relationship run $route (/editor/link-cards)."),
+    ),
     # _create — the create contract (create_card.py, plus _mutation_commit's
     # requestId resolve for the back-pointer). `id` is the sharpest: a footnote's
     # sidecar id IS its \vfid marker id in the .tex, and `footnotes` is
@@ -669,6 +689,33 @@ def _assert_field_ownership(table: "dict[str, _FieldOwnership]") -> None:
                     f"for overlapping kinds: which refusal message an agent sees would be "
                     f"arbitrary — task 2026-08-25-467"
                 )
+
+
+# Mutation ops that take no field of their own — declared, so the OP dimension of
+# the field table is exhaustive the way MUTATION_PANEL_POLICY's is: a new op must
+# either claim the field whose transition it owns (a row above) or say here that
+# it owns none. `update` is the generic field editor the table exists to fence.
+_OWNS_NO_FIELD = {"update"}
+
+
+def _assert_ops_field_exhaustive(table: "dict[str, _FieldOwnership]") -> None:
+    """Every MUTATION_OPS member is either an owner in `table` or declared in
+    _OWNS_NO_FIELD — never both, never neither (task 812: `link` owned
+    `relatedCards` for months with no row, because nothing forced the decision)."""
+    owners = set().union(*(o.ops for o in table.values()))
+    undecided = set(MUTATION_OPS) - owners - _OWNS_NO_FIELD
+    if undecided:
+        raise RuntimeError(
+            f"mutation op(s) {sorted(undecided)} neither own a field in OP_OWNED_FIELDS nor "
+            f"appear in _OWNS_NO_FIELD: declare which field's transition the op owns, or say "
+            f"it owns none — task 2026-09-27-812"
+        )
+    both = owners & _OWNS_NO_FIELD
+    if both:
+        raise RuntimeError(f"op(s) {sorted(both)} are in _OWNS_NO_FIELD but own a field row")
+    stale = _OWNS_NO_FIELD - set(MUTATION_OPS)
+    if stale:
+        raise RuntimeError(f"_OWNS_NO_FIELD names non-op(s) {sorted(stale)}")
 
 
 def _guard_fields(op_name: str, hit, kind: str, sets: dict) -> None:
@@ -2170,8 +2217,76 @@ def _add_relationship(card: dict, rel: str, other_kind: str, other_id: str) -> N
     })
 
 
+def _remove_relationship(card: dict, rel: str | None, other_id: str) -> int:
+    """Drop every record on `card` pointing at `other_id` (of kind `rel`, or of
+    ANY kind when `rel` is None). Returns how many were removed; an emptied list
+    is deleted rather than left as `[]`, so an unlinked card is byte-shaped like
+    one that was never linked."""
+    rels = card.get("relatedCards")
+    if not isinstance(rels, list):
+        return 0
+    keep = [r for r in rels
+            if not (isinstance(r, dict)
+                    and (rel is None or r.get("kind") == rel)
+                    and (r.get("target") or {}).get("ref", {}).get("id") == other_id)]
+    removed = len(rels) - len(keep)
+    if removed:
+        if keep:
+            card["relatedCards"] = keep
+        else:
+            del card["relatedCards"]
+    return removed
+
+
+def _unlink(doc: Path, op: dict, a_id: str, b_id: str) -> dict:
+    """`link` with `"remove": true` — the removal leg of the same door (task 812).
+
+    `relatedCards` is reserved to this op (OP_OWNED_FIELDS["link"]), so it must
+    also be the door that REMOVES a record — otherwise reserving the field would
+    strand every link with no way out. Removes the matching (target, kind)
+    record from BOTH ends in one transaction; `kind` omitted removes every
+    relationship between the pair. Tolerant of one end already being gone (the
+    survivor's dangling half is exactly what this leg exists to clean up);
+    refuses only when neither card exists or neither holds a matching record."""
+    from card_by_id import find_card, card_kind
+
+    rel = op.get("kind")  # None ⇒ every relationship kind between the pair
+    hits = [(cid, other, find_card(doc, cid)) for cid, other in ((a_id, b_id), (b_id, a_id))]
+    present = [(cid, other, h) for cid, other, h in hits if h is not None]
+    if not present:
+        die(f"card not found: {a_id} (nor {b_id})")
+    for _cid, _other, h in present:
+        _guard_panel("link", h, card_kind(h))
+
+    txn = _Txn(doc)
+    removed = 0
+    for cid, other, h in present:
+        card = txn.card_ref(h.filename, h.list_key, cid)
+        if card is None:
+            die("a card vanished while opening the transaction")
+        n = _remove_relationship(card, rel, other)
+        if n:
+            removed += n
+            txn.mark(sidecar(doc, h.filename))
+    if not removed:
+        what = f"`{rel}` relationship" if rel else "relationship"
+        die(f"no {what} between {a_id} and {b_id} to remove")
+
+    gone = [cid for cid, _o, h in hits if h is None]
+    return _mutation_commit(
+        doc, txn,
+        summary=op.get("summary") or (
+            f"Unlinked {a_id} ↔ {b_id}" + (f" ({rel})" if rel else "")
+            + (f"; {gone[0]} was already gone" if gone else "")),
+        request_id=op.get("requestId"),
+        extra={"op": "link", "remove": True, "cardAId": a_id, "cardBId": b_id,
+               "kind": rel, "removed": removed, "missing": gone},
+    )
+
+
 def cmd_link(doc: Path, op: dict) -> dict:
-    """Add a bidirectional relationship record to both cards' `relatedCards`."""
+    """Add a bidirectional relationship record to both cards' `relatedCards`
+    — or, with `"remove": true`, drop it from both (see _unlink)."""
     from card_by_id import find_card, card_kind
 
     a_id = op.get("cardAId")
@@ -2180,6 +2295,8 @@ def cmd_link(doc: Path, op: dict) -> dict:
         die("link requires op.cardAId and op.cardBId")
     if a_id == b_id:
         die("cannot link a card to itself")
+    if op.get("remove"):
+        return _unlink(doc, op, a_id, b_id)
     rel = op.get("kind") or "related"
 
     hit_a = find_card(doc, a_id)
@@ -2407,6 +2524,7 @@ for _op, _pol in MUTATION_PANEL_POLICY.items():
 # contract test can drive it with a deliberately broken table. It reads MUTATION_OPS,
 # so it is CALLED here, below that dict, and declared beside the table it governs.
 _assert_field_ownership(OP_OWNED_FIELDS)
+_assert_ops_field_exhaustive(OP_OWNED_FIELDS)
 
 
 # ---------------------------------------------------------------------------
