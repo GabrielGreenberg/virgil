@@ -28,6 +28,7 @@ import SystemDialog, {
   SystemDialogButton,
   SystemDialogFooter,
 } from "@/components/system-dialog";
+import { Button } from "@/components/Button";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
@@ -614,22 +615,9 @@ function ExtraRows({
           </button>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={addRow}
-        style={{
-          alignSelf: "flex-start",
-          background: "transparent",
-          border: "1px dashed var(--border-light)",
-          borderRadius: "var(--radius-sm)",
-          padding: "4px 10px",
-          fontSize: 12,
-          cursor: "pointer",
-          color: "var(--muted)",
-        }}
-      >
+      <Button variant="ghost" size="sm" onClick={addRow} className="self-start">
         + Add field
-      </button>
+      </Button>
     </div>
   );
 }

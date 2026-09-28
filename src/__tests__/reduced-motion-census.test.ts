@@ -109,7 +109,7 @@ const TAILWIND_ALLOW: Record<string, string> = {
   // BUTTON_BASE: `transition-all` is the colour carrier for every Button
   // variant (see the hover-on-light-exempt note there); its only movement is
   // the 0.5px `active:` press nudge — a click response, not a glide.
-  "src/components/panel-primitives.tsx|transition-all": "BUTTON_BASE press nudge",
+  "src/components/Button.tsx|transition-all": "BUTTON_BASE press nudge",
 };
 
 const TW_TOKEN =

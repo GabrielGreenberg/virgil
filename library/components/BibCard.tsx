@@ -11,6 +11,7 @@ import {
 } from "@library/lib/bib-edit";
 import { reconstructBibtex } from "@library/lib/reconstruct-bibtex";
 import { bibFieldDisplay } from "@library/lib/bib-parser";
+import { Button } from "@/components/Button";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
@@ -286,12 +287,12 @@ export function AiNotePanel({
         }}
       />
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <ActionButton onClick={onSubmit} disabled={busy} pressed>
+        <Button variant="primary" size="sm" onClick={onSubmit} disabled={busy}>
           {busy ? "Submitting…" : "Submit AI request"}
-        </ActionButton>
-        <ActionButton onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Cancel
-        </ActionButton>
+        </Button>
         <span
           style={{
             marginLeft: "auto",
@@ -474,10 +475,10 @@ function ActionRow({
         flexWrap: "wrap",
       }}
     >
-      <ActionButton onClick={onEdit} disabled={!canEdit}>
+      <Button size="sm" onClick={onEdit} disabled={!canEdit}>
         Edit
-      </ActionButton>
-      <ActionButton onClick={onCopy}>Copy BibTeX</ActionButton>
+      </Button>
+      <Button size="sm" onClick={onCopy}>Copy BibTeX</Button>
 
       {flash && (
         <span
@@ -493,7 +494,7 @@ function ActionRow({
 
       {/* Push the AI request button to the far right of the row. */}
       <div style={{ marginLeft: "auto" }}>
-        <ActionButton
+        <ReviewToggleButton
           onClick={onReview}
           disabled={!canReview || reviewBusy}
           pressed={reviewQueued}
@@ -505,25 +506,30 @@ function ActionRow({
           }
         >
           {reviewLabel}
-        </ActionButton>
+        </ReviewToggleButton>
       </div>
     </div>
   );
 }
 
-function ActionButton({
+/** The AI-request TOGGLE — a stateful toggle, so it stays hand-rolled by
+ *  design (STYLE_GUIDE "Buttons" → out of scope for the five variants) and
+ *  paints its "on" state from the `--control-selected` family. Plain actions
+ *  on this card (Edit, Copy BibTeX, Submit, Cancel) are `<Button>` (task 827:
+ *  Submit used to borrow this toggle's pressed fill as a third "primary"). */
+function ReviewToggleButton({
   children,
   onClick,
   disabled,
-  pressed = false,
+  pressed,
   ariaPressed,
   title,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
-  pressed?: boolean;
-  ariaPressed?: boolean;
+  pressed: boolean;
+  ariaPressed: boolean;
   title?: string;
 }) {
   return (

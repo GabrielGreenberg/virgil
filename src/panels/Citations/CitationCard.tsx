@@ -1750,6 +1750,7 @@ function CitationKeyRow({
                 e.stopPropagation();
                 onToggleBib();
               }}
+              aria-pressed={bibExpanded}
               className={`text-[10px] uppercase tracking-wide px-1 py-0 rounded ${
                 bibExpanded
                   ? "text-ink-body bg-edge-subtle"

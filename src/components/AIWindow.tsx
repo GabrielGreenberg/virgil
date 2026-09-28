@@ -58,7 +58,7 @@ import type { PanelThemeKey } from "@/lib/panel-theme";
 import { usePanelCardPalette } from "@/hooks/usePanelTheme";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
-import { Button } from "./panel-primitives";
+import { Button } from "./Button";
 import { Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { iconHint } from "@/components/Hint";
@@ -1227,13 +1227,9 @@ function ConnectWithClaude() {
                 Not yet connected. Sign in to use Claude for requests in this document.
               </div>
             </div>
-            <button
-              disabled
-              className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-muted bg-surface-muted cursor-not-allowed"
-              data-hint="Coming soon"
-            >
+            <Button size="sm" disabled data-hint="Coming soon">
               Sign in
-            </button>
+            </Button>
           </div>
         </div>
 

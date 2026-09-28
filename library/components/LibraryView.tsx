@@ -39,6 +39,7 @@ import type { SyncResult } from "@library/lib/skill-sync";
 import type { SkillSyncError } from "@library/hooks/useLibraryHandle";
 import type { NotificationItem } from "@library/lib/queue";
 import { filesFromTransfer } from "@/lib/transfer-files";
+import { Button } from "@/components/Button";
 import DropZone from "./DropZone";
 import PdfDropIntroDialog from "./PdfDropIntroDialog";
 import LibraryPaneFill from "./LibraryPaneFill";
@@ -918,22 +919,9 @@ export default function LibraryView({
           }}
         >
           <span style={{ flex: 1, minWidth: 0 }}>{syncError.message}</span>
-          <button
-            onClick={onResync}
-            style={{
-              flexShrink: 0,
-              padding: "3px 10px",
-              borderRadius: "var(--radius-sm)",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              color: "var(--danger)",
-              background: "var(--surface)",
-              border: "1px solid currentColor",
-            }}
-          >
+          <Button size="sm" onClick={onResync} className="shrink-0">
             {syncError.permission ? "Grant & retry" : "Retry"}
-          </button>
+          </Button>
           <button
             data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
             className="focus-ring"

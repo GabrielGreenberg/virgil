@@ -239,9 +239,9 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
   const PERMITTED_HAND_ROLLED_HOVERS: Record<string, string> = {
     "src/components/panel-primitives.tsx:CARD_DEFAULT":
       "a CARD-scale wash, deliberately one step FAINTER than the control SSOT and paired with a border retint",
-    "src/components/panel-primitives.tsx:BUTTON_VARIANT.secondary":
+    "src/components/Button.tsx:BUTTON_VARIANT.secondary":
       "BUTTON_BASE owns `transition-all` (transform + filter), which is BROADER than the utility's property list",
-    "src/components/panel-primitives.tsx:BUTTON_VARIANT.ghost":
+    "src/components/Button.tsx:BUTTON_VARIANT.ghost":
       "BUTTON_BASE owns `transition-all` (transform + filter), which is BROADER than the utility's property list",
   };
 
@@ -258,6 +258,10 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     // Exactly the three lines the allowlist names, and no more. Reported as
     // `file:line` so a new one names itself.
     expect(found).toEqual([
+      // `<Button>`'s `secondary` / `ghost` variants, in its leaf module since
+      // task 827 (sorted first: `Button.tsx` < `panel-primitives.tsx`).
+      "src/components/Button.tsx:59",
+      "src/components/Button.tsx:65",
       "src/components/panel-primitives.tsx:566",
       // Line drift only (task 508 added the drop-halo composition ~26 lines
       // above these two; task 529 then added the `CardBodyTitle` edit-session
@@ -274,12 +278,11 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // read + the T0 summary wrapper +1 above the first and +22 above these
       // two; task 824 added the neutral selected-border door +10 above these
       // two; task 826 grew the jump/drop chevron docs + the drop button's
-      // `onPress`/`inert` props +29 above these two): the SITES are the
+      // `onPress`/`inert` props +29 above these two; task 827 then MOVED the
+      // `<Button>` primitive into its own leaf module, `Button.tsx`): the SITES are the
       // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
       // variants. `file:line` is this leg's own stated reporting form, so an
       // unrelated edit above a site costs a number update here.
-      "src/components/panel-primitives.tsx:2304",
-      "src/components/panel-primitives.tsx:2310",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });
@@ -288,9 +291,13 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     // Read RAW (markers are comments). An exemption whose marker has been
     // deleted is an allowlist entry excusing nothing.
     const raw = readFileSync(path.join(REPO_ROOT, "src/components/panel-primitives.tsx"), "utf8");
-    expect(raw.match(/hover-on-light-exempt:/g) ?? []).toHaveLength(2);
+    expect(raw.match(/hover-on-light-exempt:/g) ?? []).toHaveLength(1);
     expect(raw).toMatch(/hover-on-light-exempt:[\s\S]{0,200}CARD-scale WASH/);
-    expect(raw).toMatch(/hover-on-light-exempt:[\s\S]{0,200}BUTTON_BASE/);
+    // The `<Button>` primitive's marker moved with it into its leaf module
+    // (task 827).
+    const button = readFileSync(path.join(REPO_ROOT, "src/components/Button.tsx"), "utf8");
+    expect(button.match(/hover-on-light-exempt:/g) ?? []).toHaveLength(1);
+    expect(button).toMatch(/hover-on-light-exempt:[\s\S]{0,200}BUTTON_BASE/);
   });
 
   it("CAN SEE the retired spellings (synthetic canary)", () => {

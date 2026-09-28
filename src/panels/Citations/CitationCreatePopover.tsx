@@ -35,7 +35,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BibEntry } from "@/lib/types";
-import { Button } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
 import { CitekeyPicker } from "./CitekeyPicker";
 import { iconHint } from "@/components/Hint";
 

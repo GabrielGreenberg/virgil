@@ -1,6 +1,7 @@
 "use client";
 
 import LibraryPaneFill from "./LibraryPaneFill";
+import { Button } from "@/components/Button";
 import { FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
@@ -22,32 +23,12 @@ export default function LibraryPermissionGate({ onGrant, onReset, pickerError }:
         to re-grant access to your library folder.
       </p>
       <div style={{ display: "flex", gap: 10 }}>
-        <button
-          onClick={onGrant}
-          style={{
-            background: "var(--accent)",
-            color: "white",
-            padding: "8px 16px",
-            borderRadius: "var(--radius-md)",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
+        <Button variant="primary" onClick={onGrant}>
           Grant access
-        </button>
-        <button
-          onClick={onReset}
-          style={{
-            background: "transparent",
-            color: "var(--muted)",
-            padding: "8px 16px",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-light)",
-            cursor: "pointer",
-          }}
-        >
+        </Button>
+        <Button variant="secondary" onClick={onReset}>
           Pick a different folder
-        </button>
+        </Button>
       </div>
       {pickerError ? (
         <p

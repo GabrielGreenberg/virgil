@@ -945,7 +945,9 @@ describe("a focus indicator has ONE mechanism", () => {
   it("sees a population worth censusing (self-check)", () => {
     // A scanner that quietly stopped matching would make both legs pass
     // vacuously. Floors anchored well under today's counts.
-    expect(CLASS_VALUES.length).toBeGreaterThan(1500);
+    // (1500 → 1200 in task 827: its `<Button>` sweep retired ~20 hand-rolled
+    // class lists and landed the live count at exactly 1500.)
+    expect(CLASS_VALUES.length).toBeGreaterThan(1200);
     expect(CLASS_VALUES.some((v) => v.file.startsWith("library/"))).toBe(true);
     // …and it must still be able to SEE a ring at all. That half is now
     // SYNTHETIC, not a floor on the live population: the population has been
@@ -1829,3 +1831,88 @@ function callSiteHits(
   }
   return [...new Set(hits)];
 }
+
+/* ── Leg F: a text-labelled ACTION button renders through `<Button>` (task 827) ──
+ *
+ * `<Button variant size>` (panel-primitives) is the ONE action button — five
+ * variants, three sizes — and STYLE_GUIDE "Buttons" said so, but "by
+ * convention only (no CI guard)". The convention held for ~22 sites and not
+ * for ~14 buttons, which then disagreed on the SAME role: the primary action
+ * had THREE fills (the Library gates painted `--accent` brown inline, `<Button
+ * primary>` paints `--btn-primary`, BibCard's Submit borrowed a toggle's
+ * `--control-selected` pressed state), plus three radii and three danger looks.
+ *
+ * The rule: a `<button>` that shows a WORD (leg D's classifier) and paints a
+ * PILL — a fill or a full border, plus rounding and horizontal padding, in its
+ * className or its inline style — is `<Button>`, or states at the site why it
+ * cannot: `data-button-exempt="<reason>"` (an attribute for leg E's reason).
+ *
+ * NOT action buttons, so skipped: stateful toggles and selection controls
+ * (`aria-pressed` / `aria-selected` / `aria-checked`, `role="tab|option|
+ * switch|radio|checkbox|menuitem*"` — STYLE_GUIDE names them out of scope for
+ * the five variants), roving menu rows (`tabIndex={-1}`), and opaque spreads.
+ * A button that paints no pill (a link-styled reset, a bare text row) is not
+ * this leg's question either. */
+const BUTTON_EXEMPT = /(?<![\w-])data-button-exempt\s*=\s*"[^"]*\w[^"]*"/;
+const SELECTION_CONTROL =
+  /(?<![\w-])(?:aria-pressed|aria-selected|aria-checked)\s*=|(?<![\w-])role\s*=\s*"(?:tab|option|switch|radio|checkbox|menuitem\w*)"/;
+/** Base (un-prefixed) utilities only: `hover:bg-…` paints a hover, not a pill. */
+const CLASS_FILL = /(?<![\w:\[-])bg-(?!transparent(?![\w-]))[\w\[(]/;
+const CLASS_BORDER = /(?<![\w:\[-])border(?:-edge[\w-]*|-\[[^\]]*\]|-(?:danger|accent|positive|ink)[\w-]*)?(?![\w-])/;
+const CLASS_ROUND = /(?<![\w:\[-])rounded(?![\w-]*-(?:none|0)(?![\w-]))/;
+const CLASS_PAD_X = /(?<![\w:\[-])px-/;
+const STYLE_FILL = /\bbackground(?:Color)?\s*:\s*(?!"transparent"|'transparent'|undefined)/;
+const STYLE_BORDER = /\bborder\s*:\s*["'`]\s*\d/;
+const STYLE_ROUND = /\bborderRadius\s*:/;
+const STYLE_PAD = /\bpadding(?:Inline|Left|Right)?\s*:/;
+
+export function paintsPill(tag: string): boolean {
+  const byClass =
+    (CLASS_FILL.test(tag) || CLASS_BORDER.test(tag)) && CLASS_ROUND.test(tag) && CLASS_PAD_X.test(tag);
+  const byStyle =
+    (STYLE_FILL.test(tag) || STYLE_BORDER.test(tag)) && STYLE_ROUND.test(tag) && STYLE_PAD.test(tag);
+  return byClass || byStyle;
+}
+
+describe("a text-labelled action button renders through <Button> (task 827)", () => {
+  const sites = ALL.text.filter(
+    (s) => !opaqueSpread(s.tag) && !notATabStop(s.tag) && !SELECTION_CONTROL.test(s.tag),
+  );
+
+  it("sees a population worth censusing (self-check)", () => {
+    // 40 raw `<button>`s with a word when this leg landed (the rest of the app's
+    // text buttons already render through `<Button>`, which this scan does not
+    // see — that is the point). Floor well under it.
+    expect(sites.length).toBeGreaterThan(25);
+    expect(sites.some((s) => s.file.startsWith("library/"))).toBe(true);
+  });
+
+  it("every pill-painting text button is <Button> or states its exemption at the site", () => {
+    const handRolled = sites.filter((s) => paintsPill(s.tag) && !BUTTON_EXEMPT.test(s.tag)).map(at);
+    // No allowlist. A hit is either `<Button variant size>` (extend the
+    // primitive if no variant fits — STYLE_GUIDE "Buttons") or a
+    // `data-button-exempt="<reason>"` the reviewer can argue with.
+    expect(handRolled).toEqual([]);
+  });
+
+  it("an exemption never sits on a button that paints no pill", () => {
+    const moot = sites.filter((s) => BUTTON_EXEMPT.test(s.tag) && !paintsPill(s.tag)).map(at);
+    expect(moot).toEqual([]);
+  });
+
+  it("reads a hand-rolled pill as a hit and the neighbours as passes (self-check)", () => {
+    expect(paintsPill(`<button className="px-3 py-1 rounded bg-accent text-white">`)).toBe(true);
+    expect(paintsPill(`<button className="px-2 py-1 rounded border border-edge-subtle text-[11px]">`)).toBe(true);
+    expect(
+      paintsPill(`<button style={{ background: "var(--accent)", padding: "8px 16px", borderRadius: "var(--radius-md)" }}>`),
+    ).toBe(true);
+    // A hover wash is not a pill; nor is a divider edge or a link reset.
+    expect(paintsPill(`<button className="px-2 py-1 rounded hover:bg-surface-muted">`)).toBe(false);
+    expect(paintsPill(`<button className="px-2 border-b rounded">`)).toBe(false);
+    expect(paintsPill(`<button className="underline text-accent">`)).toBe(false);
+    expect(paintsPill(`<button className="px-2 rounded bg-transparent">`)).toBe(false);
+    expect(BUTTON_EXEMPT.test(`<button data-button-exempt="header chip" onClick={f}>`)).toBe(true);
+    expect(BUTTON_EXEMPT.test(`<button data-button-exempt="">`)).toBe(false);
+    expect(SELECTION_CONTROL.test(`<button aria-pressed={on} className="px-2 rounded bg-x">`)).toBe(true);
+  });
+});

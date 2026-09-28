@@ -17,7 +17,7 @@
 
 import { useState } from "react";
 import { ensureRW } from "@/lib/fsa-permissions";
-import { Button } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
 
 interface Props {
   /** Display name of the paper, for the UI copy. */

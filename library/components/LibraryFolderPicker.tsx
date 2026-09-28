@@ -1,6 +1,7 @@
 "use client";
 
 import LibraryPaneFill from "./LibraryPaneFill";
+import { Button } from "@/components/Button";
 import { FONT_MONO, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
@@ -24,21 +25,9 @@ export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
         {" "}<code>unsorted/</code> folders, plus hidden <code>.claude/</code> and
         {" "}<code>.virgil/</code> folders for skill commands and runtime state.
       </p>
-      <button
-        onClick={onPick}
-        style={{
-          background: "var(--accent)",
-          color: "white",
-          padding: "10px 18px",
-          borderRadius: "var(--radius-md)",
-          border: "none",
-          fontSize: 14,
-          fontWeight: 500,
-          cursor: "pointer",
-        }}
-      >
+      <Button variant="primary" size="lg" onClick={onPick}>
         Choose library folder…
-      </button>
+      </Button>
       {pickerError ? (
         <p
           role="alert"
