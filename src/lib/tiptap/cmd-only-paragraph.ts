@@ -37,6 +37,7 @@
  * `CardParagraph` — can take it.
  */
 import { Paragraph } from "@tiptap/extension-paragraph";
+import { mergeAttributes } from "@tiptap/core";
 import type { Node as PMNode, MarkType } from "@tiptap/pm/model";
 
 export const CMD_ONLY_CLASS = "p-cmd-only";
@@ -163,6 +164,23 @@ export function stampCmdOnly(dom: Element, node: PMNode): void {
  * — this one for card bodies, `createParagraphWithTitle` for the main editor.
  */
 export const CardParagraph = Paragraph.extend({
+  // The STATIC twin of the NodeView's stamp (task 823): `renderHTML` is what
+  // the static card tier (`renderBorrowedHtml`) and the HTML clipboard paint
+  // from, and neither runs a NodeView — so without this the run-tightening
+  // rule never matched a collapsed card's command-only paragraphs. Same
+  // predicate, so the two cannot disagree; parseHTML ignores the class.
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      "p",
+      mergeAttributes(
+        this.options.HTMLAttributes,
+        HTMLAttributes,
+        paragraphIsCmdOnly(node) ? { class: CMD_ONLY_CLASS } : {},
+      ),
+      0,
+    ];
+  },
+
   addNodeView() {
     return ({ node }) => {
       const p = document.createElement("p");

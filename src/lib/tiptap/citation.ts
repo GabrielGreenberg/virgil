@@ -1,5 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { DOMSerializer } from "@tiptap/pm/model";
+import { citationDisplay } from "./citation-display";
 import { CITE_RE_BARE } from "@/lib/cite-commands";
 // The FULL-form trigger is read from the typed-LaTeX census (task 639) — the
 // same object `cite-commands` exports and the `citation` registry row records
@@ -107,6 +109,14 @@ export const Citation = Node.create<CitationOptions>({
     const linkCard =
       (node.attrs.linkCard as string) ||
       (citationId ? linkCardKey("citation", citationId) : "");
+    // The visible content is the NodeView's, from the ONE `citationDisplay`
+    // answer (task 823): sanitized `<i>`/`<b>` as real elements and the
+    // `[cite]` pill for an empty cite — so the static card tier and the HTML
+    // clipboard show what the live atom shows.
+    const display = citationDisplay(
+      node.attrs.displayText as string,
+      node.attrs.command as string,
+    );
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
@@ -115,8 +125,9 @@ export const Citation = Node.create<CitationOptions>({
         [DATA_LINK_ID]: citationId,
         [DATA_LINK_KIND]: "citation",
         [DATA_LINK_CARD]: linkCard,
+        ...(display.empty ? { "data-empty": "true" } : {}),
       }),
-      (node.attrs.displayText as string) || (node.attrs.command as string) || "",
+      ...display.children,
     ];
   },
 
@@ -281,31 +292,25 @@ export const Citation = Node.create<CitationOptions>({
   },
 
   addNodeView() {
-    // Display text may contain <i> tags (e.g. book titles from \citetitle).
-    // Allow only safe inline formatting tags; strip everything else.
-    const isEmptyCiteCommand = (command: string): boolean =>
-      /^\\[A-Za-z]+\*?\{\s*\}$/.test(command || "");
+    // What the atom shows is `citationDisplay`'s answer — the SAME one
+    // `renderHTML` paints from (task 823): display text with only `<i>`/`<b>`
+    // kept, or the dotted `[cite]` pill for an empty `\cite{}` (e.g. no keys
+    // picked yet; it flips once the panel updates the command).
     const applyCitationContent = (
       el: HTMLElement,
       displayText: string,
       command: string,
     ) => {
-      const display = displayText || "";
-      // Empty atom (e.g. `\cite{}` with no keys yet) — render a dotted
-      // placeholder pill so the user sees the anchor even before picking
-      // a key. Once the panel updates the command, this flips automatically.
-      if (!display && isEmptyCiteCommand(command)) {
-        el.textContent = "[cite]";
-        el.setAttribute("data-empty", "true");
-        return;
-      }
-      el.removeAttribute("data-empty");
-      const text = display || command || "";
-      if (/<[ib]>/i.test(text)) {
-        el.innerHTML = text.replace(/<\/?(?!\/?[ib]>)[^>]+>/gi, "");
-      } else {
-        el.textContent = text;
-      }
+      const display = citationDisplay(displayText, command);
+      if (display.empty) el.setAttribute("data-empty", "true");
+      else el.removeAttribute("data-empty");
+      el.replaceChildren(
+        ...display.children.map((child) =>
+          typeof child === "string"
+            ? document.createTextNode(child)
+            : DOMSerializer.renderSpec(document, child).dom,
+        ),
+      );
     };
     return ({ node, getPos }) => {
       const dom = document.createElement("span");

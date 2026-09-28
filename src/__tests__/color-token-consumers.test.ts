@@ -258,7 +258,7 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     // Exactly the three lines the allowlist names, and no more. Reported as
     // `file:line` so a new one names itself.
     expect(found).toEqual([
-      "src/components/panel-primitives.tsx:541",
+      "src/components/panel-primitives.tsx:566",
       // Line drift only (task 508 added the drop-halo composition ~26 lines
       // above these two; task 529 then added the `CardBodyTitle` edit-session
       // door +1 above the first and +14 above these; task 532 added the two
@@ -269,12 +269,15 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // reads on `EditableCard` / `PanelCard` +39 above the first and +54 above
       // these two; task 683 added the `usePanelCardTryEmptyContent` guard +89
       // above all three; task 712 added the restore control's `restoreLabel`
-      // read + prop +2 above these two): the SITES are the
+      // read + prop +2 above these two; tasks 821/822 drifted all three
+      // (+24/+22, red on main at dd5c1191); task 823 added the static-safety
+      // read + the T0 summary wrapper +1 above the first and +22 above these
+      // two): the SITES are the
       // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
       // variants. `file:line` is this leg's own stated reporting form, so an
       // unrelated edit above a site costs a number update here.
-      "src/components/panel-primitives.tsx:2193",
-      "src/components/panel-primitives.tsx:2199",
+      "src/components/panel-primitives.tsx:2237",
+      "src/components/panel-primitives.tsx:2243",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });

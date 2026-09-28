@@ -46,8 +46,9 @@ import type { InlineAtomCardKind } from "./drop-mode/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
-import { StaticBorrowedText } from "./StaticBorrowedText";
-import { useCardTier } from "@/cards/presence";
+import { BorrowedSummaryText, StaticBorrowedText } from "./StaticBorrowedText";
+import { bodyNeedsLiveRender } from "@/lib/borrowed-render";
+import { cardTiersEnabled, useCardTier } from "@/cards/presence";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import { isCardMutationAllowed } from "./editor-layout/chrome-config";
 import PanelTextSizeRow from "./PanelTextSizeRow";
@@ -1629,7 +1630,22 @@ export function EditableCard({
   // ⇒ legacy live branch). Policy "static": collapsed footnote/archive prose
   // is tier-1 static HTML regardless of nearness. Unconditional hook call;
   // consulted only inside the compressed borrowed switch.
-  const borrowedTier = useCardTier("static", cardRef);
+  // A body holding a NodeView-only construct (an archived example, figure,
+  // `%` comment …) has no faithful static render — it is promoted past T1
+  // (task 823). O(body), memoized on the body, and only a compressed borrowed
+  // body with the tier flag on asks (flag off never consults the answer).
+  const tiersOn = cardTiersEnabled();
+  const borrowedStaticSafe = useMemo(
+    () =>
+      !(
+        tiersOn &&
+        compressed &&
+        useBorrowedCompressed &&
+        bodyNeedsLiveRender(compressedContent, schemaScope)
+      ),
+    [tiersOn, compressed, useBorrowedCompressed, compressedContent, schemaScope],
+  );
+  const borrowedTier = useCardTier("static", cardRef, borrowedStaticSafe);
   // Set during a mouse press on the card so onFocusCapture can tell
   // pointer-driven focus (which the upcoming click will toggle) from
   // keyboard / programmatic focus (which should auto-select). Without
@@ -1931,7 +1947,13 @@ export function EditableCard({
                     bodyStyle={compressedBody}
                   />
                 ) : (
-                  makeCompressedSummary(compressedContent, compressedLines)
+                  // T0 sits in the SAME wrapper the T1 body paints, so the
+                  // ramp's T0→T1 swap moves no geometry (task 823).
+                  <BorrowedSummaryText
+                    text={makeCompressedSummary(compressedContent, compressedLines)}
+                    variant="footnote"
+                    bodyStyle={compressedBody}
+                  />
                 )
               ) : (
                 <CardEmptyText />

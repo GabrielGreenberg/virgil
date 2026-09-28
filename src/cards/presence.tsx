@@ -15,9 +15,15 @@
  * card's editable body is never tier-gated; expand always works.
  *
  * Policy (per kind, applied at the switch sites through `useCardTier`):
- *   - collapsed footnote / archive → T1 always (their collapsed body is
- *     prose; a static render is visually identical, so nearness is
- *     irrelevant — the whole class of per-collapsed-card live editors goes).
+ *   - collapsed footnote / archive → T1 (nearness is irrelevant — the whole
+ *     class of per-collapsed-card live editors goes) WHEN the static render
+ *     is faithful. That is a declared, tested property of the body, not of
+ *     the kind (task 823): an archived excerpt can hold an expex example, a
+ *     figure or a `%` comment, whose look comes from a NodeView with no
+ *     static twin. The caller passes `staticSafe: false` for such a body
+ *     (`bodyNeedsLiveRender`, borrowed-render.ts) and it is promoted to T2;
+ *     under a ceiling below T2 it shows the T0 summary rather than an
+ *     unfaithful T1.
  *   - collapsed example → T2 near the viewport (the expex projection needs
  *     the real NodeViews), T1 far (a static number + first line).
  *   - hidden keep-alive panes → ceiling T1 (a hidden pane's collapsed
@@ -146,6 +152,9 @@ export type CollapsedTierPolicy =
 export function useCardTier(
   policy: CollapsedTierPolicy,
   cardEl: RefObject<HTMLElement | null>,
+  /** False when the body holds a node the static tier cannot paint
+   *  faithfully (task 823) — T1 is then never the answer. */
+  staticSafe = true,
 ): CardTier {
   const enabled = cardTiersEnabled();
   const ceiling = useCardPresenceCeiling();
@@ -173,6 +182,22 @@ export function useCardTier(
   );
 
   if (!enabled) return 3;
-  const policyTier: CardTier = policy === "static" ? 1 : near ? 2 : 1;
-  return (policyTier < ceiling ? policyTier : ceiling) as CardTier;
+  return resolveCollapsedTier(policy, near, ceiling, staticSafe);
+}
+
+/**
+ * The pure tier decision behind {@link useCardTier}: the policy's tier, capped
+ * by the ceiling — with T1 replaced for a body that is not static-safe
+ * (promoted to T2 where the ceiling allows, else down to the T0 summary).
+ */
+export function resolveCollapsedTier(
+  policy: CollapsedTierPolicy,
+  near: boolean,
+  ceiling: CardTier,
+  staticSafe: boolean,
+): CardTier {
+  let policyTier: CardTier = policy === "static" ? 1 : near ? 2 : 1;
+  if (!staticSafe && policyTier === 1) policyTier = 2;
+  const capped = (policyTier < ceiling ? policyTier : ceiling) as CardTier;
+  return !staticSafe && capped === 1 ? 0 : capped;
 }
