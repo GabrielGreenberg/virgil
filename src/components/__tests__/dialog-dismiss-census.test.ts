@@ -93,9 +93,14 @@ describe("every draft-holding dialog declares what a dismissal costs", () => {
     expect(undeclared).toEqual([]);
   });
 
-  it("the one dialog whose draft is the only copy of real work GUARDS", () => {
+  it("the dialogs whose draft is the only copy of real work GUARD", () => {
     const guarded = drafts.filter((d) => declaresGuard(d.tag)).map((d) => d.rel);
     expect(guarded).toContain("components/StyleEditorModal.tsx");
+    // Task 820: the Library's bib-entry editor — a multi-field form that is
+    // the only copy of the edit until Save queues it. It hand-rolled its own
+    // shell, so this census could not see it; the population now walks both
+    // silos (`_dialog-sites.ts` → `productionFiles`).
+    expect(guarded).toContain("library/components/BibEditModal.tsx");
   });
 
   it("a dialog never declares BOTH (the shell console.errors on that too)", () => {
@@ -202,13 +207,12 @@ function hidesWithoutUnmounting(src: string): boolean {
 }
 
 function alwaysMountedDrafts(): string[] {
-  const rels = new Set(draftHoldingDialogs().map((d) => d.rel));
-  return [...rels]
-    .filter((rel) =>
-      hidesWithoutUnmounting(
-        commentsStripped(readFileSync(join(ROOT, rel), "utf8")),
-      ),
+  const files = new Map(draftHoldingDialogs().map((d) => [d.rel, d.abs]));
+  return [...files]
+    .filter(([, abs]) =>
+      hidesWithoutUnmounting(commentsStripped(readFileSync(abs, "utf8"))),
     )
+    .map(([rel]) => rel)
     .sort();
 }
 

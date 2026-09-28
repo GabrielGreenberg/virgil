@@ -44,7 +44,8 @@ import {
   dialogElements,
   hasBareAutoFocus,
   variantAttr,
-  walk,
+  productionFiles,
+  SHELL,
   SRC_ROOT as ROOT,
   type DialogSite,
 } from "./_dialog-sites";
@@ -125,12 +126,33 @@ describe("every SystemDialog that owns Enter declares its cued default", () => {
     expect(none).toContain("components/AIWindow.tsx");
   });
 
-  it("the library silo hosts no dialogs of its own (the walk is complete)", () => {
-    const lib = join(ROOT, "..", "library");
-    const offenders = walk(lib)
-      .filter((abs) => /SystemDialog/.test(readFileSync(abs, "utf8")))
-      .map((abs) => abs.slice(lib.length + 1));
+  it("the Library silo's modals are in the population (the walk is complete)", () => {
+    const rels = dialogs.map((d) => d.rel);
+    expect(rels).toContain("library/components/BibEditModal.tsx");
+    expect(rels).toContain("library/components/PdfDropIntroDialog.tsx");
+  });
+
+  // Task 820: every MODAL in either silo enters through the ONE door. A
+  // hand-rolled `role="dialog" aria-modal` shell gets none of what the shell
+  // owns — the dismissal guard, focus return, the Enter policy, the modal
+  // radius tier — and no dialog census can even SEE it, because they all
+  // enumerate `<SystemDialog>` elements. `BibEditModal` was exactly that: a
+  // draft form whose Escape and backdrop discarded typed fields silently.
+  it("no file outside the shell declares its own aria-modal", () => {
+    const offenders = productionFiles()
+      .filter(({ rel }) => !SHELL.includes(rel))
+      .filter(({ abs }) =>
+        /\saria-modal(?:=|\s*:)/.test(commentsStripped(readFileSync(abs, "utf8"))),
+      )
+      .map(({ rel }) => rel);
     expect(offenders).toEqual([]);
+  });
+
+  it("CANARY: the aria-modal needle sees a hand-rolled shell", () => {
+    const bad = `<div role="dialog" aria-modal="true" style={{}}>x</div>`;
+    expect(/\saria-modal(?:=|\s*:)/.test(commentsStripped(bad))).toBe(true);
+    // …and not a selector that merely READS the attribute.
+    expect(/\saria-modal(?:=|\s*:)/.test(`q('[aria-modal="true"]')`)).toBe(false);
   });
 
   it("the shell offers the declaration in the first place", () => {

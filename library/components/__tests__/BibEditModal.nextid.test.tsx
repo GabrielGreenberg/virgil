@@ -13,10 +13,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
+// `SystemDialogProvider` pulls `@/lib/storage`, whose backend `require` is not
+// resolvable under vitest (the repo-wide gotcha).
+vi.mock("@/lib/storage", () => {
+  const noop = () => undefined;
+  return new Proxy(
+    {},
+    {
+      get: (_t, prop) =>
+        prop === "__esModule" ? true : prop === "then" ? undefined : noop,
+    },
+  );
+});
+
+import { SystemDialogProvider } from "@/components/system-dialog-host";
+import { __resetDialogStack } from "@/components/dialog-stack";
+
 import type { BibEntry } from "@library/lib/types";
 import BibEditModal from "@library/components/BibEditModal";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  __resetDialogStack();
+});
 
 // An all-known entry: 0 extra rows at mount, so `nextId` seeds to 1 — the exact
 // starting point `seedExtraRowsFromFields` restarts from, which is what made the
@@ -42,7 +61,7 @@ const RAW_WITH_TWO_EXTRAS = `@article{smith2020,
 describe("BibEditModal — extra-row id allocator survives a raw→form switch", () => {
   it("adds a third custom field without colliding with the two re-seeded rows", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<BibEditModal entry={makeEntry()} onSave={onSave} onClose={() => {}} />);
+    render(<SystemDialogProvider><BibEditModal entry={makeEntry()} onSave={onSave} onClose={() => {}} /></SystemDialogProvider>);
 
     // Start in Form mode with zero extra rows.
     expect(screen.queryAllByPlaceholderText("field")).toHaveLength(0);

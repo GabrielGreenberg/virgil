@@ -9,12 +9,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
+// `SystemDialogProvider` pulls `@/lib/storage`, whose backend `require` is not
+// resolvable under vitest (the repo-wide gotcha).
+vi.mock("@/lib/storage", () => {
+  const noop = () => undefined;
+  return new Proxy(
+    {},
+    {
+      get: (_t, prop) =>
+        prop === "__esModule" ? true : prop === "then" ? undefined : noop,
+    },
+  );
+});
+
+import { SystemDialogProvider } from "@/components/system-dialog-host";
+import { __resetDialogStack } from "@/components/dialog-stack";
+
 import type { BibEntry } from "@library/lib/types";
 import BibEditModal from "@library/components/BibEditModal";
 import { buildBibEditDiff, isEmptyBibEditDiff } from "@library/lib/bib-edit";
 import { parseBibFile } from "@library/lib/bib-parser";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  __resetDialogStack();
+});
 
 const RAW = `@article{smith2020,
   author = {Smith, J.},
@@ -36,7 +55,7 @@ function makeEntry(): BibEntry {
 function renderModal() {
   const onSave = vi.fn().mockResolvedValue(undefined);
   const onClose = vi.fn();
-  render(<BibEditModal entry={makeEntry()} onSave={onSave} onClose={onClose} />);
+  render(<SystemDialogProvider><BibEditModal entry={makeEntry()} onSave={onSave} onClose={onClose} /></SystemDialogProvider>);
   return { onSave, onClose };
 }
 
@@ -114,12 +133,14 @@ describe("BibEditModal — backdrop", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("a press wholly on the backdrop closes", () => {
+  it("a press wholly on the backdrop closes an UNEDITED entry", async () => {
     const { onClose } = renderModal();
     const backdrop = screen.getByRole("dialog");
     fireEvent.mouseDown(backdrop);
     fireEvent.click(backdrop);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    // The dismissal guard answers through a promise (task 820), even when the
+    // answer is "free" — let it settle.
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });
 
@@ -137,7 +158,7 @@ describe("BibEditModal — opens on the disk entry, not the CSL projection", () 
   function renderProjected() {
     const [projected] = parseBibFile(INBOOK);
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<BibEditModal entry={projected} onSave={onSave} onClose={vi.fn()} />);
+    render(<SystemDialogProvider><BibEditModal entry={projected} onSave={onSave} onClose={vi.fn()} /></SystemDialogProvider>);
     return { onSave };
   }
 
