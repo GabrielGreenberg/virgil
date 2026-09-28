@@ -2525,6 +2525,18 @@ export function CardPopoutButton({
   );
 }
 
+/** The bottom-right card overlay cluster (trash · archive · restore) — ONE
+ *  pitch, not three hand-picked offsets (task 821). Slot `n` sits one
+ *  `iconbtn-sm` box (20px, globals.css) + a 2px gap further in from the
+ *  corner inset than slot `n−1`: 6 · 28 · 50px. Resize the button and the
+ *  cluster re-spaces itself. */
+const CORNER_SLOT_INSET_PX = 6;
+const ICONBTN_SM_PX = 20;
+const CORNER_SLOT_GAP_PX = 2;
+function cornerSlotStyle(slot: 0 | 1 | 2): { right: number } {
+  return { right: CORNER_SLOT_INSET_PX + slot * (ICONBTN_SM_PX + CORNER_SLOT_GAP_PX) };
+}
+
 /**
  * Universal card-delete affordance. Absolute-positioned at the card's
  * bottom-right corner, hover-revealed, small and red. Requires the outer
@@ -2545,7 +2557,8 @@ export function CardTrashButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      className="iconbtn-sm iconbtn-danger absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      style={cornerSlotStyle(0)}
       {...iconHint({ label: title, hint: "Delete", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2581,7 +2594,8 @@ export function CardArchiveButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm absolute bottom-1.5 right-7 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      className="iconbtn-sm absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      style={cornerSlotStyle(1)}
       {...iconHint({ label: isArchived ? "Unarchive" : "Archive", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2604,7 +2618,7 @@ export function CardArchiveButton({
 
 /**
  * Restore-to-document affordance — the un-archive verb, and the third member of
- * the bottom-right overlay cluster (restore · archive · trash, each 22px apart,
+ * the bottom-right overlay cluster (restore · archive · trash, one `cornerSlotStyle` pitch apart,
  * hover-revealed). Renders only on an EXCERPT-bodied card (`isExcerptCardKind`),
  * whose body holds a verbatim slice of the document rather than authored prose:
  * pressing it hands that slice back to the prose at the caret and retires the
@@ -2628,7 +2642,8 @@ export function CardRestoreButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm absolute bottom-1.5 right-[3.125rem] opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      className="iconbtn-sm absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      style={cornerSlotStyle(2)}
       {...iconHint({ label, pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

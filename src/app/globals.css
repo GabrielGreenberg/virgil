@@ -69,6 +69,12 @@
   --topbar-bg: #dcdbd7;
   --topbar-bg-bottom: var(--topbar-bg); /* default: no gradient; pref overrides this */
   --topbar-border: #cbc3b8;
+  /* Virgil-bar seam lift (task 821): the ONE off-grid spacing value the bar
+     row shares. Every 24px-tall seam-anchored group (tabs, the "+", the
+     StatusCluster icons) is `self-end mb-[var(--bar-seam-lift)]`, which lands
+     its optical centre at seam−15 — the tab titles' anchor (tasks 094/289).
+     aligns: a 24px row's centre to seam−15, not the 4px grid. */
+  --bar-seam-lift: 3px;
   --theme-color: var(--topbar-bg);
   --tab-bg: #dcdbd7;
   --main-tab-bg: var(--background);

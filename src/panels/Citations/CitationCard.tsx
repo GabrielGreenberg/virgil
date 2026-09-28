@@ -1583,7 +1583,7 @@ function CitationKeyRow({
         <div className="flex items-start gap-2">
           <span
             aria-hidden
-            className="text-ink-body mt-[1px] select-none leading-none"
+            className="text-ink-body mt-px select-none leading-none"
           >
             •
           </span>
@@ -1679,7 +1679,11 @@ function CitationKeyRow({
       {/* Bottom line: citekey controls — META tier (10px, the one meta
           gray), fixed: the body-font picker never applies here. */}
       {trimmed && (
-        <div className="pl-[14px] flex items-center gap-1.5 text-[10px] text-[var(--muted)] min-w-0">
+        <div
+          // aligns: the reference text above, past its "•" bullet (≈6px glyph
+          // at the body size) + the row's gap-2 (8px) — a glyph width, off-grid.
+          className="pl-[14px] flex items-center gap-1.5 text-[10px] text-[var(--muted)] min-w-0"
+        >
           <button
             type="button"
             ref={(el) => registerAnchor(el)}

@@ -1272,9 +1272,9 @@ export function resolveMarkerCols(
 
 /** The COMFORTABLE per-side horizontal gutter the editor caps margins at when
  *  the Code pane is open and compressing the editor. A building block of
- *  SplitWithCode's EDITOR_PANE_COMPRESSED_MIN_PX (≈300px prose + one of these
- *  per side + border) — they are NOT the same number and are deliberately
- *  decoupled (398 is visually tuned). A mechanical layout value, not a pref.
+ *  SplitWithCode's EDITOR_PANE_COMPRESSED_MIN_PX, which is DERIVED from it
+ *  (300px prose floor + one of these per side + 2px border — task 821). A
+ *  mechanical layout value, not a pref.
  *  Lives here so the compressed-cap-vs-marker-floor resolution
  *  (`resolveHorizontalMargin`) is a single pure, testable unit. */
 export const CODE_VIEW_GUTTER_PX = 48;
