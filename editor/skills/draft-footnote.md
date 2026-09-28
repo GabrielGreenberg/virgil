@@ -90,9 +90,18 @@ card:
      tell §3 names, and it costs the user twice — the findings arrive truncated
      *and* their footnote comes back edited when they never asked for that.
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/title" <<'TXT'
+     <short title>
+     TXT
+     cat > "$t/body" <<'TXT'
+     <findings>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
          --accept-task-kind footnote --anchor <uuid> --author ai \
-         --title "<short title>" --body "<findings>"
+         --title "@$t/title" --body "@$t/body"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
      `report` is a doctrine **tier 1** kind (a self-sufficient builder), and
      `--accept-task-kind footnote` is what lets it drain a `footnote` Task —
@@ -226,7 +235,13 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
    subcommand from the Task's `safetyLevel` (none → direct create; 1 → silent;
    2 → +comment; 3 → propose):
    ```bash
-   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=footnote --body "<composed body>"
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/body" <<'TXT'
+   <composed body>
+   TXT
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=footnote --body "@$t/body"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
    This replaces the old "edit `document.tex`, then call `apply_response.py`,
    and undo the edit if the second step fails" dance — the contract makes the
@@ -240,9 +255,15 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
    Task). Carry the trail back to the footnote so whoever picks it up can
    splice the `\citet` deterministically:
    ```bash
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/body" <<'TXT'
+   Add a bib entry for <author/year>; once in references.bib, splice \citet{<bibkey>} into footnote <footnoteId>.
+   TXT
    python3 editor/scripts/create_card.py <docPath> --kind=todo \
        --anchor <uuid> \
-       --body "Add a bib entry for <author/year>; once in references.bib, splice \citet{<bibkey>} into footnote <footnoteId>."
+       --body "@$t/body"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
    The original footnote Task still closes — the artifact landed; the citation
    hole is tracked separately. Mention the todo in your reply.

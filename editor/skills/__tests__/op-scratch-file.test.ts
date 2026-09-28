@@ -514,3 +514,180 @@ describe("free-text scratch payloads — the CENSUS (allowlist EMPTY)", () => {
     expect(test).toBeGreaterThan(bind);
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK 815 — the rule is about FREE-TEXT ARGUMENTS, so it reaches the FLAGS.
+//
+// `create_card.py` — the door every card-producing skill uses — takes its prose
+// as FLAGS (`--body/--title/--notes/--item/--task-text`), and 29 skill sites
+// taught them as a DOUBLE-QUOTED argv. Inside `"…"` bash treats a backtick as
+// command substitution and `$x` as a variable, so ``quotes'' and $math$
+// vanished with exit 0 — and a footnote body was spliced into the `.tex`
+// mangled, through the pen, `ok: true`. The 468 census above could not see it:
+// it classifies only `apply_response.py` OP arguments.
+//
+// Both helpers now read `@<path>` for every free-text flag (`_common.text_arg`,
+// pinned byte-exact by editor/scripts/tests/test_text_file_args.py). This
+// census DERIVES which flags are free text from the helpers' own argparse
+// declarations (`type=text_arg`), DISCOVERS every invocation in both silos, and
+// classifies each free-text flag's value. Allowlist EMPTY.
+//
+// The ACCEPTING CONTROL is the fixed literal: a note the skill author wrote
+// out in full, with no placeholder and nothing for the shell to expand
+// (`--note "No preamble drift detected; nothing to merge."`), stays inline —
+// the id-only carve-out's twin. A `<placeholder>` or `…` is composed by
+// construction, and a value holding `` ` ``, `$` or `\` is shell-active.
+
+const HELPERS = {
+  create_card: "editor/scripts/create_card.py",
+  apply_response: "editor/scripts/apply_response.py",
+} as const;
+
+/** The flags a helper declares with `type=text_arg` — read, not hand-listed. */
+function textArgFlags(rel: string): string[] {
+  return read(rel)
+    .split("add_argument(")
+    .slice(1)
+    .flatMap((chunk) => {
+      const flag = /^\s*"--([a-z-]+)"/.exec(chunk);
+      return flag && /type=text_arg\b/.test(chunk) ? [flag[1]] : [];
+    });
+}
+
+const FREE_TEXT_FLAGS = () => [
+  ...new Set([...textArgFlags(HELPERS.create_card), ...textArgFlags(HELPERS.apply_response)]),
+];
+
+type FlagSite = { ref: string; flag: string; value: string; verdict: "file" | "literal" | "violation" };
+
+/** Classify one flag value. */
+function classifyValue(value: string): FlagSite["verdict"] {
+  const v = value.replace(/^"|"$/g, "");
+  if (v.startsWith("@")) return "file";
+  const composed = /<[^>]*>|…/.test(v);
+  const shellActive = /[`$\\]/.test(v);
+  return value.startsWith('"') && !composed && !shellActive ? "literal" : "violation";
+}
+
+/**
+ * Every `create_card.py` / `complete-only` invocation in `rel`, with its
+ * free-text flags. A command's extent: in a fenced block, the line plus its
+ * `\` continuations (and any lines an open op-json quote spans); in inline code, up to the closing backtick (which may sit
+ * on a later line — prose wraps inside it).
+ */
+function flagSites(rel: string, flags: string[]): FlagSite[] {
+  const src = read(rel);
+  const lines = src.split("\n");
+  const out: FlagSite[] = [];
+  let inFence = false;
+  const flagRe = new RegExp(`--(${flags.join("|")})\\s+("[^"]*"|'[^']*'|\\S+)`, "g");
+  lines.forEach((line, i) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      return;
+    }
+    const tok = /create_card\.py|complete-only/.exec(line);
+    if (!tok) return;
+    let cmd: string;
+    if (inFence) {
+      // A `\` continuation, or an op-json single quote still open, carries on.
+      cmd = line;
+      const open = (c: string) => (c.match(/'/g) ?? []).length % 2 === 1;
+      for (let j = i; (/\\\s*$/.test(lines[j]) || open(cmd)) && j + 1 < lines.length; j += 1) {
+        cmd += `\n${lines[j + 1]}`;
+      }
+    } else {
+      const rest = lines.slice(i).join("\n").slice(tok.index);
+      const close = rest.indexOf("`");
+      cmd = close === -1 ? line.slice(tok.index) : rest.slice(0, close);
+    }
+    for (const m of cmd.matchAll(flagRe)) {
+      out.push({ ref: `${rel}:${i + 1}`, flag: m[1], value: m[2], verdict: classifyValue(m[2]) });
+    }
+  });
+  return out;
+}
+
+const allFlagSites = () => siloFiles().flatMap((f) => flagSites(f, FREE_TEXT_FLAGS()));
+
+describe("free-text FLAGS — both helpers read `@<path>` (task 815)", () => {
+  it("create_card.py declares every free-text flag with type=text_arg", () => {
+    expect(textArgFlags(HELPERS.create_card).sort()).toEqual(
+      ["body", "item", "notes", "task-text", "title"].sort(),
+    );
+  });
+
+  it("apply_response.py's --note takes type=text_arg (complete-only + legacy)", () => {
+    expect(textArgFlags(HELPERS.apply_response)).toEqual(["note", "note"]);
+  });
+
+  it("text_arg resolves the path rather than joining it to the doc", () => {
+    const src = read("editor/scripts/_common.py");
+    expect(src).toContain("def text_arg");
+    expect(src).toMatch(/Path\(value\[1:\]\)\.expanduser\(\)\.resolve\(\)/);
+  });
+
+  it("the doctrine names every derived free-text flag", () => {
+    const doc = read(SSOT);
+    for (const f of FREE_TEXT_FLAGS()) expect(doc, f).toContain(`\`--${f}\``);
+    expect(doc.replace(/\s+/g, " ")).toMatch(/any free-text argument to a Virgil helper/);
+  });
+});
+
+describe("free-text FLAGS — the CENSUS (allowlist EMPTY)", () => {
+  it("no skill passes a composed or shell-active free-text flag as a quoted argv", () => {
+    const offenders = allFlagSites()
+      .filter((s) => s.verdict === "violation")
+      .map((s) => `${s.ref} — --${s.flag} ${s.value.slice(0, 60)}`);
+    expect(
+      offenders,
+      "a free-text flag passed inline. Inside double quotes bash eats" +
+        " ``quotes'' and $math$ with exit 0, and a footnote body is spliced into" +
+        " the .tex mangled. Write the value through a quoted heredoc into" +
+        ' `t=$(mktemp -d -t virgil-txt)` and pass `--body "@$t/body"` — see' +
+        ' `editor/skills/_op-json.md`, "Free-text FLAGS".',
+    ).toEqual([]);
+  });
+
+  it("the population is non-vacuous, and the fixed literals are the accepting controls", () => {
+    const sites = allFlagSites();
+    expect(sites.filter((s) => s.verdict === "file").length).toBeGreaterThanOrEqual(29);
+    const literals = sites.filter((s) => s.verdict === "literal").map((s) => s.ref.split(":")[0]);
+    expect([...new Set(literals)].sort()).toEqual([
+      "editor/skills/answer-bib-review.md",
+      "editor/skills/style-merge.md",
+    ]);
+  });
+
+  it("the classifier sees every shape (canary)", () => {
+    // Synthetic, never a live value.
+    expect(classifyValue('"<composed body>"')).toBe("violation");
+    expect(classifyValue('"…"')).toBe("violation");
+    expect(classifyValue("\"As ``x'' costs $n$.\"")).toBe("violation");
+    expect(classifyValue("'<the user''s ask>'")).toBe("violation");
+    expect(classifyValue('"@$t/body"')).toBe("file");
+    expect(classifyValue('"No preamble drift detected; nothing to merge."')).toBe("literal");
+    // The discovery reaches an inline-code command that wraps across lines.
+    const fake = flagSites(`${SKILLS}/answer-todo-request.md`, ["body"]);
+    expect(fake.some((s) => s.value === '"@$t/body"')).toBe(true);
+  });
+
+  it("every skill with a file-form flag links the doctrine and spells the scratch block", () => {
+    const owners = [
+      ...new Set(
+        allFlagSites()
+          .filter((s) => s.verdict === "file" && s.ref.startsWith(`${SKILLS}/`))
+          .map((s) => s.ref.split(":")[0].split("/").pop()!)
+          .filter((f) => !f.startsWith("_")),
+      ),
+    ].sort();
+    expect(owners.length).toBeGreaterThanOrEqual(9);
+    for (const f of owners) {
+      const src = read(`${SKILLS}/${f}`);
+      expect(src, f).toContain(POINTER);
+      expect(src, f).toMatch(/t=\$\(mktemp -d -t virgil-txt\)/);
+      expect(src, f).toMatch(/cat > "\$t\/[a-z0-9]+" <<'TXT'/);
+      expect(src, f).toMatch(/rc=\$\?\s*\n\s*rm -rf "\$t"\s*\n\s*exit "\$rc"/);
+    }
+  });
+});

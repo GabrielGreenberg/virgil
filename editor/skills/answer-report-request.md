@@ -65,20 +65,40 @@ Report Request by appending a **Report card authored by AI** to
    stamps the `aiOriginRequestId` back-pointer, and bumps the version,
    atomically under the pen. A Report Request with no `safetyLevel` is a direct
    create; if it carries one, `create_card.py` honors it (1 → silent,
-   2 → +comment, 3 → propose).
+   2 → +comment, 3 → propose). The title and body are free text, so they reach
+   the helper through heredoc scratch files, never as quoted argv — see
+   [`_op-json.md`](_op-json.md).
 
    - Real `requestId` (`kind: report`, `linkedTo.panel == "reports"`): anchor
      is read from the Task —
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/title" <<'TXT'
+     <short title>
+     TXT
+     cat > "$t/body" <<'TXT'
+     <report body>
+     TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-         --author ai --title "<short title>" --body "<report body>"
+         --author ai --title "@$t/title" --body "@$t/body"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
    - Virtual id (`virtual:reports:<cardId>`): pass the source Report Request's
      paragraph as `--anchor` —
      ```bash
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/title" <<'TXT'
+     <short title>
+     TXT
+     cat > "$t/body" <<'TXT'
+     <report body>
+     TXT
      python3 editor/scripts/create_card.py <docPath> virtual:reports:<cardId> \
-         --kind=report --author ai --title "<short title>" \
-         --body "<report body>" --anchor <uuid>
+         --kind=report --author ai --title "@$t/title" \
+         --body "@$t/body" --anchor <uuid>; rc=$?
+     rm -rf "$t"
+     exit "$rc"
      ```
 
    The source Report Request is never overwritten — `create_card.py` appends a

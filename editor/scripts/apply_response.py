@@ -174,6 +174,7 @@ from _common import (
     resolve_doc,
     sidecar,
     spawn_reflection,
+    text_arg,
     STATUS_COMPLETE,
     STATUS_FAILED,
     STATUS_IN_PROGRESS,
@@ -2579,7 +2580,7 @@ def _dispatch_subcommand(doc: Path, sub: str, sub_argv: list[str]) -> dict:
     if sub == "complete-only":
         p = argparse.ArgumentParser(prog="apply_response.py <doc> complete-only")
         p.add_argument("target", help="request id (or op-json with --synthesize-task)")
-        p.add_argument("--note")
+        p.add_argument("--note", type=text_arg, help="free-text completion note; @<path> reads a file")
         p.add_argument("--result")
         p.add_argument("--synthesize-task", action="store_true", dest="synthesize")
         a = p.parse_args(sub_argv)
@@ -2617,7 +2618,7 @@ def main(argv: list[str]) -> int:
             p.add_argument("op", nargs="?")
             p.add_argument("--revert")
             p.add_argument("--complete-only")
-            p.add_argument("--note")
+            p.add_argument("--note", type=text_arg, help="free-text completion note; @<path> reads a file")
             a = p.parse_args(rest)
             if a.revert:
                 result = cmd_revert(doc, a.revert)

@@ -77,9 +77,18 @@ this skill.
    "is this attribution right", "find me the reference") wants **findings**,
    and its home is a report:
    ```bash
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/title" <<'TXT'
+   <short title>
+   TXT
+   cat > "$t/body" <<'TXT'
+   <findings>
+   TXT
    python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
        --accept-task-kind suggestion --anchor <uuid> --author ai \
-       --title "<short title>" --body "<findings>"
+       --title "@$t/title" --body "@$t/body"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
    That one call drains the `suggestion` Task, so do **not** also emit a
    suggestion — name both kinds in the `Done:` line so the redirect is

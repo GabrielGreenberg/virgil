@@ -605,6 +605,40 @@ def die(msg: str, code: int = 2) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Free-text arguments (task 815)
+# ---------------------------------------------------------------------------
+
+
+def text_arg(value: str | None) -> str | None:
+    """Read a FREE-TEXT flag value: ``@<path>`` → that file's contents.
+
+    The same door `apply_response.parse_op_json` gives an op: free text (a card
+    body, a title, a completion note) never has to survive a hand-quoted shell
+    argument, where bash eats backticks (``` ``quotes'' ```) and ``$math$``
+    silently, exit 0. A skill writes it to a quoted-heredoc `mktemp` scratch
+    file and passes ``--body "@$t/body"`` (editor/skills/_op-json.md).
+
+    The path is RESOLVED, not joined to the doc — scratch lives in $TMPDIR.
+    Exactly ONE trailing newline is dropped: a heredoc always ends its file
+    with one the author never typed. Everything else is byte-exact.
+
+    Used as an argparse ``type=`` so a repeatable flag (``--item``) reads each
+    occurrence. A value not starting with ``@`` passes through unchanged.
+    """
+    if value is None or not value.startswith("@"):
+        return value
+    p = Path(value[1:]).expanduser().resolve()
+    if not p.is_file():
+        die(f"text file not found: {p}")
+    text = p.read_text(encoding="utf-8")
+    if text.endswith("\r\n"):
+        return text[:-2]
+    if text.endswith("\n"):
+        return text[:-1]
+    return text
+
+
+# ---------------------------------------------------------------------------
 # ISO timestamp
 # ---------------------------------------------------------------------------
 
