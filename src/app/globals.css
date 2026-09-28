@@ -214,8 +214,10 @@
   --menu-border: var(--pod-border);
   --menu-shadow: var(--pod-shadow);
   --menu-radius: var(--pod-radius);
-  /* Drop-shadow for a detached FLOATING panel (surface !== "card"). Single
-   * consumer: FloatingPanel's floating-branch boxShadow. Kept DISTINCT from
+  /* Drop-shadow for a detached FLOATING panel (surface !== "card"). Readers:
+   * FloatingPanel's floating-branch boxShadow and the SystemDialog shell. NOT
+   * a drag ghost's lift (the strip-button ghost borrowed it until task 817 —
+   * see --shadow-drag-ghost-filter). Kept DISTINCT from
    * --card-shadow-ambient so it can read as "lifted off the canvas" without
    * dragging card / docked-panel shadows along — thinning it must not flatten
    * cards (see task 2026-07-03-026/3a, which preserves --card-shadow-ambient). */
@@ -241,9 +243,13 @@
    * `-filter` suffix marks the form: this value cannot be used in
    * `box-shadow` and a box shadow cannot be used here.
    *
-   * The TWO consumers are `.inline-atom-ghost` (globals.css, the grabbed
-   * inline atom) and PanelTabStrip's dragged-tab clone (library/) — one
-   * role, so one value. They shipped as `0 2px 6px` and `0 8px 16px` at
+   * Readers: `.inline-atom-ghost` (globals.css, the grabbed inline atom)
+   * and ONE TS door, `stampDragGhostLayer` (src/lib/drag-ghost.ts), which
+   * `attachClampedDragGhost` applies to every HTML5 ghost (text pills,
+   * Library row + tab clones, citation/bib cards, Outline rows) and the
+   * strip-button ghost calls directly. Task 817 routed seven ghosts that had
+   * drifted to five lifts through it; `drag-ghost.test.ts` fails on a
+   * hand-picked ghost shadow. Two of them shipped as `0 2px 6px` and `0 8px 16px` at
    * the same alpha, a 3x difference in reach chosen twice by eye (task
    * 2026-08-25-460). The DEEPER value is the one kept: a dragged copy is
    * the topmost layer in the app and the one thing that should read

@@ -23,7 +23,13 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { buildTextDragGhost } from "../drag-ghost";
+import {
+  attachClampedDragGhost,
+  buildTextDragGhost,
+  DRAG_GHOST_LIFT,
+  stampDragGhostLayer,
+} from "../drag-ghost";
+import { DRAG_GHOST_Z } from "@/floats/float-policy";
 
 describe("buildTextDragGhost", () => {
   it("renders a tokenized card by default — no raw hex, no position", () => {
@@ -65,13 +71,12 @@ describe("buildTextDragGhost", () => {
     expect(css).toContain("var(--citation-color");
   });
 
-  it("honors size/shadow/opacity overrides (the outline + bib-chrome ghosts)", () => {
+  it("honors size/opacity overrides (the outline + bib-chrome ghosts)", () => {
     const g = buildTextDragGhost("§ pod", {
       maxWidthPx: 200,
       padding: "4px 12px",
       radius: "var(--radius-md, 6px)",
       fontSizePx: 13,
-      shadow: "0 2px 8px rgba(0,0,0,0.12)",
       opacity: 0.92,
     });
     const css = g.style.cssText;
@@ -79,14 +84,42 @@ describe("buildTextDragGhost", () => {
     expect(css).toContain("padding: 4px 12px");
     expect(css).toContain("var(--radius-md");
     expect(css).toContain("font-size: 13px");
-    expect(css).toContain("box-shadow: 0 2px 8px");
     expect(css).toContain("opacity: 0.92");
   });
 
-  it("omits shadow and opacity when not requested", () => {
-    const css = buildTextDragGhost("plain").style.cssText;
-    expect(css).not.toContain("box-shadow");
-    expect(css).not.toContain("opacity");
+  it("never authors a lift of its own — the layer door owns it (task 817)", () => {
+    const g = buildTextDragGhost("plain");
+    expect(g.style.cssText).not.toContain("box-shadow");
+    expect(g.style.cssText).not.toContain("filter");
+    expect(g.style.cssText).not.toContain("opacity");
+  });
+});
+
+describe("the drag-ghost layer door (task 817)", () => {
+  it("stampDragGhostLayer applies the one lift token, the ghost z, and pointer inertness", () => {
+    const el = document.createElement("div");
+    stampDragGhostLayer(el);
+    expect(DRAG_GHOST_LIFT).toBe("var(--shadow-drag-ghost-filter)");
+    expect(el.style.filter).toBe(DRAG_GHOST_LIFT);
+    expect(el.style.zIndex).toBe(String(DRAG_GHOST_Z));
+    expect(el.style.pointerEvents).toBe("none");
+    expect(el.style.position).toBe("");
+  });
+
+  it("attachClampedDragGhost stamps every ghost it attaches, whatever the builder returned", () => {
+    const built = document.createElement("div");
+    const dt = { setDragImage: () => {} } as unknown as DataTransfer;
+    attachClampedDragGhost({
+      dragStartEvent: { dataTransfer: dt, clientX: 10, clientY: 10 } as unknown as DragEvent,
+      buildGhost: () => built,
+      cursorOffsetX: 0,
+      cursorOffsetY: 0,
+    });
+    expect(built.isConnected).toBe(true);
+    expect(built.style.filter).toBe(DRAG_GHOST_LIFT);
+    expect(built.style.zIndex).toBe(String(DRAG_GHOST_Z));
+    document.dispatchEvent(new Event("dragend"));
+    expect(built.isConnected).toBe(false);
   });
 });
 
@@ -124,6 +157,71 @@ describe("drag-ghost SSOT source guard", () => {
       hits,
       `raw setDragImage bypasses the clamped-ghost SSOT (drag-ghost.ts) — ` +
         `route the ghost through attachClampedDragGhost instead:\n${hits.join("\n")}`,
+    ).toEqual([]);
+  });
+});
+
+// ── Lift census (task 817): one lift, one door ───────────────────────────────
+// Seven ghosts once painted five lifts — two read the token, two a copied raw
+// `0 4px 12px`, one a `0 2px 8px`, one the FLOATING-PANEL `--shadow-float`, two
+// none — because the text builder took a free-text `box-shadow` and every other
+// ghost styled itself. The lift now lives in `stampDragGhostLayer`; these pins
+// make a hand-picked ghost lift fail CI.
+function sources(): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const visit = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      if (name === "node_modules" || name === ".next" || name === ".git" || name === "__tests__")
+        continue;
+      const full = path.join(dir, name);
+      if (statSync(full).isDirectory()) {
+        visit(full);
+        continue;
+      }
+      if (!/\.(ts|tsx)$/.test(name) || name.includes(".test.")) continue;
+      out.push([path.relative(path.resolve(SRC, ".."), full), readFileSync(full, "utf8")]);
+    }
+  };
+  visit(SRC);
+  visit(LIBRARY);
+  return out;
+}
+
+describe("drag-ghost lift census (task 817)", () => {
+  const all = sources();
+
+  it("the lift token and the ghost z are spelled in TS only by the door", () => {
+    const tokenReaders = all
+      .filter(([, t]) => t.includes("--shadow-drag-ghost-filter"))
+      .map(([f]) => f);
+    expect(tokenReaders).toEqual(["src/lib/drag-ghost.ts"]);
+    const zReaders = all
+      .filter(([, t]) => /\bDRAG_GHOST_Z\b/.test(t))
+      .map(([f]) => f)
+      .sort();
+    expect(zReaders).toEqual(["src/floats/float-policy.ts", "src/lib/drag-ghost.ts"]);
+  });
+
+  it("no ghost-building file hand-picks a lift", () => {
+    // A ghost-building file: attaches through the clamp, or stamps the layer
+    // itself. In those files no inline `box-shadow:` string and no
+    // `.style.boxShadow =` / `.style.filter =` assignment may appear — the
+    // stamp is the only place a ghost gets its elevation.
+    const builders = all.filter(
+      ([f, t]) =>
+        f !== "src/lib/drag-ghost.ts" &&
+        (/attachClampedDragGhost\s*\(/.test(t) || /stampDragGhostLayer\s*\(/.test(t)),
+    );
+    expect(builders.length).toBeGreaterThanOrEqual(7);
+    const hits: string[] = [];
+    for (const [f, t] of builders)
+      t.split("\n").forEach((line, i) => {
+        if (/box-shadow\s*:|\.style\.(boxShadow|filter)\s*=/.test(line))
+          hits.push(`${f}:${i + 1} — ${line.trim().slice(0, 90)}`);
+      });
+    expect(
+      hits,
+      "a drag ghost's lift is stampDragGhostLayer's (drag-ghost.ts) — delete the hand-picked shadow",
     ).toEqual([]);
   });
 });

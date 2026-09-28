@@ -147,7 +147,6 @@ export function BibEntryChrome({
               buildTextDragGhost(headerText || citekey, {
                 maxWidthPx: 320,
                 padding: "4px 10px",
-                shadow: "0 4px 12px rgba(0,0,0,0.18)",
                 opacity: 0.92,
                 // Preserve the prior body-inherited text color (this ghost set
                 // no explicit `color` before adopting the shared builder).
