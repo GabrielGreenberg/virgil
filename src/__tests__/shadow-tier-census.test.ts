@@ -32,13 +32,7 @@ const SCAN_DIRS = ["src", "library"];
 const EXTS = new Set([".ts", ".tsx", ".css"]);
 
 /** Annotated exceptions: a site may keep a non-tier shadow only here. */
-const ALLOWLIST: ReadonlyArray<{ file: string; needle: string; why: string }> = [
-  {
-    file: "src/components/Marginalia.tsx",
-    needle: "shadow-lg",
-    why: "the \"+N\" overflow popover is a MENU surface — task 819 moves it onto the one menu door (.menu-surface), which removes this entry",
-  },
-];
+const ALLOWLIST: ReadonlyArray<{ file: string; needle: string; why: string }> = [];
 
 export interface ShadowViolation {
   line: number;

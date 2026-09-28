@@ -54,6 +54,7 @@ import {
   type AnchoredCardRef,
 } from "@/links/_shared/anchored-card-store";
 import { iconHint } from "@/components/Hint";
+import { useMenuDismiss } from "@/components/menu/useMenuDismiss";
 
 interface MarginaliaProps {
   editor: Editor | null;
@@ -441,6 +442,13 @@ export function MarkerButton({
  * margin listing the hidden markers as ordinary `MarkerButton`s (click /
  * delete / drag behave exactly like in-grid markers). Render-layer only —
  * the open state is local, closed by click-away / Escape / marker click.
+ *
+ * Its PLACEMENT is pod-relative (coordinates from the marginalia layout pass —
+ * the scroll-anchor law's branch (a)); its SURFACE is the menu tier
+ * (`.menu-surface`) and its dismissal is `useMenuDismiss`, like every other
+ * menu (task 819). It does not mount `MenuProvider`: its rows are full
+ * `MarkerButton`s (drag / Delete / click), which the roving controller would
+ * have to learn to drive — a rewrite, not a shell swap.
  */
 function OverflowPill({
   group,
@@ -452,24 +460,12 @@ function OverflowPill({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // Click-away + Escape close. Mounted only while open.
-  useEffect(() => {
-    if (!open) return;
-    const onMouseDown = (e: MouseEvent) => {
-      const t = e.target;
-      if (t instanceof Node && rootRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  // Click-away + Escape close through the one menu-dismiss door (task 819).
+  // Nothing is staged here, so dismiss and cancel are the same door. The
+  // container is the whole root, so a press on the "+K" trigger is INSIDE and
+  // its own onClick toggles the popover shut.
+  const close = useCallback(() => setOpen(false), []);
+  useMenuDismiss({ containerRef: rootRef, onClose: close, open });
 
   const count = group.hidden.length;
   const label = `${count} hidden marker${count === 1 ? "" : "s"}`;
@@ -503,7 +499,7 @@ function OverflowPill({
       </button>
       {open && (
         <div
-          className="pointer-events-auto absolute z-30 flex flex-col rounded-lg border border-edge-subtle bg-surface shadow-lg"
+          className="menu-surface pointer-events-auto absolute z-30 flex flex-col"
           style={{
             top: group.cell.y + MARGINALIA_ICON_SIZE + 4,
             [group.side]: 2,

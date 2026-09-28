@@ -74,7 +74,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { commentsStripped, elementsNamed, cssRuleBodies, cssCommentsStripped } from "@/lib/__tests__/_source-scan";
-import { handRolledMenus } from "./_menu-census";
+import {
+  ROLE_MENU,
+  declaresAnchoredSurface,
+  handRolledMenus,
+  surfaceCensusPopulation,
+} from "./_menu-census";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../../.."); // src/
@@ -281,6 +286,17 @@ function menuMounts(): MenuMount[] {
 
 const MOUNTS = menuMounts();
 
+/** Leg 4's compliance test: EITHER spelling of the menu tier — the shared
+ *  class, or the four tokens read directly (the Library-silo pod writes inline
+ *  styles and has no class to stamp). */
+function paintsFromMenuTier(block: string): boolean {
+  const flat = block.replace(/\s*\n\s*/g, " ");
+  return (
+    /\bmenu-surface\b/.test(flat) ||
+    /var\(--menu-(?:bg|border|radius|shadow)\)/.test(flat)
+  );
+}
+
 describe("menu surface — the primitive owns the container chrome", () => {
   it("sees the menu mounts it is meant to police (canary)", () => {
     // Anchored on the primitive's own consumers rather than on any site the
@@ -407,16 +423,53 @@ describe("menu surface — the primitive owns the container chrome", () => {
     // Compliance is EITHER spelling of the same tier: the shared class, or the
     // four tokens read directly (the Library-silo pod writes inline styles and
     // has no class to stamp). Anything else is a vocabulary of its own.
+    //
+    // Since task 819 the population is the anchored census ∪ every declared
+    // `role="menu"` (`surfaceCensusPopulation`), so a PLACEMENT exemption —
+    // `OverflowPill`'s prop-threaded, branch-(a) coordinates — no longer
+    // implies a CHROME exemption.
     const offenders: string[] = [];
-    for (const { key, block } of handRolledMenus()) {
+    for (const { key, block } of surfaceCensusPopulation()) {
       if (PERMITTED_UNSURFACED_MENUS[key.split("::")[0]]) continue;
-      const flat = block.replace(/\s*\n\s*/g, " ");
-      const stamped = /\bmenu-surface\b/.test(flat);
-      const tokened = /var\(--menu-(?:bg|border|radius|shadow)\)/.test(flat);
-      if (stamped || tokened) continue;
+      if (paintsFromMenuTier(block)) continue;
       offenders.push(key);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("a declared role=\"menu\" is censused even when placement exempts it (defect fixture, task 819)", () => {
+    // `OverflowPill` exactly as it shipped: pod-relative coordinates threaded
+    // from the marginalia layout pass (no rect read, no CSS edge anchor), so the
+    // ANCHORED signal is false by design — and the retired menu vocabulary.
+    const preFix = `function OverflowPill({ group }) {
+  return (
+    <div ref={rootRef} className="pointer-events-none">
+      {open && (
+        <div
+          className="pointer-events-auto absolute z-30 flex flex-col rounded-lg border border-edge-subtle bg-surface shadow-lg"
+          style={{ top: group.cell.y + MARGINALIA_ICON_SIZE + 4, [group.side]: 2 }}
+          role="menu"
+        >
+        </div>
+      )}
+    </div>
+  );
+}`;
+    const postFix = preFix.replace(
+      "pointer-events-auto absolute z-30 flex flex-col rounded-lg border border-edge-subtle bg-surface shadow-lg",
+      "menu-surface pointer-events-auto absolute z-30 flex flex-col",
+    );
+    // The hole: invisible to the placement census, hence to the pre-819 leg 4.
+    expect(declaresAnchoredSurface(preFix)).toBe(false);
+    // The close: the author's own declaration puts it in the population…
+    expect(ROLE_MENU.test(preFix)).toBe(true);
+    // …where the pre-fix chrome is RED and the adopted form is green.
+    expect(paintsFromMenuTier(preFix)).toBe(false);
+    expect(paintsFromMenuTier(postFix)).toBe(true);
+    // And the live file is in the population, not merely the fixture.
+    expect(surfaceCensusPopulation().map((h) => h.key)).toContain(
+      "src/components/Marginalia.tsx::OverflowPill",
+    );
   });
 
   it("leg 4's population is the sibling census's, not a second idea of a menu", () => {
