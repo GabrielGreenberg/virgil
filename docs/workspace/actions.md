@@ -1,4 +1,4 @@
-<!-- last-verified: beedb319 2026-09-26 -->
+<!-- last-verified: fc84e325 2026-09-28 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -165,7 +165,7 @@ reach). Two cells are still direct local calls (`\tex` → `insertTexBlock`,
 
 | Cell | Effect | Dispatch |
 |---|---|---|
-| Bold / Italic / Strike / Code | toggle inline mark | `runGridAction("bold")` … → registry row (`backbone: "tiptap-chain"`) |
+| Bold / Italic / Strike / Code / Small caps (task 808, row 4) | toggle inline mark | `runGridAction("bold")` … → registry row (`backbone: "tiptap-chain"`) |
 | BlockType | set paragraph/heading level | `<BlockTypeDropdown>` (`setBlockType`) |
 | Bullet list / Numbered list / Blockquote | toggle block wrapper | `runGridAction("bullet-list")` … → registry row |
 | Example (`ex`) | wrap selection in an `exampleBlock` | `exampleRun` (the canonical registry creator, shared with slash `\ex`) |
@@ -690,6 +690,7 @@ their default bindings survive:
 | Key | Action | Source |
 |---|---|---|
 | `Mod-B` / `Mod-I` / `Mod-Shift-S` / `Mod-E` / `Mod-U` | Bold / Italic / Strike / Code / Underline | StarterKit marks |
+| `Mod-Shift-K` | Small caps | `SmallCaps` (`src/lib/tiptap/small-caps.ts`) |
 | `Mod-Z` / `Mod-Shift-Z`, `Mod-Y` | Undo / Redo | StarterKit history |
 | `Shift-Enter`, `Mod-Enter` | hard line break | StarterKit `HardBreak` |
 | `Mod-Alt-1…6` | set heading level | `createHeadingWithLabel` (extends `Heading`) |

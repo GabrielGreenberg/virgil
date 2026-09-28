@@ -1067,6 +1067,24 @@ function textMacroCommands() {
   for (const sm of m[1].matchAll(/"\\\\([A-Za-z]+)"/g)) out.add(sm[1]);
   return out;
 }
+// WRAPPER marks (`\textbf`, `\emph`, `\textit`, `\underline`, `\texttt`,
+// `\textcolor`, `\textsc`, …) are likewise invisible to the alternation
+// extractor: since task 808 they are matched from `WRAPPER_MARK_ROWS`
+// (src/lib/mark-composition.ts) via `matchWrapperCommandAt`, not from a
+// `/^\\cmd\{/` literal. Derive them from that table — the third instance of
+// the same lesson: the 808 refactor left six wrapper commands reading as
+// phantoms while the doc was right and the checker was blind.
+const MARK_COMPOSITION_TS = "src/lib/mark-composition.ts";
+function wrapperMarkCommands() {
+  if (!exists(MARK_COMPOSITION_TS)) return new Set();
+  const m = /WRAPPER_MARK_ROWS[^=]*=\s*\[([\s\S]*?)\n\]/.exec(read(MARK_COMPOSITION_TS));
+  if (!m) return new Set();
+  const out = new Set();
+  for (const cm of m[1].matchAll(/commands:\s*\[([^\]]*)\]/g)) {
+    for (const sm of cm[1].matchAll(/"([A-Za-z]+)"/g)) out.add(sm[1]);
+  }
+  return out;
+}
 // `\verb<delim>…<delim>` / `\verb*` — inline verbatim, genuinely rendered
 // (latex-parser.ts handles it via the delimiter-based verbatim branch →
 // `verbatimMark()`, task 264), but NOT as a `/^\\cmd\{/` literal inside
@@ -1123,6 +1141,7 @@ function parserInlineCommands() {
   }
   for (const e of escapeSpecialCommands()) out.add(e);
   for (const e of textMacroCommands()) out.add(e);
+  for (const e of wrapperMarkCommands()) out.add(e);
   for (const e of ALLOWLIST_VERBATIM_HANDLED) out.add(e);
   return out;
 }

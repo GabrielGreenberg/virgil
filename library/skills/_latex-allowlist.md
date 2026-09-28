@@ -60,6 +60,9 @@ glyphs.
 - `\textbf{…}` — bold.
 - `\textit{…}`, `\emph{…}` — italic.
 - `\underline{…}` — underline.
+- `\sout{…}` — strikethrough (`ulem`, loaded `[normalem]`; Virgil adds the
+  package on save).
+- `\textsc{…}` — small caps.
 - `\texttt{…}` — monospace / code span (typographic transforms suppressed
   inside).
 - `\verb|…|` — inline verbatim (any single non-letter delimiter).
@@ -173,7 +176,7 @@ parser matches them by table, not by a fixed command name.)
 
 ```latex-allowlist
 # inline marks & text
-\textbf \textit \emph \underline \texttt \verb \textcolor
+\textbf \textit \emph \underline \sout \textsc \texttt \verb \textcolor
 \footnote \thanks
 \ref \getref \getfullref
 \ldots \dots

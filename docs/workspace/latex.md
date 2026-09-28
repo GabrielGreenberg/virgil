@@ -1,4 +1,4 @@
-<!-- last-verified: b0f37c03 2026-09-27 -->
+<!-- last-verified: fc84e325 2026-09-28 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -56,8 +56,10 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `$ … $`, `$$ … $$`, `\( … \)`, `\[ … \]` (mid-paragraph) | `inlineMath` (KaTeX). ONE scanner — `matchInlineMathAt` (`src/lib/latex-lexer.ts`) — shared by the main parser and the card/footnote fork; all four spellings normalize to `$ … $` inline (task 341) |
 | `` `` `` / `''` | smart quotes “ / ” |
 | `\textbf{}` | bold mark |
-| `\emph{}` / `\textit{}` | italic mark (both) |
+| `\emph{}` / `\textit{}` | italic mark (both; the `spelling` attr records `textit` so it round-trips, task 808) |
 | `\underline{}` | underline mark |
+| `\sout{}` | strike mark (`ulem`, injected `[normalem]`) |
+| `\textsc{}` | smallCaps mark (`{\scshape …}` stays raw) |
 | `\texttt{}` | code mark |
 | `\textcolor[HTML]{RRGGBB}{}` | textColor mark (**only** the `[HTML]{6-hex}` form) |
 | `\footnote{}` / `\thanks{}` | `footnote` atom (consumes a pending `\vfid`) |
@@ -176,8 +178,9 @@ gb4e / linguex paper no longer gets an `xlist` shim it cannot compile. An expex
 
 ## Serialization and escaping
 
-- **Mark → command:** bold→`\textbf`, italic→`\emph`, underline→`\underline`,
-  code→`\texttt`, textColor→`\textcolor[HTML]{HEX}{}`; `latexCommand`→raw
+- **Mark → command** (ONE table, `WRAPPER_MARK_ROWS` in `src/lib/mark-composition.ts`,
+  task 808): bold→`\textbf`, italic→`\emph` (or `\textit` per its `spelling` attr),
+  underline→`\underline`, strike→`\sout`, smallCaps→`\textsc`, code→`\texttt`, textColor→`\textcolor[HTML]{HEX}{}`; `latexCommand`→raw
   passthrough; `linkedAnchor`→no command (wrapped by `\vlid`/`\vlidend`).
 - **Escaping is ONE table read by both rungs on both surfaces** —
   `CHAR_ESCAPE_TABLE` in [src/lib/latex-typography.ts](../../src/lib/latex-typography.ts)
