@@ -854,10 +854,16 @@ the AI-marker label. No letter-spacing on body text.
 Tailwind's scale (half-steps included: `0.5`=2, `1.5`=6, `2.5`=10); don't
 hand-author `p-[5px]` or `gap-[7px]`. The **one** exception is aligning to a
 non-grid asset — an icon's optical center, a fixed glyph width — and a site
-that takes it says what it aligns to, the way the Virgil-bar seam cluster's
-`mb-[3px]` does. (No CI guard here, unlike the radius scale; the ratio today
-is ~870 scale-based utilities to ~24 arbitrary ones, nearly all of them the
-sanctioned exception.) `--pod-gap: 10px` is the canonical pod-to-pod gap;
+that takes it says what it aligns to, in an `aligns: <what>` comment on the
+line or directly above it. A shared off-grid value is a TOKEN, not a repeated
+literal: the Virgil-bar seam cluster's lift is `mb-[var(--bar-seam-lift)]`,
+defined (and annotated) once in `globals.css`. A value that is ARITHMETIC on
+another value (grip width + gap, one button + a gap per corner slot, prose
+floor + gutters) is derived in code from its sources, never hand-added.
+Enforced by `npm run check:spacing` (`scripts/check-spacing-grid.mjs`, the
+radius guard's sibling; contract `spacing-grid.test.ts`): an arbitrary
+Tailwind spacing utility passes only as a `var(…)` or with the `aligns:` note
+(task 821). `--pod-gap: 10px` is the canonical pod-to-pod gap;
 don't override.
 
 Three icon-button sizes: `iconbtn-sm` (20×20), `iconbtn-md` (24×24,
@@ -1808,8 +1814,8 @@ crowded workspace:
 - **Comfortable gutter, never a squeeze.** When the splitter narrows the
   editor below its natural width, gutters cap at `CODE_VIEW_GUTTER_PX`
   (48px) — a healthy left/right margin, not prose jammed to the edge.
-  Keep in sync with `EDITOR_PANE_COMPRESSED_MIN_PX` in
-  `split-with-code.tsx` (300px prose + gutter×2 + 2px border).
+  `EDITOR_PANE_COMPRESSED_MIN_PX` in `split-with-code.tsx` is DERIVED
+  from it (300px prose + gutter×2 + 2px border), so the two cannot drift.
 - **Panes do NOT auto-align cursors.** Moving the cursor in one pane does
   not scroll the other. The TipTap cursor drives a passive light-red
   **band** (`.cm-virgil-band`, `rgba(220,38,38,0.09)`) over the matching

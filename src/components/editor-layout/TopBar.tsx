@@ -51,7 +51,7 @@ function TopBarImpl({ zenModeOn, tabStrip, statusCluster }: TopBarProps) {
       // every center-anchored child UP by H/2 as the bar got taller, dropping
       // them ABOVE the seam-anchored tab titles (task 094 seam-anchored only the
       // titles). With items-end every group bottom-anchors; the 24px-tall
-      // content groups add `mb-[3px]` (StatusCluster, the "+") to land their
+      // content groups add `mb-[var(--bar-seam-lift)]` (StatusCluster, the "+") to land their
       // optical center at seam−15, matching the tab titles' 094 anchor. TabStrip
       // is `self-stretch` so it fills H and keeps its tabs at the seam (task 289).
       className={`virgil-bar flex items-end sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}

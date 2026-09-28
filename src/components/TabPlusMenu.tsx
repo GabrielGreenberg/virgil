@@ -245,12 +245,12 @@ export function TabPlusMenu({
   return (
     <div
       ref={setWrapEl}
-      // self-end mb-[3px]: seam-anchor the "+" to the bar's bottom edge (was
+      // self-end mb-[var(--bar-seam-lift)]: seam-anchor the "+" to the bar's bottom edge (was
       // self-center, which floated it UP to seam−H/2 as the WCO bar grew taller,
-      // above the seam-anchored tab titles). The 24px topbarbtn + mb-[3px] lands
+      // above the seam-anchored tab titles). The 24px topbarbtn + mb-[var(--bar-seam-lift)] lands
       // the icon's optical center at seam−15, matching the tab titles (task 094)
       // and the StatusCluster icons — one shared bar baseline (task 289).
-      className="self-end mb-[3px] inline-flex"
+      className="self-end mb-[var(--bar-seam-lift)] inline-flex"
     >
       <button
         ref={btnRef}

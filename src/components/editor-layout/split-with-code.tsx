@@ -14,6 +14,7 @@ import {
   type CodePaneSplitState,
 } from "./CodePaneSplitContext";
 import { iconHint } from "@/components/Hint";
+import { CODE_VIEW_GUTTER_PX } from "@/lib/marginalia";
 
 /**
  * Vertical split: editor pane on the left, code pane on the right,
@@ -47,12 +48,16 @@ import { iconHint } from "@/components/Hint";
 /** Minimum width for the code pane (px). The right edge is allowed to
  *  shrink to this; below it the splitter snaps. */
 const CODE_PANE_MIN_PX = 240;
-/** Hard minimum for the editor pane WITH compressed gutters. Matches
- *  the EditorPane CSS calc post-compression (~300px prose + the
- *  comfortable code-view gutter — CODE_VIEW_GUTTER_PX=48 — each side +
- *  2px border ≈ 398px). Keep in sync with EditorPane's
- *  CODE_VIEW_GUTTER_PX. Tuned visually. */
-const EDITOR_PANE_COMPRESSED_MIN_PX = 398;
+/** Narrowest prose column the compressed editor keeps (px). Tuned visually. */
+const COMPRESSED_PROSE_MIN_PX = 300;
+/** The editor pane's left + right border (1px each). */
+const EDITOR_PANE_BORDER_PX = 2;
+/** Hard minimum for the editor pane WITH compressed gutters: the prose
+ *  floor + the comfortable code-view gutter (`CODE_VIEW_GUTTER_PX`,
+ *  src/lib/marginalia.ts) on each side + the border — 398px today.
+ *  DERIVED, so a gutter change moves this floor with it (task 821). */
+const EDITOR_PANE_COMPRESSED_MIN_PX =
+  COMPRESSED_PROSE_MIN_PX + CODE_VIEW_GUTTER_PX * 2 + EDITOR_PANE_BORDER_PX;
 /** How far past the compressed min the editor wrapper may shrink (px)
  *  before we just refuse — i.e. the editor will always retain at least
  *  this much visible width even at full overlay. Zero means the editor

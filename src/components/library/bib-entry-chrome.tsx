@@ -82,6 +82,13 @@ export interface BibEntryChromeProps {
   dedupeApaHeadline?: boolean;
 }
 
+/** GripDots' drawn width (px) and the headline row's grip→title gap (px).
+ *  The layers beneath the headline indent by their SUM, so they align under
+ *  the title rather than the grip — derived, not a hand-added `18` (task 821). */
+const GRIP_W_PX = 10;
+const HEADLINE_GAP_PX = 8;
+const UNDER_TITLE_INDENT_PX = GRIP_W_PX + HEADLINE_GAP_PX;
+
 /** Subtle 6-dot grip — the drag affordance lean (grab cursor + subtle
  *  handle). Inlined (not CardDragHandle) so the hint reads "Drag to a
  *  library", not "Drag to pop out". */
@@ -92,7 +99,7 @@ function GripDots() {
       aria-hidden="true"
       style={{ display: "inline-flex" }}
     >
-      <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+      <svg width={GRIP_W_PX} height="14" viewBox="0 0 10 14" fill="currentColor">
         <circle cx="3" cy="2" r="1.2" />
         <circle cx="7" cy="2" r="1.2" />
         <circle cx="3" cy="7" r="1.2" />
@@ -130,7 +137,8 @@ export function BibEntryChrome({
           structured author·year·title stack; in `apaOnly` mode the APA citation
           rides this row instead (so the drag handle stays attached to it). */}
       <div
-        className="flex items-center gap-2 min-w-0 cursor-grab active:cursor-grabbing"
+        className="flex items-center min-w-0 cursor-grab active:cursor-grabbing"
+        style={{ gap: HEADLINE_GAP_PX }}
         draggable
         onDragStart={(e) => {
           // Additive add-to-library drag — mirrors LeftListRow. The source
@@ -199,8 +207,9 @@ export function BibEntryChrome({
           rides Layer 1 above (else it would repeat). */}
       {!apaOnly && apaHtml ? (
         <div
-          className="library-bib-formatted pl-[18px] text-[13px] leading-relaxed"
+          className="library-bib-formatted text-[13px] leading-relaxed"
           style={{
+            paddingLeft: UNDER_TITLE_INDENT_PX,
             fontFamily: FONT_SERIF,
             color: "var(--foreground)",
             wordBreak: "break-word",
@@ -214,7 +223,7 @@ export function BibEntryChrome({
           PaperHeader passes showMembershipChips=false + showStatusRow=false)
           so no empty flex row is left behind. */}
       {((showMembershipChips && membershipChips.length > 0) || showStatusRow) && (
-        <div className="flex flex-col gap-1 pl-[18px]">
+        <div className="flex flex-col gap-1" style={{ paddingLeft: UNDER_TITLE_INDENT_PX }}>
           {showMembershipChips && <LibraryMembershipChips chips={membershipChips} />}
           {showStatusRow && (
             <LibraryStatusRow

@@ -260,7 +260,7 @@ function TabStripImpl(props: TabStripProps) {
             // pinned tabs): it never compresses, so its `library-pinned`
             // padding — which pre-reserves the folder silhouette's footprint
             // — is never squeezed under its own label.
-            className="self-end mb-[3px] shrink-0"
+            className="self-end mb-[var(--bar-seam-lift)] shrink-0"
           >
             <InlineTabLabel
               id={OUTER_LIBRARY_ROOT_ID}
@@ -335,7 +335,7 @@ function TabStripImpl(props: TabStripProps) {
             // automatic flex minimum, which is this tab's fixed chrome plus
             // the shared label floor (InlineTabLabel). Inactive tabs yield
             // first; the active tab is `shrink-0` and resists.
-            className="self-end mb-[3px] shrink"
+            className="self-end mb-[var(--bar-seam-lift)] shrink"
           >
             <InlineTabLabel
               id={citekey}
@@ -455,7 +455,7 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="self-end mb-[3px] shrink"
+            className="self-end mb-[var(--bar-seam-lift)] shrink"
             {...dropHandlers}
             style={dropStyle}
           >
@@ -574,7 +574,7 @@ function TabStripImpl(props: TabStripProps) {
             if (el) outerTabRefs.current.set(doc.id, el);
             else outerTabRefs.current.delete(doc.id);
           }}
-          className="self-end mb-[3px] shrink"
+          className="self-end mb-[var(--bar-seam-lift)] shrink"
         >
           <InlineTabLabel
             id={doc.id}

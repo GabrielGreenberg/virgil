@@ -10,14 +10,14 @@ import { describe, expect, it } from "vitest";
  * Controls Overlay — via `min-height` only, with NO vertical padding — so any
  * CENTER-anchored bar child's optical center = `seam − H/2`, which rises as the
  * bar height H grows. Task 094 seam-anchored only the tab TITLE wrappers
- * (`self-end mb-[3px]`, optical center at `seam − 15`, height-independent),
+ * (`self-end mb-[var(--bar-seam-lift)]`, optical center at `seam − 15`, height-independent),
  * which left the titles seam-anchored while the "+" and the StatusCluster icons
  * stayed center-anchored — so under the folded WCO bar the titles dropped BELOW
  * the "+"/icons.
  *
  * This pins the fix: the WHOLE bar row shares ONE seam (bottom) anchor. Every
  * bar content group is 24px tall (`.topbarbtn` = 24px; `InlineTabLabel` =
- * h-[24px]), so `self-end mb-[3px]` lands each group's optical center at
+ * h-[24px]), so `self-end mb-[var(--bar-seam-lift)]` lands each group's optical center at
  * `seam − 15` uniformly — one baseline in BOTH the base and WCO-folded bar.
  *
  * These are source-string contracts (jsdom has no layout, so a pixel-baseline
@@ -39,18 +39,25 @@ describe("WCO bar seam-anchor (task 289)", () => {
     expect(topBar).not.toMatch(/className=\{`virgil-bar flex items-center /);
   });
 
+  it("the seam lift is ONE token (task 821), still 3px", () => {
+    // Every seam-anchored group reads the lift from globals.css rather than
+    // restating `3px`, so the cluster cannot drift apart one site at a time.
+    const globals = read("app/globals.css");
+    expect(globals).toMatch(/--bar-seam-lift:\s*3px;/);
+  });
+
   it("StatusCluster's icon row is seam-anchored with the 094 offset", () => {
     const cluster = read("components/editor-layout/StatusCluster.tsx");
     // Root icon-row div: seam-anchored (self-end) + lifted 3px to seam−15.
     // Inner items-center still centers the buttons within the 24px row.
     expect(cluster).toMatch(
-      /className="shrink-0 flex items-center self-end mb-\[3px\] px-2"/,
+      /className="shrink-0 flex items-center self-end mb-\[var\(--bar-seam-lift\)\] px-2"/,
     );
   });
 
   it("the '+' (TabPlusMenu) is seam-anchored, not self-center", () => {
     const plus = read("components/TabPlusMenu.tsx");
-    expect(plus).toMatch(/className="self-end mb-\[3px\] inline-flex"/);
+    expect(plus).toMatch(/className="self-end mb-\[var\(--bar-seam-lift\)\] inline-flex"/);
     // The old self-center wrapper floated the "+" up with the WCO bar height.
     expect(plus).not.toMatch(/className="self-center inline-flex"/);
   });
@@ -60,11 +67,11 @@ describe("WCO bar seam-anchor (task 289)", () => {
     // Inline (inactive) tab wrappers. RENEGOTIATED in place (task 561): the
     // pre-561 needle pinned `shrink-0` on every inline wrapper, which was the
     // strip's non-compression — not the seam anchor this leg is about. The
-    // seam anchor is `self-end mb-[3px]`; the flex-shrink is the occupancy
+    // seam anchor is `self-end mb-[var(--bar-seam-lift)]`; the flex-shrink is the occupancy
     // ladder's (compressible tabs `shrink`, the pinned Library root
     // `shrink-0`), and BOTH spellings must keep the anchor.
-    expect(strip).toMatch(/className="self-end mb-\[3px\] shrink"/);
-    expect(strip).toMatch(/className="self-end mb-\[3px\] shrink-0"/);
+    expect(strip).toMatch(/className="self-end mb-\[var\(--bar-seam-lift\)\] shrink"/);
+    expect(strip).toMatch(/className="self-end mb-\[var\(--bar-seam-lift\)\] shrink-0"/);
     expect(strip, "an inline wrapper lost its seam anchor").not.toMatch(
       /className="self-end shrink(?:-0)?"/,
     );

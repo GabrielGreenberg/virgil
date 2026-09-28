@@ -25,7 +25,7 @@ export default function CollabPresenceDots({ presences, withTooltip = true }: Pr
       : `${presences.map((p) => p.name).join(", ")} are here`;
   return (
     <span
-      className="inline-flex items-center gap-[1px] shrink-0"
+      className="inline-flex items-center gap-px shrink-0"
       role="img"
       {...(withTooltip ? iconHint({ label: name }) : { "aria-label": name })}
     >

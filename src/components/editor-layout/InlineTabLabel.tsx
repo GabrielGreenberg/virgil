@@ -67,6 +67,9 @@ function InlineTabLabelImpl({
   onClose,
 }: InlineTabLabelProps) {
   const padding =
+    // aligns: the active Library folder silhouette — its content inset
+    // (FOLDER_TAB_SWOOP, 12) + the folder row's pl-3.5 (14) = 26; the right
+    // mirrors it. Off-grid by construction: it is the folder geometry's.
     variant === "library-pinned" ? "pl-[26px] pr-[26px]" : "pl-2 pr-2";
   // Hover lozenge hugs the content with ~8px breathing room on each
   // side. The tight variant's wrapper already sits at content + 8px,
@@ -75,6 +78,7 @@ function InlineTabLabelImpl({
   // Library folder silhouette), so the lozenge insets 18px to land at
   // the same content + 8px feel.
   const hoverBgInsetX =
+    // aligns: the 26px library-pinned padding above, less the lozenge's 8px.
     variant === "library-pinned" ? "inset-x-[18px]" : "inset-x-0";
   return (
     <div

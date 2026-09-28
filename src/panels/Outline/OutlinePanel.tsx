@@ -343,7 +343,7 @@ function InlineLabel({
   // No label — show "+" on hover (parent row has `group` class)
   return (
     <span
-      className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-[1px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer select-none"
+      className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer select-none"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
       data-hint="Add label"
       data-hint-pos="above"
