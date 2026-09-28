@@ -84,7 +84,10 @@ import { useRef, useState } from "react";
 import { render, cleanup, fireEvent, act } from "@testing-library/react";
 import { PanelColumn } from "@/components/editor-layout/panel-column";
 import { BandDivider } from "@/components/panel-primitives";
-import { SplitWithCode } from "@/components/editor-layout/split-with-code";
+import {
+  GAP_WIDTH_PX,
+  SplitWithCode,
+} from "@/components/editor-layout/split-with-code";
 import { SplitEditorPanes } from "@/components/editor-layout/split-editor-panes";
 import { ZenMargin } from "@/components/editor-layout/zen-margin";
 import { EditorScrollbar } from "@/components/editor-layout/editor-scrollbar";
@@ -372,13 +375,13 @@ describe("SplitWithCode on the pane-resize engine", () => {
       />,
     );
     const container = utils.container.firstElementChild!;
-    stubRect(container, { width: 808, left: 0 });
-    // Feed the container-width RO by hand (contentRect 808) so clipPx math
-    // has a live width: track = 808 - 8 = 800.
+    stubRect(container, { width: 800 + GAP_WIDTH_PX, left: 0 });
+    // Feed the container-width RO by hand (contentRect 800 + gap) so clipPx
+    // math has a live width: track = (800 + GAP_WIDTH_PX) - GAP_WIDTH_PX = 800.
     act(() => {
       for (const ro of roInstances) {
         if (ro.targets.includes(container)) {
-          ro.cb([{ contentRect: { width: 808 } }]);
+          ro.cb([{ contentRect: { width: 800 + GAP_WIDTH_PX } }]);
         }
       }
     });

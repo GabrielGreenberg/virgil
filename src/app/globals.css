@@ -5691,7 +5691,12 @@ html {
    One shared rule set carries every property that doesn't depend on
    orientation; the two per-orientation blocks
    below differ only in which axis is the pill's long side + which axis widens.
-   Scoped to `.band-grip`, so bare drag-gap lines are unaffected. */
+   Scoped to `.band-grip`, so bare drag-gap lines are unaffected.
+
+   POSITIONING SEAM (task 813): the pill's centre ALONG the gutter reads
+   `--band-grip-center` (default 50%). A gutter that hosts its own in-gap
+   control at the midpoint (the code splitter's sync-arrows pill) sets it to
+   clear that control, instead of the shared pill hiding underneath. */
 .drag-gap-h.band-grip::before,
 .drag-gap-v.band-grip::after {
   content: '';
@@ -5716,7 +5721,7 @@ html {
 
 /* Horizontal gutter — a wide-short pill (28×4) that widens along its WIDTH. */
 .drag-gap-h.band-grip::before {
-  left: 50%;
+  left: var(--band-grip-center, 50%);
   top: 50%;
   width: 28px;
   height: 4px;
@@ -5738,7 +5743,7 @@ html {
    `.drag-gap-v::after` (50%) and the toward-editor nudge so the pill lands at
    the true centre of the padded gutter. */
 .drag-gap-v.band-grip::after {
-  top: 50%;
+  top: var(--band-grip-center, 50%);
   bottom: auto;
   width: 4px;
   height: 28px;
