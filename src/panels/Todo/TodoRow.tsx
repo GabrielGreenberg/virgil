@@ -6,7 +6,7 @@ import {
   PANEL,
   PanelCard,
   CardTitleInput,
-  AiRequestCheckbox,
+  AiRequestRow,
   CheckSquare,
   useCardDeleteKey,
   useCardDeleteAllowed,
@@ -18,7 +18,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
-import { popKey, cardTypeLabel } from "@/panels/panel-registry";
+import { cardBodyPlaceholder, cardTypeLabel, popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { iconHint } from "@/components/Hint";
@@ -208,20 +208,22 @@ export function TodoRow({
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onKeyDown={onTextareaKeyDown}
-              placeholder="Notes..."
+              placeholder={cardBodyPlaceholder("todo")}
               data-panel-kind="todo"
               style={todoBodyStyle}
               className={`w-full bg-transparent placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed mt-1${isPoppedOut ? " flex-1 min-h-0" : ""}`}
               rows={isPoppedOut ? undefined : 2}
             />
-            <AiRequestCheckbox
-              checked={item.aiRequest}
-              onToggle={(next) => onSetAiRequest(item.id, next)}
-              className="mt-1"
-            />
           </>
         )}
       </div>
+      {/* The shell's one AI-request placement, under the body (task 825). */}
+      {!compressed && (
+        <AiRequestRow
+          checked={item.aiRequest}
+          onToggle={(next) => onSetAiRequest(item.id, next)}
+        />
+      )}
     </PanelCard>
     <ConfirmDialog
       open={confirmOpen}

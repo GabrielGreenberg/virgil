@@ -142,7 +142,7 @@ describe("TodoRow delete-key focus guard (task 096)", () => {
 
   it("Backspace from the NOTES textarea does NOT delete the card or open the confirm", () => {
     const onDelete = renderSelectedRow(makeTodo({ text: "buy milk", notes: "a" }));
-    fireEvent.keyDown(screen.getByPlaceholderText("Notes..."), { key: "Backspace" });
+    fireEvent.keyDown(screen.getByPlaceholderText("Notes…"), { key: "Backspace" });
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.queryByText("This item has text. Delete it?")).toBeNull();
   });

@@ -1069,7 +1069,9 @@ export function CitationCard({
       // (aria-expanded/"Collapse card") for the pinned-open draft body.
       headerDisclosure={!isDraft}
       isDropTarget={isDropTarget}
-      extraCardClass="cursor-pointer cursor-grab active:cursor-grabbing"
+      // Click selects (not while drafting); the grab cursor is the shell's,
+      // derived from `draggable` below (task 825).
+      extraCardClass={isDraft ? undefined : "cursor-pointer"}
       draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}
       onDragOver={handleCardDragOver}
@@ -1249,7 +1251,7 @@ export function CitationCard({
                 <MenuToggleRow
                   id="starred"
                   label="Full author list"
-                  leading={<span className="font-mono" aria-hidden="true">*</span>}
+                  leading={<span className="card-mono" aria-hidden="true">*</span>}
                   checked={starred}
                   onToggle={() => {
                     persist({ starred: !starred });
@@ -1258,7 +1260,7 @@ export function CitationCard({
                 <MenuToggleRow
                   id="capitalized"
                   label="Sentence start"
-                  leading={<span className="font-mono" aria-hidden="true">Aa</span>}
+                  leading={<span className="card-mono" aria-hidden="true">Aa</span>}
                   checked={capitalized}
                   onToggle={() => {
                     persist({ capitalized: !capitalized });

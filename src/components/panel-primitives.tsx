@@ -1440,6 +1440,11 @@ export interface EditableCardProps {
    *  Additive — default `undefined` renders nothing, leaving every other
    *  consumer's layout unchanged. Only shown in the expanded view. */
   aboveBody?: ReactNode;
+  /** The per-card "AI request" flag (task 825). When supplied, the SHELL
+   *  renders the {@link AiRequestCheckbox} in its one placement — below the
+   *  body, above `footer`, expanded view only — so no kind hand-copies the
+   *  wrapper. Omit it (a surface with no flag source) and nothing renders. */
+  aiRequest?: AiRequestSlot;
   /** Extra content below the RichTextField body (e.g. action buttons). */
   footer?: ReactNode;
 
@@ -1571,7 +1576,7 @@ export interface EditableCardProps {
  */
 export function EditableCard({
   id, selected, theme,
-  footnoteBadge, headerTrailing, bodyTitle, onBodyTitleChange, aboveBody, footer,
+  footnoteBadge, headerTrailing, bodyTitle, onBodyTitleChange, aboveBody, aiRequest, footer,
   menuContent, onDelete,
   onClick, onDragStart,
   value, variant, placeholder, muted, panelKey, cardKind,
@@ -1778,9 +1783,9 @@ export function EditableCard({
   // on PanelCard's onWrapperMouseDown — the two coexist via the lift's
   // `dragstart` suppression for the duration of a press.
   const cardDraggable = onDragStart ? !isFocused : false;
-  const cursorClass = isFocused
-    ? "cursor-default"
-    : (onDragStart ? "cursor-grab active:cursor-grabbing" : "");
+  // The grab cursor is NOT spelled here: PanelCard derives it from the
+  // `draggable` it is handed (`withDragCursor`, task 825).
+  const cursorClass = isFocused ? "cursor-default" : "";
 
   const dataAttrs: Record<string, string> = {
     ...(dataAttr ? { [`data-${dataAttr.name}`]: dataAttr.value } : {}),
@@ -2020,6 +2025,8 @@ export function EditableCard({
       </div>
       )}
 
+      {aiRequest && !compressed && <AiRequestRow {...aiRequest} />}
+
       {/* Optional footer (e.g. archive action buttons) */}
       {footer}
 
@@ -2143,10 +2150,12 @@ export function CheckSquare({
 }
 
 /* ── AiRequestCheckbox — centralized "AI request" checkbox ──────────
- * Single source of truth for the per-card "AI request" toggle. Used by
- * NoteCard, TodoRow, CutterCommentCard, RevisionRequestCard. Update the
- * markup or styling here to change every consumer at once. The glyph itself
- * is `CheckSquare` above — shared with the Todo done-toggle. */
+ * Single source of truth for the per-card "AI request" toggle — the control
+ * AND its placement. Card shells render it: `EditableCard`'s `aiRequest` prop
+ * (note / footnote / report-request / cutter-comment / revision-request) and
+ * `PanelCard`-direct kinds through {@link AiRequestRow} (todo, highlight), so
+ * the row sits in one place under every body (task 825). The glyph itself is
+ * `CheckSquare` above — shared with the Todo done-toggle. */
 export function AiRequestCheckbox({
   checked,
   onToggle,
@@ -2176,6 +2185,25 @@ export function AiRequestCheckbox({
       <CheckSquare variant="ai-request" checked={checked} />
       AI request
     </button>
+  );
+}
+
+/** The flag + toggle a card hands its shell for the AI-request row. */
+export interface AiRequestSlot {
+  checked: boolean;
+  onToggle: (next: boolean) => void;
+}
+
+/** The AI-request row in its ONE placement: a body-width row directly under
+ *  the card body (task 825). `EditableCard` renders it from its `aiRequest`
+ *  prop; a `PanelCard`-direct kind renders it as the last child of its
+ *  expanded body. Five kinds used to hand-copy the wrapper and two more put
+ *  the checkbox somewhere else. */
+export function AiRequestRow({ checked, onToggle }: AiRequestSlot) {
+  return (
+    <div className="px-3 pb-2 -mt-1" data-ai-request-row="">
+      <AiRequestCheckbox checked={checked} onToggle={onToggle} />
+    </div>
   );
 }
 
@@ -2749,8 +2777,9 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  owns only the look. */
   isDropTarget?: boolean;
   /** Extra classes forwarded into `themedCard(theme, selected, extra)` — typically
-   *  cursor / opacity modifiers like `"cursor-grab active:cursor-grabbing"` or
-   *  `"opacity-60"`. */
+   *  `"cursor-pointer"` or `"opacity-60"`. NEVER the grab cursor: PanelCard
+   *  derives that from its own `draggable` prop ({@link withDragCursor}), so
+   *  the promise and the gesture cannot disagree (task 825). */
   extraCardClass?: string;
   onClick?: (e: React.MouseEvent) => void;
   /** Card identity for the lift-off drag handoff. When set together
@@ -2845,6 +2874,21 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
  *  the header still work. */
 const CARD_LIFT_THRESHOLD = 5;
 
+/** The grab-cursor pair a draggable card root wears. */
+export const CARD_DRAG_CURSOR_CLASS = "cursor-grab active:cursor-grabbing";
+
+/** The ONE place a card's grab cursor is decided (task 825): derived from the
+ *  root's `draggable`, never passed by a kind. A dead grab cursor is worse than
+ *  a missing one (STYLE_GUIDE, task 277) — so a card that is not draggable NOW
+ *  (a draft citation, a focused editable body) shows none, and a draggable one
+ *  wears it INSTEAD of any caller `cursor-*` (two cursor utilities on one
+ *  element resolve by stylesheet order, not by intent). */
+export function withDragCursor(extra: string | undefined, draggable: boolean): string | undefined {
+  if (!draggable) return extra;
+  const kept = (extra ?? "").split(/\s+/).filter((c) => c && !/^(?:[a-z-]+:)*cursor-/.test(c));
+  return [...kept, CARD_DRAG_CURSOR_CLASS].join(" ");
+}
+
 export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function PanelCard(
   {
     children,
@@ -2880,6 +2924,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     dropDisabled,
     showSeparator = true,
     chromeless,
+    draggable,
     ...rest
   },
   ref,
@@ -2911,9 +2956,12 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // so every kind that shows a trash button gets it — see `hasArchiveButton`.
   const { archive: onArchiveClick, isArchived } = useCardArchiveAffordance(kind, cardId);
   const cardKey = cardKeyProp ?? unanchored?.cardKey;
-  const cardClass = unanchored
-    ? `${extraCardClass ? `${extraCardClass} ` : ""}${UNANCHORED_CARD_CLASS}`
-    : extraCardClass;
+  const cardClass = withDragCursor(
+    unanchored
+      ? `${extraCardClass ? `${extraCardClass} ` : ""}${UNANCHORED_CARD_CLASS}`
+      : extraCardClass,
+    draggable === true || draggable === "true",
+  );
   const title =
     titleProp ??
     (unanchored?.canAnchor ? unanchoredCardTitle(unanchored.kind) : undefined);
@@ -3236,6 +3284,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         if (e.defaultPrevented) return;
         onWrapperMouseDown(e);
       }}
+      draggable={draggable}
       {...rest}
     >
       {renderUnifiedHeader ? (

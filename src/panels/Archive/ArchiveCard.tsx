@@ -11,7 +11,7 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { popKey } from "@/panels/panel-registry";
+import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 
@@ -92,7 +92,7 @@ export function ArchiveCard({
       value={snippet.content}
       variant={bodyVariantForCardKind("archive")}
       panelKey="archive"
-      placeholder="Text here."
+      placeholder={cardBodyPlaceholder("archive")}
       onChange={handleEditContent}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}

@@ -403,6 +403,14 @@
   --amber-100: #fdf3c8;
   --amber-200: #f5e29e;
   --amber-500: #d4a843;
+  /* The INK of the amber "attention" family (task 825): text on an amber
+     wash — a pending AI request, an edit warning. Set to Tailwind's
+     amber-600/700 VALUES (v4 oklch, spelled here — Tailwind only emits its
+     own theme vars for utilities in use) so naming the role is
+     byte-neutral; before this each site spelled `text-amber-600` raw,
+     outside the scale. */
+  --amber-600: oklch(66.6% 0.179 58.318);
+  --amber-700: oklch(55.5% 0.163 48.998);
 
   /* ── Amber highlight (the "lit inline atom" role-set) ──────────────
      The two-state wash every inline atom shares when it lights up:

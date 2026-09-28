@@ -6,7 +6,6 @@ import type { FootnoteInfo } from "@/components/Editor";
 import type { OrphanedFootnote, FootnoteRef } from "@/lib/types";
 import {
   EditableCard,
-  AiRequestCheckbox,
   BadgeLabel,
   BadgeOrphaned,
   makeCompressedSummary,
@@ -16,7 +15,7 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { popKey } from "@/panels/panel-registry";
+import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 
@@ -143,20 +142,15 @@ export function FootnoteCard({
       }}
       onHoverChange={(h) => cardStore.setHoverFor(ac.ref, h)}
       onDelete={onDelete}
-      footer={
-        onSetAiRequest && !compressed && footnoteCanAiRequest(fn) ? (
-          <div className="px-3 pb-2 -mt-1">
-            <AiRequestCheckbox
-              checked={!!aiRequest}
-              onToggle={(next) => onSetAiRequest(next)}
-            />
-          </div>
-        ) : undefined
+      aiRequest={
+        onSetAiRequest && footnoteCanAiRequest(fn)
+          ? { checked: !!aiRequest, onToggle: (next) => onSetAiRequest(next) }
+          : undefined
       }
       value={fn.content}
       variant={bodyVariantForCardKind("footnote")}
       panelKey="footnote"
-      placeholder="Text here."
+      placeholder={cardBodyPlaceholder("footnote")}
       onChange={handleEdit}
       onArchiveConsumed={onFootnoteArchiveConsumed}
       getCitationDisplayText={getCitationDisplayText}
@@ -266,7 +260,7 @@ export function OrphanedFootnoteCard({
       value={orphan.content}
       variant={bodyVariantForCardKind("footnote")}
       panelKey="footnote"
-      placeholder="Text here."
+      placeholder={cardBodyPlaceholder("footnote")}
       onChange={handleEdit}
       onArchiveConsumed={onFootnoteArchiveConsumed}
       getCitationDisplayText={getCitationDisplayText}
@@ -394,7 +388,7 @@ export function UnanchoredFootnoteCard({
       value={content}
       variant={bodyVariantForCardKind("footnote")}
       panelKey="footnote"
-      placeholder="Text here."
+      placeholder={cardBodyPlaceholder("footnote")}
       onChange={handleEdit}
       onArchiveConsumed={onFootnoteArchiveConsumed}
       getCitationDisplayText={getCitationDisplayText}

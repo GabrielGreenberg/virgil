@@ -91,6 +91,18 @@ export function capturedPassageJson({
   return richLatexToJson(latex);
 }
 
+/** A passage that arrives as PLAIN TEXT read live off the document (a
+ *  highlight's words under its mark — task 825) is already display text, not
+ *  `.tex` bytes: it must not go through the `latex` rung, which would read a
+ *  `%`, `$` or `\` in the prose as markup. This wraps it as the rich rung
+ *  verbatim, so the door renders it with no parse at all. */
+export function plainPassageContent(text: string): JSONContent {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: text ? [{ type: "text", text }] : [] }],
+  };
+}
+
 /**
  * The one-line plain projection a COLLAPSED card shows in place of its body
  * summary. Same ladder, same door — so the collapsed cue and the expanded

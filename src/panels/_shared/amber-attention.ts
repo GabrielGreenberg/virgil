@@ -18,3 +18,16 @@
  *  `bibliography-amber-strip-convergence.test.ts` pins both consumers to it. */
 export const AMBER_ATTENTION_STRIP =
   "px-3 py-2 border-[var(--amber-200)] bg-[var(--amber-50)]/40";
+
+/** The amber "pending" CHIP (task 825): a small button whose state is an
+ *  outstanding request — `BibEntryCard`'s "Requested" review/annotation
+ *  toggles. Same family as {@link AMBER_ATTENTION_STRIP} (tokens, not raw
+ *  Tailwind palette classes), so the chip and the request-note strip it opens
+ *  read as one state. */
+export const AMBER_PENDING_CHIP =
+  "text-[var(--amber-600)] bg-[var(--amber-50)] hover:bg-[var(--amber-100)]";
+
+/** Amber ink for a label whose content is present (the bib "Annotations"
+ *  disclosure when an annotation exists). */
+export const AMBER_ATTENTION_INK =
+  "text-[var(--amber-600)] hover:text-[var(--amber-700)]";

@@ -191,6 +191,15 @@ export function cardTypeLabel(kind: CardKind): string {
   return CARD_TYPE_LABELS[kind];
 }
 
+/** The empty-body placeholder for a card kind (task 825) — ONE derivation,
+ *  `"<label> text…"`, with a registry-declared `bodyPlaceholder` override for
+ *  the kinds whose body is not "the kind's text" (a report request's question,
+ *  a task's notes). Before this, six spellings coexisted ("Text here.",
+ *  "Report text.", "… text…", "Notes...", …). */
+export function cardBodyPlaceholder(kind: CardKind): string {
+  return CARD_REGISTRY[kind].bodyPlaceholder ?? `${CARD_TYPE_LABELS[kind]} text…`;
+}
+
 /** Singular display name for a card type, used as the auto-title prefix
  *  when a new card is created (e.g. "Note 3", "Footnote 1"). null = the
  *  kind opts out of auto-titling because it has no user-editable title
