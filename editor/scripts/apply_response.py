@@ -596,9 +596,9 @@ OP_OWNED_FIELDS: dict[str, _FieldOwnership] = {
     #
     # `aiRequest` is deliberately NOT reserved, and the reason is the 156 lesson
     # restated: a blanket refusal here would break a SHIPPED, TAUGHT feature.
-    # `draft-footnote.md`'s virtual-request branch clears a footnote's flag with
-    # exactly `update {"set":{"aiRequest":false}}` (there is no ai-requests.json
-    # row to complete for a `virtual:` id), and the raised direction is a
+    # `update {"set":{"aiRequest":false}}` is how a caller lowers a flag by hand
+    # (a responder instead passes its `requestId` and `_mutation_commit` lowers
+    # the source flag in the same commit — task 816), and the raised direction is a
     # first-class state too — the unbridged-card-flag fallback exists precisely to
     # surface a flagged card with no Task row, which is what the user's own panel
     # checkbox produces. Both directions are legitimate; nothing owns the
@@ -1901,6 +1901,7 @@ def _mutation_commit(
     request_id: str | None = None,
     result: str | None = None,
     extra: dict | None = None,
+    clear_source_flag: bool = True,
 ) -> dict:
     """The shared atomic + pen + audit tail for every §10 mutation op.
 
@@ -1909,17 +1910,54 @@ def _mutation_commit(
     commits the whole write-set all-or-nothing under the pen. No Task is
     *synthesized* for a mechanical op (a card-op has no AiRequestKind — a
     fabricated one leaks `undefined` into the AI window; the notification +
-    version bump is the durable audit surface)."""
-    if request_id and not str(request_id).startswith("virtual:"):
+    version bump is the durable audit surface).
+
+    Closing the work is part of the SAME commit as the edit (task 816): a
+    responder that revises a card in place (draft-footnote's act-on-existing
+    branch) passes its `requestId` here, and the Task completes, the SOURCE
+    card's `aiRequest` flag drops (the Task's `linkedTo`, or the card a
+    `virtual:<panel>:<cardId>` id names — cmd_write's step-4 twin), and the edit
+    lands, all or nothing. Before, the close was a second command, and a failure
+    between the two left the request open over an already-rewritten card: the
+    next review re-dispatched it and the answer was applied twice.
+
+    A MECHANICAL op (`result` None — update / archive / move / link, whose
+    `requestId` came straight from the caller's op) also refuses a Task it cannot
+    honestly close: an unknown id (the edit would land and close nothing) or an
+    already-terminal one (a stray second answer — task 787's refusal, on this
+    door). accept / reject pass their own `result` and keep their tolerant
+    resolution: their id is the card's stored back-pointer, which may outlive
+    its row."""
+    rid = str(request_id) if request_id else None
+    linked = None
+    if rid and rid.startswith("virtual:"):
+        parts = rid.split(":", 2)
+        if len(parts) != 3 or not parts[1] or not parts[2]:
+            die(f"malformed virtual request id: {rid}")
+        linked = {"panel": parts[1], "cardId": parts[2]}
+    elif rid:
         ar_path = sidecar(doc, "ai-requests.json")
         ar = txn.jget(ar_path, None)
-        if isinstance(ar, dict) and isinstance(ar.get("requests"), list):
-            idx, req = find_request(ar, request_id)
-            if req is not None:
-                req["status"] = STATUS_COMPLETE
-                req["result"] = result or RESULT_AUTO_APPLIED
-                ar["requests"][idx] = req
-                txn.mark(ar_path)
+        idx, req = (
+            find_request(ar, rid)
+            if isinstance(ar, dict) and isinstance(ar.get("requests"), list)
+            else (None, None)
+        )
+        if req is None and result is None:
+            die(f"request id not found: {rid} — nothing was written (the edit would "
+                "land and close no Task)")
+        if req is not None:
+            if result is None and is_terminal_status(req.get("status")):
+                die(f"request {rid} is already {req.get('status')} (a terminal state) — "
+                    "it was drained by an earlier landing; nothing was written. Do not "
+                    "land a second answer: report the first one.")
+            req["status"] = STATUS_COMPLETE
+            req["result"] = result or RESULT_AUTO_APPLIED
+            ar["requests"][idx] = req
+            txn.mark(ar_path)
+            linked = req.get("linkedTo")
+    if clear_source_flag and isinstance(linked, dict):
+        txn.clear_source_flag(linked)
 
     notif_path, notif_content = notification_appended(
         doc,
@@ -2012,6 +2050,7 @@ def cmd_update(doc: Path, op: dict) -> dict:
         doc, txn,
         summary=op.get("summary") or f"Edited {kind} {card_id}",
         request_id=op.get("requestId"),
+        clear_source_flag=op.get("clearSourceFlag", True),
         extra={"op": "update", "cardId": card_id, "cardKind": kind},
     )
 
@@ -2449,6 +2488,9 @@ def cmd_accept(doc: Path, op: dict) -> dict:
         summary=op.get("summary") or f"Accepted {kind} {card_id}",
         request_id=request_id,
         result=RESULT_ACCEPTED,
+        # The source flag was lowered when the proposal LANDED (cmd_write step 4);
+        # a re-raised flag since then is a NEW ask, not this one's to lower.
+        clear_source_flag=False,
         extra={"op": "accept", "cardId": card_id, "cardKind": kind,
                "anchorUuid": anchor, "result": RESULT_ACCEPTED},
     )
@@ -2477,6 +2519,9 @@ def cmd_reject(doc: Path, op: dict) -> dict:
         summary=op.get("summary") or f"Rejected {kind} {card_id}",
         request_id=request_id,
         result=RESULT_REJECTED,
+        # The source flag was lowered when the proposal LANDED (cmd_write step 4);
+        # a re-raised flag since then is a NEW ask, not this one's to lower.
+        clear_source_flag=False,
         extra={"op": "reject", "cardId": card_id, "cardKind": kind, "result": RESULT_REJECTED},
     )
 
