@@ -1045,7 +1045,7 @@ const EditablePod = memo(function EditablePod({
             ? "opacity-30 border-edge-hover bg-surface-muted-strong"
             : isParTitle
               ? "border-edge-hover bg-surface hover:border-edge-strong"
-              : "border-edge-hover bg-surface hover:border-edge-strong shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              : "border-edge-hover bg-surface hover:border-edge-strong shadow-[var(--card-shadow-ambient)]"
         }`}
         style={{
           marginLeft: `${indent}px`,
@@ -1571,7 +1571,7 @@ function FocusBand({
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+            boxShadow: "var(--pod-shadow)",
           }}
         />
       )}
@@ -1592,7 +1592,7 @@ function FocusBand({
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+            boxShadow: "var(--pod-shadow)",
           }}
         />
       )}

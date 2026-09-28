@@ -969,7 +969,16 @@ Five states. One implementation each.
   rect; a lift is a LAYER, not a size, so a 20px inline atom and a 150px
   Library tab take the same reach — and a TS ghost gets it only through
   `stampDragGhostLayer`, never from its caller; see "Drag ghosts"), not a
-  response to the cursor;
+  response to the cursor. A small FLOATING CHIP or popover over the editor
+  (the pending-change pill, the hint tooltip, the drag status pill, the
+  stale-PDF badge, the label-ref popover) takes the menu rung,
+  `--menu-shadow`; an IN-FLOW chip or sticky header (Omni's pending
+  navigator, `.omni-bin-pill`, outline pod chips) takes the pod/card
+  ambient rung. No site authors its own: `shadow-tier-census.test.ts`
+  fails any Tailwind `shadow`/`shadow-sm…2xl`, any non-`var()`
+  `shadow-[…]`, and any literal blurred layer outside a `:root` token
+  definition — rings (`0 0 0 Npx`) and `inset` seams are not elevation
+  and pass (task 818);
   there is not one hover-elevation rule in either silo. Border-color hover
   *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
   `edge-strong`) and the omni-bin pill's. The exception is icon buttons

@@ -558,7 +558,7 @@ export function PendingChangePillBody({
 }) {
   return (
     <div
-      className="pointer-events-auto flex items-center gap-1 rounded-md border border-sky-200 bg-surface px-1.5 py-1 shadow-lg"
+      className="pointer-events-auto flex items-center gap-1 rounded-md border border-sky-200 bg-surface px-1.5 py-1 shadow-[var(--menu-shadow)]"
       style={{
         position: "fixed",
         right,

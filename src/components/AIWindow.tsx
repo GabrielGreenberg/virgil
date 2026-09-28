@@ -942,7 +942,7 @@ export default function AIWindow({
                       className={
                         "w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors " +
                         (active
-                          ? "bg-surface border border-[var(--border)] text-ink-strong shadow-sm"
+                          ? "bg-surface border border-[var(--border)] text-ink-strong shadow-[var(--card-shadow-ambient)]"
                           : "text-ink-body hover-on-dark hover:text-ink-strong border border-transparent")
                       }
                     >
