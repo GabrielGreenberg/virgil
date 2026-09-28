@@ -1898,8 +1898,9 @@ className or its inline style) fails `icon-button-a11y-guardrail.test.ts`
 `data-button-exempt="<reason>"` at the site. No allowlist. There is ONE
 primary fill: the Library's gates used to paint `--accent` brown inline and
 BibCard's Submit borrowed a toggle's pressed fill — three "primaries" for one
-role. `library/` imports `<Button>` from `@/components/panel-primitives` like
-everyone else.
+role. `<Button>` lives in its own leaf module, `@/components/Button` (it
+imports only React + the focus-indicator door, so rendering a button never
+drags the storage layer into a test); `panel-primitives` re-exports it.
 
 **A disabled `<Button>` keeps its hint.** It keeps pointer events (hover
 and the press nudge are gated on `enabled:`), so the `title` / `data-hint`

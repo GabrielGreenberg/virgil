@@ -39,7 +39,7 @@ import type { SyncResult } from "@library/lib/skill-sync";
 import type { SkillSyncError } from "@library/hooks/useLibraryHandle";
 import type { NotificationItem } from "@library/lib/queue";
 import { filesFromTransfer } from "@/lib/transfer-files";
-import { Button } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
 import DropZone from "./DropZone";
 import PdfDropIntroDialog from "./PdfDropIntroDialog";
 import LibraryPaneFill from "./LibraryPaneFill";

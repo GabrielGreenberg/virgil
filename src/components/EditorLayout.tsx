@@ -122,7 +122,7 @@ import {
 import { useViewPrefs, PanelId, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { entityToAnchorId } from "@/links/_shared/entity-hover";
-import { Button } from "./panel-primitives";
+import { Button } from "./Button";
 import {
   FLOATING_PANEL_WIDTH,
   FLOATING_PANEL_HEIGHT,

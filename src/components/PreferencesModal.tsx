@@ -7,7 +7,7 @@ import type { GlobalTransforms } from "@/lib/color-transforms";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
 import PreferenceTree from "./PreferenceTree";
 import { Input, Select } from "./field-primitives";
-import { Button } from "./panel-primitives";
+import { Button } from "./Button";
 import SmartPreferences from "./SmartPreferences";
 import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
 import { iconHint } from "@/components/Hint";

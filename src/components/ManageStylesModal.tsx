@@ -24,7 +24,7 @@ import SystemDialog, {
 } from "./system-dialog";
 import StyleEditorModal from "./StyleEditorModal";
 import { Input, Select } from "./field-primitives";
-import { Button } from "./panel-primitives";
+import { Button } from "./Button";
 import StyleApplyDialog from "./StyleApplyDialog";
 import DocTypeChangeDialog from "./DocTypeChangeDialog";
 import type { StyleEntry } from "@/lib/document-styles";

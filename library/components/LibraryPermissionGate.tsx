@@ -1,7 +1,7 @@
 "use client";
 
 import LibraryPaneFill from "./LibraryPaneFill";
-import { Button } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
 import { FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {

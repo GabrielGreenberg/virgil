@@ -58,7 +58,7 @@ import type { PanelThemeKey } from "@/lib/panel-theme";
 import { usePanelCardPalette } from "@/hooks/usePanelTheme";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
-import { Button } from "./panel-primitives";
+import { Button } from "./Button";
 import { Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { iconHint } from "@/components/Hint";

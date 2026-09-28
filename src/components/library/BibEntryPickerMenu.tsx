@@ -71,7 +71,7 @@ import { useMenuItem } from "@/components/menu/useMenuItem";
 import { useMenuCombobox } from "@/components/menu/useMenuCombobox";
 import { useMenuContext } from "@/components/menu/context";
 import { iconHint } from "@/components/Hint";
-import { Button } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 export type RowState = "addable" | "added" | "conflict";

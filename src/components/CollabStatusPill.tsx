@@ -28,7 +28,7 @@ import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
 import { iconHint } from "@/components/Hint";
-import { Button } from "./panel-primitives";
+import { Button } from "./Button";
 
 // Anchor the kebab dropdown below its trigger, flipping above when the topbar
 // sits near the viewport bottom. Matches ExternalChangeBadge (the sibling

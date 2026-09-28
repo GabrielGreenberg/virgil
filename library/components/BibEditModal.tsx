@@ -28,7 +28,7 @@ import SystemDialog, {
   SystemDialogButton,
   SystemDialogFooter,
 } from "@/components/system-dialog";
-import { Button } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 

@@ -11,7 +11,7 @@ import {
 } from "@library/lib/bib-edit";
 import { reconstructBibtex } from "@library/lib/reconstruct-bibtex";
 import { bibFieldDisplay } from "@library/lib/bib-parser";
-import { Button } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
