@@ -2,9 +2,10 @@
 
 /**
  * Card-archive ACTIONS context — the per-card archive/unarchive operation +
- * archived-state lookup, consumed directly by `EditableCard` so every card
- * self-wires its archive button without each card component / host / panel
- * threading an `onArchive` prop.
+ * archived-state lookup, read through `useCardArchiveAffordance` by the
+ * `PanelCard` shell (the button) and `EditableCard` (its menu entry), so every
+ * card self-wires its archive button without each card component / host /
+ * panel threading an `onArchive` prop (task 822).
  *
  * The provider (EditorPane) keeps this value's IDENTITY STABLE across card
  * edits: `isArchived` reads a ref that EditorPane refreshes each render, so a
@@ -21,7 +22,7 @@ import type { CardKind } from "@/cards/types";
 
 export interface CardArchiveActionsApi {
   /** Whether per-card archiving is actually wired (a real provider is present).
-   *  EditableCard hides the archive affordance when false (tests / Reader). */
+   *  The shell hides the archive affordance when false (tests / Reader). */
   enabled: boolean;
   /** Whether the card with this id is currently archived. Stable identity —
    *  reads a ref, see the module doc. */

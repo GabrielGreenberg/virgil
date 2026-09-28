@@ -222,6 +222,9 @@ export function SuggestionCard({
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
+      // No archive button renders (`ARCHIVE_BUTTON_EXEMPT_KINDS`, task 020):
+      // dismiss already preserves a suggestion.
+      cardId={card.id}
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();

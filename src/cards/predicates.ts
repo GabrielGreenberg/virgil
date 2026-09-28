@@ -39,9 +39,9 @@ export const isAnchoredCardKind = (k: CardKind): boolean => CARD_REGISTRY[k].anc
  *  (derived) and `bib`/`ai`/`error` (system) are not.
  *
  *  This is wholly distinct from the text-object Archive PANEL (a separate
- *  subsystem that *moves text objects*). The archive button renders iff
- *  `isArchivable(kind)` AND the card already shows a panel-trash button, so the
- *  affordance lands "wherever the trash button appears."
+ *  subsystem that *moves text objects*). Whether a card SHOWS a per-card
+ *  archive button is the narrower {@link hasArchiveButton} — read by the card
+ *  SHELL (`PanelCard`), never opted into per component (task 822).
  *
  *  EXCEPTION — `highlight` is NOT archivable (user decision): a highlight is a
  *  text-range tint with no body, and archiving it would leave an orphaned
@@ -57,6 +57,28 @@ export const isAnchoredCardKind = (k: CardKind): boolean => CARD_REGISTRY[k].anc
  *  inline-atom-lifecycle-policy.ts). */
 export const isArchivable = (k: CardKind): boolean =>
   CARD_REGISTRY[k].origin === "user" && k !== "highlight";
+
+/** Archivable kinds that deliberately carry NO per-card archive button — the
+ *  ONE declared exemption set (task 822). The two suggestion kinds: their
+ *  dismiss already PRESERVES the card (a rejected suggestion stays on disk as
+ *  the record of the exchange), so a second "set aside" button beside it would
+ *  be two doors onto one outcome — Gabriel's ruling in task 020 ("dismiss
+ *  always preserves … no separate archive button"). They stay `isArchivable`:
+ *  the /editor/archive-card skill and the panel's Archives view still accept
+ *  them. */
+export const ARCHIVE_BUTTON_EXEMPT_KINDS: ReadonlySet<CardKind> = new Set<CardKind>([
+  "revision-suggestion",
+  "cutter-suggestion",
+]);
+
+/** Whether a card of this kind renders the per-card archive button. The
+ *  contract: the button renders iff `hasArchiveButton(kind)` AND the card shows
+ *  a panel-trash button — the affordance lands "wherever the trash button
+ *  appears." It is DERIVED in `PanelCard` (the shell every card renders
+ *  through) from the card's `kind` + `cardId`, so a kind cannot forget it;
+ *  pinned by `archive-button-census.test.tsx`. */
+export const hasArchiveButton = (k: CardKind): boolean =>
+  isArchivable(k) && !ARCHIVE_BUTTON_EXEMPT_KINDS.has(k);
 
 /** Whether archiving a card of this kind also splices an inline atom out of the
  *  document (footnote/citation). These kinds' cards ARE backed by a

@@ -35,7 +35,7 @@ import { FOCUS_OUTLINE_CLASS, withFocusIndicator } from "./focus-indicator";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
-import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable, isExcerptCardKind, bodySchemaForCardKind } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, hasArchiveButton, isExcerptCardKind, bodySchemaForCardKind } from "@/cards/predicates";
 import type { CardBodySchemaScope } from "@/lib/tiptap-extensions";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
 import { useCardRestoreActions } from "@/panels/_shared/card-restore-actions";
@@ -183,6 +183,30 @@ export function useCardDeleteKey(
 export function useCardDeleteAllowed(kind: CardKind | undefined): boolean {
   const chrome = useEditorChrome();
   return kind === undefined || isCardMutationAllowed(chrome, kind);
+}
+
+/**
+ * The ONE per-card archive door (task 822): derives the archive toggle + the
+ * archived state for a card from its `kind` + `id`, off the registry predicate
+ * `hasArchiveButton` and the `useCardArchiveActions` provider. `PanelCard` calls
+ * it for its bottom-right button (so every kind that shows a trash button gets
+ * the archive button beside it — no per-component opt-in to forget), and
+ * `EditableCard` calls it for its header-menu entry. `archive` is undefined when
+ * the kind carries no archive affordance, no provider is mounted (tests /
+ * Reader), or the card has no durable identity (`id` undefined — a draft).
+ */
+export function useCardArchiveAffordance(
+  kind: CardKind | undefined,
+  id: string | undefined,
+): { archive: (() => void) | undefined; isArchived: boolean } {
+  const cardArchive = useCardArchiveActions();
+  if (kind === undefined || id === undefined || !cardArchive.enabled || !hasArchiveButton(kind)) {
+    return { archive: undefined, isArchived: false };
+  }
+  return {
+    archive: () => cardArchive.archive(kind, id),
+    isArchived: cardArchive.isArchived(id),
+  };
 }
 
 /**
@@ -1643,10 +1667,9 @@ export function EditableCard({
     [],
   );
 
-  const cardArchive = useCardArchiveActions();
-  const archivable = isArchivable(kind) && cardArchive.enabled;
-  const cardArchived = archivable && cardArchive.isArchived(id);
-  const doArchive = archivable ? () => cardArchive.archive(kind, id) : undefined;
+  // The header-menu archive entry; the bottom-right BUTTON is PanelCard's own
+  // (it derives it from the same door, off the `cardId` passed below).
+  const { archive: doArchive, isArchived: cardArchived } = useCardArchiveAffordance(kind, id);
 
   // Restore-to-document — the un-archive verb, self-wired from its own actions
   // context on the SAME terms as the archive affordance above (task 106). Shows
@@ -1788,10 +1811,9 @@ export function EditableCard({
       onToggleExpanded={onToggleExpanded}
       onHeaderActivate={onHeaderActivate}
       onTrashClick={inlineDelete && onDeleteAllowed ? tryDelete : undefined}
-      onArchiveClick={inlineDelete ? doArchive : undefined}
+      cardId={id}
       onRestoreClick={inlineDelete ? doRestore : undefined}
       restoreLabel={restoreLabel}
-      isArchived={cardArchived}
       extraCardClass={extraCardClass ? `${cursorClass} ${extraCardClass}` : cursorClass}
       title={title}
       unanchored={unanchored}
@@ -2672,20 +2694,20 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
   onTogglePopout?: (anchor: DOMRect) => void;
   /** When provided, renders a bottom-right trash button that calls this. */
   onTrashClick?: () => void;
-  /** When provided, renders a bottom-right ARCHIVE button just left of the trash
-   *  (the set-aside sibling of delete). The host wires whether a confirm runs
-   *  first (atom-bearing kinds). Gated identically to `onTrashClick`
-   *  (hover-revealed, suppressed while collapsed). */
-  onArchiveClick?: () => void;
+  /** The card's durable id. With `kind`, it is what the shell derives the
+   *  bottom-right ARCHIVE button from (task 822): the button renders iff the
+   *  trash does AND `hasArchiveButton(kind)` AND a card-archive provider is
+   *  mounted — so a kind cannot forget it, and there is no `onArchiveClick` to
+   *  hand-wire. Omit it (e.g. a draft that is not yet a stored card) and no
+   *  archive button renders. Whether a confirm runs first (atom-bearing kinds)
+   *  is the provider's decision. */
+  cardId?: string;
   /** When provided, renders a bottom-right RESTORE-to-document button left of
    *  the archive button — the un-archive verb for excerpt-bodied cards. Gated
    *  identically to `onTrashClick`. */
   onRestoreClick?: () => void;
   /** The restore control's label (default "Restore to document"). */
   restoreLabel?: string;
-  /** Whether this card is currently archived — flips the archive button to its
-   *  "Unarchive" affordance. */
-  isArchived?: boolean;
   /** True while a droppable payload is hovering this card — paints the amber
    *  drop halo. It is a PROP rather than a class the host passes through
    *  `extraCardClass` because PanelCard's root owns its `box-shadow` INLINE
@@ -2799,10 +2821,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     isPoppedOut,
     onTogglePopout,
     onTrashClick,
-    onArchiveClick,
+    cardId,
     onRestoreClick,
     restoreLabel,
-    isArchived,
     isDropTarget,
     extraCardClass,
     className,
@@ -2854,6 +2875,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // `EditableCard`, and the executor to `usePanelCardTryDelete` — all three read
   // {@link useCardDeleteAllowed}.
   const deleteAllowed = useCardDeleteAllowed(kind);
+  // The archive button rides the trash (task 822): derived here, in the shell,
+  // so every kind that shows a trash button gets it — see `hasArchiveButton`.
+  const { archive: onArchiveClick, isArchived } = useCardArchiveAffordance(kind, cardId);
   const cardKey = cardKeyProp ?? unanchored?.cardKey;
   const cardClass = unanchored
     ? `${extraCardClass ? `${extraCardClass} ` : ""}${UNANCHORED_CARD_CLASS}`
@@ -3305,7 +3329,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       {onRestoreClick && !isCollapsed && (
         <CardRestoreButton onClick={onRestoreClick} label={restoreLabel} />
       )}
-      {onArchiveClick && !isCollapsed && (
+      {onArchiveClick && onTrashClick && deleteAllowed && !isCollapsed && (
         <CardArchiveButton onClick={onArchiveClick} isArchived={isArchived} />
       )}
       {onTrashClick && deleteAllowed && !isCollapsed && (

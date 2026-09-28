@@ -163,6 +163,7 @@ export function ErrorCard({
         onToggleExpanded();
       }}
       onTrashClick={() => onDismiss(err.id)}
+      cardId={err.id}
       extraCardClass=""
       tabIndex={selected ? 0 : -1}
       onClick={(e) => {
