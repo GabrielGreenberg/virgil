@@ -118,6 +118,7 @@ export function HighlightCard({
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
+      cardId={card.id}
       kind="highlight"
       kindOptions={onConvert ? morphOptionsFor("highlight") : undefined}
       onKindChange={onConvert ? (k) => onConvert("highlight", card.id, k) : undefined}

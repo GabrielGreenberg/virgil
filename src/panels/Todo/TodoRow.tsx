@@ -168,6 +168,7 @@ export function TodoRow({
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
+      cardId={item.id}
       extraCardClass=""
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {

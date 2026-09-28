@@ -1052,6 +1052,9 @@ export function CitationCard({
       chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       onTrashClick={!compressed && onDelete ? tryDelete : undefined}
+      // A draft is not yet a stored citation, so it has no identity to archive
+      // — withholding the id withholds the shell's archive button (task 822).
+      cardId={isDraft ? undefined : cit.id}
       cardKey={cardKey}
       dropDisabled={dropDisabled}
       isCollapsed={compressed}
