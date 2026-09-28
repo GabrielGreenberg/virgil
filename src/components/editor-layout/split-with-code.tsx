@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   type ReactNode,
   useLayoutEffect,
   useMemo,
@@ -58,8 +59,17 @@ const EDITOR_PANE_COMPRESSED_MIN_PX = 398;
  *  can disappear entirely. We keep a sliver so the user can grab the
  *  splitter back. */
 const EDITOR_MIN_VISIBLE_PX = 24;
-/** Width of the drag gap itself (px). Should match `var(--pod-gap)`. */
-const GAP_WIDTH_PX = 8;
+/** Width of the drag gap itself (px). EQUALS `--pod-gap` in globals.css —
+ *  the width every other editor gutter renders at — and is pinned there by
+ *  `split-with-code-gutter.test.ts`. A number rather than the CSS var because
+ *  the drag math below needs it too; the pin keeps the two from drifting. */
+export const GAP_WIDTH_PX = 10;
+/** Where the shared `.band-grip` pill centres along the gutter when the
+ *  sync-arrows pill occupies the midpoint (task 813). The sync pill is ~39px
+ *  tall (two 18px buttons + 1px rule + 2px border) → half ≈ 20px; the grip
+ *  grows to 44px on drag → half 22px; 48px clears both with a ~6px breath, so
+ *  the grip sits just BELOW the sync pill instead of hidden beneath it. */
+export const GRIP_CENTER_WITH_SYNC_PILL = "calc(50% + 48px)";
 
 export interface SplitWithCodeProps {
   /** Whether the code pane is open. When false, the editor takes the
@@ -375,6 +385,14 @@ export function SplitWithCode({
               <div
                 className="drag-gap drag-gap-v band-grip w-full h-full"
                 {...handle}
+                style={
+                  onMoveCodeToText && onMoveTextToCode
+                    ? ({
+                        ...handle.style,
+                        "--band-grip-center": GRIP_CENTER_WITH_SYNC_PILL,
+                      } as CSSProperties)
+                    : handle.style
+                }
               />
               {/* Manual "sync position" pill — pinned with the divider
                   (it lives inside the sticky container). Two stacked

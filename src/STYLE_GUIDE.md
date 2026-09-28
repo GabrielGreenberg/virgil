@@ -1690,6 +1690,14 @@ Don't hand-roll a resizer's look — put `band-grip` on a `.drag-gap-{h,v}`
 element and spread the `usePaneResizeHandle` props on it (the pane-resize
 engine at `src/lib/pane-resize/` owns every divider gesture in both silos
 and toggles `.dragging` on the handle itself).
+The pill is centred along its gutter through a seam, `--band-grip-center`
+(default `50%`; `top` for vertical, `left` for horizontal). A gutter that
+hosts its own control at the midpoint sets it to clear that control rather
+than letting the shared pill hide underneath — today only the code splitter,
+which places the grip just below its sync-arrows pill (task 813). Engine
+gutters in the editor render at `--pod-gap`; the code splitter's drag math
+needs the width as a number, so `GAP_WIDTH_PX` is pinned to the token by
+`split-with-code-gutter.test.ts`.
 The stacked-panel bands additionally carry `.band-grip-occlude` for an
 opaque `--background` backing (they occlude omni cards showing through);
 **no other gutter opts in** — every other resizer stays transparent at rest.
