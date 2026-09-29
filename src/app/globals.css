@@ -5399,27 +5399,31 @@ html {
   content: "";
   position: absolute;
   top: -1.4em;
-  /* Variables are set per width preference on an ancestor
-     (.dividers-width-{full|mid|text}). Defaults match "full". */
-  left: var(--divider-inset-left, -88px);
-  right: var(--divider-inset-right, -72px);
+  /* The inset CANCELS the prose box's own horizontal padding — by the
+     width preference's fraction of it (.dividers-width-{full|mid|text}
+     set `--divider-inset-frac` 1 / 0.5 / 0 on an ancestor; default
+     "full"). The padding is read from the SAME tokens Editor.tsx pads
+     `.tiptap` with (`--editor-pl` / `--editor-pr`), never restated as the
+     shipped 88/72: the margins are user-draggable (useMarginEdit), so a
+     literal stops short of — or overshoots — the pane edge at any other
+     width. Only the unitless fraction rides the ancestor custom property;
+     the padding `var()` resolves HERE, on the `::before`, so it inherits
+     whatever value is live at the heading (print zeroes it below). */
+  left: calc(-1 * var(--divider-inset-frac, 1) * var(--editor-pl, 88px));
+  right: calc(-1 * var(--divider-inset-frac, 1) * var(--editor-pr, 72px));
   border-radius: 1px;
 }
 
-/* Divider width preferences — cancel some or all of the editor's
-   asymmetric horizontal padding (pl-[88px] pr-[72px]). "text" aligns
-   flush with the text column. */
+/* Divider width preferences — how much of the padding the rule spans.
+   "text" aligns flush with the text column. */
 .dividers-width-full {
-  --divider-inset-left: -88px;
-  --divider-inset-right: -72px;
+  --divider-inset-frac: 1;
 }
 .dividers-width-mid {
-  --divider-inset-left: -44px;
-  --divider-inset-right: -36px;
+  --divider-inset-frac: 0.5;
 }
 .dividers-width-text {
-  --divider-inset-left: 0px;
-  --divider-inset-right: 0px;
+  --divider-inset-frac: 0;
 }
 .show-dividers-0 .tiptap .heading-wrapper-l0 {
   margin-top: 8.2em;
@@ -5936,7 +5940,10 @@ html {
 
   /* Pull through our chosen font size only inside the print media so we
      don't disturb the live editor's pref-driven size. */
-  .tiptap { --editor-font-size: var(--print-font-size, 1.05rem); padding: 0; }
+  /* The padding is zeroed through its TOKENS as well as the property, so
+     everything that cancels it (heading dividers, the tex-block row
+     sensor) follows to 0 instead of bleeding 88/72px off the column. */
+  .tiptap { --editor-font-size: var(--print-font-size, 1.05rem); padding: 0; --editor-pl: 0px; --editor-pr: 0px; }
   [data-editor-page] {
     font-size: var(--print-font-size, 1.05rem);
   }
