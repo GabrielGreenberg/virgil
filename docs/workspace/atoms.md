@@ -1,4 +1,4 @@
-<!-- last-verified: fc84e325 2026-09-28 -->
+<!-- last-verified: f33de1c5 2026-09-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -57,6 +57,9 @@ the **card-body / `\footnote{}` inline parser reads the same vocabulary** — bo
 surfaces call the shared scanner `matchCiteCommandAt` (`cite-commands.ts`), which
 answers the command name AND its argument grammar in one call, so a `\cite` inside
 a footnote body or a note card is a real citation Atom, not grey passthrough.
+What the Atom SHOWS (its display text, or the `[cite]` pill for an empty
+`\cite{}`) is one pure answer, `src/lib/tiptap/citation-display.ts` (task 823),
+read by both the live NodeView and `renderHTML`.
 
 - **Card linkage:** a citation Atom ties to a `citation` Card (the in-text
   instance) and, through its key, to the `bib` Card (the bibliography entry in the

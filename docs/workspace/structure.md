@@ -1,4 +1,4 @@
-<!-- last-verified: fc84e325 2026-09-28 -->
+<!-- last-verified: f33de1c5 2026-09-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -160,7 +160,7 @@ off-vocabulary kind is a refusal (`die`), where it used to default silently to
 `footnote`). Two more belts on the write: a write against a Task that is ALREADY
 terminal dies before any byte lands (task 787 — `revert` still re-opens), and a
 new card's self-link `ref.kind` is stamped with the SPINE card kind
-(`card_by_id.spine_card_kind`), never the record discriminant (task 783). The conceptual model is
+(`card_by_id.spine_card_kind`), never the record discriminant (task 783). An existing-card mutation op (`update`, …) that carries a `requestId` closes that request in the SAME commit (task 816, `_mutation_commit`): a real Task completes `auto-applied` and its `linkedTo` source flag is lowered; a `virtual:<panel>:<cardId>` id lowers that card's flag; an unknown or terminal Task is refused before anything is written. Every free-text flag of `create_card.py` (and `complete-only --note`) accepts `@<path>` — write the prose to a quoted-heredoc scratch file (task 815, `_common.text_arg`). The conceptual model is
 [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern); this
 contract is **built and validated end-to-end through the footnote kind**, then
 fanned out to the full create-able set — `note` / `todo` / `citation` / `report` /

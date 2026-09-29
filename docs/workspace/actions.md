@@ -1,4 +1,4 @@
-<!-- last-verified: fc84e325 2026-09-28 -->
+<!-- last-verified: f33de1c5 2026-09-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -348,7 +348,9 @@ migrated `SelectionColorPopover`, `LabelRefPopover`, `HeadingTypeMenu`,
 placement path was deleted in task 751 — follows its anchor on scroll through a
 live `trackAnchor` thunk ([live-anchor.ts](../../src/components/menu/live-anchor.ts),
 task 747), and reads its outside press on `pointerdown` (task 746). The slash popup is a **documented exception**
-(not migrated). The four caret-parking menus (`DragHandleMenu`, `ActionsMenuPanel`,
+(not migrated). Every declared `role="menu"` surface paints from the menu tier (`.menu-surface`) —
+the surface census reads them all since task 819, which moved the Marginalia "+N"
+overflow popover onto it (and onto `useMenuDismiss`). The four caret-parking menus (`DragHandleMenu`, `ActionsMenuPanel`,
 `HeadingTypeMenu`, `SelectionColorPopover`) resolve their editable through ONE
 `caretEditableHost` ([caret-host.ts](../../src/components/menu/caret-host.ts)), and
 `useMenuKeyboard`'s window-capture handler takes only keys arriving at THAT editable

@@ -1,4 +1,4 @@
-<!-- last-verified: b0f37c03 2026-09-27 -->
+<!-- last-verified: f33de1c5 2026-09-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -235,7 +235,12 @@ the body in the prose.
   ([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) mounts
   beside the trash, self-wired from the **`CardArchiveActionsProvider`**
   ([card-archive-actions.tsx](../../src/panels/_shared/card-archive-actions.tsx),
-  identity-stable so a body keystroke never re-renders every card).
+  identity-stable so a body keystroke never re-renders every card). Since task
+  822 the `PanelCard` SHELL derives it from `kind` + `cardId`
+  (`useCardArchiveAffordance`) wherever it renders a trash, gated on
+  **`hasArchiveButton(kind)`** = archivable minus the declared
+  `ARCHIVE_BUTTON_EXEMPT_KINDS` (the two suggestion kinds, whose dismiss already
+  preserves the card — task 020). A draft citation passes no id and gets none.
 - **The View menu** — a three-dot "View Active / View Archives / View All"
   selector (`CardViewModeMenuItems`,
   [CardViewModeMenu.tsx](../../src/panels/_shared/CardViewModeMenu.tsx)) over a
@@ -300,7 +305,8 @@ dispatch. The button itself is the neutral chevron glyph
 ([DropChevrons.tsx](../../src/components/icons/DropChevrons.tsx)) that enters
 drop-mode to (re)anchor a card. It mounts on the docked card header
 (`CardDropButton`, [panel-primitives.tsx](../../src/components/panel-primitives.tsx))
-and on a popped-out card float's chrome (FloatChrome), through the shared gesture
+and on a popped-out card float's chrome (FloatChrome renders the SAME
+`CardDropButton`, task 826), through the shared gesture
 [card-drop-gesture.ts](../../src/components/drop-mode/card-drop-gesture.ts). It
 replaced the retired Shift-grab drop-mode entry and the removed panel→gutter
 native drag (`event-bridges/panel-drops.ts` + `anchor-rebind.ts`, both DELETED).
@@ -476,7 +482,10 @@ revision identity is gone). `CARD_THEMES`
 ([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) is a
 mechanical fold over `DEFAULT_PANEL_COLORS`
 ([panel-theme.ts](../../src/lib/panel-theme.ts)); a user color-override
-replaces the accent and re-derives the palette (`useCardTheme(themeKey)`).
+replaces the accent and re-derives the palette (`useCardTheme(themeKey)`;
+`useCardTheme(null)` = the neutral selected border, used by Search's main-text
+rows). The keys partition into four FAMILIES — anchored / editorial / workflow /
+system — stated as code in `PANEL_THEME_FAMILIES` (panel-theme.ts, task 824).
 Worth knowing before you touch any key:
 
 - **Shared identities** (one theme, several card kinds): `revision` colors both
@@ -492,6 +501,18 @@ Worth knowing before you touch any key:
   intentional drift: `revision-comment` → prefix `revision`,
   `revision-suggestion` → `revision-suggestion` (legacy persisted key `revision:s:<id>`, dual-read + migrated; live key `float:card:revision-suggestion:<id>`).
   *Don't rename a prefix without a migration* (`legacy-token-crosswalk.ts`).
+
+## Card chrome lives in the shell (task 825)
+
+Chrome every kind shares is spelled ONCE, not per card component: `PanelCard`
+derives the grab cursor from its `draggable` prop and the archive button (above);
+the AI-request row is the shell's (`EditableCard`'s `aiRequest` prop,
+`AiRequestRow` for PanelCard-direct kinds); titles go through `cardTitleStyle`
+and mono meta text through `.card-mono`. The
+empty-body placeholder is ONE derivation, `cardBodyPlaceholder(kind)`
+([panel-registry.ts](../../src/panels/panel-registry.ts)) → `"<label> text…"`,
+overridden only by a registry-declared `CardMeta.bodyPlaceholder` (`todo`,
+`report-request`). Pinned by `card-chrome-shell-census.test.ts`.
 
 ## Rules for skills
 

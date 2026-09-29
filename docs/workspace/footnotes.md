@@ -1,4 +1,4 @@
-<!-- last-verified: fc84e325 2026-09-28 -->
+<!-- last-verified: f33de1c5 2026-09-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -92,6 +92,9 @@ contract. The **footnote-specific** steps `create_card.py` performs:
 2. build the `footnotes.json` entry (the shape above),
 3. compose the `\vfid{<id>}\footnote{<body>}` splice,
 
+(The body arrives as `--body @<path>` — a quoted-heredoc scratch file, never a
+hand-quoted shell argument; task 815.)
+
 then hand off to the contract, which dispatches by the Task's `safetyLevel` and
 commits atomically under the pen. The `safetyLevel` → subcommand mapping and the
 atomic-commit semantics are **general** — see
@@ -117,6 +120,8 @@ it survives a re-parse.
 That Task is **drainable end-to-end** (#55b rework): `/editor/draft-footnote`
 reads the `kind: "footnote"` queue entry and, because `linkedTo.panel ===
 "footnotes"`, **REVISES the existing footnote in place** via `/editor/edit-card`
+— ONE `update` op carrying the `requestId`, which completes the Task and lowers
+the card's flag in the same commit (task 816) —
 rather than creating a duplicate (with no `linkedTo`, it composes a brand-new
 footnote — the create flow below). The footnote AI-request lives in the AIWindow
 (it is **not** in `list_requests.py`'s `PANEL_FILES` fallback — footnote flags
