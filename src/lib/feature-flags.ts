@@ -127,7 +127,7 @@ export const FLAG_REGISTRY = {
     status: "kill-switch",
     requires: [],
     legacy: "off",
-    note: "Print-intent gate (defer print until the doc is paint-ready); OFF prints immediately. Read once at module load.",
+    note: "Print-intent gate: the print appendix tree mounts only during an active print (in the visible pane); OFF keeps it always mounted (legacy), so a print is not deferred behind a mount. Read once at module load.",
   },
   "virgil:doc-products": {
     default: true,
