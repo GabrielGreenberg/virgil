@@ -3,6 +3,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { readPendingDiff, diffHasStructuralEntries } from "@/lib/tiptap/doc-structure";
 import { txPreservesTopLevelNodeDecorations } from "@/lib/pm-map-safety";
+import { paintFoldChevron, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 
 export interface SectionFoldingState {
   folded: Set<string>;
@@ -297,8 +298,7 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
             btn.closest("[data-uuid]")?.getAttribute("data-uuid") ?? null;
           const isFolded = uuid ? folded.has(uuid) : false;
           if (btn.classList.contains("is-folded") !== isFolded) {
-            btn.classList.toggle("is-folded", isFolded);
-            btn.title = isFolded ? "Unfold section" : "Fold section";
+            paintFoldChevron(btn, isFolded, FOLD_SUBJECT_SECTION);
           }
         });
       };

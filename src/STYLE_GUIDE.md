@@ -2936,7 +2936,13 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
 
 - `--margin-col-chevron` (default `-44px`) + `--margin-col-chevron-width`
   (default `14px`) — fold chevron column for headings and the SOURCE POD.
-  Consumed by `.heading-fold-chevron` and `.source-pod-fold-chevron`, and read
+  Consumed by the ONE shared `.margin-fold-chevron` rule both renderers carry
+  (task 830: heading + source pod are one control — shared class, `focus-ring`,
+  and hint/`aria-label`/`aria-expanded` from `foldChevronAttrs` in
+  [src/lib/fold-chevron.ts](src/lib/fold-chevron.ts); the kind classes
+  `.heading-fold-chevron` / `.source-pod-fold-chevron` keep only `top` and
+  read-only visibility; the heading's per-level centering subtracts
+  `var(--margin-col-chevron-width) / 2`, never a typed half-width), and read
   back per block by JS in
   [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts)
   (`BlockFrame.chevronRight`) so the handle lane can RESERVE it. Reserved per

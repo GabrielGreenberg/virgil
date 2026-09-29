@@ -437,3 +437,41 @@ describe("2b — cached fold DecorationSet (focus-view pattern)", () => {
     editor.destroy();
   });
 });
+
+describe("task 830 — the heading chevron wears the ONE fold-chevron contract", () => {
+  it("a constructed heading chevron has the shared class, focus ring, hint and aria-expanded at mount", () => {
+    const { editor, el } = buildTwoSectionEditor();
+    const btn = chevronForUuid(el, "h-A");
+    expect(btn.classList.contains("margin-fold-chevron")).toBe(true);
+    expect(btn.classList.contains("focus-ring")).toBe(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    expect(btn.getAttribute("aria-label")).toBe("Collapse section");
+    expect(btn.getAttribute("data-hint")).toBe("Collapse section");
+    // The native title was the old, change-only tooltip — the hint replaces it.
+    expect(btn.hasAttribute("title")).toBe(false);
+    editor.destroy();
+  });
+
+  it("toggling fold flips class, aria-expanded and label together", () => {
+    const { editor, el } = buildTwoSectionEditor();
+    const toggle = () =>
+      editor.view.dispatch(
+        editor.state.tr.setMeta(sectionFoldingPluginKey, {
+          action: "toggle",
+          uuid: "h-A",
+        }),
+      );
+    toggle();
+    let btn = chevronForUuid(el, "h-A");
+    expect(btn.classList.contains("is-folded")).toBe(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(btn.getAttribute("aria-label")).toBe("Expand section");
+    expect(btn.getAttribute("data-hint")).toBe("Expand section");
+    toggle();
+    btn = chevronForUuid(el, "h-A");
+    expect(btn.classList.contains("is-folded")).toBe(false);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    expect(btn.getAttribute("aria-label")).toBe("Collapse section");
+    editor.destroy();
+  });
+});
