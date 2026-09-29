@@ -46,8 +46,10 @@
  *    chrome) → `VIEW_ONLY_ATTENTION_ATTRS`. These attributes land on the
  *    anchored paragraph / footnote marker / `.linked-anchor` itself, so a
  *    blanket `background: none` there would also erase the user's persistent
- *    highlight tint — a USER CHOICE with its own print toggle, and therefore
- *    document content by the app's own posture. Instead the print block zeroes
+ *    highlight tint — a USER CHOICE governed by its own print toggle (Print →
+ *    "Anchor highlights & tints", stored key `linkedAnchorUnderlines`, which
+ *    zeroes `TINT_COLOR_VAR` below when off — task 836), and therefore
+ *    document content by the app's own posture when that toggle is on. Instead the print block zeroes
  *    `--link-anchor-color`, the var the `--link-anchor-color` family paints
  *    from (`color-mix(… var(--link-anchor-color) …)` collapses to transparent)
  *    — the same idiom `.linked-anchor[data-anchor-archived]` already uses, and
@@ -142,6 +144,27 @@ export const ATTENTION_COLOR_VAR = "--link-anchor-color";
  * is the one a reader would omit, and it is the one a SELECTED card carries
  * into the print appendix.
  */
+/**
+ * The custom property every persistent TINT band paints from
+ * (`.linked-anchor[data-tint-color]` → `color-mix(… var(--tint-color) …)`).
+ *
+ * The band's screen rule is itself `!important`, and at `.linked-anchor
+ * [data-tint-color]` it out-specifies both the marker rule's
+ * `background: none !important` and the print toggle's plain
+ * `background: transparent` — so neither could reach it (task 836: a
+ * highlight band and the pending-AI band printed with the toggle OFF). The
+ * print block therefore zeroes the VAR, `!important` (which also beats the
+ * per-instance inline `--tint-color` a literal-hex tint stamps), in two places:
+ *
+ *  - on the view-only MARKER — a pending-AI band (`pending-ai-change`) is
+ *    review state, the applied twin of the open-request wash, and stamps
+ *    `VIEW_ONLY_CLASS` (`linkedAnchorRenderAttrs`), so it never prints under
+ *    any toggle;
+ *  - under the "Anchor highlights & tints" toggle when off — the user's own
+ *    highlight tint, which prints only when that toggle is on.
+ */
+export const TINT_COLOR_VAR = "--tint-color";
+
 export const VIEW_ONLY_ZEROED_PROPERTIES = [
   "text-decoration",
   "background",

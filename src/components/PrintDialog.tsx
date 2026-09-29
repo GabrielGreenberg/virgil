@@ -53,7 +53,7 @@ const ELEMENT_GROUPS: {
     legend: "Margin",
     rows: [
       { key: "marginalia", label: "Marginalia markers" },
-      { key: "linkedAnchorUnderlines", label: "Linked-anchor underlines" },
+      { key: "linkedAnchorUnderlines", label: "Anchor highlights & tints" },
     ],
   },
 ];

@@ -317,6 +317,14 @@ export function accentTokenFromTint(tint: string | null | undefined): string | n
 export const PENDING_AI_TINT = "#bfdbfe";
 
 /**
+ * The legacy `linkedAnchor.kind` of an APPLIED-but-unkept AI change — the
+ * light-blue pending band. Spelled once: the applicator, the reload re-stamp,
+ * the tint default below and the render-attr policy (which stamps the band
+ * view-only so it never prints — task 836) all read it here.
+ */
+export const PENDING_AI_CHANGE_KIND = "pending-ai-change" as const;
+
+/**
  * The persistent highlight TINT a `linkedAnchor` of the given kind paints, or
  * `null` for every non-highlight kind. The SINGLE source for the Adobe-style
  * highlight band: the three create sites (the drag-handle Highlight action, the
@@ -345,7 +353,7 @@ export function defaultTintForLinkedAnchorKind(kind: string): string | null {
   // paints over an applied-but-not-yet-kept suggestion (Phase 0). A
   // pending-DELETE variant renders the struck text differently in a later UI
   // phase; the tint string is what the Phase 0 unit tests assert.
-  if (kind === "pending-ai-change") return PENDING_AI_TINT;
+  if (kind === PENDING_AI_CHANGE_KIND) return PENDING_AI_TINT;
   // `highlight`: the theme-derived band. The token is read off the crosswalk
   // (not written as a literal) so the sentinel, the `data-link-card` selector
   // and the `--link-anchor-accent-<token>` var can never name three different

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
+import { PENDING_AI_CHANGE_KIND } from "@/cards/legacy-token-crosswalk";
+import { VIEW_ONLY_CLASS } from "@/lib/view-only-chrome";
 
 describe("linkedAnchorRenderAttrs — transient (cardless) anchor", () => {
   it("a transient anchor emits NO data-link-card (the plain-grab handle)", () => {
@@ -77,5 +79,22 @@ describe("linkedAnchorRenderAttrs — annotation kinds unchanged", () => {
 
   it("data-link-id prefers linkId over the legacy anchorId", () => {
     expect(linkedAnchorRenderAttrs({ anchorId: "old", linkId: "new", kind: "note" })["data-link-id"]).toBe("new");
+  });
+});
+
+describe("linkedAnchorRenderAttrs — the pending-AI band never prints (task 836)", () => {
+  it("a pending-AI-change mark carries the view-only marker beside its own class", () => {
+    const attrs = linkedAnchorRenderAttrs({
+      anchorId: "a",
+      kind: PENDING_AI_CHANGE_KIND,
+      linkCard: "revision-suggestion:s1",
+    });
+    expect(attrs.class.split(" ")).toEqual(["linked-anchor", VIEW_ONLY_CLASS]);
+  });
+
+  it("a user highlight tint (and every other kind) stays document paint", () => {
+    for (const kind of ["highlight", "note", "todo", "revision", "transient"]) {
+      expect(linkedAnchorRenderAttrs({ anchorId: "a", kind }).class).toBe("linked-anchor");
+    }
   });
 });
