@@ -41,6 +41,7 @@ import {
   nodeViewPopulation,
   nodeViewRegions,
   updateBodies,
+  helperBodies,
 } from "@/lib/tiptap/__tests__/_nodeview-census";
 
 // Same storage stub as editor-extensions.test.ts — the extension barrel pulls
@@ -409,12 +410,35 @@ describe("task 551 — the expex family takes the renderAnnot bail", () => {
 // METHOD body — the helper a body calls (`renderTitle()`, a pod's `render()`)
 // is gated at the call site, and the behavioural legs above measure that gate.
 // Allowlist EMPTY: a hit is ROUTE-it through `idempotent-dom.ts`.
-// Stated limit: a bare write hidden one helper down is invisible here, exactly
-// as the timer census states about an imported helper.
+// Task 840 closed the stated limit "a bare write hidden one helper down is
+// invisible": every same-file helper (declaration OR const arrow) an
+// update/paint body reaches, and that spells a bare write, must be DECLARED in
+// GATED_HELPERS with the gate that bounds it. Still out of reach: a helper
+// IMPORTED from another file, exactly as the timer census states.
 // ---------------------------------------------------------------------------
 
 const BARE_DOM_WRITE =
-  /(?:\.dataset\.\w+|\.className|\.textContent|\.innerHTML|\.title)\s*=(?!=)|\bdelete\s+[\w$.]+\.dataset\.\w+|\.(?:setAttribute|removeAttribute)\s*\(/g;
+  /(?:\.dataset\.\w+|\.className|\.textContent|\.innerHTML|\.title)\s*=(?!=)|\bdelete\s+[\w$.]+\.dataset\.\w+|\.(?:setAttribute|removeAttribute|replaceChildren)\s*\(/g;
+
+/**
+ * Same-file helpers a NodeView's update/paint body reaches that DO write the
+ * DOM bare — each is bounded by a gate at its call site, which a behavioural
+ * leg measures. `file#helper` → the gate. A new entry is a claim that the gate
+ * exists; the honest alternative is routing the helper through the door.
+ */
+const GATED_HELPERS: Record<string, string> = {
+  "src/lib/editor-extensions.ts#renderAnnot": "the 1c renderAnnot bail (legs above)",
+  "src/lib/editor-extensions.ts#chromeButton": "writes a FRESH element; reached only through renderAnnot",
+  "src/lib/tiptap/expex.ts#renderTitle": "the task-551 renderAnnot bail (legs above)",
+  "src/lib/tiptap/expex.ts#render": "the label pod's rendered-label compare (task 551 legs)",
+  "src/lib/tiptap/math.ts#renderMath": "paint runs it only when latex moved (task 840 leg)",
+  "src/lib/tiptap/citation.ts#applyCitationContent": "paint runs it only when displayText/command moved (task 840 leg)",
+};
+
+/** A write to a ProseMirror node — never legal: nodes are immutable, and the
+ *  history's inverted steps hold the very objects (task 840's math undo). */
+const NODE_MUTATION =
+  /\bObject\.assign\s*\(\s*\w*[nN]ode\b|\b\w*[nN]ode\.attrs(?:\.\w+|\[[^\]]+\])?\s*=(?!=)/g;
 
 const DOOR = "src/lib/tiptap/idempotent-dom.ts";
 const DOOR_VERBS = /\bset(?:Attr|Data|Text|ClassName|Title)IfChanged\s*\(/g;
@@ -432,6 +456,10 @@ describe("task 551 — census: a NodeView update() writes to the DOM only throug
       "src/lib/tiptap/title.ts",
       "src/lib/tiptap/label.ts",
       "src/lib/tiptap/footnote.ts",
+      "src/lib/tiptap/math.ts",
+      "src/lib/tiptap/citation.ts",
+      // A shared NodeView factory is in the population (task 840).
+      "src/lib/tiptap/leaf-node-view.ts",
     ]) {
       expect(files).toContain(f);
     }
@@ -447,6 +475,7 @@ describe("task 551 — census: a NodeView update() writes to the DOM only throug
       "update(n) { dom.title = t; }",
       "update(n) { el.setAttribute(\"start\", s); }",
       "update(n) { el.removeAttribute(\"start\"); }",
+      "paint(dom, n) { dom.replaceChildren(x); }",
     ];
     for (const p of planted) {
       expect(Array.from(codeOnly(p).matchAll(BARE_DOM_WRITE)), p).toHaveLength(1);
@@ -492,5 +521,59 @@ describe("task 551 — census: a NodeView update() writes to the DOM only throug
     // The uuid stamp every anchorable view calls from update() is a caller too.
     const stamp = codeOnly(fs.readFileSync(path.join(REPO_ROOT, "src/lib/tiptap/uuid-attr.ts"), "utf8"));
     expect(stamp).toMatch(/\bsetAttrIfChanged\s*\(/);
+  });
+  it("every same-file helper an update/paint body reaches that writes bare is DECLARED gated (task 840)", () => {
+    const reached = new Set<string>();
+    const undeclared: string[] = [];
+    for (const f of files) {
+      const helpers = helperBodies(codeOnly(fs.readFileSync(path.join(REPO_ROOT, f), "utf8")));
+      for (const r of regions.filter((x) => x.file === f)) {
+        for (const body of updateBodies(r)) {
+          const seen = new Set<string>();
+          const queue = [body];
+          while (queue.length) {
+            const text = queue.pop()!;
+            for (const [name, hb] of helpers) {
+              if (seen.has(name) || !new RegExp(`\\b${name}\\s*\\(`).test(text)) continue;
+              seen.add(name);
+              queue.push(hb);
+              if (Array.from(hb.matchAll(BARE_DOM_WRITE)).length === 0) continue;
+              const key = `${f}#${name}`;
+              reached.add(key);
+              if (!(key in GATED_HELPERS)) undeclared.push(`${r.label} -> ${name}`);
+            }
+          }
+        }
+      }
+    }
+    expect(undeclared, "a helper reached from a NodeView update/paint writes the DOM bare — route it through idempotent-dom.ts, or gate its call and declare it").toEqual([]);
+    // No stale entry: every declared helper is still reached and still writes.
+    expect(Object.keys(GATED_HELPERS).filter((k) => !reached.has(k))).toEqual([]);
+  });
+
+  it("the helper reach follows const-arrow helpers (synthetic canary)", () => {
+    const src = codeOnly("const paintIt = (el: HTMLElement, t: string): void => { el.innerHTML = t; };\nfunction other() { return 1; }");
+    const h = helperBodies(src);
+    expect([...h.keys()].sort()).toEqual(["other", "paintIt"]);
+    expect(Array.from(h.get("paintIt")!.matchAll(BARE_DOM_WRITE))).toHaveLength(1);
+  });
+
+  it("no NodeView region mutates a ProseMirror node (task 840)", () => {
+    for (const p of [
+      "update(u) { Object.assign(node, u); }",
+      "update(u) { updatedNode.attrs.latex = x; }",
+      "update(u) { node.attrs = u.attrs; }",
+      "update(u) { node.attrs[\"id\"] = 1; }",
+    ]) {
+      expect(Array.from(codeOnly(p).matchAll(NODE_MUTATION)), p).toHaveLength(1);
+    }
+    for (const c of ["update(u) { if (node.attrs.x === u.attrs.x) return; const a = Object.assign({}, node.attrs); }"]) {
+      expect(Array.from(codeOnly(c).matchAll(NODE_MUTATION)), c).toHaveLength(0);
+    }
+    const hits: string[] = [];
+    for (const r of regions) {
+      for (const m of r.text.matchAll(NODE_MUTATION)) hits.push(`${r.label}: ${m[0]}`);
+    }
+    expect(hits, "a NodeView wrote to a ProseMirror node — hold a `let current` and replace it (createLeafNodeView)").toEqual([]);
   });
 });

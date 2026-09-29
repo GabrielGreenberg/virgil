@@ -38,6 +38,7 @@ import {
 // SSOT rather than hardcoded literals, so a NodeView rename can't drift from
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { createLeafNodeView } from "@/lib/tiptap/leaf-node-view";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 
 const CITATION_ATOM = ATOM_REGISTRY.citation;
@@ -302,8 +303,7 @@ export const Citation = Node.create<CitationOptions>({
       command: string,
     ) => {
       const display = citationDisplay(displayText, command);
-      if (display.empty) el.setAttribute("data-empty", "true");
-      else el.removeAttribute("data-empty");
+      setDataIfChanged(el, "empty", display.empty ? "true" : null);
       el.replaceChildren(
         ...display.children.map((child) =>
           typeof child === "string"
@@ -312,58 +312,56 @@ export const Citation = Node.create<CitationOptions>({
         ),
       );
     };
-    return ({ node, getPos }) => {
-      const dom = document.createElement("span");
-      dom.className = CITATION_ATOM.domClass;
-      dom.dataset.type = CITATION_ATOM.domType;
-      // The `data-citation-id` SPELLING comes from the row, like `data-type`
-      // and the class above (task 645) — it is what the drag ghost strips and
-      // the hover bridge reads, and both of those now read it from there too.
-      dom.setAttribute(CITATION_ATOM.domIdAttr, node.attrs.citationId || "");
-      dom.contentEditable = "false";
-      dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
-      applyCitationContent(dom, node.attrs.displayText, node.attrs.command);
-
-      dom.addEventListener("click", (e: Event) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = dom.getBoundingClientRect();
-        const panelAncestor = dom.closest(
-          "[data-panel-side]",
-        ) as HTMLElement | null;
-        const clickedPos = typeof getPos === "function" ? getPos() : undefined;
-        window.dispatchEvent(
-          new CustomEvent("virgil-citation-click", {
-            detail: {
-              citationId: node.attrs.citationId,
-              // Viewport Y of the clicked citation — used by the citations
-              // panel to align the corresponding card vertically with the
-              // click target.
-              clickY: rect.top,
-              // Doc position of THIS citation instance — used to override
-              // the card's anchor when a later/repeated citation is clicked
-              // so the card moves to align with the click rather than the
-              // (often-distant) first citation.
-              clickedPos,
-              sourceSide: panelAncestor?.dataset.panelSide,
-              sourcePanelId: panelAncestor?.dataset.panelId,
-              sourceHalf: panelAncestor?.dataset.panelHalf,
-            },
-          })
-        );
-      });
-
-      return {
-        dom,
-        update(updatedNode: any) {
-          if (updatedNode.type.name !== "citation") return false;
+    return ({ node, getPos }) =>
+      // Task 840: the click reads the LIVE node, so a citation id re-minted in
+      // place opens ITS card, not the mount-time one.
+      createLeafNodeView({
+        node,
+        getPos,
+        className: CITATION_ATOM.domClass,
+        dataType: CITATION_ATOM.domType,
+        paint(dom, next, prev) {
           // Idempotence-gated (task 551): O(changed atoms), and an unchanged
           // id must not invalidate style on a renumber / display pass.
-          setAttrIfChanged(dom, CITATION_ATOM.domIdAttr, updatedNode.attrs.citationId || "");
-          applyCitationContent(dom, updatedNode.attrs.displayText, updatedNode.attrs.command);
-          return true;
+          // The `data-citation-id` SPELLING comes from the row, like `data-type`
+          // and the class (task 645) — it is what the drag ghost strips and
+          // the hover bridge reads, and both of those now read it from there too.
+          setAttrIfChanged(dom, CITATION_ATOM.domIdAttr, next.attrs.citationId || "");
+          // The content rebuild (`replaceChildren`) runs only when what it is
+          // derived from moved (task 840).
+          if (
+            !prev ||
+            prev.attrs.displayText !== next.attrs.displayText ||
+            prev.attrs.command !== next.attrs.command
+          ) {
+            applyCitationContent(dom, next.attrs.displayText, next.attrs.command);
+          }
         },
-      };
-    };
+        onClick({ node: current, dom, pos }) {
+          const rect = dom.getBoundingClientRect();
+          const panelAncestor = dom.closest(
+            "[data-panel-side]",
+          ) as HTMLElement | null;
+          window.dispatchEvent(
+            new CustomEvent("virgil-citation-click", {
+              detail: {
+                citationId: current.attrs.citationId,
+                // Viewport Y of the clicked citation — used by the citations
+                // panel to align the corresponding card vertically with the
+                // click target.
+                clickY: rect.top,
+                // Doc position of THIS citation instance — used to override
+                // the card's anchor when a later/repeated citation is clicked
+                // so the card moves to align with the click rather than the
+                // (often-distant) first citation.
+                clickedPos: pos(),
+                sourceSide: panelAncestor?.dataset.panelSide,
+                sourcePanelId: panelAncestor?.dataset.panelId,
+                sourceHalf: panelAncestor?.dataset.panelHalf,
+              },
+            })
+          );
+        },
+      });
   },
 });

@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { NodeType, ResolvedPos } from "@tiptap/pm/model";
+import type { Node as PMNode, NodeType, ResolvedPos } from "@tiptap/pm/model";
 import katex from "katex";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { chromeOnly } from "@/lib/view-only-chrome";
@@ -21,6 +21,7 @@ import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // drift from ATOM_REGISTRY. displayMath is deliberately NOT an atom (a block, not
 // inline) and keeps its literals. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "./atom-registry";
+import { createLeafNodeView } from "./leaf-node-view";
 
 const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
 
@@ -67,8 +68,8 @@ export function renderMath(target: HTMLElement, latex: string, displayMode: bool
 }
 
 function mathNodeView(opts: {
-  node: any;
-  getPos: any;
+  node: PMNode;
+  getPos: unknown;
   // The full TipTap editor instance that OWNS this NodeView — i.e. the editor
   // whose pos-space `getPos()` indexes. The click→edit bridge carries this
   // instance so the save routes the write back to THIS editor (main OR an
@@ -90,77 +91,69 @@ function mathNodeView(opts: {
   displayMode: boolean;
 }) {
   const { node, getPos, editor, surface, tag, className, dataType, kind, displayMode } = opts;
-  const dom = document.createElement(tag);
-  dom.className = className;
-  dom.contentEditable = "false";
-  dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
-  dom.setAttribute("data-type", dataType);
-
-  renderMath(dom, node.attrs.latex || "", displayMode);
-
-  // 2d: NodeView-owned data-uuid/kind exposure (displayMath is anchorable;
-  // MAIN surface only — parity with the deleted UuidAttrDecorator scope).
-  if (surface === "main" && node.type.spec.attrs?.uuid !== undefined) {
-    stampTextObjectAttrs(dom, node, null);
-  }
-
-  dom.addEventListener("click", (e: Event) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // The click→edit bridge (`virgil-math-click` → MathPopover →
-    // handleMathSave) edits a math node by absolute `pos`. The OLD gate fired
-    // from the "main" surface only, because the save always targeted the MAIN
-    // editor: a float's `getPos()` indexes the float doc, not the page, so a
-    // MAIN-pos write from a float would corrupt the wrong node — and the gate
-    // made math inert in EVERY embedded surface (the EX-F4-02 bug: clicking
-    // math inside an example-card body did nothing).
-    //
-    // The DEEP fix routes by the editor instance that OWNS the clicked node:
-    // we carry THIS NodeView's `editor` in the event detail, and the save
-    // dispatches `setNodeMarkup(pos)` on THAT editor — so `pos` is always
-    // interpreted in the pos-space it was minted in. On MAIN it edits MAIN; on
-    // an embedded card/float editor it edits the embed, whose own write-back
-    // (`onUpdate` → `writeBackToMain` / `useFloatMainSync`) round-trips the
-    // change to the main doc — no MAIN mis-targeting, no corruption. This works
-    // uniformly for every editable embedded surface that hosts math: the
-    // example-card body, the example-block / paragraph / linked-range floats.
-    //
-    // The `editor.isEditable` check is preserved (and is now the sole gate):
-    // a read-only surface stays inert. This covers the read-only MAIN doc AND
-    // the displayMath "view & move only" lift (decision D — its SingleBlockBody
-    // float mounts `editable:false`), which both correctly remain non-editable.
-    if (editor && !editor.isEditable) return;
-    const pos = typeof getPos === "function" ? getPos() : undefined;
-    if (pos == null) return;
-    window.dispatchEvent(
-      new CustomEvent("virgil-math-click", {
-        detail: {
-          kind,
-          latex: node.attrs.latex || "",
-          pos,
-          rect: dom.getBoundingClientRect(),
-          // The owning editor — the save MUST target this instance, not MAIN.
-          editor,
-        },
-      })
-    );
-  });
-
-  return {
-    dom,
-    update(updated: any) {
-      if (updated.type.name !== node.type.name) return false;
-      const uuidChanged = updated.attrs.uuid !== node.attrs.uuid;
-      // Keep the captured node reference up to date so subsequent clicks
-      // reflect the latest latex value without waiting for a re-mount.
-      Object.assign(node, updated);
-      renderMath(dom, updated.attrs.latex || "", displayMode);
-      if (uuidChanged && surface === "main" && node.type.spec.attrs?.uuid !== undefined) {
-        stampTextObjectAttrs(dom, updated, null);
+  // Task 840: the view reads its LIVE node through the leaf factory. The old
+  // `update()` did `Object.assign(node, updated)` to keep this click fresh —
+  // mutating an immutable PM node the history's inverted step still held, so
+  // undo of a math edit restored the EDITED formula.
+  return createLeafNodeView({
+    node,
+    getPos,
+    tag,
+    className,
+    dataType,
+    paint(dom, next, prev) {
+      // KaTeX is a full `innerHTML` rebuild — run it only when the latex moved.
+      const latex = next.attrs.latex || "";
+      if (!prev || (prev.attrs.latex || "") !== latex) {
+        renderMath(dom, latex, displayMode);
       }
-      return true;
+      // 2d: NodeView-owned data-uuid/kind exposure (displayMath is anchorable;
+      // MAIN surface only — parity with the deleted UuidAttrDecorator scope).
+      // The stamp is idempotence-gated (`setAttrIfChanged`).
+      if (surface === "main" && next.type.spec.attrs?.uuid !== undefined) {
+        stampTextObjectAttrs(dom, next, null);
+      }
     },
-    selectNode() {
+    onClick({ node: current, dom, pos: livePos }) {
+      // The click→edit bridge (`virgil-math-click` → MathPopover →
+      // handleMathSave) edits a math node by absolute `pos`. The OLD gate fired
+      // from the "main" surface only, because the save always targeted the MAIN
+      // editor: a float's `getPos()` indexes the float doc, not the page, so a
+      // MAIN-pos write from a float would corrupt the wrong node — and the gate
+      // made math inert in EVERY embedded surface (the EX-F4-02 bug: clicking
+      // math inside an example-card body did nothing).
+      //
+      // The DEEP fix routes by the editor instance that OWNS the clicked node:
+      // we carry THIS NodeView's `editor` in the event detail, and the save
+      // dispatches `setNodeMarkup(pos)` on THAT editor — so `pos` is always
+      // interpreted in the pos-space it was minted in. On MAIN it edits MAIN; on
+      // an embedded card/float editor it edits the embed, whose own write-back
+      // (`onUpdate` → `writeBackToMain` / `useFloatMainSync`) round-trips the
+      // change to the main doc — no MAIN mis-targeting, no corruption. This works
+      // uniformly for every editable embedded surface that hosts math: the
+      // example-card body, the example-block / paragraph / linked-range floats.
+      //
+      // The `editor.isEditable` check is preserved (and is now the sole gate):
+      // a read-only surface stays inert. This covers the read-only MAIN doc AND
+      // the displayMath "view & move only" lift (decision D — its SingleBlockBody
+      // float mounts `editable:false`), which both correctly remain non-editable.
+      if (editor && !editor.isEditable) return;
+      const pos = livePos();
+      if (pos == null) return;
+      window.dispatchEvent(
+        new CustomEvent("virgil-math-click", {
+          detail: {
+            kind,
+            latex: current.attrs.latex || "",
+            pos,
+            rect: dom.getBoundingClientRect(),
+            // The owning editor — the save MUST target this instance, not MAIN.
+            editor,
+          },
+        })
+      );
+    },
+    selectNode(dom) {
       // A float is a single-node surface: an atom-only float doc has no
       // interior text position, so ProseMirror rests a NodeSelection on the
       // lone atom (NodeSelection{0,1}, unfocused) — firing selectNode() at
@@ -171,10 +164,10 @@ function mathNodeView(opts: {
       // than gating on `surface`. The MAIN surface keeps its chrome unchanged.
       if (surface !== "float") dom.classList.add("selected");
     },
-    deselectNode() {
+    deselectNode(dom) {
       dom.classList.remove("selected");
     },
-  };
+  });
 }
 
 // `surface`: which editor surface the math node is mounted on. It is read by
