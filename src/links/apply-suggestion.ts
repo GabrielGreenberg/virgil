@@ -56,7 +56,10 @@ import {
 } from "@/lib/latex-parser";
 import { reanchorByText, removeLinkedAnchor } from "@/links/links";
 import { captureRangeLatex } from "@/lib/tiptap/slice-capture";
-import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
+import {
+  defaultTintForLinkedAnchorKind,
+  PENDING_AI_CHANGE_KIND,
+} from "@/cards/legacy-token-crosswalk";
 
 /** Replace a span with new text, or (replacement === "") delete it. A `delete`
  *  is just a `replace` whose replacement is empty, but the apply/keep split
@@ -109,7 +112,7 @@ export type ApplyResult =
   | { ok: false; reason: "stale" };
 
 /** The legacy `linkedAnchor.kind` namespace value for a pending AI change. */
-const PENDING_KIND = "pending-ai-change" as const;
+const PENDING_KIND = PENDING_AI_CHANGE_KIND;
 
 /**
  * The blue tint the pending mark paints, single-sourced from the crosswalk so

@@ -32,7 +32,11 @@
  * tint — now paint correctly.
  */
 
-import { dataLinkCardTokenForLegacyMarkKind } from "@/cards/legacy-token-crosswalk";
+import {
+  dataLinkCardTokenForLegacyMarkKind,
+  PENDING_AI_CHANGE_KIND,
+} from "@/cards/legacy-token-crosswalk";
+import { viewOnly } from "@/lib/view-only-chrome";
 // The DOM contract has one speller (task 202): every producer emits the
 // attribute names from this module, so a rename cannot land at three of four
 // sites. Pinned by `src/links/__tests__/link-surface-honesty.test.ts`.
@@ -79,7 +83,17 @@ export function linkedAnchorRenderAttrs(
   }
 
   const out: Record<string, string> = {
-    class: "linked-anchor",
+    // A PENDING-AI band is review state, not the document — the applied twin
+    // of the open-request wash, which is view-only — so it carries the
+    // view-only marker and never prints under any toggle (task 836). The span
+    // is the mark's own wrapper, so the marker's zeroed paint (and the
+    // `--tint-color` it zeroes) cannot reach anything the document renders:
+    // `text-decoration: none` does not suppress an ancestor's decoration, and a
+    // nested element keeps its own background.
+    class:
+      attrs.kind === PENDING_AI_CHANGE_KIND
+        ? viewOnly("linked-anchor")
+        : "linked-anchor",
     [DATA_LINK_ID]: anchorId,
     [DATA_LINK_KIND]: "anchor",
   };

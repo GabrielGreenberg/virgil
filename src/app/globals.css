@@ -5964,8 +5964,9 @@ html {
 
      (2) The ATTENTION chrome lands on the anchored paragraph / footnote marker
      / `.linked-anchor` ITSELF, so a blanket `background: none` there would also
-     erase the user's persistent highlight tint — a user choice with its own
-     print toggle, i.e. document content by the app's own posture. So instead we
+     erase the user's persistent highlight tint — a user choice governed by
+     the "Anchor highlights & tints" toggle below (key `linkedAnchorUnderlines`),
+     i.e. document content by the app's own posture. So instead we
      zero `--link-anchor-color`: each
      `color-mix(in oklab, var(--link-anchor-color) N%, transparent)` collapses
      to transparent, which retires the footnote ring, BOTH sides of the Mode-A
@@ -5973,6 +5974,17 @@ html {
      selection wash AND the Mode-B hover/active wash + ring in one declaration.
      Same idiom as `.linked-anchor[data-anchor-archived]` far above, and it
      leaves `--tint-color` untouched by construction.
+
+     The marker rule ALSO zeroes `--tint-color` (task 836). The PENDING-AI
+     band (`pending-ai-change`) is review state, not a user choice — the
+     applied twin of the open-request wash, which is view-only — so its
+     `.linked-anchor` span carries the marker. Its paint comes from the tint
+     band rule, which is `!important` at higher specificity than
+     `.virgil-view-only`, so `background: none` cannot reach it; zeroing the
+     var it paints from can (and beats the inline `--tint-color` the literal
+     hex stamps). Its delete-mode `line-through` falls to the marker's
+     `text-decoration: none`. A pending proposal never prints, under any
+     toggle.
 
      THREE attributes, not the two anyone would think of. `data-link-highlight`
      paints a 45%/60% wash plus a 1px ring — HEAVIER than the 22% selection
@@ -6004,6 +6016,7 @@ html {
      (`body.card-outline-chrome [data-card-key][data-card-selected]`), which is
      OUTSIDE `.tiptap` by design — so its rule is deliberately unscoped. */
   .virgil-view-only {
+    --tint-color: transparent !important;
     text-decoration: none !important;
     background: none !important;
     box-shadow: none !important;
@@ -6090,7 +6103,12 @@ html {
   html[data-print-e-examples="false"] .expex-block { display: none; }
   html[data-print-e-display-math="false"] .display-math { display: none; }
   html[data-print-e-marginalia="false"] [data-marginalia-margin] { display: none; }
+  /* "Anchor highlights & tints" OFF: anchors print as plain prose. The
+     `--tint-color` zeroing is the load-bearing leg for a TINTED anchor (a
+     highlight band): its screen rule is `!important`, so the plain
+     `background: transparent` here never reached it (task 836). */
   html[data-print-e-linked-anchor-underlines="false"] .linked-anchor {
+    --tint-color: transparent !important;
     text-decoration: none; background: transparent; color: inherit;
   }
 

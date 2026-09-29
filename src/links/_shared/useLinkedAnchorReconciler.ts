@@ -24,6 +24,7 @@ import { useLayoutEffect, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import { getTextAnchor, removeLinkedAnchor } from "../links";
 import { forEachModeBCard, type ModeBBag } from "@/cards/mode-b-collections";
+import { PENDING_AI_CHANGE_KIND } from "@/cards/legacy-token-crosswalk";
 import {
   pendingMarkAnchorIds,
   type PendingMarkCardLike,
@@ -74,7 +75,7 @@ export function reapOrphanLinkedAnchors(
       // Task 667 made that wash a DECORATION, so there is no mark to reap and
       // no second name to exempt: the general anchor lifecycle stopped carrying
       // a special case for a signal that was never document content.
-      if (m.attrs.kind === "pending-ai-change") continue;
+      if (m.attrs.kind === PENDING_AI_CHANGE_KIND) continue;
       const id = m.attrs.anchorId as string | undefined;
       if (id && !alive.has(id)) orphans.add(id);
     }

@@ -52,12 +52,15 @@
 
 import type { Editor } from "@tiptap/react";
 import { reanchorByText } from "../links";
-import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
+import {
+  defaultTintForLinkedAnchorKind,
+  PENDING_AI_CHANGE_KIND,
+} from "@/cards/legacy-token-crosswalk";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 
 /** The legacy `linkedAnchor.kind` namespace value for a pending AI change — the
  *  same constant the applicator stamps (apply-suggestion.ts `PENDING_KIND`). */
-const PENDING_KIND = "pending-ai-change" as const;
+const PENDING_KIND = PENDING_AI_CHANGE_KIND;
 
 /** The blue tint, single-sourced from the crosswalk so apply / keep / revert and
  *  this reload re-stamp all agree (`#bfdbfe`). */

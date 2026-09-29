@@ -52,6 +52,7 @@ import {
   VIEW_ONLY_ATTENTION_ATTRS,
   VIEW_ONLY_ZEROED_PROPERTIES,
   ATTENTION_COLOR_VAR,
+  TINT_COLOR_VAR,
   viewOnly,
 } from "@/lib/view-only-chrome";
 
@@ -405,6 +406,34 @@ describe("the print block carries ONE rule for the marker", () => {
         new RegExp(`${prop}:\\s*none\\s*!important`),
       );
     }
+  });
+
+  it("the marker rule zeroes the TINT var, `!important` (task 836)", () => {
+    // The pending-AI band paints from `--tint-color` through an `!important`
+    // screen rule that out-specifies `.virgil-view-only`, so `background: none`
+    // alone never reached it. Zeroing the var it paints from does.
+    const at = PRINT_BLOCK.indexOf(`.${VIEW_ONLY_CLASS}`);
+    const body = PRINT_BLOCK.slice(PRINT_BLOCK.indexOf("{", at), PRINT_BLOCK.indexOf("}", at));
+    expect(body).toMatch(new RegExp(`${TINT_COLOR_VAR}:\\s*transparent\\s*!important`));
+  });
+
+  it("the tint band's screen rule paints from the var the print block zeroes", () => {
+    // The zeroing is only a fix while the band still paints FROM the var — and
+    // its `!important` is why nothing short of an `!important` var reaches it.
+    const m = CSS.match(/\.linked-anchor\[data-tint-color\]\s*\{([^}]*)\}/);
+    expect(m, "the tint band rule moved").toBeTruthy();
+    expect(m![1]).toContain(`var(${TINT_COLOR_VAR}`);
+  });
+
+  it("the anchor print toggle, when OFF, zeroes the tint var `!important` (task 836)", () => {
+    // Before 836 the toggle said `background: transparent` — a normal
+    // declaration, which the band's `!important` screen rule outranks, so a
+    // highlight printed with the toggle off.
+    const rule = [...PRINT_BLOCK.matchAll(/([^{}]+)\{([^}]*)\}/g)].find((r) =>
+      r[1].includes('html[data-print-e-linked-anchor-underlines="false"] .linked-anchor'),
+    );
+    expect(rule, "the print block lost the anchor toggle rule").toBeTruthy();
+    expect(rule![2]).toMatch(new RegExp(`${TINT_COLOR_VAR}:\\s*transparent\\s*!important`));
   });
 
   it("the marker has NO screen rule, so stamping it restyles nothing", () => {
