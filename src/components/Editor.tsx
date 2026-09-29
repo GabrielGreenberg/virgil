@@ -70,6 +70,7 @@ import { reportDocMount } from "@/lib/mount-preservation";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 import { announceSurfaceEditability } from "@/lib/tiptap/surface-editable";
+import { findProseTextRange } from "@/lib/find-prose-text";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -244,7 +245,6 @@ export interface ExampleInfo {
 }
 
 export interface EditorHandle {
-  replaceText: (oldText: string, newText: string) => boolean;
   getEditor: () => Editor | null;
   // --- Heading-label callbacks, exposed for float proxying (FCU Chip B) ---
   // A popped-out heading float runs the SAME `createHeadingWithLabel`
@@ -369,41 +369,6 @@ export interface EditorHandle {
 // dedicated import-light module so the #38 data-integrity invariant — every
 // place that COLLECTS a footnote-nested cite has a matching remover — is
 // unit-testable without mounting this whole component. See citation-doc-ops.ts.
-
-function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
-  const text = editor.getText();
-  const index = text.indexOf(searchText);
-  if (index === -1) return null;
-
-  let charCount = 0;
-  let fromPos = -1;
-  let toPos = -1;
-
-  editor.state.doc.descendants((node, pos) => {
-    if (fromPos !== -1 && toPos !== -1) return false;
-    if (node.isText && node.text) {
-      const nodeStart = charCount;
-      const nodeEnd = charCount + node.text.length;
-
-      if (fromPos === -1 && index >= nodeStart && index < nodeEnd) {
-        fromPos = pos + (index - nodeStart);
-      }
-      if (fromPos !== -1 && toPos === -1) {
-        const endIndex = index + searchText.length;
-        if (endIndex <= nodeEnd) {
-          toPos = pos + (endIndex - nodeStart);
-        }
-      }
-      charCount = nodeEnd;
-    }
-    return true;
-  });
-
-  if (fromPos !== -1 && toPos !== -1) {
-    return { from: fromPos, to: toPos };
-  }
-  return null;
-}
 
 // ── Dev keystroke-sanctity probe (multi-doc safe) ──────────────────────────
 // `window.__virgilBusStats()` must read the editor being TYPED INTO so the
@@ -994,33 +959,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   }, [editor]);
 
   useImperativeHandle(ref, () => ({
-    replaceText(oldText: string, newText: string): boolean {
-      if (!editor) return false;
-      const range = findTextRange(editor, oldText);
-      if (!range) return false;
-
-      // Drop the transient band before splicing — a meta-only dispatch, so
-      // unlike the old select-all-then-unset-the-mark clear it adds no history
-      // entry in front of the real replacement (and can't erase a user mark).
-      clearTransientHighlights(editor.view);
-
-      if (newText) {
-        editor
-          .chain()
-          .focus()
-          .setTextSelection(range)
-          .insertContent(newText)
-          .run();
-      } else {
-        editor
-          .chain()
-          .focus()
-          .setTextSelection(range)
-          .deleteSelection()
-          .run();
-      }
-      return true;
-    },
     getEditor() {
       return editor;
     },
@@ -1732,7 +1670,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
     // Text-based highlight (from revisions/suggestions).
     const textRange = highlightTextRef.current
-      ? findTextRange(editor, highlightTextRef.current)
+      ? findProseTextRange(editor.state.doc, highlightTextRef.current)
       : null;
     if (!textRange) {
       clearTransientHighlights(editor.view);
