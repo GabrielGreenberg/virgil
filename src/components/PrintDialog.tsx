@@ -98,11 +98,9 @@ export default function PrintDialog({
       open={open}
       onClose={onClose}
       size="md"
-      labelledBy="print-dialog-title"
     >
       <SystemDialogHeader
         title="Print"
-        titleId="print-dialog-title"
         subtitle="Choose what to include."
       />
       <SystemDialogBody className="space-y-3">
