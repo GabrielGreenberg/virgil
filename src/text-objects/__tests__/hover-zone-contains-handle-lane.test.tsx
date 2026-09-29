@@ -415,12 +415,12 @@ describe("census — the models this suite carries are the shipped CSS", () => {
   });
 
   it("both fold chevrons read ONE column token pair", () => {
-    for (const sel of [".heading-fold-chevron", ".source-pod-fold-chevron"]) {
-      const block = new RegExp(`\\${sel}\\s*\\{[^}]*\\}`).exec(CSS)?.[0];
-      expect(block, `${sel} rule not found`).toBeTruthy();
-      expect(block).toMatch(/left:\s*var\(--margin-col-chevron,/);
-      expect(block).toMatch(/width:\s*var\(--margin-col-chevron-width,/);
-    }
+    // Task 830: both renderers carry `.margin-fold-chevron`, the ONE rule
+    // that places them (fold-chevron-contract.test.ts pins the stamping).
+    const block = /\.margin-fold-chevron\s*\{[^}]*\}/.exec(CSS)?.[0];
+    expect(block, ".margin-fold-chevron rule not found").toBeTruthy();
+    expect(block).toMatch(/left:\s*var\(--margin-col-chevron,/);
+    expect(block).toMatch(/width:\s*var\(--margin-col-chevron-width,/);
     expect(CSS).toMatch(/--margin-col-chevron:\s*-44px/);
     expect(CSS).toMatch(/--margin-col-chevron-width:\s*14px/);
   });

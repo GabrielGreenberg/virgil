@@ -1572,13 +1572,18 @@ textarea,
   margin-top: 1.8em;
 }
 
-/* Folding chevron — sits in the margin just to the left of the heading
-   drag handle, with a small breathing gap. Default state (expanded) points
-   down; folded state rotates the chevron so it faces into the heading. */
-.heading-fold-chevron {
+/* ── The fold chevron (task 830) ───────────────────────────────────
+   ONE control, two renderers: the heading's section-fold chevron
+   (editor-extensions.ts, vanilla DOM) and the source pod's collapse
+   chevron (SourcePodNodeView.tsx). Both carry `.margin-fold-chevron`
+   (src/lib/fold-chevron.ts), which owns every common rule; the kind class
+   keeps only what legitimately differs (`top`, read-only visibility).
+   Sits in the `--margin-col-chevron` column. Default state (expanded)
+   points down; folded rotates it to face into its block. */
+.margin-fold-chevron {
   position: absolute;
   left: var(--margin-col-chevron, -44px);
-  top: 0.5em;
+  top: 0;
   width: var(--margin-col-chevron-width, 14px);
   height: var(--margin-col-chevron-width, 14px);
   display: flex;
@@ -1590,52 +1595,50 @@ textarea,
   border: none;
   cursor: pointer;
   color: var(--muted-light, #b5b0aa);
-  transition: color 0.15s;
-  z-index: 1;
-}
-
-.heading-fold-chevron:hover {
-  color: var(--muted, #8a8580);
-}
-
-/* The SVG path is a right-pointing chevron by default. We rotate the
-   button (not the SVG — CSS transform on root <svg> is flaky in some
-   browsers) to show the correct direction. */
-.heading-fold-chevron {
-  /* Expanded: chevron points down */
+  transition: color 0.15s; /* + transform under the opt-in just below */
+  /* The SVG path is a right-pointing chevron. We rotate the button (not
+     the SVG — CSS transform on root <svg> is flaky in some browsers).
+     Expanded: points down. */
   transform: rotate(90deg);
+  z-index: 1;
 }
 /* The rotation is movement, so it eases only under the opt-in (task 775). */
 @media (prefers-reduced-motion: no-preference) {
-  .heading-fold-chevron {
+  .margin-fold-chevron {
     transition: color 0.15s, transform 0.15s ease;
   }
 }
-
-.heading-fold-chevron.is-folded {
-  /* Folded: chevron faces in (toward the heading text, pointing right).
-     Tint reddish so folded sections read as "attention / hidden content
-     below" — matches the outline's current-position lozenge color. */
+.margin-fold-chevron:hover {
+  color: var(--muted, #8a8580);
+}
+.margin-fold-chevron.is-folded {
+  /* Folded: faces in (pointing right). Tinted reddish so folded content
+     reads as "attention / hidden content below" — matches the outline's
+     current-position lozenge color. */
   transform: rotate(0deg);
   color: var(--footnote-color, #b45757);
 }
-
 /* Thicker stroke when folded — reads as more assertive alongside the red
    tint. Default is 1.5 (set as an SVG attribute); folded bumps to 2. */
-.heading-fold-chevron.is-folded svg path {
+.margin-fold-chevron.is-folded svg path {
   stroke-width: 2;
 }
-
-.heading-fold-chevron.is-folded:hover {
+.margin-fold-chevron.is-folded:hover {
   color: var(--footnote-color, #b45757);
   filter: brightness(0.85);
 }
 
+/* Heading chevron: centred on the heading's first line (level rules below). */
+.heading-fold-chevron {
+  top: 0.5em;
+}
+
 /* Vertical centering — half the heading's line-box minus half the
-   chevron's height (14px). Assumes the inherited line-height of 1.5,
+   chevron's height (half the column-width token, never a typed literal —
+   task 830). Assumes the inherited line-height of 1.5,
    so half-line = font-size × 0.75. */
 .heading-wrapper-l0 .heading-fold-chevron {
-  top: calc(var(--font-headers-h0-size, 2.1rem) * 0.75 - 7px);
+  top: calc(var(--font-headers-h0-size, 2.1rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 /* Level classes, not :has(hN): the NodeView stamps heading-wrapper-l{N} at
    construction and a level change recreates the view (update() returns false
@@ -1643,22 +1646,22 @@ textarea,
    :has() with descendant-change triggers was a per-keystroke style-
    invalidation amplifier in large docs (perf Wave 0, plan P5.1). */
 .heading-wrapper-l1 .heading-fold-chevron {
-  top: calc(var(--font-headers-h1-size, 1.75rem) * 0.75 - 7px);
+  top: calc(var(--font-headers-h1-size, 1.75rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 .heading-wrapper-l2 .heading-fold-chevron {
-  top: calc(var(--font-headers-h2-size, 1.35rem) * 0.75 - 7px);
+  top: calc(var(--font-headers-h2-size, 1.35rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 .heading-wrapper-l3 .heading-fold-chevron {
-  top: calc(var(--font-headers-h3-size, 1.15rem) * 0.75 - 7px);
+  top: calc(var(--font-headers-h3-size, 1.15rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 .heading-wrapper-l4 .heading-fold-chevron {
-  top: calc(1rem * 0.75 - 7px);
+  top: calc(1rem * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 .heading-wrapper-l5 .heading-fold-chevron {
-  top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - 7px);
+  top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 .heading-wrapper-l6 .heading-fold-chevron {
-  top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - 7px);
+  top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 
 /* ── Screen-only fold suppression ─────────────────────────────────
@@ -1745,45 +1748,10 @@ textarea,
   pointer-events: auto;
 }
 
-.source-pod-fold-chevron {
-  position: absolute;
-  left: var(--margin-col-chevron, -44px);
-  top: 0;
-  width: var(--margin-col-chevron-width, 14px);
-  height: var(--margin-col-chevron-width, 14px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--muted-light, #b5b0aa);
-  transition: color 0.15s; /* + transform under the opt-in just below */
-  /* Expanded: chevron points down. */
-  transform: rotate(90deg);
-  z-index: 1;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .source-pod-fold-chevron {
-    transition: color 0.15s, transform 0.15s ease;
-  }
-}
-.source-pod-fold-chevron:hover {
-  color: var(--muted, #8a8580);
-}
-.source-pod-fold-chevron.is-folded {
-  transform: rotate(0deg);
-  color: var(--footnote-color, #b45757);
-}
-.source-pod-fold-chevron.is-folded svg path {
-  stroke-width: 2;
-}
-.source-pod-fold-chevron.is-folded:hover {
-  color: var(--footnote-color, #b45757);
-  filter: brightness(0.85);
-}
+/* Source-pod chevron: every rule is the shared `.margin-fold-chevron`
+   (task 830) — anchored to the pod's top via .source-pod's
+   position:relative, so it lines up with the blue outline. Only its
+   read-only hiding (below, `[data-editable="false"]`) is its own. */
 
 /* Collapsed preview — sits in place of the CodeMirror pod when the
    block is folded. Reads as a quiet shadow of the real editor. */

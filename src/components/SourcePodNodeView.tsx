@@ -6,6 +6,7 @@ import { SourcePodCodeMirror } from "./source-pod-code-mirror";
 import ConfirmDialog from "./ConfirmDialog";
 import { useFieldDraft } from "./field-draft";
 import { iconHint } from "@/components/Hint";
+import { foldChevronAttrs, FOLD_CHEVRON_CLASS } from "@/lib/fold-chevron";
 import type { SourcePodDerive } from "./source-pod-derive";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import {
@@ -479,7 +480,7 @@ export default function SourcePodNodeView({
         <button
           data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
-          className={chromeOnly(`source-pod-fold-chevron${collapsed ? " is-folded" : ""} focus-ring`)}
+          className={chromeOnly(`source-pod-fold-chevron ${FOLD_CHEVRON_CLASS}${collapsed ? " is-folded" : ""} focus-ring`)}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -497,11 +498,7 @@ export default function SourcePodNodeView({
             e.stopPropagation();
             if (editingTitle) commitTitleFrom(inputRef.current);
           }}
-          {...iconHint({
-            label: collapsed
-              ? `Expand ${config.kindLabel}`
-              : `Collapse ${config.kindLabel}`,
-          })}
+          {...foldChevronAttrs(collapsed, config.kindLabel)}
           contentEditable={false}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

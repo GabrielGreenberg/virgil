@@ -105,6 +105,7 @@ import {
   GraphicsBlock,
 } from "@/lib/tiptap-extensions";
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
+import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 import type { SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 
 // --- Heading callback refs (threaded from the host component) ----------
@@ -927,9 +928,16 @@ export function createHeadingWithLabel(
           // Chrome-only on paper (task 535): a FOLDED chevron paints red, and
           // a folded section prints its content (task 408) — so without the
           // stamp the red arrow printed into the margin beside the heading.
-          foldBtn.className = chromeOnly("heading-fold-chevron");
+          // Task 830: the SAME fold-chevron contract the source pod's chevron
+          // wears (src/lib/fold-chevron.ts) — shared stylesheet class, focus
+          // ring, hint + accessible name + aria-expanded painted at
+          // construction (so an expanded heading has its hint from load) and
+          // kept in sync by refreshFoldBtn / the section-folding resync.
+          foldBtn.className = chromeOnly(
+            `heading-fold-chevron ${FOLD_CHEVRON_CLASS} focus-ring`,
+          );
           foldBtn.contentEditable = "false";
-          foldBtn.setAttribute("aria-label", "Toggle section fold");
+          paintFoldChevron(foldBtn, false, FOLD_SUBJECT_SECTION);
           const SVG_NS_FOLD = "http://www.w3.org/2000/svg";
           const foldSvg = document.createElementNS(SVG_NS_FOLD, "svg");
           foldSvg.setAttribute("width", "12");
@@ -1000,8 +1008,7 @@ export function createHeadingWithLabel(
           // this node — so the shared view paints it. A plain keystroke that
           // reaches here via update() therefore does no DOM work.
           if (folded === foldBtn.classList.contains("is-folded")) return;
-          foldBtn.classList.toggle("is-folded", folded);
-          foldBtn.title = folded ? "Unfold section" : "Fold section";
+          paintFoldChevron(foldBtn, folded, FOLD_SUBJECT_SECTION);
         }
         refreshFoldBtn();
 
