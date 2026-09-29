@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { PRINT_PANEL_ORDER, type PrintOptions, type PrintPanelKey } from "@/lib/print";
-import { notifyAppendicesReady } from "@/lib/print-intent";
+import {
+  getPrintActivation,
+  getPrintIntent,
+  notifyAppendicesReady,
+  subscribePrintIntent,
+} from "@/lib/print-intent";
+
+const isPrintActive = () => getPrintIntent().active;
 
 interface PrintAppendicesProps {
   options: PrintOptions;
@@ -18,13 +25,22 @@ export default function PrintAppendices({
   options,
   renderPanel,
 }: PrintAppendicesProps) {
-  // Ack the print-intent store one frame after commit, so runPrint's
-  // await resolves only once the appendix DOM actually exists (perf Wave 0:
-  // this tree mounts only during an active print).
+  // Ack each print ACTIVATION one frame after the commit that rendered it,
+  // so runPrint's await resolves only once the appendix DOM for these
+  // options exists. Keyed on the activation, not the mount (task 845): with
+  // the print gate OFF this tree is mounted long before any print, and with
+  // it ON a second request while an intent is still active doesn't remount.
+  const activation = useSyncExternalStore(
+    subscribePrintIntent,
+    getPrintActivation,
+    getPrintActivation,
+  );
+  const active = useSyncExternalStore(subscribePrintIntent, isPrintActive, isPrintActive);
   useEffect(() => {
+    if (!active) return;
     const raf = requestAnimationFrame(() => notifyAppendicesReady());
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [active, activation]);
 
   return (
     <div className="print-only" aria-hidden="true">

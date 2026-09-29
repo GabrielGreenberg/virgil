@@ -7,7 +7,7 @@
  * the primitives it gates on.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, act } from "@testing-library/react";
 import {
   requestAppendices,
   releaseAppendices,
@@ -77,5 +77,49 @@ describe("PrintAppendices ack", () => {
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     await Promise.resolve();
     expect(resolved).toBe(true);
+  });
+
+  // Task 845: the ack is per ACTIVATION, not per mount. With the print gate
+  // OFF the tree is mounted long before any print; before the fix it acked
+  // once at mount and every print sat out the 1500 ms fallback.
+  const nextFrame = () =>
+    act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      await Promise.resolve();
+    });
+
+  it("an already-mounted tree (gate OFF) acks a later request within a frame", async () => {
+    render(
+      <PrintAppendices options={DEFAULT_PRINT_OPTIONS} renderPanel={() => null} />,
+    );
+    await nextFrame(); // mounted with no intent — nothing to ack
+
+    const t0 = performance.now();
+    let resolved = false;
+    await act(async () => {
+      void requestAppendices(DEFAULT_PRINT_OPTIONS).then(() => { resolved = true; });
+    });
+    await nextFrame();
+    expect(resolved).toBe(true);
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
+  it("acks a second request while the intent is still active (no remount)", async () => {
+    let first = false;
+    await act(async () => {
+      void requestAppendices(DEFAULT_PRINT_OPTIONS).then(() => { first = true; });
+    });
+    render(
+      <PrintAppendices options={DEFAULT_PRINT_OPTIONS} renderPanel={() => null} />,
+    );
+    await nextFrame();
+    expect(first).toBe(true);
+
+    let second = false;
+    await act(async () => {
+      void requestAppendices(DEFAULT_PRINT_OPTIONS).then(() => { second = true; });
+    });
+    await nextFrame();
+    expect(second).toBe(true);
   });
 });

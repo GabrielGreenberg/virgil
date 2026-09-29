@@ -9,8 +9,8 @@
  * the 50s doc-open (MEMO_PERF_DEEP_RESEARCH_2026_08_08.md §6).
  *
  * Flow: `runPrint()` calls `requestAppendices(options)` and awaits the
- * mount ack; the visible EditorPane subscribes, mounts `<PrintAppendices>`,
- * and acks via `notifyReady()` after its post-commit RAF; `runPrint` then
+ * ack; the visible EditorPane subscribes, mounts `<PrintAppendices>`,
+ * which acks via `notifyAppendicesReady()` after its post-commit RAF; `runPrint` then
  * applies the print attrs and calls `window.print()`; `releaseAppendices()`
  * runs from the same afterprint/matchMedia cleanup path, unmounting the
  * appendix tree.
@@ -22,6 +22,14 @@
  * hundreds of hidden editors alive full-time. Kill-switch:
  * `localStorage["virgil:print-gate"] = "off"` restores the always-mounted
  * legacy behavior.
+ *
+ * The ack is per ACTIVATION, not per mount (task 845): every
+ * `requestAppendices` bumps `getPrintActivation()`, and a mounted
+ * `<PrintAppendices>` acks each new activation one frame after the commit
+ * that rendered it. So the handshake never needs to know about the gate —
+ * with the gate OFF the tree was mounted long before the print and acks on
+ * the re-render the request causes; with it ON a fresh mount acks, and a
+ * second request while an intent is still active (no remount) acks too.
  */
 
 import type { PrintOptions } from "@/lib/print";
@@ -35,6 +43,8 @@ interface PrintIntentState {
 let state: PrintIntentState = { active: false, options: null };
 const subscribers = new Set<() => void>();
 let readyResolvers: (() => void)[] = [];
+/** Bumped by every `requestAppendices` — the key `<PrintAppendices>` acks on. */
+let activation = 0;
 
 /** Read once at module load — a pure kill-switch, not a live toggle. */
 export const printGateEnabled: boolean = readFlag("virgil:print-gate");
@@ -52,12 +62,19 @@ export function getPrintIntent(): PrintIntentState {
   return state;
 }
 
+/** Monotonic count of `requestAppendices` calls (a `useSyncExternalStore` snapshot). */
+export function getPrintActivation(): number {
+  return activation;
+}
+
 /**
  * Activate the appendices and resolve when a mounted `<PrintAppendices>`
- * acks (or after a fallback timeout, so a doc-less window still prints).
+ * acks this activation (or after a fallback timeout, so a doc-less window
+ * still prints).
  */
 export function requestAppendices(options: PrintOptions): Promise<void> {
   state = { active: true, options };
+  activation += 1;
   emit();
   return new Promise<void>((resolve) => {
     let done = false;
