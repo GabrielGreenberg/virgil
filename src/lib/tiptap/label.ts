@@ -7,6 +7,7 @@ import { setDataIfChanged, setTextIfChanged } from "./idempotent-dom";
 // SSOT rather than hardcoded literals, so a NodeView rename can't drift from
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "./atom-registry";
+import { createLeafNodeView } from "./leaf-node-view";
 
 const REF_ATOM = ATOM_REGISTRY.ref;
 
@@ -85,61 +86,50 @@ export const LabelRef = Node.create({
   },
 
   addNodeView() {
-    return ({ node, getPos, editor }) => {
-      const dom = document.createElement("span");
-      dom.className = REF_ATOM.domClass;
-      dom.dataset.type = REF_ATOM.domType;
-      dom.dataset.label = node.attrs.label || "";
-      dom.dataset.refCommand = node.attrs.refCommand || "ref";
-      if (node.attrs.targetKind) dom.dataset.targetKind = node.attrs.targetKind;
-      dom.contentEditable = "false";
-      dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
-      dom.textContent = node.attrs.displayText || "??";
-
-      dom.addEventListener("click", (e: Event) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // The click carries the chip's IDENTITY — its position in the editor
-        // that OWNS it — exactly as its siblings do (`virgil-math-click`,
-        // `virgil-citation-click`'s `clickedPos`, the shared
-        // `AtomCreateRequest`). A `\ref` label is NOT unique: a paper cites
-        // the same section several times, and a bridge that re-found the chip
-        // by its label string opened the popover beside the FIRST match and
-        // re-pointed the FIRST match (task 550). `pos` names the clicked one;
-        // `editor` is the pos-space it was minted in (main OR a card body).
-        const pos = typeof getPos === "function" ? getPos() : undefined;
-        if (pos == null) return;
-        // Re-minted as a `DOMRect` so the detail always carries the ONE shape
-        // the bridge validates (`instanceof DOMRect`, as its math/figure
-        // siblings do) — a headless DOM's `getBoundingClientRect` answers a
-        // plain object, which would otherwise drop the click at the bridge.
-        const r = dom.getBoundingClientRect();
-        const detail: RefClickDetail = {
-          label: node.attrs.label,
-          refCommand: node.attrs.refCommand || "ref",
-          targetKind: node.attrs.targetKind || null,
-          pos,
-          editor,
-          rect: new DOMRect(r.x, r.y, r.width, r.height),
-        };
-        window.dispatchEvent(new CustomEvent(REF_CLICK_EVENT, { detail }));
-      });
-
-      return {
-        dom,
-        update(updatedNode: any) {
-          if (updatedNode.type.name !== "labelRef") return false;
+    return ({ node, getPos, editor }) =>
+      // Task 840: the click reads the LIVE node (`current`), so a chip renamed
+      // in place by `renameLabelWithRefs` sends its NEW label to the popover.
+      createLeafNodeView({
+        node,
+        getPos,
+        className: REF_ATOM.domClass,
+        dataType: REF_ATOM.domType,
+        paint(dom, next) {
           // Idempotence-gated (task 551): an atom's update() runs only on its
           // own attr change, so this is O(changed atoms) — the door keeps the
           // unchanged attrs of a renumber pass from invalidating style.
-          setDataIfChanged(dom, "label", updatedNode.attrs.label || "");
-          setDataIfChanged(dom, "refCommand", updatedNode.attrs.refCommand || "ref");
-          setDataIfChanged(dom, "targetKind", updatedNode.attrs.targetKind || null);
-          setTextIfChanged(dom, updatedNode.attrs.displayText || "??");
-          return true;
+          setDataIfChanged(dom, "label", next.attrs.label || "");
+          setDataIfChanged(dom, "refCommand", next.attrs.refCommand || "ref");
+          setDataIfChanged(dom, "targetKind", next.attrs.targetKind || null);
+          setTextIfChanged(dom, next.attrs.displayText || "??");
         },
-      };
-    };
+        onClick({ node: current, dom, pos: livePos }) {
+          // The click carries the chip's IDENTITY — its position in the editor
+          // that OWNS it — exactly as its siblings do (`virgil-math-click`,
+          // `virgil-citation-click`'s `clickedPos`, the shared
+          // `AtomCreateRequest`). A `\ref` label is NOT unique: a paper cites
+          // the same section several times, and a bridge that re-found the chip
+          // by its label string opened the popover beside the FIRST match and
+          // re-pointed the FIRST match (task 550). `pos` names the clicked one;
+          // `editor` is the pos-space it was minted in (main OR a card body).
+          const pos = livePos();
+          if (pos == null) return;
+          // Re-minted as a `DOMRect` so the detail always carries the ONE shape
+          // the bridge validates (`instanceof DOMRect`, as its math/figure
+          // siblings do) — a headless DOM's `getBoundingClientRect` answers a
+          // plain object, which would otherwise drop the click at the bridge.
+          const r = dom.getBoundingClientRect();
+          const detail: RefClickDetail = {
+            label: current.attrs.label,
+            refCommand: current.attrs.refCommand || "ref",
+            targetKind: current.attrs.targetKind || null,
+            pos,
+            editor,
+            rect: new DOMRect(r.x, r.y, r.width, r.height),
+          };
+          window.dispatchEvent(new CustomEvent(REF_CLICK_EVENT, { detail }));
+        },
+      });
   },
 });
 

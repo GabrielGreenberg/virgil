@@ -1,6 +1,5 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import type { RefObject } from "react";
-import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
@@ -17,6 +16,7 @@ import {
 // from ATOM_REGISTRY (that would silently kill InlineAtomGrab for this kind).
 // Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { createLeafNodeView } from "@/lib/tiptap/leaf-node-view";
 // The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
 // speller (task 202) — a hand-built `footnote:${id}` here was a second copy.
 import {
@@ -324,53 +324,37 @@ export const Footnote = Node.create<FootnoteOptions>({
   },
 
   addNodeView() {
-    return ({ node }) => {
-      const dom = document.createElement("span");
-      dom.className = FOOTNOTE_ATOM.domClass;
-      dom.dataset.type = FOOTNOTE_ATOM.domType;
-      // The `data-footnote-id` SPELLING comes from the row, like `data-type`
-      // and the class above (task 645) — it is what the drag ghost strips and
-      // the hover bridge reads, and both of those now read it from there too.
-      dom.setAttribute(FOOTNOTE_ATOM.domIdAttr, node.attrs.footnoteId || "");
-      dom.contentEditable = "false";
-      // contenteditable=false islands are natively draggable inside a
-      // contenteditable root; disable it so the InlineAtomGrab mousedown
-      // gesture keeps its mousemove/mouseup stream (a native drag would
-      // hijack it, and the Editor.tsx dragstart guard fires too late).
-      dom.draggable = false;
-      if (node.attrs.thanks) dom.dataset.thanks = "true";
-      dom.textContent = node.attrs.thanks ? "A" : String(node.attrs.number || "1");
-      dom.title = richJsonToPlainText(node.attrs.content);
-
-      // Click on the marker just routes the user to the side panel — the
-      // panel hosts the full Tiptap mini editor for footnote bodies now.
-      dom.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (node.attrs.footnoteId) {
-          const rect = dom.getBoundingClientRect();
-          window.dispatchEvent(
-            new CustomEvent("virgil-footnote-click", {
-              detail: { footnoteId: node.attrs.footnoteId, clickY: rect.top },
-            })
-          );
-        }
-      });
-
-      return {
-        dom,
-        update(updatedNode) {
-          if (updatedNode.type.name !== "footnote") return false;
+    return ({ node, getPos }) =>
+      // Task 840: the click reads the LIVE node, so an id re-minted in place
+      // (paste de-dupe, undo) opens ITS card, not the mount-time one.
+      createLeafNodeView({
+        node,
+        getPos,
+        className: FOOTNOTE_ATOM.domClass,
+        dataType: FOOTNOTE_ATOM.domType,
+        paint(dom, next) {
           // Idempotence-gated (task 551): the numberer touches every footnote
           // node after a structural change, and a marker whose number did not
           // move must not replace its text node or invalidate its style.
-          setAttrIfChanged(dom, FOOTNOTE_ATOM.domIdAttr, updatedNode.attrs.footnoteId || "");
-          setDataIfChanged(dom, "thanks", updatedNode.attrs.thanks ? "true" : null);
-          setTextIfChanged(dom, updatedNode.attrs.thanks ? "A" : String(updatedNode.attrs.number || "1"));
-          setTitleIfChanged(dom, richJsonToPlainText(updatedNode.attrs.content));
-          return true;
+          // The `data-footnote-id` SPELLING comes from the row, like `data-type`
+          // and the class (task 645) — it is what the drag ghost strips and
+          // the hover bridge reads, and both of those now read it from there too.
+          setAttrIfChanged(dom, FOOTNOTE_ATOM.domIdAttr, next.attrs.footnoteId || "");
+          setDataIfChanged(dom, "thanks", next.attrs.thanks ? "true" : null);
+          setTextIfChanged(dom, next.attrs.thanks ? "A" : String(next.attrs.number || "1"));
+          setTitleIfChanged(dom, richJsonToPlainText(next.attrs.content));
         },
-      };
-    };
+        // Click on the marker just routes the user to the side panel — the
+        // panel hosts the full Tiptap mini editor for footnote bodies now.
+        onClick({ node: current, dom }) {
+          if (!current.attrs.footnoteId) return;
+          const rect = dom.getBoundingClientRect();
+          window.dispatchEvent(
+            new CustomEvent("virgil-footnote-click", {
+              detail: { footnoteId: current.attrs.footnoteId, clickY: rect.top },
+            })
+          );
+        },
+      });
   },
 });

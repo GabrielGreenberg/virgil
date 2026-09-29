@@ -276,8 +276,11 @@ describe("census — the identity path has no label-string re-find left", () => 
 
   it("the NodeView's click carries pos + editor + rect", () => {
     const code = commentsStripped(read("src/lib/tiptap/label.ts"));
-    const click = /addEventListener\("click"[\s\S]*?REF_CLICK_EVENT/.exec(code)?.[0] ?? "";
+    // The click is the leaf factory's `onClick` (task 840), which hands it
+    // the LIVE node — a chip renamed in place sends its NEW label.
+    const click = /onClick\(\{[\s\S]*?REF_CLICK_EVENT/.exec(code)?.[0] ?? "";
     expect(click.length).toBeGreaterThan(0);
+    expect(click).toMatch(/label: current\.attrs\.label/);
     expect(click).toMatch(/pos,/);
     expect(click).toMatch(/editor,/);
     expect(click).toMatch(/rect: new DOMRect\(/);
