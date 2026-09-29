@@ -27,9 +27,9 @@ export interface EditorViewportFrame {
   editorEl: HTMLElement | null;
   /** editorRect.left + paddingLeft — the editor's left text edge. */
   contentLeft: number;
-  /** editorRect.right - paddingRight — the editor's right text edge.
-   *  Aliased as `hoverZoneRight`; kept separate for callers that already
-   *  read this name. */
+  /** editorRect.right - paddingRight — the editor's right text edge. The
+   *  name placement readers use (SelectionActionsMenu, Marginalia);
+   *  `hoverZoneRight` is the same value under the hover zone's name. */
   editorRight: number;
   scrollParent: HTMLElement | null;
   scrollTop: number;

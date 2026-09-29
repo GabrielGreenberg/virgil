@@ -40,9 +40,13 @@
  * The VERTICAL axis lives in block-frame.ts (`opticalCenterY`, chip 1).
  */
 
-/** Grab-handle box width in px. Mirrors `.text-object-grab-handle { width:
- *  12px }` in globals.css: the handle's right edge sits `gapPx` left of the
- *  marker, so its left edge is `markerLeft − gapPx − HANDLE_WIDTH`. */
+/** Grab-handle box width in px — the JS reading of `--margin-handle-width` in
+ *  globals.css, the ONE CSS spelling (the handle box and its halo floor both
+ *  read it). Kept a constant rather than a per-placement `getComputedStyle`
+ *  read because the same-row separation and hit caps use it off the placement
+ *  path; `hover-zone-contains-handle-lane.test.tsx` pins the two equal (task
+ *  831). The handle's right edge sits `gapPx` left of the marker, so its left
+ *  edge is `markerLeft − gapPx − HANDLE_WIDTH`. */
 export const HANDLE_WIDTH = 12;
 
 /**
@@ -82,9 +86,9 @@ export function resolveHandleMarkerLeft(
  */
 export const INK_CLEARANCE_FACTOR = 0.5;
 
-/** Inputs to {@link computeHandleLeftEdge} — the block's measured marker and
+/** Inputs to {@link resolveHandleLane} — the block's measured marker and
  *  resolved gap (from `block-frame.ts`) plus the narrow-viewport floor. */
-export interface HandleLayoutInput {
+interface HandleLayoutInput {
   /** The block's MEASURED marker-left from `block-frame.ts`. BOTH a text-object
    *  handle and a selection handle pass this (see {@link resolveHandleMarkerLeft}
    *  — the selection handle takes the same gutter slot as the block's
@@ -172,8 +176,8 @@ export interface HandleLane {
  *   2. the INK CAP (`inkLeft − gapPx·{@link INK_CLEARANCE_FACTOR} −
  *      HANDLE_WIDTH`) — the furthest right it may ever be, so chrome never
  *      paints on the document. It binds the resting position too, not just a
- *      push: a wide `10.` marker reaches further left than the band-middle
- *      anchor assumes, so that row's natural slot is already on the ink.
+ *      push: a markerless container's column slot, or any row whose ink sits
+ *      left of its anchor, is already clamped clear of the ink at rest.
  *   3. the FLOOR ({@link handleLaneFloor}) — the furthest LEFT, so a
  *      deeply-indented block on a narrow viewport never pushes the handle
  *      off-screen. The floor OUTRANKS the cap when the two conflict: an
@@ -240,10 +244,3 @@ export function handleLaneFloor(
   return editorColumnLeft - baselineInset;
 }
 
-/**
- * Compute a grab handle's resting left edge (CSS px) — {@link resolveHandleLane}
- * for a caller that needs only the position, not the lane's inboard bound.
- */
-export function computeHandleLeftEdge(input: HandleLayoutInput): number {
-  return resolveHandleLane(input).left;
-}

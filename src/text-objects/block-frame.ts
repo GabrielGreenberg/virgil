@@ -131,15 +131,11 @@ export interface BlockFrame {
    * single horizontal anchor every margin affordance hugs. Per kind:
    *   • exampleBlock → its `(n)` number (`.expex-number`) left.
    *   • exampleItem  → its `a./b.` marker (`.expex-item-marker`) left.
-   *   • listItem     → the bullet band: the parent list's marker indent,
-   *     anchored at the MIDDLE of the measured `padding-left` band
-   *     (`li.left − padding-left / 2`). The `::marker` pseudo isn't
-   *     rect-able, so we never read a hardcoded glyph width — the band is
-   *     em-scaling and reliably between its left edge and the `<li>` content.
-   *     Where that assumption doesn't hold (a wide `10.`), {@link inkLeft}
-   *     carries the tighter MEASURED boundary; this anchor is unchanged.
-   *   • listItem → the MEASURED left edge of its marker string (task 487; the
-   *     band middle survives only as the fallback where nothing can measure).
+   *   • listItem     → the MEASURED left edge of its marker string (task
+   *     487) — the `::marker` pseudo isn't rect-able, so the glyph width is
+   *     modelled from the list's counter style and font, never hardcoded. The
+   *     band MIDDLE (`li.left − padding-left / 2`) survives only as the
+   *     fallback for a counter style nothing can measure.
    *   • bulletList / orderedList (markerless container) → its own border-box
    *     left, which is the content edge of the level above it. Consumed only
    *     when {@link columnRight} is `null` (a top-level list, or one inside a
@@ -206,11 +202,10 @@ export interface BlockFrame {
    * heuristic rather than a measurement:
    *   • a MEASURED marker (`.expex-number` / `.expex-item-marker`) → `inkLeft
    *     === markerLeft`: the marker's own rect IS the ink.
-   *   • a list `<li>` → the anchor is the band MIDDLE (the `::marker` pseudo
-   *     has no rect), which assumes the glyph stays in the band's right half.
-   *     That holds for a `•` and is FALSE for a wide `10.`, so the ink boundary
-   *     also takes the MEASURED marker-string width when it reads further left
-   *     (never further right — a measurement may only tighten the heuristic).
+   *   • a list `<li>` → `inkLeft === markerLeft` too (task 487): both are
+   *     the MEASURED marker-string left, so a wide `10.` moves the anchor and
+   *     the boundary together. Only where the counter style cannot be modelled
+   *     do both fall back to the band MIDDLE.
    *   • a markerless container (`<ul>`/`<ol>`) → its first row's ink is its
    *     ITEM's bullet: same row, same boundary, one step outboard anchor.
    *   • everything else → `contentLeft` (the prose itself is the ink).
@@ -339,7 +334,7 @@ function rootFontSizePx(): number {
  * two policies, decided by its spelling. That fork is what sent
  * `--margin-col-chevron` to a second hand-parse in the first place.
  */
-export type MarginTokenSign = "positive" | "signed";
+type MarginTokenSign = "positive" | "signed";
 
 /**
  * Resolve a margin length custom property to px — the ONE interpreter for every
@@ -398,7 +393,7 @@ export function resolveMarginEm(
  * outer copy was the kind that drifts). The type predicate is what lets the
  * caller gate its rect read without re-asking.
  */
-export function reservesChevronColumn(kind: string | null): kind is string {
+function reservesChevronColumn(kind: string | null): kind is string {
   return kind !== null && FOLD_CHEVRON_NODE_TYPES.has(kind);
 }
 
@@ -455,7 +450,7 @@ export function resolveChevronColumnRight(
  * resolved TOGETHER so they can never disagree (task 382 — the reported bug was
  * three passes that each held a different idea of where the bullet is).
  */
-export interface MarkerGeometry {
+interface MarkerGeometry {
   /** See {@link BlockFrame.markerLeft} — the anchor an affordance hugs. */
   markerLeft: number;
   /** See {@link BlockFrame.inkLeft} — the boundary it may never cross. */

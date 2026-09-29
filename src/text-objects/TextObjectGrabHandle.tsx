@@ -199,7 +199,7 @@ const SAME_ROW_EPS = 16;
  * Chip 3: set each placement's hit-halo cap from the resolved sibling
  * geometry — half the horizontal distance to the nearest handle on the same
  * visual row (or null when none shares the row). Both the halo and the dots
- * are centered on `left + 6` (every handle box is 12px wide), so the
+ * are centered on `left + HANDLE_WIDTH / 2`, so the
  * left-edge distance IS the dots-center distance; capping each halo's
  * half-width at half of it makes two close nested handles meet at the
  * midpoint with no overlap, so neither swallows the other.
@@ -223,8 +223,9 @@ const SAME_ROW_EPS = 16;
  * separation fits. Gabriel reported the pre-353 row-1 spacing (20px
  * center-to-center = an 8px void) as "one unreadable blob", so this is
  * deliberately wider than that and no wider than it has to be — and the
- * `.tiptap ul/ol` marker band was widened to 2em in the same task so the
- * everyday top-level list reaches it without hitting the cap.
+ * `.tiptap ul/ol` marker band was widened to 2em in the same task (2.5em
+ * since task 487) so the everyday top-level list reaches it without hitting
+ * the cap.
  */
 const MIN_SAME_ROW_GAP_PX = 24;
 
@@ -558,7 +559,7 @@ function restrictToTopRowSet(refs: ResolvedRef[]): ResolvedRef[] {
 
 /**
  * Compute placement for a single ref. Pins the handle's LEFT edge to the
- * source block's margin via `computeHandleLeftEdge` (X is unchanged by the
+ * source block's margin via `resolveHandleLane` (X is unchanged by the
  * chrome-geometry unification — chip 2 owns the horizontal axis). Pins the
  * handle glyph's VERTICAL center to the block's optical (cap-band) center
  * via the canonical block frame, so every affordance on a row — a container
@@ -639,7 +640,7 @@ function computePlacement(
   // gutter slot (task 092), via `resolveHandleMarkerLeft`. For a markerless
   // block `markerLeft === contentLeft`, so this is a no-op for plain paragraphs;
   // for a marker-bearing block it keeps the selection grip in the gutter left of
-  // the bullet instead of over it. computeHandleLeftEdge then applies the shared
+  // the bullet instead of over it. resolveHandleLane then applies the shared
   // em gap + handle width and floors at the editor column so a deeply-indented
   // block on a narrow viewport never pushes the handle off-screen-left.
   // (editorColumnLeft is the .ProseMirror outside-left edge; the floor inset is
