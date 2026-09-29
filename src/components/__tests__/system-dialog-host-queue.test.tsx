@@ -7,7 +7,8 @@
  * second same-kind ask reconciled INTO the first's `SystemDialog`: `open` never
  * left `true`, so the shell's per-open focus capture/restore and initial focus
  * never re-ran, native `autoFocus` (mount-only) never re-fired, and a queued
- * prompt kept the previous prompt's draft. The live hazard: confirm A answered
+ * prompt kept the previous prompt's draft (`prompt` itself was deleted by task
+ * 834 — no caller). The live hazard: confirm A answered
  * with Enter leaves focus on the reused right-hand button, which is now confirm
  * B's DANGER action — the next Enter destroys, bypassing task 386/528's derived
  * Cancel cue. The host now keys each ask by a minted id, so every ask mounts.
@@ -115,25 +116,5 @@ describe("SystemDialogProvider queue — each ask mounts its own dialog (task 83
 
     click(keep);
     await expect(b).resolves.toBe(false);
-  });
-
-  it("a queued prompt shows its OWN initial value, not the previous prompt's draft", async () => {
-    let a!: Promise<string | null>;
-    let b!: Promise<string | null>;
-    act(() => {
-      a = api.prompt({ title: "One", initial: "alpha" });
-      b = api.prompt({ title: "Two", initial: "beta" });
-    });
-    flushFrames();
-
-    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("alpha");
-    click(screen.getByRole("button", { name: "OK" }));
-    await expect(a).resolves.toBe("alpha");
-    flushFrames();
-
-    expect(screen.getByText("Two")).toBeTruthy();
-    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("beta");
-    click(screen.getByRole("button", { name: "Cancel" }));
-    await expect(b).resolves.toBeNull();
   });
 });

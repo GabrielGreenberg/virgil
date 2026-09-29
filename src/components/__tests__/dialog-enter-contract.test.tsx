@@ -659,38 +659,10 @@ describe("initial focus lands inside the dialog", () => {
     expect(document.activeElement).toBe(screen.getByTestId("claimed"));
   });
 
-  it("REAL prompt dialog: the input keeps focus and Enter still submits it", async () => {
-    let ask: ((o: { title: string; initial?: string }) => Promise<string | null>) | null =
-      null;
-    function Host() {
-      const api = useSystemDialog();
-      ask = api.prompt;
-      return null;
-    }
-    render(
-      <SystemDialogProvider>
-        <Host />
-      </SystemDialogProvider>,
-    );
-
-    let answer: string | null | undefined;
-    await act(async () => {
-      void ask!({ title: "Rename", initial: "draft" }).then((v) => {
-        answer = v;
-      });
-    });
-    flushFrames();
-
-    const input = document.querySelector<HTMLInputElement>(
-      'input[value="draft"], input',
-    )!;
-    expect(document.activeElement).toBe(input);
-
-    pressEnter(input);
-    await act(async () => {});
-
-    expect(answer).toBe("draft");
-  });
+  // The "REAL prompt dialog" leg lived here until task 834 deleted the host's
+  // `prompt` (no production caller). Its contract — a body text field holds
+  // focus and Enter still submits — rides on the real NewDocumentModal legs
+  // below, whose field claims focus through the shell's `initialFocus` door.
 
   it("a dialog that DECLARES no cue and registers one anyway is loud in dev", () => {
     // What makes `noCuedDefault` a live prop rather than a marker only the
