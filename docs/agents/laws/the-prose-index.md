@@ -479,3 +479,18 @@ nested a second span (`0.81em`). Both checks are O(1) per block / per text
 node, so the per-block rebuild's cost is unchanged.
 CI: `latex-cmd-prose-only.test.ts` (real main stack; cold build + typed rebuild).
 **Owed:** a preview glance at a listing containing `\foo` — not FSA-masked.
+
+### The quote half: "where is this quoted string?" (task 841)
+
+The text-based highlight band (a revision / comment quote clicked in its card)
+locates its quote through `findProseTextRange`
+([src/lib/find-prose-text.ts](../../../src/lib/find-prose-text.ts)), which
+searches the index's joined text and maps with `spanAtOffset` +
+`proseOffsetToPos`. It replaced `Editor.tsx`'s `findTextRange`, a second offset
+space (`getText()` — "\n\n" separators + atom `renderText` — mapped by a
+text-node-only walk) that drifted past the first block and painted the wrong
+words. Rule: atoms contribute nothing (as in the `textBetween(…, " ")` capture),
+whitespace in the quote matches any whitespace run including the block
+separator, and a quote containing raw-LaTeX carrier text finds no prose match
+(no band, never a wrong band). The dead `EditorHandle.replaceText` rode the
+same locator and was deleted. CI: `find-prose-text.test.ts`.
