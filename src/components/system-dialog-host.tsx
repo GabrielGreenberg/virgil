@@ -4,7 +4,7 @@
  * SystemDialogHost — app-wide imperative dialog API.
  *
  * Any React subtree under `<SystemDialogProvider>` can call
- * `useSystemDialog()` and get an imperative `alert` / `confirm` / `prompt`
+ * `useSystemDialog()` and get an imperative `alert` / `confirm`
  * that render through the centralized SystemDialog primitive. This is
  * how we avoid `window.alert` / `window.confirm` from deep hooks — the
  * hook doesn't need to plumb a dialog callback through props, it just
@@ -15,7 +15,10 @@
  *   const dialog = useSystemDialog();
  *   const ok = await dialog.confirm({ title: "Move?", message: "..." });
  *   await dialog.alert({ title: "Failed", message: "..." , tone: "danger" });
- *   const name = await dialog.prompt({ title: "Rename", initial: "foo" });
+ *
+ * There is no `prompt` (task 834): it had no caller, and every text-entry need
+ * is a purpose-built dialog whose field claims focus through the shell's
+ * `initialFocus` door. A new text ask starts there, not here.
  *
  * Only one dialog renders at a time; subsequent calls queue.
  */
@@ -24,7 +27,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -41,7 +43,6 @@ import {
   confirmActionVariant,
   confirmDialogCuedDefault,
 } from "./confirm-cue-policy";
-import { Input } from "./field-primitives";
 
 /* ── Option types ────────────────────────────────────────────────── */
 
@@ -70,22 +71,11 @@ export interface ConfirmOptions {
   size?: SystemDialogSize;
 }
 
-export interface PromptOptions {
-  title?: string;
-  message?: ReactNode;
-  placeholder?: string;
-  initial?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  size?: SystemDialogSize;
-}
-
 /* ── Context ─────────────────────────────────────────────────────── */
 
 export interface SystemDialogApi {
   alert(opts: AlertOptions): Promise<void>;
   confirm(opts: ConfirmOptions): Promise<boolean>;
-  prompt(opts: PromptOptions): Promise<string | null>;
 }
 
 const SystemDialogCtx = createContext<SystemDialogApi | null>(null);
@@ -107,19 +97,13 @@ export function useSystemDialog(): SystemDialogApi {
  *  two same-kind asks in a row reconciled into ONE `SystemDialog` whose `open`
  *  never left `true` — the second ask inherited the first's focused button
  *  (Enter on a queued danger confirm armed the destruction), skipped the
- *  shell's per-open focus capture/restore, and a queued prompt kept the
- *  previous prompt's draft. Every per-open contract assumes a fresh mount. */
+ *  shell's per-open focus capture/restore. Every per-open contract assumes a fresh mount. */
 type PendingAsk =
   | { kind: "alert"; opts: AlertOptions; resolve: () => void }
   | {
       kind: "confirm";
       opts: ConfirmOptions;
       resolve: (value: boolean) => void;
-    }
-  | {
-      kind: "prompt";
-      opts: PromptOptions;
-      resolve: (value: string | null) => void;
     };
 
 type Pending = PendingAsk & { id: number };
@@ -148,11 +132,6 @@ export function SystemDialogProvider({ children }: { children: ReactNode }) {
       confirm(opts) {
         return new Promise<boolean>((resolve) => {
           enqueue({ kind: "confirm", opts, resolve });
-        });
-      },
-      prompt(opts) {
-        return new Promise<string | null>((resolve) => {
-          enqueue({ kind: "prompt", opts, resolve });
         });
       },
     }),
@@ -282,89 +261,4 @@ function PendingDialog({
       </SystemDialog>
     );
   }
-
-  // prompt
-  return <PromptDialog pending={pending} onDone={onDone} />;
-}
-
-function PromptDialog({
-  pending,
-  onDone,
-}: {
-  pending: Extract<Pending, { kind: "prompt" }>;
-  onDone: () => void;
-}) {
-  const {
-    title,
-    message,
-    placeholder,
-    initial = "",
-    confirmLabel = "OK",
-    cancelLabel = "Cancel",
-    size = "md",
-  } = pending.opts;
-
-  const [value, setValue] = useState(initial);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const handle = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    });
-    return () => cancelAnimationFrame(handle);
-  }, []);
-
-  const done = (result: string | null) => {
-    pending.resolve(result);
-    onDone();
-  };
-
-  return (
-    <SystemDialog
-      open
-      onClose={() => done(null)}
-      size={size}
-      /* A dismissal is FREE, and here it is the whole point: dismissing a
-         prompt IS answering it with `null`, which is what every caller reads
-         as "cancelled". The draft is one short line, normally pre-seeded from
-         `opts.initial`, and the next ask re-seeds it — true because each ask
-         mounts its own PromptDialog (the host keys by ask id, task 833). */
-      dismissIsFree
-    >
-      <SystemDialogHeader title={title} />
-      <SystemDialogBody>
-        {message && (
-          <div className="text-xs text-ink-body leading-relaxed mb-2">
-            {message}
-          </div>
-        )}
-        <Input
-          ref={inputRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              done(value);
-            }
-          }}
-          placeholder={placeholder}
-          className="w-full px-3 py-1.5 text-sm"
-        />
-      </SystemDialogBody>
-      <SystemDialogFooter>
-        <SystemDialogButton onClick={() => done(null)}>
-          {cancelLabel}
-        </SystemDialogButton>
-        <SystemDialogButton
-          variant="primary"
-          autoFocus
-          onClick={() => done(value)}
-        >
-          {confirmLabel}
-        </SystemDialogButton>
-      </SystemDialogFooter>
-    </SystemDialog>
-  );
 }

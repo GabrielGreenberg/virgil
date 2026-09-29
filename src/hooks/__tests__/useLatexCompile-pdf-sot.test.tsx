@@ -12,7 +12,7 @@ import { renderHook, act } from "@testing-library/react";
 type AlertArg = { title: string; message: string; tone?: string };
 const alertSpy = vi.fn(async (_arg: AlertArg) => {});
 vi.mock("@/components/system-dialog-host", () => ({
-  useSystemDialog: () => ({ alert: alertSpy, confirm: vi.fn(), prompt: vi.fn() }),
+  useSystemDialog: () => ({ alert: alertSpy, confirm: vi.fn() }),
 }));
 
 const compileSpy = vi.fn();

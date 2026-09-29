@@ -70,8 +70,9 @@ describe("every draft-holding dialog declares what a dismissal costs", () => {
     expect(rels).toContain("components/ManageStylesModal.tsx");
     // Composed fields — the member a subtree-only needle cannot see.
     expect(rels).toContain("components/PreferencesModal.tsx");
-    // And the imperative host's `prompt` arm.
-    expect(rels).toContain("components/system-dialog-host.tsx");
+    // The imperative host LEFT the population with its `prompt` arm (task
+    // 834): alert and confirm hold no draft.
+    expect(rels).not.toContain("components/system-dialog-host.tsx");
   });
 
   it("a dialog with NO field is out of the population", () => {
