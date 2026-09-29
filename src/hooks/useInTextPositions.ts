@@ -19,7 +19,10 @@ import {
   isLayoutGestureActive,
   parkDuringLayoutGesture,
 } from "@/lib/pane-resize";
-import { LAYOUT_SITE_IN_TEXT_POSITIONS } from "@/lib/layout-gesture-probe";
+import {
+  LAYOUT_SITE_IN_TEXT_CARDS,
+  LAYOUT_SITE_IN_TEXT_POSITIONS,
+} from "@/lib/layout-gesture-probe";
 import {
   recordKeystrokeWork,
   KEYSTROKE_WORK_INTEXT_RO,
@@ -1470,6 +1473,15 @@ export function useInTextPositions(
     // single pass gets wrong. The hidden / suppression / typing gates all live
     // in the controller's measure closure now, so these are bare requests; the
     // controller coalesces a resize storm to one pending pass.
+    // The MEASUREMENT half is parked on the layout-gesture bus (task 837): a
+    // panel-divider drag or an OS window resize re-wraps every card, so this
+    // observer delivers per frame for the whole deck. The heights above are
+    // still recorded per fire (zero reads — the entry carries them); only the
+    // convergence request waits, replayed ONCE on the gesture's end edge.
+    const settlePark = parkDuringLayoutGesture(
+      requestSettle,
+      LAYOUT_SITE_IN_TEXT_CARDS,
+    );
     const onResize = (entries: ResizeObserverEntry[]) => {
       // BOOKKEEPING FIRST, ALWAYS — then the (gated) measurement. This is the
       // geometry service's own rule, one lane over (AGENTS.md "The scroll
@@ -1481,7 +1493,7 @@ export function useInTextPositions(
       // height a live fact rather than a memory of the last time the ANCHOR
       // happened to be on screen (task 490).
       noteObservedHeights(entries);
-      requestSettle();
+      settlePark.fire();
     };
     const onFocusOut = () => {
       // No manual frame defer needed: the controller's first pass is already
@@ -1500,6 +1512,7 @@ export function useInTextPositions(
     panelEl.addEventListener("focusout", onFocusOut);
     return () => {
       obs.disconnect();
+      settlePark.dispose();
       panelEl.removeEventListener("focusout", onFocusOut);
     };
   }, [observedIdsKey, enabledProp, entry, requestSettle, noteObservedHeights, floor]);

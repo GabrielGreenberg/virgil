@@ -15,8 +15,10 @@
  * Three claims:
  *   A. the CSS anchor and the JS fit test use the same gap (they are two halves
  *      of one decision, and the source says so in a comment on each side);
- *   B. the fit test's right edge comes from `resolveBlockFrame(...).contentRight`
- *      and the module takes no independent right-edge measure of the figure box;
+ *   B. the fit test's right edge comes from `resolveContentEdges(...).contentRight`
+ *      (the lean door `resolveBlockFrame` composes — task 837; the two are
+ *      pinned equal below) and the module takes no independent right-edge
+ *      measure of the figure box;
  *   C. `contentRight` on the HUG box is the image's right edge and differs from
  *      the full-column `.react-renderer` host's — which is why passing the hug
  *      box is load-bearing and not an incidental choice.
@@ -25,7 +27,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { resolveBlockFrame } from "@/text-objects/block-frame";
+import { resolveBlockFrame, resolveContentEdges } from "@/text-objects/block-frame";
 import {
   FIXTURE,
   buildFigure,
@@ -33,7 +35,9 @@ import {
 } from "@/text-objects/__tests__/_block-frame-fixtures";
 
 const SRC = join(process.cwd(), "src");
-const VIEW = readFileSync(join(SRC, "components/FigureBlockNodeView.tsx"), "utf8");
+// The fit test lives in its own module since task 837 (FigureBlockNodeView
+// mounts it); that module is what these source legs read.
+const VIEW = readFileSync(join(SRC, "components/figure-chrome-beside.ts"), "utf8");
 const CSS = readFileSync(join(SRC, "app/globals.css"), "utf8");
 
 beforeEach(() => {
@@ -51,7 +55,7 @@ afterEach(() => {
 describe("figure chrome — the beside anchor reads the frame (task 663)", () => {
   it("the JS fit gap and the CSS anchor gap are the same number", () => {
     const js = /const CHROME_BESIDE_GAP = (\d+);/.exec(VIEW);
-    expect(js, "CHROME_BESIDE_GAP must still be a literal in the view").not.toBeNull();
+    expect(js, "CHROME_BESIDE_GAP must still be a literal in the fit-test module").not.toBeNull();
     const rule =
       /\.figure-block \.figure-chrome\.figure-chrome-beside \{[^}]*\}/.exec(CSS);
     expect(rule, "the .figure-chrome-beside rule must still exist").not.toBeNull();
@@ -64,7 +68,8 @@ describe("figure chrome — the beside anchor reads the frame (task 663)", () =>
   });
 
   it("the fit test's right edge comes from the frame, not from its own box", () => {
-    expect(VIEW).toContain("resolveBlockFrame(block).contentRight");
+    expect(VIEW).toContain("resolveContentEdges(block).contentRight");
+    expect(VIEW).not.toContain("resolveBlockFrame(");
     // ...and nowhere does the module measure the figure box's own right edge for
     // this. `column.getBoundingClientRect().right` (the fit BOUNDARY, a sibling
     // paragraph's wrap edge) is a different question and stays a direct measure;
@@ -87,6 +92,15 @@ describe("figure chrome — the beside anchor reads the frame (task 663)", () =>
     expect(hostRight).toBe(FIXTURE.editorLeft + FIXTURE.width);
     expect(hugRight).toBe(FIXTURE.editorLeft + 220);
     expect(hugRight).toBeLessThan(hostRight);
+  });
+
+  it("the lean door and the full frame agree on contentRight (task 837)", () => {
+    // The chrome reads `resolveContentEdges` to skip the marker / optical-centre
+    // work; `resolveBlockFrame` composes the same primitive, so the number the
+    // fit test uses is the frame's number — on the hug box AND the host.
+    const { host, hug } = buildFigure({ hugWidth: 220 });
+    expect(resolveContentEdges(hug).contentRight).toBe(resolveBlockFrame(hug).contentRight);
+    expect(resolveContentEdges(host).contentRight).toBe(resolveBlockFrame(host).contentRight);
   });
 
   it("a figure as wide as its column leaves no room beside it", () => {

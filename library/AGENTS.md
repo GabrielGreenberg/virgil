@@ -225,13 +225,15 @@ Library tree. The rules:
   measured chrome; if only one dimension varies, decompose into constant
   pieces + a stretchable middle.
 
-**ResizeObserver census** (every RO under `library/` +
-`src/components/library/`, each with its why-safe justification). This list
-is CI-enforced: the pane-drag guardrail test greps the library silo for
+**ResizeObserver census** (the library-silo half; each with its why-safe
+justification). This list is CI-enforced: since task 837 the pane-drag
+guardrail test greps BOTH silos (`src/` + `library/`) for
 `new ResizeObserver` and fails unless the hit set equals its
-`PERMITTED_LIBRARY_RESIZE_OBSERVERS` allowlist — a new RO must land with an
-entry there AND the justification at the site, or CI fails (same discipline
-as the keystroke/scroll lists):
+`PERMITTED_GESTURE_RESIZE_OBSERVERS` allowlist, whose every entry states a
+PARKED / SUPPRESSED / LIVE verdict (a PARKED or SUPPRESSED one is checked
+against the file) — a new RO must land with an entry there AND the
+justification at the site, or CI fails (same discipline as the
+keystroke/scroll lists). The editor-silo entries live only in the test:
 
 - [PanelTabStrip.tsx](components/panel-tabs/PanelTabStrip.tsx) flush-right
   tuck measure — the ONE surviving chrome RO (a cross-subtree relationship CSS

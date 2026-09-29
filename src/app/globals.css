@@ -3603,7 +3603,7 @@ textarea,
  * space to the RIGHT of the (fit-content) block within the text column, it adds
  * `.figure-chrome-beside` and the row sits just outside the image's right edge
  * instead of on top of the picture. The 8px gap here MUST match
- * CHROME_BESIDE_GAP in FigureBlockNodeView.tsx (the JS fit test subtracts the
+ * CHROME_BESIDE_GAP in figure-chrome-beside.ts (the JS fit test subtracts the
  * same gap). When it doesn't fit (a wide image), the class is absent and the
  * top/right:4px overlay stands. */
 .figure-block .figure-chrome.figure-chrome-beside {
