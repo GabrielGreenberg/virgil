@@ -11,7 +11,8 @@
 //      (`linked-range-body.tsx` via `setHeaderLabel`) and the lift-overlay's
 //      popout-mode header (`TextObjectGrabHandle`) read.
 //
-//  (2) The float surface's schema (`buildEditorExtensions({ surface:"float" })`,
+//  (2) The float surface's schema COVERS main (task 842 census — nodes, marks,
+//      attrs, derived from the live builders) and (`buildEditorExtensions({ surface:"float" })`,
 //      now consumed by `linked-range-body.tsx`) INCLUDES the block node types
 //      a selection can span — displayMath / figureBlock / lists / exampleBlock
 //      / heading — so a rich range round-trips instead of being silently
@@ -37,6 +38,12 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
+import { EditorState } from "@tiptap/pm/state";
+import {
+  checkLinkedRangeRepresentable,
+  linkedRangeAsDoc,
+  planLinkedRangeWriteBack,
+} from "@/lib/linked-range-writeback";
 import { TEXT_OBJECT_REGISTRY } from "../text-object-registry";
 
 // --- (1) computeLabel: transient → "Text selection", annotation → null ------
@@ -101,6 +108,18 @@ describe("linkedRange.computeLabel", () => {
 
 // --- (2) float schema fidelity: the range's node types survive --------------
 
+function mainCtx(): EditorExtensionsCtx {
+  return {
+    surface: "main",
+    editableRef: { current: true },
+    cardContext: false,
+    callbacks: {},
+    docIdRef: { current: null },
+    anchoredUuidsRef: { current: new Set<string>() },
+    host: null,
+  };
+}
+
 function floatCtx(): EditorExtensionsCtx {
   return {
     surface: "float",
@@ -115,27 +134,41 @@ function floatCtx(): EditorExtensionsCtx {
 describe("linkedRange float schema (buildEditorExtensions surface:'float')", () => {
   const schema = getSchema(buildEditorExtensions(floatCtx()));
 
-  it("includes every block node type a selection can span (was BLANK pre-FCU)", () => {
-    // The exact set the live reproduction showed MISSING from the narrow
-    // hand-rolled stack (hasRich all-false) — now all present.
-    for (const t of [
-      "displayMath",
-      "figureBlock",
-      "figureCaption",
-      "graphicsBlock",
-      "bulletList",
-      "orderedList",
-      "listItem",
-      "exampleBlock",
-      "heading",
-      "blockquote",
-      "codeBlock",
-      "inlineMath",
-      "citation",
-      "footnote",
-    ]) {
-      expect(schema.nodes[t] ?? schema.marks[t], `schema is missing "${t}"`).toBeDefined();
+  // Task 842 — DERIVED, not a hand list. The float mounts a live cut of the
+  // MAIN doc and writes it back over the whole range, so any node, mark or
+  // attr main has and the float lacks is content the float cannot hold (it
+  // mounts BLANK — TipTap swallows the mismatch) and then overwrites. The hand
+  // list this replaces named 14 types and missed the one real gap
+  // (`maketitleMarker`). Mirrors excerpt-schema.test.ts's "main ⊆ excerpt".
+  const mainSchema = getSchema(buildEditorExtensions(mainCtx()));
+
+  it("every MAIN node type is registered in the float schema (float ⊇ main)", () => {
+    const missing = Object.keys(mainSchema.nodes).filter((n) => !schema.nodes[n]);
+    expect(
+      missing,
+      "A main-editor node the linked-range float cannot hold. A range spanning " +
+        "it would pop out blank and its write-back is refused. Register it on " +
+        "every surface in `buildEditorExtensions` (gate its main-only " +
+        "behaviour on `surface`), as titleField / maketitleMarker are.",
+    ).toEqual([]);
+  });
+
+  it("every MAIN mark type is registered in the float schema", () => {
+    const missing = Object.keys(mainSchema.marks).filter((m) => !schema.marks[m]);
+    expect(missing).toEqual([]);
+  });
+
+  it("every MAIN node type declares the same attrs in the float schema", () => {
+    const dropped: string[] = [];
+    for (const [name, mainType] of Object.entries(mainSchema.nodes)) {
+      const floatType = schema.nodes[name];
+      if (!floatType) continue; // the node leg owns that failure
+      const floatAttrs = new Set(Object.keys(floatType.spec.attrs ?? {}));
+      for (const attr of Object.keys(mainType.spec.attrs ?? {})) {
+        if (!floatAttrs.has(attr)) dropped.push(`${name}.${attr}`);
+      }
     }
+    expect(dropped).toEqual([]);
   });
 
   it("round-trips a multi-block range (heading + list + paragraph) without dropping blocks", () => {
@@ -162,5 +195,97 @@ describe("linkedRange float schema (buildEditorExtensions surface:'float')", () 
     const childTypes: string[] = [];
     node.forEach((c) => childTypes.push(c.type.name));
     expect(childTypes).toEqual(["heading", "bulletList", "paragraph"]);
+  });
+});
+
+// --- (3) the write door refuses rather than deleting (task 842) -------------
+
+describe("planLinkedRangeWriteBack — never delete what the float did not hold", () => {
+  const mainSchema = getSchema(buildEditorExtensions(mainCtx()));
+  const floatSchema = getSchema(buildEditorExtensions(floatCtx()));
+
+  const para = (text: string) => ({
+    type: "paragraph",
+    content: [{ type: "text", text }],
+  });
+  const mainState = () =>
+    EditorState.create({
+      doc: PMNode.fromJSON(mainSchema, {
+        type: "doc",
+        content: [
+          { type: "titleField", attrs: { field: "title" }, content: [{ type: "text", text: "T" }] },
+          { type: "maketitleMarker" },
+          para("first"),
+          para("second"),
+        ],
+      }),
+    });
+  /** The whole-block range from the titleField through "second". */
+  const wholeRange = (s: EditorState) => ({ from: 0, to: s.doc.content.size });
+
+  it("a range spanning \\maketitle seeds into the float with the marker intact", () => {
+    const s = mainState();
+    const seed = linkedRangeAsDoc(s.doc, wholeRange(s));
+    expect(seed).not.toBeNull();
+    expect(checkLinkedRangeRepresentable(floatSchema, seed).ok).toBe(true);
+    const mounted = PMNode.fromJSON(floatSchema, seed);
+    const types: string[] = [];
+    mounted.forEach((c) => types.push(c.type.name));
+    expect(types).toContain("maketitleMarker");
+  });
+
+  it("an unedited round trip writes nothing (byte-identical)", () => {
+    const s = mainState();
+    const seed = linkedRangeAsDoc(s.doc, wholeRange(s))!;
+    const plan = planLinkedRangeWriteBack(s, wholeRange(s), seed, floatSchema);
+    expect(plan.ok).toBe(true);
+    expect(plan.ok && plan.tr).toBeNull();
+  });
+
+  it("an edited round trip keeps the marker", () => {
+    const s = mainState();
+    const seed = linkedRangeAsDoc(s.doc, wholeRange(s))!;
+    const edited = {
+      ...seed,
+      content: [...seed.content!.slice(0, -1), para("second, edited")],
+    };
+    const plan = planLinkedRangeWriteBack(s, wholeRange(s), edited, floatSchema);
+    expect(plan.ok && plan.tr).toBeTruthy();
+    const next = plan.ok && plan.tr ? plan.tr.doc : null;
+    const types: string[] = [];
+    next!.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(["titleField", "maketitleMarker", "paragraph", "paragraph"]);
+    expect(next!.lastChild!.textContent).toBe("second, edited");
+  });
+
+  it("a float child main cannot rebuild → REFUSED, not skipped (main untouched)", () => {
+    const s = mainState();
+    const seed = linkedRangeAsDoc(s.doc, wholeRange(s))!;
+    const planted = {
+      ...seed,
+      content: [...seed.content!, { type: "noSuchNode" }],
+    };
+    const plan = planLinkedRangeWriteBack(s, wholeRange(s), planted, floatSchema);
+    expect(plan.ok).toBe(false);
+    expect(!plan.ok && plan.constructs).toEqual(["noSuchNode"]);
+  });
+
+  it("a range the FLOAT schema cannot hold → REFUSED (the blank-seed overwrite)", () => {
+    // A float schema WITHOUT maketitleMarker — the pre-842 shape, and any
+    // future main-only node. The float would mount blank; a keystroke there
+    // wrote one paragraph over the whole range. Now the door refuses.
+    const narrow = getSchema([StarterKit, LinkedAnchor]);
+    const s = mainState();
+    const plan = planLinkedRangeWriteBack(
+      s,
+      wholeRange(s),
+      { type: "doc", content: [para("typed into a blank float")] },
+      narrow,
+    );
+    expect(plan.ok).toBe(false);
+    expect(!plan.ok && plan.constructs).toContain("maketitleMarker");
+    expect(
+      checkLinkedRangeRepresentable(narrow, linkedRangeAsDoc(s.doc, wholeRange(s))).ok,
+    ).toBe(false);
   });
 });

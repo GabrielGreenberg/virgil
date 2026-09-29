@@ -3614,3 +3614,26 @@ Every footnote setter that writes INTO a ref (`setArchived`,
 so a toolbar/slash/parsed footnote with no ref is never a silent no-op.
 CI: `useFootnotes-upsert-door.test.tsx` (hook legs + an ordering census on
 `spliceAndArchiveAtom`).
+
+## The float half (task 842) — a popout that writes back over a range must have HELD it
+
+A linked-range float mounts a live cut of the main doc in its own
+`surface: "float"` editor and writes every edit back by replacing the WHOLE
+range. Two silent deletes lived there: a range carrying a node the float schema
+lacked (`maketitleMarker`, then main-only) mounted BLANK and the first keystroke
+replaced the range with one paragraph; and the write-back `try{}catch{}`-SKIPPED
+any child main could not rebuild, then replaced the range anyway
+(`addToHistory: false` — not even undoable).
+
+- **Schema:** the float stack is census-pinned to COVER main — nodes, marks and
+  attrs, derived from the live builders (no hand list). A node the float must
+  hold is registered on every surface with its main-only behaviour gated on
+  `surface` (titleField, maketitleMarker).
+- **Door:** `planLinkedRangeWriteBack` ([src/lib/linked-range-writeback.ts](../../../src/lib/linked-range-writeback.ts))
+  asks BOTH schemas before building a transaction — can the float schema hold the
+  live range, can main rebuild every float child — and REFUSES (no dispatch)
+  otherwise; the body turns read-only and says what it can't show. An unedited
+  round trip writes nothing (`tr.doc.eq`).
+
+CI: `linked-range-popout-fidelity.test.ts` (float ⊇ main census + door legs),
+`editor-extensions.test.ts`.

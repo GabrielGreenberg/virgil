@@ -118,7 +118,7 @@ function mainCtx(withAnchors = true): EditorExtensionsCtx {
 // shared stack in L3j so the title/author/date fields pop out; it was the lone
 // bodyless kind that was main-only) MINUS the doc-wide example numberer
 // (`expexNumbering`) and every main-only chrome extension (`placeholder`,
-// `slashPopup`, `smartQuotes`, the orphan/maketitle/label/cleaner guards,
+// `slashPopup`, `smartQuotes`, the orphan/label/cleaner guards,
 // `marginaliaAnchorGuard`, `pgmarkChip`, `uuidAttrDecorator`,
 // `readOnlyEnforcer`). The `sectionNumbers` + `sectionFolding` plugins are
 // omitted *inside* the heading builder (a separate test asserts that).
@@ -174,6 +174,9 @@ const EXPECTED_FLOAT_ORDER = [
   // right after the orphan guard (which is main-only and omitted here), before
   // tabIndent. Its MAIN position is unchanged (EXPECTED_MAIN_ORDER untouched).
   "titleField",
+  // maketitleMarker: promoted beside titleField (task 842) — a schema node the
+  // float must hold, or a linked range spanning `\maketitle` pops out blank.
+  "maketitleMarker",
   "tabIndent",
 ];
 
@@ -188,7 +191,6 @@ const MAIN_ONLY_NAMES = [
   "smartQuotes",
   "autocorrect",
   "textObjectOrphanGuard",
-  "maketitleMarker",
   "labelHandler",
   "emptyParagraphTitleCleaner",
   "marginaliaAnchorGuard",
