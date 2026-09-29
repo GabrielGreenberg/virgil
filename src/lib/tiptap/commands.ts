@@ -21,9 +21,11 @@ import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 // ProseMirror (a `titleField` insert on the view), so NO bridge is needed. The
 // former `titleFieldCommand` factory here is GONE; the registry row is the SSOT.
 import {
+  SLASH_NAME_TO_ACTION_ID,
   VIRGIL_ACTION_REGISTRY,
   type ActionId,
 } from "@/lib/actions/action-registry";
+import { CARD_ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 // Task 398: the slash surface's applicability DOOR. `runViewOnlyAction` builds
 // its ctx here rather than inline, so the OFFER (the popup's greyed rows +
 // `executeSelection`'s pre-delete refusal) and this COMMIT ask the registry the
@@ -139,190 +141,204 @@ function runBridgeAction(
   });
 }
 
+/**
+ * The registry action a slash command name runs — read from
+ * `SLASH_NAME_TO_ACTION_ID`, the SAME map `slashCommandVerdict` asks the
+ * applicability question through (task 843).
+ *
+ * Every row below used to spell its action id a SECOND time inside its closure
+ * (`runBridgeAction("bullet-list", …)`), while the popup decided whether to
+ * OFFER the command from the map's copy. `assertActionCoverage` reconciles the
+ * two NAME keysets, but nothing compared the ids — so an edit to one copy would
+ * have re-opened task 398's bug by a new road: the popup gates on action A's
+ * `applies()`, the commit door deletes the typed `\name`, and action B runs.
+ * The rows now name only the COMMAND; the id is looked up here, so there is
+ * one copy and the offer and the run cannot disagree about which action this is.
+ *
+ * Resolved at CALL time, never at module evaluation: `action-registry.ts`
+ * imports `VIRGIL_COMMAND_NAMES` from this module, so the map may not exist yet
+ * while this table is being built. An unmapped name returns `undefined` and the
+ * row no-ops (both run helpers bail on a missing id) — unreachable in a shipped
+ * build, since `assertActionCoverage` pins the map total over the names.
+ */
+function slashActionId(name: string): ActionId | undefined {
+  return SLASH_NAME_TO_ACTION_ID[name];
+}
+
+/** A slash command that runs a PURE-ProseMirror registry row through
+ *  `runViewOnlyAction` (no React-land wiring needed). */
+function viewRow(name: string): VirgilCommand {
+  return {
+    name,
+    action: (view) => {
+      const id = slashActionId(name);
+      if (id) runViewOnlyAction(id, view);
+    },
+  };
+}
+
+/**
+ * A slash command that runs its registry row through the BRIDGE
+ * (`runBridgeAction`). `prepare`, when given, runs first on the live view: it
+ * returns `false` to refuse (nothing is dispatched), or the payload the bridge
+ * call carries (`undefined` = none). It is the slot for a row's bespoke
+ * pre-work — `\cite`'s atom-placement gate, `\footnote`'s synchronous atom
+ * insert — so even those rows never name their action id.
+ */
+function bridgeRow(
+  name: string,
+  prepare?: (view: EditorView) => Record<string, unknown> | undefined | false,
+): VirgilCommand {
+  return {
+    name,
+    action: (view) => {
+      const payload = prepare ? prepare(view) : undefined;
+      if (payload === false) return;
+      const id = slashActionId(name);
+      if (id) runBridgeAction(id, view, payload);
+    },
+  };
+}
+
+/** `\cite`'s pre-gate (task 061): refuse when the caret's containing block
+ *  greys `citation` out. See the row. */
+function citePrepare(view: EditorView): undefined | false {
+  const { doc, selection, schema } = view.state;
+  const citationType = schema.nodes[CARD_ATOM_REGISTRY.citation.nodeName];
+  if (
+    !citationType ||
+    !inlineRangeAllowsAtom(doc, selection.from, selection.to, citationType)
+  )
+    return false;
+  return undefined;
+}
+
+/** `\footnote`'s pre-work: gate, then insert the atom SYNCHRONOUSLY and hand
+ *  its id to the bridge call as the payload. See the row. */
+function footnotePrepare(view: EditorView): Record<string, unknown> | false {
+  // CHIP 7b: collab read-only gate. Unlike the other bridge-dispatched
+  // commands, `\footnote` inserts its atom SYNCHRONOUSLY below (BEFORE the
+  // bridge dispatch), so this refusal MUST run here as a bespoke pre-gate —
+  // deferring to `runBridgeAction`'s gate alone would land an orphan atom on a
+  // read-only view. (`runBridgeAction`'s gate re-checks harmlessly afterwards.)
+  if (collabReadOnly(view)) return false;
+  const { state } = view;
+  // Task 843: the node name and its id attr come off the registry row (task
+  // 645's SSOT), never hand-paired here.
+  const { nodeName, idAttr } = CARD_ATOM_REGISTRY.footnote;
+  const footnoteNodeType = state.schema.nodes[nodeName];
+  if (!footnoteNodeType) return false;
+  // The ONE inline-atom door (task 740): the policy half (061 — a non-prose
+  // block greys `footnote` out) and the schema half (396) together. MUST
+  // gate here — the atom is inserted below BEFORE the bridge's `applies()`
+  // gate runs, so relying on the bridge alone would leave an orphan atom.
+  // RANGE form (task 428): `replaceSelectionWith` below REPLACES the live
+  // selection, so every textblock it reaches must host the atom.
+  if (
+    !inlineRangeAllowsAtom(
+      state.doc,
+      state.selection.from,
+      state.selection.to,
+      footnoteNodeType,
+    )
+  )
+    return false;
+  const existing = new Set<string>();
+  state.doc.descendants((node) => {
+    const id = node.type === footnoteNodeType ? node.attrs[idAttr] : null;
+    if (id) existing.add(id as string);
+    return true;
+  });
+  const footnoteId = generateShortId(existing);
+  // Empty body — the panel card hosts the editable footnote text.
+  const content = { type: "doc", content: [{ type: "paragraph" }] };
+  // Insert the atom SYNCHRONOUSLY — it must land even if React is
+  // unmounted (durability decision, matching `\cite`). Only the CARD
+  // registration routes through the bridge.
+  const tr = state.tr.replaceSelectionWith(
+    footnoteNodeType.create({ [idAttr]: footnoteId, content, number: 0 }),
+  );
+  view.dispatch(tr);
+  // The bridge payload key is the bridge's own contract (`footnote.run` reads
+  // `payload.footnoteId`), not the node attr — it happens to share the spelling.
+  return { footnoteId };
+}
+
 export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // CHIP 7a: the 3 title-field commands route through the SINGLE canonical
   // `titleFieldRun` (idempotent find-existing-or-insert; canonical doc-top order;
-  // date pre-fills today) in the action registry. The former `titleFieldCommand`
-  // factory is gone; the registry row is the SSOT. Pure ProseMirror (a
+  // date pre-fills today) in the action registry. Pure ProseMirror (a
   // `titleField` insert on the view), so NO bridge — `runViewOnlyAction`
-  // synthesizes the view-only ActionContext (`titleFieldRun` reads the live doc
-  // off `ctx.view.state`, not the synthesized CursorRef). SLASH-ONLY by design
-  // (no menu twin — a titleField is a doc-top singleton, not a card).
-  { name: "title", action: (view) => runViewOnlyAction("title", view) },
-  { name: "author", action: (view) => runViewOnlyAction("author", view) },
-  { name: "date", action: (view) => runViewOnlyAction("date", view) },
+  // synthesizes the view-only ActionContext. SLASH-ONLY by design (no menu twin
+  // — a titleField is a doc-top singleton, not a card).
+  viewRow("title"),
+  viewRow("author"),
+  viewRow("date"),
   // CHIP 5a: the 4 heading commands route through the SINGLE canonical
   // `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
-  // the BlockType dropdown calls. The former 4 copy-paste `setBlockType`
-  // closures are gone; the registry row is the SSOT for the heading verb.
-  { name: "chapter", action: (view) => runViewOnlyAction("heading-chapter", view) },
-  { name: "section", action: (view) => runViewOnlyAction("heading-section", view) },
-  { name: "subsection", action: (view) => runViewOnlyAction("heading-subsection", view) },
-  { name: "subsubsection", action: (view) => runViewOnlyAction("heading-subsubsection", view) },
-  {
-    name: "ref",
-    action: (view) => {
-      // `\ref` routes through the SINGLE canonical `refRun` in the action
-      // registry — the SAME `run()` the lightning 'Cross-ref' grid cell calls.
-      // `refRun` opens the SHARED create popover (the same deferred-commit
-      // controller citation uses) in ref mode at the caret — the popover IS the
-      // creator: `useRefActions.handleInsertRef` lands the `labelRef` atom when
-      // the user picks/types a label. Opening the popover is a React-land
-      // side-effect (it sets EditorLayout's `atomCreateRequest`), so `\ref` rides
-      // the bridge (like `\cite`/`\footnote`) — `refRun` receives
-      // `ctx.openAtomCreate` from EditorPane's bridge handle. Via `runBridgeAction`
-      // so `\ref` carries the SAME CHIP 7b collab read-only gate as `\cite` /
-      // `\footnote` / the wrappers (previously absent here — task 297), and is
-      // routed via the EXACT live `view` (multi-doc keep-alive) so it reaches
-      // THIS pane's handle, not a hidden keep-alive pane's.
-      runBridgeAction("ref", view);
-    },
-  },
-  {
-    name: "ex",
-    action: (view) => {
-      // CHIP 5c: `\ex` routes through the SINGLE canonical `exampleRun`
-      // (wrap-if-selection-else-insert) in the action registry — the SAME
-      // `run()` the lightning grid `ex` cell calls. The former `virgil-ex-create`
-      // CustomEvent + its command-input.ts listener + `editorRef.insertExample`
-      // are retired. The INSERT is pure ProseMirror (an `exampleBlock` insert on
-      // the view), but the slash surface ALSO wants the soft panel-select
-      // (surface omni's Examples row → scroll to the new block, backlog #2 —
-      // never force-opens), which is a React-land side-effect. So `\ex` rides the
-      // bridge (like `\cite`/`\footnote`) rather than the view-only path, so
-      // `exampleRun` receives `ctx.panelRouting.selectExample`. Via `runBridgeAction`
-      // so `\ex` carries the SAME CHIP 7b collab read-only gate as the rest
-      // (previously absent here — task 297).
-      runBridgeAction("example", view);
-    },
-  },
-  {
-    name: "cite",
-    action: (view) => {
-      // Task 061: refuse when the caret's containing block greys `citation` out
-      // (a `titleField` / non-prose block). Mirrors the bridge `applies()` gate;
-      // bailing here avoids even opening the create popover. This bespoke
-      // pre-gate is a pure read (no doc mutation), so — unlike `\footnote`'s
-      // synchronous atom insert — it needn't precede the collab gate: the CHIP 7b
-      // `view.editable` refusal lives in `runBridgeAction` (which bails before any
-      // dispatch, so the popover never opens on a read-only view either way).
-      // Asked through the ONE inline-atom door (task 740), which carries the
-      // policy half (061) and the schema half (396) together.
-      {
-        const { doc, selection, schema } = view.state;
-        const citationType = schema.nodes.citation;
-        if (
-          !citationType ||
-          !inlineRangeAllowsAtom(doc, selection.from, selection.to, citationType)
-        )
-          return;
-      }
-      // Citation creation popover (deferred-commit): `/cite` no longer inserts a
-      // blank `\cite{}` atom + pristine card up front. It routes through the
-      // registry's `citation.run` (surface "slash") with NO payload, which opens
-      // the create popover at the caret (`openAtomCreate("citation")`). The user
-      // searches citekeys; the atom + card materialize only on commit (OK /
-      // click-away with ≥1 key), via a second `runAction` carrying the payload.
-      runBridgeAction("citation", view);
-    },
-  },
-  {
-    name: "footnote",
-    action: (view) => {
-      // CHIP 7b: collab read-only gate. Unlike the other bridge-dispatched
-      // commands, `\footnote` inserts its atom SYNCHRONOUSLY below (BEFORE the
-      // bridge dispatch), so this `view.editable` refusal MUST run here as a
-      // bespoke pre-gate — deferring to `runBridgeAction`'s gate alone would land
-      // an orphan atom on a read-only view. The trailing dispatch still routes
-      // through `runBridgeAction` (its gate re-checks harmlessly, already
-      // editable here), so the bridge-dispatch boilerplate isn't re-inlined.
-      if (!view.editable) return;
-      const { state } = view;
-      const footnoteNodeType = state.schema.nodes.footnote;
-      if (!footnoteNodeType) return;
-      // The ONE inline-atom door (task 740): the policy half (061 — a non-prose
-      // block greys `footnote` out) and the schema half (396) together. MUST
-      // gate here — the atom is inserted below BEFORE the bridge's `applies()`
-      // gate runs, so relying on the bridge alone would leave an orphan atom.
-      // RANGE form (task 428): `replaceSelectionWith` below REPLACES the live
-      // selection, so every textblock it reaches must host the atom.
-      if (
-        !inlineRangeAllowsAtom(
-          state.doc,
-          state.selection.from,
-          state.selection.to,
-          footnoteNodeType,
-        )
-      )
-        return;
-      const existing = new Set<string>();
-      state.doc.descendants((node) => {
-        if (node.type.name === "footnote" && node.attrs.footnoteId) {
-          existing.add(node.attrs.footnoteId as string);
-        }
-        return true;
-      });
-      const footnoteId = generateShortId(existing);
-      // Empty body — the panel card hosts the editable footnote text.
-      const content = { type: "doc", content: [{ type: "paragraph" }] };
-      // Insert the atom SYNCHRONOUSLY — it must land even if React is
-      // unmounted (durability decision, matching `\cite`). Only the CARD
-      // registration routes through the bridge.
-      const tr = state.tr.replaceSelectionWith(
-        footnoteNodeType.create({ footnoteId, content, number: 0 }),
-      );
-      view.dispatch(tr);
-      // Register the panel card via the registry's `footnote.run` (surface
-      // "slash"). The bridge synthesizes the CursorRef + supplies cardCreation
-      // + the soft-route wiring; `footnote.run` ADOPTS the just-inserted atom
-      // via `createFootnote({ existingFootnoteId })` (pristine + pinned, NO
-      // re-insert) and soft-routes into omni (backlog #2 — never force-opens
-      // the Footnotes panel). Replaces the retired `virgil-footnote-input`
-      // event + its command-input.ts listener (and the dead
-      // `virgil-footnote-created` it used to broadcast).
-      runBridgeAction("footnote", view, { footnoteId });
-    },
-  },
+  // the BlockType dropdown calls. Each name fans out to its discrete heading id
+  // (`section` → `heading-section`) through `SLASH_NAME_TO_ACTION_ID`.
+  viewRow("chapter"),
+  viewRow("section"),
+  viewRow("subsection"),
+  viewRow("subsubsection"),
+  // `\ref` routes through the SINGLE canonical `refRun` — the SAME `run()` the
+  // lightning 'Cross-ref' grid cell calls. `refRun` opens the SHARED create
+  // popover (the same deferred-commit controller citation uses) in ref mode at
+  // the caret — the popover IS the creator: `useRefActions.handleInsertRef`
+  // lands the `labelRef` atom when the user picks/types a label. Opening the
+  // popover is a React-land side-effect (EditorLayout's `atomCreateRequest`), so
+  // `\ref` rides the bridge; it carries the SAME CHIP 7b collab gate as the rest
+  // (task 297) and is routed via the EXACT live `view` (multi-doc keep-alive).
+  bridgeRow("ref"),
+  // CHIP 5c: `\ex` routes through the SINGLE canonical `exampleRun`
+  // (wrap-if-selection-else-insert) — the SAME `run()` the lightning grid `ex`
+  // cell calls. The INSERT is pure ProseMirror, but the slash surface ALSO wants
+  // the soft panel-select (surface omni's Examples row, backlog #2 — never
+  // force-opens), a React-land side-effect, so `\ex` rides the bridge so
+  // `exampleRun` receives `ctx.panelRouting.selectExample` (→ `example`).
+  bridgeRow("ex"),
+  // Citation creation popover (deferred-commit): `/cite` does not insert a blank
+  // `\cite{}` atom + pristine card up front. It routes through the registry's
+  // `citation.run` (surface "slash") with NO payload, which opens the create
+  // popover at the caret (`openAtomCreate("citation")`); the atom + card
+  // materialize only on commit (OK / click-away with ≥1 key), via a second
+  // `runAction` carrying the payload. Task 061's pre-gate (`citePrepare`) is a
+  // pure read asked through the ONE inline-atom door (task 740), so — unlike
+  // `\footnote`'s synchronous insert — it needn't precede the collab gate.
+  bridgeRow("cite", citePrepare),
+  // `\footnote` inserts its atom SYNCHRONOUSLY (`footnotePrepare`), then
+  // registers the panel card via the registry's `footnote.run` (surface
+  // "slash"): the bridge synthesizes the CursorRef + supplies cardCreation + the
+  // soft-route wiring; `footnote.run` ADOPTS the just-inserted atom via
+  // `createFootnote({ existingFootnoteId })` (pristine + pinned, NO re-insert)
+  // and soft-routes into omni (backlog #2 — never force-opens the panel).
+  bridgeRow("footnote", footnotePrepare),
   // CHIP 5b: `\tex` routes through the SINGLE canonical `texRun` (seed `code`
-  // from the selection, mint a collision-free uuid, insert the `texBlock`) in
-  // the action registry — the SAME `run()` the lightning grid `\tex` cell calls.
-  // The former hand-rolled uuid-scan + `replaceSelectionWith({code:''})` closure
-  // is gone (it ALWAYS emptied the code and DISCARDED any selected text); the
-  // slash surface now ALSO seeds from selection, matching the grid. Pure
-  // ProseMirror (`texBlock` insert on the view), so NO bridge — `runViewOnlyAction`
-  // synthesizes the view-only ActionContext (`texRun` reads the live selection
-  // off `ctx.view.state`, not the synthesized CursorRef).
-  { name: "tex", action: (view) => runViewOnlyAction("tex", view) },
-  // Task 385: `\forest` routes through the SINGLE canonical `forestRun` (mint a
-  // collision-free uuid, seed the subset-clean starter tree, insert the
-  // `forestBlock`) — the SAME `run()` the lightning grid's tree cell calls. Pure
-  // ProseMirror, so NO bridge: `runViewOnlyAction` synthesizes the view-only
-  // ActionContext, and `forestRun` reads the live selection off `ctx.view.state`
-  // (it carries the CHIP 7b collab gate itself, as `texRun` does).
-  { name: "forest", action: (view) => runViewOnlyAction("forest", view) },
+  // from the selection, mint a collision-free uuid, insert the `texBlock`) — the
+  // SAME `run()` the lightning grid `\tex` cell calls. Pure ProseMirror, so NO
+  // bridge (`texRun` reads the live selection off `ctx.view.state`).
+  viewRow("tex"),
+  // Task 385: `\forest` routes through the SINGLE canonical `forestRun` — the
+  // SAME `run()` the lightning grid's tree cell calls. Pure ProseMirror, so NO
+  // bridge (`forestRun` carries the CHIP 7b collab gate itself, as `texRun` does).
+  viewRow("forest"),
   // Bug sweep #6: the 5 structural WRAPPER toggles. `\list`/`\itemize` → bullet
-  // list, `\enumerate` → numbered list, `\quote`/`\quotation` → blockquote.
+  // list, `\enumerate` → numbered list, `\quote`/`\quotation` → blockquote (the
+  // many-to-one alias group in `SLASH_NAME_TO_ACTION_ID`).
   //
-  // Unlike the pure-PM commands above (heading / tex / title-fields, which take
-  // `runViewOnlyAction`), the wrapper rows run `editor.chain().toggleBulletList()`
-  // / `toggleOrderedList()` / `toggleBlockquote()` — which the view-only path's
+  // Unlike the pure-PM rows above, the wrapper rows run
+  // `editor.chain().toggleBulletList()` / … — which the view-only path's
   // SYNTHESIZED `{ view, state }` stub lacks (`.chain()` is undefined there). So
-  // they MUST route through the BRIDGE (`runBridgeAction`), the same path as
-  // `\cite`/`\footnote`/`\ref`/`\ex` — the bridge builds the ctx from the LIVE
-  // TipTap editor (`innerRef.getEditor()`), which has `.chain()`. The EXACT
-  // `view` reaches THIS pane's handle under multi-doc keep-alive.
-  //
-  // Data-loss is impossible on a non-listable block (titleField / heading /
-  // atom): the registry rows grey via `wrapperApplies` AND no-op in `run()` via
-  // `selectionIsListable` (action-registry.ts) — a `\enumerate` typed on a
-  // heading simply does nothing. `runBridgeAction`'s `view.editable` gate is the
-  // uniform CHIP 7b collab read-only refusal — the SAME one `\cite`/`\footnote`/
-  // `\ref`/`\ex` now share (no longer re-inlined per row).
-  { name: "list", action: (view) => runBridgeAction("bullet-list", view) },
-  { name: "itemize", action: (view) => runBridgeAction("bullet-list", view) },
-  { name: "enumerate", action: (view) => runBridgeAction("ordered-list", view) },
-  { name: "quote", action: (view) => runBridgeAction("blockquote", view) },
-  { name: "quotation", action: (view) => runBridgeAction("blockquote", view) },
+  // they MUST route through the BRIDGE, which builds the ctx from the LIVE
+  // TipTap editor. Data-loss is impossible on a non-listable block (titleField /
+  // heading / atom): the registry rows grey via `wrapperApplies` AND no-op in
+  // `run()` via `selectionIsListable` (action-registry.ts).
+  bridgeRow("list"),
+  bridgeRow("itemize"),
+  bridgeRow("enumerate"),
+  bridgeRow("quote"),
+  bridgeRow("quotation"),
 ];
 
 /** Fast lookup by command name (without backslash). */
