@@ -368,6 +368,13 @@
      See STYLE_GUIDE.md "Margin chrome". */
   --margin-handle-gap: 0.625em;
   --margin-track-width: 1.25em;
+  /* The grab handle's BOX width — the dots' box, not its halo. ONE spelling
+     for the `.text-object-grab-handle` width and the halo's floor below; the
+     JS placement (handle-layout.ts `HANDLE_WIDTH`) must equal it, which
+     hover-zone-contains-handle-lane.test.tsx pins against this line (task
+     831). A px token, not em: the X rule `markerLeft − gap − width` and the
+     optical-center math both assume a fixed box. */
+  --margin-handle-width: 12px;
   /* Inter-block vertical rhythm. Owned by each block's margin-top
      (margin-bottom: 0 on every block) so the gap is predictable
      regardless of margin-collapse. The .par-title-annotation overlays
@@ -2394,7 +2401,7 @@ textarea,
      this box (below) — it enlarges the target WITHOUT moving the dots. */
   align-items: center;
   justify-content: center;
-  width: 12px;
+  width: var(--margin-handle-width);
   height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
   /* Chip 3: width of the centered grab hit/hover halo (the ::before below).
      Scales with the editor font like the handle height (~1.8× font ≈ 1.8em),
@@ -2435,7 +2442,7 @@ textarea,
   top: 50%;
   left: 50%;
   width: max(
-    12px,
+    var(--margin-handle-width),
     min(var(--margin-handle-hit-pad), calc(var(--margin-handle-hit-cap) * 2))
   );
   height: 100%;
@@ -3001,7 +3008,7 @@ textarea,
    labeled text's own em except the 12px handle box, with whatever is left over
    being the SEAM between the two handles:
 
-       band > markerInk + MARKER_TRAIL_EM + --margin-handle-gap + 12px
+       band > markerInk + MARKER_TRAIL_EM + --margin-handle-gap + --margin-handle-width
 
    For a `•` (≈0.35em) at the shipped 15.2px prose font the right-hand side is
    (0.35 + 0.25 + 0.625) em + 12px = 30.6px, against a 2em band of 30.4px — i.e.
@@ -4086,7 +4093,8 @@ textarea,
  * background wash. Left side uses a pseudo-element so the bar is
  * positioned independently of paragraph dimensions and stays at a fixed
  * width (reads as a highlight in the margin between the text and the grab
- * handle, which sits at left: -14px); right side uses an inset box-shadow.
+ * handle, which JS places in its lane left of the block's marker —
+ * handle-layout.ts `resolveHandleLane`); right side uses an inset box-shadow.
  * Hover and selection paint the same 2px / 50% line. */
 [data-card-hovered="paragraph"][data-margin-side="left"],
 [data-card-hovered="paragraph"]:not([data-margin-side]),

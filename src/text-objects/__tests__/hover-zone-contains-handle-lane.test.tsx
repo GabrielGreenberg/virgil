@@ -394,9 +394,9 @@ describe("the fold chevron stays clickable — the margin is ONE lane", () => {
 });
 
 describe("census — the models this suite carries are the shipped CSS", () => {
-  it("the halo is a centred `max(12px, min(pad, 2 × cap))` band", () => {
+  it("the halo is a centred `max(handle width, min(pad, 2 × cap))` band", () => {
     expect(CSS).toMatch(
-      /\.text-object-grab-handle::before\s*\{[^}]*width:\s*max\(\s*12px,\s*min\(var\(--margin-handle-hit-pad\),\s*calc\(var\(--margin-handle-hit-cap\)\s*\*\s*2\)\)\s*\)/,
+      /\.text-object-grab-handle::before\s*\{[^}]*width:\s*max\(\s*var\(--margin-handle-width\),\s*min\(var\(--margin-handle-hit-pad\),\s*calc\(var\(--margin-handle-hit-cap\)\s*\*\s*2\)\)\s*\)/,
     );
     expect(CSS).toMatch(
       /\.text-object-grab-handle::before\s*\{[^}]*transform:\s*translate\(-50%,\s*-50%\)/,
@@ -409,9 +409,15 @@ describe("census — the models this suite carries are the shipped CSS", () => {
     );
   });
 
-  it("the handle box is 12px, matching HANDLE_WIDTH", () => {
-    expect(CSS).toMatch(/\.text-object-grab-handle\s*\{[^}]*width:\s*12px/);
-    expect(HANDLE_WIDTH).toBe(12);
+  it("the handle width has ONE CSS spelling, and HANDLE_WIDTH equals it (task 831)", () => {
+    const token = /--margin-handle-width:\s*([\d.]+)px\s*;/.exec(CSS);
+    expect(token).not.toBeNull();
+    expect(Number(token![1])).toBe(HANDLE_WIDTH);
+    // The box and the halo's floor both READ the token — no second literal.
+    const box = /\.text-object-grab-handle\s*\{[^}]*\}/.exec(CSS)?.[0] ?? "";
+    expect(box).toMatch(/\bwidth:\s*var\(--margin-handle-width\)/);
+    const halo = /\.text-object-grab-handle::before\s*\{[^}]*\}/.exec(CSS)?.[0] ?? "";
+    expect(halo).toMatch(/width:\s*max\(\s*var\(--margin-handle-width\)/);
   });
 
   it("both fold chevrons read ONE column token pair", () => {

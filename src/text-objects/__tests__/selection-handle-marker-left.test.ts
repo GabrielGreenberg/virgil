@@ -13,16 +13,24 @@
  *
  * PURE-LOGIC (like `marker-left-fallback.test.ts`): we don't trust jsdom layout
  * — we exercise the two placement helpers the source uses (`resolveHandleMarkerLeft`
- * → `computeHandleLeftEdge`) with synthetic frames, asserting the selection and
+ * → `resolveHandleLane(...).left`, exactly the call `computePlacement` makes)
+ * with synthetic frames, asserting the selection and
  * text-object handles resolve to the SAME `left` for a marker-bearing block and
  * remain unchanged for a plain paragraph.
  */
 
 import { describe, expect, it } from "vitest";
 import {
-  computeHandleLeftEdge,
+  resolveHandleLane,
   resolveHandleMarkerLeft,
 } from "@/text-objects/handle-layout";
+
+/** The resting left edge production uses — `resolveHandleLane(...).left` in
+ *  `TextObjectGrabHandle`'s `computePlacement` (task 831: this suite used to
+ *  pin a position-only wrapper no production code called). */
+function laneLeft(input: Parameters<typeof resolveHandleLane>[0]): number {
+  return resolveHandleLane(input).left;
+}
 
 const EDITOR_COLUMN_LEFT = 100;
 const BASELINE_INSET = 40; // floor = 60; kept below every marker below
@@ -34,7 +42,7 @@ function handleLeft(
   frame: { markerLeft: number; contentLeft: number },
   refKind: "selection" | "text-object",
 ): number {
-  return computeHandleLeftEdge({
+  return laneLeft({
     markerLeft: resolveHandleMarkerLeft(frame, refKind),
     gapPx: GAP_PX,
     editorColumnLeft: EDITOR_COLUMN_LEFT,
@@ -58,7 +66,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
 
     expect(selection).toBe(textObject); // same gutter slot — the fix
     // and it hugs the MARKER, not the text (would-be over-the-bullet position).
-    expect(selection).toBe(computeHandleLeftEdge({
+    expect(selection).toBe(laneLeft({
       markerLeft: frame.markerLeft,
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
@@ -68,7 +76,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
       inkLeft: frame.markerLeft,
     }));
     // The old contentLeft anchor would have sat a full marker-band right of this.
-    const oldSelectionLeft = computeHandleLeftEdge({
+    const oldSelectionLeft = laneLeft({
       markerLeft: frame.contentLeft,
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
@@ -91,7 +99,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
     const selection = handleLeft(frame, "selection");
     expect(selection).toBe(handleLeft(frame, "text-object"));
     // Unchanged from the pre-fix behavior (contentLeft anchor === markerLeft anchor).
-    expect(selection).toBe(computeHandleLeftEdge({
+    expect(selection).toBe(laneLeft({
       markerLeft: frame.contentLeft,
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
