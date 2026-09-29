@@ -65,9 +65,16 @@ const PERMITTED_DEEP_MUTATION_OBSERVERS: Record<string, string> = {
 // bounded target and keep its callback read-before-write + equality-bailed
 // (or RAF-coalesced) so it can neither force mid-frame layout nor feedback-
 // loop on its own writes.
+//
+// This list answers the EDITOR-OBSERVER law's question only. The separate
+// LAYOUT-GESTURE question ("you may fire every frame of a pane drag / window
+// resize — do you park, suppress, or stay live?") is asked of the same
+// population, across both silos, by pane-drag-guardrail.test.ts →
+// PERMITTED_GESTURE_RESIZE_OBSERVERS (task 837). Before that census went
+// two-silo, this list's "RAF-scheduled" answered nothing about a gesture.
 const PERMITTED_RESIZE_OBSERVERS: Record<string, string> = {
-  "components/FigureBlockNodeView.tsx":
-    "Observes the figure block's own box + its column — node-local sizing, RAF-scheduled.",
+  "components/figure-chrome-beside.ts":
+    "Observes the figure block's own box + its column — node-local sizing, RAF-scheduled (lifted out of FigureBlockNodeView by task 837; its layout-gesture verdict — PARKED — lives in pane-drag-guardrail's two-silo gesture census).",
   // DocumentFolderTab's chrome-measurement RO was deleted by the Library UI
   // refactor P3 — the folder-tab silhouette is layout-driven FolderTabChrome
   // now (src/components/chrome/), zero observers by construction.

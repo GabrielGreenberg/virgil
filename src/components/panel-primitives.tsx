@@ -24,6 +24,8 @@
 import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize/layout-gesture-park";
+import { LAYOUT_SITE_CARD_HEADER } from "@/lib/layout-gesture-probe";
 import {
   isMissedRelease,
   isPrimaryDragStart,
@@ -2966,9 +2968,16 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       el.style.setProperty("--pc-header-h", `${h}px`);
     };
     update();
-    const ro = new ResizeObserver(update);
+    // Parked on the layout-gesture bus (task 837): the var only centres the
+    // hover-revealed popout overlay, which no one sees mid-drag, so the
+    // per-card per-frame header read waits for the gesture's end edge.
+    const park = parkDuringLayoutGesture(update, LAYOUT_SITE_CARD_HEADER);
+    const ro = new ResizeObserver(() => park.fire());
     ro.observe(header);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      park.dispose();
+    };
   }, []);
 
   const setRefs = useCallback(

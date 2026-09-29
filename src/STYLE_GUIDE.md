@@ -3525,9 +3525,11 @@ Five rules:
 - **Chrome beside the image, overlay as fallback.** The hover chrome
   normally overlays the image's top-right corner. When the row fits in the
   space to the RIGHT of the (fit-content) block within the text column,
-  FigureBlockNodeView measures it — a per-figure `ResizeObserver`, RAF-
-  coalesced, recomputed on mount / image-load / scale / column-resize, no
-  doc walk — and adds `.figure-chrome-beside`, so the controls sit just
+  FigureBlockNodeView measures it (`figure-chrome-beside.ts`) — a
+  per-figure `ResizeObserver`, RAF-coalesced, recomputed on mount /
+  image-load / scale / column-resize, PARKED for the length of a pane drag
+  or window resize (the chrome is hover-hidden then; task 837), no doc
+  walk — and adds `.figure-chrome-beside`, so the controls sit just
   outside the image instead of on top of it. A wide image with no room to
   its right keeps the overlay. (A left picture has the whole column − image
   to its right; a centered figure has the right half-gap.) Not CSS

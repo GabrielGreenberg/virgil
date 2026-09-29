@@ -21,7 +21,7 @@ import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
 import { pickFigureFile } from "@/lib/figures/pick-file";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
 import { useFieldEditSession } from "@/lib/field-edit-session";
-import { resolveBlockFrame } from "@/text-objects/block-frame";
+import { watchChromeBeside } from "./figure-chrome-beside";
 import FigureAnnotation from "./FigureAnnotation";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { iconHint } from "@/components/Hint";
@@ -37,11 +37,6 @@ const STEP_PERCENT = 10;
  *  the box came to display the one value it could not commit (task 537). */
 const DEFAULT_SCALE_PERCENT = 50;
 
-// Gap (px) between a hugged block's right edge and the chrome row when the row
-// sits beside the image. MUST match `.figure-chrome-beside { left: calc(100% +
-// 8px) }` in globals.css — the fit test below subtracts this same gap, so the
-// row only goes beside when it provably clears the text-column right edge.
-const CHROME_BESIDE_GAP = 8;
 
 // Stable no-op refresh registrar for the read-only card-preview figure panels
 // (Issue-4): they reuse FigurePanel for faithful image resolution but never
@@ -576,70 +571,14 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   };
 
   // Decide whether the hover chrome fits BESIDE the image (to its right) within
-  // the text column, and toggle `.figure-chrome-beside` accordingly. Per-figure
-  // and on-demand: observes only THIS block and its containing column, RAF-
-  // coalesced — it never walks the doc, so keystroke-sanctity is not implicated.
-  // Recomputes on mount, image load, and scale change (each resizes this block)
-  // and on column/editor resize (the parent), via one ResizeObserver on both.
-  // The chrome is laid out even while hover-hidden (opacity:0), so its width is
-  // measurable any time; being position:absolute, toggling the class never
-  // resizes the block or column, so there is no ResizeObserver feedback loop.
-  // Chip 4b: the block's content-right edge (the chrome's beside anchor) is read
-  // from the canonical `resolveBlockFrame`, so it shares ONE geometry source with
-  // the grab handle (which hugs the same frame on the left); the column edge
-  // stays a direct measure — it's the fit boundary, not a figure affordance.
+  // the text column, and toggle `.figure-chrome-beside` accordingly. The
+  // observer, its layout-gesture park and the fit test live in
+  // `./figure-chrome-beside` (task 837), so the park is testable without
+  // mounting an editor.
   useEffect(() => {
     const block = wrapperRef.current;
-    // The block's parent is the `.react-renderer` NodeView wrapper, a full-width
-    // block in the doc flow — so its content-right edge IS the text-column right
-    // (the same edge a sibling paragraph wraps at). That's our fit boundary.
-    const column = block?.parentElement ?? null;
-    if (!block || !column) return;
-
-    let raf = 0;
-    const recompute = () => {
-      raf = 0;
-      // Only a populated chrome can go beside; the empty-state row stays put.
-      const chrome = block.querySelector<HTMLElement>(
-        ".figure-chrome:not(.figure-chrome-empty)",
-      );
-      if (!chrome) {
-        setChromeBeside(false);
-        return;
-      }
-      const colStyle = getComputedStyle(column);
-      const columnRight =
-        column.getBoundingClientRect().right -
-        (parseFloat(colStyle.paddingRight) || 0) -
-        (parseFloat(colStyle.borderRightWidth) || 0);
-      // The figure's content-right edge from the CANONICAL block frame, not an
-      // independent box measure. `resolveBlockFrame(block)` resolves `block` (the
-      // `.figure-block` hug box) to itself, so `contentRight` IS the rendered
-      // image's right edge — the same number `.figure-chrome-beside`'s CSS anchor
-      // (`left: calc(100% + 8px)`) lands on, and the mirror of the grab handle
-      // hugging the marker on the LEFT: one frame on both sides. We pass the hug
-      // box, NOT the full-width `.react-renderer` [data-uuid] host — the host
-      // resolves to the column extent (which the drop indicator correctly wants),
-      // so leaving `resolveFirstLineTarget` untouched keeps that bar intact.
-      const blockRight = resolveBlockFrame(block).contentRight;
-      const chromeWidth = chrome.getBoundingClientRect().width;
-      const available = columnRight - blockRight - CHROME_BESIDE_GAP;
-      setChromeBeside(chromeWidth > 0 && available >= chromeWidth);
-    };
-    const schedule = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(recompute);
-    };
-
-    const ro = new ResizeObserver(schedule);
-    ro.observe(block);
-    ro.observe(column);
-    schedule(); // initial measure (covers mount)
-
-    return () => {
-      ro.disconnect();
-      if (raf) cancelAnimationFrame(raf);
-    };
+    if (!block) return;
+    return watchChromeBeside(block, setChromeBeside);
   }, []);
 
   // ---- render ----

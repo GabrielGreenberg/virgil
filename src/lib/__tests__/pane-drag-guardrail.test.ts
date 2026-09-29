@@ -31,12 +31,13 @@
 //      `virgil:drag-gap-start/end` window CustomEvents) was deleted; assert no
 //      live code references it again.
 //
-//   3. LIBRARY RESIZEOBSERVER CENSUS — every `new ResizeObserver` under the
-//      library silo (`library/` + `src/components/library/`) must be on
-//      `PERMITTED_LIBRARY_RESIZE_OBSERVERS` with a why-safe justification.
-//      This is the CI teeth for library/AGENTS.md's census: the unparked-RO
-//      class (an RO outside the PaneFreeze subtree fires per drag frame →
-//      re-renders the Library tree per frame — R4/task-090) and the
+//   3. RESIZEOBSERVER GESTURE CENSUS (both silos since task 837) — every
+//      production `new ResizeObserver` under `src/` or `library/` must be on
+//      `PERMITTED_GESTURE_RESIZE_OBSERVERS` with a verdict (PARKED /
+//      SUPPRESSED / LIVE) and a why. This is the CI teeth for
+//      library/AGENTS.md's census and the layout-gesture law: the unparked-RO
+//      class (an RO firing per drag frame → per-frame re-solve — R4/task-090
+//      in the Library, task 837's figure chrome in the editor) and the
 //      measured-chrome class (RO → setState → SVG d-string loop) both need a
 //      new RO to land, and none of the other greps sees one.
 //
@@ -90,28 +91,70 @@ const PERMITTED_WINDOW_DRAG_GESTURES: Record<string, string> = {
     "[cost: per move = pure arithmetic against geometry snapshotted at the gesture edge (rows at mousedown; the scroll container's viewport top per container identity — task 334) plus a live scrollTop read, and a scheduled frame; per coalesced FRAME = one O(rows) nearest-row scan + one transient band paint; per gesture EDGE = the measureRows snapshot + ONE onSnapBoundary commit] Focus-band edge drag (snap-to-row selection, not a pane resize); body cursor on the edges. Since task 185 it also closes the missed-release end edge the way the engine does — it shares the engine's own predicates (lib/pane-resize/pointer-invariants): primary-button start gate + an isMissedRelease(e) mid-move bail that ends before reading the stray coordinate, plus a teardown end path so unmount can't leave the stamp. Extracted out of OutlinePanel.tsx so the gesture is a testable unit. Writing this tag is what surfaced the container `getBoundingClientRect()` it used to run PER MOVE — a forced layout in the write path for an origin that cannot move while the pointer is held, the same shape task 333 took out of useDragPosition's RAF body, and invisible to every other leg here.",
 };
 
-// ── The library ResizeObserver census ────────────────────────────────────────
-// CI teeth for the census in library/AGENTS.md "Pane-drag doctrine": every
-// `new ResizeObserver` under the library silo (`library/` +
-// `src/components/library/`) is listed here with its why-safe justification,
-// and the same facts live as a comment at the site. This is what keeps the
-// unparked-RO class (R4/task-090: an RO outside the PaneFreeze subtree firing
-// per drag frame → per-frame Library re-renders) and the measured-chrome
-// class (RO → setState → SVG re-path) dead — neither can land without a new
-// RO, and no other guardrail grep sees one. A new RO must either park via
-// `parkDuringLayoutGesture` (when it could fire mid-gesture) or carry an
-// equality-bail justification, in BOTH places.
-const PERMITTED_LIBRARY_RESIZE_OBSERVERS: Record<string, string> = {
+// ── The ResizeObserver gesture census (both silos — task 837) ────────────────
+// CI teeth for the census in library/AGENTS.md "Pane-drag doctrine" and for
+// docs/agents/laws/layout-gesture-stability.md: every production
+// `new ResizeObserver` under `src/` or `library/` is listed here with the
+// ONE question a continuous layout gesture (pane-divider drag, SplitWithCode
+// drag, OS window resize) asks of it — "you may fire every frame of this;
+// do you PARK, SUPPRESS, or stay LIVE, and why?" — and the same facts live as
+// a comment at the site.
+//
+// Until task 837 this population was filtered to the library silo, and the
+// editor silo's ROs sat only on editor-observer-guardrail's allowlist, which
+// asks a DIFFERENT law's question (no deep MO; read-before-write + equality
+// bails) and is gesture-blind. So no guard ever asked an editor RO the
+// gesture question, and the figure chrome re-solved a full block frame per
+// figure per frame of every pane drag for 80 days. One census over both silos
+// asks it by construction.
+//
+// Each entry is `[cost: …] VERDICT — why`, VERDICT one of:
+//   PARKED     — the trigger routes through `parkDuringLayoutGesture`
+//                (stash, replay once on the end edge);
+//   SUPPRESSED — hidden / skipped for the gesture via the bus
+//                (`isLayoutGestureActive` / `onLayoutGestureChange` /
+//                `useLayoutGestureActive`);
+//   LIVE       — deliberately fires mid-gesture; the why must name the reason
+//                (the gesture's own owner, an axis the gesture cannot change,
+//                visible chrome that must track, a no-read callback) and the
+//                equality bail that keeps a no-op fire at a comparison.
+// A PARKED / SUPPRESSED verdict is checked against the file (it must reference
+// the bus); a LIVE one is a human-verified claim, like every allowlist here.
+const PERMITTED_GESTURE_RESIZE_OBSERVERS: Record<string, string> = {
+  // ── library silo ──
   "library/components/panel-tabs/PanelTabStrip.tsx":
-    "[cost: per fire = a scheduled frame; per coalesced FRAME = one flush-right boolean measure behind an equality bail; ZERO fires during a layout gesture (parked)] Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); parked via parkDuringLayoutGesture.",
+    "[cost: per fire = a scheduled frame; per coalesced FRAME = one flush-right boolean measure behind an equality bail; ZERO fires during a layout gesture] PARKED — Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); parked via parkDuringLayoutGesture.",
   "library/components/LeftList.tsx":
-    "[cost: per fire = one equality-bailed setState of the rows-viewport height; live during gestures BY DESIGN] Rows-viewport measure for the virtualization window. Deliberately unparked: a horizontal gutter drag cannot change the height, so mid-drag fires bail to the same state and cost one comparison.",
+    "[cost: per fire = one equality-bailed setState of the rows-viewport height] LIVE — Rows-viewport measure for the virtualization window. Deliberately unparked: a horizontal gutter drag cannot change the height, so mid-drag fires bail to the same state and cost one comparison.",
   "library/components/RightDetail.tsx":
-    "[cost: per fire = a scheduled frame; per coalesced FRAME = one header↔pod rect pin behind a ±0.5px equality gate; ZERO fires during a layout gesture (parked)] textPodRect pinning — parkDuringLayoutGesture as defense-in-depth behind the PaneFreeze width lock.",
+    "[cost: per fire = a scheduled frame; per coalesced FRAME = one header↔pod rect pin behind a ±0.5px equality gate; ZERO fires during a layout gesture] PARKED — textPodRect pinning — parkDuringLayoutGesture as defense-in-depth behind the PaneFreeze width lock.",
   "library/components/PaperHeader.tsx":
-    "[cost: per fire = one boolean threshold read off the delivered borderBoxSize (no DOM read of its own); React bails unless the 560px line is crossed] Narrow flag.",
+    "[cost: per fire = one boolean threshold read off the delivered borderBoxSize (no DOM read of its own); React bails unless the 560px line is crossed] LIVE — Narrow flag; the header must re-flow at the crossing, and a non-crossing fire is one comparison.",
   "library/hooks/usePgmarkPages.ts":
-    "[cost: per fire = a scheduled frame; per coalesced FRAME = an O(pgmarks) chip re-scan whose `pages` array is identity-gated on (label+docY), so consumer memos (PaperRender → EditorPane) hold across a no-op re-scan; ZERO fires during a layout gesture (parked)] \\pgmark chip re-scan.",
+    "[cost: per fire = a scheduled frame; per coalesced FRAME = an O(pgmarks) chip re-scan whose `pages` array is identity-gated on (label+docY), so consumer memos (PaperRender → EditorPane) hold across a no-op re-scan; ZERO fires during a layout gesture] PARKED — \\pgmark chip re-scan.",
+  // ── editor silo ──
+  "src/components/figure-chrome-beside.ts":
+    "[cost: per fire = a parked-or-scheduled frame; per coalesced FRAME = one column style + rect read, one chrome rect, one `resolveContentEdges` (first-line target only — no marker / optical-centre work) and an equality-bailed boolean setState; ZERO recomputes during a layout gesture, exactly one on its end edge] PARKED — FigureBlockNodeView's 'chrome beside?' fit test per figure, observing the block and its column. The column changes width every frame of a pane drag / window resize, and the chrome is hover-hidden for the whole gesture, so nothing needs the live answer (task 837 — the member that motivated this census).",
+  "src/components/panel-primitives.tsx":
+    "[cost: per fire = one header rect read behind an equality bail on the `--pc-header-h` write; ZERO reads during a layout gesture, one per card on its end edge] PARKED — PanelCard header height, which only centres the hover-revealed popout overlay; every card in every open panel re-wraps on a width gesture, and no one sees the overlay mid-drag (task 837).",
+  "src/hooks/useInTextPositions.ts":
+    "[cost: editor RO — per fire = one parked-or-scheduled measure pass; card RO — per fire = O(entries) height bookkeeping read off the delivered entries (no DOM read) + a parked convergence request; ZERO measure passes during a layout gesture, one settle on its end edge] PARKED — both observers: the editor-dom RO fires the geometry park (task 317); the per-card height RO records heights live (the bookkeeping must not be deferred — task 490) and parks only the convergence request (task 837), the accumulate-outside-the-park shape the park's own docblock prescribes.",
+  "src/lib/editor-geometry/service.ts":
+    "[cost: per fire mid-gesture = one O(observed) all-dirty mark, no measure; off-gesture = a uuid-scoped invalidation + a RAF-coalesced measure] PARKED — the EditorGeometry service's one RO (near-zone blocks + the viewport frame); recompute and viewport refresh both ride parkDuringLayoutGesture, and a mid-gesture delivery collapses to one all-dirty mark instead of a per-entry cascade.",
+  "src/components/editor-layout/editor-scrollbar.tsx":
+    "[cost: per fire = a parked-or-scheduled frame; per coalesced FRAME = one read-before-write thumb geometry pass behind equality bails] PARKED — custom editor scrollbar thumb; parked via parkDuringLayoutGesture.",
+  "src/hooks/useFloatingMenuPosition.ts":
+    "[cost: per fire = a parked-or-scheduled frame; per coalesced FRAME = one equality-bailed placement solve] PARKED — floating menu placement follower (LAYOUT_SITE_FLOATING_MENU).",
+  "src/components/chrome/tab-strip-occupancy.ts":
+    "[cost: per fire = a parked scroll-into-view nudge; ZERO nudges during a layout gesture] PARKED — tab-strip occupancy scroll half; the active-tab nudge waits for the end edge.",
+  "src/components/editor-layout/useBarOccupancy.ts":
+    "[cost: per fire = O(tabs) natural-width recovery (label scrollWidth/clientWidth) for the tab row only, the other roles read the delivered contentRect; an equality bail per role, and the resolved tier commits only when it FLIPS] LIVE — the Virgil bar's occupancy ladder. A window resize changes the bar width, and the bar is visible chrome whose priority ladder is what keeps protected status from clipping mid-resize; a no-flip fire commits nothing.",
+  "src/components/editor-layout/split-with-code.tsx":
+    "[cost: container RO — per fire = one setState of a primitive width (React bails on an equal value); natural-width RO — one scrollWidth read, skipped while compressed, equality-bailed] LIVE — the SplitWithCode drag's OWN owner: the compressed-gutter flip and the clip fade derive in render from the live width (the one sanctioned per-frame-state consumer under the pane-drag law), so parking would freeze the gesture it drives.",
+  "src/lib/forest/measure-watch.ts":
+    "[cost: per fire = a width compare per entry off the delivered contentRect (no DOM read); acts only on a host that ADMITS it measured degraded, which is a 0→non-zero reveal, never a gesture frame] LIVE — the one app-wide 'this forest host had no box when I measured it' watcher; a cleanly measured tree ignores every fire, gesture or not.",
+  "src/panels/Outline/OutlinePanel.tsx":
+    "[cost: per fire = two offsetTop/offsetHeight reads + an equality-bailed setState, for each of the two overlays (position highlight, focus band)] LIVE — both outline overlays are VISIBLE during a panel drag and sit on rows that re-wrap as the panel narrows, so a parked overlay would sit on the wrong row until release; host-relative (offsetTop inside the scroll container), and a fire whose row did not move bails at the comparison.",
 };
 
 // ── The unchromed-resizer allowlist (task 189) ───────────────────────────────
@@ -338,8 +381,8 @@ const ALLOWLISTS: Record<
     list: PERMITTED_WINDOW_DRAG_GESTURES,
     cost: true,
   },
-  PERMITTED_LIBRARY_RESIZE_OBSERVERS: {
-    list: PERMITTED_LIBRARY_RESIZE_OBSERVERS,
+  PERMITTED_GESTURE_RESIZE_OBSERVERS: {
+    list: PERMITTED_GESTURE_RESIZE_OBSERVERS,
     cost: true,
   },
   PERMITTED_WINDOW_POINTER_LISTENERS: {
@@ -1163,39 +1206,91 @@ describe("pane-drag guardrail — retired primitives stay dead", () => {
   });
 });
 
-describe("pane-drag guardrail — library ResizeObserver census", () => {
-  const files = walkBothSilos().filter(
-    (f) =>
-      f.rel.startsWith("library/") ||
-      f.rel.startsWith("src/components/library/"),
-  );
+describe("pane-drag guardrail — ResizeObserver gesture census (both silos)", () => {
+  const files = walkBothSilos();
+  const constructsRO = (source: string) =>
+    /\bnew\s+ResizeObserver\b/.test(stripComments(source));
   const detected = files
-    .filter((f) => /\bnew\s+ResizeObserver\b/.test(stripComments(f.source)))
+    .filter((f) => constructsRO(f.source))
     .map((f) => f.rel)
     .sort();
 
-  it("every ResizeObserver in the library silo is on the census allowlist — no unlisted new ones", () => {
-    // If this fails with an EXTRA file: a new ResizeObserver landed in the
-    // library silo. First ask whether layout can express the relationship
-    // (container query, constant caps + stretchable middle — the
-    // FolderTabChrome pattern); if it genuinely needs an RO, park it via
-    // `parkDuringLayoutGesture` when it could fire mid-gesture, equality-bail its
-    // setState, and add it here + to the library/AGENTS.md census with the
-    // same justification.
+  it("every production ResizeObserver in either silo is on the census — no unlisted new ones", () => {
+    // If this fails with an EXTRA file: a new ResizeObserver landed. First ask
+    // whether layout can express the relationship (container query, constant
+    // caps + stretchable middle — the FolderTabChrome pattern); if it
+    // genuinely needs an RO, decide what it does during a pane drag / window
+    // resize — PARK it via `parkDuringLayoutGesture` when it follows the
+    // resizing content, or say LIVE and why — equality-bail its writes, and
+    // add it here (+ the site comment) with that verdict.
     expect(detected).toEqual(
-      Object.keys(PERMITTED_LIBRARY_RESIZE_OBSERVERS).sort(),
+      Object.keys(PERMITTED_GESTURE_RESIZE_OBSERVERS).sort(),
     );
   });
 
   it("keeps the census free of stale entries (every listed file still exists + still constructs an RO)", () => {
     const byRel = new Map(files.map((f) => [f.rel, f.source]));
-    for (const rel of Object.keys(PERMITTED_LIBRARY_RESIZE_OBSERVERS)) {
+    for (const rel of Object.keys(PERMITTED_GESTURE_RESIZE_OBSERVERS)) {
       const source = byRel.get(rel);
       expect(source, `${rel} missing from the walk`).toBeDefined();
       expect(
-        /\bnew\s+ResizeObserver\b/.test(stripComments(source as string)),
+        constructsRO(source as string),
         `${rel} no longer constructs a ResizeObserver — drop its census entry`,
       ).toBe(true);
+    }
+  });
+
+  it("every entry states a verdict, and a PARKED / SUPPRESSED verdict is true of its file", () => {
+    const byRel = new Map(files.map((f) => [f.rel, f.source]));
+    for (const [rel, why] of Object.entries(PERMITTED_GESTURE_RESIZE_OBSERVERS)) {
+      const m = /^\[cost: [^\]]+\] (PARKED|SUPPRESSED|LIVE) — \S/.exec(why);
+      expect(m, `${rel}: entry must read "[cost: …] PARKED|SUPPRESSED|LIVE — why"`).not.toBeNull();
+      const verdict = m![1];
+      const code = stripComments(byRel.get(rel) ?? "");
+      if (verdict === "PARKED") {
+        expect(
+          /\bparkDuringLayoutGesture\s*\(/.test(code),
+          `${rel} claims PARKED but never calls parkDuringLayoutGesture`,
+        ).toBe(true);
+      } else if (verdict === "SUPPRESSED") {
+        expect(
+          /\b(isLayoutGestureActive|onLayoutGestureChange|useLayoutGestureActive)\s*\(/.test(code),
+          `${rel} claims SUPPRESSED but never consults the layout-gesture bus`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("the census population is BOTH silos — the editor silo is not filtered out (task 837)", () => {
+    // The pre-837 leg filtered to `library/` + `src/components/library/`, and
+    // that filter IS the defect class: an editor RO was never asked. Pin that
+    // both halves are present so a re-narrowed walk fails here.
+    const keys = Object.keys(PERMITTED_GESTURE_RESIZE_OBSERVERS);
+    expect(keys.some((k) => k.startsWith("library/"))).toBe(true);
+    expect(
+      keys.some((k) => k.startsWith("src/") && !k.startsWith("src/components/library/")),
+    ).toBe(true);
+    expect(keys).toContain("src/components/figure-chrome-beside.ts");
+  });
+
+  it("every declared layout-gesture probe site is WIRED — a site id with no caller is a follower that was planned and never parked", () => {
+    // Task 317 declared six site ids it never wired: `figure-chrome` — which
+    // then ran unparked for 80 days behind a probe registry that named it —
+    // plus `panel-band-measure`, `split-with-code`, `slash-command-popup`,
+    // `selection-actions-bolt` and `pending-change-pill` (the last three are
+    // text-anchored overlays the law SUPPRESSES via `useLayoutGestureActive`,
+    // and a probe site counts PARKS, so the ids never had a caller to find).
+    // Task 837 wired the first and retired the other five. A site id earns its name by being read
+    // (the registry law).
+    const probe = readFileSync(path.join(SRC, "lib/layout-gesture-probe.ts"), "utf8");
+    const sites = [...probe.matchAll(/export const (LAYOUT_SITE_[A-Z_]+)\s*=/g)].map((m) => m[1]);
+    expect(sites.length).toBeGreaterThan(0);
+    const others = files.filter((f) => f.rel !== "src/lib/layout-gesture-probe.ts");
+    for (const site of sites) {
+      const used = others.some((f) =>
+        new RegExp(`\\b${site}\\b`).test(stripComments(f.source)),
+      );
+      expect(used, `${site} is declared in layout-gesture-probe.ts but no production file uses it`).toBe(true);
     }
   });
 });
