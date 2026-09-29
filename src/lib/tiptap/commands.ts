@@ -204,7 +204,7 @@ function bridgeRow(
  *  greys `citation` out. See the row. */
 function citePrepare(view: EditorView): undefined | false {
   const { doc, selection, schema } = view.state;
-  const citationType = schema.nodes[CARD_ATOM_REGISTRY.citation.nodeName];
+  const citationType = schema.nodes.citation;
   if (
     !citationType ||
     !inlineRangeAllowsAtom(doc, selection.from, selection.to, citationType)
@@ -223,10 +223,12 @@ function footnotePrepare(view: EditorView): Record<string, unknown> | false {
   // read-only view. (`runBridgeAction`'s gate re-checks harmlessly afterwards.)
   if (collabReadOnly(view)) return false;
   const { state } = view;
-  // Task 843: the node name and its id attr come off the registry row (task
-  // 645's SSOT), never hand-paired here.
-  const { nodeName, idAttr } = CARD_ATOM_REGISTRY.footnote;
-  const footnoteNodeType = state.schema.nodes[nodeName];
+  // Task 843: the id attr comes off the registry row (task 645's SSOT) rather
+  // than being hand-paired with the node name here. The node TYPE stays a
+  // literal `nodes.footnote` read: that spelling is what the inline-atom
+  // container census (task 396) locates splice sites by.
+  const { idAttr } = CARD_ATOM_REGISTRY.footnote;
+  const footnoteNodeType = state.schema.nodes.footnote;
   if (!footnoteNodeType) return false;
   // The ONE inline-atom door (task 740): the policy half (061 — a non-prose
   // block greys `footnote` out) and the schema half (396) together. MUST
