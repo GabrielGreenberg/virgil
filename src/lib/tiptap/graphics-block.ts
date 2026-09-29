@@ -80,21 +80,6 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
   },
 });
 
-export function collectGraphicsBlockUuids(doc: {
-  descendants: (
-    fn: (n: { type: { name: string }; attrs: Record<string, unknown> }) => boolean | void,
-  ) => void;
-}): Set<string> {
-  const set = new Set<string>();
-  doc.descendants((node) => {
-    if (node.type.name === "graphicsBlock" && node.attrs.uuid) {
-      set.add(node.attrs.uuid as string);
-    }
-    return true;
-  });
-  return set;
-}
-
 /**
  * The seed the graphics SOURCE popover opens on for a freshly-inserted block —
  * the graphics twin of `FigurePopoverSeed`. `raw` is the `\includegraphics`

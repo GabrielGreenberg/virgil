@@ -43,20 +43,6 @@ import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 
 const CITATION_ATOM = ATOM_REGISTRY.citation;
 
-// Flag: when a bare \cite is typed, signal the panel to open
-let _pendingCitationCreate: string | null = null;
-
-export function consumePendingCitationCreate(): string | null {
-  const v = _pendingCitationCreate;
-  _pendingCitationCreate = null;
-  return v;
-}
-
-/** Used by the `\cite` Virgil command — see commands.ts. */
-export function markPendingCitationCreate(partial: string): void {
-  _pendingCitationCreate = partial;
-}
-
 // Citation regexes are defined in @/lib/cite-commands so the parser, the
 // tiptap input rule, and the bib formatter all agree on the supported set.
 

@@ -17,6 +17,7 @@ import {
 // Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import { createLeafNodeView } from "@/lib/tiptap/leaf-node-view";
+import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
 // The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
 // speller (task 202) — a hand-built `footnote:${id}` here was a second copy.
 import {
@@ -156,6 +157,8 @@ export const Footnote = Node.create<FootnoteOptions>({
     const nodeType = this.type;
     const idGenerator = this.options.idGenerator;
     const docIdRef = this.options.docIdRef;
+    // The orphan detector's deferred-event scope (task 844) — see its plugin.
+    let orphanLifetime: ViewLifetime | null = null;
     return [
       new Plugin({
         key: new PluginKey("footnoteInput"),
@@ -252,8 +255,27 @@ export const Footnote = Node.create<FootnoteOptions>({
       // keystroke that doesn't touch a footnote node. The renumber
       // pass walks the index's `footnotes` array (in doc order), which
       // is at most one entry per footnote in the doc.
+      //
+      // The orphan event is deferred one tick (it leaves the dispatch before
+      // listeners run a React setState), and that tick is bounded by the
+      // EDITOR, not the wall clock (task 844): the plugin's view owns a
+      // `ViewLifetime` disposed on `destroy()`, so a footnote deleted in the
+      // same turn its editor is torn down (doc switch, float close, test
+      // teardown) announces nothing against a dead pane. A reconfigure
+      // re-mounts plugin views, so each mount gets a fresh scope; a
+      // view-less state (headless apply) has no pane to tell.
       new Plugin({
         key: new PluginKey("footnoteOrphanDetector"),
+        view() {
+          const mine = createViewLifetime();
+          orphanLifetime = mine;
+          return {
+            destroy() {
+              mine.dispose();
+              if (orphanLifetime === mine) orphanLifetime = null;
+            },
+          };
+        },
         appendTransaction(transactions, oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           const diff = readPendingDiff(newState);
@@ -284,7 +306,7 @@ export const Footnote = Node.create<FootnoteOptions>({
               // this gate and the delete-confirm read the SAME content model.
               if (cardHasContent("footnote", { content, title })) {
                 const originDocId = docIdRef?.current ?? null;
-                setTimeout(() => {
+                orphanLifetime?.setTimeout(() => {
                   window.dispatchEvent(
                     new CustomEvent("virgil-footnote-orphaned", {
                       detail: { footnoteId: removed.id, content, docId: originDocId },

@@ -8,7 +8,7 @@ export { SlashPopupExtension } from "./slash-popup";
 export { InlineMath, DisplayMath } from "./math";
 export { Footnote } from "./footnote";
 export { LatexComment } from "./latex-comment";
-export { Citation, consumePendingCitationCreate, markPendingCitationCreate } from "./citation";
+export { Citation } from "./citation";
 export { LabelRef, LabelHandler } from "./label";
 export {
   ExampleBlock,
@@ -43,7 +43,7 @@ export { TabIndent } from "./tab-indent";
 export { VirgilListKeymap } from "./list-keymap";
 export { TextColor } from "./text-color";
 export { SmallCaps, MarkSpellingAttrs } from "./small-caps";
-export { TexBlock, collectTexBlockUuids, freshTexBlockAttrs } from "./tex-block";
+export { TexBlock, freshTexBlockAttrs } from "./tex-block";
 export { ForestBlock } from "./forest-block";
 export { freshForestSource } from "@/lib/forest/grammar";
 export type { ForestBlockOptions } from "./forest-block";
@@ -51,14 +51,12 @@ export {
   FigureBlock,
   type FigureBlockOptions,
   insertFigureBlock,
-  collectFigureBlockUuids,
   freshFigureBlockAttrs,
 } from "./figure-block";
 export { FigureCaption } from "./figure-caption";
 export {
   GraphicsBlock,
   insertGraphicsBlock,
-  collectGraphicsBlockUuids,
   freshGraphicsBlockAttrs,
 } from "./graphics-block";
 export {
