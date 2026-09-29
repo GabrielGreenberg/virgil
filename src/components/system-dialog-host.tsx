@@ -103,7 +103,14 @@ export function useSystemDialog(): SystemDialogApi {
 
 /* ── Pending dialog shape — tagged union ────────────────────────── */
 
-type Pending =
+/** One ASK. `id` is its identity for the life of the queue (task 833): the
+ *  head renders keyed by it, so each ask MOUNTS its own dialog. Without it,
+ *  two same-kind asks in a row reconciled into ONE `SystemDialog` whose `open`
+ *  never left `true` — the second ask inherited the first's focused button
+ *  (Enter on a queued danger confirm armed the destruction), skipped the
+ *  shell's per-open focus capture/restore, and a queued prompt kept the
+ *  previous prompt's draft. Every per-open contract assumes a fresh mount. */
+type PendingAsk =
   | { kind: "alert"; opts: AlertOptions; resolve: () => void }
   | {
       kind: "confirm";
@@ -116,15 +123,19 @@ type Pending =
       resolve: (value: string | null) => void;
     };
 
+type Pending = PendingAsk & { id: number };
+
 /* ── Provider ────────────────────────────────────────────────────── */
 
 export function SystemDialogProvider({ children }: { children: ReactNode }) {
   // FIFO queue. We render only the head; shifting on resolve.
   const [queue, setQueue] = useState<Pending[]>([]);
-  const queueRef = useRef<Pending[]>(queue);
-  queueRef.current = queue;
 
-  const enqueue = useCallback((p: Pending) => {
+  // Monotonic ask identity — never reused, so a key can never collide with a
+  // dialog that is still unmounting.
+  const nextIdRef = useRef(0);
+  const enqueue = useCallback((ask: PendingAsk) => {
+    const p: Pending = { ...ask, id: ++nextIdRef.current };
     setQueue((q) => [...q, p]);
   }, []);
 
@@ -158,7 +169,8 @@ export function SystemDialogProvider({ children }: { children: ReactNode }) {
   return (
     <SystemDialogCtx.Provider value={api}>
       {children}
-      {head && <PendingDialog pending={head} onDone={close} />}
+      {/* KEYED by the ask's identity (task 833) — each ask mounts fresh. */}
+      {head && <PendingDialog key={head.id} pending={head} onDone={close} />}
     </SystemDialogCtx.Provider>
   );
 }
@@ -323,7 +335,8 @@ function PromptDialog({
       /* A dismissal is FREE, and here it is the whole point: dismissing a
          prompt IS answering it with `null`, which is what every caller reads
          as "cancelled". The draft is one short line, normally pre-seeded from
-         `opts.initial`, and the next ask re-seeds it. */
+         `opts.initial`, and the next ask re-seeds it — true because each ask
+         mounts its own PromptDialog (the host keys by ask id, task 833). */
       dismissIsFree
       labelledBy={title ? titleId : undefined}
     >
