@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import SystemDialog, {
   SystemDialogBody,
   SystemDialogButton,
@@ -32,7 +32,6 @@ interface Props {
  */
 export default function PdfDropIntroDialog({ fileNames, onClose }: Props) {
   const [dontShowAgain, setDontShowAgain] = useState(false);
-  const titleId = useId();
   // Every path reports the checkbox AT dismiss time: the shell re-reads
   // `onClose` after each commit, so this closure is always the latest render's.
   const close = () => onClose(dontShowAgain);
@@ -46,10 +45,9 @@ export default function PdfDropIntroDialog({ fileNames, onClose }: Props) {
       open
       onClose={close}
       size="lg"
-      labelledBy={titleId}
       dismissIsFree
     >
-      <SystemDialogHeader titleId={titleId} title="Added to your library" />
+      <SystemDialogHeader title="Added to your library" />
       <SystemDialogBody className="flex flex-col gap-3.5">
         <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--muted)" }}>
           <strong style={{ color: "var(--foreground)", fontWeight: 600 }}>

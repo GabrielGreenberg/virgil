@@ -25,7 +25,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -184,8 +183,6 @@ function PendingDialog({
   pending: Pending;
   onDone: () => void;
 }) {
-  const titleId = useId();
-
   if (pending.kind === "alert") {
     const { title, message, okLabel = "OK", tone = "default", size = "sm" } =
       pending.opts;
@@ -198,9 +195,8 @@ function PendingDialog({
         open
         onClose={finish}
         size={size}
-        labelledBy={title ? titleId : undefined}
       >
-        <SystemDialogHeader title={title} titleId={titleId} />
+        <SystemDialogHeader title={title} />
         <SystemDialogBody>
           {/* The tone reaches the MESSAGE, which is what it describes. A red
               failure notice is honest; a red BUTTON says "pressing this
@@ -263,9 +259,8 @@ function PendingDialog({
         open
         onClose={() => done(false)}
         size={size}
-        labelledBy={title ? titleId : undefined}
       >
-        <SystemDialogHeader title={title} titleId={titleId} />
+        <SystemDialogHeader title={title} />
         <SystemDialogBody>
           <div className="text-xs text-ink-body leading-relaxed">{message}</div>
         </SystemDialogBody>
@@ -289,17 +284,15 @@ function PendingDialog({
   }
 
   // prompt
-  return <PromptDialog pending={pending} onDone={onDone} titleId={titleId} />;
+  return <PromptDialog pending={pending} onDone={onDone} />;
 }
 
 function PromptDialog({
   pending,
   onDone,
-  titleId,
 }: {
   pending: Extract<Pending, { kind: "prompt" }>;
   onDone: () => void;
-  titleId: string;
 }) {
   const {
     title,
@@ -338,9 +331,8 @@ function PromptDialog({
          `opts.initial`, and the next ask re-seeds it — true because each ask
          mounts its own PromptDialog (the host keys by ask id, task 833). */
       dismissIsFree
-      labelledBy={title ? titleId : undefined}
     >
-      <SystemDialogHeader title={title} titleId={titleId} />
+      <SystemDialogHeader title={title} />
       <SystemDialogBody>
         {message && (
           <div className="text-xs text-ink-body leading-relaxed mb-2">

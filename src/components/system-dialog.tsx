@@ -10,7 +10,7 @@
  * once.
  *
  * Composition kit:
- *   <SystemDialog size="sm" open onClose={...} anchorRef={...} labelledBy={...}>
+ *   <SystemDialog size="sm" open onClose={...} anchorRef={...}>
  *     <SystemDialogHeader title="Move footnote?" />
  *     <SystemDialogBody>
  *       <p>This will move the footnote…</p>
@@ -40,7 +40,10 @@
  *     that owns Enter (textarea / contenteditable / select / link, or anything
  *     that called `preventDefault`) keeps it. Full rule + why:
  *     {@link file://./dialog-enter-policy.ts} (task 389).
- *   - role=dialog, aria-modal=true, aria-labelledby/aria-describedby
+ *   - role=dialog, aria-modal=true, aria-describedby, and aria-labelledby
+ *     WITHOUT the caller's help: a titled `SystemDialogHeader` registers its
+ *     `<h2>` id with the shell, which names the frame by it (task 832). Pass
+ *     `labelledBy` only when a CUSTOM header strip holds the title.
  *   - initial focus, once the portal exists: whatever already claimed focus
  *     INSIDE the frame, else the dialog's own `initialFocus` claim (a name
  *     field, a file row), else the cued button, else the frame — so focus always
@@ -95,6 +98,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -157,6 +161,10 @@ export type SystemDialogButtonVariant =
 
 interface DialogCtxValue {
   labelledBy?: string;
+  /** A `SystemDialogHeader` rendering a title reports its `<h2>` id here, so
+   *  the frame's accessible name is a SHELL fact rather than a caller duty
+   *  (task 832). Returns the unregister cleanup. */
+  registerTitle: (id: string) => () => void;
   describedBy?: string;
   registerAutoFocus: (el: HTMLButtonElement | null) => void;
   autoFocusRef: RefObject<HTMLButtonElement | null>;
@@ -387,6 +395,20 @@ export default function SystemDialog({
   const registerAutoFocus = useCallback((el: HTMLButtonElement | null) => {
     autoFocusRef.current = el;
   }, []);
+
+  // The accessible name (task 832). A titled `SystemDialogHeader` registers its
+  // `<h2>` id; the frame points `aria-labelledby` at it. An explicit
+  // `labelledBy` still wins (a custom header strip names its own element), and
+  // a dialog with no titled header points at nothing rather than a missing id.
+  const [registeredTitleId, setRegisteredTitleId] = useState<string | null>(
+    null,
+  );
+  const registerTitle = useCallback((id: string) => {
+    setRegisteredTitleId(id);
+    return () =>
+      setRegisteredTitleId((cur) => (cur === id ? null : cur));
+  }, []);
+  const effectiveLabelledBy = labelledBy ?? registeredTitleId ?? undefined;
 
   // Read through a ref so an inline arrow at the call site cannot churn the
   // focus effect (which must run exactly once per open). Written in an effect,
@@ -778,6 +800,7 @@ export default function SystemDialog({
 
   const ctxValue: DialogCtxValue = {
     labelledBy,
+    registerTitle,
     describedBy,
     registerAutoFocus,
     autoFocusRef,
@@ -810,7 +833,7 @@ export default function SystemDialog({
           className={`${t.surface} ${frameClassName} focus:outline-none`}
           style={{ ...placement, zIndex }}
           role="dialog"
-          aria-labelledby={labelledBy}
+          aria-labelledby={effectiveLabelledBy}
           aria-describedby={describedBy}
         >
           {children}
@@ -831,7 +854,7 @@ export default function SystemDialog({
         style={{ zIndex: t.zIndex, paddingTop: "var(--window-inset-top, 0px)" }}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={labelledBy}
+        aria-labelledby={effectiveLabelledBy}
         aria-describedby={describedBy}
         {...backdropPress}
       >
@@ -867,7 +890,8 @@ export interface SystemDialogHeaderProps {
   subtitle?: ReactNode;
   /** Custom children replace the default title/subtitle rendering. */
   children?: ReactNode;
-  /** Override the auto-generated title id (match `labelledBy` on SystemDialog). */
+  /** Override the auto-generated title id. Rarely needed: the header reports
+   *  whichever id it renders to the shell, which names the dialog by it. */
   titleId?: string;
 }
 
@@ -881,6 +905,12 @@ export function SystemDialogHeader({
   const autoId = useId();
   const id = titleId ?? ctx?.labelledBy ?? `sd-title-${autoId}`;
   const t = SYSTEM_DIALOG_TOKENS;
+  const rendersTitle = children == null && !!title;
+  const registerTitle = ctx?.registerTitle;
+  useLayoutEffect(() => {
+    if (!rendersTitle || !registerTitle) return;
+    return registerTitle(id);
+  }, [rendersTitle, registerTitle, id]);
   return (
     <div className={t.header}>
       {children ?? (
