@@ -46,8 +46,14 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
-import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
+import {
+  useEditor,
+  EditorContent,
+  type Editor,
+  type JSONContent,
+} from "@tiptap/react";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import type { EditorHandle } from "@/components/Editor";
@@ -64,11 +70,14 @@ import {
 // L3f-2: the marked-range resolver now lives in one shared util consumed by
 // this float, the linkedRange lift-overlay hooks, and the text-range-move
 // drop spec — see src/lib/linked-anchor-range.ts.
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import {
-  blocksToRangeSlice,
-  findLinkedAnchorRange,
-  rangeSliceToBlocks,
-} from "@/lib/linked-anchor-range";
+  checkLinkedRangeRepresentable,
+  describeLinkedRangeRefusal,
+  linkedRangeAsDoc,
+  planLinkedRangeWriteBack,
+  type LinkedRangeRefusal,
+} from "@/lib/linked-range-writeback";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { TEXT_OBJECT_REGISTRY } from "../text-object-registry";
 import type { TextObjectFloatBodyProps } from "../types";
@@ -102,7 +111,12 @@ export function LinkedRangeBody({
     // No range write here: `useFloatMainSync` seeds (and thereafter tracks)
     // the live range itself on attach, and this memo runs during render —
     // before the hook exists.
-    return { doc: sliceAsDoc(mainEditor.state.doc, range), missing: false };
+    // A cut that cannot be taken seeds nothing — and the seed check below
+    // refuses it, so an empty float can never write over the range.
+    return {
+      doc: linkedRangeAsDoc(mainEditor.state.doc, range),
+      missing: false,
+    };
     // Seed once on mount; thereafter useFloatMainSync drives main→float.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorId]);
@@ -163,7 +177,7 @@ export function LinkedRangeBody({
       // so useFloatMainSync re-reads idempotently (no echo).
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
-    content: seed.doc,
+    content: seed.doc ?? EMPTY_FLOAT_DOC,
     editable: true,
     immediatelyRender: false,
     editorProps: {
@@ -173,11 +187,20 @@ export function LinkedRangeBody({
       },
     },
     onUpdate({ editor }) {
-      writeBackToMain(editor.getJSON());
+      writeBackToMain(editor);
     },
   });
 
-  function writeBackToMain(floatDoc: JSONContent) {
+  // Task 842 — the write door. A write-back REPLACES the whole range, so it
+  // may only land when the float held everything it replaces and main can
+  // rebuild every child it writes; otherwise it refuses (no dispatch) and the
+  // body says so. `planLinkedRangeWriteBack` asks both schemas; this only
+  // dispatches or reports.
+  const [refusal, setRefusal] = useState<LinkedRangeRefusal | null>(null);
+
+  // Takes the float editor from `onUpdate` itself rather than closing over
+  // `floatEditor`, which is null on the render whose closure useEditor keeps.
+  function writeBackToMain(floatEd: Editor) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
     // The shared tracker's live range IS this float's range — it is mapped
@@ -186,42 +209,55 @@ export function LinkedRangeBody({
     // maintained copy would silently drift the moment a skip happened.
     const r = sourceRangeRef.current;
     if (!r) return;
+    let plan: ReturnType<typeof planLinkedRangeWriteBack>;
     try {
-      // Reconstruct the edited block nodes from the float doc — the same blocks
-      // `rangeSliceToBlocks` produced for the seed, now carrying the user's
-      // edit.
-      const blocks: PMNode[] = [];
-      for (const c of floatDoc.content ?? []) {
-        try {
-          blocks.push(ed.state.schema.nodeFromJSON(c));
-        } catch {
-          /* skip invalid children */
-        }
-      }
-      if (blocks.length === 0) return;
-      // Write back as the faithful INVERSE of the seed extraction: a Slice that
-      // reuses the current cut's open depths (or unwraps a single inline
-      // paragraph), so an unedited round-trip is byte-identical and an edited
-      // one preserves the boundary paragraphs — no split, no extra wrapping
-      // list. (`r.from`/`r.to` are TEXT-bounded, usually mid-paragraph;
-      // replacing with fully-closed blocks via `replaceWith` was the L3f-7 bug.)
-      const slice = blocksToRangeSlice(ed.state.doc, r, blocks);
-      const tr = ed.state.tr.replace(r.from, r.to, slice);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (!tr.docChanged) return;
-      ed.view.dispatch(tr);
-      // No range write here. `useMainTransactionSync` ran synchronously inside
-      // the dispatch above and already mapped the range through this
-      // transaction AND its appended ones. Restating the root-only arithmetic
-      // (`{r.from, r.from + slice.size}`) would agree in the ordinary case and
-      // CLOBBER the tracker whenever a plugin resized the region on top of our
-      // write — which is exactly the case where the tracker is the only one
-      // that knows.
-    } catch {
-      /* schema mismatch / stale range — swallow */
+      plan = planLinkedRangeWriteBack(
+        ed.state,
+        r,
+        floatEd.getJSON(),
+        floatEd.schema,
+      );
+    } catch (err) {
+      // A stale range (positions past the doc end) — nothing was written.
+      console.warn("[linkedRange] write-back skipped — stale range", err);
+      return;
     }
+    if (!plan.ok) {
+      reportRefusal(floatEd, plan);
+      return;
+    }
+    if (!plan.tr) return;
+    plan.tr.setMeta("addToHistory", false);
+    plan.tr.setMeta(FLOAT_WRITE_META, floatId);
+    ed.view.dispatch(plan.tr);
+    // No range write here. `useMainTransactionSync` ran synchronously inside
+    // the dispatch above and already mapped the range through this
+    // transaction AND its appended ones. Restating the root-only arithmetic
+    // (`{r.from, r.from + slice.size}`) would agree in the ordinary case and
+    // CLOBBER the tracker whenever a plugin resized the region on top of our
+    // write — which is exactly the case where the tracker is the only one
+    // that knows.
   }
+
+  function reportRefusal(floatEd: Editor, r: LinkedRangeRefusal) {
+    console.warn(
+      "[linkedRange] refused — the popout cannot represent this range; the " +
+        "document was NOT modified.",
+      { reason: r.reason, constructs: r.constructs, anchorId },
+    );
+    floatEd.setEditable(false);
+    setRefusal((prev) => prev ?? r);
+  }
+
+  // Seed half of the door: a range the float schema cannot hold mounts BLANK
+  // (TipTap swallows the mismatch), so say so up front and keep the float
+  // read-only rather than wait for a keystroke the write door would refuse.
+  useEffect(() => {
+    if (!floatEditor || seed.missing) return;
+    const held = checkLinkedRangeRepresentable(floatEditor.schema, seed.doc);
+    if (!held.ok) reportRefusal(floatEditor, held);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floatEditor, seed]);
 
   // Re-derive from the live mark whenever a transaction touched the range —
   // the mark's extent is the truth, and only it can tell us the run grew at a
@@ -238,7 +274,11 @@ export function LinkedRangeBody({
           missing: true,
         };
       }
-      return { doc: sliceAsDoc(doc, range), missing: false, range };
+      return {
+        doc: linkedRangeAsDoc(doc, range) ?? EMPTY_FLOAT_DOC,
+        missing: false,
+        range,
+      };
     },
     [anchorId],
   );
@@ -275,6 +315,7 @@ export function LinkedRangeBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
+      {refusal && !sourceMissing ? <RefusalBanner refusal={refusal} /> : null}
       <div
         className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
       >
@@ -287,25 +328,25 @@ export function LinkedRangeBody({
   );
 }
 
+const EMPTY_FLOAT_DOC: JSONContent = {
+  type: "doc",
+  content: [{ type: "paragraph" }],
+};
+
 /**
- * Build a TipTap doc that wraps the main-doc slice at `[from, to)`. The
- * slice may carry partial-paragraph open depths; the shared
- * `rangeSliceToBlocks` unwraps an inline run into one paragraph and keeps a
- * multi-block range's blocks — the SAME transform the `text-range-move`
- * between-paragraphs drop uses (L3f-3), so the float and the move never
- * drift.
+ * Stated beside the body, like `SourceMissingBanner`: the float is showing a
+ * range it cannot represent, so it is read-only and nothing was written.
  */
-function sliceAsDoc(
-  doc: PMNode,
-  range: { from: number; to: number },
-): JSONContent {
-  try {
-    const blocks = rangeSliceToBlocks(
-      doc.slice(range.from, range.to),
-      doc.type.schema,
-    );
-    return { type: "doc", content: blocks.map((n) => n.toJSON() as JSONContent) };
-  } catch {
-    return { type: "doc", content: [{ type: "paragraph" }] };
-  }
+function RefusalBanner({ refusal }: { refusal: LinkedRangeRefusal }) {
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-2 px-2 h-6 text-[11px] bg-[var(--surface-warning,#fdf3d1)] border-b border-[var(--edge-warning,#e7d49a)] text-[var(--ink-warning,#7a5a16)]"
+    >
+      <span className="flex-1 truncate">
+        This range holds {describeLinkedRangeRefusal(refusal)} the popout
+        can&apos;t show — editing is off, nothing was changed.
+      </span>
+    </div>
+  );
 }

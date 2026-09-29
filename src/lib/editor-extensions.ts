@@ -1688,7 +1688,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
   // (sectionNumbers / sectionFoldingPlugin — omitted inside the heading
   // builder's float mode — and ExpexNumbering) and the main-only chrome
   // (Placeholder, SlashPopupExtension, SmartQuotes, TextObjectOrphanGuard,
-  // Title/Maketitle/Label handlers, EmptyParagraphTitleCleaner,
+  // LabelHandler, EmptyParagraphTitleCleaner,
   // MarginaliaAnchorGuard, PgMarkChip, readOnlyEnforcer). data-uuid DOM
   // exposure moved off the deleted UuidAttrDecorator onto the NodeViews'
   // own stamps (2d), main-gated inside each factory.
@@ -1951,9 +1951,16 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // siblings are doc-wide main-only guards; the float needs only the node
     // spec (like it already omits sectionNumbers / ExpexNumbering).
     TitleField.configure({ surface: isFloat ? "float" : "main" }),
+    // maketitleMarker (task 842): PROMOTED the same way, for the same reason.
+    // It is a schema NODE (the hidden `\maketitle` block), not a doc-wide
+    // guard, and it was the last main node the float schema lacked — so a
+    // linked range spanning it mounted BLANK and the float's first write-back
+    // replaced the whole range. Its surface gate (the data-uuid stamp) is
+    // already per-surface. Main position unchanged; the census in
+    // `linked-range-popout-fidelity.test.ts` now pins float ⊇ main.
+    MaketitleMarker.configure({ surface: isFloat ? "float" : "main" }),
     ...(isMain
       ? [
-          MaketitleMarker.configure({ surface: "main" }),
           LabelHandler,
           EmptyParagraphTitleCleaner,
         ]
