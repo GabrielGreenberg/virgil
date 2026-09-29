@@ -71,6 +71,7 @@ import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 import { announceSurfaceEditability } from "@/lib/tiptap/surface-editable";
 import { findProseTextRange } from "@/lib/find-prose-text";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -384,6 +385,15 @@ let busStatsInstalled = false;
 function installBusStatsProbe() {
   if (busStatsInstalled || typeof window === "undefined") return;
   busStatsInstalled = true;
+  // `window.__virgil.collectLinks()` — ad-hoc Link-system inspection. Same
+  // registry, same ladder (task 844): it used to be a per-mount single slot
+  // that the last-mounted pane owned and ANY pane's unmount deleted.
+  (window as unknown as { __virgil?: { collectLinks: () => unknown } }).__virgil = {
+    collectLinks: () => {
+      const ed = pickProbeEditor(busStatsEditors);
+      return ed ? collectLinksFromEditor(ed) : null;
+    },
+  };
   void import("@/lib/tiptap/doc-structure").then(
     ({ getBus, peekStructureVersion, getMaterializeCount }) => {
       (
@@ -410,6 +420,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   { initialContent, onUpdate, highlightText, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
+  // The ONE timer scope this editor component arms through (law "a NodeView
+  // owns its timers' lifetime", React half) — declared first so its disposal
+  // runs before the cleanups below. Unmount cancels anything still queued.
+  const lifetime = useViewLifetime();
   const highlightTextRef = useRef(highlightText);
   highlightTextRef.current = highlightText;
   const highlightRangeRef = useRef(highlightRange);
@@ -728,7 +742,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               view.dispatch(tr);
 
               const originDocId = docIdRef.current ?? null;
-              setTimeout(() => {
+              lifetime.setTimeout(() => {
                 window.dispatchEvent(
                   new CustomEvent("virgil-footnote-panel-dropped", {
                     // `docId` scopes the orphan-clear to the originating doc's
@@ -944,18 +958,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // (its getters read CSS vars off this element at scroll time). See Part B above.
   useEffect(() => {
     editorViewDomRef.current = (editor?.view?.dom as HTMLElement | undefined) ?? null;
-  }, [editor]);
-
-  // Dev-only: expose window.__virgil.collectLinks() for ad-hoc inspection
-  // while the Link system is being rolled out. Reads from the live editor.
-  useEffect(() => {
-    if (!editor) return;
-    type VirgilDevtools = { collectLinks: () => unknown };
-    const w = window as typeof window & { __virgil?: VirgilDevtools };
-    w.__virgil = { collectLinks: () => collectLinksFromEditor(editor) };
-    return () => {
-      if (w.__virgil) delete w.__virgil;
-    };
   }, [editor]);
 
   useImperativeHandle(ref, () => ({

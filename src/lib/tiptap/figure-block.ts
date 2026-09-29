@@ -159,21 +159,6 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
   },
 });
 
-export function collectFigureBlockUuids(doc: {
-  descendants: (
-    fn: (n: { type: { name: string }; attrs: Record<string, unknown> }) => boolean | void,
-  ) => void;
-}): Set<string> {
-  const set = new Set<string>();
-  doc.descendants((node) => {
-    if (node.type.name === "figureBlock" && node.attrs.uuid) {
-      set.add(node.attrs.uuid as string);
-    }
-    return true;
-  });
-  return set;
-}
-
 /**
  * The seed the figure SOURCE popover opens on for a freshly-inserted block —
  * the `{ kind, raw, pos, rect }` shape EditorLayout's `activeFigure` /

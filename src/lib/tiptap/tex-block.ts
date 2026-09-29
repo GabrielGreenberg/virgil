@@ -108,17 +108,6 @@ export const TexBlock = Node.create<TexBlockOptions>({
   },
 });
 
-export function collectTexBlockUuids(doc: { descendants: (fn: (n: { type: { name: string }; attrs: Record<string, unknown> }) => boolean | void) => void }): Set<string> {
-  const set = new Set<string>();
-  doc.descendants((node) => {
-    if (node.type.name === "texBlock" && node.attrs.uuid) {
-      set.add(node.attrs.uuid as string);
-    }
-    return true;
-  });
-  return set;
-}
-
 export function freshTexBlockAttrs(existing: Set<string>): { uuid: string; code: string } {
   return { uuid: generateShortId(existing), code: "" };
 }
