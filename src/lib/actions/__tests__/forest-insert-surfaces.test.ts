@@ -457,7 +457,7 @@ describe("census — both surfaces enter the SHARED dispatch", () => {
 
   it("the slash command routes through the registry row, not a hand-built node", () => {
     const src = readCode(COMMANDS);
-    expect(src).toContain('runViewOnlyAction("forest"');
+    expect(src).toContain('viewRow("forest")');
     expect(src).not.toContain("forestBlock");
     expect(src).not.toContain("freshForestSource");
   });
