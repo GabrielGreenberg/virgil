@@ -86,8 +86,8 @@ const LEDGER: Record<string, Row> = {
   },
   "components/Marginalia.tsx": {
     scope: "gesture",
-    events: ["window.mousemove", "window.mouseup", "document.mousedown", "document.keydown"],
-    why: "marker drag pair; the overflow group's click-away/Escape is armed only while that group is open",
+    events: ["window.mousemove", "window.mouseup"],
+    why: "marker drag pair (the overflow group's click-away/Escape moved onto useMenuDismiss, task 819)",
   },
   "components/PendingChangePill.tsx": {
     scope: "visible",
@@ -345,6 +345,32 @@ function hitsOf(code: string): string[] {
   return [...code.matchAll(LITERAL_RE)].map((m) => `${m[1]}.${m[2] ?? m[3]}`).sort();
 }
 
+/** Multiset difference `a − b` (each element of `b` cancels one of `a`). */
+function minus(a: string[], b: string[]): string[] {
+  const left = [...b];
+  return a.filter((x) => {
+    const i = left.indexOf(x);
+    if (i < 0) return true;
+    left.splice(i, 1);
+    return false;
+  });
+}
+
+/** A MISMATCH line that names its own fix (task 835): a listener moved onto a
+ *  shared door leaves the ledger over-declared, and the worker hitting it in a
+ *  targeted run should be told exactly which events to delete or add. */
+function mismatchLine(r: string, want: string[], hits: string[]): string {
+  const over = minus(want, hits);
+  const under = minus(hits, want);
+  const fix = [
+    over.length ? `delete ${over.join(", ")} from its LEDGER entry (no longer registered in code)` : "",
+    under.length ? `declare ${under.join(", ")} in its LEDGER entry (or route through usePaneScopedListener)` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return `MISMATCH ${r}: ledger ${want.join(", ")} ≠ code ${hits.join(", ")} — ${fix}; update the entry's \`why\` to match`;
+}
+
 describe("per-pane listener census (task 598)", () => {
   it("the closure is real (canary: it reaches the pane's hooks)", () => {
     const files = [...CODE.keys()].map(rel);
@@ -366,7 +392,7 @@ describe("per-pane listener census (task 598)", () => {
       }
       const want = declared;
       if (JSON.stringify(want) !== JSON.stringify(hits)) {
-        drift.push(`MISMATCH ${r}: ledger ${want.join(", ")} ≠ code ${hits.join(", ")}`);
+        drift.push(mismatchLine(r, want, hits));
       }
     }
     expect(drift.join("\n")).toBe("");
@@ -388,6 +414,17 @@ describe("per-pane listener census (task 598)", () => {
       })
       .map(([r, row]) => `${r} (${row.scope})`);
     expect(unbacked.join("\n")).toBe("");
+  });
+
+  it("a MISMATCH names its fix: the over- and under-declared events (task 835)", () => {
+    const line = mismatchLine(
+      "components/X.tsx",
+      ["document.keydown", "document.mousedown", "window.mousemove"].sort(),
+      ["window.mousemove", "window.resize"],
+    );
+    expect(line).toContain("delete document.keydown, document.mousedown from its LEDGER entry");
+    expect(line).toContain("declare window.resize in its LEDGER entry");
+    expect(mismatchLine("a", ["w.x", "w.x"], ["w.x"])).toContain("delete w.x from");
   });
 
   it("the teeth bite: a scope check fails on code that lacks its mechanism", () => {
