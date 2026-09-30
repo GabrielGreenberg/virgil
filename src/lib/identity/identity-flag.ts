@@ -3,8 +3,9 @@
  *
  * The switch itself (default, accepted spellings, failure branches) is declared
  * once in `src/lib/feature-flags.ts`; this module is just the named door its
- * ~20 call sites already use. Flag OFF MUST preserve current behavior exactly —
- * every site that reads it keeps its legacy path intact.
+ * three readers use (`useAnnotations`, `useBibReview`, `useIdentityBusConsumer`)
+ * — each keeps its legacy path intact when OFF. The citekey-rename cascade is
+ * NOT among them: it is unconditional since task 689 (`useCitations`).
  */
 import { readFlag, setFlagOverride } from "@/lib/feature-flags";
 
