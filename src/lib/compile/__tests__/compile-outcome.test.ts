@@ -137,6 +137,12 @@ describe("task 575 — the remaining statuses", () => {
   });
 });
 
+describe("task 855 — a cancel is not a failure", () => {
+  it("a cancelled compile raises no dialog and is never worded as failed", () => {
+    expect(describeCompileOutcome({ ...base, status: "cancelled" })).toBeNull();
+  });
+});
+
 describe("task 575 — CENSUS: one speller for the outcome words", () => {
   const ROOT = join(__dirname, "..", "..", "..", "..");
   const read = (p: string) => commentsStripped(readFileSync(join(ROOT, p), "utf8"));

@@ -125,7 +125,9 @@ export function useLatexCompile(
             if (mismatch) {
               const resolution = await onDocumentClassMismatch(mismatch);
               if (resolution.kind === "cancel") {
-                finishCompile(docId, "error", "Compile cancelled.");
+                // Task 855: the user's own Cancel is not a failure — the pane words
+                // it in the neutral register, never as an alert.
+                finishCompile(docId, "cancelled");
                 return;
               }
               if (resolution.kind === "switch") {
@@ -241,6 +243,9 @@ export function useLatexCompile(
 
       // No usable PDF. Distinguish the failure kinds for a clear message.
       setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...packageErrors]);
+      // A cancelled compile is the user's choice: nothing to log as an error,
+      // and the outcome vocabulary raises no dialog for it (task 855).
+      if (result.status === "cancelled") return;
       console.error(
         `[compile] SwiftLaTeX ${result.status} (ranPasses=${result.ranPasses})\n\n${result.log}`,
       );

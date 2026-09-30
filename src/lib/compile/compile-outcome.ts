@@ -73,14 +73,19 @@ function packageClause(result: CompileResult): string | null {
 }
 
 /**
- * The user-facing account of a compile. `null` for a clean `ok` (there is
- * nothing to say). Every reader of a `CompileResult` that puts words in front
+ * The user-facing account of a compile. `null` for a clean `ok` or a
+ * `cancelled` compile (there is nothing to say). Every reader of a `CompileResult` that puts words in front
  * of the user reads THIS — the census in `compile-outcome.test.ts` holds it.
  */
 export function describeCompileOutcome(result: CompileResult): CompileOutcomeView | null {
   const packages = packageClause(result);
   switch (result.status) {
     case "ok":
+      return null;
+
+    // The user (or the caller on their behalf) chose not to compile. Nothing
+    // failed, so there is no dialog to raise (task 855).
+    case "cancelled":
       return null;
 
     case "degraded": {

@@ -294,3 +294,16 @@ so against clean `main`: clear the compile cache (IndexedDB), compile a tikz and
 a forest document, and confirm the progress pane reports ZERO mirror downloads
 for those families. **A straggler streaming IS the capture** — add its reqname
 to the family's seeds and re-run `node scripts/vendor-tex-family.mjs --all`.
+
+### The record's vocabulary half (task 855)
+
+The progress record says what the user is waiting on NOW, and a cancel is its
+own word. Downloads happen inside a pass and nothing marks the end of a burst,
+so the record stays `fetching`; the PDF pane's renderers (`useCompileView` in
+`CompilePaneStatus.tsx`) show "Typesetting — downloaded N packages" once no
+download has arrived for `FETCH_QUIET_MS` (one lifetime-owned timer, armed only
+while fetching). The fetch sentence knows cold (no PDF) from warm (the overlay
+over a showing PDF), and a continuation's attempt line rides alongside it. An
+abort is `status: "cancelled"` (was `failed` → "Compile failed"), the
+documentclass dialog's Cancel records outcome `cancelled` (was `error` → a
+`role="alert"`), and `describeCompileOutcome` returns `null` for it.
