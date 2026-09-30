@@ -1,4 +1,4 @@
-<!-- last-verified: fc84e325 2026-09-28 -->
+<!-- last-verified: 2a598dc8 2026-09-30 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -152,9 +152,11 @@ comment conventions, CSS, paths) is [gardening.md](gardening.md).
 
 A second identity axis sits beside the marker-id one above: **renaming a citekey
 or regenerating an inline-atom id must not strand the sidecars keyed on the old
-value.** The cascade is the single writer for any such identity change. It is
-gated behind two **default-OFF** localStorage flags — flag-OFF preserves the
-legacy paths exactly, so nothing below is on the hot path until a flag is set.
+value.** The cascade is the single writer for any such identity change. The
+citekey-rename cascade is UNFLAGGED (task 689); what sits behind the two
+**default-OFF** localStorage flags below is the uid-keyed sidecar format, the
+identity-bus consumer and the orphan-footnote writer — flag-OFF keeps each of
+those on its legacy path.
 
 - **`virgil:identity-cascade`** (`src/lib/identity/identity-flag.ts`,
   `isIdentityCascadeOn`) — the uid-keyed sidecar FORMAT (v2 annotations,

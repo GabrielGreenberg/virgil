@@ -1,4 +1,4 @@
-<!-- last-verified: f33de1c5 2026-09-29 -->
+<!-- last-verified: 2a598dc8 2026-09-30 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -160,18 +160,18 @@ CHIP 7a; task 385 added the **tree** cell for `forest`). CHIP 6a/6b folded the F
 text-color / block-atom cells INTO the registry: each cell dispatches via
 `runGridAction(id)` → `VIRGIL_ACTION_REGISTRY[id].run(ctx)` (a view-only
 `ActionContext` off the live selection — the SAME SSOT the slash/typed surfaces
-reach). Two cells are still direct local calls (`\tex` → `insertTexBlock`,
-`ex` → `exampleRun`).
+reach). Every cell, `\tex` and `ex` included, now routes through
+`runGridAction`.
 
 | Cell | Effect | Dispatch |
 |---|---|---|
 | Bold / Italic / Strike / Code / Small caps (task 808, row 4) | toggle inline mark | `runGridAction("bold")` … → registry row (`backbone: "tiptap-chain"`) |
 | BlockType | set paragraph/heading level | `<BlockTypeDropdown>` (`setBlockType`) |
 | Bullet list / Numbered list / Blockquote | toggle block wrapper | `runGridAction("bullet-list")` … → registry row |
-| Example (`ex`) | wrap selection in an `exampleBlock` | `exampleRun` (the canonical registry creator, shared with slash `\ex`) |
+| Example (`ex`) | wrap selection in an `exampleBlock` | `runGridAction("example")` → registry `exampleRun` (shared with slash `\ex`) |
 | Inline math (`$x$`) / Display math (`$$`) | wrap selection in math | `runGridAction("inline-math" / "display-math")` → registry row |
 | Text color (`A`) | apply/clear text color | `runGridAction("text-color")` → `openColorPopover` → `SelectionColorPopover` → `setTextColor` / `unsetTextColor` |
-| `\tex` | insert a raw-LaTeX block | `insertTexBlock` ([tex-block.ts](../../src/lib/tiptap/tex-block.ts)) — grid cell still calls it directly; the slash `\tex` uses the registry's `texRun` |
+| `\tex` | insert a raw-LaTeX block (over a selection, seeded with the span's LaTeX SOURCE — marks and id-less inline atoms carried, task 848, `captureRangeLatexSource` in [slice-capture.ts](../../src/lib/tiptap/slice-capture.ts)) | `runGridAction("tex")` → registry `texRun` (shared with slash `\tex`) |
 | Cross-ref (`\ref`) | open the shared inline-atom create popover in `\ref` mode | `runGridAction("ref")` → registry `refRun` → `openAtomCreate("ref")` (the unified seam — see [the create popover](#the-unified-inline-atom-create-popover), below) |
 | Figure (`fig.`) | insert a figure block | `runGridAction("figure")` → registry `figureRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
 | Image | insert a graphics block | `runGridAction("graphics")` → registry `graphicsRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
@@ -204,7 +204,10 @@ capture/schema-symmetry predicate asked of the SLICE
 ([capture-symmetry.ts](../../src/lib/tiptap/capture-symmetry.ts)) rather than the
 "did the harvest come back empty?" proxy that waved through every MIXED selection;
 what a capture cannot carry reads from `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`, hoisted
-into the registry it derives from. `posHostsInlineAtom` is the SSOT for INLINE-atom inserts (inline-math `$x$`, `\ref`,
+into the registry it derives from. Since task 848 the predicate also reads MARKS, per
+vocabulary (`"text"` / `"inline"` / `"latex"`): `"text"` drops wrapper marks by
+declaration (`TEXT_CAPTURE_DROPPED_MARKS`) and refuses a `linkedAnchor`; `"latex"`
+refuses a `linkedAnchor` or a Card-bearing atom id. `posHostsInlineAtom` is the SSOT for INLINE-atom inserts (inline-math `$x$`, `\ref`,
 citation, footnote) — greying them inside the `text*` verbatim blocks
 (`contentMatch.matchType`), a `titleField` staying a legal host, since it is a
 `content: "inline*"` node that legitimately hosts inline math. **Since task 740 the
