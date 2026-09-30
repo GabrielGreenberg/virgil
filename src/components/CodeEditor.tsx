@@ -11,8 +11,7 @@ import { getRanges } from "@/lib/code-position-map";
 import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
-import { serializeToLatex } from "@/lib/latex-serializer";
-import { getDocProducts } from "@/lib/doc-products/pipeline";
+import { assembleLiveSource } from "@/lib/doc-products/pipeline";
 import {
   createCodePaneBridge,
   type CodePaneBridge,
@@ -174,6 +173,18 @@ export default function CodeEditor({
   // visible in code view immediately.
   useEffect(() => {
     let cancelled = false;
+    // The seed's assemble opts, built in ONE place (task 865). It must carry
+    // the doc's AUTHORITATIVE bib family — the bridge's flush and the
+    // pipeline's `sourceText` both do — or the pane opens on a preamble the
+    // save path would not write, and the lint fed from it lands a line off.
+    // `onRequirementConflict` is deliberately LEFT OFF: it is the bridge's
+    // warn-only channel, and firing it on the seed too would double-notify
+    // (same rationale as useLatexSource).
+    const seedOpts = (preamble: string | undefined, postamble: string | undefined) => ({
+      preamble,
+      postamble,
+      bibFamily: bibFamilyRef.current ?? null,
+    });
     readTex(docId)
       .then((diskText) => {
         if (cancelled) return;
@@ -191,15 +202,10 @@ export default function CodeEditor({
         // the node silently, which is what this used to show.
         let initial: string;
         try {
-          initial =
-            getDocProducts(editor)?.assembleSourceWith({
-              preamble: preambleRef.current,
-              postamble: postambleRef.current,
-            }) ??
-            serializeToLatex(editor.getJSON(), {
-              preamble: preambleRef.current,
-              postamble: postambleRef.current,
-            });
+          initial = assembleLiveSource(
+            editor,
+            seedOpts(preambleRef.current, postambleRef.current),
+          );
         } catch {
           initial = diskText;
         }
@@ -214,9 +220,7 @@ export default function CodeEditor({
         // a rejection handler — an unhandled rejection helps nobody.
         let fallback: string;
         try {
-          fallback =
-            getDocProducts(editor)?.assembleSourceWith({}) ??
-            serializeToLatex(editor.getJSON());
+          fallback = assembleLiveSource(editor, seedOpts(undefined, undefined));
         } catch {
           fallback = "";
         }

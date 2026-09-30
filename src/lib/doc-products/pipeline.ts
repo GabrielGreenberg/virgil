@@ -68,6 +68,7 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import {
   assembleLatex,
   collectPreambleTitleFields,
+  serializeToLatex,
   type AssembleLatexOptions,
 } from "@/lib/latex-serializer";
 import {
@@ -159,6 +160,28 @@ const registry = new WeakMap<Editor, DocProducts>();
 
 export function getDocProducts(editor: Editor | null): DocProducts | null {
   return editor ? (registry.get(editor) ?? null) : null;
+}
+
+/**
+ * THE door for "serialize the LIVE doc with THESE delimiters/family" (task
+ * 865): the pipeline's per-block caches when it is mounted, else a whole-doc
+ * `serializeToLatex`. The code view's mount seed and the code-pane bridge's
+ * flush both project through here, so they cannot drift from each other — or
+ * from the pipeline's own Tier B `sourceText`, which assembles through the
+ * same private helper — on anything but the opts they pass. Line-number
+ * parity (lint, jump-to-line) depends on those three agreeing byte-for-byte:
+ * a caller that omits `bibFamily` gets the body-folded family, which is not
+ * what save/compile write. Throws when the serializer refuses a node (task
+ * 357) — each caller owns its fail-open answer.
+ */
+export function assembleLiveSource(
+  editor: Editor,
+  opts: AssembleLatexOptions,
+): string {
+  return (
+    getDocProducts(editor)?.assembleSourceWith(opts) ??
+    serializeToLatex(editor.getJSON(), opts)
+  );
 }
 
 export function createDocProducts(
@@ -254,10 +277,9 @@ export function createDocProducts(
 
   function buildSourceText(bibFamily: BibFamily | null): SourceBuild {
     if (!preambleReady) return { state: "not-ready" };
-    const doc = editor.state.doc;
-    const parts = [];
+    let text: string;
     try {
-      for (let i = 0; i < doc.childCount; i++) parts.push(getBlockLatex(doc.child(i)));
+      text = assembleCurrent({ preamble, postamble, bibFamily });
     } catch {
       // FAIL OPEN (task 357). The serializer now REFUSES a node it cannot
       // express rather than emitting the document without it. This tier is a
@@ -267,15 +289,18 @@ export function createDocProducts(
       // refusal is published and the user is told.
       return { state: "refused" };
     }
+    return { state: "built", text };
+  }
+
+  /** The ONE assembly over the per-block caches — Tier B's `sourceText` and
+   *  `assembleSourceWith` (the code view's door, via `assembleLiveSource`)
+   *  differ only in whose opts they pass. Throws on a serializer refusal. */
+  function assembleCurrent(opts: AssembleLatexOptions): string {
+    const doc = editor.state.doc;
+    const parts = [];
+    for (let i = 0; i < doc.childCount; i++) parts.push(getBlockLatex(doc.child(i)));
     pipelineStats.assemblies++;
-    return {
-      state: "built",
-      text: assembleLatex(parts, collectPreambleTitleFields(refreshDocJson()), {
-        preamble,
-        postamble,
-        bibFamily,
-      }),
-    };
+    return assembleLatex(parts, collectPreambleTitleFields(refreshDocJson()), opts);
   }
 
   /** Is any Tier B product out of date with respect to its own inputs? The
@@ -300,11 +325,12 @@ export function createDocProducts(
     pipelineStats.tierBRuns++;
     const next: Partial<ProductsSnapshot> = {};
     const doc = editor.state.doc;
-    // PER-PRODUCT TRY (task 592). `buildSourceText` fails open around the
-    // per-block loop only; `assembleLatex` (requirements pass,
+    // PER-PRODUCT TRY (task 592). `buildSourceText` used to fail open around
+    // the per-block loop only; `assembleLatex` (requirements pass,
     // reconcileBibFamily, collapseBlankRuns) and `computeCategoryCounts` threw
     // clean past it — out of the idle callback and, through the old
-    // ensureFresh, into the autosave. This is a read-only projection: it may
+    // ensureFresh, into the autosave. (Since task 865 the whole assembly sits
+    // inside its catch, as a "refused" build; this try stays as the floor.) This is a read-only projection: it may
     // degrade, it may never escape, and one product's refusal may not take the
     // others down with it.
     try {
@@ -500,17 +526,7 @@ export function createDocProducts(
       if (text !== snapshot.sourceText) publish({ sourceText: text });
     },
     assembleSourceWith(opts) {
-      const doc = editor.state.doc;
-      const parts = [];
-      for (let i = 0; i < doc.childCount; i++) {
-        parts.push(getBlockLatex(doc.child(i)));
-      }
-      pipelineStats.assemblies++;
-      return assembleLatex(
-        parts,
-        collectPreambleTitleFields(refreshDocJson()),
-        opts,
-      );
+      return assembleCurrent(opts);
     },
     subscribe(fn: () => void) {
       subscribers.add(fn);

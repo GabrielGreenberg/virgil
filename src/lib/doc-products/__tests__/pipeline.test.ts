@@ -34,9 +34,10 @@ vi.mock("@/lib/storage", () => ({
   readTex: vi.fn(() => readTexImpl(readTexCalls++)),
 }));
 
-/** Flipped by the 592 refusal leg: `assembleLatex` sits OUTSIDE
- *  buildSourceText's fail-open catch, and used to throw clean through the old
- *  ensureFresh into the autosave call site — with the debounce disarmed. */
+/** Flipped by the 592 refusal leg: `assembleLatex` used to sit OUTSIDE
+ *  buildSourceText's fail-open catch (it is inside since task 865), and threw
+ *  clean through the old ensureFresh into the autosave call site — with the
+ *  debounce disarmed. */
 let assembleThrows = false;
 vi.mock("@/lib/latex-serializer", async (importOriginal) => {
   const actual =
@@ -53,6 +54,7 @@ vi.mock("@/lib/latex-serializer", async (importOriginal) => {
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import {
+  assembleLiveSource,
   createDocProducts,
   getDocProducts,
   pipelineStats,
@@ -61,6 +63,7 @@ import {
 import { blockCacheStats } from "../block-caches";
 import type { BibFamily } from "@/lib/bib-family";
 import { TEX_DELIMITERS_CHANGED_EVENT } from "@/lib/tex-delimiters-event";
+import { extractPreambleAndPostamble } from "@/lib/latex-parser";
 
 let editor: Editor | null = null;
 let products: DocProducts | null = null;
@@ -396,6 +399,40 @@ describe("doc-products pipeline", () => {
     resolveAttach(DISK_TEX);
     await settle();
     expect(p.snapshot().sourceText).toContain("\\usepackage{fresh}");
+  });
+
+  it("assembleLiveSource: the pipeline path and the unmounted fallback agree, and both honour bibFamily (865)", async () => {
+    // A body with NO cite folds to no family: without an authoritative
+    // family the preamble gets no bib package at all — which is exactly what
+    // the code view's seed used to show while save/compile wrote biblatex.
+    const ed = makeEditor("<p>alpha</p>");
+    const delims = {
+      preamble: "\\documentclass{article}\n\\begin{document}\n",
+      postamble: "\n\\end{document}\n",
+    };
+    const unmounted = assembleLiveSource(ed, { ...delims, bibFamily: "biblatex" });
+    expect(unmounted).toContain("\\usepackage");
+    expect(unmounted).toContain("biblatex");
+    expect(assembleLiveSource(ed, delims)).not.toContain("biblatex");
+
+    const p = attach(ed);
+    await settle();
+    const before = pipelineStats.assemblies;
+    const mounted = assembleLiveSource(ed, { ...delims, bibFamily: "biblatex" });
+    expect(pipelineStats.assemblies).toBe(before + 1); // went through the caches
+    expect(mounted).toBe(unmounted);
+
+    // And the pipeline's own Tier B product, under the same family and
+    // delimiters, is the same bytes — the three doors are one assembly.
+    bibFamily = "biblatex";
+    p.revalidate();
+    await settle();
+    expect(p.snapshot().sourceText).toBe(
+      assembleLiveSource(ed, {
+        ...extractPreambleAndPostamble(DISK_TEX)!,
+        bibFamily: "biblatex",
+      }),
+    );
   });
 
   it("destroy unregisters and stops all work", async () => {

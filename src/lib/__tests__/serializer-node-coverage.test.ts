@@ -363,8 +363,13 @@ describe("census · every door accounts for the serializer's refusal", () => {
     // bare name and sits inside no try, so a name needle indicts every site
     // for the wrong reason and would be repaired by loosening the guard.
     const projections: [string, string][] = [
-      ["src/lib/doc-products/pipeline.ts", "getBlockLatex(doc.child(i))"],
-      ["src/components/CodeEditor.tsx", "serializeToLatex(editor.getJSON()"],
+      // Task 865: Tier B's per-block walk lives in the ONE assembly helper,
+      // which throws by contract; the fail-open is at its idle-tier CALL. The
+      // code view reaches the same helper through the `assembleLiveSource`
+      // door, and fails open onto the disk bytes at ITS call.
+      ["src/lib/doc-products/pipeline.ts", "text = assembleCurrent("],
+      ["src/components/CodeEditor.tsx", "initial = assembleLiveSource("],
+      ["src/components/CodeEditor.tsx", "fallback = assembleLiveSource("],
       ["src/hooks/useLatexSource.ts", "serializeToLatex(editor.getJSON()"],
       ["src/components/EditorLayout.tsx", "serializeToLatex(latestDocEffective)"],
       ["src/components/Editor.tsx", "serializeBodyOnly({"],
