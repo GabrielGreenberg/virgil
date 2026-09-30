@@ -67,10 +67,13 @@ import {
   cssCommentsStripped,
   commentsStripped,
   tagEnd,
-  trackedFiles,
   REPO_ROOT,
 } from "./_source-scan";
 import { CHROME_ONLY_CLASS, chromeOnly } from "@/lib/view-only-chrome";
+import {
+  nodeViewPopulation,
+  vanillaNodeViewPopulation,
+} from "@/lib/tiptap/__tests__/_nodeview-census";
 
 const CSS = cssCommentsStripped(readFileSync(join(REPO_ROOT, "src/app/globals.css"), "utf8"));
 
@@ -83,17 +86,6 @@ const IDENT = "[A-Za-z_$][\\w$]*";
 
 function readRel(rel: string): string {
   return commentsStripped(readFileSync(join(REPO_ROOT, rel), "utf8"));
-}
-
-function productionFiles(): string[] {
-  const out: string[] = [];
-  for (const root of ["src", "library"]) {
-    for (const abs of trackedFiles(root, /\.tsx?$/)) {
-      if (/__tests__|\.test\.tsx?$/.test(abs)) continue;
-      out.push(abs.slice(REPO_ROOT.length + 1));
-    }
-  }
-  return out;
 }
 
 /** Resolve an import specifier from `fromRel` to a tracked repo-relative path. */
@@ -129,14 +121,16 @@ function importsOf(src: string): Map<string, string> {
 }
 
 const POPULATION = (() => {
-  const files = productionFiles();
-  const vanilla: string[] = [];
+  // Task 853 — the population and its vanilla half come from the ONE shared
+  // discovery (`_nodeview-census.ts`), never a regex of this file's own. This
+  // census used to spell "vanilla = the same file says `document.createElement(`",
+  // and when task 840 moved the footnote / `\ref` / citation DOM into the
+  // shared `createLeafNodeView` factory all three silently left it.
+  const vanilla = vanillaNodeViewPopulation();
   const react = new Set<string>();
-  for (const rel of files) {
+  for (const rel of nodeViewPopulation()) {
     const src = readRel(rel);
-    if (!/\baddNodeView\s*\(/.test(src)) continue;
-    // A vanilla view builds DOM by hand; a React one only names a component.
-    if (/document\.createElement\(/.test(src)) vanilla.push(rel);
+    // A React surface only names a component for the renderer to mount.
     const imports = importsOf(src);
     for (const m of src.matchAll(new RegExp(`ReactNodeViewRenderer\\(\\s*(${IDENT})`, "g"))) {
       const ident = m[1];
@@ -510,7 +504,7 @@ describe("the chrome-only census — population", () => {
     // Floors that prove the discovery WORKS; a needle matching nothing would
     // make every leg below vacuous. The TRUE current counts, so a discovery
     // that silently stopped seeing a file cannot clear a loose bar.
-    expect(POPULATION.vanilla.length).toBeGreaterThanOrEqual(8);
+    expect(POPULATION.vanilla.length).toBeGreaterThanOrEqual(10);
     expect(POPULATION.react.length).toBeGreaterThanOrEqual(6);
     expect(POPULATION.react).toContain("src/components/FigureBlockNodeView.tsx");
     expect(POPULATION.react).toContain("src/components/FigureAnnotation.tsx");
@@ -519,6 +513,26 @@ describe("the chrome-only census — population", () => {
     expect(POPULATION.vanilla).toContain("src/lib/editor-extensions.ts");
     expect(POPULATION.vanilla).toContain("src/lib/tiptap/title.ts");
     expect(POPULATION.vanilla).toContain("src/lib/tiptap/expex.ts");
+    // Task 853 — the leaf atoms build their DOM through the shared
+    // `createLeafNodeView` factory (task 840). They are vanilla surfaces by
+    // the SHARED rule, and the factory's own body is scanned with them.
+    expect(POPULATION.vanilla).toContain("src/lib/tiptap/footnote.ts");
+    expect(POPULATION.vanilla).toContain("src/lib/tiptap/label.ts");
+    expect(POPULATION.vanilla).toContain("src/lib/tiptap/citation.ts");
+    expect(POPULATION.vanilla).toContain("src/lib/tiptap/leaf-node-view.ts");
+  });
+
+  it("task 853 — the two NodeView censuses read ONE population: this census regexes no NodeView discovery of its own", () => {
+    // A second, local discovery rule is how this census fell out of step with
+    // `_nodeview-census.ts` when task 840 moved DOM behind a shared factory.
+    const self = commentsStripped(readFileSync(__filename, "utf8"));
+    const discoveryBody = self.slice(
+      self.indexOf("const POPULATION = (() => {"),
+      self.indexOf("return { vanilla: vanilla.sort()"),
+    );
+    expect(discoveryBody).toMatch(/\bvanillaNodeViewPopulation\(\)/);
+    expect(discoveryBody).toMatch(/\bnodeViewPopulation\(\)/);
+    expect(discoveryBody).not.toMatch(/addNodeView|document\\?\.createElement/);
   });
 
   it("the JSX scanner sees the figure family's chrome shapes", () => {

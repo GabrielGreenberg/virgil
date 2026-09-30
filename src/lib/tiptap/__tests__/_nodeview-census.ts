@@ -117,14 +117,54 @@ export function nodeViewRegions(file: string, reading: RegionReading = "code"): 
   return regions;
 }
 
+let populationMemo: string[] | null = null;
+
 export function nodeViewPopulation(): string[] {
+  if (populationMemo) return [...populationMemo];
   const files = [...trackedFiles("src", /\.tsx?$/), ...trackedFiles("library", /\.tsx?$/)]
     .filter((p) => !p.includes("__tests__"))
     .map((p) => path.relative(REPO_ROOT, p));
-  return files.filter((f) => {
+  populationMemo = files.filter((f) => {
     const src = codeOnly(fs.readFileSync(path.join(REPO_ROOT, f), "utf8"));
     NODEVIEW_FACTORY.lastIndex = 0;
     return /\baddNodeView\s*\(/.test(src) || NODEVIEW_FACTORY.test(src);
+  });
+  return [...populationMemo];
+}
+
+/** The names of every shared NodeView factory the population declares
+ *  (`createLeafNodeView`, `createListTitleNodeView`, …). */
+export function nodeViewFactoryNames(): Set<string> {
+  const names = new Set<string>();
+  for (const f of nodeViewPopulation()) {
+    const src = codeOnly(fs.readFileSync(path.join(REPO_ROOT, f), "utf8"));
+    for (const m of src.matchAll(NODEVIEW_FACTORY)) names.add(m[1]);
+  }
+  return names;
+}
+
+/**
+ * The VANILLA half of the population (task 853): every surface that BUILDS
+ * NodeView DOM — by hand (`document.createElement(`) or by calling a shared
+ * factory that does. The factory's own file is a member by the first clause,
+ * so its body is scanned wherever the population is.
+ *
+ * ONE rule, read by every census that splits vanilla from React surfaces.
+ * Task 840 moved footnote / `\ref` label / citation DOM construction into
+ * `createLeafNodeView`; the print chrome-only census kept its OWN rule ("the
+ * same file spells `document.createElement(`"), all three dropped out of it,
+ * and its chrome legs stopped inspecting them — the task-835 class (a census
+ * keyed on a local spelling goes stale when a refactor moves the code behind
+ * a shared seam).
+ */
+export function vanillaNodeViewPopulation(): string[] {
+  const factories = [...nodeViewFactoryNames()];
+  const callsFactory = factories.length
+    ? new RegExp(`\\b(?:${factories.join("|")})\\s*\\(`)
+    : null;
+  return nodeViewPopulation().filter((f) => {
+    const src = codeOnly(fs.readFileSync(path.join(REPO_ROOT, f), "utf8"));
+    return /\bdocument\.createElement\s*\(/.test(src) || (callsFactory?.test(src) ?? false);
   });
 }
 
