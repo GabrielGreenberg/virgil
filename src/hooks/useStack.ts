@@ -102,10 +102,9 @@ export interface UseStackValue {
   /** `true` iff the removal actually persisted; state follows storage, never
    *  leads it (task 591). */
   remove: (id: string) => boolean;
-  /** `true` iff the clear actually persisted. */
-  clear: () => boolean;
-  /** Look up a stack item by id — used by the stack-pull drop spec. */
-  getItem: (id: string) => StackItem | null;
+  // No `getItem` / `clear` (task 863): nothing called them. A by-id lookup
+  // is `readStackItem` below (reads STORAGE, never lagging React state); a
+  // future clear-all affordance re-adds a door through `persist([])`.
 }
 
 export function useStack(): UseStackValue {
@@ -147,14 +146,7 @@ export function useStack(): UseStackValue {
     [persist],
   );
 
-  const clear = useCallback(() => persist([]), [persist]);
-
-  const getItem = useCallback(
-    (id: string) => items.find((it) => it.id === id) ?? null,
-    [items],
-  );
-
-  return { items, remove, clear, getItem };
+  return { items, remove };
 }
 
 /**

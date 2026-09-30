@@ -174,20 +174,7 @@ describe("hook state follows the write, never leads it", () => {
     expect(result.current.items.map((i) => i.id)).toEqual(["b", "a"]);
   });
 
-  it("clear reports false and keeps the items when the write fails", () => {
-    expect(addStackItem(item("a"), NO_BIB)).toBe(true);
-    const { result } = renderHook(() => useStack());
-    rationStorageAt(0);
-    let reported: boolean | undefined;
-    act(() => {
-      reported = result.current.clear();
-    });
-    expect(reported).toBe(false);
-    expect(storedIds()).toEqual(["a"]);
-    expect(result.current.items.map((i) => i.id)).toEqual(["a"]);
-  });
-
-  it("…and both report true and take effect on a write that lands", () => {
+  it("…and remove reports true and takes effect on a write that lands", () => {
     expect(addStackItem(item("a"), NO_BIB)).toBe(true);
     expect(addStackItem(item("b"), NO_BIB)).toBe(true);
     const { result } = renderHook(() => useStack());
@@ -195,10 +182,6 @@ describe("hook state follows the write, never leads it", () => {
       expect(result.current.remove("a")).toBe(true);
     });
     expect(result.current.items.map((i) => i.id)).toEqual(["b"]);
-    act(() => {
-      expect(result.current.clear()).toBe(true);
-    });
-    expect(result.current.items).toEqual([]);
-    expect(storedIds()).toEqual([]);
+    expect(storedIds()).toEqual(["b"]);
   });
 });
