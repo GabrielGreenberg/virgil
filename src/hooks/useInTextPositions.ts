@@ -39,36 +39,6 @@ export interface PositionItem {
   pos: number; // ProseMirror document position
 }
 
-/**
- * Helper: find approximate document position for a text snippet.
- * Used by RevisionsPanel where comments store selectedText but no pos.
- */
-export function findTextPosition(editor: Editor | null, text: string): number {
-  if (!editor || !text) return 0;
-  const docText = editor.state.doc.textBetween(0, editor.state.doc.content.size, "\n");
-  const snippet = text.slice(0, 40);
-  const idx = docText.indexOf(snippet);
-  if (idx < 0) return 0;
-  // Convert text offset to doc position
-  let pos = 0;
-  let textOffset = 0;
-  editor.state.doc.descendants((node, nodePos) => {
-    if (pos > 0) return false;
-    if (node.isText) {
-      const len = (node.text || "").length;
-      if (textOffset + len > idx) {
-        pos = nodePos + (idx - textOffset);
-        return false;
-      }
-      textOffset += len;
-    } else if (node.isBlock && textOffset > 0) {
-      textOffset += 1;
-    }
-    return true;
-  });
-  return pos;
-}
-
 // The breathing room between two packed cards — and, since task 544, between
 // the deck's first card and the sticky chrome it clears: the floor source
 // reports the chrome's last painted pixel and the measure pass adds THIS, so
