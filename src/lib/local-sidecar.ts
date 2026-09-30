@@ -41,9 +41,10 @@
  * This module imports nothing from the storage backends; they import it.
  */
 
-import { createStore, del, get, set } from "idb-keyval";
+import { createStore, del, set } from "idb-keyval";
 
 import { sidecarStore } from "@/lib/sidecar-value";
+import { estimateStoredBytes, readStoredValue, type StoredVerdict } from "@/lib/stored-state";
 
 // Reuse the SAME origin store doc-index / tex-assets / emergency-mirror use.
 const store = createStore("virgil", "kv");
@@ -59,6 +60,28 @@ export function localSidecarKey(docId: string, filename: string): string {
 /** The routing question every sidecar door asks first. */
 export function isLocalSidecar(filename: string): boolean {
   return sidecarStore(filename) === "local";
+}
+
+/** A local sidecar is one small view-state record; anything larger is debris. */
+export const LOCAL_SIDECAR_MAX_BYTES = 4 * 1024 * 1024;
+
+/** The shape a local-store sidecar must have to be handed to its hook: a
+ *  JSON object (or array) under {@link LOCAL_SIDECAR_MAX_BYTES}. */
+export function validateLocalSidecar(value: unknown): StoredVerdict {
+  if (typeof value !== "object" || value === null) {
+    return { why: "invalid", detail: "not a JSON object" };
+  }
+  if (estimateStoredBytes(value, LOCAL_SIDECAR_MAX_BYTES) === Infinity) {
+    return { why: "oversized", detail: `over ${LOCAL_SIDECAR_MAX_BYTES} bytes` };
+  }
+  return true;
+}
+
+/** Every read of this family goes through the stored-state door (task 852):
+ *  a malformed or oversized record is ABSENT, reported and — being pure view
+ *  state, re-derivable from nothing — cleared, so the hook never sees it. */
+function readLocal<T>(key: string): Promise<T | null> {
+  return readStoredValue<T>(key, { store, validate: validateLocalSidecar });
 }
 
 /** Per-key serial queue — a write landing between a mutate's read and its
@@ -91,7 +114,7 @@ export async function readLocalSidecar<T>(
   migrateFrom?: () => Promise<T | null>,
 ): Promise<T | null> {
   const key = localSidecarKey(docId, filename);
-  const local = (await get<T>(key, store)) ?? null;
+  const local = await readLocal<T>(key);
   if (local !== null) return local;
   if (!migrateFrom) return null;
   let seed: T | null = null;
@@ -105,10 +128,10 @@ export async function readLocalSidecar<T>(
     // A write may have landed while the disk read was in flight; the LOCAL
     // copy is the newer one by construction, so never overwrite it with the
     // seed.
-    const raced = (await get<T>(key, store)) ?? null;
+    const raced = await readLocal<T>(key);
     if (raced === null) await set(key, seed, store);
   });
-  return (await get<T>(key, store)) ?? seed;
+  return (await readLocal<T>(key)) ?? seed;
 }
 
 /** Write (replace) a local-store sidecar. */
@@ -136,7 +159,7 @@ export async function mutateLocalSidecar<T>(
   const key = localSidecarKey(docId, filename);
   return serialize(key, async () => {
     const current =
-      (await get<T>(key, store)) ??
+      (await readLocal<T>(key)) ??
       (migrateFrom ? await migrateFrom().catch(() => null) : null) ??
       defaultValue;
     const next = mutate(current);

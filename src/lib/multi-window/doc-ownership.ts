@@ -20,7 +20,8 @@
  * for A's release, then claims, then writes.
  */
 
-import { get, set, del, createStore } from "idb-keyval";
+import { set, del, createStore } from "idb-keyval";
+import { readStoredValue, type StoredVerdict } from "@/lib/stored-state";
 
 import { awaitRelease, getWindowId, publish } from "./bus";
 
@@ -36,8 +37,22 @@ function lockName(docId: string): string {
   return `virgil-doc-${docId}`;
 }
 
+function validateOwner(value: unknown): StoredVerdict {
+  const r = value as Partial<OwnerRecord> | null;
+  if (typeof r !== "object" || r === null) return { why: "invalid", detail: "not an object" };
+  if (typeof r.windowId !== "string") return { why: "invalid", detail: "no windowId" };
+  if (typeof r.acquiredAt !== "number") return { why: "invalid", detail: "no acquiredAt" };
+  return true;
+}
+
+/** Through the stored-state door (task 852): a malformed record is no owner. */
 async function readOwner(docId: string): Promise<OwnerRecord | undefined> {
-  return get<OwnerRecord>(OWNER_PREFIX + docId, store);
+  return (
+    (await readStoredValue<OwnerRecord>(OWNER_PREFIX + docId, {
+      store,
+      validate: validateOwner,
+    })) ?? undefined
+  );
 }
 
 async function writeOwner(docId: string, rec: OwnerRecord): Promise<void> {

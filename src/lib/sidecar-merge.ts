@@ -72,8 +72,9 @@
  *
  * `writeSidecarMerged` ([sidecar-merged-write.ts](sidecar-merged-write.ts)) is
  * the only way a sidecar hook writes a record collection: `usePersistentState`
- * (fourteen files) plus the three hooks with their own bespoke persist —
- * `useFootnotes`, `useExamples`, `useBibReview`. Each supplies the base it has
+ * (fourteen files) plus the two hooks with their own bespoke persist —
+ * `useFootnotes`, `useBibReview` (`useExamples` was the third; it is gone,
+ * task 726). Each supplies the base it has
  * been tracking; nothing else about the merge is re-derived per hook, which is
  * the difference between this and a third one-file fix beside 220 and 558.
  *

@@ -20,6 +20,7 @@
  */
 
 import { get, set, del, keys, update, createStore } from "idb-keyval";
+import { readStoredValue, type StoredVerdict } from "@/lib/stored-state";
 
 import { clearMirror, clearMirrorOffers } from "@/lib/emergency-mirror";
 import { deleteLocalSidecar } from "@/lib/local-sidecar";
@@ -201,13 +202,27 @@ export async function writeMyPapers(state: MyPapersState): Promise<void> {
 
 // --- Tabs ----------------------------------------------------------------
 
+/** A per-window tab record as the door accepts it (task 852). The record is
+ *  pure view state, so a refused one is cleared: the window opens with no
+ *  tabs rather than handing a malformed record to the tab strip. */
+function validateTabRecord(value: unknown): StoredVerdict {
+  const t = value as Partial<TabsState> | null;
+  if (typeof t !== "object" || t === null) return { why: "invalid", detail: "not an object" };
+  if (!Array.isArray(t.openTabIds)) return { why: "invalid", detail: "no openTabIds" };
+  return true;
+}
+
+function readTabRecord(key: string): Promise<TabsState | null> {
+  return readStoredValue<TabsState>(key, { store, validate: validateTabRecord });
+}
+
 export async function readTabs(windowId: string): Promise<TabsState> {
   // In dev-storage mode, auto-open the most recent local doc so the
   // editor renders without any user interaction. Per-window keys still
   // apply, but on first load we have nothing to read yet so the dev
   // bootstrap runs.
   if (isDevStorage) {
-    const existing = await get<TabsState>(TABS_WINDOW_PREFIX + windowId, store);
+    const existing = await readTabRecord(TABS_WINDOW_PREFIX + windowId);
     if (existing) return existing;
     try {
       const res = await fetch("/api/dev/index.json");
@@ -239,7 +254,7 @@ export async function readTabs(windowId: string): Promise<TabsState> {
   // single-window `"tabs"` key exists, claim it for this window and
   // delete the legacy key. First-ever window after upgrade keeps its
   // tabs; subsequent new windows start empty as expected.
-  const existing = await get<TabsState>(TABS_WINDOW_PREFIX + windowId, store);
+  const existing = await readTabRecord(TABS_WINDOW_PREFIX + windowId);
   if (existing) return existing;
   const legacy = await get<TabsState>(TABS_KEY, store);
   if (legacy) {
@@ -297,7 +312,7 @@ export async function sweepTabRecords({
     if (typeof key !== "string" || !key.startsWith(TABS_WINDOW_PREFIX)) continue;
     const windowId = key.slice(TABS_WINDOW_PREFIX.length);
     if (liveWindowIds.has(windowId)) continue;
-    const rec = await get<TabsState>(key, store);
+    const rec = await readTabRecord(key);
     if (!rec) continue;
     if (typeof rec.savedAt !== "number") {
       // One transaction, so a write that landed since the read wins.
@@ -321,7 +336,18 @@ export async function sweepTabRecords({
 export async function getDocHandle(
   id: string,
 ): Promise<FileSystemDirectoryHandle | undefined> {
-  return get<FileSystemDirectoryHandle>(DOC_HANDLE_PREFIX + id, store);
+  // Through the door (task 852), but never cleared on refusal: the slot is
+  // the user's permission grant, and only they can re-grant it.
+  return (
+    (await readStoredValue<FileSystemDirectoryHandle>(DOC_HANDLE_PREFIX + id, {
+      store,
+      validate: (v) =>
+        typeof v === "object" && v !== null
+          ? true
+          : { why: "invalid", detail: "not a handle" },
+      clearOnRefusal: false,
+    })) ?? undefined
+  );
 }
 
 export async function setDocHandle(

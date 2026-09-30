@@ -449,7 +449,7 @@ export function usePersistentState<S>(
         // write doors where only one owns the queue, and it is waiting for the
         // next read-then-write flow written against this API. (Scope, stated
         // honestly: the sidecar hooks with their OWN bespoke `persist` —
-        // useFootnotes, useExamples, useAiRequests, useBibReview, useStack,
+        // useFootnotes, useAiRequests, useBibReview, useStack,
         // useEditorUIState — do NOT go through this door and are unaffected.
         // Among this hook's consumers only `useSuggestions.clearSuggestions`
         // still calls it directly.) An immediate write is by definition the

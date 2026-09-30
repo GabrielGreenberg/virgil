@@ -345,6 +345,37 @@ describe("census — the shared virgil/kv store has no undeclared owner or slot"
     }
   });
 
+  // Task 852 — task 757's rule "a read of a capped store goes through
+  // readStoredValue" had no leg: four owners still handed raw `get` results to
+  // their callers. Every raw idb-keyval `get(` in an owner must name its key
+  // by a KEY/PREFIX constant that resolves to a FIXED family; a capped family,
+  // or a key the census cannot resolve (a local, a helper call), must go
+  // through the door.
+  it("task 852 · no owner reads a capped family (or an unresolvable key) around the door", () => {
+    const offenders: string[] = [];
+    let rawReads = 0;
+    for (const f of owners) {
+      const src = readFileSync(f, "utf8");
+      const consts = new Map<string, string>();
+      for (const m of src.matchAll(/^const ([A-Z_]*(?:KEY|PREFIX))\s*=\s*"([^"]+)"/gm)) {
+        consts.set(m[1], m[2]);
+      }
+      for (const m of src.matchAll(/(?<![.\w])get\s*(?:<[^>()]*>)?\(\s*([^,)]*)/g)) {
+        rawReads++;
+        const arg = m[1].trim();
+        const head = /^([A-Z_]+)\b/.exec(arg)?.[1];
+        const lit = head ? consts.get(head) : undefined;
+        const fam = lit === undefined ? null : (familyOf(lit) ?? familyOf(lit + "x"));
+        if (!fam || fam.bound !== "fixed") {
+          const line = src.slice(0, m.index).split("\n").length;
+          offenders.push(`${relative(repo, f)}:${line} get(${arg}) → ${fam ? fam.key : "unresolved"}`);
+        }
+      }
+    }
+    expect(rawReads, "the scan found no raw reads at all — is it vacuous?").toBeGreaterThan(0);
+    expect(offenders).toEqual([]);
+  });
+
   it("the unbounded-by-use families read through the door", () => {
     for (const rel of ["src/lib/emergency-mirror.ts", "src/lib/tex-assets.ts"]) {
       expect(readFileSync(join(repo, rel), "utf8"), rel).toMatch(/readStoredValue/);
