@@ -3,6 +3,7 @@ import { Inter, Playfair_Display, Cinzel, Source_Serif_4, Geist_Mono } from "nex
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { Analytics } from "@/components/Analytics";
 import { publicAssetUrl } from "@/lib/public-asset-url";
+import { displayModeBootstrapScript } from "@/lib/window-chrome-bootstrap";
 import "./globals.css";
 
 const inter = Inter({
@@ -85,11 +86,11 @@ export default function RootLayout({
             pre-paint twin of useWindowChrome's _compute(), which then keeps the
             attribute live across display-mode changes. This is the single SSOT
             that replaced the old @media (display-mode: …) gate, so the same
-            selector renders in the dev preview under ?wco-debug too. */}
+            selector renders in the dev preview under ?wco-debug too. Its
+            debug-switch test is emitted from the flag SSOT (task 846). */}
         <script
           dangerouslySetInnerHTML={{
-            __html:
-              "(function(){try{var d=document.documentElement;var dbg=false;try{dbg=localStorage.getItem('virgil:wco-debug')==='1';}catch(e){}dbg=dbg||location.search.indexOf('wco-debug')!==-1;var m=function(q){return typeof window.matchMedia==='function'&&window.matchMedia(q).matches;};var mode=dbg?'window-controls-overlay':m('(display-mode: window-controls-overlay)')?'window-controls-overlay':m('(display-mode: fullscreen)')?'fullscreen':m('(display-mode: standalone)')?'standalone':'browser';d.setAttribute('data-display-mode',mode);}catch(e){}})();",
+            __html: displayModeBootstrapScript(),
           }}
         />
         <meta name="theme-color" content="#e5e4e1" />

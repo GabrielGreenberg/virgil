@@ -43,6 +43,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { readFlag } from "@/lib/feature-flags";
+import { WCO_DEBUG_PARAM } from "@/lib/window-chrome-bootstrap";
 
 export type DisplayMode =
   | "browser"
@@ -99,7 +100,7 @@ function _wco(): WCOLike | null {
 function _debugOn(): boolean {
   if (typeof window === "undefined") return false;
   if (readFlag("virgil:wco-debug")) return true;
-  return typeof location !== "undefined" && location.search.includes("wco-debug");
+  return typeof location !== "undefined" && location.search.includes(WCO_DEBUG_PARAM);
 }
 
 function _matches(query: string): boolean {

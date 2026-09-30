@@ -352,3 +352,26 @@ export function setFlagOverride(key: FlagKey, value: boolean | undefined): void 
 export function clearFlagOverrides(): void {
   overrides.clear();
 }
+
+/**
+ * The inline-JS twin of `readFlag(key)`, for the one reader that runs before
+ * any module loads: a pre-paint `<script>` in `app/layout.tsx` (task 846). It
+ * is EMITTED from this file's own constants — the dialect, the row's default,
+ * its `requires` edges — so the bootstrap cannot drift from `parseFlagValue`
+ * the way a hand-spelled `==='1'` did. The returned string is an ES5
+ * expression evaluating to a boolean; it never throws. Test overrides do not
+ * apply (there is no module state before hydration), and there is no SSR
+ * branch: the script only ever runs in a browser.
+ */
+export function flagBootstrapExpr(key: FlagKey): string {
+  const spec: FlagSpec = FLAG_REGISTRY[key];
+  const d = JSON.stringify(spec.default);
+  const self =
+    `(function(){try{var v=window.localStorage.getItem(${JSON.stringify(key)});` +
+    `if(v==null)return ${d};v=String(v).trim().toLowerCase();` +
+    `if(${JSON.stringify(FLAG_ON_VALUES)}.indexOf(v)!==-1)return true;` +
+    `if(${JSON.stringify(FLAG_OFF_VALUES)}.indexOf(v)!==-1)return false;` +
+    `return ${d};}catch(e){return ${d};}})()`;
+  const deps = (spec.requires as readonly FlagKey[]).map(flagBootstrapExpr);
+  return [self, ...deps].join("&&");
+}
