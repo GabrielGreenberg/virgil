@@ -7,7 +7,6 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   REPO_ROOT,
   commentsStripped,
-  codeOnlyLines,
   trackedFiles,
 } from "@/lib/__tests__/_source-scan";
 import {
@@ -72,12 +71,16 @@ function productionFiles(): { rel: string; text: string }[] {
  *  `localStorage`, and the one place every key is declared. */
 const SSOT = "src/lib/feature-flags.ts";
 
-const VIRGIL_KEY = /"(virgil:[A-Za-z0-9:_-]+)"/g;
+/** A `virgil:` key in ANY string literal — double, single or backtick
+ *  (task 846: a single-quoted key in an inline `<script>` string was invisible
+ *  to a double-quote-only needle, so the census was not total). Group 2 is the
+ *  key; group 1 is the quote, back-referenced so a mixed pair does not match. */
+const VIRGIL_KEY = /(["'`])(virgil:[A-Za-z0-9:_-]+)\1/g;
 
 /** Every `virgil:` literal in a file, comments stripped so a doc-comment
  *  mentioning a key is not mistaken for a read. */
 function virgilKeysIn(text: string): string[] {
-  return [...commentsStripped(text).matchAll(VIRGIL_KEY)].map((m) => m[1]);
+  return [...commentsStripped(text).matchAll(VIRGIL_KEY)].map((m) => m[2]);
 }
 
 /**
@@ -96,19 +99,21 @@ function flagStorageReads(text: string): { line: number; key: string }[] {
   // `const X = "virgil:…"` / `const X: string = "virgil:…"` in this file.
   const bound = new Map<string, string>();
   for (const m of code.matchAll(
-    /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)(?:\s*:[^=]+)?\s*=\s*"(virgil:[A-Za-z0-9:_-]+)"/g,
+    /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)(?:\s*:[^=]+)?\s*=\s*(["'`])(virgil:[A-Za-z0-9:_-]+)\2/g,
   )) {
-    if (isFlagKey(m[2])) bound.set(m[1], m[2]);
+    if (isFlagKey(m[3])) bound.set(m[1], m[3]);
   }
-  const lines = codeOnlyLines(text).split("\n");
+  // The storage word is tested on the comment-stripped line, NOT the
+  // string-blanked one: an inline `<script>` body is a string literal holding
+  // JS, and a needle that blanks strings cannot see a read inside it (task 846).
   const raw = code.split("\n");
   const hits: { line: number; key: string }[] = [];
-  lines.forEach((codeLine, i) => {
+  raw.forEach((codeLine, i) => {
     if (!/\b(local|session)Storage\b/.test(codeLine)) return;
     // The key may sit on this line or, for a wrapped call, the next two.
     const window_ = raw.slice(i, i + 3).join("\n");
     for (const m of window_.matchAll(VIRGIL_KEY)) {
-      if (isFlagKey(m[1])) hits.push({ line: i + 1, key: m[1] });
+      if (isFlagKey(m[2])) hits.push({ line: i + 1, key: m[2] });
     }
     for (const [ident, key] of bound) {
       if (new RegExp(`\\b${ident}\\b`).test(window_)) hits.push({ line: i + 1, key });
@@ -208,6 +213,27 @@ describe("feature-flag registry census", () => {
         "virgil:made-up-key",
       ]);
       expect(virgilKeysIn(`// mentions "virgil:made-up-key" in prose`)).toEqual([]);
+    });
+
+    it("both needles see a key in single quotes and backticks, not only double quotes (task 846)", () => {
+      // The shape that escaped: the pre-paint bootstrap in app/layout.tsx is a
+      // JS string holding JS, so its key was single-quoted.
+      const inlineScript = `"(function(){var dbg=localStorage.getItem('virgil:wco-debug')==='1';})();"`;
+      expect(flagStorageReads(inlineScript)).toEqual([
+        { line: 1, key: "virgil:wco-debug" },
+      ]);
+      expect(
+        flagStorageReads("localStorage.getItem(`virgil:card-tiers`) === 'on';"),
+      ).toEqual([{ line: 1, key: "virgil:card-tiers" }]);
+      expect(
+        flagStorageReads(`const K = 'virgil:card-tiers';\nlocalStorage.getItem(K);`),
+      ).toEqual([{ line: 2, key: "virgil:card-tiers" }]);
+      expect(virgilKeysIn("x('virgil:made-up-key', `virgil:other-key`)")).toEqual([
+        "virgil:made-up-key",
+        "virgil:other-key",
+      ]);
+      // A mismatched pair is not a literal.
+      expect(virgilKeysIn(`x("virgil:made-up-key')`)).toEqual([]);
     });
 
     it("leg 2's needle ignores a storage line with no flag key, and a flag key with no storage", () => {
