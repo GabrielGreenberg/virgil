@@ -12,8 +12,12 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { STACK_CHROME_Z } from "@/floats/float-policy";
 import type { StackItem } from "@/lib/stack/types";
-import { StackThumbnail } from "./StackThumbnail";
-import { STACK_INSET_LEFT, STACK_INSET_BOTTOM } from "./StackIcon";
+import { StackThumbnail, STACK_THUMB_W } from "./StackThumbnail";
+import {
+  STACK_ICON_DIAMETER,
+  STACK_INSET_LEFT,
+  STACK_INSET_BOTTOM,
+} from "./StackIcon";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_STACK_STRIP } from "@/lib/layout-gesture-probe";
 
@@ -23,10 +27,8 @@ export interface StackStripProps {
   onRemove: (id: string) => void;
 }
 
-const ICON_DIAMETER = 56;
 const ICON_GAP = 12;
 const STRIP_HEIGHT = 116;
-const THUMB_W = 160;
 const ITEM_GAP = 8;
 const STRIP_PADDING = 10;
 const MIN_W = 240;
@@ -65,11 +67,11 @@ export function StackStrip({ open, items, onRemove }: StackStripProps) {
     return Number.isFinite(t) && now - t <= RECENT_WINDOW_MS ? n + 1 : n;
   }, 0);
 
-  const left = STACK_INSET_LEFT + ICON_DIAMETER + ICON_GAP;
+  const left = STACK_INSET_LEFT + STACK_ICON_DIAMETER + ICON_GAP;
   const maxW = Math.max(MIN_W, vw - left - STACK_INSET_LEFT);
   const contentW =
     STRIP_PADDING * 2 +
-    Math.max(0, recentCount) * (THUMB_W + ITEM_GAP) -
+    Math.max(0, recentCount) * (STACK_THUMB_W + ITEM_GAP) -
     (recentCount > 0 ? ITEM_GAP : 0);
   const width = Math.min(maxW, Math.max(MIN_W, contentW));
 
@@ -82,10 +84,9 @@ export function StackStrip({ open, items, onRemove }: StackStripProps) {
         bottom: STACK_INSET_BOTTOM,
         width,
         height: STRIP_HEIGHT,
-        background: "rgba(28, 25, 23, 0.20)",
+        background: "var(--stack-strip-bg)",
         borderRadius: "var(--pod-radius)",
-        boxShadow:
-          "var(--shadow-float)",
+        boxShadow: "var(--shadow-float)",
         padding: STRIP_PADDING,
         display: "flex",
         flexDirection: "row",
@@ -98,7 +99,7 @@ export function StackStrip({ open, items, onRemove }: StackStripProps) {
       {items.length === 0 ? (
         <div
           style={{
-            color: "rgba(255,255,255,0.72)",
+            color: "var(--stack-strip-hint)",
             fontSize: 11,
             display: "flex",
             alignItems: "center",

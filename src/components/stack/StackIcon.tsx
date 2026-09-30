@@ -39,7 +39,7 @@ export interface StackIconProps {
  *  merely wasteful rather than wrong — this makes it neither). */
 const CONTENT_GESTURE = ["content"] as const;
 
-const ICON_DIAMETER = 56;
+export const STACK_ICON_DIAMETER = 56;
 export const STACK_INSET_LEFT = 12;
 export const STACK_INSET_BOTTOM = 12;
 
@@ -77,12 +77,12 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
     const update = () => {
       const h = window.innerHeight;
       const left = STACK_INSET_LEFT;
-      const top = h - STACK_INSET_BOTTOM - ICON_DIAMETER;
+      const top = h - STACK_INSET_BOTTOM - STACK_ICON_DIAMETER;
       setStackIconRect(owner, {
         left,
         top,
-        right: left + ICON_DIAMETER,
-        bottom: top + ICON_DIAMETER,
+        right: left + STACK_ICON_DIAMETER,
+        bottom: top + STACK_ICON_DIAMETER,
       });
     };
     update();
@@ -143,8 +143,8 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
         position: "fixed",
         left: STACK_INSET_LEFT,
         bottom: STACK_INSET_BOTTOM,
-        width: ICON_DIAMETER,
-        height: ICON_DIAMETER,
+        width: STACK_ICON_DIAMETER,
+        height: STACK_ICON_DIAMETER,
         borderRadius: "50%",
         background: bg,
         border: `${borderWidth}px solid ${borderColor}`,
