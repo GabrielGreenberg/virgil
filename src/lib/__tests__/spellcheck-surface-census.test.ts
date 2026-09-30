@@ -158,6 +158,47 @@ describe("one owner per question", () => {
     expect(users).toEqual([]);
   });
 
+  it("only the View menu reaches the two REMOVE doors (task 856)", () => {
+    // The inverse of the accept doors: a deliberate gesture, in one place.
+    const users = PRODUCTION.filter((abs) => {
+      const r = rel(abs);
+      if (r === "src/lib/spell/spellcheck-context.tsx") return false;
+      return /\.removeFromPaper\s*\(|\.removeGlobally\s*\(|\bremove\s*\(/.test(code(abs)) &&
+        /\buseSpellDictionaries\s*\(/.test(code(abs));
+    }).map(rel);
+    expect(users).toEqual(["src/components/MenuBar.tsx"]);
+  });
+
+  it("every dictionary DOOR has a production caller — no write-only store (task 856)", () => {
+    // The bug this guards: `removeWord` was exported, documented, and called by
+    // nothing, so the paper list could only grow. A door is alive only if a
+    // production file other than its own CALLS it.
+    const doors: Array<[file: string, name: string]> = [
+      ["src/lib/spell/global-dictionary.ts", "addToGlobalDictionary"],
+      ["src/lib/spell/global-dictionary.ts", "removeFromGlobalDictionary"],
+      ["src/lib/spell/global-dictionary.ts", "setGlobalDictionary"],
+      ["src/lib/spell/global-dictionary.ts", "globalDictionary"],
+      ["src/lib/spell/global-dictionary.ts", "useGlobalDictionary"],
+      ["src/hooks/useSpellDictionary.ts", "useSpellDictionary"],
+      ["src/hooks/useSpellDictionary.ts", "addWord"],
+      ["src/hooks/useSpellDictionary.ts", "removeWord"],
+      ["src/lib/spell/spellcheck-context.tsx", "useSpellDictionaries"],
+    ];
+    const dead = doors.filter(([file, name]) => {
+      const re = new RegExp(`\\b${name}\\b`);
+      return !PRODUCTION.some((abs) => {
+        if (rel(abs) === file) {
+          // Inside its own file, a CALL (not the declaration) counts —
+          // `setGlobalDictionary` is called by the add/remove doors beside it.
+          const uses = code(abs).match(new RegExp(`\\b${name}\\s*\\(`, "g")) ?? [];
+          return uses.length > 1 || (uses.length === 1 && !new RegExp(`function\\s+${name}\\b`).test(code(abs)));
+        }
+        return re.test(code(abs));
+      });
+    }).map(([f, n]) => `${f}#${n}`);
+    expect(dead).toEqual([]);
+  });
+
   it("the paper dictionary is DECLARED as a sidecar", () => {
     const sv = readFileSync(`${REPO_ROOT}/src/lib/sidecar-value.ts`, "utf8");
     expect(sv).toContain('"dictionary.json": { tier: "content", store: "disk", mount: true }');

@@ -39,6 +39,7 @@ import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { classAllowsHeadingLevel, headingLevelOptions } from "@/lib/document-class";
 import { HEADING_TYPES } from "@/lib/heading-types";
 import { iconHint } from "@/components/Hint";
+import { useSpellDictionaries } from "@/lib/spell/spellcheck-context";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
 // / `handleExampleMenuPick`) were RETIRED here. The single canonical example
@@ -514,6 +515,64 @@ function ViewActionRow({ id, label, onRun }: { id: string; label: string; onRun:
   );
 }
 
+/** One accepted word, as a remove row (task 856). Enter/click removes it and
+ *  keeps the menu open, so several can be cleared in one visit. */
+function SpellWordRow({ id, word, scopeLabel, onRemove }: { id: string; word: string; scopeLabel: string; onRemove: () => void }) {
+  const { active, getItemProps } = useMenuItem({ id, region: "list", run: onRemove });
+  return (
+    <button
+      {...getItemProps()}
+      type="button"
+      aria-label={`Remove “${word}” from ${scopeLabel}`}
+      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+    >
+      <span className="truncate">{word}</span>
+      <span aria-hidden className="text-ink-muted shrink-0">Remove</span>
+    </button>
+  );
+}
+
+/**
+ * The spelling dictionaries, listed where the user can UNDO an accept (task
+ * 856). "Add to this paper’s dictionary" / "Add to my dictionary" are one-way
+ * from the spelling menu — an accepted word is never flagged again, so that
+ * menu can never reopen on it — and before this group a misclick silenced the
+ * checker AND autocorrect for the word, permanently. Rendered only inside a
+ * document's SpellcheckProvider (null elsewhere).
+ */
+function SpellDictionaryGroup({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  const dicts = useSpellDictionaries();
+  if (!dicts) return null;
+  const scopes = [
+    { key: "paper", caption: "This paper", scopeLabel: "this paper’s dictionary", words: dicts.paper, remove: dicts.removeFromPaper },
+    { key: "global", caption: "All papers", scopeLabel: "your dictionary", words: dicts.global, remove: dicts.removeGlobally },
+  ] as const;
+  return (
+    <>
+      <ViewGroupRow id="spell-dictionary-group" label="Spelling dictionary" expanded={expanded} onToggle={onToggle} />
+      {expanded && scopes.map((scope) => (
+        <div key={scope.key} className="pl-3">
+          <MenuSectionLabel>{scope.caption}</MenuSectionLabel>
+          {scope.words.length === 0 ? (
+            <div role="presentation" className="pl-3 pr-3 py-1 text-xs text-ink-muted">No words added</div>
+          ) : (
+            scope.words.map((word) => (
+              <SpellWordRow
+                key={word}
+                id={`spell-dict-${scope.key}-${word}`}
+                word={word}
+                scopeLabel={scope.scopeLabel}
+                onRemove={() => scope.remove(word)}
+              />
+            ))
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 /** Viewport-aware dropdown — anchors to the right edge of its trigger and
  *  flips above when it would overflow the bottom of the viewport.
  *
@@ -552,6 +611,7 @@ export function ViewMenu({
   const [highlightsExpanded, setHighlightsExpanded] = useState(false);
   const [dividersExpanded, setDividersExpanded] = useState(false);
   const [dividerPrefsExpanded, setDividerPrefsExpanded] = useState(false);
+  const [spellDictExpanded, setSpellDictExpanded] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
   const setTrigger = useCallback((el: HTMLButtonElement | null) => {
@@ -615,6 +675,7 @@ export function ViewMenu({
               "highlights-group": [highlightsExpanded, setHighlightsExpanded],
               "dividers-group": [dividersExpanded, setDividersExpanded],
               "divider-prefs-group": [dividerPrefsExpanded, setDividerPrefsExpanded],
+              "spell-dictionary-group": [spellDictExpanded, setSpellDictExpanded],
             };
             const g = activeId ? groups[activeId] : undefined;
             if (!g) return;
@@ -648,6 +709,7 @@ export function ViewMenu({
               onToggle={() => { onToggleViewPref(row.key); setOpen(false); }}
             />
           ))}
+          <SpellDictionaryGroup expanded={spellDictExpanded} onToggle={() => setSpellDictExpanded((p) => !p)} />
           <MenuSeparator />
           <ViewGroupRow id="marginalia-group" label="Marginalia" expanded={marginaliaExpanded} onToggle={() => setMarginaliaExpanded((p) => !p)} />
           {marginaliaExpanded && (
