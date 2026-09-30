@@ -86,7 +86,13 @@ export const STORED_STATE_REGISTRY: readonly StoredSlotFamily[] = [
     key: "emergency-mirror/",
     owner: "src/lib/emergency-mirror.ts",
     bound: "capped",
-    cap: "MIRROR_MAX_CHARS per slot at write; MIRROR_MAX_SLOTS newest slots + MIRROR_MAX_AGE_MS on the session sweep",
+    cap: "MIRROR_MAX_CHARS per slot at write; MIRROR_MAX_SLOTS newest slots (live + offer) on the session sweep",
+  },
+  {
+    key: "emergency-mirror-offer/",
+    owner: "src/lib/emergency-mirror.ts",
+    bound: "capped",
+    cap: "one per unanswered surviving mirror (promoted from emergency-mirror/ at open); shares MIRROR_MAX_SLOTS",
   },
   {
     key: "local-sidecar/",
@@ -118,7 +124,9 @@ export function familyOf(key: string): StoredSlotFamily | null {
 
 export interface StoredStateRefusal {
   key: string;
-  why: "read-failed" | "invalid" | "oversized";
+  /** `evicted` — a readable slot deleted by its family's COUNT bound (task
+   *  851: the one deletion of possibly-unrecovered work, so it is reported). */
+  why: "read-failed" | "invalid" | "oversized" | "evicted";
   detail?: string;
   cleared: boolean;
   at: number;
@@ -135,6 +143,12 @@ function report(r: StoredStateRefusal): void {
       r.cleared ? " — slot cleared" : ""
     }`,
   );
+}
+
+/** Report a slot its owner deleted under a write-time COUNT bound (task 851).
+ *  The owner has already deleted it; this is the diagnostic trail. */
+export function noteStoredEviction(key: string, detail: string): void {
+  report({ key, why: "evicted", detail, cleared: true, at: Date.now() });
 }
 
 /** Every slot this session refused, oldest first. */

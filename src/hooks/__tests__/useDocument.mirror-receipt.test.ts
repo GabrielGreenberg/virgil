@@ -297,8 +297,9 @@ describe("a document that leaves memory keeps a mirror of THE WORK", () => {
       mirrorWrites.map((m) => m.content),
       "with nothing newer than disk in memory the tick must write NOTHING",
     ).toEqual([]);
+    // Task 851 — the open promoted the surviving mirror to its offer slot.
     expect(
-      (idb.get("emergency-mirror/doc-1") as { content: JSONContent }).content,
+      (idb.get("emergency-mirror-offer/doc-1/seeded") as { content: JSONContent }).content,
       "the good mirror must survive untouched",
     ).toEqual(WORK);
   });
@@ -551,8 +552,6 @@ describe("task 567 · \"Save anyway\" is a WRITE, and the acknowledgment rests o
 });
 
 describe("task 567 · `restoreFromMirror` decides from the write's RECEIPT", () => {
-  // `savedAt` must be RECENT: `readMirror` expires a slot older than
-  // `MIRROR_MAX_AGE_MS` on read, which is the one-sweep-per-session prune.
   const MIRROR = {
     docId: "doc-1",
     content: WORK,
@@ -596,7 +595,7 @@ describe("task 567 · `restoreFromMirror` decides from the write's RECEIPT", () 
     // for a write that never landed.
     expect(landed).toBe(false);
     expect(dels, "the mirror survives a write that did not land").toBe(0);
-    expect(idb.get("emergency-mirror/doc-1")).toEqual(MIRROR);
+    expect(idb.get("emergency-mirror-offer/doc-1/seeded")).toEqual(MIRROR);
     expect(getRecoveryOffer("doc-1"), "the offer still stands").toBeTruthy();
     expect(mockRead, "no refetch over an untouched disk").not.toHaveBeenCalled();
   });
@@ -613,6 +612,38 @@ describe("task 567 · `restoreFromMirror` decides from the write's RECEIPT", () 
     expect(getRecoveryOffer("doc-1")).toBeTruthy();
   });
 
+  it("task 851 · while the offer stands, this session's own landed save leaves the offered slot alone; discard clears it", async () => {
+    vi.useFakeTimers();
+    idb.set("emergency-mirror/doc-1", MIRROR);
+    const { ed } = destructibleEditor(WORK);
+    const { result } = renderHook(() => useDocument(), { wrapper: withPipeline("doc-1") });
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(getRecoveryOffer("doc-1")).toBeTruthy();
+    expect(idb.has("emergency-mirror/doc-1"), "promoted out of the live slot").toBe(false);
+    // This session's ticker takes its own work into the live slot…
+    idb.set("emergency-mirror/doc-1", { ...MIRROR, hash: "this-session" });
+    // …then its autosave lands, which drops the LIVE slot only.
+    mockWrite.mockClear();
+    act(() => result.current.onUpdate(ed, userTx));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(mockWrite, "the autosave was attempted").toHaveBeenCalled();
+    expect(idb.has("emergency-mirror/doc-1"), "the landed save dropped the live slot").toBe(false);
+    expect(
+      idb.get("emergency-mirror-offer/doc-1/seeded"),
+      "pre-851 that same drop deleted the unanswered work",
+    ).toEqual(MIRROR);
+    expect(getRecoveryOffer("doc-1")).toBeTruthy();
+    await act(async () => {
+      await getRecoveryActions("doc-1")!.discard();
+    });
+    expect(idb.has("emergency-mirror-offer/doc-1/seeded"), "the answer ends it").toBe(false);
+    expect(getRecoveryOffer("doc-1")).toBeNull();
+  });
+
   it("control · a LANDED restore clears the mirror and the offer, and reloads from disk", async () => {
     const actions = await withOffer();
     let landed: boolean | undefined;
@@ -623,6 +654,7 @@ describe("task 567 · `restoreFromMirror` decides from the write's RECEIPT", () 
     expect(mockWrite).toHaveBeenCalled();
     expect(dels, "a landed restore drops the mirror").toBeGreaterThan(0);
     expect(getRecoveryOffer("doc-1")).toBeNull();
+    expect(idb.has("emergency-mirror-offer/doc-1/seeded")).toBe(false);
     expect(mockRead, "…and the editor is reloaded from what actually landed").toHaveBeenCalled();
   });
 });

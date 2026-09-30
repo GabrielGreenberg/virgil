@@ -39,9 +39,11 @@ import {
   useEmergencyMirror,
 } from "@/hooks/useEmergencyMirror";
 import {
-  clearMirror,
+  clearMirrorOffer,
+  openMirrorRecovery,
   pruneExpiredMirrors,
-  readMirror,
+  readNextMirrorOffer,
+  type EmergencyMirrorEntry,
 } from "@/lib/emergency-mirror";
 import {
   clearRecoveryOffer,
@@ -447,23 +449,19 @@ export function useDocument() {
         // TASK 391 — a mirror is cleared by nothing but a landed write, so one
         // that survived to this open is work that never reached disk. Compare
         // it against what we just loaded and raise the offer if they differ.
+        // Task 851 — `openMirrorRecovery` also PROMOTES it out of the live
+        // slot, so this session's own ticker and first landed save cannot
+        // overwrite or drop it while the offer stands; only the answer can.
         // Fire-and-forget: this must never delay the editor opening, and a
         // failed IndexedDB read is not a reason to hold a document hostage.
         void (async () => {
-          const entry = await readMirror(docId);
+          const entry = await openMirrorRecovery(
+            docId,
+            hashContent(JSON.stringify(bundle.content)),
+          );
           if (cancelled) return;
-          if (!entry) {
-            clearRecoveryOffer(docId);
-            return;
-          }
-          if (entry.hash === hashContent(JSON.stringify(bundle.content))) {
-            // The work reached disk by some other route (another window, a
-            // later landed write). Nothing to recover; drop the debris.
-            void clearMirror(docId);
-            clearRecoveryOffer(docId);
-            return;
-          }
-          offerMirrorRecovery(entry);
+          if (entry) offerMirrorRecovery(entry);
+          else clearRecoveryOffer(docId);
         })();
         // One sweep per session, on the same idle promise: a paper that is
         // never reopened must not leak its slot forever.
@@ -1001,6 +999,21 @@ export function useDocument() {
   }, [currentModel, save]);
 
   /**
+   * Task 851 — the user answered THIS offer: drop exactly its slot (never the
+   * live slot, which now holds this session's own unlanded work), then raise
+   * the next unanswered offer this document still holds, if any.
+   */
+  const answerMirrorOffer = useCallback(
+    async (entry: EmergencyMirrorEntry): Promise<void> => {
+      await clearMirrorOffer(entry);
+      const next = await readNextMirrorOffer(docId);
+      if (next) offerMirrorRecovery(next);
+      else clearRecoveryOffer(docId);
+    },
+    [docId],
+  );
+
+  /**
    * TASK 391 — restore the emergency mirror over the file on disk.
    *
    * The recovered value is a MODEL, so it goes back in the way any model does:
@@ -1046,19 +1059,19 @@ export function useDocument() {
     // its offer standing and the mirror survives.
     if (!receipt.landed) return false; // refused or failed — keep the mirror
     await refetch();
-    void clearMirror(docId);
-    clearRecoveryOffer(docId);
+    await answerMirrorOffer(offer.entry);
     return true;
-  }, [docId, handle, save, refetch]);
+  }, [docId, handle, save, refetch, answerMirrorOffer]);
 
   /** Keep what is on disk. The mirror's content is NOT archived here: the disk
    *  copy is the one the user chose and the mirrored one is being declined —
    *  and unlike the restore path there is nothing about to be overwritten, so
    *  there is no net to take. */
   const discardMirror = useCallback(async (): Promise<void> => {
-    await clearMirror(docId);
-    clearRecoveryOffer(docId);
-  }, [docId]);
+    const offer = getRecoveryOffer(docId);
+    if (!offer) return;
+    await answerMirrorOffer(offer.entry);
+  }, [docId, answerMirrorOffer]);
 
   useEffect(
     () =>
