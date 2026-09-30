@@ -8,7 +8,7 @@
  * `open=false`.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { STACK_CHROME_Z } from "@/floats/float-policy";
 import type { StackItem } from "@/lib/stack/types";
@@ -25,6 +25,8 @@ export interface StackStripProps {
   open: boolean;
   items: StackItem[];
   onRemove: (id: string) => void;
+  /** The strip's own box — "inside" for the host's dismiss door (task 862). */
+  containerRef?: RefObject<HTMLDivElement | null>;
 }
 
 const ICON_GAP = 12;
@@ -34,7 +36,12 @@ const STRIP_PADDING = 10;
 const MIN_W = 240;
 const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
-export function StackStrip({ open, items, onRemove }: StackStripProps) {
+export function StackStrip({
+  open,
+  items,
+  onRemove,
+  containerRef,
+}: StackStripProps) {
   const [vw, setVw] = useState<number>(
     typeof window === "undefined" ? 1024 : window.innerWidth,
   );
@@ -77,6 +84,7 @@ export function StackStrip({ open, items, onRemove }: StackStripProps) {
 
   return createPortal(
     <div
+      ref={containerRef}
       data-stack-strip="true"
       style={{
         position: "fixed",

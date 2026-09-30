@@ -19,7 +19,7 @@
  * resolved from the terminal registry at the GESTURE (`getStackTerminal()`).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { STACK_CHROME_Z } from "@/floats/float-policy";
 import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-target";
@@ -32,6 +32,9 @@ import { LAYOUT_SITE_STACK_ICON } from "@/lib/layout-gesture-probe";
 export interface StackIconProps {
   open: boolean;
   onToggle: () => void;
+  /** Receives the button, so the strip's dismiss door can EXCLUDE it (task
+   *  862): a press on the icon toggles, never close-then-reopen. */
+  hitRef?: RefObject<HTMLButtonElement | null>;
 }
 
 /** Module-constant so `useLayoutGestureActive`'s snapshot memo keys on one
@@ -43,7 +46,7 @@ export const STACK_ICON_DIAMETER = 56;
 export const STACK_INSET_LEFT = 12;
 export const STACK_INSET_BOTTOM = 12;
 
-export function StackIcon({ open, onToggle }: StackIconProps) {
+export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
   const [hover, setHover] = useState(false);
   const stackTarget = useStackDropTarget();
   // Task 456 — WHAT THE HOVER OFFERS IS WHAT THE COMMIT ACCEPTS, applied to
@@ -131,7 +134,10 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
   return createPortal(
     <button
       data-iconbtn-exempt="portal pill: elevation is inline box-shadow (see unringed allowlist)"
-      ref={ref}
+      ref={(el) => {
+        ref.current = el;
+        if (hitRef) hitRef.current = el;
+      }}
       type="button"
       aria-label="Stack"
       aria-pressed={open}
