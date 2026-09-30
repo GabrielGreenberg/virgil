@@ -589,6 +589,24 @@ export function createCodePaneBridge(
   return {
     dispose() {
       if (disposed) return;
+      // Ending the bridge COMMITS what it holds, it does not cancel it (task
+      // 864). Every exit from the code view — the visual/PDF toggles, a doc
+      // switch, an editor swap — unmounts the pane and lands here, and the
+      // last ≤ debounceMs of code typing exists ONLY in `codeTimer`. Clearing
+      // it dropped those keystrokes silently. So flush first, through the same
+      // gated door as the debounce (a lossy parse keeps the last-good model
+      // and reports via `onParseError`), while `disposed` is still false. The
+      // TipTap instance can outlive the pane (keep-alive) or already be gone
+      // (editor swap) — a destroyed editor has nowhere to receive the edit.
+      // A pending TipTap→code sync is dropped: the code view is going away
+      // and TipTap is canonical.
+      if (codeTimer && !editor.isDestroyed) {
+        try {
+          flushCodeToTipTap();
+        } catch (err) {
+          console.error("[code-pane-bridge] flush on dispose failed:", err);
+        }
+      }
       disposed = true;
       if (codeTimer) {
         clearTimeout(codeTimer);
