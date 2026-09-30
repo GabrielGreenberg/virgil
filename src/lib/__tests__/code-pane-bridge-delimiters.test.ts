@@ -238,3 +238,58 @@ describe("code-pane-bridge: persistDelimiters", () => {
     bridge.dispose();
   });
 });
+
+// Task 864: every exit from the code view unmounts the pane and disposes the
+// bridge. The last ≤ 600 ms of code typing lives only in the debounce timer,
+// so dispose() must COMMIT it (through the same gated flush), never cancel it.
+describe("code-pane-bridge: dispose commits a pending code edit", () => {
+  it("parses a pending edit into TipTap on dispose, with no prior flush()", () => {
+    const { view, bridge, setContent, initialText } = setup();
+    const at = initialText.indexOf("Hello, world.");
+    userEdit(view, bridge, at, at + "Hello".length, "Goodbye");
+    bridge.dispose(); // no flush() — the view toggle / doc switch path
+
+    expect(setContent).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(setContent.mock.calls[0][0])).toContain("Goodbye");
+  });
+
+  it("does nothing on dispose when no edit is pending", () => {
+    const { bridge, setContent } = setup();
+    bridge.dispose();
+    expect(setContent).not.toHaveBeenCalled();
+  });
+
+  it("does not flush twice (a later dispose / timer is inert)", () => {
+    vi.useFakeTimers();
+    try {
+      const { view, bridge, setContent, initialText } = setup();
+      const at = initialText.indexOf("Hello, world.");
+      userEdit(view, bridge, at, at + "Hello".length, "Goodbye");
+      bridge.dispose();
+      bridge.dispose();
+      vi.advanceTimersByTime(5000);
+      expect(setContent).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops the edit without throwing when the editor is already destroyed", () => {
+    const initialText = serializeToLatex(DOC);
+    const seed = extractPreambleAndPostamble(initialText)!;
+    const { view } = makeFakeView(initialText);
+    const { editor, setContent } = makeStubEditor(DOC);
+    const bridge = createCodePaneBridge({
+      editor,
+      view,
+      initialPreamble: seed.preamble,
+      initialPostamble: seed.postamble,
+    });
+    const at = initialText.indexOf("Hello, world.");
+    userEdit(view, bridge, at, at + "Hello".length, "Goodbye");
+    // Editor swap: TipTap torn down before the pane.
+    (editor as unknown as { isDestroyed: boolean }).isDestroyed = true;
+    expect(() => bridge.dispose()).not.toThrow();
+    expect(setContent).not.toHaveBeenCalled();
+  });
+});
