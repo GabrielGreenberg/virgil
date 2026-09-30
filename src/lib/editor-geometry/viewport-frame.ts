@@ -3,6 +3,18 @@
  * stable across keystrokes: the editor's text edges, the pod rect, the
  * scroll container's viewport band, and the grab-handle portal context.
  *
+ * **The frame refreshes on RESIZE, never on scroll** (the service's one RO,
+ * window resize, gesture edges). So every field it caches must be
+ * SCROLL-STABLE. Horizontal edges and the scroll container's own band are;
+ * the VERTICAL edges of anything inside the scroll container are not — they
+ * move with every scroll. Such an edge is therefore stored in SCROLL-CONTENT
+ * space (viewport top + the scroller's `scrollTop` at measure time) and
+ * converted back with the LIVE `scrollTop` at the moment it is asked (task
+ * 858: the pod's top/bottom used to be cached as viewport values, so after
+ * any scroll the lift gesture's ghost↔popout flip answered "is the cursor in
+ * the pod?" against wherever the pod sat at the last resize). `toPortalCoords`
+ * reads its column rect live for the same reason.
+ *
  * This is `useEditorViewportCache`'s measurement, moved VERBATIM onto the
  * EditorGeometry service (perf Wave 2 C7). The hook was instantiated 4×
  * per pane (LiftHost, TextObjectGrabHandle, PendingChangePill,
@@ -76,10 +88,15 @@ export interface EditorViewportFrame {
   podLeft: number;
   /** Right edge of `.editor-pane-pod`. See `podLeft`. */
   podRight: number;
-  /** Top edge of `.editor-pane-pod`. See `podLeft`. */
-  podTop: number;
-  /** Bottom edge of `.editor-pane-pod`. See `podLeft`. */
-  podBottom: number;
+  /** Top edge of `.editor-pane-pod` in SCROLL-CONTENT space (viewport top
+   *  + the scroll container's `scrollTop` at measure time) — scroll-stable,
+   *  so it may be cached (see the module header). Not a viewport Y:
+   *  subtract the live `scrollParent.scrollTop` to get one. When the pod
+   *  walk fails it falls back to the scroll band, which does not scroll, and
+   *  is stored with a zero offset. */
+  podTopInScroll: number;
+  /** Bottom edge of `.editor-pane-pod`, same space as `podTopInScroll`. */
+  podBottomInScroll: number;
   /** True iff `(x, y)` falls inside the editor POD's outer rect — i.e.
    *  the `.editor-pane-pod` wrapper around the text column, which
    *  includes the pod's white padding. Sibling of `containsHoverZone`.
@@ -90,7 +107,11 @@ export interface EditorViewportFrame {
    *  user's mental model of the boundary as the white-pod → manila
    *  transition, not the text → white-padding transition. Predicate
    *  name is retained for diff minimisation; semantics widened from
-   *  text content rect → editor pod outer rect (L1.7). */
+   *  text content rect → editor pod outer rect (L1.7).
+   *
+   *  The vertical test is answered against the pod's CURRENT position: the
+   *  cached content-space edges are converted with the live
+   *  `scrollParent.scrollTop` (one scalar read — no rect read per move). */
   containsContentZone(x: number, y: number): boolean;
   /** The `[data-editor-col="true"]` (editor-pane-column) element that
    *  serves as the grab-handle portal's positioning context. The portal
@@ -101,12 +122,9 @@ export interface EditorViewportFrame {
    *  rect's top-left is the origin for converting viewport coords to
    *  portal-relative coords. Null when the column isn't mounted yet.
    *  (Name stays `paperEl` for diff minimization; semantically this is
-   *  the column.) */
+   *  the column.) Its rect is NOT cached — the column scrolls, so
+   *  `toPortalCoords` reads it live. */
   paperEl: HTMLElement | null;
-  /** Top/left of `paperEl` in viewport coords; used by
-   *  `toPortalCoords` so callers don't re-read getBoundingClientRect
-   *  per RAF. Updated on the same refresh path as the other rects. */
-  paperRect: { top: number; left: number };
   /** True iff `(x, y)` falls inside the hover-active rectangle for this
    *  editor. Y is bounded by the scroll parent's visible region. */
   containsHoverZone(x: number, y: number): boolean;
@@ -137,18 +155,17 @@ export const EMPTY_VIEWPORT_FRAME: EditorViewportFrame = {
   hoverZoneRight: 0,
   podLeft: 0,
   podRight: 0,
-  podTop: 0,
-  podBottom: 0,
+  podTopInScroll: 0,
+  podBottomInScroll: 0,
   containsContentZone: () => false,
   paperEl: null,
-  paperRect: { top: 0, left: 0 },
   containsHoverZone: () => false,
   toPortalCoords: (x, y) => ({ x, y }),
 };
 
 /**
  * Measure the frame for `editorEl`. Pure read pass — one `getComputedStyle`
- * + 4 `getBoundingClientRect` + two `closest()` walks. Returns `null` when
+ * + 3 `getBoundingClientRect` + one `scrollTop` + two `closest()` walks. Returns `null` when
  * the editor is hidden (keep-alive `display:none` → `offsetHeight === 0`)
  * or detached — the caller keeps its previous frame, which is the correct
  * stale-geometry defense (the hook's highest-leverage guard, retained):
@@ -214,8 +231,15 @@ export function computeViewportFrame(
   const podRect = podEl?.getBoundingClientRect();
   const podLeft = podRect?.left ?? rect.left;
   const podRight = podRect?.right ?? rect.right;
-  const podTop = podRect?.top ?? scrollTop;
-  const podBottom = podRect?.bottom ?? scrollBottom;
+  // Vertical pod edges → scroll-content space (task 858). Only a pod that
+  // lives inside a resolved scroller moves with it; the band fallback does
+  // not scroll, so it carries no offset.
+  const podScrolls = podRect != null && scrollParent != null;
+  const scrollOffsetAt = (): number =>
+    podScrolls ? scrollParent!.scrollTop : 0;
+  const measuredOffset = scrollOffsetAt();
+  const podTopInScroll = (podRect?.top ?? scrollTop) + measuredOffset;
+  const podBottomInScroll = (podRect?.bottom ?? scrollBottom) + measuredOffset;
   // `editor-pane-column` is the positioning context for the grab-
   // handle portal. The portal lives at column level (sibling of the
   // pod) so it escapes the pod's `clipPath` that clips lateral
@@ -225,9 +249,6 @@ export function computeViewportFrame(
   const paperEl =
     (editorEl.closest('[data-editor-col="true"]') as HTMLElement | null) ??
     null;
-  const paperBound = paperEl?.getBoundingClientRect();
-  const paperTop = paperBound?.top ?? 0;
-  const paperLeft = paperBound?.left ?? 0;
 
   // Capture the values in helper closures so callers always see the frame
   // they were handed — the object identity changes per committed refresh,
@@ -237,8 +258,11 @@ export function computeViewportFrame(
     x <= hoverZoneRight &&
     y >= scrollTop &&
     y <= scrollBottom;
-  const containsContentZone = (x: number, y: number): boolean =>
-    x >= podLeft && x <= podRight && y >= podTop && y <= podBottom;
+  const containsContentZone = (x: number, y: number): boolean => {
+    if (x < podLeft || x > podRight) return false;
+    const yInScroll = y + scrollOffsetAt();
+    return yInScroll >= podTopInScroll && yInScroll <= podBottomInScroll;
+  };
   // Read the column rect fresh per call: it changes on scroll
   // (the column moves inside the row scroll container), and the
   // frame only refreshes on resize. Cheap — one
@@ -263,11 +287,10 @@ export function computeViewportFrame(
     hoverZoneRight,
     podLeft,
     podRight,
-    podTop,
-    podBottom,
+    podTopInScroll,
+    podBottomInScroll,
     containsContentZone,
     paperEl,
-    paperRect: { top: paperTop, left: paperLeft },
     containsHoverZone,
     toPortalCoords,
   };
@@ -292,10 +315,8 @@ export function viewportFramesEqual(
     a.editorColumnLeft === b.editorColumnLeft &&
     a.podLeft === b.podLeft &&
     a.podRight === b.podRight &&
-    a.podTop === b.podTop &&
-    a.podBottom === b.podBottom &&
-    a.paperEl === b.paperEl &&
-    a.paperRect.top === b.paperRect.top &&
-    a.paperRect.left === b.paperRect.left
+    a.podTopInScroll === b.podTopInScroll &&
+    a.podBottomInScroll === b.podBottomInScroll &&
+    a.paperEl === b.paperEl
   );
 }

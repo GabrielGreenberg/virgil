@@ -110,7 +110,6 @@ describe("computeViewportFrame", () => {
     expect(frame!.podLeft).toBe(90);
     expect(frame!.podRight).toBe(710);
     expect(frame!.paperEl).toBe(col);
-    expect(frame!.paperRect).toEqual({ top: 30, left: 80 });
     // Zone predicates close over the measured numbers.
     expect(frame!.containsContentZone(100, 100)).toBe(true);
     expect(frame!.containsContentZone(720, 100)).toBe(false);
@@ -153,6 +152,39 @@ describe("computeViewportFrame", () => {
     // An unreadable token still falls back to the shipped 22.
     editorEl.style.setProperty("--margin-col-handle-inset", "junk");
     expect(computeViewportFrame(editorEl)!.marginInset).toBeCloseTo(22, 5);
+  });
+
+  /**
+   * Task 858 — the frame refreshes on RESIZE, not scroll, but the pod lives
+   * inside the scroll container, so its vertical edges move with every
+   * scroll. The lift gesture's ghost↔popout flip must answer against the
+   * pod's CURRENT position: here the frame is measured at scrollTop 0, then
+   * the user scrolls 300px (the pod moves up by 300) and no refresh runs.
+   */
+  it("containsContentZone answers against the pod's position after a scroll, without a re-measure", () => {
+    const { editorEl, scroll, pod } = makeEditorEl();
+    let scrolled = 0;
+    Object.defineProperty(scroll, "scrollTop", {
+      get: () => scrolled,
+      configurable: true,
+    });
+    // Pod spans viewport y 35..545 at scrollTop 0.
+    const frame = computeViewportFrame(editorEl)!;
+    expect(frame.containsContentZone(100, 500)).toBe(true);
+
+    scrolled = 300;
+    pod.getBoundingClientRect = () =>
+      rect({ left: 90, right: 710, top: 35 - 300, bottom: 545 - 300 });
+    // Pod now spans −265..245: y=500 is manila BELOW the pod (popout), y=0
+    // is inside it (ghost). A stale frame answered the reverse for both.
+    expect(frame.containsContentZone(100, 500)).toBe(false);
+    expect(frame.containsContentZone(100, 0)).toBe(true);
+    // Horizontal edges are unaffected by vertical scroll.
+    expect(frame.containsContentZone(720, 0)).toBe(false);
+
+    // A re-measure after the scroll is equal to the first: content-space
+    // edges are scroll-stable, so a scroll alone never bumps the version.
+    expect(viewportFramesEqual(frame, computeViewportFrame(editorEl)!)).toBe(true);
   });
 
   it("equality: identical re-measures bail; a moved edge does not", () => {
