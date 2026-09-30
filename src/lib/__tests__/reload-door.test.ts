@@ -21,6 +21,7 @@ import {
   noteUnsavedEdit,
 } from "@/lib/unsaved-work";
 import {
+  MIRROR_MAX_CHARS,
   __resetTickersForTests,
   createMirrorTicker,
   registerMirrorTicker,
@@ -89,6 +90,100 @@ describe("prepareForReload", () => {
     expect(r.unlanded).toHaveLength(1);
     expect(r.mirrored).toBe(true);
     expect(writes).toHaveLength(1);
+  });
+
+  describe("task 850 — `mirrored` is read from the tick RECEIPTS, not from an absence of throw", () => {
+    function tickerFor(
+      docId: string,
+      over: Partial<Parameters<typeof createMirrorTicker>[0]> = {},
+    ) {
+      registerMirrorTicker(
+        docId,
+        createMirrorTicker({
+          docId,
+          getModel: () => ({ type: "doc" }),
+          windowId: "w",
+          write: async () => {},
+          ...over,
+        }),
+      );
+    }
+
+    it("a written mirror ⇒ mirrored", async () => {
+      noteUnsavedEdit("A");
+      noteSaveBlocked("A", "conflict");
+      tickerFor("A");
+      const r = await prepareForReload();
+      expect(r.unlanded).toHaveLength(1);
+      expect(r.mirrored).toBe(true);
+    });
+
+    it("a write that REJECTS (quota, private mode) ⇒ NOT mirrored", async () => {
+      noteUnsavedEdit("A");
+      noteSaveBlocked("A", "conflict");
+      tickerFor("A", {
+        write: async () => {
+          throw new Error("QuotaExceededError");
+        },
+      });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const r = await prepareForReload();
+      warn.mockRestore();
+      expect(r.unlanded).toHaveLength(1);
+      expect(r.mirrored).toBe(false);
+    });
+
+    it("an OVERSIZED model ⇒ NOT mirrored — and still not on a second ask of the same model", async () => {
+      noteUnsavedEdit("A");
+      noteSaveBlocked("A", "conflict");
+      const huge = {
+        type: "doc",
+        content: [{ type: "text", text: "x".repeat(MIRROR_MAX_CHARS + 1) }],
+      };
+      tickerFor("A", { getModel: () => huge });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      expect((await prepareForReload()).mirrored).toBe(false);
+      // The ref bail must replay "oversized", never read as "already mirrored".
+      expect((await prepareForReload()).mirrored).toBe(false);
+      warn.mockRestore();
+    });
+
+    it("no model, or no ticker at all ⇒ NOT mirrored", async () => {
+      noteUnsavedEdit("A");
+      noteSaveBlocked("A", "conflict");
+      tickerFor("A", { getModel: () => null });
+      expect((await prepareForReload()).mirrored).toBe(false);
+
+      __resetTickersForTests();
+      expect((await prepareForReload()).mirrored).toBe(false);
+    });
+
+    it("an unchanged model already written ⇒ still mirrored on the second ask", async () => {
+      noteUnsavedEdit("A");
+      noteSaveBlocked("A", "conflict");
+      const m = { type: "doc" };
+      tickerFor("A", { getModel: () => m });
+      expect((await prepareForReload()).mirrored).toBe(true);
+      expect((await prepareForReload()).mirrored).toBe(true);
+    });
+
+    it("ONE uncovered doc among several makes the whole verdict false", async () => {
+      noteUnsavedEdit("A");
+      noteSaveBlocked("A", "conflict");
+      noteUnsavedEdit("B");
+      noteSaveBlocked("B", "conflict");
+      tickerFor("A");
+      tickerFor("B", {
+        write: async () => {
+          throw new Error("closed");
+        },
+      });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const r = await prepareForReload();
+      warn.mockRestore();
+      expect(r.unlanded).toHaveLength(2);
+      expect(r.mirrored).toBe(false);
+    });
   });
 
   it("one doc's failed flush does not strand the others", async () => {

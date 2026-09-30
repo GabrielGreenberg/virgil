@@ -184,7 +184,36 @@ describe("the ticker", () => {
     noteUnsavedEdit(DOC, T0);
     noteSaveBlocked(DOC, "error", T0);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(ticker.tick({ now: T0 })).resolves.toBe("unchanged");
+    // Task 850 — a RECEIPT, not an absence of throw: nothing was taken, and
+    // the outcome says so (pre-850 it said "unchanged", i.e. "already safe").
+    await expect(ticker.tick({ now: T0 })).resolves.toBe("write-failed");
+    await expect(ticker.tick({ now: T0 + 5000 })).resolves.toBe("write-failed");
+    warn.mockRestore();
+  });
+
+  it("task 850 — a write that fails and then succeeds is retried, and only then reads as covered", async () => {
+    let fail = true;
+    const writes: EmergencyMirrorEntry[] = [];
+    const ticker = createMirrorTicker({
+      docId: DOC,
+      getModel: (() => {
+        const m = doc("x");
+        return () => m; // identity-stable, like DocProducts' docJson
+      })(),
+      windowId: "w1",
+      write: async (e) => {
+        if (fail) throw new Error("QuotaExceededError");
+        writes.push(e);
+      },
+    });
+    noteUnsavedEdit(DOC, T0);
+    noteSaveBlocked(DOC, "error", T0);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await ticker.tick({ now: T0 })).toBe("write-failed");
+    fail = false;
+    expect(await ticker.tick({ now: T0 + 5000 })).toBe("written");
+    expect(await ticker.tick({ now: T0 + 10000 })).toBe("unchanged");
+    expect(writes).toHaveLength(1);
     warn.mockRestore();
   });
 

@@ -108,6 +108,21 @@ export function describeReadiness(r: AppReloadReadiness): string[] {
   return lines;
 }
 
+/**
+ * The confirm's closing line: whether the emergency mirror actually holds the
+ * work. Task 850 — `mirrored` is now read from the mirror's per-document
+ * receipts, so the "could NOT" branch is REACHABLE (a failed IndexedDB write,
+ * a model over the size cap, an editor already gone); pre-850 the mirror never
+ * threw, `mirrored` was always true, and this line always promised a copy.
+ */
+export function describeMirrorVerdict(r: AppReloadReadiness): string {
+  if (r.unlanded.length === 0) return `Saving everywhere first is safer.`;
+  if (r.mirrored) {
+    return `Virgil has kept an emergency copy in this browser, and will offer to restore it the next time you open the paper. Even so, saving first is safer.`;
+  }
+  return `Virgil could NOT keep an emergency copy of this work in this browser, so it would be gone.`;
+}
+
 function SoftwareUpdateBannerImpl() {
   const updateState = useUpdateState();
   const updateAvailable = updateState !== "none";
@@ -152,11 +167,7 @@ function SoftwareUpdateBannerImpl() {
           : `Updating restarts every open Virgil window, and this work has not reached disk:\n\n`) +
         describeReadiness(readiness).join("\n\n") +
         `\n\n` +
-        (readiness.unlanded.length === 0
-          ? `Saving everywhere first is safer.`
-          : readiness.mirrored
-            ? `Virgil has kept an emergency copy in this browser, and will offer to restore it the next time you open the paper. Even so, saving first is safer.`
-            : `Virgil could NOT keep an emergency copy in this browser, so this work would be gone.`),
+        describeMirrorVerdict(readiness),
       confirmLabel: `${verb} anyway`,
       cancelLabel: "Not yet — let me save",
       tone: "danger",
