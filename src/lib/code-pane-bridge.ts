@@ -53,7 +53,7 @@ import {
 } from "@/lib/latex-serializer";
 import { checkTexPreservation } from "@/lib/tex-preservation";
 import { canMountInSchema } from "@/lib/tiptap/schema-mount";
-import { getDocProducts } from "@/lib/doc-products/pipeline";
+import { assembleLiveSource } from "@/lib/doc-products/pipeline";
 import {
   getRanges,
   getLineRangeForUuid,
@@ -376,9 +376,7 @@ export function createCodePaneBridge(
         bibFamily: opts.getBibFamily?.() ?? null,
         onRequirementConflict: opts.onRequirementConflict,
       };
-      latex =
-        getDocProducts(editor)?.assembleSourceWith(assembleOpts) ??
-        serializeToLatex(editor.getJSON(), assembleOpts);
+      latex = assembleLiveSource(editor, assembleOpts);
     } catch (err) {
       // Serialization should never fail under normal use; log and bail.
       console.error("[code-pane-bridge] serialize failed:", err);
