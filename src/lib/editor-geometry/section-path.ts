@@ -74,8 +74,9 @@ export interface SectionSkipBand {
 
 /**
  * Kill-switch: `localStorage["virgil:geom-breadcrumb"] = "off"` reverts the
- * three breadcrumb sites to the legacy full-walk path (which also remains
- * the automatic fallback whenever this derivation returns null). Read
+ * two breadcrumb sites (`EditorLayout`, `reader-view-prefs`) to the legacy
+ * full-walk path (which also remains the automatic fallback whenever this
+ * derivation returns null). Read
  * per-call — it's two dictionary hits, and it makes the switch live without
  * a reload.
  */

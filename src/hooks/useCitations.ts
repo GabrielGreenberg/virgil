@@ -245,10 +245,12 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   // here (one per doc, NOT a module singleton — D1.4 / T1 §3.2c). A stable
   // instance across renders (lazy `useState` initializer) so external surfaces
   // (the editor `\cite{}` doc-rewrite, future citekey-keyed sidecars) can
-  // register migrators against it once. Gated behind `virgil:identity-cascade`:
-  // when the flag is OFF the cascade is never invoked, so the legacy
-  // `updateBibKeyAndType` path is the only writer and behavior is byte-identical
-  // to today.
+  // register migrators against it once. NOT gated: since task 689 a citekey
+  // rename (`saveBibEntry` → `runIdentityChange(renameCitekeyChange(…))`)
+  // fans out through this cascade whatever `virgil:identity-cascade` says —
+  // re-gating it brings back the dangling-`\cite{oldKey}` defect. The flag
+  // gates only the uid-keyed sidecar shapes (`useAnnotations`, `useBibReview`)
+  // and the identity-bus consumer (`useIdentityBusConsumer`).
   const [identityCascade] = useState(() => new IdentityCascade());
 
   const refreshBib = useCallback((id: string) => {

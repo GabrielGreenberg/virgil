@@ -168,7 +168,7 @@ export const FLAG_REGISTRY = {
     status: "rollout",
     requires: [],
     legacy: "1",
-    note: "IdentityCascade: sidecars re-key on BibEntry.uid and a citekey rename routes through the single writer.",
+    note: "IdentityCascade: annotation/bib-review sidecars key on BibEntry.uid, and the identity-bus consumer mounts. The citekey-rename cascade is UNFLAGGED (task 689) — OFF does not revert it.",
   },
   "virgil:inline-atom-lifecycle": {
     default: false,
