@@ -15,6 +15,9 @@ import type { StackItem } from "@/lib/stack/types";
 import { STACK_PULL_PREFIX } from "@/lib/stack/types";
 import { beginDropSession } from "@/components/drop-mode/controller";
 import { shortRelativeTime, summarizeStackItem } from "@/lib/stack/snapshot";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import { CARD_KIND_BY_STACK_CARD_KIND } from "@/lib/stack/card-kinds";
+import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
 
 /** One thumbnail's box. The strip's width formula reads the same width, so the
  *  budget it sizes for and the cards it lays out cannot drift apart. */
@@ -29,7 +32,7 @@ export interface StackThumbnailProps {
 export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
   const summary = useMemo(() => summarizeStackItem(item, 240), [item]);
   const time = useMemo(() => shortRelativeTime(item.capturedAt), [item.capturedAt]);
-  const kindLabel = kindLabelFor(item);
+  const kindLabel = stackItemKindLabel(item);
 
   const onMouseDown = (e: React.MouseEvent) => {
     // Suppress when the click was on the X — its own handler fires.
@@ -147,16 +150,26 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
   );
 }
 
-function kindLabelFor(item: StackItem): string {
+/**
+ * The name a thumbnail shows for its item — READ from the registries every
+ * other surface names these kinds from (task 861), never the internal id: a
+ * card is `CARD_REGISTRY[kind].label` (todo → "Task", bib → "Bibliography",
+ * the cutter/revision twins → "Request" / "Revision", as their panels say), a
+ * block is its `TEXT_OBJECT_REGISTRY` label. The header uppercases via CSS
+ * `text-transform`, so the string passes through unchanged — and reaches
+ * `data-hint` / `aria-description` in its readable case.
+ */
+export function stackItemKindLabel(item: StackItem): string {
   const p = item.payload;
   switch (p.kind) {
     case "text":
-      return "TEXT";
+      // A bare inline slice has no registry kind of its own.
+      return "Text";
     case "paragraph":
-      return "PARAGRAPH";
+      return TEXT_OBJECT_REGISTRY.paragraph.label;
     case "heading":
-      return "HEADING";
+      return TEXT_OBJECT_REGISTRY.heading.label;
     case "card":
-      return p.card.cardKind.toUpperCase();
+      return CARD_REGISTRY[CARD_KIND_BY_STACK_CARD_KIND[p.card.cardKind]].label;
   }
 }
