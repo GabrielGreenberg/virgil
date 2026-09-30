@@ -41,10 +41,33 @@ import {
   spellEngineAvailable,
   suggestFor,
 } from "@/lib/spell/spell-client";
-import { addToGlobalDictionary } from "@/lib/spell/global-dictionary";
+import {
+  addToGlobalDictionary,
+  removeFromGlobalDictionary,
+} from "@/lib/spell/global-dictionary";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
 
 const SpellcheckPortContext = createContext<SpellcheckPortRef | null>(null);
+
+/**
+ * The dictionaries as the USER manages them (task 856): both lists, and the
+ * two REMOVE doors that undo the port's two accept doors. A separate context
+ * from the port on purpose — the port is the checker's non-reactive seam (a
+ * stable ref), while a surface that LISTS the words must re-render when they
+ * change. Removing a word flows back through the same props that built the
+ * accepted set, so the version token changes and the whole document is
+ * re-checked: the squiggle (and autocorrect) return with no second path.
+ */
+export interface SpellDictionaries {
+  /** This paper's `dictionary.json` terms. */
+  paper: readonly string[];
+  /** The user's global list. */
+  global: readonly string[];
+  removeFromPaper: (word: string) => void;
+  removeGlobally: (word: string) => void;
+}
+
+const SpellDictionariesContext = createContext<SpellDictionaries | null>(null);
 
 /** What the provider needs from the document it sits inside. */
 export interface SpellcheckProviderProps {
@@ -56,6 +79,8 @@ export interface SpellcheckProviderProps {
   paperWords: readonly string[];
   /** Add a term to the paper's `dictionary.json`. */
   addPaperWord: (word: string) => void;
+  /** Remove a term from the paper's `dictionary.json` (task 856). */
+  removePaperWord: (word: string) => void;
   /** The user's global list. */
   globalWords: readonly string[];
   /** `references.bib`, for the name derivation. */
@@ -68,6 +93,7 @@ export function SpellcheckProvider({
   autocorrect,
   paperWords,
   addPaperWord,
+  removePaperWord,
   globalWords,
   bibEntries,
   children,
@@ -169,11 +195,29 @@ export function SpellcheckProvider({
   const [portRef] = useState<SpellcheckPortRef>(() => ({ current: null }));
   portRef.current = port;
 
+  const dictionaries = useMemo<SpellDictionaries>(
+    () => ({
+      paper: paperWords,
+      global: globalWords,
+      removeFromPaper: removePaperWord,
+      removeGlobally: removeFromGlobalDictionary,
+    }),
+    [paperWords, globalWords, removePaperWord],
+  );
+
   return (
     <SpellcheckPortContext.Provider value={portRef}>
-      {children}
+      <SpellDictionariesContext.Provider value={dictionaries}>
+        {children}
+      </SpellDictionariesContext.Provider>
     </SpellcheckPortContext.Provider>
   );
+}
+
+/** The user-facing dictionary lists + remove doors, or `null` outside a
+ *  document (the Library reader has no checker, so nothing to manage). */
+export function useSpellDictionaries(): SpellDictionaries | null {
+  return useContext(SpellDictionariesContext);
 }
 
 /**

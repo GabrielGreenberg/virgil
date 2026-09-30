@@ -14,6 +14,7 @@
 import { useMemo } from "react";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { withAcceptedTerm, withoutAcceptedTerm } from "@/lib/spell/accepted-words";
 
 export const SPELL_DICTIONARY_FILE = "dictionary.json";
 
@@ -29,7 +30,8 @@ export interface SpellDictionaryHook {
   words: readonly string[];
   /** Add one term. No-op when already present (by the accepted-word key). */
   addWord: (word: string) => void;
-  /** Remove one term, matched exactly as stored. */
+  /** Remove one term — every stored entry with the same accepted-word key
+   *  (task 856), so the remove matches by the rule the checker reads. */
   removeWord: (word: string) => void;
   loaded: boolean;
 }
@@ -67,15 +69,16 @@ export function useSpellDictionary(docId: string | null): SpellDictionaryHook {
     () => ({
       words: state.words,
       loaded,
-      addWord: (word) => {
-        const term = word.trim();
-        if (!term) return;
-        update((prev) =>
-          prev.words.includes(term) ? prev : { ...prev, words: [...prev.words, term] },
-        );
-      },
+      addWord: (word) =>
+        update((prev) => {
+          const words = withAcceptedTerm(prev.words, word);
+          return words === prev.words ? prev : { ...prev, words };
+        }),
       removeWord: (word) =>
-        update((prev) => ({ ...prev, words: prev.words.filter((w) => w !== word) })),
+        update((prev) => {
+          const words = withoutAcceptedTerm(prev.words, word);
+          return words === prev.words ? prev : { ...prev, words };
+        }),
     }),
     [state.words, loaded, update],
   );

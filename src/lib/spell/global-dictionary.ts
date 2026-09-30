@@ -20,6 +20,7 @@
 
 import { useSyncExternalStore } from "react";
 import { subscribeToStorageKey, writeStorageIfChanged } from "@/lib/cross-window-storage";
+import { withAcceptedTerm, withoutAcceptedTerm } from "@/lib/spell/accepted-words";
 
 export const GLOBAL_DICTIONARY_KEY = "virgil:spell-dictionary";
 
@@ -52,7 +53,8 @@ export function globalDictionary(): readonly string[] {
   return cached;
 }
 
-/** Replace the list (used by the add/remove doors and by tests). */
+/** Replace the list — the ONE write, under both the add and the remove door
+ *  (and tests). */
 export function setGlobalDictionary(words: readonly string[]): void {
   const next = Object.freeze([...new Set(words.map((w) => w.trim()).filter(Boolean))]);
   cached = next;
@@ -60,13 +62,27 @@ export function setGlobalDictionary(words: readonly string[]): void {
   emit();
 }
 
-/** Add one term. No-op when it is already there. */
+/**
+ * Add one term. No-op when it is ALREADY ACCEPTED here — decided by
+ * `acceptedWordKey`, the rule the checker reads, so `Gricean` over a stored
+ * `gricean` (or `Gricean's`) is not a second entry (task 856).
+ */
 export function addToGlobalDictionary(word: string): void {
-  const term = word.trim();
-  if (!term) return;
   const current = globalDictionary();
-  if (current.includes(term)) return;
-  setGlobalDictionary([...current, term]);
+  const next = withAcceptedTerm(current, word);
+  if (next !== current) setGlobalDictionary(next);
+}
+
+/**
+ * Remove a term (task 856) — every stored entry the checker would read as the
+ * same word, matched by `acceptedWordKey`, so removing `Gricean` also drops a
+ * stored `gricean`. Without this door the list was write-only: a word accepted
+ * by mistake was excused (and exempt from autocorrect) in every paper, forever.
+ */
+export function removeFromGlobalDictionary(word: string): void {
+  const current = globalDictionary();
+  const next = withoutAcceptedTerm(current, word);
+  if (next !== current) setGlobalDictionary(next);
 }
 
 /** Test seam: forget the module snapshot so the next read re-hydrates. */

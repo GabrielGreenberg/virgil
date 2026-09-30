@@ -15,10 +15,14 @@ import { useEffect, useState } from "react";
 import {
   SpellcheckProvider,
   useSpellcheckPortRef,
+  useSpellDictionaries,
+  type SpellDictionaries,
 } from "@/lib/spell/spellcheck-context";
+import { withAcceptedTerm, withoutAcceptedTerm } from "@/lib/spell/accepted-words";
 import {
   GLOBAL_DICTIONARY_KEY,
   addToGlobalDictionary,
+  removeFromGlobalDictionary,
   globalDictionary,
   setGlobalDictionary,
   useGlobalDictionary,
@@ -55,6 +59,28 @@ describe("the global dictionary", () => {
     expect(globalDictionary()).toEqual(["Gricean"]);
   });
 
+  it("an add ALREADY ACCEPTED by the checker's key is a no-op (task 856)", () => {
+    setGlobalDictionary(["gricean"]);
+    addToGlobalDictionary("Gricean");
+    addToGlobalDictionary("Gricean's");
+    expect(globalDictionary()).toEqual(["gricean"]);
+  });
+
+  it("remove matches by the accepted-word key, and persists (task 856)", () => {
+    setGlobalDictionary(["gricean", "supervenience"]);
+    removeFromGlobalDictionary("Gricean");
+    expect(globalDictionary()).toEqual(["supervenience"]);
+    __resetGlobalDictionaryForTest();
+    expect(globalDictionary()).toEqual(["supervenience"]);
+  });
+
+  it("a remove that matches nothing writes nothing", () => {
+    setGlobalDictionary(["supervenience"]);
+    const before = globalDictionary();
+    removeFromGlobalDictionary("teh");
+    expect(globalDictionary()).toBe(before);
+  });
+
   it("re-hydrates when a PEER WINDOW writes it", () => {
     // The cross-window law: a module snapshot that never re-reads is a store
     // whose next write clobbers the peer's change from a stale base.
@@ -85,6 +111,24 @@ describe("the global dictionary", () => {
   });
 });
 
+// ── the shared add/remove rule (both stores) ─────────────────────────────────
+
+describe("withAcceptedTerm / withoutAcceptedTerm — the ONE rule both stores use", () => {
+  it("add de-dupes by key and keeps identity on a no-op", () => {
+    const list = ["gricean"];
+    expect(withAcceptedTerm(list, "Gricean")).toBe(list);
+    expect(withAcceptedTerm(list, "Gricean’s")).toBe(list);
+    expect(withAcceptedTerm(list, "  ")).toBe(list);
+    expect(withAcceptedTerm(list, " de re ")).toEqual(["gricean", "de re"]);
+  });
+
+  it("remove is the add's inverse under the same key", () => {
+    const list = ["Gricean", "gricean", "supervenience"];
+    expect(withoutAcceptedTerm(list, "GRICEAN")).toEqual(["supervenience"]);
+    expect(withoutAcceptedTerm(list, "teh")).toBe(list);
+  });
+});
+
 /** Mount the hook so the module's storage listener is armed (refcounted). */
 function subscribeViaHook(sink: string[]): () => void {
   function Probe() {
@@ -107,11 +151,13 @@ function entry(fields: Record<string, string>): BibEntry {
 /** Renders the provider and hands the live port + a paper-word setter out. */
 function Harness({
   onPort,
+  onDictionaries,
   initialPaper = [],
   bibEntries = [],
   enabled = true,
 }: {
   onPort: (p: SpellcheckPort | null, addPaper: (w: string) => void) => void;
+  onDictionaries?: (d: SpellDictionaries | null) => void;
   initialPaper?: string[];
   bibEntries?: BibEntry[];
   enabled?: boolean;
@@ -123,11 +169,13 @@ function Harness({
       enabled={enabled}
       autocorrect={false}
       paperWords={paper}
-      addPaperWord={(w) => setPaper((prev) => [...prev, w])}
+      addPaperWord={(w) => setPaper((prev) => withAcceptedTerm(prev, w))}
+      removePaperWord={(w) => setPaper((prev) => withoutAcceptedTerm(prev, w))}
       globalWords={globalWords}
       bibEntries={bibEntries}
     >
       <Reader onPort={onPort} addPaper={(w) => setPaper((prev) => [...prev, w])} />
+      {onDictionaries && <DictionariesReader onDictionaries={onDictionaries} />}
     </SpellcheckProvider>
   );
 }
@@ -142,6 +190,18 @@ function Reader({
   const ref = useSpellcheckPortRef();
   useEffect(() => {
     onPort(ref.current, addPaper);
+  });
+  return null;
+}
+
+function DictionariesReader({
+  onDictionaries,
+}: {
+  onDictionaries: (d: SpellDictionaries | null) => void;
+}) {
+  const d = useSpellDictionaries();
+  useEffect(() => {
+    onDictionaries(d);
   });
   return null;
 }
@@ -191,6 +251,39 @@ describe("the provider composes ONE answer per document", () => {
     act(() => p.acceptGlobally("Gricean"));
     expect(globalDictionary()).toEqual(["Gricean"]);
     expect(p.isAccepted("Gricean")).toBe(true);
+  });
+
+  it("removing a PAPER word re-flags it and CHANGES the version token (task 856)", () => {
+    const d: { v: SpellDictionaries | null } = { v: null };
+    render(
+      <Harness
+        onPort={capture}
+        onDictionaries={(x) => { d.v = x; }}
+        initialPaper={["zzyzx"]}
+      />,
+    );
+    const p = live();
+    expect(d.v?.paper).toEqual(["zzyzx"]);
+    expect(p.isAccepted("zzyzx")).toBe(true);
+    const before = p.version();
+    act(() => d.v!.removeFromPaper("ZZYZX"));
+    expect(d.v?.paper).toEqual([]);
+    expect(p.isAccepted("zzyzx")).toBe(false);
+    expect(Object.is(p.version(), before)).toBe(false);
+  });
+
+  it("removing a GLOBAL word re-flags it and CHANGES the version token (task 856)", () => {
+    const d: { v: SpellDictionaries | null } = { v: null };
+    render(<Harness onPort={capture} onDictionaries={(x) => { d.v = x; }} />);
+    const p = live();
+    act(() => p.acceptGlobally("teh"));
+    expect(d.v?.global).toEqual(["teh"]);
+    expect(p.isAccepted("teh")).toBe(true);
+    const before = p.version();
+    act(() => d.v!.removeGlobally("teh"));
+    expect(globalDictionary()).toEqual([]);
+    expect(p.isAccepted("teh")).toBe(false);
+    expect(Object.is(p.version(), before)).toBe(false);
   });
 
   it("the port reports DISABLED when the preference is off", () => {

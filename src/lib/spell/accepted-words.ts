@@ -72,6 +72,33 @@ export function acceptedWordKey(word: string): string {
 }
 
 /**
+ * The ONE add rule both user stores share (task 856): `list` with `word`
+ * appended, or the SAME array when the word is empty or already accepted
+ * there by {@link acceptedWordKey} — so `Gricean` over a stored `gricean` (or
+ * `Gricean's`) is not a second entry. Identity-preserving so a no-op writes
+ * nothing.
+ */
+export function withAcceptedTerm<T extends readonly string[]>(list: T, word: string): T | string[] {
+  const term = word.trim();
+  if (!term) return list;
+  const key = acceptedWordKey(term);
+  return list.some((w) => acceptedWordKey(w) === key) ? list : [...list, term];
+}
+
+/**
+ * The ONE remove rule (task 856): `list` without every entry the checker
+ * reads as the same word, or the SAME array when nothing matched. Matching by
+ * key rather than exact string is what makes the remove the true inverse of
+ * the add — a hand-edited `gricean` is removed by removing `Gricean`.
+ */
+export function withoutAcceptedTerm<T extends readonly string[]>(list: T, word: string): T | string[] {
+  const key = acceptedWordKey(word.trim());
+  if (!key) return list;
+  const next = list.filter((w) => acceptedWordKey(w) !== key);
+  return next.length === list.length ? list : next;
+}
+
+/**
  * Every name word in a bibliography's `author` / `editor` fields.
  *
  * Fields are read through `bibFieldDisplay` — the task-409 projection door —

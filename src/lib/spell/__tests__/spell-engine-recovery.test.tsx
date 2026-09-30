@@ -177,6 +177,7 @@ describe("the provider publishes availability to the surface", () => {
         autocorrect={false}
         paperWords={[]}
         addPaperWord={() => {}}
+        removePaperWord={() => {}}
         globalWords={[]}
         bibEntries={[]}
       >
@@ -221,6 +222,7 @@ describe("the provider publishes availability to the surface", () => {
           autocorrect={false}
           paperWords={words}
           addPaperWord={(w) => add(w)}
+          removePaperWord={() => {}}
           globalWords={[]}
           bibEntries={[]}
         >
