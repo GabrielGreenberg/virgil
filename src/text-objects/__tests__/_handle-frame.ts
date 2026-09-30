@@ -69,15 +69,14 @@ export function buildHandleTestFrame(
     hoverZoneRight,
     podLeft: editorColumnLeft,
     podRight: input.editorRight,
-    podTop: input.scrollTop,
-    podBottom: input.scrollBottom,
+    podTopInScroll: input.scrollTop,
+    podBottomInScroll: input.scrollBottom,
     containsContentZone: (x, y) =>
       x >= editorColumnLeft &&
       x <= input.editorRight &&
       y >= input.scrollTop &&
       y <= input.scrollBottom,
     paperEl: input.paperEl,
-    paperRect,
     containsHoverZone:
       input.containsHoverZoneOverride ??
       ((x, y) =>
