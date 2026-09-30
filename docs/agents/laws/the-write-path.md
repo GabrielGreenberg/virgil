@@ -355,6 +355,17 @@ Six rules it earned:
   private-mode block, a closed database — all warn and retry on the next tick.
   Nothing here may disturb editing, and the banner SAYS when no copy was taken
   rather than repeating a promise it could not keep.
+- **A never-throwing net reports by RECEIPT (task 850).** Because the mirror
+  never throws, "the pass did not throw" was true of every outcome, and until
+  850 the reload door's `mirrored` was exactly that — always true, the
+  banner's "could NOT keep a copy" line dead code. Each tick now returns a
+  `MirrorTickOutcome` (`write-failed` is distinct from `unchanged`; a ref bail
+  REPLAYS the last verdict, so a second tick on an oversized model still says
+  `oversized`), `mirrorAllNow` returns the per-doc receipts, and
+  `prepareForReload` holds `mirrored` only when every unlanded doc's receipt
+  `mirrorCovers` it (a missing ticker is NOT covered). Residual, owned by task
+  851's slot-lifecycle redesign: an oversized model leaves an older, smaller
+  mirror in the slot, which the next open offers as the recovery.
 - **KEYSTROKE SANCTITY.** `noteUnsavedEdit` runs on the typing path and emits
   only on the clean→dirty EDGE, so a 50-character burst notifies subscribers
   ONCE; the mirror adds no editor subscription at all (one 5-second interval per

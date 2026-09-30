@@ -278,6 +278,38 @@ export function __resetMirrorPruneForTests(): void {
 }
 
 /**
+ * What one tick did — a RECEIPT, not an absence of throw (task 850, the
+ * task-567 pattern). The mirror is a net, never a gate, so a tick never
+ * throws; which means a caller that needs to know whether the net is actually
+ * THERE must read this, because "it did not throw" is true of every outcome.
+ *
+ * - `written` — this tick put the current model in the slot.
+ * - `unchanged` — the current model is ALREADY in the slot (an earlier tick
+ *   wrote exactly this content). Only ever said about content a write landed.
+ * - `not-armed` — nothing to cover: the document holds no unlanded work.
+ * - `no-model` — the editor is gone; nothing could be taken.
+ * - `oversized` — over {@link MIRROR_MAX_CHARS}; declined, nothing taken.
+ * - `write-failed` — the IndexedDB write rejected (quota, private mode, a
+ *   closed database); nothing taken, the next tick retries.
+ */
+export type MirrorTickOutcome =
+  | "written"
+  | "unchanged"
+  | "not-armed"
+  | "no-model"
+  | "oversized"
+  | "write-failed";
+
+/** Does this outcome mean the document's current work is SAFE in the mirror
+ *  (or needs no mirror)? The one reading of a receipt, so the reload door and
+ *  its suites ask the same question. */
+export function mirrorCovers(outcome: MirrorTickOutcome | undefined): boolean {
+  return (
+    outcome === "written" || outcome === "unchanged" || outcome === "not-armed"
+  );
+}
+
+/**
  * The ticker. Owns the equality bail and the arming decision; knows nothing
  * about React or timers, so its whole contract is testable by calling
  * {@link MirrorTicker.tick} directly.
@@ -291,7 +323,7 @@ export interface MirrorTicker {
     now?: number;
     /** See {@link shouldMirror} — arm regardless of age. */
     force?: boolean;
-  }): Promise<"written" | "unchanged" | "not-armed" | "no-model" | "oversized">;
+  }): Promise<MirrorTickOutcome>;
   /** Forget the last-mirrored fingerprint (after a landed save clears the
    *  slot, the next armed tick must write again even at identical content). */
   reset(): void;
@@ -310,12 +342,18 @@ export function createMirrorTicker(opts: {
   const write = opts.write ?? writeMirror;
   const readState = opts.readState ?? getUnsavedWork;
   let lastRef: JSONContent | null = null;
+  // What happened to `lastRef` — a ref bail REPLAYS it (task 850). Pre-850 the
+  // oversized branch remembered the ref too, so the second tick on the same
+  // oversized model bailed as "unchanged": the reload door read that as
+  // "already mirrored" about a model that had never been written.
+  let lastRefOutcome: "unchanged" | "oversized" = "unchanged";
   let lastHash: string | null = null;
   let warnedOversize = false;
 
   return {
     reset() {
       lastRef = null;
+      lastRefOutcome = "unchanged";
       lastHash = null;
     },
     async tick(tickOpts = {}) {
@@ -327,7 +365,7 @@ export function createMirrorTicker(opts: {
       // Reference-first: with the DocProducts pipeline mounted the shared
       // docJson is identity-stable for an unchanged document, so a quiet
       // armed tick costs one compare and no serialization.
-      if (lastRef !== null && model === lastRef) return "unchanged";
+      if (lastRef !== null && model === lastRef) return lastRefOutcome;
       const json = JSON.stringify(model);
       if (json.length > MIRROR_MAX_CHARS) {
         // Task 757 — the write-time cap. Remember the ref so an unchanged
@@ -339,11 +377,13 @@ export function createMirrorTicker(opts: {
           );
         }
         lastRef = model;
+        lastRefOutcome = "oversized";
         return "oversized";
       }
       const hash = hashContent(json);
       if (hash === lastHash) {
         lastRef = model;
+        lastRefOutcome = "unchanged";
         return "unchanged";
       }
       try {
@@ -359,11 +399,14 @@ export function createMirrorTicker(opts: {
       } catch (err) {
         // Quota, a private-mode block, a closed database. The mirror is a net,
         // never a gate: a failure to mirror must not disturb editing, and the
-        // next tick retries.
+        // next tick retries. But it is NOT "unchanged" (pre-850 it said so, and
+        // the reload door promised a copy that did not exist): nothing was
+        // taken, and the receipt says exactly that.
         console.warn("[emergency-mirror] write failed", err);
-        return "unchanged";
+        return "write-failed";
       }
       lastRef = model;
+      lastRefOutcome = "unchanged";
       lastHash = hash;
       return "written";
     },
@@ -396,15 +439,24 @@ export function unregisterMirrorTicker(docId: string, t: MirrorTicker): void {
  * `force` bypasses the AGING half of the arming rule: a door that is about to
  * drop memory must mirror work that is merely young, because "a write is on
  * its way" stops being true the moment the page goes.
+ *
+ * Resolves to each document's receipt (task 850). A document with no
+ * registered ticker is simply absent — and absent is NOT covered: nothing
+ * could have taken its work. A ticker that throws (it should not) is
+ * `write-failed`, never a silent success.
  */
 export async function mirrorAllNow(
   opts: { force?: boolean } = {},
-): Promise<void> {
-  await Promise.all(
-    [...tickers.values()].map((t) =>
-      t.tick({ force: opts.force === true }).catch(() => "unchanged" as const),
-    ),
+): Promise<Map<string, MirrorTickOutcome>> {
+  const entries = await Promise.all(
+    [...tickers.entries()].map(async ([docId, t]) => {
+      const outcome = await t
+        .tick({ force: opts.force === true })
+        .catch(() => "write-failed" as const);
+      return [docId, outcome] as const;
+    }),
   );
+  return new Map(entries);
 }
 
 /** Test helper — wipe all registrations. */

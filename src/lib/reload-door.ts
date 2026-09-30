@@ -72,7 +72,7 @@ import {
   type UnsavedBlockReason,
 } from "@/lib/unsaved-work";
 import { flushAllPendingDocs } from "@/lib/multi-window/pending-saves";
-import { mirrorAllNow } from "@/lib/emergency-mirror";
+import { mirrorAllNow, mirrorCovers } from "@/lib/emergency-mirror";
 import {
   publish as busPublish,
   subscribe as busSubscribe,
@@ -94,8 +94,11 @@ export interface ReloadReadiness {
   /** Documents whose work is still not on disk after the flush. Empty ⇒ the
    *  reload costs nothing. */
   unlanded: UnlandedDoc[];
-  /** Was a mirror pass taken for them? `false` only when the pass threw
-   *  outright — the affordance must not promise a net it does not have. */
+  /** Is EVERY unlanded document's current work actually in the mirror? Read
+   *  from the tick receipts (task 850), never from "the pass did not throw" —
+   *  the mirror never throws, so that was true even when nothing was written
+   *  (quota, an oversized model, no model). `false` ⇒ the affordance must not
+   *  promise a net it does not have. */
   mirrored: boolean;
 }
 
@@ -116,7 +119,11 @@ export interface ReloadReadiness {
  * 2. Re-read the channel — a refusal returns normally, so step 1's resolution
  *    is not evidence of anything.
  * 3. For whatever is still unlanded, force a mirror tick (`force`: young work
- *    is as exposed as old work once the page is going).
+ *    is as exposed as old work once the page is going), and read each
+ *    document's RECEIPT (task 850): `mirrored` holds only when every unlanded
+ *    document's tick says its current work is in the slot (`written`, or
+ *    `unchanged` — already written at this content). A failed write, an
+ *    oversized model, a missing model or a missing ticker is NOT covered.
  *
  * The channel and the mirror deliberately stay MODEL-scoped. A sidecar write
  * is either landed by step 1 or logged by its own `persist` — it is not on
@@ -139,9 +146,10 @@ export async function prepareForReload(): Promise<ReloadReadiness> {
     ageMs: s.dirtySince === null ? 0 : Math.max(0, now - s.dirtySince),
   }));
   if (unlanded.length === 0) return { unlanded, mirrored: true };
-  let mirrored = true;
+  let mirrored: boolean;
   try {
-    await mirrorAllNow({ force: true });
+    const receipts = await mirrorAllNow({ force: true });
+    mirrored = unlanded.every((d) => mirrorCovers(receipts.get(d.docId)));
   } catch {
     mirrored = false;
   }

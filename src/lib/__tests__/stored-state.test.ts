@@ -155,7 +155,9 @@ describe("the emergency mirror — the store written on the 5 s clock after open
     });
     expect(await t.tick()).toBe("oversized");
     const calls = stringify.mock.calls.length;
-    expect(await t.tick()).toBe("unchanged");
+    // Task 850 — the ref bail REPLAYS the verdict. Pre-850 this said
+    // "unchanged", which the reload door read as "already mirrored".
+    expect(await t.tick()).toBe("oversized");
     expect(stringify.mock.calls.length).toBe(calls);
     expect(write).not.toHaveBeenCalled();
     stringify.mockRestore();
