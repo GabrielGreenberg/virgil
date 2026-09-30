@@ -21,7 +21,7 @@
 
 import { get, set, del, keys, update, createStore } from "idb-keyval";
 
-import { clearMirror } from "@/lib/emergency-mirror";
+import { clearMirror, clearMirrorOffers } from "@/lib/emergency-mirror";
 import { deleteLocalSidecar } from "@/lib/local-sidecar";
 import { clearRecoveryOffer } from "@/lib/mirror-recovery";
 import { LOCAL_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
@@ -357,8 +357,9 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
  *
  * Every docId-keyed store this browser holds, and what happens to it:
  *   - `doc-handle/<id>`, `general-bib-handle/<id>` (here) — deleted.
- *   - `emergency-mirror/<id>` (emergency-mirror.ts) — deleted, together with
- *     its in-memory recovery offer (mirror-recovery.ts).
+ *   - `emergency-mirror/<id>` and every `emergency-mirror-offer/<id>/…`
+ *     (emergency-mirror.ts) — deleted, together with its in-memory recovery
+ *     offer (mirror-recovery.ts).
  *   - `local-sidecar/<id>/<file>` (local-sidecar.ts), one per
  *     `LOCAL_SIDECAR_FILENAMES` entry — deleted.
  *
@@ -378,6 +379,7 @@ export async function purgeDoc(id: string): Promise<void> {
     deleteDocHandle(id),
     deleteGeneralBibHandle(id),
     clearMirror(id),
+    clearMirrorOffers(id),
     ...LOCAL_SIDECAR_FILENAMES.map((f) => deleteLocalSidecar(id, f)),
   ]);
 }

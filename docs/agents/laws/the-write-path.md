@@ -2452,6 +2452,37 @@ re-bases outside the lock.
 > refusals. CI: `stored-state.test.ts` (door legs + owner/slot census),
 > `tex-assets.test.ts` (task-757 block).
 
+### The unanswered-offer rule (task 851): only the ANSWER ends an unrecovered mirror
+
+> **An unanswered mirror ends only by the user's answer (restore / discard) or
+> by a landed write of THAT content.** A landed write clears the LIVE slot — but
+> the landed write of the NEXT session is not a write of the surviving mirror's
+> content, and neither is that session's own ticker.
+
+The live slot is keyed per doc, so pre-851 a surviving mirror sat exactly where
+the new session's first landed save (`dropMirror("landed")`) deleted it and its
+ticker overwrote it — while the offer still stood, so a second crash before the
+answer lost the work for good. Now the open path PROMOTES it
+(`openMirrorRecovery`): copied to `emergency-mirror-offer/<docId>/<hash>` (write
+first, then drop the live slot), cleared only by `clearMirrorOffer` (restore
+landed / discard), by a later open that LOADS that exact content, or by
+`purgeDoc`. Several unanswered generations are all kept; the newest is offered
+and the next is raised as each is answered.
+
+Two further non-answer deletions are gone. Mirror reads pass
+`clearOnRefusal: false` — a slot the reader cannot parse may be the only copy,
+so it is reported, not deleted (the default-clear stays right for DEBRIS
+families; the mirror is not one). And there is no age rule: age is not evidence
+the work landed. **Chosen trade-off:** task 757's size bound still needs ONE
+deleting rule, so the session sweep keeps the newest `MIRROR_MAX_SLOTS` slots
+across both families — sparing every doc with a live ticker in this window
+(whose fingerprint would otherwise go stale against a deleted slot) and
+reporting each eviction to `__storageStats` as `why: "evicted"`. A spill to
+`virgil/.history/` was rejected for the sweep: it has no FSA handle for papers
+that are not open, and the open path's offer already IS the quarantine — the
+restore archives both sides there. CI: `stored-state.test.ts` (task-851 block),
+`useDocument.mirror-receipt.test.ts` (the landed-save-during-offer leg).
+
 ## The caller half: a door's contract binds its CALLERS (task 796)
 
 `library/scripts/update_master_bib_entry.py` is the one door to `master.bib`,

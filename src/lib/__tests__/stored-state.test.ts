@@ -48,7 +48,15 @@ import {
   MIRROR_MAX_CHARS,
   MIRROR_MAX_SLOTS,
   __resetMirrorPruneForTests,
+  __resetTickersForTests,
+  clearMirror,
+  clearMirrorOffer,
+  clearMirrorOffers,
   createMirrorTicker,
+  openMirrorRecovery,
+  readNextMirrorOffer,
+  registerMirrorTicker,
+  writeMirror,
   pruneExpiredMirrors,
   readMirror,
   type EmergencyMirrorEntry,
@@ -74,6 +82,7 @@ beforeEach(() => {
   failNextGet = null;
   __resetStoredStateRefusalsForTests();
   __resetMirrorPruneForTests();
+  __resetTickersForTests();
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -123,10 +132,16 @@ describe("the door — readStoredValue", () => {
 });
 
 describe("the emergency mirror — the store written on the 5 s clock after open", () => {
-  it("a corrupt slot is ABSENT at open and cleared (no write → crash → reopen → read loop)", async () => {
-    backing.set("emergency-mirror/a", { docId: "a", savedAt: Date.now(), hash: "h", content: "not a model" });
+  it("a corrupt slot is ABSENT at open and reported — but NOT deleted (task 851: it may be the only copy)", async () => {
+    const bad = { docId: "a", savedAt: Date.now(), hash: "h", content: "not a model" };
+    backing.set("emergency-mirror/a", bad);
     expect(await readMirror("a")).toBeNull();
-    expect(backing.has("emergency-mirror/a")).toBe(false);
+    expect(backing.get("emergency-mirror/a")).toEqual(bad);
+    expect(getStoredStateRefusals().at(-1)).toMatchObject({
+      key: "emergency-mirror/a",
+      why: "invalid",
+      cleared: false,
+    });
   });
 
   it("a slot holding ANOTHER paper's model is refused", async () => {
@@ -163,7 +178,7 @@ describe("the emergency mirror — the store written on the 5 s clock after open
     stringify.mockRestore();
   });
 
-  it("the sweep runs ONCE per session, drops malformed slots, and keeps only the newest MIRROR_MAX_SLOTS", async () => {
+  it("the sweep runs ONCE per session and keeps only the newest MIRROR_MAX_SLOTS — by count alone, leaving malformed slots, reporting each eviction", async () => {
     const now = Date.now();
     for (let i = 0; i < MIRROR_MAX_SLOTS + 5; i++) {
       backing.set(`emergency-mirror/d${i}`, mirror(`d${i}`, now - i * 1000));
@@ -171,18 +186,107 @@ describe("the emergency mirror — the store written on the 5 s clock after open
     backing.set("emergency-mirror/bad", 42);
     backing.set("tex-asset/x", { unrelated: true });
 
-    const dropped = await pruneExpiredMirrors(now);
-    expect(dropped).toBe(6);
+    const dropped = await pruneExpiredMirrors();
+    expect(dropped).toBe(5);
     const left = [...backing.keys()].filter((k) => k.startsWith("emergency-mirror/"));
-    expect(left).toHaveLength(MIRROR_MAX_SLOTS);
+    expect(left).toHaveLength(MIRROR_MAX_SLOTS + 1);
+    expect(left, "a slot the sweep cannot read is left, not deleted").toContain(
+      "emergency-mirror/bad",
+    );
     expect(left).toContain("emergency-mirror/d0");
     expect(left).not.toContain(`emergency-mirror/d${MIRROR_MAX_SLOTS + 4}`);
     expect(backing.has("tex-asset/x")).toBe(true);
+    expect(getStoredStateRefusals().filter((r) => r.why === "evicted")).toHaveLength(5);
 
     // Second open in the same session: no second full read of every slot.
     reads.get = 0;
-    await pruneExpiredMirrors(now);
+    await pruneExpiredMirrors();
     expect(reads.get).toBe(0);
+  });
+
+  it("task 851 · no age rule — a months-old mirror is still unlanded work, kept by read and by sweep", async () => {
+    const old = mirror("a", Date.now() - 400 * 24 * 60 * 60 * 1000);
+    backing.set("emergency-mirror/a", old);
+    expect((await readMirror("a"))?.docId).toBe("a");
+    expect(await pruneExpiredMirrors()).toBe(0);
+    expect(backing.get("emergency-mirror/a")).toEqual(old);
+  });
+
+  it("task 851 · the count cap spares a document open in this window (its ticker's fingerprint would go stale)", async () => {
+    const now = Date.now();
+    for (let i = 0; i < MIRROR_MAX_SLOTS; i++) {
+      backing.set(`emergency-mirror/d${i}`, mirror(`d${i}`, now - i * 1000));
+    }
+    // The OLDEST slot belongs to an open document.
+    backing.set("emergency-mirror/open", mirror("open", now - 10_000_000));
+    registerMirrorTicker("open", createMirrorTicker({ docId: "open", getModel: () => null, windowId: "w" }));
+    expect(await pruneExpiredMirrors()).toBe(1);
+    expect(backing.has("emergency-mirror/open")).toBe(true);
+    expect(backing.has(`emergency-mirror/d${MIRROR_MAX_SLOTS - 1}`)).toBe(false);
+  });
+});
+
+describe("task 851 · an unanswered mirror ends only by the answer, or a landed write of THAT content", () => {
+  const at = (docId: string, hash: string, savedAt: number) => ({ ...mirror(docId, savedAt), hash });
+
+  it("the open PROMOTES a surviving mirror out of the live slot; the new session's ticker and landed save cannot touch it", async () => {
+    const survivor = at("a", "crashed-work", 1000);
+    backing.set("emergency-mirror/a", survivor);
+
+    const offer = await openMirrorRecovery("a", "disk");
+    expect(offer).toEqual(survivor);
+    expect(backing.has("emergency-mirror/a"), "the live slot is free for this session").toBe(false);
+    expect(backing.get("emergency-mirror-offer/a/crashed-work")).toEqual(survivor);
+
+    // The new session: its ticker writes the live slot, then its first save lands.
+    await writeMirror(at("a", "new-session", 2000));
+    await clearMirror("a");
+    expect(
+      backing.get("emergency-mirror-offer/a/crashed-work"),
+      "pre-851 the landed save deleted the ONLY copy of the unanswered work",
+    ).toEqual(survivor);
+
+    // A second crash before the answer: the reopen still offers it.
+    expect(await openMirrorRecovery("a", "disk")).toEqual(survivor);
+  });
+
+  it("two unanswered generations are both kept: newest offered first, the older raised once that is answered", async () => {
+    backing.set("emergency-mirror-offer/a/first", at("a", "first", 1000));
+    backing.set("emergency-mirror/a", at("a", "second", 2000));
+    const offer = await openMirrorRecovery("a", "disk");
+    expect(offer?.hash).toBe("second");
+    await clearMirrorOffer(offer!);
+    expect((await readNextMirrorOffer("a"))?.hash).toBe("first");
+    await clearMirrorOffer({ docId: "a", hash: "first" });
+    expect(await readNextMirrorOffer("a")).toBeNull();
+  });
+
+  it("a slot whose content IS what was loaded reached disk — cleared, live or offer", async () => {
+    backing.set("emergency-mirror/a", at("a", "disk", 2000));
+    backing.set("emergency-mirror-offer/a/disk2", at("a", "disk2", 1000));
+    expect((await openMirrorRecovery("a", "disk"))?.hash, "the other offer still stands").toBe("disk2");
+    expect(backing.has("emergency-mirror/a")).toBe(false);
+    expect(await openMirrorRecovery("a", "disk2")).toBeNull();
+    expect(backing.has("emergency-mirror-offer/a/disk2")).toBe(false);
+  });
+
+  it("an offer slot the reader cannot parse is left in place", async () => {
+    backing.set("emergency-mirror-offer/a/x", { docId: "a", junk: true });
+    expect(await openMirrorRecovery("a", "disk")).toBeNull();
+    expect(backing.has("emergency-mirror-offer/a/x")).toBe(true);
+  });
+
+  it("purgeDoc's door retires every offer slot of the doc id, and no other doc's", async () => {
+    backing.set("emergency-mirror-offer/a/one", at("a", "one", 1));
+    backing.set("emergency-mirror-offer/a/two", at("a", "two", 2));
+    backing.set("emergency-mirror-offer/b/one", at("b", "one", 1));
+    await clearMirrorOffers("a");
+    expect([...backing.keys()]).toEqual(["emergency-mirror-offer/b/one"]);
+  });
+
+  it("the offer family is DECLARED in the registry, as its own family", () => {
+    expect(familyOf("emergency-mirror-offer/a/h")?.key).toBe("emergency-mirror-offer/");
+    expect(familyOf("emergency-mirror/a")?.key).toBe("emergency-mirror/");
   });
 });
 
