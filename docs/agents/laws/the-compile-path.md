@@ -58,7 +58,11 @@ Four mechanisms, and the first two are one idea:
   phase (naming the package and how many so far), or the last compile's FAILURE
   in the user's terms, or the honest "nothing yet" prompt. **"There is no
   pdfBlobUrl" is the same fact in all three states; only the record tells them
-  apart.**
+  apart.** And the converse (task 854): **the PRESENCE of a PDF does not silence
+  the record either** — `pdfBlobUrl` includes the disk seed of every reopened
+  paper, so over a showing PDF `PdfPaneOverlay` (same file, same derivation)
+  paints a pointer-inert progress strip while a compile runs; the "out of date"
+  chip yields to it. CI: `compile-pane-status-over-pdf.test.tsx`.
 - **kpse HARDENING**, and its status is stated honestly rather than promoted:
   upstream negative-caches a miss only on status **301** — its own dead CDN's
   sentinel — so a 404, a 429, a 5xx, a network error or the per-file timeout
