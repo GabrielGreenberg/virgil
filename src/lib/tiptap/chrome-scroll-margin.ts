@@ -40,20 +40,32 @@ function readPxVar(el: Element, name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * The sticky-chrome TOP inset of the editor's scroll viewport, in px: how far
+ * below the scroll container's top edge the first unobscured content line sits
+ * (content-area top `--chrome-top` + top reading mask `--editor-pt`). ONE
+ * expression, read by every door that asks "where does content become visible
+ * at the top?" — ProseMirror's intentional-scroll margin below, and the
+ * paragraph READING LINE (`editor-geometry/reading-line.ts`, task 857) that
+ * both the Back/Forward landing and the active-block recorder stand on.
+ *
+ * `--chrome-top` is emitted as plain px (= --pod-top + --pod-header-h), so it
+ * parses directly; the fallback (38 = 8px gap + 30px header) only applies if the
+ * var is unset. `--editor-pt` defaults to 40. Read LIVE (the margin-edit guide
+ * mutates `--editor-pt` with no render), never cached.
+ */
+export function chromeTopInset(dom: Element | null | undefined): number {
+  if (!dom) return 78;
+  return readPxVar(dom, "--chrome-top", 38) + readPxVar(dom, "--editor-pt", 40);
+}
+
 /** A per-side `scrollMargin` object. left/right stay 0; top = content-area top
  *  (`--chrome-top` = card gap + in-card header) + reading-mask (`--editor-pt`);
  *  bottom = bottom mask (`--editor-pb`). `getEditorDom` returns the live
  *  ProseMirror DOM (the common descendant in the cascade of both vars), or null
  *  before the editor mounts. */
 export function chromeAwareScrollMargin(getEditorDom: () => HTMLElement | null) {
-  // `--chrome-top` is now emitted as plain px (= --pod-top + --pod-header-h), so it
-  // parses directly; the fallback (38 = 8px gap + 30px header) only applies if the
-  // var is unset. `--editor-pt` defaults to 40.
-  const topInset = (): number => {
-    const dom = getEditorDom();
-    if (!dom) return 78;
-    return readPxVar(dom, "--chrome-top", 38) + readPxVar(dom, "--editor-pt", 40);
-  };
+  const topInset = (): number => chromeTopInset(getEditorDom());
   const bottomInset = (): number => {
     const dom = getEditorDom();
     if (!dom) return 40;

@@ -30,3 +30,9 @@ export {
   geomActiveBlockEnabled,
   legacyActiveBlockWalk,
 } from "./active-block";
+export {
+  READING_LINE_SLACK_PX,
+  readingLineY,
+  readingThresholdY,
+  scrollBlockToReadingLine,
+} from "./reading-line";

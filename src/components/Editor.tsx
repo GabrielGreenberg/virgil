@@ -12,6 +12,7 @@ import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { landOnBlock } from "@/lib/tiptap/block-landing";
+import { scrollBlockToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { Node as PMNode } from "@tiptap/pm/model";
 import {
   collectLinksFromEditor,
@@ -1434,12 +1435,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const top = el
           ? el.getBoundingClientRect().top
           : editor.view.coordsAtPos(blockPos + 1).top;
-        const scrollEl = findEditorScrollFor(editor.view.dom);
-        if (scrollEl) {
-          const scrollRect = scrollEl.getBoundingClientRect();
-          const targetY = top - scrollRect.top + scrollEl.scrollTop - 100;
-          scrollEl.scrollTop = Math.max(0, targetY);
-        }
+        // Land ON the paragraph reading line — the line the active-block
+        // recorder reads — so a Back/Forward landing is a fixed point of the
+        // history recorder (task 857; was a hand-tuned constant).
+        scrollBlockToReadingLine(editor.view, top);
       } catch { /* pos out of range */ }
     },
     jumpToCard(card: CardWithLinks, sourceEl?: HTMLElement | null): boolean {

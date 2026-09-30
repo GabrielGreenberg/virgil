@@ -2002,3 +2002,28 @@ pending change exists (the editor is normally live by then) and `LiftHost`
 reads its frame only during a gesture, so neither is known to misbehave today.
 Pins: `grab-handle-editor-binding.test.tsx`,
 `SelectionActionsMenu-placement-decouple.test.tsx` ("tracked editor binding").
+
+### The reading-line half: a landing is a FIXED POINT of the reader that reads it back (task 857)
+
+Paragraph Back/Forward has two halves that must answer "where is the paragraph
+the user is AT?" with ONE number: the recorder (`computeActiveBlockId` /
+`legacyActiveBlockWalk`, polled by EditorLayout's and the Reader's history
+hooks) and the landing (`scrollToParagraphId`). The recorder read the RAW
+scroll-container top — under ~78px of sticky chrome — while the landing parked
+its target a hand `100px` lower; a heading or short block above the target sat
+between the two lines, the recorder read IT ~3s after Back, pushed it, and
+truncated Forward. Its top-edge `posAtCoords` probe also landed on the sticky
+expand-all hover band (outside `view.dom`), knocking it off the browser's fast
+hit-test path every poll.
+
+Rule: both halves stand on the READING LINE
+([src/lib/editor-geometry/reading-line.ts](../../../src/lib/editor-geometry/reading-line.ts))
+— scroll top + `chromeTopInset` (the SAME expression ProseMirror's
+`chromeAwareScrollMargin` reads, hoisted into one export in
+`chrome-scroll-margin.ts`, read live). The landing puts the block ON the line
+(`scrollBlockToReadingLine`); the recorder's threshold is the line minus
+`READING_LINE_SLACK_PX` (device-pixel rounding). The lane's top probe
+(`useInTextPositions`) also probes at the line. Residual: a target near either
+END of the doc cannot reach the line (scroll clamps), so there the fixed point is
+unreachable — the recorder may re-read a neighbour. CI:
+`reading-line.test.tsx` (fails with the recorder half reverted).

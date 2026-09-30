@@ -8,6 +8,7 @@ import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { resolveVisiblePosBand } from "@/lib/editor-geometry/viewport-probe";
+import { readingLineY } from "@/lib/editor-geometry/reading-line";
 import { holdWithinEpsilon, HEIGHT_EPSILON_PX } from "@/lib/reposition-policy";
 import {
   createConvergenceController,
@@ -824,7 +825,12 @@ export function useInTextPositions(
     let viewBottom = Infinity;
     if (scrollEl) {
       const sr = scrollEl.getBoundingClientRect();
-      visibleTop = sr.top;
+      // The top probe stands on the reading line (task 857), below the
+      // sticky chrome: at the raw scroll top it hit the expand-all hover
+      // band — outside `view.dom` — and missed the browser's fast
+      // hit-test path every pass. Anything under the chrome is still
+      // covered by the band's NEAR_ZONE_PX position-space padding.
+      visibleTop = Math.min(readingLineY(editorDom, sr.top), sr.bottom);
       visibleBottom = sr.bottom;
       viewTop = sr.top - NEAR_ZONE_PX;
       viewBottom = sr.bottom + NEAR_ZONE_PX;
