@@ -154,7 +154,7 @@ const PERMITTED_HAND_ROLLED_STATUS_DOTS: ReadonlyArray<[file: string, fragment: 
     "PulsingDot's core, under a second ping layer — same amber-400/500 question as the Bibliography pending dot, plus a two-layer shape",
   ],
   [
-    "src/components/EditorLayout.tsx",
+    "src/components/CompilePaneStatus.tsx",
     "bg-yellow-500",
     "the PDF-viewer chip's stale dot: the SAME signal StatusCluster's pdf-stale dot paints, from a different family. That one reads --status-warn (#eab308); this one is Tailwind v4's yellow-500 (oklch 79.5% 0.184 86.047 ≈ #f0b100), the ramp its own chip's bg-yellow-100/text-yellow-800 sit on — so the two ALREADY differ, and converting the dot alone both repaints it and strands it off its chip. Which family wins is a colour decision",
   ],
