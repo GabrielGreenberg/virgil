@@ -43,20 +43,31 @@ export type CompilePhase =
   | "booting"
   /** Reading + preparing the paper's files. */
   | "preparing"
-  /** Downloading TeX packages from the mirror — the slow phase. */
+  /**
+   * Downloading TeX packages from the mirror — the slow phase. Fetches happen
+   * INSIDE a typesetting pass (the worker's sync XHR), and no event marks the
+   * end of a download burst, so the RECORD stays `fetching` after the last
+   * download; what the user is SHOWN is derived from `lastFetchAt` +
+   * `FETCH_QUIET_MS` by the PDF pane's renderers (task 855).
+   */
   | "fetching"
   /** pdfTeX is running a pass. */
   | "typesetting"
   /** The compile ended. `outcome` says how. */
   | "done";
 
-/** How a finished compile ended — mirrors `CompileStatus` plus `aborted`. */
+/**
+ * How a finished compile ended — mirrors `CompileStatus` (whose `cancelled`
+ * is the user's own choice, never a failure — task 855) plus `error`, the
+ * hook's throw path the service never saw.
+ */
 export type CompileOutcome =
   | "ok"
   | "degraded"
   | "failed"
   | "timeout"
   | "boot-failed"
+  | "cancelled"
   | "error";
 
 export interface CompileProgress {
@@ -67,6 +78,8 @@ export interface CompileProgress {
   assetsFetched: number;
   /** The package currently being downloaded, if any. */
   currentAsset: string | null;
+  /** Wall-clock ms of the latest package download; 0 when none this compile. */
+  lastFetchAt: number;
   /** 1-based pass number while typesetting. */
   pass: number;
   /** How many passes the plan calls for. */
@@ -88,6 +101,7 @@ export const IDLE_PROGRESS: CompileProgress = {
   startedAt: 0,
   assetsFetched: 0,
   currentAsset: null,
+  lastFetchAt: 0,
   pass: 0,
   totalPasses: 0,
   attempt: 1,
@@ -162,9 +176,18 @@ export function noteAssetFetch(docId: string, name: string): void {
     phase: "fetching",
     assetsFetched: prev.assetsFetched + 1,
     currentAsset: name,
+    lastFetchAt: Date.now(),
   });
   emit();
 }
+
+/**
+ * How long without a download before a `fetching` record is SHOWN as
+ * typesetting again (task 855). Downloads arrive a few per second while a
+ * burst runs, so a second of silence means pdfTeX is past them and working. The
+ * PDF pane's renderers own the one timer that asks (`CompilePaneStatus.tsx`).
+ */
+export const FETCH_QUIET_MS = 1000;
 
 export function finishCompile(
   docId: string,

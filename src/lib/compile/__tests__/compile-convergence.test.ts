@@ -359,8 +359,12 @@ describe("task 576 — the teardown mode follows the attempt", () => {
     });
     await vi.advanceTimersByTimeAsync(10);
     ctrl.abort();
-    await runToSettle(promise);
+    const result = await runToSettle(promise);
     expect(teardown[0]).toBe("reset:terminate");
     expect(teardown.at(-1)).toBe("terminate-draining");
+    // Task 855: an abort is recorded as the caller's choice, not a failure —
+    // on the result AND on the record the pane reads.
+    expect(result.status).toBe("cancelled");
+    expect(getCompileProgress(DOC).outcome).toBe("cancelled");
   });
 });

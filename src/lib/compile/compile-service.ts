@@ -604,7 +604,10 @@ class CompileService {
 
   private abortedResult(): CompileResult {
     return {
-      status: "failed",
+      // Task 855: an abort is the caller's choice, not a failed compile — it
+      // used to report `failed`, which the outcome vocabulary words as
+      // "Compile failed" in the danger register.
+      status: "cancelled",
       log: "Compile aborted",
       ranPasses: 0,
       bibtexStatus: "absent",

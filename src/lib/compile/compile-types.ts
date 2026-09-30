@@ -28,7 +28,12 @@ export type CompileStatus =
   | "failed"
   | "degraded"
   | "timeout"
-  | "boot-failed";
+  | "boot-failed"
+  /**
+   * The caller aborted (its signal fired) before a PDF existed. The user's own
+   * choice — never worded as a failure (task 855).
+   */
+  | "cancelled";
 
 export type BibtexStatus = "ok" | "failed" | "absent";
 

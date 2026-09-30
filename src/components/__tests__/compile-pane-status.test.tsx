@@ -11,9 +11,9 @@
  * because it is three different situations, and telling them apart is the whole
  * of the honesty half (task 392's law, one subsystem over).
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { CompilePaneStatus } from "@/components/CompilePaneStatus";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { CompilePaneStatus, PdfPaneOverlay } from "@/components/CompilePaneStatus";
 import {
   __resetAllCompileProgress,
   beginCompile,
@@ -26,6 +26,7 @@ const DOC = "doc-pane";
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   __resetAllCompileProgress();
 });
 
@@ -88,5 +89,62 @@ describe("the PDF pane always says which of the three states it is in", () => {
     noteAssetFetch("doc-A", "pgf.sty");
     render(<CompilePaneStatus docId="doc-B" />);
     expect(screen.getByText("No compiled PDF")).toBeTruthy();
+  });
+});
+
+describe("task 855 — the record says what the user is waiting on NOW", () => {
+  it("a continuation's attempt line rides ALONGSIDE the fetching line", () => {
+    // A continuation exists only because of fetching, so an attempt line shown
+    // "instead of" the fetching line was never visible.
+    beginCompile(DOC, { attempt: 2 });
+    noteAssetFetch(DOC, "tikz.sty");
+    render(<CompilePaneStatus docId={DOC} />);
+    expect(screen.getByText(/Downloading LaTeX packages/)).toBeTruthy();
+    expect(screen.getByText(/Attempt 2 — resuming/)).toBeTruthy();
+  });
+
+  it("once no download has arrived for the quiet interval, it reads as typesetting", () => {
+    vi.useFakeTimers();
+    beginCompile(DOC);
+    notePass(DOC, 1, 1);
+    noteAssetFetch(DOC, "pgfcore.sty");
+    noteAssetFetch(DOC, "pgfsys.def");
+    render(<CompilePaneStatus docId={DOC} />);
+    expect(screen.getByText(/Downloading LaTeX packages — 2 so far/)).toBeTruthy();
+    // A new download inside the window keeps it downloading.
+    act(() => {
+      vi.advanceTimersByTime(600);
+      noteAssetFetch(DOC, "tikz.sty");
+    });
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(screen.getByText(/Downloading LaTeX packages — 3 so far/)).toBeTruthy();
+    // Silence: pdfTeX is past the downloads and working through the pass.
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByText(/Downloading LaTeX packages/)).toBeNull();
+    expect(screen.getByText(/Typesetting — downloaded 3 packages/)).toBeTruthy();
+    // And the cold-compile sentence is gone with it.
+    expect(screen.queryByText(/first compile of a paper/)).toBeNull();
+  });
+
+  it("a paper with a PDF showing is not told it is on its first compile", () => {
+    beginCompile(DOC);
+    noteAssetFetch(DOC, "tikz.sty");
+    render(<PdfPaneOverlay docId={DOC} stale={false} />);
+    expect(screen.getByText(/hasn't used before/)).toBeTruthy();
+    expect(screen.queryByText(/first compile of a paper/)).toBeNull();
+  });
+
+  it("the user's own Cancel is the neutral prompt, never an alert", () => {
+    beginCompile(DOC);
+    finishCompile(DOC, "cancelled");
+    render(<CompilePaneStatus docId={DOC} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/didn.t produce a PDF/)).toBeNull();
+    expect(screen.getByText("No compiled PDF")).toBeTruthy();
+    expect(screen.getByText("Compile cancelled.")).toBeTruthy();
   });
 });
