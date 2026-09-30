@@ -16,6 +16,11 @@ import { STACK_PULL_PREFIX } from "@/lib/stack/types";
 import { beginDropSession } from "@/components/drop-mode/controller";
 import { shortRelativeTime, summarizeStackItem } from "@/lib/stack/snapshot";
 
+/** One thumbnail's box. The strip's width formula reads the same width, so the
+ *  budget it sizes for and the cards it lays out cannot drift apart. */
+export const STACK_THUMB_W = 160;
+export const STACK_THUMB_H = 96;
+
 export interface StackThumbnailProps {
   item: StackItem;
   onRemove: (id: string) => void;
@@ -49,8 +54,8 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
       style={{
         position: "relative",
         flex: "0 0 auto",
-        width: 160,
-        height: 96,
+        width: STACK_THUMB_W,
+        height: STACK_THUMB_H,
         background: "var(--surface, #ffffff)",
         border: "1px solid var(--border-light, #c9c5c5)",
         borderRadius: "var(--radius-md)",

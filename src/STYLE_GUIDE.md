@@ -2833,18 +2833,26 @@ ring is an `outline`, a disjoint property, so all three compose.
 
 ## Stack (visual clipboard)
 
-The Stack lives at the bottom-left of the editor pane: a 56px round
+The Stack lives at the bottom-left of the editor pane: a round
 translucent button (3 stacked pages icon) backed by a body-portaled
-strip that opens on click. Items in the strip are 160×96 compressed
-cards showing kind label, 5-line summary, X-to-remove, and relative
-date.
+strip that opens on click. Items in the strip are compressed cards
+showing kind label, 5-line summary, X-to-remove, and relative date.
+Geometry is exported once and read by every consumer — `STACK_ICON_DIAMETER`
+/ `STACK_INSET_*` from `StackIcon`, `STACK_THUMB_W` / `STACK_THUMB_H` from
+`StackThumbnail` (the strip's width budget reads the same thumb width it lays
+out).
 
-Z-index band: **999** — same as `DockOutline`, below `FloatingPanel`
-(1200+) so a dragged float visually lands on top of the icon. The
-StackIcon paints a blue ring (`#2563eb`) while a drag is hovering it
-(populated via the `useStackDropTarget` module signal). The strip uses
-`rgba(28, 25, 23, 0.82)` with backdrop blur — a darkish translucent
-band consistent with overlay chrome.
+Z-index: `STACK_CHROME_Z` on the float-policy ladder (= `FLOATING_PANEL_Z_BASE
+- 1`, the below-panel chrome tier shared with `DockOutline`) so a dragged float
+visually lands on top of the icon — never a hand-typed number. The StackIcon
+paints a blue ring (`#2563eb`) while a drag is hovering it (populated via the
+`useStackDropTarget` module signal).
+
+The strip surface is two tokens (task 860): `--stack-strip-bg` — a LIGHT
+warm-black tint over the canvas, no backdrop blur — and `--stack-strip-hint`
+(body ink) for the empty-state sentence. The hint must be legible on the
+COMPOSITED band (≥ 4.5:1); light-on-dark ink here was chosen for a dark 0.82
+band this section once documented but the code never shipped, and read ~1.4:1.
 
 ## Editor inlines
 

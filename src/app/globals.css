@@ -575,6 +575,13 @@
      every modal's backdrop reads warm against the manila canvas instead of
      graphite. The ONE un-warmed token in this otherwise stone-mapped block. */
   --overlay-scrim: rgba(41, 37, 36, 0.3);
+  /* The Stack strip (task 860): a LIGHT warm-black tint over the canvas (the
+     same --ink-strong umber as the scrim), and the empty-state hint on it in
+     body ink. The hint used to be 72%-white — chosen for a documented dark
+     0.82 band that never shipped — which composites to ~1.4:1 on this band;
+     --ink-body reads ≈5:1 on it over the default canvas. */
+  --stack-strip-bg: rgba(28, 25, 23, 0.2);
+  --stack-strip-hint: var(--ink-body);
 
   /* Borders */
   --edge-subtle: #e7e5e4;   /* card/input border, menu divider (≈ stone-200) */
