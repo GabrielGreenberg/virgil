@@ -498,11 +498,13 @@ describe("atom-only selection — math/tex preserve the atom (no data loss)", ()
     expect(countOfType(editor, "displayMath")).toBe(0);
   });
 
-  it("tex cell leaves the selected atom intact (no texBlock inserted)", () => {
+  // Task 848: `\tex` seeds its LaTeX SOURCE, so the atom is not lost — it is
+  // CARRIED into the block as `$\lambda$` (no longer refused).
+  it("tex cell carries the selected atom as its LaTeX (task 848)", () => {
     const editor = mountAtomOnly();
     texRow.run(selCtx(editor));
-    expect(countOfType(editor, "inlineMath")).toBe(1);
-    expect(firstOfType(editor, "inlineMath")!.attrs.latex).toBe("\\lambda");
-    expect(countOfType(editor, "texBlock")).toBe(0);
+    expect(countOfType(editor, "inlineMath")).toBe(0);
+    expect(countOfType(editor, "texBlock")).toBe(1);
+    expect(firstOfType(editor, "texBlock")!.attrs.code).toBe("$\\lambda$");
   });
 });

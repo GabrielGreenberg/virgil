@@ -736,12 +736,17 @@ describe("tex \\tex — seed-from-selection + atom-only bail", () => {
     expect(firstOfType(e, "citation")!.attrs.citationId).toBe("cit-1");
   });
 
-  it("ATOM-ONLY selection (inlineMath) → BAILS (no texBlock, math preserved)", () => {
+  // Task 848: the seed is the span's LaTeX SOURCE, so an id-less inline atom is
+  // CARRIED as its LaTeX (it used to be refused — the plain-text seed could not
+  // hold it). The Card-bearing citation above still refuses: its id has no
+  // spelling in a raw-TeX block.
+  it("ATOM-ONLY selection (inlineMath) → CARRIED as `$…$` (task 848)", () => {
     const e = mount([{ type: "paragraph", attrs: { uuid: "p1" }, content: [INLINE_MATH] }]);
     selectRange(e, 0, 1);
     texRun(selCtx(e));
-    expect(countOfType(e, "texBlock")).toBe(0);
-    expect(countOfType(e, "inlineMath")).toBe(1);
+    expect(countOfType(e, "texBlock")).toBe(1);
+    expect(firstOfType(e, "texBlock")!.attrs.code).toBe("$\\lambda$");
+    expect(countOfType(e, "inlineMath")).toBe(0);
   });
 });
 

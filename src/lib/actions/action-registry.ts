@@ -221,6 +221,7 @@ import {
 } from "@/text-objects/action-scope";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
 import { sliceIsFullyCapturedBy } from "@/lib/tiptap/capture-symmetry";
+import { captureRangeLatexSource } from "@/lib/tiptap/slice-capture";
 // VALUE imports: the markdown triggers the three WRAPPER rows record as their
 // `inputRulePattern` (task 427) are the extension's OWN regexes, never a
 // re-spelling — the binding lives in StarterKit and the row only RECORDS it.
@@ -1834,10 +1835,11 @@ const TITLE_ACTION_ROWS: Readonly<Record<TitleActionId, ActionSpec>> = {
  * `texBlock`. Operates purely on `ctx.view` (no React, no bridge), so the slash
  * command and the lightning grid cell can never diverge on the creator.
  *
- * Seeding mirrors the grid's former `insertTexBlock` VERBATIM: `textBetween`
- * with `\n` between block boundaries, and a `leafText` callback that turns
- * Shift+Enter `hardBreak` nodes into `\n` (the default drops them). Tabs survive
- * automatically (TabIndent inserts literal `\t` into text content). The
+ * Seeding is the selection's LaTeX SOURCE (task 848, `captureRangeLatexSource`):
+ * marks become their commands, inline atoms their LaTeX, a Shift+Enter
+ * `hardBreak` its `\\`, and blocks are joined by a blank line as in the
+ * `.tex`. (The grid's former `insertTexBlock` seeded plain `textBetween`, which
+ * silently deleted every mark in the span.) The
  * `deleteSelection()`-before-`insertContent()` dance is required: without the
  * explicit delete, `insertContent` silently no-ops when placing a block-level
  * atom across an active range inside a paragraph.
@@ -1856,23 +1858,24 @@ export function texRun(ctx: ActionContext): void {
   // data-loss), two verbatim blocks, or two dup-uuid figures. Bail so NO surface
   // can corrupt.
   if (!blockRangeHostsBlockInsert(state.doc, from, to, texBlockType)) return;
-  const seedCode = empty
-    ? ""
-    : state.doc.textBetween(from, to, "\n", (node) =>
-        node.type.name === "hardBreak" ? "\n" : "",
-      );
   // DATA-LOSS GUARD (task 641: the ONE capture/schema-symmetry predicate, shared
   // with `mathRun` and `exampleRun`): the `deleteSelection()` /
-  // `replaceSelectionWith` below destroys everything in `[from, to]`, and the
-  // seed above carries only plain TEXT out. A citation pill / `$\lambda$` /
-  // `\ref` / a `displayMath` / a figure in the selection is content this
-  // capture cannot represent — preserve it and refuse. (Pre-641 this asked the
-  // PROXY question "did the seed come back empty?", which waved through every
-  // MIXED selection: `foo \cite{bar}` seeded `"foo "` and the citation was
-  // destroyed anyway.) A `\tex` block is a caret-insert gesture; selecting
-  // content to convert is not supported.
-  if (!empty && !sliceIsFullyCapturedBy(state.doc.slice(from, to), "text")) {
-    return;
+  // `replaceSelectionWith` below destroys everything in `[from, to]`, so the
+  // seed must carry all of it out. Task 848: the seed is the span's LaTeX
+  // SOURCE (the "latex" dialect of the one cut, `captureRangeLatexSource`), not
+  // its plain text — `see *this*` becomes `see \textit{this}`, and a `\cite`
+  // / `$x$` / `\ref` rides along as LaTeX instead of being refused. (The
+  // plain-text seed was the wrong DIALECT: it answered "fully captured" and
+  // deleted every mark in the span.) What still refuses is what a raw-TeX block
+  // cannot hold — a card anchor, a Card-bearing atom's id, a block atom
+  // (`displayMath` / figure / `texBlock`) — and a span the serializer cannot
+  // express (`captureRangeLatexSource` → null).
+  let seedCode = "";
+  if (!empty) {
+    if (!sliceIsFullyCapturedBy(state.doc.slice(from, to), "latex")) return;
+    const source = captureRangeLatexSource(state.doc, from, to);
+    if (source === null) return;
+    seedCode = source;
   }
   // The ONE uuid-collision scan (was duplicated across slash + grid).
   const existing = new Set<string>();
@@ -2522,6 +2525,10 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     // `displayMath`, a figure — anything in the slice this capture cannot
     // represent — refuses the wrap. (Pre-641 this asked the PROXY "did the
     // harvest come back empty?", which waved through every MIXED selection.)
+    // Task 848: the predicate reads MARKS too. Formatting marks are dropped by
+    // DECLARATION (`TEXT_CAPTURE_DROPPED_MARKS` — `\emph` has no meaning inside
+    // math source); a `linkedAnchor` (a card's anchor) refuses the wrap rather
+    // than stranding the card in the unanchored bin.
     if (from < to && !sliceIsFullyCapturedBy(editor.state.doc.slice(from, to), "text")) {
       return;
     }

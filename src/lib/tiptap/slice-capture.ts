@@ -78,7 +78,9 @@
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { serializeParagraphInline } from "@/lib/latex-serializer";
+import { serializeBodyOnly, serializeParagraphInline } from "@/lib/latex-serializer";
+import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
+import { NODE_UUID_REGEX } from "@/lib/uuid";
 import { cutFreshAttrs } from "@/lib/node-attr-sets";
 
 /** A range of a live document — the capture shape. The leaf takes the cut. */
@@ -161,6 +163,77 @@ export function captureRangeLatex(doc: PMNode, from: number, to: number): string
   } catch {
     return null;
   }
+}
+
+/**
+ * The LaTeX dialect of a range as SOURCE — what a WRAP into a raw-TeX block
+ * holds (task 848), or `null` when the range has no honest source form.
+ *
+ * {@link captureRangeLatex} is the APPLY currency: one paragraph, markers
+ * kept, because it must be a verbatim substring of the live serialization.
+ * This is the other reading of the same cut — "turn this span into its
+ * source" (`\tex` over a selection) — so it differs in exactly the two ways
+ * that job demands:
+ *
+ *  - **any number of blocks.** Each cut block serializes through the real
+ *    body serializer, joined as the `.tex` joins them (a blank line between
+ *    paragraphs), so `see *this*` becomes `see \textit{this}` and a span
+ *    across two paragraphs stays two paragraphs of source.
+ *  - **no private bytes.** Block identity is not source: every `uuid` is
+ *    cleared before serializing, so no ` %!v:xxxx` trailer is written into
+ *    the user's TeX. And an inline id marker (`\vlid` / `\vcid` / `\vfid`,
+ *    or any other command in the marker vocabulary) means the span carries
+ *    card IDENTITY a raw-TeX block cannot hold — the answer is `null`, never
+ *    the marker bytes leaking into `code` and never a silent strip. (The WRAP
+ *    predicate, `sliceIsFullyCapturedBy(…, "latex")`, refuses those shapes
+ *    first; this is the capture's own fail-closed floor beneath it.)
+ *
+ * Also `null` for an empty range or a node the serializer cannot express
+ * (`UnserializableNodeError`, task 357).
+ */
+export function captureRangeLatexSource(
+  doc: PMNode,
+  from: number,
+  to: number,
+): string | null {
+  const content = cutRange(doc, from, to);
+  if (!content || content.childCount === 0) return null;
+  const blocks: JSONContent[] = [];
+  content.forEach((block) => {
+    blocks.push(withoutBlockUuids(block.toJSON() as JSONContent));
+  });
+  let source: string;
+  try {
+    source = serializeBodyOnly({ type: "doc", content: blocks });
+  } catch {
+    return null;
+  }
+  if (carriesPrivateMarker(source)) return null;
+  return source;
+}
+
+/** Every Virgil marker command (derived from the vocabulary SSOT), plus the
+ *  block-uuid anchor (`%!v:xxxx`, `NODE_UUID_REGEX`). Longest-first so
+ *  `\vlidend` is tried before `\vlid`. */
+const PRIVATE_MARKER_REGEX = new RegExp(
+  `\\\\(?:${[...VIRGIL_MARKER_COMMANDS]
+    .sort((a, b) => b.length - a.length)
+    .join("|")})\\b|${NODE_UUID_REGEX.source}`,
+);
+
+function carriesPrivateMarker(source: string): boolean {
+  return PRIVATE_MARKER_REGEX.test(source);
+}
+
+/** A deep copy of `json` with every `uuid` attr cleared — block identity is
+ *  bookkeeping, not source. */
+function withoutBlockUuids(json: JSONContent): JSONContent {
+  const out: JSONContent = { ...json };
+  if (json.attrs && json.attrs.uuid != null) {
+    out.attrs = { ...json.attrs, uuid: null };
+  }
+  if (json.content) out.content = json.content.map(withoutBlockUuids);
+  return out;
 }
 
 /**

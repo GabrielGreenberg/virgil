@@ -303,3 +303,110 @@ describe("task 638 — the grid \\tex cell honors the collab gate", () => {
     expect(firstTexBlock(editor)!.attrs.code).toBe("beta");
   });
 });
+
+// ---------------------------------------------------------------------------
+// (7) TASK 848 — the seed is the span's LaTeX SOURCE, not its plain text.
+//     The plain-text seed answered "fully captured" and deleted every mark in
+//     the span (`see *this* and **that**` → `see this and that`). A raw-TeX
+//     block can hold all of it as LaTeX; what it cannot hold — a card anchor, a
+//     Card-bearing atom's id — refuses rather than leaking a private marker.
+// ---------------------------------------------------------------------------
+
+describe("task 848 — \\tex seeds the selection's LaTeX (marks + atoms carried)", () => {
+  const MARKED = {
+    type: "paragraph",
+    attrs: { uuid: "para-A" },
+    content: [
+      { type: "text", text: "see " },
+      { type: "text", text: "this", marks: [{ type: "italic" }] },
+      { type: "text", text: " and " },
+      { type: "text", text: "that", marks: [{ type: "bold" }] },
+    ],
+  };
+  // "see this and that" = 17 characters.
+  const slash = (e: Editor) => COMMAND_MAP.get("tex")!.action(e.view, "\\tex");
+
+  for (const [surface, run] of [
+    ["slash", slash],
+    ["grid", (e: Editor) => gridTex(e)],
+  ] as const) {
+    it(`${surface}: italic + bold survive as their commands`, () => {
+      const editor = mountEditor([MARKED]);
+      selectRange(editor, 0, 17);
+      run(editor);
+      const code = firstTexBlock(editor)!.attrs.code as string;
+      expect(code).toMatch(/^see \\(emph|textit)\{this\} and \\textbf\{that\}$/);
+    });
+
+    it(`${surface}: a linkedAnchor in the span REFUSES (doc untouched, no \\vlid bytes)`, () => {
+      const editor = mountEditor([
+        {
+          type: "paragraph",
+          attrs: { uuid: "para-A" },
+          content: [
+            { type: "text", text: "keep " },
+            {
+              type: "text",
+              text: "anchored",
+              marks: [{ type: "linkedAnchor", attrs: { anchorId: "a1", kind: "note" } }],
+            },
+          ],
+        },
+      ]);
+      const before = editor.state.doc.toJSON();
+      selectRange(editor, 0, 13);
+      run(editor);
+      expect(firstTexBlock(editor)).toBeNull();
+      expect(editor.state.doc.toJSON()).toEqual(before);
+    });
+  }
+
+  it("an id-less citation is CARRIED as its command (was refused)", () => {
+    const editor = mountEditor([
+      {
+        type: "paragraph",
+        attrs: { uuid: "para-A" },
+        content: [
+          { type: "text", text: "foo " },
+          { type: "citation", attrs: { command: "\\cite{bar}", displayText: "" } },
+        ],
+      },
+    ]);
+    selectRange(editor, 0, 5);
+    gridTex(editor);
+    expect(firstTexBlock(editor)!.attrs.code).toBe("foo \\cite{bar}");
+  });
+
+  it("a Card-bearing citation (citationId) REFUSES — its id has no raw-TeX spelling", () => {
+    const editor = mountEditor([
+      {
+        type: "paragraph",
+        attrs: { uuid: "para-A" },
+        content: [
+          { type: "text", text: "foo " },
+          { type: "citation", attrs: { citationId: "cit-1", command: "\\cite{bar}", displayText: "" } },
+        ],
+      },
+    ]);
+    selectRange(editor, 0, 5);
+    gridTex(editor);
+    expect(firstTexBlock(editor)).toBeNull();
+  });
+
+  it("prose specials are escaped as source (`50%` → `50\\%`)", () => {
+    const editor = mountEditor([paragraph("rose 50% today")]);
+    selectRange(editor, 0, 14);
+    gridTex(editor);
+    expect(firstTexBlock(editor)!.attrs.code).toBe("rose 50\\% today");
+  });
+
+  it("a two-paragraph span stays two paragraphs, with no `%!v:` uuid trailer", () => {
+    const editor = mountEditor([paragraph("alpha", "ab12"), paragraph("beta", "cd34")]);
+    // whole of both paragraphs: 1..6 is "alpha", 8..12 is "beta"
+    editor.commands.setTextSelection({ from: 1, to: 12 });
+    gridTex(editor);
+    const code = firstTexBlock(editor)!.attrs.code as string;
+    expect(code).toBe("alpha\n\nbeta");
+    expect(code).not.toContain("%!v");
+  });
+});
