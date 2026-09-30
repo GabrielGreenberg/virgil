@@ -88,7 +88,7 @@
  * module.
  */
 
-import { set, del, get, keys, createStore } from "idb-keyval";
+import { set, del, keys, createStore } from "idb-keyval";
 import type { JSONContent } from "@tiptap/react";
 
 import { hashContent } from "@/lib/disk-ledger";
@@ -297,9 +297,7 @@ export async function openMirrorRecovery(
     } else {
       try {
         await set(offerKeyFor(docId, live.hash), live, store);
-        const still = (await get(keyFor(docId), store)) as
-          | Partial<EmergencyMirrorEntry>
-          | undefined;
+        const still = await readEntry(keyFor(docId), docId);
         if (still?.hash === live.hash) await del(keyFor(docId), store);
       } catch (err) {
         console.warn("[emergency-mirror] offer promotion failed", err);
@@ -334,9 +332,7 @@ export async function clearMirrorOffer(
 ): Promise<void> {
   try {
     await del(offerKeyFor(entry.docId, entry.hash), store);
-    const live = (await get(keyFor(entry.docId), store)) as
-      | Partial<EmergencyMirrorEntry>
-      | undefined;
+    const live = await readEntry(keyFor(entry.docId), entry.docId);
     if (live?.hash === entry.hash) await del(keyFor(entry.docId), store);
   } catch (err) {
     console.warn("[emergency-mirror] offer clear failed", err);

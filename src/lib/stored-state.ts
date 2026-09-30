@@ -15,6 +15,10 @@
  * > still opens, the slot is reported (and, where safe, cleared) — never a
  * > throw and never an unbounded allocation.**
  *
+ * The census (`stored-state.test.ts`) holds every half: owners declared, every
+ * WRITTEN key literal declared, and (task 852) no raw `get(` in an owner unless
+ * its key is a constant of a `fixed` family.
+ *
  * localStorage is bounded by the browser's own per-origin quota (~5–10 MB) and
  * already has its own owners (`usePersistentState`, `cross-window-storage`);
  * it appears here only in the diagnostic.

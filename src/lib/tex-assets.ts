@@ -30,7 +30,7 @@
  * are entirely unaffected.
  */
 
-import { get, set, keys, del, createStore } from "idb-keyval";
+import { set, keys, del, createStore } from "idb-keyval";
 import { readStoredValue, type StoredVerdict } from "@/lib/stored-state";
 
 import { hashContent } from "@/lib/disk-ledger";
@@ -347,7 +347,13 @@ async function persistAsset(entry: TexCacheDumpEntry): Promise<boolean> {
   const storeKey = cacheKeyToStoreKey(cacheKey);
 
   return enqueueWrite(TEX_ASSET_QUEUE, async () => {
-    const prev = (await get(storeKey, store)) as TexAssetRecord | undefined;
+    // Through the door (task 852): a malformed prior record is no record — it
+    // is cleared and this write replaces it, rather than a torn slot's
+    // `hash` deciding whether good bytes land.
+    const prev = await readStoredValue<TexAssetRecord>(storeKey, {
+      store,
+      validate: validateTexAssetRecord,
+    });
     if (prev && prev.hash === hash) return false;
 
     const index = await ensureSizeIndex();

@@ -27,7 +27,7 @@
  * `/Users/gabriel/.claude/plans/next-session-extract-editorpane-virtual-raven.md`:
  *   - Owns ALL per-doc hooks (`useDocument`, `useNotes`, `useFootnotes`,
  *     `useCitations`, `useArchive`, `useTodos`,
- *     `useExamples`, `useCutter`, `useRevisions`, `useAiRequests`,
+ *     `useCutter`, `useRevisions`, `useAiRequests`,
  *     `useSuggestions`, `useAnnotations`, `useCollab`,
  *     `useDocumentStyle`, `useLatexCompile`, `useWordCount`,
  *     `usePristineCardManager`, `useRecentlyAddedTracker`).

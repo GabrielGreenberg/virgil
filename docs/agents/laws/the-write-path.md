@@ -2336,8 +2336,9 @@ sees is a report they asked for that simply never appeared.
    ([src/lib/sidecar-merged-write.ts](../../../src/lib/sidecar-merged-write.ts))
    runs over `mutateSidecar`, so the read happens INSIDE the same queued,
    doc-locked task as the write and the base cannot be superseded between the
-   two halves. Four callers: `usePersistentState` and the three bespoke persists
-   (`useFootnotes`, `useExamples`, `useBibReview`).
+   two halves. Three callers: `usePersistentState` and the two bespoke persists
+   (`useFootnotes`, `useBibReview`; a third, `useExamples`, was deleted with
+   `examples.json` — task 726, corrected by task 852).
 2. **A deferral is REMEMBERED and replayed when the instance's writes drain.**
    The watcher emits ONCE per change — it re-baselines its ledger before
    dispatching — so a guard that merely `return`s loses the event permanently.
