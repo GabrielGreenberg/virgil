@@ -46,9 +46,9 @@
 // the one door; the criterion, the pacing and the cap are stated once.
 //
 // COST, stated rather than implied. A re-arm while a pass is already pending
-// ADDS NO PASS — it resets the stability counter and refreshes the deadline, so
-// the maximum rate stays one pass per scheduled tick however many triggers
-// fire. On the keystroke-adjacent path (the editor RO fires on a wrap-changing
+// ADDS NO PASS — it resets the stability counter and nothing else (it never
+// extends a live chain's deadline or fast window; see MAX_MS), so the maximum
+// rate stays one pass per scheduled tick however many triggers fire. On the keystroke-adjacent path (the editor RO fires on a wrap-changing
 // keystroke) that means the per-fire cost is unchanged from the pre-370
 // rAF-coalesced `schedule()`; what is added is the trailing CONFIRMATION passes
 // after the last trigger — idle-paced, and bounded by the fixed point at two.
@@ -135,8 +135,9 @@ type ConvergeStop = "converged" | "capped" | "inert" | "stopped";
 export interface ConvergenceController {
   /**
    * "The world may have moved." Idempotent and cheap: resets the stability
-   * count, refreshes the deadline and the fast window, and schedules a pass
-   * ONLY if none is already pending.
+   * count and schedules a pass ONLY if none is already pending. It never
+   * extends a live chain's deadline or fast window (see MAX_MS); a request
+   * after the chain has ended starts a new chain with a fresh budget.
    */
   request(): void;
   /** Teardown — cancel any pending pass. Safe to call repeatedly. */
