@@ -3,7 +3,11 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { readSidecar } from "@/lib/storage";
-import { writeSidecarMerged } from "@/lib/sidecar-merged-write";
+import {
+  newMergeBase,
+  writeSidecarMerged,
+  type MergeBase,
+} from "@/lib/sidecar-merged-write";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
@@ -61,8 +65,9 @@ export function useFootnotes(
   // to stop being a rebuild: without it "absent from local" cannot be told
   // apart from "the user deleted it". Null until the read resolves, and null
   // forever on a read that threw, which degrades the merge to a union rather
-  // than letting it guess at a deletion.
-  const baselineRef = useRef<FootnotesState | null>(null);
+  // than letting it guess at a deletion. A per-doc CELL the write door
+  // advances inside the lock (task 849 — see `MergeBase`).
+  const baselineRef = useRef<MergeBase<FootnotesState>>(newMergeBase());
   // The same fact, REACTIVE — the load edge a consumer keys an effect on (the
   // live-atom intent reconcile in EditorPane, task 704: a stale `archived` flag
   // persisted by an earlier session is only healable once the mirror is here).
@@ -78,6 +83,8 @@ export function useFootnotes(
   useEffect(() => {
     let cancelled = false;
     loadedRef.current = false;
+    // A base belongs to ONE document — re-earned only by this doc's read.
+    baselineRef.current = newMergeBase();
     setLoaded(false);
     if (!docId) { setState(EMPTY); return; }
     readSidecar<FootnotesState>(docId, "footnotes.json", EMPTY)
@@ -97,7 +104,7 @@ export function useFootnotes(
           })),
         };
         stateRef.current = migrated;
-        baselineRef.current = migrated;
+        baselineRef.current.value = migrated;
         setState(migrated);
         loadedRef.current = true;
         setLoaded(true);
@@ -116,11 +123,11 @@ export function useFootnotes(
       // overwritten by this whole snapshot. The base becomes the SUBMITTED
       // payload, never the merged result — re-basing to the union would make
       // the next write read the external record as "in base, absent from
-      // local" and delete it.
+      // local" and delete it. The door advances the base inside the lock
+      // (task 849); the cell is captured here so it stays this doc's.
       const base = baselineRef.current;
       try {
         await writeSidecarMerged(handle, "footnotes.json", base, s);
-        baselineRef.current = s;
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save footnotes:", err);

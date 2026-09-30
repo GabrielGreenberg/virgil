@@ -2,7 +2,11 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar } from "@/lib/storage";
-import { writeSidecarMerged } from "@/lib/sidecar-merged-write";
+import {
+  newMergeBase,
+  writeSidecarMerged,
+  type MergeBase,
+} from "@/lib/sidecar-merged-write";
 import { libraryPaperSidecarWritable } from "@/lib/host-writability";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import type { BibReviewState, BibReviewRequest, BibEntry } from "@/lib/types";
@@ -17,6 +21,33 @@ import {
 } from "@/lib/identity/sidecar-uid-migrate";
 
 const EMPTY: BibReviewState = { requests: [] };
+
+/**
+ * Collapse a request list to ONE row per `(bibKey, type)` — the identity the
+ * sidecar merge keys this file by (task 849). A rename can land the old key's
+ * rows on a key that already has its own; left as two rows, the merged write
+ * would keep one and silently drop the other. The survivor is a PENDING row
+ * over a finished one (a live request must keep reaching the skill), else the
+ * newest (last). Order is otherwise preserved.
+ */
+export function oneRowPerIdentity(
+  requests: readonly BibReviewRequest[],
+): BibReviewRequest[] {
+  const keep = new Map<string, number>();
+  requests.forEach((r, i) => {
+    const id = `${r.bibKey}\u0000${r.type}`;
+    const prior = keep.get(id);
+    if (
+      prior === undefined ||
+      r.status === "pending" ||
+      requests[prior].status !== "pending"
+    ) {
+      keep.set(id, i);
+    }
+  });
+  const survivors = new Set(keep.values());
+  return requests.filter((_, i) => survivors.has(i));
+}
 
 /**
  * Bib-review requests sidecar.
@@ -45,8 +76,9 @@ export function useBibReview(
   // to stop being a rebuild: without it "absent from local" cannot be told
   // apart from "the user deleted it". Null until the read resolves, and null
   // forever on a read that threw, which degrades the merge to a union rather
-  // than letting it guess at a deletion.
-  const baselineRef = useRef<BibReviewState | null>(null);
+  // than letting it guess at a deletion. A per-doc CELL the write door
+  // advances inside the lock (task 849 — see `MergeBase`).
+  const baselineRef = useRef<MergeBase<BibReviewState>>(newMergeBase());
   const handle = useMemo(
     () => (docId ? getActiveHandle(docId) : null),
     [docId],
@@ -93,7 +125,7 @@ export function useBibReview(
       const loadedState = cascadeRef.current
         ? migrateBibReviewToUid(raw, keyToUidRef.current)
         : raw;
-      baselineRef.current = loadedState;
+      baselineRef.current.value = loadedState;
       setState(loadedState);
     } catch {
       // ignore
@@ -102,6 +134,8 @@ export function useBibReview(
 
   useEffect(() => {
     docIdRef.current = docId;
+    // A base belongs to ONE document — re-earned only by this doc's read.
+    baselineRef.current = newMergeBase();
     if (!docId) { setState(EMPTY); return; }
     fetchState(docId);
   }, [docId, fetchState]);
@@ -166,10 +200,11 @@ export function useBibReview(
       // The ONE merged write door (task 719) — see `sidecar-merge.ts`. The
       // reviews an `/editor/answer-bib-review` run marks complete are exactly
       // the records a whole-snapshot write from a stale panel would undo.
+      // The door advances the base inside the lock (task 849); the cell is
+      // captured here so it stays this doc's.
       const base = baselineRef.current;
       try {
         await writeSidecarMerged(handle, "bib-review-requests.json", base, s);
-        baselineRef.current = s;
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save bib review requests:", err);
@@ -200,6 +235,14 @@ export function useBibReview(
         (r) => matchesKey(r, bibKey) && r.type === type && r.status === "pending"
       );
       if (existing) return prev;
+      // ONE ROW PER IDENTITY (task 849). The file is keyed `(bibKey, type)` —
+      // that is the merge's `idFields` — so a re-request REPLACES the entry's
+      // completed row rather than sitting beside it. Two rows under one id were
+      // collapsed by the merged write, and the new pending one was lost: shown
+      // in the panel, never on disk, never served.
+      const kept = prev.requests.filter(
+        (r) => !(matchesKey(r, bibKey) && r.type === type),
+      );
       const uid = cascadeRef.current ? getBibEntryRef.current?.(bibKey)?.uid : undefined;
       const req: BibReviewRequest = {
         bibKey,
@@ -209,7 +252,7 @@ export function useBibReview(
         requestNotes: requestNotes || undefined,
         ...(uid ? { entryUid: uid } : {}),
       };
-      const next = { requests: [...prev.requests, req] };
+      const next = { requests: [...kept, req] };
       persist(next);
       return next;
     });
@@ -277,8 +320,10 @@ export function useBibReview(
         if (!prev.requests.some((r) => r.bibKey === oldKey)) return prev;
         const next = {
           ...prev,
-          requests: prev.requests.map((r) =>
-            r.bibKey === oldKey ? { ...r, bibKey: newKey } : r,
+          requests: oneRowPerIdentity(
+            prev.requests.map((r) =>
+              r.bibKey === oldKey ? { ...r, bibKey: newKey } : r,
+            ),
           ),
         };
         persist(next);

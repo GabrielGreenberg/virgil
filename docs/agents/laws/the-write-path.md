@@ -2392,6 +2392,40 @@ over a real in-memory disk, asserting the BYTES), and
 `usePersistentState-inflight-dirty-guard.test.tsx` (569's legs, now draining
 into the replay).
 
+### The base-timing rule (task 849): the verdict's base is read WHERE the write is serialized
+
+A merge is only as right as its base, and *when* the base is read decides it.
+Task 719 read it at SUBMIT and advanced it after the write LANDED, so a second
+write queued behind an in-flight first merged against the pre-first base:
+add-then-delete kept the deleted card on disk (the card read as an EXTERNAL
+INSERT), and edit-then-revert lost the revert (the field read as "untouched").
+The rule: **the base is a per-document CELL** (`MergeBase`,
+[sidecar-merged-write.ts](../../../src/lib/sidecar-merged-write.ts)) that the
+door reads and advances **inside the doc lock**, where writes run one at a time
+in submission order — so each write merges against exactly what the previous
+one wrote. A write that throws rolls the cell back unless a later write has
+already moved it. The cell is re-minted on every doc switch and captured at
+submit, so doc A's cleanup flush landing after doc B's load advances A's dead
+cell, never B's. All three persists (`usePersistentState`, `useFootnotes`,
+`useBibReview`) pass the cell; none advances a base itself.
+
+Two more verdict holes closed beside it. **A map key** absent from disk whose
+local value equals the base is an external DELETE — the record rule, per key —
+where before an agent's removal from `annotations.json`/`document-settings.json`
+was undone by the app's next write. **A duplicate identity** in one list
+collapses to its NEWEST (last) record, never the stale first — and the writer
+keeps ids unique in the first place: `useBibReview` holds one row per
+`(bibKey, type)` (`oneRowPerIdentity`; a re-request REPLACES the completed row,
+a rename that lands on an existing key collapses pending-first).
+
+**Residual.** If a first write FAILS after a second has already merged against
+it, the second's base is the unlanded payload; a record the first had deleted
+reads as an external insert and stays on disk. That path has already published
+a `failed` refusal. `useBibReview`'s 10 s poll still adopts disk wholesale and
+re-bases outside the lock.
+
+**CI:** `sidecar-merge-base-timing.test.tsx`.
+
 ## The stored-state half (task 757)
 
 > **A stored blob is untrusted input with a size bound.** Every slot family of
