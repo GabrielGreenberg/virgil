@@ -216,10 +216,30 @@ function indexById(
 ): Map<string, unknown> | null {
   if (list === null) return null;
   const map = new Map<string, unknown>();
+  // LAST occurrence wins — the same answer `lastIndexById` gives the emit
+  // loops, so a duplicated id is read as ONE record, the newest, on every side.
   for (const rec of list) {
     const id = recordId(rec, idFields);
-    if (id !== null && !map.has(id)) map.set(id, rec);
+    if (id !== null) map.set(id, rec);
   }
+  return map;
+}
+
+/** Index of the LAST record carrying each id. A list that (wrongly) holds two
+ *  records under one identity — a re-filed bib review beside its completed
+ *  predecessor, a rename landing on an existing key — is collapsed to its
+ *  NEWEST record rather than its oldest (task 849): a list grows by append, so
+ *  the first occurrence is the stale one, and keeping it silently discarded
+ *  exactly the record the user had just made. */
+function lastIndexById(
+  list: readonly unknown[],
+  idFields: readonly string[],
+): Map<string, number> {
+  const map = new Map<string, number>();
+  list.forEach((rec, i) => {
+    const id = recordId(rec, idFields);
+    if (id !== null) map.set(id, i);
+  });
   return map;
 }
 
@@ -241,18 +261,21 @@ export function mergeRecordList(
 ): unknown[] {
   const baseById = indexById(base, idFields);
   const diskById = indexById(disk, idFields)!;
+  const localLast = lastIndexById(local, idFields);
+  const diskLast = lastIndexById(disk, idFields);
   const out: unknown[] = [];
   const emitted = new Set<string>();
   const unidentifiedLocal: unknown[] = [];
 
-  for (const rec of local) {
+  for (const [i, rec] of local.entries()) {
     const id = recordId(rec, idFields);
     if (id === null) {
       unidentifiedLocal.push(rec);
       out.push(rec);
       continue;
     }
-    if (emitted.has(id)) continue;
+    // An earlier duplicate yields to the newest record under its id.
+    if (localLast.get(id) !== i) continue;
     emitted.add(id);
     const baseRec = baseById?.get(id);
     const untouched = baseById?.has(id) === true && deepEqual(rec, baseRec);
@@ -267,13 +290,13 @@ export function mergeRecordList(
     out.push(untouched ? diskById.get(id) : rec);
   }
 
-  for (const rec of disk) {
+  for (const [i, rec] of disk.entries()) {
     const id = recordId(rec, idFields);
     if (id === null) {
       if (!unidentifiedLocal.some((l) => deepEqual(l, rec))) out.push(rec);
       continue;
     }
-    if (emitted.has(id)) continue;
+    if (emitted.has(id) || diskLast.get(id) !== i) continue;
     emitted.add(id);
     // On disk, absent from local. In the base → the user DELETED it, honour
     // that. Not in the base → an EXTERNAL INSERT, which is the agent's card.
@@ -307,6 +330,12 @@ function mergeObject(
     }
     const localVal = local[key];
     if (!(key in disk)) {
+      // Gone from disk: an external DELETE unless the user has an unsaved edit
+      // to it — the record-list rule, stated per key (task 849). Before, a key
+      // an agent removed (a uid from `annotations.json`, a key from
+      // `document-settings.json`) was re-added by the app's next unrelated
+      // write, because the untouched case was never asked.
+      if (hasBase && deepEqual(localVal, baseVal)) continue;
       out[key] = localVal;
       continue;
     }

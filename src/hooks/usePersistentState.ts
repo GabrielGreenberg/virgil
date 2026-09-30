@@ -11,7 +11,11 @@ import {
 } from "react";
 import { readSidecarIfExists, mutateSidecar } from "@/lib/storage";
 import { mergeSidecarState } from "@/lib/sidecar-merge";
-import { writeSidecarMerged } from "@/lib/sidecar-merged-write";
+import {
+  newMergeBase,
+  writeSidecarMerged,
+  type MergeBase,
+} from "@/lib/sidecar-merged-write";
 import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
 import { onTabHidden } from "@/lib/tab-hidden";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
@@ -281,7 +285,11 @@ export function usePersistentState<S>(
   // Null until the first read resolves, and null FOREVER on a read that threw:
   // an instance that never learned what disk held cannot derive a deletion, and
   // the merge degrades to a union rather than guessing.
-  const baselineRef = useRef<S | null>(null);
+  //
+  // A CELL, re-minted per document and advanced by the write door INSIDE the
+  // doc lock (task 849) — see `MergeBase` for why reading it at submit time let
+  // an add-then-delete pair resurrect the deleted card.
+  const baselineRef = useRef<MergeBase<S>>(newMergeBase<S>());
   // `migrate` in a ref so the write path can migrate the in-lock disk read
   // before merging. Both sides of every comparison are then MIGRATED values —
   // otherwise a raw on-disk record and its migrated twin read as an edit, and
@@ -338,7 +346,7 @@ export function usePersistentState<S>(
     heldReconcileRef.current = null;
     // A base belongs to ONE document. Cleared on every switch, and re-earned
     // only by a read that actually resolved (task 719).
-    baselineRef.current = null;
+    baselineRef.current = newMergeBase<S>();
     deferredExternalReadRef.current = false;
     setLoaded(false);
     setLoadError(false);
@@ -368,7 +376,7 @@ export function usePersistentState<S>(
         if (raw === null) return;
         if (hasMutatedRef.current) return;
         const migrated = migrate ? migrate(raw) : (raw as S);
-        baselineRef.current = migrated;
+        baselineRef.current.value = migrated;
         setState(migrated);
         // Same Reader-mode guard as `persist`: never write a disallowed card
         // sidecar back to disk, even for a migration upgrade.
@@ -492,17 +500,14 @@ export function usePersistentState<S>(
         // ── A WRITE IS A SPLICE, NEVER A REBUILD (task 719) ────────────────
         // The ONE merged write door (`sidecar-merge.ts`), shared with the three
         // hooks that keep their own bespoke persist. All this hook supplies is
-        // the base it has been tracking — what it last knew disk held.
+        // the base CELL it has been tracking, captured NOW so a write for this
+        // doc can never advance the next doc's base. The door reads and
+        // advances it inside the lock (task 849). Memory converges with the
+        // merged disk by the other door: the watcher re-read below, which
+        // merges the same way.
         const base = baselineRef.current;
         try {
           await writeSidecarMerged<S>(h, filename, base, s, migrateRef.current);
-          // The base becomes the SUBMITTED payload, never the merged result.
-          // Disk now holds the union; memory still holds `s`. Re-basing to the
-          // union would make the next write read an external record as "in base,
-          // absent from local" — a DELETE — and the preservation would hold for
-          // exactly one write. Memory converges by the other door: the watcher
-          // re-read below, which merges the same way.
-          baselineRef.current = s;
         } catch (err) {
           if (isStalePipelineError(err)) return;
           console.error(`Failed to save ${errorLabel ?? filename}:`, err);
@@ -733,14 +738,14 @@ export function usePersistentState<S>(
             // External removal → reset to the empty default (matches the load
             // path's "absent" handling, but here the sidecar existed then went
             // away, so an explicit reset is correct).
-            baselineRef.current = null;
+            baselineRef.current.value = null;
             setState(defaultValue);
             return;
           }
           const migrated = migrate ? migrate(raw) : (raw as S);
-          const base = baselineRef.current;
+          const base = baselineRef.current.value;
           // Disk is now the base: this is what the file holds.
-          baselineRef.current = migrated;
+          baselineRef.current.value = migrated;
           // MERGE rather than adopt. The guard above only proves no write is
           // ARMED or IN FLIGHT; it does not prove memory equals the base — a
           // `setState` consumer, or a write the chrome refused, leaves an
