@@ -19,6 +19,9 @@
  *      inside the viewport → that uuid.
  *   2. Else the topmost block whose top edge is inside the viewport.
  *   3. Else the block overlapping the viewport's top edge.
+ *   ("Viewport top" throughout is the READING LINE — the scroll top plus the
+ *   sticky-chrome inset, `./reading-line` — not the raw container edge; task
+ *   857.)
  *   4. Else the cursor's block (or, when the cursor isn't in a uuid block,
  *      the nearest uuid block by position).
  *
@@ -42,6 +45,7 @@ import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { coordsAtPosCached } from "./registry";
 import { posAtViewportY } from "./viewport-probe";
 import { createBlockVocabCache } from "./block-vocab";
+import { readingThresholdY } from "./reading-line";
 
 /** Sentinel for "scrolled to the very top (title area visible)". */
 export const DOC_TOP_SENTINEL = "__DOC_TOP__";
@@ -121,7 +125,12 @@ export function computeActiveBlockId(
   const doc = view.state.doc;
 
   const scrollRect = scrollEl.getBoundingClientRect();
-  const viewTopY = scrollRect.top;
+  // The paragraph READING LINE (task 857), not the raw scroll top: the top
+  // ~78px of the viewport is sticky chrome, and the Back/Forward landing puts
+  // its target ON this line — so reading the same line makes a landing a
+  // fixed point of this recorder. Probing below the chrome also keeps the
+  // top-edge hit-test off the sticky hover band (browser fast path).
+  const viewTopY = readingThresholdY(view.dom, scrollRect.top);
   const viewBottomY = scrollRect.top + scrollEl.clientHeight;
 
   // ── Rule 1: cursor's block, if its top is on-screen. ──
@@ -203,9 +212,13 @@ export function legacyActiveBlockWalk(
   editor: Editor,
   scrollEl: HTMLElement,
 ): string | null {
-  const viewTop = scrollEl.scrollTop;
-  const viewBottom = viewTop + scrollEl.clientHeight;
   const scrollRect = scrollEl.getBoundingClientRect();
+  // Same reading line as the fast path (task 857), in content coordinates —
+  // kill-switch parity: the fallback must not re-open the Forward-wipe.
+  const viewTop =
+    scrollEl.scrollTop +
+    (readingThresholdY(editor.view.dom, scrollRect.top) - scrollRect.top);
+  const viewBottom = scrollEl.scrollTop + scrollEl.clientHeight;
 
   const getUuid = (node: PMNode): string | null =>
     (node.attrs?.uuid as string | null) || null;

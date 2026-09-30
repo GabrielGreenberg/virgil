@@ -88,6 +88,11 @@ function stubViewGeometry(
     pos: posAtTopEdge,
     inside: posAtTopEdge,
   });
+  // A chrome-less viewport: these cases pin the decision LADDER, so the
+  // reading line (task 857 — scroll top + sticky-chrome inset) is zeroed to
+  // the raw scroll top. `reading-line.test.tsx` pins the inset itself.
+  (editor.view.dom as HTMLElement).style.setProperty("--chrome-top", "0px");
+  (editor.view.dom as HTMLElement).style.setProperty("--editor-pt", "0px");
   (editor.view.dom as HTMLElement).getBoundingClientRect = () =>
     ({ top: -500, bottom: 1500, left: 100, right: 700, width: 600, height: 2000, x: 100, y: -500, toJSON: () => ({}) }) as DOMRect;
   return coordsSpy;
