@@ -216,3 +216,24 @@ describe("census — the index has one write door", () => {
     expect(writes).toEqual(["update<FsaDocIndex>(\n    INDEX_KEY"]);
   });
 });
+
+describe("census — My Papers has one write door (task 868)", () => {
+  const files = SCAN.flatMap((d) => walk(d));
+  const SELF = relative(ROOT, __filename);
+
+  it("no source names the retired `writeMyPapers` outside the door's doc comment", () => {
+    const hits = files
+      .filter((f) => relative(ROOT, f) !== SELF)
+      .filter((f) => /\bwriteMyPapers\b/.test(readFileSync(f, "utf8")))
+      .map((f) => relative(ROOT, f));
+    expect(hits).toEqual(["src/lib/doc-index.ts"]);
+    const docIndex = readFileSync(join(ROOT, "src/lib/doc-index.ts"), "utf8");
+    expect(docIndex).not.toMatch(/function\s+writeMyPapers\b/);
+  });
+
+  it("doc-index.ts writes MY_PAPERS_KEY exactly once, through `update`", () => {
+    const src = readFileSync(join(ROOT, "src/lib/doc-index.ts"), "utf8");
+    const writes = src.match(/\b(set|update|del)(<[^>]*>)?\(\s*MY_PAPERS_KEY\b/g);
+    expect(writes).toEqual(["update<MyPapersState>(\n    MY_PAPERS_KEY"]);
+  });
+});
