@@ -15,8 +15,6 @@ import {
 } from "@/lib/editor-geometry/section-path";
 import { headingLevelOf } from "@/lib/heading-types";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
-import { linkIdSelector, linkKindSelector } from "@/links/link-dom-contract";
-import { VIEW_ONLY_CLASS } from "@/lib/view-only-chrome";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
@@ -141,30 +139,22 @@ import { requestOmniCardPlacement } from "./editor-layout/omni-card-placement";
 import { TopBar } from "./editor-layout/TopBar";
 import type { TabStripProps } from "./editor-layout/TabStrip";
 import type { StatusClusterProps } from "./editor-layout/StatusCluster";
-import { useStripHandlers } from "./editor-layout/drag-drop";
 import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
 import { useFocusActions } from "./editor-layout/card-actions/focus";
 import { useCommentActions } from "./editor-layout/card-actions/comments";
 import { useFileActions } from "./editor-layout/card-actions/files";
-import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
-import { resolveLabelDisplay } from "@/lib/ref-display";
 import type { ActiveRef } from "@/lib/tiptap/label";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
-import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { DiskWatcherProviderGate } from "./editor-layout/contexts/disk-watcher";
-import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
-import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
+import { useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
 import {
   getCardStore,
   defaultCardStore,
 } from "@/links/_shared/anchored-card-store";
-import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
-import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
-import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useHelperMode } from "@/hooks/useHelperMode";
 import { useZenMode } from "@/hooks/useZenMode";
@@ -211,11 +201,6 @@ const APP_VERSION = pkg.version;
 // Stable no-op fallback for the `paneState?.X ?? noop` reads in the
 // vbar source. Module-scope so JSX references stay referentially
 // stable across renders.
-/** The bib-panel cross-highlight ring on an in-editor citation. VIEW state
- *  (which entry is selected in a panel), never document content — so every
- *  write of it pairs with `VIEW_ONLY_CLASS`. */
-const CITATION_HIGHLIGHT_BIB_CLASS = "citation-highlight-bib";
-
 const noop = () => {};
 // Phase-C INERT fallbacks for the pane-owned sidecar slices (read only in the
 // brief pre-bubble window — same as citationsHook/collab). Stable module-level
@@ -509,7 +494,6 @@ export default function EditorLayout() {
   // hover→anchor derivation, selected-anchor sync, the archive/footnote drop
   // bridges) off the active pane's bubbled PaneState slices, with stable INERT
   // fallbacks for the brief pre-bubble window — exactly like citationsHook/collab.
-  const recentlyAdded = useRecentlyAddedTracker();
   const notes = paneState?.notes ?? EMPTY_NOTES;
   const cutterCards = paneState?.cutterCards ?? EMPTY_CUTTER;
   // The ACTIVE doc's interaction store. EditorLayout is the SHELL, above the
@@ -535,15 +519,15 @@ export default function EditorLayout() {
   // and any other surface. The legacy useState declarations they replaced
   // lived here and around line 1403.
   const {
-    selectedNoteId, setSelectedNoteId,
+    selectedNoteId,
     selectedFootnoteId, setSelectedFootnoteId,
     selectedCitationId, setSelectedCitationId,
-    selectedTodoId, setSelectedTodoId,
-    selectedArchiveId, setSelectedArchiveId,
-    selectedCutterCardId, setSelectedCutterCardId,
-    selectedReportCardId, setSelectedReportCardId,
-    selectedCommentId, setSelectedCommentId,
-    selectedExampleId, setSelectedExampleId,
+    selectedTodoId,
+    selectedArchiveId,
+    selectedCutterCardId,
+    selectedReportCardId,
+    selectedCommentId,
+    selectedExampleId,
   } = useAnchoredSelectionSlots(activeCardStore);
   const todoItems = paneState?.todoItems ?? EMPTY_TODOS;
 
@@ -572,13 +556,11 @@ export default function EditorLayout() {
   const citationsHook = paneState?.citationsHook ?? CITATIONS_INERT;
   const {
     bibEntries,
-    addCitation,
     // NB: the bare `citationsHook.deleteCitation` (sidecar-only filter) is
     // intentionally NOT destructured here — citation deletes must go through
     // EditorPane's compound `handleDeleteCitation`, which strips the `\cite`
     // atom too (the #37 hard-delete contract). This shell has no editor
     // handle, so the unsafe path stays out of reach from EditorLayout.
-    getDisplayText: getCitationDisplayText,
   } = citationsHook;
 
   // The live collab hook lives in EditorPane (which mounts inside
@@ -931,9 +913,6 @@ export default function EditorLayout() {
   // (it's a gesture handle, not an annotation). Watches poppedOutCards so it
   // catches every close path.
   useTransientAnchorCleanup(editorInstance, prefs.poppedOutCards);
-  // When a panel mini-editor (e.g. footnote RichTextField) is focused,
-  // the main toolbar should route commands to it instead of the main editor.
-  const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
 
   // ── Collab pen → TipTap read-only gate.
   // When collab is enabled and the partner holds the pen, the editor is
@@ -1214,7 +1193,11 @@ export default function EditorLayout() {
   // bled across warm keep-alive panes (FN-A2-03) because it sat above that
   // boundary; the per-pane store + docId-routed event web (EditorPane) replaces
   // it on both flag paths.
-  const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
+  // Bibliography selection is NOT shell state: it is each pane's own
+  // `selectedBibKey` (EditorPane), which its Bibliography panel/float write and
+  // its cross-highlight reads. The click-away below clears the ACTIVE pane's
+  // through `paneState.setSelectedBibKey` (task 870 — a shell copy here was
+  // shadowed by the pane's SelectionsProvider and drove a dead highlight).
   // Marker-click → omni card alignment. The user clicked at viewport Y
   // `clickY` and the corresponding omni card would lock there — IF the move
   // is necessary. `requestOmniCardPlacement` owns the whole resolution now
@@ -1599,7 +1582,7 @@ export default function EditorLayout() {
         ? getCardStore(currentDocIdRef.current)
         : defaultCardStore
       ).clearSelection();
-      setSelectedBibKey(null);
+      paneStateRef.current?.setSelectedBibKey?.(null);
       paneStateRef.current?.setSelectedErrorId?.(null);
     };
     document.addEventListener("mousedown", onMouseDown);
@@ -1751,53 +1734,9 @@ export default function EditorLayout() {
   const paraNavForwardDisabled =
     paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1;
 
-  // Derive citation order + editor citations from editor state. Recomputes
-  // only when citations actually change (`rev.citations`) — add/remove/edit/
-  // reorder, including citations born inside footnote bodies — never on a
-  // plain keystroke. No debounce needed: structural changes are rare.
-  const [citationOrder, setCitationOrder] = useState<string[]>([]);
-  const [allEditorCitations, setAllEditorCitations] = useState<Array<{ citationId: string; command: string; keys: string[]; pos: number }>>([]);
-
-  useEffect(() => {
-    setCitationOrder(editorRef.current?.getCitationOrder() ?? []);
-    const cits = editorRef.current?.getCitations() ?? [];
-    setAllEditorCitations(
-      cits.map((c) => {
-        // Match all {key} groups — handles \cites{a}{b}{c} and \citep{a,b,c}
-        const allMatches = [...c.command.matchAll(/\{([^}]+)\}/g)];
-        const keys = allMatches.flatMap((m) => m[1].split(",").map((k: string) => k.trim()));
-        return { citationId: c.citationId, command: c.command, keys, pos: c.pos };
-      })
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rev.citations, editorInstance]);
-
-  // Highlight citation nodes in editor when a bib key is selected in Bibliography panel
-  useEffect(() => {
-    if (!selectedBibKey) return;
-    // Find all citation nodes whose keys include the selected bib key
-    const matching = allEditorCitations.filter((c) => c.keys.includes(selectedBibKey));
-    const els: HTMLElement[] = [];
-    for (const c of matching) {
-      const el = document.querySelector(
-        `${linkKindSelector("citation")}${linkIdSelector(c.citationId)}`,
-      ) as HTMLElement | null;
-      if (el) {
-        // The bib cross-highlight is VIEW state (which entry the user has
-        // selected in a panel), so it carries the view-only marker and the ONE
-        // print rule reaches it (task 523). Needed even though the print block
-        // already flattens `.citation-node`'s background with `!important`:
-        // that flatten leaves the 2px ring standing.
-        el.classList.add(CITATION_HIGHLIGHT_BIB_CLASS, VIEW_ONLY_CLASS);
-        els.push(el);
-      }
-    }
-    return () => {
-      for (const el of els) {
-        el.classList.remove(CITATION_HIGHLIGHT_BIB_CLASS, VIEW_ONLY_CLASS);
-      }
-    };
-  }, [selectedBibKey, allEditorCitations]);
+  // The bib entry → in-text citation ring and the toolbar-override reset
+  // live in EditorPane with the per-pane state they act on (task 870):
+  // `useBibCitationHighlight` and the pane's `overrideEditor` lifecycle.
 
   // Anchored-card hover/selection bridges + highlight painters are
   // mounted inside EditorPane (U3). EditorPane is always rendered
@@ -1805,15 +1744,6 @@ export default function EditorLayout() {
   // Reader, so both surfaces inherit identical plumbing without
   // duplication. EditorLayout's local hoveredEntityId/Kind stays
   // in sync via the cardStore.subscribe effect declared above.
-
-  // Clear the toolbar-override editor when the main editor regains focus,
-  // so the MenuBar switches back to controlling the document editor.
-  useEffect(() => {
-    if (!editorInstance) return;
-    const clearOverride = () => setOverrideEditor(null);
-    editorInstance.on("focus", clearOverride);
-    return () => { editorInstance.off("focus", clearOverride); };
-  }, [editorInstance]);
 
   // ── Focus mode ──────────────────────────────────────────────────
   // Focus view confines the visible band of the editor ONLY when LOCKED:
@@ -2352,26 +2282,6 @@ export default function EditorLayout() {
   // lives entirely in EditorPane's single manager. The other footnote-action
   // handlers (edit/title/add) were never consumed from this shell mount.
 
-  const { handleCitationCreated } = useCitationActions({
-    editorRef,
-    getCitationDisplayText,
-    addCitation,
-  });
-
-  // labelRef sibling of `getCitationDisplayText` — resolves a card-nested
-  // `\ref`'s number against MAIN for RichTextField's load-time refresh. Mirrors
-  // the EditorPane mount; reuses the create flow's `resolveLabelDisplay`.
-  const getRefDisplayText = useCallback(
-    (label: string, refCommand: string): string | null => {
-      const mainDoc = editorRef.current?.getEditor()?.state.doc;
-      if (!mainDoc) return null;
-      const cmd = (refCommand === "getref" || refCommand === "getfullref"
-        ? refCommand
-        : "ref") as "ref" | "getref" | "getfullref";
-      return resolveLabelDisplay(mainDoc, label, cmd).display;
-    },
-    [],
-  );
 
 
   // The MenuBar bundle: the registry slice + the two doc-derived divider sets
@@ -2951,33 +2861,6 @@ export default function EditorLayout() {
   // would defeat `React.memo(EditorPane)`). Passed only to the active pane.
   const handleAiWindowClose = useCallback(() => setAiWindowOpen(false), []);
 
-  const selectionsForStrip = useMemo(
-    () => ({
-      selectedNoteId, setSelectedNoteId,
-      selectedFootnoteId, setSelectedFootnoteId,
-      selectedCitationId, setSelectedCitationId,
-      selectedTodoId, setSelectedTodoId,
-      selectedArchiveId, setSelectedArchiveId,
-      selectedCutterCardId, setSelectedCutterCardId,
-      selectedReportCardId, setSelectedReportCardId,
-      selectedCommentId, setSelectedCommentId,
-      selectedBibKey, setSelectedBibKey,
-      selectedExampleId, setSelectedExampleId,
-    }),
-    [
-      selectedNoteId, setSelectedNoteId,
-      selectedFootnoteId, setSelectedFootnoteId,
-      selectedCitationId, setSelectedCitationId,
-      selectedTodoId, setSelectedTodoId,
-      selectedArchiveId, setSelectedArchiveId,
-      selectedCutterCardId, setSelectedCutterCardId,
-      selectedReportCardId, setSelectedReportCardId,
-      selectedCommentId, setSelectedCommentId,
-      selectedBibKey, setSelectedBibKey,
-      selectedExampleId, setSelectedExampleId,
-    ],
-  );
-
   // ── Soft presence: broadcast our card selections to the partner.
   // The broadcast set is FACET-DERIVED (task 239): `collabClaimsFor` emits a
   // claim for a selected card IFF `hasCollabClaims(kind)` — the exact same
@@ -3001,7 +2884,9 @@ export default function EditorLayout() {
         "cutter-comment": selectedCutterCardId,
         report: selectedReportCardId,
         "revision-comment": selectedCommentId,
-        bib: selectedBibKey,
+        // Bib selection is pane state (task 870) and `bib` carries no collab
+        // claim (`collabClaims:false`), so the shell has nothing to send.
+        bib: null,
         example: selectedExampleId,
       }),
     );
@@ -3010,16 +2895,8 @@ export default function EditorLayout() {
     collab.updateSelection,
     selectedNoteId, selectedFootnoteId, selectedCitationId, selectedTodoId,
     selectedArchiveId, selectedCutterCardId, selectedReportCardId,
-    selectedCommentId, selectedBibKey, selectedExampleId,
+    selectedCommentId, selectedExampleId,
   ]);
-
-  const { handleStripClick, handleMove } = useStripHandlers({
-    prefs,
-    openPanelDocked,
-    closePopout,
-    movePanel,
-    selections: selectionsForStrip,
-  });
 
   // (Search-highlight clear-on-close moved to EditorPane — it OWNS the search
   // highlight now; clearing it from here operated on a dead duplicate.)
@@ -3449,19 +3326,6 @@ export default function EditorLayout() {
 
 
   return (
-    <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
-    <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated, getRefDisplayText }}>
-    {/* SelectionsProvider derives the 9 anchored slots from the cardStore;
-        we only thread the bib slot in through `value` because bib isn't
-        an anchored kind. The other 9 props on the legacy value shape are
-        ignored by the provider. This SHELL mount sits above the per-doc
-        CardStoreProvider, so it's handed the ACTIVE doc's store explicitly
-        (`store={activeCardStore}`) — its only consumer is the shell
-        RecentlyAddedAutoClear; the per-pane mount in EditorPane omits the prop
-        and uses context. */}
-    <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }} store={activeCardStore}>
-    <RecentlyAddedProvider value={recentlyAdded}>
-    <RecentlyAddedAutoClear />
     <CollabProvider value={collab}>
     {/* DiskWatcherProviderGate wraps the WHOLE layout (topbar + panes) so both
         the topbar status-cluster badge slot and EditorPane's useDocument call
@@ -3966,9 +3830,5 @@ export default function EditorLayout() {
     </div>
     </DiskWatcherProviderGate>
     </CollabProvider>
-    </RecentlyAddedProvider>
-    </SelectionsProvider>
-    </CitationDisplayProvider>
-    </EditorRefProvider>
   );
 }
