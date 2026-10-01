@@ -45,9 +45,13 @@ import type { EditorState } from "@tiptap/pm/state";
  *
  * `atListItemStart` is the missing twin of upstream's `isAtEndOfNode(state,
  * name)` — the exact mirror of its arithmetic, resolved against the item.
- * `VirgilListKeymap` replaces `StarterKit`'s `listKeymap` (which is turned off at
- * the one configure site) and **gates** the key on it before DELEGATING to
- * upstream's own `listHelpers.handleBackspace` / `handleDelete`.
+ * `VirgilListKeymap` replaces `StarterKit`'s `listKeymap` and **gates** the key
+ * on it before DELEGATING to upstream's own `listHelpers.handleBackspace` /
+ * `handleDelete`. The stock keymap is off — and this one registered — on EVERY
+ * stack that mounts `listItem`: the main/float editor (`buildEditorExtensions`)
+ * and both card-body scopes (`CARD_`/`EXCERPT_STARTER_KIT_CONFIG` +
+ * `buildCardBodySchema`, task 879). The gate travels with the list nodes, not
+ * with one `configure` call.
  *
  * Delegating rather than vendoring is the whole point: there is no copy of
  * upstream's branch logic here to track, and a declined press falls through to
@@ -139,7 +143,8 @@ export function listKeymapOwnsBackspace(
 /**
  * Virgil's replacement for `StarterKit`'s `listKeymap`.
  *
- * Registered immediately after the `StarterKit` entry in
+ * Registered by `buildCardBodySchema` for card/excerpt bodies (task 879), and
+ * immediately after the `StarterKit` entry in
  * `buildEditorExtensions` so its keymap plugin sits where upstream's did in the
  * plugin order (TipTap reverses the extension array before sorting by priority,
  * so an earlier array position means a LATER keymap plugin — after `TabIndent`,
