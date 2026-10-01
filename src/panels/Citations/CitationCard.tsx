@@ -1630,7 +1630,7 @@ function CitationKeyRow({
                 )}
               </>
             ) : (
-              <span className="text-danger">
+              <span className="text-error">
                 <span className="card-mono">{trimmed}</span> — not in your
                 bibliography
               </span>

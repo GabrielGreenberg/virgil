@@ -14,6 +14,7 @@ import { FONT_SERIF } from "@/lib/font-stacks";
 import LibraryFolderPicker from "./LibraryFolderPicker";
 import LibraryPaneFill from "./LibraryPaneFill";
 import LibraryPermissionGate from "./LibraryPermissionGate";
+import { ERROR_INK } from "@/lib/error-ink";
 
 type LibraryHandleApi = ReturnType<typeof useLibraryHandle>;
 
@@ -48,7 +49,7 @@ export default function LibraryFolderGate({ lib, children }: Props) {
         </h2>
         <p
           role="alert"
-          style={{ color: "var(--danger-strong)", maxWidth: 460, textAlign: "center", margin: 0 }}
+          style={{ color: ERROR_INK, maxWidth: 460, textAlign: "center", margin: 0 }}
         >
           {state.message}
         </p>

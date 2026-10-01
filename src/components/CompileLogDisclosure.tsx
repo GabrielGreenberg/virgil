@@ -67,7 +67,7 @@ export default function CompileLogDisclosure({
         {!isCompiling && status != null && (
           <span
             className={`normal-case font-normal tracking-normal ${
-              status === 0 ? "text-positive-strong" : "text-danger"
+              status === 0 ? "text-positive-strong" : "text-error"
             }`}
           >
             {status === 0 ? "ok" : `status ${status}`}

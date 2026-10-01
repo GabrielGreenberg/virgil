@@ -835,11 +835,13 @@ body[data-zen-mode="on"] {
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-muted: var(--danger-muted);
-  /* No --color-danger-strong: nothing spells it as a Tailwind UTILITY. Its
-     three JS-side consumers (KATEX_ERROR_COLOR and the two library alert
-     strings) read `var(--danger-strong)` as an inline style value, which needs
-     no `--color-*` entry. Add the alias with its first `text-danger-strong`,
-     not ahead of one. */
+  /* No --color-danger-strong: nothing spells the RUNG as a utility. Error
+     text reaches it through its ROLE instead — `text-error` (task 867), the
+     one spelling of "this string reports a failure", so an author reaches for
+     the role name rather than `text-danger`, the name that SOUNDS right and
+     paints under AA. JS-side inline styles read the same role through
+     `ERROR_INK` (src/components/InlineError.tsx). */
+  --color-error: var(--danger-strong);
   /* The affirmative family, same rule in both directions: a rung spelled as a
      utility gets an alias, a rung read only through `var(--token)` does not.
      No --color-positive: its three consumers (the goal-strip bar, the accepted

@@ -50,6 +50,7 @@ import LibrariesNavigator from "./LibrariesNavigator";
 import { queueBibReview, queueDelete, queueImportBib, queuePaperReview } from "@library/lib/bib-edit";
 import { refreshQueueState } from "@library/lib/queue-state-store";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
+import { ERROR_INK } from "@/lib/error-ink";
 import {
   LEFT_DEFAULT,
   LEFT_MIN,
@@ -913,7 +914,7 @@ export default function LibraryView({
             padding: "8px 12px",
             fontSize: 13,
             background: "var(--danger-soft)",
-            color: "var(--danger)",
+            color: ERROR_INK,
             borderBottom:
               "1px solid color-mix(in oklab, var(--danger) 30%, transparent)",
           }}

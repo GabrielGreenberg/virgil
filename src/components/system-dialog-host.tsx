@@ -183,7 +183,7 @@ function PendingDialog({
               alarm family") and this one only dismisses. */}
           <div
             className={`text-xs leading-relaxed ${
-              tone === "danger" ? "text-danger" : "text-ink-body"
+              tone === "danger" ? "text-error" : "text-ink-body"
             }`}
           >
             {message}

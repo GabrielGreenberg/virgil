@@ -12,6 +12,7 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
 import { canJumpToError, type ErrorJumpMode } from "./error-jump";
 import { iconHint } from "@/components/Hint";
+import { ERROR_INK } from "@/lib/error-ink";
 
 const theme = CARD_THEMES.error;
 
@@ -28,6 +29,13 @@ const SEVERITY_COLOR: Record<LatexErrorSeverity, string> = {
   // panel's accent (e.g. archive/--latex-comment-color) just because the hex
   // coincides.
   info: "var(--status-info)",
+};
+
+/** The severity WORD is text, the badge is an icon (task 867): an `error`
+ *  label takes the error-text role, which `--danger` paints under AA. */
+const SEVERITY_INK: Record<LatexErrorSeverity, string> = {
+  ...SEVERITY_COLOR,
+  error: ERROR_INK,
 };
 
 /** Short, stable title derived from rule id / message. Prefers a known rule
@@ -211,7 +219,7 @@ export function ErrorCard({
         )}
 
         <div className="text-[10px] mb-1 flex items-center gap-2 flex-wrap text-ink-muted">
-          <span className="font-medium" style={{ color: SEVERITY_COLOR[err.severity] }}>
+          <span className="font-medium" style={{ color: SEVERITY_INK[err.severity] }}>
             {err.severity}
           </span>
           <span>·</span>

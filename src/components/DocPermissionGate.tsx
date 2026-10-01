@@ -18,6 +18,7 @@
 import { useState } from "react";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { Button } from "@/components/Button";
+import { InlineError } from "@/components/InlineError";
 
 interface Props {
   /** Display name of the paper, for the UI copy. */
@@ -69,7 +70,7 @@ export function DocPermissionGate({ docName, handle, onGranted }: Props) {
         >
           {busy ? "Waiting…" : "Allow access"}
         </Button>
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <InlineError>{error}</InlineError>}
       </div>
     </div>
   );

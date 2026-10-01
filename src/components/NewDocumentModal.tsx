@@ -8,6 +8,7 @@ import SystemDialog, {
   SystemDialogHeader,
 } from "./system-dialog";
 import { Input } from "./field-primitives";
+import { InlineError } from "./InlineError";
 import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
 
 /**
@@ -149,9 +150,7 @@ export default function NewDocumentModal({
 
       {error && (
         <div className="px-5 pb-2">
-          <div className="text-xs text-danger bg-danger-soft px-2.5 py-1.5 rounded-md">
-            {error}
-          </div>
+          <InlineError boxed>{error}</InlineError>
         </div>
       )}
 

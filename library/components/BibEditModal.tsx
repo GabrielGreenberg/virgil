@@ -31,6 +31,7 @@ import SystemDialog, {
 import { Button } from "@/components/Button";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
+import { ERROR_INK } from "@/lib/error-ink";
 
 interface Props {
   entry: BibEntry;
@@ -253,7 +254,7 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
           Saved edits queue for the <code style={{ fontFamily: FONT_MONO }}>/apply-bib-edit</code> skill.
         </div>
         {saveError && (
-          <span style={{ fontSize: 12, color: "var(--danger)" }}>{saveError}</span>
+          <span role="alert" style={{ fontSize: 12, color: ERROR_INK }}>{saveError}</span>
         )}
         <SystemDialogButton
           variant="secondary"
@@ -655,7 +656,7 @@ function RawView({
         }}
       />
       {error && (
-        <div style={{ fontSize: 12, color: "var(--danger)" }}>{error}</div>
+        <div role="alert" style={{ fontSize: 12, color: ERROR_INK }}>{error}</div>
       )}
     </div>
   );
