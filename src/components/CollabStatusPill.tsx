@@ -21,7 +21,8 @@
  */
 
 import { memo, useCallback, useRef, useState, type ReactNode } from "react";
-import { formatRelativeShort, type PenStatus } from "@/lib/collab";
+import { type PenStatus } from "@/lib/collab";
+import { formatElapsed } from "@/lib/relative-time";
 import { StatusDot, type StatusTone } from "./StatusDot";
 import { useCollabContext } from "@/hooks/useCollab";
 import { MenuProvider } from "./menu/MenuProvider";
@@ -177,7 +178,7 @@ function CollabStatusPill({
     onAction = () => void collab.takePen();
   } else if (iHavePen) {
     if (pen.status === "idle") {
-      label = `You have the pen · idle ${formatRelativeShort(pen.idleSec)}`;
+      label = `You have the pen · idle ${idleLabel(pen.idleSec)}`;
     } else {
       label = "You have the pen";
     }
@@ -186,15 +187,15 @@ function CollabStatusPill({
   } else {
     const partner = pen.holder ?? "Partner";
     if (pen.status === "stale") {
-      label = `${partner} unreachable · ${formatRelativeShort(pen.staleSec)}`;
+      label = `${partner} unreachable · ${idleLabel(pen.staleSec)}`;
       actionLabel = "Take over";
       onAction = () => void collab.takeOver();
     } else if (pen.status === "idle") {
-      label = `${partner} stepped away · idle ${formatRelativeShort(pen.idleSec)}`;
+      label = `${partner} stepped away · idle ${idleLabel(pen.idleSec)}`;
       actionLabel = "Request";
       onAction = () => void collab.requestPen();
     } else {
-      label = `${partner} is editing · ${formatRelativeShort(pen.idleSec)}`;
+      label = `${partner} is editing · ${idleLabel(pen.idleSec)}`;
       actionLabel = "Request";
       onAction = () => void collab.requestPen();
     }
@@ -293,3 +294,9 @@ function CollabStatusPill({
 }
 
 export default memo(CollabStatusPill);
+
+/** The pen pill's live-duration label ("now", "12s", "4m") — the compact
+ *  register of the one relative-time ladder, with its seconds bucket. */
+function idleLabel(sec: number | null): string {
+  return formatElapsed(sec, { register: "compact", seconds: true });
+}

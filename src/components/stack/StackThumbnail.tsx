@@ -14,7 +14,8 @@ import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import type { StackItem } from "@/lib/stack/types";
 import { STACK_PULL_PREFIX } from "@/lib/stack/types";
 import { beginDropSession } from "@/components/drop-mode/controller";
-import { shortRelativeTime, summarizeStackItem } from "@/lib/stack/snapshot";
+import { summarizeStackItem } from "@/lib/stack/snapshot";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_KIND_BY_STACK_CARD_KIND } from "@/lib/stack/card-kinds";
 import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
@@ -31,7 +32,7 @@ export interface StackThumbnailProps {
 
 export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
   const summary = useMemo(() => summarizeStackItem(item, 240), [item]);
-  const time = useMemo(() => shortRelativeTime(item.capturedAt), [item.capturedAt]);
+  const time = useMemo(() => formatRelativeTime(item.capturedAt, { register: "compact" }), [item.capturedAt]);
   const kindLabel = stackItemKindLabel(item);
 
   const onMouseDown = (e: React.MouseEvent) => {

@@ -39,6 +39,7 @@ import {
 } from "@/lib/recent-docs";
 import { IconPlus } from "./editor-layout/panel-icons";
 import { Kbd } from "./Kbd";
+import { FolderIcon, RecentPaperRow } from "./RecentPapersList";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
@@ -270,10 +271,11 @@ export function TabPlusMenu({
 }
 
 /**
- * A recent-paper row registered as a menu item. Reuses the same visual the
- * shared `RecentPaperRow` paints (folder icon + name/subtitle + relative time)
- * but carries the primitive's `getItemProps()` so it joins the roving nav
- * snapshot with a `data-active` highlight. `run` = the existing open handler.
+ * A recent-paper row registered as a menu item. The row itself is the shared
+ * `RecentPaperRow` (the start screen's painter); this wrapper only registers it
+ * with the menu primitive and hands the item props + `active` flag through, so
+ * it joins the roving nav snapshot with a `data-active` highlight. `run` = the
+ * existing open handler.
  */
 function RecentRowItem({
   doc,
@@ -287,31 +289,7 @@ function RecentRowItem({
     region: "list",
     run: () => onOpen(doc.id),
   });
-  const subtitle =
-    doc.folderName && doc.folderName !== doc.name ? doc.folderName : null;
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover-on-light text-left"
-      style={{
-        background: active ? "var(--menu-roving-bg)" : undefined,
-      }}
-    >
-      <FolderIcon />
-      <span className="flex-1 min-w-0 flex flex-col">
-        <span className="text-sm text-ink-strong truncate">{doc.name}</span>
-        {subtitle && (
-          <span className="text-[11px] text-ink-subtle truncate">
-            {subtitle}
-          </span>
-        )}
-      </span>
-      <span className="text-[11px] text-ink-subtle shrink-0">
-        {formatRelative(doc.lastAccessedAt)}
-      </span>
-    </button>
-  );
+  return <RecentPaperRow doc={doc} itemProps={getItemProps()} active={active} />;
 }
 
 /**
@@ -348,25 +326,6 @@ function MenuActionItem({
   );
 }
 
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "";
-  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) return "just now";
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  const w = Math.floor(d / 7);
-  if (w < 5) return `${w}w ago`;
-  const mo = Math.floor(d / 30);
-  if (mo < 12) return `${mo}mo ago`;
-  const y = Math.floor(d / 365);
-  return `${y}y ago`;
-}
-
 function WindowIcon() {
   return (
     <svg
@@ -382,24 +341,6 @@ function WindowIcon() {
     >
       <rect x="3" y="4" width="13" height="11" rx="1.5" />
       <rect x="8" y="9" width="13" height="11" rx="1.5" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-ink-subtle shrink-0"
-    >
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
     </svg>
   );
 }

@@ -5,10 +5,14 @@
  * sort by `lastAccessedAt` desc and clicking one calls `onOpen(id)` so
  * the parent (EditorLayout / useFiles) can activate the tab.
  *
- * The same row visual is reused by the tab-strip "+" dropdown.
+ * `RecentPaperRow` is the ONE painter of a recent-paper row: the tab-strip
+ * "+" dropdown (`TabPlusMenu`) renders it too, passing its menu primitive's
+ * item props through (task 866 — the menu had hand-copied the row).
  */
 
 import type { FsaDocMeta } from "@/lib/doc-index";
+import type { MenuItemProps } from "./menu/types";
+import { formatRelativeTime } from "@/lib/relative-time";
 import {
   RECENT_PAPERS_START_SCREEN_LIMIT,
   selectRecentDocs,
@@ -53,20 +57,37 @@ export function RecentPapersList({
   );
 }
 
+/**
+ * One recent paper: folder icon, name (+ folder subtitle when it differs),
+ * and how long ago it was opened. Standalone (the start screen) it is a plain
+ * button that calls `onOpen`. Inside a `<Menu>` the caller passes `itemProps`
+ * — the primitive's `getItemProps()`, whose `onClick` runs the item — and
+ * `active`, which paints the roving highlight.
+ */
 export function RecentPaperRow({
   doc,
   onOpen,
+  itemProps,
+  active = false,
 }: {
   doc: FsaDocMeta;
-  onOpen: (id: string) => void;
+  onOpen?: (id: string) => void;
+  itemProps?: MenuItemProps;
+  active?: boolean;
 }) {
   const subtitle =
     doc.folderName && doc.folderName !== doc.name ? doc.folderName : null;
   return (
     <button
+      {...itemProps}
       type="button"
-      onClick={() => onOpen(doc.id)}
+      onClick={itemProps ? itemProps.onClick : () => onOpen?.(doc.id)}
       className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover-on-light text-left"
+      style={
+        active
+          ? { ...itemProps?.style, background: "var(--menu-roving-bg)" }
+          : itemProps?.style
+      }
     >
       <FolderIcon />
       <span className="flex-1 min-w-0 flex flex-col">
@@ -78,13 +99,14 @@ export function RecentPaperRow({
         )}
       </span>
       <span className="text-[11px] text-ink-subtle shrink-0">
-        {formatRelative(doc.lastAccessedAt)}
+        {formatRelativeTime(doc.lastAccessedAt)}
       </span>
     </button>
   );
 }
 
-function FolderIcon() {
+/** The folder glyph — the recent row's, and the "+" menu's "Open folder…". */
+export function FolderIcon() {
   return (
     <svg
       width="14"
@@ -100,23 +122,4 @@ function FolderIcon() {
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
     </svg>
   );
-}
-
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "";
-  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) return "just now";
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  const w = Math.floor(d / 7);
-  if (w < 5) return `${w}w ago`;
-  const mo = Math.floor(d / 30);
-  if (mo < 12) return `${mo}mo ago`;
-  const y = Math.floor(d / 365);
-  return `${y}y ago`;
 }

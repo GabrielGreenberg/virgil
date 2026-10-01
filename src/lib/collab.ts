@@ -169,17 +169,6 @@ export function isClaimFresh(
   return now - last < COLLAB_TIMINGS.cardStaleMs;
 }
 
-/** Format seconds as a compact "just now / 12s / 4m / 1h" label. */
-export function formatRelativeShort(sec: number | null): string {
-  if (sec == null) return "";
-  if (sec < 5) return "just now";
-  if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  return `${h}h`;
-}
-
 /* ── Identity persistence (localStorage) ───────────────────────────── */
 
 export function loadIdentity(): CollabIdentity | null {
