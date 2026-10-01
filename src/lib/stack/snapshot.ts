@@ -481,22 +481,3 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
   if (text.length > maxChars) text = text.slice(0, maxChars - 1) + "…";
   return text;
 }
-
-/** Short relative-time label (e.g. "just now", "5m", "2h", "3d"). */
-export function shortRelativeTime(iso: string, now = Date.now()): string {
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return "";
-  const diffMs = Math.max(0, now - t);
-  const sec = Math.round(diffMs / 1000);
-  if (sec < 30) return "now";
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h`;
-  const day = Math.round(hr / 24);
-  if (day < 30) return `${day}d`;
-  const mo = Math.round(day / 30);
-  if (mo < 12) return `${mo}mo`;
-  const yr = Math.round(mo / 12);
-  return `${yr}y`;
-}

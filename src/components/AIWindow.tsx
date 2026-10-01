@@ -63,6 +63,7 @@ import { Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { iconHint } from "@/components/Hint";
 import type { StatusTone } from "./StatusDot";
+import { formatRelativeTime } from "@/lib/relative-time";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -299,21 +300,6 @@ function truncate(s: string | undefined, max = 140): string {
   const trimmed = s.replace(/\s+/g, " ").trim();
   if (trimmed.length <= max) return trimmed;
   return trimmed.slice(0, max - 1) + "…";
-}
-
-function relTime(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "";
-  const diff = Date.now() - t;
-  const sec = Math.floor(diff / 1000);
-  if (sec < 45) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
 }
 
 /* ── Build view-models from raw hook state ─────────────────────────── */
@@ -1180,7 +1166,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
             </span>
           )}
           <span className="text-[10px] text-ink-muted ml-auto shrink-0">
-            {relTime(req.createdAt)}
+            {formatRelativeTime(req.createdAt, { dateAfterDays: 30 })}
           </span>
         </div>
         <p className="text-[11px] text-ink-subtle leading-snug mt-0.5 break-words">
