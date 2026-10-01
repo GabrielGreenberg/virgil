@@ -24,8 +24,8 @@
  * and re-mints only what would collide. A full move collides with nothing and
  * keeps every id; a partial move collides on precisely the surviving block.
  *
- * This is the DUAL of `stack-pull.ts`'s unconditional `withFreshUuid` /
- * `withFreshAtomIds`: a pull is paste-as-new (the source presence always
+ * This is the DUAL of the Stack pull's unconditional `withFreshBlockUuids`
+ * (below) / `stack-pull.ts`'s `withFreshAtomIds`: a pull is paste-as-new (the source presence always
  * survives, so EVERY id is fresh), a move is relocation (the source presence
  * usually doesn't, so ids travel). Same axis — block uuid + inline-atom id — read
  * two ways, which is why the collectors below are shared by both.
@@ -60,6 +60,7 @@ import type { JSONContent } from "@tiptap/react";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 import { generateShortId } from "@/lib/uuid";
+import { deferringParent } from "@/lib/node-attr-sets";
 
 /** Every non-null block `uuid` live in `doc` (any depth — nested list items,
  *  example items and container bodies all carry one). */
@@ -71,6 +72,51 @@ export function collectBlockUuids(doc: PMNode): Set<string> {
     return true;
   });
   return ids;
+}
+
+/**
+ * The JSON reading of `mayCarryBlockUuid` (`@/lib/marginalia`, task 878): a
+ * serialized node may carry a block uuid iff its type declares the attr
+ * (`toJSON` writes every declared attr, so `"uuid" in attrs` IS
+ * `isAnchorableNode`) and it is not a `paragraph` directly under a deferring
+ * container. Same rule, the shape a payload blob arrives in.
+ */
+function jsonMayCarryBlockUuid(json: JSONContent, parentType: string | null): boolean {
+  const attrs = json.attrs as Record<string, unknown> | undefined;
+  if (!attrs || !("uuid" in attrs)) return false;
+  return !(json.type === "paragraph" && deferringParent(parentType));
+}
+
+/**
+ * Paste-as-new block identity: give EVERY identity-eligible node in `json` a
+ * fresh uuid drawn against `live` (MUTATED as ids are claimed, so successive
+ * calls in one gesture can't collide either), and clear any uuid riding a
+ * deferred inner paragraph — an id nothing can reach and the serializer
+ * strips. The dual of `remintCollidingIdentity` (a move keeps what is free);
+ * the Stack pull's minting door. Seed `live` with `collectBlockUuids(doc)`:
+ * the generator's short ids are 4 hex chars, so an unseeded mint can collide.
+ */
+export function withFreshBlockUuids(
+  json: JSONContent,
+  live: Set<string>,
+  parentType: string | null = null,
+): JSONContent {
+  if (!json || typeof json !== "object") return json;
+  let out = json;
+  const attrs = json.attrs as Record<string, unknown> | undefined;
+  if (attrs && "uuid" in attrs) {
+    let uuid: string | null = null;
+    if (jsonMayCarryBlockUuid(json, parentType)) {
+      uuid = generateShortId(live);
+      live.add(uuid);
+    }
+    out = { ...out, attrs: { ...attrs, uuid } };
+  }
+  if (Array.isArray(json.content)) {
+    const type = json.type ?? null;
+    out = { ...out, content: json.content.map((c) => withFreshBlockUuids(c, live, type)) };
+  }
+  return out;
 }
 
 /**
@@ -122,7 +168,11 @@ export function inheritBlockUuid(
   if (nodes.length === 0) return nodes as PMNode[];
   const stamp = (json: JSONContent): JSONContent | null => {
     const attrs = json.attrs as Record<string, unknown> | undefined;
-    if (attrs && "uuid" in attrs && !attrs.uuid) {
+    if (attrs && "uuid" in attrs) {
+      // A node that already holds an id HAS its identity — stop here, as the
+      // doc above promises, rather than descending to stamp a second holder
+      // inside it (task 878).
+      if (attrs.uuid) return null;
       return { ...json, attrs: { ...attrs, uuid } };
     }
     if (Array.isArray(json.content) && json.content.length > 0) {

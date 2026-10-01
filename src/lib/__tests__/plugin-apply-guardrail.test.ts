@@ -98,8 +98,11 @@ const PLUGIN_SITE_VERDICTS: Record<string, "door" | "tagged" | "clean"> = {
   "src/lib/tiptap/latex-command.ts#apply": "door",
   "src/lib/tiptap/latex-command.ts#appendTransaction": "clean", // takes the door too (leg 4), but its reach walks nothing
   "src/lib/tiptap/latex-comment.ts#appendTransaction": "clean",
-  "src/lib/tiptap/linked-anchor.ts#appendTransaction": "tagged", // orphan guard (anchors)
-  "src/lib/tiptap/linked-anchor.ts#appendTransaction[2]": "tagged", // orphan guard (blocks)
+  // RENEGOTIATED (task 878): "tagged" → "clean". Both orphan guards now read
+  // liveness off the observer snapshot (`hasLiveAnchor` / `hasLiveBlock`, O(1)
+  // per removed id) instead of a deferred `doc.descendants` walk per join.
+  "src/lib/tiptap/linked-anchor.ts#appendTransaction": "clean", // orphan guard (anchors)
+  "src/lib/tiptap/linked-anchor.ts#appendTransaction[2]": "clean", // orphan guard (blocks)
   "src/lib/tiptap/linked-anchor.ts#appendTransaction[3]": "clean", // resurrection guard
   "src/lib/tiptap/pgmark.ts#apply": "tagged",
   "src/lib/tiptap/slash-popup.ts#apply": "clean",

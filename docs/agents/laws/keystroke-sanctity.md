@@ -739,6 +739,25 @@ gate-holders. The two CodeMirror modules that own their editability (`CodeEditor
 the style-file modal) still fall out on their own, and their callers are not
 dragged in.
 
+### The liveness half: "is this id live?" is the snapshot's answer (task 878)
+
+A JOIN is a keystroke. Backspace at a block start / Delete at a block end
+absorbs a block, so its uuid rides `removedBlocks` — and the two orphan guards in
+`linked-anchor.ts` answered "was it resurrected?" with a deferred
+`doc.descendants` walk, O(doc) per join. The observer's index already IS the live
+set: ask `hasLiveBlock(state, uuid)` / `hasLiveAnchor(state, id)` (O(1), never
+materializes — membership is invariant under the pending position maps). And the
+index admits exactly the uuids ONE predicate admits, `mayCarryBlockUuid`
+(`@/lib/marginalia`: anchorable ∧ not a deferred inner paragraph), which the
+uuid backfill, the join classifier and node-identity's paste-as-new minting
+(the Stack pull) read too — so liveness, minting and collision cannot disagree
+about a stale id stranded on a list item's body paragraph. Residual, stated: the
+step inspector's own survivor guard (`oldUuidSurvivesInNewDoc`) still walks
+`newDoc` once when a removed uuid is not re-collected, i.e. on a join; it needs
+uuid MULTIPLICITY (a split clone transiently shares one id) that the
+uuid-keyed index cannot answer. CI: `block-identity-ssot.test.ts`,
+`plugin-apply-guardrail.test.ts`.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).

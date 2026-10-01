@@ -17,7 +17,8 @@
  * (task 258).
  *
  * Stack pulls are paste-as-new — every id/uuid is regenerated. Block
- * uuids are reminted by `withFreshUuid`; Card-bearing inline-atom ids
+ * uuids are reminted by node-identity's `withFreshBlockUuids` (eligible nodes
+ * only, drawn against the destination's live ids); Card-bearing inline-atom ids
  * (footnoteId / citationId, + the unified linkId mirror) by
  * `withFreshAtomIds`. Both run on the pull side so the snapshot stays a
  * faithful copy — the fresh identity is minted exactly where a fresh
@@ -54,6 +55,13 @@ import { generateShortId } from "@/lib/uuid";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 import { rangeSliceToBlocks } from "@/lib/linked-anchor-range";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
+// The identity collectors + paste-as-new minting are node-identity's (task 878):
+// one eligibility rule, one collision set, shared with the move.
+import {
+  collectAtomIds,
+  collectBlockUuids,
+  withFreshBlockUuids,
+} from "@/lib/tiptap/node-identity";
 
 /**
  * **The per-payload placement table — the ONE answer to "where may THIS
@@ -515,7 +523,10 @@ function planInsertParagraph(
 ): DropPlan | null {
   if (placement.kind !== "between-blocks") return null;
   const seen = collectAtomIds(editor.state.doc);
-  const json = withFreshAtomIds(withFreshUuid(payload.node), seen);
+  const json = withFreshAtomIds(
+    withFreshBlockUuids(payload.node, collectBlockUuids(editor.state.doc)),
+    seen,
+  );
   let node: PMNode | null = null;
   try {
     node = editor.state.schema.nodeFromJSON(
@@ -552,11 +563,12 @@ function planInsertHeading(
 ): DropPlan | null {
   if (placement.kind !== "between-blocks") return null;
   const seen = collectAtomIds(editor.state.doc);
+  const liveUuids = collectBlockUuids(editor.state.doc);
   const nodes: PMNode[] = [];
   for (const j of payload.nodes) {
     try {
       const n = editor.state.schema.nodeFromJSON(
-        withFreshAtomIds(withFreshUuid(j), seen) as Parameters<
+        withFreshAtomIds(withFreshBlockUuids(j, liveUuids), seen) as Parameters<
           typeof editor.state.schema.nodeFromJSON
         >[0],
       );
@@ -607,43 +619,7 @@ function selectInserted(
   }
 }
 
-/** Recursively replace `attrs.uuid` with a freshly-generated value on the
- *  outer node AND any nested anchorable children. */
-function withFreshUuid(json: import("@tiptap/react").JSONContent): import("@tiptap/react").JSONContent {
-  if (!json || typeof json !== "object") return json;
-  const next: import("@tiptap/react").JSONContent = { ...json };
-  if (next.attrs && typeof next.attrs === "object") {
-    const attrs = { ...(next.attrs as Record<string, unknown>) };
-    if ("uuid" in attrs) attrs.uuid = generateShortId();
-    next.attrs = attrs;
-  }
-  if (Array.isArray(next.content)) {
-    next.content = next.content.map(withFreshUuid);
-  }
-  return next;
-}
-
 // ── Inline-atom identity remint ───────────────────────────────────────
-/** Every Card-bearing inline-atom id currently live in `doc` — the
- *  `footnoteId`/`citationId` (via the ATOM_REGISTRY `idAttr`) plus its unified
- *  `linkId` mirror. Seeds the remint avoidance-set: on a SAME-doc pull the
- *  source atom stays in the doc (pull is copy, not pop), so its id lives here —
- *  which is exactly the collision `withFreshAtomIds` must never reproduce. */
-function collectAtomIds(doc: PMNode): Set<string> {
-  const ids = new Set<string>();
-  doc.descendants((node) => {
-    const meta = atomMetaForNodeName(node.type.name);
-    if (meta?.idAttr) {
-      const own = node.attrs[meta.idAttr];
-      if (typeof own === "string" && own) ids.add(own);
-      const linkId = node.attrs.linkId;
-      if (typeof linkId === "string" && linkId) ids.add(linkId);
-    }
-    return true;
-  });
-  return ids;
-}
-
 /**
  * Remint every Card-bearing inline-atom id (footnoteId / citationId, plus the
  * unified linkId mirror kept in lock-step) inside a rehydrated blob, so a Stack
@@ -656,7 +632,7 @@ function collectAtomIds(doc: PMNode): Set<string> {
  * already live in the destination doc AND every id minted so far in this pull,
  * so no two atoms — existing or freshly-pulled — collide.
  *
- * The atom-id twin of `withFreshUuid`: block uuids and inline-atom ids are the
+ * The atom-id twin of `withFreshBlockUuids`: block uuids and inline-atom ids are the
  * two identity axes a paste-as-new must regenerate. Reuses `remintNestedAtomIds`
  * so a `\cite` nested inside a footnote body (`attrs.content`) is reached the
  * same way the live editor reads it.

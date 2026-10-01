@@ -3,8 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { ReplaceAroundStep, ReplaceStep } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { isAnchorableNode } from "@/lib/marginalia";
-import { isDeferredInnerParagraph } from "@/lib/anchor-uuid";
+import { isAnchorableNode, mayCarryBlockUuid } from "@/lib/marginalia";
 import { readDocStructure } from "@/lib/tiptap/doc-structure";
 import { generateShortId } from "@/lib/uuid";
 
@@ -182,7 +181,8 @@ const BACKFILL_META = "blockUuidBackfill";
 // A `paragraph` nested directly inside a DEFERRING_PARENTS container defers its
 // anchor identity to the parent (the real text-object), and its uuid is
 // stripped at serialization — so we never mint on it. The set + the predicate
-// (`isDeferredInnerParagraph`) are the SSOT in `@/lib/anchor-uuid`, imported
+// (`mayCarryBlockUuid`, task 878 — anchorable ∧ not deferred-inner) are the SSOT
+// in `@/lib/marginalia` (re-exported by `@/lib/anchor-uuid`), imported
 // rather than re-declared so the "grabbable text-object" boundary can't drift
 // between the mint resolve, this backfill, and the decoration walk. Every other
 // anchorable kind (incl. nested lists, and a single example's graphicsBlock /
@@ -503,7 +503,9 @@ function uuidBearingAncestor(
   }
   for (let depth = $p.depth; depth > 0; depth--) {
     const node = $p.node(depth);
-    if (!isAnchorableNode(node.type)) continue;
+    // The identity predicate (task 878): a stale id stranded on a deferred
+    // inner paragraph is no identity to lose, so the climb passes it.
+    if (!mayCarryBlockUuid(node, $p.node(depth - 1))) continue;
     const uuid = ownUuid(node);
     if (!uuid) continue;
     return { uuid, pos: $p.before(depth), typeName: node.type.name };
@@ -683,7 +685,7 @@ function planBackfill(
       // The two differ on exactly the case that matters: a `ReplaceAroundStep`'s
       // map covers only its two SIDE ranges, deliberately omitting the GAP — the
       // preserved content that changes PARENT. Anchorability here is a function
-      // of the parent (`isDeferredInnerParagraph`), so a paragraph LIFTED out of
+      // of the parent (`mayCarryBlockUuid`), so a paragraph LIFTED out of
       // a listItem/blockquote to top level becomes a first-class text object
       // entirely inside that gap; taking ranges from the map alone made every
       // toggle-list-off / toggle-blockquote-off / Backspace-at-list-start leave
@@ -724,7 +726,7 @@ function planBackfill(
         // exampleItem / exampleBlock) defers to its parent — don't give it its
         // own identity (matches resolveAnchorableNode and keeps inner-paragraph
         // uuids out of the serialized .tex).
-        if (isDeferredInnerParagraph(node, parent)) {
+        if (!mayCarryBlockUuid(node, parent)) {
           // …and if it still CARRIES one, that identity is already unreachable
           // (`resolveAnchorableNode` skips it, `assignUuids` strips it on the next
           // save). The O(depth) resolve runs only on this rare shape — a

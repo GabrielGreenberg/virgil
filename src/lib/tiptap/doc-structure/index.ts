@@ -43,6 +43,8 @@ export {
   readDocStructure,
   readPendingDiff,
   resolveTouchedBlock,
+  hasLiveBlock,
+  hasLiveAnchor,
   peekStructureVersion,
   getMaterializeCount,
 } from "./observer-plugin";
