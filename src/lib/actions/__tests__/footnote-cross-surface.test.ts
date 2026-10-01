@@ -58,7 +58,7 @@ import {
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
 import {
-  setEditorActionsHandle,
+  __setEditorActionsHandleForTest,
 } from "@/lib/actions/editor-actions-bridge";
 import { buildFloatKey } from "@/floats/float-key";
 import { paragraphUuidAt } from "@/links/links";
@@ -185,7 +185,7 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
       void spec.run(ctx);
     },
   };
-  setEditorActionsHandle(handle);
+  __setEditorActionsHandleForTest(handle);
 }
 
 /** Mount a real main editor whose FIRST top-level block is `blockType`, holding
@@ -265,7 +265,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setEditorActionsHandle(null);
+  __setEditorActionsHandleForTest(null);
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
@@ -383,7 +383,7 @@ describe("menu (grab/lightning) footnote", () => {
 describe("atom lands even when the card host is unmounted", () => {
   it("slash \\footnote still inserts the atom (no card, no throw)", () => {
     const editor = mountEditor("");
-    setEditorActionsHandle(null); // host unmounted — getEditorActionsHandle() → null
+    __setEditorActionsHandleForTest(null); // host unmounted — getEditorActionsHandle() → null
 
     expect(() =>
       COMMAND_MAP.get("footnote")!.action(editor.view, "\\footnote"),
@@ -395,7 +395,7 @@ describe("atom lands even when the card host is unmounted", () => {
 
   it("typed \\footnote{body} still inserts the atom (no card, no throw)", () => {
     const editor = mountEditor("\\footnote{x}".slice(0, -1));
-    setEditorActionsHandle(null);
+    __setEditorActionsHandleForTest(null);
 
     expect(() => typeChar(editor, "}")).not.toThrow();
 

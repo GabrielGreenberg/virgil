@@ -23,8 +23,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // backend is a bare `require` the bundler resolves and vitest does not.
 vi.mock("@/lib/storage", () => ({ isDevStorage: false }));
 
+import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 import {
-  isPaneMarkerVisible,
   paneColumn,
   paneColumns,
   paneDockSlot,
@@ -209,7 +209,7 @@ describe("the visibility rung", () => {
     document.body.appendChild(bare);
     // The real jsdom values — offsetParent null AND offsetHeight 0, which is
     // exactly what a `display:none` subtree reports in a browser.
-    expect(isPaneMarkerVisible(bare)).toBe(false);
+    expect(isPaneElementVisible(bare)).toBe(false);
   });
 
   it("offsetHeight is a BACKSTOP: a null offsetParent alone is not hidden", () => {
@@ -219,13 +219,13 @@ describe("the visibility rung", () => {
     const fixed = document.createElement("div");
     Object.defineProperty(fixed, "offsetParent", { get: () => null });
     Object.defineProperty(fixed, "offsetHeight", { get: () => 120 });
-    expect(isPaneMarkerVisible(fixed)).toBe(true);
+    expect(isPaneElementVisible(fixed)).toBe(true);
   });
 
   it("resolves the fixture's visible pane over its hidden one", () => {
     const { hidden, visible } = buildTwoPanes();
-    expect(isPaneMarkerVisible(hidden.col)).toBe(false);
-    expect(isPaneMarkerVisible(visible.col)).toBe(true);
+    expect(isPaneElementVisible(hidden.col)).toBe(false);
+    expect(isPaneElementVisible(visible.col)).toBe(true);
   });
 
   it("the two miss policies are different claims", () => {
