@@ -27,6 +27,7 @@
 
 import { generateShortId } from "@/lib/uuid";
 import { emitMarker, VIRGIL_MARKERS } from "@/lib/latex-markers";
+import { scanBibSource } from "@/lib/bib-source";
 
 const VBID = VIRGIL_MARKERS.bibEntry;
 
@@ -43,13 +44,6 @@ export const VBID_RE = new RegExp(VBID_SOURCE);
 
 /** Global form for scanning a whole `.bib` file for every marker. */
 const VBID_RE_GLOBAL = new RegExp(VBID_SOURCE, "g");
-
-/**
- * Matches the start of a BibTeX entry: `@type{citekey,`. Capture group 1 =
- * the citekey (trimmed by the caller). Mirrors `extractRawEntries`' regex so
- * marker-to-entry association lines up with the parser's block detection.
- */
-const ENTRY_HEAD_RE = /@\w+\s*\{([^,\s}]+)\s*,/g;
 
 /**
  * **The uid of an entry that has no identity in this paper** (task 693).
@@ -158,13 +152,17 @@ export function orderedVbidBindings(bibText: string): VbidBinding[] {
   }
   if (markers.length === 0) return [];
 
-  // Collect every entry head with its source position.
-  const heads: { citekey: string; at: number }[] = [];
-  ENTRY_HEAD_RE.lastIndex = 0;
-  let hm: RegExpExecArray | null;
-  while ((hm = ENTRY_HEAD_RE.exec(bibText)) !== null) {
-    heads.push({ citekey: hm[1].trim(), at: hm.index });
-  }
+  // Every entry head with its source position — the PARSER's own blocks
+  // (task 884), not a private head regex. The old `/@\w+\s*\{([^,\s}]+)\s*,/g`
+  // missed a spaced key (`@article{ smith99,`), so the marker above it bound to
+  // the NEXT entry, and it read an `@article{x,` inside a field value as a head;
+  // `bib-parser.ts` pairs a binding to a block by `entryStart === block.start`,
+  // which only the blocks themselves can guarantee. The skill-side port
+  // (`editor/scripts/citekey_sidecars.vbid_uid_for`) answers the same `vbid`
+  // rows of `__tests__/fixtures/bib-entry-span-corpus.json`.
+  const heads = scanBibSource(bibText)
+    .filter((b) => b.kind === "entry")
+    .map((b) => ({ citekey: b.key, at: b.start }));
 
   // Bind each marker to the nearest entry head that starts at-or-after the
   // marker's end and before the next marker. Each head is claimed at most once.

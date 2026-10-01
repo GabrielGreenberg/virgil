@@ -719,13 +719,16 @@ _BIB_INDEX_FIELDS = (
 )
 
 
-# Entry starts are line-anchored in master.bib (`@type{key,` at column 0).
+# Entry starts are line-anchored in master.bib (`@type{key,` starting a line, after
+# optional indentation — task 884: BibTeX and the app accept `  @type{key,`; a
+# matched span starts at the LINE start. The editor twin is
+# `editor/scripts/bib_resolve._ENTRY_START`, pinned by the shared span corpus).
 # We delimit entries by THIS marker rather than by global brace-matching,
 # because a single malformed entry with an unbalanced brace makes brace-
 # matching overrun and swallow the rest of the file (the real master.bib has
 # exactly such an entry — `read_master_bib` drops ~82% of the bibliography on
 # it). Line-anchored splitting contains any malformation to its own entry.
-_BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
+_BIB_ENTRY_START_RE = re.compile(r"(?m)^[ \t]*@(\w+)[ \t]*\{[ \t]*([^,\s}]+)[ \t]*,")
 
 # The per-entry auth state lives in a `% bib.state = <state>` comment written
 # immediately before the entry by update_master_bib_entry. Pair each comment
@@ -736,7 +739,7 @@ _BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
 # State token is `[\w-]+` (not `\w+`) so hyphenated canonical states like
 # `needs-reauth` round-trip; `\w+` silently dropped them mid-hyphen → "none".
 _BIB_STATE_COMMENT_RE = re.compile(
-    r"(?m)^%[ \t]*bib\.state[ \t]*=[ \t]*([\w-]+)[ \t]*\n(?:[ \t]*\n)*@\w+[ \t]*\{[ \t]*([^,\s]+)"
+    r"(?m)^%[ \t]*bib\.state[ \t]*=[ \t]*([\w-]+)[ \t]*\n(?:[ \t]*\n)*[ \t]*@\w+[ \t]*\{[ \t]*([^,\s}]+)"
 )
 
 

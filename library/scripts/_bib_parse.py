@@ -86,7 +86,10 @@ def parse_fields(body: str) -> dict[str, str]:
     return out
 
 
-# Entry starts are line-anchored in a .bib file (`@type{key,` at column 0).
+# Entry starts are line-anchored in a .bib file (`@type{key,` starting a line, after
+# optional indentation — task 884: BibTeX and the app accept `  @type{key,`; a
+# matched span starts at the LINE start. The editor twin is
+# `editor/scripts/bib_resolve._ENTRY_START`, pinned by the shared span corpus).
 # We delimit entries by THIS marker rather than by global brace-matching,
 # because a single brace-unbalanced entry makes brace-matching overrun and
 # swallow the rest of the file as one "entry," silently dropping everything
@@ -98,7 +101,7 @@ def parse_fields(body: str) -> dict[str, str]:
 # `@string`/`@comment`/`@preamble` lack the `{key,` form, so the regex naturally
 # excludes them (matching the old explicit skip). This pattern is ported from
 # `_tools.read_master_bib` (`_tools._BIB_ENTRY_START_RE`); keep the two in sync.
-_BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
+_BIB_ENTRY_START_RE = re.compile(r"(?m)^[ \t]*@(\w+)[ \t]*\{[ \t]*([^,\s}]+)[ \t]*,")
 
 
 def parse_bib_text(text: str) -> list[dict]:
