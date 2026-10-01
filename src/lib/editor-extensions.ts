@@ -38,7 +38,6 @@ import {
   MAIN_STARTERKIT_NODE_CONTENT,
 } from "@/lib/node-attr-sets";
 import { withWrapperGate } from "@/lib/tiptap/wrapper-gate";
-import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
@@ -1976,17 +1975,16 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
           // DOM element. The marginalia registry + drag hit-test depend on
           // these attributes being present in the live DOM. See uuid-attr.ts
           // for why this needs to be a decoration and not renderHTML.
-          // Paints the four card hover/selection attrs onto in-editor anchor
-          // targets via decorations (driven by useAnchorHighlightReconciler).
-          // A decoration — not raw setAttribute — so PM owns the attrs and
-          // never redraws the node (the listItem/heading hover-cull root).
-          // See anchor-highlight-deco.ts.
-          AnchorHighlightDecorator,
-          // Paints every TRANSIENT text-range band (search result, diagnostics
-          // error range, revision/suggestion text) as an inline decoration —
-          // the text-range sibling of the node/atom decorator just above —
-          // instead of a `highlight` MARK. A mark is document
-          // content: it was history-recorded (clicking a search result ate the
+          // Paints every TRANSIENT view-only signal over the document, one
+          // channel each: the text-range bands (search result, diagnostics
+          // error range, revision/suggestion text, AI-request wash) as inline
+          // decorations instead of a `highlight` MARK, and — the `anchor`
+          // channel, task 880 — the four card hover/selection attrs on
+          // in-editor node/atom anchors as NODE decorations (driven by
+          // useAnchorHighlightReconciler; a decoration, not raw setAttribute,
+          // so PM owns the attrs and never redraws the node — the
+          // listItem/heading hover-cull root; see anchor-highlight-deco.ts).
+          // A mark is document content: it was history-recorded (clicking a search result ate the
           // redo branch; Cmd+Z after closing search resurrected the band) and
           // `docChanged` (it dirtied + autosaved an unedited doc). See
           // transient-highlight.ts — task 120.

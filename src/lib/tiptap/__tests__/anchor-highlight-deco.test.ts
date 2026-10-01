@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 //
-// AnchorHighlightDecorator — the DEEP root fix for the listItem/heading
+// The `anchor` channel of the transient-highlight engine (formerly its own
+// AnchorHighlightDecorator plugin; task 880 folded it in) — the DEEP root fix for the listItem/heading
 // hover-cull + hover-highlight-loss class.
 //
 // THE CLASS BUG: useAnchorHighlightReconciler used to paint
@@ -35,17 +36,23 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import {
-  anchorHighlightKey,
-  setAnchorHighlightTargets,
   selectedAttrs,
   hoveredAttrs,
   type AnchorHighlightTarget,
 } from "@/lib/tiptap/anchor-highlight-deco";
+import {
+  setAnchorHighlightTargets,
+  setTransientHighlights,
+  transientHighlightKeyFor,
+  TRANSIENT_HIGHLIGHT_COLOR,
+} from "@/lib/tiptap/transient-highlight";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "@/links/_shared/types";
+
+const anchorHighlightKey = transientHighlightKeyFor("anchor");
 
 const NONE_ARCHIVED: ReadonlySet<string> = new Set<string>();
 
@@ -280,6 +287,71 @@ describe("AnchorHighlightDecorator — ROOT PROOF: no node redraw on hover", () 
     // `before` is detached. Either proves the redraw the fix eliminates.
     const swappedOrDetached = after !== before || !before.isConnected;
     expect(swappedOrDetached).toBe(true);
+
+    editor.destroy();
+    element.remove();
+  });
+});
+
+describe("anchor channel — one engine with the transient bands (task 880)", () => {
+  it("an empty→empty reconcile dispatches ZERO transactions", () => {
+    const { editor, element } = mountEditor();
+    const span = nodeSpanByUuid(editor, PARA_UUID);
+    let dispatched = 0;
+    const count = () => {
+      dispatched++;
+    };
+    editor.on("transaction", count);
+
+    // Nothing hovered, nothing selected — the reconciler's common frame.
+    setAnchorHighlightTargets(editor.view, []);
+    setAnchorHighlightTargets(editor.view, []);
+    expect(dispatched).toBe(0);
+
+    // Paint, then clear: two real frames.
+    setAnchorHighlightTargets(editor.view, [
+      {
+        shape: "node",
+        from: span.from,
+        to: span.to,
+        attrs: hoveredAttrs({ value: "paragraph", kind: "note", side: "right" }, true),
+      },
+    ]);
+    setAnchorHighlightTargets(editor.view, []);
+    expect(dispatched).toBe(2);
+
+    // Already clear again → free.
+    setAnchorHighlightTargets(editor.view, []);
+    expect(dispatched).toBe(2);
+
+    editor.off("transaction", count);
+    editor.destroy();
+    element.remove();
+  });
+
+  it("the anchor channel and a band channel never clobber each other", () => {
+    const { editor, element } = mountEditor();
+    const span = nodeSpanByUuid(editor, PARA_UUID);
+
+    setAnchorHighlightTargets(editor.view, [
+      {
+        shape: "node",
+        from: span.from,
+        to: span.to,
+        attrs: selectedAttrs({ value: "paragraph", kind: "note", side: "left" }),
+      },
+    ]);
+    setTransientHighlights(editor.view, [
+      { from: span.from + 1, to: span.from + 3, color: TRANSIENT_HIGHLIGHT_COLOR },
+    ]);
+    expect(liveDecos(editor)).toHaveLength(1);
+    expect(transientHighlightKeyFor("search").getState(editor.state)?.find()).toHaveLength(1);
+
+    // Clearing the search band leaves the anchor attrs, and vice versa.
+    setTransientHighlights(editor.view, []);
+    expect(liveDecos(editor)).toHaveLength(1);
+    setAnchorHighlightTargets(editor.view, []);
+    expect(liveDecos(editor)).toHaveLength(0);
 
     editor.destroy();
     element.remove();

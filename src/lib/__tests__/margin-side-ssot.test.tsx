@@ -45,7 +45,7 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { anchorHighlightKey } from "@/lib/tiptap/anchor-highlight-deco";
+import { transientHighlightKeyFor } from "@/lib/tiptap/transient-highlight";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
@@ -201,7 +201,7 @@ async function waitForEditorInit(editor: Editor): Promise<void> {
 
 /** The `data-margin-side` the plugin currently paints, or null. */
 function liveMarginSide(editor: Editor): string | null {
-  const set = anchorHighlightKey.getState(editor.state);
+  const set = transientHighlightKeyFor("anchor").getState(editor.state);
   if (!set) return null;
   const found = set.find();
   if (found.length === 0) return null;

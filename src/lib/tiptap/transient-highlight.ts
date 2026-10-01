@@ -4,6 +4,10 @@ import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { viewOnly } from "@/lib/view-only-chrome";
+import {
+  anchorNodeDecoration,
+  type AnchorHighlightTarget,
+} from "./anchor-highlight-deco";
 
 /**
  * TransientHighlightDecorator — the ONE carrier for every *transient* (view-only,
@@ -12,8 +16,13 @@ import { viewOnly } from "@/lib/view-only-chrome";
  * revision/suggestion text band, and the persistent light-blue wash over the
  * anchored region of an OPEN AI request (task 667 — which arrived carried as a
  * real `linkedAnchor` mark and is now a band on the `ai-request` channel).
+ * Since task 880 it is ALSO the carrier of the card hover/selection ATTRS on
+ * in-editor node/atom anchors — the `anchor` channel, whose targets are
+ * `shape: "node"` and become `Decoration.node`s (`anchor-highlight-deco.ts`
+ * keeps that channel's attr vocabulary and its one node builder). That channel
+ * used to be a second, drifted copy of this engine.
  * (The linked-anchor hover/click band is NOT here — it is painted on the anchor mark itself by `useLinkHighlight`'s
- * `data-link-highlight` coupling plus `AnchorHighlightDecorator`. A fourth
+ * `data-link-highlight` coupling plus the `anchor` channel. A fourth
  * branch of `applyHighlight` claimed it via an `activeAnchorId` prop that no
  * caller ever passed; task 120 deleted that orphan.)
  *
@@ -45,11 +54,11 @@ import { viewOnly } from "@/lib/view-only-chrome";
  * THE FIX. A decoration is not document content. The set is replaced by a
  * META-ONLY transaction (`!docChanged`), so it is invisible to history, to the
  * autosaver, and to `DocStructureObserver`; it cannot collide with a user mark;
- * and it needs no selection of its own. Same shape as the sibling
- * {@link import("./anchor-highlight-deco").AnchorHighlightDecorator}, which
- * already owns the card hover/selection ATTRS on node targets — this one owns
- * transient TEXT RANGES, which must be `Decoration.inline` (a node decoration
- * cannot paint a partial-block span).
+ * and it needs no selection of its own. Text-range bands must be
+ * `Decoration.inline` (a node decoration cannot paint a partial-block span);
+ * the `anchor` channel's attrs must be `Decoration.node` (see
+ * `anchor-highlight-deco.ts` for why an inline wrapper would put them on the
+ * wrong element). A target's `shape` picks which — one engine, two shapes.
  *
  * (Unlike the card-attr case, an inline decoration's fresh inner `<span>` is
  * harmless here: the only thing being painted is a background color, not an
@@ -76,6 +85,9 @@ export const TRANSIENT_HIGHLIGHT_COLOR = "#fbbf2480";
 
 /** One transient band, in live PM coordinates at dispatch time. */
 export type TransientHighlightTarget = {
+  /** The shape discriminant. Absent means inline — every band predates the
+   *  `anchor` channel's node targets. */
+  shape?: "inline";
   from: number;
   to: number;
   /** Any CSS color. Callers pass {@link TRANSIENT_HIGHLIGHT_COLOR} unless they
@@ -107,8 +119,22 @@ export type TransientHighlightTarget = {
  *                   (`Editor.applyHighlight`), at most one at a time.
  *   - `ai-request`— the persistent light-blue wash over the anchored region of
  *                   every open AI request (`src/links/_shared/request-wash.ts`).
+ *   - `anchor`    — the card hover/selection attrs on in-editor node/atom
+ *                   anchors (`useAnchorHighlightReconciler`), NODE-shaped.
  */
-export type TransientHighlightChannel = "search" | "ai-request";
+export type TransientHighlightChannel = "search" | "ai-request" | "anchor";
+
+/** What each channel paints: the band channels take inline ranges, the
+ *  `anchor` channel node targets. Typing the setter through this keeps a node
+ *  target off a band channel at compile time. */
+export interface TransientChannelTargets {
+  search: TransientHighlightTarget;
+  "ai-request": TransientHighlightTarget;
+  anchor: AnchorHighlightTarget;
+}
+
+/** Any target the engine can paint. */
+type TransientTarget = TransientHighlightTarget | AnchorHighlightTarget;
 
 /** The channel a caller gets when it does not name one. */
 export const DEFAULT_TRANSIENT_CHANNEL: TransientHighlightChannel = "search";
@@ -119,6 +145,7 @@ export const DEFAULT_TRANSIENT_CHANNEL: TransientHighlightChannel = "search";
 const TRANSIENT_CHANNELS: readonly TransientHighlightChannel[] = [
   "search",
   "ai-request",
+  "anchor",
 ];
 
 const CHANNEL_KEYS: Record<
@@ -127,13 +154,13 @@ const CHANNEL_KEYS: Record<
 > = {
   search: new PluginKey<DecorationSet>("transientHighlightDeco"),
   "ai-request": new PluginKey<DecorationSet>("transientHighlightDeco:aiRequest"),
+  anchor: new PluginKey<DecorationSet>("anchorHighlightDeco"),
 };
 
 /** Meta payload: the COMPLETE desired band list for this channel, this frame.
  *  The channel's plugin replaces its whole set from it — callers are idempotent
- *  and always send the full picture, exactly like the anchor-highlight
- *  sibling. */
-type TransientHighlightMeta = { targets: TransientHighlightTarget[] };
+ *  and always send the full picture. */
+type TransientHighlightMeta = { targets: readonly TransientTarget[] };
 
 /** The DEFAULT channel's key, kept under its original name for the callers and
  *  guards that predate channels. */
@@ -148,7 +175,7 @@ export function transientHighlightKeyFor(
 
 function buildSet(
   doc: EditorState["doc"],
-  targets: TransientHighlightTarget[],
+  targets: readonly TransientTarget[],
 ): DecorationSet {
   if (targets.length === 0) return DecorationSet.empty;
   const decos: Decoration[] = [];
@@ -156,6 +183,11 @@ function buildSet(
     // Defensive clamp: a range resolved a frame ago can be stale after an
     // interleaved edit. Skip rather than throw — the next reconcile repaints.
     if (t.from < 0 || t.to > doc.content.size || t.to <= t.from) continue;
+    if (t.shape === "node") {
+      const deco = anchorNodeDecoration(t);
+      if (deco) decos.push(deco);
+      continue;
+    }
     decos.push(
       Decoration.inline(
         t.from,
@@ -205,10 +237,12 @@ function buildSet(
  * "nothing to highlight" reconcile (every unrelated prop change on the owning
  * effect) costs zero transactions.
  */
-export function setTransientHighlights(
+export function setTransientHighlights<
+  C extends TransientHighlightChannel = typeof DEFAULT_TRANSIENT_CHANNEL,
+>(
   view: EditorView,
-  targets: TransientHighlightTarget[],
-  channel: TransientHighlightChannel = DEFAULT_TRANSIENT_CHANNEL,
+  targets: readonly TransientChannelTargets[C][],
+  channel: C = DEFAULT_TRANSIENT_CHANNEL as C,
 ): void {
   const key = CHANNEL_KEYS[channel];
   if (targets.length === 0) {
@@ -217,6 +251,20 @@ export function setTransientHighlights(
   }
   const meta: TransientHighlightMeta = { targets };
   view.dispatch(view.state.tr.setMeta(key, meta));
+}
+
+/**
+ * The `anchor` channel's named door: replace the card hover/selection attrs on
+ * in-editor node/atom anchors with `targets` (the COMPLETE desired set — the
+ * reconciler owns selection-vs-hover precedence and the attr values). Inherits
+ * the engine's empty-clear bail, so a reconcile with nothing hovered or
+ * selected costs zero transactions.
+ */
+export function setAnchorHighlightTargets(
+  view: EditorView,
+  targets: readonly AnchorHighlightTarget[],
+): void {
+  setTransientHighlights(view, targets, "anchor");
 }
 
 /** Clear one channel's bands. Sugar for `setTransientHighlights(view, [])`. */

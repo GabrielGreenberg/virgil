@@ -33,7 +33,8 @@
  *
  *   1. IN-EDITOR NODE/ATOM targets (paragraph / heading / listItem blocks,
  *      footnote / citation atoms) are painted via a ProseMirror DECORATION
- *      (`AnchorHighlightDecorator` in `anchor-highlight-deco.ts`). The
+ *      (the transient-highlight engine's `anchor` channel; vocabulary in
+ *      `anchor-highlight-deco.ts`). The
  *      reconciler resolves each link to live PM coordinates + an attr bag and
  *      pushes the COMPLETE desired NODE target list through
  *      `setAnchorHighlightTargets`. PM owns the attrs, so it never treats them
@@ -90,12 +91,12 @@ import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "./types";
 import { resolveLink } from "../links";
 import {
-  setAnchorHighlightTargets,
   selectedAttrs,
   hoveredAttrs,
   type AnchorHighlightTarget,
   type AnchorHighlightAttrs,
 } from "@/lib/tiptap/anchor-highlight-deco";
+import { setAnchorHighlightTargets } from "@/lib/tiptap/transient-highlight";
 import {
   marginSideForCardKind,
   type PanelSideMap,

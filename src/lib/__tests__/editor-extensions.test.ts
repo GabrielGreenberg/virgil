@@ -93,7 +93,6 @@ const EXPECTED_MAIN_ORDER = [
   "marginaliaAnchorGuard",
   "tabIndent",
   "pgmarkChip",
-  "anchorHighlightDecorator",
   "transientHighlightDecorator",
   "readOnlyEnforcer",
 ];
@@ -195,7 +194,6 @@ const MAIN_ONLY_NAMES = [
   "emptyParagraphTitleCleaner",
   "marginaliaAnchorGuard",
   "pgmarkChip",
-  "anchorHighlightDecorator",
   "transientHighlightDecorator",
   "readOnlyEnforcer",
 ];

@@ -88,7 +88,6 @@ const PLUGIN_SITE_VERDICTS: Record<string, "door" | "tagged" | "clean"> = {
   "src/lib/editor-extensions.ts#appendTransaction": "clean",
   "src/lib/focus-view.ts#apply": "tagged",
   "src/lib/section-folding.ts#apply": "tagged",
-  "src/lib/tiptap/anchor-highlight-deco.ts#apply": "tagged",
   "src/lib/tiptap/block-uuid-backfill.ts#appendTransaction": "clean",
   "src/lib/tiptap/doc-structure/observer-plugin.ts#apply": "clean",
   "src/lib/tiptap/expex.ts#apply": "clean", // WidthState: meta ?? prev
