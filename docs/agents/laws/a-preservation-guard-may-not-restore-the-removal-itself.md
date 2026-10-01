@@ -235,3 +235,23 @@ that was already blank keeps its id; a copy placed elsewhere is a relocation, an
 pre-fix sources; 2 controls pass either way). **Owed:** a real-PWA eyeball —
 anchor movement is FSA-masked in the dev preview: press Enter at the start of a
 paragraph that has a note, and delete-then-undo an anchored paragraph.
+
+### The reason half: a guard resurrects only what its remedy can carry
+
+*(Task 877.)* `MarginaliaAnchorGuard` had TWO triggers: a removed block's uuid is
+in `anchoredUuidsRef` (a margin card anchors it), OR any inline `linkedAnchor`
+mark vanished in the same batch — in which case EVERY removed uuid-bearing block
+became a candidate. So select-and-delete across paragraphs nobody anchored, with
+one anchored phrase among them, brought the interior paragraphs back as empty
+lines: the guard vetoed part of a deletion of content no card referenced.
+
+**Rule.** The remedy is an EMPTY paragraph; it has no text for a `linkedAnchor`
+mark to sit on, so it preserves nothing for an inline anchor — that card is owned
+by `LinkedAnchorGuard`'s orphan event. A trigger whose remedy cannot carry what
+it is protecting is no trigger. One reason resurrects: a margin card anchors
+THIS block. The second arm is deleted, not scoped.
+
+**CI:** `anchored-block-delete-reinsert.test.ts` → "task 877" (range delete over
+four interior paragraphs + one anchored phrase → no empty paragraphs; a
+margin-anchored paragraph in the same range still resurrects, alone). **Owed:** a
+real-PWA eyeball (FSA-masked anchor class).

@@ -194,3 +194,75 @@ describe("anchored-block delete re-insertion + LIFECYCLE_DELETE_META bypass", ()
     expect(r.state).toBe("absent");
   });
 });
+
+// ── Task 877: a vanished INLINE anchor is not a reason to resurrect. ──
+// The guard used to treat EVERY removed block as a candidate whenever any
+// `linkedAnchor` mark vanished in the same delete — so a range delete across
+// paragraphs nobody anchored, with one anchored phrase among them, came back as
+// a stack of empty paragraphs. Now ONE reason resurrects: a margin card anchors
+// the block (its uuid is in `anchoredUuidsRef`).
+function rangeDelete(anchored: Set<string>): {
+  texts: string[];
+  uuids: (string | null)[];
+} {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const para = (uuid: string, text: string, marked = false) => ({
+    type: "paragraph",
+    attrs: { uuid },
+    content: [
+      {
+        type: "text",
+        text,
+        ...(marked
+          ? { marks: [{ type: "linkedAnchor", attrs: { anchorId: "anc-1", kind: "note" } }] }
+          : {}),
+      },
+    ],
+  });
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx(anchored)),
+    content: {
+      type: "doc",
+      content: [
+        para("head00", "head."),
+        para("p00001", "first unanchored."),
+        para("p00002", "an anchored phrase", /* marked */ true),
+        para("p00003", "third unanchored."),
+        para("p00004", "fourth unanchored."),
+        para("tail00", "tail."),
+      ],
+    },
+  });
+  // Delete the four interior blocks whole (head and tail survive untouched),
+  // so no join absorbs anything — every interior block is a pure removal.
+  const doc = editor.state.doc;
+  const from = doc.child(0).nodeSize;
+  let to = from;
+  for (let i = 1; i <= 4; i++) to += doc.child(i).nodeSize;
+  editor.view.dispatch(editor.state.tr.delete(from, to));
+  const texts: string[] = [];
+  const uuids: (string | null)[] = [];
+  editor.state.doc.forEach((n) => {
+    texts.push(n.textContent);
+    uuids.push((n.attrs as { uuid?: string | null }).uuid ?? null);
+  });
+  editor.destroy();
+  element.remove();
+  return { texts, uuids };
+}
+
+describe("task 877 — an inline anchor vanishing does not resurrect unanchored blocks", () => {
+  it("range delete across unanchored paragraphs + one anchored phrase leaves no empty paragraphs", () => {
+    const r = rangeDelete(new Set());
+    expect(r.texts).toEqual(["head.", "tail."]);
+  });
+
+  it("a MARGIN-anchored paragraph inside the same range is still resurrected (and only it)", () => {
+    const r = rangeDelete(new Set(["p00003"]));
+    expect(r.texts).toEqual(["head.", "", "tail."]);
+    expect(r.uuids[1]).toBe("p00003");
+  });
+});
