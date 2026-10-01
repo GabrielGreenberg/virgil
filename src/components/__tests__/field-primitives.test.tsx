@@ -85,13 +85,15 @@ describe("fieldChrome — the STYLE_GUIDE §Inputs spec, spelled once", () => {
     expect(fieldChrome({ ink: "strong" })).toContain("text-ink-strong");
   });
 
-  it("reports an invalid field on the --danger token, never a raw red", () => {
+  it("reports an invalid field on the danger family, never a raw red", () => {
     const c = fieldChrome({ invalid: true, ink: "subtle" });
+    // The BORDER is a non-text edge and keeps --danger; the INK is text and
+    // reads the error role (--danger-strong), which stays above AA (task 867).
     expect(c).toContain("border-danger");
-    expect(c).toContain("text-danger");
+    expect(c).toContain("text-error");
     expect(c).not.toMatch(/border-red-\d/);
     // invalid REPLACES rather than adds — the ink it was given is gone, not
-    // sitting beside `text-danger` waiting on stylesheet order.
+    // sitting beside `text-error` waiting on stylesheet order.
     expect(c).not.toContain("text-ink-subtle");
     expect(fieldChrome({ invalid: false })).not.toContain("border-danger");
   });

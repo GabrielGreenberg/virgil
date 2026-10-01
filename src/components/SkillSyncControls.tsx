@@ -3,6 +3,7 @@
 import { memo } from "react";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
 import { iconHint } from "@/components/Hint";
+import { ERROR_INK } from "@/lib/error-ink";
 
 interface Props {
   error: SkillSyncError | null;
@@ -56,7 +57,7 @@ function SkillSyncControls({
             ...PILL,
             maxWidth: 320,
             background: "var(--danger-soft)",
-            color: "var(--danger)",
+            color: ERROR_INK,
             boxShadow:
               "inset 0 0 0 1px color-mix(in oklab, var(--danger) 30%, transparent)",
           }}
@@ -91,7 +92,7 @@ function SkillSyncControls({
           <button
             onClick={onResync}
             className="topbarbtn"
-            style={{ height: 20, color: "var(--danger)" }}
+            style={{ height: 20, color: ERROR_INK }}
             data-hint={error.message}
           >
             {error.permission ? "Grant & retry" : "Retry"}

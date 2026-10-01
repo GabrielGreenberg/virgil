@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { commentsStripped, cssCommentsStripped, cssRuleBodies } from "@/lib/__tests__/_source-scan";
 import { hexToRgb, rgbToHsl, contrastRatio } from "@/lib/color-math";
 import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
+import { ERROR_INK } from "@/lib/error-ink";
 
 /**
  * DESTRUCTIVE / ALARM REDS — one family, one scale, no raw spellings
@@ -438,7 +439,8 @@ const PINNED_STOCK_RED_SITES: readonly string[] = [
   // through `--pill-red-*` rather than through a `rose` utility, and the dead
   // third table went with it. This list may only SHRINK; that is what shrinking
   // looks like.
-  "src/components/DocPermissionGate.tsx",
+  // NOT DocPermissionGate.tsx: its `text-red-600` error string left for the
+  // error-text role, `<InlineError>` (task 867).
   // NOT PreferencesModal.tsx: its preset "Del" button's `hover:text-red-600`
   // left with the button itself, onto `<Button variant="danger">` (task 827).
   // NOT field-primitives.tsx: its only `border-red-300` is inside the doc
@@ -492,6 +494,94 @@ describe("the residual red spellings are a pinned census", () => {
       })
       .sort();
     expect(found).toEqual([...PINNED_DECIMAL_RED_SITES].sort());
+  });
+});
+
+/* ── Leg 8: error TEXT reads the error role (task 867) ───────────── */
+
+/**
+ * STYLE_GUIDE's "error TEXT takes `--danger-strong`, never `--danger`" was
+ * prose only, so every author reached for `text-danger` — the name that sounds
+ * right — and a dozen error strings painted at 3.76:1. The rule now has a role
+ * to reach for (`text-error` / `ERROR_INK` / `<InlineError>`), and this leg
+ * pins every remaining `--danger` spelling that COULD be text, as exact file
+ * sets with a reason each, so the set only shrinks. None of the survivors is an
+ * error string: they are destructive buttons, menu rows, edges and icons, which
+ * the guide keeps on `--danger`.
+ */
+const PINNED_DANGER_TEXT_UTILITY_SITES: Readonly<Record<string, string>> = {
+  "src/components/Button.tsx": "variant=\"danger\" — destructive BUTTON label",
+  "src/components/menu/MenuActionRow.tsx": "destructive menu ROW",
+};
+
+const PINNED_DANGER_INLINE_SITES: Readonly<Record<string, string>> = {
+  "library/components/LibraryView.tsx": "sync-error banner's dismiss ICON (its text reads ERROR_INK)",
+  "library/components/RowMenu.tsx": "destructive menu ROW",
+  "library/components/Toaster.tsx": "attention toast's 3px EDGE (its label reads ERROR_INK)",
+  "src/components/EditorLayout.tsx": "a dot's backgroundColor — a fill, not text",
+  "src/components/SkillSyncControls.tsx": "sync-error pill's dismiss ICON (its text reads ERROR_INK)",
+  "src/components/menu/MenuItemsFromRegistry.tsx": "destructive menu ROW",
+  "src/components/status/BarStatusPill.tsx": "destructive-choice menu ROW",
+  "src/lib/interruption-tone.ts": "the danger register's EDGE (its ink is --ink-strong)",
+  "src/panels/Errors/ErrorCard.tsx": "the severity BADGE icon (the severity word reads SEVERITY_INK)",
+};
+
+describe("error text reads the error role", () => {
+  const files = [...walkSource("src"), ...walkSource("library")];
+
+  it("the role exists: text-error resolves --danger-strong, ERROR_INK is that token", () => {
+    expect(/--color-error:\s*var\(--danger-strong\)/.test(cssCommentsStripped(globals))).toBe(true);
+    expect(ERROR_INK).toBe("var(--danger-strong)");
+    expect(KATEX_ERROR_COLOR).toBe(ERROR_INK);
+  });
+
+  it("bare text-danger / text-[var(--danger)] appear in exactly the recorded files", () => {
+    const found = files
+      .filter((rel) =>
+        /(?:^|[^:\w-])text-danger(?![\w-])|text-\[var\(--danger\)\]/m.test(commentsStripped(read(rel))),
+      )
+      .sort();
+    expect(found).toEqual(Object.keys(PINNED_DANGER_TEXT_UTILITY_SITES).sort());
+  });
+
+  it("an inline \"var(--danger)\" value appears in exactly the recorded files", () => {
+    const found = files.filter((rel) => commentsStripped(read(rel)).includes('"var(--danger)"')).sort();
+    expect(found).toEqual(Object.keys(PINNED_DANGER_INLINE_SITES).sort());
+  });
+
+  it("no role=\"alert\" element paints --danger as its text", () => {
+    const offenders = files.flatMap((rel) =>
+      commentsStripped(read(rel))
+        .split("\n")
+        .map((line, i) => ({ rel, line: i + 1, text: line }))
+        .filter(
+          ({ text }) =>
+            /role="alert"/.test(text) &&
+            /(?:^|[^:\w-])text-danger(?![\w-])|"var\(--danger\)"/.test(text),
+        )
+        .map(({ rel, line, text }) => `${rel}:${line} ${text.trim()}`),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it.each([
+    ["src/components/DocPermissionGate.tsx", "<InlineError"],
+    ["src/components/NewDocumentModal.tsx", "<InlineError boxed"],
+    ["src/panels/Examples/ExampleCard.tsx", "<InlineError boxed"],
+    ["src/components/BugReportWindow.tsx", "text-error"],
+    ["src/components/BibEntryCard.tsx", "text-error"],
+    ["src/components/system-dialog-host.tsx", "text-error"],
+    ["library/components/BibEditModal.tsx", "color: ERROR_INK"],
+    ["library/components/Toaster.tsx", "ERROR_INK"],
+    ["src/panels/Errors/ErrorCard.tsx", "SEVERITY_INK[err.severity]"],
+  ])("%s reads the role (%s)", (rel, needle) => {
+    expect(commentsStripped(read(rel))).toContain(needle);
+  });
+
+  it("keeps the role above AA on white and on --code-bg", () => {
+    const strong = decl("--danger-strong");
+    expect(contrastRatio(strong, "#ffffff")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(strong, decl("--code-bg"))).toBeGreaterThanOrEqual(4.5);
   });
 });
 

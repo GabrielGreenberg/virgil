@@ -224,7 +224,7 @@ export default function StyleEditorModal({
           className="w-full px-3 py-1.5 text-sm"
         />
         {nameError && (
-          <p className="text-[11px] text-[var(--danger)] mt-1">
+          <p className="text-[11px] text-error mt-1">
             {nameError}
           </p>
         )}
@@ -269,7 +269,7 @@ export default function StyleEditorModal({
           {validation.ok ? (
             <span className="text-[var(--success,#15803d)]">✓ Valid</span>
           ) : (
-            <span className="text-[var(--danger)]">
+            <span className="text-error">
               ✗ {validation.message}
             </span>
           )}

@@ -44,6 +44,7 @@ import {
 } from "@/lib/float-source-range";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
 import { iconHint } from "@/components/Hint";
+import { InlineError } from "@/components/InlineError";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -430,13 +431,9 @@ function ExampleCardEditor({
   return (
     <>
       {writeError && (
-        <div
-          role="alert"
-          className="mb-1.5 rounded-md border border-[color-mix(in_oklab,var(--danger)_30%,transparent)] bg-danger-soft px-2 py-1 text-xs text-danger"
-          data-example-write-error
-        >
+        <InlineError boxed className="mb-1.5" data-example-write-error>
           {writeError}
-        </div>
+        </InlineError>
       )}
       {content}
     </>

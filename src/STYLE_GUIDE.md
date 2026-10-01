@@ -81,17 +81,21 @@ Two rules the family carries:
   6.31:1. `--danger` remains right for an ICON, a border, or a menu row, none of
   which carries the text contrast obligation.
 
-  Stated as a rule the codebase is **converging on, not one it already meets**:
-  the sites settled so far are `.figure-error`, `.math-error`, KaTeX's
-  `errorColor` (which arrives as `KATEX_ERROR_COLOR` because KaTeX writes it
-  onto an inline style no stylesheet rule can outrank) and the two library
-  permission-gate `role="alert"` strings (5.45:1 on `--code-bg`, 6.31:1 on
-  white). Other error strings — `BibEditModal`, `NewDocumentModal`,
-  `ErrorCard`'s `error` severity, `Toaster`'s attention
-  accent — still resolve `--danger` and are therefore under AA today. That is a
-  real accessibility residual, recorded rather than fixed: repainting them is a
-  visual pass across dialogs, toasts and cards, and it is the obvious next step
-  for this family.
+  The rule has a ROLE to reach for (task 867), so no author has to remember
+  it: **`text-error`** (the utility, `--color-error` → `--danger-strong`),
+  **`ERROR_INK`** (`src/lib/error-ink.ts`, for an inline `style={{ color }}`
+  — KaTeX's `errorColor` is `KATEX_ERROR_COLOR = ERROR_INK`), and
+  **`<InlineError>`** (`src/components/InlineError.tsx`: `role="alert"` + the
+  ink; `boxed` adds the `--danger-soft` wash with a 30% `--danger` edge, the
+  banner dialogs and cards draw). Every error string reads it — the dialogs,
+  the bug-report notice, bib cards and the bib modal, the system dialog's
+  `danger` message, an invalid field's ink, the compile-log status, the error
+  card's severity word, the attention toast's label, the skill-sync and library
+  permission alerts. What stays on `--danger` is non-text: an attention toast's
+  EDGE, the error badge ICON, a dismiss icon, a destructive button or menu row.
+  `destructive-red-tokens.test.ts` ("error text reads the error role") pins
+  those survivors as exact file sets, so the set only shrinks, and fails any
+  `role="alert"` line that paints `--danger`.
 - **RED means an action would destroy content WITHOUT a net** (task 364). A
   state that is merely *unexpected* — an external writer changed the file, a
   sync service touched it while you were typing — is a firm-but-calm WARNING and

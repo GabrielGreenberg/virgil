@@ -2,6 +2,7 @@
 
 import LibraryPaneFill from "./LibraryPaneFill";
 import { Button } from "@/components/Button";
+import { ERROR_INK } from "@/lib/error-ink";
 import { FONT_MONO, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
@@ -32,7 +33,7 @@ export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
         <p
           role="alert"
           style={{
-            color: "var(--danger-strong)",
+            color: ERROR_INK,
             maxWidth: 480,
             textAlign: "center",
             fontSize: 13,

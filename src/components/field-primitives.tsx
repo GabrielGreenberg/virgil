@@ -125,7 +125,7 @@ export function fieldChrome({
     FIELD_BASE,
     bg,
     invalid ? "border-danger" : border,
-    invalid ? "text-danger" : FIELD_INK[ink],
+    invalid ? "text-error" : FIELD_INK[ink],
     FIELD_DENSITY[density],
   ].join(" ");
 }

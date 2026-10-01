@@ -1040,9 +1040,10 @@ describe("the imperative host door obeys the same cue rule", () => {
     const ok = screen.getByRole("button", { name: "OK" });
     expect(ok.className).not.toContain("bg-danger-soft");
     expect(ok.className).toContain("bg-btn-primary");
-    // …and the tone reaches the thing it describes.
+    // …and the tone reaches the thing it describes — as error TEXT, which
+    // reads the error role (`--danger-strong`), never `text-danger` (task 867).
     expect(screen.getByText("Undefined control sequence.").className).toContain(
-      "text-danger",
+      "text-error",
     );
   });
 

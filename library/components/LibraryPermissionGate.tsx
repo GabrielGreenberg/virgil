@@ -2,6 +2,7 @@
 
 import LibraryPaneFill from "./LibraryPaneFill";
 import { Button } from "@/components/Button";
+import { ERROR_INK } from "@/lib/error-ink";
 import { FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
@@ -34,7 +35,7 @@ export default function LibraryPermissionGate({ onGrant, onReset, pickerError }:
         <p
           role="alert"
           style={{
-            color: "var(--danger-strong)",
+            color: ERROR_INK,
             maxWidth: 460,
             textAlign: "center",
             fontSize: 13,

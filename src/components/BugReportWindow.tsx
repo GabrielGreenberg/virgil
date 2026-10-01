@@ -309,7 +309,7 @@ export default function BugReportWindow({
           it was written out twice, once per pane that happened to be showing,
           and was unreadable from the third. */}
       {notice && (
-        <p role="alert" className="px-5 pt-3 text-xs text-danger shrink-0">
+        <p role="alert" className="px-5 pt-3 text-xs text-error shrink-0">
           {notice}
         </p>
       )}

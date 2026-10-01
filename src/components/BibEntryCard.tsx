@@ -668,7 +668,7 @@ export default function BibEntryCard({
                     </div>
                   ))}
                   {!headCheck.ok && (
-                    <div className="text-danger text-xs px-2 py-1" role="alert">
+                    <div className="text-error text-xs px-2 py-1" role="alert">
                       {headCheck.reason}
                     </div>
                   )}

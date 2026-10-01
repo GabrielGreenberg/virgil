@@ -22,6 +22,7 @@ import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // inline) and keeps its literals. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "./atom-registry";
 import { createLeafNodeView } from "./leaf-node-view";
+import { ERROR_INK } from "@/lib/error-ink";
 
 const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
 
@@ -36,7 +37,7 @@ const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
  * earned: both now resolve `--danger-strong`, and the popover preview reads
  * this same constant instead of its own copy (task 2026-07-20-195).
  */
-export const KATEX_ERROR_COLOR = "var(--danger-strong)";
+export const KATEX_ERROR_COLOR = ERROR_INK;
 
 // Exported for the static T1 card tier (StaticBorrowedText's one-shot KaTeX
 // pass over `[data-type="inline-math"|"display-math"]` spans) — the SAME

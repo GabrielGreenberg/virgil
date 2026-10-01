@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { NotificationItem } from "@library/lib/queue";
 import { notificationSeverity, notificationTtlMs } from "@library/lib/queue";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { ERROR_INK } from "@/lib/error-ink";
 
 interface ToastEntry extends NotificationItem {
   uid: string;
@@ -61,7 +62,12 @@ export default function Toaster({ items }: { items: NotificationItem[] }) {
 function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
   const ttl = notificationTtlMs(toast);
   const severity = notificationSeverity(toast);
-  const accent = severity === "attention" ? "var(--danger)" : "var(--accent)";
+  const attention = severity === "attention";
+  // Two readings of one tone (task 867): the 3px EDGE carries no text-contrast
+  // obligation and keeps `--danger`; the 11px kind label is TEXT and takes the
+  // error role, which `--danger` paints under AA.
+  const accent = attention ? "var(--danger)" : "var(--accent)";
+  const accentInk = attention ? ERROR_INK : "var(--accent)";
 
   // Each toast owns one timer. Hovering pauses the countdown (we bank the
   // remaining time); leaving resumes it. A sibling arriving/leaving cannot
@@ -141,7 +147,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
           style={{
             fontFamily: FONT_MONO,
             fontSize: 11,
-            color: accent,
+            color: accentInk,
             flex: 1,
             minWidth: 0,
             overflow: "hidden",
