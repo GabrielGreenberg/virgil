@@ -12,23 +12,83 @@
  * must never delete the tabs of a window that is merely idle.
  */
 
-import { getWindowId } from "./window-id";
+import { getWindowId, remintWindowId } from "./window-id";
 
 const LOCK_PREFIX = "virgil-window/";
 
-let holding = false;
+/** The id this window was born with — sessionStorage's value before any
+ *  re-mint. A duplicated tab's inherited tab record lives under it. */
+export interface WindowIdentity {
+  id: string;
+  inheritedId: string;
+}
 
-/** Take this window's liveness lock (idempotent). The lock is never
- *  released by us — page teardown releases it. */
+let claim: Promise<WindowIdentity> | null = null;
+
+/** Try to take `virgil-window/<id>` without waiting. Resolves `true` once the
+ *  lock is held (it is then held for the page's life — page teardown
+ *  releases it), `false` when another live window already holds it. */
+function tryHold(locks: LockManager, id: string): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    locks
+      .request(LOCK_PREFIX + id, { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          resolve(false);
+          return undefined;
+        }
+        resolve(true);
+        return new Promise<never>(() => {});
+      })
+      .catch(reject);
+  });
+}
+
+/**
+ * Make this window's id a CHECKED fact (task 871), then hold its liveness
+ * lock. The id comes from sessionStorage, which the browser's "Duplicate
+ * tab" copies — so two live windows can start with one id. The lock is the
+ * one place that can tell: if a live twin already holds `virgil-window/<id>`,
+ * this window re-mints a fresh id and takes the lock under that instead.
+ *
+ * Idempotent (one claim per page). Every id-keyed startup step — the tab
+ * record hydrate above all — awaits it before reading or writing under the
+ * id. Where Web Locks are unavailable there is no liveness either; the
+ * stored id is used as-is.
+ */
+export function claimWindowIdentity(): Promise<WindowIdentity> {
+  if (claim) return claim;
+  const inheritedId = getWindowId();
+  const locks =
+    typeof navigator !== "undefined" ? navigator.locks : undefined;
+  if (!locks) {
+    claim = Promise.resolve({ id: inheritedId, inheritedId });
+    return claim;
+  }
+  claim = (async () => {
+    try {
+      if (await tryHold(locks, inheritedId)) {
+        return { id: inheritedId, inheritedId };
+      }
+      // A live twin holds our inherited id: become a new window.
+      const fresh = remintWindowId();
+      if (!(await tryHold(locks, fresh))) {
+        // A fresh UUID cannot be held by anyone else; if the browser still
+        // says no, queue for it so liveness is eventually recorded.
+        void locks
+          .request(LOCK_PREFIX + fresh, () => new Promise<never>(() => {}))
+          .catch(() => {});
+      }
+      return { id: fresh, inheritedId };
+    } catch {
+      return { id: getWindowId(), inheritedId };
+    }
+  })();
+  return claim;
+}
+
+/** Take this window's liveness lock (idempotent) — the identity claim. */
 export function holdWindowLiveness(): void {
-  if (holding) return;
-  if (typeof navigator === "undefined" || !navigator.locks) return;
-  holding = true;
-  navigator.locks
-    .request(LOCK_PREFIX + getWindowId(), () => new Promise<never>(() => {}))
-    .catch(() => {
-      holding = false;
-    });
+  void claimWindowIdentity();
 }
 
 /**
@@ -37,8 +97,13 @@ export function holdWindowLiveness(): void {
  * window is known — callers then fall back on age alone.
  */
 export async function liveWindowIds(): Promise<Set<string>> {
+  if (typeof navigator === "undefined" || !navigator.locks) {
+    return new Set<string>([getWindowId()]);
+  }
+  // Settle (and if need be re-mint) our own id first, so "this window" in
+  // the answer is the id we actually hold the lock under (task 871).
+  await claimWindowIdentity();
   const ids = new Set<string>([getWindowId()]);
-  if (typeof navigator === "undefined" || !navigator.locks) return ids;
   try {
     const snap = await navigator.locks.query();
     for (const l of [...(snap.held ?? []), ...(snap.pending ?? [])]) {
@@ -52,5 +117,5 @@ export async function liveWindowIds(): Promise<Set<string>> {
 
 /** Test seam. */
 export function __resetWindowLivenessForTest(): void {
-  holding = false;
+  claim = null;
 }

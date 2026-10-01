@@ -202,7 +202,11 @@ export interface ReadinessTransport {
 
 function busTransport(): ReadinessTransport {
   return {
-    selfId: getWindowId(),
+    // Read live, not captured: the identity claim may re-mint this
+    // window's id after the transport is built (task 871).
+    get selfId() {
+      return getWindowId();
+    },
     publish: busPublish,
     subscribe: busSubscribe,
     liveIds: async () => {

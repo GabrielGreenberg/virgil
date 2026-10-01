@@ -36,7 +36,7 @@ import {
 import { ensureRW, queryRW } from "@/lib/fsa-permissions";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import {
-  holdWindowLiveness,
+  claimWindowIdentity,
   liveWindowIds,
 } from "@/lib/multi-window/window-liveness";
 import {
@@ -133,19 +133,25 @@ export function useFiles() {
   // currently owned by another window are dropped from the restore set
   // (the user can reopen via the handoff flow).
   useEffect(() => {
-    const windowId = getWindowId();
-    // Mark this window alive before anything else, then retire the tab
-    // records of windows that are gone and stale (task 603 — no page
-    // event deletes them; see `sweepTabRecords`).
-    holdWindowLiveness();
-    liveWindowIds()
+    // Claim this window's identity before anything keyed by it (task 871):
+    // a browser-duplicated tab inherits its source's sessionStorage id, and
+    // the claim re-mints when that id's liveness lock is already held. Then
+    // retire the tab records of windows that are gone and stale (task 603 —
+    // no page event deletes them; see `sweepTabRecords`).
+    const identity = claimWindowIdentity();
+    identity
+      .then(() => liveWindowIds())
       .then((live) => sweepTabRecords({ liveWindowIds: live }))
       .catch(() => {});
     (async () => {
       try {
+        // A re-minted twin seeds its tabs from the record it inherited
+        // (that is what "Duplicate tab" means) and persists under its NEW
+        // id — the write effect below only runs after hydration.
+        const { inheritedId } = await identity;
         const [docList, tabs] = await Promise.all([
           listDocs(),
-          readTabs(windowId),
+          readTabs(inheritedId),
         ]);
         setDocs(docList);
         const candidates = tabs.openTabIds.filter((id) =>
