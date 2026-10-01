@@ -408,6 +408,35 @@ describe("anchored-menu guardrail — detector fixtures", () => {
     expect(declaresAnchoredSurface(modal)).toBe(false);
   });
 
+  it("reads the GAP dialect inside ONE className — a margin on a CHILD is not an anchor (task 875)", () => {
+    // `PdfPaneOverlay`, reduced: an `absolute top-3` status strip with a menu-
+    // rung shadow, whose spinner icon carries `mt-0.5`. Flattened onto one
+    // line, `absolute … mt-0.5` matched across two elements and the compile
+    // overlay entered the census as a hand-rolled menu.
+    const overlay = `
+      export function PdfPaneOverlay() {
+        return (
+          <div className="absolute top-3 left-1/2 z-10 pointer-events-none">
+            <div className="flex rounded shadow-[var(--menu-shadow)]" role="status">
+              <Spinner size={12} className="mt-0.5 shrink-0" />
+            </div>
+          </div>
+        );
+      }
+    `;
+    expect(isCssAnchored(overlay)).toBe(false);
+    expect(declaresAnchoredSurface(overlay)).toBe(false);
+    // …while the same two tokens on ONE element still flag, in every attribute
+    // form — including a braced template literal with a quoted ternary.
+    for (const attr of [
+      `className="absolute z-50 mt-1 shadow-lg"`,
+      `className='absolute z-50 mt-1 shadow-lg'`,
+      `className={\`absolute shadow-lg \${a ? "left-0" : "right-0"} mb-1.5\`}`,
+    ]) {
+      expect(declaresAnchoredSurface(`<div ${attr} />`), attr).toBe(true);
+    }
+  });
+
   it("does not flag a menu that measures its trigger and hands the rect to the primitive", () => {
     const compliant = `
       function GoodMenu() {
