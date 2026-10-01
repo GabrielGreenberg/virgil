@@ -546,24 +546,17 @@ export const MarginaliaAnchorGuard = Extension.create<{
           // DocStructureObserver — no doc walks needed.
           const diff = readPendingDiff(newState);
           if (!diff) return null;
-          if (
-            diff.removedBlocks.length === 0 &&
-            diff.removedAnchors.length === 0
-          ) {
-            return null;
-          }
+          if (diff.removedBlocks.length === 0) return null;
 
-          // A block "needs preserving" if it had a margin marker
-          // (anchoredUuidsRef) or hosted any linkedAnchor mark
-          // (signalled by removedAnchors that landed in the same range).
+          // ONE reason to resurrect (task 877): a margin card anchors this
+          // block — its uuid is in `anchoredUuidsRef`. A vanished INLINE
+          // anchor (`diff.removedAnchors`) is never a reason: the stand-in is
+          // an EMPTY paragraph, which has no text for a `linkedAnchor` mark to
+          // sit on, so it preserves nothing for that card (LinkedAnchorGuard's
+          // orphan event owns it). The old blanket arm — "any anchor vanished →
+          // every removed block is a candidate" — vetoed part of a range
+          // delete of paragraphs nobody anchored, leaving empty lines behind.
           const anchored = anchoredUuidsRef.current;
-          // Track which removed-block UUIDs hosted a linkedAnchor we
-          // also saw vanish. We can't recompute it after the fact, so
-          // be conservative: if any anchor was removed, treat all
-          // removed blocks as candidates (the orphan-event consumer
-          // for inline anchors clears the card anyway; preserving the
-          // paragraph here keeps margin cards consistent).
-          const anchorVanished = diff.removedAnchors.length > 0;
 
           // EXCEPTION 3 (task 499) — a container that DISSOLVED cannot be
           // preserved by putting an empty paragraph where it was. A
@@ -593,12 +586,9 @@ export const MarginaliaAnchorGuard = Extension.create<{
           type Vanished = { uuid: string; pos: number };
           const vanished: Vanished[] = [];
           for (const b of diff.removedBlocks) {
-            if (!anchored.has(b.uuid) && !anchorVanished) continue;
+            if (!anchored.has(b.uuid)) continue;
             // EXCEPTION 2 (see the header): a resurrection that reproduces the
             // vanished node is a silent veto, not a preservation. Stand down.
-            // The `anchorVanished` half needs no separate argument — an EMPTY
-            // paragraph has no text for a `linkedAnchor` mark to sit on, so the
-            // inline-anchor justification is vacuous for exactly this shape.
             if (resurrectionWouldBeANoOp(oldState.doc, b, paraType)) continue;
             if (departures.dissolved.has(b.uuid)) continue; // EXCEPTION 3 — its container dissolved
             // EXCEPTION 4 (task 514) — ABSORBED by a JOIN. Same law as 3, other
