@@ -409,6 +409,9 @@ const PERMITTED_PROSE_MENTIONS = ["row will strand"];
  */
 const PERMITTED_MUTATE_SIDECAR_CALLERS = new Set([
   "src/lib/ai-requests-store.ts",
+  // Task 872 — collab.json is the second multi-writer sidecar (this window, a
+  // peer window, the collaborator via sync); its authority is the same shape.
+  "src/lib/collab-store.ts",
 ]);
 
 /**
@@ -498,6 +501,23 @@ describe("census: nothing outside the authority names ai-requests.json", () => {
       expect(code, `${f} must not call writeSidecar`).not.toMatch(/\bwriteSidecar\s*\(/);
       expect(code, `${f} must not call readSidecar`).not.toMatch(/\breadSidecar\s*\(/);
     }
+  });
+
+  it("collab.json's writer reaches storage only through its authority (task 872)", () => {
+    // The hook used to read OUTSIDE the queue then `writeSidecar`, and its
+    // unload release wrote the last-polled snapshot with no read at all.
+    const f = "src/hooks/useCollab.ts";
+    const code = commentsStripped(fs.readFileSync(path.join(REPO, f), "utf8"));
+    expect(code, `${f} must not call writeSidecar`).not.toMatch(/\bwriteSidecar\s*\(/);
+    expect(code, `${f} must write through mutateCollab`).toMatch(/\bmutateCollab\s*\(/);
+    const offenders: string[] = [];
+    for (const file of PROD_FILES) {
+      const r = rel(file);
+      if (r === "src/lib/collab-store.ts") continue;
+      const c = commentsStripped(fs.readFileSync(file, "utf8"));
+      if (/\bwriteSidecar\s*\([^)]*COLLAB_SIDECAR_FILE/.test(c)) offenders.push(r);
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("the prose exemptions are all still live (no stale entries)", () => {
