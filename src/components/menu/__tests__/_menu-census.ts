@@ -227,13 +227,67 @@ export const CARET_ANCHOR = /\bcoordsAtPos(?:Cached)?\b/;
  *   EDGE_CLASS — the `*-full` family, incl. arbitrary values (`top-[100%]`,
  *                `top-[calc(100%+4px)]`);
  *   GAP_CLASS  — `absolute` + a margin gap in any Tailwind spelling
- *                (`mt-1`, `mb-1.5`, `mt-[3px]`, `my-1`);
+ *                (`mt-1`, `mb-1.5`, `mt-[3px]`, `my-1`), BOTH in ONE
+ *                className (see `classNameValues` below — task 875);
  *   EDGE_STYLE — the inline dialect (`top: "100%"`, `top: "calc(100% + 4px)"`).
  */
 export const CSS_ANCHOR_EDGE_CLASS =
   /className=[^\n]*\b(?:top|bottom|left|right)-(?:full|\[[^\]]*100%[^\]]*\])/;
-export const CSS_ANCHOR_GAP_CLASS =
-  /className=[^\n]*\babsolute\b[^\n]*\bm[tbyx]-[\d[]|className=[^\n]*\bm[tbyx]-[\d[][^\n]*\babsolute\b/;
+/** The two tokens of GAP_CLASS. Tested against each className VALUE, never
+ *  against the declaration: see `classNameValues`. */
+const GAP_ABSOLUTE = /\babsolute\b/;
+const GAP_MARGIN = /\bm[tbyx]-[\d[]/;
+
+/**
+ * Every `className` attribute VALUE in a declaration, one string each
+ * (whitespace-flattened): `className="…"`, `className='…'`, and the braced
+ * form `className={…}` read to its BALANCED close, so a template literal with
+ * `${…}` ternaries inside stays one value.
+ *
+ * Why the GAP dialect needs this and the others do not (task 875). `flatten`
+ * puts the whole declaration on one line, so `className=[^\n]*` stopped
+ * meaning "inside this attribute" and started meaning "anywhere after the
+ * first className in the component". For the `*-full` edge that is harmless —
+ * the token is an anchor on whatever element wears it. A margin is not: `mt-1`
+ * is the most common spacing class in the repo, and it means "offset from the
+ * anchor" only on the SAME element that is `absolute`. Read across elements,
+ * the compile overlay over the PDF (`PdfPaneOverlay`: an `absolute top-3`
+ * status strip whose spinner icon carries `mt-0.5`) became a "hand-rolled
+ * anchored menu" — a false positive the census could only have answered with a
+ * prose allowlist entry. Measured when this landed: scoping the gap to one
+ * className removes exactly that one key from the census and keeps FontPicker
+ * and StatusClusterImpl (`absolute … mt-1` in one class list).
+ */
+export function classNameValues(block: string): string[] {
+  const out: string[] = [];
+  const re = /className=/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(block))) {
+    let i = m.index + m[0].length;
+    const open = block[i];
+    if (open === '"' || open === "'") {
+      const end = block.indexOf(open, i + 1);
+      if (end < 0) break;
+      out.push(flatten(block.slice(i + 1, end)));
+      re.lastIndex = end + 1;
+    } else if (open === "{") {
+      let depth = 0;
+      const start = i;
+      for (; i < block.length; i++) {
+        if (block[i] === "{") depth++;
+        else if (block[i] === "}" && --depth === 0) break;
+      }
+      out.push(flatten(block.slice(start + 1, i)));
+      re.lastIndex = i + 1;
+    }
+  }
+  return out;
+}
+
+/** GAP dialect: ONE className that is both `absolute` and margin-offset. */
+export function isGapAnchored(block: string): boolean {
+  return classNameValues(block).some((v) => GAP_ABSOLUTE.test(v) && GAP_MARGIN.test(v));
+}
 export const CSS_ANCHOR_EDGE_STYLE =
   /\b(?:top|bottom|left|right)\s*:\s*["'](?:100%|calc\([^"']*100%[^"']*\))["']/;
 
@@ -248,7 +302,7 @@ export function isCssAnchored(block: string): boolean {
   const flat = flatten(block);
   return (
     CSS_ANCHOR_EDGE_CLASS.test(flat) ||
-    CSS_ANCHOR_GAP_CLASS.test(flat) ||
+    isGapAnchored(block) ||
     CSS_ANCHOR_EDGE_STYLE.test(flat)
   );
 }
