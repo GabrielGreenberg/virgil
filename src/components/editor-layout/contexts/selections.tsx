@@ -59,8 +59,8 @@ export interface SelectionsProviderInputs {
  *  does NOT expand the card (N1: selecting ≠ expanding) — a marker click that
  *  routes here selects + scrolls without unfurling the body.
  *
- *  `store` is the per-doc instance the provider resolved (context for the
- *  per-pane mount, the active-doc store for the shell mount). */
+ *  `store` is the per-doc instance resolved by the caller (context for the
+ *  per-pane provider, the active-doc store for the shell's slot hook). */
 function makeKindSetter(store: CardStore, kind: EntityKind): Dispatch<SetStateAction<string | null>> {
   return (action) => {
     const sel = primarySelectionFor(store, kind);
@@ -129,9 +129,9 @@ function useSelectionsValue(
   storeOverride?: CardStore,
 ): SelectionsContextValue {
   // Always read context (hooks-rule), then prefer the explicit override: the
-  // per-pane mount passes nothing (uses its CardStoreProvider context store);
-  // the shell mount passes the active-doc store so its setters + `sel` target
-  // the active doc, not the context default.
+  // per-pane provider passes nothing (uses its CardStoreProvider context
+  // store); the shell's `useAnchoredSelectionSlots(activeCardStore)` passes
+  // the active-doc store so its setters + `sel` target the active doc.
   const ctxStore = useCardStore();
   const store = storeOverride ?? ctxStore;
   const sel = useStoreSelection(store);
@@ -258,21 +258,19 @@ const SelectionsCtx = createContext<SelectionsContextValue | null>(null);
  */
 export function SelectionsProvider({
   value,
-  store,
   children,
 }: {
   value: SelectionsContextValue | SelectionsProviderInputs;
-  /** The active-doc store, passed by the SHELL mount (EditorLayout) so its
-   *  derived setters target the active doc. The per-pane mount (EditorPane)
-   *  omits it and uses its CardStoreProvider context store. */
-  store?: CardStore;
   children: ReactNode;
 }) {
   const inputs: SelectionsProviderInputs = {
     selectedBibKey: value.selectedBibKey,
     setSelectedBibKey: value.setSelectedBibKey,
   };
-  const derived = useSelectionsValue(inputs, store);
+  // Per-pane only (task 870): the provider reads its pane's CardStoreProvider
+  // store. The shell no longer mounts a copy — see
+  // `no-shell-shadowed-pane-providers.test.ts`.
+  const derived = useSelectionsValue(inputs);
   return <SelectionsCtx.Provider value={derived}>{children}</SelectionsCtx.Provider>;
 }
 

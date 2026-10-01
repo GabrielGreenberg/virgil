@@ -103,7 +103,6 @@ function renderHost(examples: ExampleInfo[]) {
         }}
       >
         <SelectionsProvider
-          store={store}
           value={{ selectedBibKey: null, setSelectedBibKey: () => {} }}
         >
           <ExamplesHost examples={examples} />

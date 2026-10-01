@@ -540,7 +540,7 @@ describe("the vocabulary is a leaf, and its one imperative painter pairs with it
     // prints a ring, a remove that forgot it leaves the marker on a citation
     // for the rest of the session.
     const src = commentsStripped(
-      readFileSync(join(REPO_ROOT, "src/components/EditorLayout.tsx"), "utf8"),
+      readFileSync(join(REPO_ROOT, "src/components/editor-layout/bib-citation-highlight.ts"), "utf8"),
     );
     for (const verb of ["add", "remove"]) {
       const m = src.match(new RegExp(`classList\\.${verb}\\(([^)]*CITATION_HIGHLIGHT_BIB[^)]*)\\)`));

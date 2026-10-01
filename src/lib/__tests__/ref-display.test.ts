@@ -309,7 +309,8 @@ describe("census — ONE index, and every reader reads it", () => {
       "src/lib/editor-extensions.ts",
       "src/components/editor-layout/card-actions/ref.ts",
       "src/components/EditorPane.tsx",
-      "src/components/EditorLayout.tsx",
+      // (EditorLayout left this list with task 870: its only reader was the
+      // shell `getRefDisplayText` feeding a shadowed CitationDisplayProvider.)
     ];
     for (const m of must) {
       expect(read(path.join(REPO_ROOT, m)), m).toMatch(/from "@\/lib\/ref-display"/);

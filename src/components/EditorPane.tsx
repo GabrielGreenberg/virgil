@@ -34,6 +34,10 @@
  *   - Owns 7 per-doc providers: `EditorRefProvider`,
  *     `CitationDisplayProvider`, `SelectionsProvider`, `RecentlyAddedProvider`,
  *     `CardCreationProvider`, `CollabProvider`, `PoppedCardsContext.Provider`.
+ *     The SHELL (EditorLayout) mounts none of them — a shell copy would be
+ *     shadowed by these for everything inside the pane, so behaviour left
+ *     wired to it silently acts on state no pane writes (task 870; census
+ *     `no-shell-shadowed-pane-providers.test.ts`).
  *   - The full panel infrastructure (strips on both sides, dock/float,
  *     marginalia, popouts, FloatingPanels, DockOutline).
  *   - Bubbles per-doc state to the Virgil bar via `onPaneStateChange`.
@@ -111,6 +115,8 @@ import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
+import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
+import { useBibCitationHighlight } from "./editor-layout/bib-citation-highlight";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import {
   CardArchiveViewProvider,
@@ -140,6 +146,7 @@ import {
   useAiRequestCardMigration,
 } from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
+import { useToolbarOverrideEditor } from "@/hooks/useToolbarOverrideEditor";
 import { useDocument } from "@/hooks/useDocument";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import {
@@ -768,6 +775,10 @@ export interface PaneState {
   latexErrors: LatexError[];
   selectedErrorId: string | null;
   setSelectedErrorId: (id: string | null) => void;
+  // The pane's Bibliography selection (task 870). The shell's click-away
+  // clears it through this, the same route as `setSelectedErrorId` — the shell
+  // keeps no bib-selection copy of its own.
+  setSelectedBibKey: (key: string | null) => void;
   dismissedErrorIds: Set<string>;
   dismissError: (id: string) => void;
   expandedErrorIds: Set<string>;
@@ -984,7 +995,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // is idempotent and `editor` is React state, so every change re-renders.
   const editorInstanceRef = useRef<Editor | null>(null);
   editorInstanceRef.current = editor;
-  const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
+  // Toolbar-override editor (a focused card mini-editor) — set by mini-editor
+  // focus, released on main-editor focus or override destroy (task 870).
+  const [overrideEditor, setOverrideEditor] = useToolbarOverrideEditor(editor);
   // Gates the LoadingScreen curtain over `.editor-pane-pod`.
   const [ready, setReady] = useState(false);
 
@@ -5009,6 +5022,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }
     return map;
   }, [allEditorCitations]);
+  // Bib entry → in-text citation ring, painted inside THIS pane's editor only.
+  useBibCitationHighlight(
+    editor && !editor.isDestroyed ? ((editor.view?.dom as HTMLElement | undefined) ?? null) : null,
+    allEditorCitations,
+    selectedBibKey,
+  );
 
   // BibliographyHost wants a `setBibActiveCitationId` setter; the
   // host's wiring uses it for cross-panel highlight sync. In Reader
@@ -5880,6 +5899,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       latexErrors: allLatexErrors,
       selectedErrorId,
       setSelectedErrorId,
+      setSelectedBibKey,
       dismissedErrorIds,
       dismissError,
       expandedErrorIds,
@@ -5929,6 +5949,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     allLatexErrors,
     selectedErrorId,
     setSelectedErrorId,
+    setSelectedBibKey,
     dismissedErrorIds,
     dismissError,
     expandedErrorIds,
@@ -6481,6 +6502,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         {/* SelectionsProvider derives the 9 anchored slots from cardStore;
             only `selectedBibKey` flows through value. */}
         <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }}>
+        {/* Releases a new card's recently-added pin once the selection moves
+            off it. Mounted HERE, under this pane's own tracker + selections
+            (task 870) — the shell copy it used to sit under was shadowed by
+            these providers, so the pane's pin was never released. */}
+        <RecentlyAddedAutoClear />
 
         <CollabProvider value={collab}>
         <CardArchiveViewProvider value={cardArchiveViewApi}>
