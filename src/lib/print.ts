@@ -57,16 +57,41 @@ import {
 } from "@/lib/print-intent";
 import { panePrintPage } from "@/components/editor-layout/pane-dom";
 
-export type PrintElementKey =
-  | "title"
-  | "sectionNumbers"
-  | "latexComments"
-  | "footnoteMarkers"
-  | "citations"
-  | "examples"
-  | "displayMath"
-  | "marginalia"
-  | "linkedAnchorUnderlines";
+/** The print ELEMENT toggles — the SINGLE source for which document elements
+ *  the Print dialog can switch off, the label each row shows, the fieldset it
+ *  sits in, and the CSS selectors its `html[data-print-e-<kebab>="false"]`
+ *  rule in globals.css (`@media print`) targets. `PrintElementKey` and the
+ *  PrintDialog rows derive from it; the CSS cannot import TS, so
+ *  `print-element-posture.test.ts` holds the print block to `selectors`
+ *  exactly (every key has its rule, every rule names exactly these).
+ *
+ *  Before task 881 these were three hand-synced lists — a key union, the
+ *  dialog's rows, and the CSS — and "Title / author" hid `.par-title-wrapper`,
+ *  the wrapper of EVERY ordinary paragraph, while the real title block printed.
+ *  A selector here must name the element its LABEL names; the census pins
+ *  that a universal block wrapper never appears. Order = dialog order. */
+export const PRINT_ELEMENTS = {
+  // titleField nodes — the title, author and date fields alike.
+  title:                  { group: "Document",  label: "Title / author",            selectors: [".title-field-wrapper"] },
+  sectionNumbers:         { group: "Document",  label: "Section numbers",           selectors: ["[data-section-number]::before"] },
+  latexComments:          { group: "Document",  label: "LaTeX comments",            selectors: [".latex-comment", ".latex-comment-tail"] },
+  footnoteMarkers:        { group: "Apparatus", label: "Footnote markers",          selectors: [".footnote-marker"] },
+  citations:              { group: "Apparatus", label: "Citations",                 selectors: [".citation-node"] },
+  examples:               { group: "Apparatus", label: "Examples",                  selectors: [".expex-block"] },
+  displayMath:            { group: "Apparatus", label: "Display math",              selectors: [".display-math"] },
+  marginalia:             { group: "Margin",    label: "Marginalia markers",        selectors: ["[data-marginalia-margin]"] },
+  linkedAnchorUnderlines: { group: "Margin",    label: "Anchor highlights & tints", selectors: [".linked-anchor"] },
+} as const satisfies Record<string, {
+  group: "Document" | "Apparatus" | "Margin";
+  label: string;
+  selectors: readonly string[];
+}>;
+
+/** A print element toggle key — derived from `PRINT_ELEMENTS`. */
+export type PrintElementKey = keyof typeof PRINT_ELEMENTS;
+
+/** Element keys in dialog order. */
+export const PRINT_ELEMENT_ORDER = Object.keys(PRINT_ELEMENTS) as PrintElementKey[];
 
 /** The printable-panel set + appendix order — the SINGLE source for which
  *  panels can print. `PrintPanelKey`, the appendix order, the PrintDialog rows,
@@ -120,6 +145,8 @@ import defaultPrintOptionsJson from "./print.defaults.json";
 
 export const DEFAULT_PRINT_OPTIONS: PrintOptions = defaultPrintOptionsJson as PrintOptions;
 
+const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+
 // Dev canary: the JSON sidecar's `panels` keys must match the printable set
 // (PRINT_PANELS) exactly. The `as PrintOptions` cast above cannot catch a stale
 // key (e.g. the removed `quotations` panel) or a missing one — make it loud.
@@ -135,9 +162,23 @@ if (process.env.NODE_ENV !== "production") {
       console.error(`[print] print.defaults.json "panels" is missing printable panel "${k}".`);
     }
   }
+  const elements = new Set<string>(PRINT_ELEMENT_ORDER);
+  for (const k of Object.keys(DEFAULT_PRINT_OPTIONS.elements)) {
+    if (!elements.has(k)) {
+      console.error(`[print] print.defaults.json "elements" has unknown key "${k}" — not a print element.`);
+    }
+  }
+  for (const k of elements) {
+    if (!(k in DEFAULT_PRINT_OPTIONS.elements)) {
+      console.error(`[print] print.defaults.json "elements" is missing print element "${k}".`);
+    }
+  }
 }
 
-const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+/** `sectionNumbers` → `section-numbers`: the `data-print-e-*` attribute suffix. */
+export const printElementAttr = (key: PrintElementKey) =>
+  `data-print-e-${kebab(key)}`;
+
 
 /**
  * Exported for `pane-dom-multipane.test.tsx`, which drives the ISOLATION WALK
@@ -148,7 +189,7 @@ export function applyPrintAttrs(options: PrintOptions): () => void {
   const html = document.documentElement;
   html.dataset.printing = "true";
   for (const [k, v] of Object.entries(options.elements)) {
-    html.setAttribute(`data-print-e-${kebab(k)}`, v ? "true" : "false");
+    html.setAttribute(printElementAttr(k as PrintElementKey), v ? "true" : "false");
   }
   // Panel appendices gate purely by RENDER — PrintAppendices renders only the
   // enabled panels — so no per-panel `data-print-p-*` attr / CSS allowlist is
@@ -189,7 +230,7 @@ export function applyPrintAttrs(options: PrintOptions): () => void {
   return () => {
     delete html.dataset.printing;
     for (const k of Object.keys(options.elements)) {
-      html.removeAttribute(`data-print-e-${kebab(k)}`);
+      html.removeAttribute(printElementAttr(k as PrintElementKey));
     }
     html.style.removeProperty("--print-font-size");
     for (const a of ancestors) delete a.dataset.printAncestor;

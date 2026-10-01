@@ -6101,9 +6101,12 @@ html {
     padding: 0 !important;
   }
 
-  /* Element toggles — keyed off data-print-e-* on the html element. */
-  html[data-print-e-title="false"] .par-title-wrapper,
-  html[data-print-e-title="false"] .maketitle-marker { display: none; }
+  /* Element toggles — keyed off data-print-e-* on the html element. Each
+     rule's selectors are EXACTLY its key's `selectors` in PRINT_ELEMENTS
+     (src/lib/print.ts); print-element-posture.test.ts holds them together.
+     Title / author = the titleField nodes (title, author, date) — never
+     `.par-title-wrapper`, which wraps every ordinary paragraph (task 881). */
+  html[data-print-e-title="false"] .title-field-wrapper { display: none; }
   html[data-print-e-section-numbers="false"] [data-section-number]::before { content: none; }
   html[data-print-e-latex-comments="false"] .latex-comment,
   html[data-print-e-latex-comments="false"] .latex-comment-tail { display: none; }

@@ -9,6 +9,8 @@ import SystemDialog, {
 import {
   PRINT_FONT_LABELS,
   PRINT_FONT_SIZES,
+  PRINT_ELEMENTS,
+  PRINT_ELEMENT_ORDER,
   PRINT_PANEL_ORDER,
   runPrint,
   type PrintElementKey,
@@ -28,35 +30,17 @@ interface PrintDialogProps {
   marginaliaLive: boolean;
 }
 
-const ELEMENT_GROUPS: {
-  legend: string;
-  rows: { key: PrintElementKey; label: string }[];
-}[] = [
-  {
-    legend: "Document",
-    rows: [
-      { key: "title", label: "Title / author" },
-      { key: "sectionNumbers", label: "Section numbers" },
-      { key: "latexComments", label: "LaTeX comments" },
-    ],
-  },
-  {
-    legend: "Apparatus",
-    rows: [
-      { key: "footnoteMarkers", label: "Footnote markers" },
-      { key: "citations", label: "Citations" },
-      { key: "examples", label: "Examples" },
-      { key: "displayMath", label: "Display math" },
-    ],
-  },
-  {
-    legend: "Margin",
-    rows: [
-      { key: "marginalia", label: "Marginalia markers" },
-      { key: "linkedAnchorUnderlines", label: "Anchor highlights & tints" },
-    ],
-  },
-];
+// Derived from the print-element SSOT (PRINT_ELEMENTS, task 881): fieldsets in
+// first-appearance order, rows in registry order — the same registry the
+// globals.css print rules are census-held to, so a row's label and the
+// element its toggle hides cannot drift apart.
+const ELEMENT_GROUPS: { legend: string; rows: { key: PrintElementKey; label: string }[] }[] = [];
+for (const key of PRINT_ELEMENT_ORDER) {
+  const { group, label } = PRINT_ELEMENTS[key];
+  let g = ELEMENT_GROUPS.find((x) => x.legend === group);
+  if (!g) ELEMENT_GROUPS.push((g = { legend: group, rows: [] }));
+  g.rows.push({ key, label });
+}
 
 // Derived from the printable-panel SSOT (PRINT_PANEL_ORDER); labels come from
 // PANEL_REGISTRY[k].label — no hand-written duplication. `reports` (and any
