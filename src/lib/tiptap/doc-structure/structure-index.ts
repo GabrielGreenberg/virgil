@@ -16,7 +16,7 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { inlineAtoms } from "@/lib/inline-content";
-import { isAnchorableNode } from "@/lib/marginalia";
+import { mayCarryBlockUuid } from "@/lib/marginalia";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import {
   type AnchorEntry,
@@ -69,7 +69,7 @@ export function buildInitial(doc: PMNode): DocStructure {
   // we need to descend into text-bearing content, so the walk is
   // recursive but only collects when a node's type matches a tracked
   // entity.
-  doc.descendants((node, pos) => {
+  doc.descendants((node, pos, parent) => {
     const typeName = node.type.name;
     const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
 
@@ -82,8 +82,10 @@ export function buildInitial(doc: PMNode): DocStructure {
     }
 
     // Anchorable block — every entity-bearing node has a UUID, including
-    // headings / figureBlock / exampleBlock / paragraph / etc.
-    if (uuid && isAnchorableNode(node.type)) {
+    // headings / figureBlock / exampleBlock / paragraph / etc. Eligibility is
+    // the ONE identity predicate (task 878): a deferred inner paragraph's uuid
+    // is unreachable, so it is not a live block identity and is not indexed.
+    if (uuid && mayCarryBlockUuid(node, parent)) {
       blocks.set(uuid, {
         uuid,
         pos,

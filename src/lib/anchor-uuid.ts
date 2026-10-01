@@ -46,6 +46,11 @@ import type { TextObjectKind } from "@/text-objects/types";
  * site is unchanged.
  */
 export { DEFERRING_PARENTS } from "@/lib/node-attr-sets";
+
+/** The block-identity eligibility predicate (anchorable ∧ not deferred-inner,
+ *  task 878), re-exported from its import-light home so identity callers find
+ *  it beside `isDeferredInnerParagraph`. */
+export { mayCarryBlockUuid } from "@/lib/marginalia";
 import { DEFERRING_PARENTS } from "@/lib/node-attr-sets";
 
 /**

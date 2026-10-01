@@ -40,6 +40,8 @@ import {
   SCROLLBAR_GUTTER,
   MARKER_SCROLLBAR_GAP,
 } from "@/components/editor-layout/constants";
+// Import-free leaf (node-attr-sets.ts), so no cycle.
+import { deferringParent } from "@/lib/node-attr-sets";
 
 // Canonical home moved to `src/cards/types.ts` (beside `CardMeta.markerType`,
 // A6/R17). Re-exported here so this module's existing importers are unchanged.
@@ -55,6 +57,28 @@ export type { MarkerType } from "@/cards/types";
  */
 export function isAnchorableNode(nodeType: NodeType): boolean {
   return nodeType.spec.attrs?.uuid !== undefined;
+}
+
+/**
+ * THE block-identity eligibility predicate (task 878): may `node`, sitting
+ * directly under `parent`, carry a block `uuid` of its own?
+ *
+ * Anchorable (its type declares a `uuid` attr) AND not a deferred inner
+ * paragraph (a `paragraph` whose immediate parent is a `DEFERRING_PARENTS`
+ * container — the container is the text object, the inner id is unreachable
+ * and stripped at serialization). Every layer that MINTS, INDEXES or COUNTS a
+ * block identity asks this one question — the uuid backfill, the
+ * DocStructureObserver's `blocks` index (and therefore every liveness answer
+ * read off the snapshot), and the paste-as-new minting in `node-identity.ts`
+ * that the Stack pull uses — so "which block id is whose" cannot be answered
+ * four ways again. `parent` is `null` for a top-level node or when unknown.
+ */
+export function mayCarryBlockUuid(
+  node: { type: NodeType },
+  parent: { type: { name: string } } | null | undefined,
+): boolean {
+  if (!isAnchorableNode(node.type)) return false;
+  return !(node.type.name === "paragraph" && deferringParent(parent?.type.name));
 }
 
 /**

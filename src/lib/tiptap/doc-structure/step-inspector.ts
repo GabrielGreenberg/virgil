@@ -27,7 +27,7 @@ import {
   ReplaceStep,
   type Step,
 } from "@tiptap/pm/transform";
-import { isAnchorableNode } from "@/lib/marginalia";
+import { mayCarryBlockUuid } from "@/lib/marginalia";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import {
   type AnchorEntry,
@@ -199,6 +199,9 @@ function inspectNodeAt(
   out: EntityBundle,
   doc: PMNode,
   record: Mapping | null,
+  /** `n`'s immediate parent — the identity predicate reads it (a deferred
+   *  inner paragraph carries no live block identity). */
+  parent: PMNode | null,
 ): void {
   const typeName = n.type.name;
     const attrs = (n.attrs ?? {}) as Record<string, unknown>;
@@ -206,7 +209,7 @@ function inspectNodeAt(
     // The entry's position, in the contract space of the side being filled.
     const at = mapPos(record, pos, 1);
 
-    if (uuid && isAnchorableNode(n.type)) {
+    if (uuid && mayCarryBlockUuid(n, parent)) {
       out.blocks.set(uuid, { uuid, pos: at, typeName, parTitled: deriveParTitled(attrs) });
     }
 
@@ -350,14 +353,14 @@ function collectRange(
   const clampedTo = Math.min(to, doc.content.size);
   const clampedFrom = Math.max(from, 0);
   if (clampedTo <= clampedFrom) return;
-  doc.nodesBetween(clampedFrom, clampedTo, (n, pos) => {
+  doc.nodesBetween(clampedFrom, clampedTo, (n, pos, parent) => {
     if (n.isText) {
-      inspectNodeAt(n, pos, out, doc, record);
+      inspectNodeAt(n, pos, out, doc, record, parent);
     } else if (pos >= clampedFrom && pos < clampedTo) {
       // Block-level node that starts inside the range. Whether its
       // body extends past `to` doesn't matter — if its opening token
       // got deleted, its identity is gone in newDoc.
-      inspectNodeAt(n, pos, out, doc, record);
+      inspectNodeAt(n, pos, out, doc, record, parent);
     }
     return true;
   });
@@ -449,7 +452,9 @@ function nearestAnchorableUuid(doc: PMNode, pos: number): string | null {
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth);
-    if (!isAnchorableNode(node.type)) continue;
+    // The identity predicate, so a stale uuid on a deferred inner paragraph
+    // never claims an edit its container owns (task 878).
+    if (!mayCarryBlockUuid(node, depth > 0 ? $pos.node(depth - 1) : null)) continue;
     const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
     if (uuid) return uuid;
   }
@@ -757,8 +762,10 @@ function inspectAttrStep(step: AttrStep, c: StepCoords, sink: DiffSink): void {
   const res = c.forward.mapResult(step.pos, 1);
   const afterNode = res.deleted ? null : c.newDoc.nodeAt(res.pos);
   if (!afterNode || afterNode.type !== beforeNode.type) return;
-  inspectNodeAt(beforeNode, step.pos, sink.removed, c.stepDoc, c.back);
-  inspectNodeAt(afterNode, res.pos, sink.added, c.newDoc, null);
+  // An AttrStep moves nothing, so both sides share one parent shape; the
+  // O(depth) resolve runs only on this never-emitted defensive branch.
+  inspectNodeAt(beforeNode, step.pos, sink.removed, c.stepDoc, c.back, c.stepDoc.resolve(step.pos).parent);
+  inspectNodeAt(afterNode, res.pos, sink.added, c.newDoc, null, c.newDoc.resolve(res.pos).parent);
   noteOrderFlags(sink);
 }
 

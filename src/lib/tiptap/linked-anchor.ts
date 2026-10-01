@@ -7,7 +7,7 @@ import {
   dispatchAnchorOrphaned,
   dispatchTextObjectOrphaned,
 } from "@/lib/tiptap/orphan-events";
-import { readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { hasLiveAnchor, hasLiveBlock, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import {
   classifyBlockDepartures,
   type DepartedBlock,
@@ -169,7 +169,7 @@ export const LinkedAnchorGuard = Extension.create<{
             },
           };
         },
-        // [cost: O(1)/tx — docChanged + observer-diff removedAnchors gate; O(doc) descendants only on an anchor-removal transaction, and then inside a setTimeout off the dispatch, never on plain typing] (task 433 census)
+        // [cost: O(1)/tx — docChanged + observer-diff removedAnchors gate; then O(removed anchors) O(1) snapshot lookups inside a setTimeout off the dispatch — no doc walk on any path] (task 433 census; task 878)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           // Read the diff already computed by DocStructureObserver
@@ -178,28 +178,17 @@ export const LinkedAnchorGuard = Extension.create<{
           const diff = readPendingDiff(newState);
           if (!diff || diff.removedAnchors.length === 0) return null;
           setTimeout(() => {
-            // Build the set of anchorIds still live in the settled doc ONCE. An
-            // id present here survived (interior edit) and is NOT an orphan — skip
-            // its event so the sweep doesn't strip a valid link. O(doc), but only
-            // on an anchor-removal transaction, never the plain-typing path.
-            // Fallback (no view): dispatch all, matching prior behavior.
-            const doc = liveView?.state.doc ?? null;
-            let liveAnchorIds: Set<string> | null = null;
-            if (doc) {
-              liveAnchorIds = new Set<string>();
-              doc.descendants((node) => {
-                if (node.isText && node.marks.length > 0) {
-                  for (const mark of node.marks) {
-                    if (mark.type.name !== "linkedAnchor") continue;
-                    const aid = (mark.attrs as { anchorId?: string }).anchorId ?? "";
-                    if (aid) liveAnchorIds!.add(aid);
-                  }
-                }
-                return true;
-              });
-            }
+            // Liveness is the observer snapshot's answer, read off the SETTLED
+            // state (task 878): an id the index still holds survived (interior
+            // edit) or was re-added by a later transaction in the dispatch, and
+            // is NOT an orphan. O(1) per removed anchor — the step inspector
+            // already re-checked each reported removal against `newDoc`'s marks
+            // (`anchorSurvivesInNewDoc`), so a second full mark walk here only
+            // re-asked the question the index answers. Fallback (no view):
+            // dispatch all, matching prior behavior.
+            const state = liveView?.state ?? null;
             for (const a of diff.removedAnchors) {
-              if (liveAnchorIds && liveAnchorIds.has(a.id)) continue; // survived
+              if (state && hasLiveAnchor(state, a.id)) continue; // survived
               dispatchAnchorOrphaned({
                 docId: docIdRef?.current ?? null,
                 anchorId: a.id,
@@ -345,7 +334,7 @@ export const TextObjectOrphanGuard = Extension.create<{
             },
           };
         },
-        // [cost: O(1)/tx — docChanged + observer-diff removedBlocks gate; then O(replace steps × depth) for the departure classification and O(doc) descendants inside a setTimeout off the dispatch — both only on a block-removal transaction, never on plain typing] (task 433 census)
+        // [cost: O(1)/tx — docChanged + observer-diff removedBlocks gate; then O(replace steps × depth) for the departure classification and O(removed blocks) O(1) snapshot lookups inside a setTimeout off the dispatch — both only on a block-removal transaction (a join keystroke included), and no doc walk on any path] (task 433 census; task 878)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           const diff = readPendingDiff(newState);
@@ -357,25 +346,19 @@ export const TextObjectOrphanGuard = Extension.create<{
           // transaction — plain typing bailed two lines above.
           const { absorbedInto } = classifyBlockDepartures(transactions);
           setTimeout(() => {
-            // Build the set of uuids still live in the settled doc ONCE. A uuid
-            // present here was resurrected (or re-added by a later edit) and is
-            // NOT an orphan — skip its event so the sweep doesn't strip a valid
-            // link. O(doc), but only on a block-removal transaction (removed.length
-            // > 0), never the plain-typing path. Fallback (no view): dispatch all,
-            // matching the prior unconditional behavior.
-            const doc = liveView?.state.doc ?? null;
-            let liveUuids: Set<string> | null = null;
-            if (doc) {
-              liveUuids = new Set<string>();
-              doc.descendants((node) => {
-                const u = (node.attrs as { uuid?: string | null } | undefined)
-                  ?.uuid;
-                if (u) liveUuids!.add(u);
-                return true;
-              });
-            }
+            // Liveness is the observer snapshot's answer, read off the SETTLED
+            // state (task 878): a uuid the index holds was resurrected (or
+            // re-added by a later edit) and is NOT an orphan — skip its event so
+            // the sweep doesn't strip a valid link. O(1) per removed block. A
+            // join (Backspace at a block start / Delete at a block end) IS a
+            // keystroke and lands here, which is why this used to be a
+            // `doc.descendants` walk per join. The index admits exactly the
+            // uuids `mayCarryBlockUuid` does, so a stale id stranded on a
+            // deferred inner paragraph is correctly NOT live. Fallback (no
+            // view): dispatch all, matching the prior unconditional behavior.
+            const state = liveView?.state ?? null;
             for (const block of removed) {
-              if (liveUuids && liveUuids.has(block.uuid)) continue; // resurrected
+              if (state && hasLiveBlock(state, block.uuid)) continue; // resurrected
               // ONE uuid, ONE verdict. A block the batch ABSORBED did not
               // orphan — its words are inside the survivor — so it gets the
               // re-home signal INSTEAD of the orphan event, never both. That
@@ -393,7 +376,7 @@ export const TextObjectOrphanGuard = Extension.create<{
               if (
                 survivor &&
                 handler &&
-                (!liveUuids || liveUuids.has(survivor.uuid))
+                (!state || hasLiveBlock(state, survivor.uuid))
               ) {
                 handler({ absorbed: block, survivor });
                 continue;

@@ -413,6 +413,29 @@ export function resolveTouchedBlock(
 }
 
 /**
+ * THE block-liveness answer (task 878): does `uuid` name a live block identity
+ * in `state`'s document? O(1), and it never materializes the snapshot —
+ * membership is invariant under the deferred position maps, which only move
+ * entries. The index holds exactly the uuids `mayCarryBlockUuid` admits, so a
+ * stale id on a deferred inner paragraph is correctly NOT live.
+ */
+export function hasLiveBlock(
+  state: Parameters<typeof docStructureKey.getState>[0],
+  uuid: string,
+): boolean {
+  return docStructureKey.getState(state)?.structure.blocks.has(uuid) ?? false;
+}
+
+/** The mark twin of {@link hasLiveBlock}: does a `linkedAnchor` mark with this
+ *  `anchorId` survive in `state`'s document? O(1), never materializes. */
+export function hasLiveAnchor(
+  state: Parameters<typeof docStructureKey.getState>[0],
+  anchorId: string,
+): boolean {
+  return docStructureKey.getState(state)?.structure.anchors.has(anchorId) ?? false;
+}
+
+/**
  * Snapshot version WITHOUT materializing — for the dev stats probe, so a
  * console read doesn't itself count as a consumer materialization.
  */
