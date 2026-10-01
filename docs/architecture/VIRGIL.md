@@ -1,4 +1,4 @@
-<!-- last-verified: 2a598dc8 2026-09-30 -->
+<!-- last-verified: 455c753b 2026-10-01 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor, virgil -->
 
@@ -51,7 +51,7 @@ Layer 3 — DERIVATIVE DOCS (each has a clear upstream)
 Every Layer-2 and Layer-3 doc carries a small header block of HTML comments at the very top of the file (before the first heading). Three fields, each on its own line, each independently greppable:
 
 ```markdown
-<!-- last-verified: 2a598dc8 2026-09-30 -->
+<!-- last-verified: 455c753b 2026-10-01 -->
 <!-- derives-from: <repo-root-relative-path>#<anchor>[, <path>#<anchor>...] -->
 <!-- covers-code: <repo-root-relative-path>[, <path>...] -->
 ```
@@ -253,12 +253,12 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 | Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx); the theme FAMILIES are `PANEL_THEME_FAMILIES` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts) (task 824) |
 | `virgil:` feature flags | `FLAG_REGISTRY` in [src/lib/feature-flags.ts](../../src/lib/feature-flags.ts) (task 660) — every kill-switch, soak gate and rollout flag declares its `default`, its SSR answer and its `requires` parent in ONE row, read through one `readFlag`. One dialect for all of them (`1/true/on/yes` vs `0/false/off/no`, case-insensitive); the named per-flag modules (`identity-flag.ts`, `pending-changes-flag.ts`, `multi-doc-keepalive-flag.ts`, `perf-feature-flags.ts`, …) are now thin doors over it, not sixteen hand-rolled readers that disagreed about what "on" looks like. |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) |
-| Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) |
+| Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md); error text is one ROLE — `text-error` / `ERROR_INK` / `<InlineError>` (task 867) |
 
 ### Persistence
 
 - **Disk (File System Access API):** the single boundary is [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) — every read/write routes through it. On disk per paper: `<name>.tex` (source of truth), optional `<name>.bib`, and the `virgil/` sidecar folder. **A write the user did not ask for cannot lose content:** `readDocBundle` re-serializes and writes back on OPEN, and a bundle write can also land on a bare anchor-UUID mint, so both are measured against what was read (word tokens, Virgil's own markers projected away) and a shrink is a loud **refusal** with the file left byte-identical — `tex-preservation.ts` / `write-preservation.ts`, published to the user through `preservation-notice.ts` (tasks 350-D, 357). After a real user edit the model is theirs and the gate steps aside. Every state that pauses or refuses a write — a cowork pen hold, an external change, a preservation refusal — is presented in ONE voice: `document-interruption.ts` (task 545) derives what happened (naming the writer where the pen's release trace allows), what Virgil is doing about it, and ONE recommended door phrased as an outcome; `DocumentInterruptionBanner` renders it inside the paper's card and the badges read the same vocabulary, with `interruption-log.ts` recording each presentation for provenance.
-- **IndexedDB:** preferences, tab state, folder handles, doc index — never paper content. The doc index has one mutation door (`mutateIndex`) and one retirement door (`purgeDoc`) in [src/lib/doc-index.ts](../../src/lib/doc-index.ts) (tasks 601, 604); tab records outlive the page and are swept only when their window's liveness lock is gone (task 603).
+- **IndexedDB:** preferences, tab state, folder handles, doc index — never paper content. The doc index has one mutation door (`mutateIndex`; its sibling `mutateMyPapers` is the My Papers list's, task 868) and one retirement door (`purgeDoc`) in [src/lib/doc-index.ts](../../src/lib/doc-index.ts) (tasks 601, 604); tab records outlive the page and are swept only when their window's liveness lock is gone (task 603).
 - **localStorage + the cross-window rule:** multi-window is first-class (`openNewVirgilWindow`), so any store that caches a `localStorage` snapshot must re-hydrate on the native `storage` event or its next write silently clobbers a peer window's change from a stale base. The contract has exactly one encoding — [src/lib/cross-window-storage.ts](../../src/lib/cross-window-storage.ts) — and every snapshot-caching store rides it (tasks 177 + 179 drained the census; task 599 added a store-shape census that also catches a store subscribing to nothing). **Riding the event is not the whole rule:** a handler that merges the peer's RAW bytes into live state re-publishes them un-repaired, so raw stored global bytes become live `ViewPrefs` through exactly ONE door — `normalizeGlobalSlice` (task 677), total over the global keys and run by the load path and the peer-sync path alike. And the two view-pref blobs are **one fault domain each** (task 674): a corrupt disposable per-window layout can no longer cost the user the durable global preferences, because each blob is read behind its own boundary and an unreadable one is QUARANTINED to `<key>.corrupt` rather than left to be overwritten. Detail: `docs/agents/architecture.md` → "localStorage stores + the cross-window rule".
 
 ### LaTeX round-trip

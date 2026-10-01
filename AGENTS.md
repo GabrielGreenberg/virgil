@@ -1,4 +1,4 @@
-<!-- last-verified: 2a598dc8 2026-09-30 -->
+<!-- last-verified: 455c753b 2026-10-01 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -30,7 +30,7 @@ Deeper docs in `docs/agents/`. Load them on demand when their topic comes up —
 
 If the user uses a term that doesn't resolve cleanly to a code name, append it to the **Pending terminology** section at the bottom of `docs/agents/glossary.md` with your best-guess code referent and today's date. The cleanup skill consolidates these on the next merge cycle.
 
-Each sub-doc begins with `<!-- last-verified: 2a598dc8 2026-09-30 -->`. If the hash is far behind `HEAD` and something feels stale, verify against the current code before relying on the doc.
+Each sub-doc begins with `<!-- last-verified: 455c753b 2026-10-01 -->`. If the hash is far behind `HEAD` and something feels stale, verify against the current code before relying on the doc.
 
 ## Laws
 
