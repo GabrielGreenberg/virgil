@@ -882,6 +882,7 @@ function countCommits(baseline, paths, docRel) {
  * ════════════════════════════════════════════════════════════════════ */
 const APPLY_PY = "editor/scripts/apply_response.py";
 const CREATE_PY = "editor/scripts/create_card.py";
+const CARD_TABLES_JSON = "editor/scripts/card_tables.json";
 const CARDKIND_TS = "src/cards/types.ts";
 const PANELREG_TS = "src/panels/panel-registry.ts";
 const CARDREG_TSX = "src/cards/card-registry.tsx";
@@ -935,7 +936,7 @@ function checkShadow() {
   }
 
   // ── PANEL_TO_SIDECAR ──
-  const panelMap = parsePanelToSidecar(APPLY_PY); // [{ panel, filename, listKey }] | null
+  const panelMap = parsePanelToSidecar(); // [{ panel, filename, listKey }] | null
   if (!panelMap) {
     add("shadow", "warn", APPLY_PY, null, "could not parse PANEL_TO_SIDECAR");
     return;
@@ -1209,16 +1210,23 @@ function parsePySet(rel, name) {
   return out;
 }
 
-/** Parse `PANEL_TO_SIDECAR = { "p": ("f.json", "key"), … }`. */
-function parsePanelToSidecar(rel) {
-  if (!exists(rel)) return null;
-  const src = read(rel);
-  const m = /PANEL_TO_SIDECAR\s*=\s*\{([\s\S]*?)\n\}/m.exec(src);
-  if (!m) return null;
-  const out = [];
-  const re = /["']([^"']+)["']\s*:\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']\s*\)/g;
-  let e;
-  while ((e = re.exec(m[1]))) out.push({ panel: e[1], filename: e[2], listKey: e[3] });
+/** The writeback rows of `PANEL_TO_SIDECAR` — which apply_response.py LOADS
+ *  from `editor/scripts/card_tables.json` (task 885), so this reads the same
+ *  JSON rather than regex-parsing a Python literal that no longer exists. The
+ *  JSON is hard-pinned to the app's sidecar tables by
+ *  src/cards/__tests__/card-tables-manifest.test.ts; this check stays its
+ *  heuristic second opinion. */
+function parsePanelToSidecar() {
+  if (!exists(CARD_TABLES_JSON)) return null;
+  let tables;
+  try {
+    tables = JSON.parse(read(CARD_TABLES_JSON));
+  } catch {
+    return null;
+  }
+  const out = Object.entries(tables.cardSidecars ?? {})
+    .filter(([, r]) => r.writeback)
+    .map(([panel, r]) => ({ panel, filename: r.file, listKey: r.listKey }));
   return out.length ? out : null;
 }
 

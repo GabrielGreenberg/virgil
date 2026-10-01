@@ -16,9 +16,12 @@
  * `archiveOriginOf` is the ONE reader of that distinction; every restore door
  * and every restore label asks it rather than sniffing fields.
  *
- * The panel vocabulary mirrors `_ANCHORED_PANEL_CARDS` in apply_response.py —
- * the only panels `cmd_archive` admits (atom-bearing footnotes/citations are
- * refused there, since archiving them would orphan their `.tex` marker).
+ * The panel vocabulary is the set `cmd_archive` admits — apply_response.py
+ * loads it as `_ANCHORED_PANEL_CARDS` from `editor/scripts/card_tables.json`
+ * (`archiveOriginPanels`), pinned equal to this list by
+ * `src/cards/__tests__/card-tables-manifest.test.ts` (task 885). Atom-bearing
+ * footnotes/citations are refused there, since archiving them would orphan
+ * their `.tex` marker.
  */
 import type { ArchivedSnippet } from "./types";
 

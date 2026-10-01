@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "The ONE corpus of (panel, on-disk record) → card kind, read by BOTH sides of the language line (task 885):",
+    "  editor/scripts/tests/test_self_link_kind.py   — card_by_id.card_kind (`cardKind`) and spine_card_kind (`spineKind`)",
+    "  src/cards/__tests__/card-tables-manifest.test.ts — TS cardKindFromRecord(record, tsPanel) === spineKind",
+    "`panel` is the Python sidecar panel (card_tables.json cardSidecars); its `tsPanel` names the app PanelKind.",
+    "`tsSkip` marks a row the TS function does not answer, with the reason: notes splits note/highlight by",
+    "collection type, not through cardKindFromRecord. Add a row here and both suites check it."
+  ],
+  "cases": [
+    { "panel": "notes", "record": { "kind": "note" }, "cardKind": "note", "spineKind": "note" },
+    { "panel": "notes", "record": {}, "cardKind": "note", "spineKind": "note" },
+    { "panel": "notes", "record": { "kind": "highlight" }, "cardKind": "highlight", "spineKind": "highlight",
+      "tsSkip": "cardKindFromRecord's notes branch returns the panel's first kind; callers pass a highlight's concrete ref kind" },
+    { "panel": "notes", "record": { "kind": "bogus" }, "cardKind": "note", "spineKind": "note" },
+    { "panel": "todos", "record": {}, "cardKind": "todo", "spineKind": "todo" },
+    { "panel": "footnotes", "record": {}, "cardKind": "footnote", "spineKind": "footnote" },
+    { "panel": "citations", "record": {}, "cardKind": "citation", "spineKind": "citation" },
+    { "panel": "archive", "record": {}, "cardKind": "archive", "spineKind": "archive" },
+    { "panel": "examples", "record": {}, "cardKind": "example", "spineKind": "example" },
+    { "panel": "reports", "record": { "kind": "report" }, "cardKind": "report", "spineKind": "report" },
+    { "panel": "reports", "record": { "kind": "report-request" }, "cardKind": "report-request", "spineKind": "report-request" },
+    { "panel": "reports", "record": {}, "cardKind": "report", "spineKind": "report" },
+    { "panel": "reports", "record": { "kind": "bogus" }, "cardKind": "report", "spineKind": "report" },
+    { "panel": "cutter", "record": { "kind": "suggestion" }, "cardKind": "cutter-suggestion", "spineKind": "cutter-suggestion" },
+    { "panel": "cutter", "record": { "kind": "comment" }, "cardKind": "cutter-comment", "spineKind": "cutter-comment" },
+    { "panel": "cutter", "record": {}, "cardKind": "cutter-comment", "spineKind": "cutter-comment" },
+    { "panel": "revisions", "record": { "kind": "suggestion" }, "cardKind": "revision-suggestion", "spineKind": "revision-suggestion" },
+    { "panel": "revisions", "record": { "kind": "comment" }, "cardKind": "comment", "spineKind": "revision-comment" },
+    { "panel": "revisions", "record": {}, "cardKind": "comment", "spineKind": "revision-comment" }
+  ]
+}

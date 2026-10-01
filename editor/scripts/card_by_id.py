@@ -122,14 +122,20 @@ def find_card(doc: Path, card_id: str) -> CardHit | None:
 
 
 def card_kind(hit: CardHit) -> str:
-    """The registry CardKind for a located card (the two-taxonomy resolution)."""
+    """The registry CardKind for a located card (the two-taxonomy resolution).
+
+    The polymorphic panels resolve over a CLOSED vocabulary, exactly as TS
+    `cardKindFromRecord` does: an unrecognised on-disk `kind` falls to the
+    panel's default kind rather than leaking through as a token no table keys
+    on. Pinned row-for-row against the TS function by the shared corpus
+    `tests/card_kind_cases.json` (task 885)."""
     if hit.panel in _SINGLE_KIND_PANEL:
         return _SINGLE_KIND_PANEL[hit.panel]
     disk = hit.card.get("kind")
     if hit.panel == "notes":      # note | highlight
-        return disk or "note"
+        return "highlight" if disk == "highlight" else "note"
     if hit.panel == "reports":    # report | report-request
-        return disk or "report"
+        return "report-request" if disk == "report-request" else "report"
     if hit.panel == "cutter":     # comment → cutter-comment | suggestion → cutter-suggestion
         return "cutter-suggestion" if disk == "suggestion" else "cutter-comment"
     if hit.panel == "revisions":  # comment → comment | suggestion → revision-suggestion

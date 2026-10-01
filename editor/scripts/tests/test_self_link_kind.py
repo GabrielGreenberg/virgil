@@ -27,7 +27,7 @@ SCRIPTS = ROOT / "editor/scripts"
 APPLY = str(SCRIPTS / "apply_response.py")
 
 sys.path.insert(0, str(SCRIPTS))
-from card_by_id import spine_card_kind  # noqa: E402
+from card_by_id import ALL_CARD_SIDECARS, CardHit, card_kind, spine_card_kind  # noqa: E402
 
 PASS, FAIL = 0, 0
 
@@ -63,17 +63,20 @@ def link(card_id, ref_kind, ref_id):
     }
 
 
-print("\n=== spine_card_kind: the Python cardKindFromRecord ===")
-for panel, rec, want in [
-    ("cutter", {"kind": "suggestion"}, "cutter-suggestion"),
-    ("cutter", {"kind": "comment"}, "cutter-comment"),
-    ("revisions", {"kind": "suggestion"}, "revision-suggestion"),
-    ("revisions", {"kind": "comment"}, "revision-comment"),
-    ("notes", {"kind": "highlight"}, "highlight"),
-    ("todos", {}, "todo"),
-]:
+print("\n=== card_kind / spine_card_kind over the shared corpus (task 885) ===")
+# The same rows src/cards/__tests__/card-tables-manifest.test.ts runs through
+# TS `cardKindFromRecord` — one corpus, both languages.
+_CASES = json.loads((Path(__file__).with_name("card_kind_cases.json")).read_text())["cases"]
+check(len(_CASES) >= 15, f"corpus carries {len(_CASES)} rows")
+for row in _CASES:
+    panel, rec = row["panel"], row["record"]
+    hit = CardHit(card=rec, panel=panel, filename="", list_key="", index=-1)
+    got = card_kind(hit)
+    check(got == row["cardKind"], f"card_kind {panel} {rec} → {got} (want {row['cardKind']})")
     got = spine_card_kind(panel, rec)
-    check(got == want, f"{panel} {rec} → {got} (want {want})")
+    check(got == row["spineKind"], f"spine_card_kind {panel} {rec} → {got} (want {row['spineKind']})")
+covered = {row["panel"] for row in _CASES}
+check(covered == set(ALL_CARD_SIDECARS), f"corpus covers every card sidecar panel (missing {sorted(set(ALL_CARD_SIDECARS) - covered)})")
 
 
 print("\n=== append_card stamps the self-link's spine kind ===")
