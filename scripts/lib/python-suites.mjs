@@ -58,6 +58,7 @@ export const FLOORS = {
   "editor/scripts/tests/test_field_policy_slice.py": 101,
   "editor/scripts/tests/test_bib_family_slice.py": 41,
   "editor/scripts/tests/test_package_load_parity.py": 25,
+  "editor/scripts/tests/test_para_context_agreement.py": 300,
 };
 
 const SKIP_DIRS = new Set(["__pycache__", "node_modules", ".git"]);
