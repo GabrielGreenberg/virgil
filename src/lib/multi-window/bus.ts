@@ -31,7 +31,10 @@ export type BusEvent =
   | { type: "doc-handoff-released"; docId: string; byWindowId: string }
   | { type: "global-pref-changed"; key: string; value: unknown }
   | { type: "window-registry-ping"; windowId: string }
-  | { type: "my-papers-changed"; windowId: string; ids: string[] }
+  /** Task 868 — an INVALIDATION, not a payload: receivers re-read the stored
+   *  list (`readMyPapers`). Two windows' events can arrive out of write
+   *  order; storage, behind `mutateMyPapers`, is the one serialized truth. */
+  | { type: "my-papers-changed"; windowId: string }
   /** Task 610 — "is any of your work off disk?", asked by the window about to
    *  post `SKIP_WAITING`, whose activation reloads EVERY window. See
    *  `reload-door.ts`, "The multi-window half". */

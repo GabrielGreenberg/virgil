@@ -192,12 +192,46 @@ export interface MyPapersState {
   ids: string[];
 }
 
-export async function readMyPapers(): Promise<MyPapersState> {
-  return (await get<MyPapersState>(MY_PAPERS_KEY, store)) ?? { ids: [] };
+function normalizeMyPapers(value: unknown): string[] {
+  const ids = (value as Partial<MyPapersState> | null | undefined)?.ids;
+  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
 }
 
-export async function writeMyPapers(state: MyPapersState): Promise<void> {
-  await set(MY_PAPERS_KEY, state, store);
+export async function readMyPapers(): Promise<MyPapersState> {
+  return { ids: normalizeMyPapers(await get<MyPapersState>(MY_PAPERS_KEY, store)) };
+}
+
+/**
+ * The ONE write door for the "My Papers" list (task 868 — the sibling of
+ * task 601's `mutateIndex`, on the same store and for the same reason).
+ *
+ * The list is one value shared by every window. It used to be overwritten
+ * whole by `writeMyPapers(state)` with a list each window computed from its
+ * own REACT state — so an add that landed before the window's initial read
+ * resolved wrote a list missing every stored entry, and two windows adding
+ * within bus latency each wrote "own list + id", the later erasing the
+ * earlier's add.
+ *
+ * Here the read and the write run inside ONE readwrite IndexedDB transaction
+ * (idb-keyval `update`), serialized against every other window. `fn` gets the
+ * STORED list and returns the next one (synchronous — no awaiting inside);
+ * the door resolves with the list as written, which is what callers render
+ * and broadcast. `writeMyPapers` no longer exists;
+ * `doc-index-mutation-door.test.ts` holds the census.
+ */
+export async function mutateMyPapers(
+  fn: (ids: readonly string[]) => string[],
+): Promise<string[]> {
+  let written: string[] = [];
+  await update<MyPapersState>(
+    MY_PAPERS_KEY,
+    (old) => {
+      written = fn(normalizeMyPapers(old));
+      return { ids: written };
+    },
+    store,
+  );
+  return written;
 }
 
 // --- Tabs ----------------------------------------------------------------
@@ -388,6 +422,13 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
  *     offer (mirror-recovery.ts).
  *   - `local-sidecar/<id>/<file>` (local-sidecar.ts), one per
  *     `LOCAL_SIDECAR_FILENAMES` entry — deleted.
+ *   - `my-papers` (the curated "My Papers" list, here) — the id is dropped
+ *     when the identity is REMOVED (`mode: "remove"`, the default). On a
+ *     RESET (`mode: "reset"`, the example's re-seed) it is kept: the fixed
+ *     id names the same paper again a moment later, and the user's choice to
+ *     list it should survive "Reset example". Windows already rendering the
+ *     list pick the change up on their next read; until then `MyPapersPod`
+ *     drops ids with no index row at render.
  *
  * Deliberately NOT touched:
  *   - `doc-owner/<id>` (multi-window/doc-ownership.ts) — it shadows a live
@@ -399,9 +440,15 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
  *   - The in-memory unsaved-work channel — the caller closes/drains the
  *     doc's tab first, and that channel is the "you have unsaved work" alarm.
  */
-export async function purgeDoc(id: string): Promise<void> {
+export async function purgeDoc(
+  id: string,
+  mode: "remove" | "reset" = "remove",
+): Promise<void> {
   clearRecoveryOffer(id);
   await Promise.all([
+    mode === "remove"
+      ? mutateMyPapers((ids) => ids.filter((x) => x !== id))
+      : undefined,
     deleteDocHandle(id),
     deleteGeneralBibHandle(id),
     clearMirror(id),

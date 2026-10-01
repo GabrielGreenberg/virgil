@@ -48,11 +48,11 @@ vi.mock("@/lib/doc-index", () => ({
     mockState.handles.set(id, h);
   }),
   getDocHandle: vi.fn(async (id: string) => mockState.handles.get(id)),
-  purgeDoc: vi.fn(async (id: string) => {
+  purgeDoc: vi.fn(async (id: string, mode?: "remove" | "reset") => {
     mockState.handles.delete(id);
     const actual =
       await vi.importActual<typeof import("@/lib/doc-index")>("@/lib/doc-index");
-    await actual.purgeDoc(id);
+    await actual.purgeDoc(id, mode);
   }),
 }));
 

@@ -221,6 +221,8 @@ export async function resetExample(): Promise<FsaDocMeta> {
   await mutateIndex((idx) => {
     idx.docs = idx.docs.filter((d) => d.id !== EXAMPLE_DOC_ID);
   });
-  await purgeDoc(EXAMPLE_DOC_ID);
+  // A RESET, not a removal: the fixed id is re-seeded below, so it keeps
+  // its place in the user's "My Papers" list (purgeDoc's census).
+  await purgeDoc(EXAMPLE_DOC_ID, "reset");
   return ensureExampleSeeded();
 }
