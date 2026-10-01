@@ -57,8 +57,6 @@ def load_manifest() -> dict:
 # ---------------------------------------------------------------------------
 
 _VBID_RE = re.compile(r"\\vbid\{([^}]+)\}")
-# Mirrors `ENTRY_HEAD_RE` in src/lib/bib-uid.ts — the head the TS binder pairs.
-_ENTRY_HEAD_RE = re.compile(r"@\w+\s*\{([^,\s}]+)\s*,")
 
 
 def vbid_uid_for(bib_text: str, citekey: str) -> str | None:
@@ -67,11 +65,19 @@ def vbid_uid_for(bib_text: str, citekey: str) -> str | None:
     A port of `orderedVbidBindings` (src/lib/bib-uid.ts): each marker binds to
     the first entry head at-or-after its end and before the next marker; each
     head is claimed once; the FIRST binding for a citekey wins (`parseVbidMarkers`).
+
+    The heads are the entries of `bib_resolve._iter_entries` — editor/scripts'
+    ONE entry scan (task 884), so the entry a uid binds to is the entry the
+    bibEdit splicers edit. The TS binder reads the app's `scanBibSource` entry
+    blocks; the two agree on every row of the shared corpus's `vbid` section
+    (`src/lib/__tests__/fixtures/bib-entry-span-corpus.json`).
     """
+    from bib_resolve import _iter_entries  # lazy: bib_resolve imports this module
+
     markers = [(m.group(1).strip(), m.start(), m.end()) for m in _VBID_RE.finditer(bib_text)]
     if not markers:
         return None
-    heads = [(m.group(1).strip(), m.start()) for m in _ENTRY_HEAD_RE.finditer(bib_text)]
+    heads = [(e[0], e[2]) for e in _iter_entries(bib_text)]
     hi = 0
     for i, (uid, _at, end) in enumerate(markers):
         next_at = markers[i + 1][1] if i + 1 < len(markers) else float("inf")

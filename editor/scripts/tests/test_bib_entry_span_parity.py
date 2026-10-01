@@ -66,6 +66,28 @@ for case in CASES:
     got = answer(case["bib"], case["key"])
     check(got == case["expect"], f"{case['name']} → {case['expect']!r:.40}" + ("" if got == case["expect"] else f" (got {got!r:.60})"))
 
+print("presence ≡ editability (task 884: one entry scan)")
+import unicodedata  # noqa: E402
+for case in CASES:
+    present = any(unicodedata.normalize("NFC", k) == unicodedata.normalize("NFC", case["key"])
+                  for k in BR.all_citekeys(case["bib"]))
+    check(present == (case["expect"] is not None), f"{case['name']}: all_citekeys agrees with find_entry_span")
+
+INDENTED = "  @article{smith2020,\n  title={X},\n}\n"
+check("note = {N}" in BR.set_fields(INDENTED, "smith2020", {"note": "N"}), "an indented entry is editable (set_fields)")
+check(dies(lambda: BR.append_entry(INDENTED, "@article{smith2020,\n  title={Y},\n}")), "…and present to append (refused as a duplicate)")
+check(BR.citekey_of("@article{ smith99 ,\n  t={x},\n}") == "smith99", "citekey_of reads a spaced head")
+check(BR.find_entry_block(INDENTED, "smith2020")[1] == "article", "find_entry_block reports an indented entry's type")
+check(BR.parse_fields(BR.find_entry_block(INDENTED, "smith2020")[0]) == {"title": "X"}, "parse_fields reads an indented entry")
+
+print("vbid binding (the app's parseVbidMarkers ≡ citekey_sidecars.vbid_uid_for)")
+import citekey_sidecars as CS  # noqa: E402
+VBID = json.loads(CORPUS.read_text(encoding="utf-8"))["vbid"]
+check(len(VBID) >= 5, f"vbid corpus has rows ({len(VBID)})")
+for row in VBID:
+    got = {k: CS.vbid_uid_for(row["bib"], k) for k in row["expect"]}
+    check(got == row["expect"], f"vbid/{row['name']} → {row['expect']}" + ("" if got == row["expect"] else f" (got {got})"))
+
 FOUR = next(c for c in CASES if c["name"] == "umlaut-quote-in-braces/zermelo1908")["bib"]
 QUOTED = next(c for c in CASES if c["name"] == "quoted-value-with-braces")["bib"]
 KEYS = ["zermelo1908", "smith2020", "hausdorff1914", "jones2001"]

@@ -1,5 +1,5 @@
 {
-  "_doc": "Task 614 — WHERE DOES A BIB ENTRY END? Both Python silos answer this corpus: editor/scripts/bib_resolve.find_entry_span (editor/scripts/tests/test_bib_entry_span_parity.py) and library/scripts/_bib_parse.find_entry_span (library/scripts/tests/test_bib_entry_span_parity.py). `expect` is the verbatim entry text, null (no such entry), or \"refuse\" (the entry exists but its extent can't be trusted, so a splice must not happen).",
+  "_doc": "Task 614 — WHERE DOES A BIB ENTRY END? Both Python silos answer `cases`: editor/scripts/bib_resolve.find_entry_span (editor/scripts/tests/test_bib_entry_span_parity.py) and library/scripts/_bib_parse.find_entry_span (library/scripts/tests/test_bib_entry_span_parity.py). `expect` is the verbatim entry text, null (no such entry), or \"refuse\" (the entry exists but its extent can't be trusted, so a splice must not happen). Task 884 — ONE entry-head rule: an opener starts a line after optional indentation (`^[ \\t]*@type{key,`), the span starts at that line, and the editor's presence check (`all_citekeys`) answers the same rows. `vbid` — WHICH ENTRY DOES A \\vbid{uid} MARKER NAME? `uid` is what the app's `parseVbidMarkers` (src/lib/__tests__/bib-entry-span-vbid.test.ts) and the skill-side port `citekey_sidecars.vbid_uid_for` both return for `citekey` (null = unbound).",
   "cases": [
     {
       "name": "umlaut-quote-in-braces/zermelo1908",
@@ -93,11 +93,11 @@
       "expect": "@article{smith2020,\n  title = {Second},\n}"
     },
     {
-      "name": "indented-opener-not-an-entry",
-      "why": "openers are line-anchored (column 0)",
+      "name": "indented-opener-is-an-entry",
+      "why": "openers are line-anchored after optional indentation, as BibTeX and the app read them; the span owns the whole opener line (task 884)",
       "bib": "  @article{smith2020,\n  title = {Plain},\n}\n",
       "key": "smith2020",
-      "expect": null
+      "expect": "  @article{smith2020,\n  title = {Plain},\n}"
     },
     {
       "name": "bom-first-entry",
@@ -112,6 +112,92 @@
       "bib": "@book{müller2001,\n  title = {T},\n}\n",
       "key": "müller2001",
       "expect": "@book{müller2001,\n  title = {T},\n}"
+    },
+    {
+      "name": "indented-neighbour",
+      "why": "a tab-indented entry after a column-0 one is located, not read as missing (task 884)",
+      "bib": "@article{a,\n  title = {A},\n}\n\t@book{b,\n  title = {B},\n}\n",
+      "key": "b",
+      "expect": "\t@book{b,\n  title = {B},\n}"
+    },
+    {
+      "name": "spaced-key",
+      "why": "spaces around the citekey inside the head are not part of the key (task 884)",
+      "bib": "@article{ smith99 ,\n  title = {S},\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "smith99",
+      "expect": "@article{ smith99 ,\n  title = {S},\n}"
+    },
+    {
+      "name": "spaced-key-neighbour",
+      "why": "the spaced head does not shift which entry the NEXT key names",
+      "bib": "@article{ smith99 ,\n  title = {S},\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "jones2001",
+      "expect": "@article{jones2001,\n  author = {Jones, J.},\n}"
+    },
+    {
+      "name": "indented-opener-in-value/outer",
+      "why": "an INDENTED opener inside a value is an opener too — refuse, don't guess (task 884)",
+      "bib": "@misc{outer,\n  note = {quoted:\n    @article{fake,\n  title = {x}}\n  },\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "outer",
+      "expect": "refuse"
+    },
+    {
+      "name": "nfd-stored-key-found-by-nfc",
+      "why": "a key stored NFD is found by its NFC spelling (task 884: pinned with a genuinely NFD file)",
+      "bib": "@book{müller2001,\n  title = {T},\n}\n",
+      "key": "müller2001",
+      "expect": "@book{müller2001,\n  title = {T},\n}"
+    }
+  ],
+  "vbid": [
+    {
+      "name": "plain",
+      "bib": "\\vbid{u1}\n@article{a,\n  title = {A},\n}\n\n\\vbid{u2}\n@book{b,\n  title = {B},\n}\n",
+      "expect": {
+        "a": "u1",
+        "b": "u2"
+      }
+    },
+    {
+      "name": "blank-lines-between",
+      "bib": "\\vbid{u1}\n\n\n@article{a,\n  title = {A},\n}\n",
+      "expect": {
+        "a": "u1"
+      }
+    },
+    {
+      "name": "indented-entry",
+      "bib": "\\vbid{u1}\n  @article{a,\n  title = {A},\n}\n\n\\vbid{u2}\n\t@book{b,\n  title = {B},\n}\n",
+      "expect": {
+        "a": "u1",
+        "b": "u2"
+      }
+    },
+    {
+      "name": "spaced-key",
+      "why": "the old head regex skipped `{ a ,`, so u1 bound to b",
+      "bib": "\\vbid{u1}\n@article{ a ,\n  title = {A},\n}\n\n@book{b,\n  title = {B},\n}\n",
+      "expect": {
+        "a": "u1",
+        "b": null
+      }
+    },
+    {
+      "name": "opener-in-value",
+      "why": "an opener inside a balanced value is not an entry, so it neither claims nor shifts a marker",
+      "bib": "\\vbid{u1}\n@misc{outer,\n  note = {x\n@article{fake,\n  t = {y}}\n  },\n}\n\\vbid{u2}\n@book{b,\n  title = {B},\n}\n",
+      "expect": {
+        "outer": "u1",
+        "fake": null,
+        "b": "u2"
+      }
+    },
+    {
+      "name": "dangling-marker",
+      "bib": "@article{a,\n  title = {A},\n}\n\\vbid{u9}\n",
+      "expect": {
+        "a": null
+      }
     }
   ]
 }

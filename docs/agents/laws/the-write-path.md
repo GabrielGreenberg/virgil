@@ -2091,6 +2091,20 @@ carries a column-0 `@type{` — because the two are indistinguishable and want
 opposite handling, and the cost of refusing is a message where the cost of
 guessing is a deleted entry.
 
+**One entry-head rule on the skill side (task 884).** `editor/scripts` had three
+head regexes: an unanchored one behind `all_citekeys` / `citekey_of` /
+`parse_fields` / append's duplicate check, the column-0 splice scanner, and the
+vbid binder's. An indented `  @article{key,` was therefore PRESENT to append and
+MISSING to edit, so the bib-review answer could neither change nor add it. Now
+every reader goes through `bib_resolve._iter_entries` (one pattern,
+`^[ \t]*@type{key,` — line-anchored after optional indentation, as the app's
+`lineAnchoredOpeners` reads it; the span owns the whole opener line), and the
+library twins (`_bib_parse`, `_tools`, `dedup`) carry the same pattern. The app's
+`orderedVbidBindings` reads `scanBibSource` blocks instead of its own regex (a
+spaced key `{ a ,` used to bind its marker to the NEXT entry). Both binders and
+both span scanners answer `src/lib/__tests__/fixtures/bib-entry-span-corpus.json`
+(`cases` + `vbid`).
+
 **Three questions, three answers, in order.** An anchor is not simply "valid or
 stale". (1) Does it name real bytes in THIS file? An entry parsed from another
 text — a library row, a hand-parsed block — carries offsets that mean nothing

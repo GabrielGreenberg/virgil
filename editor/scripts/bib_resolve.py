@@ -32,17 +32,23 @@ import sys
 from _common import die, find_bib_file, read_json, resolve_doc, sidecar
 
 
-ENTRY_HEAD = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,", re.MULTILINE)
 # Match `name = ` after a comma. We prepend a virtual comma to the entry
 # body before parsing so every field — including the first one — sits
 # behind a comma boundary, which sidesteps line-start anchoring problems.
 FIELD_LINE = re.compile(r",\s*([a-zA-Z][\w\-]*)\s*=\s*")
 
 
-# A real entry opener sits at column 0 (`@type{key,`). Line-anchoring is what
-# lets a malformed entry be CONTAINED (its extent can be checked against the
-# next opener) — the library's `_bib_parse._BIB_ENTRY_START_RE`, verbatim.
-_ENTRY_START = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
+# THE entry-head rule for editor/scripts (task 884) — every reader here
+# (`find_entry_span`, `all_citekeys`, `citekey_of`, `parse_fields`, the
+# preservation census, and `citekey_sidecars`' vbid binder) iterates entries
+# through `_iter_entries`, which scans with this ONE pattern, so "present" and
+# "editable" cannot disagree. An opener starts a LINE, after optional
+# indentation (BibTeX — and the app's `lineAnchoredOpeners` — accept an
+# indented `  @article{key,`); line-anchoring is what lets a malformed entry be
+# CONTAINED. A matched span starts at the LINE start, indentation included. The
+# library's `_bib_parse._BIB_ENTRY_START_RE`, verbatim — both silos answer
+# `src/lib/__tests__/fixtures/bib-entry-span-corpus.json`.
+_ENTRY_START = re.compile(r"(?m)^[ \t]*@(\w+)[ \t]*\{[ \t]*([^,\s}]+)[ \t]*,")
 
 
 def _brace_end(text: str, brace: int) -> int | None:
@@ -58,6 +64,38 @@ def _brace_end(text: str, brace: int) -> int | None:
             depth -= 1
             if depth == 0:
                 return j + 1
+    return None
+
+
+def _iter_entries(text: str) -> list[tuple[str, str, int, int | None]]:
+    """Every real entry in `text` as `(key, type, start, end|None)`, in file
+    order — THE entry scan of editor/scripts (task 884). An opener that falls
+    inside an earlier entry's BALANCED span is a field value, not an entry;
+    `end` is None when the entry's braces never balance. Offsets are into
+    `text` as given (strip a BOM first if the caller may hold one)."""
+    out: list[tuple[str, str, int, int | None]] = []
+    consumed = 0
+    for m in _ENTRY_START.finditer(text):
+        if m.start() < consumed:
+            continue  # inside a prior balanced entry's value
+        end = _brace_end(text, text.index("{", m.start()))
+        if end is not None:
+            consumed = end
+        out.append((m.group(2), m.group(1), m.start(), end))
+    return out
+
+
+def _find_entry(entries, key: str):
+    """The entry for `key` — LAST wins on a duplicate, NFC then NFD (the
+    library's lookup rule). The one lookup both `find_entry_span` (edit) and
+    `append_entry`'s duplicate check (presence) ask, so they cannot disagree."""
+    import unicodedata
+
+    for form in ("NFC", "NFD"):
+        k = unicodedata.normalize(form, key)
+        hits = [e for e in entries if e[0] == k]
+        if hits:
+            return hits[-1]
     return None
 
 
@@ -81,29 +119,12 @@ def find_entry_span(text: str, key: str) -> tuple[int, int] | None:
     - an entry whose extent can't be trusted DIES rather than returning a span
       a splice would widen into a neighbour: its braces never balance, or its
       balanced span covers another line-anchored opener."""
-    import unicodedata
-
     bom = 1 if text.startswith("\ufeff") else 0
     body = text[bom:]
-    entries: list[tuple[str, int, int | None]] = []  # (key, start, end|None)
-    consumed = 0
-    for m in _ENTRY_START.finditer(body):
-        if m.start() < consumed:
-            continue  # inside a prior balanced entry's value
-        end = _brace_end(body, body.index("{", m.start()))
-        if end is not None:
-            consumed = end
-        entries.append((m.group(2), m.start(), end))
-    target = None
-    for form in ("NFC", "NFD"):
-        k = unicodedata.normalize(form, key)
-        hits = [e for e in entries if e[0] == k]
-        if hits:
-            target = hits[-1]
-            break
+    target = _find_entry(_iter_entries(body), key)
     if target is None:
         return None
-    _, start, end = target
+    _, _, start, end = target
     if end is None:
         die(f"bib entry {key!r}: its braces are unbalanced, so where the entry "
             f"ends is a guess — repair the .bib by hand")
@@ -149,8 +170,8 @@ def assert_entries_preserved(old: str, new: str, replaced: str | None = None) ->
     from collections import Counter
 
     def census(text: str) -> Counter:
-        return Counter(unicodedata.normalize("NFC", m.group(2))
-                       for m in _ENTRY_START.finditer(text.lstrip("\ufeff")))
+        return Counter(unicodedata.normalize("NFC", e[0])
+                       for e in _iter_entries(text.lstrip("\ufeff")))
 
     before, after = census(old), census(new)
     if replaced is not None:
@@ -169,20 +190,20 @@ def find_entry_block(text: str, key: str) -> tuple[str | None, str | None]:
     if span is None:
         return None, None
     start, end = span
-    head = ENTRY_HEAD.search(text, start)
-    etype = head.group(1) if head and head.start() == start else None
-    return text[start:end], etype
+    head = _ENTRY_START.match(text, start)
+    return text[start:end], (head.group(1) if head else None)
 
 
 def all_citekeys(text: str) -> set[str]:
-    """Every `@type{citekey,` key defined in a .bib's text."""
-    return {m.group(2) for m in ENTRY_HEAD.finditer(text)}
+    """Every `@type{citekey,` key defined in a .bib's text — the same entries
+    `find_entry_span` can edit (one scan, `_iter_entries`)."""
+    return {e[0] for e in _iter_entries(text.lstrip("\ufeff"))}
 
 
 def citekey_of(entry_text: str) -> str | None:
     """The citekey of a single `@type{citekey, …}` entry, or None."""
-    m = ENTRY_HEAD.search(entry_text)
-    return m.group(2) if m else None
+    entries = _iter_entries(entry_text.strip().lstrip("\ufeff"))
+    return entries[0][0] if entries else None
 
 
 def _value_span(text: str, start: int) -> int:
@@ -268,7 +289,7 @@ def append_entry(bib_text: str, entry_text: str) -> str:
     key = citekey_of(entry_text)
     if key is None:
         die("bibEdit append: entry has no parseable @type{citekey, header")
-    if key in all_citekeys(bib_text):
+    if _find_entry(_iter_entries(bib_text.lstrip("\ufeff")), key) is not None:
         die(f"bibEdit append: citekey {key!r} already present — use replace/set-fields to edit it")
     base = bib_text.rstrip()
     return (base + "\n\n" + entry_text + "\n") if base else (entry_text + "\n")
@@ -280,7 +301,7 @@ def parse_fields(entry: str) -> dict:
     fields: dict[str, str] = {}
     body = entry
     # Drop the @type{key, header.
-    head = ENTRY_HEAD.search(body)
+    head = _ENTRY_START.search(body)
     if head:
         body = body[head.end() :]
     # Drop the trailing }.
