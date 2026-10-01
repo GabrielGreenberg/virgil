@@ -183,19 +183,22 @@ from _common import (
     version_bumped,
 )
 
+# The card tables are LOADED, not hand-listed (task 885): `card_tables.json` is
+# the projection of the app's SSOTs (SIDECAR_COLLECTIONS, CARD_KIND_SIDECAR,
+# ARCHIVE_ORIGIN_PANELS, CARD_REGISTRY[kind].content), and
+# src/cards/__tests__/card-tables-manifest.test.ts fails when either side moves
+# alone. This class bit once already: notes was mapped to list-key "notes"
+# while the app reads `cards`, so a note written here landed under a dead key
+# the browser never read — nothing but a hand-copy stood between the two.
+_CARD_TABLES: dict = json.loads(
+    Path(__file__).with_name("card_tables.json").read_text(encoding="utf-8")
+)
+
 # Map panel names to (filename, list-key) for new-card insertion.
-# notes uses list-key "cards" (NotesState = { cards: NoteCardItem[] } in
-# src/lib/types.ts) — the previous "notes" key was a latent bug (a note written
-# via apply_response landed under a dead key the browser never reads). Fixed
-# here; surfaced by the footnote slice's Level-2 sibling-comment path.
-PANEL_TO_SIDECAR = {
-    "notes": ("notes.json", "cards"),
-    "todos": ("todos.json", "items"),
-    "cutter": ("cutter.json", "cards"),
-    "revisions": ("revisions.json", "cards"),
-    "footnotes": ("footnotes.json", "footnotes"),
-    "citations": ("citations.json", "citations"),
-    "reports": ("reports.json", "cards"),
+PANEL_TO_SIDECAR: dict[str, tuple[str, str]] = {
+    panel: (row["file"], row["listKey"])
+    for panel, row in _CARD_TABLES["cardSidecars"].items()
+    if row["writeback"]
 }
 
 # --- Two-field status / result vocabulary (EDITOR_SKILLS_V1 §7) ------------
@@ -257,9 +260,10 @@ SUGGESTION_KINDS = {"revision-suggestion", "cutter-suggestion"}
 # if half the universe lives in the module that imports this one. card_by_id
 # re-exports both names as its search order (it imports this module; this one only
 # imports it lazily, inside handlers, so the cycle stays broken).
-EXTRA_CARD_SIDECARS = {
-    "archive": ("archive.json", "snippets"),
-    "examples": ("examples.json", "examples"),
+EXTRA_CARD_SIDECARS: dict[str, tuple[str, str]] = {
+    panel: (row["file"], row["listKey"])
+    for panel, row in _CARD_TABLES["cardSidecars"].items()
+    if not row["writeback"]
 }
 ALL_CARD_SIDECARS: dict[str, tuple[str, str]] = {**PANEL_TO_SIDECAR, **EXTRA_CARD_SIDECARS}
 
@@ -300,7 +304,9 @@ class _PanelPolicy(NamedTuple):
 
 
 _ALL_PANELS = frozenset(ALL_CARD_SIDECARS)
-_ANCHORED_PANEL_CARDS = frozenset({"notes", "todos", "cutter", "revisions", "reports"})
+# The panels archive-card admits — ARCHIVE_ORIGIN_PANELS on the app side, so an
+# archived card's `originalPanel` is always one the app can restore.
+_ANCHORED_PANEL_CARDS = frozenset(_CARD_TABLES["archiveOriginPanels"])
 
 _NOT_ARCHIVED = "card $cardId is not archived (it's in $panel) — nothing to restore"
 
@@ -1976,9 +1982,10 @@ def _mutation_commit(
 # MUTATION_PANEL_POLICY, which is the difference between "this kind has no plain
 # body" (a `--body`-only limit) and "this store is not ours to write" (task 156 —
 # relying on the former to imply the latter is what left `--field` wide open).
-_BODY_PLAIN = {"todo"}                                            # → `text`
-_BODY_RICH_ONLY = {"note", "footnote"}                            # → `content`
-_BODY_RICH_MIRROR = {"report", "report-request", "comment", "cutter-comment"}  # → `content` + `text`
+# Derived from CARD_REGISTRY[kind].content via card_tables.json (task 885).
+_BODY_PLAIN = frozenset(_CARD_TABLES["bodyFields"]["plain"])            # → `text`
+_BODY_RICH_ONLY = frozenset(_CARD_TABLES["bodyFields"]["richOnly"])     # → `content`
+_BODY_RICH_MIRROR = frozenset(_CARD_TABLES["bodyFields"]["richMirror"])  # → `content` + `text`
 
 
 def _apply_body(doc: Path, txn: "_Txn", card: dict, kind: str, panel: str, body: str) -> None:

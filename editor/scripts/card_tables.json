@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "The card tables editor/scripts READS rather than hand-lists (task 885). Each is a projection of an app-side SSOT,",
+    "and src/cards/__tests__/card-tables-manifest.test.ts fails when either side is edited alone:",
+    "  cardSidecars        panel → { file, listKey, writeback } — every card-hosting sidecar a card id resolves into.",
+    "                      `writeback: true` rows are apply_response.PANEL_TO_SIDECAR (new-card insertion targets);",
+    "                      the rest are EXTRA_CARD_SIDECARS (searched, never appended to). `tsPanel` is the app's",
+    "                      PanelKind for the same store. Pinned to SIDECAR_COLLECTIONS (src/lib/sidecar-merge.ts),",
+    "                      CARD_KIND_SIDECAR (src/lib/host-writability.ts) and SIDECAR_VALUE's legacy column.",
+    "  archiveOriginPanels the panels /editor/archive-card admits (apply_response._ANCHORED_PANEL_CARDS) — equal to",
+    "                      ARCHIVE_ORIGIN_PANELS (src/lib/archive-origin.ts), so every archived card's `originalPanel`",
+    "                      is one the app can restore.",
+    "  bodyFields          which record field(s) edit-card's --body writes, per kind — derived from CARD_REGISTRY[kind]",
+    "                      .content: plain = no bodyField, body is `text`; richOnly = bodyField `content`, no `text`",
+    "                      mirror; richMirror = bodyField `content` + a `text` mirror kept in sync.",
+    "Python kind tokens are card_by_id.card_kind's (a revisions comment is the legacy `comment`; spine `revision-comment`)."
+  ],
+  "cardSidecars": {
+    "notes": { "file": "notes.json", "listKey": "cards", "writeback": true, "tsPanel": "notes" },
+    "todos": { "file": "todos.json", "listKey": "items", "writeback": true, "tsPanel": "todo" },
+    "cutter": { "file": "cutter.json", "listKey": "cards", "writeback": true, "tsPanel": "cutter" },
+    "revisions": { "file": "revisions.json", "listKey": "cards", "writeback": true, "tsPanel": "revisions" },
+    "footnotes": { "file": "footnotes.json", "listKey": "footnotes", "writeback": true, "tsPanel": "footnotes" },
+    "citations": { "file": "citations.json", "listKey": "citations", "writeback": true, "tsPanel": "citations" },
+    "reports": { "file": "reports.json", "listKey": "cards", "writeback": true, "tsPanel": "reports" },
+    "archive": { "file": "archive.json", "listKey": "snippets", "writeback": false, "tsPanel": "archive" },
+    "examples": { "file": "examples.json", "listKey": "examples", "writeback": false, "tsPanel": "examples" }
+  },
+  "archiveOriginPanels": ["notes", "todos", "cutter", "revisions", "reports"],
+  "bodyFields": {
+    "plain": ["todo"],
+    "richOnly": ["note", "footnote"],
+    "richMirror": ["report", "report-request", "comment", "cutter-comment"]
+  }
+}

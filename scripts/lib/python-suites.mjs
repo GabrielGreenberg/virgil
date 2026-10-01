@@ -53,6 +53,9 @@ export const SUITE_ROOTS = ["editor/scripts", "library/scripts"];
  */
 export const FLOORS = {
   "editor/scripts/tests/test_reflect_tail_trigger.py": 40,
+  // task 885: the shared (panel, record) → kind corpus runs here; gutting it
+  // to a few rows would still print green.
+  "editor/scripts/tests/test_self_link_kind.py": 46,
   "editor/scripts/tests/test_dream_synced_sink.py": 50,
   "editor/scripts/tests/test_dream_task_filing.py": 21,
   "editor/scripts/tests/test_field_policy_slice.py": 101,

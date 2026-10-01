@@ -22,10 +22,15 @@ SCRIPTS = ROOT / "editor/scripts"
 CREATE = str(SCRIPTS / "create_card.py")
 APPLY = str(SCRIPTS / "apply_response.py")
 
-# The 8 AiRequestKind members (src/lib/types.ts) — a synthesized/Workflow-A Task
-# must carry a real one (an unknown kind leaks `undefined` into the AI window's
-# PANEL_KIND_MAP). This is what report-request→report remap protects.
-AI_REQUEST_KINDS = {"footnote", "note", "highlight", "citation", "todo", "suggestion", "report", "style-merge"}
+# The AiRequestKind vocabulary — a synthesized/Workflow-A Task must carry a real
+# one (an unknown kind leaks `undefined` into the AI window's PANEL_KIND_MAP).
+# This is what report-request→report remap protects. Read from `_common`, the
+# ONE Python statement (pinned to TS by ai-request-kind.test.ts) — never a
+# third hand-typed copy (task 885).
+sys.path.insert(0, str(SCRIPTS))
+from _common import AI_REQUEST_KINDS as _AI_REQUEST_KINDS  # noqa: E402
+
+AI_REQUEST_KINDS = set(_AI_REQUEST_KINDS)
 
 # Released-ness is ONE predicate (task 496): the release REWRITES the pen
 # record (`holder: null`) instead of deleting it, so a delete-blocked mount
