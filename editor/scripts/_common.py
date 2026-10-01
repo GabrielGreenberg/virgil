@@ -1754,6 +1754,80 @@ def find_document_boundary(tex: str) -> tuple[int, int, int]:
     return begin.start(), body_start, (end.start() if end else -1)
 
 
+TEX_BLOCK_BEGIN_RE = re.compile(r"^[ \t]*%!vtex:begin[ \t]+([0-9a-f]+)", re.MULTILINE)
+
+
+def tex_block_spans(text: str) -> list[tuple[str, int, int]]:
+    """`(uuid, start, end)` of every raw-LaTeX `texBlock` — the bytes from its
+    `%!vtex:begin <uuid>` sentinel through its matching `%!vtex:end <uuid>`.
+    Mirrors the parser (src/lib/latex-parser.ts, `texBeginMatch`): a begin whose
+    end never appears is NOT a block (it fails closed to a comment line)."""
+    out: list[tuple[str, int, int]] = []
+    pos = 0
+    while True:
+        m = TEX_BLOCK_BEGIN_RE.search(text, pos)
+        if not m:
+            return out
+        eol = text.find("\n", m.end())
+        close = f"%!vtex:end {m.group(1)}"
+        k = text.find(close, (eol + 1) if eol != -1 else len(text))
+        if k == -1:
+            pos = m.end()
+            continue
+        out.append((m.group(1), m.start(), k + len(close)))
+        pos = k + len(close)
+
+
+def paragraph_spans(text: str) -> list[dict]:
+    r"""Every anchored block's bytes, in document order (task 883) — the ONE
+    answer to "which bytes are the anchored paragraph?" (task 613).
+
+    Each entry is `{uuid, kind, start, marker_start, marker_end}`:
+    - `kind: "paragraph"` — a `%!v:<uuid>` block. Its region runs from just past
+      the previous block (never earlier than the document body, so the first
+      paragraph's region does not reach back into `\title{}` and the preamble)
+      up to its own marker (`marker_start`); `marker_end` is the marker's end.
+    - `kind: "texBlock"` — a raw-LaTeX block, anchored by its `%!vtex:` sentinel
+      pair rather than a `%!v:` marker. Its span is the whole sentinel pair
+      (`marker_start == start`), and it BOUNDS the following paragraph, which
+      would otherwise swallow the raw block's bytes. A `%!v:` inside a raw
+      block is raw LaTeX, not an anchor.
+
+    The writer (`apply_response._anchored_paragraph`, paragraphs only) and the
+    reader (`get_para_context.py`) both resolve through here, so they cannot
+    disagree about a paragraph's span.
+    """
+    _, body_start, _ = find_document_boundary(text)
+    events: list[tuple[int, int, str, str]] = [
+        (a, b, u, "texBlock") for (u, a, b) in tex_block_spans(text)
+    ]
+    raw = [(a, b) for (a, b, _, _) in events]
+    for m in NODE_UUID_REGEX.finditer(text):
+        if not any(a <= m.start() < b for a, b in raw):
+            events.append((m.start(), m.end(), m.group(1), "paragraph"))
+    events.sort()
+    out: list[dict] = []
+    prev_end = 0
+    for a, b, u, kind in events:
+        start = a if kind == "texBlock" else prev_end
+        if kind == "paragraph" and body_start != -1 and body_start <= a:
+            start = max(start, body_start)
+        out.append({"uuid": u, "kind": kind, "start": start,
+                    "marker_start": a, "marker_end": b})
+        prev_end = b
+    return out
+
+
+def anchored_paragraph(text: str, anchor: str) -> tuple[int, int] | None:
+    """`(region_start, marker_index)` of the FIRST `%!v:<anchor>` paragraph
+    (see `paragraph_spans`); None when the marker is absent. A texBlock is not
+    a paragraph: its bytes are the user's raw LaTeX, never a texEdit target."""
+    for s in paragraph_spans(text):
+        if s["uuid"] == anchor and s["kind"] == "paragraph":
+            return s["start"], s["marker_start"]
+    return None
+
+
 def measure_content_bag(tex: str) -> dict[str, int]:
     """The user's content as a multiset of word tokens, Virgil's own markers
     projected away on the way (they are ADDED by the very passes being gated)."""

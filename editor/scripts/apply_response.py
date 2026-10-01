@@ -154,11 +154,10 @@ from typing import NamedTuple
 
 from _common import (
     AI_REQUEST_KINDS,
+    anchored_paragraph,
     DOCUMENT_MARKER,
     count_live_document_begins,
-    find_document_boundary,
     first_live_index_of,
-    NODE_UUID_REGEX,
     project_structural_latex,
     check_tex_preservation,
     commit_under_pen,
@@ -1167,28 +1166,14 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
 
 def _anchored_paragraph(text: str, anchor: str) -> tuple[int, int] | None:
     r"""The ONE answer to "which bytes are the anchored paragraph?" (task 613):
-    `(region_start, marker_index)` — from just past the previous `%!v:` marker
-    (never earlier than the document body, so the first paragraph's region does
-    not reach back into `\title{}` and the preamble) up to this paragraph's own
-    `%!v:<anchor>` marker. None when the marker is absent.
+    `(region_start, marker_index)`. Resolved by `_common.anchored_paragraph`
+    (task 883), the same door `get_para_context.py` reads through.
 
     Every texEdit mode that searches for words "in the anchored paragraph"
     (after-selected, replace-span) scopes through here, so an identically worded
     span elsewhere in the paper is out of range by construction.
     """
-    mi = -1
-    region_start = 0
-    for m in NODE_UUID_REGEX.finditer(text):
-        if m.group(1) == anchor:
-            mi = m.start()
-            break
-        region_start = m.end()
-    if mi == -1:
-        return None
-    _, body_start, _ = find_document_boundary(text)
-    if body_start != -1 and body_start <= mi:
-        region_start = max(region_start, body_start)
-    return region_start, mi
+    return anchored_paragraph(text, anchor)
 
 
 def _find_in_paragraph(text: str, needle: str, start: int, end: int, *,

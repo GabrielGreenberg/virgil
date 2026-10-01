@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Print the .tex paragraph anchored at `%!v:<uuid>` plus N neighbors.
+r"""Print the .tex paragraph anchored at `%!v:<uuid>` plus N neighbors.
 
 Editor-side AI-request skills need to read the source text around a
-paragraph UUID to draft footnotes, citations, or replies. This script
-ports the regex from `src/lib/latex-paragraph-map.ts:21` into Python so
-skills can shell out instead of re-deriving the lookup logic.
+paragraph UUID to draft footnotes, citations, or replies. The paragraph's
+bytes come from `_common.paragraph_spans` — the SAME resolver the writer
+(`apply_response._anchored_paragraph`) scopes its edits through (task 883):
+previous `%!v:` marker → this marker, so a heading's `\section{}` line, a
+title block or a list item is never cut off by a blank-line heuristic.
+Neighbours are the previous/next anchored blocks in document order — a raw
+`%!vtex:` texBlock included, and resolvable by its own uuid.
 
 Usage:
   python3 get_para_context.py <docPath> <uuid> [--neighbors=N]
@@ -27,10 +31,9 @@ import json
 import sys
 
 from _common import (
-    NODE_UUID_REGEX,
     die,
-    find_paragraph_uuids,
     find_tex_file,
+    paragraph_spans,
     resolve_doc,
 )
 
@@ -43,44 +46,39 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv[1:])
 
 
-def split_paragraphs(text: str) -> list[dict]:
-    """Group the .tex source into paragraph slabs delimited by blank lines.
+def _line_of(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
 
-    Returns a list of {"uuid"?, "lineRange": [start, end], "text": ...}
-    where line numbers are 1-based and `text` includes everything from
-    `start` to `end`. A slab without a `%!v:xxxx` marker has uuid=None.
-    """
-    lines = text.splitlines()
-    slabs: list[dict] = []
-    cur_start: int | None = None
-    cur_lines: list[str] = []
 
-    def flush(end_line: int) -> None:
-        nonlocal cur_start, cur_lines
-        if cur_start is None:
-            return
-        body = "\n".join(cur_lines)
-        m = NODE_UUID_REGEX.search(body)
-        slabs.append(
-            {
-                "uuid": m.group(1) if m else None,
-                "lineRange": [cur_start, end_line],
-                "text": body,
-            }
-        )
-        cur_start = None
-        cur_lines = []
+def render_span(text: str, span: dict) -> dict:
+    """A `paragraph_spans` entry as the CLI's `{uuid, lineRange, paragraph}`:
+    the region with its leading blank space trimmed, marker included. `kind` is
+    "paragraph" (a `%!v:` block) or "texBlock" (a raw `%!vtex:` block)."""
+    start = span["start"]
+    while start < span["marker_start"] and text[start].isspace():
+        start += 1
+    end = span["marker_end"]
+    return {
+        "uuid": span["uuid"],
+        "kind": span["kind"],
+        "lineRange": [_line_of(text, start), _line_of(text, end)],
+        "paragraph": text[start:end],
+    }
 
-    for i, line in enumerate(lines, start=1):
-        if line.strip() == "":
-            flush(i - 1)
-        else:
-            if cur_start is None:
-                cur_start = i
-            cur_lines.append(line)
-    flush(len(lines))
 
-    return slabs
+def para_context(text: str, uuid: str, neighbors: int = 1) -> dict | None:
+    """The anchored paragraph + up to `neighbors` paragraphs either side, or
+    None when the marker is absent."""
+    spans = paragraph_spans(text)
+    idx = next((i for i, s in enumerate(spans) if s["uuid"] == uuid), -1)
+    if idx < 0:
+        return None
+    n = max(0, neighbors)
+    around = spans[max(0, idx - n) : idx] + spans[idx + 1 : idx + 1 + n] if n else []
+    return {
+        **render_span(text, spans[idx]),
+        "neighbors": [render_span(text, s) for s in around],
+    }
 
 
 def main(argv: list[str]) -> int:
@@ -89,50 +87,16 @@ def main(argv: list[str]) -> int:
     tex = find_tex_file(doc)
     text = tex.read_text(encoding="utf-8", errors="replace")
 
-    slabs = split_paragraphs(text)
-    target_idx = next(
-        (i for i, s in enumerate(slabs) if s["uuid"] == args.uuid), -1
-    )
-    if target_idx < 0:
-        # Fall back to a regex search with a tighter window — surfaces
-        # when the slab boundary heuristic mis-grouped lines.
-        anchors = [a for a in find_paragraph_uuids(text) if a["uuid"] == args.uuid]
-        if not anchors:
-            die(f"paragraph uuid not found in {tex}: {args.uuid}", code=3)
-        line = anchors[0]["line"]
-        # Synthesize a single-line slab as a last resort.
-        slabs = [
-            {
-                "uuid": args.uuid,
-                "lineRange": [line, line],
-                "text": text.splitlines()[line - 1],
-            }
-        ]
-        target_idx = 0
-
-    target = slabs[target_idx]
-
-    # Neighbors with UUIDs only (skip preamble and blank slabs).
-    n = max(0, args.neighbors)
-    neighbors: list[dict] = []
-    if n > 0:
-        prev_slabs = [s for s in slabs[:target_idx] if s["uuid"]][-n:]
-        next_slabs = [s for s in slabs[target_idx + 1 :] if s["uuid"]][:n]
-        neighbors = [
-            {
-                "uuid": s["uuid"],
-                "lineRange": s["lineRange"],
-                "paragraph": s["text"],
-            }
-            for s in prev_slabs + next_slabs
-        ]
-
+    ctx = para_context(text, args.uuid, args.neighbors)
+    if ctx is None:
+        die(f"paragraph uuid not found in {tex}: {args.uuid}", code=3)
     out = {
-        "uuid": target["uuid"],
+        "uuid": ctx["uuid"],
+        "kind": ctx["kind"],
         "tex": str(tex.relative_to(doc)),
-        "lineRange": target["lineRange"],
-        "paragraph": target["text"],
-        "neighbors": neighbors,
+        "lineRange": ctx["lineRange"],
+        "paragraph": ctx["paragraph"],
+        "neighbors": ctx["neighbors"],
     }
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
