@@ -1969,6 +1969,25 @@ property are resolved by *stylesheet* order, not class order:
 | `density` | `control` (default, `rounded-md` 6px) · `dense` (`rounded-sm` 4px) | Which rung of the radius scale — see "Radius scale": a primary control is 6px, a "form input inside a popover" (card micro-field, popover, inline card row) is 4px. |
 | `invalid` | boolean | Conflict state: border + text flip to `--danger`. Never hand-spell a red. |
 
+**Field labels: use `<Field>`, never a sibling `<label>`** (task 869). A
+label written beside its control with no `htmlFor` labels nothing — clicking
+it focuses nothing and a screen reader announces an unlabeled box — and five
+dialogs had done exactly that, in four class strings. `<Field label="Name">
+{({ id }) => <Input id={id} … />}</Field>` owns both the association (a
+`useId` handed to the control) and the label's typography:
+
+| Prop | Values | When |
+|---|---|---|
+| `register` | `section` (default: 11px medium, `text-ink-subtle`, uppercase, tracked) · `row` (11px sentence-case `text-ink-subtle`) | `section` for a dialog field label; `row` for a label LEFT of its control in a dense form. |
+| `layout` | `stack` (default for `section`) · `inline` (default for `row`) | Label above vs. beside the control. |
+| `control` | `native` (default) · `group` | `group` when the control is not a labelable element (CodeMirror, `FontPicker`, `SizeStepper`): the label renders as text and the widget names itself with `aria-labelledby={labelId}`. |
+
+A **single-choice set of cards** (NewDocumentModal's document type) is a
+radio group, not a column of buttons: `role="radiogroup"` labelled by its
+`Field`, each card `role="radio"` + `aria-checked`, one tab stop (roving
+`tabIndex`), arrow keys move choice and focus together. Selection must
+never be signalled by colour alone.
+
 **Intended exceptions, so the next audit doesn't re-file them.** A
 *chromeless* field is a different control and stays hand-rolled: a bare
 search box inside a container that already paints the border (Search,

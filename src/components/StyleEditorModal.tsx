@@ -43,7 +43,7 @@ import SystemDialog, {
   SystemDialogHeader,
 } from "./system-dialog";
 import { useSystemDialog } from "./system-dialog-host";
-import { Input } from "./field-primitives";
+import { Field, Input } from "./field-primitives";
 import { SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
 import {
   findDocumentBoundary,
@@ -213,16 +213,18 @@ export default function StyleEditorModal({
       <SystemDialogHeader title={title} subtitle={subtitle} />
 
       <SystemDialogBody className="pb-2">
-        <label className="block text-[11px] font-medium text-ink-subtle uppercase tracking-wide mb-1.5">
-          Name
-        </label>
-        <Input
-          ref={nameRef}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="My style"
-          className="w-full px-3 py-1.5 text-sm"
-        />
+        <Field label="Name">
+          {({ id }) => (
+            <Input
+              id={id}
+              ref={nameRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My style"
+              className="w-full px-3 py-1.5 text-sm"
+            />
+          )}
+        </Field>
         {nameError && (
           <p className="text-[11px] text-error mt-1">
             {nameError}
@@ -231,35 +233,42 @@ export default function StyleEditorModal({
       </SystemDialogBody>
 
       <div className="px-5 pt-2 pb-2">
-        <label className="block text-[11px] font-medium text-ink-subtle uppercase tracking-wide mb-1.5">
-          Preamble (everything before \begin&#123;document&#125;)
-        </label>
-        <div
-          className="border border-edge-subtle rounded-md overflow-hidden"
-          style={{ height: "55vh" }}
+        <Field
+          label={<>Preamble (everything before \begin&#123;document&#125;)</>}
+          control="group"
         >
-          <CodeMirror
-            value={preamble}
-            onChange={setPreamble}
-            extensions={[
-              latex(),
-              editorTheme,
-              EditorView.lineWrapping,
-              EditorState.tabSize.of(2),
-            ]}
-            basicSetup={{
-              lineNumbers: true,
-              highlightActiveLine: true,
-              bracketMatching: true,
-              foldGutter: true,
-              indentOnInput: true,
-              closeBrackets: true,
-              autocompletion: false,
-            }}
-            height="100%"
-            style={{ height: "100%" }}
-          />
-        </div>
+          {({ labelId }) => (
+            <div
+              className="border border-edge-subtle rounded-md overflow-hidden"
+              style={{ height: "55vh" }}
+            >
+              <CodeMirror
+                value={preamble}
+                onChange={setPreamble}
+                extensions={[
+                  latex(),
+                  editorTheme,
+                  EditorView.lineWrapping,
+                  EditorState.tabSize.of(2),
+                  // The editable surface is a contenteditable, not a labelable
+                  // element — name it by the Field's label (task 869).
+                  EditorView.contentAttributes.of({ "aria-labelledby": labelId }),
+                ]}
+                basicSetup={{
+                  lineNumbers: true,
+                  highlightActiveLine: true,
+                  bracketMatching: true,
+                  foldGutter: true,
+                  indentOnInput: true,
+                  closeBrackets: true,
+                  autocompletion: false,
+                }}
+                height="100%"
+                style={{ height: "100%" }}
+              />
+            </div>
+          )}
+        </Field>
         <div className="flex items-center justify-between mt-2 text-[11px]">
           <span className="text-ink-subtle">
             Virgil markers (
