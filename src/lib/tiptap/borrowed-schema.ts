@@ -66,6 +66,7 @@ import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
 import Blockquote from "@tiptap/extension-blockquote";
 import { withWrapperGate } from "@/lib/tiptap/wrapper-gate";
+import { VirgilListKeymap } from "@/lib/tiptap/list-keymap";
 import {
   CARD_BODY_BLOCK_ATOMS,
   MAIN_STARTERKIT_NODE_ATTRS,
@@ -128,6 +129,13 @@ export const CARD_STARTER_KIT_CONFIG = {
   // block while the chord coerced that same block into a list item.
   bulletList: false as const,
   orderedList: false as const,
+  // Task 879: StarterKit's stock `listKeymap` asks "am I at the start of the
+  // list item?" from the TEXTBLOCK (task 418), so Backspace at the start of an
+  // item's SECOND block lifted the whole item out of the list. A card body's
+  // `listItem` is `paragraph block*` — multi-block items exist here too — so
+  // the gated replacement, `VirgilListKeymap`, rides `buildCardBodySchema`
+  // beside the list wrappers, and the stock one is off at BOTH scopes.
+  listKeymap: false as const,
 };
 
 /**
@@ -171,6 +179,9 @@ export const EXCERPT_STARTER_KIT_CONFIG = {
   bulletList: false as const,
   orderedList: false as const,
   blockquote: false as const,
+  // Task 879 — see the card config above: the item-scoped gate
+  // (`VirgilListKeymap`, registered by `buildCardBodySchema`) replaces it.
+  listKeymap: false as const,
 };
 
 /**
@@ -342,6 +353,12 @@ export function buildCardBodySchema(
   // mark the schema lacks makes TipTap load an EMPTY doc (capture/schema-
   // symmetry law). `mark-vocabulary.test.ts` pins every card-scope row's mark
   // against `cardBodySchemaFor`.
+  //
+  // The list keymap rides it too (task 879): the item-scoped Backspace gate
+  // travels WITH the list nodes, so a surface cannot mount a list whose
+  // Backspace lifts an item from its second block. Both scope configs turn
+  // StarterKit's stock `listKeymap` off; `VirgilListKeymap` is its replacement,
+  // exactly as in the main editor (task 418).
   if (scope !== "excerpt")
     return [
       ...buildBorrowedAtomSchema(opts),
@@ -349,6 +366,7 @@ export function buildCardBodySchema(
       CardParagraph,
       CardBulletList,
       CardOrderedList,
+      VirgilListKeymap,
     ];
   return [
     ...buildBorrowedAtomSchema({ ...opts, includeLabelRefFootnote: true }),
@@ -357,6 +375,7 @@ export function buildCardBodySchema(
     CardParagraph,
     CardBulletList,
     CardOrderedList,
+    VirgilListKeymap,
   ];
 }
 
