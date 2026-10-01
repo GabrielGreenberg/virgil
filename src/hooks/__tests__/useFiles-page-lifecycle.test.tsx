@@ -28,7 +28,7 @@ const h = vi.hoisted(() => ({
   log: [] as string[],
   releaseGate: null as Promise<void> | null,
   sweep: vi.fn(async (_o: unknown) => [] as string[]),
-  hold: vi.fn(),
+  hold: vi.fn(async () => ({ id: "w1", inheritedId: "w1" })),
 }));
 
 // The REAL tab-record code runs, over an in-memory idb-keyval — so a
@@ -83,7 +83,7 @@ vi.mock("@/lib/fsa-permissions", () => ({
 }));
 vi.mock("@/lib/multi-window/window-id", () => ({ getWindowId: () => "w1" }));
 vi.mock("@/lib/multi-window/window-liveness", () => ({
-  holdWindowLiveness: h.hold,
+  claimWindowIdentity: h.hold,
   liveWindowIds: vi.fn(async () => new Set(["w1", "peer"])),
 }));
 vi.mock("@/lib/multi-window/doc-ownership", () => ({
