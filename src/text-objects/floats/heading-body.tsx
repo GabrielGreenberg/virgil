@@ -30,6 +30,7 @@
  * `editorRef.current`.
  */
 
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import {
   type RefObject,
   useCallback,
@@ -109,17 +110,10 @@ export function HeadingBody({
   // so the closures always see the live main handle. Defaults match what
   // the NodeView assumes when main's handle is briefly null.
 
-  const onConfirmLabelRenameRef = useRef<
-    | ((
-        oldLabel: string,
-        newLabel: string,
-        refCount: number,
-      ) => Promise<boolean>)
-    | undefined
-  >(undefined);
+  const onConfirmLabelRenameRef = useRef<LabelRenameConfirm | undefined>(undefined);
   onConfirmLabelRenameRef.current = (oldLabel, newLabel, refCount) =>
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
-    Promise.resolve(false);
+    Promise.resolve("confirm");
 
   const onConfirmHeadingDeleteRef = useRef<
     ((typeName: string) => Promise<boolean>) | undefined

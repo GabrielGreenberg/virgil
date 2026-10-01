@@ -55,6 +55,9 @@ import FigureAnnotation from "@/components/FigureAnnotation";
 import { useEditorOps } from "@/components/editor-layout/card-actions/editor-ops";
 import type { EditorHandle } from "@/components/Editor";
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 afterEach(cleanup);
 
 const H1 = "uuid-h1"; // label sec:old, two refs
@@ -191,7 +194,7 @@ describe("the door — renameLabelWithRefs", () => {
   it("carries every ref naming the old key in the SAME transaction when the confirm says yes", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const spy = vi.spyOn(editor.view, "dispatch");
       const outcome = await renameLabelWithRefs(editor, {
         locate: locateByUuid(editor, H1),
@@ -215,11 +218,81 @@ describe("the door — renameLabelWithRefs", () => {
       const outcome = await renameLabelWithRefs(editor, {
         locate: locateByUuid(editor, H1),
         newLabel: "sec:new",
-        confirm: async () => false,
+        confirm: async () => "secondary" as const,
       });
       expect(outcome).toBe("renamed");
       expect(labelOf(editor, H1)).toBe("sec:new");
       expect(refLabels(editor)).toEqual(BASE_REFS);
+    } finally { c(); }
+  });
+
+  // Task 876 — Escape means cancel. Pre-876 the confirm was a boolean and the
+  // dialog's Escape/click-away resolved `false` = "Leave references": the
+  // label was renamed and every ref orphaned, the opposite of cancel.
+  it("CANCEL (Escape / click-away) writes NOTHING — no rename, no ref edit", async () => {
+    const { editor, cleanup: c } = mount();
+    try {
+      const before = editor.state.doc;
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const outcome = await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, H1),
+        newLabel: "sec:new",
+        confirm: async () => "cancel" as const,
+      });
+      expect(outcome).toBe("cancelled");
+      expect(spy).not.toHaveBeenCalled();
+      expect(editor.state.doc.eq(before)).toBe(true);
+      expect(labelOf(editor, H1)).toBe("sec:old");
+      expect(refLabels(editor)).toEqual(BASE_REFS);
+      spy.mockRestore();
+    } finally { c(); }
+  });
+
+  /** Rewrite one declaration's label directly — an edit landing while the
+   *  "Update references?" modal is up (a float, the Outline, an undo). */
+  const relabel = (editor: Editor, uuid: string, label: string) => {
+    const hit = findNodeByUuid(editor, uuid)!;
+    editor.view.dispatch(
+      editor.state.tr.setNodeMarkup(hit.pos, undefined, { ...hit.node.attrs, label }),
+    );
+  };
+
+  it("the declaration's label changed under the modal → 'stale', nothing written", async () => {
+    const { editor, cleanup: c } = mount();
+    try {
+      let mid: ReturnType<typeof editor.state.doc.copy> | null = null;
+      const outcome = await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, H1),
+        newLabel: "sec:new",
+        confirm: async () => {
+          relabel(editor, H1, "sec:elsewhere");
+          mid = editor.state.doc;
+          return "confirm" as const;
+        },
+      });
+      expect(outcome).toBe("stale");
+      expect(editor.state.doc.eq(mid!)).toBe(true);
+      expect(labelOf(editor, H1)).toBe("sec:elsewhere");
+      expect(refLabels(editor)).toEqual(BASE_REFS);
+    } finally { c(); }
+  });
+
+  it("another declaration claimed the candidate under the modal → 'conflict', nothing written", async () => {
+    const { editor, cleanup: c } = mount();
+    try {
+      let mid: ReturnType<typeof editor.state.doc.copy> | null = null;
+      const outcome = await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, H1),
+        newLabel: "sec:new",
+        confirm: async () => {
+          relabel(editor, FIG, "sec:new");
+          mid = editor.state.doc;
+          return "secondary" as const;
+        },
+      });
+      expect(outcome).toBe("conflict");
+      expect(editor.state.doc.eq(mid!)).toBe(true);
+      expect(labelOf(editor, H1)).toBe("sec:old");
     } finally { c(); }
   });
 
@@ -240,7 +313,7 @@ describe("the door — renameLabelWithRefs", () => {
   it("asks NOTHING and carries nothing on an ADD (no refs yet) or a CLEAR (nowhere to point)", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       expect(await renameLabelWithRefs(editor, {
         locate: locateByUuid(editor, H_NONE), newLabel: "sec:fresh", confirm,
       })).toBe("renamed");
@@ -264,7 +337,7 @@ describe("the door — renameLabelWithRefs", () => {
   it("REFUSES a key another declaration already claims — nothing written, nothing asked", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const spy = vi.spyOn(editor.view, "dispatch");
       const outcome = await renameLabelWithRefs(editor, {
         locate: locateByUuid(editor, H1), newLabel: "sec:two", confirm,
@@ -305,7 +378,7 @@ describe("the door — renameLabelWithRefs", () => {
       expect(await renameLabelWithRefs(editor, {
         locate: () => (gone ? null : findNodeByUuid(editor, H1)),
         newLabel: "sec:new",
-        confirm: async () => { gone = true; return true; },
+        confirm: async () => { gone = true; return "confirm" as const; },
       })).toBe("unresolved");
       expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
@@ -316,7 +389,7 @@ describe("the door — renameLabelWithRefs", () => {
     const { editor, cleanup: c } = mount();
     try {
       const outcome = await renameLabelWithRefs(editor, {
-        locate: locateByUuid(editor, FIG), newLabel: "fig:b", confirm: async () => true,
+        locate: locateByUuid(editor, FIG), newLabel: "fig:b", confirm: async () => "confirm" as const,
       });
       expect(outcome).toBe("renamed");
       expect(labelOf(editor, FIG)).toBe("fig:b");
@@ -333,6 +406,20 @@ describe("the door — renameLabelWithRefs", () => {
     const many = labelRenameConfirmCopy("a", "b", 3);
     expect(many.message).toContain("3 references");
     expect(many.confirmLabel).toBe("Update references");
+    // Task 876: "Leave references" is a REAL answer (the secondary button),
+    // never the cancel slot — Escape/click-away resolve cancel, which must
+    // not be read as "leave".
+    expect(many.secondaryLabel).toBe("Leave references");
+    expect(many.cancelLabel).not.toBe("Leave references");
+  });
+
+  it("the production producer asks THREE-way — `choose`, never the boolean `confirm` (task 876)", () => {
+    const src = readFileSync(
+      resolve(process.cwd(), "src/components/EditorPane.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/chooseFromNodeView\(labelRenameConfirmCopy\(/);
+    expect(src).not.toMatch(/confirmFromNodeView\(labelRenameConfirmCopy\(/);
   });
 });
 
@@ -356,7 +443,7 @@ const pressEnter = (input: HTMLInputElement) =>
 
 describe("the HEADING strip's label input enters the door", () => {
   it("DEFECT: renaming a labelled heading carries its refs when the host's confirm says yes", async () => {
-    const confirm = vi.fn(async () => true);
+    const confirm = vi.fn(async () => "confirm" as const);
     const { editor, el, cleanup: c } = mount({ current: confirm });
     try {
       const input = openLabelInput(el, H1);
@@ -370,7 +457,7 @@ describe("the HEADING strip's label input enters the door", () => {
   });
 
   it("…and leaves them when the confirm says no", async () => {
-    const { editor, el, cleanup: c } = mount({ current: async () => false });
+    const { editor, el, cleanup: c } = mount({ current: async () => "secondary" as const });
     try {
       const input = openLabelInput(el, H1);
       input.value = "sec:new";
@@ -382,7 +469,7 @@ describe("the HEADING strip's label input enters the door", () => {
   });
 
   it("a key another heading claims is REFUSED on Enter — the input stays open with its warning, nothing is written", async () => {
-    const confirm = vi.fn(async () => true);
+    const confirm = vi.fn(async () => "confirm" as const);
     const { editor, el, cleanup: c } = mount({ current: confirm });
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
@@ -403,7 +490,7 @@ describe("the HEADING strip's label input enters the door", () => {
   });
 
   it("…and leaving the field with a conflicting draft ABANDONS it rather than trapping focus", async () => {
-    const { editor, el, cleanup: c } = mount({ current: async () => true });
+    const { editor, el, cleanup: c } = mount({ current: async () => "confirm" as const });
     try {
       vi.useFakeTimers();
       const input = openLabelInput(el, H1);
@@ -459,7 +546,7 @@ describe("the FIGURE lozenge's label input enters the door", () => {
   it("DEFECT: renaming a figure label carries its ref when the host's confirm says yes", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const { input } = renderLozenge(editor, confirm);
       fireEvent.change(input, { target: { value: "fig:b" } });
       await act(async () => {
@@ -489,7 +576,7 @@ describe("the FIGURE lozenge's label input enters the door", () => {
     const { editor, cleanup: c } = mount();
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
-      const { input, container } = renderLozenge(editor, async () => true);
+      const { input, container } = renderLozenge(editor, async () => "confirm" as const);
       fireEvent.change(input, { target: { value: "sec:two" } });
       await act(async () => {
         fireEvent.keyDown(input, { key: "Enter" });
@@ -506,7 +593,7 @@ describe("the FIGURE lozenge's label input enters the door", () => {
   it("…and leaving the field with a conflicting draft abandons it", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const { input, container } = renderLozenge(editor, async () => true);
+      const { input, container } = renderLozenge(editor, async () => "confirm" as const);
       fireEvent.change(input, { target: { value: "sec:two" } });
       await act(async () => {
         fireEvent.blur(input);
@@ -539,7 +626,7 @@ describe("the OUTLINE's label commit enters the door", () => {
   it("DEFECT: renaming from the Outline asks MAIN's own confirm and carries the refs", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const ops = opsOver(editor, confirm);
       ops.handleUpdateLabel(H1, "sec:new");
       await settle();
@@ -552,7 +639,7 @@ describe("the OUTLINE's label commit enters the door", () => {
   it("still refuses a duplicate key (OUT-F8-03) and still clears a label", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const ops = opsOver(editor, async () => true);
+      const ops = opsOver(editor, async () => "confirm" as const);
       ops.handleUpdateLabel(H1, "sec:two");
       await settle();
       expect(labelOf(editor, H1)).toBe("sec:old");
@@ -565,7 +652,7 @@ describe("the OUTLINE's label commit enters the door", () => {
   it("refuses to write a NON-heading node under a heading's uuid", async () => {
     const { editor, cleanup: c } = mount();
     try {
-      const ops = opsOver(editor, async () => true);
+      const ops = opsOver(editor, async () => "confirm" as const);
       ops.handleUpdateLabel(FIG, "fig:z");
       await settle();
       expect(labelOf(editor, FIG)).toBe("fig:a");
@@ -615,7 +702,7 @@ const EXAMPLE_CASES: { kind: ExampleKind; uuid: string; old: string; next: strin
 
 describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 553)", ({ kind, uuid, old, next, refs }) => {
   it("DEFECT: renaming carries the ref when the host's confirm says yes — and the numberer keeps it resolved", async () => {
-    const confirm = vi.fn(async () => true);
+    const confirm = vi.fn(async () => "confirm" as const);
     const { editor, el, cleanup: c } = mount({ current: confirm });
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
@@ -641,7 +728,7 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
   });
 
   it("…and leaves the ref when the confirm says no — the numberer then reports the orphan honestly", async () => {
-    const { editor, el, cleanup: c } = mount({ current: async () => false });
+    const { editor, el, cleanup: c } = mount({ current: async () => "secondary" as const });
     try {
       const input = openPodInput(el, uuid, kind);
       input.value = next;
@@ -654,7 +741,7 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
   });
 
   it("DEFECT: a key another declaration claims is REFUSED on Enter — input open, warning lit, nothing written", async () => {
-    const confirm = vi.fn(async () => true);
+    const confirm = vi.fn(async () => "confirm" as const);
     const { editor, el, cleanup: c } = mount({ current: confirm });
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
@@ -678,7 +765,7 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
   });
 
   it("…and leaving the field with a conflicting draft ABANDONS it rather than trapping focus", async () => {
-    const { editor, el, cleanup: c } = mount({ current: async () => true });
+    const { editor, el, cleanup: c } = mount({ current: async () => "confirm" as const });
     try {
       vi.useFakeTimers();
       const input = openPodInput(el, uuid, kind);
@@ -694,7 +781,7 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
   });
 
   it("Escape restores the pod and writes nothing; a CLEAR still lands (the schema's empty default)", async () => {
-    const { editor, el, cleanup: c } = mount({ current: async () => true });
+    const { editor, el, cleanup: c } = mount({ current: async () => "confirm" as const });
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
       const input = openPodInput(el, uuid, kind);
@@ -719,7 +806,7 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
 // the four kinds.
 describe("the label registry covers every declaring kind (task 553)", () => {
   it("the heading strip REFUSES a key an example or an item already declares", async () => {
-    const { editor, el, cleanup: c } = mount({ current: async () => true });
+    const { editor, el, cleanup: c } = mount({ current: async () => "confirm" as const });
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
       for (const taken of ["ex:one", "ex:one-a"]) {
@@ -843,7 +930,7 @@ describe("task 606 — refs held inside footnote bodies", () => {
   it("counts a footnote-held ref in the confirm and rewrites it in the same transaction", async () => {
     const { editor, cleanup: c } = mount(undefined, footnoteContent());
     try {
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const spy = vi.spyOn(editor.view, "dispatch");
       const outcome = await renameLabelWithRefs(editor, {
         locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm,
@@ -862,7 +949,7 @@ describe("task 606 — refs held inside footnote bodies", () => {
     const { editor, cleanup: c } = mount(undefined, footnoteContent());
     try {
       await renameLabelWithRefs(editor, {
-        locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm: async () => true,
+        locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm: async () => "confirm" as const,
       });
       const tex = serializeToLatex(editor.getJSON());
       expect(tex).toContain("\\ref{fig:b}");
@@ -874,7 +961,7 @@ describe("task 606 — refs held inside footnote bodies", () => {
     const { editor, cleanup: c } = mount(undefined, footnoteContent());
     try {
       await renameLabelWithRefs(editor, {
-        locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm: async () => false,
+        locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm: async () => "secondary" as const,
       });
       expect(footnoteRefLabels(editor)).toEqual(["fig:a", "fig:other"]);
     } finally { c(); }
@@ -892,7 +979,7 @@ describe("task 606 — refs held inside footnote bodies", () => {
             findNodeByUuid(editor, "p-fn")!.pos + 1,
             "Inserted words ahead of the refs. ",
           );
-          return true;
+          return "confirm" as const;
         },
       });
       expect(outcome).toBe("renamed");
@@ -907,7 +994,7 @@ describe("task 606 — refs held inside footnote bodies", () => {
     try {
       expect(isLabelTaken(editor, "fn:x")).toBe(true);
       expect(await renameLabelWithRefs(editor, {
-        locate: locateByUuid(editor, FN_FIG), newLabel: "fn:x", confirm: async () => true,
+        locate: locateByUuid(editor, FN_FIG), newLabel: "fn:x", confirm: async () => "confirm" as const,
       })).toBe("conflict");
     } finally { c(); }
   });

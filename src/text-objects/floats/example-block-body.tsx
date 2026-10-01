@@ -28,6 +28,7 @@
  * compact static previews; the user edits the atoms in the main doc.
  */
 
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -133,17 +134,10 @@ export function ExampleBlockBody({
   // structurally identical to the other prose bodies. `.current` is
   // reassigned each render so the closures see the live main handle.
 
-  const onConfirmLabelRenameRef = useRef<
-    | ((
-        oldLabel: string,
-        newLabel: string,
-        refCount: number,
-      ) => Promise<boolean>)
-    | undefined
-  >(undefined);
+  const onConfirmLabelRenameRef = useRef<LabelRenameConfirm | undefined>(undefined);
   onConfirmLabelRenameRef.current = (oldLabel, newLabel, refCount) =>
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
-    Promise.resolve(false);
+    Promise.resolve("confirm");
 
   const onConfirmHeadingDeleteRef = useRef<
     ((typeName: string) => Promise<boolean>) | undefined

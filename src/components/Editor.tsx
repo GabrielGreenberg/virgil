@@ -2,6 +2,7 @@
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
+import type { LabelRenameChoice } from "@/lib/tiptap/label-rename";
 import {
   computeActiveParagraphId,
   geomHoverEnabled,
@@ -111,9 +112,10 @@ interface EditorProps {
   onConfirmFootnoteMove?: () => Promise<boolean>;
   /**
    * Called when the user renames a heading's or a figure's `\label` while
-   * `\ref` pods still point at the old key. Resolving `true` rewrites them to
-   * the new key in the same transaction as the rename; `false` leaves them
-   * pointing at the old (now orphaned) key. Consumed through ONE door,
+   * `\ref` pods still point at the old key. A THREE-way answer (task 876):
+   * `"confirm"` rewrites them to the new key in the same transaction as the
+   * rename; `"secondary"` leaves them pointing at the old (now orphaned) key;
+   * `"cancel"` (Escape / click-away) abandons the rename — nothing written. Consumed through ONE door,
    * `renameLabelWithRefs` (`@/lib/tiptap/label-rename`), by the heading
    * strip, the figure lozenge and — via `EditorHandle.onConfirmLabelRename` —
    * every popped-out float and the Outline's label editor.
@@ -132,7 +134,7 @@ interface EditorProps {
     oldLabel: string,
     newLabel: string,
     refCount: number,
-  ) => Promise<boolean>;
+  ) => Promise<LabelRenameChoice>;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
   anchoredUuidsRef?: React.RefObject<Set<string>>;
   /** Ref to the handler that RE-HOMES a card whose anchor block was absorbed
@@ -254,7 +256,7 @@ export interface EditorHandle {
   // editor. These two expose main's own confirmations so the float reads
   // the identical dialogs off `editorRef.current` and threads them into the
   // factory's `callbacks`. Each falls back to the no-prop default the NodeView
-  // assumes (rename→false, delete→true) when the host didn't supply the
+  // assumes (rename→carry, delete→true) when the host didn't supply the
   // corresponding prop — a default the producer census keeps production from
   // ever reaching (task 534). The "label already in use" predicate is NOT
   // proxied: it is `@/lib/labels`' `isLabelTaken`, read directly against the
@@ -264,7 +266,7 @@ export interface EditorHandle {
     oldLabel: string,
     newLabel: string,
     refCount: number,
-  ) => Promise<boolean>;
+  ) => Promise<LabelRenameChoice>;
   /** Confirm deleting a heading (unused from floats — delete is gated off
    *  there — but exposed for parity with the main NodeView). */
   onConfirmHeadingDelete: (typeName: string) => Promise<boolean>;
@@ -973,9 +975,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       oldLabel: string,
       newLabel: string,
       refCount: number,
-    ): Promise<boolean> {
+    ): Promise<LabelRenameChoice> {
       const fn = onConfirmLabelRenameRef.current;
-      return fn ? fn(oldLabel, newLabel, refCount) : Promise.resolve(false);
+      // No host dialog ⇒ carry the refs — the door's own fail-toward-not-
+      // orphaning default (`label-rename.ts`), never a silent "leave".
+      return fn ? fn(oldLabel, newLabel, refCount) : Promise.resolve("confirm");
     },
     onConfirmHeadingDelete(typeName: string): Promise<boolean> {
       const fn = onConfirmHeadingDeleteRef.current;
