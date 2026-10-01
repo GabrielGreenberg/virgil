@@ -1,0 +1,25 @@
+{
+  "_doc": "Task 882 — DOES THIS PREAMBLE LOAD PACKAGE X? One corpus, two readers: the app's `preambleListLoadsPackage` (src/lib/latex-lexer.ts, read by src/lib/__tests__/package-load-reader.test.ts) and its port `preamble_list_loads_package` in editor/scripts/bib_family.py (read by editor/scripts/tests/test_package_load_parity.py). Input is an ALREADY-projected live preamble. `expect` is the boolean answer for `package`.",
+  "cases": [
+    { "name": "abutting", "preamble": "\\usepackage{biblatex}", "package": "biblatex", "expect": true },
+    { "name": "options-abutting", "preamble": "\\usepackage[style=apa]{biblatex}", "package": "biblatex", "expect": true },
+    { "name": "space-before-brace", "preamble": "\\usepackage {biblatex}", "package": "biblatex", "expect": true },
+    { "name": "space-before-options", "preamble": "\\usepackage [style=apa]{biblatex}", "package": "biblatex", "expect": true },
+    { "name": "spaced-everywhere", "preamble": "\\usepackage [style=apa] {biblatex}", "package": "biblatex", "expect": true },
+    { "name": "line-broken-options", "preamble": "\\usepackage[style=apa,\n backend=biber]\n{biblatex}", "package": "biblatex", "expect": true },
+    { "name": "list-on-next-line", "preamble": "\\usepackage[style=apa]\n  {biblatex}", "package": "biblatex", "expect": true },
+    { "name": "RequirePackage-spaced", "preamble": "\\RequirePackage {biblatex}", "package": "biblatex", "expect": true },
+    { "name": "comma-list-padded", "preamble": "\\usepackage{amsmath, biblatex ,xcolor}", "package": "biblatex", "expect": true },
+    { "name": "comma-list-line-broken", "preamble": "\\usepackage{amsmath,\n  natbib}", "package": "natbib", "expect": true },
+    { "name": "wrapper-prefix", "preamble": "\\usepackage[authordate]{biblatex-chicago}", "package": "biblatex", "expect": true },
+    { "name": "wrapper-is-not-its-suffix", "preamble": "\\usepackage[authordate]{biblatex-chicago}", "package": "chicago", "expect": false },
+    { "name": "dotted-name-is-not-a-load", "preamble": "\\usepackage{foo.biblatex}", "package": "biblatex", "expect": false },
+    { "name": "infix-name-is-not-a-load", "preamble": "\\usepackage{mybiblatexstyle}", "package": "biblatex", "expect": false },
+    { "name": "suffix-dash-is-not-a-load", "preamble": "\\usepackage{old-natbib}", "package": "natbib", "expect": false },
+    { "name": "other-package-only", "preamble": "\\usepackage{amsmath}\n\\usepackage[numbers]{natbib}", "package": "biblatex", "expect": false },
+    { "name": "both-present/biblatex", "preamble": "\\usepackage{natbib}\n\\usepackage {biblatex}", "package": "biblatex", "expect": true },
+    { "name": "both-present/natbib", "preamble": "\\usepackage{natbib}\n\\usepackage {biblatex}", "package": "natbib", "expect": true },
+    { "name": "not-a-load-command", "preamble": "\\newcommand{\\biblatex}{x}", "package": "biblatex", "expect": false },
+    { "name": "empty", "preamble": "", "package": "natbib", "expect": false }
+  ]
+}

@@ -140,6 +140,26 @@ describe("the compile side asks the same reader", () => {
  *  the four pre-781 readers matched it (verified against the pre-fix tree).
  *  compile-service's backend REWRITE is a splice, not a reader, and spells
  *  `\{\s*biblatex\s*\}` — it does not match, by design. */
+// Task 882 — the Python skill silo answers the same question
+// (`editor/scripts/bib_family.py` → `preamble_list_loads_package`, a port of
+// this reader). Parity is a SHARED CORPUS, read here and by
+// `editor/scripts/tests/test_package_load_parity.py`, so the next change to the
+// app's rule cannot land without the port's leg going red.
+const CORPUS = JSON.parse(
+  readFileSync(join(__dirname, "fixtures", "package-load-corpus.json"), "utf8"),
+) as {
+  cases: { name: string; preamble: string; package: string; expect: boolean }[];
+};
+
+describe("shared load corpus (TS ≡ Python port)", () => {
+  it("is non-trivial", () => {
+    expect(CORPUS.cases.length).toBeGreaterThanOrEqual(15);
+  });
+  it.each(CORPUS.cases.map((c) => [c.name, c] as const))("%s", (_n, c) => {
+    expect(preambleListLoadsPackage(c.preamble, c.package)).toBe(c.expect);
+  });
+});
+
 const HAND_ROLLED_READER =
   /usepackage\|RequirePackage|\\\{(?:natbib|biblatex)\\\}/;
 
@@ -157,6 +177,22 @@ describe("census — one load reader", () => {
     const offenders = files.filter(
       (f) =>
         f !== "src/lib/latex-lexer.ts" &&
+        HAND_ROLLED_READER.test(readFileSync(join(ROOT, f), "utf8")),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("only bib_family.py spells one in the Python skill silos (its port)", () => {
+    const files = execSync("git ls-files editor/scripts library/scripts", {
+      cwd: ROOT,
+      encoding: "utf8",
+    })
+      .split("\n")
+      .filter((f) => f.endsWith(".py") && !f.includes("/tests/"));
+    expect(files.length).toBeGreaterThan(20);
+    const offenders = files.filter(
+      (f) =>
+        f !== "editor/scripts/bib_family.py" &&
         HAND_ROLLED_READER.test(readFileSync(join(ROOT, f), "utf8")),
     );
     expect(offenders).toEqual([]);
