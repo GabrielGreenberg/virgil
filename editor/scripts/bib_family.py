@@ -84,18 +84,34 @@ TEXTUAL_CITE_COMMAND = {"natbib": "citet", "biblatex": "textcite"}
 PARENTHETICAL_CITE_COMMAND = {"natbib": "citep", "biblatex": "parencite"}
 
 
-def _family_load_re(name: str) -> re.Pattern[str]:
-    r"""A preamble load of package family `name` via `\usepackage` or
-    `\RequirePackage`, tolerating an option group, a comma-separated package
-    list, and a wrapper package (`-` is a word boundary, so `biblatex-chicago`
-    satisfies `biblatex`). Byte-for-byte the app's `familyLoadRe`."""
-    return re.compile(
-        r"\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^}]*\b" + name + r"\b[^}]*\}"
-    )
+#: The load command, its optional `[options]` and its `{list}` — whitespace
+#: (newlines included) allowed between the three, as TeX allows it.
+_PACKAGE_LOAD_RE = re.compile(
+    r"\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}"
+)
 
 
-_NATBIB_LOAD_RE = _family_load_re("natbib")
-_BIBLATEX_LOAD_RE = _family_load_re("biblatex")
+def preamble_list_loads_package(live_preamble_text: str, name: str) -> bool:
+    r"""Does this (already-projected) preamble load package `name`? A port of
+    the app's ONE load reader, `preambleListLoadsPackage` (src/lib/latex-lexer.ts,
+    task 781): `\usepackage` / `\RequirePackage` with whitespace between the
+    command, options and list; whole comma-list entries, trimmed; and a WRAPPER
+    entry `<name>-<suffix>` (`biblatex-chicago`) loads its core. Only the prefix
+    form counts — `biblatex-chicago` is not the `chicago` package, and
+    `foo.biblatex` is not `biblatex`.
+
+    Parity is a shared-fixture contract (task 882):
+    `src/lib/__tests__/fixtures/package-load-corpus.json` is answered by both
+    readers, so the two cannot drift apart again the way the pre-781 regex here
+    did."""
+    for m in _PACKAGE_LOAD_RE.finditer(live_preamble_text):
+        for entry in m.group(1).split(","):
+            p = entry.strip()
+            if p == name or p.startswith(name + "-"):
+                return True
+    return False
+
+
 _NATBIB_ONLY_CMD_RE = bucket_pattern(NATBIB_ONLY)
 _BIBLATEX_ONLY_CMD_RE = bucket_pattern(BIBLATEX_ONLY)
 
@@ -140,9 +156,9 @@ def live_preamble(tex: str) -> str:
 def detect_preamble_bib_family(live_preamble_text: str) -> str | None:
     """Which family does this (already-projected) preamble hard-load? biblatex
     wins a pathological both-present, as on the app side."""
-    if _BIBLATEX_LOAD_RE.search(live_preamble_text):
+    if preamble_list_loads_package(live_preamble_text, "biblatex"):
         return "biblatex"
-    if _NATBIB_LOAD_RE.search(live_preamble_text):
+    if preamble_list_loads_package(live_preamble_text, "natbib"):
         return "natbib"
     return None
 
