@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import FloatingPanel from "./FloatingPanel";
 import FontPicker from "./FontPicker";
 import SizeStepper from "./SizeStepper";
+import { Field } from "./field-primitives";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import {
@@ -98,12 +99,23 @@ function PreviewPod({
   );
 }
 
+// Every row's control is a composite widget (FontPicker, SizeStepper), so the
+// row labels it as a GROUP — a `<label>` beside a `<div>` names nothing.
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 mb-2.5">
-      <label className="text-xs text-ink-muted w-20 shrink-0">{label}</label>
-      <div className="flex-1 min-w-0">{children}</div>
-    </div>
+    <Field
+      label={label}
+      register="row"
+      control="group"
+      className="gap-3 mb-2.5"
+      labelClassName="w-20"
+    >
+      {({ labelId }) => (
+        <div role="group" aria-labelledby={labelId} className="flex-1 min-w-0">
+          {children}
+        </div>
+      )}
+    </Field>
   );
 }
 

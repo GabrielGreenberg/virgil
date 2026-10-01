@@ -59,7 +59,7 @@ import { usePanelCardPalette } from "@/hooks/usePanelTheme";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
 import { Button } from "./Button";
-import { Input, Select, Textarea } from "./field-primitives";
+import { Field, Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { iconHint } from "@/components/Hint";
 import type { StatusTone } from "./StatusDot";
@@ -1000,25 +1000,29 @@ export default function AIWindow({
                       </div>
 
                       {composerNeedsBibKey && (
-                        <div className="flex items-center gap-2 mb-2">
-                          <label className="text-[11px] text-ink-subtle">Entry key</label>
-                          <Input
-                            list="ai-window-bib-keys"
-                            value={composerBibKey}
-                            onChange={(e) => setComposerBibKey(e.target.value)}
-                            placeholder="e.g. smith2020"
-                            density="dense"
-                            className="flex-1 text-xs px-2 py-1"
-                          />
-                          <datalist id="ai-window-bib-keys">
-                            {bibEntries.map((b) => (
-                              <option key={b.key} value={b.key}>
-                                {/* DISPLAY — task 409. */}
-                                {bibFieldDisplay(b, "title") || b.type}
-                              </option>
-                            ))}
-                          </datalist>
-                        </div>
+                        <Field label="Entry key" register="row" className="mb-2">
+                          {({ id }) => (
+                            <>
+                              <Input
+                                id={id}
+                                list="ai-window-bib-keys"
+                                value={composerBibKey}
+                                onChange={(e) => setComposerBibKey(e.target.value)}
+                                placeholder="e.g. smith2020"
+                                density="dense"
+                                className="flex-1 text-xs px-2 py-1"
+                              />
+                              <datalist id="ai-window-bib-keys">
+                                {bibEntries.map((b) => (
+                                  <option key={b.key} value={b.key}>
+                                    {/* DISPLAY — task 409. */}
+                                    {bibFieldDisplay(b, "title") || b.type}
+                                  </option>
+                                ))}
+                              </datalist>
+                            </>
+                          )}
+                        </Field>
                       )}
 
                       <div className="flex items-end gap-2">

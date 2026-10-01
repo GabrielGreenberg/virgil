@@ -14,7 +14,7 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
-import { Select } from "./field-primitives";
+import { Field, Select } from "./field-primitives";
 import type { DocumentClassMismatch, SectioningCommand } from "@/lib/document-class";
 
 export type MismatchResolution =
@@ -80,22 +80,24 @@ export default function DocumentClassMismatchDialog({
           doesn&apos;t support. LaTeX will fail with &ldquo;Undefined control sequence.&rdquo;
         </p>
 
-        <label className="block mt-4 mb-1 text-[11px] text-ink-subtle font-medium">
-          Switch document class to:
-        </label>
-        <Select
-          value={choice}
-          onChange={(e) =>
-            mismatch && setOverrideChoice({ mismatch, value: e.target.value })
-          }
-          className="w-full text-xs px-2 py-1.5"
-        >
-          {mismatch.suggestions.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </Select>
+        <Field label="Switch document class to" className="mt-4">
+          {({ id }) => (
+            <Select
+              id={id}
+              value={choice}
+              onChange={(e) =>
+                mismatch && setOverrideChoice({ mismatch, value: e.target.value })
+              }
+              className="w-full text-xs px-2 py-1.5"
+            >
+              {mismatch.suggestions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </SystemDialogBody>
       <SystemDialogFooter>
         <SystemDialogButton onClick={handleCancel}>Cancel</SystemDialogButton>

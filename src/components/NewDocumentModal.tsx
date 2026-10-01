@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type KeyboardEvent } from "react";
 import SystemDialog, {
   SystemDialogBody,
   SystemDialogButton,
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
-import { Input } from "./field-primitives";
+import { Field, Input } from "./field-primitives";
 import { InlineError } from "./InlineError";
 import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
 
@@ -98,55 +98,41 @@ export default function NewDocumentModal({
       <SystemDialogHeader title="New document" subtitle={subtitle} />
 
       <SystemDialogBody className="pb-2">
-        <label className="block text-[11px] font-medium text-ink-subtle uppercase tracking-wide mb-1.5">
-          Name
-        </label>
-        <Input
-          ref={nameRef}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder="My paper"
-          disabled={busy}
-          className="w-full px-3 py-1.5 text-sm"
-        />
+        <Field label="Name">
+          {({ id }) => (
+            <Input
+              id={id}
+              ref={nameRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder="My paper"
+              disabled={busy}
+              className="w-full px-3 py-1.5 text-sm"
+            />
+          )}
+        </Field>
       </SystemDialogBody>
 
-      <div className="px-5 pt-3 pb-2">
-        <label className="block text-[11px] font-medium text-ink-subtle uppercase tracking-wide mb-1.5">
-          Document type
-        </label>
-        <div className="flex flex-col gap-1">
-          {DOC_TYPES.map((t) => {
-            const selected = t.id === templateId;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTemplateId(t.id)}
-                disabled={busy}
-                className={`text-left px-3 py-2 rounded-md border transition-colors ${
-                  selected
-                    ? "border-edge-strong bg-[var(--accent-light)]"
-                    : "border-edge-subtle hover:border-edge-hover hover-on-light"
-                }`}
-              >
-                <div className="text-sm font-medium text-ink-body">
-                  {t.label}
-                </div>
-                <div className="text-xs text-ink-subtle mt-0.5">
-                  {t.description}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <Field
+        label="Document type"
+        control="group"
+        className="px-5 pt-3 pb-2"
+      >
+        {({ labelId }) => (
+          <DocTypePicker
+            labelledBy={labelId}
+            value={templateId}
+            onChange={setTemplateId}
+            disabled={busy}
+          />
+        )}
+      </Field>
 
       {error && (
         <div className="px-5 pb-2">
@@ -171,5 +157,81 @@ export default function NewDocumentModal({
         </SystemDialogButton>
       </SystemDialogFooter>
     </SystemDialog>
+  );
+}
+
+/**
+ * The document-type picker — a SINGLE-CHOICE group, so it says so (task 869).
+ * It used to be a column of plain buttons whose chosen member differed only by
+ * border and background: nothing told assistive tech which one was picked, and
+ * the arrow keys did nothing. Now it is a WAI-ARIA radio group: each card is a
+ * `role="radio"` with `aria-checked`, one tab stop for the whole group (the
+ * checked card — roving tabindex), and the arrow keys move the choice and the
+ * focus together, wrapping at the ends, as native radios do.
+ */
+function DocTypePicker({
+  labelledBy,
+  value,
+  onChange,
+  disabled,
+}: {
+  labelledBy: string;
+  value: string;
+  onChange: (id: string) => void;
+  disabled: boolean;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step =
+      e.key === "ArrowDown" || e.key === "ArrowRight"
+        ? 1
+        : e.key === "ArrowUp" || e.key === "ArrowLeft"
+          ? -1
+          : 0;
+    if (step === 0 || disabled) return;
+    e.preventDefault();
+    const current = Math.max(
+      0,
+      DOC_TYPES.findIndex((t) => t.id === value),
+    );
+    const next = (current + step + DOC_TYPES.length) % DOC_TYPES.length;
+    onChange(DOC_TYPES[next].id);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby={labelledBy}
+      onKeyDown={onKeyDown}
+      className="flex flex-col gap-1"
+    >
+      {DOC_TYPES.map((t, i) => {
+        const selected = t.id === value;
+        return (
+          <button
+            key={t.id}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(t.id)}
+            disabled={disabled}
+            className={`text-left px-3 py-2 rounded-md border transition-colors ${
+              selected
+                ? "border-edge-strong bg-[var(--accent-light)]"
+                : "border-edge-subtle hover:border-edge-hover hover-on-light"
+            }`}
+          >
+            <div className="text-sm font-medium text-ink-body">{t.label}</div>
+            <div className="text-xs text-ink-subtle mt-0.5">
+              {t.description}
+            </div>
+          </button>
+        );
+      })}
+    </div>
   );
 }

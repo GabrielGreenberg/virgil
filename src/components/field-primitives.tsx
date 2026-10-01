@@ -37,7 +37,10 @@
 
 import {
   forwardRef,
+  useId,
+  type HTMLAttributes,
   type InputHTMLAttributes,
+  type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
@@ -217,3 +220,112 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     />
   );
 });
+
+// ── Field: a label that is ASSOCIATED with its control (task 869) ──────────
+//
+// Before this, every dialog hand-wrote its field label as a SIBLING `<label>`
+// with no `htmlFor` — five sites, four class strings — so clicking "Name"
+// focused nothing and a screen reader announced an unlabeled textbox. The
+// chrome had a primitive; the label beside it did not, so it drifted the way
+// the chrome had before task 190. `Field` owns both halves: the label's
+// typography (the REGISTER) and the label→control association (a `useId`),
+// handed to the control through a render function so the association cannot
+// be forgotten — a call site that ignores the id is visibly ignoring it.
+//
+//     <Field label="Name">
+//       {({ id }) => <Input id={id} value={…} className="w-full px-3 py-1.5 text-sm" />}
+//     </Field>
+//
+// A control that is not a labelable HTML element — a CodeMirror pane, a
+// composite stepper, a font picker — takes `control="group"`: the label is
+// rendered as plain text with an id, and the call site names its widget with
+// `aria-labelledby={labelId}` (on a `role="group"` wrapper, or the widget's own
+// content element). A `<label htmlFor>` pointed at a `<div>` labels nothing.
+
+/** The label's typography. `section` is the dialog section-label register
+ *  (STYLE_GUIDE "Inputs" → Field labels): small caps-tracked, above the
+ *  control. `row` is the quieter sentence-case register for a label sitting
+ *  to the LEFT of its control in a dense row. */
+export type FieldLabelRegister = "section" | "row";
+
+const FIELD_LABEL_REGISTER: Record<FieldLabelRegister, string> = {
+  section: "text-[11px] font-medium text-ink-subtle uppercase tracking-wide",
+  row: "text-[11px] text-ink-subtle",
+};
+
+/** `stack` puts the label above the control; `inline` beside it. */
+export type FieldLayout = "stack" | "inline";
+
+export interface FieldIds {
+  /** Put this on the control (`id={…}`) — the label's `htmlFor` names it. */
+  id: string;
+  /** The label element's own id, for `aria-labelledby` on a widget that is
+   *  not a labelable element (`control="group"`). */
+  labelId: string;
+}
+
+export interface FieldProps {
+  label: ReactNode;
+  register?: FieldLabelRegister;
+  /** Defaults by register: `section` stacks, `row` sits inline. */
+  layout?: FieldLayout;
+  /** `native` (default) — the control is an input/select/textarea/button and
+   *  the label is a real `<label htmlFor>`. `group` — the control is a
+   *  composite widget; the label is text the widget names via
+   *  `aria-labelledby`. */
+  control?: "native" | "group";
+  /** Appended to the wrapper (margins, width). */
+  className?: string;
+  /** Appended to the label (a fixed column width in a row form). Typography
+   *  belongs to `register`, not here. */
+  labelClassName?: string;
+  /** Extra attributes for the label (e.g. a `data-hint`). */
+  labelProps?: Omit<HTMLAttributes<HTMLElement>, "id" | "className"> & {
+    [dataAttr: `data-${string}`]: string | undefined;
+  };
+  children: (ids: FieldIds) => ReactNode;
+}
+
+/** A labelled form field. The label is always associated with its control. */
+export function Field({
+  label,
+  register = "section",
+  layout = register === "section" ? "stack" : "inline",
+  control = "native",
+  className,
+  labelClassName,
+  labelProps,
+  children,
+}: FieldProps) {
+  const id = useId();
+  const labelId = `${id}-label`;
+  const labelClass = [
+    FIELD_LABEL_REGISTER[register],
+    layout === "stack" ? "block mb-1.5" : "shrink-0",
+    labelClassName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const labelEl =
+    control === "native" ? (
+      <label {...labelProps} id={labelId} htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+    ) : (
+      <span {...labelProps} id={labelId} className={labelClass}>
+        {label}
+      </span>
+    );
+  const wrapperClass = [
+    layout === "inline" ? "flex items-center gap-2" : undefined,
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <div className={wrapperClass || undefined}>
+      {labelEl}
+      {children({ id, labelId })}
+    </div>
+  );
+}

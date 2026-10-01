@@ -23,7 +23,7 @@ import SystemDialog, {
   SystemDialogHeader,
 } from "./system-dialog";
 import StyleEditorModal from "./StyleEditorModal";
-import { Input, Select } from "./field-primitives";
+import { Field, Input, Select } from "./field-primitives";
 import { Button } from "./Button";
 import StyleApplyDialog from "./StyleApplyDialog";
 import DocTypeChangeDialog from "./DocTypeChangeDialog";
@@ -366,26 +366,30 @@ export default function ManageStylesModal({
               that has a live `\documentclass`. */}
           {showActiveColumn && currentClass && (
             <div className="mb-3 flex items-center gap-2">
-              <label
-                htmlFor="doc-type-select"
-                className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle shrink-0"
-                data-hint="Swap the document class — instant unless the doc uses chapters a smaller class can't hold"
+              <Field
+                label="Document type"
+                layout="inline"
+                labelProps={{
+                  "data-hint":
+                    "Swap the document class — instant unless the doc uses chapters a smaller class can't hold",
+                }}
               >
-                Document type
-              </label>
-              <Select
-                id="doc-type-select"
-                value={currentClass}
-                disabled={!!pendingMerge}
-                onChange={(e) => void changeDocType(e.target.value)}
-                className="text-xs px-2 py-1"
-              >
-                {classChoices.map((c) => (
-                  <option key={c.className} value={c.className}>
-                    {c.label}
-                  </option>
-                ))}
-              </Select>
+                {({ id }) => (
+                  <Select
+                    id={id}
+                    value={currentClass}
+                    disabled={!!pendingMerge}
+                    onChange={(e) => void changeDocType(e.target.value)}
+                    className="text-xs px-2 py-1"
+                  >
+                    {classChoices.map((c) => (
+                      <option key={c.className} value={c.className}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
               <span className="text-[11px] text-ink-subtle">
                 Changes <code className="font-mono">\documentclass</code>.
               </span>
