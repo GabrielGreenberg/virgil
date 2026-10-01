@@ -47,7 +47,7 @@ import {
   type CursorRef,
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
-import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { __setEditorActionsHandleForTest } from "@/lib/actions/editor-actions-bridge";
 import { paragraphUuidAt } from "@/links/links";
 import type { ViewPrefs } from "@/hooks/useViewPrefs";
 
@@ -143,7 +143,7 @@ function publishHandle(editor: Editor): void {
       void spec.run(ctx);
     },
   };
-  setEditorActionsHandle(handle);
+  __setEditorActionsHandleForTest(handle);
 }
 
 beforeEach(() => {
@@ -153,7 +153,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setEditorActionsHandle(null);
+  __setEditorActionsHandleForTest(null);
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });

@@ -88,7 +88,7 @@ describe("findOmniEntry — multi-anchor `@N` resolution (REP-F3-01)", () => {
 
   // Task 873 — card keys are unique only per DOCUMENT, so two keep-alive panes
   // can mount the same one. jsdom lays nothing out, so "visible" is stubbed the
-  // way `isPaneMarkerVisible` reads it (`offsetHeight > 0`).
+  // way `isPaneElementVisible` reads it (`offsetHeight > 0`).
   const show = (e: HTMLElement) =>
     Object.defineProperty(e, "offsetHeight", { configurable: true, value: 10 });
 

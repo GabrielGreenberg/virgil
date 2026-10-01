@@ -18,6 +18,7 @@
 
 import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 import { resolveLink } from "../links";
 import { alignEntryToYIfNeeded } from "@/components/editor-layout/layout-scroll";
 import { cardPopKey } from "@/panels/panel-registry";
@@ -109,7 +110,7 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
 
     // Locate the card element. Multiple matches are possible (popped
     // float + native panel mount); pick the first that's actually
-    // visible-ish (offsetParent != null).
+    // rendered (`isPaneElementVisible` — the keep-alive visible rung).
     const cardKey = cardKeyForEntity(selection);
     if (!cardKey) return;
     const cardCandidates = document.querySelectorAll<HTMLElement>(
@@ -118,7 +119,7 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     if (cardCandidates.length === 0) return;
     let cardEl: HTMLElement | null = null;
     for (const el of cardCandidates) {
-      if (el.offsetParent != null) { cardEl = el; break; }
+      if (isPaneElementVisible(el)) { cardEl = el; break; }
     }
     if (!cardEl) cardEl = cardCandidates[0];
     const cardY = cardEl.getBoundingClientRect().top;

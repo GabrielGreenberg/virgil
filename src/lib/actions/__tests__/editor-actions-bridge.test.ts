@@ -44,7 +44,7 @@ import {
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
 import {
-  setEditorActionsHandle,
+  __setEditorActionsHandleForTest,
   getEditorActionsHandle,
   registerEditorActionsHandle,
   unregisterEditorActionsHandle,
@@ -153,7 +153,8 @@ afterEach(() => {
 /**
  * A minimal `Editor`-shaped object for the registry routing tests. Each call
  * makes a DISTINCT `view` (distinct `dom`) so it registers under its own key.
- * `pickProbeEditor` reads `isDestroyed`, `isFocused`, and `view.dom.offsetHeight`
+ * `pickProbeEditor` reads `isDestroyed`, `isFocused`, and `view.dom` through
+ * `isPaneElementVisible` (`offsetParent`, absent here, then `offsetHeight`)
  * — all controllable here (jsdom's real `offsetHeight` is always 0).
  */
 function makeFakeEditor(
@@ -176,14 +177,14 @@ describe("editor-actions-bridge storage", () => {
   it("getEditorActionsHandle() returns the published handle, null otherwise", () => {
     expect(getEditorActionsHandle()).toBeNull();
     const handle: EditorActionsHandle = { runAction: vi.fn() };
-    setEditorActionsHandle(handle);
+    __setEditorActionsHandleForTest(handle);
     expect(getEditorActionsHandle()).toBe(handle);
   });
 
   it("is null after the handle is cleared (the unmount path)", () => {
-    setEditorActionsHandle({ runAction: vi.fn() });
+    __setEditorActionsHandleForTest({ runAction: vi.fn() });
     expect(getEditorActionsHandle()).not.toBeNull();
-    setEditorActionsHandle(null);
+    __setEditorActionsHandleForTest(null);
     expect(getEditorActionsHandle()).toBeNull();
   });
 });
@@ -213,7 +214,7 @@ describe("runAction → spec.run(ctx)", () => {
     const dispatch = vi.fn();
 
     try {
-      setEditorActionsHandle(buildHandle(editor, { cardCreation, dispatch }));
+      __setEditorActionsHandleForTest(buildHandle(editor, { cardCreation, dispatch }));
       getEditorActionsHandle()!.runAction("citation", {
         surface: "slash",
         payload: { citationId: "cit-9" },
@@ -254,7 +255,7 @@ describe("runAction → spec.run(ctx)", () => {
       run: runSpy,
     };
     try {
-      setEditorActionsHandle(buildHandle(editor, {}));
+      __setEditorActionsHandleForTest(buildHandle(editor, {}));
       getEditorActionsHandle()!.runAction("citation", { surface: "typed" });
       const ctx = runSpy.mock.calls[0][0] as ActionContext;
       expect(ctx.surface).toBe("typed");
@@ -269,7 +270,7 @@ describe("runAction → spec.run(ctx)", () => {
     const { editor } = makeEditor(3);
     const note = VIRGIL_ACTION_REGISTRY.note!;
     const runSpy = vi.spyOn(note, "run");
-    setEditorActionsHandle(buildHandle(editor, {}));
+    __setEditorActionsHandleForTest(buildHandle(editor, {}));
     getEditorActionsHandle()!.runAction("note", { surface: "slash" });
     expect(runSpy).toHaveBeenCalledTimes(1);
     const ctx = runSpy.mock.calls[0][0] as ActionContext;
@@ -285,7 +286,7 @@ describe("runAction → spec.run(ctx)", () => {
 describe("runAction on an unknown / not-yet-migrated id", () => {
   it("no-ops without throwing (the registry is partial until later chips)", () => {
     const { editor } = makeEditor(3);
-    setEditorActionsHandle(buildHandle(editor, {}));
+    __setEditorActionsHandleForTest(buildHandle(editor, {}));
     // A genuinely-UNKNOWN id (never an `ActionId`) → absent registry row →
     // no-op + dev-warn. Use a fake id rather than a real-but-unmigrated one so
     // this test can't go stale as later chips fill the registry (it broke once
@@ -307,14 +308,14 @@ describe("runAction collab read-only gate (CHIP 7b)", () => {
     const { editor } = makeEditor(3, /* isEditable */ false);
     const note = VIRGIL_ACTION_REGISTRY.note!;
     const runSpy = vi.spyOn(note, "run");
-    setEditorActionsHandle(buildHandle(editor, {}));
+    __setEditorActionsHandleForTest(buildHandle(editor, {}));
     getEditorActionsHandle()!.runAction("note", { surface: "slash" });
     expect(runSpy).not.toHaveBeenCalled();
   });
 
   it("citation/footnote (the PM-land card surfaces) are suppressed when collab read-only", () => {
     const { editor } = makeEditor(3, false);
-    setEditorActionsHandle(buildHandle(editor, {}));
+    __setEditorActionsHandleForTest(buildHandle(editor, {}));
     for (const id of ["citation", "footnote"] as const) {
       const spec = VIRGIL_ACTION_REGISTRY[id]!;
       const runSpy = vi.spyOn(spec, "run");
@@ -328,7 +329,7 @@ describe("runAction collab read-only gate (CHIP 7b)", () => {
     const { editor } = makeEditor(3, true);
     const note = VIRGIL_ACTION_REGISTRY.note!;
     const runSpy = vi.spyOn(note, "run");
-    setEditorActionsHandle(buildHandle(editor, {}));
+    __setEditorActionsHandleForTest(buildHandle(editor, {}));
     getEditorActionsHandle()!.runAction("note", { surface: "slash" });
     expect(runSpy).toHaveBeenCalledTimes(1);
     // And the ctx carries canEdit:true so the run()'s own guard passes.
@@ -508,7 +509,7 @@ describe("editor-actions-bridge registry (multi-doc keep-alive)", () => {
       run: runSpy,
     };
     try {
-      setEditorActionsHandle(buildHandle(paneEd, {}));
+      __setEditorActionsHandleForTest(buildHandle(paneEd, {}));
       getEditorActionsHandle()!.runAction("citation", { surface: "slash" });
       const ctx = runSpy.mock.calls[0][0] as ActionContext;
       expect(ctx.view).toBe(paneEd.view);
@@ -525,14 +526,14 @@ describe("editor-actions-bridge registry (multi-doc keep-alive)", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it("legacy setEditorActionsHandle still publishes a single default slot", () => {
+  it("the test-only __setEditorActionsHandleForTest publishes a single default slot", () => {
     expect(getEditorActionsHandle()).toBeNull();
     const handle: EditorActionsHandle = { runAction: vi.fn() };
-    setEditorActionsHandle(handle);
+    __setEditorActionsHandleForTest(handle);
     expect(getEditorActionsHandle()).toBe(handle);
     // An arbitrary view with no per-view entry resolves the default slot.
     expect(getEditorActionsHandleFor(makeFakeEditor().view)).toBe(handle);
-    setEditorActionsHandle(null);
+    __setEditorActionsHandleForTest(null);
     expect(getEditorActionsHandle()).toBeNull();
   });
 });

@@ -13,8 +13,9 @@
  *
  * The rungs, and why each is where it is:
  *   1. FOCUSED   — the pane being typed into;
- *   2. VISIBLE   — `offsetHeight > 0`, which is exactly what a keep-alive slot's
- *                  `display:none` falsifies. Load-bearing rather than a nicety:
+ *   2. VISIBLE   — `isPaneElementVisible` (`offsetParent !== null ||
+ *                  offsetHeight > 0`), which is exactly what a keep-alive
+ *                  slot's `display:none` falsifies. Load-bearing rather than a nicety:
  *                  when the dev runs a probe from the console NOTHING is
  *                  focused, and a focus-only resolver returns null exactly then;
  *   3. SOLE LIVE — one live editor is unambiguous;
@@ -78,6 +79,16 @@ describe("pickProbeEditor — the four rungs", () => {
     const shown = makeEditor();
     shown.setVisible(true);
     expect(pickProbeEditor([hidden.editor, shown.editor])).toBe(shown.editor);
+  });
+
+  it("VISIBLE reads the SHARED pane predicate: an offsetParent alone counts (task 874)", () => {
+    // The rung used to read `offsetHeight > 0` alone while pane-dom.ts read the
+    // disjunction; one predicate now answers both, so a laid-out editor whose
+    // box height is momentarily 0 but which has an offsetParent is visible.
+    const a = makeEditor();
+    const b = makeEditor();
+    Object.defineProperty(b.editor.view.dom, "offsetParent", { get: () => document.body });
+    expect(pickProbeEditor([a.editor, b.editor])).toBe(b.editor);
   });
 
   it("two live editors with no focus and none painted are AMBIGUOUS → null", () => {

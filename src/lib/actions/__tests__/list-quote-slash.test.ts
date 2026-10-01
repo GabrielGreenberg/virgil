@@ -36,7 +36,7 @@ import {
   type CursorRef,
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
-import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { __setEditorActionsHandleForTest } from "@/lib/actions/editor-actions-bridge";
 import { paragraphUuidAt } from "@/links/links";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -107,7 +107,7 @@ function publishHandle(editor: Editor): void {
       void spec.run(ctx);
     },
   };
-  setEditorActionsHandle(handle);
+  __setEditorActionsHandleForTest(handle);
 }
 
 /** Publish a PURE-SPY bridge handle: `runAction` records the (id, seed) it was
@@ -116,12 +116,12 @@ function publishHandle(editor: Editor): void {
  *  independent of what the registry `run()` would do (task 297). Returns the spy. */
 function publishSpyHandle(): ReturnType<typeof vi.fn> {
   const runAction = vi.fn();
-  setEditorActionsHandle({ runAction } as unknown as EditorActionsHandle);
+  __setEditorActionsHandleForTest({ runAction } as unknown as EditorActionsHandle);
   return runAction;
 }
 
 afterEach(() => {
-  setEditorActionsHandle(null);
+  __setEditorActionsHandleForTest(null);
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });

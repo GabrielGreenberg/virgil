@@ -261,7 +261,8 @@ describe("DropCtx registry — N panes mounted (multi-doc keep-alive)", () => {
 // provider that registered through it disarms whichever pane happens to hold
 // that entry. Production publishes per provider (`registerDropCtx`), full stop;
 // the legacy door survives only for test harnesses that hold no provider token.
-// The mirror of `editor-actions-bridge.ts`'s `setEditorActionsHandle`.
+// (`editor-actions-bridge.ts`'s twin door was renamed `__setEditorActionsHandleForTest`
+// in task 874 rather than censused — it had no production caller to migrate.)
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 

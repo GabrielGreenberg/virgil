@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 
 /**
  * The ONE "which editor is active?" ladder, shared by every module-level
@@ -7,9 +8,10 @@ import type { Editor } from "@tiptap/react";
  *
  *  1. the FOCUSED editor — the one being typed into (the keystroke-sanctity
  *     check cares about this);
- *  2. else the VISIBLE editor — its keep-alive slot is `display:flex` so its
- *     ProseMirror DOM has `offsetHeight > 0`; warm/hidden slots are
- *     `display:none` ⇒ `offsetHeight === 0`. This is the load-bearing fallback:
+ *  2. else the VISIBLE editor — its keep-alive slot is `display:flex`, the
+ *     warm/hidden ones `display:none`, read through the ONE pane-visibility
+ *     predicate (`isPaneElementVisible`, shared with `pane-dom.ts`'s DOM-marker
+ *     resolver). This is the load-bearing fallback:
  *     when the dev runs the probe from the DevTools console, NO editor is
  *     focused, and a focus-only resolver would return null exactly then;
  *  3. else, if exactly one editor is live, that one;
@@ -36,7 +38,7 @@ export function pickActiveByEditor<T>(
   if (focused) return focused;
   const visible = live.find((it) => {
     const dom = getEditor(it)!.view?.dom as HTMLElement | undefined;
-    return dom != null && dom.offsetHeight > 0;
+    return dom != null && isPaneElementVisible(dom);
   });
   if (visible) return visible;
   return live.length === 1 ? live[0] : null;

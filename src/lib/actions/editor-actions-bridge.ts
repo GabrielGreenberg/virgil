@@ -53,9 +53,13 @@
  * A consumer MUST still treat the handle as nullable (`?.runAction(...)`): a
  * plugin firing outside any editor's lifetime reads `null` and no-ops.
  *
- * The legacy `setEditorActionsHandle(handle | null)` is retained as a thin
- * view-less publish (a single "default" registry entry) for non-view producers
- * and the cross-surface test harnesses; production publishes per-view.
+ * Production publishes per-view, full stop. The one view-less publish,
+ * `__setEditorActionsHandleForTest(handle | null)`, is a TEST seam for the
+ * cross-surface harnesses that hold no `EditorView` (task 874): it writes a
+ * single shared "default" slot that `null` deletes whoever wrote it — the very
+ * CLOBBER above — so it is named so that no production producer reaches for it
+ * (it used to be the public `setEditorActionsHandle`, with zero production
+ * callers and nothing forbidding one).
  */
 
 import type { Editor } from "@tiptap/react";
@@ -70,20 +74,20 @@ export type { EditorActionsHandle, ActionDispatchOutcome } from "./action-regist
 /** A registered handle plus the live editor that owns it (for active-resolution). */
 interface HandleEntry {
   handle: EditorActionsHandle;
-  /** The owning TipTap editor; `null` for the view-less legacy "default" entry. */
+  /** The owning TipTap editor; `null` for the view-less test "default" entry. */
   editor: Editor | null;
 }
 
 /**
- * Sentinel key for the view-less legacy `setEditorActionsHandle` publish — a
- * single shared slot for producers (and tests) that have no `EditorView`.
+ * Sentinel key for the view-less TEST-ONLY `__setEditorActionsHandleForTest`
+ * publish — a single shared slot for harnesses that have no `EditorView`.
  */
 const DEFAULT_KEY: unique symbol = Symbol("editor-actions-handle:default");
 type RegistryKey = EditorView | typeof DEFAULT_KEY;
 
 /**
  * The per-view handle registry. Keyed by each pane's live `EditorView` (plus the
- * one `DEFAULT_KEY` legacy slot). Module scope, NOT React state — the PM plugins
+ * one `DEFAULT_KEY` test slot). Module scope, NOT React state — the PM plugins
  * that read it have no React context.
  */
 const registry = new Map<RegistryKey, HandleEntry>();
@@ -108,11 +112,12 @@ export function unregisterEditorActionsHandle(editor: Editor): void {
 }
 
 /**
- * Legacy view-less publish: park a single handle in the shared `DEFAULT_KEY`
- * slot (or clear it with `null`). Retained for non-view producers and the
- * cross-surface test harnesses; production uses the per-view register API.
+ * TEST-ONLY view-less publish: park a single handle in the shared `DEFAULT_KEY`
+ * slot (or clear it with `null`). For the cross-surface test harnesses only —
+ * production registers per view (`registerEditorActionsHandle`); a production
+ * caller here would reinstate the single-slot MIS-ROUTE/CLOBBER.
  */
-export function setEditorActionsHandle(handle: EditorActionsHandle | null): void {
+export function __setEditorActionsHandleForTest(handle: EditorActionsHandle | null): void {
   if (handle) registry.set(DEFAULT_KEY, { handle, editor: null });
   else registry.delete(DEFAULT_KEY);
 }
@@ -188,9 +193,9 @@ export function runEditorAction(
  * Read the ACTIVE editor-actions handle, or `null` when no editor is mounted.
  * For a contextless React-land caller (no `EditorView` in hand). Resolution:
  *   - 0 entries → null;
- *   - 1 entry → that one (the common single-doc case, incl. the legacy slot);
+ *   - 1 entry → that one (the common single-doc case, incl. the test slot);
  *   - N entries → the FOCUSED-then-VISIBLE pane via `pickProbeEditor` (the same
- *     precedence the dev probes use); if genuinely ambiguous, the legacy default
+ *     precedence the dev probes use); if genuinely ambiguous, the test default
  *     slot if present, else `null` (don't guess).
  *
  * Always null-guard the result: `getEditorActionsHandle()?.runAction(...)`.
@@ -214,7 +219,7 @@ export function getEditorActionsHandle(): EditorActionsHandle | null {
     const match = withEditors.find((e) => e.editor === picked);
     if (match) return match.handle;
   }
-  // Ambiguous among live editors — prefer the legacy default slot if any, else
+  // Ambiguous among live editors — prefer the test default slot if any, else
   // don't guess.
   return registry.get(DEFAULT_KEY)?.handle ?? null;
 }

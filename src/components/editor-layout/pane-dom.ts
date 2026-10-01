@@ -21,9 +21,9 @@
  * This is the task-329 law ("Per-doc services under multi-pane keep-alive": a
  * value that is per-DOCUMENT is resolved through ONE ladder, never "whichever
  * was written last") arriving in the DOM instead of in a module variable. The
- * rung is the same one `pickActiveByEditor` names — a hidden pane is exactly
- * what `offsetParent === null` / `offsetHeight === 0` reports, and nothing else
- * in a mounted tree reports it.
+ * rung is the same one `pickActiveByEditor` names, read through the ONE
+ * predicate both share — `isPaneElementVisible`
+ * ([src/lib/keep-alive/pane-visibility.ts](../../lib/keep-alive/pane-visibility.ts)).
  *
  * ## The two miss policies are DIFFERENT CLAIMS, so the argument is required
  *
@@ -80,24 +80,11 @@
  */
 
 import type { Side } from "@/hooks/useViewPrefs";
+import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 
 /** What to answer when the selector matches only HIDDEN panes. See the header —
  *  the two are different claims, which is why no call site may omit it. */
 export type PaneMarkerMiss = "fail-open" | "fail-closed";
-
-/**
- * Is `el` rendered — i.e. does it live in a pane that is NOT the `display:none`
- * half of a keep-alive slot?
- *
- * `offsetParent === null` is the primary signal (the same one
- * `active-editor-probe.ts` and `findRowScroll` already read); `offsetHeight > 0`
- * is the backstop for the one rendered shape that also reports a null
- * offsetParent — a `position: fixed` element. A `display:none` subtree fails
- * BOTH, and nothing else in a mounted tree does.
- */
-export function isPaneMarkerVisible(el: HTMLElement): boolean {
-  return el.offsetParent !== null || el.offsetHeight > 0;
-}
 
 /** The ONE resolver: visible match first, then the stated miss policy. */
 export function resolvePaneMarker(
@@ -106,7 +93,7 @@ export function resolvePaneMarker(
 ): HTMLElement | null {
   if (typeof document === "undefined") return null;
   const all = document.querySelectorAll<HTMLElement>(selector);
-  for (const el of all) if (isPaneMarkerVisible(el)) return el;
+  for (const el of all) if (isPaneElementVisible(el)) return el;
   return onNoneVisible === "fail-open" ? (all[0] ?? null) : null;
 }
 
@@ -118,7 +105,7 @@ export function resolvePaneMarker(
 export function resolvePaneMarkers(selector: string): HTMLElement[] {
   if (typeof document === "undefined") return [];
   const all = Array.from(document.querySelectorAll<HTMLElement>(selector));
-  const visible = all.filter(isPaneMarkerVisible);
+  const visible = all.filter(isPaneElementVisible);
   return visible.length > 0 ? visible : all;
 }
 

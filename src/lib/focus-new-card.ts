@@ -11,6 +11,7 @@
  * like the drag-handle path does).
  */
 import { parseAnyKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
+import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 
 export function focusNewCard(cardKey: string): void {
   // Normalize to the canonical `float:card:<kind>:<id>` grammar the card stamps
@@ -28,15 +29,15 @@ export function focusNewCard(cardKey: string): void {
     // A card can render in MULTIPLE places at once — the docked panel AND the
     // omni margin. `querySelector` returns the first in DOM order, which may be
     // a HIDDEN (compressed / `display:none` keep-alive) instance whose body
-    // isn't mounted. Pick the VISIBLE one (`offsetParent != null`, the
-    // `usePlacement.ts` visible-instance pattern) so we focus a real body, not a
-    // collapsed twin. Fall back to the first match (offsetParent is null inside
-    // jsdom/tests, where there's a single instance anyway).
+    // isn't mounted. Pick the VISIBLE one (`isPaneElementVisible`, the ONE
+    // keep-alive visible rung) so we focus a real body, not a collapsed twin.
+    // Fall back to the first match (jsdom lays nothing out, and tests mount a
+    // single instance anyway).
     const candidates = Array.from(
       document.querySelectorAll<HTMLElement>(`[data-card-key="${CSS.escape(domKey)}"]`),
     );
     const card =
-      candidates.find((el) => el.offsetParent != null) ?? candidates[0] ?? null;
+      candidates.find(isPaneElementVisible) ?? candidates[0] ?? null;
     if (!card) {
       if (++attempts < MAX_ATTEMPTS) requestAnimationFrame(tryFocus);
       return;

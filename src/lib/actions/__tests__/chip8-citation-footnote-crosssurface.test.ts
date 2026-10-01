@@ -52,7 +52,7 @@ import {
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
 import {
-  setEditorActionsHandle,
+  __setEditorActionsHandleForTest,
   getEditorActionsHandle,
 } from "@/lib/actions/editor-actions-bridge";
 import { buildFloatKey } from "@/floats/float-key";
@@ -196,7 +196,7 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
       void spec.run(ctx);
     },
   };
-  setEditorActionsHandle(handle);
+  __setEditorActionsHandleForTest(handle);
 }
 
 /** Drive the REAL typed input rule via `view.someProp("handleTextInput", …)` —
@@ -228,7 +228,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setEditorActionsHandle(null);
+  __setEditorActionsHandleForTest(null);
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
@@ -610,7 +610,7 @@ describe("sidecar asymmetry: citation entry shaped vs footnote body in the atom"
 
 describe("durability: typed atom lands with the bridge cleared (both kinds)", () => {
   it("slash \\cite no-ops (deferred) + typed \\footnote{} inserts the atom with no handle, no throw", () => {
-    setEditorActionsHandle(null);
+    __setEditorActionsHandleForTest(null);
 
     // Slash now only OPENS the popover (deferred) — with no bridge it no-ops and
     // never inserts a blank atom. The synchronous-durability property belongs to
