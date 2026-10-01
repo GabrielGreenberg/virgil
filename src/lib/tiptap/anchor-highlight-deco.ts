@@ -1,12 +1,9 @@
-import { Extension } from "@tiptap/react";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { EditorState, Transaction } from "@tiptap/pm/state";
-import type { EditorView } from "@tiptap/pm/view";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration } from "@tiptap/pm/view";
 import { DATA_CARD_SELECTED, DATA_CARD_HOVERED } from "@/lib/view-only-chrome";
 
 /**
- * AnchorHighlightDecorator — paints the four card hover/selection attributes
+ * The ANCHOR channel of the transient-highlight engine — paints the four card
+ * hover/selection attributes
  * (`data-card-selected` / `data-card-hovered` / `data-paragraph-kind` /
  * `data-margin-side`) onto IN-EDITOR NODE/ATOM anchor targets via ProseMirror
  * decorations, so PM OWNS the attributes and never treats them as a foreign
@@ -49,21 +46,22 @@ import { DATA_CARD_SELECTED, DATA_CARD_HOVERED } from "@/lib/view-only-chrome";
  * not PM nodes, so a raw `setAttribute` there causes no redraw and stays in
  * the reconciler.
  *
- * KEYSTROKE SANCTITY. The decoration set is rebuilt ONLY when a transaction
- * carries the `anchorHighlightKey` meta (dispatched from the reconciler on a
- * hover/selection change). On every other transaction — including a plain
- * keystroke — `apply` only `DecorationSet.map(tr.mapping, tr.doc)`s the
- * existing set (O(#highlight-decorations); never more than a couple), and
- * returns. No doc walk, no recompute, no structural emit. The bridge dispatch
- * is a meta-only transaction (`!tr.docChanged`), so `DocStructureObserver`
- * produces no diff and the bus stays silent.
+ * ONE PLUGIN PROTOCOL (task 880). This file used to carry its own plugin — a
+ * `{targets}` meta, a whole-set setter, a map-then-rebuild `apply` — a second
+ * copy of `transient-highlight.ts`'s engine that had already DRIFTED (its
+ * setter dispatched a no-op transaction on every empty reconcile; the engine's
+ * bails). The plugin, key, meta and setter now live ONCE, in the engine, as its
+ * `anchor` channel; `setAnchorHighlightTargets` there is the named door. What
+ * stays here is what is genuinely anchor-specific: the attr VOCABULARY and the
+ * one `Decoration.node` builder the engine calls for a `shape: "node"` target.
+ * Keystroke sanctity is therefore the engine's: rebuild only on the channel's
+ * own meta, map-only otherwise, zero cost while nothing is painted.
  */
 
 // The two attention attr NAMES come from the view-only vocabulary, not from a
 // local copy: the print block neutralises view-only paint BY these names, and a
 // rename that reached only one side would silently print a selection halo
 // (task 523).
-export { DATA_CARD_SELECTED, DATA_CARD_HOVERED };
 const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
 const DATA_MARGIN_SIDE = "data-margin-side";
 
@@ -75,7 +73,9 @@ const DATA_MARGIN_SIDE = "data-margin-side";
  *  `.linked-anchor` setAttribute path. */
 export type AnchorHighlightTarget = {
   /** `Decoration.node` over a block or inline atom (paragraph / heading /
-   *  listItem / footnote / citation). */
+   *  listItem / footnote / citation). The engine's shape discriminant: it is
+   *  what routes this target to {@link anchorNodeDecoration} rather than to
+   *  the inline band builder. */
   shape: "node";
   from: number;
   /** `from + node.nodeSize` at resolve time. */
@@ -117,82 +117,17 @@ export function hoveredAttrs(
   return attrs;
 }
 
-/** Meta payload: the full desired in-editor target list for this frame. The
- *  plugin replaces its whole set from this — the reconciler is idempotent and
- *  always sends the complete picture, so there is no incremental add/remove. */
-type AnchorHighlightMeta = { targets: AnchorHighlightTarget[] };
-
-export const anchorHighlightKey = new PluginKey<DecorationSet>(
-  "anchorHighlightDeco",
-);
-
-function buildSet(
-  doc: EditorState["doc"],
-  targets: AnchorHighlightTarget[],
-): DecorationSet {
-  if (targets.length === 0) return DecorationSet.empty;
-  const decos: Decoration[] = [];
-  for (const t of targets) {
-    // Defensive clamp: a target resolved a frame ago could be out of range
-    // after an interleaved edit. `Decoration.node` throws on a non-node
-    // span; skip rather than crash the view.
-    if (t.from < 0 || t.to > doc.content.size || t.to <= t.from) continue;
-    try {
-      decos.push(Decoration.node(t.from, t.to, t.attrs));
-    } catch {
-      // Out-of-sync target (e.g. `Decoration.node` over a non-node range
-      // after a concurrent edit). Drop it; the next reconcile re-paints.
-    }
-  }
-  return decos.length > 0 ? DecorationSet.create(doc, decos) : DecorationSet.empty;
-}
-
 /**
- * Replace the in-editor highlight decorations with `targets`. Dispatches a
- * META-ONLY transaction (no doc change), so it never disturbs the document,
- * the autosaver, or the DocStructureObserver. Idempotent at the caller: pass
- * the COMPLETE desired set every frame.
+ * The ONE decoration a `shape: "node"` target becomes. Called by the
+ * transient-highlight engine's set builder, which has already range-checked
+ * the target against the doc. `Decoration.node` throws on a span that is not
+ * exactly one node (a target resolved a frame ago, then an interleaved edit) —
+ * return null and let the next reconcile re-paint, rather than crash the view.
  */
-export function setAnchorHighlightTargets(
-  view: EditorView,
-  targets: AnchorHighlightTarget[],
-): void {
-  const meta: AnchorHighlightMeta = { targets };
-  view.dispatch(view.state.tr.setMeta(anchorHighlightKey, meta));
+export function anchorNodeDecoration(t: AnchorHighlightTarget): Decoration | null {
+  try {
+    return Decoration.node(t.from, t.to, t.attrs);
+  } catch {
+    return null;
+  }
 }
-
-export const AnchorHighlightDecorator = Extension.create({
-  name: "anchorHighlightDecorator",
-
-  addProseMirrorPlugins() {
-    return [
-      new Plugin<DecorationSet>({
-        key: anchorHighlightKey,
-        state: {
-          init() {
-            return DecorationSet.empty;
-          },
-          // [cost: O(#decorations)/tx — DecorationSet.map only; O(targets) buildSet + DecorationSet.create only on this plugin's own meta (a reconciler frame), never on a keystroke] (task 433 census)
-          apply(tr: Transaction, value: DecorationSet) {
-            // KEYSTROKE-SANCTITY: forward-map existing decorations on every
-            // transaction (O(#decorations), tiny — never a doc walk).
-            let set = value.map(tr.mapping, tr.doc);
-            const meta = tr.getMeta(anchorHighlightKey) as
-              | AnchorHighlightMeta
-              | undefined;
-            // Rebuild ONLY when the reconciler pushed a new hover/selection
-            // frame. A plain keystroke carries no meta → we keep the mapped
-            // set and return without recomputing.
-            if (meta) set = buildSet(tr.doc, meta.targets);
-            return set;
-          },
-        },
-        props: {
-          decorations(state) {
-            return anchorHighlightKey.getState(state) ?? DecorationSet.empty;
-          },
-        },
-      }),
-    ];
-  },
-});

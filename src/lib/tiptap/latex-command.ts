@@ -525,7 +525,7 @@ function brokenConstructs(
   return out;
 }
 
-export const latexCarrierPluginKey = new PluginKey("latexCommandCarrier");
+const latexCarrierPluginKey = new PluginKey("latexCommandCarrier");
 
 /** Grey-monospace styling for unhandled LaTeX commands, plus Enter-to-execute. */
 export const LatexCommandMark = Mark.create({

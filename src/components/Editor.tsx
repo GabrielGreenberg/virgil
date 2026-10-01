@@ -147,7 +147,7 @@ interface EditorProps {
    * `EditorPane`, with no spread), so the branch was unreachable. The
    * linked-anchor hover/selection highlight is owned by `useLinkHighlight`
    * (the `data-link-highlight` CSS coupling on the `.linked-anchor` span) and
-   * `AnchorHighlightDecorator` (the node/atom attrs). Both props and the branch
+   * the transient-highlight engine's `anchor` channel (the node/atom attrs). Both props and the branch
    * are gone; a future consumer paints through `setTransientHighlights`, which
    * takes a per-band color for exactly this shape. */
   /** Doc id, passed into the FigureBlock / GraphicsBlock extensions so
