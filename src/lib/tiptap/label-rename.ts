@@ -3,6 +3,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Transaction } from "@tiptap/pm/state";
 import { isLabelTaken } from "@/lib/labels";
 import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
+import type { ConfirmChoice } from "@/components/ConfirmDialog";
 
 /**
  * LABEL RENAME — the ONE door every rename of a `\label{…}` declaration enters
@@ -31,9 +32,19 @@ import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
  *     `@/lib/labels` predicate the live "label already in use" warning reads,
  *     so the warning and the commit can never disagree (the rule the Outline
  *     commit earned as OUT-F8-03, now held by every surface);
- *   • when the rename has refs to carry, the door ASKS (`confirm`) and, on
- *     yes, moves the declaration AND every ref in ONE transaction — one undo
- *     step, one autosave arm, no window in which the paper is inconsistent;
+ *   • when the rename has refs to carry, the door ASKS (`confirm`) a THREE-way
+ *     question (task 876): "Update references" moves the declaration AND
+ *     every ref in ONE transaction — one undo step, one autosave arm, no
+ *     window in which the paper is inconsistent; "Leave references" moves the
+ *     declaration alone; and CANCEL (Escape, click-away) writes NOTHING. Pre-876
+ *     the confirm was a boolean, so Escape's `false` read as "Leave
+ *     references" and renamed the label while orphaning every ref — Escape
+ *     doing the opposite of cancel (law: *Escape means cancel*);
+ *   • nothing the door decided BEFORE the modal is trusted AFTER it (law:
+ *     *Addressing the live document across an async gap*): the declaration is
+ *     re-located, its label must still be the one the question named
+ *     (`"stale"` otherwise), and the candidate is re-checked against every
+ *     other declaration (`"conflict"` if one claimed it meanwhile);
  *   • a rename with NO confirm handler in hand carries its refs. That is the
  *     fail-toward-not-orphaning default: the confirm exists to let a user
  *     deliberately KEEP refs on the old key (they mean to re-declare it), and
@@ -59,11 +70,17 @@ import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
  * come to disagree.
  */
 
+/** The answer to "Update references?" — the dialog's own vocabulary, so the
+ *  producer hands `useConfirmDialog().choose` straight through:
+ *  `confirm` = Update references (carry), `secondary` = Leave references,
+ *  `cancel` = Escape / click-away / Cancel — ABORT, nothing written. */
+export type LabelRenameChoice = ConfirmChoice;
+
 export type LabelRenameConfirm = (
   oldLabel: string,
   newLabel: string,
   refCount: number,
-) => Promise<boolean>;
+) => Promise<LabelRenameChoice>;
 
 export type LabelRenameOutcome =
   /** The declaration (and, when carried, its refs) moved in one transaction. */
@@ -73,7 +90,12 @@ export type LabelRenameOutcome =
   /** The candidate is claimed by ANOTHER declaration — refused, nothing written. */
   | "conflict"
   /** `locate` answered null (before or after the confirm) — nothing written. */
-  | "unresolved";
+  | "unresolved"
+  /** The user CANCELLED the "Update references?" question — nothing written. */
+  | "cancelled"
+  /** The declaration's label changed while the question was open, so the
+   *  question no longer describes the document — nothing written. */
+  | "stale";
 
 export interface LabelRenameOptions {
   /** Resolve the declaring node in `target` — by live position on the page,
@@ -137,8 +159,11 @@ export async function renameLabelWithRefs(
   const refCount = oldLabel && newLabel ? countLabelRefs(target.state.doc, oldLabel) : 0;
 
   let carryRefs = refCount > 0;
-  if (carryRefs && oldLabel && newLabel && opts.confirm) {
-    carryRefs = await opts.confirm(oldLabel, newLabel, refCount);
+  const asked = carryRefs && !!oldLabel && !!newLabel && !!opts.confirm;
+  if (asked) {
+    const choice = await opts.confirm!(oldLabel!, newLabel!, refCount);
+    if (choice === "cancel") return "cancelled";
+    carryRefs = choice === "confirm";
   }
 
   // Re-resolve after the await — the declaration by `locate`, the refs by a
@@ -147,6 +172,15 @@ export async function renameLabelWithRefs(
   // caller (a float, the Outline) relies on.
   const after = opts.locate();
   if (!after) return "unresolved";
+  if (asked) {
+    // Nor does any FACT survive it. The question named `oldLabel`; if the
+    // declaration now says something else (a float, the Outline, an undo, a
+    // reload moved it), writing would clobber that edit and carry refs from a
+    // key the node no longer declares. And a key free before the modal may
+    // have been claimed by another declaration while it was up.
+    if (currentLabelOf(after.node) !== oldLabel) return "stale";
+    if (newLabel && isLabelTaken(target, newLabel, oldLabel)) return "conflict";
+  }
 
   const tr = target.state.tr;
   tr.setNodeMarkup(after.pos, undefined, {
@@ -167,14 +201,20 @@ export async function renameLabelWithRefs(
 
 /**
  * The words the "Update references?" confirm says — spelled ONCE, read by the
- * dialog producer (`EditorPane`). Kept beside the door so the question and the
+ * dialog producer (`EditorPane`, through the three-way `choose`). Kept beside the door so the question and the
  * mechanism it gates cannot drift apart.
  */
 export function labelRenameConfirmCopy(
   oldLabel: string,
   newLabel: string,
   refCount: number,
-): { title: string; message: string; confirmLabel: string; cancelLabel: string } {
+): {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  secondaryLabel: string;
+  cancelLabel: string;
+} {
   const noun = refCount === 1 ? "1 reference" : `${refCount} references`;
   return {
     title: "Update references?",
@@ -184,6 +224,8 @@ export function labelRenameConfirmCopy(
       `Leaving ${refCount === 1 ? "it" : "them"} keeps ${refCount === 1 ? "it" : "them"} ` +
       `pointing at "${oldLabel}", which nothing will declare.`,
     confirmLabel: "Update references",
-    cancelLabel: "Leave references",
+    secondaryLabel: "Leave references",
+    // Escape and click-away resolve this same answer: rename NOTHING.
+    cancelLabel: "Cancel",
   };
 }

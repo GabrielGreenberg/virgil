@@ -262,7 +262,10 @@ import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { elementAnchor, type LiveAnchor } from "./menu/live-anchor";
 import { useConfirmDialog } from "./ConfirmDialog";
-import { labelRenameConfirmCopy } from "@/lib/tiptap/label-rename";
+import {
+  labelRenameConfirmCopy,
+  type LabelRenameConfirm,
+} from "@/lib/tiptap/label-rename";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import {
   buildMarginItemHandlers,
@@ -4706,8 +4709,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `onConfirmFootnoteMove` had none for five months, so their consumers were
   // dead with every type green — `editor-callback-producer-census.test.ts`
   // now pins every optional callback `Editor.tsx` declares to this mount.
-  const { confirm: confirmFromNodeView, dialog: nodeViewConfirmDialog } =
-    useConfirmDialog();
+  const {
+    confirm: confirmFromNodeView,
+    choose: chooseFromNodeView,
+    dialog: nodeViewConfirmDialog,
+  } = useConfirmDialog();
   const handleConfirmHeadingDelete = useCallback(
     (typeName: string) =>
       confirmFromNodeView({
@@ -4730,14 +4736,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
   // "Update references?" — asked by the label-rename door
   // (`@/lib/tiptap/label-rename`) whenever a heading / figure label is renamed
-  // while `\ref`s still name the old key. YES carries the refs in the rename's
-  // own transaction; NO leaves them on the old key (the user means to
-  // re-declare it). The words are the door's, spelled once beside the
-  // mechanism they gate. Not `danger`: nothing is destroyed either way.
-  const handleConfirmLabelRename = useCallback(
-    (oldLabel: string, newLabel: string, refCount: number) =>
-      confirmFromNodeView(labelRenameConfirmCopy(oldLabel, newLabel, refCount)),
-    [confirmFromNodeView],
+  // while `\ref`s still name the old key. THREE answers (task 876): "Update
+  // references" carries the refs in the rename's own transaction; "Leave
+  // references" renames alone (the user means to re-declare the old key); and
+  // Escape / click-away CANCEL the rename outright. A boolean `confirm` read
+  // Escape as "Leave references" and orphaned every ref. The words are the
+  // door's, spelled once beside the mechanism they gate. Not `danger`.
+  const handleConfirmLabelRename = useCallback<LabelRenameConfirm>(
+    (oldLabel, newLabel, refCount) =>
+      chooseFromNodeView(labelRenameConfirmCopy(oldLabel, newLabel, refCount)),
+    [chooseFromNodeView],
   );
   // Moving an ANCHORED footnote by dropping its panel card back into the
   // document (Editor.tsx's `MIME_FOOTNOTE` drop branch — retained for a

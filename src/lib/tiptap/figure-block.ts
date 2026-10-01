@@ -2,6 +2,7 @@ import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import type { MutableRefObject, RefObject } from "react";
 import FigureBlockNodeView from "@/components/FigureBlockNodeView";
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
 // CHIP 6a: the pure (React-free) fresh-attrs builders + raw synthesizer moved to
 // `figure-attrs.ts` so React-LIGHT consumers (the action registry's `figureRun`,
@@ -24,11 +25,7 @@ import {
   type ActionContext,
 } from "@/lib/actions/action-registry";
 
-type LabelRenameHandler = (
-  oldLabel: string,
-  newLabel: string,
-  refCount: number,
-) => Promise<boolean>;
+type LabelRenameHandler = LabelRenameConfirm;
 type DeleteHandler = () => Promise<boolean>;
 
 // Shared between FigureBlock and GraphicsBlock — the NodeView reads

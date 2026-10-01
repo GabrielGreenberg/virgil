@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { isLabelTaken, collectLabelKeys, isLabelTakenIn } from "@/lib/labels";
-import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
+import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { iconHint } from "@/components/Hint";
@@ -31,9 +31,7 @@ interface Props {
    *  mirrors MAIN's already-resolved number) unchanged. */
   canNumber?: boolean;
   getFigurePos?: () => number | null;
-  onConfirmRename?:
-    | ((oldLabel: string, newLabel: string, refCount: number) => Promise<boolean>)
-    | null;
+  onConfirmRename?: LabelRenameConfirm | null;
   onConfirmDelete?: (() => Promise<boolean>) | null;
   readOnly?: boolean;
 }
@@ -136,7 +134,7 @@ export default function FigureAnnotation({
     // (`onConfirmRename`, produced by `EditorPane`), and moves the
     // declaration and every ref in ONE transaction. The heading strip and
     // the Outline's label editor enter the same door.
-    await renameLabelWithRefs(editor, {
+    const outcome = await renameLabelWithRefs(editor, {
       locate: () => {
         const pos = getFigurePos();
         if (pos == null) return null;
@@ -146,6 +144,10 @@ export default function FigureAnnotation({
       newLabel,
       confirm: onConfirmRename ?? null,
     });
+    // Nothing written (cancelled, stale, conflict, unresolved): the field's
+    // draft goes back to the committed label rather than holding a key the
+    // document never took (task 876).
+    if (outcome !== "renamed") setDraft(label);
   }, [draft, editor, label, getFigurePos, onConfirmRename]);
 
   const toggleNumbered = useCallback(() => {

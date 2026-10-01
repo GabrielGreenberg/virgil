@@ -29,7 +29,7 @@ import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { setAttrIfChanged, setDataIfChanged } from "@/lib/tiptap/idempotent-dom";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { headingAttrsForLevel } from "@/lib/tiptap/heading-level";
-import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
+import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
 import {
@@ -113,11 +113,7 @@ import type { SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 // `.current` on each at interaction time. `MutableRefObject<F | undefined>`
 // mirrors the `useRef(prop)` shape in Editor.tsx exactly, so passing the
 // component's existing refs is byte-identical.
-type LabelRenameHandler = (
-  oldLabel: string,
-  newLabel: string,
-  refCount: number,
-) => Promise<boolean>;
+type LabelRenameHandler = LabelRenameConfirm;
 type HeadingDeleteHandler = (typeName: string) => Promise<boolean>;
 type HeadingTypeMenuOpener = (params: {
   anchorRect: DOMRect;

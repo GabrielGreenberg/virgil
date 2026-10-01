@@ -37,6 +37,7 @@ import { Editor, type Content } from "@tiptap/core";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
 import FigureAnnotation from "@/components/FigureAnnotation";
+import type { LabelRenameChoice } from "@/lib/tiptap/label-rename";
 
 afterEach(cleanup);
 
@@ -98,7 +99,7 @@ const figureOf = (editor: Editor) => findNodeByUuid(editor, FIG);
  *  without the focus the whole mechanism under test cannot fire. */
 function openLabelInput(
   editor: Editor,
-  onConfirmRename: ((o: string, n: string, c: number) => Promise<boolean>) | null,
+  onConfirmRename: ((o: string, n: string, c: number) => Promise<LabelRenameChoice>) | null,
 ) {
   const utils = render(
     <FigureAnnotation
@@ -130,7 +131,7 @@ describe("figure label — the edit session ends exactly ONCE (task 555)", () =>
         // input that is still mounted. Pre-555 this ran the blur's own commit
         // from the stale closure and asked a SECOND time.
         input.blur();
-        return true;
+        return "confirm" as const;
       });
 
       const opened = openLabelInput(editor, confirm);
@@ -160,7 +161,7 @@ describe("figure label — the edit session ends exactly ONCE (task 555)", () =>
         content: [{ type: "text", text: "Head" }],
       });
 
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const { input, container } = openLabelInput(editor, confirm);
 
       fireEvent.change(input, { target: { value: "fig:taken" } });
@@ -181,7 +182,7 @@ describe("figure label — the edit session ends exactly ONCE (task 555)", () =>
   it("Escape abandons the draft, writing nothing", async () => {
     const { editor, teardown } = mount();
     try {
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const { input, container } = openLabelInput(editor, confirm);
 
       fireEvent.change(input, { target: { value: "fig:renamed" } });
@@ -207,7 +208,7 @@ describe("figure label — the edit session ends exactly ONCE (task 555)", () =>
         content: [{ type: "text", text: "Head" }],
       });
 
-      const confirm = vi.fn(async () => true);
+      const confirm = vi.fn(async () => "confirm" as const);
       const { input, container } = openLabelInput(editor, confirm);
 
       fireEvent.change(input, { target: { value: "fig:taken" } });

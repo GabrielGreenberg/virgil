@@ -1,5 +1,6 @@
 "use client";
 
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useEditor,
@@ -155,13 +156,10 @@ function ExampleCardEditor({
   // threaded for parity with the factory contract. `.current` is reassigned
   // each render so the closures see the live main handle.
 
-  const onConfirmLabelRenameRef = useRef<
-    | ((oldLabel: string, newLabel: string, refCount: number) => Promise<boolean>)
-    | undefined
-  >(undefined);
+  const onConfirmLabelRenameRef = useRef<LabelRenameConfirm | undefined>(undefined);
   onConfirmLabelRenameRef.current = (oldLabel, newLabel, refCount) =>
     editorRef.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
-    Promise.resolve(false);
+    Promise.resolve("confirm");
 
   const onConfirmHeadingDeleteRef = useRef<
     ((typeName: string) => Promise<boolean>) | undefined

@@ -40,6 +40,7 @@
  * drops the mark cleanly.
  */
 
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import {
   type RefObject,
   useCallback,
@@ -129,17 +130,10 @@ export function LinkedRangeBody({
   // MAIN. `.current` is reassigned each render so the closures see the live
   // main handle.
 
-  const onConfirmLabelRenameRef = useRef<
-    | ((
-        oldLabel: string,
-        newLabel: string,
-        refCount: number,
-      ) => Promise<boolean>)
-    | undefined
-  >(undefined);
+  const onConfirmLabelRenameRef = useRef<LabelRenameConfirm | undefined>(undefined);
   onConfirmLabelRenameRef.current = (oldLabel, newLabel, refCount) =>
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
-    Promise.resolve(false);
+    Promise.resolve("confirm");
 
   const onConfirmHeadingDeleteRef = useRef<
     ((typeName: string) => Promise<boolean>) | undefined
