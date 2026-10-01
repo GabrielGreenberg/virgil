@@ -36,6 +36,7 @@ import { isModeB, isRangedModeB } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { generateEntityId } from "@/lib/uuid";
 import { transactionAdmitted } from "@/lib/tiptap/transaction-admitted";
+import { resolvePaneMarker } from "@/components/editor-layout/pane-dom";
 import {
   linkCardKeyFromToken,
   linkCardSelector,
@@ -498,9 +499,12 @@ export function jumpToLink(
     }
   }
   if (dir === "to-card" || dir === "both") {
-    const entryEl = document.querySelector(
+    // Visible pane first (task 873): card ids are unique only per document,
+    // so a hidden keep-alive pane can hold the same address.
+    const entryEl = resolvePaneMarker(
       linkCardSelector(link.target.ref.kind, link.target.ref.id),
-    ) as HTMLElement | null;
+      "fail-open",
+    );
     if (entryEl) {
       if (sourceY != null) {
         alignEntryToYIfNeeded(entryEl, sourceY);

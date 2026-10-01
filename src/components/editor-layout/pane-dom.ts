@@ -66,6 +66,13 @@
  * lookup), and widening this door to every `data-*` in the app would be the
  * "broadest blast radius" mistake the central principle warns against.
  *
+ * What they DO share is the visibility rung. Since task 873 the per-document id
+ * lookups that used to take the first match off `document` — `findOmniEntry`,
+ * `openForCard`'s presence check and scroll targets, `jumpToLink`'s card end —
+ * ask the GENERIC `resolvePaneMarker` with their own selector and policy. That
+ * reuses the rung without minting a named door per card attribute: the ids are
+ * 4-hex and unique only per document, so two open docs can mount the same one.
+ *
  * CI: `pane-dom-census.test.ts` — no production file in either silo may resolve
  * one of these markers off `document` outside this file. A relative
  * `closest(…)` / `root.querySelector(…)` from an element already inside the

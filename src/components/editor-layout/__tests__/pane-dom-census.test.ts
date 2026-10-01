@@ -330,16 +330,91 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
       expect(q.selector).toBe(`[${HOLE}]`);
     });
 
-    it("the real registry path folds — the two atom markers stay SEEN", () => {
-      // Not synthetic: `marker-clicks.ts` reads `ATOM_REGISTRY.<kind>.domIdAttr`
-      // across a module boundary (task 645), and the two `data-*-id` entries in
-      // EXEMPT_GLOBAL_MARKERS below are earned by exactly those two calls. If
-      // this fold regresses, the rot leg fails rather than the coverage going
-      // silent — which is the whole point.
-      const file = path.join(SRC, "components/editor-layout/event-bridges/marker-clicks.ts");
-      const selectors = SCANNER.documentQueries(file).map((q) => q.selector);
-      expect(selectors.some((sel) => sel.includes("data-footnote-id"))).toBe(true);
-      expect(selectors.some((sel) => sel.includes("data-citation-id"))).toBe(true);
+    it("the real registry path folds across a module boundary", () => {
+      // Task 645's fold, against the REAL `ATOM_REGISTRY`. Until task 873 the
+      // proof was `marker-clicks.ts`'s own `sourceEl` reads — but those were
+      // dead (their consumer discarded the element), so deleting them took the
+      // `data-footnote-id` / `data-citation-id` exemptions with them and the
+      // census is now strict for both. The fold is pinned here instead.
+      flags(
+        'import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";\n' +
+          "export const f = (id: string) => document.querySelector(`[${ATOM_REGISTRY.footnote.domIdAttr}=\"${id}\"]`);",
+        "data-footnote-id",
+      );
+      flags(
+        'import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";\n' +
+          "export const f = (id: string) => document.querySelector(`[${ATOM_REGISTRY.citation.domIdAttr}=\"${id}\"]`);",
+        "data-citation-id",
+      );
+    });
+
+    // Task 873 — a selector composed by a BUILDER. Every selector the link
+    // SSOT emits is a call (`linkIdSelector(id)`), and a call was a HOLE, so
+    // the SSOT that retired hand-spelled selectors made its own `document`
+    // reads invisible here. No hand list of builders: any same-repo function
+    // whose body is a single `return` folds, parameters bound to arguments.
+    it("a selector returned by a REAL imported builder", () => {
+      flags(
+        'import { linkIdSelector } from "@/links/link-dom-contract";\n' +
+          "export const f = (id: string) => document.querySelector(`.linked-anchor${linkIdSelector(id)}`);",
+        "data-link-id",
+      );
+      flags(
+        'import { linkKindSelector, linkIdSelector } from "@/links/link-dom-contract";\n' +
+          'export const f = (id: string) => document.querySelector(linkKindSelector("citation") + linkIdSelector(id));',
+        "data-link-kind",
+      );
+      flags(
+        'import { linkCardSelector } from "@/links/link-dom-contract";\n' +
+          'export const f = (id: string) => document.querySelector(linkCardSelector("citation", id));',
+        "data-link-card",
+      );
+    });
+
+    it("a builder's DEFAULT parameter folds, and an argument overrides it", () => {
+      // `omniEntrySelector(key, attr = "data-omni-entry")`, the real one.
+      const imp =
+        'import { omniEntrySelector } from "@/components/editor-layout/event-bridges/open-for-card";\n';
+      flags(imp + "export const f = (k: string) => document.querySelector(omniEntrySelector(k));", "data-omni-entry");
+      flags(
+        imp + 'export const f = (k: string) => document.querySelector(omniEntrySelector(k, "data-dock-slot"));',
+        "data-dock-slot",
+      );
+      // …and a parameter with a default folds to it inside its OWN function.
+      flags(
+        'export const f = (k: string, attr = "data-strip-side") => document.querySelector(`[${attr}="${k}"]`);',
+        "data-strip-side",
+      );
+    });
+
+    it("local builders fold too — a declaration and a const arrow", () => {
+      flags(
+        'function sel(k: string) { return `[data-flex-col="${k}"]`; }\nexport const f = (k: string) => document.querySelector(sel(k));',
+        "data-flex-col",
+      );
+      flags(
+        'const sel = (side: string) => `[${"data-panel-column-side"}="${side}"]`;\nexport const f = () => document.querySelector(sel("left"));',
+        "data-panel-column-side",
+      );
+      // An argument's value threads through: the builder spells only `[${a}]`.
+      const [q] = scanSynthetic(
+        'const wrap = (a: string, v: string) => `[${a}="${v}"]`;\nexport const f = (v: string) => document.querySelector(wrap("data-x", v));',
+      );
+      expect(q.selector).toBe(`[data-x="${HOLE}"]`);
+    });
+
+    it("a call it cannot see through stays a HOLE (no invented coverage)", () => {
+      // A multi-statement body, a method call and a parameter with no default
+      // are runtime values; they must not fold to a file const that shares a
+      // name with them either.
+      for (const code of [
+        'function sel() { const a = 1; return `[data-dock-slot]`; }\nexport const f = () => document.querySelector(sel());',
+        'declare const o: { sel(): string };\nexport const f = () => document.querySelector(o.sel());',
+        'const attr = "data-dock-slot";\nexport const f = (attr: string) => document.querySelector(`[${attr}]`);',
+      ]) {
+        const [q] = scanSynthetic(code);
+        expect(q.selector, code).not.toContain("data-dock-slot");
+      }
     });
 
     it("an unfoldable part becomes a HOLE, never a false marker", () => {
@@ -376,7 +451,8 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
  * STATED LIMIT (the same one every leg above carries — see
  * `_document-query-scan.ts`): this sees the marker names a selector FOLDS to.
  * Since task 600 that includes names reached through `const` bindings (local or
- * imported) and concatenation; a selector computed at runtime is still unseen.
+ * imported) and concatenation, and since task 873 a selector returned by a
+ * same-repo builder call; a selector computed at runtime is still unseen.
  */
 const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
   // ── per-CARD, not per-PANE. The door's header scopes these OUT by name and
@@ -387,14 +463,13 @@ const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
   //    DIFFERENT door's business, and moving them here would hide that.
   "data-card-key": "per-CARD lookup — owned by the card-placement door, not this one",
   "data-pristine-card-id": "per-CARD sweep (drop-mode) — same family as data-card-key",
-  // Task 645: these two are no longer spelled as literals — `marker-clicks.ts`
-  // reads them off `ATOM_REGISTRY.<kind>.domIdAttr`. They stay VISIBLE here
-  // because the scanner now folds a path into a `const` object literal; the leg
-  // above pins that, so an SSOT read can never quietly become a blind spot.
-  "data-footnote-id":
-    "per-ATOM id inside a document — a marker-click jump, not pane chrome (registry-templated since task 645)",
-  "data-citation-id":
-    "per-ATOM id inside a document — a marker-click jump, not pane chrome (registry-templated since task 645)",
+  // Task 873: `data-footnote-id` / `data-citation-id` were listed here, earned
+  // only by `marker-clicks.ts` reads whose element nobody used. Those reads are
+  // gone, and so are the exemptions — a per-ATOM id is unique only per
+  // DOCUMENT, so a global read of one is exactly the hidden-pane hazard. The
+  // link-SSOT reads the builder fold surfaced (`data-link-id`, `-card`,
+  // `data-omni-entry`) went through `resolvePaneMarker` instead of onto this
+  // list, for the same reason.
   "data-contains-active-card":
     "per-CARD state flag, read only alongside [data-floating-panel]",
   // Task 600: these two were always read off `document` (the reconciler's

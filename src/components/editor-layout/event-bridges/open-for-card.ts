@@ -4,6 +4,7 @@ import type { CardKind, PanelKind } from "@/panels/_shared/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { alignEntryToYIfNeeded, scrollEntryIntoView } from "../layout-scroll";
+import { resolvePaneMarker } from "../pane-dom";
 
 /**
  * Routing helper used by every main-text click that wants to "show me
@@ -68,14 +69,26 @@ export function omniEntrySelector(key: string, attr = "data-omni-entry"): string
 
 /** Find the omni element for `key` (prefix-or-exact). Prefers the EXACT match
  *  (an `@N`-suffixed key or single-anchor row) over a prefix match, so a
- *  fully-qualified `@N` key lands on its own row, never the card's first. */
+ *  fully-qualified `@N` key lands on its own row, never the card's first.
+ *
+ *  VISIBLE pane first (task 873): card keys are unique only per document
+ *  (4-hex short ids), so the same key can be mounted in a hidden keep-alive
+ *  pane, and a bare `document.querySelector` takes whichever pane comes first
+ *  in DOM order. Visibility outranks exactness — a visible prefix row beats a
+ *  hidden exact one — and only when no pane shows the card does it fall open
+ *  to the first match, the pre-873 answer. */
 export function findOmniEntry(
   key: string,
   attr = "data-omni-entry",
 ): HTMLElement | null {
-  const exact = document.querySelector(`[${attr}="${key}"]`) as HTMLElement | null;
-  if (exact) return exact;
-  return document.querySelector(`[${attr}^="${key}@"]`) as HTMLElement | null;
+  const exact = `[${attr}="${key}"]`;
+  const prefix = `[${attr}^="${key}@"]`;
+  return (
+    resolvePaneMarker(exact, "fail-closed") ??
+    resolvePaneMarker(prefix, "fail-closed") ??
+    resolvePaneMarker(exact, "fail-open") ??
+    resolvePaneMarker(prefix, "fail-open")
+  );
 }
 
 function resolveHomeSide(prefs: ViewPrefs, panelId: PanelId, fallback: Side): Side {
@@ -84,7 +97,7 @@ function resolveHomeSide(prefs: ViewPrefs, panelId: PanelId, fallback: Side): Si
 
 function scrollAfterMount(selector: string, targetY?: number) {
   requestAnimationFrame(() => {
-    const entry = document.querySelector(selector) as HTMLElement | null;
+    const entry = resolvePaneMarker(selector, "fail-open");
     if (!entry) return;
     if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
     else scrollEntryIntoView(entry);
@@ -103,8 +116,10 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
 
   // Rule 1: Omni is already hosting the card somewhere → scroll there
   // (unless the caller is handling alignment itself).
+  // FAIL-CLOSED: a card hosted only by a hidden keep-alive pane's Omni is not
+  // "already showing" — answering yes would return without opening anything.
   if (skipScroll) {
-    const entry = document.querySelector(omniEntrySelector(omniKey));
+    const entry = resolvePaneMarker(omniEntrySelector(omniKey), "fail-closed");
     if (entry) return;
   } else if (tryScrollOmniEntry(omniKey, targetY)) {
     return;
@@ -143,7 +158,7 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
     const omniEntry =
       target === "omni" ? findOmniEntry(omniKey) : null;
     const entry =
-      omniEntry ?? (document.querySelector(entrySelector) as HTMLElement | null);
+      omniEntry ?? resolvePaneMarker(entrySelector, "fail-open");
     if (!entry) return;
     if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
     else scrollEntryIntoView(entry);

@@ -153,7 +153,6 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
       "float:card:todo:t1",
       123,
-      null, // no .linked-anchor span in this DOM
     );
   });
 
@@ -183,7 +182,6 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
       "float:card:report:r1@1",
       200,
-      null,
     );
   });
 
@@ -204,7 +202,6 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
       "float:card:report:r2",
       50,
-      null,
     );
   });
 
