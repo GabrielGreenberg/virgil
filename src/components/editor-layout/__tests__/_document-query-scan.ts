@@ -29,15 +29,23 @@
  *     `@/` specifier, named or renamed) — and, since task 645, a PATH into a
  *     `const` object literal (`ATOM_REGISTRY.footnote.domIdAttr`, dotted or
  *     string-keyed, through an `as const satisfies …` declaration and across
- *     module boundaries). A part that cannot be folded (a call, a runtime
- *     value) contributes a placeholder, so the literal parts around it still
- *     count.
+ *     module boundaries) — and, since task 873, a CALL to a same-repo SELECTOR
+ *     BUILDER: any function (declaration, or `const` arrow / function
+ *     expression, local or imported) whose body is a single `return <expr>` is
+ *     folded by binding each parameter to its folded argument (or its default
+ *     initialiser; HOLE when neither). No hand list of builders: the link SSOT's
+ *     `linkIdSelector(id)` and `omniEntrySelector(key)` surface their `data-*`
+ *     name the moment they are written. Likewise a PARAMETER with a default
+ *     (`attr = "data-omni-entry"`) folds to that default inside its own
+ *     function. A part that cannot be folded (a runtime value) contributes a
+ *     placeholder, so the literal parts around it still count.
  *
  * STATED LIMITS — what still passes, so an empty allowlist is not read as a
  * stronger claim than it is:
- *  - a selector computed at RUNTIME (a function's return value, a `let`, a
- *    parameter, an object property reached through a NON-const binding or a
- *    computed key) contributes nothing;
+ *  - a selector computed at RUNTIME (a call to a function whose body is more
+ *    than one `return`, a method call, a `let`, a parameter with no default
+ *    and no bound argument, an object property reached through a NON-const
+ *    binding or a computed key) contributes nothing;
  *  - an alias is resolved per FILE by name, not by scope, and only through a
  *    `const`/`let`/`var` initialiser (a parameter named `doc` that is passed
  *    `document` is invisible);
@@ -75,7 +83,39 @@ type FileFacts = {
   imports: Map<string, [string, string]>;
   /** Names bound to a document-valued initialiser. */
   docAliases: Set<string>;
+  /** `function NAME(…) { … }` declarations with a body, by name (task 873). */
+  fns: Map<string, ts.FunctionDeclaration>;
 };
+
+/** Parameter name → its folded text, while folding a builder's body. */
+type Env = Map<string, string>;
+
+/** The single expression a function-like RETURNS, or null if its body is
+ *  anything but `=> expr` / `{ return expr; }`. */
+function soleReturn(fn: ts.SignatureDeclaration): ts.Expression | null {
+  if (!ts.isFunctionDeclaration(fn) && !ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) {
+    return null;
+  }
+  const body = fn.body;
+  if (!body) return null;
+  if (!ts.isBlock(body)) return body;
+  if (body.statements.length !== 1) return null;
+  const [only] = body.statements;
+  return ts.isReturnStatement(only) && only.expression ? only.expression : null;
+}
+
+/** The nearest enclosing function-like that declares a parameter named
+ *  `name` — a real scope check, so a parameter shadows a same-named file const. */
+function enclosingParam(node: ts.Node, name: string): ts.ParameterDeclaration | null {
+  for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
+    if (ts.isFunctionLike(n)) {
+      for (const p of n.parameters) {
+        if (ts.isIdentifier(p.name) && p.name.text === name) return p;
+      }
+    }
+  }
+  return null;
+}
 
 const unwrap = (e: ts.Expression): ts.Expression => {
   while (
@@ -158,6 +198,7 @@ export class DocumentQueryScanner {
     const consts = new Map<string, ts.Expression>();
     const imports = new Map<string, [string, string]>();
     const docAliases = new Set<string>();
+    const fns = new Map<string, ts.FunctionDeclaration>();
     const visit = (node: ts.Node): void => {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
         const list = node.parent;
@@ -165,6 +206,9 @@ export class DocumentQueryScanner {
           ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
         if (isConst) consts.set(node.name.text, node.initializer);
         if (isDocumentish(node.initializer, docAliases)) docAliases.add(node.name.text);
+      }
+      if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+        fns.set(node.name.text, node);
       }
       if (
         ts.isImportDeclaration(node) &&
@@ -182,27 +226,44 @@ export class DocumentQueryScanner {
       ts.forEachChild(node, visit);
     };
     visit(sf);
-    const facts = { sf, consts, imports, docAliases };
+    const facts = { sf, consts, imports, docAliases, fns };
     this.facts.set(file, facts);
     return facts;
   }
 
   /** Fold an expression to the text it evaluates to; `HOLE` where unknowable. */
-  private fold(e: ts.Expression, file: string, depth = 0): string {
+  private fold(e: ts.Expression, file: string, depth = 0, env?: Env): string {
     if (depth > 12) return HOLE;
     e = unwrap(e);
     if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return e.text;
     if (ts.isTemplateExpression(e)) {
       let s = e.head.text;
       for (const span of e.templateSpans) {
-        s += this.fold(span.expression, file, depth + 1) + span.literal.text;
+        s += this.fold(span.expression, file, depth + 1, env) + span.literal.text;
       }
       return s;
     }
     if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-      return this.fold(e.left, file, depth + 1) + this.fold(e.right, file, depth + 1);
+      return this.fold(e.left, file, depth + 1, env) + this.fold(e.right, file, depth + 1, env);
     }
-    if (ts.isIdentifier(e)) return this.foldName(e.text, file, depth + 1);
+    if (ts.isIdentifier(e)) {
+      const bound = env?.get(e.text);
+      if (bound !== undefined) return bound;
+      // A parameter is not the file-level const that happens to share its
+      // name. Its DEFAULT is a value it can take, so it folds; with no default
+      // it is a runtime value.
+      const param = enclosingParam(e, e.text);
+      if (param) {
+        return param.initializer ? this.fold(param.initializer, file, depth + 1) : HOLE;
+      }
+      return this.foldName(e.text, file, depth + 1);
+    }
+    // `linkIdSelector(id)` — a call to a same-repo selector BUILDER (task 873).
+    // Before this, every selector the link SSOT composed was a HOLE, and the
+    // `data-*` reads it made off `document` were invisible to the census: the
+    // SSOT that kills one drift (hand-spelled selectors) blinded the guard that
+    // watches another (document-global reads).
+    if (ts.isCallExpression(e)) return this.foldCall(e, file, depth + 1, env);
     // `REGISTRY.footnote.domIdAttr` — a path into a `const` object literal
     // (task 645). Without this, moving a selector's marker name from a literal
     // into an SSOT row makes the read INVISIBLE to the census: the fix that
@@ -273,6 +334,55 @@ export class DocumentQueryScanner {
           : null;
       if (propKey === key) return { expr: prop.initializer, file: parent.file };
     }
+    return null;
+  }
+
+  /** Fold a call by folding the callee's sole `return`, with each parameter
+   *  bound to its argument folded in the CALLER's file (or its own default). */
+  private foldCall(e: ts.CallExpression, file: string, depth: number, env?: Env): string {
+    const callee = unwrap(e.expression);
+    if (!ts.isIdentifier(callee)) return HOLE;
+    const fn = this.resolveFunction(callee.text, file, depth + 1);
+    if (!fn) return HOLE;
+    const ret = soleReturn(fn.decl);
+    if (!ret) return HOLE;
+    const inner: Env = new Map();
+    fn.decl.parameters.forEach((p, i) => {
+      if (!ts.isIdentifier(p.name)) return;
+      const arg = e.arguments[i];
+      inner.set(
+        p.name.text,
+        arg
+          ? this.fold(arg, file, depth + 1, env)
+          : p.initializer
+            ? this.fold(p.initializer, fn.file, depth + 1, inner)
+            : HOLE,
+      );
+    });
+    return this.fold(ret, fn.file, depth + 1, inner);
+  }
+
+  /** The function a NAME calls — a declaration or a `const` arrow / function
+   *  expression, local or imported — with the file it lives in. */
+  private resolveFunction(
+    name: string,
+    file: string,
+    depth: number,
+  ): { decl: ts.SignatureDeclaration; file: string } | null {
+    if (depth > 12) return null;
+    const facts = this.factsFor(file);
+    if (!facts) return null;
+    const declared = facts.fns.get(name);
+    if (declared) return { decl: declared, file };
+    const local = facts.consts.get(name);
+    if (local) {
+      const init = unwrap(local);
+      return ts.isArrowFunction(init) || ts.isFunctionExpression(init)
+        ? { decl: init, file }
+        : null;
+    }
+    const imported = facts.imports.get(name);
+    if (imported) return this.resolveFunction(imported[1], imported[0], depth + 1);
     return null;
   }
 

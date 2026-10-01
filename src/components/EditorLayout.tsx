@@ -1209,7 +1209,7 @@ export default function EditorLayout() {
   // another gesture had pinned — so neither it nor its neighbours move at
   // all (task 328, example 2).
   const alignOmniCardWithClick = useCallback(
-    (cardId: string, clickY: number, _sourceEl: HTMLElement | null) => {
+    (cardId: string, clickY: number) => {
       requestOmniCardPlacement(cardId, { viewportY: clickY });
     },
     [],

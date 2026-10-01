@@ -85,4 +85,30 @@ describe("findOmniEntry — multi-anchor `@N` resolution (REP-F3-01)", () => {
     const w1 = el(`${base}@1`, "data-omni-entry-wrapper");
     expect(findOmniEntry(`${base}@1`, "data-omni-entry-wrapper")).toBe(w1);
   });
+
+  // Task 873 — card keys are unique only per DOCUMENT, so two keep-alive panes
+  // can mount the same one. jsdom lays nothing out, so "visible" is stubbed the
+  // way `isPaneMarkerVisible` reads it (`offsetHeight > 0`).
+  const show = (e: HTMLElement) =>
+    Object.defineProperty(e, "offsetHeight", { configurable: true, value: 10 });
+
+  it("prefers the VISIBLE pane's row over an earlier hidden pane's", () => {
+    el("float:card:note:ab12"); // hidden pane, first in DOM order
+    const visible = el("float:card:note:ab12");
+    show(visible);
+    expect(findOmniEntry("float:card:note:ab12")).toBe(visible);
+  });
+
+  it("visibility outranks exactness: a visible prefix row beats a hidden exact one", () => {
+    el("float:card:note:ab12"); // hidden exact
+    const row = el("float:card:note:ab12@0");
+    show(row);
+    expect(findOmniEntry("float:card:note:ab12")).toBe(row);
+  });
+
+  it("falls open to the first match when no pane shows the card", () => {
+    const first = el("float:card:note:ab12");
+    el("float:card:note:ab12");
+    expect(findOmniEntry("float:card:note:ab12")).toBe(first);
+  });
 });

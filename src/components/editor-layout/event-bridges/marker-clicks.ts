@@ -4,7 +4,6 @@ import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
 // is a second speller that silently stops matching if it ever changes (202).
-import { linkIdSelector } from "@/links/link-dom-contract";
 // The footnote/citation entry addresses below were hand-copied from
 // `panelEntrySelector`'s own rows, byte for byte. One owner now (task 204):
 // a composite selector drifts the way selectors do — by not matching.
@@ -25,7 +24,6 @@ import {
   ATOM_CREATE_POPOVER_EVENT,
   type AtomCreateRequest,
 } from "@/lib/actions/atom-create";
-import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tiptap/label";
 
 /** The card kinds that route through the shared anchor-click body
@@ -105,7 +103,7 @@ interface AnchorClickEnv {
   setActiveRight: (id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
-  alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
+  alignOmniCardWithClick: (cardId: string, clickY: number) => void;
   /** Resolve the ACTIVE doc's interaction store at CLICK time. A getter (not a
    *  captured instance) because this bridge is shell-mounted above the per-doc
    *  CardStoreProvider and its listener effect doesn't re-subscribe on doc
@@ -179,13 +177,10 @@ function routeAnchorClick(
     } satisfies OpenForCardDeps,
   );
   if (typeof clickY === "number") {
-    const sourceEl = document.querySelector(
-      `.linked-anchor${linkIdSelector(id)}`,
-    ) as HTMLElement | null;
     // alignOmniCardWithClick converts clickY → pod-relative and
     // publishes a pin request. Retries one rAF later if the panel
     // column hasn't rendered yet (cold-mount case).
-    env.alignOmniCardWithClick(omniKey, clickY, sourceEl);
+    env.alignOmniCardWithClick(omniKey, clickY);
   }
 }
 
@@ -262,7 +257,7 @@ export function useMarkerClickBridges(deps: {
    *  natural top, not a pod coordinate — so the pinned card rides later
    *  document edits. OmniViewPanel reads the pin and overrides that one
    *  card's transform. No document scroll. */
-  alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
+  alignOmniCardWithClick: (cardId: string, clickY: number) => void;
   /** Resolve the ACTIVE doc's interaction store at click time (see
    *  `AnchorClickEnv.getActiveCardStore`). */
   getActiveCardStore: () => CardStore;
@@ -316,13 +311,10 @@ export function useMarkerClickBridges(deps: {
         },
       );
       if (typeof clickY === "number") {
-        const sourceEl = document.querySelector(
-          `.${ATOM_REGISTRY.footnote.domClass}[${ATOM_REGISTRY.footnote.domIdAttr}="${detail.footnoteId}"]`,
-        ) as HTMLElement | null;
         // alignOmniCardWithClick converts clickY → pod-relative and
         // publishes a pin request. Retries one rAF later if the panel
         // column hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(cardPopKey("footnote", detail.footnoteId), clickY, sourceEl);
+        alignOmniCardWithClick(cardPopKey("footnote", detail.footnoteId), clickY);
       }
     };
     window.addEventListener("virgil-footnote-click", handler);
@@ -366,10 +358,7 @@ export function useMarkerClickBridges(deps: {
       // committed the new selection state AND useInTextPositions has
       // recomputed card positions.
       if (typeof clickY === "number") {
-        const sourceEl = document.querySelector(
-          `.${ATOM_REGISTRY.citation.domClass}[${ATOM_REGISTRY.citation.domIdAttr}="${detail.citationId}"]`,
-        ) as HTMLElement | null;
-        alignOmniCardWithClick(cardPopKey("citation", detail.citationId), clickY, sourceEl);
+        alignOmniCardWithClick(cardPopKey("citation", detail.citationId), clickY);
       }
     };
     window.addEventListener("virgil-citation-click", handler);
