@@ -10,7 +10,8 @@
  *    / takeOver` actions.
  *  - Heartbeat the pen every penHeartbeatMs while we're the holder, and
  *    heartbeat focus claims every cardHeartbeatMs while a card is focused.
- *  - Flush release on `beforeunload` (best-effort).
+ *  - Flush release on `pagehide` (best-effort), re-join on bfcache restore.
+ *  - Every write goes through the collab.json authority (`collab-store`).
  *
  * No co-editing. No cursor sync. The pen is the single coordination
  * primitive for the .tex; per-card focus claims coordinate sidecar cards.
@@ -25,12 +26,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { readSidecar, readTextFile, writeSidecar } from "@/lib/storage";
-import {
-  beginDocPipeline,
-  getActiveHandle,
-  isStalePipelineError,
-} from "@/lib/multi-window/doc-pipeline";
+import { readSidecar, readTextFile } from "@/lib/storage";
+import { mutateCollab, releaseSelf } from "@/lib/collab-store";
 import {
   COLLAB_SIDECAR_FILE,
   COLLAB_TIMINGS,
@@ -197,58 +194,36 @@ export function useCollab(docId: string | null): CollabHook {
   const lastSelectionRef = useRef<string>("");
   const lastCursorRef = useRef<string | null>(null);
 
-  /** Read-modify-write under a single in-flight chain.
+  /** Bumped on every local mutation, so a queued write that resolves after
+   *  a NEWER optimistic update doesn't roll the UI back to its older result. */
+  const mutateSeqRef = useRef(0);
+
+  /** Read-modify-write through the collab.json authority (task 872).
    *
-   *  Re-reads from disk before applying the mutation so we don't stomp
-   *  partner-side changes that landed since our last poll. Without this,
-   *  a 10s heartbeat that fires between 5s polls would write back the
-   *  stale (partner-less) snapshot and lose the partner's presence on
-   *  every cycle. The per-file write queue serializes *our* writes; this
-   *  pre-read serializes against the disk's current state.
+   *  The read happens INSIDE the doc write queue (`mutateCollab` →
+   *  `mutateSidecar`), so a partner's change that landed since our last poll
+   *  — or a concurrent write from another window — is the base `fn` is
+   *  applied to, never overwritten by a stale snapshot. `mergeKeepingSelf`
+   *  still lays our own fresher heartbeats over the disk read.
    *
-   *  The active doc-write handle is resolved *lazily* at call time
-   *  (not memoized into the callback's deps) so that React StrictMode
-   *  / Fast Refresh remounts — which can rotate the underlying
-   *  pipelineId in the doc-pipeline registry mid-flight — don't leave
-   *  every subsequent mutate writing through a stale handle that fails
-   *  `assertActive` and silently drops the change.
+   *  Local state updates optimistically (so the pill flips at once), then
+   *  adopts the authoritative post-write sidecar unless a newer mutation has
+   *  been issued in the meantime.
    */
   const mutate = useCallback(
     async (fn: (prev: CollabSidecar) => CollabSidecar): Promise<void> => {
       const id = docIdRef.current;
       if (!id) return;
-      // Prefer the pipeline that <DocPipeline> already registered, but
-      // fall back to beginDocPipeline if the registry is empty. The
-      // registry can be empty in two situations: (1) we're running in
-      // a component tree that doesn't mount <DocPipeline> for this
-      // doc (e.g. a sidecar-only consumer), and (2) React StrictMode /
-      // Fast Refresh has rotated through enough mount/unmount cycles
-      // that the queued microtask cleanup deleted the entry before
-      // the matching remount could revive it. beginDocPipeline is
-      // idempotent — when DocPipeline next mounts/remounts, it
-      // reuses this entry rather than creating a fresh pipelineId,
-      // so this fallback doesn't fragment the registry.
-      const handle = getActiveHandle(id) ?? beginDocPipeline(id);
-      let base = sidecarRef.current;
-      try {
-        const fresh = await readSidecar<CollabSidecar>(
-          id,
-          COLLAB_SIDECAR_FILE,
-          EMPTY_COLLAB_SIDECAR,
-        );
-        base = mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null);
-      } catch {
-        /* fall back to local */
-      }
-      const next = fn(base);
-      sidecarRef.current = next;
-      setSidecar(next);
-      try {
-        await writeSidecar(handle, COLLAB_SIDECAR_FILE, next);
-      } catch (err) {
-        if (isStalePipelineError(err)) return;
-        /* swallow other errors — partner will re-converge on next poll */
-      }
+      const seq = ++mutateSeqRef.current;
+      const optimistic = fn(sidecarRef.current);
+      sidecarRef.current = optimistic;
+      setSidecar(optimistic);
+      const landed = await mutateCollab(id, (fresh) =>
+        fn(mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null)),
+      );
+      if (!landed || seq !== mutateSeqRef.current || docIdRef.current !== id) return;
+      sidecarRef.current = landed;
+      setSidecar(landed);
     },
     [],
   );
@@ -385,41 +360,42 @@ export function useCollab(docId: string | null): CollabHook {
     return () => clearInterval(id);
   }, [identity, sidecar.enabled, mutate]);
 
-  /* ── beforeunload: best-effort release ───────────────────────── */
+  /* ── pagehide: best-effort release; pageshow(persisted): re-join ── */
+  // `pagehide`, not `beforeunload` (task 872): it fires on close AND on
+  // bfcache entry, and iOS Safari / discarded tabs never fire
+  // `beforeunload` — the doc locks and the emergency mirror release on the
+  // same event. The release is a MUTATOR applied to a fresh in-queue read
+  // (clear my pen, drop my presence), never the last-polled snapshot, so a
+  // partner's pen request or presence written since that poll survives.
+  // Unload can't await: the queued op is fire-and-forget, best-effort.
 
   useEffect(() => {
-    const handler = () => {
+    const onPageHide = () => {
       const id = docIdRef.current;
       const me = identityRef.current?.name;
       if (!id || !me) return;
-      const handle = getActiveHandle(id) ?? beginDocPipeline(id);
-      const prev = sidecarRef.current;
-      if (!prev.enabled) return;
-      let next = prev;
-      if (prev.pen.holder === me) {
-        next = {
-          ...next,
-          pen: {
-            ...next.pen,
-            holder: null,
-            since: null,
-            lastHeartbeat: null,
-            lastActivity: null,
-          },
-        };
-      }
-      if (next.presence[me]) {
-        const { [me]: _gone, ...rest } = next.presence;
-        next = { ...next, presence: rest };
-      }
-      sidecarRef.current = next;
-      // Fire-and-forget; FSA writes are async but the queue may not
-      // flush before unload completes. This is best-effort.
-      void writeSidecar(handle, COLLAB_SIDECAR_FILE, next).catch(() => {});
+      const release = releaseSelf(me);
+      const local = release(sidecarRef.current);
+      if (local) sidecarRef.current = local;
+      void mutateCollab(id, release);
     };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, []);
+    const onPageShow = (e: PageTransitionEvent) => {
+      // Restored from the bfcache: the release above already ran, so re-join
+      // presence (the pen stays released — taking it is a user act).
+      if (!e.persisted) return;
+      const me = identityRef.current;
+      if (!docIdRef.current || !me) return;
+      void mutate((prev) =>
+        prev.enabled ? touchPresence(ensureParticipant(prev, me), me.name, {}) : prev,
+      );
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [mutate]);
 
   /* ── Actions ─────────────────────────────────────────────────── */
 
@@ -443,24 +419,10 @@ export function useCollab(docId: string | null): CollabHook {
   const disableCollab = useCallback(async () => {
     await mutate((prev) => {
       const me = identityRef.current?.name ?? null;
-      let next: CollabSidecar = { ...prev, enabled: false };
-      if (me && prev.pen.holder === me) {
-        next = {
-          ...next,
-          pen: {
-            ...next.pen,
-            holder: null,
-            since: null,
-            lastHeartbeat: null,
-            lastActivity: null,
-          },
-        };
-      }
-      if (me && next.presence[me]) {
-        const { [me]: _gone, ...rest } = next.presence;
-        next = { ...next, presence: rest };
-      }
-      return next;
+      // Leave exactly as the unload release does (my pen, my presence), then
+      // switch the mode off.
+      const released = me ? releaseSelf(me)(prev) ?? prev : prev;
+      return { ...released, enabled: false };
     });
   }, [mutate]);
 

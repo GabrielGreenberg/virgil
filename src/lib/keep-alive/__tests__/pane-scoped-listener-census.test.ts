@@ -146,8 +146,8 @@ const LEDGER: Record<string, Row> = {
   },
   "hooks/useCollab.ts": {
     scope: "by-design",
-    events: ["window.beforeunload"],
-    why: "each pane releases its own pen on unload",
+    events: ["window.pagehide", "window.pageshow"],
+    why: "each pane releases its own pen + presence on pagehide and re-joins presence on bfcache restore (task 872)",
   },
   "hooks/useDocument.ts#doc": {
     scope: "doc",
