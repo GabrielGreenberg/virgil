@@ -239,7 +239,7 @@ export function SuggestionCard({
       onKeyDown={handleDeleteKey}
       className="mb-2"
       kind={family}
-      kindOptions={onConvert ? morphOptionsFor(family) : undefined}
+      kindOptions={onConvert ? morphOptionsFor(family, card) : undefined}
       onKindChange={onConvert ? (k) => onConvert(family, card.id, k) : undefined}
       canJump={isAnchored && !!onJump}
       onJump={(e) => {

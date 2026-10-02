@@ -55,7 +55,7 @@
  * kind-chevron click), never per transaction.
  */
 
-import { CARD_REGISTRY } from "../card-registry";
+import { CARD_REGISTRY, canMorphCard } from "../card-registry";
 import { describeDrops, morphDropsTone } from "../morph-drop-fields";
 import { morphDropsHeld } from "../has-content";
 import type { CardKind } from "../types";
@@ -368,6 +368,11 @@ export async function runCardLifecycleEvent(
   if (ev.type === "morph") {
     const morph = CARD_REGISTRY[ev.fromKind].morph;
     if (!morph) return false; // non-morphing kind — defensive no-op
+    // 0. GATE — a record its kind's morph gate refuses is not morphed, from any
+    //    trigger: the same `canMorphCard` the chevron's option list reads, so
+    //    a morph the menu would never offer cannot be performed (task 898 — a
+    //    settled suggestion must not round-trip into a pending one).
+    if (!canMorphCard(ev.fromKind, ev.card)) return false;
 
     // 1. CONFIRM (generated from drops).
     const copy = morphConfirmMessage(ev.fromKind, ev.card);

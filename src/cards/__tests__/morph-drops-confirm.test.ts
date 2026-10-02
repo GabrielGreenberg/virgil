@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CARD_REGISTRY } from "../card-registry";
+import { CARD_REGISTRY, canMorphCard, morphOptionsFor } from "../card-registry";
+import type { Link } from "@/links/_shared/types";
 import {
   morphConfirmMessage,
   runCardLifecycleEvent,
@@ -18,6 +19,21 @@ import type { ReportCard, ReportRequestCard, UserNote, HighlightCard } from "@/l
  * (confirm → unbridge → mutate → signal) in the right order and only when the
  * declared contract says so.
  */
+
+function modeBLink(): Link {
+  return {
+    id: "l2",
+    kind: "anchor",
+    anchor: {
+      type: "textObject",
+      targetKind: "linkedRange",
+      textObjectIds: ["p1"],
+      textRange: { anchorId: "a1", textSnapshot: "some linked text" },
+    },
+    target: { type: "card", ref: { kind: "note", id: "n1" } },
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
 
 // The executor hands its signal to the injected `deps.signal` sink (task 739 —
 // no module channel); `deps()` routes that sink to whichever capture is live.
@@ -97,12 +113,18 @@ describe("morphConfirmMessage — generated from drops, direction-correct", () =
     }
   });
 
-  it("suggestion → comment needs NO confirm copy (the reverse direction is genuinely lossless)", () => {
-    // Only the comment side has a rich body; a suggestion → comment morph seeds
-    // the body from the plain-text mirror and loses nothing user-authored, so it
-    // stays silent (asymmetric drops — REP-F6-03 direction-correctness).
-    expect(morphConfirmMessage("revision-suggestion")).toBeNull();
-    expect(morphConfirmMessage("cutter-suggestion")).toBeNull();
+  it("suggestion → comment confirms the AI byline drop for an AI card, and is silent for a human one (task 898)", () => {
+    // A comment has no `author`: an AI-drafted suggestion would become an
+    // unattributed comment. The registry declares it (`drops: ["byline"]`);
+    // `byline` is held only by an AI card, so a human suggestion still morphs
+    // without a dialog.
+    for (const kind of ["revision-suggestion", "cutter-suggestion"] as const) {
+      expect(CARD_REGISTRY[kind].morph!.drops).toEqual(["byline"]);
+      const ai = morphConfirmMessage(kind, { id: "s1", author: "ai", status: "pending" });
+      expect(ai).not.toBeNull();
+      expect(ai!.message).toContain("the author byline");
+      expect(morphConfirmMessage(kind, { id: "s1", author: "human", status: "pending" })).toBeNull();
+    }
   });
 });
 
@@ -148,10 +170,15 @@ describe("runCardLifecycleEvent — morph", () => {
     ]);
   });
 
-  it("the reverse suggestion→comment morph skips the confirm but still mutates + signals", async () => {
+  it("the reverse suggestion→comment morph of a HUMAN suggestion skips the confirm but still mutates + signals", async () => {
     const { d, confirm, mutate } = deps();
     const ok = await runCardLifecycleEvent(
-      { type: "morph", fromKind: "revision-suggestion", id: "s1" },
+      {
+        type: "morph",
+        fromKind: "revision-suggestion",
+        id: "s1",
+        card: { id: "s1", author: "human", status: "pending" },
+      },
       d,
     );
     cap.stop();
@@ -323,7 +350,9 @@ describe("morphConfirmMessage — value-aware (task 755)", () => {
   it("the executor raises no confirm for an empty note but still mutates", async () => {
     const { d, confirm, mutate } = deps();
     const ok = await runCardLifecycleEvent(
-      { type: "morph", fromKind: "note", id: "n1", card: { id: "n1", content: emptyBody, title: "" } },
+      // A Mode-B anchored note — the note's morph GATE (task 898 registered
+      // `canMorphNoteToHighlight` with the executor) refuses a range-less one.
+      { type: "morph", fromKind: "note", id: "n1", card: { id: "n1", content: emptyBody, title: "", links: [modeBLink()] } },
       d,
     );
     expect(ok).toBe(true);
@@ -339,5 +368,52 @@ describe("morphConfirmMessage — value-aware (task 755)", () => {
     );
     expect(confirm).not.toHaveBeenCalled();
     expect(unbridge).toHaveBeenCalledWith("report-request", "q1", "terminate");
+  });
+});
+
+describe("settled suggestions offer no morph (task 898)", () => {
+  const families = ["revision-suggestion", "cutter-suggestion"] as const;
+
+  for (const kind of families) {
+    it(`${kind}: accepted / rejected offer only the plain label; open statuses offer the morph`, () => {
+      for (const status of ["accepted", "rejected"]) {
+        const card = { id: "s1", author: "ai", status };
+        expect(canMorphCard(kind, card)).toBe(false);
+        expect(morphOptionsFor(kind, card)).toEqual([kind]);
+      }
+      for (const status of ["pending", "applied", "stale"]) {
+        const card = { id: "s1", author: "ai", status };
+        expect(canMorphCard(kind, card)).toBe(true);
+        expect(morphOptionsFor(kind, card)).toHaveLength(2);
+      }
+    });
+
+    it(`${kind}: the executor refuses to morph an ACCEPTED suggestion from any trigger`, async () => {
+      const { d, confirm, mutate } = deps();
+      const ok = await runCardLifecycleEvent(
+        { type: "morph", fromKind: kind, id: "s1", card: { id: "s1", author: "human", status: "accepted" } },
+        d,
+      );
+      expect(ok).toBe(false);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(mutate).not.toHaveBeenCalled();
+    });
+  }
+
+  it("the human user_text wins the body, and the superseded AI draft rides along as its own paragraph", () => {
+    const out = applyCardMorph("revision-suggestion", {
+      kind: "suggestion",
+      id: "s1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      author: "ai",
+      original_text: "old",
+      suggested_text: "the AI draft",
+      user_text: "my rewrite",
+      explanation: "why",
+      instructions: "",
+      status: "pending",
+      links: [],
+    }) as unknown as { text: string };
+    expect(out.text).toBe("my rewrite\n\nEarlier draft: the AI draft\n\nwhy");
   });
 });

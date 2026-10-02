@@ -41,8 +41,8 @@ import { getTextAnchor } from "@/links/links";
 
 /** Build a rich doc with one paragraph per non-empty part (or empty doc). Used
  *  by the suggestion → comment salvage so a suggestion's user_text AND its
- *  explanation both land in the free-form comment body — nothing dropped, the
- *  `lossy: false` declaration stays honest (task 199, the inbound twin of 074). */
+ *  explanation both land in the free-form comment body (task 199, the inbound
+ *  twin of 074); only the author byline drops, and the registry declares it. */
 function richFromParagraphs(parts: string[]): JSONContent {
   const nonEmpty = parts.filter(Boolean);
   return nonEmpty.length
@@ -56,9 +56,41 @@ function richFromParagraphs(parts: string[]): JSONContent {
     : emptyRichContent();
 }
 
+/** The paragraphs a suggestion → comment morph salvages into the comment body,
+ *  shared by both suggestion families. The proposed text first — the human's
+ *  `user_text` wins over the AI draft, the same precedence the apply path uses
+ *  (`suggestionReplacement`) — then, when the human rewrote it, the AI's
+ *  SUPERSEDED draft as its own labelled paragraph (task 898: it used to vanish
+ *  undeclared), then the explanation (task 199). The author byline is the one
+ *  thing a comment cannot hold; the registry declares it (`drops: ["byline"]`). */
+function suggestionCommentParts(s: {
+  user_text?: string;
+  suggested_text?: string;
+  explanation?: string;
+}): string[] {
+  const user = s.user_text || "";
+  const draft = s.suggested_text || "";
+  const superseded =
+    user && draft && draft.trim() !== user.trim() ? `Earlier draft: ${draft}` : "";
+  return [user || draft, superseded, s.explanation || ""];
+}
+
+/** The suggestion families' morph GATE (task 898): only an OPEN suggestion may
+ *  become a comment. An accepted or rejected one is settled — its outcome is
+ *  already in (or deliberately kept out of) the paper, and a comment has no
+ *  `status` to hold it, so the way back would revive it as a fresh PENDING
+ *  suggestion whose `original_text` may no longer be in the document. Refusing
+ *  the morph makes that revival unrepresentable rather than confirmed.
+ *  `applied` (a live in-document splice) stays morphable: the executor SETTLES
+ *  it first (task 238). `stale` stays morphable: it is still open. */
+export function canMorphSuggestion(s: { status?: string }): boolean {
+  return s.status !== "accepted" && s.status !== "rejected";
+}
+
 /* ── Revisions: comment ⇄ suggestion ──────────────────────────────────
  * Extracted verbatim from the old inline `useRevisions.convertCard` salvage
- * (the revisions seed). Non-destructive both ways (lossy: false). */
+ * (the revisions seed). comment → suggestion flattens the rich body;
+ * suggestion → comment drops only the author byline (task 898). */
 
 function revisionRequestToSuggestion(c: RevisionRequestCard): RevisionSuggestionCard {
   return {
@@ -94,9 +126,10 @@ function revisionSuggestionToRequest(s: RevisionSuggestionCard): RevisionRequest
   // Salvage BOTH the user's revision text and their Explanation into the
   // free-form comment body — a comment has no `explanation` field, so dropping
   // it silently was the 074 data-loss class one direction over (task 199). Each
-  // non-empty part becomes its own paragraph; nothing is lost, so lossy stays
-  // false. One-way like 074's flatten: morphing back won't re-split it.
-  const parts = [s.user_text || s.suggested_text || "", s.explanation || ""];
+  // non-empty part becomes its own paragraph (`suggestionCommentParts`); only
+  // the byline drops, declared on the registry row (task 898). One-way like
+  // 074's flatten: morphing back won't re-split it.
+  const parts = suggestionCommentParts(s);
   const bodyText = parts.filter(Boolean).join("\n\n");
   return {
     kind: "comment",
@@ -115,13 +148,15 @@ function revisionSuggestionToRequest(s: RevisionSuggestionCard): RevisionRequest
 registerCardMorph("revision-comment", (card) =>
   revisionRequestToSuggestion(card as RevisionRequestCard),
 );
-registerCardMorph("revision-suggestion", (card) =>
-  revisionSuggestionToRequest(card as RevisionSuggestionCard),
+registerCardMorph(
+  "revision-suggestion",
+  (card) => revisionSuggestionToRequest(card as RevisionSuggestionCard),
+  (card) => canMorphSuggestion(card as RevisionSuggestionCard),
 );
 
 /* ── Cutter: comment ⇄ suggestion ─────────────────────────────────────
  * Symmetric with revisions (the cutter comment/suggestion shapes mirror the
- * revision ones). Non-destructive both ways (lossy: false). */
+ * revision ones), with the same declared drops in each direction. */
 
 function cutterCommentToSuggestion(c: CutterCommentCard): CutterSuggestionCard {
   return {
@@ -156,8 +191,8 @@ function cutterCommentToSuggestion(c: CutterCommentCard): CutterSuggestionCard {
 function cutterSuggestionToComment(s: CutterSuggestionCard): CutterCommentCard {
   // Symmetric with the revision twin (task 199): fold the cut's Explanation
   // into the free-form comment body alongside the user text so neither is lost
-  // and the morph's `lossy: false` stays honest.
-  const parts = [s.user_text || s.suggested_text || "", s.explanation || ""];
+  // and only the declared byline drops (task 898).
+  const parts = suggestionCommentParts(s);
   const bodyText = parts.filter(Boolean).join("\n\n");
   return {
     kind: "comment",
@@ -176,8 +211,10 @@ function cutterSuggestionToComment(s: CutterSuggestionCard): CutterCommentCard {
 registerCardMorph("cutter-comment", (card) =>
   cutterCommentToSuggestion(card as CutterCommentCard),
 );
-registerCardMorph("cutter-suggestion", (card) =>
-  cutterSuggestionToComment(card as CutterSuggestionCard),
+registerCardMorph(
+  "cutter-suggestion",
+  (card) => cutterSuggestionToComment(card as CutterSuggestionCard),
+  (card) => canMorphSuggestion(card as CutterSuggestionCard),
 );
 
 /* ── Reports: report ⇄ report-request ─────────────────────────────────
@@ -260,7 +297,11 @@ function highlightToNote(h: HighlightCard): UserNote {
   };
 }
 
-registerCardMorph("note", (card) => noteToHighlight(card as UserNote));
+registerCardMorph(
+  "note",
+  (card) => noteToHighlight(card as UserNote),
+  (card) => canMorphNoteToHighlight(card as UserNote),
+);
 registerCardMorph("highlight", (card) => highlightToNote(card as HighlightCard));
 
 /** WS7 gate (A6): note → highlight is only offered for notes that carry a
@@ -271,7 +312,9 @@ registerCardMorph("highlight", (card) => highlightToNote(card as HighlightCard))
  *  note⇄highlight pair is still declared and the converter registered);
  *  the chevron call sites gate on this — NoteCard's `kindOptions` (covers
  *  docked + omni, which render the same component) and the note float
- *  builder's `chromeSlots.title` CardKindHeader. The reverse direction
+ *  builder's `chromeSlots.title` CardKindHeader — and since task 898 it is
+ *  REGISTERED as the note's morph gate, so the lifecycle executor refuses a
+ *  morph the chevron would never offer (`canMorphCard`). The reverse direction
  *  (highlight → note) needs NO gate — every highlight has a range, and a
  *  note can always hold one. */
 export function canMorphNoteToHighlight(note: UserNote): boolean {

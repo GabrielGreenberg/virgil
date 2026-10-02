@@ -440,7 +440,7 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="cutter-suggestion"
-          options={morphOptionsFor("cutter-suggestion")}
+          options={morphOptionsFor("cutter-suggestion", card)}
           onChange={(k) => {
             ctx.morphCard("cutter-suggestion", id, k);
           }}
@@ -704,7 +704,7 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="revision-suggestion"
-          options={morphOptionsFor("revision-suggestion")}
+          options={morphOptionsFor("revision-suggestion", card)}
           onChange={(k) => {
             ctx.morphCard("revision-suggestion", id, k);
           }}
