@@ -399,6 +399,9 @@ describe("hook-body census — dock state is mutated only through the engine", (
       "notePanelUse",
       "openInMode",
       "placeInStack",
+      // Task 899: the band-follows-icon enforcer — a whole operation (every
+      // relocation it makes goes through `placeInStack`).
+      "reconcileDockStackToPlacements",
       "removeFromStack",
       "undockToFloat",
     ]);

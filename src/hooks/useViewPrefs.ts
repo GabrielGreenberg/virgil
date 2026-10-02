@@ -42,7 +42,6 @@ import {
   scrubUnknownPanelIds,
 } from "./dropUnknownPanelIds";
 import { applyPanelRenames, PANEL_RENAMES } from "./rename-panel-id";
-import { dockedSideOf } from "./view-prefs-derived";
 import {
   confirmSuppressionsUntouched,
   suppressConfirm,
@@ -56,6 +55,7 @@ import {
   notePanelUse as notePanelUseIn,
   openInMode,
   placeInStack,
+  reconcileDockStackToPlacements,
   undockToFloat,
 } from "./view-prefs-dock";
 
@@ -1033,7 +1033,9 @@ export function loadPrefs(): ViewPrefs {
     // per-window so a reload restores the open panels and their sizes;
     // recency (panelMRU) is session-only. Floats (poppedOutPanels) re-float
     // (validated above). panelModes / floatPositions / panelWidths persist.
-    return {
+    // The stored per-window `dockStack` was written against the PRE-migration
+    // placements, so the band-follows-icon enforcer runs last (task 899).
+    return reconcileDockStackToPlacements({
       ...DEFAULT_PREFS,
       ...parsed,
       // The normalized global values override `parsed`'s raw ones — the whole
@@ -1054,7 +1056,7 @@ export function loadPrefs(): ViewPrefs {
       panelModes: parsed.panelModes ?? {},
       floatPositions: parsed.floatPositions ?? {},
       panelWidths: parsed.panelWidths ?? {},
-    };
+    });
   } catch {
     return DEFAULT_PREFS;
   }
@@ -1099,8 +1101,19 @@ function seedEphemeralPrefs(): ViewPrefs {
       const v = globalSlice[k];
       if (typeof v === "number") seed[k] = v;
     }
+    // Placements read the SAME repaired map the editor's `loadPrefs` builds
+    // (task 899): renames, the strip-less scrub and the new-panel merge via
+    // `normalizeGlobalSlice`, then the one-shot side migrations — applied here
+    // read-only (the seed never writes), so a raw blob `loadPrefs` has not yet
+    // written back cannot hand the Reader a dropped legacy id or a
+    // pre-migration side. Narrow pick: only `placements` is taken.
     if (Array.isArray(globalSlice.placements)) {
-      seed.placements = filterPlacements<PanelPlacement>(globalSlice.placements as PanelPlacement[]);
+      const normalized = normalizeGlobalSlice(globalSlice);
+      seed.placements = applyPanelSideMigrations(
+        normalized.placements,
+        normalized.appliedPrefMigrations,
+        PANEL_SIDE_MIGRATIONS,
+      ).placements as PanelPlacement[];
     }
     return seed;
   } catch {
@@ -1203,7 +1216,11 @@ export function useViewPrefs(opts?: {
         // `persist` re-published the peer's blob as this window's own, which
         // is exactly the round-trip (saved prefs → snapshot → promote-defaults
         // → shipped defaults) the scrub exists to make impossible.
-        setPrefs((prev) => ({ ...prev, ...normalizeGlobalSlice(globalSlice) }));
+        // A peer's drag can move a panel this window has DOCKED to the other
+        // side; this window's per-window `dockStack` must follow (task 899).
+        setPrefs((prev) =>
+          reconcileDockStackToPlacements({ ...prev, ...normalizeGlobalSlice(globalSlice) }),
+        );
       } catch {
         // ignore parse failures
       }
@@ -1470,13 +1487,13 @@ export function useViewPrefs(opts?: {
         before == null ? -1 : sameItems.findIndex((pl) => pl.id === before);
       const idx = at === -1 ? sameItems.length : at;
       sameItems.splice(idx, 0, { id, side: toSide });
-      let next: ViewPrefs = { ...p, placements: [...otherItems, ...sameItems] };
-      // If the panel is currently docked on the OTHER side, relocate its
-      // open band to the new side's stack so the band follows its icon.
-      // `placeInStack` sheds the old position + its stale recency itself.
-      const dockedSide = dockedSideOf(next, id);
-      if (dockedSide && dockedSide !== toSide) next = placeInStack(next, id, toSide);
-      return next;
+      // If the panel is currently docked on the OTHER side, its open band
+      // follows its icon — through the one enforcer every placements door
+      // shares (task 899).
+      return reconcileDockStackToPlacements({
+        ...p,
+        placements: [...otherItems, ...sameItems],
+      });
     });
   }, [update]);
 

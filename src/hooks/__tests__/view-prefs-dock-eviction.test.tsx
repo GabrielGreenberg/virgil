@@ -36,11 +36,14 @@ import { useViewPrefs } from "../useViewPrefs";
 const WINDOW_KEY = `virgil-view-prefs/window/${WINDOW_ID}`;
 
 // Four real, left-dockable PANEL_REGISTRY ids. A=footnotes, B=citations,
-// C=reports are the persisted stack (MAX_STACK = 3, so full); D=examples is
+// C=bibliography are the persisted stack (MAX_STACK = 3, so full); D=examples is
 // the 4th open that forces an eviction.
 const A = "footnotes";
 const B = "citations";
-const C = "reports";
+// Every fixture panel is a LEFT-strip panel: a band docked on a side its
+// panel is not placed on is relocated on load (task 899), so a right-placed
+// panel (e.g. `reports`) cannot seed a left stack.
+const C = "bibliography";
 const D = "examples";
 
 // The project's jsdom env doesn't ship a full Storage; install minimal

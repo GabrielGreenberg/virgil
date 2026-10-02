@@ -235,6 +235,27 @@ export function removeFromStack(p: ViewPrefs, id: PanelId): ViewPrefs {
   return pruneMRU(next, id);
 }
 
+/**
+ * THE band-follows-icon enforcer (task 899): relocate every docked band whose
+ * stack side disagrees with its panel's `placements` side, through
+ * `placeInStack` (so the three invariants above ride along). `placements`
+ * change side through THREE doors — `movePanel`, the load-time one-shot side
+ * migrations, and a peer window's sync — and each ends by calling this, so no
+ * door can leave a band rendering in the column opposite its strip icon. A
+ * docked panel with no placement (or already on its side) is left alone, and
+ * an already-consistent snapshot is returned by identity.
+ */
+export function reconcileDockStackToPlacements(p: ViewPrefs): ViewPrefs {
+  let next = p;
+  for (const side of ["left", "right"] as const) {
+    for (const id of stackFor(p, side)) {
+      const placed = p.placements.find((pl) => pl.id === id)?.side;
+      if (placed && placed !== side) next = placeInStack(next, id, placed);
+    }
+  }
+  return next;
+}
+
 /** Close `id` in BOTH worlds — its dock band and its float. The saved float
  *  rect (`floatPositions`) and mode preference (`panelModes`) are deliberately
  *  kept, so re-opening restores the user's pinned size and mode. */
