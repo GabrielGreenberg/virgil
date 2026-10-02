@@ -1538,6 +1538,12 @@ export function createHeadingWithLabel(
             // through a second implementation with no figure branch, so the
             // gate's silence let a `??` stand; the fix was one resolver, not
             // a wider gate.
+            //
+            // ORDER is a numbering input too (task 892): a same-uuid heading
+            // or figure that a MOVE (Outline reorder, block drag, its undo)
+            // re-seats elsewhere lands in `changedHeadings`/`changedFigures`
+            // by the step inspector's own definition, so this gate needs no
+            // separate order term. A moved `\label` follows its owner.
             const pending = readPendingDiff(newState);
             if (pending) {
               const structuralChange =
