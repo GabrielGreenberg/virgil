@@ -69,6 +69,8 @@ async function mountDialog() {
         onSavePreset={p.savePreset}
         onLoadPreset={p.loadPreset}
         onDeletePreset={p.deletePreset}
+        onRestoreSettings={p.applySettings}
+        onRestorePreset={p.restorePreset}
       />
     );
   }
@@ -202,5 +204,49 @@ describe("the cascade's shape inside the one writer", () => {
     const { result } = await mountStore();
     act(() => result.current.updatePref("editorFontSize", 1.2));
     expect(result.current.prefs.editorFontSize).toBe(1.2);
+  });
+});
+
+/**
+ * Task 903 — "Reset to defaults" wiped every preference and transform in one
+ * click with no way back, from the primary's corner of the footer. It now sits
+ * in the destructive slot and offers Undo, which restores the snapshot it
+ * replaced; and any further change through the dialog retires the offer.
+ */
+describe("Reset to defaults is undoable (task 903)", () => {
+  it("the global transform sliders resolve by their label", async () => {
+    await mountDialog();
+    expect(screen.getByLabelText("Contrast").getAttribute("type")).toBe("range");
+    expect(screen.getByLabelText("Hue")).toBeTruthy();
+    expect(screen.getByLabelText("Brightness")).toBeTruthy();
+  });
+
+  it("reset → Undo restores the prior settings", async () => {
+    const { read, prefsMod } = await mountDialog();
+    typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
+    expect(read().topbarBackground).toBe(PARENT_HEX);
+
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    expect(read().topbarBackground).toBe(prefsMod.DEFAULT_PREFS.topbarBackground);
+    expect(screen.getByRole("status").textContent).toContain("Preferences reset");
+
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Undo" })); });
+    expect(read().topbarBackground).toBe(PARENT_HEX);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("a later edit retires the Undo offer", async () => {
+    await mountDialog();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("the destructive action sits first in the footer (STYLE_GUIDE: far left)", async () => {
+    await mountDialog();
+    const reset = screen.getByRole("button", { name: "Reset to defaults" });
+    expect(reset.parentElement!.firstElementChild).toBe(reset);
+    expect(reset.className).not.toContain("ml-auto");
   });
 });

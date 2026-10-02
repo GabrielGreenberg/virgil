@@ -8,6 +8,7 @@ import {
   CardTitleInput,
   AiRequestRow,
   CheckSquare,
+  checkboxSemantics,
   useCardDeleteKey,
   useCardDeleteAllowed,
 } from "@/components/panel-primitives";
@@ -41,6 +42,7 @@ export function TodoDoneToggle({
   return (
     <button
       data-iconbtn-exempt="checkbox glyph: its checked/unchecked art is the affordance"
+      {...checkboxSemantics(item.done)}
       onClick={(e) => {
         e.stopPropagation();
         onToggle(item.id);

@@ -23,7 +23,7 @@
  * cross-window sync) for every intermediate string on the way to a hex.
  *
  * **The box owns the CONTROL; the row owns its LABEL and its reset.** `ColorPref`
- * still renders `PrefLabel` and the "reset" link around this, and the grid still
+ * renders it inside a labelled `role="group"` with the shared `ResetButton`, and the grid still
  * renders its own reset column — both write the source, which reconciles the box
  * for free. Sizing stays with the call site for the reason `field-primitives.tsx`
  * gives about its own chrome: the preference row and the dense grid cell
@@ -121,8 +121,11 @@ export function HexColorField({
 
   return (
     <div className={className}>
+      {/* The two inputs name their PART; the row's group names the colour
+          (task 903) — "Text colour, group › Hex value, edit text". */}
       <input
         type="color"
+        aria-label="Colour swatch"
         value={value}
         onChange={(e) => draft.commit(normalizeHex(e.target.value), onChange)}
         // The swatch is a hand-rolled control — `TextInputType` deliberately
@@ -134,6 +137,7 @@ export function HexColorField({
         className={withFocusIndicator(swatchClassName)}
       />
       <Input
+        aria-label="Hex value"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={commitText}

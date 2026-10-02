@@ -18,6 +18,7 @@ import {
   type PrintPanelKey,
 } from "@/lib/print";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import { Checkbox } from "./CheckSquare";
 
 interface PrintDialogProps {
   open: boolean;
@@ -172,7 +173,7 @@ export default function PrintDialog({
 }
 
 /**
- * One print option. It IS a checkbox, so it says so: `role="checkbox"` +
+ * One print option. It IS a checkbox, so it says so: the checkbox role +
  * `aria-checked` — the dialog's whole content is on/off state, and a bare
  * button announces none of it. Its accessible name is its VISIBLE label (the
  * text inside); a `hint` explaining why the row is unavailable is the tooltip
@@ -192,43 +193,19 @@ function PrintCheckbox({
   disabled?: boolean;
   hint?: string;
 }) {
+  // The shared `Checkbox` (task 903): this row used to hand-draw an
+  // `--accent`-filled box with its own tick — the same re-author the Fonts…
+  // pin toggle carried. The semantics it already had now come with the glyph.
   return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={checked}
-      onClick={() => !disabled && onChange(!checked)}
+    <Checkbox
+      checked={checked}
+      onChange={onChange}
       disabled={disabled}
       data-hint={hint}
       aria-description={hint}
-      className={`flex items-center gap-2 text-xs text-left w-full px-1 py-0.5 rounded ${
-        disabled ? "opacity-40 cursor-not-allowed" : "hover-on-light"
-      }`}
+      className={`text-xs w-full px-1 py-0.5 rounded text-ink-body ${disabled ? "" : "hover-on-light"}`}
     >
-      <span
-        aria-hidden
-        className={`flex items-center justify-center w-4 h-4 rounded border ${
-          checked
-            ? "bg-[var(--accent)] border-[var(--accent)]"
-            : "bg-surface border-edge-strong"
-        }`}
-      >
-        {checked && (
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        )}
-      </span>
-      <span className="text-ink-body">{label}</span>
-    </button>
+      {label}
+    </Checkbox>
   );
 }

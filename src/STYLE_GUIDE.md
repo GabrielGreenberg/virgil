@@ -2044,7 +2044,8 @@ Toggle: 22×14 pill, off `bg-edge-hover`, on `bg-accent`.
 
 ### The checkbox glyph
 
-**One component draws every checkbox: `CheckSquare`** (`panel-primitives.tsx`)
+**One component draws every checkbox: `CheckSquare`** (`CheckSquare.tsx`, a
+leaf module re-exported by `panel-primitives.tsx`)
 — a 14-unit rounded square (`rx=3`, 1.5 stroke) in a 16 viewBox plus the tick
 `M4.5 8l2.5 2.5 4.5-5`, rendered at the variant's own size. Two variants today,
 and a call site picks one; **it never passes a colour**, because a colour prop
@@ -2076,6 +2077,30 @@ dialog's own `message`), and the Library's PDF-drop intro and "Cited only"
 filter. All three are browser controls inside a dialog or a filter row,
 unstyled by choice (the Library pair sets only `cursor`), and none is a glyph.
 If one ever wants the app's look it takes `CheckSquare`, not its own SVG.
+
+**A plain labelled checkbox is `<Checkbox>`** (same leaf, task 903): glyph +
+visible label + `role="checkbox"`/`aria-checked`, one control. A toggle that must
+own its `<button>` (stop-propagation, hints — the Todo done-toggle, the AI-request
+toggle) spreads `checkboxSemantics(checked)` beside a `<CheckSquare>`. Nothing
+else spells the role, and nothing draws a box from a `<span>` filled with
+`--accent` — Fonts…' pin toggle and Print's option rows did, and are retired
+(`checkbox-glyph-ssot.test.tsx` census).
+
+### Reset-to-default (task 903)
+
+**One per-row reset control: `ResetButton`** (`ResetButton.tsx`, a ghost
+`Button`). It is ALWAYS present and DISABLED at the default — never hidden
+(hiding reflows the row and hides where reset lives), never a raw underlined
+`<button>`. Its accessible name is "Reset <what>"; the visible text is "Reset".
+Every resettable preference row ends in it (colour, slider, font rows; the
+panel-typography grid; Fonts… categories).
+
+A reset that replaces MANY settings at once ("Reset to defaults") is a
+`variant="danger"` button in the footer's destructive slot (far left — "Modal
+footers") and is UNDOABLE: it snapshots what it replaced and the footer offers
+"Undo" as a live status until the next change. Undo, not a confirm: a confirm in
+front of an undoable action is friction without protection. Preset delete and
+save-over-an-existing-name take the same Undo.
 
 Converging the two `--checkbox-*` tokens onto the toggle family
 (`--control-selected-tint` is 3/0/4 away from the fill in RGB;

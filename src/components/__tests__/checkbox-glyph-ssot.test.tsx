@@ -46,6 +46,7 @@ class ResizeObserverStub {
 
 import { render, cleanup } from "@testing-library/react";
 import { CheckSquare, AiRequestCheckbox } from "@/components/panel-primitives";
+import { Checkbox } from "@/components/CheckSquare";
 import { TodoRow } from "@/panels/Todo/TodoRow";
 import { accentInk, getPanelColor, DEFAULT_PANEL_COLORS } from "@/lib/panel-theme";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
@@ -259,7 +260,7 @@ describe("the palette comes from the SSOTs, not from this file", () => {
     // The equality leg above cannot tell `accentInk(getPanelColor(…))` from a
     // hardcoded copy of what it currently returns. `panel-chrome-palette-
     // guardrail` would flag the hex — this names the coupling directly.
-    const src = readFileSync(path.join(ROOT, "src/components/panel-primitives.tsx"), "utf8");
+    const src = readFileSync(path.join(ROOT, "src/components/CheckSquare.tsx"), "utf8");
     expect(src).toContain('accentInk(getPanelColor("aiRequest"))');
   });
 });
@@ -298,20 +299,63 @@ describe("nobody re-authors the glyph (the leg with teeth)", () => {
       readFileSync(path.join(ROOT, rel), "utf8").replace(/\s+/g, "").includes(needle),
     );
 
+  // The glyph moved to its own leaf in task 903 (so a dialog can take it without
+  // the card stack's storage-reaching graph); `panel-primitives` re-exports it.
   it("the checkbox SQUARE is spelled in exactly one production file", () => {
     expect(squashedHits('width="14"height="14"rx="3"')).toEqual([
-      "src/components/panel-primitives.tsx",
+      "src/components/CheckSquare.tsx",
     ]);
   });
 
   it("the TICK path is spelled in exactly one production file", () => {
     expect(hits("M4.5 8l2.5 2.5 4.5-5")).toEqual([
-      "src/components/panel-primitives.tsx",
+      "src/components/CheckSquare.tsx",
     ]);
   });
 
+  /* Task 903 — the re-author the two needles above could not see. Fonts…'
+   * "Pin to body family" and Print's option rows each drew the box from a
+   * `<span>` (`w-3.5 h-3.5 rounded border` / `w-4 h-4`, no `rx=3`) filled with
+   * `--accent`, with a tick of their own — no SVG square for the square needle
+   * to match. So the census asks the SEMANTIC question instead: whoever claims
+   * to be a checkbox must draw the shared glyph, and the role is spelled in one
+   * place. A span-drawn box that claims nothing is the retired-shape leg. */
+  it("role=checkbox is spelled only by the leaf (callers take Checkbox / checkboxSemantics)", () => {
+    expect(squashedHits('role="checkbox"')).toEqual([]);
+    expect(hits('role: "checkbox"')).toEqual(["src/components/CheckSquare.tsx"]);
+  });
+
+  it("every file that declares checkbox semantics draws the shared glyph", () => {
+    const claimants = files.filter((rel) => {
+      const src = readFileSync(path.join(ROOT, rel), "utf8");
+      return /checkboxSemantics\(|<Checkbox\b/.test(src);
+    });
+    expect(claimants.length).toBeGreaterThanOrEqual(4);
+    for (const rel of claimants) {
+      const src = readFileSync(path.join(ROOT, rel), "utf8");
+      // `<Checkbox>` renders CheckSquare itself; a raw `checkboxSemantics`
+      // spread must sit beside a `<CheckSquare`.
+      const drawsGlyph = /<CheckSquare\b/.test(src) || /<Checkbox\b/.test(src);
+      expect(drawsGlyph, rel).toBe(true);
+    }
+  });
+
+  it("no hand-drawn accent checkbox survives (the span-drawn shape)", () => {
+    // A checked-conditional `--accent` FILL on a small bordered square — the
+    // exact shape both retired copies spelled — and their two tick paths.
+    expect(
+      squashedHits('?"bg-[var(--accent)]border-[var(--accent)]"'),
+    ).toEqual([]);
+    expect(hits("M2 4.5l1.8 1.8L7 3")).toEqual([]);
+    expect(
+      ["src/components/PrintDialog.tsx", "src/components/FontsDialog.tsx"].filter((rel) =>
+        readFileSync(path.join(ROOT, rel), "utf8").includes('points="20 6 9 17 4 12"'),
+      ),
+    ).toEqual([]);
+  });
+
   it("none of the five retired literals survives in either glyph's file", () => {
-    for (const rel of ["src/components/panel-primitives.tsx", "src/panels/Todo/TodoRow.tsx"]) {
+    for (const rel of ["src/components/CheckSquare.tsx", "src/components/panel-primitives.tsx", "src/panels/Todo/TodoRow.tsx"]) {
       const src = readFileSync(path.join(ROOT, rel), "utf8");
       // Comments are NOT stripped here on purpose: the explanatory prose in both
       // files names what it retired, so a bare `includes` would indict the
@@ -327,7 +371,7 @@ describe("nobody re-authors the glyph (the leg with teeth)", () => {
     // Anchored on the primitive itself, which cannot be retired — never on a
     // line this task drained, since such a canary evaporates with the fix.
     expect(hits("export function CheckSquare")).toEqual([
-      "src/components/panel-primitives.tsx",
+      "src/components/CheckSquare.tsx",
     ]);
     expect(files.length).toBeGreaterThan(300);
     expect(files.some((f) => f.includes("__tests__"))).toBe(false);
@@ -354,6 +398,40 @@ function makeTodo(overrides: Partial<TodoItem> = {}): TodoItem {
     ...overrides,
   } as TodoItem;
 }
+
+describe("Checkbox — glyph, label and semantics as one control (task 903)", () => {
+  it("is a named, stateful checkbox that toggles", () => {
+    let next: boolean | null = null;
+    const { getByRole } = render(
+      <Checkbox checked={false} onChange={(v) => { next = v; }}>
+        Pin to body family
+      </Checkbox>,
+    );
+    const box = getByRole("checkbox", { name: "Pin to body family" });
+    expect(box.getAttribute("aria-checked")).toBe("false");
+    box.click();
+    expect(next).toBe(true);
+  });
+
+  it("draws exactly the CheckSquare glyph", () => {
+    const glyph = render(<CheckSquare variant="done" checked />);
+    const html = glyph.container.innerHTML;
+    glyph.unmount();
+    const { container } = render(
+      <Checkbox checked onChange={() => {}}>x</Checkbox>,
+    );
+    expect(container.querySelector("svg")!.outerHTML).toBe(html);
+  });
+
+  it("a disabled checkbox does not toggle", () => {
+    let calls = 0;
+    const { getByRole } = render(
+      <Checkbox checked={false} disabled onChange={() => { calls++; }}>x</Checkbox>,
+    );
+    getByRole("checkbox").click();
+    expect(calls).toBe(0);
+  });
+});
 
 describe("TodoRow renders the shared glyph", () => {
   beforeEach(() => {

@@ -107,7 +107,7 @@ describe("the built-in preset is derived, never stored", () => {
     act(() => { result.current.savePreset("Warm"); });
     act(() => result.current.deletePreset("Warm"));
 
-    expect(storedPresets()).toEqual([]);
+    expect(storedPresets() ?? []).toEqual([]);
     expect(result.current.presets.map((p) => p.name)).toEqual(["Default"]);
   });
 });
@@ -209,5 +209,54 @@ describe("loading and overwriting", () => {
 
     expect(result.current.prefs.topbarBackground).toBe("#abcdef");
     expect(result.current.prefs.tabBg).toBe(mod.DEFAULT_PREFS.tabBg);
+  });
+});
+
+// Task 903 — a preset delete and a save-over-an-existing-name were silent and
+// final. The dialog snapshots the preset first and offers it back; these are
+// the doors that put it back.
+describe("undo doors (task 903)", () => {
+  it("restorePreset brings back a deleted preset exactly", async () => {
+    const { result } = await mount();
+    act(() => result.current.updatePref("topbarBackground", "#123456"));
+    act(() => { result.current.savePreset("Mine"); });
+    const saved = result.current.presets.find((p) => p.name === "Mine")!;
+
+    act(() => result.current.deletePreset("Mine"));
+    expect(result.current.presets.some((p) => p.name === "Mine")).toBe(false);
+
+    act(() => result.current.restorePreset(saved));
+    expect(result.current.presets.find((p) => p.name === "Mine")).toEqual(saved);
+    expect(storedPresets()).toEqual([saved]);
+  });
+
+  it("restorePreset undoes an overwrite in place (no duplicate)", async () => {
+    const { result } = await mount();
+    act(() => result.current.updatePref("topbarBackground", "#111111"));
+    act(() => { result.current.savePreset("Mine"); });
+    const original = result.current.presets.find((p) => p.name === "Mine")!;
+    act(() => result.current.updatePref("topbarBackground", "#222222"));
+    act(() => { result.current.savePreset("Mine"); });
+
+    act(() => result.current.restorePreset(original));
+    const mine = result.current.presets.filter((p) => p.name === "Mine");
+    expect(mine).toEqual([original]);
+  });
+
+  it("never writes a built-in", async () => {
+    const { mod, result } = await mount();
+    act(() => result.current.restorePreset({ ...mod.BUILT_IN_PRESETS[0] }));
+    expect(storedPresets() ?? []).toEqual([]);
+  });
+
+  it("applySettings restores a reset's snapshot", async () => {
+    const { result } = await mount();
+    act(() => result.current.updatePref("topbarBackground", "#abcdef"));
+    act(() => result.current.updateTransform("hue", 40));
+    const snapshot = { prefs: result.current.prefs, transforms: result.current.transforms };
+    act(() => result.current.resetAll());
+    act(() => result.current.applySettings(snapshot));
+    expect(result.current.prefs).toEqual(snapshot.prefs);
+    expect(result.current.transforms).toEqual(snapshot.transforms);
   });
 });
