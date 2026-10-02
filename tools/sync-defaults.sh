@@ -122,6 +122,26 @@ done
 
 log "drift detected in ${#FILES[@]} file(s): ${FILES[*]}"
 
+# Contract gate (task 900): JSON parsing proves only that the file is JSON.
+# The View-menu defaults also answer to the view-pref registry, whose
+# promoted rows READ this JSON; the registry-source suite (one static file,
+# a few seconds) pins that contract — every promoted value inside the domain
+# its row declares. A red gate still commits, but PARKS the commit instead of
+# fast-forwarding main, so the repair is a human's and main stays green.
+GATE_FAIL=""
+for f in "${FILES[@]}"; do
+  if [ "$f" = "src/hooks/useViewPrefs.defaults.json" ]; then
+    ln -s "$REPO/node_modules" "$WT/node_modules"
+    if ! (cd "$WT" && NODE_OPTIONS=--no-experimental-webstorage \
+      node "$WT/node_modules/vitest/vitest.mjs" run \
+      src/components/__tests__/view-menu-registry-source.test.ts >"$SCRATCH/gate.log" 2>&1); then
+      GATE_FAIL="registry-source contract failed on the promoted defaults"
+      tail -n 40 "$SCRATCH/gate.log"
+    fi
+    rm -f "$WT/node_modules"
+  fi
+done
+
 DATE="$(date +%Y-%m-%d)"
 # Explicit pathspec: the commit holds exactly the promoter's own output.
 git -C "$WT" add -- "${FILES[@]}"
@@ -132,7 +152,7 @@ NEW_SHA="$(git -C "$WT" rev-parse HEAD)"
 # and only when none of the promoted files carry uncommitted edits there.
 CUR_BRANCH="$(git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 DIRTY="$(git -C "$REPO" status --porcelain --untracked-files=no -- "${FILES[@]}")"
-if [ "$CUR_BRANCH" = "$BASE" ] && [ -z "$DIRTY" ] &&
+if [ -z "$GATE_FAIL" ] && [ "$CUR_BRANCH" = "$BASE" ] && [ -z "$DIRTY" ] &&
   git -C "$REPO" merge --quiet --ff-only "$NEW_SHA" >/dev/null 2>&1; then
   log "committed $NEW_SHA onto $BASE (fast-forward from $BASE_SHA; not pushed)"
   exit 0
@@ -143,7 +163,9 @@ if git -C "$REPO" rev-parse --verify --quiet "refs/heads/$PARK" >/dev/null; then
   PARK="$PARK-$(date +%H%M%S)"
 fi
 git -C "$REPO" branch "$PARK" "$NEW_SHA"
-if [ "$CUR_BRANCH" != "$BASE" ]; then
+if [ -n "$GATE_FAIL" ]; then
+  WHY="$GATE_FAIL"
+elif [ "$CUR_BRANCH" != "$BASE" ]; then
   WHY="primary is on '${CUR_BRANCH:-detached HEAD}', not $BASE"
 elif [ -n "$DIRTY" ]; then
   WHY="primary has uncommitted edits to promoted files"

@@ -36,6 +36,9 @@ import {
   HIDEABLE_MARKER_TYPES,
   type HideableMarkerType,
 } from "@/cards/marker-meta";
+// The SHIPPED defaults — the one copy `tools/promote-defaults.mjs` rewrites
+// (task 900). A JSON import, so it adds no module to the graph and no cycle.
+import shippedDefaultsJson from "@/hooks/useViewPrefs.defaults.json";
 
 export type ViewPrefScope = "global" | "window";
 export type ViewPrefMenuGroup = "display" | "marginalia" | "highlights" | "dividers";
@@ -115,13 +118,40 @@ export type ViewPrefDef = ToggleDef | EnumDef<string> | SetDef<string | number>;
 /**
  * The full registry. Keys are `ViewPrefs` field names.
  *
- * IMPORTANT: the `default` values here MUST equal `useViewPrefs.defaults.json`
- * (the promotion pipeline is byte-stable against that JSON). The `set` defaults
- * use an `as <ElementType>[]` cast so the generated value type yields the FULL
- * element type — the menu may render only a subset of `members`, but the stored
- * value can include extra members (e.g. the `error` marginalia type, which is
- * deliberately not hideable — `NON_HIDEABLE_MARKER_TYPES`).
+ * DEFAULTS — one copy per key, never two (task 900). A PROMOTED global key
+ * (`promote` not false) does not state its default here: it READS it from
+ * `SHIPPED`, i.e. `useViewPrefs.defaults.json`, because that JSON is the file
+ * the release promoter rewrites. A literal here would be a second copy the
+ * promoter cannot see, and the first promotion of a changed View pref would
+ * land a commit whose registry and JSON disagree. Only keys that never promote
+ * — `promote: false` (frozen, task 057) and `window` scope — keep a literal,
+ * and `view-menu-registry-source.test.ts` pins both halves.
+ *
+ * The `set` element types are stated on `SHIPPED` so the generated value type
+ * yields the FULL element type — the menu may render only a subset of
+ * `members`, but the stored value can include extra members (e.g. the `error`
+ * marginalia type, which is deliberately not hideable —
+ * `NON_HIDEABLE_MARKER_TYPES`).
  */
+/** The shipped JSON read as the registry's promoted defaults. The cast states
+ *  the element types; it is not trusted blindly —
+ *  `view-menu-registry-source.test.ts` validates every promoted value against
+ *  the domain its registry row declares. */
+const SHIPPED = shippedDefaultsJson as unknown as {
+  showCardTitles: boolean;
+  showLatexComments: boolean;
+  showHeadingLabels: boolean;
+  omniDimResting: boolean;
+  cardOutlineChrome: boolean;
+  checkSpelling: boolean;
+  autocorrectTypos: boolean;
+  showMarginalia: boolean;
+  hiddenMarginaliaTypes: MarkerType[];
+  showHighlights: boolean;
+  hiddenHighlightTypes: HighlightType[];
+  dividerLevels: DividerLevel[];
+  dividerWidth: "full" | "mid" | "text";
+};
 /**
  * Menu labels for the per-type marginalia hide rows. The ANNOTATION is the
  * coverage assertion task 672 asked for: `Record<HideableMarkerType, string>`
@@ -149,39 +179,39 @@ export const VIEW_PREF_REGISTRY = {
   // promote-defaults folded Gabriel's personal snapshot and drifted this true→false;
   // opting out of promotion makes the registry the durable SSOT so it can't recur.
   showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display", menuRowId: "par-titles", promote: false },
-  showCardTitles:       { kind: "toggle", scope: "global", default: true, label: "Card titles",       menu: "display", menuRowId: "card-titles" },
-  showLatexComments:    { kind: "toggle", scope: "global", default: true, label: "% comments",        menu: "display", menuRowId: "latex-comments" },
-  showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display", menuRowId: "heading-labels" },
-  omniDimResting:       { kind: "toggle", scope: "global", default: true, label: "Dim cards at rest",  menu: "display", menuRowId: "omni-dim-resting" },
-  cardOutlineChrome:    { kind: "toggle", scope: "global", default: false, label: "Card outline",       menu: "display", menuRowId: "card-outline" },
+  showCardTitles:       { kind: "toggle", scope: "global", default: SHIPPED.showCardTitles, label: "Card titles",       menu: "display", menuRowId: "card-titles" },
+  showLatexComments:    { kind: "toggle", scope: "global", default: SHIPPED.showLatexComments, label: "% comments",        menu: "display", menuRowId: "latex-comments" },
+  showHeadingLabels:    { kind: "toggle", scope: "global", default: SHIPPED.showHeadingLabels, label: "Labels",            menu: "display", menuRowId: "heading-labels" },
+  omniDimResting:       { kind: "toggle", scope: "global", default: SHIPPED.omniDimResting, label: "Dim cards at rest",  menu: "display", menuRowId: "omni-dim-resting" },
+  cardOutlineChrome:    { kind: "toggle", scope: "global", default: SHIPPED.cardOutlineChrome, label: "Card outline",       menu: "display", menuRowId: "card-outline" },
   // The browser's native spellcheck, made deliberate and switchable (task 517).
   // Reflected onto <body> by `spellcheck-policy.ts` — a single inherited HTML
   // attribute rather than a prop threaded into twelve `editorProps.attributes`
   // blocks. Default ON = today's behaviour; task 518's own checker flips it.
-  checkSpelling:        { kind: "toggle", scope: "global", default: true, label: "Check spelling",      menu: "display", menuRowId: "check-spelling",
+  checkSpelling:        { kind: "toggle", scope: "global", default: SHIPPED.checkSpelling, label: "Check spelling",      menu: "display", menuRowId: "check-spelling",
                           hint: "Virgil's spelling underline (a thin wavy line) — turning this off also stops the browser's own spellcheck (its dotted underline) everywhere in Virgil. Virgil has no grammar check." },
   // The CURATED typo table (task 519), and deliberately its own row rather
   // than a second meaning for `checkSpelling`: underlining a word and
   // REWRITING it are different permissions, and a user may want either
   // without the other. Default ON.
-  autocorrectTypos:     { kind: "toggle", scope: "global", default: true, label: "Autocorrect typos",   menu: "display", menuRowId: "autocorrect-typos" },
+  autocorrectTypos:     { kind: "toggle", scope: "global", default: SHIPPED.autocorrectTypos, label: "Autocorrect typos",   menu: "display", menuRowId: "autocorrect-typos" },
   // Marginalia
-  showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
-  hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarkerType[], members: HIDEABLE_MARKER_TYPES,
+  showMarginalia:       { kind: "toggle", scope: "global", default: SHIPPED.showMarginalia, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
+  hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: SHIPPED.hiddenMarginaliaTypes, members: HIDEABLE_MARKER_TYPES,
                           domain: ALL_MARKER_TYPES,
                           polarity: "hidden", label: "Marginalia types", menu: "marginalia",
                           memberLabels: MARGINALIA_TYPE_LABELS },
   // Highlights
-  showHighlights:       { kind: "toggle", scope: "global", default: true, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
-  hiddenHighlightTypes: { kind: "set", scope: "global", default: [] as HighlightType[], members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
+  showHighlights:       { kind: "toggle", scope: "global", default: SHIPPED.showHighlights, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
+  hiddenHighlightTypes: { kind: "set", scope: "global", default: SHIPPED.hiddenHighlightTypes, members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
                           domain: ALL_HIGHLIGHT_TYPES,
                           polarity: "hidden", label: "Highlight types", menu: "highlights",
                           memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
   // Dividers
-  dividerLevels: { kind: "set", scope: "global", default: [2, 4, 3, 1, 0] as DividerLevel[], members: [0, 1, 2, 3, 4, 5, 6] as const,
+  dividerLevels: { kind: "set", scope: "global", default: SHIPPED.dividerLevels, members: [0, 1, 2, 3, 4, 5, 6] as const,
                    polarity: "present", label: "Show dividers for…", menu: "dividers",
                    memberLabels: { 0: "Parts", 1: "Chapters", 2: "Sections", 3: "Subsections", 4: "Subsubsections", 5: "Paragraph headings", 6: "Subparagraph headings" } },
-  dividerWidth: { kind: "enum", scope: "global", default: "text", values: ["full", "mid", "text"],
+  dividerWidth: { kind: "enum", scope: "global", default: SHIPPED.dividerWidth, values: ["full", "mid", "text"],
                   label: "Divider preferences", menu: "dividers",
                   valueLabels: { full: "Full width", mid: "Mid width", text: "Text width" } },
   // Bibliography filter (NOT in the View menu; panel-local; window scope)

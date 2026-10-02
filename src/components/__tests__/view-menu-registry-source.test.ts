@@ -252,6 +252,45 @@ describe("registry ↔ shipped-defaults byte-identity (release-snapshot contract
   }
 });
 
+describe("a promoted View-pref default has ONE copy — the JSON the promoter edits (task 900)", () => {
+  // The promoter (`tools/promote-defaults.mjs`) rewrites ONLY the defaults
+  // JSON. So for every PROMOTED key the registry must not state a literal of
+  // its own — it must read the JSON (`default: SHIPPED.<key>`), or the first
+  // promotion of a changed View pref lands a commit whose two copies disagree
+  // (the byte-identity block above would turn red on main). That makes the
+  // equality above true by construction for these keys, so the live contract
+  // here is (a) the source shape and (b) that the JSON value the promoter may
+  // have just written lies in the domain the row DECLARES.
+  const REGISTRY_SRC = readFileSync(
+    path.resolve(here, "../../lib/view-prefs/registry.ts"),
+    "utf8",
+  );
+  const json = viewPrefsDefaults as Record<string, unknown>;
+  for (const key of REGISTRY_PROMOTED_GLOBAL_KEYS) {
+    it(`${key}: registry row reads its default from the shipped JSON`, () => {
+      const row = new RegExp(`^\\s*${key}:\\s*\\{[^\\n]*default:\\s*SHIPPED\\.${key}\\b`, "m");
+      expect(REGISTRY_SRC).toMatch(row);
+      expect(VIEW_PREF_REGISTRY[key].default).toBe(json[key]);
+    });
+    it(`${key}: the shipped value lies in the row's declared domain`, () => {
+      const def = VIEW_PREF_REGISTRY[key] as {
+        kind: string;
+        values?: readonly unknown[];
+        members?: readonly unknown[];
+        domain?: readonly unknown[];
+      };
+      const v = json[key];
+      if (def.kind === "toggle") expect(typeof v).toBe("boolean");
+      else if (def.kind === "enum") expect(def.values).toContain(v);
+      else {
+        expect(Array.isArray(v)).toBe(true);
+        const domain = def.domain ?? def.members ?? [];
+        for (const m of v as unknown[]) expect(domain).toContain(m);
+      }
+    });
+  }
+});
+
 describe("placements[].side ⇔ PANEL_REGISTRY.defaultStripSide (release-snapshot contract, task 223)", () => {
   // Sibling of the byte-identity block above, for the STRUCTURAL `placements`
   // key (not a VIEW_PREF_REGISTRY entry, so the loop above doesn't reach it).
