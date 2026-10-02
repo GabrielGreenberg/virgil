@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { GlobalTransforms, DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
+import { PREFS_STORAGE_KEY, TRANSFORMS_STORAGE_KEY } from "@/lib/pref-css-bootstrap";
 import { DEFAULT_PREFS } from "./preferences-defaults";
 import { propagate, type LinkableKey } from "@/lib/pref-links";
 
@@ -133,8 +134,10 @@ export interface PreferencePreset {
   builtIn?: boolean;
 }
 
-const PREFS_KEY = "virgil-editor-prefs";
-const TRANSFORMS_KEY = "virgil-editor-transforms";
+// The two blob keys are spelled once, in the pre-paint replay's module, which
+// must compare against exactly these keys (task 902).
+const PREFS_KEY = PREFS_STORAGE_KEY;
+const TRANSFORMS_KEY = TRANSFORMS_STORAGE_KEY;
 const PRESETS_KEY = "virgil-editor-presets";
 
 // The built-in preset is DERIVED from the shipped defaults, never STORED.
@@ -265,11 +268,17 @@ export function usePreferences() {
   const [transforms, setTransforms] = useState<GlobalTransforms>(DEFAULT_TRANSFORMS);
   const [presets, setPresets] = useState<PreferencePreset[]>([...BUILT_IN_PRESETS]);
   const initialized = useRef(false);
+  // False until the stored prefs have been read. The first render carries
+  // DEFAULT_PREFS (the server render has no storage), so a painter must not
+  // paint before this flips — it would overwrite the pre-paint replay with the
+  // shipped defaults for a frame, the very flash task 902 removes.
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     setPrefs(loadPrefs());
     setTransforms(loadTransforms());
     setPresets(loadPresets());
+    setHydrated(true);
     initialized.current = true;
   }, []);
 
@@ -392,5 +401,5 @@ export function usePreferences() {
     });
   }, [persistPresets]);
 
-  return { prefs, transforms, presets, updatePref, updateTransform, resetAll, savePreset, loadPreset, deletePreset };
+  return { prefs, transforms, presets, hydrated, updatePref, updateTransform, resetAll, savePreset, loadPreset, deletePreset };
 }

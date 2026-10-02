@@ -3,6 +3,9 @@
  * truth for which localStorage keys feed the personal-prefs promotion
  * pipeline.
  *
+ * (The first-paint CSS seed is NOT here: it is rendered from the ONE
+ * pref→CSS table, `pref-css-table.mjs` — task 902.)
+ *
  * The JSON is consumed by both the browser-side mirror
  * (`dev-prefs-mirror.ts`) and the Node-side promoter
  * (`tools/promote-defaults.mjs`). Keep them in sync by editing the JSON
@@ -11,7 +14,7 @@
 
 import registry from "./dev-prefs-registry.json";
 
-export type PromotionStrategy = "replace-all" | "whitelist" | "print-options";
+export type PromotionStrategy = "replace-all" | "whitelist" | "print-options" | "bake-transforms";
 
 export interface PromotablePref {
   /** localStorage key whose JSON value flows into the snapshot. */
@@ -28,6 +31,9 @@ export interface PromotablePref {
   /** Required for `strategy === "whitelist"`. The only top-level keys
    *  permitted to flow through. */
   whitelist?: readonly string[];
+  /** Required for `strategy === "bake-transforms"`: the storage key whose
+   *  RAW colours the snapshot's transforms are baked from (task 902). */
+  rawFrom?: string;
 }
 
 export const PROMOTABLE_PREFS: PromotablePref[] =
@@ -37,17 +43,3 @@ export const PROMOTABLE_PREFS: PromotablePref[] =
 export const MIRRORABLE_STORAGE_KEYS: readonly string[] = Array.from(
   new Set(PROMOTABLE_PREFS.map((p) => p.storageKey)),
 );
-
-export interface CssVarSpec {
-  /** `bucket.key` — `bucket` is one of `editor` | `view`; `key` indexes
-   *  into that bucket's resolved defaults object. */
-  source: string;
-  /** Suffix appended to the value (e.g. `rem`, `px`). */
-  unit?: string;
-  /** When true, wraps the rendered value in double quotes (used for
-   *  font-family names). */
-  quote?: boolean;
-}
-
-export const CSS_VAR_MAP: Record<string, CssVarSpec> =
-  registry.cssVarMap as Record<string, CssVarSpec>;

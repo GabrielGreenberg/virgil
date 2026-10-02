@@ -8,8 +8,9 @@
  * src/lib/dev-prefs-registry.json — the same file the browser mirror
  * imports. Per-entry strategy decides how the source merges onto the
  * existing default JSON sidecar. Also regenerates the marker-comment
- * block inside src/app/globals.css so first-paint CSS stays in sync
- * with the JS defaults.
+ * block inside src/app/globals.css from the ONE pref→CSS table
+ * (src/lib/pref-css-table.mjs) so first-paint CSS is exactly what the
+ * runtime paints at the shipped editor defaults.
  *
  * Idempotent. Safe to run any time. No deps.
  *
@@ -28,6 +29,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// The ONE pref→CSS table (task 902) — the first-paint seed below is rendered
+// from the same rows the runtime paints, and the transform bake uses the same
+// math the runtime applies. Both are import-free leaves under src/lib.
+import { PREF_CSS_ROWS, renderPrefCssSeed } from "../src/lib/pref-css-table.mjs";
+import { applyTransforms } from "../src/lib/color-transform-math.mjs";
 
 const SELF_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -58,7 +64,6 @@ const REGISTRY_PATH = path.join(REPO_ROOT, "src", "lib", "dev-prefs-registry.jso
 const GLOBALS_CSS = path.join(REPO_ROOT, "src", "app", "globals.css");
 
 const EDITOR_PREFS_JSON_REL = "src/hooks/usePreferences.defaults.json";
-const VIEW_PREFS_JSON_REL = "src/hooks/useViewPrefs.defaults.json";
 
 /* ── Utilities ──────────────────────────────────────────────────── */
 
@@ -170,6 +175,32 @@ function applyPrintOptions(target, source) {
   };
 }
 
+/**
+ * Bake the snapshot's global colour transforms (hue / brightness / contrast)
+ * into the shipped palette (task 902). The shipped `DEFAULT_TRANSFORMS` stay
+ * the identity, so a fresh install's sliders read zero and the shipped colours
+ * ARE what Gabriel sees — rather than his raw colours, which he only ever sees
+ * through his transform.
+ *
+ * Idempotent by construction: every baked value is computed from the RAW
+ * colour in the snapshot's prefs blob (`entry.rawFrom`), never from the
+ * already-promoted defaults, so a re-run cannot compound the transform. Only
+ * the table's colour rows are baked — the rows the runtime transforms — and
+ * only keys the target already declares (the `applyAll` vocabulary rule).
+ */
+function applyBakeTransforms(target, transforms, rawPrefs) {
+  const t = { contrast: 0, hue: 0, brightness: 0, ...transforms };
+  const next = { ...target };
+  for (const row of PREF_CSS_ROWS) {
+    if (!row.color) continue;
+    if (!Object.hasOwn(target, row.key) || !Object.hasOwn(rawPrefs, row.key)) continue;
+    const raw = rawPrefs[row.key];
+    if (typeof raw !== "string") continue;
+    next[row.key] = applyTransforms(raw, t);
+  }
+  return next;
+}
+
 /** Pull a possibly-nested sub-value from the parsed snapshot blob. */
 function extractSource(rawValue, subPath) {
   if (!subPath) return rawValue ?? {};
@@ -211,6 +242,9 @@ function main() {
       case "print-options":
         next = applyPrintOptions(cur, src);
         break;
+      case "bake-transforms":
+        next = applyBakeTransforms(cur, src, extractSource(snapshot[entry.rawFrom]));
+        break;
       default:
         throw new Error(`Unknown promotion strategy: ${entry.strategy}`);
     }
@@ -221,12 +255,10 @@ function main() {
     }
   }
 
-  // globals.css managed block — sourced from the post-merge values for
-  // the editor + view buckets. The CSS_VAR_MAP entry's `source` field
-  // is `"bucket.key"`, where bucket is one of those two.
+  // globals.css managed block — the ONE pref→CSS table rendered from the
+  // post-merge editor defaults.
   const editorNext = finalByPath[EDITOR_PREFS_JSON_REL] ?? readJson(path.join(REPO_ROOT, EDITOR_PREFS_JSON_REL));
-  const viewNext = finalByPath[VIEW_PREFS_JSON_REL] ?? readJson(path.join(REPO_ROOT, VIEW_PREFS_JSON_REL));
-  if (rewriteCssBlock(registry.cssVarMap, { editor: editorNext, view: viewNext })) {
+  if (rewriteCssBlock(renderPrefCssSeed(editorNext))) {
     const rel = path.relative(REPO_ROOT, GLOBALS_CSS).split(path.sep).join("/");
     changed.push(rel);
     console.log(verb, rel);
@@ -240,7 +272,7 @@ function main() {
   if (DRY_RUN && changed.length > 0) process.exit(1);
 }
 
-function rewriteCssBlock(cssVarMap, values) {
+function rewriteCssBlock(seed) {
   const END = "/* PROMOTE-DEFAULTS-END */";
   const cur = fs.readFileSync(GLOBALS_CSS, "utf-8");
   const startMatch = /^([ \t]*)\/\* PROMOTE-DEFAULTS-START[\s\S]*?\*\//m.exec(cur);
@@ -259,21 +291,7 @@ function rewriteCssBlock(cssVarMap, values) {
   const before = cur.slice(0, startBlockEnd);
   const after = cur.slice(endIdx + END.length);
 
-  const lines = [];
-  for (const [cssVar, spec] of Object.entries(cssVarMap)) {
-    const [bucket, key] = spec.source.split(".");
-    const raw = values[bucket]?.[key];
-    if (raw === undefined || raw === null) continue;
-    let rendered;
-    if (spec.quote) {
-      rendered = `"${String(raw)}"`;
-    } else if (spec.unit) {
-      rendered = `${raw}${spec.unit}`;
-    } else {
-      rendered = String(raw);
-    }
-    lines.push(`${indent}${cssVar}: ${rendered};`);
-  }
+  const lines = seed.map(([cssVar, value]) => `${indent}${cssVar}: ${value};`);
   const block = "\n" + lines.join("\n") + "\n" + indent + END;
   const next = before + block + after;
   if (next === cur) return false;

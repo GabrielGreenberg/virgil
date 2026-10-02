@@ -160,7 +160,8 @@ import { useHelperMode } from "@/hooks/useHelperMode";
 import { useZenMode } from "@/hooks/useZenMode";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { applyTransforms } from "@/lib/color-transforms";
-import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
+import { resolvePrefCssVars } from "@/lib/preferences-tree";
+import { recordPrefCssPaint } from "@/lib/pref-css-bootstrap";
 import { notifyChromePaletteChanged } from "@/lib/chrome-palette-signal";
 import PreferencesModal from "./PreferencesModal";
 import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
@@ -1096,7 +1097,7 @@ export default function EditorLayout() {
     setHelperMenuOpen(false);
     setCommandsPopoutOpen(false);
   }, []);
-  const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
+  const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, hydrated: editorPrefsHydrated, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
   const helperMode = useHelperMode();
   // Window chrome geometry (WCO title-bar / display mode). Consumed once here
   // so the <html data-display-mode> mirror + geometry listeners stay live for
@@ -1461,23 +1462,16 @@ export default function EditorLayout() {
   }, [panelColorVersion]);
 
   // Inject editor preferences as CSS custom properties (with global transforms)
+  // through the ONE resolver (task 902), and record the paint so the next
+  // load's pre-paint bootstrap replays it before first paint. Gated on
+  // hydration: the first render carries DEFAULT_PREFS, and painting those would
+  // overwrite the replayed palette with the shipped one for a frame.
   useEffect(() => {
+    if (!editorPrefsHydrated) return;
     const s = document.documentElement.style;
-    for (const entry of PREF_TO_CSS) {
-      const raw = editorPrefs[entry.key];
-      let value: string;
-      if (entry.isColor && typeof raw === "string") {
-        value = applyTransforms(raw, editorTransforms);
-      } else if (entry.transform) {
-        value = raw == null ? "" : entry.transform(raw);
-      } else {
-        value = String(raw);
-      }
-      s.setProperty(entry.cssVar, value);
-    }
-    for (const entry of DERIVED_CSS) {
-      s.setProperty(entry.cssVar, entry.compute(editorPrefs));
-    }
+    const vars = resolvePrefCssVars(editorPrefs, editorTransforms);
+    for (const [cssVar, value] of vars) s.setProperty(cssVar, value);
+    recordPrefCssPaint(vars);
     // BUG #30: feed the live doc-relative DEFAULT body sizes into the
     // panel-typography store so an un-overridden card body tracks the main
     // text instead of a frozen literal. Borrowed bodies (footnote/archive/
@@ -1499,7 +1493,7 @@ export default function EditorLayout() {
     // Same-origin iframes (the pdf.js viewer) have their own `:root` and cannot
     // see the writes above — tell them to re-copy the live palette (task 890).
     notifyChromePaletteChanged();
-  }, [editorPrefs, editorTransforms, zenModeOn]);
+  }, [editorPrefs, editorTransforms, editorPrefsHydrated, zenModeOn]);
 
   const [codeView, setCodeView] = useState(false);
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);

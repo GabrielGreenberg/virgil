@@ -260,6 +260,7 @@ export const NON_FLAG_VIRGIL_KEYS: Readonly<Record<string, string>> = {
   "virgil:install-prompt-dismissed": "timestamp of the dismissed PWA install prompt",
   "virgil:selection-menu-color-palette": "the selection menu's last-used colour palette",
   "virgil:spell-dictionary": "the user's global custom spelling dictionary",
+  "virgil:pref-css-paint": "the editor-prefs custom properties last painted, replayed before first paint (pref-css-bootstrap.ts)",
   "virgil:tex-delimiters-changed": "DOM event name (not a storage key)",
   "virgil:tex-delimiters-will-change": "DOM event name (not a storage key)",
 };

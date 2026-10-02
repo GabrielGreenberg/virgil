@@ -268,9 +268,9 @@ describe("the cross-reference chip is themeable like its citation twin", () => {
 
   it("seeds globals.css with the value the derivation yields at the shipped default", () => {
     // The pre-hydration / SSR / print value of a DERIVED token has no
-    // generator: `promote-defaults` rewrites the managed block from
-    // `cssVarMap`, and a derived token has no `bucket.key` source to sit
-    // there. So this seed is hand-written, and this is the only thing keeping
+    // generator: `promote-defaults` rewrites the managed block from the
+    // pref→CSS table (`pref-css-table.mjs`), and a derived token has no
+    // single-pref row to sit there. So this seed is hand-written, and this is the only thing keeping
     // it honest — without it a promoted `labelRefColor` would leave the chip's
     // first paint carrying the OLD grey wash under the NEW ink.
     const at = bg().compute(DEFAULT_PREFS);
