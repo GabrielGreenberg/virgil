@@ -130,6 +130,39 @@ assert pen_released(d), "pen released even on failure"  # 496: released ≠ dele
 assert json.loads((d / "virgil" / "collab.json").read_text())["enabled"] is False, "collab restored even on failure"
 _leg("commit_under_pen rollback")
 
+# --- task 886: a CRASHED hold (acquired, never released) must not become the
+# next acquire's restore target. Original state: collab off, user holds the pen.
+d3 = Path(tempfile.mkdtemp())
+(d3 / "virgil").mkdir()
+user_pen = {"holder": "Gabriel", "since": "t0", "lastHeartbeat": "t0", "lastActivity": "t0", "requestedBy": []}
+collab3 = dict(collab0, enabled=False, pen=user_pen)
+(d3 / "virgil" / "collab.json").write_text(json.dumps(collab3, indent=2) + "\n")
+C.acquire_pen(d3)  # ... and the process dies here: no release
+crashed = json.loads((d3 / "virgil" / "collab.json").read_text())
+assert crashed["enabled"] is True and crashed["pen"]["holder"] == "Claude"
+C.acquire_pen(d3)
+ctx3 = json.loads((d3 / ".virgil" / "pen-context.json").read_text())
+assert ctx3["prior_collab_enabled"] is False, "inherits the crashed hold's prior, not its writes"
+assert ctx3["prior_pen"] == user_pen
+C.release_pen(d3)
+after = json.loads((d3 / "virgil" / "collab.json").read_text())
+assert after["enabled"] is False, "release restores the ORIGINAL enabled"
+assert after["pen"] == user_pen, "release restores the ORIGINAL pen"
+assert pen_released(d3)
+_leg("crashed hold not inherited as prior")
+
+# --- task 886: Claude's own pen is never a restore target, even with no
+# pen-context to inherit from (e.g. the record was lost with the crash).
+(d3 / ".virgil" / "pen-context.json").unlink()
+claude_pen = {"holder": "Claude", "since": "t1", "lastHeartbeat": "t1", "lastActivity": "t1", "requestedBy": []}
+(d3 / "virgil" / "collab.json").write_text(json.dumps(dict(collab0, pen=claude_pen), indent=2) + "\n")
+C.acquire_pen(d3)
+C.release_pen(d3)
+after = json.loads((d3 / "virgil" / "collab.json").read_text())
+assert after["pen"] == C.FREE_PEN, "a Claude-held prior pen normalises to free"
+_leg("claude pen never restored")
+shutil.rmtree(d3)
+
 shutil.rmtree(d)
 shutil.rmtree(d2)
 print("ALL PEN/ATOMIC TESTS PASSED")
