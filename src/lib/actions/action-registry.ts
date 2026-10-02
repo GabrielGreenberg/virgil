@@ -112,6 +112,7 @@
  * React.ReactNode`, matching `MenuEntry.icon`; that type is erased too.
  */
 
+import { markSlashNames } from "@/lib/mark-composition";
 import type { Editor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";
 // VALUE import: `exampleRun` (CHIP 5c) parks the caret inside the freshly
@@ -3018,13 +3019,16 @@ function formatToggleRow(
    *     `code`). Routes `applies` through `formatApplies(mark)`, which greys the
    *     cell where the schema admits no such mark.
    *
-   * `slash` is orthogonal and rides either arm: the WRAPPER rows are ALSO
-   * reachable via slash (`\list`/`\enumerate`/`\quote` + the two `itemize`/
-   * `quotation` aliases), routed through the bridge from `commands.ts`. Passing
-   * it makes the surface map TRUTHFUL — the row claims `surfaces.slash` and names
-   * its command(s), so `assertActionCoverage` reconciles all five live names
-   * against it (task 062). The MARK toggles pass none: a mark is not a slash
-   * command.
+   * Both arms are reachable via slash, routed through the bridge from
+   * `commands.ts` (`editor.chain()` is absent on the view-only stub). The
+   * WRAPPER rows pass `slash` (`\list`/`\enumerate`/`\quote` + the two
+   * `itemize`/`quotation` aliases). The MARK rows pass none — their slash names
+   * are DERIVED from the wrapper-mark table's `slash` column
+   * (`markSlashNames(mark)`: the LaTeX spellings first, then the short aliases,
+   * `\textsc` + `\sc`), task 891 — so the name typed at the popup, the name
+   * the parser reads and the name the emit writes are one column. Either way
+   * the row claims `surfaces.slash` and names its command(s), so
+   * `assertActionCoverage` reconciles every live name against it (task 062).
    */
   opts:
     | {
@@ -3046,10 +3050,10 @@ function formatToggleRow(
         keybinding: string;
         inputRulePattern: RegExp;
       }
-    | { mark: string; wrapper?: never; slash?: { name: string; aliases?: string[] } },
+    | { mark: string; wrapper?: never; slash?: never },
 ): ActionSpec {
   const wrapperNode = opts.wrapper;
-  const slash = opts.slash;
+  const slash = opts.wrapper !== undefined ? opts.slash : markSlash(opts.mark);
   const pmLand =
     opts.wrapper !== undefined
       ? { typed: true, keyboard: true, keybinding: opts.keybinding, inputRulePattern: opts.inputRulePattern }
@@ -3089,13 +3093,26 @@ function formatToggleRow(
   };
 }
 
-/** The four MARK toggles + the three list/quote WRAPPER toggles. The wrappers
+/** A mark row's slash spelling, read off the wrapper-mark table (task 891):
+ *  the first name is the primary `slashName`, the rest its `slashAliases`. A
+ *  mark the table gives no `slash` column stays slash-less. */
+function markSlash(mark: string): { name: string; aliases?: string[] } | undefined {
+  const [name, ...aliases] = markSlashNames(mark);
+  if (!name) return undefined;
+  return aliases.length ? { name, aliases } : { name };
+}
+
+/** The five MARK toggles + the three list/quote WRAPPER toggles. The wrappers
  *  pass `{ wrapper: "<node>" }` so they grey + no-op on a block whose identity
  *  the wrap destroys (Bug #1) or in a container that cannot host THAT node
  *  (task 397) AND `{ slash: … }` so the surface map records the commands that
  *  reach them (task 062): `\list` (+ alias `itemize`) → bullet-list,
  *  `\enumerate` → ordered-list, `\quote` (+ alias `quotation`) → blockquote.
- *  The marks stay unconditionally applicable and slash-less. */
+ *  The marks keep `formatApplies(mark)` (grey where the schema has no such
+ *  mark) and, since task 891, are slash-reachable too — their names derived
+ *  from the wrapper-mark table, because a writer with LaTeX habits reaches for
+ *  `\sc` / `\textbf` (the earlier "a mark is not a slash command" stance was
+ *  overruled by Gabriel's request). */
 const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold(), { mark: "bold" });
 const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic(), { mark: "italic" });
 const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike(), { mark: "strike" });
@@ -3104,6 +3121,17 @@ const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.to
 // every mark toggle's (Mod-B / Mod-I are StarterKit's).
 const SMALL_CAPS_ACTION_ROW = formatToggleRow("small-caps", "Small caps", (c) => c.toggleSmallCaps(), { mark: "smallCaps" });
 const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode(), { mark: "code" });
+/** The five MARK toggle rows — the format rows built on the `mark` arm. Their
+ *  slash names feed `SLASH_NAME_TO_ACTION_ID` (task 891), and
+ *  `assertActionCoverage` partitions the format slice on it (a mark owns the
+ *  slash surface but no chord/input rule of its own). */
+const MARK_TOGGLE_ACTION_ROWS: readonly ActionSpec[] = [
+  BOLD_ACTION_ROW,
+  ITALIC_ACTION_ROW,
+  STRIKE_ACTION_ROW,
+  SMALL_CAPS_ACTION_ROW,
+  CODE_ACTION_ROW,
+];
 const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: "bulletList", slash: { name: "list", aliases: ["itemize"] }, keybinding: "Mod-Shift-8", inputRulePattern: bulletListInputRegex });
 const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: "orderedList", slash: { name: "enumerate" }, keybinding: "Mod-Shift-7", inputRulePattern: orderedListInputRegex });
 const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: "blockquote", slash: { name: "quote", aliases: ["quotation"] }, keybinding: "Mod-Shift-b", inputRulePattern: blockquoteInputRegex });
@@ -3721,6 +3749,17 @@ export const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   enumerate: "ordered-list",
   quote: "blockquote",
   quotation: "blockquote",
+  // Task 891: the mark toggles' names (`textsc`/`sc` → small-caps, `textbf`/
+  // `bf` → bold, …), read off each mark row's own `slashName`/`slashAliases` —
+  // which `formatToggleRow` derived from the wrapper-mark table. Not hand-listed:
+  // a new `slash` row in the table is mapped here by construction.
+  ...Object.fromEntries(
+    MARK_TOGGLE_ACTION_ROWS.flatMap((row) =>
+      [row.slashName, ...(row.slashAliases ?? [])]
+        .filter((n): n is string => !!n)
+        .map((n) => [n, row.id] as const),
+    ),
+  ),
 };
 
 // ---------------------------------------------------------------------------
@@ -3798,10 +3837,11 @@ function slashOwnersAmong<K extends ActionId>(
 /**
  * The 8 format ids — the slice CHIP 6b populates, completing the GRID fold. Each
  * is `category: "format"`, `backbone: "tiptap-chain"`, and on the lightning grid.
- * The five MARK toggles (bold/italic/strike/code/text-color) are lightning-ONLY
- * (a mark is not a slash command or input rule; StarterKit owns the keybindings).
- * The three structural WRAPPER toggles (the slash owners among this slice) ALSO own the
- * slash surface as of task 062.
+ * The mark toggles own no input rule (StarterKit / the mark owns the
+ * keybindings); since task 891 the five that have a table `slash` column
+ * (bold/italic/strike/small-caps/code) are slash-reachable — `text-color` is
+ * lightning-ONLY. The three structural WRAPPER toggles ALSO own the slash
+ * surface as of task 062.
  */
 const COVERED_FORMAT_IDS: readonly FormatActionId[] = keysOf(FORMAT_ACTION_ROWS);
 
@@ -3868,8 +3908,17 @@ const COVERED_LATEX_COMMENT_IDS: readonly LatexCommentActionId[] = keysOf(
 function typedOwners(): ReadonlySet<ActionId> {
   return new Set<ActionId>([
     ...TYPED_LATEX_ACTION_IDS,
-    ...slashOwnersAmong(COVERED_FORMAT_IDS),
+    // the markdown WRAPPERS — the slash-owning format rows that are not mark
+    // toggles (task 891 made the marks slash owners too; they own no input rule).
+    ...formatWrapperIdsOf(slashOwnersAmong(COVERED_FORMAT_IDS)),
   ]);
+}
+
+/** The structural WRAPPER rows among a set of format ids: everything that is
+ *  not one of the {@link MARK_TOGGLE_ACTION_ROWS}. */
+function formatWrapperIdsOf(ids: Iterable<ActionId>): ActionId[] {
+  const marks = new Set<ActionId>(MARK_TOGGLE_ACTION_ROWS.map((r) => r.id));
+  return [...ids].filter((id) => !marks.has(id));
 }
 
 /**
@@ -3965,9 +4014,13 @@ export function assertActionCoverage(): string[] {
   // FORMAT (task 062): the three structural WRAPPER rows the five
   // `\list`/`\itemize`/`\enumerate`/`\quote`/`\quotation` commands fan into
   // (many-to-one) — each names its primary in `slashName` and its second in
-  // `slashAliases`. The five MARK toggles are lightning-only (a mark is not a
-  // slash command).
+  // `slashAliases`. Task 891: the five MARK toggles own the slash surface too
+  // (`\textsc`/`\sc`, …, derived from the wrapper-mark table); only
+  // `text-color` (it needs a color argument) is slash-less.
   const formatIdsWithSlash = slashOwnersAmong(COVERED_FORMAT_IDS);
+  // The chord/input-rule partition is WRAPPER-ness, no longer slash-ness: a
+  // mark is slash-reachable but its bindings are StarterKit's / its own mark's.
+  const formatWrapperIds = new Set<ActionId>(formatWrapperIdsOf(formatIdsWithSlash));
 
   // (1)+(2)+(3) the CARD slice is fully + correctly covered.
   for (const id of COVERED_CARD_IDS) {
@@ -4131,8 +4184,8 @@ export function assertActionCoverage(): string[] {
   // (every format cell is a grid cell), and never claim grab. PARTITIONED on
   // `formatIdsWithSlash` (task 062): the three structural WRAPPER rows ALSO own
   // the slash surface (`\list`/`\enumerate`/`\quote` + aliases, reconciled
-  // below) so they MUST claim slash + a slashName; the five MARK rows must NOT
-  // claim slash (a mark is not a slash command).
+  // below) so they MUST claim slash + a slashName; since task 891 so must the
+  // five MARK rows (`\textsc`/`\sc`, …). Only `text-color` claims no slash.
   //
   // RENEGOTIATED (task 427): this leg used to deny every format row `typed` and
   // `keyboard` on the ground that "a mark toggle is not an input rule; its
@@ -4173,7 +4226,7 @@ export function assertActionCoverage(): string[] {
         `[actions] format id "${id}" claims a grab surface it does not expose`,
       );
     }
-    if (formatIdsWithSlash.has(id)) {
+    if (formatWrapperIds.has(id)) {
       // the structural WRAPPERS own the StarterKit chord (task 427). Their
       // markdown INPUT RULE is the typed arm's, below — the wrappers are the
       // typed surface's second PROVIDER and are reconciled there with the
@@ -4189,11 +4242,12 @@ export function assertActionCoverage(): string[] {
       );
     }
     if (formatIdsWithSlash.has(id)) {
-      // the structural WRAPPERS (bullet-list / ordered-list / blockquote) own the
-      // slash surface — must claim it + name it (primary; aliases reconciled below).
+      // the structural WRAPPERS (bullet-list / ordered-list / blockquote) and
+      // the MARK toggles (task 891) own the slash surface — must claim it + name
+      // it (primary; aliases reconciled below).
       if (!row.surfaces.slash) {
         problems.push(
-          `[actions] format id "${id}" must set surfaces.slash (the wrapper owns the slash surface)`,
+          `[actions] format id "${id}" must set surfaces.slash (a live slash command reaches it)`,
         );
       }
       if (!row.slashName) {
@@ -4202,9 +4256,10 @@ export function assertActionCoverage(): string[] {
         );
       }
     } else if (row.surfaces.slash || row.slashName || row.slashAliases) {
-      // a MARK toggle is not a slash command — it must claim no slash surface/name.
+      // no live slash command reaches this row (today `text-color`) — it must
+      // claim no slash surface/name.
       problems.push(
-        `[actions] format id "${id}" prematurely claims the slash surface (a mark toggle is not a slash command)`,
+        `[actions] format id "${id}" prematurely claims the slash surface (no live slash command reaches it)`,
       );
     }
   }

@@ -26,6 +26,7 @@ import {
   type ActionId,
 } from "@/lib/actions/action-registry";
 import { CARD_ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { markSlashNames, SLASH_MARK_TYPES } from "@/lib/mark-composition";
 // Task 398: the slash surface's applicability DOOR. `runViewOnlyAction` builds
 // its ctx here rather than inline, so the OFFER (the popup's greyed rows +
 // `executeSelection`'s pre-delete refusal) and this COMMIT ask the registry the
@@ -341,6 +342,15 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   bridgeRow("enumerate"),
   bridgeRow("quote"),
   bridgeRow("quotation"),
+  // Task 891: the inline-MARK toggles — `\textsc`/`\sc` (small caps),
+  // `\textbf`/`\bf`, `\emph`/`\textit`/`\it`/`\em`, `\sout`, `\texttt`/`\tt`.
+  // DERIVED from the wrapper-mark table's `slash` column (one loop, not a hand
+  // row per name), so adding a mark there also adds its backslash command.
+  // Bridge rows for the same reason as the wrappers: the format row's `run()`
+  // is `editor.chain().focus().toggleX()`, which the view-only stub lacks. The
+  // toggle runs in the same tick as the commit door's delete, so at a collapsed
+  // caret it leaves a STORED mark the next typed character picks up.
+  ...SLASH_MARK_TYPES.flatMap(markSlashNames).map((name) => bridgeRow(name)),
 ];
 
 /** Fast lookup by command name (without backslash). */

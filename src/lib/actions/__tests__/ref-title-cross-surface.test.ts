@@ -313,8 +313,10 @@ describe("registry is the COMPLETE SSOT (CHIP 7a milestone)", () => {
     ];
     for (const name of VIRGIL_COMMAND_NAMES) {
       if (fanOutNames.includes(name)) continue;
+      // Task 891: a mark toggle's short names (`\sc`, `\bf`, …) and second
+      // spellings (`\textit`) are its `slashAliases`.
       const row = Object.values(VIRGIL_ACTION_REGISTRY).find(
-        (r) => r?.slashName === name,
+        (r) => r?.slashName === name || (r?.slashAliases ?? []).includes(name),
       );
       expect(row, `slash \\${name} should resolve to a row`).toBeTruthy();
       expect(row!.surfaces.slash).toBe(true);
