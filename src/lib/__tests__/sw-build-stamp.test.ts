@@ -20,7 +20,9 @@
  *   3. THE WORKER — the stamped `sw.js`, driven in a VM against fake caches:
  *      install precaches the build under its scope; a non-ok answer yields to
  *      a held copy; hashed chunks are served cache-first; activate keeps this
- *      build, the fonts and one predecessor, and purges the rest.
+ *      build, the fonts and the builds windows can still need (task 887:
+ *      the previously ACTIVE build + any build a live window reports
+ *      running — never a superseded waiter by creation order).
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -191,6 +193,12 @@ function makeWorld(network: Record<string, FakeResponse>) {
         async put(req: string | { url: string }, resp: FakeResponse) {
           store.set(keyOf(req), resp);
         },
+        async keys() {
+          return [...store.keys()];
+        },
+        async delete(req: string | { url: string }) {
+          return store.delete(keyOf(req));
+        },
       };
     },
     async match(req: string | { url: string }) {
@@ -217,7 +225,11 @@ function makeWorld(network: Record<string, FakeResponse>) {
   return { stores, fetched, caches, fetch };
 }
 
-function loadWorker(source: string, world: ReturnType<typeof makeWorld>) {
+function loadWorker(
+  source: string,
+  world: ReturnType<typeof makeWorld>,
+  liveWindows: string[] = [],
+) {
   const listeners: Record<string, (e: unknown) => void> = {};
   const self = {
     location: new URL(`${SCOPE}sw.js`),
@@ -225,6 +237,7 @@ function loadWorker(source: string, world: ReturnType<typeof makeWorld>) {
       listeners[type] = fn;
     },
     skipWaiting: () => {},
+    clients: { matchAll: async () => liveWindows.map((id) => ({ id })) },
   };
   vm.runInNewContext(source, {
     self,
@@ -235,6 +248,10 @@ function loadWorker(source: string, world: ReturnType<typeof makeWorld>) {
     Promise,
     Array,
     String,
+    JSON,
+    Set,
+    encodeURIComponent,
+    decodeURIComponent,
   });
   const run = async (type: string, extra: Record<string, unknown> = {}) => {
     let pending: Promise<unknown> | undefined;
@@ -249,6 +266,11 @@ function loadWorker(source: string, world: ReturnType<typeof makeWorld>) {
   return {
     install: () => run("install"),
     activate: () => run("activate"),
+    report: (clientId: string, scripts: string[]) =>
+      run("message", {
+        source: { id: clientId },
+        data: { type: "VIRGIL_CLIENT_BUILD", scripts },
+      }),
     request: (url: string, mode = "no-cors") =>
       run("fetch", { request: { url, method: "GET", mode } }) as Promise<FakeResponse | undefined>,
   };
@@ -349,7 +371,7 @@ describe("leg 3 — the stamped worker", () => {
     expect(world.stores.has("virgil-fonts")).toBe(true);
   });
 
-  it("activate keeps this build and ONE predecessor, and purges the rest", async () => {
+  it("with no activation on record, activate keeps ONE predecessor (the newest) and purges the rest", async () => {
     const { source, cacheName } = stampedWorker();
     const world = makeWorld({});
     for (const name of ["virgil-v9", "virgil-fonts", "virgil-aaaa", "virgil-bbbb"]) {
@@ -358,7 +380,125 @@ describe("leg 3 — the stamped worker", () => {
     await world.caches.open(cacheName);
     await loadWorker(source, world).activate();
     expect([...world.stores.keys()].sort()).toEqual(
-      ["virgil-bbbb", "virgil-fonts", cacheName].sort(),
+      ["virgil-bbbb", "virgil-fonts", "virgil-meta", cacheName].sort(),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// task 887 — retention follows what ACTIVATED and what windows RUN, never
+// creation order
+// ---------------------------------------------------------------------------
+
+const LEDGER = `${SCOPE}__virgil-meta/activated.json`;
+
+async function seedLedger(world: ReturnType<typeof makeWorld>, names: string[]) {
+  (await world.caches.open("virgil-meta")).put(LEDGER, new FakeResponse(JSON.stringify(names)));
+}
+
+function ledgerOf(world: ReturnType<typeof makeWorld>): string[] {
+  return JSON.parse(world.stores.get("virgil-meta")!.get(LEDGER)!.body);
+}
+
+describe("task 887 — build-cache retention", () => {
+  it("a superseded never-activated waiter loses to the build that was ACTIVE", async () => {
+    // Windows run A. B installed and waited; C replaced it before anyone
+    // clicked. C activates: A must survive, B must go.
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    for (const name of ["virgil-fonts", "virgil-A", "virgil-B"]) await world.caches.open(name);
+    await seedLedger(world, ["virgil-A"]);
+    await world.caches.open(cacheName);
+    await loadWorker(source, world).activate();
+    expect([...world.stores.keys()].sort()).toEqual(
+      ["virgil-A", "virgil-fonts", "virgil-meta", cacheName].sort(),
+    );
+    expect(ledgerOf(world)).toEqual(["virgil-A", cacheName]);
+  });
+
+  it("install sweeps a superseded waiter's cache once it has copied what it shares", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({ [SCOPE]: new FakeResponse("shell") });
+    (await world.caches.open("virgil-B")).put(CHUNK, new FakeResponse("from-B"));
+    await world.caches.open("virgil-A");
+    await world.caches.open("virgil-Z");
+    await seedLedger(world, ["virgil-Z", "virgil-A"]);
+    await loadWorker(source, world).install();
+    // Copied from the waiter's cache, then that cache was dropped; the
+    // active build (A) and the one it retains (Z) are untouched.
+    expect(world.stores.get(cacheName)!.get(CHUNK)?.body).toBe("from-B");
+    expect(world.fetched).not.toContain(CHUNK);
+    expect([...world.stores.keys()].sort()).toEqual(
+      ["virgil-A", "virgil-Z", "virgil-meta", cacheName].sort(),
+    );
+  });
+
+  it("install with no ledger yet deletes nothing", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    for (const name of ["virgil-A", "virgil-B"]) await world.caches.open(name);
+    await loadWorker(source, world).install();
+    expect([...world.stores.keys()]).toEqual(
+      expect.arrayContaining(["virgil-A", "virgil-B", cacheName]),
+    );
+  });
+
+  it("a deferred window two updates back keeps its build while it is open", async () => {
+    // Ledger: A then B activated. A window that stayed on A (task 610) is
+    // still open and reported A's scripts. C activates: B is kept as the
+    // previous active build, A because a live window runs it.
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    const aChunk = `${SCOPE}_next/static/chunks/a-111.js`;
+    (await world.caches.open("virgil-A")).put(aChunk, new FakeResponse("a"));
+    await world.caches.open("virgil-B");
+    await seedLedger(world, ["virgil-A", "virgil-B"]);
+    await world.caches.open(cacheName);
+    const worker = loadWorker(source, world, ["win-1"]);
+    await worker.report("win-1", [aChunk]);
+    await worker.activate();
+    expect([...world.stores.keys()].sort()).toEqual(
+      ["virgil-A", "virgil-B", "virgil-meta", cacheName].sort(),
+    );
+  });
+
+  it("a closed window's report is dropped and no longer retains its build", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    const aChunk = `${SCOPE}_next/static/chunks/a-111.js`;
+    (await world.caches.open("virgil-A")).put(aChunk, new FakeResponse("a"));
+    await world.caches.open("virgil-B");
+    await seedLedger(world, ["virgil-A", "virgil-B"]);
+    await world.caches.open(cacheName);
+    await loadWorker(source, world, ["win-1"]).report("win-1", [aChunk]);
+    await loadWorker(source, world, []).activate();
+    expect(world.stores.has("virgil-A")).toBe(false);
+    expect(
+      [...world.stores.get("virgil-meta")!.keys()].some((k) => k.includes("/client/")),
+    ).toBe(false);
+  });
+
+  it("a report keeps only same-origin hashed scripts", async () => {
+    const { source } = stampedWorker();
+    const world = makeWorld({});
+    const worker = loadWorker(source, world, ["w"]);
+    await worker.report("w", [
+      `${SCOPE}_next/static/chunks/a-1.js`,
+      "https://evil.example/_next/static/x.js",
+      `${SCOPE}other.js`,
+    ]);
+    const meta = world.stores.get("virgil-meta")!;
+    const [key] = [...meta.keys()];
+    expect(JSON.parse(meta.get(key)!.body)).toEqual([`${SCOPE}_next/static/chunks/a-1.js`]);
+  });
+
+  it("re-activating the same build does not duplicate it in the ledger", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    await seedLedger(world, [cacheName, "virgil-A"]);
+    await world.caches.open("virgil-A");
+    await world.caches.open(cacheName);
+    await loadWorker(source, world).activate();
+    expect(ledgerOf(world)).toEqual(["virgil-A", cacheName]);
   });
 });

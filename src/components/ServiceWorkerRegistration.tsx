@@ -27,6 +27,20 @@ const SW_SCOPE = publicAssetUrl("/");
 // the window comes back into view, and hourly while it is visible.
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
+// The hashed scripts this page booted from identify its build to the worker
+// (public/sw.js → "Build-cache retention"). Posted to the ACTIVE worker, which
+// stores it in the build-independent meta cache that every later worker reads.
+function reportClientBuild(reg: ServiceWorkerRegistration) {
+  const scripts = Array.from(document.scripts, (s) => s.src).filter((src) =>
+    src.includes("/_next/static/"),
+  );
+  if (scripts.length === 0) return;
+  (reg.active ?? navigator.serviceWorker.controller)?.postMessage({
+    type: "VIRGIL_CLIENT_BUILD",
+    scripts,
+  });
+}
+
 export default function ServiceWorkerRegistration() {
   // Task 610 — every window answers other windows' "is your work on disk?"
   // before one of them posts SKIP_WAITING (which reloads all of them).
@@ -50,6 +64,11 @@ export default function ServiceWorkerRegistration() {
       })
       .then((reg) => {
         if (cancelled) return;
+
+        // Task 887 — tell the worker which build this window runs, so a later
+        // activation keeps that build's cache while this window is open (its
+        // lazy chunks are gone from the server after the next deploy).
+        reportClientBuild(reg);
 
         // Already a waiting SW when we registered (e.g. user reloaded
         // while an update was sitting waiting in another tab).

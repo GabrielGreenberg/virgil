@@ -18,7 +18,8 @@
 // BUILD_PRECACHE with that build's hashed chunks + the app shell. So every
 // deploy that changes any byte ships a worker with new bytes: the browser
 // installs it, the banner appears, and on activate every build's cache but
-// this one and its predecessor is purged — never an accumulation. Unstamped
+// the ones a window can still need is purged — never an accumulation (see
+// "Build-cache retention" below). Unstamped
 // (the dev server), the placeholders are valid values and the worker bypasses
 // itself on localhost anyway.
 //
@@ -66,6 +67,26 @@ const DICTIONARY_PRECACHE = [
   "./dictionaries/en/index.dic",
 ];
 
+// Build-cache retention (task 887). Which OTHER build caches survive is a
+// question about windows, not about creation order: "the newest other cache"
+// was a superseded waiter's whenever two deploys landed before anyone clicked
+// the banner — and keeping it purged the build every open window was running.
+// So retention reads two records, both in this build-independent cache:
+//   - the ACTIVATION LEDGER: the build caches whose worker actually activated,
+//     oldest first. This build and the one active before it are kept (task
+//     610: a window that held unsaved work stays on the old build, now
+//     controlled by this worker).
+//   - CLIENT REPORTS: each window posts the hashed scripts it booted from
+//     (ServiceWorkerRegistration.tsx); any build cache holding a live window's
+//     scripts is kept, whether or not its worker ever activated.
+// The same sweep runs after install (a superseded waiter's cache goes then,
+// once the new build has copied what it shares) and on activate.
+const META_CACHE = "virgil-meta";
+const LEDGER_KEY = scopeUrl("__virgil-meta/activated.json");
+const CLIENT_KEY_PREFIX = scopeUrl("__virgil-meta/client/");
+const LEDGER_LIMIT = 8;
+const CLIENT_SCRIPT_LIMIT = 64;
+
 // Cross-origin hosts whose responses we deliberately cache so they keep
 // working offline. Google Fonts is on the allowlist because the Fonts…
 // dialog loads picker-pool families from there at runtime.
@@ -99,7 +120,11 @@ self.addEventListener("install", (event) => {
   // a failed precache must NOT abort the install (the SW still works for
   // everything else, and the mirror/write-through path still applies).
   if (IS_DEV) return;
-  event.waitUntil(Promise.all([precacheTexAssets(), precacheBuild()]));
+  event.waitUntil(
+    Promise.all([precacheTexAssets(), precacheBuild()]).then(() =>
+      sweepBuildCaches({ activating: false }),
+    ),
+  );
 });
 
 // Resolve a precache path against the worker's OWN scope.
@@ -188,35 +213,147 @@ async function precacheTexAssets() {
 }
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      // Keep this build's cache, the fonts, and exactly ONE predecessor
-      // build: the newest other build cache (`caches.keys()` is in creation
-      // order). A window that stayed open on the old build while another
-      // window accepted the update (task 610 — it holds unsaved work) is now
-      // controlled by THIS worker, and can still lazily load its own build's
-      // chunks from that cache. Everything older is purged, so at most two
-      // builds are ever held.
-      const keys = await caches.keys();
-      const builds = keys.filter(
-        (k) => k !== CACHE_NAME && k !== CROSS_ORIGIN_CACHE,
-      );
-      const predecessor = builds[builds.length - 1];
-      await Promise.all(
-        builds.filter((k) => k !== predecessor).map((k) => caches.delete(k)),
-      );
-      // Do NOT clients.claim() here. Once the user accepts the update,
-      // the app reloads on `controllerchange`; the new SW takes over
-      // cleanly on the fresh page. Auto-claiming would also seize
-      // control of any other open tabs the user hasn't explicitly
-      // refreshed, which is the exact behavior we removed.
-    })(),
-  );
+  if (IS_DEV) return;
+  // Do NOT clients.claim() here. Once the user accepts the update, the app
+  // reloads on `controllerchange`; the new SW takes over cleanly on the fresh
+  // page. Auto-claiming would also seize control of any other open tabs the
+  // user hasn't explicitly refreshed, which is the exact behavior we removed.
+  event.waitUntil(sweepBuildCaches({ activating: true }));
 });
+
+// Delete every build cache no window can still need (task 887 — see
+// "Build-cache retention" at the top). Kept: this build, the fonts, the meta
+// cache, the ledger's last two activated builds, and every build a live window
+// reports running. Best-effort: a failure here leaves caches in place, never
+// breaks install or activation.
+async function sweepBuildCaches({ activating }) {
+  try {
+    const meta = await caches.open(META_CACHE);
+    const prior = await readLedger(meta);
+    // At install the ledger's newest entry is the ACTIVE build, and the one
+    // before it is what the active worker is still retaining. With no ledger
+    // yet (the first worker to keep one), nothing is known to be safe to drop.
+    if (!activating && prior.length === 0) return;
+    const ledger = activating ? await recordActivation(meta, prior) : prior;
+    const keys = await caches.keys();
+    const builds = keys.filter(
+      (k) => k !== CACHE_NAME && k !== CROSS_ORIGIN_CACHE && k !== META_CACHE,
+    );
+    const keep = new Set(ledger.slice(-2));
+    // No earlier activation on record: fall back to the newest other build
+    // cache (`caches.keys()` is creation order), the pre-ledger rule.
+    if (activating && prior.length === 0 && builds.length > 0) {
+      keep.add(builds[builds.length - 1]);
+    }
+    for (const name of await liveClientBuilds(meta, builds)) keep.add(name);
+    await Promise.all(
+      builds.filter((k) => !keep.has(k)).map((k) => caches.delete(k)),
+    );
+  } catch {
+    // caches unavailable — nothing to sweep.
+  }
+}
+
+async function readLedger(meta) {
+  try {
+    const resp = await meta.match(LEDGER_KEY);
+    const list = resp ? await resp.json() : [];
+    return Array.isArray(list) ? list.filter((n) => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+async function recordActivation(meta, prior) {
+  const ledger = prior.filter((n) => n !== CACHE_NAME);
+  ledger.push(CACHE_NAME);
+  const next = ledger.slice(-LEDGER_LIMIT);
+  await meta.put(LEDGER_KEY, new Response(JSON.stringify(next)));
+  return next;
+}
+
+// The build caches live windows are running. A window's report lists the
+// hashed scripts it booted from; the build it runs is the cache holding the
+// most of them (ties — chunks two builds share — keep both). Reports from
+// windows that have since closed are deleted here.
+async function liveClientBuilds(meta, builds) {
+  const keep = new Set();
+  if (!self.clients || builds.length === 0) return keep;
+  const windows = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+  const live = new Set(windows.map((c) => c.id));
+  for (const req of await meta.keys()) {
+    const url = typeof req === "string" ? req : req.url;
+    if (!url.startsWith(CLIENT_KEY_PREFIX)) continue;
+    if (!live.has(decodeURIComponent(url.slice(CLIENT_KEY_PREFIX.length)))) {
+      await meta.delete(req);
+      continue;
+    }
+    let scripts = [];
+    try {
+      scripts = await (await meta.match(req)).json();
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(scripts) || scripts.length === 0) continue;
+    let best = 0;
+    let running = [];
+    for (const name of builds) {
+      const cache = await caches.open(name);
+      let held = 0;
+      for (const s of scripts) if (await cache.match(s)) held++;
+      if (held > best) {
+        best = held;
+        running = [name];
+      } else if (held > 0 && held === best) {
+        running.push(name);
+      }
+    }
+    for (const name of running) keep.add(name);
+  }
+  return keep;
+}
+
+// A window's report: the same-origin hashed scripts it booted from.
+function clientScripts(data) {
+  if (!Array.isArray(data && data.scripts)) return [];
+  const out = [];
+  for (const s of data.scripts) {
+    if (typeof s !== "string") continue;
+    try {
+      const u = new URL(s, self.location.href);
+      if (u.origin === self.location.origin && u.pathname.startsWith(IMMUTABLE_PREFIX)) {
+        out.push(u.href);
+      }
+    } catch {
+      // not a URL — ignore
+    }
+    if (out.length >= CLIENT_SCRIPT_LIMIT) break;
+  }
+  return out;
+}
 
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
+  }
+  if (event.data && event.data.type === "VIRGIL_CLIENT_BUILD" && !IS_DEV) {
+    const id = event.source && event.source.id;
+    const scripts = clientScripts(event.data);
+    if (!id || scripts.length === 0) return;
+    event.waitUntil(
+      caches
+        .open(META_CACHE)
+        .then((meta) =>
+          meta.put(
+            CLIENT_KEY_PREFIX + encodeURIComponent(id),
+            new Response(JSON.stringify(scripts)),
+          ),
+        )
+        .catch(() => {}),
+    );
   }
 });
 
@@ -276,7 +413,7 @@ async function handle(request) {
 }
 
 // A cached copy of `request`: this build's (or the fonts') cache first, then
-// the retained predecessor build's.
+// any retained build's.
 async function heldCopy(cache, request) {
   return (await cache.match(request)) || (await caches.match(request));
 }
