@@ -32,6 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import (
+    paper_folder,
     citekey_matches, lock_catalog, normalize_citekey,
     read_catalog, write_catalog,
 )
@@ -87,7 +88,7 @@ def main() -> int:
             library = Path("~/Virgil-Library").expanduser()
     library = library.resolve()
     citekey = normalize_citekey(args.citekey)
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     tex_path = paper_dir / "main.tex"
     if not tex_path.exists():
         print(f"error: {tex_path} not found", file=sys.stderr)

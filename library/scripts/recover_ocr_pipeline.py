@@ -38,6 +38,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 def _resolve_library_root() -> Path:
     env = os.environ.get("VIRGIL_LIBRARY_ROOT")
@@ -89,7 +92,7 @@ def recover(
     language: str = "eng",
 ) -> dict:
     library = _resolve_library_root()
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     pdf_path = paper_dir / f"{citekey}.pdf"
     if not pdf_path.exists():
         return {"error": f"PDF not found at {pdf_path}"}

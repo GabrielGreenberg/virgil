@@ -518,7 +518,6 @@ def _apply_catalog(
     """Catalog surgery under ``lock_catalog``. Returns (rows_removed, folders_archived)."""
     archive_dir = library / ".virgil" / "_dedup-archive"
     manifest = archive_dir / "manifest.jsonl"
-    papers_dir = library / "papers"
 
     drop_rows = ops["drop_rows"]
     archive_rows = ops["archive_rows"]
@@ -553,9 +552,11 @@ def _apply_catalog(
         manifest_lines: list[str] = []
         for ck in sorted(archive_rows):
             src = None
+            if not _tools.is_path_safe_citekey(ck):
+                continue  # task 894: names no folder — never move `papers/../x`
             for form in ("NFC", "NFD"):
                 import unicodedata
-                cand = papers_dir / unicodedata.normalize(form, ck)
+                cand = _tools.paper_folder(library, unicodedata.normalize(form, ck))
                 if cand.is_dir():
                     src = cand
                     break

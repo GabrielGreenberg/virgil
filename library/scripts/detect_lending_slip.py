@@ -35,6 +35,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 SIGNATURES = (
     "ILLIAD TN#", "ILLIAD", "OCLC ", "Lending String:",
@@ -78,7 +81,7 @@ def _looks_like_slip(text: str) -> bool:
 
 def detect(citekey: str) -> dict:
     library = _resolve_library_root()
-    pdf_path = library / "papers" / citekey / f"{citekey}.pdf"
+    pdf_path = paper_folder(library, citekey) / f"{citekey}.pdf"
     if not pdf_path.exists():
         return {"error": f"PDF not found at {pdf_path}", "lending_pages": 0}
     lending = 0
@@ -95,7 +98,7 @@ def strip_from_tex(citekey: str, lending_pages: int, dry_run: bool) -> int:
     if lending_pages == 0:
         return 0
     library = _resolve_library_root()
-    tex_path = library / "papers" / citekey / "main.tex"
+    tex_path = paper_folder(library, citekey) / "main.tex"
     if not tex_path.exists():
         return 0
     text = tex_path.read_text(encoding="utf-8")

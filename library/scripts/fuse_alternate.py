@@ -36,6 +36,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    paper_folder,
     append_inbox_item,
     citekey_matches,
     lock_catalog,
@@ -766,7 +767,7 @@ def update_catalog_for_fusion(
 
     The read-modify-write is serialized via `lock_catalog`.
     """
-    main_tex_path = library / "papers" / citekey / "main.tex"
+    main_tex_path = paper_folder(library, citekey) / "main.tex"
     body_count: Optional[int] = None
     if main_tex_path.exists():
         tex = main_tex_path.read_text()
@@ -867,7 +868,7 @@ def _write_log(
 def _resolve_alternate(library: Path, citekey: str, override: Optional[str]) -> Path:
     """Pick the PDF alternate for fusion. If `override` is given, use it.
     Otherwise read catalog and pick the largest .pdf in pdf.alternates."""
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     if override:
         p = paper_dir / override
         if not p.exists():
@@ -943,7 +944,7 @@ def main() -> int:
 
     library = Path(args.library).expanduser()
     citekey = args.citekey
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     main_tex_path = paper_dir / "main.tex"
 
     try:

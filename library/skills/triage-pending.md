@@ -105,7 +105,7 @@ directory).
      `needs-metadata`, `variant-copy`, `whole-handbook`, `sep`,
      `preprint`, `unsupported-ext`, `error`, and the `.bib` family
      (`bib-only`, `citekey-exists`, `bib-manuscript`, `bib-no-citekey`,
-     `bib-parse-failed`). **A flag you have not seen before is a known
+     `bib-unsafe-citekey`, `bib-parse-failed`). **A flag you have not seen before is a known
      state, not an anomaly** — group it with the rest and say what it is.
    - `proposedFields`: bib-stub fields (title, doi, isbn, url, etc.)
    - `proposedBibState` (bib-only rows only): `"unverified"` or `"manuscript"`
@@ -119,7 +119,14 @@ directory).
    `unsorted/_needs-metadata/` rather than minting garbage
    `papers/<garbage>/` directories. The cluster-size guard in
    `triage_apply.py` also strips the `variant-copy` flag when >10
-   children claim to be variants of the same parent.
+   children claim to be variants of the same parent. A citekey is a
+   folder name, so it must be ONE safe segment (no `/`, `\`, leading
+   `.`): a `.bib` entry whose own key is not (DBLP's
+   `journals/jphil/Smith20`) comes back `bib-unsafe-citekey` with a
+   sanitized `proposedCitekey` (`journals-jphil-Smith20`) and its
+   `originalCitekey`, which apply records as an alias. If you EDIT a
+   `proposedCitekey` during review, keep it path-safe — `triage_apply.py`
+   refuses an unsafe one (`unsafe-citekey`) before writing anything.
 
 2. **Review.** Read `/tmp/triage.jsonl` and present a concise summary
    to the user. Group by flag — flagged rows get a one-line note in

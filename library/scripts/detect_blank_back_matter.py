@@ -28,6 +28,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 def _resolve_library_root() -> Path:
     env = os.environ.get("VIRGIL_LIBRARY_ROOT")
@@ -87,7 +90,7 @@ def detect(
     citekey: str, check_last: int = 10, threshold: int = 50,
 ) -> dict:
     library = _resolve_library_root()
-    pdf_path = library / "papers" / citekey / f"{citekey}.pdf"
+    pdf_path = paper_folder(library, citekey) / f"{citekey}.pdf"
     if not pdf_path.exists():
         return {"error": f"PDF not found at {pdf_path}"}
     page_count = _pdf_page_count(pdf_path)

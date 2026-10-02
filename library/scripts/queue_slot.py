@@ -77,7 +77,12 @@ from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import unlink_tolerant  # noqa: E402
+from _tools import (  # noqa: E402
+    is_path_safe_citekey,
+    paper_folder,
+    require_path_safe_citekey,
+    unlink_tolerant,
+)
 
 # kind → filename suffix appended to the citekey. `None` = the bare
 # `<citekey>.json` slot. Mirrored by `queueFilename` in library/lib/queue.ts.
@@ -144,6 +149,7 @@ def slot_filename(kind: str, citekey: str) -> str:
     """The queue filename for a (kind, citekey) request."""
     if not citekey:
         raise ValueError("citekey required for a queue slot")
+    require_path_safe_citekey(citekey)  # task 894: `queue/../x.json` escapes
     kind = normalize_kind(kind)
     if kind not in SLOT_SUFFIX:
         raise ValueError(f"unknown queue kind {kind!r}")
@@ -287,7 +293,9 @@ def write_request(
 def paper_indexed(library: Path, citekey: str) -> bool:
     """True when the paper has an extracted `main.tex` — the precondition
     `/library/deep-index` checks before it will run."""
-    return (Path(library) / "papers" / citekey / "main.tex").is_file()
+    return is_path_safe_citekey(citekey) and (
+        paper_folder(Path(library), citekey) / "main.tex"
+    ).is_file()
 
 
 def write_deep_index(

@@ -42,9 +42,11 @@ from _tools import (
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
+    citekey_path_problem,
     is_terminal_bib_state,
     lock_catalog,
     master_entry_for,
+    paper_folder,
     read_catalog,
     RelocateCollision,
     read_master_bib,
@@ -123,7 +125,9 @@ def _master_has_citekey(library: Path, citekey: str) -> bool:
     return any(citekey_matches(k, citekey) for k in keys)
 
 
-def _record_alias(library: Path, loser_ck: str, survivor_ck: str, match) -> None:
+def _record_alias(
+    library: Path, loser_ck: str, survivor_ck: str, match, *, reason: str | None = None,
+) -> None:
     """Record `loser_ck → survivor_ck` in `.virgil/aliases.json` (durable).
 
     So a later re-intake of `loser_ck` resolves straight to the survivor. Lazy
@@ -139,7 +143,7 @@ def _record_alias(library: Path, loser_ck: str, survivor_ck: str, match) -> None
             "survivor": survivor_ck,
             "work_key": None,
             "at": _now(),
-            "reason": f"triage-fold ({getattr(match, 'relation', 'same')})",
+            "reason": reason or f"triage-fold ({getattr(match, 'relation', 'same')})",
         }
         save_aliases(library, aliases)
     except Exception:
@@ -378,6 +382,11 @@ def apply_bib_row(
         return {"status": "bib-skipped-no-citekey", "summary": f"{filename}: bib entry missing citekey"}
 
     citekey = row["proposedCitekey"].strip()
+    # Task 894: set by triage_batch when the .bib's own key was not path-safe
+    # and `proposedCitekey` is its sanitized spelling — recorded as an alias.
+    original_citekey = (row.get("originalCitekey") or "").strip()
+    if citekey_matches(original_citekey, citekey):
+        original_citekey = ""
     entry_type = (row.get("proposedType") or "misc").strip().lower()
     incoming_fields = dict(row.get("proposedFields") or {})
     proposed_state = (row.get("proposedBibState") or "unverified").strip().lower()
@@ -395,6 +404,8 @@ def apply_bib_row(
         if match is not None and not citekey_matches(match.citekey, citekey):
             if match.relation in ("same", "alias"):
                 _record_alias(library, citekey, match.citekey, match)
+                if original_citekey:
+                    _record_alias(library, original_citekey, match.citekey, match)
                 append_inbox_item(library, {
                     "kind": "triage-bib-folded-duplicate",
                     "filename": filename,
@@ -468,8 +479,14 @@ def apply_bib_row(
     final_state = "manuscript" if proposed_state == "manuscript" else "unverified"
     update_master_bib_entry(library, citekey, entry_type, merged_fields, bib_state=final_state)
 
+    if original_citekey:
+        _record_alias(
+            library, original_citekey, citekey, None,
+            reason="triage-unsafe-citekey (path-safe spelling)",
+        )
+
     # Per-paper folder + sidecars (no source file, no main.tex).
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     _virgil_sidecars(paper_dir)
     write_paper_bib_entry(paper_dir, citekey, entry_type, merged_fields)
 
@@ -542,6 +559,25 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
     filename = row.get("filename", "")
     flags = row.get("flags", []) or []
 
+    # ── Task 894: a citekey is a folder name — refuse one that is not ONE
+    # safe segment BEFORE anything is written (master.bib, papers/, queue/).
+    # triage_batch already proposes a safe spelling for a .bib's own key, so
+    # this fires on a key the REVIEWER typed (or a hand-built plan). The
+    # source stays where it is (a .bib is parked like any unapplied row).
+    keys = [(row.get("proposedCitekey") or "").strip()]
+    if "variant-copy" in flags:
+        keys.append((row.get("existingCitekey") or "").strip())
+    for ck in keys:
+        problem = ck and citekey_path_problem(ck)
+        if problem:
+            return {
+                "status": "unsafe-citekey",
+                "summary": (
+                    f"{filename}: citekey {ck!r} is not path-safe ({problem}); "
+                    f"row not applied — choose a key without '/', '\\', or a leading '.'"
+                ),
+            }
+
     # ── Bib-only branch: no source-file move, fan-out from a .bib import. ──
     if "bib-only" in flags:
         return apply_bib_row(row, library, guard_index=guard_index)
@@ -570,7 +606,7 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
     if "variant-copy" in flags:
         existing = row.get("existingCitekey", "")
         if existing:
-            variants_dir = library / "papers" / existing / "variants"
+            variants_dir = paper_folder(library, existing) / "variants"
             parked, note = _park(src, variants_dir, library)
             append_inbox_item(library, {
                 "kind": "triaged",
@@ -672,7 +708,7 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
         )
 
     # Move file to papers/<citekey>/<citekey>.<ext>.
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     paper_dir.mkdir(parents=True, exist_ok=True)
     dest = paper_dir / f"{citekey}.{ext}"
     try:

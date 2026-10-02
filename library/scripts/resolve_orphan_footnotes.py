@@ -56,6 +56,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 ORPHAN_FN_RE = re.compile(
     r"\\footnote\{\[orphan fn (\d{1,3})\]\s+([^}]+(?:\}[^}]*\}[^}]*)*)\}"
@@ -262,7 +265,7 @@ def _pdf_page_count(pdf: Path) -> int | None:
 
 def resolve(citekey: str, dry_run: bool = False) -> dict:
     library = _resolve_library_root()
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     tex_path = paper_dir / "main.tex"
     pdf_path = paper_dir / f"{citekey}.pdf"
     if not tex_path.exists():

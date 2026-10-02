@@ -1005,6 +1005,78 @@ def normalize_citekey(citekey: str) -> str:
     return unicodedata.normalize("NFC", citekey)
 
 
+# ── citekey → path safety (task 894) ────────────────────────────────────
+#
+# A citekey is also a FOLDER NAME (`papers/<citekey>/`), a queue filename
+# (`queue/<citekey>.json`) and a baseline filename. The bib parser accepts any
+# key characters but `,`, whitespace and `}`, so a `.bib` dropped from a DBLP
+# export (`journals/jphil/Smith20`) or a hostile one (`../../notes`) used to
+# turn straight into a path that nested inside papers/ or escaped the library.
+# The rule is stated ONCE here; every key→path join goes through `paper_folder`
+# (or asserts `require_path_safe_citekey` itself), and admission
+# (`triage_batch`) proposes `sanitize_citekey` so the entry is not lost.
+
+# Leaves room for the longest suffix a key carries on disk
+# (`-pre-deepindex.tex`, queue `-<kind>.json.done`) under the 255-byte NAME_MAX.
+CITEKEY_PATH_MAX_BYTES = 200
+
+
+class UnsafeCitekey(ValueError):
+    """A citekey that cannot name exactly one folder under `papers/`."""
+
+
+def citekey_path_problem(citekey: str) -> str | None:
+    """Why `citekey` is not a safe single path segment, or None if it is."""
+    if not isinstance(citekey, str) or not citekey.strip():
+        return "empty"
+    if citekey[0].isspace() or citekey[-1].isspace():
+        return "leading/trailing whitespace"
+    if "/" in citekey or "\\" in citekey:
+        return "contains a path separator"
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in citekey):
+        return "contains a control character"
+    if citekey.startswith("."):
+        return "starts with '.'"
+    if len(citekey.encode("utf-8")) > CITEKEY_PATH_MAX_BYTES:
+        return f"longer than {CITEKEY_PATH_MAX_BYTES} bytes"
+    return None
+
+
+def is_path_safe_citekey(citekey: str) -> bool:
+    return citekey_path_problem(citekey) is None
+
+
+def require_path_safe_citekey(citekey: str) -> str:
+    """Return `citekey` unchanged, or raise `UnsafeCitekey`."""
+    problem = citekey_path_problem(citekey)
+    if problem:
+        raise UnsafeCitekey(f"citekey {citekey!r} is not path-safe: {problem}")
+    return citekey
+
+
+def sanitize_citekey(citekey: str) -> str:
+    """A path-safe spelling of `citekey` (or "" if nothing usable remains).
+
+    Separators become `-` (`journals/jphil/Smith20` → `journals-jphil-Smith20`),
+    control characters and whitespace drop, leading dots/dashes strip, and the
+    result is truncated to the byte budget on a character boundary."""
+    s = "".join(
+        "-" if c in "/\\" else c
+        for c in (citekey or "")
+        if not (ord(c) < 0x20 or ord(c) == 0x7F or c.isspace())
+    )
+    s = re.sub(r"-{2,}", "-", s).lstrip(".-").rstrip("-")
+    while len(s.encode("utf-8")) > CITEKEY_PATH_MAX_BYTES:
+        s = s[:-1]
+    return s if is_path_safe_citekey(s) else ""
+
+
+def paper_folder(library: Path, citekey: str) -> Path:
+    """`<library>/papers/<citekey>` — THE key→folder join. Raises
+    `UnsafeCitekey` rather than build a path that nests or escapes."""
+    return Path(library) / "papers" / require_path_safe_citekey(citekey)
+
+
 def citekey_matches(stored: str, query: str) -> bool:
     """True if `stored` and `query` refer to the same citekey,
     independent of Unicode normalization form. Catalog and master.bib
@@ -1323,7 +1395,9 @@ def write_paper_bib_entry(
 def references_bib_keys(library: Path, citekey: str) -> list[str]:
     """Sorted NFC citekeys in papers/<citekey>/references.bib (empty if
     the file is absent or unparseable)."""
-    refs = library / "papers" / citekey / "references.bib"
+    if not is_path_safe_citekey(citekey):
+        return []  # a READ probe: an unsafe key names no paper folder
+    refs = paper_folder(library, citekey) / "references.bib"
     if not refs.exists():
         return []
     try:
@@ -2106,6 +2180,7 @@ def deep_index_baseline_path(library: Path, citekey: str) -> Path:
     has yet flipped `indexed.state` to `deepIndexed`, and a re-extract has
     to retire it — a baseline of the old extraction would make the next
     `--fresh` restore exactly the text the re-extract replaced."""
+    require_path_safe_citekey(citekey)
     return library / ".virgil" / "baselines" / f"{citekey}-pre-deepindex.tex"
 
 
@@ -2121,11 +2196,15 @@ def resolve_paper_source(library: Path, citekey: str) -> "tuple[Path, str] | Non
     actually exists on disk.
     """
     import unicodedata
-    paper_dir = library / "papers"
+    if not is_path_safe_citekey(citekey):
+        # A READ probe answers "no holding" for a key that cannot name a
+        # folder (a fileless DBLP-style `a/b` reference) rather than raise
+        # inside a library-wide sweep; the WRITERS refuse via `paper_folder`.
+        return None
     for ext in SOURCE_FORMAT_PRIORITY:
         for form in ("NFC", "NFD"):
             ck = unicodedata.normalize(form, citekey)
-            p = paper_dir / ck / f"{ck}.{ext}"
+            p = paper_folder(library, ck) / f"{ck}.{ext}"
             if p.exists():
                 return p, ext
     return None

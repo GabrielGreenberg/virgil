@@ -48,6 +48,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    paper_folder,
     SOURCE_FORMAT_PRIORITY,
     admit_catalog_row,
     append_inbox_item,
@@ -96,7 +97,7 @@ def _alternate_sources(library: Path, citekey: str, primary_ext: str) -> list[st
     for ext in FORMAT_PRIORITY:
         if ext == primary_ext:
             continue
-        p = library / "papers" / citekey / f"{citekey}.{ext}"
+        p = paper_folder(library, citekey) / f"{citekey}.{ext}"
         if p.exists():
             alts.append(p.name)
     return alts
@@ -148,7 +149,7 @@ def main_tex_holds_deep_index_work(library: Path, citekey: str) -> Optional[str]
     Two signals, either sufficient: the catalog row says the paper is
     deep-indexed, or a deep-index baseline exists (a pass has STARTED —
     it may have crashed before flipping the state)."""
-    if not (library / "papers" / citekey / "main.tex").exists():
+    if not (paper_folder(library, citekey) / "main.tex").exists():
         return None
     row = _catalog_row(library, citekey) or {}
     state = (row.get("indexed") or {}).get("state", "")
@@ -176,7 +177,7 @@ def retire_prior_extraction(library: Path, citekey: str, slug: str) -> Optional[
     """Back up main.tex (copy) and the deep-index baseline (move) to
     `.virgil/backups/re-extract/<citekey>/<slug>/`. Returns the backup dir,
     or None when there was nothing to retire."""
-    main_tex = library / "papers" / citekey / "main.tex"
+    main_tex = paper_folder(library, citekey) / "main.tex"
     baseline = deep_index_baseline_path(library, citekey)
     if not main_tex.exists() and not baseline.exists():
         return None
@@ -201,7 +202,7 @@ def _resync_references_bib(library: Path, citekey: str) -> bool:
     This is the entry point both `/library/authenticate-bib` (step 6) and
     `/library/apply-bib-edit` (step 3) call.
     """
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     if not paper_dir.exists():
         return False
     entry = master_entry_for(library, citekey)
@@ -331,11 +332,11 @@ def _fuse_pgmark_from_alternate(
     if len(pdf_alts) > 1:
         # Pick the largest by page count.
         pdf_alts.sort(
-            key=lambda f: _page_count(library / "papers" / citekey / f),
+            key=lambda f: _page_count(paper_folder(library, citekey) / f),
             reverse=True,
         )
-    pdf_path = library / "papers" / citekey / pdf_alts[0]
-    main_tex_path = library / "papers" / citekey / "main.tex"
+    pdf_path = paper_folder(library, citekey) / pdf_alts[0]
+    main_tex_path = paper_folder(library, citekey) / "main.tex"
     log_fn(f"Step 5c: fuse pgmarks from PDF alternate {pdf_path.name}")
     result = fuse_pgmarks_into(main_tex_path, pdf_path, log_fn=log_fn)
     if result.success and result.pgmarks_inserted > 0:
@@ -519,7 +520,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
                     "apt install tesseract-ocr  (Debian/Ubuntu)\n"
                     "Then re-run /library/setup to refresh the manifest."
                 )
-            backup_dir = library / "papers" / citekey / ".originals"
+            backup_dir = paper_folder(library, citekey) / ".originals"
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup = backup_dir / f"{citekey}.pdf"
             if _ocr_if_needed(str(source_path), str(source_path) + ".ocr.tmp"):
@@ -583,7 +584,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     log(f"  title={title!r}, authors={authors[:60]!r}, year={year!r}")
 
     # 5. Emit main.tex.
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     paper_dir.mkdir(parents=True, exist_ok=True)
     pgmark_warnings: list[str] = []
     pgmark_report = None

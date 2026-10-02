@@ -37,6 +37,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
 
@@ -95,7 +98,7 @@ def _pdf_first_body_chars(pdf: Path, page: int, char_limit: int = 30) -> str:
 
 def scan(citekey: str, apply_fix: bool = False) -> dict:
     library = _resolve_library_root()
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     tex_path = paper_dir / "main.tex"
     pdf_path = paper_dir / f"{citekey}.pdf"
     if not tex_path.exists() or not pdf_path.exists():

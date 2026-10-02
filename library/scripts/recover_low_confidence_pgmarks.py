@@ -35,6 +35,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 PGMARK_LOW_RE = re.compile(r"\\pgmark\[low\]\{(\d+)\}")
 PGMARK_ANY_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
@@ -154,7 +157,7 @@ def recover(
     cascade: bool = False,
 ) -> dict:
     library = _resolve_library_root()
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     tex_path = paper_dir / "main.tex"
     pdf_path = paper_dir / f"{citekey}.pdf"
     if not tex_path.exists():

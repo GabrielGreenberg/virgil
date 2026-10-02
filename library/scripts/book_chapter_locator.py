@@ -24,6 +24,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
 EXISTING_SECTION_RE = re.compile(
@@ -56,7 +59,7 @@ def locate(
     citekey: str, toc: list[dict], dry_run: bool = False,
 ) -> dict:
     library = _resolve_library_root()
-    tex_path = library / "papers" / citekey / "main.tex"
+    tex_path = paper_folder(library, citekey) / "main.tex"
     if not tex_path.exists():
         return {"error": f"main.tex not found at {tex_path}"}
     text = tex_path.read_text(encoding="utf-8")

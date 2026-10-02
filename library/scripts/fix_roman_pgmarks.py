@@ -27,6 +27,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{([ivxlcdm]+)\}", re.I)
 
@@ -121,7 +124,7 @@ def _pdf_page_header(pdf: Path, page: int) -> str:
 
 def fix(citekey: str, dry_run: bool = False) -> dict:
     library = _resolve_library_root()
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     tex_path = paper_dir / "main.tex"
     pdf_path = paper_dir / f"{citekey}.pdf"
     if not tex_path.exists():

@@ -19,6 +19,7 @@ import html
 import os
 import re
 import subprocess
+import sys
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -27,6 +28,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
 
 try:
     from rapidfuzz import fuzz  # type: ignore
@@ -697,7 +701,7 @@ def _extract_isbns_from_paper(library: Path, citekey: str) -> list[str]:
     Returns deduplicated, check-digit-validated ISBNs (10- or 13-digit,
     no dashes). Used as a recovery path for books with no DOI / no ISBN
     in the bib."""
-    src = library / "papers" / citekey / f"{citekey}.pdf"
+    src = paper_folder(library, citekey) / f"{citekey}.pdf"
     if not src.exists():
         return []
     seen: set[str] = set()
@@ -739,7 +743,7 @@ def _pgmark_range_from_paper(library: Path, citekey: str) -> Optional[tuple[int,
     """Return (min, max) printed page numbers from the indexed
     `papers/<ck>/main.tex`'s `\\pgmark{N}` markers, or None if the file
     doesn't exist / has no markers / isn't yet indexed."""
-    p = library / "papers" / citekey / "main.tex"
+    p = paper_folder(library, citekey) / "main.tex"
     if not p.exists():
         return None
     try:
@@ -783,7 +787,7 @@ def _maketitle_author_count(library: Path, citekey: str) -> Optional[int]:
     matched to a 7-author journal paper, etc.), the author count from
     the PDF — extracted at indexing time, before any auth contamination
     — is a reliable cross-reference."""
-    p = library / "papers" / citekey / "main.tex"
+    p = paper_folder(library, citekey) / "main.tex"
     if not p.exists():
         return None
     try:
@@ -900,7 +904,7 @@ def _extract_dois_from_paper(library: Path, citekey: str) -> list[str]:
     Deduplicated, ordered: tex first (already cleaned), then PDF first 3 pages."""
     seen: set[str] = set()
     out: list[str] = []
-    tex_path = library / "papers" / citekey / "main.tex"
+    tex_path = paper_folder(library, citekey) / "main.tex"
     if tex_path.exists():
         try:
             text = tex_path.read_text(errors="replace")
@@ -912,7 +916,7 @@ def _extract_dois_from_paper(library: Path, citekey: str) -> list[str]:
                 seen.add(doi)
                 out.append(doi)
     for ext in ("pdf",):
-        src = library / "papers" / citekey / f"{citekey}.{ext}"
+        src = paper_folder(library, citekey) / f"{citekey}.{ext}"
         if not src.exists():
             continue
         try:
@@ -954,7 +958,7 @@ def _extract_section_titles(library: Path, citekey: str) -> list[str]:
     """Return up to 5 candidate titles from the indexed paper's section
     headings. Filters generic headings like ‘Introduction’ aggressively so
     we don't re-search Crossref for them."""
-    tex_path = library / "papers" / citekey / "main.tex"
+    tex_path = paper_folder(library, citekey) / "main.tex"
     if not tex_path.exists():
         return []
     try:
