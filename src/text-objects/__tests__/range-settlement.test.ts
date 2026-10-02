@@ -9,11 +9,15 @@
 //   • ONE ENUMERATION. The ask phase and the delete phase must see the same
 //     population, or the gesture asks about one set of cards and destroys
 //     another. Both read `collectRangeCardTargets`.
-//   • ONE CORRECTION. A settlement's `revert` splices the pre-suggestion
+//   • ONE MAPPING. A settlement's `revert` splices the pre-suggestion
 //     original back over the applied text, and the original may be LONGER than
-//     what replaced it. The F2 arithmetic only ever subtracted, so a growing
-//     settle would have left `to` short and clipped the delete. The shared
-//     `correctRangeForInnerDelta` handles both directions.
+//     what replaced it. The range is carried across it by
+//     `mapRangeThroughSettlement` (task 897) — a step mapping, not a scalar
+//     shift, because a selection that only CLIPS the span has an end INSIDE
+//     the rewrite.
+//   • CONTAINMENT, NOT OVERLAP (task 897). The delete destroys only the cards
+//     whose anchors the range wholly contains; the ask settles every card it
+//     touches.
 
 import { describe, it, expect, vi } from "vitest";
 
@@ -27,9 +31,11 @@ import {
 } from "@/lib/editor-extensions";
 import {
   collectRangeCardTargets,
-  correctRangeForInnerDelta,
+  mapRangeThroughSettlement,
   settleRangeCardObligations,
+  commitRangeDelete,
 } from "../delete-range";
+import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import { linkCardKey } from "@/links/link-dom-contract";
 import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 
@@ -104,20 +110,55 @@ describe("collectRangeCardTargets — one enumeration for both phases", () => {
   });
 });
 
-describe("correctRangeForInnerDelta — both directions", () => {
-  it("SHRINKS `to` when the gesture removed content inside the range (the F2 case)", () => {
-    expect(correctRangeForInnerDelta(4, 40, -3, 100)).toEqual({ from: 4, to: 37 });
+describe("mapRangeThroughSettlement — carrying a range across a revert", () => {
+  // One paragraph; `[10, 19)` stands in for an applied span the revert
+  // rewrites. Both documents come from ONE editor (one schema), as in the app.
+  //                      0         1         2         3
+  //                      0123456789012345678901234567890123456
+  const editor = mountDoc([
+    { type: "paragraph", attrs: { uuid: "p" }, content: [{ type: "text", text: "aaaaaaaaaSUGGESTEDzzzzzzzzzzzzzzzzzz" }] },
+  ]);
+  const before = editor.state.doc;
+  // Revert restores a LONGER original over "SUGGESTED" (doc pos 10..19).
+  const after = editor.state.apply(editor.state.tr.insertText("ORIGINAL-TEXT", 10, 19)).doc;
+  const keptMarkOnly = editor.state.apply(editor.state.tr.addMark(10, 19, editor.schema.marks.bold.create())).doc;
+  const extent = { from: 10, to: 19 };
+
+  it("a range CONTAINING the span maps to the whole restored original + its own tail", () => {
+    expect(mapRangeThroughSettlement(before, after, { from: 5, to: 25 }, extent)).toEqual({
+      from: 5,
+      to: 25 + 4,
+    });
   });
 
-  it("GROWS `to` when a revert restored a LONGER original (task 636)", () => {
-    // The pre-636 arithmetic clamped the delta at zero, so this case silently
-    // left `to` short and the delete clipped the restored text's tail.
-    expect(correctRangeForInnerDelta(4, 40, 7, 100)).toEqual({ from: 4, to: 47 });
+  it("an end exactly at the span's edge still takes the span", () => {
+    expect(mapRangeThroughSettlement(before, after, { from: 10, to: 19 }, extent)).toEqual({
+      from: 10,
+      to: 23,
+    });
   });
 
-  it("never collapses past `from`, and never runs off the end of the doc", () => {
-    expect(correctRangeForInnerDelta(4, 10, -99, 100)).toEqual({ from: 4, to: 4 });
-    expect(correctRangeForInnerDelta(4, 40, 999, 50)).toEqual({ from: 4, to: 50 });
+  it("an end strictly INSIDE the rewrite is pushed OUT of it — never into text the user did not select", () => {
+    // Clips the TAIL: from inside, to outside.
+    expect(mapRangeThroughSettlement(before, after, { from: 14, to: 25 }, extent)).toEqual({
+      from: 23,
+      to: 29,
+    });
+    // Clips the HEAD: from outside, to inside.
+    expect(mapRangeThroughSettlement(before, after, { from: 5, to: 14 }, extent)).toEqual({
+      from: 5,
+      to: 10,
+    });
+    // Wholly inside: nothing of the user's selection survives.
+    const inner = mapRangeThroughSettlement(before, after, { from: 12, to: 15 }, extent);
+    expect(inner.to).toBe(inner.from);
+  });
+
+  it("a settlement that changed no text (a Keep) leaves the range exactly as it was", () => {
+    expect(mapRangeThroughSettlement(before, keptMarkOnly, { from: 14, to: 25 }, extent)).toEqual({
+      from: 14,
+      to: 25,
+    });
   });
 });
 
@@ -201,5 +242,186 @@ describe("settleRangeCardObligations — the ask phase", () => {
       to,
       docMoved: false,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 897 — a range that merely OVERLAPS an anchor does not CONTAIN it.
+// ---------------------------------------------------------------------------
+
+/** "Keep this. " + an applied suggestion span + " Tail words here." */
+function appliedSpanDoc(): JSONContent[] {
+  return [
+    {
+      type: "paragraph",
+      attrs: { uuid: "p-applied" },
+      content: [
+        { type: "text", text: "Keep this. " },
+        {
+          type: "text",
+          text: "NEW WORDING",
+          marks: [
+            {
+              type: "linkedAnchor",
+              attrs: {
+                anchorId: "anchor-applied",
+                linkCard: linkCardKey("revision-suggestion", "sugg-a"),
+              },
+            },
+          ],
+        },
+        { type: "text", text: " tail words here." },
+      ],
+    },
+  ];
+}
+
+/** Settle ops whose REVERT really splices `original` over the anchored span. */
+function revertingOps(editorRef: { current: Editor | null }, original: string): AppliedSpliceOps {
+  let live = true;
+  return {
+    get: () => (live ? { anchorId: "anchor-applied", mode: "replace" } : null),
+    ask: async () => "revert",
+    settle: () => {
+      live = false;
+      const ed = editorRef.current!;
+      let from = -1;
+      let to = -1;
+      ed.state.doc.descendants((node, pos) => {
+        if (node.isText && node.marks.some((m) => m.attrs.anchorId === "anchor-applied")) {
+          if (from < 0) from = pos;
+          to = pos + node.nodeSize;
+        }
+      });
+      ed.view.dispatch(ed.state.tr.insertText(original, from, to));
+      return true;
+    },
+  };
+}
+
+function recordingLifecycle(deleted: string[]): CardLifecycleApi {
+  return {
+    get: () => ({
+      delete(id: string) {
+        deleted.push(id);
+      },
+      clone() {
+        return null;
+      },
+      bindAnchor() {},
+    }),
+  } as unknown as CardLifecycleApi;
+}
+
+function textOf(editor: Editor): string {
+  return editor.state.doc.textContent;
+}
+
+describe("task 897 — clipping an applied span, then Revert", () => {
+  // Doc positions: paragraph content starts at 1. "Keep this. " = 11 chars →
+  // the span "NEW WORDING" is [12, 23); " tail words here." follows.
+  it("clipping the TAIL: Revert restores the whole original, the delete takes only the selected text outside it", async () => {
+    const editor = mountDoc(appliedSpanDoc());
+    const ref = { current: editor as Editor | null };
+    // Select "WORDING tail" → [16, 28).
+    expect(editor.state.doc.textBetween(16, 28)).toBe("WORDING tail");
+    const settlement = await settleRangeCardObligations(
+      editor,
+      16,
+      28,
+      revertingOps(ref, "the old longer phrasing"),
+    );
+    expect(settlement).not.toBeNull();
+    expect(settlement!.docMoved).toBe(true);
+    expect(editor.state.doc.textBetween(settlement!.from, settlement!.to)).toBe(" tail");
+    const deleted: string[] = [];
+    expect(
+      commitRangeDelete(editor, settlement!.from, settlement!.to, recordingLifecycle(deleted)),
+    ).toBe(true);
+    expect(textOf(editor)).toBe("Keep this. the old longer phrasing words here.");
+    // The suggestion record is not destroyed by a delete that never contained it.
+    expect(deleted).toEqual([]);
+  });
+
+  it("clipping the HEAD: `from` stays put, `to` is pulled back to the restored original's start", async () => {
+    const editor = mountDoc(appliedSpanDoc());
+    const ref = { current: editor as Editor | null };
+    // Select "this. NEW" → [6, 15).
+    expect(editor.state.doc.textBetween(6, 15)).toBe("this. NEW");
+    const settlement = await settleRangeCardObligations(
+      editor,
+      6,
+      15,
+      revertingOps(ref, "OLD"),
+    );
+    expect(settlement).not.toBeNull();
+    expect(editor.state.doc.textBetween(settlement!.from, settlement!.to)).toBe("this. ");
+    commitRangeDelete(editor, settlement!.from, settlement!.to, recordingLifecycle([]));
+    expect(textOf(editor)).toBe("Keep OLD tail words here.");
+  });
+
+  it("a range CONTAINING the span still deletes the whole restored original (unchanged)", async () => {
+    const editor = mountDoc(appliedSpanDoc());
+    const ref = { current: editor as Editor | null };
+    const settlement = await settleRangeCardObligations(
+      editor,
+      6,
+      28,
+      revertingOps(ref, "the old longer phrasing"),
+    );
+    commitRangeDelete(editor, settlement!.from, settlement!.to, recordingLifecycle([]));
+    expect(textOf(editor)).toBe("Keep  words here.");
+  });
+});
+
+describe("task 897 — clipping a note's anchor does not delete the note", () => {
+  function noteDoc(): JSONContent[] {
+    return [
+      {
+        type: "paragraph",
+        attrs: { uuid: "p-note" },
+        content: [
+          { type: "text", text: "Plain lead. " },
+          {
+            type: "text",
+            text: "noted passage here",
+            marks: [
+              {
+                type: "linkedAnchor",
+                attrs: { anchorId: "anchor-note", linkCard: linkCardKey("note", "note-1") },
+              },
+            ],
+          },
+          { type: "text", text: " after." },
+        ],
+      },
+    ];
+  }
+  // "Plain lead. " = 12 chars → the noted span is [13, 31).
+
+  it("a selection CLIPPING the anchor keeps the card; the mark simply shrinks", async () => {
+    const editor = mountDoc(noteDoc());
+    expect(editor.state.doc.textBetween(27, 38)).toBe("here after.");
+    expect(collectRangeCardTargets(editor.state.doc, 27, 38)).toEqual([]);
+    expect(collectRangeCardTargets(editor.state.doc, 27, 38, "touched")).toEqual([
+      { kind: "note", id: "note-1" },
+    ]);
+    const deleted: string[] = [];
+    expect(commitRangeDelete(editor, 27, 38, recordingLifecycle(deleted))).toBe(true);
+    expect(deleted).toEqual([]);
+    const marked: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.attrs.anchorId === "anchor-note")) {
+        marked.push(node.text ?? "");
+      }
+    });
+    expect(marked.join("")).toBe("noted passage ");
+  });
+
+  it("a selection wholly CONTAINING the anchor still deletes the card", () => {
+    const editor = mountDoc(noteDoc());
+    const deleted: string[] = [];
+    expect(commitRangeDelete(editor, 10, 35, recordingLifecycle(deleted))).toBe(true);
+    expect(deleted).toEqual(["note-1"]);
   });
 });
