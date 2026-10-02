@@ -14,8 +14,9 @@ Two namespaces of skills are available everywhere:
   unsorted triage, deep indexing). Useful when this folder is your Library
   *or* when you want to authenticate / triage / index from inside a paper.
 
-Library skills resolve the library root automatically via
-`./.virgil/library-path.json` (written by Virgil), `VIRGIL_LIBRARY_ROOT`,
+Library skills resolve the library root automatically via the current
+folder (when it IS a library), `./.virgil/library-path.json` (written by
+Virgil), `VIRGIL_LIBRARY_ROOT`,
 `~/.config/virgil/library-path.json`, or `~/Virgil-Library/` — in that order.
 If no library is configured, library-touching skills print "No library set up
 — pick a library in Virgil first" and exit cleanly.

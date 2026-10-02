@@ -33,7 +33,7 @@ MASTER_1 = "@article{a,\n  title={A},\n}\n"
 
 
 def _library(root: Path, master: str) -> Path:
-    (root / ".virgil").mkdir(parents=True, exist_ok=True)
+    (root / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (root / "master.bib").write_text(master)
     (root / ".virgil" / "catalog.json").write_text(json.dumps({"entries": []}))
     return root

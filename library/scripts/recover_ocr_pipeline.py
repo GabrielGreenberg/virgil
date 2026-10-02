@@ -32,7 +32,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
@@ -42,14 +41,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import paper_folder  # noqa: E402
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library_root() -> Path:
-    env = os.environ.get("VIRGIL_LIBRARY_ROOT")
-    if env:
-        return Path(env)
-    cwd = Path.cwd()
-    if (cwd / "master.bib").exists() and (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    return Path.home() / "Virgil-Library"
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit()
 
 
 def _has_text_layer(pdf: Path) -> bool:

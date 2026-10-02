@@ -835,11 +835,14 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     return entry
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Index a single source (PDF or DOCX) in the Virgil Library.")
     p.add_argument("citekey", help="Citation key, matches papers/<citekey>/<citekey>.pdf or papers/<citekey>/<citekey>.docx")
-    p.add_argument("--library", default=str(Path.cwd()),
-                   help="Library root directory (defaults to CWD)")
+    p.add_argument("--library", default=None,
+                   help="Library root (default: the one validated resolver, _library_root.py)")
     p.add_argument(
         "--extractor", choices=["auto", "marker", "pymupdf"], default="auto",
         help=("auto / marker (default): use marker-pdf (requires /library/setup). "
@@ -859,10 +862,11 @@ def main() -> int:
                    help="Skip auto-fusion of pgmarks from a PDF alternate "
                         "when the primary source is DOCX or TEX.")
     args = p.parse_args()
+    library = library_root_or_exit(args.library)
     try:
         index_paper(
             args.citekey,
-            Path(args.library).expanduser(),
+            library,
             prefer_extractor=args.extractor,
             authenticate_bib=not args.no_bib_auth,
             fuse_pgmarks=not args.no_fuse_pgmarks,
@@ -876,13 +880,13 @@ def main() -> int:
             traceback.print_exc()
         # Append failure notification.
         try:
-            append_inbox_item(Path(args.library).expanduser(), {
+            append_inbox_item(library, {
                 "kind": "failed",
                 "citekey": args.citekey,
                 "at": _now(),
                 "summary": f"Index failed: {e}",
             })
-            bump_catalog_version(Path(args.library).expanduser())
+            bump_catalog_version(library)
         except Exception:
             pass
         return 1

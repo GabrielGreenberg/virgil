@@ -60,8 +60,9 @@ required.
   writing anything. Recommended for the first run on any paper.
 - `--library <path>` — override library-path resolution. Useful when
   multiple libraries exist; otherwise the chain
-  (`./.virgil/library-path.json` → `VIRGIL_LIBRARY_ROOT` →
-  `~/.config/virgil/library-path.json` → `~/Virgil-Library/`) is used.
+  (the cwd when it is a library → `./.virgil/library-path.json` →
+  `VIRGIL_LIBRARY_ROOT` → `~/.config/virgil/library-path.json` →
+  `~/Virgil-Library/`, each validated) is used.
 
 ## Procedure
 

@@ -19,7 +19,7 @@ keys split the TeX way) and `editor/scripts/citekey_sidecars.py` (the task-615
 manifest `citekey_keyed_sidecars.json` + one re-keyer per rule). This module
 IMPORTS them rather than porting them — a second copy is a second thing to drift.
 The editor silo lands in a sibling directory under both layouts (the same seam
-`bib_auth._import_library_path_resolver` crosses):
+`_library_root._load_ssot` crosses):
 
     repo:    library/scripts/_citekey_rename.py  →  ../../editor/scripts/
     synced:  .virgil/scripts/library/…           →  ../editor/

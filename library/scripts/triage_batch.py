@@ -1124,11 +1124,14 @@ def select_sources(unsorted_dir: Path, only: Optional[str] = None) -> list[Path]
     )
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Extract triage observables from unsorted/ — all of it, or --only one drop.")
-    p.add_argument("--library", default=str(Path.cwd()),
-                   help="Library root directory (defaults to CWD)")
+    p.add_argument("--library", default=None,
+                   help="Library root (default: the one validated resolver, _library_root.py)")
     p.add_argument("--output", default="-",
                    help="Output JSONL path; '-' for stdout (default)")
     p.add_argument("--only", default=None, metavar="FILENAME",
@@ -1163,7 +1166,7 @@ def main() -> int:
             print(flag)
         return 0
 
-    library = Path(args.library).expanduser()
+    library = library_root_or_exit(args.library)
     unsorted_dir = library / "unsorted"
     if not unsorted_dir.exists():
         print(f"No unsorted/ at {unsorted_dir}", file=sys.stderr)

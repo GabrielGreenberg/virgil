@@ -73,20 +73,16 @@ def update_catalog_pgmark_count(library: Path, citekey: str, count: int) -> bool
     return False
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("citekey")
     ap.add_argument("--library", type=Path, default=None)
     ap.add_argument("--update-catalog", action="store_true")
     args = ap.parse_args()
-    library = args.library
-    if library is None:
-        cwd = Path.cwd()
-        if (cwd / "master.bib").exists():
-            library = cwd
-        else:
-            library = Path("~/Virgil-Library").expanduser()
-    library = library.resolve()
+    library = library_root_or_exit(args.library)
     citekey = normalize_citekey(args.citekey)
     paper_dir = paper_folder(library, citekey)
     tex_path = paper_dir / "main.tex"

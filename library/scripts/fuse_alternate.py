@@ -906,6 +906,9 @@ def _resolve_alternate(library: Path, citekey: str, override: Optional[str]) -> 
     return paper_dir / alts[0]
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Fuse pgmarks from a PDF alternate into an indexed paper's main.tex."
@@ -918,8 +921,8 @@ def main() -> int:
              "`--no-catalog` fence in fuse-alternate.md substitutes this "
              "so the skill markdown never spells the family.",
     )
-    p.add_argument("--library", default=str(Path.cwd()),
-                   help="Library root directory (defaults to CWD)")
+    p.add_argument("--library", default=None,
+                   help="Library root (default: the one validated resolver, _library_root.py)")
     p.add_argument("--alternate",
                    help="Override the alternate PDF filename (default: pick "
                         "largest from catalog pdf.alternates)")
@@ -942,7 +945,7 @@ def main() -> int:
     if not args.citekey:
         p.error("citekey is required (except with --print-recompute-flags)")
 
-    library = Path(args.library).expanduser()
+    library = library_root_or_exit(args.library)
     citekey = args.citekey
     paper_dir = paper_folder(library, citekey)
     main_tex_path = paper_dir / "main.tex"

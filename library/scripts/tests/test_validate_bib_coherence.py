@@ -61,7 +61,7 @@ def check(cond, msg):
 def _make_library(tmp_path: Path, bib_text: str) -> Path:
     """A minimal but REAL library root: master.bib + `.virgil/catalog.json`."""
     lib = tmp_path / "lib"
-    (lib / ".virgil").mkdir(parents=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (lib / "master.bib").write_text(bib_text, encoding="utf-8")
     (lib / ".virgil" / "catalog.json").write_text(
         json.dumps({"version": 1, "entries": []}, indent=2) + "\n", encoding="utf-8",

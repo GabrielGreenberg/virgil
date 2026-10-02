@@ -34,8 +34,9 @@ description: |
 - `--library <path>` — override library-path resolution. Useful when
   invoking this skill **from a paper session** with multiple libraries on
   disk; without it the normal chain
-  (`./.virgil/library-path.json` → `VIRGIL_LIBRARY_ROOT` →
-  `~/.config/virgil/library-path.json` → `~/Virgil-Library/`) is used.
+  (the cwd when it is a library → `./.virgil/library-path.json` →
+  `VIRGIL_LIBRARY_ROOT` → `~/.config/virgil/library-path.json` →
+  `~/Virgil-Library/`, each validated) is used.
 - `--re-extract` — replace a `main.tex` that already holds deep-index
   work. Without it `index_paper.py` REFUSES (exit 1, a `failed` inbox
   item naming the flag) whenever the catalog row is `deepIndexed` or a

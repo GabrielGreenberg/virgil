@@ -9,13 +9,20 @@ the library's filesystem path.
 Resolution chain (first hit wins):
 
   1. Explicit `--library <path>` flag.
-  2. `./.virgil/library-path.json`  (per-folder pointer, written by the
+  2. The current directory, when it IS a library. Heavy library skills
+     are documented as "run from inside the library folder", so a session
+     standing in a library root means that library — it beats every
+     pointer, which could name a different one.
+  3. `./.virgil/library-path.json`  (per-folder pointer, written by the
      Virgil PWA into every Virgil-managed folder on doc-open). Lets
      `/library:*` skills work from any paper folder without env or
      global-config setup.
-  3. `VIRGIL_LIBRARY_ROOT` environment variable.
-  4. `~/.config/virgil/library-path.json`  ({"libraryRoot": "...", "version": 1}).
-  5. `~/Virgil-Library/`  (legacy default).
+  4. `VIRGIL_LIBRARY_ROOT` environment variable.
+  5. `~/.config/virgil/library-path.json`  ({"libraryRoot": "...", "version": 1}).
+  6. `~/Virgil-Library/`  (legacy default).
+
+Library-silo scripts reach this chain through ONE door,
+`library/scripts/_library_root.py` (task 896) — never a hand-rolled copy.
 
 A path "looks like a library" only if it contains all three of
 `master.bib`, `.virgil/catalog.json`, and `.virgil/scripts/`. Stale
@@ -116,16 +123,13 @@ def _instructions() -> str:
     )
 
 
-def resolve_library(explicit: Optional[str] = None) -> Path:
-    """Return the absolute path to the user's Virgil Library.
-
-    Raises ``LibraryNotFound`` (with an actionable message) when nothing
-    in the resolution chain points at a real library. Never returns a
-    fallback that doesn't actually look like a library.
-    """
+def _implicit_candidates() -> list[tuple[str, Path]]:
+    """The chain below the flag, in order (see the module docstring)."""
     candidates: list[tuple[str, Path]] = []
-    if explicit:
-        candidates.append(("--library flag", Path(explicit).expanduser()))
+    try:
+        candidates.append(("current directory", Path.cwd()))
+    except OSError:
+        pass
     local = _read_local_pointer()
     if local:
         candidates.append((str(LOCAL_POINTER), local))
@@ -136,6 +140,24 @@ def resolve_library(explicit: Optional[str] = None) -> Path:
     if cfg:
         candidates.append((str(CONFIG_FILE), cfg))
     candidates.append((str(DEFAULT_FALLBACK), DEFAULT_FALLBACK))
+    return candidates
+
+
+def resolve_library(explicit: Optional[str] = None) -> Path:
+    """Return the absolute path to the user's Virgil Library.
+
+    Raises ``LibraryNotFound`` (with an actionable message) when nothing
+    in the resolution chain points at a real library. Never returns a
+    fallback that doesn't actually look like a library.
+    """
+    if explicit:
+        # An explicit flag is the WHOLE answer: a `--library` that is not a
+        # library refuses rather than quietly serving some other one.
+        candidates: list[tuple[str, Path]] = [
+            ("--library flag", Path(explicit).expanduser())
+        ]
+    else:
+        candidates = _implicit_candidates()
 
     errors: list[str] = []
     for label, p in candidates:

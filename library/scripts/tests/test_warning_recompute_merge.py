@@ -73,7 +73,7 @@ def check(cond, msg):
 def _make_library(tmp_path: Path, entries: list) -> Path:
     """A minimal but REAL library root: `.virgil/catalog.json` + master.bib."""
     lib = tmp_path / "lib"
-    (lib / ".virgil").mkdir(parents=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (lib / "master.bib").write_text("", encoding="utf-8")
     (lib / ".virgil" / "catalog.json").write_text(
         json.dumps({"version": 1, "entries": entries}, indent=2) + "\n",
@@ -488,7 +488,7 @@ def test_triage_apply_master_membership_is_nfc_insensitive(tmp_path):
     nfd = unicodedata.normalize("NFD", "lópez2010")
     nfc = unicodedata.normalize("NFC", "lópez2010")
     lib = tmp_path / "lib"
-    (lib / ".virgil").mkdir(parents=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (lib / "master.bib").write_text(
         "@article{" + nfd + ",\n  title = {A Paper},\n  year = {2010}\n}\n",
         encoding="utf-8",

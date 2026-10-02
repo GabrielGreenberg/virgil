@@ -56,35 +56,12 @@ def _is_present_false(entry: dict) -> bool:
     return not bool(pdf.get("present"))
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library(explicit: str | None) -> Path:
-    if explicit:
-        p = Path(explicit).expanduser().resolve()
-        if not p.exists():
-            raise SystemExit(f"--library path does not exist: {p}")
-        return p
-    # CWD-anchored resolution, matching the other merge scripts. We do NOT
-    # silently fall back to ~/Virgil-Library here: a destructive script must
-    # be pointed at its target explicitly.
-    import subprocess
-    for rel in (
-        ".virgil/scripts/editor/library_path.py",
-        "editor/scripts/library_path.py",
-    ):
-        cand = Path.cwd() / rel
-        if cand.exists():
-            out = subprocess.run(
-                ["python3", str(cand), "--get"],
-                capture_output=True, text=True,
-            )
-            if out.returncode == 0 and out.stdout.strip():
-                return Path(out.stdout.strip()).expanduser().resolve()
-    cwd = Path.cwd().resolve()
-    if (cwd / "master.bib").exists() and (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    raise SystemExit(
-        "could not resolve a library root; pass --library explicitly "
-        "(a destructive script will not guess)."
-    )
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit(explicit)
 
 
 def _master_index(library: Path) -> dict[str, tuple[str, dict]]:

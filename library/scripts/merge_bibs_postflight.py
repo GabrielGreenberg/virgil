@@ -36,7 +36,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -46,23 +45,12 @@ from typing import Optional
 ENTRY_RE = re.compile(r'^@[A-Za-z]+\{([^,\s\n]+)', re.MULTILINE)
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library(explicit: Optional[str]) -> Path:
-    """Match merge_paper_references.py's CWD-anchored resolution."""
-    if explicit:
-        return Path(explicit).expanduser().resolve()
-    for rel in (
-        ".virgil/scripts/editor/library_path.py",
-        "editor/scripts/library_path.py",
-    ):
-        cand = Path.cwd() / rel
-        if cand.exists():
-            out = subprocess.run(
-                ["python3", str(cand), "--get"],
-                capture_output=True, text=True,
-            )
-            if out.returncode == 0 and out.stdout.strip():
-                return Path(out.stdout.strip()).expanduser().resolve()
-    raise SystemExit("could not resolve library root")
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit(explicit)
 
 
 def _count_bib_entries(path: Path) -> int:
@@ -184,7 +172,9 @@ def main(argv: list[str]) -> int:
         if args.library:
             library = _resolve_library(args.library)
         elif manifest.get("library_root"):
-            library = Path(manifest["library_root"]).expanduser().resolve()
+            # The preflight's record of the library goes through the same
+            # validated door as a flag would (task 896).
+            library = _resolve_library(manifest["library_root"])
         else:
             library = _resolve_library(None)
         if snap_dir == library:
