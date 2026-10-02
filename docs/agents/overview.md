@@ -4,7 +4,7 @@
 
 # Virgil Overview
 
-**Current version:** 0.1.123 (mirrors `package.json`; bumped by `/cleanup-virgil`)
+**Current version:** 0.1.124 (mirrors `package.json`; bumped by `/cleanup-virgil`)
 
 
 ## What it is
