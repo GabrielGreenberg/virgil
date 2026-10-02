@@ -40,7 +40,7 @@ import dedup_index  # noqa: E402
 
 
 def _write_library(root: Path, master_bib: str, catalog: dict) -> None:
-    (root / ".virgil").mkdir(parents=True, exist_ok=True)
+    (root / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (root / "papers").mkdir(parents=True, exist_ok=True)
     (root / "master.bib").write_text(master_bib)
     (root / ".virgil" / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n")

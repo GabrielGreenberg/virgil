@@ -54,9 +54,10 @@ auto-resolution policy). Enabling it here too would be a second
 algorithm for one question. Run it by hand (no `--no-cover-check`) when
 you want this script's simpler view of a specific PDF.
 
-The library root comes from `VIRGIL_LIBRARY_ROOT`, else the cwd when it
-looks like a library, else `~/Virgil-Library` — there is no `--library`
-flag, so callers `cd` into the root first.
+The library root comes from the silo's one validated resolver
+(`_library_root.py`: cwd when it is a library, else the folder pointer,
+env, config, default) — there is no `--library` flag, so callers `cd`
+into the root first.
 
 Usage:
     python3 validate_bib_coherence.py <citekey>
@@ -66,7 +67,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -100,14 +100,12 @@ DISALLOWED_FIELDS = {
 }
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library_root() -> Path:
-    env = os.environ.get("VIRGIL_LIBRARY_ROOT")
-    if env:
-        return Path(env)
-    cwd = Path.cwd()
-    if (cwd / "master.bib").exists() and (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    return Path.home() / "Virgil-Library"
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit()
 
 
 def _read_master_bib_entry(

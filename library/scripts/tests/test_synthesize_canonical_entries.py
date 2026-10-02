@@ -73,7 +73,7 @@ CITEKEY = "testpaper2020"
 
 def _make_library(tmp_path: Path, warnings: list[str], master_bib: str = "") -> Path:
     lib = tmp_path / "lib"
-    (lib / ".virgil").mkdir(parents=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (lib / "papers" / CITEKEY).mkdir(parents=True)
     (lib / "master.bib").write_text(master_bib, encoding="utf-8")
     (lib / "papers" / CITEKEY / "references.bib").write_text(

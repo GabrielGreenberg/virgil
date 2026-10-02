@@ -68,7 +68,9 @@ BIB_TEXT = """@article{Alpha2020,
 
 def _init_library(tmp_path: Path) -> Path:
     """A minimal library root: the four directories every script resolves."""
-    (tmp_path / ".virgil").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
+    if not (tmp_path / ".virgil" / "catalog.json").exists():
+        (tmp_path / ".virgil" / "catalog.json").write_text('{"version": 1, "entries": []}\n')
     (tmp_path / "papers").mkdir(parents=True, exist_ok=True)
     (tmp_path / "unsorted").mkdir(parents=True, exist_ok=True)
     (tmp_path / "master.bib").write_text("")

@@ -93,32 +93,12 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
 
 
-def _resolve_library(explicit: Optional[str]) -> Path:
-    """Find the library via library_path.py, the same way the skill bootstrap does.
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
 
-    Mirrors merge_paper_references.py::_resolve_library — anchors on
-    `Path.cwd()` because the skill bootstrap always `cd`s to the library
-    root before invoking helpers. Tries the synced-PWA layout first,
-    then the upstream-repo layout.
-    """
-    if explicit:
-        p = Path(explicit).expanduser().resolve()
-        if not (p / "master.bib").exists():
-            raise SystemExit(f"--library {p}: no master.bib found")
-        return p
-    for rel in (
-        ".virgil/scripts/editor/library_path.py",
-        "editor/scripts/library_path.py",
-    ):
-        cand = Path.cwd() / rel
-        if cand.exists():
-            out = subprocess.run(
-                ["python3", str(cand), "--get"],
-                capture_output=True, text=True,
-            )
-            if out.returncode == 0 and out.stdout.strip():
-                return Path(out.stdout.strip()).expanduser().resolve()
-    raise SystemExit("could not resolve library root via library_path.py")
+
+def _resolve_library(explicit: Optional[str]) -> Path:
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit(explicit)
 
 
 def _backup_root() -> Path:

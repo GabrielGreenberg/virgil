@@ -92,10 +92,13 @@ def _restamp_from_catalog(library: Path, master_states: dict[str, str],
     return len(needs_restamp)
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Backfill bib authentication for entries without state.")
-    p.add_argument("--library", default=str(Path.cwd()),
-                   help="Library root directory (defaults to CWD)")
+    p.add_argument("--library", default=None,
+                   help="Library root (default: the one validated resolver, _library_root.py)")
     p.add_argument("--dry-run", action="store_true",
                    help="Print what would be queued without writing")
     p.add_argument("--include-unverified", action="store_true",
@@ -106,7 +109,7 @@ def main() -> int:
                    help="Re-queue everything except 'authenticated' and 'manuscript' (terminal states)")
     args = p.parse_args()
 
-    library = Path(args.library).expanduser()
+    library = library_root_or_exit(args.library)
     master = library / "master.bib"
     if not master.exists():
         print(f"No master.bib at {master}", file=sys.stderr)

@@ -16,7 +16,6 @@ Returns an AuthResult that the orchestrator can write to catalog.json.
 from __future__ import annotations
 
 import html
-import os
 import re
 import subprocess
 import sys
@@ -2097,78 +2096,18 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
 # `{"mode": "search", …}` object, so the two are never confused.
 
 
-def _looks_like_library(p: Path) -> bool:
-    """Mirror `editor/scripts/library_path.py::_looks_like_library`."""
-    return (p / "master.bib").exists() and (p / ".virgil" / "catalog.json").exists()
-
-
-def _import_library_path_resolver():
-    """Return the editor silo's `library_path` module, or None.
-
-    That module is the SSOT for "where is the user's library?" (a five-step
-    chain the PWA writes into every managed folder). It lives in the OTHER
-    silo, which lands in a sibling directory under both layouts:
-
-        repo:   library/scripts/bib_auth.py  →  ../../editor/scripts/
-        synced: .virgil/scripts/library/…    →  ../editor/
-
-    Importing it beats re-deriving the chain here: a second copy is a second
-    thing to drift. When it isn't reachable we fall back to cwd/default.
-    """
-    import importlib.util
-
-    here = Path(__file__).resolve().parent
-    for candidate in (here.parent.parent / "editor" / "scripts", here.parent / "editor"):
-        mod_path = candidate / "library_path.py"
-        if not mod_path.exists():
-            continue
-        try:
-            spec = importlib.util.spec_from_file_location("_virgil_library_path", mod_path)
-            if spec is None or spec.loader is None:
-                continue
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
-        except Exception:
-            continue
-    return None
-
-
 def _resolve_library(explicit: Optional[str]) -> tuple[Optional[Path], str]:
-    """Resolve the library root. Returns `(path, error_message)`."""
-    if explicit:
-        p = Path(explicit).expanduser().resolve()
-        if _looks_like_library(p):
-            return p, ""
-        return None, (
-            f"--library {p} is not a Virgil library "
-            "(needs master.bib + .virgil/catalog.json)"
-        )
-    cwd = Path.cwd().resolve()
-    if _looks_like_library(cwd):
-        return cwd, ""
-    # Honored here as well as inside the delegate, so the env var works — and
-    # the error message below stays true — even where the editor silo isn't
-    # reachable (a library-only checkout, a partially-synced folder).
-    env = os.environ.get("VIRGIL_LIBRARY_ROOT", "").strip()
-    if env:
-        p = Path(env).expanduser().resolve()
-        if _looks_like_library(p):
-            return p, ""
-        return None, f"VIRGIL_LIBRARY_ROOT={p} is not a Virgil library"
-    mod = _import_library_path_resolver()
-    if mod is not None:
-        try:
-            return mod.resolve_library(None), ""
-        except Exception as e:  # LibraryNotFound carries actionable text
-            return None, str(e)
-    home = (Path.home() / "Virgil-Library").resolve()
-    if _looks_like_library(home):
-        return home, ""
-    return None, (
-        "No library found. Pass --library <abs-path>, run from the library "
-        "root, or set VIRGIL_LIBRARY_ROOT."
-    )
+    """Resolve the library root through the silo's one door. `(path, error)`.
+
+    `_library_root.resolve_library_root` is the validated chain (task 896);
+    this keeps bib_auth's `(path, error)` calling shape.
+    """
+    from _library_root import LibraryNotFound, resolve_library_root
+
+    try:
+        return resolve_library_root(explicit), ""
+    except LibraryNotFound as e:
+        return None, str(e)
 
 
 def _seed_from_master_bib(library: Path, citekey: str) -> tuple[Optional[dict], str]:

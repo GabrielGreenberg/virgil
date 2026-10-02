@@ -86,6 +86,9 @@ def add_suppression(library: Path, citekey: str, kind: str, reason: str) -> dict
     return {"status": "added", "warning": warning}
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("citekey")
@@ -99,17 +102,10 @@ def main() -> int:
     )
     ap.add_argument(
         "--library", type=Path, default=None,
-        help="Library root (defaults to CWD if it contains master.bib).",
+        help="Library root (default: the one validated resolver, _library_root.py).",
     )
     args = ap.parse_args()
-    library = args.library
-    if library is None:
-        cwd = Path.cwd()
-        if (cwd / "master.bib").exists():
-            library = cwd
-        else:
-            library = Path("~/Virgil-Library").expanduser()
-    library = library.resolve()
+    library = library_root_or_exit(args.library)
     result = add_suppression(library, args.citekey, args.kind, args.reason)
     ok = result["status"] in ("added", "already-present")
     if result["status"] == "refused":

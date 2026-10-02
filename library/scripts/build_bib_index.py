@@ -31,20 +31,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import build_bib_index, BIB_INDEX_REL
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library(explicit: Path | None) -> Path:
-    if explicit:
-        return explicit.expanduser().resolve()
-    cwd = Path.cwd()
-    if (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    return Path("~/Virgil-Library").expanduser()
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit(explicit)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--library", type=Path, default=None,
-                    help="Library root. Defaults to cwd if it has .virgil/catalog.json, "
-                         "else ~/Virgil-Library.")
+                    help="Library root (default: the one validated resolver, _library_root.py).")
     ap.add_argument("--force", action="store_true",
                     help="Rebuild even if master.bib is unchanged since the last index.")
     args = ap.parse_args()

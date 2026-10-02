@@ -39,7 +39,7 @@ from _tools import (  # noqa: E402
 
 
 def _init_library(tmp_path: Path) -> Path:
-    (tmp_path / ".virgil").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (tmp_path / "papers").mkdir(parents=True, exist_ok=True)
     (tmp_path / "master.bib").write_text("")
     return tmp_path
@@ -167,7 +167,7 @@ def _snap(snap_dir: Path, master_bib: str, catalog: dict) -> None:
 
 def _live(library: Path, master_bib: str, catalog: dict) -> None:
     (library / "master.bib").write_text(master_bib)
-    (library / ".virgil").mkdir(parents=True, exist_ok=True)
+    (library / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (library / ".virgil" / "catalog.json").write_text(json.dumps(catalog))
 
 

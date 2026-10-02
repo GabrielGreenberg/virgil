@@ -31,6 +31,21 @@ import queue_slot  # noqa: E402
 import triage_apply  # noqa: E402
 
 
+def _as_library(root: Path) -> Path:
+    """Make `root` pass the one validated library resolver (task 896)."""
+    (root / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
+    for f, body in ((root / ".virgil" / "catalog.json", "{}"), (root / "master.bib", "")):
+        if not f.exists():
+            f.write_text(body)
+    return root
+
+
+def _cli(argv: list[str]) -> int:
+    """`queue_slot.main`, with its `--library` made a real library first."""
+    _as_library(Path(argv[argv.index("--library") + 1]))
+    return queue_slot.main(argv)
+
+
 def _qdir(lib: Path) -> Path:
     q = lib / ".virgil" / "queue"
     q.mkdir(parents=True, exist_ok=True)
@@ -240,17 +255,17 @@ def test_slot_table_and_suffixes():
 
 
 def test_cli_write_and_retire(tmp_path, capsys):
-    assert queue_slot.main(["write", "--kind", "index", "--citekey", "a",
+    assert _cli(["write", "--kind", "index", "--citekey", "a",
                             "--library", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out)["result"] == "written"
-    assert queue_slot.main(["retire", "--kind", "index", "--citekey", "a",
+    assert _cli(["retire", "--kind", "index", "--citekey", "a",
                             "--library", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out)["result"] == "retired"
     q = _qdir(tmp_path)
     assert not (q / "a.json").exists() and (q / "a.done").exists()
     _put(q / "a.json", kind="index", status="running", citekey="a",
          requestedAt="x", attempts=0)
-    assert queue_slot.main(["write", "--kind", "index", "--citekey", "a",
+    assert _cli(["write", "--kind", "index", "--citekey", "a",
                             "--library", str(tmp_path)]) == 3
 
 
@@ -263,6 +278,7 @@ def _manifest(q: Path) -> None:
 
 
 def _run_drain(lib: Path, capsys) -> str:
+    _as_library(lib)
     argv = sys.argv
     sys.argv = ["drain_queue.py", "--library", str(lib)]
     try:
@@ -322,10 +338,10 @@ def test_pending_native_count_ignores_deferred_failed_poisoned_manifest(tmp_path
         "a.json", "b.json", "e-auth.json", "f-richindex.json"]
     assert {e["kind"] for e in every} == {"index", "reindex", "authenticate", "deepIndex"}
 
-    assert queue_slot.main(["pending", "--native", "--count",
+    assert _cli(["pending", "--native", "--count",
                             "--library", str(tmp_path)]) == 0
     assert capsys.readouterr().out.strip() == "2"
-    assert queue_slot.main(["pending", "--library", str(tmp_path)]) == 0
+    assert _cli(["pending", "--library", str(tmp_path)]) == 0
     lines = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
     assert [x["file"] for x in lines] == [
         "a.json", "b.json", "e-auth.json", "f-richindex.json"]
@@ -346,7 +362,7 @@ def test_retire_finds_legacy_richindex_slot(tmp_path, capsys):
     q = _qdir(tmp_path)
     _put(q / "a-richindex.json", kind="richIndex", status="requested",
          citekey="a", requestedAt="x", attempts=0)
-    assert queue_slot.main(["retire", "--kind", "deepIndex", "--citekey", "a",
+    assert _cli(["retire", "--kind", "deepIndex", "--citekey", "a",
                             "--library", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out)["result"] == "retired"
     assert not (q / "a-richindex.json").exists()
@@ -356,7 +372,7 @@ def test_retire_finds_legacy_richindex_slot(tmp_path, capsys):
 # ── task 809: the deep-index door carries the app's companion rule ───────
 
 def _write(lib: Path, capsys, *extra: str) -> tuple[int, dict]:
-    code = queue_slot.main(["write", "--kind", "deepIndex", "--citekey", "a",
+    code = _cli(["write", "--kind", "deepIndex", "--citekey", "a",
                             "--library", str(lib), *extra])
     return code, json.loads(capsys.readouterr().out)
 

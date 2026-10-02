@@ -184,7 +184,7 @@ def test_plain_baseline_path_unchanged(c: Checks, td: Path) -> None:
 def test_audit_deepindex_suppression_unchanged(c: Checks, td: Path) -> None:
     print("== audit_deepindex: category suppression via shared helper ==")
     lib = td / "lib3"
-    (lib / ".virgil").mkdir(parents=True, exist_ok=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (lib / ".virgil" / "catalog.json").write_text(json.dumps(_catalog(
         "testpaper2020",
         [
@@ -210,7 +210,7 @@ def test_cli_end_to_end(c: Checks, td: Path) -> None:
     paper = lib / "papers" / "testpaper2020"
     paper.mkdir(parents=True, exist_ok=True)
     (paper / "main.tex").write_text(GAP_TEX)
-    (lib / ".virgil").mkdir(parents=True, exist_ok=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (lib / ".virgil" / "catalog.json").write_text(json.dumps(
         _catalog("testpaper2020", ["pgmark-gap-false-positive: verified offset"])
     ))
@@ -254,8 +254,9 @@ def _run_add(lib: Path, citekey: str, kind: str) -> subprocess.CompletedProcess:
 
 def _fresh_lib(td: Path, name: str, citekey: str = "testpaper2020") -> Path:
     lib = td / name
-    (lib / ".virgil").mkdir(parents=True, exist_ok=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
     (lib / ".virgil" / "catalog.json").write_text(json.dumps(_catalog(citekey, [])))
+    (lib / "master.bib").write_text("")  # a library the one resolver accepts
     return lib
 
 

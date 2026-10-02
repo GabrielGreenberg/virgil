@@ -101,7 +101,6 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
-import os
 import re
 import sys
 import time
@@ -124,14 +123,12 @@ CROSSREF_URL = "https://api.crossref.org/works"
 UA = "virgil-library/synthesize-canonical (mailto:gabriel.greenberg@gmail.com)"
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library_root() -> Path:
-    env = os.environ.get("VIRGIL_LIBRARY_ROOT")
-    if env:
-        return Path(env)
-    cwd = Path.cwd()
-    if (cwd / "master.bib").exists() and (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    return Path.home() / "Virgil-Library"
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit()
 
 
 def _read_catalog_warnings(library: Path, citekey: str) -> list[str]:

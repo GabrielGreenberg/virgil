@@ -58,7 +58,7 @@ MASTER_BIB = """\
 
 def _make_library(tmp_path: Path) -> Path:
     lib = tmp_path / "Library"
-    (lib / ".virgil").mkdir(parents=True)
+    (lib / ".virgil" / "scripts").mkdir(parents=True)
     (lib / "master.bib").write_text(MASTER_BIB, encoding="utf-8")
     (lib / ".virgil" / "catalog.json").write_text("{}", encoding="utf-8")
     return lib
@@ -316,7 +316,7 @@ def test_bad_library_exits_2(tmp_path: Path):
     with _patched(authenticate=rec):
         code, _, err = _run(["--citekey", "x", "--library", str(tmp_path / "nope")])
     assert code == 2
-    assert "not a Virgil library" in err
+    assert "not a valid library" in err
     assert rec.calls == []
 
 
@@ -383,8 +383,15 @@ def test_env_var_resolves_the_library_without_the_editor_silo(tmp_path: Path):
     prev = _os.environ.get("VIRGIL_LIBRARY_ROOT")
     _os.environ["VIRGIL_LIBRARY_ROOT"] = str(lib)
     try:
-        with _patched(authenticate=rec, _import_library_path_resolver=lambda: None):
-            code, _, err = _run(["--citekey", "smith2001"])
+        import _library_root
+
+        saved = _library_root._load_ssot
+        _library_root._load_ssot = lambda: None
+        try:
+            with _patched(authenticate=rec):
+                code, _, err = _run(["--citekey", "smith2001"])
+        finally:
+            _library_root._load_ssot = saved
     finally:
         if prev is None:
             _os.environ.pop("VIRGIL_LIBRARY_ROOT", None)

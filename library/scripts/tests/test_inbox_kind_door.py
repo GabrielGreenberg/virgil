@@ -56,6 +56,8 @@ def _library(root: Path) -> Path:
     (root / ".virgil" / "notifications").mkdir(parents=True, exist_ok=True)
     (root / "papers").mkdir(parents=True, exist_ok=True)
     (root / "master.bib").write_text("")
+    (root / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
+    (root / ".virgil" / "catalog.json").write_text("{}")
     return root
 
 

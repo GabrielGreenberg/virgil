@@ -811,31 +811,12 @@ def _process_dup_unauth(
 # ── top-level ─────────────────────────────────────────────────────────
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library(library_arg: str | None) -> Path:
-    if library_arg:
-        p = Path(library_arg).expanduser().resolve()
-        if not p.exists():
-            raise FileNotFoundError(f"--library path does not exist: {p}")
-        return p
-    # Try library_path.py — synced PWA folders + repo both ship it.
-    for candidate in (
-        ".virgil/scripts/editor/library_path.py",
-        "editor/scripts/library_path.py",
-    ):
-        cand = Path.cwd() / candidate
-        if cand.exists():
-            import subprocess
-            try:
-                out = subprocess.check_output(
-                    ["python3", str(cand), "--get"],
-                    stderr=subprocess.DEVNULL,
-                ).decode().strip()
-                if out:
-                    return Path(out).expanduser().resolve()
-            except subprocess.CalledProcessError:
-                continue
-    # Last-ditch: assume CWD is the library root.
-    return Path.cwd().resolve()
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit(library_arg)
 
 
 def main(argv: list[str] | None = None) -> int:

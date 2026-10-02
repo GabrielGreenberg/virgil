@@ -704,17 +704,12 @@ def _normalize(s: str) -> str:
     return s
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def resolve_library_root() -> Path:
-    """Mirror the skill's library-root resolution rules."""
-    import os
-    env = os.environ.get("VIRGIL_LIBRARY_ROOT")
-    if env:
-        return Path(env)
-    cwd = Path.cwd()
-    if (cwd / "master.bib").exists() and (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    home = Path.home() / "Virgil-Library"
-    return home
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit()
 
 
 def audit(paper_dir: Path) -> dict:

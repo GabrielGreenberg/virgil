@@ -386,13 +386,16 @@ def pending_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str,
     return out
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Library queue slot door.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     w = sub.add_parser("write", help="queue a request under the slot contract")
     w.add_argument("--kind", required=True)
     w.add_argument("--citekey", required=True)
-    w.add_argument("--library", default=str(Path.cwd()))
+    w.add_argument("--library", default=None)
     w.add_argument("--replace", action="store_true",
                    help="replace a pending request of the same kind")
     w.add_argument("--note", default=None,
@@ -400,14 +403,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     r = sub.add_parser("retire", help="mark a finished request done")
     r.add_argument("--kind", required=True)
     r.add_argument("--citekey", required=True)
-    r.add_argument("--library", default=str(Path.cwd()))
+    r.add_argument("--library", default=None)
     q = sub.add_parser("pending", help="list (or count) the pending requests")
     q.add_argument("--native", action="store_true",
                    help="only the kinds drain_queue.py processes itself")
     q.add_argument("--count", action="store_true", help="print just the number")
-    q.add_argument("--library", default=str(Path.cwd()))
+    q.add_argument("--library", default=None)
     args = ap.parse_args(argv)
-    library = Path(args.library).expanduser()
+    library = library_root_or_exit(args.library)
 
     if args.cmd == "pending":
         items = pending_requests(queue_dir(library), native_only=args.native)

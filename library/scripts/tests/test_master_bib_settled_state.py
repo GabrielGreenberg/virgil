@@ -39,7 +39,9 @@ VETTED = {
 
 def _lib(tmp_path: Path, key: str = "smith2020", state: str = "authenticated",
          fields: dict | None = None) -> Path:
-    (tmp_path / ".virgil").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
+    if not (tmp_path / ".virgil" / "catalog.json").exists():
+        (tmp_path / ".virgil" / "catalog.json").write_text('{"version": 1, "entries": []}\n')
     (tmp_path / "papers").mkdir(parents=True, exist_ok=True)
     (tmp_path / "catalog.json").write_text('{"version": 1, "entries": []}\n')
     body = ",\n".join(f"  {k} = {{{v}}}" for k, v in (fields or VETTED).items())

@@ -290,14 +290,17 @@ def _process_one(entry: dict, library: Path) -> dict:
         unlink_tolerant(lock, what="queue lock")
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Drain ~/Virgil-Library/queue/ in batch.")
-    p.add_argument("--library", default=str(Path.cwd()),
-                   help="Library root directory (defaults to CWD)")
+    p.add_argument("--library", default=None,
+                   help="Library root (default: the one validated resolver, _library_root.py)")
     p.add_argument("--max", type=int, default=0,
                    help="Cap the number of native entries processed (0 = no cap)")
     args = p.parse_args()
-    library = Path(args.library).expanduser()
+    library = library_root_or_exit(args.library)
 
     skip_counts: dict[str, int] = {}
     pending = _list_pending(library, skip_counts=skip_counts)

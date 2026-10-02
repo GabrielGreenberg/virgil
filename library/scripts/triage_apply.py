@@ -747,12 +747,15 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
     return result
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Apply a reviewed triage JSONL.")
     p.add_argument("--input", default="-",
                    help="JSONL input path; '-' for stdin (default)")
-    p.add_argument("--library", default=str(Path.cwd()),
-                   help="Library root directory (defaults to CWD)")
+    p.add_argument("--library", default=None,
+                   help="Library root (default: the one validated resolver, _library_root.py)")
     p.add_argument("--print-notification-kinds", action="store_true",
                    help=(
                        "Print the notification vocabulary (one per line, the "
@@ -766,7 +769,7 @@ def main() -> int:
             print(kind)
         return 0
 
-    library = Path(args.library).expanduser()
+    library = library_root_or_exit(args.library)
 
     if args.input == "-":
         text = sys.stdin.read()

@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -69,14 +68,12 @@ assert POLICY_BIB_STATE in CANONICAL_BIB_STATES, (
 )
 
 
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
+
+
 def _resolve_library_root() -> Path:
-    env = os.environ.get("VIRGIL_LIBRARY_ROOT")
-    if env:
-        return Path(env)
-    cwd = Path.cwd()
-    if (cwd / "master.bib").exists() and (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    return Path.home() / "Virgil-Library"
+    """Delegate to the library silo's one validated door (task 896)."""
+    return library_root_or_exit()
 
 
 _LENDING_SIGNATURES = (

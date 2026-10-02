@@ -45,7 +45,9 @@ _DISK = """@article{smith2020,
 
 
 def _lib(tmp_path: Path, bib: str = _DISK) -> Path:
-    (tmp_path / ".virgil").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
+    if not (tmp_path / ".virgil" / "catalog.json").exists():
+        (tmp_path / ".virgil" / "catalog.json").write_text('{"version": 1, "entries": []}\n')
     (tmp_path / "master.bib").write_text(bib)
     (tmp_path / "_base.bib").write_text(_BASE)
     return tmp_path

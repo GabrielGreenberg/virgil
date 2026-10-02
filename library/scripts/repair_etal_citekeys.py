@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 import unicodedata
@@ -67,14 +66,7 @@ _CITEKEY_STOPWORDS = frozenset({
 _QUEUE_SUFFIXES = slot_suffixes()
 
 
-def _resolve_library_root() -> Path:
-    env = os.environ.get("VIRGIL_LIBRARY_ROOT")
-    if env:
-        return Path(env)
-    cwd = Path.cwd()
-    if (cwd / "master.bib").exists() and (cwd / ".virgil" / "catalog.json").exists():
-        return cwd
-    return Path.home() / "Virgil-Library"
+from _library_root import library_root_or_exit  # noqa: E402  (task 896)
 
 
 def _ascii_lower(s: str) -> str:
@@ -498,15 +490,15 @@ def _print_plan(plan: Plan, library: Path, applied: bool) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--library", type=Path, default=None,
-                    help="Library root (default: env VIRGIL_LIBRARY_ROOT, "
-                         "else CWD if it has master.bib, else ~/Virgil-Library)")
+                    help="Library root (default: the one validated resolver, "
+                         "_library_root.py)")
     ap.add_argument("--apply", action="store_true",
                     help="Actually rename. Default is dry-run.")
     ap.add_argument("--report", type=Path, default=None,
                     help="Write JSON report to this file (otherwise stdout)")
     args = ap.parse_args(argv)
 
-    library = args.library or _resolve_library_root()
+    library = library_root_or_exit(args.library)
     if not (library / "master.bib").exists():
         print(f"error: {library}/master.bib not found", file=sys.stderr)
         return 2

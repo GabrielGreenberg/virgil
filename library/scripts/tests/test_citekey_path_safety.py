@@ -136,9 +136,10 @@ BIB = """@article{journals/jphil/Smith20,
 
 def _library(tmp_path: Path) -> Path:
     lib = tmp_path / "lib"
-    for d in (".virgil", "papers", "unsorted"):
+    for d in (".virgil/scripts", "papers", "unsorted"):
         (lib / d).mkdir(parents=True)
     (lib / "master.bib").write_text("")
+    (lib / ".virgil" / "catalog.json").write_text("{}")
     return lib
 
 

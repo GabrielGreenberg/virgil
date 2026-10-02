@@ -247,7 +247,9 @@ function policyVerdict(
 } {
   const root = mkdtempSync(join(tmpdir(), "virgil-lock-"));
   try {
-    mkdirSync(join(root, ".virgil"), { recursive: true });
+    // A library the one validated resolver accepts (task 896).
+    mkdirSync(join(root, ".virgil", "scripts"), { recursive: true });
+    writeFileSync(join(root, "master.bib"), "");
     mkdirSync(join(root, "papers", "k1999"), { recursive: true });
     const row: Record<string, unknown> = {
       citekey: "k1999",
