@@ -253,7 +253,7 @@ describe("resolveFontStack: bare family names never ship", () => {
 
   it("every Fonts-dialog-pool serif/display name resolves with a serif tail (T5 heuristic widening)", () => {
     // The non-curated serif names reachable from MAIN_TEXT_FONTS
-    // (src/lib/preferences-tree.ts) — each must heuristic-fallback to
+    // (src/lib/font-catalogue.ts) — each must heuristic-fallback to
     // `serif`, not the default `sans-serif`.
     const poolSerifs = [
       "Lusitana",
@@ -277,7 +277,7 @@ describe("resolveFontStack: bare family names never ship", () => {
   });
 
   it("the full MAIN_TEXT_FONTS pool never dead-ends bare and each group gets the right generic", async () => {
-    const { MAIN_TEXT_FONTS } = await import("@/lib/preferences-tree");
+    const { MAIN_TEXT_FONTS } = await import("@/lib/font-catalogue");
     for (const group of MAIN_TEXT_FONTS) {
       const expected = group.group === "Sans-serif" ? "sans-serif" : "serif";
       for (const name of group.fonts) {

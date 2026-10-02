@@ -14,6 +14,7 @@
  */
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { subscribeToStorageKey } from "./cross-window-storage";
+import { PANEL_BODY_FONTS } from "./font-catalogue";
 import type { CardKind } from "@/cards/types";
 import type { PanelKind } from "@/panels/_shared/types";
 
@@ -102,7 +103,7 @@ function quoteFamily(name: string): string {
 
 /** Serif-name heuristic for the total-resolver fallback. Covers every
  *  serif/display family reachable from the Fonts… dialog pool
- *  (`MAIN_TEXT_FONTS` in src/lib/preferences-tree.ts) that has no curated
+ *  (`MAIN_TEXT_FONTS` in src/lib/font-catalogue.ts) that has no curated
  *  `FONT_STACKS` entry — Lusitana, Cardo, Spectral, Vollkorn, Gentium
  *  Plus, Old Standard TT, Libre Caslon Text, Marcellus, Bodoni Moda,
  *  Cormorant (SC), IM Fell English — plus the generic serif-ish cues. */
@@ -236,25 +237,10 @@ export const PANEL_BODY_LABELS: Record<PanelBodyKey, string> = {
   example:  "Examples",
 };
 
-/** Font choices — mix of serifs and sans, same pool as the main prefs. */
-export const PANEL_BODY_FONT_OPTIONS = [
-  "Source Serif 4",
-  "Georgia",
-  "Playfair Display",
-  "Libre Baskerville",
-  "Lora",
-  "Merriweather",
-  "EB Garamond",
-  "Crimson Text",
-  "Inter",
-  "system-ui",
-  "Helvetica Neue",
-  "Open Sans",
-  "Lato",
-  "Roboto",
-  "IBM Plex Sans",
-  "Source Sans 3",
-];
+/** Font choices for the Smart grid — the curated serif + sans cores of the
+ *  one font vocabulary (`src/lib/font-catalogue.ts`, task 901), each with a
+ *  hand-tuned `FONT_STACKS` entry. */
+export const PANEL_BODY_FONT_OPTIONS: readonly string[] = PANEL_BODY_FONTS;
 
 /* ── Mutable override registry + subscriptions ───────────────────── */
 

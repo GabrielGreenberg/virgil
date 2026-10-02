@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "./field-primitives";
-import { MAIN_TEXT_FONTS } from "@/lib/preferences-tree";
+import { MAIN_TEXT_FONTS } from "@/lib/font-catalogue";
 import { resolvePreviewFontStack } from "@/lib/panel-typography";
 
 interface FontPickerProps {
