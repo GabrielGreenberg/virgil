@@ -4,6 +4,8 @@
 
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { deriveLight, hexToRgba } from "@/hooks/usePreferences";
+import { applyTransforms, type GlobalTransforms } from "@/lib/color-transforms";
+import { PREF_CSS_ROWS, renderPrefCssValue } from "@/lib/pref-css-table.mjs";
 import {
   DISPLAY_FONTS,
   LOGO_FONTS,
@@ -227,105 +229,21 @@ export interface CssMapping {
   transform?: (value: string | number) => string;
 }
 
-export const PREF_TO_CSS: CssMapping[] = [
-  // Editor body
-  { key: "editorFontSize", cssVar: "--editor-font-size", isColor: false, transform: (v) => `${v}rem` },
-  { key: "editorLineHeight", cssVar: "--editor-line-height", isColor: false },
-  { key: "editorTextColor", cssVar: "--editor-text-color", isColor: true },
-
-  // App chrome
-  // (--theme-color is aliased to --topbar-bg, --main-tab-bg is aliased to
-  //  --background, both in globals.css)
-  { key: "topbarBackground", cssVar: "--topbar-bg", isColor: true },
-  { key: "topbarBackgroundBottom", cssVar: "--topbar-bg-bottom", isColor: true },
-  { key: "topbarBorder", cssVar: "--topbar-border", isColor: true },
-  { key: "tabBg", cssVar: "--tab-bg", isColor: true },
-  { key: "libraryBg", cssVar: "--library-bg", isColor: true },
-  { key: "virgilBarText", cssVar: "--virgil-bar-text", isColor: true },
-
-  // Heading annotations
-  { key: "headingAnnotationColor", cssVar: "--heading-annotation-color", isColor: true },
-  { key: "headingAnnotationBorder", cssVar: "--heading-annotation-border", isColor: true },
-
-  // Paragraph titles
-  { key: "parTitleSize", cssVar: "--par-title-size", isColor: false, transform: (v) => `${v}rem` },
-  { key: "parTitleColor", cssVar: "--par-title-color", isColor: true },
-
-  // Blockquotes
-  { key: "blockquoteBorder", cssVar: "--blockquote-border", isColor: true },
-  { key: "blockquoteText", cssVar: "--blockquote-text", isColor: true },
-
-  // Code & math
-  { key: "codeBackground", cssVar: "--code-bg", isColor: true },
-  { key: "codeBlockBackground", cssVar: "--code-block-bg", isColor: true },
-  { key: "mathColor", cssVar: "--math-color", isColor: true },
-
-  // Inline elements
-  { key: "accentColor", cssVar: "--accent", isColor: true },
-  { key: "backgroundColor", cssVar: "--background", isColor: true },
-  { key: "surfaceColor", cssVar: "--surface", isColor: true },
-  { key: "commentColor", cssVar: "--comment-color", isColor: true },
-  { key: "latexCommentColor", cssVar: "--latex-comment-color", isColor: true },
-  { key: "citationColor", cssVar: "--citation-color", isColor: true },
-  { key: "citationBorderColor", cssVar: "--citation-border-color", isColor: true },
-  { key: "labelRefColor", cssVar: "--label-ref-color", isColor: true },
-  { key: "labelRefBorderColor", cssVar: "--label-ref-border-color", isColor: true },
-  { key: "footnoteColor", cssVar: "--footnote-color", isColor: true },
-  { key: "noteColor", cssVar: "--note-color", isColor: true },
-  { key: "noteMarkerBorder", cssVar: "--note-marker-border", isColor: true },
-
-  // Suggestions
-  { key: "markBackground", cssVar: "--mark-bg", isColor: true },
-  { key: "markBorder", cssVar: "--mark-border", isColor: true },
-
-  // LaTeX commands
-  { key: "latexCmdColor", cssVar: "--latex-cmd-color", isColor: true },
-
-  // Panels
-  { key: "panelFontSize", cssVar: "--panel-font-size", isColor: false, transform: (v) => `${v}px` },
-  { key: "panelHeaderSize", cssVar: "--panel-header-size", isColor: false, transform: (v) => `${v}px` },
-  // (--pod-editor is aliased to --surface in globals.css)
-  { key: "headerBg", cssVar: "--header-bg", isColor: true },
-  { key: "podPanel", cssVar: "--pod-panel", isColor: true },
-  { key: "podToolbar", cssVar: "--pod-toolbar", isColor: true },
-  { key: "podDark", cssVar: "--pod-dark", isColor: true },
-  { key: "panelAdminTextColor", cssVar: "--panel-admin-text-color", isColor: true },
-  { key: "panelHeaderTextColor", cssVar: "--panel-header-text-color", isColor: true },
-  { key: "panelAdminTextFont", cssVar: "--panel-admin-text-font", isColor: false, transform: (v) => `"${v}"` },
-
-  // Canvas & layout
-  { key: "foreground", cssVar: "--foreground", isColor: true },
-  { key: "borderColor", cssVar: "--border", isColor: true },
-  { key: "borderLight", cssVar: "--border-light", isColor: true },
-  { key: "mutedColor", cssVar: "--muted", isColor: true },
-  { key: "mutedLight", cssVar: "--muted-light", isColor: true },
-  { key: "dragHighlight", cssVar: "--drag-highlight", isColor: true },
-  // (--scrollbar-hover is aliased to --muted-light in globals.css)
-  { key: "scrollbarThumb", cssVar: "--scrollbar-thumb", isColor: true },
-
-  // Fonts
-  { key: "fontSerif", cssVar: "--font-serif-override", isColor: false, transform: (v) => `"${v}"` },
-  { key: "fontSans", cssVar: "--font-sans-override", isColor: false, transform: (v) => `"${v}"` },
-  { key: "fontDisplay", cssVar: "--font-display-override", isColor: false, transform: (v) => `"${v}"` },
-  { key: "fontLogo", cssVar: "--font-logo-override", isColor: false, transform: (v) => `"${v}"` },
-  { key: "fontMono", cssVar: "--font-mono-override", isColor: false, transform: (v) => `"${v}"` },
-
-  // Fonts… dialog — non-nullable size fields go straight through.
-  // Nullable family fields are handled in DERIVED_CSS below so they can
-  // resolve "pinned to body" → bodySerif rather than leaving the var empty
-  // (which would defeat the var() fallback chain).
-  { key: "fontMaketitleTitleSize", cssVar: "--font-maketitle-title-size", isColor: false, transform: (v) => `${v}rem` },
-  { key: "fontMaketitleTitleWeight", cssVar: "--font-maketitle-title-weight", isColor: false, transform: (v) => `${v}` },
-  { key: "fontMaketitleMetaSize", cssVar: "--font-maketitle-meta-size", isColor: false, transform: (v) => `${v}rem` },
-  { key: "fontMaketitleMetaWeight", cssVar: "--font-maketitle-meta-weight", isColor: false, transform: (v) => `${v}` },
-  { key: "fontHeadersH1Size", cssVar: "--font-headers-h1-size", isColor: false, transform: (v) => `${v}rem` },
-  { key: "fontHeadersH1Weight", cssVar: "--font-headers-h1-weight", isColor: false, transform: (v) => `${v}` },
-  { key: "fontHeadersH2Size", cssVar: "--font-headers-h2-size", isColor: false, transform: (v) => `${v}rem` },
-  { key: "fontHeadersH2Weight", cssVar: "--font-headers-h2-weight", isColor: false, transform: (v) => `${v}` },
-  { key: "fontHeadersH3Size", cssVar: "--font-headers-h3-size", isColor: false, transform: (v) => `${v}rem` },
-  { key: "fontHeadersH3Weight", cssVar: "--font-headers-h3-weight", isColor: false, transform: (v) => `${v}` },
-  { key: "fontParTitleWeight", cssVar: "--font-partitle-weight", isColor: false, transform: (v) => `${v}` },
-];
+/**
+ * The runtime rows of the ONE pref→CSS table (`pref-css-table.mjs`, task 902) —
+ * one row per painted `EditorPreferences` field. The first-paint seed in
+ * `globals.css` is generated from the SAME table by the promoter, and
+ * `check-prefs-coverage` fails if the two ever differ, so there is no second
+ * hand map for a new row to be forgotten in.
+ */
+export const PREF_TO_CSS: CssMapping[] = PREF_CSS_ROWS.map((row) => ({
+    key: row.key as keyof EditorPreferences,
+    cssVar: row.cssVar,
+    isColor: row.color === true,
+    ...(row.unit || row.quote
+      ? { transform: (v: string | number) => renderPrefCssValue(row, v) }
+      : {}),
+  }));
 
 // Derived CSS variables computed from multiple preferences
 export interface DerivedCssMapping {
@@ -397,3 +315,30 @@ export const DERIVED_CSS: DerivedCssMapping[] = [
   { cssVar: "--font-headers-family", compute: (p) => `"${p.fontHeadersFamily ?? p.fontSerif}"` },
   { cssVar: "--font-partitle-family", compute: (p) => `"${p.fontParTitleFamily ?? p.fontSans}"` },
 ];
+
+/**
+ * Every custom property the editor preferences paint, resolved — the ONE
+ * function both the runtime prefs effect (`EditorLayout`) and the pre-paint
+ * replay cache (`pref-css-bootstrap.ts`) go through (task 902). Table rows in
+ * order (colours through the global transforms), then the derived rows.
+ */
+export function resolvePrefCssVars(
+  prefs: EditorPreferences,
+  transforms: GlobalTransforms,
+): [cssVar: string, value: string][] {
+  const out: [string, string][] = [];
+  for (const entry of PREF_TO_CSS) {
+    const raw = prefs[entry.key];
+    let value: string;
+    if (entry.isColor && typeof raw === "string") {
+      value = applyTransforms(raw, transforms);
+    } else if (entry.transform) {
+      value = raw == null ? "" : entry.transform(raw);
+    } else {
+      value = String(raw);
+    }
+    out.push([entry.cssVar, value]);
+  }
+  for (const entry of DERIVED_CSS) out.push([entry.cssVar, entry.compute(prefs)]);
+  return out;
+}

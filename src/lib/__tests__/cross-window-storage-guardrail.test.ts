@@ -200,6 +200,11 @@ const STORE_LEDGER: Record<string, StoreLedgerEntry> = {
     reason:
       "`markViewedNow` merges ONE key per write, but useRowDotState caches the map for the row dots and re-reads it on the storage event (task 768).",
   },
+  "src/lib/pref-css-bootstrap.ts": {
+    kind: "read-fresh",
+    reason:
+      "The pre-paint replay record (task 902): each write reads the two pref blobs in the same call and stores them beside the paint, and the replay applies only while they still match storage — so a stale record is refused, never written back over a peer's.",
+  },
   "src/components/InstallPwaPrompt.tsx": {
     kind: "write-once",
     reason: "The dismissed flag only ever becomes \"1\"; a stale window can only write what a fresh one would.",

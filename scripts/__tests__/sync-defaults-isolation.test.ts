@@ -22,6 +22,8 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const COPIED = [
   "tools/sync-defaults.sh",
   "tools/promote-defaults.mjs",
+  "src/lib/pref-css-table.mjs",
+  "src/lib/color-transform-math.mjs",
   "src/lib/dev-prefs-registry.json",
   "src/hooks/useViewPrefs.defaults.json",
   "src/hooks/usePreferences.defaults.json",

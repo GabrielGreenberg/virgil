@@ -14,8 +14,12 @@
  *      Window-scoped registry keys are exempt by scope.
  *   3. Every entry in the registry's `whitelist` arrays resolves to a
  *      key in the corresponding interface.
- *   4. Every `cssVarMap[*].source` of shape `bucket.key` resolves to a
- *      key in the bucket's defaults JSON.
+ *   4. Every row of the ONE pref→CSS table (`src/lib/pref-css-table.mjs`,
+ *      task 902) resolves to a key in the editor defaults JSON, AND the
+ *      first-paint seed block in `globals.css` (PROMOTE-DEFAULTS) is exactly
+ *      that table rendered at the defaults — so a runtime row the seed lacks,
+ *      or a seed value that differs from what the runtime paints at the
+ *      defaults, fails here instead of flashing on load.
  *
  * Fails fast with a human-readable list of missing keys. No deps.
  */
@@ -23,6 +27,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PREF_CSS_ROWS, renderPrefCssSeed } from "../src/lib/pref-css-table.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -32,6 +37,7 @@ const EDITOR_TS = path.join(REPO_ROOT, "src/hooks/usePreferences.ts");
 const VIEW_TS = path.join(REPO_ROOT, "src/hooks/useViewPrefs.ts");
 const VIEW_PREF_REGISTRY_TS = path.join(REPO_ROOT, "src/lib/view-prefs/registry.ts");
 const REGISTRY = path.join(REPO_ROOT, "src/lib/dev-prefs-registry.json");
+const GLOBALS_CSS = path.join(REPO_ROOT, "src/app/globals.css");
 // F#13: the Library column-order shipped default (rides promote-defaults).
 const LIST_COL_DEFAULTS = path.join(REPO_ROOT, "library/lib/list-columns.defaults.json");
 const LIST_COLUMNS_TS = path.join(REPO_ROOT, "library/lib/list-columns.ts");
@@ -165,7 +171,6 @@ const VIEW_RUNTIME_KEYS = new Set([
 {
   const registry = readJson(REGISTRY);
   const editorDefaults = readJson(EDITOR_DEFAULTS);
-  const viewDefaults = readJson(VIEW_DEFAULTS);
 
   for (const entry of registry.promotable) {
     if (entry.strategy !== "whitelist") continue;
@@ -190,17 +195,35 @@ const VIEW_RUNTIME_KEYS = new Set([
     }
   }
 
-  for (const [cssVar, spec] of Object.entries(registry.cssVarMap)) {
-    const [bucket, key] = String(spec.source).split(".");
-    const bucketDefaults =
-      bucket === "editor" ? editorDefaults : bucket === "view" ? viewDefaults : null;
-    if (!bucketDefaults) {
-      fail(`cssVarMap[${cssVar}].source "${spec.source}" has unknown bucket "${bucket}"`);
-      continue;
+  for (const row of PREF_CSS_ROWS) {
+    if (!(row.key in editorDefaults)) {
+      fail(`pref-css-table row ${row.cssVar} — key "${row.key}" missing from the editor defaults`);
     }
-    if (!(key in bucketDefaults)) {
+  }
+
+  const globals = fs.readFileSync(GLOBALS_CSS, "utf-8");
+  const block = /PROMOTE-DEFAULTS-START[\s\S]*?\*\/([\s\S]*?)\/\* PROMOTE-DEFAULTS-END \*\//.exec(globals);
+  if (!block) {
+    fail("globals.css has no PROMOTE-DEFAULTS block");
+  } else {
+    const seeded = block[1]
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const expected = renderPrefCssSeed(editorDefaults).map(
+      ([cssVar, value]) => `${cssVar}: ${value};`,
+    );
+    if (seeded.join("\n") !== expected.join("\n")) {
+      const have = new Set(seeded);
+      const want = new Set(expected);
+      const missing = expected.filter((l) => !have.has(l));
+      const extra = seeded.filter((l) => !want.has(l));
       fail(
-        `cssVarMap[${cssVar}].source "${spec.source}" — key "${key}" missing from the "${bucket}" defaults`,
+        "globals.css PROMOTE-DEFAULTS block is not the pref-css-table rendered at the defaults" +
+          (missing.length ? ` — missing/different: ${missing.join(" ")}` : "") +
+          (extra.length ? ` — unexpected: ${extra.join(" ")}` : "") +
+          (!missing.length && !extra.length ? " — same lines, wrong order" : "") +
+          ". Regenerate with `npm run promote-defaults` (or rewriteCssBlock).",
       );
     }
   }

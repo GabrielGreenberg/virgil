@@ -4,6 +4,7 @@ import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { Analytics } from "@/components/Analytics";
 import { publicAssetUrl } from "@/lib/public-asset-url";
 import { displayModeBootstrapScript } from "@/lib/window-chrome-bootstrap";
+import { prefCssBootstrapScript } from "@/lib/pref-css-bootstrap";
 import "./globals.css";
 
 const inter = Inter({
@@ -70,8 +71,9 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} ${playfair.variable} ${cinzel.variable} ${sourceSerif.variable} ${geistMono.variable} h-full antialiased`}
-      // The bootstrap script below stamps data-display-mode onto <html> before
-      // React hydrates, so the server-rendered markup (no attribute) differs
+      // The bootstrap scripts below stamp data-display-mode (and, for a user
+      // with saved prefs, an inline style of custom properties) onto <html>
+      // before React hydrates, so the server-rendered markup (no attribute) differs
       // from the first client DOM. That divergence is intentional and safe —
       // silence the hydration warning for this attribute the way theme
       // bootstraps do.
@@ -91,6 +93,19 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: displayModeBootstrapScript(),
+          }}
+        />
+        {/* Flash-free preferences bootstrap (task 902). Replays the custom
+            properties the runtime prefs effect last painted onto :root —
+            recorded with the stored prefs/transforms blobs they came from, and
+            replayed only while those blobs are unchanged — so a customised
+            palette is on screen from the first frame instead of the shipped
+            defaults seeded in globals.css. Inline style on <html>, so it
+            outranks the stylesheet seed; covered by suppressHydrationWarning
+            above. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: prefCssBootstrapScript(),
           }}
         />
         <meta name="theme-color" content="#e5e4e1" />
