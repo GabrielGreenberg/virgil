@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { publicAssetUrl } from "@/lib/public-asset-url";
+import { subscribeChromePalette } from "@/lib/chrome-palette-signal";
 import { readFile } from "@library/lib/library-storage";
 import type { PdfPageState } from "@library/lib/pdf-pgmark-adapter";
 
@@ -94,7 +95,10 @@ const SIDEBAR_VIEW_NONE = 0;
  * the dist. This is the named place: the next such default is added to this
  * function, not to a fourth path.
  *
- * Today it states one thing — **the sidebar (outline/thumbnails) opens CLOSED.**
+ * It states three things: the viewer is pinned LIGHT, its chrome is painted
+ * from Virgil's LIVE palette (`applyViewerPalette`, task 890 — both at the
+ * bottom of the function), and — the long story below — **the sidebar
+ * (outline/thumbnails) opens CLOSED.**
  * pdf.js resolves "sidebar view on load" in three tiers (`viewer.mjs` ~:13946),
  * and its stock `sidebarViewOnLoad` default of `-1` (UNKNOWN) is precisely what
  * unlocks the other two:
@@ -153,6 +157,85 @@ export function applyViewerDefaults(win: PdfViewerWindow | null | undefined): vo
     win?.PDFViewerApplication?.pdfSidebar?.close();
   } catch {
     // Torn-down viewer mid-switch — the next open re-applies.
+  }
+  // Virgil is light-only (`layout.tsx` `colorScheme: "light"`), so the viewer is
+  // pinned light rather than left on pdf.js's stock `viewerCssTheme: 0`
+  // (follow the OS). The option is read ONCE, inside `initialize()` — before
+  // this door can run — so it is set for the record, and the root CLASS it would
+  // have produced is what actually lands: every dark rule in `viewer.css` is
+  // gated `:where(html:not(.is-light))` under `prefers-color-scheme: dark`.
+  try {
+    win?.PDFViewerApplicationOptions?.set("viewerCssTheme", VIEWER_CSS_THEME_LIGHT);
+  } catch {
+    // Renamed by a re-vendor — the class below is the half that lands anyway.
+  }
+  try {
+    const root = win?.document?.documentElement;
+    root?.classList.remove("is-dark");
+    root?.classList.add("is-light");
+  } catch {
+    // Torn-down viewer mid-switch — the next open re-applies.
+  }
+  applyViewerPalette(win);
+}
+
+/** pdf.js `viewerCssTheme` value for "always light" (0 = follow OS, 2 = dark). */
+const VIEWER_CSS_THEME_LIGHT = 1;
+
+/**
+ * **The Virgil tokens the viewer's chrome is painted from** (task 890). The
+ * viewer is a separate document that cannot inherit `globals.css` — nor the
+ * user's Colors preferences, which `EditorLayout` writes onto the PARENT's
+ * `:root` at runtime — so the wrapper copies each LIVE value across as
+ * `--virgil-<name>` on the iframe's root, and `virgil-overrides.css` consumes
+ * only those (each with a fallback for the pre-copy frame). One list, read by
+ * both sides: the census in `PdfView.viewerDefaults.test.ts` fails if the CSS
+ * names a `--virgil-*` token that is not here, or carries a bare hex.
+ */
+export const VIEWER_PALETTE_TOKENS = [
+  "--topbar-bg",
+  "--topbar-border",
+  "--foreground",
+  "--surface",
+  "--muted",
+  "--control-selected",
+  "--pod-panel",
+] as const;
+
+/** `--topbar-bg` → `--virgil-topbar-bg`: the name a token goes by in the iframe. */
+export function viewerPaletteVar(token: (typeof VIEWER_PALETTE_TOKENS)[number]): string {
+  return `--virgil-${token.slice(2)}`;
+}
+
+/**
+ * Copy the parent's LIVE palette onto the viewer's root. Called on every open
+ * (from `applyViewerDefaults`) and whenever the palette changes
+ * (`subscribeChromePalette`) — event-driven, O(token count), never per frame.
+ * A token the parent leaves empty is REMOVED in the iframe, so the CSS fallback
+ * applies rather than an empty value. `source` is injectable for tests.
+ */
+export function applyViewerPalette(
+  win: PdfViewerWindow | null | undefined,
+  source: Pick<CSSStyleDeclaration, "getPropertyValue"> | null = typeof document !== "undefined"
+    ? getComputedStyle(document.documentElement)
+    : null,
+): void {
+  if (!source) return;
+  let style: CSSStyleDeclaration | undefined;
+  try {
+    style = win?.document?.documentElement?.style;
+  } catch {
+    return; // Torn-down viewer mid-switch.
+  }
+  if (!style) return;
+  for (const token of VIEWER_PALETTE_TOKENS) {
+    const value = source.getPropertyValue(token).trim();
+    const name = viewerPaletteVar(token);
+    if (value) {
+      if (style.getPropertyValue(name) !== value) style.setProperty(name, value);
+    } else {
+      style.removeProperty(name);
+    }
   }
 }
 
@@ -227,6 +310,17 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
   useEffect(() => {
     onPageStateRef.current = onPdfPageStateChange;
   });
+
+  // Follow the user's Colors preferences live (task 890): every open copies the
+  // palette (applyViewerDefaults), and a palette write in the parent re-copies
+  // it into the warm viewer without a reopen. Event-driven, O(token count).
+  useEffect(
+    () =>
+      subscribeChromePalette(() => {
+        applyViewerPalette(iframeRef.current?.contentWindow as PdfViewerWindow | null);
+      }),
+    [],
+  );
 
   // Read the PDF bytes off disk -> mint the source (URL + citekey, together).
   // This effect only MINTS; the URL's lifetime is owned by the effect below.

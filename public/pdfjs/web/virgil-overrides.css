@@ -8,53 +8,69 @@
  * the zip, then re-add the viewer.html <link> line and keep this file.
  *
  * The viewer renders inside an <iframe> at /pdfjs/web/viewer.html — a
- * SEPARATE document that does NOT inherit the parent app's globals.css.
- * So the Virgil design tokens are hard-coded here as literal hex values
- * (the source token is named in a comment next to each one). Keep these in
- * sync with src/app/globals.css if the palette ever changes.
+ * SEPARATE document that does NOT inherit the parent app's globals.css, nor
+ * the user's Colors preferences written onto the parent's :root at runtime.
+ * So this file names NO colour of its own: the wrapper
+ * (library/components/PdfView.tsx, `applyViewerPalette`) copies each LIVE
+ * Virgil token onto this document's root as `--virgil-<name>` on every open
+ * and on every palette change, and the rules below consume only those. Each
+ * var() carries the shipped default as its fallback, for the frame before the
+ * first copy lands. The token list is `VIEWER_PALETTE_TOKENS`; a census test
+ * fails on a bare hex here or a --virgil-* name missing from that list.
  *
- * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px manila strip in
- * the same register as the Library TopBar, keeping only page navigation +
+ * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px strip in the
+ * Virgil top-bar colour, in the same register as the Library TopBar, keeping only page navigation +
  * zoom, and hiding the annotate / editor / print / download / open groups.
  */
 
 :root {
+  /* The live Virgil palette, copied in by PdfView.applyViewerPalette. The
+     fallbacks are the shipped defaults (globals.css promote-defaults block). */
+  --v-topbar-bg: var(--virgil-topbar-bg, #c5dbe2);
+  --v-topbar-border: var(--virgil-topbar-border, #cbc3b8);
+  --v-ink: var(--virgil-foreground, #1a1a1a);
+  --v-surface: var(--virgil-surface, #ffffff);
+  --v-muted: var(--virgil-muted, #8a8580);
+  --v-accent: var(--virgil-control-selected, #8a7355);
+  --v-sheet: var(--virgil-pod-panel, #fffdfa);
+  --v-accent-hover: color-mix(in srgb, var(--v-accent) 16%, transparent);
+  --v-accent-active: color-mix(in srgb, var(--v-accent) 28%, transparent);
+
   /* Toolbar surface + chrome -> Virgil topbar tokens */
-  --toolbar-bg-color: #dcdbd7;            /* --topbar-bg (manila/taupe) */
-  --toolbar-border-color: #cbc3b8;        /* --topbar-border */
+  --toolbar-bg-color: var(--v-topbar-bg);
+  --toolbar-border-color: var(--v-topbar-border);
   --toolbar-height: 40px;
   --toolbar-box-shadow: none;
-  --toolbar-border-bottom: 1px solid #cbc3b8; /* --topbar-border */
+  --toolbar-border-bottom: 1px solid var(--v-topbar-border);
 
-  /* Body / main background behind the pages stays the warm sheet */
-  --main-color: #1a1a1a;                  /* --foreground (ink) */
+  --main-color: var(--v-ink);
 
   /* Toolbar icon + control colors */
-  --toolbar-icon-bg-color: #1a1a1a;       /* --foreground (ink) */
+  --toolbar-icon-bg-color: var(--v-ink);
   --toolbar-icon-opacity: 0.7;
-  --toolbar-icon-hover-bg-color: #8a7355; /* --control-selected */
+  --toolbar-icon-hover-bg-color: var(--v-accent);
 
-  --button-hover-color: rgba(138, 115, 85, 0.16); /* --control-selected @ low alpha */
+  --button-hover-color: var(--v-accent-hover);
   --button-background-color: transparent;
-  --button-background-color-hover: rgba(138, 115, 85, 0.16);
-  --button-background-color-active: rgba(138, 115, 85, 0.28);
+  --button-background-color-hover: var(--v-accent-hover);
+  --button-background-color-active: var(--v-accent-active);
 
   /* Page-number + scale fields */
-  --field-color: #1a1a1a;                 /* --foreground */
-  --field-bg-color: #ffffff;              /* --surface */
-  --field-border-color: #cbc3b8;          /* --topbar-border */
+  --field-color: var(--v-ink);
+  --field-bg-color: var(--v-surface);
+  --field-border-color: var(--v-topbar-border);
 
   /* Secondary toolbar doorhanger (kept for the few items we keep there) */
-  --doorhanger-bg-color: #fdfaf5;         /* warm panel sheet */
-  --doorhanger-border-color: #cbc3b8;     /* --topbar-border */
-  --doorhanger-hover-bg-color: rgba(138, 115, 85, 0.16);
+  --doorhanger-bg-color: var(--v-sheet);
+  --doorhanger-border-color: var(--v-topbar-border);
+  --doorhanger-hover-bg-color: var(--v-accent-hover);
 }
 
-/* Quiet the toolbar container: thin manila strip, no heavy gradient/shadow. */
+/* Quiet the toolbar container: thin top-bar strip, no heavy gradient/shadow. */
 #toolbarContainer,
 .toolbar {
-  background-color: #dcdbd7;              /* --topbar-bg */
-  border-bottom: 1px solid #cbc3b8;       /* --topbar-border */
+  background-color: var(--v-topbar-bg);
+  border-bottom: 1px solid var(--v-topbar-border);
   box-shadow: none;
 }
 
@@ -65,7 +81,7 @@
 /* Micro-label register for the page-count + scale text. */
 #numPages,
 .toolbarLabel {
-  color: #6f6a63;                         /* between --muted and ink */
+  color: color-mix(in srgb, var(--v-muted) 80%, var(--v-ink)); /* between --muted and ink */
   font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
   font-size: 11px;
   letter-spacing: 0.04em;
