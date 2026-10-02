@@ -29,7 +29,11 @@ import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
 import { afterEach, describe, expect, it } from "vitest";
-import { stampServiceWorker, precacheList } from "../../../scripts/stamp-service-worker.mjs";
+import {
+  contentSha,
+  precacheList,
+  stampServiceWorker,
+} from "../../../scripts/stamp-service-worker.mjs";
 
 const REPO = path.resolve(__dirname, "../../..");
 const SW_SOURCE = fs.readFileSync(path.join(REPO, "public/sw.js"), "utf8");
@@ -78,15 +82,46 @@ describe("leg 1 — the stamper", () => {
     expect(out).toContain(`const BUILD_PRECACHE = ${JSON.stringify(precache)};`);
   });
 
-  it("precaches the shell and the hashed chunks only, scope-relative", () => {
+  it("precaches the shell and the hashed chunks, scope-relative, each with its content sha", () => {
     const { precache } = stampServiceWorker(fixture());
     expect(precache).toEqual([
-      "./",
-      "./_next/static/chunks/app-abc123.js",
-      "./_next/static/css/main-def456.css",
+      ["./", contentSha("<html>shell</html>")],
+      ["./_next/static/chunks/app-abc123.js", contentSha("console.log('app')")],
+      ["./_next/static/css/main-def456.css", contentSha("body{}")],
     ]);
-    for (const p of precache) expect(p.startsWith("/"), p).toBe(false);
+    for (const [p] of precache) expect(p.startsWith("/"), p).toBe(false);
     expect(precacheList(["a.html"])).toEqual([]);
+  });
+
+  it("task 888 — lists the TeX core + dictionary exactly once each, with shas", () => {
+    const { precache } = stampServiceWorker(
+      fixture({
+        "swiftlatex/swiftlatexpdftex.fmt": "FMT",
+        "swiftlatex/texbundle/amsmath.sty": "AMS",
+        // The manifest's first row IS the .fmt, and a stray leading slash.
+        "swiftlatex/texbundle/manifest.json": JSON.stringify({
+          paths: [
+            "swiftlatex/swiftlatexpdftex.fmt",
+            "/swiftlatex/texbundle/amsmath.sty",
+            "swiftlatex/texbundle/not-shipped.sty",
+          ],
+        }),
+        "dictionaries/en/index.aff": "AFF",
+        "dictionaries/en/index.dic": "DIC",
+      }),
+    );
+    const paths = precache.map(([p]) => p);
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(precache).toEqual(
+      expect.arrayContaining([
+        ["./swiftlatex/swiftlatexpdftex.fmt", contentSha("FMT")],
+        ["./swiftlatex/texbundle/amsmath.sty", contentSha("AMS")],
+        ["./dictionaries/en/index.aff", contentSha("AFF")],
+        ["./dictionaries/en/index.dic", contentSha("DIC")],
+      ]),
+    );
+    // A listed path the export lacks is skipped, not fetched into a 404.
+    expect(paths).not.toContain("./swiftlatex/texbundle/not-shipped.sty");
   });
 
   it("identical exports stamp identical workers", () => {
@@ -155,17 +190,27 @@ describe("leg 2 — the wiring", () => {
 
 const SCOPE = "https://site.example/virgil/";
 
+type FakeInit = number | { status?: number; statusText?: string; headers?: HeadersInit };
+
 class FakeResponse {
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Headers;
   constructor(
     readonly body: string,
-    readonly status = 200,
+    init: FakeInit = 200,
     readonly type = "basic",
-  ) {}
+  ) {
+    const o = typeof init === "number" ? { status: init } : init;
+    this.status = o.status ?? 200;
+    this.statusText = o.statusText ?? "";
+    this.headers = new Headers(o.headers);
+  }
   get ok() {
     return this.status >= 200 && this.status < 300;
   }
   clone() {
-    return new FakeResponse(this.body, this.status, this.type);
+    return new FakeResponse(this.body, { status: this.status, headers: this.headers }, this.type);
   }
   async json() {
     return JSON.parse(this.body);
@@ -191,6 +236,8 @@ function makeWorld(network: Record<string, FakeResponse>) {
           return store.get(keyOf(req));
         },
         async put(req: string | { url: string }, resp: FakeResponse) {
+          // The real Cache rejects a partial response.
+          if (resp.status === 206) throw new TypeError("Partial response (status code 206) is unsupported");
           store.set(keyOf(req), resp);
         },
         async keys() {
@@ -244,24 +291,31 @@ function loadWorker(
     caches: world.caches,
     fetch: world.fetch,
     Response: FakeResponse,
+    Headers,
     URL,
     Promise,
     Array,
     String,
     JSON,
     Set,
+    Map,
     encodeURIComponent,
     decodeURIComponent,
   });
   const run = async (type: string, extra: Record<string, unknown> = {}) => {
-    let pending: Promise<unknown> | undefined;
+    let responded: Promise<unknown> | undefined;
+    const extended: Promise<unknown>[] = [];
     const event = {
       ...extra,
-      waitUntil: (p: Promise<unknown>) => (pending = p),
-      respondWith: (p: Promise<unknown>) => (pending = p),
+      waitUntil: (p: Promise<unknown>) => extended.push(p),
+      respondWith: (p: Promise<unknown>) => (responded = p),
     };
     listeners[type](event);
-    return pending ? await pending : undefined;
+    const result = responded ? await responded : undefined;
+    // Like the browser: the worker lives until every waitUntil settles (an
+    // extension added while answering included).
+    for (let i = 0; i < extended.length; i++) await extended[i];
+    return result;
   };
   return {
     install: () => run("install"),
@@ -273,6 +327,17 @@ function loadWorker(
       }),
     request: (url: string, mode = "no-cors") =>
       run("fetch", { request: { url, method: "GET", mode } }) as Promise<FakeResponse | undefined>,
+    /** Dispatch a fetch WITHOUT waiting on its extensions — what they are is the assertion. */
+    dispatchFetch: (url: string) => {
+      const extended: Promise<unknown>[] = [];
+      let responded: Promise<unknown> | undefined;
+      listeners.fetch({
+        request: { url, method: "GET", mode: "no-cors" },
+        waitUntil: (p: Promise<unknown>) => extended.push(p),
+        respondWith: (p: Promise<unknown>) => (responded = p),
+      });
+      return { responded: responded!, extended };
+    },
   };
 }
 
@@ -500,5 +565,123 @@ describe("task 887 — build-cache retention", () => {
     await world.caches.open(cacheName);
     await loadWorker(source, world).activate();
     expect(ledgerOf(world)).toEqual(["virgil-A", cacheName]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// task 888 — content-addressed precache: an unchanged asset is copied, never
+// re-downloaded; the cache-write door stores 200s only and is waited on
+// ---------------------------------------------------------------------------
+
+const FMT = `${SCOPE}swiftlatex/swiftlatexpdftex.fmt`;
+const STY = `${SCOPE}swiftlatex/texbundle/amsmath.sty`;
+const AFF = `${SCOPE}dictionaries/en/index.aff`;
+
+function texWorker(fmt = "FMT-v1", sty = "AMS-v1") {
+  const root = fixture({
+    "swiftlatex/swiftlatexpdftex.fmt": fmt,
+    "swiftlatex/texbundle/amsmath.sty": sty,
+    "swiftlatex/texbundle/manifest.json": JSON.stringify({
+      paths: ["swiftlatex/swiftlatexpdftex.fmt", "swiftlatex/texbundle/amsmath.sty"],
+    }),
+    "dictionaries/en/index.aff": "AFF",
+  });
+  const { stamp } = stampServiceWorker(root);
+  return { source: fs.readFileSync(path.join(root, "sw.js"), "utf8"), cacheName: `virgil-${stamp}` };
+}
+
+function texNetwork(fmt = "FMT-v1", sty = "AMS-v1") {
+  return {
+    [SCOPE]: new FakeResponse("<html>shell</html>"),
+    [CHUNK]: new FakeResponse("console.log('app')"),
+    [`${SCOPE}_next/static/css/main-def456.css`]: new FakeResponse("body{}"),
+    [FMT]: new FakeResponse(fmt),
+    [STY]: new FakeResponse(sty),
+    [AFF]: new FakeResponse("AFF"),
+  };
+}
+
+describe("task 888 — content-addressed precache", () => {
+  it("first install fetches each asset exactly once — the .fmt is not fetched twice", async () => {
+    const { source, cacheName } = texWorker();
+    const world = makeWorld(texNetwork());
+    await loadWorker(source, world).install();
+    expect(world.fetched.filter((u) => u === FMT)).toHaveLength(1);
+    expect(world.fetched.filter((u) => u.endsWith("manifest.json"))).toEqual([]);
+    const cache = world.stores.get(cacheName)!;
+    for (const u of [FMT, STY, AFF]) expect(cache.has(u), u).toBe(true);
+  });
+
+  it("the next deploy's install, with the TeX + dictionary bytes unchanged, downloads none of them", async () => {
+    const world = makeWorld(texNetwork());
+    const v1 = texWorker();
+    await loadWorker(v1.source, world).install();
+    await loadWorker(v1.source, world).activate();
+    world.fetched.length = 0;
+    // A new build: one chunk changed, the vendored assets did not.
+    const root = fixture({
+      "_next/static/chunks/app-abc123.js": "console.log('app v2')",
+      "swiftlatex/swiftlatexpdftex.fmt": "FMT-v1",
+      "swiftlatex/texbundle/amsmath.sty": "AMS-v1",
+      "swiftlatex/texbundle/manifest.json": JSON.stringify({
+        paths: ["swiftlatex/swiftlatexpdftex.fmt", "swiftlatex/texbundle/amsmath.sty"],
+      }),
+      "dictionaries/en/index.aff": "AFF",
+    });
+    const { stamp } = stampServiceWorker(root);
+    const v2 = fs.readFileSync(path.join(root, "sw.js"), "utf8");
+    await loadWorker(v2, world).install();
+    for (const u of [FMT, STY, AFF]) expect(world.fetched, u).not.toContain(u);
+    const cache = world.stores.get(`virgil-${stamp}`)!;
+    expect(cache.get(FMT)?.body).toBe("FMT-v1");
+    expect(cache.get(STY)?.body).toBe("AMS-v1");
+  });
+
+  it("a CHANGED asset is fetched — a held copy with another sha is never reused", async () => {
+    const world = makeWorld(texNetwork("FMT-v2"));
+    const v1 = texWorker("FMT-v1");
+    // v1's install ran against v1's network.
+    (await world.caches.open(v1.cacheName)).put(
+      FMT,
+      new FakeResponse("FMT-v1", { headers: { "x-virgil-sha": contentSha("FMT-v1") } }),
+    );
+    const v2 = texWorker("FMT-v2");
+    await loadWorker(v2.source, world).install();
+    expect(world.fetched.filter((u) => u === FMT)).toHaveLength(1);
+    expect(world.stores.get(v2.cacheName)!.get(FMT)?.body).toBe("FMT-v2");
+  });
+
+  it("a precached asset carrying this build's sha is served cache-first", async () => {
+    const { source, cacheName } = texWorker();
+    const world = makeWorld(texNetwork());
+    const worker = loadWorker(source, world);
+    await worker.install();
+    world.fetched.length = 0;
+    const resp = await worker.request(FMT);
+    expect(resp?.body).toBe("FMT-v1");
+    expect(world.fetched).not.toContain(FMT);
+    expect(world.stores.get(cacheName)!.get(FMT)?.headers.get("x-virgil-sha")).toBe(
+      contentSha("FMT-v1"),
+    );
+  });
+
+  it("a 206 Partial Content is passed through and never put", async () => {
+    const { source, cacheName } = stampedWorker();
+    const media = `${SCOPE}media/clip.mp4`;
+    const world = makeWorld({ [media]: new FakeResponse("slice", 206) });
+    const resp = await loadWorker(source, world).request(media);
+    expect(resp?.status).toBe(206);
+    expect(world.stores.get(cacheName)?.has(media) ?? false).toBe(false);
+  });
+
+  it("a runtime put is extended with waitUntil — the worker cannot stop before it lands", async () => {
+    const { source, cacheName } = stampedWorker();
+    const page = `${SCOPE}skill-bundle/index.json`;
+    const world = makeWorld({ [page]: new FakeResponse("fresh") });
+    const { responded, extended } = loadWorker(source, world).dispatchFetch(page);
+    await responded;
+    expect(extended).toHaveLength(1);
+    await Promise.all(extended);
+    expect(world.stores.get(cacheName)!.get(page)?.body).toBe("fresh");
   });
 });
