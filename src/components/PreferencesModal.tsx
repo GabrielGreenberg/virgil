@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useState, useRef } from "react";
-import type { EditorPreferences, PreferencePreset } from "@/hooks/usePreferences";
+import type { EditorPreferences, PreferencePreset, SettingsSnapshot } from "@/hooks/usePreferences";
 import { isReservedPresetName } from "@/hooks/usePreferences";
 import type { GlobalTransforms } from "@/lib/color-transforms";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
 import PreferenceTree from "./PreferenceTree";
-import { Input, Select } from "./field-primitives";
+import { Field, Input, Select } from "./field-primitives";
 import { Button } from "./Button";
 import SmartPreferences from "./SmartPreferences";
 import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
@@ -28,6 +28,18 @@ interface PreferencesModalProps {
   onSavePreset: (name: string) => void;
   onLoadPreset: (name: string) => void;
   onDeletePreset: (name: string) => void;
+  /** Undo doors (task 903): put the settings pair / a preset back as it was. */
+  onRestoreSettings: (snapshot: SettingsSnapshot) => void;
+  onRestorePreset: (preset: PreferencePreset) => void;
+}
+
+/** The one pending undo the dialog offers: what just happened, and how to take
+ *  it back. ONE slot, not a stack — the next undoable action replaces it, and
+ *  any other change through the dialog clears it (an undo that silently also
+ *  reverted the edits made since would be a second destructive action). */
+interface PendingUndo {
+  message: string;
+  undo: () => void;
 }
 
 // ─── Global Transform Slider ──────────────────────────────────────────────────
@@ -54,22 +66,28 @@ function TransformSlider({
     rafRef.current = requestAnimationFrame(() => onChange(v));
   }, [onChange]);
 
+  // A labelled field (task 903): the caption above the slider used to be a bare
+  // `<span>`, so "Contrast"/"Hue"/"Brightness" named nothing.
   return (
-    <div className="flex-1 min-w-0">
-      <div className="flex items-center justify-between mb-0.5">
-        <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wider">{label}</span>
-        <span className="text-[10px] text-ink-muted tabular-nums w-8 text-right">{value > 0 ? `+${value}` : value}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={handleChange}
-        className="w-full h-1 accent-[var(--accent)]"
-      />
-    </div>
+    <Field label={label} className="flex-1 min-w-0 relative">
+      {({ id }) => (
+        <>
+          <span className="absolute right-0 top-0 text-[10px] text-ink-muted tabular-nums w-8 text-right">
+            {value > 0 ? `+${value}` : value}
+          </span>
+          <input
+            id={id}
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={handleChange}
+            className="w-full h-1 accent-[var(--accent)]"
+          />
+        </>
+      )}
+    </Field>
   );
 }
 
@@ -80,11 +98,15 @@ function PresetBar({
   onLoad,
   onSave,
   onDelete,
+  onUndoable,
+  onRestore,
 }: {
   presets: PreferencePreset[];
   onLoad: (name: string) => void;
   onSave: (name: string) => void;
   onDelete: (name: string) => void;
+  onUndoable: (pending: PendingUndo) => void;
+  onRestore: (preset: PreferencePreset) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [newName, setNewName] = useState("");
@@ -102,7 +124,16 @@ function PresetBar({
     if (saving) {
       const name = newName.trim();
       if (name && !isReservedPresetName(name)) {
+        // Saving over an existing name replaced it silently; snapshot it first
+        // so the overwrite can be taken back (task 903).
+        const replaced = presets.find((p) => p.name === name && !p.builtIn);
         onSave(name);
+        if (replaced) {
+          onUndoable({
+            message: `Preset \u201c${name}\u201d replaced`,
+            undo: () => onRestore(replaced),
+          });
+        }
         setNewName("");
         setSaving(false);
       }
@@ -110,7 +141,7 @@ function PresetBar({
       setSaving(true);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [saving, newName, onSave]);
+  }, [saving, newName, onSave, presets, onUndoable, onRestore]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSave();
@@ -179,7 +210,18 @@ function PresetBar({
         <Button
           variant="danger"
           size="sm"
-          onClick={() => { onDelete(target); setTarget(""); }}
+          onClick={() => {
+            // A one-click delete with no way back (task 903) — snapshot it.
+            const deleted = targetPreset;
+            onDelete(target);
+            setTarget("");
+            if (deleted) {
+              onUndoable({
+                message: `Preset \u201c${deleted.name}\u201d deleted`,
+                undo: () => onRestore(deleted),
+              });
+            }
+          }}
           title={`Delete preset "${target}"`}
           className="max-w-[9rem]"
         >
@@ -259,7 +301,45 @@ export default function PreferencesModal({
   onSavePreset,
   onLoadPreset,
   onDeletePreset,
+  onRestoreSettings,
+  onRestorePreset,
 }: PreferencesModalProps) {
+  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
+
+  // Any other change routed through the dialog retires the pending undo: an
+  // Undo pressed after further edits would silently revert those too.
+  const update = useCallback<PreferencesModalProps["onUpdate"]>((key, value) => {
+    setPendingUndo(null);
+    onUpdate(key, value);
+  }, [onUpdate]);
+  const updateTransform = useCallback<PreferencesModalProps["onUpdateTransform"]>((key, value) => {
+    setPendingUndo(null);
+    onUpdateTransform(key, value);
+  }, [onUpdateTransform]);
+  const loadPreset = useCallback((name: string) => {
+    setPendingUndo(null);
+    onLoadPreset(name);
+  }, [onLoadPreset]);
+
+  // "Reset to defaults" wipes every preference and transform in one click. It
+  // stays one click — a confirm in front of an UNDOABLE action is friction with
+  // no protection — but it is undoable now (task 903): the settings it replaced
+  // are snapshotted and offered back in the footer.
+  const handleReset = useCallback(() => {
+    const snapshot: SettingsSnapshot = { prefs, transforms };
+    onReset();
+    setPendingUndo({
+      message: "Preferences reset",
+      undo: () => onRestoreSettings(snapshot),
+    });
+  }, [prefs, transforms, onReset, onRestoreSettings]);
+
+  const runUndo = useCallback(() => {
+    if (!pendingUndo) return;
+    setPendingUndo(null);
+    pendingUndo.undo();
+  }, [pendingUndo]);
+
   // Scrimless draggable SystemDialog: it owns the portal, surface chrome
   // (SYSTEM_DIALOG_TOKENS), the DRAGGABLE_DIALOG_Z tier (retiring the old bare
   // z-[9999] that collided with the drop indicator), the drag (grab the header),
@@ -274,10 +354,11 @@ export default function PreferencesModal({
       ignoreOutsideSelector='[data-hint="Preferences"]'
       /* A dismissal is FREE: every preference commits UPSTREAM the instant it
          changes (`onUpdate` writes straight to the prefs store), so closing
-         loses no setting. The two pockets of local text state that do die with
-         the unmount — `PresetBar`'s half-typed preset name and
-         `PreferenceTree.ColorPref`'s half-typed hex — are one short token
-         each, re-typed in seconds. */
+         loses no setting. The pockets of local state that do die with the
+         unmount — `PresetBar`'s half-typed preset name,
+         `PreferenceTree.ColorPref`'s half-typed hex, and the footer's pending
+         Undo (an offer, like a toast's, that ends with the surface) — are
+         each a short token or a click. */
       dismissIsFree
       labelledBy="preferences-modal-title"
       frameClassName="w-full max-w-[560px] max-h-[85vh] flex flex-col"
@@ -288,9 +369,11 @@ export default function PreferencesModal({
       <div className="px-5 py-3 border-b border-[var(--border)] space-y-3 bg-[var(--surface)]">
         <PresetBar
           presets={presets}
-          onLoad={onLoadPreset}
+          onLoad={loadPreset}
           onSave={onSavePreset}
           onDelete={onDeletePreset}
+          onUndoable={setPendingUndo}
+          onRestore={onRestorePreset}
         />
 
         <div className="flex items-start gap-4">
@@ -300,7 +383,7 @@ export default function PreferencesModal({
             min={-100}
             max={100}
             step={5}
-            onChange={(v) => onUpdateTransform("contrast", v)}
+            onChange={(v) => updateTransform("contrast", v)}
           />
           <TransformSlider
             label="Hue"
@@ -308,7 +391,7 @@ export default function PreferencesModal({
             min={-180}
             max={180}
             step={5}
-            onChange={(v) => onUpdateTransform("hue", v)}
+            onChange={(v) => updateTransform("hue", v)}
           />
           <TransformSlider
             label="Brightness"
@@ -316,14 +399,14 @@ export default function PreferencesModal({
             min={-50}
             max={50}
             step={2}
-            onChange={(v) => onUpdateTransform("brightness", v)}
+            onChange={(v) => updateTransform("brightness", v)}
           />
         </div>
       </div>
 
       {/* Body: smart preferences on top, then the full tree */}
       <div className="flex-1 overflow-y-auto px-5 py-3 space-y-4">
-        <SmartPreferences prefs={prefs} onUpdate={onUpdate} />
+        <SmartPreferences prefs={prefs} onUpdate={update} />
         <div className="flex items-center gap-2 pt-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-muted">
             All preferences
@@ -333,19 +416,30 @@ export default function PreferencesModal({
         <PreferenceTree
           tree={PREFERENCES_TREE}
           prefs={prefs}
-          onUpdate={onUpdate}
+          onUpdate={update}
         />
       </div>
 
-      {/* Footer */}
+      {/* Footer — STYLE_GUIDE "Modal footers": the destructive action sits FAR
+          LEFT (task 903; it was `ml-auto`, the primary's corner). The pending
+          Undo is a live status so a screen reader hears the reset happened. */}
       <div className="px-5 py-3 border-t border-[var(--border)] flex items-center gap-3">
-        <RestoreHiddenConfirmations />
-        <button
-          onClick={onReset}
-          className="ml-auto text-xs text-ink-muted hover:text-ink-body transition-colors"
-        >
+        <Button variant="danger" size="sm" onClick={handleReset} data-reset-all="">
           Reset to defaults
-        </button>
+        </Button>
+        <div role="status" aria-live="polite" className="flex items-center gap-2 min-w-0 text-xs text-ink-muted">
+          {pendingUndo && (
+            <>
+              <span className="truncate">{pendingUndo.message}</span>
+              <Button variant="ghost" size="sm" onClick={runUndo}>
+                Undo
+              </Button>
+            </>
+          )}
+        </div>
+        <div className="ml-auto">
+          <RestoreHiddenConfirmations />
+        </div>
       </div>
     </SystemDialog>
   );

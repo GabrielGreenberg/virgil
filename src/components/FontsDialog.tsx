@@ -5,6 +5,8 @@ import FloatingPanel from "./FloatingPanel";
 import FontPicker from "./FontPicker";
 import SizeStepper from "./SizeStepper";
 import { Field } from "./field-primitives";
+import { Checkbox } from "./CheckSquare";
+import { ResetButton } from "./ResetButton";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import {
@@ -44,15 +46,7 @@ function CategoryCard({
     >
       <div className="flex items-baseline justify-between mb-3">
         <h3 className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">{label}</h3>
-        <button
-          type="button"
-          onClick={onReset}
-          disabled={resetDisabled}
-          className="text-[11px] text-ink-muted hover:text-ink-body disabled:opacity-30 disabled:cursor-default"
-          data-hint="Reset to default"
-        >
-          Reset
-        </button>
+        <ResetButton onReset={onReset} atDefault={!!resetDisabled} target={label} />
       </div>
       {children}
     </div>
@@ -128,23 +122,16 @@ function PinToggle({
   onChange: (next: boolean) => void;
   label?: string;
 }) {
+  // The shared checkbox (task 903): it used to hand-draw an `--accent`-filled
+  // box with its own tick and no checkbox semantics.
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!pinned)}
-      className="flex items-center gap-2 text-[11px] text-ink-muted hover:text-ink-body mt-1.5"
+    <Checkbox
+      checked={pinned}
+      onChange={onChange}
+      className="text-[11px] text-ink-muted hover:text-ink-body mt-1.5"
     >
-      <span
-        className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded border ${pinned ? "bg-[var(--accent)] border-[var(--accent)]" : "border-edge-subtle bg-surface"}`}
-      >
-        {pinned && (
-          <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 4.5l1.8 1.8L7 3" />
-          </svg>
-        )}
-      </span>
-      <span>{label}</span>
-    </button>
+      {label}
+    </Checkbox>
   );
 }
 

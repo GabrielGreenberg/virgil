@@ -126,6 +126,12 @@ export { DEFAULT_PREFS } from "./preferences-defaults";
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
+/** The whole settings pair — what a reset replaces and an undo restores. */
+export interface SettingsSnapshot {
+  prefs: Partial<EditorPreferences>;
+  transforms: Partial<GlobalTransforms>;
+}
+
 export interface PreferencePreset {
   name: string;
   prefs: EditorPreferences;
@@ -357,12 +363,25 @@ export function usePreferences() {
     });
   }, [persistTransforms]);
 
-  const resetAll = useCallback(() => {
-    setPrefs(DEFAULT_PREFS);
-    setTransforms(DEFAULT_TRANSFORMS);
-    persistPrefs(DEFAULT_PREFS);
-    persistTransforms(DEFAULT_TRANSFORMS);
+  /**
+   * The ONE door that replaces the whole settings pair — prefs AND transforms —
+   * in one go (task 903). Reset, preset load and an undo of either all mean
+   * "make these the settings", so they share it rather than each spelling the
+   * four writes. A partial snapshot (an older preset blob) is merged onto the
+   * defaults, exactly as `load*` merges a stored one.
+   */
+  const applySettings = useCallback((snapshot: SettingsSnapshot) => {
+    const nextPrefs = { ...DEFAULT_PREFS, ...snapshot.prefs };
+    const nextTransforms = { ...DEFAULT_TRANSFORMS, ...snapshot.transforms };
+    setPrefs(nextPrefs);
+    setTransforms(nextTransforms);
+    persistPrefs(nextPrefs);
+    persistTransforms(nextTransforms);
   }, [persistPrefs, persistTransforms]);
+
+  const resetAll = useCallback(() => {
+    applySettings({ prefs: DEFAULT_PREFS, transforms: DEFAULT_TRANSFORMS });
+  }, [applySettings]);
 
   /** Returns false (and writes nothing) for an empty or reserved name. */
   const savePreset = useCallback((name: string): boolean => {
@@ -387,11 +406,23 @@ export function usePreferences() {
   const loadPreset = useCallback((name: string) => {
     const preset = presets.find((p) => p.name === name);
     if (!preset) return;
-    setPrefs({ ...DEFAULT_PREFS, ...preset.prefs });
-    setTransforms({ ...DEFAULT_TRANSFORMS, ...preset.transforms });
-    persistPrefs({ ...DEFAULT_PREFS, ...preset.prefs });
-    persistTransforms({ ...DEFAULT_TRANSFORMS, ...preset.transforms });
-  }, [presets, persistPrefs, persistTransforms]);
+    applySettings(preset);
+  }, [presets, applySettings]);
+
+  /** Put a user preset back exactly as it was — the undo of a delete or of a
+   *  save that overwrote it (task 903). Upserts by name; a built-in is never
+   *  written (it is derived, not stored). */
+  const restorePreset = useCallback((preset: PreferencePreset) => {
+    if (preset.builtIn) return;
+    setPresets((prev) => {
+      const at = prev.findIndex((p) => p.name === preset.name && !p.builtIn);
+      const next = at >= 0
+        ? prev.map((p, i) => (i === at ? preset : p))
+        : [...prev, preset];
+      persistPresets(next);
+      return next;
+    });
+  }, [persistPresets]);
 
   const deletePreset = useCallback((name: string) => {
     setPresets((prev) => {
@@ -401,5 +432,5 @@ export function usePreferences() {
     });
   }, [persistPresets]);
 
-  return { prefs, transforms, presets, hydrated, updatePref, updateTransform, resetAll, savePreset, loadPreset, deletePreset };
+  return { prefs, transforms, presets, hydrated, updatePref, updateTransform, resetAll, applySettings, savePreset, loadPreset, deletePreset, restorePreset };
 }

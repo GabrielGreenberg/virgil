@@ -1097,7 +1097,7 @@ export default function EditorLayout() {
     setHelperMenuOpen(false);
     setCommandsPopoutOpen(false);
   }, []);
-  const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, hydrated: editorPrefsHydrated, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
+  const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, hydrated: editorPrefsHydrated, updatePref, updateTransform, resetAll: resetPrefs, applySettings: restorePrefSettings, savePreset, loadPreset, deletePreset, restorePreset } = usePreferences();
   const helperMode = useHelperMode();
   // Window chrome geometry (WCO title-bar / display mode). Consumed once here
   // so the <html data-display-mode> mirror + geometry listeners stay live for
@@ -3693,6 +3693,8 @@ export default function EditorLayout() {
           onSavePreset={savePreset}
           onLoadPreset={loadPreset}
           onDeletePreset={deletePreset}
+          onRestoreSettings={restorePrefSettings}
+          onRestorePreset={restorePreset}
         />
       )}
       {manageStylesOpen && (

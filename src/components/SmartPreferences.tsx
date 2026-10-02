@@ -6,6 +6,7 @@ import { ColorPref, SliderPref, FontPref } from "./PreferenceTree";
 import { Select } from "./field-primitives";
 import { withCurrent } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
+import { ResetButton } from "./ResetButton";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import type { PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
@@ -64,6 +65,7 @@ function PrefRow({
         label={l.label}
         description={l.description}
         value={prefs[l.key] as number}
+        defaultValue={DEFAULT_PREFS[l.key] as number}
         min={l.min}
         max={l.max}
         step={l.step}
@@ -79,6 +81,7 @@ function PrefRow({
         label={l.label}
         description={l.description}
         value={prefs[l.key] as string}
+        defaultValue={DEFAULT_PREFS[l.key] as string}
         options={l.options}
         onChange={(v) => onUpdate(l.key, v as EditorPreferences[typeof l.key])}
       />
@@ -136,10 +139,16 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
     (Object.keys(def) as (keyof typeof def)[]).forEach((f) => clearPanelTypographyField(panelKey, f));
   };
 
+  // Each grid row is a labelled GROUP (task 903): the panel name names the row,
+  // and each cell's control names its column — the visible column headers are
+  // a visual grid, not a table, so they label nothing on their own.
+  const panelLabel = PANEL_BODY_LABELS[panelKey];
+  const labelId = `panel-typo-${panelKey}-label`;
   return (
-    <>
-      <div className="text-xs text-ink-body py-1">{PANEL_BODY_LABELS[panelKey]}</div>
+    <div role="group" aria-labelledby={labelId} className="contents">
+      <div id={labelId} className="text-xs text-ink-body py-1">{panelLabel}</div>
       <Select
+        aria-label={`${panelLabel} font`}
         value={typo.fontFamily}
         onChange={(e) => setField("fontFamily", e.target.value)}
         density="dense"
@@ -152,6 +161,7 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
       </Select>
       <div className="flex items-center gap-1">
         <input
+          aria-label={`${panelLabel} size`}
           type="range"
           min={10}
           max={20}
@@ -174,14 +184,8 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
         swatchClassName="w-5 h-5 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
         inputClassName="text-[10px] font-mono w-[60px] px-1 py-0.5"
       />
-      <button
-        onClick={resetAll}
-        disabled={isDefault}
-        className={`text-[10px] underline ${isDefault ? "text-ink-faint cursor-default" : "text-ink-muted hover:text-ink-body"}`}
-      >
-        reset
-      </button>
-    </>
+      <ResetButton onReset={resetAll} atDefault={isDefault} target={`${panelLabel} typography`} />
+    </div>
   );
 }
 
@@ -261,6 +265,7 @@ function LinkEdgeRow({
       </button>
       <span className={`flex-1 truncate ${locked ? "text-ink-subtle" : ""}`}>{label}</span>
       <input
+        aria-label={`${label} lightness offset`}
         type="range"
         min={-40}
         max={40}

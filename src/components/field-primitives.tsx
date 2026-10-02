@@ -262,10 +262,18 @@ export interface FieldIds {
   /** The label element's own id, for `aria-labelledby` on a widget that is
    *  not a labelable element (`control="group"`). */
   labelId: string;
+  /** The description's id when `description` was given — put it on the
+   *  control as `aria-describedby`. Undefined otherwise, so spreading it
+   *  unconditionally is safe. */
+  descriptionId: string | undefined;
 }
 
 export interface FieldProps {
   label: ReactNode;
+  /** A short gloss under the label (a preference row's "what this moves").
+   *  Rendered OUTSIDE the label so it does not lengthen the accessible name;
+   *  the control takes it as its accessible DESCRIPTION via `descriptionId`. */
+  description?: ReactNode;
   register?: FieldLabelRegister;
   /** Defaults by register: `section` stacks, `row` sits inline. */
   layout?: FieldLayout;
@@ -289,6 +297,7 @@ export interface FieldProps {
 /** A labelled form field. The label is always associated with its control. */
 export function Field({
   label,
+  description,
   register = "section",
   layout = register === "section" ? "stack" : "inline",
   control = "native",
@@ -299,10 +308,18 @@ export function Field({
 }: FieldProps) {
   const id = useId();
   const labelId = `${id}-label`;
-  const labelClass = [
-    FIELD_LABEL_REGISTER[register],
+  const descriptionId = description != null ? `${id}-desc` : undefined;
+  // With a description, the label and its gloss share one column, and the
+  // column (not the label) takes the placement + `labelClassName` width.
+  const columnClass = [
     layout === "stack" ? "block mb-1.5" : "shrink-0",
     labelClassName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const labelClass = [
+    FIELD_LABEL_REGISTER[register],
+    descriptionId ? "block" : columnClass,
   ]
     .filter(Boolean)
     .join(" ");
@@ -316,6 +333,16 @@ export function Field({
         {label}
       </span>
     );
+  const labelBlock = descriptionId ? (
+    <div className={columnClass}>
+      {labelEl}
+      <span id={descriptionId} className="block text-[10px] text-ink-muted leading-tight">
+        {description}
+      </span>
+    </div>
+  ) : (
+    labelEl
+  );
   const wrapperClass = [
     layout === "inline" ? "flex items-center gap-2" : undefined,
     className,
@@ -324,8 +351,8 @@ export function Field({
     .join(" ");
   return (
     <div className={wrapperClass || undefined}>
-      {labelEl}
-      {children({ id, labelId })}
+      {labelBlock}
+      {children({ id, labelId, descriptionId })}
     </div>
   );
 }

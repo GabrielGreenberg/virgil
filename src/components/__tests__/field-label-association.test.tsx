@@ -100,3 +100,74 @@ describe("dialog field labels (task 869)", () => {
     expect(screen.getByLabelText("Name").tagName).toBe("INPUT");
   });
 });
+
+// Task 903 — the preference rows set a bare `<span>` beside every slider,
+// select and colour field, so the whole Preferences dialog was announced
+// unnamed. They render through `Field` (row register) now.
+describe("preference rows resolve by their label (task 903)", () => {
+  it("a slider row: the label names the range input; the description describes it", async () => {
+    const { SliderPref } = await import("../PreferenceTree");
+    render(
+      <SliderPref
+        label="Line height"
+        description="Space between lines"
+        value={1.6}
+        defaultValue={1.5}
+        min={1}
+        max={2}
+        step={0.1}
+        unit=""
+        onChange={() => {}}
+      />,
+    );
+    const slider = screen.getByLabelText("Line height");
+    expect(slider.getAttribute("type")).toBe("range");
+    expect(screen.getByRole("slider", { name: "Line height", description: "Space between lines" })).toBe(slider);
+  });
+
+  it("a font row: the label names the select", async () => {
+    const { FontPref } = await import("../PreferenceTree");
+    render(<FontPref label="Body font" value="Inter" options={["Inter", "Lora"]} onChange={() => {}} />);
+    expect(screen.getByLabelText("Body font").tagName).toBe("SELECT");
+  });
+
+  it("a colour row: the label names the swatch+hex GROUP, and its parts are named", async () => {
+    const { ColorPref } = await import("../PreferenceTree");
+    render(<ColorPref label="Link colour" value="#112233" defaultValue="#112233" onChange={() => {}} />);
+    const group = screen.getByRole("group", { name: "Link colour" });
+    expect(group.querySelector('input[type="color"]')!.getAttribute("aria-label")).toBe("Colour swatch");
+    expect(screen.getByLabelText("Hex value").tagName).toBe("INPUT");
+  });
+});
+
+describe("ResetButton — one control, one at-default behaviour (task 903)", () => {
+  it("is present and DISABLED at the default, named for what it resets", async () => {
+    const { ColorPref } = await import("../PreferenceTree");
+    render(<ColorPref label="Link colour" value="#112233" defaultValue="#112233" onChange={() => {}} />);
+    const reset = screen.getByRole("button", { name: "Reset Link colour" });
+    expect((reset as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("is enabled off the default and writes the default back", async () => {
+    const { SliderPref } = await import("../PreferenceTree");
+    let got: number | null = null;
+    render(
+      <SliderPref label="Gap" value={3} defaultValue={2} min={0} max={5} step={1} unit="px" onChange={(v) => { got = v; }} />,
+    );
+    const reset = screen.getByRole("button", { name: "Reset Gap" });
+    expect((reset as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(reset);
+    expect(got).toBe(2);
+  });
+
+  it("no preference surface spells its own reset button any more", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    for (const rel of ["PreferenceTree.tsx", "SmartPreferences.tsx", "FontsDialog.tsx"]) {
+      const src = readFileSync(path.join(__dirname, "..", rel), "utf8");
+      // The retired spellings: a raw <button> whose text is reset/Reset.
+      expect(src, rel).not.toMatch(/>\s*reset\s*<\/button>/i);
+      expect(src, rel).toContain("<ResetButton");
+    }
+  });
+});

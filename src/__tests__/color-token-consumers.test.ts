@@ -262,7 +262,7 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       // task 827 (sorted first: `Button.tsx` < `panel-primitives.tsx`).
       "src/components/Button.tsx:59",
       "src/components/Button.tsx:65",
-      "src/components/panel-primitives.tsx:568",
+      "src/components/panel-primitives.tsx:569",
       // Line drift only (task 508 added the drop-halo composition ~26 lines
       // above these two; task 529 then added the `CardBodyTitle` edit-session
       // door +1 above the first and +14 above these; task 532 added the two
