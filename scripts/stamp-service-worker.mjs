@@ -13,11 +13,17 @@
 //                     itself excluded). Identical output ⇒ identical stamp, so
 //                     a no-op rebuild is not announced as an update; any
 //                     changed byte anywhere ⇒ a new worker and a new cache name.
-//   - BUILD_PRECACHE → the build's immutable, content-hashed `_next/static/**`
-//                     files plus the app shell, scope-relative (task 365). The
-//                     worker precaches them at install, so a tab still running
-//                     build N can lazily load build N's chunks after build N+1
-//                     has replaced them on the server.
+//   - BUILD_PRECACHE → `[path, sha]` for everything the worker precaches,
+//                     scope-relative (task 365), each path once: the app shell,
+//                     the immutable `_next/static/**` chunks (so a tab still
+//                     running build N can lazily load build N's chunks after
+//                     build N+1 has replaced them on the server), and the
+//                     vendored offline assets — the TeX core (.fmt + every path
+//                     of `swiftlatex/texbundle/manifest.json`) and the Hunspell
+//                     dictionary. The sha is the file's content hash (task 888):
+//                     at install the worker COPIES any path a held build cache
+//                     already has with the same sha, so a deploy that leaves the
+//                     ~19 MB of vendored assets alone downloads none of them.
 //
 // The placeholders are valid JavaScript on their own, so the unstamped
 // `public/sw.js` (dev server, where the worker bypasses itself anyway) runs.
@@ -34,6 +40,40 @@ export const PRECACHE_PLACEHOLDER = "/*__VIRGIL_BUILD_PRECACHE__*/ []";
 
 const SW_FILE = "sw.js";
 
+/**
+ * Vendored offline assets the worker precaches beyond the build's chunks.
+ * Out-relative paths. The base `.fmt` (P1 offline-assets) makes the main
+ * thread's engine-seed fetch offline-durable; the dictionary (task 518) is
+ * what Virgil's own spellchecker fetches — pinned against
+ * `src/lib/spell/dictionary-asset.ts` by `dictionary-asset.test.ts`, since this
+ * script cannot import TypeScript. A path the export lacks is skipped (a
+ * lighter deploy precaches less).
+ */
+export const ASSET_PRECACHE = [
+  "swiftlatex/swiftlatexpdftex.fmt",
+  "dictionaries/en/index.aff",
+  "dictionaries/en/index.dic",
+];
+
+/** The curated TeX core bundle's path list (scripts/lib/tex-bundle-manifest.mjs). */
+export const TEX_BUNDLE_MANIFEST = "swiftlatex/texbundle/manifest.json";
+
+/** A file's content hash, as the worker compares it. */
+export function contentSha(bytes) {
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+}
+
+/** The texbundle manifest's listed paths, out-relative; [] when absent/malformed. */
+function texBundlePaths(root) {
+  try {
+    const manifest = JSON.parse(readFileSync(join(root, TEX_BUNDLE_MANIFEST), "utf8"));
+    const listed = Array.isArray(manifest) ? manifest : manifest && manifest.paths;
+    return Array.isArray(listed) ? listed.filter((p) => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Every regular file under `dir`, as sorted POSIX paths relative to `dir`. */
 function listFiles(dir) {
   const out = [];
@@ -48,11 +88,28 @@ function listFiles(dir) {
   return out.sort();
 }
 
-/** Scope-relative precache list, from the export's file list. */
-export function precacheList(files) {
-  const statics = files.filter((f) => f.startsWith("_next/static/"));
-  const shell = files.includes("index.html") ? ["./"] : [];
-  return [...shell, ...statics.map((f) => `./${f}`)];
+/**
+ * The worker's precache list: `[scopeRelativePath, sha]`, each file ONCE (the
+ * texbundle manifest's first row IS the base `.fmt`), and only files the
+ * export actually has. `sha(file)` hashes an out-relative file.
+ *
+ * @param {string[]} files
+ * @param {{ assets?: string[], sha?: (file: string) => string | undefined }} [opts]
+ * @returns {[string, string | undefined][]}
+ */
+export function precacheList(files, { assets = [], sha = () => "" } = {}) {
+  const have = new Set(files);
+  const seen = new Set();
+  const out = [];
+  const add = (file, path = `./${file}`) => {
+    if (!have.has(file) || seen.has(file)) return;
+    seen.add(file);
+    out.push([path, sha(file)]);
+  };
+  add("index.html", "./");
+  for (const f of files) if (f.startsWith("_next/static/")) add(f);
+  for (const a of assets) add(String(a).replace(/^(\.\/|\/)+/, ""));
+  return out;
 }
 
 /**
@@ -74,16 +131,22 @@ export function stampServiceWorker(outDir) {
 
   const files = listFiles(root).filter((f) => f !== SW_FILE);
   const hash = createHash("sha256");
+  const shas = new Map();
   for (const f of files) {
+    const bytes = readFileSync(join(root, f));
+    shas.set(f, contentSha(bytes));
     hash.update(f);
     hash.update("\0");
-    hash.update(readFileSync(join(root, f)));
+    hash.update(bytes);
     hash.update("\0");
   }
   // The worker's own source is part of the build's identity too.
   hash.update(source);
   const stamp = hash.digest("hex").slice(0, 16);
-  const precache = precacheList(files);
+  const precache = precacheList(files, {
+    assets: [...ASSET_PRECACHE, ...texBundlePaths(root)],
+    sha: (f) => shas.get(f),
+  });
 
   const stamped = source
     .replace(STAMP_PLACEHOLDER, () => JSON.stringify(stamp))

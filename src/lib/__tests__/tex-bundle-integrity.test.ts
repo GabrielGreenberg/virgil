@@ -9,9 +9,9 @@
  *     A row whose bytes are not on disk fetches a 404 — caught, logged, and the
  *     package then streams from the mirror, i.e. exactly the wait this task
  *     removes, with nothing visibly wrong.
- *   - `public/sw.js` reads `texbundle/manifest.json` and precaches each path
- *     inside a per-asset try/catch. A path the SW precaches that the engine
- *     never seeds is dead weight; one the engine seeds that the SW never
+ *   - the service worker precaches each path of `texbundle/manifest.json`
+ *     (listed at build time by the stamper, task 888), best-effort per asset.
+ *     A path the SW precaches that the engine never seeds is dead weight; one the engine seeds that the SW never
  *     precaches is not there when the user goes offline. Neither throws.
  *
  * So the leg with teeth is AGREEMENT: the two tables and the bytes on disk are

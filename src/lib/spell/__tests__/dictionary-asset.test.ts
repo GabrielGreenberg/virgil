@@ -5,8 +5,9 @@
 // browser at all: the two Hunspell files are VENDORED into `public/` and
 // FETCHED. That makes two things checkable rather than hopeful — the committed
 // bytes still matching the package they were copied from, and the SERVICE
-// WORKER precaching them by the same paths the app requests. A service worker
-// cannot import TypeScript, so the two spellings are pinned against each other
+// WORKER precaching them by the same paths the app requests (named, since task
+// 888, by the stamper that writes the worker's precache list). Neither can
+// import TypeScript, so the two spellings are pinned against each other
 // here; drift means the spellchecker is the one part of the app that silently
 // stops working offline.
 import { describe, expect, it } from "vitest";
@@ -14,6 +15,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { DICTIONARY_ASSET_PATHS, dictionaryAssetUrls } from "@/lib/spell/dictionary-asset";
 import { REPO_ROOT } from "@/lib/__tests__/_source-scan";
+import { ASSET_PRECACHE, precacheList } from "../../../../scripts/stamp-service-worker.mjs";
 
 const read = (rel: string) => readFileSync(resolve(REPO_ROOT, rel), "utf8");
 
@@ -53,19 +55,22 @@ describe("the vendored dictionary", () => {
 });
 
 describe("the service worker precaches the SAME paths", () => {
-  const sw = read("public/sw.js");
-
-  it("lists both files, scope-relative", () => {
+  // Since task 888 the worker's precache list is decided at BUILD time by the
+  // stamper (it hashes each file so an unchanged one is copied, not
+  // re-downloaded); `ASSET_PRECACHE` is where the dictionary is named.
+  it("the stamper lists both files, scope-relative", () => {
     for (const rel of Object.values(DICTIONARY_ASSET_PATHS)) {
       // Scope-relative by contract (task 365): a leading slash would discard
       // the SW's own scope and escape to the origin root, which under a
       // subdirectory deploy 404s every asset silently.
-      expect(sw).toContain(`"./${rel}"`);
+      expect(ASSET_PRECACHE).toContain(rel);
     }
   });
 
-  it("…and folds them into the install-time precache list", () => {
-    expect(sw).toMatch(/paths\s*=\s*\[[^\]]*DICTIONARY_PRECACHE/);
+  it("…and folds them into the worker's precache list", () => {
+    const files = [...Object.values(DICTIONARY_ASSET_PATHS), "index.html"];
+    const listed = precacheList(files, { assets: ASSET_PRECACHE }).map(([p]) => p);
+    for (const rel of Object.values(DICTIONARY_ASSET_PATHS)) expect(listed).toContain(`./${rel}`);
   });
 
   it("no production file builds a dictionary path by hand", () => {

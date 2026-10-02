@@ -1,9 +1,13 @@
-// Virgil Service Worker — network-first with a cache fallback, except for the
-// build's immutable hashed chunks, which are served cache-first.
+// Virgil Service Worker — network-first with a cache fallback, except for what
+// the build pins by content: its hashed chunks and its precached assets, which
+// are served cache-first.
 //
 // Strategy, per request (see `handle` below):
 //   - same-origin `_next/static/**` (content-hashed, never change under one
 //     name): cache first, network on a miss;
+//   - any other precached path (the TeX core, the dictionary) whose held copy
+//     carries THIS build's content hash (task 888): cache first — it is
+//     byte-for-byte what this build shipped;
 //   - everything else: network first. A 2xx answer refreshes the cache. When
 //     the network fails outright OR answers non-ok (a 404 for a chunk the
 //     deploy after ours deleted), a cached copy of the same request wins; a
@@ -15,7 +19,7 @@
 // Versioning (task 611): nobody bumps a version by hand. `npm run build`'s
 // `postbuild` step (scripts/stamp-service-worker.mjs) rewrites BUILD_STAMP in
 // the exported `out/sw.js` with a content hash of the whole export, and
-// BUILD_PRECACHE with that build's hashed chunks + the app shell. So every
+// BUILD_PRECACHE with `[path, sha]` for every file the worker precaches. So every
 // deploy that changes any byte ships a worker with new bytes: the browser
 // installs it, the banner appears, and on activate every build's cache but
 // the ones a window can still need is purged — never an accumulation (see
@@ -36,36 +40,34 @@ const BUILD_STAMP = "__VIRGIL_BUILD_STAMP__";
 const BUILD_PRECACHE = /*__VIRGIL_BUILD_PRECACHE__*/ [];
 const CACHE_NAME = `virgil-${BUILD_STAMP}`;
 
+// Content-addressed precache (task 888). Every BUILD_PRECACHE entry is
+// `[scopeRelativePath, sha]`, the sha a hash of the file's bytes, written by
+// the stamper. A precached copy is stored carrying its sha in this header, so
+// an install can tell — for ANY path, not just a hashed chunk's name — that a
+// held copy is byte-identical to what this build ships, and copy it instead of
+// downloading it. Before this, every deploy re-fetched the ~19 MB of vendored
+// TeX + dictionary files (the 9.9 MB .fmt twice) though they almost never
+// change.
+const SHA_HEADER = "x-virgil-sha";
+const BUILD_SHAS = new Map(
+  BUILD_PRECACHE.map(([p, sha]) => [scopeUrl(p), sha]),
+);
+
 // Allowed cross-origin responses (fonts) live in their OWN cache, whose name
 // does not follow the build: a deploy must not strand an offline user without
 // the typefaces they already downloaded. Its size is bounded by the families
 // the user has picked.
 const CROSS_ORIGIN_CACHE = "virgil-fonts";
 
-// Same-origin curated TeX assets (P1 offline-assets). The main thread fetches
-// these in `provisionEngine` to seed the worker's kpse cache; precaching them
-// here makes that seed fetch itself offline-durable. The worker's OWN
+// What the precache covers beyond the build's chunks and shell — the vendored
+// TeX core (P1 offline-assets: the base .fmt + every path of
+// `swiftlatex/texbundle/manifest.json`, so provisionEngine's seed fetch is
+// offline-durable) and the Hunspell dictionary (task 518: without it the
+// spellchecker silently has no dictionary offline) — is decided by the stamper
+// at BUILD time (`ASSET_PRECACHE` in scripts/stamp-service-worker.mjs) and
+// arrives here in BUILD_PRECACHE with everything else. The worker's OWN
 // cross-origin sync XHR to the mirror is NOT — and cannot be — SW-intercepted
-// (that's what the IndexedDB write-through cache + curated seed are for). We
-// precache the base `.fmt` and, if it exists, a `texbundle-manifest.json`
-// listing the curated core bundle (written by scripts/lib/tex-bundle-manifest.mjs
-// on behalf of build-tex-bundle.mjs and vendor-tex-family.mjs);
-// each listed path is precached too. Missing entries are tolerated — a cold /
-// lighter deploy simply precaches less.
-const TEX_ASSET_PRECACHE = ["./swiftlatex/swiftlatexpdftex.fmt"];
-const TEX_BUNDLE_MANIFEST = "./swiftlatex/texbundle/manifest.json";
-
-// The vendored Hunspell dictionary (task 518). Virgil's own spellchecker
-// FETCHES these two files, so without them it silently has no dictionary
-// offline — and the honest consequence of a failed load is that the surface
-// hands itself back to the browser's checker, i.e. the LaTeX-awareness quietly
-// disappears. Scope-relative, like every path in this file; the spellings are
-// pinned against `src/lib/spell/dictionary-asset.ts` by
-// `dictionary-asset.test.ts`, since a service worker cannot import TypeScript.
-const DICTIONARY_PRECACHE = [
-  "./dictionaries/en/index.aff",
-  "./dictionaries/en/index.dic",
-];
+// (that's what the IndexedDB write-through cache + curated seed are for).
 
 // Build-cache retention (task 887). Which OTHER build caches survive is a
 // question about windows, not about creation order: "the newest other cache"
@@ -115,15 +117,13 @@ self.addEventListener("install", (event) => {
   // Do NOT skipWaiting() here. The new SW sits in "waiting" until the
   // user clicks the in-app update banner, which posts SKIP_WAITING.
   //
-  // Precache the same-origin curated TeX assets so the main-thread seed fetch
-  // (provisionEngine) is offline-durable. In dev we never cache. Best-effort:
-  // a failed precache must NOT abort the install (the SW still works for
-  // everything else, and the mirror/write-through path still applies).
+  // Precache the build (shell, chunks, vendored TeX + dictionary). In dev we
+  // never cache. Best-effort: a failed precache must NOT abort the install
+  // (the SW still works for everything else, and the mirror/write-through
+  // path still applies).
   if (IS_DEV) return;
   event.waitUntil(
-    Promise.all([precacheTexAssets(), precacheBuild()]).then(() =>
-      sweepBuildCaches({ activating: false }),
-    ),
+    precacheBuild().then(() => sweepBuildCaches({ activating: false })),
   );
 });
 
@@ -141,27 +141,25 @@ function scopeUrl(p) {
   return url;
 }
 
-// Precache this build's hashed chunks and the app shell (task 611).
-// Best-effort, like the TeX precache: a failure leaves that path to runtime
-// caching and never aborts the install. A hashed chunk an earlier build's
-// cache already holds is copied, not downloaded again.
+// Precache everything BUILD_PRECACHE lists (tasks 611, 888). Best-effort: a
+// failure leaves that path to runtime caching and never aborts the install.
+// A path a held build cache already has with the same content hash is copied,
+// not downloaded again — and nothing is fetched twice (the stamper lists each
+// path once).
 async function precacheBuild() {
   try {
     const cache = await caches.open(CACHE_NAME);
+    const held = await heldBuildCaches();
     const queue = BUILD_PRECACHE.slice();
     const worker = async () => {
-      for (let p = queue.shift(); p !== undefined; p = queue.shift()) {
+      for (let entry = queue.shift(); entry !== undefined; entry = queue.shift()) {
         try {
+          const [p, sha] = entry;
           const url = scopeUrl(p);
-          if (new URL(url).pathname.startsWith(IMMUTABLE_PREFIX)) {
-            const held = await caches.match(url);
-            if (held) {
-              await cache.put(url, held);
-              continue;
-            }
-          }
-          const resp = await fetch(url, { cache: "no-store" });
-          if (resp.ok) await cache.put(url, resp);
+          if (shaOf(await cache.match(url)) === sha) continue;
+          const copy = await heldCopyOf(held, url, sha);
+          const resp = copy || (await fetch(url, { cache: "no-store" }));
+          await putCached(cache, url, resp, sha);
         } catch {
           // Unreachable at install — runtime caching picks it up later.
         }
@@ -173,43 +171,53 @@ async function precacheBuild() {
   }
 }
 
-async function precacheTexAssets() {
-  try {
-    const cache = await caches.open(CACHE_NAME);
-    const paths = [...TEX_ASSET_PRECACHE, ...DICTIONARY_PRECACHE];
-    // Optionally fold in the texbundle manifest's listed asset paths.
-    try {
-      const manifestUrl = new URL(TEX_BUNDLE_MANIFEST, self.location.href).href;
-      const resp = await fetch(manifestUrl, { cache: "no-store" });
-      if (resp.ok) {
-        const manifest = await resp.json();
-        const listed = Array.isArray(manifest)
-          ? manifest
-          : Array.isArray(manifest && manifest.paths)
-            ? manifest.paths
-            : [];
-        for (const p of listed) if (typeof p === "string") paths.push(p);
-        // Cache the manifest itself too so a reload can re-read it offline.
-        await cache.put(manifestUrl, resp.clone());
-      }
-    } catch {
-      // No texbundle manifest (lighter deploy) — precache just the base .fmt.
-    }
-    await Promise.all(
-      paths.map(async (p) => {
-        try {
-          const url = scopeUrl(p);
-          const resp = await fetch(url, { cache: "no-store" });
-          if (resp.ok) await cache.put(url, resp.clone());
-        } catch {
-          // Individual asset unreachable at install — the runtime fetch
-          // handler will cache it on the first successful online load.
-        }
-      }),
-    );
-  } catch {
-    // caches unavailable — nothing to precache; ignore.
+// Every OTHER build's cache, opened.
+async function heldBuildCaches() {
+  const names = (await caches.keys()).filter(
+    (k) => k !== CACHE_NAME && k !== CROSS_ORIGIN_CACHE && k !== META_CACHE,
+  );
+  return Promise.all(names.map((n) => caches.open(n)));
+}
+
+// A held copy byte-identical to what this build ships at `url`: one stamped
+// with the same sha — or, for a hashed chunk, any copy (its name is its
+// content; this also reuses chunks cached before copies carried a sha).
+async function heldCopyOf(held, url, sha) {
+  const immutable = new URL(url).pathname.startsWith(IMMUTABLE_PREFIX);
+  for (const c of held) {
+    const resp = await c.match(url);
+    if (resp && (immutable || (sha && shaOf(resp) === sha))) return resp;
   }
+  return undefined;
+}
+
+function shaOf(resp) {
+  return (resp && resp.headers && resp.headers.get(SHA_HEADER)) || null;
+}
+
+// The ONE door every cache write goes through (task 888). It stores only a
+// complete answer: a 200, or an opaque cross-origin one (a no-cors font). `ok`
+// would also admit 206 Partial Content — a Range request's slice — which
+// cache.put rejects, an unhandled rejection in the worker. With a `sha`, the
+// copy is stored carrying it (see SHA_HEADER). Resolves true when stored.
+async function putCached(cache, key, resp, sha) {
+  if (!resp || (resp.status !== 200 && resp.type !== "opaque")) return false;
+  try {
+    await cache.put(key, sha && shaOf(resp) !== sha ? withSha(resp, sha) : resp);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function withSha(resp, sha) {
+  const headers = new Headers(resp.headers);
+  headers.set(SHA_HEADER, sha);
+  return new Response(resp.body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers,
+  });
 }
 
 self.addEventListener("activate", (event) => {
@@ -367,20 +375,28 @@ self.addEventListener("fetch", (event) => {
   // and rebuilt chunks are never served stale.
   if (IS_DEV) return;
 
-  event.respondWith(handle(request));
+  event.respondWith(handle(event));
 });
 
-async function handle(request) {
+async function handle(event) {
+  const { request } = event;
   const url = new URL(request.url);
   const isAllowedCrossOrigin = url.origin !== self.location.origin;
   const cache = await caches.open(
     isAllowedCrossOrigin ? CROSS_ORIGIN_CACHE : CACHE_NAME,
   );
 
-  // Hashed build output never changes under one name: serve what we hold.
-  if (!isAllowedCrossOrigin && url.pathname.startsWith(IMMUTABLE_PREFIX)) {
-    const held = await cache.match(request);
-    if (held) return held;
+  // What this build pins by content, served from what we hold: hashed build
+  // output never changes under one name, and a precached asset whose copy
+  // carries this build's sha is exactly what the build shipped. Navigations
+  // stay network-first (the shell is precached too, for the offline fallback).
+  if (!isAllowedCrossOrigin && request.mode !== "navigate") {
+    const immutable = url.pathname.startsWith(IMMUTABLE_PREFIX);
+    const sha = BUILD_SHAS.get(request.url);
+    if (immutable || sha) {
+      const held = await cache.match(request);
+      if (held && (immutable || shaOf(held) === sha)) return held;
+    }
   }
 
   let response;
@@ -402,7 +418,8 @@ async function handle(request) {
     ? response.type === "opaque" || response.ok
     : response.ok && response.type === "basic";
   if (cacheable) {
-    cache.put(request, response.clone());
+    // Waited on, so the worker is not stopped before the copy lands.
+    event.waitUntil(putCached(cache, request, response.clone()));
   } else if (!isAllowedCrossOrigin && !response.ok) {
     // The server no longer has it (a deploy replaced the build this tab is
     // running) or is failing: a copy we hold beats the error.
