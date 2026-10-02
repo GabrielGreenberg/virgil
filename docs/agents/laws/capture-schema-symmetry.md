@@ -3291,16 +3291,25 @@ now two explicit phases, and the order is the whole content of the fix:
 
 Four rules it earned:
 
-- **ONE enumeration, two phases.** `collectRangeCardTargets` is the read-only
-  half of the walk, and both phases read it. A gesture that asked about one set
-  of cards and destroyed another would be the same bug wearing a fix's clothes.
-- **ONE correction, both directions.** The F2 range correction ("cleanup shrank
-  the block, so `to` is stale") only ever SUBTRACTED, because the only inner
-  mutation it knew about was an atom being stripped. A settle's `revert` splices
-  the pre-suggestion original back over the applied text and the original may be
-  LONGER, so `correctRangeForInnerDelta` is now the shared arithmetic for every
-  mutation the gesture performs strictly inside its own range — both signs, both
-  callers. The F2 scenario is byte-identical through it.
+- **ONE enumeration, two phases — two QUESTIONS (task 897).**
+  `collectRangeCardTargets` is the read-only half of the walk, and both phases
+  read it. A gesture that asked about one set of cards and destroyed another
+  would be the same bug wearing a fix's clothes. But "which cards does this
+  range DESTROY?" is CONTAINMENT, not overlap: the delete takes only the cards
+  whose `linkedAnchor` extent lies wholly inside the range (`reach:
+  "contained"`, the default), while the ask settles every card the range
+  TOUCHES (`"touched"`) — a clipped applied splice is still an obligation. A
+  selection clipping a note's span used to delete the whole note and leave the
+  rest of its mark pointing at nothing; now the `tr.delete` just shrinks it.
+- **ONE MAPPING, never a scalar shift (task 897).** A settle's `revert` splices
+  the pre-suggestion original over the applied span, of either sign. The range
+  is carried across each settlement by `mapRangeThroughSettlement` — a step map
+  over (the card's pre-settle anchor extent ∪ the textual diff), ends biased
+  INWARD — not by the old `correctRangeForInnerDelta` (`to += delta`), whose
+  "strictly inside the range" premise is false for a selection that only clips
+  the span. An end inside the rewrite is pushed out of it: Revert decided that
+  text, and the delete takes only what the user selected that still exists
+  (possibly nothing — both callers then stop).
 - **The read-only question goes first, so a refusal still costs nothing.**
   Archive's schema probe is pure, so it runs against the PRE-settle doc for its
   verdict; the payload is re-derived after the settle only when a settlement

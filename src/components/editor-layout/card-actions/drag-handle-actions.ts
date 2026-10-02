@@ -855,6 +855,10 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             appliedSplice,
           );
           if (!settlement) break;
+          // A selection wholly inside an applied span the user just REVERTED
+          // has nothing of theirs left to archive (task 897): the revert was
+          // their answer for that text. Stop — there is no passage to set aside.
+          if (settlement.to <= settlement.from) break;
           const settled = { from: settlement.from, to: settlement.to };
           // A settlement rewrote text inside the passage (a revert restored the
           // pre-suggestion original), so the archived copy must be taken from
@@ -1003,6 +1007,10 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             appliedSplice,
           );
           if (!settlement) break;
+          // Nothing of the user's selection survives the settlement (it lay
+          // wholly inside an applied span they reverted — task 897): the
+          // revert stands, and there is nothing left to delete.
+          if (settlement.to <= settlement.from) break;
           // Phase two, through the commit door (task 735): the range's delete
           // lands and is MEASURED before a single card's lifecycle `delete`
           // fires. A refused transaction destroys nothing. (This ordering also
