@@ -12,6 +12,7 @@
 
 import type { BibEntry } from "./types";
 import { latexToDisplayText } from "@/lib/latex-typography";
+import { scanBibSource } from "@/lib/bib-source";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
 let Cite: any = null;
@@ -27,19 +28,23 @@ function getCite() {
 // .bib file parsing
 // ---------------------------------------------------------------------------
 
-/** Strip BibTeX comment lines (lines starting with %) */
+/**
+ * MASK BibTeX comment lines (lines starting with %) with the same number of
+ * spaces. Length-preserving, as in `src/lib/bib-parser.ts` (task 688): blocks
+ * are scanned on the masked text but `raw` is sliced from the ORIGINAL, so a
+ * `%` note inside an entry survives into `raw` — which is what the Python
+ * writers' `locate_master_entry` sees, and so what the Edit modal's `baseRaw`
+ * must equal.
+ */
 function stripBibComments(bibText: string): string {
   return bibText
     .split("\n")
-    .map((line) => (line.trimStart().startsWith("%") ? "" : line))
+    .map((line) => (line.trimStart().startsWith("%") ? " ".repeat(line.length) : line))
     .join("\n");
 }
 
 /** Try to parse a single CSL-JSON item into a BibEntry */
-function cslItemToEntry(
-  item: Record<string, unknown>,
-  rawEntries: Record<string, string>
-): BibEntry {
+function cslItemToEntry(item: Record<string, unknown>, raw: string): BibEntry {
   const key = (item["citation-key"] || item.id || "") as string;
   const type = cslTypeToBib((item.type as string) || "misc");
   const fields: Record<string, string> = {};
@@ -63,7 +68,7 @@ function cslItemToEntry(
   if (item.edition) fields.edition = String(item.edition);
   if (item.note) fields.note = item.note as string;
 
-  return { key, type, fields, raw: rawEntries[key.toLowerCase()] || "" };
+  return { key, type, fields, raw };
 }
 
 // Module-level memo: parsing a large .bib via citation-js is slow,
@@ -98,30 +103,41 @@ export function parseBibFile(bibText: string): BibEntry[] {
   const CiteClass = getCite();
   const entries: BibEntry[] = [];
   const cleaned = stripBibComments(bibText);
-  const rawEntries = extractRawEntries(cleaned);
+  const blocks = extractRawBlocks(bibText, cleaned);
+
+  // Pair each parsed item with the next unconsumed block of the same citekey
+  // (case-insensitive), so duplicate keys keep their own raw.
+  const consumed = new Array<boolean>(blocks.length).fill(false);
+  const rawFor = (key: string): string => {
+    const lc = key.toLowerCase();
+    const idx = blocks.findIndex((b, i) => !consumed[i] && b.key.toLowerCase() === lc);
+    if (idx === -1) return "";
+    consumed[idx] = true;
+    return blocks[idx].raw;
+  };
 
   // Try parsing the whole file at once
   try {
     const cite = new CiteClass(cleaned);
     for (const item of cite.data) {
-      entries.push(cslItemToEntry(item, rawEntries));
+      entries.push(cslItemToEntry(item, rawFor((item["citation-key"] || item.id || "") as string)));
     }
     return rememberParse(bibText, entries);
   } catch {
     // Whole-file parse failed — try each entry individually
   }
 
-  // Fallback: parse entries one by one, skipping broken ones
-  for (const [key, raw] of Object.entries(rawEntries)) {
+  // Fallback: parse entries one by one (in source order), skipping broken ones
+  for (const block of blocks) {
     try {
-      const cite = new CiteClass(raw);
+      const cite = new CiteClass(block.raw);
       for (const item of cite.data) {
-        entries.push(cslItemToEntry(item, rawEntries));
+        entries.push(cslItemToEntry(item, block.raw));
       }
     } catch {
-      if (!WARNED_KEYS.has(key)) {
-        WARNED_KEYS.add(key);
-        console.warn(`Skipping unparseable bib entry: ${key}`);
+      if (!WARNED_KEYS.has(block.key)) {
+        WARNED_KEYS.add(block.key);
+        console.warn(`Skipping unparseable bib entry: ${block.key}`);
       }
     }
   }
@@ -594,28 +610,19 @@ function reconstructBibtex(entry: BibEntry): string {
   return `@${entry.type}{${entry.key},\n${lines}\n}`;
 }
 
-/** Extract raw BibTeX entries from source text, keyed by lowercase cite key */
-function extractRawEntries(bibText: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const re = /@\w+\s*\{([^,]+),/g;
-  let match;
-  while ((match = re.exec(bibText)) !== null) {
-    const key = match[1].trim();
-    const start = match.index;
-    // Find matching closing brace
-    let depth = 0;
-    let end = start;
-    for (let i = bibText.indexOf("{", start); i < bibText.length; i++) {
-      if (bibText[i] === "{") depth++;
-      else if (bibText[i] === "}") {
-        depth--;
-        if (depth === 0) {
-          end = i + 1;
-          break;
-        }
-      }
-    }
-    result[key.toLowerCase()] = bibText.slice(start, end);
-  }
-  return result;
+/**
+ * Raw BibTeX ENTRY blocks in source order, from the app's one entry-head
+ * scanner ({@link scanBibSource}, task 884). The hand-rolled
+ * `/@\w+\s*\{([^,]+),/g` this replaced crossed braces looking for a comma, so
+ * a comma-less `@string{…}` / `@preamble{…}` / `@comment{…}` swallowed the
+ * NEXT entry's head and that entry lost its `raw` — and with it the Edit
+ * modal's `baseRaw` concurrent-edit guard (task 895).
+ *
+ * `masked` is the length-preserving comment mask of `bibText`; boundaries are
+ * scanned on it, `raw` is sliced from `bibText`.
+ */
+function extractRawBlocks(bibText: string, masked: string): Array<{ key: string; raw: string }> {
+  return scanBibSource(masked)
+    .filter((b) => b.kind === "entry") // @string / @preamble / @comment
+    .map((b) => ({ key: b.key, raw: bibText.slice(b.start, b.end) }));
 }
