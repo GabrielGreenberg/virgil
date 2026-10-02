@@ -6,6 +6,7 @@ import {
   setActivatedElsewhere,
   setUpdateAvailable,
 } from "@/hooks/useUpdateAvailable";
+import { armInstallPromptCapture } from "@/lib/install-prompt";
 import { publicAssetUrl } from "@/lib/public-asset-url";
 import {
   installReloadReadinessResponder,
@@ -26,6 +27,11 @@ const SW_SCOPE = publicAssetUrl("/");
 // navigating, so it would never learn that a deploy happened. Ask again when
 // the window comes back into view, and hourly while it is visible.
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+// Task 889 — the browser fires `beforeinstallprompt` once, shortly after load.
+// Arm its owner at module evaluation (before hydration effects run), from this
+// always-mounted root component, so the offer is held whatever is on screen.
+armInstallPromptCapture();
 
 // The hashed scripts this page booted from identify its build to the worker
 // (public/sw.js → "Build-cache retention"). Posted to the ACTIVE worker, which
