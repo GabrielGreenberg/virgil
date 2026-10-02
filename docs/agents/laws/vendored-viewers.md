@@ -76,3 +76,32 @@ and confirm it is closed on every open, and that the toggle still opens it.
 And for 612: in the standalone paper tab, switch between two papers with PDFs —
 no pdf.js loading error in the console, the title names the right paper, the
 viewer is not re-booted (no blank flash beyond the overlay).
+
+### The palette half (task 890)
+
+The viewer's chrome COLOURS are a Virgil-side preference too, so the same door
+owns them. `virgil-overrides.css` used to carry literal hexes "kept in sync with
+globals.css" by prose; that sync had already drifted (manila `#dcdbd7` under the
+shipped blue `#c5dbe2` bar) and could never follow the user's Colors prefs, which
+live on the PARENT's `:root` and do not cross into an iframe. Now:
+
+- **One token list**, `VIEWER_PALETTE_TOKENS` in `PdfView.tsx`. `applyViewerPalette`
+  copies each LIVE parent value (`getComputedStyle(:root)`) onto the iframe root
+  as `--virgil-<name>`, equality-bailed; an empty parent value is removed so the
+  CSS fallback applies.
+- **Two triggers, both event-driven:** every open (from `applyViewerDefaults`) and
+  every palette write — `EditorLayout`'s `PREF_TO_CSS` effect fires
+  `notifyChromePaletteChanged()` ([src/lib/chrome-palette-signal.ts](../../../src/lib/chrome-palette-signal.ts)),
+  and each mounted `PdfView` re-copies into its warm viewer.
+- **The CSS names no colour**: only `var(--virgil-*, <shipped default>)`, with
+  alpha tints derived by `color-mix`. The census fails on a bare hex/`rgb()` in a
+  declaration value, a `--virgil-*` not in the list, a read without a fallback, or
+  a listed token nobody reads.
+- **Pinned light.** `viewerCssTheme` is set to 1 for the record, but it is read
+  once inside `initialize()` before the door can run, so the root class swap
+  (`is-dark` → `is-light`) is what lands; every dark rule in `viewer.css` is gated
+  `:where(html:not(.is-light))`, which the runtime-surface census now pins.
+
+**Owed:** preview eyeball — Library → a paper with a PDF → toolbar matches the
+Virgil bar; change the top-bar colour in Preferences → the PDF toolbar follows
+without reopening.

@@ -161,6 +161,7 @@ import { useZenMode } from "@/hooks/useZenMode";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
+import { notifyChromePaletteChanged } from "@/lib/chrome-palette-signal";
 import PreferencesModal from "./PreferencesModal";
 import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
 import type { PaneState, EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "./EditorPane";
@@ -1495,6 +1496,9 @@ export default function EditorLayout() {
     const tcSource = editorPrefs.topbarBackground;
     const tc = applyTransforms(tcSource, editorTransforms);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tc);
+    // Same-origin iframes (the pdf.js viewer) have their own `:root` and cannot
+    // see the writes above — tell them to re-copy the live palette (task 890).
+    notifyChromePaletteChanged();
   }, [editorPrefs, editorTransforms, zenModeOn]);
 
   const [codeView, setCodeView] = useState(false);

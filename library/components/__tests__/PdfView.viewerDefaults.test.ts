@@ -31,7 +31,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
-import { applyViewerDefaults, type PdfViewerWindow } from "../PdfView";
+import {
+  applyViewerDefaults,
+  applyViewerPalette,
+  VIEWER_PALETTE_TOKENS,
+  viewerPaletteVar,
+  type PdfViewerWindow,
+} from "../PdfView";
 
 // ---------------------------------------------------------------------------
 // The door
@@ -88,7 +94,8 @@ describe("applyViewerDefaults — the sidebar opens CLOSED", () => {
     applyViewerDefaults(win);
     applyViewerDefaults(win);
     applyViewerDefaults(win);
-    expect(set).toHaveBeenCalledTimes(3);
+    const sidebarSets = set.mock.calls.filter((c) => c[0] === "sidebarViewOnLoad");
+    expect(sidebarSets).toHaveLength(3);
     expect(close).toHaveBeenCalledTimes(3);
   });
 
@@ -100,7 +107,10 @@ describe("applyViewerDefaults — the sidebar opens CLOSED", () => {
     const { win, set } = fakeWindow();
     applyViewerDefaults(win);
     const names = set.mock.calls.map((c) => c[0]);
-    expect(names).toEqual(["sidebarViewOnLoad"]);
+    // (viewerCssTheme is task 890's light pin — a theme, not a reading mode.)
+    expect(names).toEqual(["sidebarViewOnLoad", "viewerCssTheme"]);
+    expect(names).not.toContain("scrollModeOnLoad");
+    expect(names).not.toContain("spreadModeOnLoad");
   });
 });
 
@@ -135,6 +145,121 @@ describe("applyViewerDefaults — the two halves are guarded SEPARATELY", () => 
     expect(() => applyViewerDefaults(null)).not.toThrow();
     expect(() => applyViewerDefaults(undefined)).not.toThrow();
     expect(() => applyViewerDefaults({} as PdfViewerWindow)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 890 — the viewer is pinned LIGHT and painted from Virgil's LIVE palette
+// ---------------------------------------------------------------------------
+
+/** A minimal stand-in for a CSSStyleDeclaration (node env has no DOM). */
+function fakeStyle() {
+  const props = new Map<string, string>();
+  return {
+    props,
+    getPropertyValue: (n: string) => props.get(n) ?? "",
+    setProperty: vi.fn((n: string, v: string) => void props.set(n, v)),
+    removeProperty: vi.fn((n: string) => {
+      const had = props.get(n) ?? "";
+      props.delete(n);
+      return had;
+    }),
+  };
+}
+
+function fakeViewerDoc() {
+  const classes = new Set<string>(["is-dark"]);
+  const style = fakeStyle();
+  const set = vi.fn();
+  const win = {
+    PDFViewerApplicationOptions: { set },
+    document: {
+      documentElement: {
+        style,
+        classList: {
+          add: (c: string) => void classes.add(c),
+          remove: (c: string) => void classes.delete(c),
+        },
+      },
+    },
+  } as unknown as PdfViewerWindow;
+  return { win, classes, style, set };
+}
+
+function parentStyle(values: Record<string, string>) {
+  return { getPropertyValue: (n: string) => values[n] ?? "" };
+}
+
+describe("applyViewerDefaults — the viewer is pinned light (task 890)", () => {
+  it("sets viewerCssTheme to 1 and swaps the root class to is-light", () => {
+    const { win, classes, set } = fakeViewerDoc();
+    applyViewerDefaults(win);
+    expect(set).toHaveBeenCalledWith("viewerCssTheme", 1);
+    expect(classes.has("is-light")).toBe(true);
+    expect(classes.has("is-dark")).toBe(false);
+  });
+});
+
+describe("applyViewerPalette — the parent's LIVE tokens reach the iframe", () => {
+  it("copies every listed token onto the iframe root as --virgil-<name>", () => {
+    const { win, style } = fakeViewerDoc();
+    const values = Object.fromEntries(
+      VIEWER_PALETTE_TOKENS.map((t, i) => [t, ` #00000${i} `]),
+    );
+    applyViewerPalette(win, parentStyle(values));
+    for (const [i, t] of VIEWER_PALETTE_TOKENS.entries()) {
+      expect(style.props.get(viewerPaletteVar(t))).toBe(`#00000${i}`);
+    }
+  });
+
+  it("follows a palette CHANGE and leaves an unchanged token unwritten", () => {
+    const { win, style } = fakeViewerDoc();
+    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#c5dbe2", "--muted": "#8a8580" }));
+    style.setProperty.mockClear();
+    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#ff0000", "--muted": "#8a8580" }));
+    expect(style.props.get("--virgil-topbar-bg")).toBe("#ff0000");
+    expect(style.setProperty).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a token the parent leaves empty, so the CSS fallback applies", () => {
+    const { win, style } = fakeViewerDoc();
+    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#c5dbe2" }));
+    applyViewerPalette(win, parentStyle({}));
+    expect(style.props.has("--virgil-topbar-bg")).toBe(false);
+  });
+
+  it("is a no-op on a window that is not there yet", () => {
+    expect(() => applyViewerPalette(null, parentStyle({}))).not.toThrow();
+    expect(() => applyViewerPalette({} as PdfViewerWindow, parentStyle({}))).not.toThrow();
+  });
+});
+
+describe("virgil-overrides.css — names no colour of its own", () => {
+  const CSS = readFileSync(
+    join(__dirname, "..", "..", "..", "public", "pdfjs", "web", "virgil-overrides.css"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("every --virgil-* it reads is in VIEWER_PALETTE_TOKENS, read with a fallback", () => {
+    const listed = new Set<string>(VIEWER_PALETTE_TOKENS.map(viewerPaletteVar));
+    const reads = [...CSS.matchAll(/var\(\s*(--virgil-[\w-]+)\s*(,)?/g)];
+    expect(reads.length).toBeGreaterThan(0);
+    for (const [, name, comma] of reads) {
+      expect(listed.has(name), `${name} is not a VIEWER_PALETTE_TOKENS token`).toBe(true);
+      expect(comma, `${name} is read without a fallback`).toBe(",");
+    }
+    // …and every listed token is actually consumed (a registry is read).
+    for (const name of listed) expect(CSS).toContain(name);
+  });
+
+  it("carries no bare hex / rgb() colour outside a var(--virgil-*, fallback)", () => {
+    const stripped = CSS.replace(/var\(\s*--virgil-[\w-]+\s*,\s*#[0-9a-fA-F]{3,8}\s*\)/g, "");
+    // Selectors like #toolbarViewer are ids, not colours: only flag a hex in a
+    // declaration VALUE (after a colon, before the semicolon).
+    const values = [...stripped.matchAll(/:\s*([^;{}]+);/g)].map((m) => m[1]);
+    for (const v of values) {
+      expect(v, `literal colour in: ${v}`).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\brgba?\(/);
+    }
   });
 });
 
@@ -195,6 +320,14 @@ describe("vendored pdf.js — the patch census", () => {
 });
 
 describe("vendored pdf.js — the runtime surface applyViewerDefaults reaches for", () => {
+  it("still themes from viewerCssTheme, gating dark rules on html:not(.is-light)", () => {
+    // Task 890: the option is read once in initialize(), so the CLASS is what
+    // the door's per-open write relies on.
+    expect(VIEWER).toMatch(/AppOptions\.get\("viewerCssTheme"\)\)\s*\{\s*case 1:\s*mode = "is-light"/);
+    const css = readFileSync(join(PDFJS, "web", "viewer.css"), "utf8");
+    expect(css).toMatch(/:where\(html:not\(\.is-light\)\)/);
+  });
+
   it("still exposes AppOptions to its embedder as window.PDFViewerApplicationOptions", () => {
     expect(VIEWER).toMatch(/window\.PDFViewerApplicationOptions\s*=\s*AppOptions/);
   });
