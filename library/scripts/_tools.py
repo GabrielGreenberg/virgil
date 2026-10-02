@@ -512,6 +512,91 @@ def _atomic_write_text(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+# ── JSON state files: the ONE read door ──────────────────────────────
+
+
+class StateFileUnreadable(Exception):
+    """A library JSON state file EXISTS but cannot be read as its declared
+    shape (unparseable, wrong shape, or unreadable bytes).
+
+    Raised instead of returning an empty model (task 893): every writer of
+    `catalog.json` / `inbox.json` / `aliases.json` is a read-modify-write,
+    so "unreadable → empty" turned one Dropbox conflict or hand-edit typo
+    into a write-back that replaced the whole file with the one row the
+    script touched. A refusal leaves the file on disk byte-identical, and
+    the bad bytes are also copied aside (`preserved`) so nothing can lose
+    them later.
+    """
+
+    def __init__(self, path: Path, reason: str, preserved: Path | None):
+        self.path = path
+        self.reason = reason
+        self.preserved = preserved
+        kept = f"; a copy was preserved at {preserved}" if preserved else ""
+        super().__init__(
+            f"{path} exists but is unreadable ({reason}) — refusing to treat it "
+            f"as empty, because the next write would replace it{kept}. Repair "
+            f"or restore the file (e.g. from your sync service's history), "
+            f"then re-run."
+        )
+
+
+def _preserve_unreadable(path: Path, raw: bytes) -> Path | None:
+    """Copy unreadable bytes aside as `<name>.unreadable-<sha12>`.
+
+    Content-addressed, so repeated reads of the same bad file make ONE copy.
+    Best-effort: a failed copy never masks the refusal itself.
+    """
+    import hashlib
+    dest = path.with_name(f"{path.name}.unreadable-{hashlib.sha256(raw).hexdigest()[:12]}")
+    try:
+        if not dest.exists():
+            tmp = dest.with_name(dest.name + ".tmp")
+            tmp.write_bytes(raw)
+            os.replace(tmp, dest)
+        return dest
+    except OSError:
+        return None
+
+
+def read_json_state(path: Path, default, *, shape: dict[str, type] | None = None):
+    """Read a JSON state file that some writer will write back.
+
+    Three outcomes, never conflated:
+      * missing → `default()` (first run);
+      * present but unreadable — bad bytes, bad JSON, not an object, or a
+        `shape` key holding the wrong type → `StateFileUnreadable`, with the
+        bytes preserved aside;
+      * ok → the parsed object.
+
+    `shape` maps optional top-level keys to their required type
+    (e.g. `{"entries": list}`); an absent key is fine.
+    """
+    if not path.exists():
+        return default()
+    try:
+        raw = path.read_bytes()
+    except OSError as e:
+        raise StateFileUnreadable(path, f"could not read: {e}", None) from e
+    reason = None
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        reason = f"invalid JSON: {e}"
+    else:
+        if not isinstance(data, dict):
+            reason = f"expected a JSON object, got {type(data).__name__}"
+        else:
+            for key, typ in (shape or {}).items():
+                if key in data and not isinstance(data[key], typ):
+                    reason = (f"`{key}` must be a {typ.__name__}, "
+                              f"got {type(data[key]).__name__}")
+                    break
+    if reason is None:
+        return data
+    raise StateFileUnreadable(path, reason, _preserve_unreadable(path, raw))
+
+
 # ── locks ─────────────────────────────────────────────────────────────
 
 
@@ -576,16 +661,15 @@ def read_catalog(library: Path) -> dict:
     """Read catalog.json. No lock held — readers see whatever is on disk.
 
     Atomic writes (`_atomic_write_text`) ensure readers never see a
-    half-written file. Returns the default empty structure if the file
-    is missing or malformed.
+    half-written file. A MISSING file is the default empty structure; a
+    present-but-unreadable one raises `StateFileUnreadable` (task 893) —
+    never an empty catalog a writer would then write back over it.
     """
-    p = library / ".virgil" / "catalog.json"
-    if p.exists():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
-    return {"version": 1, "generatedAt": _now(), "entries": []}
+    return read_json_state(
+        library / ".virgil" / "catalog.json",
+        lambda: {"version": 1, "generatedAt": _now(), "entries": []},
+        shape={"entries": list},
+    )
 
 
 def write_catalog(library: Path, catalog: dict) -> None:
@@ -1436,17 +1520,14 @@ def append_inbox_item(library: Path, item: dict, *, cap: int = 200) -> None:
     `severity` is stamped.
 
     Caps the ring buffer at `cap` items so it doesn't grow forever.
-    Tolerates missing/malformed inbox by starting fresh.
+    A missing inbox starts fresh; an unreadable one raises
+    `StateFileUnreadable` rather than being replaced (task 893).
     """
     item = resolve_inbox_item(item)
     with lock_inbox(library):
         inbox_path = library / ".virgil" / "notifications" / "inbox.json"
-        inbox: dict = {"items": []}
-        if inbox_path.exists():
-            try:
-                inbox = json.loads(inbox_path.read_text())
-            except Exception:
-                pass
+        inbox: dict = read_json_state(
+            inbox_path, lambda: {"items": []}, shape={"items": list})
         inbox.setdefault("items", []).append(item)
         inbox["items"] = inbox["items"][-cap:]
         _atomic_write_text(

@@ -135,7 +135,7 @@ def apply_all(library, renames, dry_run, backup_dir):
 
     # 3. aliases: drop new->old, add old->new, repoint X->old to X->new
     apath = library / ".virgil" / "aliases.json"
-    aliases = json.loads(apath.read_text()) if apath.exists() else {}
+    aliases = _tools.read_json_state(apath, dict)
     rename_map = {r["old"]: r["new"] for r in renames}
     new_aliases = {}
     for loser, info in aliases.items():
@@ -156,7 +156,7 @@ def apply_all(library, renames, dry_run, backup_dir):
     # 4. distinct registry substitution
     dpath = library / ".virgil" / "dedup-distinct.json"
     if dpath.exists():
-        reg = json.loads(dpath.read_text())
+        reg = _tools.read_json_state(dpath, dict, shape={"pairs": list})
         reg["pairs"] = [[rename_map.get(a, a), rename_map.get(b, b)] for a, b in reg.get("pairs", [])]
         _tools._atomic_write_text(dpath, json.dumps(reg, indent=1, ensure_ascii=False) + "\n")
 
