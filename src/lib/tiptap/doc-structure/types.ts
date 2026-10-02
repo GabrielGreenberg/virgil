@@ -376,7 +376,9 @@ export interface StructureDiff {
   // filter `addedBlocks` themselves.
   addedHeadings: readonly HeadingEntry[];
   removedHeadings: readonly HeadingEntry[];
-  /** Same UUID, changed text/level/label/numbered. */
+  /** Same UUID, changed level/label/numbered — OR survived at a different
+   *  (mapped) position, i.e. a delete+insert MOVE (task 892): order is a
+   *  numbering input. Text edits do NOT land here (`contentChangedUuids`). */
   changedHeadings: readonly HeadingEntry[];
 
   addedFootnotes: readonly FootnoteEntry[];
@@ -419,7 +421,8 @@ export interface StructureDiff {
 
   addedFigures: readonly FigureEntry[];
   removedFigures: readonly FigureEntry[];
-  /** Same UUID, changed label / numbered (figureNumber alone doesn't count). */
+  /** Same UUID, changed label / numbered / caption emission, or MOVED (task
+   *  892 — order is a numbering input). figureNumber alone doesn't count. */
   changedFigures: readonly FigureEntry[];
 
   addedLabels: readonly LabelEntry[];

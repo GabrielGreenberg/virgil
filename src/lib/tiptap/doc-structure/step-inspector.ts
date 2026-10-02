@@ -371,17 +371,47 @@ function collectRange(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true iff two heading entries differ in any attribute that
- * affects numbering / outline structure. Text-only differences do not
- * count — those go into `contentChangedUuids` instead, keeping
- * heading-typing off the numberer's wake path.
+ * A NUMBERING input is anything that can change a counter's value — and
+ * DOCUMENT ORDER is one (task 892). A section's number, a figure's number and
+ * every `\ref` to either are functions of where the entity sits among its
+ * siblings, so a same-uuid entity that SURVIVES at a different position (a
+ * delete+insert MOVE: an Outline reorder, a block drag, the undo of either)
+ * is a numbering change exactly as much as a level or label edit is. Until
+ * 892 these two predicates compared attrs only, a moved heading reconciled to
+ * nothing, and the numberer — whose gate reads `changedHeadings` /
+ * `changedFigures` — never woke: the Outline showed "3, 1, 2" until some
+ * unrelated edit happened to wake it. Examples (`exampleChanged`, task 101),
+ * footnotes and citations already carried the position test; this is the
+ * same rule, so all the numbered kinds now share one definition of "moved".
+ *
+ * Position is compared in ONE space: `aPosInNewDoc` is the removed side mapped
+ * through the transaction (`removedPosInNewDoc`), so an edit EARLIER in the
+ * document — which shifts every later heading's raw position — maps the old
+ * position onto the new one and reports nothing. Typing inside a heading is a
+ * same-pos re-scan → false, so heading text edits stay on
+ * `contentChangedUuids` and off the numberer's wake path (keystroke sanctity).
  */
-function headingStructurallyChanged(a: HeadingEntry, b: HeadingEntry): boolean {
-  return a.level !== b.level || a.label !== b.label || a.numbered !== b.numbered;
+function headingStructurallyChanged(
+  aPosInNewDoc: number,
+  a: HeadingEntry,
+  b: HeadingEntry,
+): boolean {
+  return (
+    aPosInNewDoc !== b.pos ||
+    a.level !== b.level ||
+    a.label !== b.label ||
+    a.numbered !== b.numbered
+  );
 }
 
-function figureStructurallyChanged(a: FigureEntry, b: FigureEntry): boolean {
+/** The figure twin of `headingStructurallyChanged` — same order rule. */
+function figureStructurallyChanged(
+  aPosInNewDoc: number,
+  a: FigureEntry,
+  b: FigureEntry,
+): boolean {
   return (
+    aPosInNewDoc !== b.pos ||
     a.label !== b.label ||
     a.numbered !== b.numbered ||
     // A NUMBERING input since tasks 318/319 — see `FigureEntry.emitsCaption`.
@@ -1063,11 +1093,14 @@ export function inspectSteps(
     const wasRemoved = removed.headings.get(uuid);
     if (!wasRemoved) {
       addedHeadings.push(entry);
-    } else if (headingStructurallyChanged(wasRemoved, entry)) {
+    } else if (headingStructurallyChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
+      // An attr edit in place OR a MOVE (task 892) — either way the entry
+      // carries the NEW pos, so the structure index re-sorts the outline and
+      // the numberer's gate wakes.
       changedHeadings.push(entry);
     }
-    // else: same-UUID, no structural change → don't emit; text changes
-    // flow through contentChangedUuids if anywhere.
+    // else: same-UUID, same place, no structural change → don't emit; text
+    // changes flow through contentChangedUuids if anywhere.
   }
   for (const [uuid, entry] of removed.headings) {
     // Survivor guard (task 265) — the heading twin of the block guard above. A
@@ -1191,7 +1224,7 @@ export function inspectSteps(
     const wasRemoved = removed.figures.get(uuid);
     if (!wasRemoved) {
       addedFigures.push(entry);
-    } else if (figureStructurallyChanged(wasRemoved, entry)) {
+    } else if (figureStructurallyChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
       changedFigures.push(entry);
     }
   }
