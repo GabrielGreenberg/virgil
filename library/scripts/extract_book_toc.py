@@ -34,6 +34,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 CONTENTS_HEAD_RE = re.compile(
     r"\b(TABLE\s+OF\s+CONTENTS|CONTENTS)\b", re.I,
@@ -100,7 +103,7 @@ def _parse_toc_block(toc_text: str) -> list[dict]:
 
 def extract(citekey: str, max_toc_pages: int = 30) -> dict:
     library = _resolve_library_root()
-    pdf_path = library / "papers" / citekey / f"{citekey}.pdf"
+    pdf_path = paper_folder(library, citekey) / f"{citekey}.pdf"
     if not pdf_path.exists():
         return {"error": f"PDF not found at {pdf_path}", "entries": []}
     head = _extract_pdf_pages(pdf_path, 1, max_toc_pages)

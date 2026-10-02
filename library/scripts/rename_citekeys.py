@@ -49,6 +49,10 @@ def apply_all(library, renames, dry_run, backup_dir):
     problems = []
     for r in renames:
         new = r["new"]
+        # Task 894: `new` becomes `papers/<new>/` — one safe segment only.
+        unsafe = _tools.citekey_path_problem(new)
+        if unsafe:
+            problems.append((r["old"], new, f"target not path-safe: {unsafe}"))
         if new in mk or new in catk or new in folders:
             problems.append((r["old"], new, "target not free"))
         if r["old"] not in mk and r["old"] not in catk and r["old"] not in folders:
@@ -104,10 +108,11 @@ def apply_all(library, renames, dry_run, backup_dir):
             # folder rename
             src = None
             for f in _forms(old):
-                if (papers / f).is_dir():
-                    src = papers / f; break
+                # An unsafe `old` (`../x`) names no folder of ours to move.
+                if _tools.is_path_safe_citekey(f) and _tools.paper_folder(library, f).is_dir():
+                    src = _tools.paper_folder(library, f); break
             if src is not None:
-                dst = papers / new
+                dst = _tools.paper_folder(library, new)
                 if not dst.exists():
                     os.rename(src, dst); moved_folders += 1
                     # rename files literally named '<old>.*'

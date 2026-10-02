@@ -69,6 +69,10 @@ TRIAGE_FLAGS: tuple[str, ...] = (
     "bib-manuscript",
     "bib-no-citekey",
     "bib-parse-failed",
+    # the entry's own key was not one safe folder name (`a/b`, `../x`, a
+    # leading `.`); `proposedCitekey` is its sanitized spelling and
+    # `originalCitekey` the key as written (aliased on apply). Task 894.
+    "bib-unsafe-citekey",
     "citekey-exists",
 )
 
@@ -670,8 +674,12 @@ def triage_one(path: Path, library: Path, catalog: dict) -> dict[str, Any]:
         # Sibling lives either as a still-untriaged file in unsorted/ or
         # already triaged as papers/<base_stem>/<base_stem>.<ext>.
         sibling_unsorted = library / "unsorted" / base_filename
-        sibling_paper = library / "papers" / base_stem / base_filename
-        if sibling_unsorted.exists() or sibling_paper.exists():
+        from _tools import is_path_safe_citekey, paper_folder
+        sibling_paper = (
+            paper_folder(library, base_stem) / base_filename
+            if is_path_safe_citekey(base_stem) else None
+        )
+        if sibling_unsorted.exists() or (sibling_paper and sibling_paper.exists()):
             existing = _find_citekey_for_filename(catalog, base_filename)
             return {
                 "filename": filename,
@@ -873,9 +881,12 @@ def triage_bib(path: Path, library: Path, catalog: dict) -> list[dict[str, Any]]
     # held an authenticated one, and the apply step then overwrote it.
     from _tools import (
         catalog_row_bib_state,
+        citekey_path_problem,
+        is_path_safe_citekey,
         master_bib_state_map,
         normalize_citekey,
         read_master_bib,
+        sanitize_citekey,
     )
 
     master_path = library / "master.bib"
@@ -907,9 +918,25 @@ def triage_bib(path: Path, library: Path, catalog: dict) -> list[dict[str, Any]]
         flags = ["bib-only"]
         notes: list[str] = []
 
+        original_citekey = ""
         if not citekey:
             flags.append("bib-no-citekey")
             notes.append("entry missing citekey; will be skipped on apply")
+        elif not is_path_safe_citekey(citekey):
+            # Task 894: a key is also a folder name. Propose a path-safe
+            # spelling (the original is recorded as an alias on apply) so the
+            # reviewer sees it rather than the entry nesting or escaping
+            # papers/. Nothing usable left → the no-citekey skip.
+            original_citekey = citekey
+            citekey = sanitize_citekey(citekey)
+            flags.append("bib-unsafe-citekey")
+            notes.append(
+                f"citekey {original_citekey!r} is not path-safe "
+                f"({citekey_path_problem(original_citekey)}); "
+                + (f"proposed {citekey!r}" if citekey else "no safe spelling — will be skipped")
+            )
+            if not citekey:
+                flags.append("bib-no-citekey")
         if citekey and citekey in existing_keys:
             flags.append("citekey-exists")
             notes.append(f"existing entry: bib.state={existing_states.get(citekey, 'unknown')!r}")
@@ -922,6 +949,7 @@ def triage_bib(path: Path, library: Path, catalog: dict) -> list[dict[str, Any]]
             "extension": "bib",
             "bibEntryRaw": raw,
             "proposedCitekey": citekey,
+            **({"originalCitekey": original_citekey} if original_citekey else {}),
             "proposedType": entry_type,
             "proposedFields": fields,
             "proposedBibState": "manuscript" if entry_type == "unpublished" else "unverified",

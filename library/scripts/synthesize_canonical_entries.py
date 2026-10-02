@@ -114,6 +114,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import work_identity as wi  # noqa: E402
 from _tools import (  # noqa: E402
+    paper_folder,
     citekey_matches,
     iter_master_bib_states,
     read_master_bib,
@@ -608,7 +609,7 @@ def synthesize(
     dry_run: bool = False,
 ) -> dict:
     library = _resolve_library_root()
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     bib_path = paper_dir / "references.bib"
     if not bib_path.exists():
         return {"error": f"references.bib not found at {bib_path}"}

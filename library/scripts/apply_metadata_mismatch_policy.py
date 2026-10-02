@@ -55,7 +55,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import CANONICAL_BIB_STATES, citekey_matches, unlink_tolerant  # noqa: E402
+from _tools import CANONICAL_BIB_STATES, citekey_matches, paper_folder, unlink_tolerant  # noqa: E402
 
 # The auth state this policy moves an entry into once it rewrites the bib
 # fields from the on-disk file. Validated against the canonical set
@@ -201,7 +201,7 @@ def _read_catalog_row(library: Path, citekey: str) -> dict | None:
 
 
 def _read_paper_notes(library: Path, citekey: str) -> str:
-    notes = library / "papers" / citekey / "virgil" / "notes.json"
+    notes = paper_folder(library, citekey) / "virgil" / "notes.json"
     if not notes.exists():
         return ""
     try:
@@ -302,7 +302,7 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
 def _apply(
     library: Path, citekey: str, catalog_row: dict | None, dry_run: bool,
 ) -> dict:
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     pdf_path = paper_dir / f"{citekey}.pdf"
     tex_path = paper_dir / "main.tex"
     if not pdf_path.exists():

@@ -2557,3 +2557,26 @@ CI: `library/scripts/tests/test_state_file_read_door.py` — the door, each
 writer refusing with the file byte-identical, the twins delegating, and a census
 forbidding `json.loads` + `except` near a state-file name in any script that
 writes library state.
+
+### The path half: a citekey is ONE folder name (task 894)
+
+A citekey is also a path segment — `papers/<ck>/`, `queue/<ck>.json`,
+`.virgil/baselines/<ck>-pre-deepindex.tex` — and `.bib` keys arrive from other
+people's exports (`journals/jphil/Smith20`) or hostile ones (`../../notes`).
+The rule is stated once in [library/scripts/_tools.py](../../../library/scripts/_tools.py)
+(`citekey_path_problem`: non-empty, no `/` `\` or control character, no leading
+`.` or edge whitespace, ≤200 UTF-8 bytes) and enforced at the doors:
+`paper_folder(library, ck)` is THE key→folder join and raises `UnsafeCitekey`;
+`queue_slot.slot_filename` refuses the same keys; read probes
+(`resolve_paper_source`, `references_bib_keys`, `paper_indexed`) answer
+"absent" instead of raising mid-sweep. Admission does not lose the entry:
+`triage_batch` flags `bib-unsafe-citekey`, proposes `sanitize_citekey`'s
+spelling, and `triage_apply` records the original as an alias — and refuses a
+reviewer-typed unsafe key (`unsafe-citekey`) before writing anything. The app
+side needs no twin: FSA `getDirectoryHandle` rejects a name with a separator
+and the app never mints paper folders from keys.
+
+CI: `library/scripts/tests/test_citekey_path_safety.py` — predicate corpus,
+the doors, a `.bib` drop end to end (nothing written outside
+`papers/<safe-key>/`), and a census forbidding any `"papers" / <variable>` join
+outside `paper_folder`.

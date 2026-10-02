@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from queue_slot import slot_suffixes  # noqa: E402
 from _tools import (  # noqa: E402
+    paper_folder,
     append_inbox_item,
     bump_catalog_version,
     read_catalog,
@@ -350,7 +351,7 @@ def apply_merge_duplicate(library: Path, old: str, canonical: str) -> dict:
             status["steps"].append("catalog:not_found")
 
     # 4. Quarantine the paper folder.
-    paper_dir = library / "papers" / old
+    paper_dir = paper_folder(library, old)
     if paper_dir.exists():
         import datetime
         quarantine = library / ".virgil" / "quarantine"
@@ -399,8 +400,8 @@ def apply_rename(library: Path, r: Rename) -> dict:
         status["steps"].append("catalog:not_found")
 
     # 3. Paper directory + inner source file + local references.bib opener.
-    paper_old = library / "papers" / old
-    paper_new = library / "papers" / new
+    paper_old = paper_folder(library, old)
+    paper_new = paper_folder(library, new)
     if paper_old.exists():
         if paper_new.exists():
             status["steps"].append(f"paper_dir:collision({paper_new})")

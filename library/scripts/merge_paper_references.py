@@ -44,6 +44,7 @@ sys.path.insert(0, str(THIS_DIR))
 
 from _bib_parse import read_bib_file  # noqa: E402
 from _tools import (  # noqa: E402
+    paper_folder,
     TERMINAL_BIB_STATES,
     admit_catalog_row,
     settle_catalog_bib,
@@ -852,7 +853,7 @@ def main(argv: list[str] | None = None) -> int:
     library = _resolve_library(args.library)
     citekey = args.citekey
 
-    paper_dir = library / "papers" / citekey
+    paper_dir = paper_folder(library, citekey)
     refs_path = paper_dir / "references.bib"
     report_dir = (Path(args.report_dir).expanduser().resolve()
                   if args.report_dir else library / ".virgil" / "merge-reports")

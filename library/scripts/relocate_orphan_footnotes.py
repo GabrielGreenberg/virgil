@@ -36,6 +36,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import paper_folder  # noqa: E402
+
 
 ORPHAN_FN_RE = re.compile(
     r"\\footnote\{\[orphan fn (\d{1,3})\]\s+([^}]+(?:\}[^}]*\}[^}]*)*)\}"
@@ -165,7 +168,7 @@ def _find_unique_occurrence(
 
 def relocate(citekey: str, dry_run: bool = False) -> dict:
     library = _resolve_library_root()
-    tex_path = library / "papers" / citekey / "main.tex"
+    tex_path = paper_folder(library, citekey) / "main.tex"
     if not tex_path.exists():
         return {"error": f"main.tex not found at {tex_path}", "placed": 0}
     text = tex_path.read_text(encoding="utf-8")
