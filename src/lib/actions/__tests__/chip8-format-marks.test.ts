@@ -413,10 +413,15 @@ describe("(B) selection-mode taxonomy: format is 'ignored' (stays ok at a caret)
     }
   });
 
-  it("the MARK toggles are slash-less; the structural WRAPPERS own the slash surface (task 062)", () => {
-    // Marks are lightning-only — a bold/italic/strike/code/text-color toggle is
-    // not a slash command.
-    for (const row of [BOLD, ITALIC, STRIKE, CODE, TEXT_COLOR]) {
+  it("the WRAPPERS (task 062) and the MARK toggles (task 891) own the slash surface; text-color does not", () => {
+    // Task 891: the mark toggles are slash-reachable (`\textbf`/`\bf`, …), names
+    // derived from the wrapper-mark table — pinned in action-coverage-assertion.
+    for (const row of [BOLD, ITALIC, STRIKE, CODE]) {
+      expect(row.surfaces.slash, `${row.id}.slash`).toBe(true);
+      expect(row.slashName, `${row.id}.slashName`).toBeTruthy();
+    }
+    // text-color needs a color argument — no slash command.
+    for (const row of [TEXT_COLOR]) {
       expect(row.surfaces.slash ?? false, `${row.id}.slash`).toBe(false);
       expect(row.slashName, `${row.id}.slashName`).toBeUndefined();
       expect(row.slashAliases, `${row.id}.slashAliases`).toBeUndefined();

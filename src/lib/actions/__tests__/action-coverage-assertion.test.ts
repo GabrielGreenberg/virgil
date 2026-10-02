@@ -479,6 +479,17 @@ const WRAPPER_SLASH: Record<string, { name: string; aliases?: string[] }> = {
   blockquote: { name: "quote", aliases: ["quotation"] },
 };
 
+// Task 891: the mark toggles' slash names, derived from the wrapper-mark table
+// (LaTeX spellings first, then the short aliases). Spelled out here so a table
+// edit that drops `\sc` shows up as a red test, not a silent vocabulary change.
+const MARK_SLASH: Record<string, { name: string; aliases?: string[] }> = {
+  bold: { name: "textbf", aliases: ["bf"] },
+  italic: { name: "emph", aliases: ["textit", "it", "em"] },
+  strike: { name: "sout" },
+  "small-caps": { name: "textsc", aliases: ["sc"] },
+  code: { name: "texttt", aliases: ["tt"] },
+};
+
 describe("format rows (CHIP 6b — completes the grid fold)", () => {
   // RENEGOTIATED (task 427). This leg used to pin "never typed/keyboard" on
   // EVERY format row. True of the marks; false of the three WRAPPERS, which own
@@ -510,16 +521,17 @@ describe("format rows (CHIP 6b — completes the grid fold)", () => {
     }
   });
 
-  it("the MARK toggles are slash-less; the three structural WRAPPERS own slash (task 062)", () => {
+  it("the WRAPPERS (task 062) and the MARK toggles (task 891) own slash; only text-color is slash-less", () => {
     for (const id of FORMAT_IDS) {
       const r = row(id);
-      const slash = WRAPPER_SLASH[id];
+      const slash = WRAPPER_SLASH[id] ?? MARK_SLASH[id];
       if (slash) {
         expect(r.surfaces.slash, `${id}.slash`).toBe(true);
         expect(r.slashName, `${id}.slashName`).toBe(slash.name);
         expect(r.slashAliases, `${id}.slashAliases`).toEqual(slash.aliases);
       } else {
-        // a mark toggle (bold/italic/strike/code/text-color) is not a slash command
+        // text-color needs a color argument — no slash command reaches it
+        expect(id).toBe("text-color");
         expect(r.surfaces.slash, `${id}.slash`).toBeFalsy();
         expect(r.slashName, `${id}.slashName`).toBeUndefined();
         expect(r.slashAliases, `${id}.slashAliases`).toBeUndefined();

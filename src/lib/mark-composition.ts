@@ -88,6 +88,14 @@ export type MarkLike = { type: string; attrs?: Record<string, unknown> };
  *    (capture/schema-symmetry law). Pinned against the live schema by
  *    `mark-vocabulary.test.ts`.
  *  - `html` — the legacy/pasted HTML tags the footnote HTML reader maps to it.
+ *  - `slash` — the mark is reachable from the backslash command popup (task
+ *    891). Its slash names are DERIVED — every `commands` spelling, then the
+ *    row's short `aliases` (`\sc`, `\bf`, …) — by {@link markSlashNames}; the
+ *    slash vocabulary (`commands.ts`) and the format action rows
+ *    (`action-registry.ts`) both read them from here, so the name the user
+ *    types, the name the parser reads and the name the emit writes are one
+ *    column. A row without `slash` has no toggle to run: `underline` has no
+ *    format action, and `textcolor` needs a color argument.
  *
  * Adding a mark is one row here + its TipTap `Mark` + its schema
  * registrations (which the coverage suites enforce).
@@ -104,6 +112,7 @@ export interface WrapperMarkRow {
   readonly colorArg?: boolean;
   readonly cardBody?: false;
   readonly html?: readonly string[];
+  readonly slash?: { readonly aliases?: readonly string[] };
 }
 
 /** The small-caps mark's name — spelled once, here, for the table row, the
@@ -111,8 +120,13 @@ export interface WrapperMarkRow {
 export const SMALL_CAPS_MARK = "smallCaps";
 
 export const WRAPPER_MARK_ROWS = [
-  { mark: "bold", commands: ["textbf"], html: ["strong", "b"] },
-  { mark: "italic", commands: ["emph", "textit"], html: ["em", "i"] },
+  { mark: "bold", commands: ["textbf"], html: ["strong", "b"], slash: { aliases: ["bf"] } },
+  {
+    mark: "italic",
+    commands: ["emph", "textit"],
+    html: ["em", "i"],
+    slash: { aliases: ["it", "em"] },
+  },
   { mark: "underline", commands: ["underline"], html: ["u"] },
   // `ulem`'s `\sout`. The package is loaded `[normalem]` (see its requirement
   // row) so it does not turn every `\emph` in the paper into an underline.
@@ -121,9 +135,16 @@ export const WRAPPER_MARK_ROWS = [
     commands: ["sout"],
     package: "ulem",
     html: ["s", "del", "strike"],
+    slash: {},
   },
-  { mark: SMALL_CAPS_MARK, commands: ["textsc"] },
-  { mark: "code", commands: ["texttt"], opensCode: true, html: ["code"] },
+  { mark: SMALL_CAPS_MARK, commands: ["textsc"], slash: { aliases: ["sc"] } },
+  {
+    mark: "code",
+    commands: ["texttt"],
+    opensCode: true,
+    html: ["code"],
+    slash: { aliases: ["tt"] },
+  },
   {
     mark: "textColor",
     commands: ["textcolor"],
@@ -160,6 +181,23 @@ const ROW_BY_COMMAND: ReadonlyMap<string, WrapperMarkRow> = new Map(
 export function wrapperRowFor(markType: string): WrapperMarkRow | undefined {
   return ROW_BY_MARK.get(markType);
 }
+
+/**
+ * The backslash-popup names that toggle `markType` (task 891): the row's LaTeX
+ * spellings (emit spelling first — the PRIMARY slash name), then its short
+ * aliases. Empty for a mark the slash surface cannot reach (no `slash` column).
+ */
+export function markSlashNames(markType: string): readonly string[] {
+  const row = ROW_BY_MARK.get(markType);
+  if (!row?.slash) return [];
+  return [...row.commands, ...(row.slash.aliases ?? [])];
+}
+
+/** Every mark the backslash popup reaches, in table order — the rows carrying
+ *  the `slash` column. */
+export const SLASH_MARK_TYPES: readonly string[] = WRAPPER_MARK_ROWS.filter(
+  (r: WrapperMarkRow) => r.slash !== undefined,
+).map((r) => r.mark);
 
 /**
  * The mark attr recording WHICH of a row's spellings a run was parsed from.
