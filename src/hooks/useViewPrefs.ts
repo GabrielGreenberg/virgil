@@ -295,10 +295,10 @@ const RETIRED_PREF_KEYS = [
 const RETIRED_LEGACY_STORAGE_KEYS = ["virgil-omni-hide-all-cards"] as const;
 
 const DEFAULT_PREFS: ViewPrefs = {
-  // Registry defaults FIRST so the 8 promoted decoration/highlight fields
-  // (showMarginalia, dividerLevels, …) and `bibFilter` get a value; the JSON
-  // spread comes AFTER so the JSON's values for the registry keys it carries
-  // win (the promotion pipeline is byte-stable against the JSON). `bibFilter`
+  // Registry defaults FIRST so every registry key (incl. `bibFilter`) gets a
+  // value; the JSON spread comes AFTER. For a PROMOTED registry key the two
+  // are the same value by construction — the registry row reads the JSON
+  // (task 900) — so the order no longer decides anything for them. `bibFilter`
   // is window-scoped, lives ONLY in the registry (not the JSON), so it's
   // omitted from the JSON cast below and supplied by REGISTRY_DEFAULTS.
   ...REGISTRY_DEFAULTS,
