@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SMART_PREFERENCES, type SmartSection, type SmartItem } from "@/lib/smart-preferences";
 import { ColorPref, SliderPref, FontPref } from "./PreferenceTree";
 import { Select } from "./field-primitives";
+import { withCurrent } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
@@ -145,7 +146,7 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
         className="text-xs px-1.5 py-0.5"
         style={{ fontFamily: resolveFontStack(typo.fontFamily) }}
       >
-        {PANEL_BODY_FONT_OPTIONS.map((f) => (
+        {withCurrent(PANEL_BODY_FONT_OPTIONS, typo.fontFamily).flatMap((g) => g.fonts).map((f) => (
           <option key={f} value={f} style={{ fontFamily: resolveFontStack(f) }}>{f}</option>
         ))}
       </Select>

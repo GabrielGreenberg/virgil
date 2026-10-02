@@ -12,6 +12,7 @@
  */
 
 import type { PrefLeaf } from "./preferences-tree";
+import { SANS_CORE_FONTS, SERIF_CORE_FONTS } from "./font-catalogue";
 import type { PanelThemeKey } from "./panel-theme";
 import type { LinkableKey } from "./pref-links";
 
@@ -181,20 +182,8 @@ export const SMART_PREFERENCES: SmartSection[] = [
         key: "panelAdminTextFont",
         label: "Admin text font",
         description: "Typeface for panel header titles.",
-        options: [
-          "Inter",
-          "system-ui",
-          "Helvetica Neue",
-          "Open Sans",
-          "Lato",
-          "Roboto",
-          "IBM Plex Sans",
-          "Source Sans 3",
-          "Source Serif 4",
-          "Georgia",
-          "Playfair Display",
-          "Libre Baskerville",
-        ],
+        // Sans cores first (the default face), then serif — one vocabulary (task 901).
+        options: [...SANS_CORE_FONTS, ...SERIF_CORE_FONTS],
       }),
     ],
   },

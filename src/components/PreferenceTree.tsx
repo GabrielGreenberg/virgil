@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { PrefNode, PrefGroup, PrefLeaf, PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
 import { isLeaf } from "@/lib/preferences-tree";
 import { Select } from "./field-primitives";
+import { withCurrent, type FontGroup } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
@@ -106,9 +107,12 @@ export function FontPref({
   label: string;
   description?: string;
   value: string;
-  options: string[];
+  options: string[] | FontGroup[];
   onChange: (v: string) => void;
 }) {
+  // `withCurrent` keeps a stored font outside this row's offer ON offer, so the
+  // controlled <Select> never displays its first option in its place (task 901).
+  const groups = withCurrent(options, value);
   return (
     <div className="flex items-center gap-3 py-1">
       <PrefLabel label={label} description={description} />
@@ -117,9 +121,17 @@ export function FontPref({
         onChange={(e) => onChange(e.target.value)}
         className="flex-1 text-xs px-2 py-1"
       >
-        {options.map((f) => (
-          <option key={f} value={f}>{f}</option>
-        ))}
+        {groups.map((g) =>
+          g.group ? (
+            <optgroup key={g.group} label={g.group}>
+              {g.fonts.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </optgroup>
+          ) : (
+            g.fonts.map((f) => <option key={f} value={f}>{f}</option>)
+          ),
+        )}
       </Select>
     </div>
   );

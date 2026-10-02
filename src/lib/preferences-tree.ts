@@ -4,6 +4,13 @@
 
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { deriveLight, hexToRgba } from "@/hooks/usePreferences";
+import {
+  DISPLAY_FONTS,
+  LOGO_FONTS,
+  MAIN_TEXT_FONTS,
+  MONO_FONTS,
+  type FontGroup,
+} from "@/lib/font-catalogue";
 
 // ─── Tree Types ───────────────────────────────────────────────────────────────
 
@@ -30,7 +37,8 @@ export interface PrefLeafFont {
   key: keyof EditorPreferences;
   label: string;
   description?: string;
-  options: string[];
+  /** A subset of FONT_CATALOGUE — flat, or grouped (rendered as optgroups). */
+  options: string[] | FontGroup[];
 }
 
 export type PrefLeaf = PrefLeafColor | PrefLeafSlider | PrefLeafFont;
@@ -49,22 +57,9 @@ function isLeaf(node: PrefNode): node is PrefLeaf {
 export { isLeaf };
 
 // ─── Font Options ─────────────────────────────────────────────────────────────
-
-const SERIF_FONTS = ["Source Serif 4", "Georgia", "Playfair Display", "Libre Baskerville", "Lora", "Merriweather", "EB Garamond", "Crimson Text"];
-const SANS_FONTS = ["Inter", "system-ui", "Helvetica Neue", "Open Sans", "Lato", "Roboto", "IBM Plex Sans", "Source Sans 3"];
-const MONO_FONTS = ["Geist Mono", "JetBrains Mono", "Fira Code", "Source Code Pro", "IBM Plex Mono", "monospace"];
-const DISPLAY_FONTS = ["Playfair Display", "Cinzel", "Cormorant Garamond", "Libre Baskerville", "EB Garamond"];
-const LOGO_FONTS = ["Cinzel", "Playfair Display", "Cormorant Garamond", "Libre Baskerville"];
-
-/** Curated pool for the Fonts… dialog (main-text categories). Grouped
- *  serif → sans → display so the dropdown can render section dividers. */
-export const MAIN_TEXT_FONTS: { group: string; fonts: string[] }[] = [
-  { group: "Serif", fonts: ["Source Serif 4", "Georgia", "Libre Baskerville", "Libre Caslon Text", "Lora", "Lusitana", "Merriweather", "EB Garamond", "Crimson Text", "Cardo", "Spectral", "PT Serif", "Old Standard TT", "Vollkorn", "Gentium Plus"] },
-  { group: "Sans-serif", fonts: ["Inter", "system-ui", "Helvetica Neue", "Open Sans", "Lato", "Roboto", "IBM Plex Sans", "Source Sans 3", "Work Sans", "DM Sans", "Manrope", "Public Sans", "Atkinson Hyperlegible"] },
-  { group: "Display", fonts: ["Playfair Display", "Cinzel", "Cormorant Garamond", "Cormorant SC", "IM Fell English", "Marcellus", "Bodoni Moda"] },
-];
-
-export const ALL_MAIN_TEXT_FONTS: string[] = MAIN_TEXT_FONTS.flatMap((g) => g.fonts);
+// One vocabulary (task 901): every font row's offer is a subset of
+// FONT_CATALOGUE in src/lib/font-catalogue.ts. The body/UI rows write the
+// same keys Fonts… writes, so they offer the same grouped main-text pool.
 
 // ─── The Preference Tree ──────────────────────────────────────────────────────
 
@@ -88,7 +83,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
           { type: "slider", key: "editorFontSize", label: "Font size", description: "Base size for body paragraphs", min: 0.85, max: 1.4, step: 0.05, unit: " rem" },
           { type: "slider", key: "editorLineHeight", label: "Line height", description: "Vertical spacing between text lines", min: 1.4, max: 2.4, step: 0.1, unit: "" },
           { type: "color", key: "editorTextColor", label: "Text color", description: "Default color for paragraph body text" },
-          { type: "font", key: "fontSerif", label: "Font family", description: "Typeface used for body paragraphs", options: SERIF_FONTS },
+          { type: "font", key: "fontSerif", label: "Font family", description: "Typeface used for body paragraphs", options: MAIN_TEXT_FONTS },
         ],
       },
       {
@@ -183,7 +178,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
           { type: "slider", key: "panelFontSize", label: "Font size", description: "Text size in side panel content", min: 11, max: 16, step: 1, unit: "px" },
           { type: "slider", key: "panelHeaderSize", label: "Header size", description: "Text size for panel section headers", min: 9, max: 17, step: 1, unit: "px" },
           { type: "color", key: "surfaceColor", label: "Card background", description: "Fill color of cards and containers" },
-          { type: "font", key: "fontSans", label: "Font family", description: "Typeface used in panels and UI", options: SANS_FONTS },
+          { type: "font", key: "fontSans", label: "Font family", description: "Typeface used in panels and UI", options: MAIN_TEXT_FONTS },
         ],
       },
       {
@@ -214,8 +209,8 @@ export const PREFERENCES_TREE: PrefNode[] = [
   {
     label: "Global Font Families",
     children: [
-      { type: "font", key: "fontSerif", label: "Body (serif)", description: "Main typeface for document text", options: SERIF_FONTS },
-      { type: "font", key: "fontSans", label: "UI (sans)", description: "Typeface for panels and interface", options: SANS_FONTS },
+      { type: "font", key: "fontSerif", label: "Body (serif)", description: "Main typeface for document text", options: MAIN_TEXT_FONTS },
+      { type: "font", key: "fontSans", label: "UI (sans)", description: "Typeface for panels and interface", options: MAIN_TEXT_FONTS },
       { type: "font", key: "fontDisplay", label: "Display", description: "Decorative face for titles and headers", options: DISPLAY_FONTS },
       { type: "font", key: "fontLogo", label: "Logo", description: "Typeface for the app logo", options: LOGO_FONTS },
       { type: "font", key: "fontMono", label: "Monospace", description: "Code, math, and fixed-width text", options: MONO_FONTS },
