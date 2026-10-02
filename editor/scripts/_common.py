@@ -1405,10 +1405,27 @@ def _iso_at(offset_seconds: int = 0) -> str:
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _restorable_pen(pen) -> dict:
+    """The pen a release may restore. Claude's own pen is never one: a
+    `prior_pen` held by COLLAB_PEN_HOLDER can only be the residue of a hold
+    that never released, so it normalises to a free pen (task 886)."""
+    if not isinstance(pen, dict) or pen.get("holder") == COLLAB_PEN_HOLDER:
+        return dict(FREE_PEN)
+    return pen
+
+
 def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
     """Take the pen. Writes .virgil/pen-context.json (always) and flips
     collab.json's pen to Claude-held + collab enabled (only if collab.json
-    exists). Returns the pen-context record."""
+    exists). Returns the pen-context record.
+
+    **An unreleased prior hold is INHERITED, not re-snapshotted (task 886).**
+    A hold that never released (SIGKILL, sleep/power loss, a harness timeout
+    mid-commit) leaves collab.json in its ACQUIRE-time state — `enabled: true`,
+    pen held by Claude. Snapshotting that as this acquire's `prior_*` would make
+    every later successful release restore the crashed hold: collab stuck on,
+    the paper read-only until the stale take-over. The crashed record's own
+    `prior_*` is the true pre-Claude state, so it carries forward."""
     now_s = _iso_at(0)
     expires_s = _iso_at(ttl)
 
@@ -1416,12 +1433,20 @@ def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
     collab = read_json(collab_file, default=None)
     collab_existed = isinstance(collab, dict)
 
-    prior_enabled = bool(collab.get("enabled", False)) if collab_existed else False
-    prior_pen = (
-        collab.get("pen")
-        if collab_existed and isinstance(collab.get("pen"), dict)
-        else dict(FREE_PEN)
-    )
+    # Only a crashed hold that TOUCHED collab.json poisoned it; one that found
+    # no collab.json left any collab.json there now genuine.
+    stale = read_json(pen_context_path(doc), default=None)
+    if (
+        collab_existed
+        and isinstance(stale, dict)
+        and stale.get("holder") == PEN_CONTEXT_HOLDER
+        and stale.get("collab_existed")
+    ):
+        prior_enabled = bool(stale.get("prior_collab_enabled", False))
+        prior_pen = _restorable_pen(stale.get("prior_pen"))
+    else:
+        prior_enabled = bool(collab.get("enabled", False)) if collab_existed else False
+        prior_pen = _restorable_pen(collab.get("pen") if collab_existed else None)
 
     pen_ctx = {
         "holder": PEN_CONTEXT_HOLDER,
