@@ -79,13 +79,75 @@ function writeJson(file, value) {
   return true;
 }
 
-/** Replace only whitelisted top-level keys; leave the rest of `target` intact. */
-function applyWhitelist(target, source, whitelist) {
-  const next = { ...target };
-  for (const key of whitelist) {
-    if (key in source) next[key] = source[key];
+/**
+ * THE one door every strategy promotes through (task 904): a KEY-INTERSECTION
+ * of the snapshot with the shipped shape, value-typed against the shipped
+ * value. The snapshot supplies VALUES, never vocabulary and never types (the
+ * full rationale is on `applyAll` below):
+ *   - a snapshot key the shipped object does not OWN is dropped (retired or
+ *     unknown — the resurrection class);
+ *   - a value whose type differs from the shipped value's (`typeof`, with
+ *     arrays, plain objects and null told apart) is dropped — the shipped
+ *     JSON is cast `as T` at runtime (`print.ts`, `DEFAULT_PREFS`), so nothing
+ *     downstream would catch it. A shipped `null` is a nullable slot and
+ *     accepts any value;
+ *   - with `deep`, a plain-object value is intersected RECURSIVELY rather than
+ *     replaced, so a nested section (`printOptions.panels`) is closed too.
+ * Every drop is LOGGED with its dotted path — the log line is the only signal
+ * an unattended promote emits.
+ */
+function intersectShape(shipped, source, label, { deep = false } = {}) {
+  const dropped = [];
+  const walk = (cur, src, prefix) => {
+    const next = { ...cur };
+    if (!isPlainObject(src)) return next;
+    for (const [key, value] of Object.entries(src)) {
+      const at = prefix + key;
+      // `Object.hasOwn`, not `key in cur`: `in` consults the prototype chain,
+      // so a snapshot key spelled `constructor` / `toString` / `valueOf` would
+      // read as DECLARED and be written into the shipped defaults — the exact
+      // inverse of this rule.
+      if (!Object.hasOwn(cur, key)) {
+        dropped.push(`${at} (unknown)`);
+        continue;
+      }
+      const want = cur[key];
+      if (want !== null && typeTag(value) !== typeTag(want)) {
+        dropped.push(`${at} (${typeTag(value)}, expected ${typeTag(want)})`);
+        continue;
+      }
+      next[key] = deep && isPlainObject(want) ? walk(want, value, at + ".") : value;
+    }
+    return next;
+  };
+  const next = walk(shipped, source, "");
+  if (dropped.length) {
+    console.log(
+      `  ${label}: ignored ${dropped.length} snapshot value(s) the shipped defaults do not declare` +
+        ` (retired, unknown or wrong-typed) — ${dropped.join(", ")}`,
+    );
   }
   return next;
+}
+
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+function typeTag(v) {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "array";
+  return typeof v;
+}
+
+/** Replace only whitelisted top-level keys (through the one door); leave the
+ *  rest of `target` intact. */
+function applyWhitelist(target, source, whitelist, label) {
+  const picked = {};
+  for (const key of whitelist) {
+    if (isPlainObject(source) && Object.hasOwn(source, key)) picked[key] = source[key];
+  }
+  return intersectShape(target, picked, label);
 }
 
 /**
@@ -136,43 +198,19 @@ function applyWhitelist(target, source, whitelist) {
  * from the dead, and a shipped default that no interface declares is worse
  * than a loud missing one. Run `npm run test:prefs` when adding a preference.
  *
- * Dropped keys are LOGGED rather than silently skipped.
+ * Dropped keys are LOGGED rather than silently skipped (by `intersectShape`,
+ * which since task 904 also drops a wrong-typed value).
  */
 function applyAll(target, source, label) {
-  const next = { ...target };
-  const ignored = [];
-  for (const [key, value] of Object.entries(source)) {
-    // `Object.hasOwn`, not `key in target`: `in` consults the prototype chain,
-    // so a snapshot key spelled `constructor` / `toString` / `valueOf` would
-    // read as DECLARED and be written into the shipped defaults — the exact
-    // inverse of this rule. `label` is required for the same reason the mode
-    // argument in `bridgeCardAiRequestFlag` is: the log line below is the only
-    // signal this mechanism emits, and a defaulted "" would silently strip the
-    // filename out of it.
-    if (!Object.hasOwn(target, key)) {
-      ignored.push(key);
-      continue;
-    }
-    next[key] = value;
-  }
-  if (ignored.length) {
-    console.log(
-      `  ${label}: ignored ${ignored.length} snapshot key(s) the shipped defaults do not declare` +
-        ` (retired or unknown) — ${ignored.join(", ")}`,
-    );
-  }
-  return next;
+  return intersectShape(target, source, label);
 }
 
-/** Deep-merge `printOptions`: replace top-level scalars (e.g.
- *  `fontSizeRem`), per-section merge `elements` + `panels`. */
-function applyPrintOptions(target, source) {
-  return {
-    ...target,
-    ...source,
-    elements: { ...target.elements, ...(source.elements ?? {}) },
-    panels: { ...target.panels, ...(source.panels ?? {}) },
-  };
+/** Deep-intersect `printOptions`: top-level scalars (e.g. `fontSizeRem`) and
+ *  each section (`elements`, `panels`) take only the keys and types the
+ *  shipped file declares (task 904 — this used to spread the snapshot, so a
+ *  retired print option resurrected into the shipped defaults). */
+function applyPrintOptions(target, source, label) {
+  return intersectShape(target, source, label, { deep: true });
 }
 
 /**
@@ -234,13 +272,13 @@ function main() {
     let next;
     switch (entry.strategy) {
       case "whitelist":
-        next = applyWhitelist(cur, src, entry.whitelist ?? []);
+        next = applyWhitelist(cur, src, entry.whitelist ?? [], entry.defaultsFile);
         break;
       case "replace-all":
         next = applyAll(cur, src, entry.defaultsFile);
         break;
       case "print-options":
-        next = applyPrintOptions(cur, src);
+        next = applyPrintOptions(cur, src, entry.defaultsFile);
         break;
       case "bake-transforms":
         next = applyBakeTransforms(cur, src, extractSource(snapshot[entry.rawFrom]));
