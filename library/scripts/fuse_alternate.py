@@ -23,7 +23,6 @@ the auto-step in index_paper.py.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -489,14 +488,10 @@ def _find_body_bounds(lines: list[str]) -> tuple[int, int]:
 
 
 def _read_catalog_entry(library: Path, citekey: str) -> Optional[dict]:
-    cat = library / ".virgil" / "catalog.json"
-    if not cat.exists():
-        return None
-    try:
-        c = json.loads(cat.read_text())
-    except Exception:
-        return None
-    for e in c.get("entries", []):
+    # The one door (task 893): a malformed catalog refuses rather than
+    # reading as "no row", which callers would act on.
+    from _tools import read_catalog
+    for e in read_catalog(library).get("entries", []):
         # NFC-insensitive, like every other catalog-row lookup in the silo:
         # a raw compare returns None on an NFD-spelled row (Tichý / Čerić /
         # López) and every consumer degrades as if the paper had no row.

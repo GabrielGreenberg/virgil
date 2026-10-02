@@ -56,6 +56,7 @@ from _tools import (
     deep_index_baseline_path,
     detect,
     lock_catalog,
+    StateFileUnreadable,
     read_catalog,
     is_terminal_bib_state,
     master_entry_for,
@@ -132,6 +133,9 @@ class ReExtractRequired(RuntimeError):
 def _catalog_row(library: Path, citekey: str) -> Optional[dict]:
     try:
         catalog = read_catalog(library)
+    except StateFileUnreadable:
+        # Never "no row" — that would wave a re-extract over deep-index work.
+        raise
     except Exception:
         return None
     return next((e for e in catalog.get("entries", [])

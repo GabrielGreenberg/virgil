@@ -2530,3 +2530,30 @@ Rules:
 - **Every caller branches.** Each fenced shim invocation in `library/skills/`
   captures `rc=$?` and names its branches (census:
   `library/scripts/tests/test_bib_write_door_contract.py`).
+
+## The unreadable half: a state file that EXISTS but cannot be read is a REFUSAL, never empty (task 893)
+
+> **"Missing" and "unreadable" are different answers.** A missing state file is
+> a first run and reads as the default; a present file that fails to parse (or
+> parses to the wrong shape) is a REFUSAL — because every writer of it is a
+> read-modify-write, and "unreadable → empty" turns one sync conflict or hand-edit
+> typo into a write-back that replaces the whole file with the one row touched.
+
+The Library's door is `read_json_state` in
+[library/scripts/_tools.py](../../../library/scripts/_tools.py): missing →
+`default()`; unreadable bytes / bad JSON / non-object / a `shape` key of the
+wrong type → `StateFileUnreadable` (the file left byte-identical, its bytes also
+copied aside as `<name>.unreadable-<sha12>`, content-addressed so repeat reads
+make one copy); ok → the object. `read_catalog`, `append_inbox_item`,
+`dedup_index.load_aliases`, `rename_citekeys`' alias + distinct-pair rewrite, and
+the hand-rolled `_read_catalog` twins (`triage_batch`, `drain_queue`,
+`fuse_alternate`) all read through it. Read-only REPORTERS
+(`pgmark_validate`, `audit_deepindex`, `merge_bibs_postflight`,
+`synthesize_canonical_entries`, `dedup._load_distinct_pairs`) may still read
+tolerantly — they write nothing back. The editor silo's `_common.read_json`
+already refused (`die`) and is unchanged.
+
+CI: `library/scripts/tests/test_state_file_read_door.py` — the door, each
+writer refusing with the file byte-identical, the twins delegating, and a census
+forbidding `json.loads` + `except` near a state-file name in any script that
+writes library state.

@@ -72,13 +72,9 @@ def _now() -> str:
 
 
 def _read_catalog(library: Path) -> dict:
-    p = library / ".virgil" / "catalog.json"
-    if p.exists():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
-    return {"entries": []}
+    # The one door (task 893): a malformed catalog refuses, never reads empty.
+    from _tools import read_catalog
+    return read_catalog(library)
 
 
 def _is_lock_stale(lock_path: Path) -> bool:

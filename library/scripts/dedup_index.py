@@ -182,15 +182,10 @@ def build_index(library: Path, *, records: Optional[list] = None) -> "wi.WorkInd
 
 def load_aliases(library: Path) -> dict:
     """Return the alias map ``{loser_citekey: {survivor, work_key, at, reason}}``
-    (empty dict if absent/unreadable)."""
-    p = Path(library) / ALIASES_REL
-    if not p.exists():
-        return {}
-    try:
-        data = json.loads(p.read_text())
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
-        return {}
+    (empty dict if absent). A present-but-unreadable file raises
+    ``StateFileUnreadable`` — every writer re-saves this map whole (task 893)."""
+    from _tools import read_json_state
+    return read_json_state(Path(library) / ALIASES_REL, dict)
 
 
 def save_aliases(library: Path, aliases: dict) -> None:
