@@ -1,4 +1,4 @@
-<!-- last-verified: f33de1c5 2026-09-29 -->
+<!-- last-verified: ba4b78d0 2026-10-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -222,7 +222,7 @@ splice narrowly and never rewrite the whole file.
   than spliced at a guessed end (task 614).
 - **`texEdit` modes** (`apply_response.py`): `end-of-paragraph` (default),
   `after-selected`, `replace-span` search only the anchored paragraph's LIVE text
-  (previous `%!v:` marker → this one; comment-only hits miss — task 613);
+  (previous block → this `%!v:` marker, a raw `%!vtex:` texBlock counting as a block, resolved by `_common.paragraph_spans` — the same span `get_para_context.py` reads, task 883; comment-only hits miss — task 613);
   `after-paragraph` lands a block after the paragraph's marker (examples);
   `region-replace` replaces everything up to the first live `endMarker` (default
   `\begin{document}` — the preamble rewrite).

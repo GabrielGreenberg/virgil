@@ -1,4 +1,4 @@
-<!-- last-verified: 455c753b 2026-10-01 -->
+<!-- last-verified: ba4b78d0 2026-10-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -30,7 +30,7 @@ Deeper docs in `docs/agents/`. Load them on demand when their topic comes up —
 
 If the user uses a term that doesn't resolve cleanly to a code name, append it to the **Pending terminology** section at the bottom of `docs/agents/glossary.md` with your best-guess code referent and today's date. The cleanup skill consolidates these on the next merge cycle.
 
-Each sub-doc begins with `<!-- last-verified: 455c753b 2026-10-01 -->`. If the hash is far behind `HEAD` and something feels stale, verify against the current code before relying on the doc.
+Each sub-doc begins with `<!-- last-verified: ba4b78d0 2026-10-02 -->`. If the hash is far behind `HEAD` and something feels stale, verify against the current code before relying on the doc.
 
 ## Laws
 
@@ -141,7 +141,7 @@ CI: `editor-observer-guardrail.test.ts`.
 
 ### Per-doc services under multi-pane keep-alive
 
-> **A module-level value that is per-DOCUMENT is a REGISTRY keyed by its owner, never a single slot — and a departing owner removes only its OWN entry.** N `EditorPane`s are mounted at once (multi-doc keep-alive, default ON at capacity 3; the Library Reader mounts the same component again, up to 4), one visible and the rest `display:none`. "The current doc" is therefore not a module-level fact. Where a caller has no owner in hand, resolve through the ONE ladder — `pickActiveByEditor` / `pickProbeEditor` ([src/lib/active-editor-probe.ts](src/lib/active-editor-probe.ts)): focused → visible (`offsetHeight > 0`, which is exactly what `display:none` falsifies) → sole → null. Never "whichever was written last".
+> **A module-level value that is per-DOCUMENT is a REGISTRY keyed by its owner, never a single slot — and a departing owner removes only its OWN entry.** N `EditorPane`s are mounted at once (multi-doc keep-alive, default ON at capacity 3; the Library Reader mounts the same component again, up to 4), one visible and the rest `display:none`. "The current doc" is therefore not a module-level fact. Where a caller has no owner in hand, resolve through the ONE ladder — `pickActiveByEditor` / `pickProbeEditor` ([src/lib/active-editor-probe.ts](src/lib/active-editor-probe.ts)): focused → visible (`isPaneElementVisible`, which `display:none` falsifies) → sole → null. Never "whichever was written last".
 
 Doc: [docs/agents/laws/per-doc-services-under-multi-pane-keep-alive.md](docs/agents/laws/per-doc-services-under-multi-pane-keep-alive.md).
 CI: `dropctx-multipane-registry.test.tsx`, `pane-dom-multipane.test.tsx`, `pane-dom-census.test.ts`.

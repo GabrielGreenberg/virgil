@@ -459,16 +459,20 @@ build's chunks piled into one cache.
 
 - `postbuild` (`scripts/stamp-service-worker.mjs`) replaces `BUILD_STAMP` in
   `out/sw.js` with a content hash of the whole export, and `BUILD_PRECACHE` with
-  the shell plus the hashed `_next/static/**` files (scope-relative, task 365).
+  `[path, sha]` pairs for the shell, the hashed `_next/static/**` files, the TeX
+  core and the dictionary (scope-relative, task 365; content-addressed, task 888).
   A missing placeholder fails the build. Any build path that skips npm's hooks
   ships an unstamped worker, so nothing may call `next build` except `build`.
-- Hashed chunks are served cache-first. Anything else is network-first, but a
-  non-ok answer yields to a held copy. Install precaches the build, copying
-  chunks an older cache already holds.
-- Activate keeps this build, the fonts cache, and ONE predecessor (the newest
-  other cache). That predecessor is what makes "stays on the old page under the
-  new worker" (the multi-window half) safe: the old page's lazy chunks are still
-  held. At most two builds are cached.
+- Hashed chunks (and precached copies carrying this build's sha) are served
+  cache-first. Anything else is network-first, but a non-ok answer yields to a
+  held copy. Install precaches the build, COPYING any path a held cache has with
+  the same sha, so unchanged vendored assets are never re-downloaded (task 888).
+  Every cache write goes through `putCached` (200/opaque only, waited on).
+- Activate keeps this build, the fonts cache, the build that was active before
+  it (an activation ledger, task 887), and any build cache holding scripts a
+  live window reports it booted from. That is what makes "stays on the old page
+  under the new worker" (the multi-window half) safe: the old page's lazy chunks
+  are still held. With no ledger yet it falls back to the newest other cache.
 - `ServiceWorkerRegistration` calls `reg.update()` when the window becomes
   visible and hourly while it is, because a long-open window never navigates.
 

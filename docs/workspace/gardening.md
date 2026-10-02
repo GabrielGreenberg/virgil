@@ -1,4 +1,4 @@
-<!-- last-verified: 455c753b 2026-10-01 -->
+<!-- last-verified: ba4b78d0 2026-10-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -175,7 +175,10 @@ registries, so they **hand-duplicate** two slices of the card vocabulary — and
 hand-maintained copies rot. Two **card/panel** shadows exist:
 
 - `apply_response.PANEL_TO_SIDECAR` — the panel → `(file, list-key)` map. The
-  refactor had to hand-edit it (`quotations` → `reports`).
+  refactor had to hand-edit it (`quotations` → `reports`). **No longer a hand
+  copy** (task 885): it, `EXTRA_CARD_SIDECARS`, `_ANCHORED_PANEL_CARDS` and the
+  `--body` field buckets are LOADED from `editor/scripts/card_tables.json`, pinned
+  to the app SSOTs by `card-tables-manifest.test.ts`.
 - `create_card.ALL_KINDS` — the create-able kinds. **Reconciled** by the create-card
   fan-out to the real set (`footnote` `citation` `note` `todo` `report`
   `report-request` `example`; `quotation`/`annotation` dropped) and **pinned** by a
