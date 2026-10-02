@@ -110,14 +110,41 @@ export type CardMorphConverter = (card: unknown) => unknown;
 
 const morphConverters: Partial<Record<CardKind, CardMorphConverter>> = {};
 
-/** Install a kind's morph data transform (called from `cards/morphs`). A kind
- *  with `morph === null` silently ignores a stray registration. */
+/** A per-RECORD morph gate: may THIS card take its kind's morph? Untyped for
+ *  the same reason as the converter (the record shapes live in `@/lib/types`). */
+export type CardMorphGate = (card: unknown) => boolean;
+
+const morphGates: Partial<Record<CardKind, CardMorphGate>> = {};
+
+/** Install a kind's morph data transform (called from `cards/morphs`), and —
+ *  optionally — its per-record GATE. The registry says a kind CAN morph; the
+ *  gate says whether THIS record may (a Mode-A note has no range for a
+ *  highlight to tint; a settled suggestion's outcome is a fact a comment cannot
+ *  hold — task 898). Registered beside the converter because the gate is the
+ *  converter's own precondition. A kind with `morph === null` silently ignores
+ *  a stray registration. */
 export function registerCardMorph(
   kind: CardKind,
   convert: CardMorphConverter,
+  gate?: CardMorphGate,
 ): void {
   if (CARD_REGISTRY[kind].morph == null) return;
   morphConverters[kind] = convert;
+  if (gate) morphGates[kind] = gate;
+  else delete morphGates[kind];
+}
+
+/** May THIS card take its kind's morph? False for a non-morphing kind or a
+ *  record its gate refuses. A missing record (`undefined`/`null`) answers for
+ *  the KIND alone — the caller has nothing to refuse on. The one predicate the
+ *  chevron's option list (`morphOptionsFor(kind, card)`) and the lifecycle
+ *  executor both read, so a morph the menu would never offer is also one the
+ *  chokepoint will not perform (task 898). */
+export function canMorphCard(kind: CardKind, card?: unknown): boolean {
+  if (CARD_REGISTRY[kind].morph == null) return false;
+  if (card == null) return true;
+  const gate = morphGates[kind];
+  return gate ? gate(card) : true;
 }
 
 /** The registered morph transform for `kind`, or `null` if none. */
@@ -151,11 +178,16 @@ export function morphCarriesAiRequest(fromKind: CardKind): boolean {
  *  holds exactly a pair, so the two agreed by coincidence. A third kind added
  *  to a morphing panel is reachable from neither end and is simply not offered.
  *
- *  Returns a single-element list for a non-morphing kind, which `CardKindHeader`
- *  renders as the plain label (`options.length <= 1` → no dropdown). */
-export function morphOptionsFor(kind: CardKind): CardKind[] {
+ *  Returns a single-element list for a non-morphing kind — or, given the
+ *  `card`, a record its morph gate refuses (`canMorphCard`) — which
+ *  `CardKindHeader` renders as the plain label (`options.length <= 1` → no
+ *  dropdown). */
+export function morphOptionsFor(kind: CardKind, card?: unknown): CardKind[] {
   const to = CARD_REGISTRY[kind].morph?.to;
   if (to == null || to === kind) return [kind];
+  // A record its gate refuses offers no morph — the chevron renders the plain
+  // label (task 898: a settled suggestion cannot round-trip back to pending).
+  if (!canMorphCard(kind, card)) return [kind];
   const panel = CARD_REGISTRY[kind].panel;
   const order = (Object.keys(CARD_REGISTRY) as CardKind[]).filter(
     (k) => CARD_REGISTRY[k].panel === panel,
@@ -849,7 +881,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    morph: { to: "cutter-comment", lossy: false, drops: [] },
+    // suggestion → comment drops the AUTHOR byline: the comment shape has no
+    // `author`, so an AI-drafted suggestion would become an unattributed
+    // comment (task 898 — the report pair already declares the same token;
+    // `byline` is held only by an AI card, so a human suggestion still morphs
+    // without a confirm). Its STATUS is not a drop: a settled (accepted /
+    // rejected) suggestion is refused by the morph GATE instead
+    // (`canMorphSuggestion`), so its outcome cannot round-trip into a fresh
+    // pending card. Its superseded AI draft rides the body (the converter).
+    morph: { to: "cutter-comment", lossy: true, drops: ["byline"] },
     bodyClass: "sans",
     bodySchema: "card",
     stackable: true,
@@ -877,7 +917,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    morph: { to: "revision-comment", lossy: false, drops: [] },
+    // suggestion → comment drops the AUTHOR byline: the comment shape has no
+    // `author`, so an AI-drafted suggestion would become an unattributed
+    // comment (task 898 — the report pair already declares the same token;
+    // `byline` is held only by an AI card, so a human suggestion still morphs
+    // without a confirm). Its STATUS is not a drop: a settled (accepted /
+    // rejected) suggestion is refused by the morph GATE instead
+    // (`canMorphSuggestion`), so its outcome cannot round-trip into a fresh
+    // pending card. Its superseded AI draft rides the body (the converter).
+    morph: { to: "revision-comment", lossy: true, drops: ["byline"] },
     bodyClass: "sans",
     bodySchema: "card",
     stackable: true,

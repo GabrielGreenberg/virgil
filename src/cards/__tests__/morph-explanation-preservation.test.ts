@@ -57,14 +57,15 @@ function suggestionCard(
 }
 
 describe("morph explanation preservation — suggestion → comment keeps the explanation (task 199)", () => {
-  it("sanity: both suggestion kinds still declare `explanation` as user content and a lossless morph", () => {
+  it("sanity: both suggestion kinds still declare `explanation` as user content, and drop only the byline", () => {
     for (const kind of suggestionKinds) {
       const entry = CARD_REGISTRY[kind];
       expect(entry.content?.textFields).toContain("explanation");
-      // The salvage keeps the declaration honest: no drops, not lossy.
+      // The salvage keeps every text field; the one thing a comment cannot
+      // hold is the AI author byline, declared (task 898).
       expect(entry.morph).not.toBeNull();
-      expect(entry.morph!.lossy).toBe(false);
-      expect(entry.morph!.drops).toHaveLength(0);
+      expect(entry.morph!.lossy).toBe(true);
+      expect(entry.morph!.drops).toEqual(["byline"]);
     }
   });
 
