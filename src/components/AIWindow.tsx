@@ -1076,7 +1076,20 @@ export default function AIWindow({
                   {requests.length === 0 && (
                     <div className="text-center text-xs text-ink-muted py-8">
                       {panelAiRequestsLoadError
-                        ? "Virgil couldn't read this paper's request list, so this may not be everything. Reopen the paper to try again."
+                        ? (
+                          // The retry is the window's own Refresh (task 906):
+                          // `refreshAll` re-runs the inbox's authoritative read.
+                          <>
+                            Virgil couldn&apos;t read this paper&apos;s request list, so this may not be everything.{" "}
+                            <button
+                              type="button"
+                              onClick={() => refreshAll()}
+                              className="font-medium text-ink-subtle hover:text-ink-body underline transition-colors focus-ring"
+                            >
+                              Try again
+                            </button>
+                          </>
+                        )
                         : !panelAiRequestsLoaded
                           ? "Loading requests…"
                           : "No requests yet. Use the form above to start one."}

@@ -59,42 +59,10 @@ export function useAiRequests(docId: string | null) {
   // hint — it is replayed the moment `inFlight` drains. See the re-hydrate
   // effect for why "skip and wait for the next poll" loses the change forever.
   const rehydratePending = useRef(false);
-  // The live re-hydrate for the current docId, published by the effect below so
-  // the mutation drain can replay a deferred signal. Null while no doc is open.
-  const rehydrateRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!docId) { setState(EMPTY); return; }
-    readAiRequests(docId)
-      .then((requests) => {
-        if (cancelled) return;
-        setState({ requests });
-        setLoadErrorDocId(null);
-        setLoadedDocId(docId);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        // The read terminated but FAILED. Two things follow, and until task 679
-        // this branch did NEITHER: flag it, so the automatic card migration
-        // stands down rather than minting cards from an empty list and
-        // persisting that over three sidecars; and SAY so, on the same channel
-        // this hook's WRITE path already speaks from (task 630). The same
-        // document fact — "the inbox you are looking at is not the inbox on
-        // disk" — was voiced in one direction and swallowed in the other.
-        setLoadErrorDocId(docId);
-        setLoadedDocId(docId);
-        recordSidecarRefusal({
-          docId,
-          what: "AI request list",
-          reason: "unreadable",
-          detail: err instanceof Error ? err.message : undefined,
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [docId]);
+  // The live READ DOOR for the current docId, published by the effect below so
+  // the mutation drain can replay a deferred signal and `refresh()` can retry a
+  // failed read. Null while no doc is open.
+  const readRef = useRef<(() => void) | null>(null);
 
   // Stay in sync with the OTHER in-window writer of `ai-requests.json`. The
   // card-flag bridge (`bridgeCardAiRequestFlag`) mutates the file through the
@@ -105,14 +73,30 @@ export function useAiRequests(docId: string | null) {
   // the inbox and the on-disk queue can't diverge. Fires only on a real
   // mutation (never on a keystroke), so it's exempt from the keystroke-sanctity
   // list.
+  //
+  // A publish is AUTHORITATIVE (task 906): `mutateAiRequests` publishes only a
+  // `written` result, computed by `mutateSidecar` from a DIRECT disk read taken
+  // inside the doc lock, so it is exactly as true as a fresh read — and it
+  // clears `loadError` the same way the read door does.
   useEffect(() => {
     if (!docId) return;
     return subscribeAiRequests(docId, (requests) => {
       setState({ requests });
+      setLoadErrorDocId(null);
     });
   }, [docId]);
 
-  // ── LIVE external-change re-hydrate (task 220) ────────────────────────────
+  // ── ONE authoritative READ door (task 906) ────────────────────────────────
+  // The mount read, the external-change re-hydrate (task 220) and the user's
+  // Refresh are the SAME act — "adopt what the file says now" — and they go
+  // through one function, `readAuthoritative`, which owns BOTH halves of the
+  // answer: the list and the `loadError` flag. Success adopts the list and
+  // CLEARS the flag; failure SETS it and voices one refusal. Before task 906
+  // these were three hand copies, and only the mount read cleared the flag, so
+  // one transient failure left `loadError` true for the life of the doc — the
+  // card migration shut over a known-good inbox, and the AI window told the
+  // user to reopen the paper under a Refresh button that could not retry it.
+  //
   // The `publishAiRequests` bus above is an in-PROCESS module Map, so it reaches
   // only this window. Two writers it cannot reach touch the same file: a PEER
   // WINDOW on the same doc (multi-window is first-class — `openNewVirgilWindow`)
@@ -143,10 +127,10 @@ export function useAiRequests(docId: string | null) {
   // KEYSTROKE SANCTITY: a `window` listener, not an `editor.on(...)` subscriber.
   // It fires on a wall-clock poll, never per keystroke.
   useEffect(() => {
-    if (!docId) return;
+    if (!docId) { setState(EMPTY); return; }
     let cancelled = false;
 
-    const rehydrate = () => {
+    const readAuthoritative = () => {
       rehydratePending.current = false;
       readAiRequests(docId)
         .then((requests) => {
@@ -154,23 +138,42 @@ export function useAiRequests(docId: string | null) {
           // Re-check after the await: a mutation may have started while the read
           // was in flight, and its published result — computed from a base at
           // least as fresh as this one — must win. Re-arm so the drain replays.
+          // (`loaded` stays false meanwhile on a first read: the drain's replay
+          // is what flips it, over a list nothing is about to supersede.)
           if (inFlight.current > 0) {
             rehydratePending.current = true;
             return;
           }
           setState({ requests });
+          setLoadErrorDocId(null);
+          setLoadedDocId(docId);
         })
-        .catch(() => {
-          // Read failed (transient IO, or a corrupt/truncated file). Leave state
-          // untouched and re-arm, so the next mutation's drain retries. Stated
-          // residual: with no further mutation and no further external write,
-          // this window stays on its last good list until the doc is reopened —
-          // better than adopting a blank inbox, and NOT a claim that the watcher
-          // will try again, because it will not.
+        .catch((err) => {
+          if (cancelled) return;
+          // The read terminated but FAILED (transient IO, or a corrupt/truncated
+          // file). Flag it, so the automatic card migration stands down rather
+          // than minting cards from a list that is not the one on disk (task
+          // 679); and SAY so, on the same channel this hook's WRITE path speaks
+          // from (task 630). The list itself is left untouched — EMPTY on a
+          // first read, the last good list on a later one — never blanked.
+          //
+          // Re-arm, so the next mutation's drain retries; the user's Refresh
+          // (`refresh()` below) retries too. Stated residual: with neither, this
+          // window stays flagged until the doc is reopened — NOT a claim that
+          // the watcher will try again, because it will not.
           rehydratePending.current = true;
+          setLoadErrorDocId(docId);
+          setLoadedDocId(docId);
+          recordSidecarRefusal({
+            docId,
+            what: "AI request list",
+            reason: "unreadable",
+            detail: err instanceof Error ? err.message : undefined,
+          });
         });
     };
-    rehydrateRef.current = rehydrate;
+    readRef.current = readAuthoritative;
+    readAuthoritative();
 
     const onSidecarChanged = (e: Event) => {
       const detail = (e as CustomEvent<SidecarChangedDetail>).detail;
@@ -187,17 +190,31 @@ export function useAiRequests(docId: string | null) {
         rehydratePending.current = true;
         return;
       }
-      rehydrate();
+      readAuthoritative();
     };
 
     window.addEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
     return () => {
       cancelled = true;
-      rehydrateRef.current = null;
+      readRef.current = null;
       rehydratePending.current = false;
       window.removeEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
     };
   }, [docId]);
+
+  /**
+   * Re-run the authoritative read on demand — the AI window's Refresh (task
+   * 906). The same door the mount read and the external-change re-hydrate go
+   * through, under the same DIRTY GUARD: with a mutation in flight it defers
+   * (and remembers) rather than adopting a base that mutation supersedes.
+   */
+  const refresh = useCallback(() => {
+    if (inFlight.current > 0) {
+      rehydratePending.current = true;
+      return;
+    }
+    readRef.current?.();
+  }, []);
 
   /**
    * Apply one mutation to the inbox.
@@ -283,7 +300,7 @@ export function useAiRequests(docId: string | null) {
           // nothing else would have carried the peer's change (or undone the
           // phantom row).
           if (inFlight.current === 0 && rehydratePending.current) {
-            rehydrateRef.current?.();
+            readRef.current?.();
           }
         });
     },
@@ -400,6 +417,7 @@ export function useAiRequests(docId: string | null) {
       updateRequestText,
       withdrawRequest,
       relinkRequests,
+      refresh,
     }),
     [
       state.requests,
@@ -410,6 +428,7 @@ export function useAiRequests(docId: string | null) {
       updateRequestText,
       withdrawRequest,
       relinkRequests,
+      refresh,
     ],
   );
 }
