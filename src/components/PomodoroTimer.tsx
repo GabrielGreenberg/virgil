@@ -121,7 +121,7 @@ function PomodoroToggleButtonImpl() {
   return (
     <button
       type="button"
-      onClick={togglePomodoroOpen}
+      onClick={() => togglePomodoroOpen()}
       className="topbarbtn relative"
       aria-pressed={open}
       {...iconHint({ label: "Timer" })}
@@ -248,9 +248,11 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
         {running ? <PauseIcon /> : <PlayIcon />}
       </button>
 
-      {/* elapsed / total. A stopped clock offers the preset cycle; a running
-          one is text, so the control can never discard a live run. */}
-      {running ? (
+      {/* elapsed / total. Only a clock with nothing in progress (idle / done)
+          offers the preset cycle; a running OR PAUSED one is text, so the
+          control can never discard a live run (task 905 — a pause is a run
+          the user means to resume). */}
+      {running || status === "paused" ? (
         <span className="tabular-nums" data-pomodoro-clock>
           {formatPomodoroClock(elapsed, "down")} / {formatPomodoroClock(durationMs)}
         </span>
@@ -293,7 +295,7 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
       <button
         data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
         type="button"
-        onClick={dismissPomodoro}
+        onClick={() => dismissPomodoro()}
         className={`${GHOST} focus-ring w-4 h-4`}
         {...iconHint({ label: "Dismiss timer", hint: "Dismiss — stops the timer" })}
       >
