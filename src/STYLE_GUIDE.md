@@ -3196,9 +3196,10 @@ Two vertical policies, branched on `meta.chromeAnchor`:
 - **`text-top`** (paragraphs, headings, titleField, blockquotes,
   codeBlocks, lists, listItems, exampleBlock, exampleItems,
   linkedRange) — the handle glyph's vertical center is pinned to the
-  **optical (cap-band) center** of the block's first visual text line:
-  `firstLineRect.top + capTopOffset + capHeight / 2` (see
-  [src/lib/text-metrics.ts](src/lib/text-metrics.ts)). Resolved through the
+  **optical (cap-band) center** of the block's first visual text line —
+  `BlockFrame.opticalCenterY`, i.e. `opticalCenterY(lineTop, target, cs)`
+  from [src/lib/text-metrics.ts](src/lib/text-metrics.ts), the ONE vertical
+  door (it exports no per-term cap-top / cap-height read). Resolved through the
   canonical [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts)
   `resolveBlockFrame()` so every affordance on a row reads the same numbers.
   A **container** (`bulletList` / `orderedList` / `exampleBlock`) resolves
@@ -3238,8 +3239,9 @@ both axes. Tune the visual globally by editing the `--margin-handle-gap` /
 
 **Optical-center anchoring (generalizable chrome rule).** Any margin
 affordance that labels a line of text — a grab handle or a marker —
-centers its glyph on the text's *optical center*
-(`capTopOffset + capHeight / 2` below the line-box top), NOT on the line-box
+centers its glyph on the text's *optical center* (`capBandCenterOffset` below
+the line-box top — the cap-top offset plus half the cap height, from one
+font-metric read), NOT on the line-box
 top or the glyph cap-top. Anchoring to the line-box top (or `flex-start`
 from it) leaves the affordance sitting low by ~half a cap-height, and the
 error grows with font size. Read the Y from

@@ -1,14 +1,10 @@
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __fontReadyPendingCount,
   __textWidthCacheSize,
   capBandCenterOffset,
-  capHeight,
-  capTopOffset,
   clearCapTopCache,
   computeCapTopOffset,
   measureTextWidth,
@@ -209,7 +205,10 @@ describe("resolveInlineContextElement", () => {
   });
 });
 
-describe("capTopOffset (with stubbed canvas)", () => {
+describe("font-metric measurement + cache, read through capBandCenterOffset (with stubbed canvas)", () => {
+  // The per-term doors (`capTopOffset` / `capHeight`) were deleted (task 920);
+  // the measurement + its cache are exercised through the ONE exported vertical
+  // primitive. With the stub's capHeight 11, center = capTop + 5.5.
   let originalGetContext: typeof HTMLCanvasElement.prototype.getContext;
   let measureTextSpy: ReturnType<typeof vi.fn>;
 
@@ -241,8 +240,8 @@ describe("capTopOffset (with stubbed canvas)", () => {
     el.style.lineHeight = "24px";
     document.body.appendChild(el);
     try {
-      // (24 - 16)/2 + (13 - 11) = 4 + 2 = 6
-      expect(capTopOffset(el)).toBeCloseTo(6, 5);
+      // capTop = (24 - 16)/2 + (13 - 11) = 4 + 2 = 6 ; + 11/2 = 11.5
+      expect(capBandCenterOffset(el)).toBeCloseTo(11.5, 5);
     } finally {
       el.remove();
     }
@@ -259,8 +258,8 @@ describe("capTopOffset (with stubbed canvas)", () => {
       document.body.appendChild(el);
     }
     try {
-      capTopOffset(a);
-      capTopOffset(b);
+      capBandCenterOffset(a);
+      capBandCenterOffset(b);
       expect(measureTextSpy).toHaveBeenCalledTimes(1);
     } finally {
       a.remove();
@@ -282,8 +281,8 @@ describe("capTopOffset (with stubbed canvas)", () => {
     document.body.appendChild(a);
     document.body.appendChild(b);
     try {
-      capTopOffset(a);
-      capTopOffset(b);
+      capBandCenterOffset(a);
+      capBandCenterOffset(b);
       expect(measureTextSpy).toHaveBeenCalledTimes(2);
     } finally {
       a.remove();
@@ -317,15 +316,15 @@ describe("capTopOffset (with stubbed canvas)", () => {
     }
     italic.style.fontStyle = "italic"; // only difference
     try {
-      // offset = (24 - 16)/2 + (ascent 13 - capHeight)
-      //   normal: 4 + (13 - 11) = 6 ; italic: 4 + (13 - 12) = 5
-      const normalOffset = capTopOffset(normal);
-      const italicOffset = capTopOffset(italic);
+      // center = (24 - 16)/2 + (ascent 13 - capHeight) + capHeight/2
+      //   normal: 4 + (13 - 11) + 5.5 = 11.5 ; italic: 4 + (13 - 12) + 6 = 11
+      const normalOffset = capBandCenterOffset(normal);
+      const italicOffset = capBandCenterOffset(italic);
       // Two measurements — the italic element MISSED the (normal) cache entry.
       expect(measureTextSpy).toHaveBeenCalledTimes(2);
       // And it got its OWN metrics, not the normal sibling's.
-      expect(normalOffset).toBeCloseTo(6, 5);
-      expect(italicOffset).toBeCloseTo(5, 5);
+      expect(normalOffset).toBeCloseTo(11.5, 5);
+      expect(italicOffset).toBeCloseTo(11, 5);
       expect(italicOffset).not.toBeCloseTo(normalOffset, 5);
     } finally {
       normal.remove();
@@ -344,8 +343,8 @@ describe("capTopOffset (with stubbed canvas)", () => {
       // lineHeightPx = 16 * 1.2 = 19.2
       // halfLeading = (19.2 - 16)/2 = 1.6
       // ascent - capHeight = 13 - 11 = 2
-      // offset = 1.6 + 2 = 3.6
-      expect(capTopOffset(el)).toBeCloseTo(3.6, 4);
+      // capTop = 1.6 + 2 = 3.6 ; + 11/2 = 9.1
+      expect(capBandCenterOffset(el)).toBeCloseTo(9.1, 4);
     } finally {
       el.remove();
     }
@@ -360,7 +359,7 @@ describe("capTopOffset (with stubbed canvas)", () => {
     el.style.lineHeight = "24px";
     document.body.appendChild(el);
     try {
-      expect(capTopOffset(el)).toBe(0);
+      expect(capBandCenterOffset(el)).toBe(0);
     } finally {
       el.remove();
     }
@@ -399,14 +398,15 @@ describe("capBandCenterOffset + opticalCenterY (with stubbed canvas)", () => {
     return el;
   }
 
-  it("capBandCenterOffset = capTopOffset + capHeight/2 (the ONE vertical primitive)", () => {
+  it("capBandCenterOffset = computeCapTopOffset(metrics) + capHeight/2 (the ONE vertical primitive)", () => {
     const el = attach();
     try {
-      // capTopOffset = (24-16)/2 + (13-11) = 6 ; capHeight = 11 → 6 + 5.5 = 11.5
+      // capTop = (24-16)/2 + (13-11) = 6 ; capHeight = 11 → 6 + 5.5 = 11.5
       expect(capBandCenterOffset(el)).toBeCloseTo(11.5, 5);
-      // And it equals the two terms composed — the drift-proof guarantee.
+      // And it equals the pure oracle composed over the same metrics.
       expect(capBandCenterOffset(el)).toBeCloseTo(
-        capTopOffset(el) + capHeight(el) / 2,
+        computeCapTopOffset({ capHeight: 11, ascent: 13, descent: 3, lineHeightPx: 24 }) +
+          11 / 2,
         5,
       );
     } finally {
@@ -598,7 +598,7 @@ describe("listItem optical center reads the inner <p>'s metrics, not the <li>'s 
   it("resolves to the <p>, so the cap-band center uses the <p>'s line-height", () => {
     // The `<li>` inherits base leading (16px); its inner `<p>` carries prose
     // leading (32px). The two produce DIFFERENT optical centers — the bug was
-    // measuring the `<li>`. capBandCenterOffset = capTopOffset + capHeight/2:
+    // measuring the `<li>`. capBandCenterOffset = capTop + capHeight/2:
     //   on <li> (lh 16): (16-16)/2 + (13-11) = 2 ; + 5.5 = 7.5
     //   on <p>  (lh 32): (32-16)/2 + (13-11) = 10 ; + 5.5 = 15.5
     const li = document.createElement("li");
@@ -645,22 +645,21 @@ describe("resolveLineHeightPx", () => {
   });
 });
 
-describe("optical-center SSOT — no inlined copy of the primitive (task 2026-07-22-215)", () => {
-  // The vertical cap-band-center math lives in ONE place (text-metrics.ts). No
-  // consumer may re-inline `capTopOffset(...) + capHeight(...) / 2` — that is the
-  // drift the primitive extraction retired. Grep the three former copy sites.
-  const INLINED = /capTopOffset\([^)]*\)\s*\+\s*capHeight\([^)]*\)\s*\/\s*2/;
-  const consumers = [
-    "../../text-objects/block-frame.ts",
-    "../../hooks/useMarginaliaRegistry.ts",
-    "../../text-objects/TextObjectGrabHandle.tsx",
-  ];
-  for (const rel of consumers) {
-    it(`${rel} composes the primitive, no inlined capTopOffset + capHeight/2`, () => {
-      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
-      expect(INLINED.test(src)).toBe(false);
-    });
-  }
+describe("optical-center SSOT — the vertical axis has ONE door (tasks 215, 920)", () => {
+  // The cap-band-center math lives in ONE place. Task 215 retired three inlined
+  // `capTopOffset(...) + capHeight(...) / 2` copies; task 920 then deleted the
+  // two per-term doors themselves, so the re-inlining is unrepresentable rather
+  // than grep-forbidden. Pin that no per-term door comes back.
+  it("text-metrics exports no cap-top / cap-height door besides capBandCenterOffset / opticalCenterY", async () => {
+    const mod = await import("../text-metrics");
+    const vertical = Object.keys(mod).filter((k) => /cap|optical/i.test(k)).sort();
+    expect(vertical).toEqual([
+      "capBandCenterOffset",
+      "clearCapTopCache",
+      "computeCapTopOffset",
+      "opticalCenterY",
+    ]);
+  });
 });
 
 describe("onFontReady", () => {

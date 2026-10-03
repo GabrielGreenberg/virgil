@@ -76,11 +76,6 @@ function snapshot(el: HTMLElement) {
   return {
     el: f.el,
     target: f.target,
-    firstLineRect: {
-      left: f.firstLineRect.left,
-      top: f.firstLineRect.top,
-      width: f.firstLineRect.width,
-    },
     opticalCenterY: f.opticalCenterY,
     contentLeft: f.contentLeft,
     contentWidth: f.contentWidth,
@@ -110,7 +105,6 @@ describe("resolveBlockFrame — markerless prose (the baseline)", () => {
     expect(snapshot(block)).toEqual({
       el: block,
       target: block, // a bare <p> matches no wrapper branch: it IS its own line
-      firstLineRect: { left: LEFT, top: TOP, width: WIDTH },
       opticalCenterY: TOP + capBandCenterOffsetModel(PROSE),
       contentLeft: LEFT,
       contentWidth: WIDTH,
@@ -141,11 +135,6 @@ describe("resolveBlockFrame — heading (the wrapper/target split)", () => {
       el: block,
       // The `.heading-wrapper` hosts the section pod; the <h2> carries the line.
       target: heading,
-      firstLineRect: {
-        left: LEFT + FIXTURE.targetLeftInset,
-        top: TOP + FIXTURE.targetTopInset,
-        width: WIDTH - FIXTURE.targetLeftInset,
-      },
       opticalCenterY:
         TOP + FIXTURE.targetTopInset + capBandCenterOffsetModel(headingFont),
       contentLeft: LEFT + FIXTURE.targetLeftInset,
@@ -171,7 +160,6 @@ describe("resolveBlockFrame — source pods (target IS the block)", () => {
         // The `[data-uuid]` node DOM is the `.react-renderer` wrapper, which
         // matches no descent branch — so the frame's target is the block.
         target: block,
-        firstLineRect: { left: LEFT, top: TOP, width: WIDTH },
         opticalCenterY: TOP + capBandCenterOffsetModel(PROSE),
         contentLeft: LEFT,
         contentWidth: WIDTH,
@@ -193,11 +181,6 @@ describe("resolveBlockFrame — list item (the measured marker band)", () => {
     expect(snapshot(items[0])).toEqual({
       el: items[0],
       target: items[0].querySelector("p"),
-      firstLineRect: {
-        left: itemLeft,
-        top: TOP + FIXTURE.targetTopInset,
-        width: WIDTH - BAND,
-      },
       opticalCenterY:
         TOP + FIXTURE.targetTopInset + capBandCenterOffsetModel(PROSE),
       contentLeft: itemLeft,
@@ -251,11 +234,6 @@ describe("resolveBlockFrame — the two list SHAPES (task 659)", () => {
     expect(snapshot(block)).toEqual({
       el: list,
       target: list.querySelector("p"),
-      firstLineRect: {
-        left: itemLeft,
-        top: TOP + FIXTURE.targetTopInset,
-        width: WIDTH - BAND,
-      },
       opticalCenterY:
         TOP + FIXTURE.targetTopInset + capBandCenterOffsetModel(PROSE),
       contentLeft: itemLeft,
@@ -283,11 +261,6 @@ describe("resolveBlockFrame — the two list SHAPES (task 659)", () => {
     expect(snapshot(block)).toEqual({
       el: block,
       target: list.querySelector("p"),
-      firstLineRect: {
-        left: itemLeft,
-        top: TOP + FIXTURE.targetTopInset,
-        width: WIDTH - BAND,
-      },
       opticalCenterY:
         TOP + FIXTURE.targetTopInset + capBandCenterOffsetModel(PROSE),
       contentLeft: itemLeft,
@@ -369,11 +342,6 @@ describe("resolveBlockFrame — expex (a DOM marker, not a pseudo)", () => {
     expect(snapshot(block)).toEqual({
       el: block,
       target: paragraph, // `.expex-item` → `.expex-item-body p`
-      firstLineRect: {
-        left: bodyLeft,
-        top: TOP + FIXTURE.targetTopInset,
-        width: WIDTH - FIXTURE.targetLeftInset,
-      },
       opticalCenterY:
         TOP + FIXTURE.targetTopInset + capBandCenterOffsetModel(PROSE),
       contentLeft: bodyLeft,
@@ -398,11 +366,6 @@ describe("resolveBlockFrame — expex (a DOM marker, not a pseudo)", () => {
       // Container: the descent recurses into the first `.expex-item` and on to
       // that item's inner `<p>` — never the `(n)` chip's `0.95em` metrics.
       target: items[0].paragraph,
-      firstLineRect: {
-        left: bodyLeft,
-        top: TOP + FIXTURE.targetTopInset,
-        width: WIDTH - FIXTURE.targetLeftInset * 3,
-      },
       opticalCenterY:
         TOP + FIXTURE.targetTopInset + capBandCenterOffsetModel(PROSE),
       contentLeft: bodyLeft,
@@ -425,7 +388,7 @@ describe("BlockFrame.contentRight (chip 4b — the figure chrome's anchor)", () 
     const f = resolveBlockFrame(block);
     expect(f.contentRight).toBe(520);
     expect(f.contentRight).toBe(f.contentLeft + f.contentWidth);
-    expect(f.contentRight).toBe(f.firstLineRect.right);
+    expect(f.contentRight).toBe(resolveContentEdges(block).firstLineRect.right);
   });
 
   it("follows the box handed in — the figure HUG box, not its full-width host", () => {
