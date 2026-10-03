@@ -353,7 +353,12 @@ export interface StructureDiff {
    *  content), so the structure index must fold the NEW pos in — exactly as
    *  `changedFootnotes`/`changedCitations` do for atom moves. Without this,
    *  `structure.blocks.get(movedUuid).pos` is wrong after a reorder and any
-   *  position-keyed resolve (focus band) reads the wrong index. */
+   *  position-keyed resolve (focus band) reads the wrong index. Also carries
+   *  a same-uuid, same-pos TYPE change (a heading demoted to a paragraph by
+   *  `setNode`, which keeps the uuid — task 921) so the index's `typeName` is
+   *  refreshed; that case wakes neither `blockOrderChanged` nor
+   *  `blockParTitleChanged`, and the kind-keyed sub-views (headings, figures,
+   *  examples) report the kind change themselves. */
   changedBlocks: readonly BlockEntry[];
   /** True iff a top-level block was REORDERED with its UUID preserved (i.e.
    *  `changedBlocks` is non-empty): no block identity entered or left, but
