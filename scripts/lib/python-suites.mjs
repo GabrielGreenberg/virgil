@@ -33,7 +33,8 @@
 // this file exists to stop.
 
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -146,6 +147,34 @@ export function readTally(output) {
 }
 
 /**
+ * The environment every suite runs in — HERMETIC about the user's library
+ * (task 913). The library door (`_library_root.py` → `library_path.py`) falls
+ * through `VIRGIL_LIBRARY_ROOT`, `~/.config/virgil/library-path.json` and
+ * `~/Virgil-Library`, so a suite whose subprocess resolves the library by
+ * `cwd=` alone silently reached the developer's REAL library: green on the
+ * Mac (by coincidence), red on CI, and a test free to write the user's files.
+ * So HOME is a fresh empty directory and the env var is unset — what CI sees.
+ * `PYTHONUSERBASE` is pinned to the real home's user site first, since on
+ * macOS a `pip install --user` package (e.g. `requests`) lives under HOME and
+ * moving HOME would otherwise hide it.
+ */
+let sandboxEnv = null;
+export function suiteEnv() {
+  if (sandboxEnv) return sandboxEnv;
+  const env = { ...process.env };
+  delete env.VIRGIL_LIBRARY_ROOT;
+  if (!env.PYTHONUSERBASE) {
+    const ub = spawnSync("python3", ["-m", "site", "--user-base"], {
+      encoding: "utf8",
+    });
+    if (ub.status === 0 && ub.stdout.trim()) env.PYTHONUSERBASE = ub.stdout.trim();
+  }
+  env.HOME = mkdtempSync(path.join(tmpdir(), "py-suite-home-"));
+  sandboxEnv = env;
+  return env;
+}
+
+/**
  * Run one suite. Returns `{ file, ok, reason, tally, output }`; `reason`
  * names why a non-ok suite failed.
  */
@@ -155,6 +184,7 @@ export function runSuite(file, repoRoot = REPO_ROOT) {
   if (acceptsStandalone(readFileSync(abs, "utf8"))) args.push("--standalone");
   const r = spawnSync("python3", args, {
     cwd: repoRoot,
+    env: suiteEnv(),
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
     timeout: 300_000,
