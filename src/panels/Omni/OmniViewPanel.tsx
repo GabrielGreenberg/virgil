@@ -944,9 +944,20 @@ function OmniViewPanel({
       {bulkPendingChanges && bulkPendingChanges.count > 0 && (
         <OmniBulkPendingHeader bulk={bulkPendingChanges} />
       )}
+      {/* `enabledCategories` is empty for two different reasons, and the
+          sentence must name the right one (task 918): nothing is PLACED here
+          (the filter menu has no rows to offer — the way in is a placement
+          drag), or everything placed here is HIDDEN (the filter menu lists
+          it). Placement is read from `placedCategories`, never inferred from
+          the fused Set. */}
       {visibleItems.length === 0 && enabledCategories.size === 0 && (
-        <div className="text-center text-ink-muted text-xs px-3 py-6">
-          No item types selected — use the filter menu at the bottom of the strip.
+        <div
+          className="text-center text-ink-muted text-xs px-3 py-6"
+          data-omni-zero-state={placedCategories.size === 0 ? "no-panels" : "all-hidden"}
+        >
+          {placedCategories.size === 0
+            ? "No panels on this side — drag a panel’s button here from the other strip."
+            : "No item types selected — use the filter menu at the bottom of the strip."}
         </div>
       )}
       {/* Anchored region: cards absolute-positioned at the pod's top,
