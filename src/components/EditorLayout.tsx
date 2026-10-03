@@ -1203,7 +1203,7 @@ export default function EditorLayout() {
   // Marker-click → omni card alignment. The user clicked at viewport Y
   // `clickY` and the corresponding omni card would lock there — IF the move
   // is necessary. `requestOmniCardPlacement` owns the whole resolution now
-  // (prefix-or-exact wrapper match, the `@N` row's own id, the screen → pod
+  // (prefix-or-exact wrapper match, the `@<pid>` row's own id, the screen → pod
   // → anchor-relative conversion, the one-frame retry for a column activated
   // this render) and, crucially, the necessity rule: a card that is already
   // fully visible and near enough to the click has NOTHING written for it —
@@ -2252,9 +2252,9 @@ export default function EditorLayout() {
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback(
     (key: string, targetY?: number): boolean => {
-      // Prefix-or-exact (the shared omni matcher): a fully-qualified `@N` key
-      // lands on its own row; a bare key still finds a multi-anchor card's
-      // first row (e.g. "float:card:note:id" → "float:card:note:id@0").
+      // Prefix-or-exact (the shared omni matcher): a fully-qualified `@<pid>`
+      // key lands on its own row; a bare key still finds a multi-anchor card's
+      // first row (e.g. "float:card:note:id" → "float:card:note:id@<pid>").
       const entry = findOmniEntry(key, "data-omni-entry");
       if (!entry) return false;
       requestAnimationFrame(() => {

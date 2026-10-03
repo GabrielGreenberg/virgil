@@ -98,7 +98,7 @@
  * Two non-replacement clears: the card LIFT / pop-out gesture
  * (`panel-primitives.tsx`), which unmounts the wrapper from the cascade — it
  * clears by the WRAPPER's id, the same identity `requestPin` stores, because a
- * multi-anchor card's row is `<key>@N` and `clearPin`'s identity guard
+ * multi-anchor card's row is `<key>@<pid>` and `clearPin`'s identity guard
  * declines a mismatch — and the owning panel's UNMOUNT (`releaseOwner`), so a
  * closed pane leaves no slot behind.
  */

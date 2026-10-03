@@ -3044,7 +3044,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       //
       // Clear by the WRAPPER's own id, never the bare `cardKey`: a pin
       // stores the id the wrapper carries, and a multi-anchor card's row
-      // is `<key>@N`. `clearPin`'s identity guard declines a mismatch, so
+      // is `<key>@<pid>`. `clearPin`'s identity guard declines a mismatch, so
       // the bare key silently cleared nothing for exactly those rows and
       // left the pin standing after the card had left the deck.
       //

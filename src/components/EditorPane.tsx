@@ -336,7 +336,7 @@ import {
 import {
   buildCardAnchorPass,
   buildMarginMarkerRows,
-  marginAnchorIndex,
+  marginAnchorRowPid,
   sortCardsByResolvedAnchor,
 } from "@/links/card-anchor-rows";
 import { marginSideForMarkerType, type PanelSideMap } from "@/lib/margin-side";
@@ -3115,7 +3115,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // reads the cardStore at click time, so the marker memo below doesn't
   // depend on selection state (a selection change re-renders no markers).
   const handleMarginMarkerClick = useCallback(
-    (ref: AnchoredCardRef, clickY?: number, anchorIndex?: number) => {
+    (ref: AnchoredCardRef, clickY?: number, anchorPid?: string) => {
       if (cardStoreInst.isSelected(ref)) {
         // Toggle-off: second click deselects across ALL marker kinds.
         cardStoreInst.clearSelection();
@@ -3128,14 +3128,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       cardStoreInst.select(ref);
       // T5 Pillar E-2 (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02): a multi-anchor
       // card draws ONE margin marker per anchored paragraph, and the omni
-      // surface draws one row per anchor keyed `…@<anchorIndex>`. Stamp the
-      // clicked marker's anchor index so the bridge can pin/jump to the RIGHT
-      // `@N` row instead of always the first. `undefined` for single-anchor
-      // cards (their omni row has no `@N` suffix — see each panel's omni
-      // builder, which only suffixes when `pids.length > 1`).
+      // surface draws one row per anchor keyed `…@<pid>` (task 916). Stamp the
+      // clicked marker's anchor pid so the bridge can pin/jump to the RIGHT
+      // row instead of always the first. `undefined` for single-anchor cards
+      // (their omni row has no suffix — `buildOmniAnchorRows` only suffixes
+      // when the card has more than one resolved row).
       window.dispatchEvent(
         new CustomEvent("virgil-linked-anchor-click", {
-          detail: { entityId: ref.id, kind: ref.kind, clickY, anchorIndex },
+          detail: { entityId: ref.id, kind: ref.kind, clickY, anchorPid },
         }),
       );
     },
@@ -3785,16 +3785,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     const resolveMarkerPids = (c: CardWithLinks) =>
       buildMarginMarkerRows(c, anchorPass.resolve);
 
-    // T5 Pillar E-2: the `@N` anchor index of a marker's paragraph — indexed
-    // over the RESOLVED rows, which is exactly the list each omni builder
-    // suffixes its per-anchor row with (`…@<i>`, suffixed ONLY when the card
-    // has >1 row). Indexing the raw STORED pids instead (pre-369) returned
-    // `undefined` for a paragraph the resolver had RECOVERED — so a marker
-    // click on such a card pinned no omni row at all. Returns `undefined` for
-    // a single-row card (its omni row carries no `@N` suffix) so the bridge
-    // keys the bare card popKey.
-    const anchorIndexFor = (c: CardWithLinks, pid: string): number | undefined =>
-      marginAnchorIndex(c, pid, anchorPass.resolve);
+    // T5 Pillar E-2 / task 916: the anchor pid a marker names its omni row by
+    // — the row's IDENTITY, not its position in the live rows (an index there
+    // re-bound a standing pin to a different paragraph when a sibling anchor
+    // died). Answered over the RESOLVED rows, so a RECOVERED paragraph is found
+    // too (task 369); `undefined` for a single-row card (its omni row carries
+    // no suffix) so the bridge keys the bare card popKey.
+    const anchorPidFor = (c: CardWithLinks, pid: string): string | undefined =>
+      marginAnchorRowPid(c, pid, anchorPass.resolve);
 
     // Notes
     for (const n of notesHook.notes) {
@@ -3809,7 +3807,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title: n.title || CARD_REGISTRY.note.label,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(n, pid)),
+            handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorPidFor(n, pid)),
           onDelete: () => {
             void handleMarginItemDelete("note", n.id, pid, cardPids, anchor?.anchorId);
           },
@@ -3830,7 +3828,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title: CARD_REGISTRY.archive.label,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(snippet, pid)),
+            handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorPidFor(snippet, pid)),
           onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid, cardPids); },
         });
       }
@@ -3873,7 +3871,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(r, pid)),
+            handleMarginMarkerClick({ kind: revKind, id: r.id }, clickY, anchorPidFor(r, pid)),
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, cardPids, anchorId);
           },
@@ -3903,7 +3901,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(c, pid)),
+            handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorPidFor(c, pid)),
           onDelete: () => {
             void handleMarginItemDelete("cut", c.id, pid, cardPids, cardAnchor?.anchorId);
           },
@@ -3928,7 +3926,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(c, pid)),
+            handleMarginMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorPidFor(c, pid)),
           onDelete: () => {
             void handleMarginItemDelete("report", c.id, pid, cardPids, cardAnchor?.anchorId);
           },
@@ -3950,7 +3948,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           muted: item.done,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(item, pid)),
+            handleMarginMarkerClick({ kind: "todo", id: item.id }, clickY, anchorPidFor(item, pid)),
           onDelete: () => { void handleMarginItemDelete("todo", item.id, pid, cardPids); },
         });
       }

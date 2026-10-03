@@ -52,12 +52,12 @@ export interface OpenForCardArgs {
 
 /**
  * The ONE prefix-or-exact omni matcher (T5 Pillar E-2). The omni item id is
- * `cardPopKey(kind,id)` for a single-anchor card and `…@<anchorIndex>` for each
+ * `cardPopKey(kind,id)` for a single-anchor card and `…@<pid>` for each
  * row of a MULTI-anchor card. A consumer keyed on the bare card key must still
  * find a multi-anchor card's first row, so we match `[attr="key"]` (exact —
- * covers a single-anchor row OR a key that already carries `@N`) OR
+ * covers a single-anchor row OR a key that already carries `@<pid>`) OR
  * `[attr^="key@"]` (prefix — the multi-anchor rows when only the bare key is
- * known). When the caller passes an `@N`-suffixed key the exact arm wins, so it
+ * known). When the caller passes an `@<pid>`-suffixed key the exact arm wins, so it
  * pins/scrolls the RIGHT row. Used by `openForCard`, `tryScrollOmniEntry`,
  * `alignOmniCardWithClick`, and the `virgil-card-jumped` handler — one grammar,
  * not four hand-rolled copies. `attr` is `data-omni-entry` (the card) or
@@ -68,8 +68,8 @@ export function omniEntrySelector(key: string, attr = "data-omni-entry"): string
 }
 
 /** Find the omni element for `key` (prefix-or-exact). Prefers the EXACT match
- *  (an `@N`-suffixed key or single-anchor row) over a prefix match, so a
- *  fully-qualified `@N` key lands on its own row, never the card's first.
+ *  (an `@<pid>`-suffixed key or single-anchor row) over a prefix match, so a
+ *  fully-qualified `@<pid>` key lands on its own row, never the card's first.
  *
  *  VISIBLE pane first (task 873): card keys are unique only per document
  *  (4-hex short ids), so the same key can be mounted in a hidden keep-alive

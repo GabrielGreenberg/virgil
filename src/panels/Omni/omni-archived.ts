@@ -33,32 +33,29 @@
  * a selection id changes).
  */
 import { parseFloatKey } from "@/floats/float-key";
+import { anchorRowBaseId } from "@/links/card-anchor-rows";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { isArchivable } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
 import type { OmniItem } from "@/panels/_shared/types";
 
-/** A multi-anchor card publishes one row per anchor, `…@<index>`
- *  (`buildOmniAnchorRows`). Digits-only and anchored at the END, so it can
- *  never eat an `@` that belongs to a card id. */
-const MULTI_ANCHOR_SUFFIX = /@\d+$/;
-
 /**
  * The `(kind, id)` an `OmniItem.id` names, or null when the id is not an
  * archivable card's row. Every builder's id is `cardPopKey(kind, id)` =
- * `float:card:<kind>:<id>`, optionally `@<n>`-suffixed for a multi-anchor row.
+ * `float:card:<kind>:<id>`, optionally `@<pid>`-suffixed for a multi-anchor row
+ * (`anchorRowId`; stripped here by its inverse, `anchorRowBaseId`).
  * Parsing is colon-safe (`parseFloatKey` takes everything after the 3rd colon
  * as the id), so a card id carrying interior colons round-trips.
  */
 export function omniItemCardRef(
   omniId: string,
 ): { kind: CardKind; id: string } | null {
-  const parsed = parseFloatKey(omniId);
+  const parsed = parseFloatKey(anchorRowBaseId(omniId));
   if (!parsed || parsed.domain !== "card") return null;
   if (!(parsed.kind in CARD_REGISTRY)) return null;
   const kind = parsed.kind as CardKind;
   if (!isArchivable(kind)) return null;
-  const id = parsed.id.replace(MULTI_ANCHOR_SUFFIX, "");
+  const id = parsed.id;
   return id ? { kind, id } : null;
 }
 

@@ -17,7 +17,7 @@ export type ResolveOmniPos = (id: string) => number | undefined;
  * and mis-bins an entity-anchored card across a fold/focus boundary
  * (OMNI-F1-02). The entity-anchored kinds (footnote / citation / example) carry
  * a live pos from the DocStructureObserver snapshot; paragraph-anchored kinds
- * (and the multi-anchor `@N` rows) fall back to the structurally-rebuilt
+ * (and the multi-anchor `@<pid>` rows) fall back to the structurally-rebuilt
  * `item.pos`.
  *
  *   Pass 1 (fold): DROP an item whose anchor lives in a collapsed section

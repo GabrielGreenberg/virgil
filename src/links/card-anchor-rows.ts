@@ -27,7 +27,7 @@
  * > authority, and both surfaces read the resolution.** Neither may re-derive
  * > it — that is the fork. The rows list published here is the shared
  * > vocabulary: the margin emits one marker per row and the omni one card per
- * > row, so their `@N` keying agrees BY CONSTRUCTION rather than by two
+ * > row, so their `@<pid>` keying agrees BY CONSTRUCTION rather than by two
  * > implementations of one rule staying in step.
  *
  * Keystroke sanctity: `buildCardAnchorResolver` runs ONE `buildResolveIndex`
@@ -245,25 +245,57 @@ export function buildMarginMarkerRows(
   return rows.map((r) => ({ pid: r.pid, unanchored: !anchored, cardPids }));
 }
 
+// ---------------------------------------------------------------------------
+// The per-anchor row id — ONE grammar, keyed by IDENTITY (task 916)
+// ---------------------------------------------------------------------------
+//
+// A multi-anchor card draws one omni row per resolved anchor, and that row's
+// id is what the omni pin store, the marker-click bridge and the prefix-or-
+// exact matcher (`findOmniEntry`) all key on. It used to be `…@<i>`, `i` an
+// index into the LIVE rows — a list that shrinks when a sibling anchor's
+// paragraph dies. So a standing pin on P2's row (`@1`) silently re-bound to
+// P3's row when P1 was deleted (P3 became `@1`), and a pin on the last row
+// named nothing. The "Addressing the live document across an async gap" law:
+// a target held across a later gesture is named by durable IDENTITY, never by
+// position. The pid IS that identity, so the suffix is the pid: a pin on a
+// row whose paragraph died is INERT, never re-bound.
+//
+// Single-row cards carry no suffix (a card going 2→1 rows re-keys to the bare
+// id; its pin then goes inert rather than mis-binding). Paragraph uuids are
+// short hex ids and never contain `@`; card ids never do either (link ids are
+// the `${cardId}@${pid}` ones, and they are not omni keys).
+
+/** The separator between a card's omni key and a row's anchor pid. */
+const ANCHOR_ROW_SEP = "@";
+
+/** The omni id of one row of a card: `baseId` alone for a single-row card,
+ *  `${baseId}@${pid}` for each row of a multi-anchor card. */
+export function anchorRowId(baseId: string, pid: string | undefined): string {
+  return pid === undefined ? baseId : `${baseId}${ANCHOR_ROW_SEP}${pid}`;
+}
+
+/** Inverse of `anchorRowId`: the card's own key, any `@<pid>` row suffix
+ *  stripped. */
+export function anchorRowBaseId(rowId: string): string {
+  const at = rowId.lastIndexOf(ANCHOR_ROW_SEP);
+  return at === -1 ? rowId : rowId.slice(0, at);
+}
+
 /**
- * The `@N` anchor index of a marker's paragraph — indexed over the RESOLVED
- * rows, which is exactly the list `buildOmniAnchorRows` suffixes its per-anchor
- * omni row with. Indexing the raw STORED pids instead (pre-369) returned
- * `undefined` for a paragraph the resolver had RECOVERED, so a marker click on
- * such a card pinned no omni row at all.
- *
- * `undefined` for a single-row card — its omni row carries no `@N` suffix, so
- * the bridge keys the bare card popKey.
+ * The anchor pid a margin marker names its omni row by — `pid` itself when the
+ * card has more than one RESOLVED row (the list `buildOmniAnchorRows` suffixes
+ * from, so a RECOVERED paragraph is found too — task 369), `undefined` for a
+ * single-row card (its omni row carries no suffix, so the bridge keys the bare
+ * card popKey) or for a pid the card draws no row for.
  */
-export function marginAnchorIndex(
+export function marginAnchorRowPid(
   card: CardWithLinks,
   pid: string,
   resolve: CardAnchorResolver,
-): number | undefined {
+): string | undefined {
   const { rows } = resolve(card);
   if (rows.length <= 1) return undefined;
-  const i = rows.findIndex((r) => r.pid === pid);
-  return i >= 0 ? i : undefined;
+  return rows.some((r) => r.pid === pid) ? pid : undefined;
 }
 
 // ---------------------------------------------------------------------------
