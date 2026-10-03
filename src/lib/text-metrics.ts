@@ -130,7 +130,7 @@ export function computeCapTopOffset(m: CapTopMetrics): number {
  * — close enough that the half-leading is small and the resulting
  * cap-top-offset error is sub-pixel.
  *
- * Exported (same for-consumer export convention as {@link capTopOffset} /
+ * Exported (same for-consumer export convention as {@link capBandCenterOffset} /
  * {@link opticalCenterY}) so the marginalia registry shares this exact
  * parse — and the `* 1.2` "normal"-leading approximation lives in ONE place
  * rather than being re-inlined at the call site.
@@ -150,8 +150,11 @@ export function resolveLineHeightPx(cs: CSSStyleDeclaration, fontSizePx: number)
  * `resolveInlineContextElement`.
  *
  * Cached by `(fontFamily | fontSize | fontWeight | fontStyle | lineHeight)`. The SINGLE
- * source for both {@link capTopOffset} and {@link capHeight}, so the two
- * can never drift and a consumer that needs both pays one measurement.
+ * source for both terms of {@link capBandCenterOffset} (the cap-top offset and
+ * the cap height), so the two can never drift and the center costs one
+ * measurement. There is deliberately no exported door to either term alone
+ * (task 920): a bare per-term door took no `cs` and invited re-composing the
+ * center from two reads.
  * Returns null if no document/canvas is available (SSR safety) or if the
  * canvas stub doesn't report the metrics we need.
  */
@@ -204,32 +207,12 @@ function measureFontMetrics(
 }
 
 /**
- * Cap-top offset for a DOM element's first rendered line — the distance
- * from the line-box top to the glyph cap-top. Returns 0 when metrics are
- * unavailable (SSR / canvas stub).
- */
-export function capTopOffset(el: HTMLElement): number {
-  const m = measureFontMetrics(el);
-  return m ? computeCapTopOffset(m) : 0;
-}
-
-/**
- * Cap-height (the rendered height of a capital glyph) for a DOM element's
- * first line, in CSS px. Paired with {@link capTopOffset} inside
- * {@link capBandCenterOffset} to find the optical (cap-band) CENTER of a line.
- * Returns 0 when metrics are unavailable (SSR / canvas stub).
- */
-export function capHeight(el: HTMLElement): number {
-  return measureFontMetrics(el)?.capHeight ?? 0;
-}
-
-/**
  * Offset from a line-box top to the OPTICAL (cap-band) CENTER of that line —
- * `capTopOffset(el) + capHeight(el) / 2`. THE vertical primitive: one
- * {@link measureFontMetrics} read feeds both terms from the same cache entry,
- * so `capTopOffset` and `capHeight` can never drift and a consumer that needs
+ * the cap-top offset ({@link computeCapTopOffset}) plus half the cap height.
+ * THE vertical primitive: one {@link measureFontMetrics} read feeds both terms
+ * from the same cache entry, so they can never drift and a consumer that needs
  * the center pays a SINGLE measurement (not two). Returns 0 when metrics are
- * unavailable (SSR / canvas stub) — matching the degrade of its two terms.
+ * unavailable (SSR / canvas stub).
  *
  * `cs` is an OPTIONAL already-read computed style **for `el` itself**. Two
  * callers (`resolveBlockFrame`, the geometry service's `measureBlock`) read the
@@ -254,7 +237,7 @@ export function capBandCenterOffset(
  * height. The ONE vertical primitive the grab handle, the marginalia markers,
  * and the block frame's `opticalCenterY` all compose (the vertical twin of the
  * horizontal `resolveContentEdges` extraction), so they align BY CONSTRUCTION
- * rather than via three copies of `capTopOffset + capHeight / 2`.
+ * rather than via three copies of `capTop + capHeight / 2`.
  *
  * `lineTop` is in whatever coordinate space the caller measured the line-box
  * top (viewport for the block frame / grab handle; host-relative for the

@@ -80,26 +80,19 @@ export interface BlockFrame {
    */
   target: HTMLElement;
   /**
-   * The resolved text element's border box (`getBoundingClientRect`). Its
-   * `.top` is the FIRST VISUAL TEXT LINE's line-box top and `.left` is the
-   * content-left; for a multi-line block the box spans every line (chip 2
-   * can refine to a true single-line rect if it needs the height). For a
-   * container block (`bulletList` / `orderedList` / `exampleBlock`) this is
-   * resolved from the first grabbable child — the row the user actually sees
-   * — so a container and its first item share one frame.
-   */
-  firstLineRect: DOMRect;
-  /**
-   * Optical (cap-band) center Y of the first visual text line:
-   * `firstLineRect.top + capBandCenterOffset(target)` (i.e. the shared
-   * `opticalCenterY(firstLineRect.top, target)` primitive). THE canonical
+   * Optical (cap-band) center Y of the first visual text line: the first-line
+   * box's top ({@link ContentEdges.firstLineRect} — for a container, its first
+   * grabbable child's row, so a container and its first item share one frame)
+   * plus `capBandCenterOffset(target)`, i.e. the shared
+   * `opticalCenterY(lineTop, target)` primitive. THE canonical
    * vertical anchor for margin chrome — center an affordance's glyph on
    * this and it sits on the optical middle of the text it labels,
    * independent of font size / line-height.
    */
   opticalCenterY: number;
   /**
-   * The block's text content-left in viewport coords (= `firstLineRect.left`).
+   * The block's text content-left in viewport coords (the first-line box's left,
+   * {@link ContentEdges.contentLeft}).
    * For a markerless block (paragraph / heading / blockquote / codeBlock /
    * titleField / framed atom) this IS the marker reference; exposed separately
    * from {@link markerLeft} so the drop indicator (chip 4a) can anchor to
@@ -109,7 +102,7 @@ export interface BlockFrame {
    */
   contentLeft: number;
   /**
-   * The block's content-box WIDTH in viewport coords (= `firstLineRect.width`,
+   * The block's content-box WIDTH in viewport coords (the first-line box's width,
    * i.e. `contentRight − contentLeft`). The HORIZONTAL drop indicator (chip 4a)
    * spans this — the between-blocks bar and the expex new-item bar derive their
    * width from the frame's content extent, the same source as {@link contentLeft},
@@ -118,7 +111,7 @@ export interface BlockFrame {
   contentWidth: number;
   /**
    * The block's content-RIGHT edge in viewport coords (= `contentLeft +
-   * contentWidth` = `firstLineRect.right`). The figure chrome (chip 4b) anchors
+   * contentWidth` = the first-line box's right). The figure chrome (chip 4b) anchors
    * its "beside" control row here — `.figure-chrome-beside` sits at
    * `contentRight + gap`, hugging the rendered figure box's right edge, the
    * mirror of the grab handle hugging {@link markerLeft} on the LEFT, both from
@@ -269,7 +262,7 @@ export function isTopRowOf(container: HTMLElement, item: HTMLElement): boolean {
 
 /**
  * First-line rect of a text-bearing element. Use `getBoundingClientRect()`:
- * its `.top` is the first line's LINE-BOX top — exactly what `capTopOffset`
+ * its `.top` is the first line's LINE-BOX top — exactly what `capBandCenterOffset`
  * expects as its base (it adds the half-leading from there). `resolveInline-
  * ContextElement` has already descended past wrapper padding (e.g. `<pre>` →
  * `<code>`) to a text element with no top padding, so the border-box top IS
@@ -278,7 +271,7 @@ export function isTopRowOf(container: HTMLElement, item: HTMLElement): boolean {
  * Do NOT use `Range.selectNodeContents(el).getClientRects()[0]` here: on an
  * inline-text element (a prose `<p>`) the browser returns the tight GLYPH
  * RUN (≈ font bounding box), whose top sits ~half-leading BELOW the line-box
- * top — feeding that into `+ capTopOffset` double-counts the leading and
+ * top — feeding that into `+ capBandCenterOffset` double-counts the leading and
  * drops the anchor ~2px (MEASURED: a 15.2px prose `<p>` in a 24.32px line
  * box reads a run top 2px below its `getBoundingClientRect().top`). The
  * border box is the line box; the glyph run is not.
@@ -808,7 +801,16 @@ export function resolveMarkerGeometry(
 export interface ContentEdges {
   /** The resolved text element whose first-line box defines the edges. */
   target: HTMLElement;
-  /** That element's border box (`getBoundingClientRect()`). */
+  /**
+   * That element's border box (`getBoundingClientRect()`). Its `.top` is the
+   * FIRST VISUAL TEXT LINE's line-box top and `.left` the content-left; for a
+   * multi-line block the box spans every line. For a container block
+   * (`bulletList` / `orderedList` / `exampleBlock`) it is the first grabbable
+   * child's — the row the user actually sees. Internal to the composition:
+   * `resolveBlockFrame` reads it for its optical center and chevron origin, and
+   * publishes only the DERIVED fields (task 920 dropped it from `BlockFrame`,
+   * where nothing read it).
+   */
   firstLineRect: DOMRect;
   /** Viewport x of the content-left edge (`firstLineRect.left`). */
   contentLeft: number;
@@ -936,7 +938,6 @@ export function resolveBlockFrame(el: HTMLElement): BlockFrame {
   return {
     el,
     target,
-    firstLineRect,
     opticalCenterY,
     contentLeft,
     contentWidth,

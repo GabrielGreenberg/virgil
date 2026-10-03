@@ -109,7 +109,7 @@ describe("resolveBlockFrame — chevron read budget (task 662)", () => {
     ).toBe(1);
     // ...and the answer is the one the second read used to produce.
     expect(frame.chevronRight).toBeCloseTo(200 + CHEVRON_OFFSET + CHEVRON_WIDTH, 5);
-    expect(frame.firstLineRect.left).toBe(200);
+    expect(frame.contentLeft).toBe(200);
   });
 
   it("holds for the other pod kind (forestBlock takes the same branch)", () => {
