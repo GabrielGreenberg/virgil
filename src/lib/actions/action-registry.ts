@@ -2431,6 +2431,12 @@ function wrapCaptureHolds(
   to: number,
   dialect: CaptureVocabulary,
 ): boolean {
+  // Clamp as the container gate (`blockRangeHostsBlockInsert`) does: `applies()`
+  // runs at menu render, where a ref minted against an older doc must grey or
+  // pass — never throw a RangeError into the render.
+  const size = doc.content.size;
+  from = Math.max(0, Math.min(from, size));
+  to = Math.max(0, Math.min(to, size));
   if (from >= to) return true;
   if (!sliceIsFullyCapturedBy(doc.slice(from, to), dialect)) return false;
   if (dialect === "latex" && captureRangeLatexSource(doc, from, to) === null) return false;
