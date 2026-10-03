@@ -68,21 +68,26 @@ import type { EditorView } from "@tiptap/pm/view";
  * document:
  *
  *   - `drag-handle-actions.ts` — the card dispatcher BOTH menus cross;
- *   - `drop-mode/commit-seam.ts` + `drop-mode/hit-test.ts` — the drop gestures.
+ *   - `drop-mode/commit-seam.ts` + `drop-mode/hit-test.ts` — the drop gestures;
+ *   - `insert-inline-atom.ts` (task 911). It builds only a transaction, but its
+ *     REPORT is what its callers register a card on (`commitCitationCreate`,
+ *     the footnote creators: "the report is the permission"). A dropped
+ *     transaction behind a `refused: false` report IS a stranded card, so the
+ *     door asks the honest gate early AND measures that the atom landed.
  *
- * KEPT here, because the mutation is pure ProseMirror and `readOnlyEnforcer` is
- * the real backstop — a constant gate there costs a dropped transaction, never
- * a stranded card:
+ * KEPT here, because the mutation is pure ProseMirror, nothing downstream acts
+ * on its success, and `readOnlyEnforcer` is the real backstop — a constant gate
+ * there costs a dropped transaction and nothing else:
  *
  *   - the typed-LaTeX input rules (`math.ts`, `citation.ts`, `footnote.ts`,
- *     `latex-comment.ts`, `commands.ts`, `typed-latex-input-rules.ts`) and
- *     `insert-inline-atom.ts`, all of which build a transaction and nothing
- *     else;
+ *     `latex-comment.ts`, `commands.ts`, `typed-latex-input-rules.ts`), all of
+ *     which build a transaction and report nothing a caller acts on;
  *   - `RichTextField.tsx`, a CARD-BODY surface, where `view.editable` is the
  *     honest answer by construction (no enforcer, no `editableRef`).
  *
  * A future caller decides by the same rule: if the seam's mutation can escape
- * `filterTransaction`, it asks `surfaceEditableNow`.
+ * `filterTransaction` — or a caller ACTS on the seam's report of success — it
+ * asks `surfaceEditableNow` (and, for the latter, measures the effect).
  *
  * No over-gating: a non-collab document is always editable, so every call here
  * answers `false` outside collaborator read-only.

@@ -57,7 +57,8 @@ import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { inlineRangeAllowsAtom } from "@/text-objects/text-object-registry";
-import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
+import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
 export interface InsertInlineAtomArgs {
   /** The live editor. The insert runs through its command chain. */
@@ -84,24 +85,27 @@ export interface InsertInlineAtomArgs {
 }
 
 export interface InsertInlineAtomResult {
-  /** Document position of the inserted atom in the post-dispatch doc (the node
-   *  immediately before the resulting caret), so a caller can locate it. -1 if
-   *  it could not be resolved (defensive — should not happen), and -1 when the
-   *  container gate REFUSED (see `refused`). */
+  /** Document position of the inserted atom in the post-dispatch doc, found by
+   *  IDENTITY (its node type, plus its id attr for a Card-bearing kind — task
+   *  911), never by "whatever sits before the caret". `-1` whenever `refused`. */
   pos: number;
   /**
-   * True when a DOOR GATE declined the insert and the document was left
-   * **completely untouched** — the CONTAINER gate (task 396: this position
-   * cannot host this atom) or the COLLAB gate (task 638: the partner holds the
-   * pen). A caller that mints an id / registers a card before calling can read
-   * this to know its atom never landed. `false` on every insert that ran —
-   * including the pre-396 shape, so no existing caller changes behaviour by
-   * ignoring it.
+   * True whenever the atom is NOT in the document — for ANY reason:
    *
-   * The two gates share one flag on purpose: the caller's obligation is
-   * identical either way — do not register the card whose atom is not in the
-   * document — and a caller that had to enumerate the REASONS would be one
-   * reason behind the next gate.
+   *   - a DOOR GATE declined before building anything (the CONTAINER gate,
+   *     task 396: this position cannot host this atom; the EDITABILITY gate,
+   *     task 638/911: the partner holds the pen or the host mounted the surface
+   *     read-only) — the document is then completely untouched;
+   *   - or the insert ran and did not LAND (task 911): a `filterTransaction`
+   *     veto (`readOnlyEnforcer`, or any future filter), a schema refusal, or a
+   *     transform that dropped the atom. Measured after the fact, so no gate
+   *     list has to be complete for the report to be honest.
+   *
+   * A caller that mints an id / registers a card before calling reads this to
+   * know its atom never landed. The reasons share one flag on purpose: the
+   * caller's obligation is identical either way — do not register the card
+   * whose atom is not in the document — and a caller that had to enumerate the
+   * REASONS would be one reason behind the next gate.
    */
   refused: boolean;
 }
@@ -138,23 +142,24 @@ function clampToTextRange(editor: Editor, at: number): number {
 export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomResult {
   const { editor, type, attrs, at } = args;
 
-  // ── COLLAB GATE (task 638) — at the same seam, for the same reason the
-  // CONTAINER gate below is here: this is the DEEPEST point, and the only one
-  // the DEFERRED create-popover commit passes through. `refRun` / `citationRun`
-  // gate the popover's OPEN; the atom lands on COMMIT, which can be many seconds
-  // later — long enough for the collab pen to change hands while the user is
-  // picking citekeys in a portal `<input>`. Task 396 gave the container question
-  // this treatment and wrote down why; the collab question was left in `run()`,
-  // where the commit never goes.
+  // ── EDITABILITY GATE (task 638, honest since task 911) — at the same seam,
+  // for the same reason the CONTAINER gate below is here: this is the DEEPEST
+  // point, and the only one the DEFERRED create-popover commit passes through.
+  // `refRun` / `citationRun` gate the popover's OPEN; the atom lands on COMMIT,
+  // which can be many seconds later — long enough for the collab pen to change
+  // hands while the user is picking citekeys in a portal `<input>`.
   //
-  // Per-EDITOR, deliberately: a footnote-card / float owner answers for ITSELF
-  // (each surface owns its own `setEditable`), so an atom committed into a card
-  // body is judged by that body's editability, not MAIN's.
+  // Asked through `surfaceEditableNow` (pen ∧ host), NOT `collabReadOnly`: on
+  // MAIN `view.editable` is pinned `true` and the real answer lives in
+  // `editableRef`, so the pen-only gate was a CONSTANT `false` there and let a
+  // read-only commit through to a transaction `readOnlyEnforcer` then dropped
+  // (task 911). Per-EDITOR, deliberately: a card body publishes no
+  // `editableRef` and is answered by its own `view.editable`.
   //
-  // Refusing leaves the doc COMPLETELY untouched and reports it, so
-  // `commitCitationCreate`'s "THE REPORT IS THE PERMISSION" bail already covers
-  // the card half for free — no citation card without its atom.
-  if (collabReadOnly(editor)) {
+  // This is the early, side-effect-free refusal. The GUARANTEE is the landing
+  // measurement at the bottom of this function, which no future filter can
+  // slip past.
+  if (!surfaceEditableNow(editor)) {
     return { pos: -1, refused: true };
   }
 
@@ -218,12 +223,54 @@ export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomRe
   if (typeof at === "number") {
     chain.setTextSelection(landing);
   }
+  const docBefore = editor.state.doc;
   chain.insertContent({ type, attrs }).run();
 
-  // Locate the inserted atom: insertContent rests the caret just past it, so the
-  // node immediately before the caret IS the atom. Generic over nodeSize so it
-  // holds for any inline atom, not just the nodeSize-1 leaves of today.
-  const caret = editor.state.selection.from;
-  const before = editor.state.doc.resolve(caret).nodeBefore;
-  return { pos: before ? caret - before.nodeSize : -1, refused: false };
+  // ── LANDING MEASUREMENT (task 911) — the report is the EFFECT, not the
+  // attempt. A filtered transaction leaves the editor's doc identical by
+  // reference (`dispatchLanded`'s question, drop-mode/commit-seam.ts — task
+  // 648's twin of this defect at the drop door); an applied one always yields
+  // a new doc. Then the atom itself must be found by identity: a doc that
+  // changed without carrying the atom (a transform that dropped it) is not a
+  // landed insert either.
+  if (editor.state.doc === docBefore) return { pos: -1, refused: true };
+  const pos = locateInsertedAtom(editor, type, attrs);
+  return { pos, refused: pos < 0 };
+}
+
+/**
+ * Where the just-inserted atom sits, by IDENTITY. `insertContent` rests the
+ * caret just past it, so the node before the caret is the fast answer — but it
+ * is only accepted when it IS the atom: same node type and, for a Card-bearing
+ * kind, the caller's id (`ATOM_REGISTRY`'s `idAttr`, task 645). Otherwise a
+ * Card-bearing atom is looked up by its id across the doc (a user gesture, not a
+ * keystroke — the O(doc) fallback runs only when the caret answer disagrees);
+ * an id-less atom has no identity beyond the caret, so it reports `-1`.
+ */
+function locateInsertedAtom(
+  editor: Editor,
+  type: string,
+  attrs: Record<string, unknown>,
+): number {
+  const { doc, selection } = editor.state;
+  const idAttr = cardAtomMetaForNodeName(type)?.idAttr ?? null;
+  const id = idAttr ? attrs[idAttr] : undefined;
+  const isAtom = (node: { type: { name: string }; attrs: Record<string, unknown> }) =>
+    node.type.name === type && (!idAttr || id == null || node.attrs[idAttr] === id);
+
+  const caret = selection.from;
+  const before = doc.resolve(caret).nodeBefore;
+  if (before && isAtom(before)) return caret - before.nodeSize;
+  if (!idAttr || id == null) return -1;
+
+  let found = -1;
+  doc.descendants((node, p) => {
+    if (found >= 0) return false;
+    if (isAtom(node)) {
+      found = p;
+      return false;
+    }
+    return true;
+  });
+  return found;
 }
