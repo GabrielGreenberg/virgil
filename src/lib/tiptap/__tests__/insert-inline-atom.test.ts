@@ -21,11 +21,13 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { Editor } from "@tiptap/core";
+import { Editor, Extension } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { Footnote } from "@/lib/tiptap/footnote";
 import { Citation } from "@/lib/tiptap/citation";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { SURFACE_EDITABLE_STORAGE_KEY } from "@/lib/tiptap/surface-editable";
 
 /** Collected rAF callbacks so the deferred focus-scroll can be flushed
  *  deterministically (jsdom would otherwise never fire it). */
@@ -212,6 +214,148 @@ describe("insertInlineAtom — never scrolls the viewport", () => {
     flushRaf();
 
     expect(seen.some((tr) => tr.scrolledIntoView)).toBe(true);
+    editor.destroy();
+  });
+});
+
+// ── TASK 911 — the report is the EFFECT, not the attempt ───────────────────
+//
+// `commitCitationCreate` and the footnote creators register a card on
+// `refused: false` ("the report is the permission"). On MAIN `view.editable` is
+// pinned `true` and the read-only answer lives in `editableRef`, so the old
+// pen-only gate (`collabReadOnly`) passed a read-only commit through to a
+// transaction `readOnlyEnforcer` then dropped — and the door still reported a
+// landed atom (with `pos` naming whatever sat before the caret).
+
+/** A MAIN-shaped editor: `view.editable` stays true; the host's answer is an
+ *  `editableRef` the enforcer both PUBLISHES (storage) and FILTERS on — the
+ *  same shape `editor-extensions.ts` mounts. */
+function mountMainShaped(editableRef: { current: boolean }): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const Enforcer = Extension.create({
+    name: SURFACE_EDITABLE_STORAGE_KEY,
+    addStorage: () => ({ editableRef }),
+    addProseMirrorPlugins: () => [
+      new Plugin({
+        key: new PluginKey("testReadOnlyEnforcer"),
+        filterTransaction: (tr) => editableRef.current || !tr.docChanged,
+      }),
+    ],
+  });
+  return new Editor({
+    element,
+    extensions: [StarterKit, Citation, Footnote, Enforcer],
+    content: {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "hello world" }] }],
+    },
+  });
+}
+
+/** An editor whose EVERY doc-changing transaction is vetoed by a filter the
+ *  door has no gate for — the "any future filter" case. Editable by every
+ *  gate's account, so only the landing measurement can catch it. */
+function mountWithBlanketFilter(): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const Veto = Extension.create({
+    name: "testBlanketVeto",
+    addProseMirrorPlugins: () => [
+      new Plugin({
+        key: new PluginKey("testBlanketVeto"),
+        filterTransaction: (tr) => !tr.docChanged,
+      }),
+    ],
+  });
+  return new Editor({
+    element,
+    extensions: [StarterKit, Citation, Footnote, Veto],
+    content: {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "hello world" }] }],
+    },
+  });
+}
+
+describe("insertInlineAtom — reports only an insert that LANDED (task 911)", () => {
+  it("MAIN-shaped read-only host (editableRef=false, view.editable=true): refuses, pos -1, doc untouched", () => {
+    const ref = { current: true };
+    const editor = mountMainShaped(ref);
+    expect(editor.view.editable).toBe(true);
+    ref.current = false; // the pen passes while the create popover is open
+    const before = editor.state.doc;
+
+    const landed = insertInlineAtom({
+      editor,
+      type: "citation",
+      attrs: { citationId: "cit-ro", command: "\\cite{a}", displayText: "" },
+      at: 4,
+    });
+    flushRaf();
+
+    expect(landed).toEqual({ pos: -1, refused: true });
+    expect(editor.state.doc).toBe(before);
+    expect(countType(editor, "citation")).toBe(0);
+    editor.destroy();
+  });
+
+  it("a filter the door has no gate for vetoes the insert: refuses, pos -1, doc untouched", () => {
+    const editor = mountWithBlanketFilter();
+    editor.commands.setTextSelection(4);
+    const before = editor.state.doc;
+
+    const landed = insertInlineAtom({
+      editor,
+      type: "footnote",
+      attrs: { footnoteId: "fn-veto", content: null, number: 0, title: "" },
+    });
+    flushRaf();
+
+    expect(landed).toEqual({ pos: -1, refused: true });
+    expect(editor.state.doc).toBe(before);
+    expect(countType(editor, "footnote")).toBe(0);
+    editor.destroy();
+  });
+
+  it("a landed insert reports the ATOM's own position, found by identity", () => {
+    const ref = { current: true };
+    const editor = mountMainShaped(ref);
+
+    const landed = insertInlineAtom({
+      editor,
+      type: "citation",
+      attrs: { citationId: "cit-ok", command: "\\cite{a}", displayText: "" },
+      at: 4,
+    });
+    flushRaf();
+
+    expect(landed.refused).toBe(false);
+    const node = editor.state.doc.nodeAt(landed.pos);
+    expect(node?.type.name).toBe("citation");
+    expect(node?.attrs.citationId).toBe("cit-ok");
+    editor.destroy();
+  });
+
+  it("`commitCitationCreate`'s shape: no card registers when the pen passes mid-popover", () => {
+    // The caller's seam, verbatim in shape: mint an id, commit at the captured
+    // pos, and register the card ONLY on `!landed.refused` (pinned in source by
+    // inline-atom-container-census "THE REPORT IS THE PERMISSION").
+    const ref = { current: true };
+    const editor = mountMainShaped(ref);
+    const register = vi.fn();
+    ref.current = false; // open-time gate passed; the pen flips before commit
+
+    const landed = insertInlineAtom({
+      editor,
+      type: "citation",
+      attrs: { citationId: "cit-commit", command: "\\cite{k}", displayText: "" },
+      at: 4,
+    });
+    if (!landed.refused) register("cit-commit");
+
+    expect(register).not.toHaveBeenCalled();
+    expect(countType(editor, "citation")).toBe(0);
     editor.destroy();
   });
 });
