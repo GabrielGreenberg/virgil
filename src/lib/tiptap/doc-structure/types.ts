@@ -27,15 +27,16 @@ export interface BlockEntry {
    *  texBlock / exampleBlock all declare it). Part of the section-path
    *  vocabulary: the breadcrumb derives from headings ∪ parTitled blocks, so
    *  a geometry consumer can read the titled set from the snapshot instead of
-   *  walking the doc. Derived via `deriveParTitled` (shared by BOTH
-   *  extractors, the `deriveExampleIdentity` discipline). */
+   *  walking the doc. Derived via `deriveParTitled` (read by the ONE
+   *  entity extractor and the AttrStep branch). */
   parTitled: boolean;
 }
 
 /**
- * Shared `parTitled` derivation — used by BOTH entity extractors
- * (`buildInitial` load walk and `inspectNodeAt`/the AttrStep branch of the
- * per-transaction path) so the two can never disagree on what "titled" means.
+ * Shared `parTitled` derivation — read by the ONE entity extractor
+ * (`extractEntitiesAt`, which both the load walk and the step walk call) and by
+ * the step path's AttrStep branch, so they can never disagree on what "titled"
+ * means.
  * The flag is the BOOLEAN "renders a par-title", not the title text: the
  * NodeViews coerce empty strings to null (`(attrs.parTitle as string) || null`),
  * so non-empty-string is the render condition. Typing INSIDE an existing title
@@ -124,9 +125,9 @@ export interface CitationEntry {
 export type CitationContainer = { kind: "footnote" | "example"; id: string };
 
 /**
- * The ONE construction of a `CitationEntry`. Read by `buildInitial`'s descend
- * walk (both the real-PM-node and the footnote-body-literal sites) and by the
- * step path's `inspectNodeAt`, so an ancestor-derived field cannot be present
+ * The ONE construction of a `CitationEntry`. Read by the shared entity
+ * extractor (`extractEntitiesAt`, the real-PM-node site on BOTH walks) and by
+ * `buildInitial`'s load-only footnote-body-literal descend, so an ancestor-derived field cannot be present
  * on one path and absent on the other — the asymmetry that un-nested an
  * example-nested cite's card on the CHANGED path once and on the ADDED path
  * again. A container of kind `"footnote"` also mirrors itself into the legacy
@@ -177,10 +178,10 @@ export interface ExampleEntry {
 /**
  * Derive an `exampleBlock`'s stable identity + display fields from its attrs.
  *
- * SHARED by BOTH entity extractors — `buildInitial` (the load-time O(N) walk,
- * `structure-index.ts`) and `inspectNodeAt` (the per-transaction incremental
- * path, `step-inspector.ts`) — so the two can never disagree on WHICH examples
- * are indexed or under WHAT id. They had drifted (task 213): the incremental
+ * Read by the ONE entity extractor (`extractEntitiesAt`, called by both the
+ * load walk `buildInitial` and the step walk `inspectNodeAt`) and by the step
+ * path's citation-container resolve — so they can never disagree on WHICH
+ * examples are indexed or under WHAT id. The two walks had drifted (task 213): the incremental
  * path pre-coerced `tag`/`label` to `""` before the `??` chain, so `null ?? ""`
  * short-circuited and the `label` fallback was unreachable there.
  *

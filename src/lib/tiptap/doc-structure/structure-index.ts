@@ -16,15 +16,12 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { inlineAtoms } from "@/lib/inline-content";
-import { mayCarryBlockUuid } from "@/lib/marginalia";
-import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { extractEntitiesAt, type ExtractContext } from "./entity-extractor";
 import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
   citationEntryAt,
-  deriveExampleIdentity,
-  deriveParTitled,
   type DocStructure,
   EMPTY_STRUCTURE,
   type ExampleEntry,
@@ -64,15 +61,46 @@ export function buildInitial(doc: PMNode): DocStructure {
   // `deriveExampleIdentity`) so it matches the example omni item key
   // `cardPopKey("example", id)` the nesting transform resolves.
   const exampleStack: { id: string; end: number }[] = [];
+  /** End of the node currently being visited (an example's stack bound). */
+  let visitingEnd = 0;
 
-  // Walk top-level UUID-bearing blocks. For nested anchor-bearing marks
-  // we need to descend into text-bearing content, so the walk is
-  // recursive but only collects when a node's type matches a tracked
-  // entity.
+  // ONE entity extractor, shared with the step path's `inspectNodeAt`
+  // (task 922): this walk owns only its traversal (EVERY depth — hence the
+  // identity predicate's parent check, task 878) and the example stack it
+  // answers a citation's container from.
+  const ctx: ExtractContext = {
+    sink: {
+      block: (e) => void blocks.set(e.uuid, e),
+      heading: (e) => void headings.push(e),
+      figure: (e) => void figures.push(e),
+      example: (e) => {
+        examples.push(e);
+        // Phase 2a — push this example onto the enclosing-block stack so any
+        // citation collected while we're inside its range gets tagged as
+        // example-nested. `end` is one past the block's close token; the walk
+        // pops it on reaching that position (below).
+        exampleStack.push({ id: e.id, end: visitingEnd });
+      },
+      footnote: (e) => void footnotes.push(e),
+      citation: (e) => void citations.push(e),
+      label: (e) => void labels.set(e.id, e),
+      anchor: (id, kind, from, to) => {
+        const prev = anchors.get(id);
+        // Extend the range to span every text node carrying the mark.
+        if (prev) prev.to = to;
+        else anchors.set(id, { id, from, to, kind });
+      },
+    },
+    // Phase 2a — a real-PM-node citation inside an exampleBlock is tagged with
+    // the innermost enclosing example so its Omni card nests under the
+    // example's card; a cite outside every example stays top-level.
+    citationContainer: () =>
+      exampleStack.length > 0
+        ? { kind: "example", id: exampleStack[exampleStack.length - 1].id }
+        : null,
+  };
+
   doc.descendants((node, pos, parent) => {
-    const typeName = node.type.name;
-    const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
-
     // Pop any exampleBlocks we've now walked past (the walk is depth-first in
     // document order, so once `pos` reaches a tracked example's `end` we've
     // left it). Done BEFORE collecting this node so a citation's enclosing
@@ -81,129 +109,14 @@ export function buildInitial(doc: PMNode): DocStructure {
       exampleStack.pop();
     }
 
-    // Anchorable block — every entity-bearing node has a UUID, including
-    // headings / figureBlock / exampleBlock / paragraph / etc. Eligibility is
-    // the ONE identity predicate (task 878): a deferred inner paragraph's uuid
-    // is unreachable, so it is not a live block identity and is not indexed.
-    if (uuid && mayCarryBlockUuid(node, parent)) {
-      blocks.set(uuid, {
-        uuid,
-        pos,
-        typeName,
-        parTitled: deriveParTitled(node.attrs as Record<string, unknown>),
-      });
-    }
+    visitingEnd = pos + node.nodeSize;
+    extractEntitiesAt(node, pos, parent, ctx);
 
-    if (typeName === "heading" && uuid) {
-      const attrs = node.attrs as {
-        level?: number;
-        label?: string | null;
-        numbered?: boolean;
-      };
-      headings.push({
-        uuid,
-        pos,
-        level: attrs.level ?? 1,
-        text: node.textContent,
-        label: attrs.label ?? null,
-        numbered: attrs.numbered !== false,
-      });
-      if (attrs.label) {
-        labels.set(attrs.label, {
-          id: attrs.label,
-          owner: "heading",
-          ownerUuid: uuid,
-          pos,
-        });
-      }
-    }
-
-    if (typeName === "figureBlock" && uuid) {
-      const attrs = node.attrs as {
-        label?: string;
-        numbered?: boolean;
-        figureNumber?: number | null;
-      };
-      figures.push({
-        uuid,
-        pos,
-        label: attrs.label ?? "",
-        numbered: attrs.numbered !== false,
-        number: attrs.figureNumber ?? null,
-        emitsCaption: figureNodeEmitsCaption(node),
-      });
-      if (attrs.label) {
-        labels.set(attrs.label, {
-          id: attrs.label,
-          owner: "figure",
-          ownerUuid: uuid,
-          pos,
-        });
-      }
-    }
-
-    if (typeName === "exampleBlock") {
-      const attrs = node.attrs as {
-        tag?: string;
-        label?: string;
-        number?: string | number | null;
-      };
-      // Shared derivation with inspectNodeAt — see `deriveExampleIdentity`.
-      const { id, uuid: exUuid, tag, label, number } = deriveExampleIdentity({
-        uuid,
-        tag: attrs.tag,
-        label: attrs.label,
-        number: attrs.number,
-      });
-      if (id) {
-        examples.push({ id, uuid: exUuid, pos, tag, label, number });
-        if (label) {
-          labels.set(label, {
-            id: label,
-            owner: "example",
-            ownerUuid: exUuid,
-            pos,
-          });
-        }
-        // Phase 2a — push this example onto the enclosing-block stack so any
-        // citation collected while we're inside its range gets tagged as
-        // example-nested. `end` is the position one past the block's close
-        // token; we pop the stack when the walk reaches it (above).
-        exampleStack.push({ id, end: pos + node.nodeSize });
-      }
-    }
-
-    if (typeName === "exampleItem") {
-      const attrs = node.attrs as { label?: string };
-      if (attrs.label) {
-        labels.set(attrs.label, {
-          id: attrs.label,
-          owner: "exampleItem",
-          ownerUuid: null,
-          pos,
-        });
-      }
-    }
-
-    if (typeName === "footnote") {
+    if (node.type.name === "footnote") {
       const attrs = node.attrs as {
         footnoteId?: string;
-        linkId?: string;
-        thanks?: boolean;
-        number?: number;
-        title?: string;
         content?: JSONContent | null;
       };
-      if (attrs.footnoteId) {
-        footnotes.push({
-          id: attrs.footnoteId,
-          pos,
-          thanks: !!attrs.thanks,
-          number: attrs.number ?? 0,
-          title: attrs.title ?? "",
-        });
-      }
-
       // T3 / C10 — LOAD-ONLY descend into the footnote body literal so a
       // footnote-NESTED citation surfaces in `structure.citations` for
       // omni/search (`BIB-F3-01` / `CI-F3-01`). `descendants()` cannot enter
@@ -215,7 +128,7 @@ export function buildInitial(doc: PMNode): DocStructure {
       // its address is the HOST footnote's `pos` plus `nestedInFootnoteId`.
       //
       // `hostId` MUST be the RAW `footnoteId` — the same id `FootnoteEntry.id`
-      // carries (line ~158) and the footnote omni item is keyed by
+      // carries (via `extractEntitiesAt`) and the footnote omni item is keyed by
       // (`popKey("footnotes", fn.footnoteId)` / `cardPopKey("footnote", …)`).
       // Do NOT prefer `linkId`: when a footnote has a non-empty `linkId` that
       // differs from `footnoteId`, a `linkId`-derived host would never match
@@ -238,56 +151,6 @@ export function buildInitial(doc: PMNode): DocStructure {
               container: { kind: "footnote", id: hostId },
             }),
           );
-        }
-      }
-    }
-
-    if (typeName === "citation") {
-      const attrs = node.attrs as {
-        citationId?: string;
-        command?: string;
-        displayText?: string;
-      };
-      if (attrs.citationId) {
-        // Phase 2a — if this real-PM-node citation sits inside an exampleBlock,
-        // tag it with the innermost enclosing example so its Omni card nests
-        // under the example's card. A cite NOT inside any example keeps no
-        // container owner (top-level), so it stays a flat card unchanged.
-        const enclosingExample =
-          exampleStack.length > 0
-            ? exampleStack[exampleStack.length - 1].id
-            : null;
-        citations.push(
-          citationEntryAt({
-            id: attrs.citationId,
-            pos,
-            command: attrs.command,
-            displayText: attrs.displayText,
-            container: enclosingExample
-              ? { kind: "example", id: enclosingExample }
-              : null,
-          }),
-        );
-      }
-    }
-
-    // Inline linked-anchor marks live on text nodes — collect by mark.
-    if (node.isText && node.marks.length > 0) {
-      for (const mark of node.marks) {
-        if (mark.type.name !== "linkedAnchor") continue;
-        const attrs = mark.attrs as { anchorId?: string; kind?: string };
-        if (!attrs.anchorId) continue;
-        const prev = anchors.get(attrs.anchorId);
-        if (prev) {
-          // Extend the range to span every text node carrying the mark.
-          prev.to = pos + node.nodeSize;
-        } else {
-          anchors.set(attrs.anchorId, {
-            id: attrs.anchorId,
-            from: pos,
-            to: pos + node.nodeSize,
-            kind: attrs.kind ?? "note",
-          });
         }
       }
     }
