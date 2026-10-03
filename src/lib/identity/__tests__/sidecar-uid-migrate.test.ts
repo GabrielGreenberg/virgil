@@ -149,6 +149,36 @@ describe("migrateAnnotationsToV2 — uid collision", () => {
   });
 });
 
+describe("migrateAnnotationsToV2: stray flat keys on a v2 object (task 912)", () => {
+  const keyToUid = buildKeyToUid([entry("u-a", "a"), entry("u-b", "b")]);
+
+  it("folds a stray flat key onto its free uid instead of dropping it", () => {
+    const raw = { v: 2, byUid: { "u-a": "<p>A</p>" }, orphanByKey: {}, b: "<p>written while OFF</p>" };
+    const out = migrateAnnotationsToV2(raw, keyToUid);
+    expect(out).not.toBe(raw);
+    expect(out.byUid["u-b"]).toBe("<p>written while OFF</p>");
+    expect((out as unknown as Record<string, unknown>).b).toBeUndefined(); // shape no longer mixed
+  });
+
+  it("keeps BOTH when the stray's uid is occupied (loser to orphanByKey)", () => {
+    const raw = { v: 2, byUid: { "u-a": "<p>ON body</p>" }, orphanByKey: {}, a: "<p>OFF body</p>" };
+    const out = migrateAnnotationsToV2(raw, keyToUid);
+    expect(out.byUid["u-a"]).toBe("<p>ON body</p>");
+    expect(out.orphanByKey.a).toBe("<p>OFF body</p>");
+  });
+
+  it("never overwrites an orphan under the same key — the second gets a free slot", () => {
+    const raw = { v: 2, byUid: {}, orphanByKey: { gone: "<p>orphan</p>" }, gone: "<p>stray</p>" };
+    const out = migrateAnnotationsToV2(raw, keyToUid);
+    expect(Object.values(out.orphanByKey).sort()).toEqual(["<p>orphan</p>", "<p>stray</p>"]);
+  });
+
+  it("a clean v2 object is still returned by reference (no spurious persist)", () => {
+    const raw = { v: 2 as const, byUid: { "u-a": "<p>A</p>" }, orphanByKey: {} };
+    expect(migrateAnnotationsToV2(raw, keyToUid)).toBe(raw);
+  });
+});
+
 describe("migrateBibReviewToUid", () => {
   const keyToUid = buildKeyToUid([entry("u-smith", "smith2020")]);
 

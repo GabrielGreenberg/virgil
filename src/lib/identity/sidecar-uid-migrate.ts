@@ -85,16 +85,40 @@ function placeAnnotation(
   html: string,
 ): boolean {
   if (!uid) {
-    orphanByKey[key] = html; // unresolvable — recoverable, never dropped
+    keepOrphan(orphanByKey, key, html); // unresolvable — recoverable, never dropped
     return false;
   }
   if (uid in byUid) {
-    orphanByKey[key] = html; // SHADOWED — kept, not discarded
+    keepOrphan(orphanByKey, key, html); // SHADOWED — kept, not discarded
     return false;
   }
   byUid[uid] = html;
   return true;
 }
+
+/**
+ * Bucket `html` under `key` in `orphanByKey` WITHOUT overwriting a different
+ * body already there. The only way two bodies meet on one orphan key is the
+ * stray-flat sweep below (a flat key written beside an orphan of the same
+ * citekey), and neither can be known to be the newer — so the second goes to
+ * the first free `key~N` slot. That slot never resolves to a uid and so never
+ * re-homes, but it is still in the sidecar for a human to read: kept, not lost.
+ */
+function keepOrphan(
+  orphanByKey: Record<string, string>,
+  key: string,
+  html: string,
+): void {
+  let slot = key;
+  for (let n = 2; slot in orphanByKey && orphanByKey[slot] !== html; n++) {
+    slot = `${key}~${n}`;
+  }
+  orphanByKey[slot] = html;
+}
+
+/** The keys the v2 shape owns. Any OTHER top-level key on a v2 object is a
+ *  flat `citekey → html` write that a reader blind to v2 put there (task 912). */
+const V2_OWN_KEYS = new Set(["v", "byUid", "orphanByKey"]);
 
 /**
  * Migrate a legacy citekey-keyed annotations record to the uid-keyed v2 shape.
@@ -126,15 +150,27 @@ export function migrateAnnotationsToV2(
     // Re-home any orphans whose entry now exists; leave the rest orphaned.
     const byUid: Record<string, string> = { ...raw.byUid };
     const orphanByKey: Record<string, string> = {};
-    let rehomed = false;
+    let changed = false;
     for (const [key, html] of Object.entries(raw.orphanByKey ?? {})) {
       if (placeAnnotation(byUid, orphanByKey, key, keyToUid.get(key), html)) {
-        rehomed = true;
+        changed = true;
       }
     }
-    // Nothing re-homed → hand the input straight back so an effect-driven
+    // Fold in STRAY FLAT keys (task 912). A reader that did not understand v2
+    // (the pre-912 flag-OFF hook) saw an empty panel over a v2 file and wrote
+    // `[citekey]: html` straight onto the object. Reading only `byUid` +
+    // `orphanByKey` here would let the next persist drop that user writing. Each
+    // stray goes through the same placement policy as a legacy key, and its
+    // removal from the top level is itself a change worth persisting.
+    for (const [key, html] of Object.entries(raw)) {
+      if (V2_OWN_KEYS.has(key)) continue;
+      changed = true;
+      if (typeof html !== "string" || !html) continue;
+      placeAnnotation(byUid, orphanByKey, key, keyToUid.get(key), html);
+    }
+    // Nothing moved → hand the input straight back so an effect-driven
     // re-home pass is a no-op setState (no re-render, no spurious persist).
-    return rehomed ? { v: 2, byUid, orphanByKey } : raw;
+    return changed ? { v: 2, byUid, orphanByKey } : raw;
   }
 
   // Legacy flat record: { [citekey]: html }.
