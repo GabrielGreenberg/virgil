@@ -126,6 +126,44 @@ describe("rewriteCiteCommandString: boundary-safe citekey rewrite", () => {
   });
 });
 
+// Task 910: the rewrite touches ONLY the mandatory `{…}` key lists — never the
+// command word, never a `[pre][post]` note.
+describe("rewriteCiteCommandString: key lists only (task 910)", () => {
+  it("leaves a pre-note that names the author intact", () => {
+    expect(
+      rewriteCiteCommandString("\\citep[cf. Kant's view][p.2]{Kant}", "Kant", "kant1781"),
+    ).toBe("\\citep[cf. Kant's view][p.2]{kant1781}");
+  });
+  it("leaves an optional arg equal to the key intact", () => {
+    expect(rewriteCiteCommandString("\\citep[see][]{see}", "see", "see2020")).toBe(
+      "\\citep[see][]{see2020}",
+    );
+  });
+  it("never renames the command word", () => {
+    expect(rewriteCiteCommandString("\\citet{citet}", "citet", "x")).toBe("\\citet{x}");
+    expect(rewriteCiteCommandString("\\cite*{cite}", "cite", "x")).toBe("\\cite*{x}");
+  });
+  it("rewrites every key group of a biblatex plural command, notes untouched", () => {
+    expect(
+      rewriteCiteCommandString("\\cites[a p.][p. 1]{a}[see a]{b}{a}", "a", "z"),
+    ).toBe("\\cites[a p.][p. 1]{z}[see a]{b}{z}");
+  });
+  it("preserves whitespace around keys and leaves near-miss keys alone", () => {
+    expect(rewriteCiteCommandString("\\cite{ foo , foobar,+foo}", "foo", "bar")).toBe(
+      "\\cite{ bar , foobar,+foo}",
+    );
+  });
+  it("handles braces nested in an optional argument", () => {
+    expect(rewriteCiteCommandString("\\citep[{Kant}]{Kant}", "Kant", "k")).toBe(
+      "\\citep[{Kant}]{k}",
+    );
+  });
+  it("returns the SAME reference when nothing matched", () => {
+    const cmd = "\\citep[Kant]{Hume}";
+    expect(rewriteCiteCommandString(cmd, "Kant", "k")).toBe(cmd);
+  });
+});
+
 // ── The live-doc rewrite (top-level + footnote-nested) ──────────────────────
 
 function mount(citationId: string, command: string, footnoteCommand?: string): Editor {
