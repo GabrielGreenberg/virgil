@@ -25,7 +25,7 @@ import {
   IdentityCascade,
   renameCitekeyChange,
 } from "@/lib/identity/identity-cascade";
-import { wholeWordPatternFor } from "@/lib/whole-word";
+import { rewriteCiteCommandString } from "@/lib/identity/bib-cite-rewrite";
 import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
 import { spliceBibBlock } from "@/lib/bib-source";
 import {
@@ -509,18 +509,18 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   );
 
   /** Rewrite the citation SIDECAR refs that reference `oldKey` → `newKey`.
-   *  Uses the boundary-class matcher (W0a) so a punctuation citekey rewrites
-   *  as a whole token and `foo` doesn't clobber `foobar`. */
+   *  The command goes through the SAME key-list rewrite the editor doc uses
+   *  (`rewriteCiteCommandString`, task 910), so only the `{…}` key lists
+   *  change — never the command word or a `[pre][post]` note. */
   const rewriteCitationRefs = useCallback(
     (oldKey: string, newKey: string) => {
       if (oldKey === newKey) return;
-      const re = new RegExp(wholeWordPatternFor(oldKey), "g");
       update((prev) => ({
         ...prev,
         citations: prev.citations.map((c) => {
           if (!c.keys.includes(oldKey)) return c;
           const newKeys = c.keys.map((k) => (k === oldKey ? newKey : k));
-          return { ...c, keys: newKeys, command: c.command.replace(re, newKey) };
+          return { ...c, keys: newKeys, command: rewriteCiteCommandString(c.command, oldKey, newKey) };
         }),
       }));
     },

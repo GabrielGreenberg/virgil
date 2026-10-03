@@ -17,7 +17,7 @@
 //  - the rename fans out to registered cascade migrators with the flag
 //    explicitly OFF (this FAILS on the pre-fix tree);
 //  - PARITY: flag ON and flag OFF produce the same user-visible result;
-//  - the refs rewrite uses the boundary matcher on BOTH paths, so a
+//  - the refs rewrite is the shared key-list rewrite on BOTH paths, so a
 //    PUNCTUATION citekey (`smith:2020`) renames as a whole token — the bare
 //    `\b` the legacy branch carried mis-fires on it;
 //  - a rename of a key no entry holds still fans out to nothing.
@@ -183,5 +183,29 @@ describe("updateBibKeyAndType: the boundary matcher, on both paths", () => {
     const cit = result.current.citations.find((c) => c.id === id)!;
     expect(cit.command).toBe("\\cite{smith:2021}");
     expect(cit.keys).toEqual(["smith:2021"]);
+  });
+});
+
+describe("updateBibKeyAndType: the sidecar rewrite touches only key lists (task 910)", () => {
+  // `rewriteCitationRefs` used to run the whole-word regex over the ENTIRE
+  // command, so a note naming the author was renamed along with the key.
+  it("leaves the `[pre][post]` notes of the sidecar command intact", async () => {
+    setIdentityCascadeFlag(false);
+    const result = await mountLoaded("doc-notes-intact");
+    let id = "";
+    act(() => {
+      id = result.current.addCitation("\\citep[cf. foo's view][p.2]{foo}").id;
+    });
+    await waitFor(() => {
+      expect(result.current.citations.some((c) => c.id === id)).toBe(true);
+    });
+    act(() => {
+      result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "foo"), "newfoo", "article");
+    });
+    await waitFor(() => {
+      expect(result.current.citations.find((c) => c.id === id)?.keys).toEqual(["newfoo"]);
+    });
+    const cit = result.current.citations.find((c) => c.id === id)!;
+    expect(cit.command).toBe("\\citep[cf. foo's view][p.2]{newfoo}");
   });
 });

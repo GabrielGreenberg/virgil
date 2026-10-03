@@ -8,11 +8,13 @@
  * rename (the bug the audit calls out under BIB-F5-03). The rename must rewrite
  * the live ProseMirror doc, not just the sidecar.
  *
- * The rewrite is whole-token-safe and footnote-deep:
- *  - **Boundary matcher** (W0a `wholeWordPattern`): rename `foo` must not also
- *    rewrite `foobar`, and a punctuation citekey (`+foo`, `foo:bar`) must match
- *    as a whole token — a bare `\b` mis-fires on a non-word edge. This consumes
- *    the C26 builder.
+ * The rewrite is key-list-only and footnote-deep:
+ *  - **Key lists, not the command** (task 910): only the mandatory `{…}` key
+ *    groups are rewritten, token by exact token — rename `foo` does not touch
+ *    `foobar`, a punctuation citekey (`+foo`, `foo:bar`) matches as itself, and
+ *    the command word and `[pre][post]` notes are never edited. The citations
+ *    SIDECAR (`useCitations.rewriteCitationRefs`) calls the same function, so
+ *    the doc and the sidecar cannot drift.
  *  - **Footnote descent** (W0d `inline-content`): a citekey cited ONLY inside a
  *    footnote body lives in the footnote's `attrs.content` JSONContent literal,
  *    which `doc.descendants()` does NOT enter (footnote is `inline+atom`). We
@@ -36,19 +38,27 @@
 
 import type { Editor } from "@tiptap/react";
 import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
-import { wholeWordPatternFor } from "@/lib/whole-word";
 
 /**
- * Rewrite every whole-token occurrence of `oldKey` → `newKey` inside a single
- * `\cite{...}` command string. Pure; returns the same reference when nothing
+ * Rewrite every occurrence of the citekey `oldKey` → `newKey` inside a single
+ * `\cite…` command string. Pure; returns the same reference when nothing
  * matched so callers can skip a no-op.
  *
- * The token is matched as a whole citekey via the boundary-class matcher, so
- * `\cite{foo,foobar}` renames only `foo`, and `\cite{+foo}` / `\cite{a:b}`
- * (punctuation citekeys) match. The match runs against the whole command (which
- * may carry optional args like `\citep[see][p.2]{foo}` and multiple keys
- * `\cite{foo,bar}`) — the boundary guards keep it from touching a key fragment
- * or an unrelated word in the optional text.
+ * Only the KEY LISTS are touched — every mandatory `{…}` group after the
+ * command word (one for `\citep[pre][post]{a,b}`, one per key for biblatex's
+ * plural `\cites[p. 1]{a}[p. 2]{b}`). The command word and every `[…]`
+ * optional argument are copied byte-for-byte, so a pre-note that names the
+ * author (`\citep[cf. Kant's view]{Kant}`) survives a `Kant` rename, and a key
+ * spelled like the command (`\citet{citet}`) cannot rename the command (task
+ * 910 — the old whole-string regex did both).
+ *
+ * Inside a key list the match is EXACT per comma-separated token (whitespace
+ * around a token is preserved), so `\cite{foo,foobar}` renames only `foo`, and
+ * a punctuation citekey (`+foo`, `a:b`) matches as itself. This is the splice
+ * form of the write-path law: what is not a key is not rewritten.
+ *
+ * A string that does not open with a `\command` is returned unchanged — there
+ * is no key list to find.
  */
 export function rewriteCiteCommandString(
   command: string,
@@ -56,8 +66,61 @@ export function rewriteCiteCommandString(
   newKey: string,
 ): string {
   if (!command || !oldKey || oldKey === newKey) return command;
-  const re = new RegExp(wholeWordPatternFor(oldKey), "g");
-  return command.replace(re, newKey);
+  const head = command.match(/^\\[A-Za-z]+\*?/);
+  if (!head) return command;
+  let out = head[0];
+  let i = head[0].length;
+  let changed = false;
+  while (i < command.length) {
+    const ch = command[i];
+    if (ch === "[" || ch === "{") {
+      const close = matchingClose(command, i);
+      if (close < 0) break; // unbalanced tail — copy it verbatim below
+      if (ch === "[") {
+        out += command.slice(i, close + 1);
+      } else {
+        const body = command.slice(i + 1, close);
+        const rewritten = rewriteKeyList(body, oldKey, newKey);
+        if (rewritten !== body) changed = true;
+        out += "{" + rewritten + "}";
+      }
+      i = close + 1;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  out += command.slice(i);
+  return changed ? out : command;
+}
+
+/** Index of the `]`/`}` closing the group that opens at `open`, honoring
+ *  nested braces (an optional argument may hold `{…}`); -1 when unbalanced. */
+function matchingClose(s: string, open: number): number {
+  const closer = s[open] === "[" ? "]" : "}";
+  let depth = 0;
+  for (let j = open + 1; j < s.length; j++) {
+    const c = s[j];
+    if (c === "\\") { j++; continue; }
+    if (c === "{") depth++;
+    else if (c === "}" && depth > 0) depth--;
+    else if (c === closer && depth === 0) return j;
+  }
+  return -1;
+}
+
+/** Replace exact-equal tokens of a comma-separated key list, keeping every
+ *  other byte (separators, surrounding whitespace) untouched. */
+function rewriteKeyList(body: string, oldKey: string, newKey: string): string {
+  const parts = body.split(",");
+  let changed = false;
+  const next = parts.map((part) => {
+    if (part.trim() !== oldKey) return part;
+    changed = true;
+    const lead = part.length - part.trimStart().length;
+    return part.slice(0, lead) + newKey + part.slice(lead + oldKey.length);
+  });
+  return changed ? next.join(",") : body;
 }
 
 /**
