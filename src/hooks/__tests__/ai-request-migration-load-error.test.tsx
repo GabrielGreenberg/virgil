@@ -28,7 +28,7 @@
 //      an empty inbox.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { AiRequest, AiRequestsState } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -74,6 +74,8 @@ import {
   resetSidecarRefusals,
 } from "@/lib/sidecar-refusal";
 import { describeSidecarRefusal } from "@/lib/document-interruption";
+import { publishAiRequests } from "@/lib/ai-request-events";
+import { SIDECAR_CHANGED_EVENT } from "@/lib/sidecar-watcher";
 
 const DOC = "doc-679";
 
@@ -212,5 +214,63 @@ describe("useAiRequests on a failed initial read", () => {
     expect(result.current.loadError).toBe(false);
     expect(result.current.requests).toHaveLength(1);
     expect(getSidecarRefusal(DOC)).toBeNull();
+  });
+});
+
+/* ── 5. ONE read door: every authoritative adoption clears the flag ──── */
+//
+// Task 906. The mount read, the external-change re-hydrate and the user's
+// Refresh are one act through one door (`readAuthoritative`), and success
+// CLEARS `loadError` on every path — before, only the mount read did, so one
+// transient failure kept the migration shut and the warning up for the life of
+// the doc, and the AI window's Refresh could not retry the read at all.
+
+describe("useAiRequests — the one authoritative read door", () => {
+  async function mountFailed() {
+    readShouldThrow.value = true;
+    const hook = renderHook(() => useAiRequests(DOC));
+    await waitFor(() => expect(hook.result.current.loadError).toBe(true));
+    DISK.requests = [convertibleRequest()];
+    readShouldThrow.value = false;
+    return hook;
+  }
+
+  it("refresh() after a failed first read adopts the list and clears loadError", async () => {
+    const { result } = await mountFailed();
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.loadError).toBe(false));
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.requests).toHaveLength(1);
+  });
+
+  it("a sidecar-changed rehydrate that succeeds clears loadError", async () => {
+    const { result } = await mountFailed();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(SIDECAR_CHANGED_EVENT, {
+          detail: { docId: DOC, filename: "ai-requests.json" },
+        }),
+      );
+    });
+    await waitFor(() => expect(result.current.loadError).toBe(false));
+    expect(result.current.requests).toHaveLength(1);
+  });
+
+  it("an in-process post-write publish (a fresh in-lock disk read) clears loadError", async () => {
+    const { result } = await mountFailed();
+    act(() => publishAiRequests(DOC, [convertibleRequest()]));
+    await waitFor(() => expect(result.current.loadError).toBe(false));
+    expect(result.current.requests).toHaveLength(1);
+  });
+
+  it("a rehydrate that FAILS over a good list keeps the list and raises the flag", async () => {
+    DISK.requests = [convertibleRequest()];
+    const { result } = renderHook(() => useAiRequests(DOC));
+    await waitFor(() => expect(result.current.requests).toHaveLength(1));
+    readShouldThrow.value = true;
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.loadError).toBe(true));
+    // Never blanked: the last good list stays on screen, flagged.
+    expect(result.current.requests).toHaveLength(1);
   });
 });

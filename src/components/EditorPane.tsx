@@ -6619,7 +6619,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               addComment={(text) =>
                 revisionsHook.addComment(null, richFromPlainText(text))
               }
+              // EVERY polled/read source the window lists (task 906) — the
+              // AI-request inbox included, so Refresh can retry a failed read
+              // of it. Comments and bib entries ride live channels of their own.
               refreshAll={() => {
+                aiRequestsHook.refresh();
                 bibReviewHook.refresh();
                 bibSettingsHook.refresh();
               }}
