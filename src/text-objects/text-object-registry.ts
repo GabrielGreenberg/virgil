@@ -37,7 +37,7 @@ import {
   getHeadingLineRangeByUuid,
 } from "@/lib/section-range";
 import { sectionBlockDoms } from "@/lib/section-dom";
-import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { resolveFirstLineTarget } from "@/lib/text-metrics";
 import { buildFloatKey, parseAnyKey } from "@/floats/float-key";
 import {
@@ -1118,7 +1118,7 @@ function linkedAnchorDomRange(
   editor: Editor,
   anchorId: string,
 ): { range: Range; doc: { from: number; to: number } } | null {
-  const doc = findLinkedAnchorRange(editor.state.doc, anchorId);
+  const doc = resolveLinkedAnchorRange(editor.state, anchorId);
   if (!doc) return null;
   try {
     const view = editor.view;

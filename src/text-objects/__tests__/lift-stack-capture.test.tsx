@@ -73,6 +73,7 @@ const linkedDocRange = { current: null as { from: number; to: number } | null };
 vi.mock("@/lib/linked-anchor-range", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   findLinkedAnchorRange: () => linkedDocRange.current,
+  resolveLinkedAnchorRange: () => linkedDocRange.current,
 }));
 
 // The anchor resolve is O(1) through the `data-uuid` decoration in production;

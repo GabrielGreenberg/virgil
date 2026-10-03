@@ -283,7 +283,7 @@ import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
 import { PanelChromeProvider, useCycle } from "./panel-primitives";
 import { findEditorScrollFor } from "./editor-layout/layout-scroll";
-import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import FloatingPanel from "./FloatingPanel";
 import { OmniHost } from "./editor-layout/panels/omni-host";
 import { OutlineHost } from "./editor-layout/panels/outline-host";
@@ -3663,7 +3663,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       if (!ed || ed.isDestroyed) return;
       const target = pendingChangeIndex.get(key);
       if (!target) return;
-      const range = findLinkedAnchorRange(ed.state.doc, target.anchorId);
+      const range = resolveLinkedAnchorRange(ed.state, target.anchorId);
       if (!range) return;
       // Scroll the change into view + caret-select its start. Inlined from
       // EditorHandle.scrollToPos (Editor.tsx) — this scope holds the raw editor

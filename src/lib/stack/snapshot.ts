@@ -15,7 +15,7 @@ import { richJsonToPlainText } from "@/lib/footnote-content";
 import { bibFieldDisplay } from "@/lib/bib-parser";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
-import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import type { TextObjectKind, TextObjectRef } from "@/text-objects/types";
 import { isRangeKind } from "@/text-objects/text-object-registry";
 import type {
@@ -199,7 +199,7 @@ export function snapshotLinkedRange(
   anchorId: string,
   source: { docId: string | null; docTitle?: string },
 ): StackItem | null {
-  const range = findLinkedAnchorRange(editor.state.doc, anchorId);
+  const range = resolveLinkedAnchorRange(editor.state, anchorId);
   if (!range || range.to <= range.from) return null;
   const slice = editor.state.doc.slice(range.from, range.to);
   if (slice.size === 0) return null;

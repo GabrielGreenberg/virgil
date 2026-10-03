@@ -70,7 +70,7 @@ import {
   parseTextObjectPopoutKey,
 } from "@/text-objects/text-object-registry";
 import {
-  findLinkedAnchorRange,
+  resolveLinkedAnchorRange,
   rangeSliceToBlocks,
   stripLinkedAnchorMarks,
 } from "@/lib/linked-anchor-range";
@@ -107,7 +107,7 @@ function locateRange(cardKey: string, mainEditor: Editor | null): RangeSource | 
   if (!mainEditor) return null;
   const ref = parseTextObjectPopoutKey(cardKey);
   if (!ref || !isRangeKind(ref.kind)) return null;
-  const range = findLinkedAnchorRange(mainEditor.state.doc, ref.id);
+  const range = resolveLinkedAnchorRange(mainEditor.state, ref.id);
   if (!range) return null;
   return { editor: mainEditor, from: range.from, to: range.to };
 }

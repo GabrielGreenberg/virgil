@@ -26,6 +26,7 @@ import {
   diffHasStructuralEntries,
   mapStructureDiffPositions,
   mergeStructureDiffs,
+  type AnchorEntry,
   type BlockEntry,
   type DocStructure,
   type StructureDiff,
@@ -410,6 +411,32 @@ export function resolveTouchedBlock(
   let pos = entry.pos;
   for (const m of s.pendingMaps) pos = m.map(pos);
   return pos === entry.pos ? entry : { ...entry, pos };
+}
+
+/**
+ * The anchor twin of {@link resolveTouchedBlock} (task 926): one `linkedAnchor`
+ * entry's LIVE `[from, to)` without materializing the whole snapshot —
+ * O(pendingMaps), zero allocation on the no-shift path. `undefined` when the
+ * state carries no observer (a bare editor — the caller must walk), `null`
+ * when the observer is present and no mark carries `anchorId` (membership is
+ * invariant under the deferred maps, so absence is authoritative).
+ */
+export function resolveTouchedAnchor(
+  state: Parameters<typeof docStructureKey.getState>[0],
+  anchorId: string,
+): AnchorEntry | null | undefined {
+  const s = docStructureKey.getState(state);
+  if (!s) return undefined;
+  const entry = s.structure.anchors.get(anchorId);
+  if (!entry) return null;
+  if (!s.pendingMaps?.length) return entry;
+  let from = entry.from;
+  let to = entry.to;
+  for (const m of s.pendingMaps) {
+    from = m.map(from);
+    to = m.map(to);
+  }
+  return from === entry.from && to === entry.to ? entry : { ...entry, from, to };
 }
 
 /**

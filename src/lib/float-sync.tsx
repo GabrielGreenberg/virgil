@@ -279,10 +279,16 @@ export interface UseFloatMainSyncArgs {
    *  read — a body should use it to resolve its source without walking the
    *  doc, and MUST verify what it finds there (identity + extent) before
    *  trusting it. It is `null` on the seed read and whenever the source's
-   *  position is unknown. */
+   *  position is unknown.
+   *
+   *  `state` is the main editor state `doc` belongs to — for a body whose
+   *  source has no single node to resolve (a marked run), so it can bound its
+   *  lookup by the DocStructure snapshot (`resolveLinkedAnchorRange`, task 926)
+   *  instead of walking the doc. */
   readSource: (
     doc: import("@tiptap/pm/model").Node,
     hint: SourceRange | null,
+    state: import("@tiptap/pm/state").EditorState,
   ) => ReadSourceResult;
 }
 
@@ -336,6 +342,7 @@ function syncFromMain(
   const { doc, missing, range } = readSource(
     mainEditor.state.doc,
     sourceRangeRef.current,
+    mainEditor.state,
   );
   // Re-arm the gate from the read we just did. A missing source (or a body
   // that reports no range) parks it at null, which OPENS the gate — exactly

@@ -6,7 +6,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { useEditorRefContextOrNull } from "@/components/editor-layout/contexts/editor-ref";
 import { getBus } from "@/lib/tiptap/doc-structure/bus";
 import type { AnchorEntry } from "@/lib/tiptap/doc-structure/types";
-import { readLinkedAnchorText } from "@/lib/linked-anchor-range";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { isAnchorableNode } from "@/lib/marginalia";
 
 /**
@@ -73,11 +73,11 @@ export function useLinkedAnchorText(anchorId: string | null | undefined): string
 
 function readLive(editor: Editor | null, anchorId: string | null | undefined): string | null {
   if (!editor || !anchorId || editor.isDestroyed) return null;
-  const bus = getBus(editor);
-  if (!bus) return readLinkedAnchorText(editor.state.doc, anchorId);
-  const entry = bus.structure.anchors.get(anchorId);
-  if (!entry) return null;
-  return readLinkedAnchorText(editor.state.doc, anchorId, entry);
+  // The live door (task 926): snapshot-bounded, and it resolves the anchor's
+  // deferred maps without materializing the whole snapshot.
+  const { state } = editor;
+  const range = resolveLinkedAnchorRange(state, anchorId);
+  return range ? state.doc.textBetween(range.from, range.to, " ") : null;
 }
 
 /** Every anchorable block uuid the range touches — the enclosing ancestors of
