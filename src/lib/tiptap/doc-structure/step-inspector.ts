@@ -28,16 +28,14 @@ import {
   type Step,
 } from "@tiptap/pm/transform";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
-import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { type EntitySink, extractEntitiesAt, figureEntryAt } from "./entity-extractor";
 import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
   type DocStructure,
   type CitationContainer,
-  citationEntryAt,
   deriveExampleIdentity,
-  deriveParTitled,
   EMPTY_DIFF,
   type ExampleEntry,
   type FigureEntry,
@@ -138,23 +136,6 @@ interface DiffSink {
 }
 
 /**
- * The ONE construction of a `FigureEntry` from a live node. Read by
- * `inspectNodeAt` (the range walk) and by the body-derived-ancestor pass
- * below, so the two can never disagree about what a figure's facts are.
- */
-function figureEntryAt(n: PMNode, pos: number, uuid: string): FigureEntry {
-  const attrs = (n.attrs ?? {}) as Record<string, unknown>;
-  return {
-    uuid,
-    pos,
-    label: (attrs.label as string | undefined) ?? "",
-    numbered: attrs.numbered !== false,
-    number: (attrs.figureNumber as number | null | undefined) ?? null,
-    emitsCaption: figureNodeEmitsCaption(n),
-  };
-}
-
-/**
  * Record one `linkedAnchor` span into a bundle, MERGING with any span already
  * recorded for that id — a mark rides several text runs, and a transaction may
  * touch several of them. The ONE writer, so the mark-step branch and the text-
@@ -179,9 +160,10 @@ function noteAnchorRange(
 }
 
 /**
- * Inspect ONE node (including its own attrs/text and any linkedAnchor
- * marks if it's a text node). Does not recurse — the visitor below
- * handles recursion explicitly so position math stays correct.
+ * Inspect ONE node into a bundle. Does not recurse — the visitor below
+ * handles recursion explicitly so position math stays correct. WHAT the node
+ * contributes is `extractEntitiesAt`'s, shared with `buildInitial` (task 922);
+ * this adapter supplies only the two step-path facts:
  *
  * `doc` is the document `pos` addresses (the pre-step doc for the removed
  * side, `newDoc` for the added side). It is needed for the ancestor-derived
@@ -203,130 +185,25 @@ function inspectNodeAt(
    *  inner paragraph carries no live block identity). */
   parent: PMNode | null,
 ): void {
-  const typeName = n.type.name;
-    const attrs = (n.attrs ?? {}) as Record<string, unknown>;
-    const uuid = (attrs.uuid as string | null | undefined) ?? null;
-    // The entry's position, in the contract space of the side being filled.
-    const at = mapPos(record, pos, 1);
+  extractEntitiesAt(n, pos, parent, {
+    sink: bundleSink(out),
+    place: record ? (p, assoc) => record.map(p, assoc) : undefined,
+    citationContainer: (p) => enclosingCitationContainer(doc, p),
+  });
+}
 
-    if (uuid && mayCarryBlockUuid(n, parent)) {
-      out.blocks.set(uuid, { uuid, pos: at, typeName, parTitled: deriveParTitled(attrs) });
-    }
-
-    if (typeName === "heading" && uuid) {
-      out.headings.set(uuid, {
-        uuid,
-        pos: at,
-        level: (attrs.level as number | undefined) ?? 1,
-        text: n.textContent,
-        label: (attrs.label as string | null | undefined) ?? null,
-        numbered: attrs.numbered !== false,
-      });
-      if (typeof attrs.label === "string" && attrs.label) {
-        out.labels.set(attrs.label, {
-          id: attrs.label,
-          owner: "heading",
-          ownerUuid: uuid,
-          pos: at,
-        });
-      }
-    }
-
-    if (typeName === "figureBlock" && uuid) {
-      out.figures.set(uuid, figureEntryAt(n, at, uuid));
-      if (typeof attrs.label === "string" && attrs.label) {
-        out.labels.set(attrs.label, {
-          id: attrs.label,
-          owner: "figure",
-          ownerUuid: uuid,
-          pos: at,
-        });
-      }
-    }
-
-    if (typeName === "exampleBlock") {
-      // Shared derivation with buildInitial — see `deriveExampleIdentity`.
-      const { id, uuid: exUuid, tag, label, number } = deriveExampleIdentity({
-        uuid,
-        tag: attrs.tag as string | null | undefined,
-        label: attrs.label as string | null | undefined,
-        number: attrs.number as string | number | null | undefined,
-      });
-      if (id) {
-        out.examples.set(id, { id, uuid: exUuid, pos: at, tag, label, number });
-        if (label) {
-          out.labels.set(label, {
-            id: label,
-            owner: "example",
-            ownerUuid: exUuid,
-            pos: at,
-          });
-        }
-      }
-    }
-
-    if (typeName === "exampleItem") {
-      const label = (attrs.label as string | undefined) ?? "";
-      if (label) {
-        out.labels.set(label, {
-          id: label,
-          owner: "exampleItem",
-          ownerUuid: null,
-          pos: at,
-        });
-      }
-    }
-
-    if (typeName === "footnote") {
-      const id = (attrs.footnoteId as string | undefined) ?? "";
-      if (id) {
-        out.footnotes.set(id, {
-          id,
-          pos: at,
-          thanks: !!attrs.thanks,
-          number: (attrs.number as number | undefined) ?? 0,
-          title: (attrs.title as string | undefined) ?? "",
-        });
-      }
-    }
-
-    if (typeName === "citation") {
-      const id = (attrs.citationId as string | undefined) ?? "";
-      if (id) {
-        // The container tag is ANCESTOR-derived, so it cannot come from the
-        // node's own attrs: resolve it here, through the SAME constructor
-        // `buildInitial` uses, or a cite inserted inside an example would
-        // reach the cards untagged and render as a flat top-level card until
-        // the next reload (the load path derives it; this one must too).
-        out.citations.set(
-          id,
-          citationEntryAt({
-            id,
-            pos: at,
-            command: attrs.command as string | undefined,
-            displayText: attrs.displayText as string | undefined,
-            container: enclosingCitationContainer(doc, pos),
-          }),
-        );
-      }
-    }
-
-    // Linked-anchor marks ride on text nodes.
-    if (n.isText && n.marks.length > 0) {
-      for (const mark of n.marks) {
-        if (mark.type.name !== "linkedAnchor") continue;
-        const mAttrs = mark.attrs as { anchorId?: string; kind?: string };
-        const id = mAttrs.anchorId ?? "";
-        if (!id) continue;
-        noteAnchorRange(
-          out,
-          id,
-          mAttrs.kind ?? "note",
-          mapPos(record, pos, -1),
-          mapPos(record, pos + n.nodeSize, 1),
-        );
-      }
-    }
+/** Adapt a keyed `EntityBundle` to the extractor's sink. */
+function bundleSink(out: EntityBundle): EntitySink {
+  return {
+    block: (e) => void out.blocks.set(e.uuid, e),
+    heading: (e) => void out.headings.set(e.uuid, e),
+    figure: (e) => void out.figures.set(e.uuid, e),
+    example: (e) => void out.examples.set(e.id, e),
+    footnote: (e) => void out.footnotes.set(e.id, e),
+    citation: (e) => void out.citations.set(e.id, e),
+    label: (e) => void out.labels.set(e.id, e),
+    anchor: (id, kind, from, to) => noteAnchorRange(out, id, kind, from, to),
+  };
 }
 
 /**

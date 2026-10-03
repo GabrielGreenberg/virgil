@@ -458,7 +458,8 @@ retire the class; it hides one member of it.
 The fix is the same shape as the derived-facts half above: **one constructor,
 plus the ancestor walk that feeds it.** `citationEntryAt` (in `types.ts`, so
 both modules import it) is the ONE construction of a `CitationEntry`, read by
-`buildInitial`'s two sites and by `inspectNodeAt`; `inspectNodeAt` takes the
+the shared per-node extractor `extractEntitiesAt` (task 922 — both walks call
+it) and by `buildInitial`'s footnote-body descend; `inspectNodeAt` takes the
 `doc` its `pos` addresses and resolves the container itself
 (`enclosingCitationContainer`), under the same rule `buildInitial`'s stack
 applies — the innermost enclosing `exampleBlock` with a non-empty
