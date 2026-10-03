@@ -18,10 +18,10 @@ interface BuildArgs {
   /** Task 077: atomless footnote refs (archive-born `FootnoteRef`, no `\footnote`
    *  atom). The docked panel renders these as `UnanchoredFootnoteCard`; Omni must
    *  surface the ACTIVE (non-archived) ones too, else an unarchived unanchored
-   *  footnote vanishes on the Active→Omni switch. Archived refs are filtered out
-   *  in the loop below (parity with the docked Archives view + the omni-host
-   *  `active()` filter). Optional — omitted by the contract-test harness for the
-   *  anchored/orphan cases. */
+   *  footnote vanishes on the Active→Omni switch. Archived refs are NOT filtered
+   *  here: since task 476 the shared archived rule (`omni-archived.ts`) drops
+   *  them from the ASSEMBLED item array. Optional — omitted by the
+   *  contract-test harness for the anchored/orphan cases. */
   unanchoredFootnotes?: FootnoteRef[];
   onEditUnanchored?: (id: string, json: JSONContent) => void;
   onDeleteUnanchored?: (id: string) => void;
@@ -112,9 +112,9 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
   // clears `archived` but leaves `unanchored` (the `\footnote` atom is NOT
   // re-inserted), manufacturing an ACTIVE unanchored ref that renders in the
   // docked Active view. Surface those here so switching to Omni doesn't drop the
-  // card on the floor. Archived refs are excluded (parity with the docked
-  // Archives view + the omni-host `active()` filter) — filtered in the builder so
-  // the contract test can exercise the archived-excluded case directly.
+  // card on the floor. Archived refs are emitted too and excluded downstream by
+  // the shared archived rule over the ASSEMBLED array (`omni-archived.ts`, task
+  // 476) — parity with the docked Archives view; no per-builder filter.
   for (const ref of a.unanchoredFootnotes ?? []) {
     const isSelected = a.selectedFootnoteId === ref.id;
     const id = popKey("footnotes", ref.id);

@@ -27,7 +27,6 @@ import {
 } from "./omni-categories";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { parseAnyKey } from "@/floats/float-key";
-import { OmniProvider } from "@/components/editor-layout/contexts/omni";
 import {
   CardDisplayProvider,
   OMNI_COMPRESSED_LINES,
@@ -925,7 +924,6 @@ function OmniViewPanel({
   // a pinned card no longer snaps it back to its cascaded position — pin
   // stays put. New marker/card-jump interactions still replace cleanly.
   return (
-    <OmniProvider value={{ side }}>
     <CardDisplayProvider value={{ compressedLines: OMNI_COMPRESSED_LINES }}>
     <div
       ref={rootRef}
@@ -1074,7 +1072,6 @@ function OmniViewPanel({
       </div>
     </div>
     </CardDisplayProvider>
-    </OmniProvider>
   );
 }
 
