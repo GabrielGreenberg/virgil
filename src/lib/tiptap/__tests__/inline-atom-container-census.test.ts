@@ -319,7 +319,9 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
     // Pinned by SOURCE because a wrong `applies` type-checks perfectly: the bare
     // `blockApplies` and the factory have the SAME signature, which is exactly
     // how these two rows rode the wrong one for five weeks.
-    expect(src).toMatch(/applies:\s*inlineAtomInsertApplies\("inlineMath"\)/);
+    // Task 907: `inline-math` WRAPS the selection, so its factory also carries
+    // the run's capture dialect — the offer greys where `mathRun` refuses.
+    expect(src).toMatch(/applies:\s*inlineAtomInsertApplies\("inlineMath",\s*MATH_CAPTURE\)/);
     expect(src).toMatch(/applies:\s*inlineAtomInsertApplies\("labelRef"\)/);
   });
 

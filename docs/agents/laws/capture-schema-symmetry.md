@@ -3646,3 +3646,22 @@ any child main could not rebuild, then replaced the range anyway
 
 CI: `linked-range-popout-fidelity.test.ts` (float ⊇ main census + door legs),
 `editor-extensions.test.ts`.
+
+## The offer half (task 907)
+
+A wrap creator's capture refusal is a fact the OFFER must read too. `texRun` /
+`exampleRun` / `mathRun` delete the selection and carry it out in one dialect
+(`TEX_CAPTURE` "latex", `EXAMPLE_CAPTURE` "inline", `MATH_CAPTURE` "text"); a
+selection that dialect cannot carry is refused. Those refusals used to live only
+in the runs, while each row's `applies()` asked only the container question — so
+the lightning grid showed a live Raw LaTeX / Example / math cell over (say) a
+cited sentence, and the click did nothing and said nothing. Now ONE function,
+`wrapCaptureHolds(doc, from, to, dialect)` in `action-registry.ts`, is asked by
+each run AND by its row's `applies()` (the dialect is the optional second
+argument of `blockInsertApplies` / `inlineAtomInsertApplies`), so the cell greys
+exactly where the click would refuse. No silent run-side refusal remains on the
+grid path, so no toast is needed there. It clamps an out-of-range ref the way
+the container gate does — `applies()` runs at menu render and must never throw.
+
+CI: `capture-refusal-offer-parity.test.ts` (each row: refused selection → "disabled"
++ doc byte-identical; capturable → "ok" + run lands), `inline-atom-container-census.test.ts`.

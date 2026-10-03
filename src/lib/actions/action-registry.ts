@@ -221,7 +221,10 @@ import {
   LIFECYCLE_ACTION_IDS,
 } from "@/text-objects/action-scope";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
-import { sliceIsFullyCapturedBy } from "@/lib/tiptap/capture-symmetry";
+import {
+  sliceIsFullyCapturedBy,
+  type CaptureVocabulary,
+} from "@/lib/tiptap/capture-symmetry";
 import { captureRangeLatexSource } from "@/lib/tiptap/slice-capture";
 // VALUE imports: the markdown triggers the three WRAPPER rows record as their
 // `inputRulePattern` (task 427) are the extension's OWN regexes, never a
@@ -270,6 +273,13 @@ import {
 // than `cardPopKey` to keep this registry importable in node-env vitest
 // without pulling the `panel-registry` → `card-registry` (React JSX) graph in.
 import { buildFloatKey } from "@/floats/float-key";
+
+// Each WRAP row's capture DIALECT (task 641/848), declared once and read by its
+// `run()` and its `applies()` through `wrapCaptureHolds` (task 907). Declared up
+// here because the row objects below are built at module load.
+const TEX_CAPTURE: CaptureVocabulary = "latex";
+const EXAMPLE_CAPTURE: CaptureVocabulary = "inline";
+const MATH_CAPTURE: CaptureVocabulary = "text";
 
 // ---------------------------------------------------------------------------
 // ActionId — the closed vocabulary of every editing action.
@@ -1871,13 +1881,11 @@ export function texRun(ctx: ActionContext): void {
   // cannot hold — a card anchor, a Card-bearing atom's id, a block atom
   // (`displayMath` / figure / `texBlock`) — and a span the serializer cannot
   // express (`captureRangeLatexSource` → null).
-  let seedCode = "";
-  if (!empty) {
-    if (!sliceIsFullyCapturedBy(state.doc.slice(from, to), "latex")) return;
-    const source = captureRangeLatexSource(state.doc, from, to);
-    if (source === null) return;
-    seedCode = source;
-  }
+  // Task 907: asked through `wrapCaptureHolds`, the ONE capture question the
+  // row's `applies()` asks too — so the grid cell greys over exactly the
+  // selections this run refuses, instead of a live button that does nothing.
+  if (!wrapCaptureHolds(state.doc, from, to, TEX_CAPTURE)) return;
+  const seedCode = empty ? "" : (captureRangeLatexSource(state.doc, from, to) ?? "");
   // The ONE uuid-collision scan (was duplicated across slash + grid).
   const existing = new Set<string>();
   state.doc.descendants((node) => {
@@ -1917,7 +1925,7 @@ const TEX_ACTION_ROW: ActionSpec = {
   slashName: "tex",
   // Shared block-atom gate (CHIP 6a: `blockApplies`). A function declaration, so
   // it is hoisted above this row's definition.
-  applies: blockInsertApplies("texBlock"),
+  applies: blockInsertApplies("texBlock", TEX_CAPTURE),
   run: texRun,
 };
 
@@ -2279,9 +2287,8 @@ export function exampleRun(ctx: ActionContext): void {
   // harvest reads as "empty", and the empty-template fallback then
   // `deleteSelection()`s the block out of existence and drops a blank example
   // in its place. Refuse instead: `\ex` wraps inline content.
-  if (!empty && !sliceIsFullyCapturedBy(state.doc.slice(from, to), "inline")) {
-    return;
-  }
+  // Task 907: the same `wrapCaptureHolds` question the row's `applies()` asks.
+  if (!wrapCaptureHolds(state.doc, from, to, EXAMPLE_CAPTURE)) return;
 
   // Harvest inline-only content from the selection (the WRAP path) via the SSOT
   // `extractInlineFromSlice` — a bounded walk over the selection slice (never the
@@ -2370,7 +2377,7 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "ex",
-  applies: blockInsertApplies("exampleBlock"),
+  applies: blockInsertApplies("exampleBlock", EXAMPLE_CAPTURE),
   run: exampleRun,
 };
 
@@ -2403,6 +2410,40 @@ function blockApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
 }
 
 // ---------------------------------------------------------------------------
+// wrapCaptureHolds (task 907) — the CAPTURE half of a WRAP row's refusal, asked
+// by the row's `run()` AND its `applies()`. The wrap creators (`texRun`,
+// `exampleRun`, `mathRun`) delete the selection and carry it out in one
+// dialect (task 641/848); a selection that dialect cannot represent is refused.
+// That refusal used to live only in the runs, as a bare `return`, while
+// `applies()` asked only the CONTAINER half — so over (say) a cited sentence the
+// lightning grid offered a live Raw LaTeX cell whose click did nothing and said
+// nothing (the 398 two-tables shape). One function, two readers: the offer and
+// the commit cannot drift.
+//
+// A collapsed range always holds (an insert carries nothing out). The "latex"
+// dialect also asks the serializer, whose `null` (a span it cannot express) is
+// the run's other refusal. Cost: bounded by the SELECTION, never the doc, and
+// asked at gesture rate (menu render), not per keystroke.
+// ---------------------------------------------------------------------------
+function wrapCaptureHolds(
+  doc: PMNode,
+  from: number,
+  to: number,
+  dialect: CaptureVocabulary,
+): boolean {
+  // Clamp as the container gate (`blockRangeHostsBlockInsert`) does: `applies()`
+  // runs at menu render, where a ref minted against an older doc must grey or
+  // pass — never throw a RangeError into the render.
+  const size = doc.content.size;
+  from = Math.max(0, Math.min(from, size));
+  to = Math.max(0, Math.min(to, size));
+  if (from >= to) return true;
+  if (!sliceIsFullyCapturedBy(doc.slice(from, to), dialect)) return false;
+  if (dialect === "latex" && captureRangeLatexSource(doc, from, to) === null) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // blockInsertApplies (task 147 + 229) — the CONTAINER-AWARE gate for the
 // block-atom rows that INSERT a block node at the caret (example / display-math /
 // `\tex` / figure / graphics / forest). It tightens `blockApplies`: when a mid-content
@@ -2430,6 +2471,7 @@ function blockApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
 // ---------------------------------------------------------------------------
 function blockInsertApplies(
   nodeName: string,
+  capture?: CaptureVocabulary,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   return (ctx: ActionContext) => {
     const base = blockApplies(ctx);
@@ -2445,7 +2487,11 @@ function blockInsertApplies(
     // from prose into a `codeBlock` / `latexComment` greys the cell. A cursor
     // ref is the caret form (from === to).
     const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
-    return blockRangeHostsBlockInsert(doc, from, to, insertType) ? "ok" : "disabled";
+    if (!blockRangeHostsBlockInsert(doc, from, to, insertType)) return "disabled";
+    // CAPTURE half (task 907): a WRAP row's run also refuses a selection its
+    // capture cannot carry — ask the run's own question, not a copy of it.
+    if (capture && !wrapCaptureHolds(doc, from, to, capture)) return "disabled";
+    return "ok";
   };
 }
 
@@ -2475,6 +2521,7 @@ function blockInsertApplies(
 // ---------------------------------------------------------------------------
 function inlineAtomInsertApplies(
   nodeName: string,
+  capture?: CaptureVocabulary,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   return (ctx: ActionContext) => {
     const base = blockApplies(ctx);
@@ -2489,7 +2536,10 @@ function inlineAtomInsertApplies(
     // textblock it reaches must host it — a selection running from prose into a
     // `codeBlock` greys the cell. A cursor ref is the caret form (from === to).
     const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
-    return inlineRangeAllowsAtom(doc, from, to, atomType) ? "ok" : "disabled";
+    if (!inlineRangeAllowsAtom(doc, from, to, atomType)) return "disabled";
+    // CAPTURE half (task 907) — see `blockInsertApplies`.
+    if (capture && !wrapCaptureHolds(doc, from, to, capture)) return "disabled";
+    return "ok";
   };
 }
 
@@ -2530,9 +2580,9 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     // DECLARATION (`TEXT_CAPTURE_DROPPED_MARKS` — `\emph` has no meaning inside
     // math source); a `linkedAnchor` (a card's anchor) refuses the wrap rather
     // than stranding the card in the unanchored bin.
-    if (from < to && !sliceIsFullyCapturedBy(editor.state.doc.slice(from, to), "text")) {
-      return;
-    }
+    // Task 907: the same `wrapCaptureHolds` question both math rows'
+    // `applies()` ask, so the cell greys where this run would refuse.
+    if (!wrapCaptureHolds(editor.state.doc, from, to, MATH_CAPTURE)) return;
     const latex = text || (kind === "inline" ? "x" : "\\int f(x)\\,dx");
     if (kind === "inline") {
       // CONTAINER GUARD (task 396) — the inline twin of the display branch's
@@ -2765,7 +2815,7 @@ const INLINE_MATH_ACTION_ROW: ActionSpec = {
   inputRulePattern: TYPED_LATEX_INPUT_RULES["inline-math"],
   // Task 396: the CONTAINER-aware inline gate, not the bare `blockApplies` —
   // `$x$` in a `codeBlock` / `latexComment` splits the verbatim block.
-  applies: inlineAtomInsertApplies("inlineMath"),
+  applies: inlineAtomInsertApplies("inlineMath", MATH_CAPTURE),
   run: mathRun("inline"),
 };
 const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
@@ -2776,7 +2826,7 @@ const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
   // Same correction as its inline twin above: `displayMathInput` owns `$$`.
   surfaces: { lightning: true, typed: true },
   inputRulePattern: TYPED_LATEX_INPUT_RULES["display-math"],
-  applies: blockInsertApplies("displayMath"),
+  applies: blockInsertApplies("displayMath", MATH_CAPTURE),
   run: mathRun("display"),
 };
 const FIGURE_ACTION_ROW: ActionSpec = {
