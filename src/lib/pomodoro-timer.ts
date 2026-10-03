@@ -142,17 +142,29 @@ export function pomodoroProgress(
 /* ── Actions ─────────────────────────────────────────────────────────────
    Each is a transition; each commits at most one new snapshot. A call that
    would not change anything commits nothing, so a subscriber never sees a
-   no-op notify. */
+   no-op notify.
+
+   **Every transition SETTLES elapse first** (task 905). `running` is a
+   time-derived state: past `endAt` the run is already over, whether or not
+   the watchdog or a widget tick has looked yet (up to 1 s in a foreground
+   tab, about a minute in a throttled background one). A transition that read
+   the raw `status` inside that window acted on a run that no longer existed —
+   a pause just past the end froze a full bar on a paused clock and swallowed
+   the chime and "Done" for good. So each exported transition first runs
+   `settle(now)`, which lands an owed completion (chime included, exactly
+   once — `completePomodoroIfElapsed` is idempotent), and only then decides
+   on the settled state. The poller is how completion is noticed when nobody
+   acts; it is no longer the only place the store admits it. */
+
+function settle(now: number): void {
+  completePomodoroIfElapsed(now);
+}
 
 /** Toggle the widget. Opening never starts the clock — the play button does,
  *  which is also the gesture that arms the audio device. */
-export function togglePomodoroOpen(): void {
+export function togglePomodoroOpen(now: number = Date.now()): void {
+  settle(now);
   commit({ ...state, open: !state.open });
-}
-
-export function openPomodoro(): void {
-  if (state.open) return;
-  commit({ ...state, open: true });
 }
 
 /**
@@ -161,37 +173,39 @@ export function openPomodoro(): void {
  * end a thing. A dismissed timer is gone; a hidden one is still counting and
  * the icon's active state says so.
  */
-export function dismissPomodoro(): void {
+export function dismissPomodoro(now: number = Date.now()): void {
+  settle(now);
   commit({ ...state, open: false, status: "idle", endAt: null, remainingMs: state.durationMs });
 }
 
 export function startPomodoro(now: number = Date.now()): void {
+  settle(now);
   if (state.status === "running") return;
-  // From `done` (or a fully-elapsed pause) a play press means "again", not
-  // "resume zero" — otherwise the button would complete instantly.
+  // From `done` a play press means "again", not "resume zero" — otherwise the
+  // button would complete instantly. (A fully-elapsed PAUSE is no longer
+  // reachable — pausing settles first, so a pause at or past the end lands on
+  // `done` — but the `<= 0` arm keeps the same answer should one appear.)
   const left = state.status === "done" || state.remainingMs <= 0 ? state.durationMs : state.remainingMs;
   commit({ ...state, open: true, status: "running", endAt: now + left, remainingMs: left });
 }
 
 export function pausePomodoro(now: number = Date.now()): void {
+  settle(now);
   if (state.status !== "running") return;
   commit({ ...state, status: "paused", endAt: null, remainingMs: pomodoroRemainingMs(state, now) });
 }
 
-/** Back to a full, stopped interval at the current duration. */
-export function resetPomodoro(): void {
-  commit({ ...state, status: "idle", endAt: null, remainingMs: state.durationMs });
-}
-
 /**
- * Adopt a new interval length. Only reachable while the clock is STOPPED —
- * the widget renders the duration as plain text while running rather than as
- * a control that would silently discard the run (what the surface offers is
- * what the click does). Guarded here too, so the rule survives a second
- * caller.
+ * Adopt a new interval length. Only reachable while NOTHING IS IN PROGRESS
+ * (`idle` / `done`) — the widget renders the duration as plain text while
+ * running OR PAUSED rather than as a control that would silently discard the
+ * run (what the surface offers is what the click does; a pause is a run the
+ * user means to resume, task 905). Guarded here too, so the rule survives a
+ * second caller.
  */
-export function setPomodoroDuration(ms: number): void {
-  if (state.status === "running") return;
+export function setPomodoroDuration(ms: number, now: number = Date.now()): void {
+  settle(now);
+  if (state.status === "running" || state.status === "paused") return;
   const durationMs = Math.max(1000, Math.round(ms));
   if (durationMs === state.durationMs && state.status !== "done") return;
   commit({ ...state, status: "idle", durationMs, endAt: null, remainingMs: durationMs });

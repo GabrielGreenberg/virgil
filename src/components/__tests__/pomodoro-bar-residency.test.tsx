@@ -73,8 +73,9 @@ import { StatusCluster, type StatusClusterProps } from "@/components/editor-layo
 import {
   __resetPomodoroForTest,
   getPomodoroState,
-  openPomodoro,
+  pausePomodoro,
   setPomodoroDuration,
+  togglePomodoroOpen,
 } from "@/lib/pomodoro-timer";
 
 function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
@@ -218,12 +219,30 @@ describe("the clock is truthful on the frame the widget appears", () => {
   });
 });
 
+describe("the readout never discards a run in progress (task 905)", () => {
+  it("a PAUSED clock is plain text, not the preset-cycle button", () => {
+    mountCluster();
+    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    // Idle: the readout IS the preset control.
+    expect(screen.getByTestId("bar").querySelector("[data-pomodoro-clock]")!.tagName).toBe("BUTTON");
+    act(() => { fireEvent.click(screen.getByLabelText("Start timer")); });
+    act(() => { vi.advanceTimersByTime(5000); });
+    act(() => { pausePomodoro(); });
+    expect(getPomodoroState().status).toBe("paused");
+    const el = screen.getByTestId("bar").querySelector("[data-pomodoro-clock]")!;
+    expect(el.tagName).toBe("SPAN");
+    fireEvent.click(el);
+    expect(getPomodoroState().status).toBe("paused");
+    expect(getPomodoroState().durationMs).toBe(25 * 60_000);
+  });
+});
+
 describe("residency on the bar", () => {
   it("the WIDGET survives a collapsed toolbar; the ICON does not", () => {
     // The widget is rendered BEFORE the collapse gate and the icon inside it:
     // a running timer must stay legible when the user collapses the toolbar,
     // which is the whole point of the request.
-    act(() => { openPomodoro(); });
+    act(() => { togglePomodoroOpen(); });
     mountCluster({ topbarRightCollapsed: true });
     expect(clock()).toBe("0:00 / 25:00");
     // Renegotiated by task 395, same invariant, stronger question. The
@@ -241,7 +260,7 @@ describe("residency on the bar", () => {
     // icon takes that rule with every other tool rather than minting an
     // exception. What zen must NOT do is hide a timer the user already has
     // running — a timed sitting is exactly when zen is on.
-    act(() => { openPomodoro(); });
+    act(() => { togglePomodoroOpen(); });
     mountCluster({ zenModeOn: true });
     expect(clock()).toBe("0:00 / 25:00");
     expect(screen.queryByLabelText("Timer")).toBeNull();

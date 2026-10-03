@@ -41,7 +41,10 @@ export function armPomodoroAudio(): void {
     const Ctor = audioCtor();
     if (!Ctor) return;
     ctx ??= new Ctor();
-    if (ctx.state === "suspended") void ctx.resume();
+    // `resume()` REJECTS (it does not throw) when the context cannot start —
+    // so the try/catch around it never sees the failure. Catch the promise
+    // itself, or a blocked device is an unhandled rejection (task 905).
+    if (ctx.state === "suspended") Promise.resolve(ctx.resume()).catch(() => {});
   } catch {
     ctx = null;
   }

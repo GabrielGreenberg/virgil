@@ -31,7 +31,6 @@ import {
   pausePomodoro,
   pomodoroProgress,
   pomodoroRemainingMs,
-  resetPomodoro,
   setPomodoroDuration,
   startPomodoro,
   subscribePomodoro,
@@ -42,11 +41,18 @@ const MIN = 60_000;
 const T0 = 1_700_000_000_000;
 
 beforeEach(() => {
+  // Every transition settles elapse against `now` (task 905), so a call that
+  // omits it must read the SAME clock the explicit ones do — the wall clock
+  // is pinned to the test epoch, not left at today's date (which is decades
+  // past any `T0`-based `endAt`).
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(T0);
   __resetPomodoroForTest();
   vi.mocked(playPomodoroChime).mockClear();
 });
 afterEach(() => {
   __resetPomodoroForTest();
+  vi.useRealTimers();
 });
 
 describe("the clock is derived from timestamps, not accumulated", () => {
@@ -133,12 +139,12 @@ describe("duration", () => {
     expect(getPomodoroState()).toBe(before);
   });
 
-  it("a change while stopped resets the interval to full", () => {
+  it("a change once the run is OVER resets the interval to full", () => {
     startPomodoro(T0);
-    pausePomodoro(T0 + 10 * MIN);
-    setPomodoroDuration(50 * MIN);
+    completePomodoroIfElapsed(T0 + 25 * MIN);
+    setPomodoroDuration(50 * MIN, T0 + 26 * MIN);
     expect(getPomodoroState().status).toBe("idle");
-    expect(pomodoroRemainingMs(getPomodoroState(), T0 + 10 * MIN)).toBe(50 * MIN);
+    expect(pomodoroRemainingMs(getPomodoroState(), T0 + 26 * MIN)).toBe(50 * MIN);
   });
 });
 
@@ -160,6 +166,57 @@ describe("open / dismiss", () => {
   });
 });
 
+describe("every transition settles elapse first (task 905)", () => {
+  it("a pause just PAST the end lands on done, with the chime, exactly once", () => {
+    startPomodoro(T0);
+    pausePomodoro(T0 + 25 * MIN + 300);
+    expect(getPomodoroState().status).toBe("done");
+    expect(playPomodoroChime).toHaveBeenCalledTimes(1);
+    // The watchdog / a widget tick arriving afterwards adds nothing.
+    expect(completePomodoroIfElapsed(T0 + 25 * MIN + 900)).toBe(false);
+    expect(playPomodoroChime).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pause AT the end is a completion, not a zero-length pause", () => {
+    startPomodoro(T0);
+    pausePomodoro(T0 + 25 * MIN);
+    expect(getPomodoroState().status).toBe("done");
+    expect(playPomodoroChime).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismissing an elapsed-but-unnoticed run still lands its completion once", () => {
+    startPomodoro(T0);
+    dismissPomodoro(T0 + 26 * MIN);
+    expect(playPomodoroChime).toHaveBeenCalledTimes(1);
+    expect(getPomodoroState().status).toBe("idle");
+    expect(getPomodoroState().open).toBe(false);
+  });
+
+  it("opening the widget over an elapsed run shows it done", () => {
+    startPomodoro(T0);
+    togglePomodoroOpen(T0 + 30 * MIN); // start opened it; this closes
+    expect(getPomodoroState().status).toBe("done");
+    expect(playPomodoroChime).toHaveBeenCalledTimes(1);
+  });
+
+  it("setPomodoroDuration refuses a PAUSED run — a pause is a run in progress", () => {
+    startPomodoro(T0);
+    pausePomodoro(T0 + 5 * MIN);
+    const before = getPomodoroState();
+    setPomodoroDuration(50 * MIN, T0 + 6 * MIN);
+    cyclePomodoroDuration();
+    expect(getPomodoroState()).toBe(before);
+  });
+
+  it("but an elapsed RUNNING interval settles to done, so the preset cycle applies", () => {
+    startPomodoro(T0);
+    setPomodoroDuration(5 * MIN, T0 + 26 * MIN);
+    expect(playPomodoroChime).toHaveBeenCalledTimes(1);
+    expect(getPomodoroState().status).toBe("idle");
+    expect(getPomodoroState().durationMs).toBe(5 * MIN);
+  });
+});
+
 describe("subscription discipline", () => {
   it("notifies on transitions, and not on a call that changes nothing", () => {
     let n = 0;
@@ -172,7 +229,7 @@ describe("subscription discipline", () => {
     expect(n).toBe(2);
     pausePomodoro(T0 + 2000); // already paused
     expect(n).toBe(2);
-    resetPomodoro();
+    dismissPomodoro();
     expect(n).toBe(3);
     off();
   });
