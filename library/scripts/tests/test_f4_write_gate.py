@@ -54,7 +54,14 @@ from _tools import (  # noqa: E402
 
 
 def _init_library(tmp_path: Path) -> Path:
-    (tmp_path / ".virgil").mkdir(parents=True, exist_ok=True)
+    # A VALID library by the one door's test (task 896: master.bib +
+    # .virgil/catalog.json + .virgil/scripts/) — a script spawned against it
+    # must resolve HERE, never fall through to the developer's real library
+    # (task 913: that fall-through made the step-7 leg green on a Mac and red
+    # on CI).
+    (tmp_path / ".virgil" / "scripts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".virgil" / "catalog.json").write_text(
+        json.dumps({"version": 1, "entries": []}) + "\n")
     (tmp_path / "papers").mkdir(parents=True, exist_ok=True)
     (tmp_path / "master.bib").write_text("")
     return tmp_path
@@ -285,7 +292,7 @@ def test_authenticate_bib_step7_exit_1_branch_is_reachable(tmp_path):
     patch.write_text(json.dumps({"indexed": {"warnings": []}}))
     proc = subprocess.run(
         [sys.executable, str(Path(_SCRIPTS) / "update_catalog_entry.py"),
-         "refonly", "--patch-file", str(patch),
+         "refonly", "--library", str(lib), "--patch-file", str(patch),
          "--recompute-warning-kind", "bib-coherence"],
         cwd=str(lib), capture_output=True, text=True,
     )

@@ -27,7 +27,7 @@
 // The same runner is the CI python step (`node scripts/lib/python-suites.mjs`
 // in deploy.yml + coherence.yml).
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -37,6 +37,7 @@ import {
   discoverSuites,
   readTally,
   runSuite,
+  suiteEnv,
 } from "../lib/python-suites.mjs";
 
 const suites = discoverSuites();
@@ -120,6 +121,19 @@ describe("python-suite census — the pass rule", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("python-suite census — hermetic about the user's library", () => {
+  it("runs every suite with an empty HOME and no VIRGIL_LIBRARY_ROOT", () => {
+    // Task 913: the library door falls through to VIRGIL_LIBRARY_ROOT,
+    // ~/.config/virgil/library-path.json and ~/Virgil-Library, so a suite run
+    // with the developer's own HOME reached their REAL library — green on the
+    // Mac, red on CI. The sandbox makes a dev box see what CI sees.
+    const env = suiteEnv();
+    expect(env.VIRGIL_LIBRARY_ROOT).toBeUndefined();
+    expect(env.HOME).not.toBe(process.env.HOME);
+    expect(readdirSync(env.HOME)).toEqual([]);
   });
 });
 
