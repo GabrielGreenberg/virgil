@@ -884,18 +884,31 @@ export function inspectSteps(
   // — never on a plain keystroke (no block-start touched → `removed.blocks`
   // empty), so keystroke sanctity is preserved (the O(doc) walk is off the
   // typing path).
-  let newDocUuidsCache: Set<string> | null = null;
-  const oldUuidSurvivesInNewDoc = (uuid: string): boolean => {
-    if (!newDocUuidsCache) {
-      const set = new Set<string>();
+  //
+  // The cache records, per live uuid, the node TYPE(S) carrying it (task 921):
+  // identity and kind are two questions. "Does this uuid survive?" is the
+  // block table's question; "does a HEADING with this uuid survive?" is the
+  // headings table's. A heading demoted to a paragraph (`setNode` copies the
+  // uuid) survives as a block but NOT as a heading — the old boolean set
+  // answered the block question for every table and left a ghost heading in
+  // `structure.headings`. A set per uuid, because a split clone transiently
+  // puts one uuid on two nodes.
+  let newDocUuidKindsCache: Map<string, Set<string>> | null = null;
+  const survivingKindsOf = (uuid: string): Set<string> | undefined => {
+    if (!newDocUuidKindsCache) {
+      const map = new Map<string, Set<string>>();
       newDoc.descendants((node) => {
         const u = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
-        if (u) set.add(u);
+        if (u) {
+          const kinds = map.get(u);
+          if (kinds) kinds.add(node.type.name);
+          else map.set(u, new Set([node.type.name]));
+        }
         return true;
       });
-      newDocUuidsCache = set;
+      newDocUuidKindsCache = map;
     }
-    return newDocUuidsCache.has(uuid);
+    return newDocUuidKindsCache.get(uuid);
   };
 
   // The ONE survivor guard shared by every anchorable-block removed-reconciler
@@ -912,14 +925,24 @@ export function inspectSteps(
   // truly gone from `newDoc`. A `null`/empty key (a tag/label-only example, never
   // a backfill re-mint candidate) can't hit this path → treated as NOT surviving,
   // so a genuine removal still fires. Same lazy O(doc)-once cost as the block
-  // path (`oldUuidSurvivesInNewDoc` builds its set at most once per tx); every
+  // path (`survivingKindsOf` builds its map at most once per tx); every
   // call site is gated behind its `!added.<kind>.has(key)` short-circuit so the
   // walk stays off the re-collected-add and plain-keystroke paths (a keystroke
   // touches no block start → `removed.<kind>` empty → these loops never execute).
-  const uuidSurvivesRemoval = (uuid: string | null | undefined): boolean =>
-    !!uuid && oldUuidSurvivesInNewDoc(uuid);
+  //
+  // `kind` is the node type the TABLE is keyed on (task 921): omitted for the
+  // block table (any node carrying the uuid keeps the block alive), the entity
+  // type for every sub-view — so a uuid that survives as a DIFFERENT kind is
+  // reported removed from the old kind's table. Every table's guard goes
+  // through this one door, so the next kind cannot regress it.
+  const survivesAs = (uuid: string | null | undefined, kind?: string): boolean => {
+    if (!uuid) return false;
+    const kinds = survivingKindsOf(uuid);
+    if (!kinds) return false;
+    return kind === undefined || kinds.has(kind);
+  };
 
-  // Anchor-id survivor guard — the mark-level twin of `oldUuidSurvivesInNewDoc`.
+  // Anchor-id survivor guard — the mark-level twin of `survivingKindsOf`.
   // `collectRange` registers a `linkedAnchor` by WHOLE text node (`inspectNodeAt`),
   // so deleting one char strictly INSIDE a marked run puts the anchor id into
   // `removed.anchors` even though the mark still rides the untouched remainder in
@@ -1043,6 +1066,10 @@ export function inspectSteps(
       // rides `changedBlocks` too — the index must fold the new flag — but
       // wakes `blockParTitleChanged` instead of `blockOrderChanged`, since
       // nothing moved and position-keyed consumers must stay asleep.
+      // A same-pos TYPE change (heading → paragraph via `setNode`, which keeps
+      // the uuid — task 921) rides `changedBlocks` as well so the index's
+      // `typeName` is refreshed, and wakes neither flag: nothing moved and no
+      // title flipped. The kind-keyed sub-views report the change themselves.
       if (removedPosInNewDoc(wasRemoved.pos) !== entry.pos) {
         changedBlocks.push(entry);
         blockOrderChanged = true;
@@ -1050,6 +1077,8 @@ export function inspectSteps(
       } else if (wasRemoved.parTitled !== entry.parTitled) {
         changedBlocks.push(entry);
         blockParTitleChanged = true;
+      } else if (wasRemoved.typeName !== entry.typeName) {
+        changedBlocks.push(entry);
       }
       continue;
     }
@@ -1076,7 +1105,7 @@ export function inspectSteps(
     // `added.blocks.has` short-circuit so it never runs for a re-collected add;
     // off the plain-keystroke path (a keystroke touches no block-start, so
     // `removed.blocks` stays empty and this loop body never executes).
-    if (uuidSurvivesRemoval(uuid)) continue;
+    if (survivesAs(uuid)) continue;
     if (prevBlocks && !prevBlocks.has(uuid)) {
       // UUID was never in oldDoc's structure index — likely a stale
       // partial slice extraction. Skip.
@@ -1111,7 +1140,9 @@ export function inspectSteps(
     // side, so it lands here. Skip when the uuid still survives, or `applyDiff`
     // splices the kept heading out of `structure.headings` (a spurious
     // `onHeadingsRemoved` desyncs Focus-mode boundaries + the fold mirror).
-    if (!added.headings.has(uuid) && !uuidSurvivesRemoval(uuid)) removedHeadings.push(entry);
+    // Kind-aware (task 921): a heading demoted in place survives as a
+    // PARAGRAPH, which keeps the block but not the heading.
+    if (!added.headings.has(uuid) && !survivesAs(uuid, "heading")) removedHeadings.push(entry);
   }
   // Mark contentChangedUuids for surviving headings — text may have
   // changed via the ReplaceStep that triggered the attribute step.
@@ -1210,7 +1241,7 @@ export function inspectSteps(
       // when it's non-null: a tag/label-only example (null uuid) is never a
       // backfill re-mint candidate, so it can't false-report and must fall through
       // to a genuine removal.
-      if (uuidSurvivesRemoval(entry.uuid)) continue;
+      if (survivesAs(entry.uuid, "exampleBlock")) continue;
       removedExamples.push(entry);
       exampleStructureChanged = true;
     }
@@ -1232,7 +1263,7 @@ export function inspectSteps(
     // Survivor guard (task 265) — same class as headings/examples. `figureBlock`
     // is anchorable, so a duplicate-uuid re-mint (paste-duplication, drag-copy)
     // sweeps its old uuid here while the kept figure still carries it in `newDoc`.
-    if (!added.figures.has(uuid) && !uuidSurvivesRemoval(uuid)) removedFigures.push(entry);
+    if (!added.figures.has(uuid) && !survivesAs(uuid, "figureBlock")) removedFigures.push(entry);
   }
 
   // Labels.
