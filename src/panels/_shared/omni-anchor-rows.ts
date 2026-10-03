@@ -14,10 +14,11 @@
  *
  * This function is the one reader: it takes the resolved rows
  * (`CardAnchorResolver`, built ONCE per pass by the host) and turns them into
- * the omni row descriptors. The `@N` suffix is indexed over the RESOLVED rows,
- * which is exactly the list the margin's `anchorIndexFor` indexes over — so a
- * marker click pins the row the marker belongs to, including for a recovered
- * anchor, by construction.
+ * the omni row descriptors. A multi-anchor row is suffixed with its PID
+ * (`anchorRowId`, task 916) — the same key the margin's `marginAnchorRowPid`
+ * hands the marker-click bridge — so a marker click pins the row the marker
+ * belongs to, including for a recovered anchor, by construction, and a pin
+ * survives a sibling anchor's death.
  */
 
 import type { CardWithLinks } from "@/links/links";
@@ -25,6 +26,7 @@ import type { OmniItem } from "@/panels/_shared/types";
 import {
   PASS_JUMP,
   NO_JUMP,
+  anchorRowId,
   type CardAnchorResolver,
   type WithJump,
 } from "@/links/card-anchor-rows";
@@ -37,7 +39,7 @@ import { resolveAnchorState, type AnchorIntent } from "@/links/anchor-state";
  */
 export interface OmniAnchorRow
   extends Pick<OmniItem, "pos" | "anchorUuid" | "anchorState"> {
-  /** The omni item id — `baseId`, plus `@<i>` when the card has >1 row. */
+  /** The omni item id — `baseId`, plus `@<pid>` when the card has >1 row. */
   omniId: string;
   /**
    * True iff this row is KNOWN to sit on a live paragraph: the authority's
@@ -127,14 +129,14 @@ export function buildOmniAnchorRows(
   }
 
   const multi = rows.length > 1;
-  return rows.map((row, i) => {
+  return rows.map((row) => {
     // A live WITNESS for an anchored row (the authority already said this pid
     // resolves); the card's own intent decides free-vs-orphaned otherwise.
     const witness = anchored ? row.pos : null;
     const intent = anchored ? null : (card as AnchorIntent);
     const canJump = witness != null;
     return {
-      omniId: multi ? `${baseId}@${i}` : baseId,
+      omniId: anchorRowId(baseId, multi ? row.pid : undefined),
       pos: witness,
       anchorUuid: row.pid,
       anchorState: resolveAnchorState(witness, intent),

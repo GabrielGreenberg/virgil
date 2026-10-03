@@ -724,7 +724,7 @@ function OmniViewPanel({
   // Live-position resolver (T5 Pillar A). Entity-anchored kinds (footnote /
   // citation / example) resolve their live pos from the DocStructureObserver
   // snapshot via `cardPopKey(kind,id)`; PARAGRAPH-anchored kinds (note / todo /
-  // cutter / revision / report / archive, incl. multi-anchor `@N` rows) now
+  // cutter / revision / report / archive, incl. multi-anchor `@<pid>` rows) now
   // ALSO resolve live via their `anchorUuid` → block snapshot pos (the
   // `paragraphAnchors` map). Both the cascade (`useInTextPositions`, at measure
   // time) AND the anchored/orphaned binning below prefer this live pos over the

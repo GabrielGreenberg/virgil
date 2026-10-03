@@ -57,7 +57,7 @@ interface Resolved {
    *  Every read and write of the pin store names it, so one pane's gesture
    *  can neither replace nor consult another pane's pin. */
   owner: string;
-  /** The wrapper's OWN id — a multi-anchor card's row is `…@N`, and the
+  /** The wrapper's OWN id — a multi-anchor card's row is `…@<pid>`, and the
    *  store's `pinRequest.cardId === item.id` match is against that, not
    *  against the bare key the caller passed. */
   wrapperId: string;

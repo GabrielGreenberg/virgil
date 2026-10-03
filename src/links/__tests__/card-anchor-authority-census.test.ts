@@ -155,10 +155,10 @@ describe("card-anchor authority census (task 369)", () => {
     expect(omniHost).not.toContain("buildCardAnchorPass(");
     expect(omniHost).toContain("useCardAnchorPass()");
     // The margin's adapter is production code (`buildMarginMarkerRows` /
-    // `marginAnchorIndex`) precisely so the contract test can drive BOTH
+    // `marginAnchorRowPid`) precisely so the contract test can drive BOTH
     // readers. An inline re-derivation here is the pre-369 shape.
     expect(editorPane).toContain("buildMarginMarkerRows(");
-    expect(editorPane).toContain("marginAnchorIndex(");
+    expect(editorPane).toContain("marginAnchorRowPid(");
     // …and the omni readers are an EXACT SET, discovered from both sides:
     // every builder that TAKES the authority must READ it, and vice versa. A
     // count floor would let a 7th adopter mask a builder that regressed to a

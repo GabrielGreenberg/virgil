@@ -711,7 +711,7 @@ export function OmniHost(p: OmniHostProps) {
   // the baked pos can land in the WRONG bin (OMNI-F1-02). Resolve the live pos
   // from the DocStructureObserver snapshot — the same engine OmniViewPanel's
   // cascade already uses. PARAGRAPH-anchored kinds (note/todo/cutter/revision/
-  // report/archive, incl. the multi-anchor `@N` rows) now ALSO resolve live via
+  // report/archive, incl. the multi-anchor `@<pid>` rows) now ALSO resolve live via
   // their `anchorUuid` → block snapshot pos (the `paragraphAnchors` map), closing
   // the gap that left their baked `pos` stale (note cards drifting/stacking at
   // the top while typing). Snapshot/anchors-identity-cached, so plain typing

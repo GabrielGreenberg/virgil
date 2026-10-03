@@ -15,7 +15,7 @@
 //
 // Every leg here drives the REAL editor, the REAL authority
 // (`buildCardAnchorPass`) and BOTH REAL readers — the margin's
-// (`buildMarginMarkerRows` / `marginAnchorIndex`, which `EditorPane` calls) and
+// (`buildMarginMarkerRows` / `marginAnchorRowPid`, which `EditorPane` calls) and
 // the omni's (`buildOmniAnchorRows`, which the six paragraph-anchored builders
 // call) — plus one real builder end-to-end. No pre-369 suite could see this:
 // each of them drives ONE surface, with the other's answer unrepresentable.
@@ -36,7 +36,9 @@ import {
 import {
   buildCardAnchorPass,
   buildMarginMarkerRows,
-  marginAnchorIndex,
+  marginAnchorRowPid,
+  anchorRowId,
+  anchorRowBaseId,
 } from "@/links/card-anchor-rows";
 import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
 import { getLinkedTextObjectIds, type CardWithLinks } from "@/links/links";
@@ -249,14 +251,14 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
     expect(omniRows).toHaveLength(1);
     expect(omniRows[0].anchorState).toBe("orphaned");
     expect(omniRows[0].pos).toBeNull();
-    // Same keying on both sides: one row ⇒ no `@N` suffix, and the margin's
-    // click index agrees.
+    // Same keying on both sides: one row ⇒ no `@<pid>` suffix, and the
+    // margin's click key agrees.
     expect(omniRows[0].omniId).toBe("base");
-    expect(marginAnchorIndex(card, "GONE", pass.resolve)).toBeUndefined();
+    expect(marginAnchorRowPid(card, "GONE", pass.resolve)).toBeUndefined();
     editor.destroy();
   });
 
-  it("multi-anchor: the `@N` keying is indexed over the RESOLVED rows on both sides", () => {
+  it("multi-anchor: the `@<pid>` keying is answered over the RESOLVED rows on both sides", () => {
     // The only shape where the RESOLVED paragraph is not a stored pid AND live
     // stored pids remain: a Mode-B link whose `linkedAnchor` mark survives in
     // P2 (rung 2) while its own stored `textObjectIds` still name live P1.
@@ -273,11 +275,14 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
     });
 
     expect(marginRows.map((r) => r.pid)).toEqual(["P2", "P1"]);
-    expect(omniRows.map((r) => r.omniId)).toEqual(["base@0", "base@1"]);
+    expect(omniRows.map((r) => r.omniId)).toEqual(["base@P2", "base@P1"]);
     for (let i = 0; i < marginRows.length; i++) {
       expect(omniRows[i].anchorUuid).toBe(marginRows[i].pid);
       expect(omniRows[i].anchorState).toBe("anchored");
-      expect(marginAnchorIndex(card, marginRows[i].pid, pass.resolve)).toBe(i);
+      // The marker's click key names the SAME row the omni builder drew.
+      expect(
+        anchorRowId("base", marginAnchorRowPid(card, marginRows[i].pid, pass.resolve)),
+      ).toBe(omniRows[i].omniId);
     }
     // PREMISE pin (see the first leg): the retired index-over-STORED-pids has
     // no entry for the recovered paragraph — which is WHY a marker click on it
@@ -285,6 +290,65 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
     // retired rule.
     expect(getLinkedTextObjectIds(card).indexOf("P2")).toBe(-1);
     editor.destroy();
+  });
+
+  it("task 916: a row's id is its PID — a sibling anchor's death never re-binds it", () => {
+    // Pre-916 the suffix was the row's INDEX in the live rows, so deleting P1
+    // shifted P3 into P2's old `@1` and a standing omni pin on P2's row
+    // silently displaced P3's row instead. Keyed by pid, P2's and P3's ids
+    // survive P1's death, and an id whose paragraph died names NO row (inert).
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const para = (uuid: string) => ({
+      type: "paragraph",
+      attrs: { uuid },
+      content: [{ type: "text", text: `Paragraph ${uuid}.` }],
+    });
+    const editor = new Editor({
+      element,
+      editable: true,
+      extensions: buildEditorExtensions(mainCtx()),
+      content: { type: "doc", content: [para("P1"), para("P2"), para("P3")] },
+    });
+    const card = snippet("s916", [paraLink("P1"), paraLink("P2"), paraLink("P3")]);
+    const ids = () =>
+      buildOmniAnchorRows(card, "base", buildCardAnchorPass(editor).resolve, {
+        unanchored: false,
+      }).map((r) => r.omniId);
+
+    expect(ids()).toEqual(["base@P1", "base@P2", "base@P3"]);
+    // The marker on P2 names P2's row — the id a pin is held under.
+    const pinnedId = anchorRowId(
+      "base",
+      marginAnchorRowPid(card, "P2", buildCardAnchorPass(editor).resolve),
+    );
+    expect(pinnedId).toBe("base@P2");
+
+    // Delete P1.
+    const p1Size = editor.state.doc.child(0).nodeSize;
+    editor.view.dispatch(editor.state.tr.delete(0, p1Size));
+    expect(ids()).toEqual(["base@P2", "base@P3"]);
+    // The pin still names P2's row — not P3's, which kept its own id.
+    expect(ids()).toContain(pinnedId);
+    expect(ids().indexOf(pinnedId)).toBe(0);
+
+    // Delete P2 too: the card is single-row now (bare id), and the pinned id
+    // names nothing — inert, never re-bound to P3.
+    const p2Size = editor.state.doc.child(0).nodeSize;
+    editor.view.dispatch(editor.state.tr.delete(0, p2Size));
+    expect(ids()).toEqual(["base"]);
+    expect(ids()).not.toContain(pinnedId);
+    expect(
+      marginAnchorRowPid(card, "P2", buildCardAnchorPass(editor).resolve),
+    ).toBeUndefined();
+    editor.destroy();
+  });
+
+  it("task 916: `anchorRowBaseId` inverts `anchorRowId`, colon-safe", () => {
+    for (const base of ["float:card:note:ab12", "float:card:revision:s:with:colons"]) {
+      expect(anchorRowBaseId(anchorRowId(base, undefined))).toBe(base);
+      expect(anchorRowBaseId(anchorRowId(base, "9f3c"))).toBe(base);
+    }
   });
 
   it("mount gap: an empty index resolves to raw pids, never a spurious orphan", () => {

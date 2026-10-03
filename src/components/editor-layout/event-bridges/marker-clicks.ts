@@ -20,6 +20,7 @@ import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
 import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
+import { anchorRowId } from "@/links/card-anchor-rows";
 import {
   ATOM_CREATE_POPOVER_EVENT,
   type AtomCreateRequest,
@@ -122,7 +123,7 @@ interface AnchorClickEnv {
  * pulling the CARD to the click instead.
  */
 function routeAnchorClick(
-  detail: { entityId: string; kind: EntityKind; clickY?: number; anchorIndex?: number },
+  detail: { entityId: string; kind: EntityKind; clickY?: number; anchorPid?: string },
   env: AnchorClickEnv,
 ): void {
   const route = ANCHOR_CLICK_ROUTES[detail.kind as AnchorClickKind];
@@ -147,17 +148,17 @@ function routeAnchorClick(
   const clickY: number | undefined =
     typeof detail.clickY === "number" ? detail.clickY : undefined;
   // The omni id a panel stamps IS `cardPopKey(kind,id)` — except a MULTI-anchor
-  // card draws one row per anchor keyed `…@<anchorIndex>` (T5 Pillar E-2). The
-  // margin marker stamps the clicked paragraph's `anchorIndex` (only for
-  // multi-anchor cards — single-anchor rows have no suffix), so append it here
-  // to pin/scroll the RIGHT row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02). The
-  // `openForCard` presence check + `alignOmniCardWithClick` both use the
-  // shared prefix-or-exact matcher, so the bare key still resolves if the
-  // index is absent.
-  const omniKey =
-    typeof detail.anchorIndex === "number"
-      ? `${cardPopKey(route.cardKind, id)}@${detail.anchorIndex}`
-      : cardPopKey(route.cardKind, id);
+  // card draws one row per anchor keyed `…@<pid>` (T5 Pillar E-2; keyed by
+  // pid, not position, since task 916). The margin marker stamps the clicked
+  // paragraph's `anchorPid` (only for multi-anchor cards — single-anchor rows
+  // have no suffix), so `anchorRowId` appends it here to pin/scroll the RIGHT
+  // row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02). The `openForCard` presence
+  // check + `alignOmniCardWithClick` both use the shared prefix-or-exact
+  // matcher, so the bare key still resolves if the pid is absent.
+  const omniKey = anchorRowId(
+    cardPopKey(route.cardKind, id),
+    typeof detail.anchorPid === "string" ? detail.anchorPid : undefined,
+  );
   openForCard(
     {
       omniKey,
@@ -493,7 +494,7 @@ export function useMarkerClickBridges(deps: {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
-        | { entityId: string; kind: EntityKind; clickY?: number; anchorIndex?: number }
+        | { entityId: string; kind: EntityKind; clickY?: number; anchorPid?: string }
         | undefined;
       if (!detail?.entityId || !detail.kind) return;
       routeAnchorClick(detail, {

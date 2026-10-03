@@ -156,38 +156,39 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     );
   });
 
-  it("anchorIndex present: keys the omni open + pin on the `@N` row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02)", () => {
+  it("anchorPid present: keys the omni open + pin on the `@<pid>` row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02)", () => {
     // A 2-anchor report draws one margin marker per anchored paragraph; the
-    // omni surface draws one row per anchor keyed `…@<anchorIndex>`. The marker
-    // for the SECOND anchor stamps `anchorIndex: 1`, so the bridge must open +
-    // pin `float:card:report:r1@1`, NOT the bare (first-row) key.
+    // omni surface draws one row per anchor keyed `…@<pid>` (task 916 — by
+    // identity, so a sibling anchor's death cannot re-bind it). The marker on
+    // paragraph `p2` stamps `anchorPid: "p2"`, so the bridge must open + pin
+    // `float:card:report:r1@p2`, NOT the bare (first-row) key.
     const deps = makeDeps();
     mountBridges(deps);
     dispatch("virgil-linked-anchor-click", {
       entityId: "r1",
       kind: "report",
       clickY: 200,
-      anchorIndex: 1,
+      anchorPid: "p2",
     });
 
     expect(selectSpy).toHaveBeenCalledWith({ kind: "report", id: "r1" });
     const [target] = openForCardMock.mock.calls[0];
     expect(target).toMatchObject({
-      omniKey: "float:card:report:r1@1",
+      omniKey: "float:card:report:r1@p2",
       panelId: "reports",
       cardKind: "report",
       skipScroll: true,
     });
-    // The pin targets the SAME `@1` row.
+    // The pin targets the SAME `@p2` row.
     expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
-      "float:card:report:r1@1",
+      "float:card:report:r1@p2",
       200,
     );
   });
 
-  it("anchorIndex absent (single-anchor card): keys the BARE card popKey (no `@N`)", () => {
-    // A single-anchor card's omni row carries no `@N` suffix (the omni builders
-    // only suffix when `pids.length > 1`), so the marker stamps no anchorIndex
+  it("anchorPid absent (single-anchor card): keys the BARE card popKey (no suffix)", () => {
+    // A single-anchor card's omni row carries no `@<pid>` suffix (the omni
+    // builder only suffixes when the card has >1 row), so the marker stamps no anchorPid
     // and the bridge keys the bare key — back-compat with the existing route.
     const deps = makeDeps();
     mountBridges(deps);
