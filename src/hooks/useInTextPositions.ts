@@ -812,6 +812,10 @@ export function useInTextPositions(
     // other committed number — a bin pill re-measuring one pixel taller must
     // not re-render the deck. A change is a `changed` verdict like a moved
     // natural: the resolver reads the floor through the same version bump.
+    // STAGED here, COMMITTED with the naturals below (task 917): a pass that
+    // rejects itself as degenerate commits neither, or the next good pass
+    // would see the ref already equal to the new floor, judge `floorChanged`
+    // false, and never bump the version the resolver reads it through.
     const chromeBottom = floor
       ? floor.read(podRect, scrollEl?.scrollTop ?? 0)
       : 0;
@@ -820,7 +824,6 @@ export function useInTextPositions(
       chromeBottom > 0 ? chromeBottom + MIN_GAP : 0,
     );
     const floorChanged = nextFloor !== floorRef.current;
-    floorRef.current = nextFloor;
 
     // ── Wave-2b C5: exact reads for the scroll band, arithmetic for the rest.
     // `coordsAtPos` is a forced-layout read, and pre-C5 it ran for EVERY item
@@ -1046,7 +1049,9 @@ export function useInTextPositions(
         }
       }
     }
+    // The ONE commit: naturals and floor together, under the same verdict.
     naturalRef.current = next;
+    floorRef.current = nextFloor;
     if (changed) setMeasureVersion((v) => v + 1);
     // THE CONVERGENCE OBSERVATION. `changed` is already the task-328 epsilon
     // comparison (every value above went through `committed()`, which holds a
