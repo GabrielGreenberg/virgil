@@ -346,9 +346,13 @@ function setup(items: PositionItem[], opts: { floor: boolean; slotTop?: number; 
     get: () => CONTENT_H,
     configurable: true,
   });
+  // `skew.px` shifts every anchor read without moving the editor or the pod —
+  // a strongly negative skew is the un-laid-out signature a pass rejects as
+  // degenerate (leg 9).
+  const skew = { px: 0 };
   vi.spyOn(editor.view, "coordsAtPos").mockImplementation((pos: number) => ({
-    top: pos * SCALE + podTopRef.current,
-    bottom: pos * SCALE + podTopRef.current + 20,
+    top: pos * SCALE + podTopRef.current + skew.px,
+    bottom: pos * SCALE + podTopRef.current + skew.px + 20,
     left: 0,
     right: 0,
   }));
@@ -377,6 +381,9 @@ function setup(items: PositionItem[], opts: { floor: boolean; slotTop?: number; 
   return {
     slot,
     floor,
+    skew,
+    /** Memoized on `measureVersion` ALONE — a new identity is a version bump. */
+    naturalsRef: () => sinkRef.current?.naturals,
     top: (id: string) => sinkRef.current?.positions.get(id),
     positionsRef: () => sinkRef.current?.positions,
     async idle(ms = 2000) {
@@ -487,6 +494,25 @@ describe("task 544 — the deck clears the sticky bins", () => {
     });
     await s.idle();
     expect(s.top(FIRST.id)).toBe(bandBottom + POD_GAP + MIN_GAP);
+    s.unmount();
+  });
+
+  it("leg 9 (task 917): a floor change seen only by a DEGENERATE pass is committed by the next good pass", async () => {
+    const s = setup([FIRST, SECOND], { floor: true });
+    await s.idle();
+    expect(s.top(FIRST.id)).toBe(POD_GAP + 60 + MIN_GAP);
+    // Pass 2..n: the bins grow while the editor reads un-laid-out — every
+    // pass the settle loop runs rejects itself, so nothing may commit.
+    s.skew.px = -5000;
+    await s.resizeSlot(POD_GAP + 240);
+    expect(s.top(FIRST.id)).toBe(POD_GAP + 60 + MIN_GAP);
+    const naturalsBefore = s.naturalsRef();
+    // Layout lands with the SAME naturals as before; only the floor moved.
+    s.skew.px = 0;
+    await s.fireSlotUnchanged();
+    expect(s.naturalsRef()).not.toBe(naturalsBefore);
+    expect(s.top(FIRST.id)).toBe(POD_GAP + 240 + MIN_GAP);
+    expect(s.top(SECOND.id)).toBe(POD_GAP + 240 + MIN_GAP + CARD_H + MIN_GAP);
     s.unmount();
   });
 
