@@ -65,7 +65,6 @@ import { liftSpawnRect } from "@/floats/float-policy";
 import { pressFromInteractiveControl, isEditableEventTarget } from "@/lib/drag-blocklist";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
-import { useInOmni } from "./editor-layout/contexts/omni";
 import { useCompressedLines } from "./editor-layout/contexts/card-display";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme, type PanelThemeKey } from "@/lib/panel-theme";
