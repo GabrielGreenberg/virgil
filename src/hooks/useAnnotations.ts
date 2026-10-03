@@ -23,9 +23,14 @@ import {
  * is UNCHANGED — callers still pass `entry.key` (a citekey) — and the hook
  * resolves citekey → uid internally via the passed `getBibEntry` resolver.
  *
- * **Flag OFF preserves the legacy behavior exactly**: a flat citekey-keyed
- * record, no resolver needed. This keeps the existing suite green; the new
- * uid path is exercised only with the flag set in-test.
+ * **The flag gates the FORMAT a legacy file is upgraded to, never what the hook
+ * can READ** (task 912; task 689's "a rollout flag may gate a FORMAT, never a
+ * BEHAVIOUR"). Flag ON: a flat citekey-keyed file migrates to v2. Flag OFF: a
+ * flat file stays flat, byte-identical to before — but a file that is ALREADY
+ * v2 (written by an ON session, then the flag rolled back) is read and written
+ * as v2. The shape on disk, not the flag, picks the read/write path, so a
+ * rollback neither hides the uid-keyed annotations nor mixes a flat write into
+ * the v2 object (which the ON reader used to drop on its next persist).
  *
  * `getBibEntry` is optional so an old call site (`useAnnotations(docId)`) keeps
  * compiling; when absent, the hook always uses the legacy flat path (the uid
@@ -50,12 +55,21 @@ export function useAnnotations(
     [bibEntries],
   );
 
+  // citekey → uid for one lookup. Prefers the live resolver; falls back to the
+  // entry-list map so a flag-OFF reader of a v2 file resolves the same way.
+  const resolveUid = useCallback(
+    (key: string): string | undefined => getBibEntry?.(key)?.uid ?? keyToUid.get(key),
+    [getBibEntry, keyToUid],
+  );
+
   // Migrate-on-load: legacy flat record → v2 uid-keyed (orphan-bucket the
-  // unresolvable keys). When the flag is OFF we keep the raw legacy shape
-  // untouched so the on-disk file and behavior are byte-identical to today.
+  // unresolvable keys) when the flag is ON. When it is OFF a legacy file keeps
+  // its raw shape untouched (byte-identical to before), but a v2 file still
+  // goes through the v2 migrator — which also folds back any stray flat key a
+  // pre-912 OFF reader wrote onto it (task 912).
   const migrate = useCallback(
     (raw: unknown): AnnotationsState | AnnotationsStateV2 => {
-      if (cascadeOn) return migrateAnnotationsToV2(raw, keyToUid);
+      if (cascadeOn || isAnnotationsV2(raw)) return migrateAnnotationsToV2(raw, keyToUid);
       return raw && typeof raw === "object" ? (raw as AnnotationsState) : EMPTY_LEGACY;
     },
     [cascadeOn, keyToUid],
@@ -87,35 +101,42 @@ export function useAnnotations(
   // gated on the entry-list identity (`keyToUid`) — never a per-keystroke
   // counter — so it does no doc-size work.
   useEffect(() => {
-    if (!cascadeOn) return;
     const prev = stateRef.current;
+    if (!cascadeOn && !isAnnotationsV2(prev)) return;
     const next = migrateAnnotationsToV2(prev, keyToUid);
     if (next !== prev) update(() => next);
   }, [cascadeOn, keyToUid, update, stateRef]);
 
   const getAnnotation = useCallback(
     (key: string): string => {
-      if (cascadeOn && isAnnotationsV2(state)) {
-        const uid = getBibEntry?.(key)?.uid;
+      if (isAnnotationsV2(state)) {
+        const uid = resolveUid(key);
         if (uid && state.byUid[uid] != null) return state.byUid[uid];
         // Fall back to an orphan bucketed under this exact key (renamed-before-
         // upgrade annotation that hasn't been re-homed yet).
         return state.orphanByKey[key] ?? "";
       }
-      // Legacy flat path (flag OFF, or a v1 file the migrator left flat).
+      // Legacy flat path (a flat file under flag OFF).
       return (state as AnnotationsState)[key] || "";
     },
-    [state, cascadeOn, getBibEntry],
+    [state, resolveUid],
   );
 
   const setAnnotation = useCallback(
     (key: string, text: string) => {
-      if (cascadeOn) {
-        const uid = getBibEntry?.(key)?.uid;
-        update((prev) => {
-          const v2: AnnotationsStateV2 = isAnnotationsV2(prev)
-            ? { v: 2, byUid: { ...prev.byUid }, orphanByKey: { ...prev.orphanByKey } }
-            : { v: 2, byUid: {}, orphanByKey: {} };
+      const uid = resolveUid(key);
+      update((prev) => {
+        // The v2 write path serves the flag ON (upgrading as it writes) AND a
+        // file already in v2 under the flag OFF — never a flat key onto v2.
+        if (cascadeOn || isAnnotationsV2(prev)) {
+          // A still-flat `prev` (a write that beats the load's migrate) is
+          // upgraded through the migrator, never replaced by an empty v2.
+          const base = isAnnotationsV2(prev) ? prev : migrateAnnotationsToV2(prev, keyToUid);
+          const v2: AnnotationsStateV2 = {
+            v: 2,
+            byUid: { ...base.byUid },
+            orphanByKey: { ...base.orphanByKey },
+          };
           if (uid) {
             // Writing by uid also clears any stale same-key orphan bucket.
             if (!text) delete v2.byUid[uid];
@@ -128,17 +149,14 @@ export function useAnnotations(
             else v2.orphanByKey[key] = text;
           }
           return v2;
-        });
-        return;
-      }
-      // Legacy flat path.
-      update((prev) => {
+        }
+        // Legacy flat path (a flat file under flag OFF).
         const next = { ...(prev as AnnotationsState), [key]: text };
         if (!text) delete next[key];
         return next;
       });
     },
-    [update, cascadeOn, getBibEntry],
+    [update, cascadeOn, resolveUid, keyToUid],
   );
 
   /**

@@ -168,3 +168,61 @@ describe("useAnnotations: legacy parity (flag OFF)", () => {
     expect((result.current.annotations as Record<string, string>).smith).toBe("<p>legacy</p>");
   });
 });
+
+describe("useAnnotations: a flag rollback over a v2 file (task 912)", () => {
+  it("OFF reads a v2 file, writes it as v2, and the edit survives the flag returning", async () => {
+    const entries = [entry("u-1", "smith"), entry("u-2", "jones")];
+    const getBibEntry = (k: string) => entries.find((e) => e.key === k);
+    // The file an ON session left behind.
+    DISK_ANNOTATIONS = {
+      v: 2,
+      byUid: { "u-1": "<p>written ON</p>" },
+      orphanByKey: { ghost: "<p>orphan</p>" },
+    };
+
+    // Flag rolled back.
+    setIdentityCascadeFlag(false);
+    beginDocPipeline("doc-ann-rollback");
+    const off = renderHook(() => useAnnotations("doc-ann-rollback", getBibEntry, entries));
+    await waitFor(() => {
+      expect(off.result.current.getAnnotation("smith")).toBe("<p>written ON</p>");
+    });
+    expect(off.result.current.getAnnotation("ghost")).toBe("<p>orphan</p>");
+
+    act(() => {
+      off.result.current.setAnnotation("smith", "<p>edited OFF</p>");
+      off.result.current.setAnnotation("jones", "<p>new OFF</p>");
+    });
+    const written = off.result.current.annotations as AnnotationsStateV2;
+    // Still v2, no flat key mixed in.
+    expect(written.v).toBe(2);
+    expect(written.byUid["u-1"]).toBe("<p>edited OFF</p>");
+    expect(written.byUid["u-2"]).toBe("<p>new OFF</p>");
+    expect((written as unknown as Record<string, unknown>).smith).toBeUndefined();
+    off.unmount();
+
+    // Flag back ON, reading what OFF persisted.
+    DISK_ANNOTATIONS = written;
+    __resetForTests();
+    setIdentityCascadeFlag(true);
+    beginDocPipeline("doc-ann-rollback-on");
+    const on = renderHook(() => useAnnotations("doc-ann-rollback-on", getBibEntry, entries));
+    await waitFor(() => {
+      expect(on.result.current.getAnnotation("smith")).toBe("<p>edited OFF</p>");
+    });
+    expect(on.result.current.getAnnotation("jones")).toBe("<p>new OFF</p>");
+  });
+
+  it("ON recovers a stray flat key a pre-912 OFF reader wrote onto the v2 file", async () => {
+    const entries = [entry("u-1", "smith")];
+    DISK_ANNOTATIONS = { v: 2, byUid: {}, orphanByKey: {}, smith: "<p>stray</p>" };
+    setIdentityCascadeFlag(true);
+    beginDocPipeline("doc-ann-stray");
+    const { result } = renderHook(() =>
+      useAnnotations("doc-ann-stray", (k) => entries.find((e) => e.key === k), entries),
+    );
+    await waitFor(() => {
+      expect(result.current.getAnnotation("smith")).toBe("<p>stray</p>");
+    });
+  });
+});
