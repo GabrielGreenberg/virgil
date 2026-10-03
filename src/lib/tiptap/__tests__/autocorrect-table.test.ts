@@ -25,6 +25,7 @@ import {
 } from "@/lib/tiptap/autocorrect";
 import { isCheckableWord } from "@/lib/spell/prose-words";
 import { DICTIONARY_ASSET_PATHS } from "@/lib/spell/dictionary-asset";
+import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
 import { REPO_ROOT, commentsStripped, trackedFiles } from "@/lib/__tests__/_source-scan";
 
 const read = (rel: string) => readFileSync(path.resolve(REPO_ROOT, rel), "utf8");
@@ -179,15 +180,20 @@ describe("census — the table is the SSOT and the gate is the door", () => {
 
 describe("census — the preference has one row and three agreeing spellings", () => {
   it("the registry declares it, ON by default, in the Display menu", () => {
-    const src = commentsStripped(read("src/lib/view-prefs/registry.ts"));
-    expect(src).toMatch(
-      /autocorrectTypos:\s*\{ kind: "toggle", scope: "global", default: true,[^}]*menu: "display"/,
-    );
+    // Assert the row's VALUES, not its spelling: since task 900 the default is
+    // DERIVED (`default: SHIPPED.autocorrectTypos`), so a source regex for a
+    // literal `default: true` pins a plumbing choice, not the fact (task 909).
+    const row = VIEW_PREF_REGISTRY.autocorrectTypos;
+    expect(row.kind).toBe("toggle");
+    expect(row.scope).toBe("global");
+    expect(row.default).toBe(true);
+    expect(row.menu).toBe("display");
   });
 
   it("the shipped defaults JSON agrees with the registry default", () => {
     const defaults = JSON.parse(read("src/hooks/useViewPrefs.defaults.json"));
     expect(defaults.autocorrectTypos).toBe(true);
+    expect(VIEW_PREF_REGISTRY.autocorrectTypos.default).toBe(defaults.autocorrectTypos);
   });
 
   it("it participates in the promotion pipeline, like its sibling", () => {
