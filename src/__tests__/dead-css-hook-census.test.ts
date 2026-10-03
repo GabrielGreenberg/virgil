@@ -178,13 +178,27 @@ const MIN_FRAGMENT = 3;
  */
 function isProduced(cls: string, blob: string): boolean {
   if (blob.includes(cls)) return true;
-  // `class-${suffix}` — a literal PREFIX followed by an interpolation.
+  // `class-${suffix}` — a literal PREFIX followed by an interpolation. The
+  // prefix is the START of a class name, so it must start a token: a match
+  // inside a longer identifier is some OTHER name being assembled — above all a
+  // custom property (`--virgil-${token}`, task 908), which once made every
+  // `virgil-*` selector count as produced and blinded the census to the lot.
   for (let i = cls.length - 1; i >= MIN_FRAGMENT; i--) {
-    if (blob.includes(cls.slice(0, i) + "${")) return true;
+    if (startsTokenBefore(blob, cls.slice(0, i) + "${")) return true;
   }
   // `${prefix}-class` — an interpolation followed by a literal SUFFIX.
   for (let i = 0; i + MIN_FRAGMENT <= cls.length; i++) {
     if (blob.includes("}" + cls.slice(i))) return true;
+  }
+  return false;
+}
+
+/** Does `needle` occur in `blob` at a position NOT preceded by an identifier
+ *  character (`[\w-]`)? A class-name prefix only produces that class when it
+ *  begins a token — after a quote, backtick, space, `.`, `}` or the like. */
+function startsTokenBefore(blob: string, needle: string): boolean {
+  for (let at = blob.indexOf(needle); at !== -1; at = blob.indexOf(needle, at + 1)) {
+    if (at === 0 || !/[\w-]/.test(blob[at - 1])) return true;
   }
   return false;
 }
@@ -243,6 +257,17 @@ describe("dead CSS hook census — class selectors", () => {
     // …and it does NOT over-report the two assembled forms it exists to allow.
     expect(isProduced("rtf-content-footnote", blob)).toBe(true); // `rtf-content-${variant}`
     expect(isProduced("hide-par-titles", blob)).toBe(true); // literal
+  });
+
+  it("a custom-property template does not produce the class it spells (task 908)", () => {
+    // `--virgil-${token}` assembles a CSS VARIABLE name, not a class: it must
+    // not make every `virgil-*` selector count as produced.
+    const blob = "const v = `--virgil-${token.slice(2)}`; style.getPropertyValue(`var(--virgil-${x})`);";
+    expect(isProduced("virgil-anything", blob)).toBe(false);
+    // …while a genuine class-prefix template still counts, wherever it starts.
+    expect(isProduced("virgil-anything", "cls = `virgil-${kind}`;")).toBe(true);
+    expect(isProduced("virgil-anything", 'cn("pane", `virgil-${kind}`)')).toBe(true);
+    expect(isProduced("virgil-anything", "`pane virgil-${kind}`")).toBe(true);
   });
 
   it("every allowlist entry still names a class the stylesheets declare", () => {
