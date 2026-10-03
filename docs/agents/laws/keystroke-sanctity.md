@@ -670,6 +670,27 @@ the write-path law forbids.
 
 CI:
 [mirror-writeback-hint-census.test.ts](../../../src/lib/__tests__/mirror-writeback-hint-census.test.ts)
+
+### Anchor lookups on a live editor (task 926)
+
+Same class, the mark twin. `findLinkedAnchorRange(doc, id)` walks the WHOLE
+doc; task 700 gave it a `within` bound but only one reader took it, while the
+pending-change pill's placement and the linked-range float's `readSource` kept
+the full walk per keystroke, and `getAnchorSummary` walked per card per render.
+The door is `resolveLinkedAnchorRange(state, id)`
+([linked-anchor-range.ts](../../../src/lib/linked-anchor-range.ts)): it reads
+the anchor's entry through `resolveTouchedAnchor` (deferred maps applied to ONE
+entry — the whole snapshot is never materialized) and walks only that span; an
+absent id answers null with no walk; only an observer-less state walks the doc.
+Its precondition is that the snapshot's anchor entry BOUNDS every run of the
+mark, so `applyDiff` WIDENS an already-indexed id to the union when a later
+transaction marks a new run (it used to overwrite with the new run's span).
+Block-uuid lookups in render bodies use `resolveTouchedBlock` the same way.
+
+CI: [linked-anchor-range-bound-census.test.ts](../../../src/lib/__tests__/linked-anchor-range-bound-census.test.ts)
+(every unbounded call allowlisted with an exact count),
+[linked-anchor-range-live-cost.test.ts](../../../src/lib/__tests__/linked-anchor-range-live-cost.test.ts)
+(4-block vs 400-block cost flat).
 — the population is DERIVED (every module declaring a `writeBackTo*` door), so
 a new mirror body is policed by existing rather than by being remembered. R1: no
 mirror body declares its own by-uuid walk. R2: every resolution inside a

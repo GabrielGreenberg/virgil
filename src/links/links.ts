@@ -30,7 +30,8 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
 import { findInlineAtomPosDeep } from "@/lib/inline-content";
-import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { docStructureKey, resolveTouchedBlock } from "@/lib/tiptap/doc-structure/observer-plugin";
 import type { Link, LinkResolution } from "./_shared/types";
 import { isModeB, isRangedModeB } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
@@ -666,7 +667,8 @@ export function paragraphRangeByUuid(
 
 /**
  * Full span `[firstMarkedPos, lastMarkedEnd)` of the `linkedAnchor` carrying
- * `anchorId`. Delegates to the codebase SSOT walker `findLinkedAnchorRange`
+ * `anchorId`. Delegates to the live door `resolveLinkedAnchorRange` (snapshot-bounded,
+ * task 926) over the codebase SSOT walker `findLinkedAnchorRange`
  * (src/lib/linked-anchor-range.ts) so atom-split (a mark interrupted by an
  * inline atom) and cross-block anchors resolve to their WHOLE span, not just
  * the first contiguous run (task 071). Every caller here — resolveLink's
@@ -679,7 +681,7 @@ export function resolveTextRangeByAnchorId(
   editor: Editor,
   anchorId: string,
 ): { from: number; to: number } | null {
-  return findLinkedAnchorRange(editor.state.doc, anchorId);
+  return resolveLinkedAnchorRange(editor.state, anchorId);
 }
 
 function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
@@ -1290,9 +1292,25 @@ export function getAnchorSummary(
   const pids = getLinkedTextObjectIds(card);
   if (pids.length === 0) return null;
   if (editor) {
+    const { state } = editor;
+    // O(linked ids) through the DocStructure snapshot (task 926) — this runs
+    // in card render bodies, so it must never walk the doc per card. Only a
+    // bare (observer-less) editor falls back to the walk.
+    if (docStructureKey.getState(state)) {
+      let words = 0;
+      for (const uuid of new Set(pids)) {
+        const entry = resolveTouchedBlock(state, uuid);
+        if (!entry) continue;
+        const node = state.doc.nodeAt(entry.pos);
+        if ((node?.attrs as { uuid?: string } | undefined)?.uuid === uuid) {
+          words += countWords(node!.textContent);
+        }
+      }
+      return { kind: "paragraph", words };
+    }
     let words = 0;
     const wanted = new Set(pids);
-    editor.state.doc.descendants((node) => {
+    state.doc.descendants((node) => {
       if (wanted.size === 0) return false;
       const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
       if (uuid && wanted.has(uuid)) {

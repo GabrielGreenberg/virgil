@@ -31,6 +31,8 @@
 
 import { Fragment, Slice } from "@tiptap/pm/model";
 import type { MarkType, Node as PMNode, Schema } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
+import { resolveTouchedAnchor } from "@/lib/tiptap/doc-structure/observer-plugin";
 
 /**
  * THE single anchor-range walker for the whole codebase. Walk the doc for text
@@ -90,6 +92,36 @@ export function findLinkedAnchorRange(
   }
   if (from === -1) return null;
   return { from, to };
+}
+
+/**
+ * THE live-editor door (task 926): the bounding range of `anchorId`'s
+ * `linkedAnchor` mark in `state`, resolved through the DocStructure snapshot
+ * so the walk is O(range), never O(doc). Every caller holding an editor state
+ * — and every caller on an `update` / `transaction` / render / scroll path —
+ * resolves here; the bare `findLinkedAnchorRange(doc, id)` form is for
+ * doc-only one-shot gestures (census: `linked-anchor-range-bound-census.test.ts`).
+ *
+ *   - observer present, id absent → null with no walk (the anchors table is
+ *     authoritative for membership — the `hasLiveAnchor` contract);
+ *   - observer present, id present → bounded walk over the entry's live
+ *     (deferred-map-resolved) span, without materializing the snapshot;
+ *   - no observer (a bare test/stand-in editor) → the full walk, the only
+ *     honest answer there.
+ * A bounded miss on a present entry would mean the snapshot drifted from the
+ * doc; it falls back to the full walk rather than report a live mark gone.
+ */
+export function resolveLinkedAnchorRange(
+  state: EditorState,
+  anchorId: string,
+): { from: number; to: number } | null {
+  const entry = resolveTouchedAnchor(state, anchorId);
+  if (entry === undefined) return findLinkedAnchorRange(state.doc, anchorId);
+  if (entry === null) return null;
+  return (
+    findLinkedAnchorRange(state.doc, anchorId, undefined, entry) ??
+    findLinkedAnchorRange(state.doc, anchorId)
+  );
 }
 
 /**

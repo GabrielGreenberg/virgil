@@ -12,7 +12,7 @@
  * ── Placement (left margin) ───────────────────────────────────────────────────
  * The pill is a `position:fixed` portal. Each event that could move/hide it runs
  * a SINGLE RAF-coalesced `computePlacement`: resolve the target card's blue range
- * via `findLinkedAnchorRange(doc, anchorId)` (the mark carries the anchorId the
+ * via `resolveLinkedAnchorRange(state, anchorId)` (the mark carries the anchorId the
  * card's `appliedChange` stamped), one `coordsAtPos(range.from)` for the vertical
  * line, then RIGHT-anchor the pill into the left margin (right edge one
  * margin-width inboard of the editor DOM's left edge) and vertically center it on
@@ -45,7 +45,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
-import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import {
   useStoreHover,
   useStoreSelection,
@@ -305,7 +305,7 @@ function computePlacement(
   // coordsAtPos so the pill never jitters and a hidden pane does no measure.
   if (!cache.editorEl || cache.editorEl.offsetHeight === 0) return INVISIBLE;
 
-  const range = findLinkedAnchorRange(editor.state.doc, target.anchorId);
+  const range = resolveLinkedAnchorRange(editor.state, target.anchorId);
   if (!range) return INVISIBLE;
 
   // Through the geometry service's per-frame memo (C7) — shared with any

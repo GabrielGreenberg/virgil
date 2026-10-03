@@ -43,6 +43,7 @@ export {
   readDocStructure,
   readPendingDiff,
   resolveTouchedBlock,
+  resolveTouchedAnchor,
   hasLiveBlock,
   hasLiveAnchor,
   peekStructureVersion,

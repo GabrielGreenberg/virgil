@@ -28,7 +28,8 @@
  * registry. The source range is read from the live `linkedAnchor` mark
  * each time, so reload and undo cleanly recover.
  *
- * Range resolution: `findLinkedAnchorRange` walks the main doc for text
+ * Range resolution: `resolveLinkedAnchorRange` (bounded by the DocStructure
+ * snapshot, task 926) finds the text
  * nodes carrying `linkedAnchor` with the matching `anchorId` and
  * returns `[firstMarkedStart, lastMarkedEnd)`. The range may span
  * multiple paragraphs.
@@ -71,7 +72,7 @@ import {
 // L3f-2: the marked-range resolver now lives in one shared util consumed by
 // this float, the linkedRange lift-overlay hooks, and the text-range-move
 // drop spec — see src/lib/linked-anchor-range.ts.
-import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import {
   checkLinkedRangeRepresentable,
   describeLinkedRangeRefusal,
@@ -80,6 +81,7 @@ import {
   type LinkedRangeRefusal,
 } from "@/lib/linked-range-writeback";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
 import { TEXT_OBJECT_REGISTRY } from "../text-object-registry";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -102,7 +104,7 @@ export function LinkedRangeBody({
         missing: true,
       };
     }
-    const range = findLinkedAnchorRange(mainEditor.state.doc, anchorId);
+    const range = resolveLinkedAnchorRange(mainEditor.state, anchorId);
     if (!range) {
       return {
         doc: { type: "doc", content: [{ type: "paragraph" }] } as JSONContent,
@@ -256,12 +258,12 @@ export function LinkedRangeBody({
   // Re-derive from the live mark whenever a transaction touched the range —
   // the mark's extent is the truth, and only it can tell us the run grew at a
   // boundary. The reported range re-arms the source-touch gate, so foreign
-  // edits elsewhere in the doc no longer reach this walk at all. (No hint
-  // fast-path: a marked run has no single node to resolve, so `findLinked-
-  // AnchorRange` still scans — now only on transactions that touched us.)
+  // edits elsewhere in the doc no longer reach this read at all. A marked run
+  // has no single node to resolve, so it resolves through the live door
+  // (task 926): the snapshot's mapped anchor span bounds the walk to O(range).
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const range = findLinkedAnchorRange(doc, anchorId);
+    (doc: PMNode, _hint: unknown, state: EditorState) => {
+      const range = resolveLinkedAnchorRange(state, anchorId);
       if (!range) {
         return {
           doc: { type: "doc", content: [{ type: "paragraph" }] } as JSONContent,

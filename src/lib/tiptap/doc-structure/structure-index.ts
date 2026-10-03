@@ -446,7 +446,23 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
   if (diff.addedAnchors.length > 0 || diff.removedAnchors.length > 0) {
     const next = new Map(prev.anchors);
     for (const removed of diff.removedAnchors) next.delete(removed.id);
-    for (const added of diff.addedAnchors) next.set(added.id, added);
+    for (const added of diff.addedAnchors) {
+      // An "added" id that is already indexed (and was not removed in this
+      // diff) is a NEW RUN of a live anchor — a mark laid over more text in a
+      // later transaction. The diff carries only that run's span, so the entry
+      // WIDENS to the union rather than being overwritten: the entry's
+      // contract is that it BOUNDS every run of the mark (task 926 — the live
+      // door `resolveLinkedAnchorRange` walks only this span, so a shrunken
+      // entry would truncate a multi-run anchor). `prev` is already mapped into
+      // the new doc's coordinates (the observer materializes before applying).
+      const old = next.get(added.id);
+      next.set(
+        added.id,
+        old
+          ? { ...added, from: Math.min(old.from, added.from), to: Math.max(old.to, added.to) }
+          : added,
+      );
+    }
     anchors = next;
   }
 
