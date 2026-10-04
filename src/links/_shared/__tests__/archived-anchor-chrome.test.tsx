@@ -224,6 +224,39 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
     element.remove();
   });
 
+  it("the sweep's DOM queries do not scale with the archived set (task 937)", () => {
+    // The old sweep ran one root `querySelectorAll` per archived id —
+    // O(archived × DOM) per structural edit under a comment claiming
+    // O(archived). Now: one query over the Mode-B spans, an id lookup each.
+    const queriesFor = (archived: ReadonlySet<string>): number => {
+      const { editor, element } = mountTwoAnchors();
+      const spy = vi.spyOn(editor.view.dom, "querySelectorAll");
+      const hook = renderHook(() =>
+        useLinkHighlight({
+          editor,
+          activeLinkId: null,
+          hoveredLinkId: null,
+          visibleHighlightKinds: NO_KINDS,
+          archivedAnchorIds: archived,
+        }),
+      );
+      expect(spanFor(editor, ARCHIVED_ANCHOR).getAttribute(DATA_ANCHOR_ARCHIVED)).toBe(
+        "true",
+      );
+      const n = spy.mock.calls.length;
+      hook.unmount();
+      spy.mockRestore();
+      editor.destroy();
+      element.remove();
+      return n;
+    };
+    const many = new Set([ARCHIVED_ANCHOR]);
+    for (let i = 0; i < 50; i++) many.add(`ghost-${i}`);
+    const one = queriesFor(new Set([ARCHIVED_ANCHOR]));
+    expect(one).toBeGreaterThan(0);
+    expect(queriesFor(many)).toBe(one);
+  });
+
   it("works on the POST-RELOAD span shape, whose data-link-card carries NO card id", () => {
     const { editor, element } = mountTwoAnchors();
     // Premise: this fixture really is the restored shape. `applyLinkedAnchors`

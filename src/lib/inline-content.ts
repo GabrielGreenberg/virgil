@@ -35,7 +35,7 @@ import type { Transaction } from "@tiptap/pm/state";
 // facet — read it off ATOM_REGISTRY rather than re-encoding the ternary here, so
 // this by-id resolver shares the single source of truth (peer: stack-pull.ts,
 // which resolves `node.attrs[meta.idAttr]` the same registry way).
-import { atomMetaForNodeName, CARD_ATOM_ID_ATTRS } from "./tiptap/atom-registry";
+import { atomMetaForNodeName, CARD_ATOM_ID_ATTRS, type CardAtomNodeName } from "./tiptap/atom-registry";
 
 // ---------------------------------------------------------------------------
 // Place A — attr-borne atom payload (absorbed from atom-text.ts)
@@ -439,7 +439,7 @@ export type InlineAtomLocation =
  */
 export function findInlineAtomPosDeep(
   editor: Editor,
-  nodeName: "footnote" | "citation",
+  nodeName: CardAtomNodeName,
   id: string,
   opts?: InlineContentOpts,
 ): InlineAtomLocation | null {

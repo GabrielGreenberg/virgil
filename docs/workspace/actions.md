@@ -466,7 +466,7 @@ It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 
 The lower-level action hooks the dispatcher / `useCardCreation` compose live
 beside it in [editor-layout/card-actions/](../../src/components/editor-layout/card-actions):
-`useCitationActions`, `useCommentActions` (cutter/revision), `useRefActions`
+`useCitationActions`, `useRefActions`
 (`\ref`), `useFocusActions`, `useFileActions`, and the
 block-level `useEditorOps` (Family 2). (Orphaned-footnote handlers no longer
 live here: the old `useOrphanActions` / `orphans.ts` were retired for the

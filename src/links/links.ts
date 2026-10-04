@@ -31,6 +31,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
 import { findInlineAtomPosDeep } from "@/lib/inline-content";
+import { cardAtomMetaForNodeName, type CardAtomNodeName } from "@/lib/tiptap/atom-registry";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { docStructureKey, resolveTouchedBlock } from "@/lib/tiptap/doc-structure/observer-plugin";
 import type { Link, LinkResolution } from "./_shared/types";
@@ -166,8 +167,8 @@ export function captureParagraphSnapshot(
 /**
  * Read-only scan of the live doc. Returns every in-doc link:
  *
- *   - footnote atoms     → kind "footnote",  anchor.type "inline-atom"
- *   - citation atoms     → kind "citation",  anchor.type "inline-atom"
+ *   - Card-bearing atoms → kind = the atom's kind ("footnote" / "citation"),
+ *     (CARD_ATOMS)           anchor.type "inline-atom"
  *   - linkedAnchor marks → kind "anchor",    anchor.type "textObject"
  *                                            with targetKind "linkedRange" (Mode B)
  *
@@ -189,34 +190,21 @@ export function collectLinksFromEditor(editor: Editor): Link[] {
   const anchors = new Map<string, AnchorAccumulator>();
 
   doc.descendants((node, pos) => {
-    if (node.type.name === "footnote") {
-      const attrs = node.attrs as { linkId?: string; footnoteId?: string };
-      const linkId = attrs.linkId || attrs.footnoteId || "";
+    // Card-bearing inline atoms (footnote, citation, …) — derived from the
+    // atom registry, so a new Card-bearing row is collected with no edit here.
+    const atom = cardAtomMetaForNodeName(node.type.name);
+    if (atom) {
+      const attrs = node.attrs as Record<string, unknown>;
+      const entityId = (attrs[atom.idAttr] as string) || "";
+      const linkId = (attrs.linkId as string) || entityId;
       if (linkId) {
         links.push({
           id: linkId,
-          kind: "footnote",
-          anchor: { type: "inline-atom", nodeName: "footnote", pos },
+          kind: atom.kind,
+          anchor: { type: "inline-atom", nodeName: atom.nodeName as CardAtomNodeName, pos },
           target: {
             type: "card",
-            ref: { kind: "footnote", id: attrs.footnoteId || linkId },
-          },
-          createdAt: "",
-        });
-      }
-      return false;
-    }
-    if (node.type.name === "citation") {
-      const attrs = node.attrs as { linkId?: string; citationId?: string };
-      const linkId = attrs.linkId || attrs.citationId || "";
-      if (linkId) {
-        links.push({
-          id: linkId,
-          kind: "citation",
-          anchor: { type: "inline-atom", nodeName: "citation", pos },
-          target: {
-            type: "card",
-            ref: { kind: "citation", id: attrs.citationId || linkId },
+            ref: { kind: atom.kind, id: entityId || linkId },
           },
           createdAt: "",
         });
@@ -551,7 +539,7 @@ export function deleteLink(editor: Editor, link: Link): void {
  *  for these mutators. */
 function findInlineAtomPos(
   editor: Editor,
-  nodeName: "footnote" | "citation",
+  nodeName: CardAtomNodeName,
   linkId: string,
 ): number | null {
   const loc = findInlineAtomPosDeep(editor, nodeName, linkId);

@@ -33,6 +33,7 @@
 
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
+import type { CardAtomKind, CardAtomNodeName } from "@/lib/tiptap/atom-registry";
 
 /** The link taxonomy, declared ONCE. Each kind's behaviour is decided by the
  *  code that ships it (the atom node specs, `createLinkedAnchor`, the
@@ -41,13 +42,14 @@ import type { TextObjectKind } from "@/text-objects/types";
  *  it declared connector strokes for a component that had been deleted and a
  *  multiplicity rule nothing enforced (task 202). The DOM attributes each
  *  kind's marker carries are in `../link-dom-contract.ts`. */
-export type LinkKind = "footnote" | "citation" | "anchor";
+export type LinkKind = CardAtomKind | "anchor";
 
 export type LinkAnchor =
   | {
       type: "inline-atom";
-      /** Node name of the inline atom (footnote | citation). */
-      nodeName: "footnote" | "citation";
+      /** Node name of the Card-bearing inline atom — derived from the atom
+       *  registry (`CardAtomNodeName`), not restated. */
+      nodeName: CardAtomNodeName;
       /** ProseMirror doc position, or null when unanchored. */
       pos: number | null;
     }

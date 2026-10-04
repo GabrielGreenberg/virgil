@@ -397,12 +397,16 @@ function installBusStatsProbe() {
   // `window.__virgil.collectLinks()` — ad-hoc Link-system inspection. Same
   // registry, same ladder (task 844): it used to be a per-mount single slot
   // that the last-mounted pane owned and ANY pane's unmount deleted.
-  (window as unknown as { __virgil?: { collectLinks: () => unknown } }).__virgil = {
-    collectLinks: () => {
-      const ed = pickProbeEditor(busStatsEditors);
-      return ed ? collectLinksFromEditor(ed) : null;
-    },
-  };
+  // Dev-only (task 937): gated so a shipped build installs no devtools handle
+  // (unlike `__virgilBusStats`, which the prod perf traces read).
+  if (process.env.NODE_ENV !== "production") {
+    (window as unknown as { __virgil?: { collectLinks: () => unknown } }).__virgil = {
+      collectLinks: () => {
+        const ed = pickProbeEditor(busStatsEditors);
+        return ed ? collectLinksFromEditor(ed) : null;
+      },
+    };
+  }
   void import("@/lib/tiptap/doc-structure").then(
     ({ getBus, peekStructureVersion, getMaterializeCount }) => {
       (

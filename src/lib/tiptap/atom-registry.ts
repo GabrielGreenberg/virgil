@@ -212,6 +212,10 @@ export type CardAtomMeta = Omit<AtomMeta, "kind" | "idAttr" | "domIdAttr"> & {
   domIdAttr: string;
 };
 
+/** The PM schema node name of a Card-bearing atom (`"footnote" | "citation"`) —
+ *  derived, so a link anchor / atom lookup typed with it tracks the registry. */
+export type CardAtomNodeName = (typeof ATOM_REGISTRY)[CardAtomKind]["nodeName"];
+
 /** The node attr carrying a Card-bearing atom's id (`"footnoteId" | "citationId"`). */
 export type CardAtomIdAttr = (typeof ATOM_REGISTRY)[CardAtomKind]["idAttr"];
 

@@ -125,8 +125,8 @@ function resolveAnchorableFromNode(
       cur = edge === "last" ? cur.child(cur.childCount - 1) : cur.child(0);
       continue;
     }
-    if (isTextObjectKind(typeName) && typeof uuidAttr === "string" && uuidAttr) {
-      return { uuid: uuidAttr, kind: typeName as TextObjectKind };
+    if (isAnchorableBlock(typeName, uuidAttr)) {
+      return { uuid: uuidAttr as string, kind: typeName };
     }
     // Not a TextObject kind and not a container — give up. (e.g. a
     // doctype block, a not-yet-registered kind.)
@@ -252,12 +252,11 @@ export function resolveDisplacedAnchorTarget(
         const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
         if (!isAnchorableBlock(node.type.name, uuid)) continue;
         // The FIRST anchorable ancestor is this position's identity (an inner
-        // paragraph defers up to its listItem). If that one is going away, the
-        // range covers the whole host — fall through to the neighbour rungs
-        // rather than climbing to a wrapper the user never pointed at.
-        return removed.has(uuid as string)
-          ? neighbourAnchor(doc, from, to, removed)
-          : { uuid: uuid as string, kind: node.type.name as TextObjectKind };
+        // paragraph defers up to its listItem). It always SURVIVES: `from`
+        // sits strictly inside it, and `collectRemovedAnchorUuids` counts only
+        // blocks the range wholly contains — so no `removed` check is asked
+        // here (task 937 deleted one that could never fire).
+        return { uuid: uuid as string, kind: node.type.name as TextObjectKind };
       }
     }
   } catch {
