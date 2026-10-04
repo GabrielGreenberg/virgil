@@ -41,7 +41,7 @@ import { withWrapperGate } from "@/lib/tiptap/wrapper-gate";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
-import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { DocStructureObserver, diffTouchesNumberingInputs, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { rawCountersTouched } from "@/lib/tiptap/raw-counter-gate";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { ensureAnchorUuid, mintDocUuid } from "@/lib/anchor-uuid";
@@ -1546,18 +1546,11 @@ export function createHeadingWithLabel(
             // separate order term. A moved `\label` follows its owner.
             const pending = readPendingDiff(newState);
             if (pending) {
+              // What a STRUCTURAL numbering input is belongs to the observer
+              // (`diffTouchesNumberingInputs`, task 923) — one predicate, so a
+              // new numbered kind is added there, not re-listed here.
               const structuralChange =
-                pending.addedHeadings.length > 0 ||
-                pending.removedHeadings.length > 0 ||
-                pending.changedHeadings.length > 0 ||
-                pending.addedFigures.length > 0 ||
-                pending.removedFigures.length > 0 ||
-                pending.changedFigures.length > 0 ||
-                pending.addedExamples.length > 0 ||
-                pending.removedExamples.length > 0 ||
-                pending.exampleStructureChanged ||
-                pending.addedLabels.length > 0 ||
-                pending.removedLabels.length > 0 ||
+                diffTouchesNumberingInputs(pending) ||
                 // Raw-source declarations (an equation's `\label`, an
                 // `align` row, a `table` caption — task 742) change inside
                 // a block's CONTENT, which the diff reports only as touched

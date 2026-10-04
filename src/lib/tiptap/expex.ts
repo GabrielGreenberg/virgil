@@ -11,7 +11,7 @@ import { generateShortId } from "@/lib/uuid";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
-import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
+import { diffExamplesRecomputable, readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
 import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
 import { createParTitleSession } from "@/lib/tiptap/title-edit-session";
 import {
@@ -1930,10 +1930,7 @@ export const ExpexNumbering = Extension.create({
           // bails immediately.
           const pending = readPendingDiff(newState);
           if (pending) {
-            const exampleAffected =
-              pending.addedExamples.length > 0 ||
-              pending.removedExamples.length > 0 ||
-              pending.exampleStructureChanged;
+            const exampleAffected = diffExamplesRecomputable(pending);
             // Content-change inside an example block (gloss cells, items)
             // may shift the column count or item ordering.
             let exampleContentTouched = false;
