@@ -11,7 +11,7 @@ The diff is produced once per transaction by `DocStructureObserver` ([src/lib/ti
 **Consume the diff. Don't walk the doc.**
 
 - From a ProseMirror `appendTransaction`: `readPendingDiff(newState)` returns the current `StructureDiff`.
-- From a React component: `useDocStructure(editor)` / `useDocStructureBus(editor)` / `useDocStructureEvent(editor, "onHeadingsRecomputable", fn)`.
+- From a React component: `useStructuralRevisions(editor)` (per-category counters — the memo-dep door for panel/card data) / `useDocStructureBus(editor)` (the bus, to subscribe in an effect) / `useExampleContentRevision(editor, uuid)` (one example's content revision).
 - From a long-lived hook: `getBus(editor)` for direct subscription.
 
 ### Permitted `editor.on('update' | 'transaction')` subscribers

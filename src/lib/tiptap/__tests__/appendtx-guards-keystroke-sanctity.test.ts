@@ -37,7 +37,8 @@ import {
   readDocStructure,
   touchedBlockPositions,
 } from "@/lib/tiptap/doc-structure";
-import { EMPTY_DIFF, type StructureDiff } from "@/lib/tiptap/doc-structure";
+import { type StructureDiff } from "@/lib/tiptap/doc-structure";
+import { EMPTY_DIFF } from "@/lib/tiptap/doc-structure/types";
 
 function mainCtx(): EditorExtensionsCtx {
   return {

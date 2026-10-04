@@ -34,7 +34,7 @@ import {
   diffLabelsRecomputable,
 } from "./types";
 
-export type Unsub = () => void;
+type Unsub = () => void;
 
 // Typed handler signatures.
 export type DiffHandler = (diff: StructureDiff, structure: DocStructure) => void;

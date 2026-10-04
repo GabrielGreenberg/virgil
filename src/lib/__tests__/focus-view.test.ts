@@ -3,8 +3,8 @@ import { EditorState, Plugin } from "@tiptap/pm/state";
 import {
   docStructureKey,
   docStructureStateSpec,
-  type DocStructurePluginState,
-} from "@/lib/tiptap/doc-structure";
+  type PluginState as DocStructurePluginState,
+} from "@/lib/tiptap/doc-structure/observer-plugin";
 import {
   __getFocusRebuildCount,
   type FocusBand,

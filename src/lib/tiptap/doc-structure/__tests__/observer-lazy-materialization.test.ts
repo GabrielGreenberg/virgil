@@ -34,13 +34,13 @@ import StarterKit from "@tiptap/starter-kit";
 import type { StepMap } from "@tiptap/pm/transform";
 import {
   DocStructureObserver,
-  docStructureKey,
   readDocStructure,
   resolveTouchedBlock,
   getBus,
   buildInitial,
 } from "@/lib/tiptap/doc-structure";
 import {
+  docStructureKey,
   getMaterializeCount,
   __resetMaterializeCountForTest,
 } from "@/lib/tiptap/doc-structure/observer-plugin";

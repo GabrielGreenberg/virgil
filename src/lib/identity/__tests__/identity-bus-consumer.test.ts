@@ -22,8 +22,8 @@ vi.mock("@/lib/storage", async () =>
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Citation } from "@/lib/tiptap/citation";
+import { EMPTY_DIFF } from "@/lib/tiptap/doc-structure/types";
 import {
-  EMPTY_DIFF,
   getBus,
   type CitationEntry,
   type FootnoteEntry,

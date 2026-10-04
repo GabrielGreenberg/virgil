@@ -15,8 +15,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { createCardStore, type CardStore } from "@/links/_shared/anchored-card-store";
+import { EMPTY_DIFF } from "@/lib/tiptap/doc-structure/types";
 import {
-  EMPTY_DIFF,
   type CitationEntry,
   type FootnoteEntry,
   type StructureDiff,

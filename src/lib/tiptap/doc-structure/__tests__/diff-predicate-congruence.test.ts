@@ -10,13 +10,12 @@
  * perf laws use (keystroke-sanctity subscriber allowlist, scroll-reposition
  * allowlist).
  *
- * Two invariant families:
+ * Invariant family (the former M3 — `useDocStructureEvent`'s `SUB_METHODS`
+ * parity with the bus — retired with the uncalled hook, task 924):
  *  - M2: the four diff-field emptiness/structural predicates
  *    (`EMPTY_DIFF` / `isEmptyDiff` / `diffHasStructuralEntries` /
  *    `diffWakesStructuralWatchers`) agree with a single field MANIFEST, whose
  *    deliberate divergences are documented alongside each flag.
- *  - M3: the React hook's `SUB_METHODS` union covers exactly the bus's `on*`
- *    subscription surface (minus the two intentionally-excluded per-uuid ones).
  */
 
 import { describe, expect, it } from "vitest";
@@ -32,7 +31,6 @@ import {
   type StructureDiff,
 } from "../types";
 import { asMutable, createDocStructureBus, diffWakesStructuralWatchers } from "../bus";
-import { SUB_METHODS, SUB_METHOD_UUID_EXCLUSIONS } from "../hook";
 import { EMPTY_STRUCTURE } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -248,43 +246,6 @@ describe("per-kind recomputable predicates + diffTouchesNumberingInputs (task 92
         .filter(([, { predicate }]) => predicate(diff))
         .map(([k]) => k);
       expect(fired.sort()).toEqual(expected.sort());
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// M3 — the React hook's SUB_METHODS union vs the live bus surface.
-// ---------------------------------------------------------------------------
-
-describe("useDocStructureEvent SUB_METHODS parity with the bus", () => {
-  const bus = createDocStructureBus();
-  const busOnMethods = Object.keys(bus)
-    .filter((k) => k.startsWith("on"))
-    .sort();
-  const covered = [...SUB_METHODS, ...SUB_METHOD_UUID_EXCLUSIONS].sort();
-
-  it("every bus on* method is covered (in SUB_METHODS or an explicit exclusion)", () => {
-    // If this fails, a new bus.on* method was added without extending
-    // SUB_METHODS (or the per-uuid exclusion list) — it would be silently
-    // unreachable through the typed hook. This is exactly how onBlockOrderChanged
-    // drifted out of the union before task 212.
-    expect(covered).toEqual(busOnMethods);
-  });
-
-  it("no phantom SUB_METHODS name that the bus doesn't expose", () => {
-    for (const name of SUB_METHODS) {
-      expect(busOnMethods).toContain(name);
-    }
-  });
-
-  it("onBlockOrderChanged is now reachable through the hook (the drifted member)", () => {
-    expect(SUB_METHODS as readonly string[]).toContain("onBlockOrderChanged");
-  });
-
-  it("the per-uuid subscriptions are excluded on purpose, not merely forgotten", () => {
-    for (const name of SUB_METHOD_UUID_EXCLUSIONS) {
-      expect(busOnMethods).toContain(name);
-      expect(SUB_METHODS as readonly string[]).not.toContain(name);
     }
   });
 });

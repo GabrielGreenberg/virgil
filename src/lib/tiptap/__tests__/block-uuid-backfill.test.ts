@@ -8,8 +8,8 @@ import { blockUuidBackfillPlugin } from "@/lib/tiptap/block-uuid-backfill";
 import {
   docStructureKey,
   docStructureStateSpec,
-  type DocStructurePluginState,
-} from "@/lib/tiptap/doc-structure";
+  type PluginState as DocStructurePluginState,
+} from "@/lib/tiptap/doc-structure/observer-plugin";
 import { doc, paragraph, testSchema } from "../doc-structure/__tests__/fixtures";
 
 // The observer stand-in mounts the REAL plugin-state spec

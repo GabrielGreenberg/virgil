@@ -13,8 +13,8 @@
 //    view that both re-parses and adds — the CI-F8-03 path via re-parse).
 import { describe, it, expect } from "vitest";
 
+import { EMPTY_DIFF } from "@/lib/tiptap/doc-structure/types";
 import {
-  EMPTY_DIFF,
   type CitationEntry,
   type FootnoteEntry,
   type StructureDiff,
