@@ -886,29 +886,29 @@ export function loadPrefs(): ViewPrefs {
       field: GlobalPrefKey;
       parse: (raw: string) => unknown;
     };
+    // A legacy boolean key held "true"/"false"; anything else is left
+    // unrecognised for the registry coercion to default.
+    const parseLegacyBool = (r: string): unknown =>
+      r === "true" ? true : r === "false" ? false : r;
     const legacyMigrations: LegacyMigration[] = [
-      { key: "virgil-show-marginalia", field: "showMarginalia", parse: (r) => r !== "false" },
+      { key: "virgil-show-marginalia", field: "showMarginalia", parse: parseLegacyBool },
       {
         key: "virgil-hidden-marginalia-types",
         field: "hiddenMarginaliaTypes",
-        parse: (r) => {
-          const arr = JSON.parse(r);
-          return Array.isArray(arr) ? arr : [];
-        },
+        parse: (r) => JSON.parse(r),
       },
-      { key: "virgil-show-heading-labels", field: "showHeadingLabels", parse: (r) => r !== "false" },
+      { key: "virgil-show-heading-labels", field: "showHeadingLabels", parse: parseLegacyBool },
       {
         key: "virgil-divider-levels",
         field: "dividerLevels",
-        parse: (r) => {
-          const arr = JSON.parse(r);
-          return Array.isArray(arr) ? arr : [];
-        },
+        parse: (r) => JSON.parse(r),
       },
       {
         key: "virgil-divider-width",
         field: "dividerWidth",
-        parse: (r) => (r === "full" || r === "mid" || r === "text" ? r : "full"),
+        // Raw: the registry coercion below validates it against
+        // `dividerWidth.values` and falls back to the registry default.
+        parse: (r) => r,
       },
       {
         // The ancient standalone key held the PER-SIDE enabled lists; fold it
@@ -941,6 +941,10 @@ export function loadPrefs(): ViewPrefs {
       localStorage.removeItem(m.key);
     }
     if (legacyTouched) {
+      // Registry-owned fields are validated against their declared domains,
+      // an unrecognised value taking the registry DEFAULT (task 931) — the
+      // migrations parse; they do not restate values or defaults.
+      Object.assign(legacyGlobalPatch, coerceRegistryPrefs(legacyGlobalPatch));
       const next = readPrefBlob(GLOBAL_STORAGE_KEY);
       for (const [k, v] of Object.entries(legacyGlobalPatch)) {
         if (!(k in next)) next[k] = v;

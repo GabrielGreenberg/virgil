@@ -32,6 +32,11 @@ import {
   type RowState,
 } from "@/components/library/LibraryEntryMenu";
 import { iconHint } from "@/components/Hint";
+import {
+  VIEW_PREF_REGISTRY,
+  enumOptions,
+  type RegistryPrefs,
+} from "@/lib/view-prefs/registry";
 
 /** True when two bib entries describe the same record at field level —
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
@@ -110,15 +115,16 @@ interface BibliographyPanelProps {
    *  the control still works, just without reload survival. The setter is the
    *  panel's own presentational hook — the host binds it to the ONE registry
    *  writer, `setViewPref("bibFilter", v)` (task 274). */
-  bibFilter?: "cited" | "all";
-  onSetBibFilter?: (v: "cited" | "all") => void;
+  bibFilter?: BibFilter;
+  onSetBibFilter?: (v: BibFilter) => void;
 }
 
-/** The kebab's Display pair — a pick-ONE set (task 770 `MenuRadioGroup`). */
-const BIB_FILTER_OPTIONS = [
-  { value: "cited", label: "Cited entries only" },
-  { value: "all", label: "Full bibliography" },
-] as const;
+/** The filter's value domain, generated from `VIEW_PREF_REGISTRY.bibFilter`. */
+type BibFilter = RegistryPrefs["bibFilter"];
+
+/** The kebab's Display pair — a pick-ONE set (task 770 `MenuRadioGroup`).
+ *  Values + labels are the registry's own (task 931). */
+const BIB_FILTER_OPTIONS = enumOptions("bibFilter");
 
 function BibliographyPanel({
   citations,
@@ -156,7 +162,9 @@ function BibliographyPanel({
   // `useState` is retained ONLY as the Reader-path fallback (no `viewPrefs`
   // bundle there); when the persisted prop is wired, `filter`/`setFilter`
   // read/write it instead so the choice survives reload.
-  const [localFilter, setLocalFilter] = useState<"cited" | "all">("cited");
+  const [localFilter, setLocalFilter] = useState<BibFilter>(
+    VIEW_PREF_REGISTRY.bibFilter.default,
+  );
   const filter = bibFilter ?? localFilter;
   const setFilter = onSetBibFilter ?? setLocalFilter;
 

@@ -153,7 +153,8 @@ describe("menu-bearing registry labels are SOURCED from the registry, not hardco
     // The Display rows, marginalia/highlight members, and divider members/values
     // are all enumerated from the registry.
     expect(MENUBAR_SRC).toMatch(/VIEW_PREF_REGISTRY\.dividerLevels\.members/);
-    expect(MENUBAR_SRC).toMatch(/VIEW_PREF_REGISTRY\.dividerWidth\.values/);
+    // Enum values + labels arrive through the registry's `enumOptions` (task 931).
+    expect(MENUBAR_SRC).toMatch(/enumOptions\("dividerWidth"\)/);
   });
 
   it("the per-value/member label strings are NOT hardcoded as literals in MenuBar", () => {
