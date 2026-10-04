@@ -233,8 +233,8 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     return out;
   };
 
-  /** The stated exemptions, per LINE — a file-scoped entry would excuse the
-   *  next hand-rolled hover added beside them. Each names what it aligns to at
+  /** The stated exemptions, per DECLARATION — a file-scoped entry would
+   *  excuse the next hand-rolled hover added beside them. Each names what it aligns to at
    *  its own site; leg 3 proves the marker is still there. */
   const PERMITTED_HAND_ROLLED_HOVERS: Record<string, string> = {
     "src/components/panel-primitives.tsx:CARD_DEFAULT":
@@ -253,38 +253,63 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     expect(hits(/hover:bg-edge-subtle/)).toEqual([]);
   });
 
+  /** The declaration that OWNS a scanned line: the nearest preceding
+   *  top-level `const X`, refined to `X.key` when an object key sits between
+   *  that declaration and the hit. This is the key the exemption map is
+   *  written in, so an unrelated edit ABOVE a site (task 932 — the old
+   *  `file:line` pins went red on pure line drift, again and again) cannot
+   *  move it. */
+  const ownerOf = (lines: string[], at: number): string => {
+    let key: string | null = null;
+    for (let i = at; i >= 0; i--) {
+      const decl = /^(?:export\s+)?(?:const|let|function)\s+([A-Za-z_$][\w$]*)/.exec(lines[i]);
+      if (decl) return key ? `${decl[1]}.${key}` : decl[1];
+      const prop = /^\s+([A-Za-z_$][\w$]*)\s*:/.exec(lines[i]);
+      if (prop && key === null) key = prop[1];
+    }
+    return "<top-level>";
+  };
+
+  /** Each hit as `file:OWNER` (the comparison key) plus `file:line` (named
+   *  only in the failure message). */
+  const ownedHits = (needle: RegExp): { key: string; at: string }[] => {
+    const out: { key: string; at: string }[] = [];
+    for (const abs of productionTsx()) {
+      const rel = path.relative(REPO_ROOT, abs);
+      const lines = scan(readFileSync(abs, "utf8")).split("\n");
+      lines.forEach((line, i) => {
+        if (needle.test(line)) out.push({ key: `${rel}:${ownerOf(lines, i)}`, at: `${rel}:${i + 1}` });
+      });
+    }
+    return out;
+  };
+
   it("routes every remaining hand-rolled neutral hover through a stated exemption", () => {
-    const found = hits(/hover:bg-surface-muted/);
-    // Exactly the three lines the allowlist names, and no more. Reported as
-    // `file:line` so a new one names itself.
-    expect(found).toEqual([
-      // `<Button>`'s `secondary` / `ghost` variants, in its leaf module since
-      // task 827 (sorted first: `Button.tsx` < `panel-primitives.tsx`).
-      "src/components/Button.tsx:59",
-      "src/components/Button.tsx:65",
-      "src/components/panel-primitives.tsx:569",
-      // Line drift only (task 508 added the drop-halo composition ~26 lines
-      // above these two; task 529 then added the `CardBodyTitle` edit-session
-      // door +1 above the first and +14 above these; task 532 added the two
-      // title inputs' `useFieldDraft` doors +1 and +44; task 554 added the
-      // focus-indicator door's import +1 above all three and the
-      // `AiRequestCheckbox` / `PopoutButton` comment blocks +11 above these
-      // two; task 637 added the `useCardDeleteAllowed` door + the host-permit
-      // reads on `EditableCard` / `PanelCard` +39 above the first and +54 above
-      // these two; task 683 added the `usePanelCardTryEmptyContent` guard +89
-      // above all three; task 712 added the restore control's `restoreLabel`
-      // read + prop +2 above these two; tasks 821/822 drifted all three
-      // (+24/+22, red on main at dd5c1191); task 823 added the static-safety
-      // read + the T0 summary wrapper +1 above the first and +22 above these
-      // two; task 824 added the neutral selected-border door +10 above these
-      // two; task 826 grew the jump/drop chevron docs + the drop button's
-      // `onPress`/`inert` props +29 above these two; task 827 then MOVED the
-      // `<Button>` primitive into its own leaf module, `Button.tsx`): the SITES are the
-      // unchanged `CARD_DEFAULT` wash and the `secondary` / `ghost` button
-      // variants. `file:line` is this leg's own stated reporting form, so an
-      // unrelated edit above a site costs a number update here.
-    ]);
-    expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
+    const found = ownedHits(/hover:bg-surface-muted/);
+    // Exactly the declarations the exemption map names, once each, and no
+    // more: a NEW hand-rolled hover names its owner AND its line; an
+    // exemption whose site is gone fails as missing.
+    expect(
+      found.map((h) => h.key).sort(),
+      `hits: ${found.map((h) => `${h.at} (${h.key})`).join(", ")}`,
+    ).toEqual(Object.keys(PERMITTED_HAND_ROLLED_HOVERS).sort());
+  });
+
+  it("resolves a hit to its owning declaration, independent of line drift", () => {
+    const src = [
+      "const CARD_DEFAULT =",
+      '  "hover:bg-surface-muted/50";',
+      "const BUTTON_VARIANT = {",
+      '  primary: "x",',
+      "  secondary:",
+      '    "hover:bg-surface-muted-strong",',
+      '  ghost: "hover:bg-surface-muted-strong",',
+      "};",
+    ];
+    expect(ownerOf(src, 1)).toBe("CARD_DEFAULT");
+    expect(ownerOf(src, 5)).toBe("BUTTON_VARIANT.secondary");
+    expect(ownerOf(src, 6)).toBe("BUTTON_VARIANT.ghost");
+    expect(ownerOf(["", "", ...src], 3)).toBe("CARD_DEFAULT");
   });
 
   it("keeps every exemption's reason AT THE SITE, not only in this list", () => {
