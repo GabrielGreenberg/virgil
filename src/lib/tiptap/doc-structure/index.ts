@@ -81,6 +81,8 @@ export {
   EMPTY_DIFF,
   isEmptyDiff,
   diffHasStructuralEntries,
+  diffTouchesNumberingInputs,
+  diffExamplesRecomputable,
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,

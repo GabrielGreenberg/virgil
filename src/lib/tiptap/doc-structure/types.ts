@@ -483,35 +483,15 @@ export const EMPTY_DIFF: StructureDiff = {
   exampleContentChangedUuids: new Set(),
 };
 
+/**
+ * True when the diff carries nothing at all. Defined as "no structural entry
+ * AND no content-only touch" so the field list lives in ONE place
+ * (`diffHasStructuralEntries`) — the two content-only sets are the only fields
+ * that predicate leaves out (task 923).
+ */
 export function isEmptyDiff(diff: StructureDiff): boolean {
   return (
-    diff.addedBlocks.length === 0 &&
-    diff.removedBlocks.length === 0 &&
-    diff.changedBlocks.length === 0 &&
-    !diff.blockOrderChanged &&
-    !diff.blockParTitleChanged &&
-    diff.addedHeadings.length === 0 &&
-    diff.removedHeadings.length === 0 &&
-    diff.changedHeadings.length === 0 &&
-    diff.addedFootnotes.length === 0 &&
-    diff.removedFootnotes.length === 0 &&
-    diff.changedFootnotes.length === 0 &&
-    !diff.footnoteOrderChanged &&
-    diff.addedCitations.length === 0 &&
-    diff.removedCitations.length === 0 &&
-    diff.changedCitations.length === 0 &&
-    !diff.citationOrderChanged &&
-    diff.addedAnchors.length === 0 &&
-    diff.removedAnchors.length === 0 &&
-    diff.addedExamples.length === 0 &&
-    diff.removedExamples.length === 0 &&
-    diff.changedExamples.length === 0 &&
-    !diff.exampleStructureChanged &&
-    diff.addedFigures.length === 0 &&
-    diff.removedFigures.length === 0 &&
-    diff.changedFigures.length === 0 &&
-    diff.addedLabels.length === 0 &&
-    diff.removedLabels.length === 0 &&
+    !diffHasStructuralEntries(diff) &&
     diff.contentChangedUuids.size === 0 &&
     diff.exampleContentChangedUuids.size === 0
   );
@@ -558,6 +538,71 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
     diff.changedFigures.length === 0 &&
     diff.addedLabels.length === 0 &&
     diff.removedLabels.length === 0
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-kind "recomputable" predicates — the ONE statement of which diff fields
+// make a kind's derived view stale (task 923). The bus's
+// `on{Headings,Examples,Figures,Labels}Recomputable` emits, the numberer's
+// wake gate (`diffTouchesNumberingInputs`) and the expex renumberer all ask
+// these, so a new numbered kind (or a new field on an existing one) is added
+// here once rather than in each gate.
+//
+// What counts as a CHANGE is the step inspector's call
+// (`headingStructurallyChanged` / `figureStructurallyChanged` /
+// `exampleChanged`, step-inspector.ts) — order is a numbering input (task
+// 892), so a same-uuid move already lands in the `changed*` bucket and these
+// predicates need no separate order term.
+// ---------------------------------------------------------------------------
+
+/** A heading entered, left, or changed level / numbering / position. */
+export function diffHeadingsRecomputable(diff: StructureDiff): boolean {
+  return (
+    diff.addedHeadings.length > 0 ||
+    diff.removedHeadings.length > 0 ||
+    diff.changedHeadings.length > 0
+  );
+}
+
+/** An example entered, left, or changed nesting / number / position.
+ *  `exampleStructureChanged` is co-set with every add/remove/change the step
+ *  inspector reports; the add/remove terms keep a hand-built diff honest. */
+export function diffExamplesRecomputable(diff: StructureDiff): boolean {
+  return (
+    diff.addedExamples.length > 0 ||
+    diff.removedExamples.length > 0 ||
+    diff.exampleStructureChanged
+  );
+}
+
+/** A figure entered, left, or changed label / caption emission / position. */
+export function diffFiguresRecomputable(diff: StructureDiff): boolean {
+  return (
+    diff.addedFigures.length > 0 ||
+    diff.removedFigures.length > 0 ||
+    diff.changedFigures.length > 0
+  );
+}
+
+/** A `\label` entered or left the document. */
+export function diffLabelsRecomputable(diff: StructureDiff): boolean {
+  return diff.addedLabels.length > 0 || diff.removedLabels.length > 0;
+}
+
+/**
+ * Does this diff touch anything the section / figure / example numberer reads
+ * from STRUCTURE? The union of the four per-kind predicates above. Raw-source
+ * declarations inside a block's content (an equation's `\label`, an `align`
+ * row — task 742) are NOT visible here: the diff reports those only as touched
+ * uuids, and the numberer adds `rawCountersTouched` for them.
+ */
+export function diffTouchesNumberingInputs(diff: StructureDiff): boolean {
+  return (
+    diffHeadingsRecomputable(diff) ||
+    diffExamplesRecomputable(diff) ||
+    diffFiguresRecomputable(diff) ||
+    diffLabelsRecomputable(diff)
   );
 }
 

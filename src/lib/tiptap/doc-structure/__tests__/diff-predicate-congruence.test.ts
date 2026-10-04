@@ -24,10 +24,16 @@ import {
   EMPTY_DIFF,
   isEmptyDiff,
   diffHasStructuralEntries,
+  diffTouchesNumberingInputs,
+  diffHeadingsRecomputable,
+  diffExamplesRecomputable,
+  diffFiguresRecomputable,
+  diffLabelsRecomputable,
   type StructureDiff,
 } from "../types";
-import { createDocStructureBus, diffWakesStructuralWatchers } from "../bus";
+import { asMutable, createDocStructureBus, diffWakesStructuralWatchers } from "../bus";
 import { SUB_METHODS, SUB_METHOD_UUID_EXCLUSIONS } from "../hook";
+import { EMPTY_STRUCTURE } from "../types";
 
 // ---------------------------------------------------------------------------
 // The single field manifest. Adding a field to `StructureDiff` (and thus
@@ -173,6 +179,76 @@ describe("predicate breadth relationships hold across the manifest", () => {
   it("the bus predicate omits exactly the three co-set changed-sets", () => {
     const omitted = MANIFEST.filter((f) => f.structural && !f.busEmit).map((f) => f.name).sort();
     expect(omitted).toEqual(["changedBlocks", "changedExamples", "changedFootnotes"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 923 — the per-kind "recomputable" predicates and the numberer's
+// `diffTouchesNumberingInputs` are their union. Each kind's field set is pinned
+// here, and the bus's `on*Recomputable` emits are checked to ask the SAME
+// predicates (so the numberer and the bus can never disagree about what makes
+// headings/figures/examples/labels stale).
+// ---------------------------------------------------------------------------
+
+const RECOMPUTABLE: Record<
+  "Headings" | "Examples" | "Figures" | "Labels",
+  { predicate: (d: StructureDiff) => boolean; fields: (keyof StructureDiff)[] }
+> = {
+  Headings: {
+    predicate: diffHeadingsRecomputable,
+    fields: ["addedHeadings", "removedHeadings", "changedHeadings"],
+  },
+  Examples: {
+    predicate: diffExamplesRecomputable,
+    // changedExamples is deliberately absent: exampleStructureChanged is co-set.
+    fields: ["addedExamples", "removedExamples", "exampleStructureChanged"],
+  },
+  Figures: {
+    predicate: diffFiguresRecomputable,
+    fields: ["addedFigures", "removedFigures", "changedFigures"],
+  },
+  Labels: {
+    predicate: diffLabelsRecomputable,
+    fields: ["addedLabels", "removedLabels"],
+  },
+};
+
+const NUMBERING_FIELDS = new Set(Object.values(RECOMPUTABLE).flatMap((k) => k.fields));
+
+describe("per-kind recomputable predicates + diffTouchesNumberingInputs (task 923)", () => {
+  for (const spec of MANIFEST) {
+    const diff = withField(spec);
+    for (const [kind, { predicate, fields }] of Object.entries(RECOMPUTABLE)) {
+      it(`${kind}: ${spec.name} → ${fields.includes(spec.name)}`, () => {
+        expect(predicate(diff)).toBe(fields.includes(spec.name));
+      });
+    }
+    it(`diffTouchesNumberingInputs: ${spec.name} → ${NUMBERING_FIELDS.has(spec.name)}`, () => {
+      expect(diffTouchesNumberingInputs(diff)).toBe(NUMBERING_FIELDS.has(spec.name));
+    });
+  }
+
+  it("numbering inputs ⊆ bus-wake fields (a numbering change always wakes the bus)", () => {
+    for (const spec of MANIFEST) {
+      if (NUMBERING_FIELDS.has(spec.name)) expect(spec.busEmit).toBe(true);
+    }
+  });
+
+  it("the bus's on*Recomputable emits fire exactly when the per-kind predicate says so", () => {
+    for (const spec of MANIFEST) {
+      const diff = withField(spec);
+      const bus = createDocStructureBus();
+      const fired: string[] = [];
+      for (const kind of Object.keys(RECOMPUTABLE)) {
+        const method = `on${kind}Recomputable` as const;
+        (bus[method as keyof typeof bus] as (fn: () => void) => () => void)(() => fired.push(kind));
+      }
+      asMutable(bus)._emit(diff, EMPTY_STRUCTURE);
+      const expected = Object.entries(RECOMPUTABLE)
+        .filter(([, { predicate }]) => predicate(diff))
+        .map(([k]) => k);
+      expect(fired.sort()).toEqual(expected.sort());
+    }
   });
 });
 

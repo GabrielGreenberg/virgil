@@ -28,6 +28,10 @@ import {
   type HeadingEntry,
   type LabelEntry,
   type StructureDiff,
+  diffExamplesRecomputable,
+  diffFiguresRecomputable,
+  diffHeadingsRecomputable,
+  diffLabelsRecomputable,
 } from "./types";
 
 export type Unsub = () => void;
@@ -292,13 +296,7 @@ export function createDocStructureBus(): DocStructureBus {
       if (diff.addedHeadings.length > 0) headingsAdded.emit((fn) => fn(diff.addedHeadings, s()));
       if (diff.removedHeadings.length > 0) headingsRemoved.emit((fn) => fn(diff.removedHeadings, s()));
       if (diff.changedHeadings.length > 0) headingsChanged.emit((fn) => fn(diff.changedHeadings, s()));
-      if (
-        diff.addedHeadings.length > 0 ||
-        diff.removedHeadings.length > 0 ||
-        diff.changedHeadings.length > 0
-      ) {
-        headingsRecomputable.emit((fn) => fn(diff, s()));
-      }
+      if (diffHeadingsRecomputable(diff)) headingsRecomputable.emit((fn) => fn(diff, s()));
 
       if (diff.addedFootnotes.length > 0) footnotesAdded.emit((fn) => fn(diff.addedFootnotes, s()));
       if (diff.removedFootnotes.length > 0) footnotesRemoved.emit((fn) => fn(diff.removedFootnotes, s()));
@@ -314,24 +312,16 @@ export function createDocStructureBus(): DocStructureBus {
 
       if (diff.addedExamples.length > 0) examplesAdded.emit((fn) => fn(diff.addedExamples, s()));
       if (diff.removedExamples.length > 0) examplesRemoved.emit((fn) => fn(diff.removedExamples, s()));
-      if (diff.exampleStructureChanged) examplesRecomputable.emit((fn) => fn(diff, s()));
+      if (diffExamplesRecomputable(diff)) examplesRecomputable.emit((fn) => fn(diff, s()));
 
       if (diff.addedFigures.length > 0) figuresAdded.emit((fn) => fn(diff.addedFigures, s()));
       if (diff.removedFigures.length > 0) figuresRemoved.emit((fn) => fn(diff.removedFigures, s()));
       if (diff.changedFigures.length > 0) figuresChanged.emit((fn) => fn(diff.changedFigures, s()));
-      if (
-        diff.addedFigures.length > 0 ||
-        diff.removedFigures.length > 0 ||
-        diff.changedFigures.length > 0
-      ) {
-        figuresRecomputable.emit((fn) => fn(diff, s()));
-      }
+      if (diffFiguresRecomputable(diff)) figuresRecomputable.emit((fn) => fn(diff, s()));
 
       if (diff.addedLabels.length > 0) labelsAdded.emit((fn) => fn(diff.addedLabels, s()));
       if (diff.removedLabels.length > 0) labelsRemoved.emit((fn) => fn(diff.removedLabels, s()));
-      if (diff.addedLabels.length > 0 || diff.removedLabels.length > 0) {
-        labelsRecomputable.emit((fn) => fn(diff, s()));
-      }
+      if (diffLabelsRecomputable(diff)) labelsRecomputable.emit((fn) => fn(diff, s()));
 
       if (diff.contentChangedUuids.size > 0) {
         contentChanged.emit((fn) => fn(diff.contentChangedUuids, s()));
