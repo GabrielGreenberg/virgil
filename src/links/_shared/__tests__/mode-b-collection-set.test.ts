@@ -208,6 +208,19 @@ describe("Mode-B collection set — (B) every consumer READS it", () => {
     }
   });
 
+  it("the load-reconcile reap reads the ONE alive-set, not a hand list (task 938)", () => {
+    // The EditorPane load pass used to build its alive-set from a hand array of
+    // six collections ("the SAME six the hook tracks") — agreeing with the
+    // SSOT only by coincidence, so a seventh Mode-B slot would be reaped on
+    // every doc open. Both sweeps now call `aliveLinkedAnchorIds(bag)`.
+    const pane = read("src/components/EditorPane.tsx");
+    expect(pane).toMatch(/aliveLinkedAnchorIds\(modeBCardsRef\.current\)/);
+    expect(pane).not.toMatch(/aliveIds\.add\(/);
+    expect(pane).not.toMatch(/the SAME six/);
+    const hook = read("src/links/_shared/useLinkedAnchorReconciler.ts");
+    expect(hook).toMatch(/useMemo\(\(\) => aliveLinkedAnchorIds\(cards\)/);
+  });
+
   it("the shell resolves a hovered card's anchor from the PANE's bag, not its own literal", () => {
     const shell = read("src/components/EditorLayout.tsx");
     // The bag handed to `entityToAnchorId` spreads the pane's Mode-B bag.

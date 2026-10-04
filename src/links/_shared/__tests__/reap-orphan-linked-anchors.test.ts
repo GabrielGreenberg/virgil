@@ -33,9 +33,11 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import {
+  aliveLinkedAnchorIds,
   reapOrphanLinkedAnchors,
   useLinkedAnchorReconciler,
 } from "../useLinkedAnchorReconciler";
+import { MODE_B_COLLECTIONS, type ModeBBag } from "@/cards/mode-b-collections";
 import { createLinkedAnchor, updateLinkedAnchorCard } from "@/links/links";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -362,5 +364,54 @@ describe("reapOrphanLinkedAnchors — pending-ai-change marks are applicator-man
     expect(hasMark(editor, "pac2")).toBe(true); // protected by kind
     expect(hasMark(editor, "on1")).toBe(false); // orphan note still reaped
     editor.destroy();
+  });
+});
+
+// TASK 938 — both orphan sweeps (this hook's and the EditorPane load pass) read
+// ONE alive-set function over the total Mode-B bag. Pin that it is TOTAL: a
+// card with a text anchor in EVERY `MODE_B_COLLECTIONS` slot is alive, so a
+// slot added to the SSOT reaches both sweeps with no second list to update.
+describe("aliveLinkedAnchorIds — the ONE alive-set (task 938)", () => {
+  const anchored = (slot: string) => ({
+    id: `card-${slot}`,
+    links: [
+      {
+        id: `anc-${slot}`,
+        kind: "anchor",
+        anchor: {
+          type: "textObject",
+          targetKind: "linkedRange",
+          textObjectIds: ["p1"],
+          textRange: { anchorId: `anc-${slot}`, textSnapshot: "x" },
+        },
+        target: { type: "card", ref: { kind: "note", id: `card-${slot}` } },
+        createdAt: "",
+      },
+    ],
+  });
+
+  it("covers every Mode-B slot the SSOT declares", () => {
+    const bag = Object.fromEntries(
+      MODE_B_COLLECTIONS.map((c) => [c.slot, [anchored(c.slot)]]),
+    ) as unknown as ModeBBag;
+    const alive = aliveLinkedAnchorIds(bag);
+    expect([...alive].sort()).toEqual(
+      MODE_B_COLLECTIONS.map((c) => `anc-${c.slot}`).sort(),
+    );
+  });
+
+  it("adds an applied suggestion's pending-AI-change anchor", () => {
+    const bag = Object.fromEntries(
+      MODE_B_COLLECTIONS.map((c) => [c.slot, []]),
+    ) as unknown as ModeBBag;
+    (bag as unknown as Record<string, unknown[]>).comments = [
+      {
+        id: "s1",
+        kind: "suggestion",
+        status: "applied",
+        appliedChange: { anchorId: "pending-1" },
+      },
+    ];
+    expect(aliveLinkedAnchorIds(bag).has("pending-1")).toBe(true);
   });
 });
