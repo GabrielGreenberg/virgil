@@ -5,6 +5,10 @@ import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import type { PanelKind } from "@/panels/_shared/types";
 import { getWindowId } from "@/lib/multi-window/window-id";
+import {
+  settleWindowStartup,
+  type WindowStartup,
+} from "@/lib/multi-window/window-liveness";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import {
   subscribeToStorageKey,
@@ -524,21 +528,48 @@ function readPrefBlob(key: string): Record<string, unknown> {
 // load, and a window-pref key is dropped only once its window has gone unseen
 // for `WINDOW_PREF_RETENTION_MS`. A never-indexed (legacy) key is adopted with
 // a short grace so a window that simply hasn't reloaded recently survives, but
-// truly-dead keys age out within ~`WINDOW_PREF_ADOPT_GRACE_MS`. Self-contained,
-// runs once per window load (O(window-keys)), no multi-window coupling.
+// truly-dead keys age out within ~`WINDOW_PREF_ADOPT_GRACE_MS`. Runs once per
+// window load (O(window-keys)), AFTER the identity claim (task 930): it stamps
+// the CLAIMED id, and it never evicts the blob of a window that is still open
+// (`live`, the liveness locks) — an installed PWA window left open for weeks
+// without a reload is idle, not dead. Same discipline as `sweepTabRecords`;
+// both take it through `settleWindowStartup`.
 const WINDOW_INDEX_KEY = "virgil-view-prefs/window-index";
 const WINDOW_PREF_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 const WINDOW_PREF_ADOPT_GRACE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 const WINDOW_PREF_HARD_CAP = 128; // backstop against pathological growth
 
-let windowPrefsGcRan = false;
-function gcWindowPrefs(): void {
-  if (windowPrefsGcRan) return;
-  windowPrefsGcRan = true;
+/**
+ * A re-minted twin (a browser-duplicated tab, task 871) SEEDED its layout from
+ * the blob it inherited — `loadPrefs` reads under the stored id before the
+ * claim settles — but nothing writes that layout under its NEW id until some
+ * layout pref changes. So its first reload would find no blob and reset. Copy
+ * the inherited blob across, byte-for-byte (carried keys and all — task 929),
+ * unless the twin has already written its own. Exported for tests.
+ */
+export function adoptInheritedWindowPrefs({
+  id,
+  inheritedId,
+}: WindowStartup["identity"]): void {
+  if (id === inheritedId || typeof localStorage === "undefined") return;
+  try {
+    const target = WINDOW_STORAGE_PREFIX + id;
+    if (localStorage.getItem(target) != null) return;
+    const raw = localStorage.getItem(WINDOW_STORAGE_PREFIX + inheritedId);
+    if (raw != null) localStorage.setItem(target, raw);
+  } catch {
+    // Best-effort: a failed copy costs the twin only its seed on reload.
+  }
+}
+
+/** Exported for tests; production calls it once, via `settleWindowPrefs`. */
+export function gcWindowPrefs(
+  currentId: string,
+  live: ReadonlySet<string> = new Set([currentId]),
+  now: number = Date.now(),
+): void {
   if (typeof localStorage === "undefined") return;
   try {
-    const now = Date.now();
-    const currentId = getWindowId();
     let index: Record<string, number> = {};
     try {
       const raw = localStorage.getItem(WINDOW_INDEX_KEY);
@@ -547,7 +578,11 @@ function gcWindowPrefs(): void {
       index = {};
     }
     if (typeof index !== "object" || index === null) index = {};
-    index[currentId] = now; // stamp the live window
+    index[currentId] = now; // stamp this window
+    // Every open window is seen NOW, whatever its last load — which also
+    // indexes a live twin's not-yet-stamped blob instead of adopting it
+    // with only the short grace below.
+    for (const id of live) index[id] = now;
 
     // Collect window-pref keys up front (mutating localStorage mid-iteration
     // shifts indices).
@@ -565,7 +600,7 @@ function gcWindowPrefs(): void {
     const survivors: { id: string; lastSeen: number }[] = [];
     for (const key of windowKeys) {
       const id = key.slice(WINDOW_STORAGE_PREFIX.length);
-      if (id === currentId) {
+      if (id === currentId || live.has(id)) {
         survivors.push({ id, lastSeen: now });
         continue;
       }
@@ -587,7 +622,7 @@ function gcWindowPrefs(): void {
     // non-current survivors beyond it.
     if (survivors.length > WINDOW_PREF_HARD_CAP) {
       survivors
-        .filter((s) => s.id !== currentId)
+        .filter((s) => s.id !== currentId && !live.has(s.id))
         .sort((a, b) => a.lastSeen - b.lastSeen)
         .slice(0, survivors.length - WINDOW_PREF_HARD_CAP)
         .forEach((s) => {
@@ -597,9 +632,9 @@ function gcWindowPrefs(): void {
         });
     }
 
-    // Prune index entries whose key no longer exists (keep the current window).
+    // Prune index entries whose key no longer exists (keep open windows).
     for (const id of Object.keys(index)) {
-      if (id === currentId) continue;
+      if (id === currentId || live.has(id)) continue;
       if (localStorage.getItem(WINDOW_STORAGE_PREFIX + id) === null) delete index[id];
     }
 
@@ -607,6 +642,20 @@ function gcWindowPrefs(): void {
   } catch {
     // GC is best-effort; never let it break pref loading.
   }
+}
+
+let windowPrefsSettled: Promise<void> | null = null;
+/** The per-window blob's startup, once per page: adopt the inherited seed
+ *  under the claimed id, then GC against the live set. */
+function settleWindowPrefs(): Promise<void> {
+  if (windowPrefsSettled) return windowPrefsSettled;
+  windowPrefsSettled = settleWindowStartup()
+    .then(({ identity, live }) => {
+      adoptInheritedWindowPrefs(identity);
+      gcWindowPrefs(identity.id, live);
+    })
+    .catch(() => {});
+  return windowPrefsSettled;
 }
 
 /** Same-window fan-out for global-pref changes. The BroadcastChannel
@@ -1270,7 +1319,9 @@ export function useViewPrefs(opts?: {
     // its state was seeded in-memory from DEFAULT_PREFS (+ a one-shot global
     // geometry read) and must not be overwritten by the persisted layout.
     if (ephemeral) return;
-    gcWindowPrefs(); // one-shot, module-guarded: prune stale per-window pref keys
+    // One-shot, module-guarded: carry a duplicated tab's seed to its claimed
+    // id, then prune stale per-window pref keys (never a live window's).
+    void settleWindowPrefs();
     setPrefs(loadPrefs());
   }, [ephemeral]);
 

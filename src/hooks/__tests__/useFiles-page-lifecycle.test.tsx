@@ -83,8 +83,10 @@ vi.mock("@/lib/fsa-permissions", () => ({
 }));
 vi.mock("@/lib/multi-window/window-id", () => ({ getWindowId: () => "w1" }));
 vi.mock("@/lib/multi-window/window-liveness", () => ({
-  claimWindowIdentity: h.hold,
-  liveWindowIds: vi.fn(async () => new Set(["w1", "peer"])),
+  settleWindowStartup: vi.fn(async () => ({
+    identity: await h.hold(),
+    live: new Set(["w1", "peer"]),
+  })),
 }));
 vi.mock("@/lib/multi-window/doc-ownership", () => ({
   claimDoc: vi.fn(async (id: string) => {
