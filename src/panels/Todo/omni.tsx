@@ -11,7 +11,7 @@ interface BuildArgs {
   todoItems: TodoItem[];
   selectedTodoId: string | null;
   setSelectedTodoId: (id: string | null) => void;
-  jumpToCard: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
+  jumpToCard: (card: TodoItem, sourceEl?: HTMLElement | null, rowPid?: string | null) => void;
   resolveCardRows: CardAnchorResolver;
   toggleTodo: (id: string) => void;
   updateTodo: (id: string, text: string) => void;
@@ -38,7 +38,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
       // question by another name (TodoRow reads it only alongside `onJump`),
       // so it is derived from the gate's answer rather than asked twice.
       const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
-        a.jumpToCard(item, sourceEl),
+        a.jumpToCard(item, sourceEl, row.anchorUuid),
       );
       items.push({
         id: row.omniId,

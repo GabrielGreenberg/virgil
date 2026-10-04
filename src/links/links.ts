@@ -2,8 +2,8 @@
  * Public API for the Link system, as it ships.
  *
  * READ side: `collectLinksFromEditor` derives every in-doc `Link` record
- * from the live doc; `resolveLink` locates one; `jumpToLink`/`jumpToCard`
- * navigate; `deleteLink` removes. All live.
+ * from the live doc; `resolveLink` locates one; `jumpToLink` navigates (a
+ * CARD's jump is `./jump-to-card`, which resolves through the authority); `deleteLink` removes. All live.
  *
  * WRITE side: anchors are minted by `createLinkedAnchor` (here) and inline
  * atoms by the atom commands (`src/lib/tiptap/insert-inline-atom.ts` +
@@ -518,73 +518,6 @@ export function jumpToLink(
       }
     }
   }
-}
-
-/** Jump to the first resolvable link on a card. Iterates `card.links` and
- *  scrolls to the first entry whose anchor still exists in the document —
- *  `links[0].paragraphIds[0]` may be stale when a card has multiple
- *  anchors and the earliest paragraph was edited away. Returns true if a
- *  link was jumped to.
- *
- *  When `sourceEl` is provided (the clicked card's wrapper), the in-text
- *  marker is aligned to that card's vertical position — the inverse of
- *  the marker→card alignment via `alignEntryToY`. Without `sourceEl`, the
- *  marker is centered in the viewport (legacy behavior).
- *
- *  When `sourceEl` is an omni-entry wrapper (`data-omni-entry-wrapper`),
- *  computes the card's pod-relative Y BEFORE the row scrolls and fires
- *  a `virgil-card-jumped` event with it; EditorLayout pins the card at
- *  that pod-Y so it stays visually fixed during the scroll. Pod-relative
- *  is scroll-invariant under unified scroll, so the pre-scroll value is
- *  the post-scroll value — no rAF needed. */
-export function jumpToCard(
-  editor: Editor,
-  card: CardWithLinks,
-  sourceEl?: HTMLElement | null,
-): boolean {
-  const links = card.links ?? [];
-  for (const link of links) {
-    const resolved = resolveLink(editor, link);
-    if (resolved?.domEl) {
-      if (sourceEl) {
-        const preY = sourceEl.getBoundingClientRect().top;
-        // Pin pod-rel = marker's pre-scroll pod-relative Y. After the
-        // row scrolls (by `markerY - preY`), the pod moves with it, and
-        // pin Y = `markerY_pre - podTop_pre` lands the card at preY
-        // viewport-Y — the card's original click position. See the same
-        // derivation in jumpToLink above.
-        const omniWrapper = sourceEl.closest(
-          "[data-omni-entry-wrapper]",
-        ) as HTMLElement | null;
-        const pod = omniWrapper?.parentElement as HTMLElement | null;
-        const omniKey = omniWrapper?.dataset.omniEntryWrapper;
-        const pinTop =
-          omniKey && pod
-            ? resolved.domEl.getBoundingClientRect().top -
-              pod.getBoundingClientRect().top
-            : null;
-        // Necessity-gated (task 328), and the pin rides the scroll's verdict:
-        // if the marker is already fully visible and near enough to the card,
-        // the click moves nothing at all — no document scroll, and therefore
-        // no compensating pin to re-cascade the deck.
-        const moved = alignEntryToYIfNeeded(resolved.domEl, preY);
-        if (moved && omniKey && pinTop !== null) {
-          window.dispatchEvent(
-            new CustomEvent("virgil-card-jumped", {
-              detail: { omniKey, pinTop },
-            }),
-          );
-        }
-      } else {
-        scrollEntryIntoViewIfNeeded(resolved.domEl, {
-          behavior: "instant",
-          block: "center",
-        });
-      }
-      return true;
-    }
-  }
-  return false;
 }
 
 /** Delete `link` from the editor. For inline-atom kinds this removes the

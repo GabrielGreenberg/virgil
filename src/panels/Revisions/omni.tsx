@@ -21,7 +21,7 @@ interface BuildArgs {
   cards: RevisionCard[];
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
-  jumpToCard: (card: RevisionCard, sourceEl?: HTMLElement | null) => void;
+  jumpToCard: (card: RevisionCard, sourceEl?: HTMLElement | null, rowPid?: string | null) => void;
   resolveCardRows: CardAnchorResolver;
   editor: Editor | null;
   updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
@@ -70,7 +70,7 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
     const renderCard = (row: OmniAnchorRow) => {
       const omniId = row.omniId;
       const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
-        a.jumpToCard(card, sourceEl),
+        a.jumpToCard(card, sourceEl, row.anchorUuid),
       );
       return card.kind === "suggestion" ? (
         <RevisionSuggestionCard

@@ -105,6 +105,27 @@ export interface CardAnchorPass {
    * so it has no recovery ladder to run and nothing to agree with.
    */
   posOf: (uuid: string | null) => number | null;
+  /**
+   * Where a Jump on `card` lands (task 935) — the ACT's reading of the same
+   * resolution the rows above are drawn from, so a Jump can never land
+   * somewhere no marker is drawn.
+   *
+   * `rowPid` is the asking ROW's own paragraph (a multi-anchor omni row's
+   * `@<pid>`): when live it wins outright — the row IS that anchor. Otherwise
+   * the authority's winner. `anchorId` names a live `linkedAnchor` mark of
+   * this card's on that paragraph, so a Mode-B card lands on its words, not
+   * the bare block. `null` when the card is not anchored, or in the mount gap.
+   */
+  jumpTarget: (card: CardWithLinks, rowPid?: string | null) => CardJumpTarget | null;
+}
+
+/** A Jump's landing place, read off one pass's index (see `jumpTarget`). */
+export interface CardJumpTarget {
+  paragraphId: string;
+  /** Doc position of `paragraphId` from the pass's index. */
+  pos: number | null;
+  /** A live mark of the card's on `paragraphId`, preferred over the block. */
+  anchorId: string | null;
 }
 
 const NO_ROWS: CardAnchorRows = { rows: [], anchored: false };
@@ -139,7 +160,45 @@ export function buildCardAnchorPass(editor: Editor | null): CardAnchorPass {
       return out;
     },
     posOf: (uuid) => (uuid ? index?.uuidToPos.get(uuid) ?? null : null),
+    jumpTarget: (card, rowPid) =>
+      bound ? resolveCardJumpTarget(card, editor, bound, rowPid ?? null) : null,
   };
+}
+
+/** `CardAnchorPass.jumpTarget`'s rule, against a READY index. */
+function resolveCardJumpTarget(
+  card: CardWithLinks,
+  editor: Editor | null,
+  index: ResolveIndex,
+  rowPid: string | null,
+): CardJumpTarget | null {
+  const links = card.links ?? [];
+  const target = (paragraphId: string, anchorId: string | null): CardJumpTarget => ({
+    paragraphId,
+    pos: index.uuidToPos.get(paragraphId) ?? null,
+    anchorId: anchorId ?? markOn(paragraphId),
+  });
+  const markOn = (pid: string): string | null => {
+    for (const link of links) {
+      if (!isModeB(link)) continue;
+      const anchorId = link.anchor.textRange?.anchorId;
+      if (anchorId && index.anchorIdToParagraph.get(anchorId) === pid) return anchorId;
+    }
+    return null;
+  };
+
+  // A row pid that died since the row was built falls through to the
+  // authority rather than jumping nowhere.
+  if (rowPid && index.uuidToParagraph.has(rowPid)) return target(rowPid, null);
+
+  const res = resolveCardAnchor(card, editor, index);
+  if (res.paragraphId == null || res.linkIndex == null) return null;
+  const winner = links[res.linkIndex]?.anchor;
+  const winnerMark =
+    res.source === "mark" && winner?.type === "textObject"
+      ? winner.textRange?.anchorId ?? null
+      : null;
+  return target(res.paragraphId, winnerMark);
 }
 
 /**

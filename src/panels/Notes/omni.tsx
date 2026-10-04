@@ -17,7 +17,7 @@ interface BuildArgs {
   cards: NoteCardItem[];
   selectedNoteId: string | null;
   setSelectedNoteId: (id: string | null) => void;
-  jumpToCard: (card: NoteCardItem, sourceEl?: HTMLElement | null) => void;
+  jumpToCard: (card: NoteCardItem, sourceEl?: HTMLElement | null, rowPid?: string | null) => void;
   resolveCardRows: CardAnchorResolver;
   updateNote: (id: string, content: JSONContent) => void;
   updateNoteTitle: (id: string, title: string) => void;
@@ -43,7 +43,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
       // is true of a card whose anchor is DEAD and painted a Jump that
       // `jumpToCard` resolves to nothing.
       const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
-        a.jumpToCard(card, sourceEl),
+        a.jumpToCard(card, sourceEl, row.anchorUuid),
       );
       if (card.kind === "highlight") {
         return (
