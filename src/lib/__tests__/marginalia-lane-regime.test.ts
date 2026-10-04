@@ -349,14 +349,16 @@ describe("lane regime — the call site must ASK, and must measure the right ele
     }
   });
 
-  it("the pod the fit MEASURES is the pod the markers are PINNED to (same element, two selectors)", () => {
+  it("the pod the fit MEASURES is the pod the markers are PINNED to (same element, ONE selector)", () => {
     // `available` is `podRight − editorRight`, and that is only the room the
     // lane has because the marker container's positioning context IS the
-    // element the geometry service measures. The two resolve it by different
-    // selectors — the portal by `data-marginalia-host` (the marginalia SSOT),
-    // the frame by the `.editor-pane-pod` class literal — so their coincidence
-    // is a property of ONE JSX element, pinned here. If they ever split, the
-    // failure is a silent total cull, not a type error.
+    // element the geometry service measures. Since task 940 both resolve it
+    // through the ONE marginalia-host door (`data-marginalia-host`) — the
+    // portal via `resolveMarginaliaHost`, the frame via
+    // `resolveMarginaliaHostFromDom` — so the coincidence is structural. What
+    // stays pinned here: the frame reads that door (not a class literal), and
+    // the producer still puts the host attr on the styled pod, so the rect the
+    // fit measures is the white surface the lane sits beside.
     const pane = readFileSync(join(SRC, "components/EditorPane.tsx"), "utf8");
     const podIdx = pane.indexOf('className="editor-pane-pod"');
     expect(podIdx).toBeGreaterThan(-1);
@@ -368,7 +370,8 @@ describe("lane regime — the call site must ASK, and must measure the right ele
       join(SRC, "lib/editor-geometry/viewport-frame.ts"),
       "utf8",
     );
-    expect(frame).toContain('closest(".editor-pane-pod")');
+    expect(frame).toContain("resolveMarginaliaHostFromDom(editorEl)");
+    expect(frame).not.toContain('closest(".editor-pane-pod")');
   });
 });
 

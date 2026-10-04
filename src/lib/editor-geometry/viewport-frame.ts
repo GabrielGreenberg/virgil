@@ -32,6 +32,7 @@
  */
 
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { resolveMarginaliaHostFromDom } from "@/lib/marginalia";
 import { resolveMarginEm } from "@/text-objects/block-frame";
 import { handleLaneFloor } from "@/text-objects/handle-layout";
 
@@ -225,9 +226,11 @@ export function computeViewportFrame(
   // the white-pod → manila transition rather than at the inner
   // text → white-padding edge inside the pod. Defensive fallback
   // to the editor's own rect if the pod walk fails (early mount,
-  // unexpected DOM, etc.).
-  const podEl =
-    (editorEl.closest(".editor-pane-pod") as HTMLElement | null) ?? null;
+  // unexpected DOM, etc.). Resolved through the ONE marginalia-host
+  // door (task 940), not the class: the lane arithmetic below
+  // (`podLeft`/`podRight`/`podTopInScroll`) assumes the pod IS the
+  // element the markers live in, so it must be found the same way.
+  const podEl = resolveMarginaliaHostFromDom(editorEl);
   const podRect = podEl?.getBoundingClientRect();
   const podLeft = podRect?.left ?? rect.left;
   const podRight = podRect?.right ?? rect.right;

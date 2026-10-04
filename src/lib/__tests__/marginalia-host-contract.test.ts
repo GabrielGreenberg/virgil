@@ -16,11 +16,14 @@
 //      there's no view yet, or when the editor is null/undefined — the exact
 //      contract both former closures hand-maintained.
 import { describe, it, expect } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { Editor } from "@tiptap/react";
 import {
   MARGINALIA_HOST_ATTR,
   MARGINALIA_HOST_SELECTOR,
   resolveMarginaliaHost,
+  resolveMarginaliaHostFromDom,
 } from "@/lib/marginalia";
 
 // Minimal editor shape the resolver reads: `editor.view?.dom`.
@@ -65,5 +68,54 @@ describe("marginalia host contract SSOT", () => {
     expect(resolveMarginaliaHost(fakeEditor(null))).toBeNull();
     expect(resolveMarginaliaHost(null)).toBeNull();
     expect(resolveMarginaliaHost(undefined)).toBeNull();
+  });
+});
+
+// Task 2026-10-04-940 — the element-level door, and the census that keeps every
+// reader on it. The viewport frame measured its pod edges by walking to
+// `.editor-pane-pod` while every other reader climbed `[data-marginalia-host]`;
+// the one producer put both on the same div, so the divergence was latent — but
+// the frame's lane arithmetic assumes the pod IS the marker host.
+describe("marginalia host: element door + no class-based pod lookup", () => {
+  it("resolveMarginaliaHostFromDom climbs the same selector from an element", () => {
+    const host = document.createElement("div");
+    host.setAttribute(MARGINALIA_HOST_ATTR, "");
+    const pmDom = document.createElement("div");
+    host.appendChild(pmDom);
+    expect(resolveMarginaliaHostFromDom(pmDom)).toBe(host);
+    expect(resolveMarginaliaHostFromDom(pmDom)).toBe(
+      resolveMarginaliaHost(fakeEditor(pmDom)),
+    );
+  });
+
+  it("does NOT resolve a pod that carries only the class", () => {
+    const pod = document.createElement("div");
+    pod.className = "editor-pane-pod";
+    const pmDom = document.createElement("div");
+    pod.appendChild(pmDom);
+    expect(resolveMarginaliaHostFromDom(pmDom)).toBeNull();
+    expect(resolveMarginaliaHostFromDom(null)).toBeNull();
+    expect(resolveMarginaliaHostFromDom(undefined)).toBeNull();
+  });
+
+  it("no source file finds the pod by `closest(\".editor-pane-pod\")`", () => {
+    const root = path.resolve(__dirname, "../..");
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
+          if (ent.name === "__tests__" || ent.name === "node_modules") continue;
+          walk(p);
+        } else if (/\.(ts|tsx)$/.test(ent.name)) {
+          const src = fs.readFileSync(p, "utf8");
+          if (/closest\(\s*["'`]\.editor-pane-pod["'`]\s*\)/.test(src)) {
+            offenders.push(path.relative(root, p));
+          }
+        }
+      }
+    };
+    walk(root);
+    expect(offenders).toEqual([]);
   });
 });
