@@ -239,21 +239,73 @@ export function removeFromStack(p: ViewPrefs, id: PanelId): ViewPrefs {
  * THE band-follows-icon enforcer (task 899): relocate every docked band whose
  * stack side disagrees with its panel's `placements` side, through
  * `placeInStack` (so the three invariants above ride along). `placements`
- * change side through THREE doors — `movePanel`, the load-time one-shot side
- * migrations, and a peer window's sync — and each ends by calling this, so no
- * door can leave a band rendering in the column opposite its strip icon. A
- * docked panel with no placement (or already on its side) is left alone, and
- * an already-consistent snapshot is returned by identity.
+ * change side through FOUR doors — `movePanel`, the load-time one-shot side
+ * migrations, a peer window's sync, and a cross-side `redockAt` — and each
+ * ends by calling this, so no door can leave a band rendering in the column
+ * opposite its strip icon. A docked panel with no placement (or already on its
+ * side) is left alone, and an already-consistent snapshot is returned by
+ * identity.
+ *
+ * TWO-PHASE (task 928): every mis-sided band is pulled out of BOTH stacks
+ * before any is re-placed. Relocating one at a time over the original stacks
+ * made a two-way swap evict needlessly — left=[A] (A now placed right),
+ * right=[B,C,D] (B now placed left): A arriving right hit `MAX_STACK` and
+ * evicted C, though B was about to leave and the net occupancy fit.
  */
 export function reconcileDockStackToPlacements(p: ViewPrefs): ViewPrefs {
-  let next = p;
+  const moves: { id: PanelId; side: Side }[] = [];
   for (const side of ["left", "right"] as const) {
     for (const id of stackFor(p, side)) {
       const placed = p.placements.find((pl) => pl.id === id)?.side;
-      if (placed && placed !== side) next = placeInStack(next, id, placed);
+      if (placed && placed !== side) moves.push({ id, side: placed });
     }
   }
+  if (moves.length === 0) return p;
+  let next = p;
+  for (const { id } of moves) next = removeFromStack(next, id);
+  for (const { id, side } of moves) next = placeInStack(next, id, side);
   return next;
+}
+
+/**
+ * THE placements writer: move `id`'s strip icon to `toSide`, before `before`
+ * (or appended to that strip when `before` is null / no longer on that side —
+ * `movePanel`'s resolve-or-append posture). Pure and placements-only: the
+ * caller decides whether the band follows (`movePanel` reconciles; `redockAt`
+ * has already put the band where it wants it).
+ */
+export function movePlacement(
+  p: ViewPrefs,
+  id: PanelId,
+  toSide: Side,
+  before?: PanelId | null,
+): ViewPrefs {
+  const filtered = p.placements.filter((pl) => pl.id !== id);
+  const sameItems = filtered.filter((pl) => pl.side === toSide);
+  const otherItems = filtered.filter((pl) => pl.side !== toSide);
+  const at = before == null ? -1 : sameItems.findIndex((pl) => pl.id === before);
+  const idx = at === -1 ? sameItems.length : at;
+  sameItems.splice(idx, 0, { id, side: toSide });
+  return { ...p, placements: [...otherItems, ...sameItems] };
+}
+
+/**
+ * THE redock door (task 928): dock `id` on `side` at the user's dropped
+ * `index`. A drop on the OTHER side's column is a deliberate statement of
+ * where the panel lives, so its strip icon moves there too (appended to that
+ * strip) in the same update — otherwise the band would sit opposite its icon
+ * until the next reconcile (any strip reorder, peer sync, card jump or
+ * reload) yanked it back. A panel with no placement row (an unplaced tail
+ * kind) has no icon to move and is docked as dropped.
+ *
+ * No `freeSpacePx`: a drag-drop has no measurement, and a deliberate drop
+ * shouldn't be refused — or cost a DIFFERENT band — for breathing room. Only
+ * the hard `MAX_STACK` cap evicts here.
+ */
+export function redockAt(p: ViewPrefs, id: PanelId, side: Side, index?: number): ViewPrefs {
+  const placed = p.placements.find((pl) => pl.id === id)?.side;
+  const next = placed && placed !== side ? movePlacement(p, id, side) : p;
+  return placeInStack(next, id, side, { index });
 }
 
 /** Close `id` in BOTH worlds — its dock band and its float. The saved float

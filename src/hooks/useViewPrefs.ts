@@ -56,6 +56,8 @@ import {
   openInMode,
   placeInStack,
   reconcileDockStackToPlacements,
+  movePlacement,
+  redockAt,
   undockToFloat,
 } from "./view-prefs-dock";
 
@@ -1479,22 +1481,10 @@ export function useViewPrefs(opts?: {
    * every placed kind.
    */
   const movePanel = useCallback((id: PanelId, toSide: Side, before?: PanelId | null) => {
-    update((p) => {
-      const filtered = p.placements.filter((pl) => pl.id !== id);
-      const sameItems = filtered.filter((pl) => pl.side === toSide);
-      const otherItems = filtered.filter((pl) => pl.side !== toSide);
-      const at =
-        before == null ? -1 : sameItems.findIndex((pl) => pl.id === before);
-      const idx = at === -1 ? sameItems.length : at;
-      sameItems.splice(idx, 0, { id, side: toSide });
-      // If the panel is currently docked on the OTHER side, its open band
-      // follows its icon — through the one enforcer every placements door
-      // shares (task 899).
-      return reconcileDockStackToPlacements({
-        ...p,
-        placements: [...otherItems, ...sameItems],
-      });
-    });
+    // If the panel is currently docked on the OTHER side, its open band
+    // follows its icon — through the one enforcer every placements door
+    // shares (task 899).
+    update((p) => reconcileDockStackToPlacements(movePlacement(p, id, toSide, before)));
   }, [update]);
 
   const setPanelWidth = useCallback((side: Side, _id: PanelId, width: number) => {
@@ -1707,13 +1697,10 @@ export function useViewPrefs(opts?: {
   const redockPanel = useCallback(
     (id: PanelId, side: Side, index?: number) => {
       // The SAME insertion the strip-click open takes, at the user's chosen
-      // slot — so the sentinel clear (task 272: a band's portal target only
-      // exists in an expanded, non-blank column, or the just-docked panel
-      // renders nothing) falls out for free rather than being re-derived.
-      // No `freeSpacePx`: a drag-drop has no measurement, and a deliberate
-      // drop shouldn't be refused — or cost a DIFFERENT band — for
-      // breathing room. Only the hard `MAX_STACK` cap evicts here.
-      update((p) => placeInStack(p, id, side, { index }));
+      // slot — so the sentinel clear (task 272) falls out for free — and a
+      // cross-side drop moves the strip icon with it, so the band never sits
+      // opposite its placement (task 928). See `redockAt`.
+      update((p) => redockAt(p, id, side, index));
     },
     [update],
   );

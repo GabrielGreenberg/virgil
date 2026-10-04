@@ -396,12 +396,19 @@ describe("hook-body census — dock state is mutated only through the engine", (
       "closePanel",
       "floatOpen",
       "isPanelOpen",
+      // Task 928: the ONE placements writer — whole (it touches only
+      // `placements`, never a dock carrier), shared by `movePanel` and
+      // `redockAt` so a cross-side redock and a strip drag move icons alike.
+      "movePlacement",
       "notePanelUse",
       "openInMode",
       "placeInStack",
       // Task 899: the band-follows-icon enforcer — a whole operation (every
       // relocation it makes goes through `placeInStack`).
       "reconcileDockStackToPlacements",
+      // Task 928: the redock door — a cross-side drop moves the icon too, so
+      // the band never sits opposite its placement.
+      "redockAt",
       "removeFromStack",
       "undockToFloat",
     ]);
