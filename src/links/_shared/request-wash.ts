@@ -67,7 +67,9 @@
  * forward-map. Cost strictly below the mark reconcile's two full doc walks.
  */
 
+import { useEffect, useMemo, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import { getBus, type StructureDiff } from "@/lib/tiptap/doc-structure";
 import {
   getTextAnchor,
   getLinkedTextObjectIds,
@@ -206,4 +208,106 @@ export function paintRequestWash(
     requestWashTargets(editor, cards),
     REQUEST_WASH_CHANNEL,
   );
+}
+
+/**
+ * True when a structural diff brings BACK an anchor some open request washes —
+ * the re-entry half of the wash's lifecycle (task 936).
+ *
+ * Between repaints the bands only forward-map, and a mapped decoration whose
+ * range is deleted is GONE: PM does not resurrect it when the text returns.
+ * So "delete the washed paragraph, Cmd+Z" restored the paragraph under the
+ * SAME uuid (and a Mode-B span under the same `anchorId`) — the desired set,
+ * and therefore `requestWashKey`, never changed, nothing repainted, and the
+ * wash stayed missing until reload. The same shape covers a block MOVE (drag,
+ * cut+paste in one tx: delete+insert, uuid preserved → `changedBlocks`), whose
+ * band mapping drops for the same reason.
+ *
+ * The question is answered from the diff alone: O(diff entries + open
+ * requests), never a doc walk, and it is only ever asked on a STRUCTURAL emit
+ * (`onAnyChange`), which a plain keystroke does not produce.
+ */
+export function requestWashAnchorReentered(
+  diff: Pick<StructureDiff, "addedBlocks" | "changedBlocks" | "addedAnchors">,
+  cards: ReadonlyArray<RequestWashCardLike>,
+): boolean {
+  if (
+    diff.addedBlocks.length === 0 &&
+    diff.changedBlocks.length === 0 &&
+    diff.addedAnchors.length === 0
+  ) {
+    return false;
+  }
+  const uuids = new Set<string>();
+  const anchorIds = new Set<string>();
+  for (const c of cards) {
+    const a = requestWashAnchor(c);
+    if (!a) continue;
+    if (a.mode === "range") anchorIds.add(a.anchorId);
+    else uuids.add(a.uuid);
+  }
+  if (uuids.size === 0 && anchorIds.size === 0) return false;
+  for (const b of diff.addedBlocks) if (uuids.has(b.uuid)) return true;
+  for (const b of diff.changedBlocks) if (uuids.has(b.uuid)) return true;
+  // A Mode-B span re-enters as its `linkedAnchor` id (`AnchorEntry.id`).
+  for (const a of diff.addedAnchors) if (anchorIds.has(a.id)) return true;
+  return false;
+}
+
+/**
+ * Keep the wash painted for `cards` (the `aiRequest === true` set) for as long
+ * as `ready` holds — the ONE owner of the wash's lifecycle in a pane.
+ *
+ * Two triggers, both event-driven:
+ *   1. the DESIRED set changes (`requestWashKey`: flag on/off, card add/delete,
+ *      re-anchor) or the editor/ready gate flips → repaint;
+ *   2. a structural emit brings back an anchor the desired set wants
+ *      (`requestWashAnchorReentered`: undo of a delete, a block move) → repaint.
+ *
+ * Typing reaches neither: the desired set is unchanged and a content-only diff
+ * never fires `onAnyChange` (`emitCount` stays flat), so the bands just
+ * forward-map. The repaint for (2) is deferred to a microtask because the bus
+ * emits from inside the observer's plugin-view `update()`, where a nested
+ * `dispatch` would re-enter the view's own state update; it is coalesced, so a
+ * burst of emits paints once, and still lands before the next paint.
+ */
+export function useRequestWash(
+  editor: Editor | null | undefined,
+  cards: ReadonlyArray<RequestWashCardLike>,
+  ready: boolean,
+): void {
+  const desired = useMemo(() => requestWashKey(cards), [cards]);
+  // Read the live cards through a ref so an unrelated card edit that leaves
+  // the desired set alone re-runs neither effect.
+  const cardsRef = useRef(cards);
+  cardsRef.current = cards;
+
+  useEffect(() => {
+    if (!editor) return;
+    // A CORRECTNESS gate, not a data-loss one: an anchor cannot resolve
+    // against a document that has not parsed. Running early destroys nothing.
+    if (!ready) return;
+    paintRequestWash(editor, cardsRef.current);
+  }, [editor, ready, desired]);
+
+  // `desired === ""` means no open request: nothing can re-enter, so don't
+  // even subscribe. Re-subscribes only on a desired-set change, never per
+  // keystroke.
+  const hasDesired = desired !== "";
+  useEffect(() => {
+    if (!editor || !ready || !hasDesired) return;
+    const bus = getBus(editor);
+    if (!bus) return;
+    let scheduled = false;
+    const unsubscribe = bus.onAnyChange((diff) => {
+      if (scheduled) return;
+      if (!requestWashAnchorReentered(diff, cardsRef.current)) return;
+      scheduled = true;
+      queueMicrotask(() => {
+        scheduled = false;
+        paintRequestWash(editor, cardsRef.current);
+      });
+    });
+    return unsubscribe;
+  }, [editor, ready, hasDesired]);
 }

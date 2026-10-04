@@ -359,8 +359,7 @@ import {
   type PendingMarkCardLike,
 } from "@/links/_shared/reapply-pending-marks";
 import {
-  paintRequestWash,
-  requestWashKey,
+  useRequestWash,
   isRequestCard,
   type RequestWashCardLike,
 } from "@/links/_shared/request-wash";
@@ -6069,29 +6068,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // anchor left has nothing to wash, and the module owns that judgement.
     return all.filter(isRequestCard);
   }, [modeBCards]);
-  // Keystroke-sanctity key: the repaint must fire only when the DESIRED band
-  // set changes — the request cards' ids + the anchor each one washes — not on
-  // every unrelated card edit (and never on a keystroke: typing changes neither
-  // the card set nor its anchors; the decorations forward-map instead). Read
-  // the live cards through a ref so the effect body isn't in the dep list.
-  const requestWashDesired = useMemo(
-    () => requestWashKey(requestWashCards),
-    [requestWashCards],
-  );
-  const requestWashCardsRef = useRef(requestWashCards);
-  requestWashCardsRef.current = requestWashCards;
-  useEffect(() => {
-    if (!editor) return;
-    // Still gated on the doc being ready: an anchor cannot resolve against a
-    // document that has not parsed. Unlike the old reconcile this is a
-    // CORRECTNESS gate, not a data-loss one — nothing is destroyed by running
-    // early, the bands just would not resolve.
-    if (!docContentReady) return;
-    // `requestWashDesired` gates re-runs to genuine desired-set changes; the
-    // cards themselves are read via the ref, so an unrelated card edit that
-    // leaves the desired set alone costs nothing. `editor`/gate flips re-run it.
-    paintRequestWash(editor, requestWashCardsRef.current);
-  }, [editor, docContentReady, requestWashDesired]);
+  // `useRequestWash` owns both repaint triggers: a DESIRED-set change (request
+  // ids + their anchors — never a keystroke) and a structural emit that brings
+  // back an anchor the set wants (undo of a delete, a block move — task 936),
+  // which forward-mapping alone cannot restore. Gated on the doc being ready.
+  useRequestWash(editor, requestWashCards, docContentReady);
 
   useTextHoverBridge({
     editor,
