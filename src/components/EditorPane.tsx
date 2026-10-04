@@ -397,6 +397,7 @@ import type {
   DockSlotKey,
 } from "@/hooks/useViewPrefs";
 import { bandSlotKey, dockedSideOf } from "@/hooks/useViewPrefs";
+import { REGISTRY_DEFAULTS } from "@/lib/view-prefs/registry";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
 import { type FocusState } from "@/hooks/useFocusMode";
 import type { FocusBand } from "@/lib/focus-view";
@@ -1204,15 +1205,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the global list is a cross-window `localStorage` store; the preference is
   // the ONE `checkSpelling` control task 517 established, so there is a single
   // switch rather than one for Virgil's checker and one for the browser's.
-  // Absent view prefs (a host that passes none) reads as ON, which matches the
-  // registry default — and such a host is read-only anyway, where the plugin
-  // is inert by construction.
+  // Absent view prefs (a host that passes none) reads the registry default
+  // (task 931) — and such a host is read-only anyway, where the plugin is
+  // inert by construction.
   const spellDictionary = useSpellDictionary(docId);
   const globalSpellWords = useGlobalDictionary();
-  const spellcheckEnabled = viewPrefs?.prefs.checkSpelling ?? true;
+  const spellcheckEnabled = viewPrefs?.prefs.checkSpelling ?? REGISTRY_DEFAULTS.checkSpelling;
   // Autocorrect's own row (task 519) — independent of `checkSpelling`, and
   // reading absent view prefs as the registry default for the same reason.
-  const autocorrectEnabled = viewPrefs?.prefs.autocorrectTypos ?? true;
+  const autocorrectEnabled = viewPrefs?.prefs.autocorrectTypos ?? REGISTRY_DEFAULTS.autocorrectTypos;
 
   // Register the editor `\cite{}` doc-rewrite as a migrator on the
   // IdentityCascade (T1 Stage 2, checklist step 9). When a citekey rename fans
@@ -2977,8 +2978,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         panelModes: {},
         poppedOutCards: [],
         cardFloatPositions: {},
-        showHighlights: true,
-        hiddenHighlightTypes: [],
+        showHighlights: REGISTRY_DEFAULTS.showHighlights,
+        hiddenHighlightTypes: [...REGISTRY_DEFAULTS.hiddenHighlightTypes],
       }) as unknown as ViewPrefs,
     [],
   );

@@ -343,6 +343,22 @@ export function toggleRowsInMenuGroup(
     });
 }
 
+/** The registry keys whose `kind` is `"enum"`. */
+export type EnumViewPrefKey = {
+  [K in ViewPrefKey]: (typeof VIEW_PREF_REGISTRY)[K] extends { kind: "enum" } ? K : never;
+}[ViewPrefKey];
+
+/** An enum pref's pick-one options, `{ value, label }` in declared order — the
+ *  shape `MenuRadioGroup` takes. Every enum-valued control (the View menu's
+ *  divider width, the Bibliography panel's filter, …) renders off this, so an
+ *  enum's values and their labels are stated once, here (task 931). */
+export function enumOptions<K extends EnumViewPrefKey>(
+  key: K,
+): ReadonlyArray<{ value: RegistryPrefs[K]; label: string }> {
+  const def = VIEW_PREF_REGISTRY[key] as unknown as EnumDef<RegistryPrefs[K] & string>;
+  return def.values.map((value) => ({ value, label: def.valueLabels[value] }));
+}
+
 /* ── Value coercion: the registry as a VALIDATOR (task 677) ────────────── */
 
 /**

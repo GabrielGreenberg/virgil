@@ -6,6 +6,7 @@ import type { DividerLevel } from "@/hooks/useViewPrefs";
 import {
   VIEW_PREF_REGISTRY,
   toggleRowsInMenuGroup,
+  enumOptions,
   type RegistryPrefs,
   type ViewPrefKey,
   type SetViewPrefKey,
@@ -62,7 +63,6 @@ export type { DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 // reads `viewPrefs[key]` and calls one of the three registry-driven writers — so
 // the ViewMenu holds no per-pref knowledge at all.
 const DIVIDER_LEVEL_LABELS = VIEW_PREF_REGISTRY.dividerLevels.memberLabels as Record<DividerLevel, string>;
-const DIVIDER_WIDTH_LABELS = VIEW_PREF_REGISTRY.dividerWidth.valueLabels;
 /** Display-group rows in registry declaration order — key + stable row id +
  *  label, all three sourced from `VIEW_PREF_REGISTRY` (task 274). The value and
  *  the write both travel BY KEY (`viewPrefs[key]` / `onToggleViewPref(key)`),
@@ -763,7 +763,7 @@ export function ViewMenu({
                     <MenuRadioGroup
                       idPrefix="divider-width-"
                       ariaLabel={VIEW_PREF_REGISTRY.dividerWidth.label}
-                      options={VIEW_PREF_REGISTRY.dividerWidth.values.map((w) => ({ value: w, label: DIVIDER_WIDTH_LABELS[w] }))}
+                      options={enumOptions("dividerWidth")}
                       value={viewPrefs.dividerWidth}
                       indent={2}
                       onPick={(w) => onSetViewPref("dividerWidth", w)}
