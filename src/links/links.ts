@@ -25,6 +25,7 @@
 
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { TextSelection, type Transaction } from "@tiptap/pm/state";
 import { captureRangeContent, captureRangeLatex } from "@/lib/tiptap/slice-capture";
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
@@ -674,8 +675,8 @@ export function paragraphRangeByUuid(
  * the first contiguous run (task 071). Every caller here — resolveLink's
  * textRange branch, removeLinkedAnchorMark,
  * removeTransientAnchor, updateLinkedAnchorCard, apply-linked-anchors — hands
- * the range to nodesBetween / setTextSelection / unsetMark and wants the full
- * extent.
+ * the range to nodesBetween / the `writeLinkedAnchorMark` door and wants the
+ * full extent.
  */
 export function resolveTextRangeByAnchorId(
   editor: Editor,
@@ -684,15 +685,88 @@ export function resolveTextRangeByAnchorId(
   return resolveLinkedAnchorRange(editor.state, anchorId);
 }
 
+/**
+ * THE `linkedAnchor` write door (task 933). Every stamp, re-stamp and strip of
+ * the mark in `src/links/**` builds its step HERE, on a transaction, over an
+ * explicit range — never through the user's selection.
+ *
+ * The writers used to share one chain shape,
+ * `.setTextSelection(range).setMark|unsetMark(…).setTextSelection(range.from)`,
+ * so every load re-stamp, re-anchor and orphan reap left the caret at the start
+ * of the anchored text, wherever the user had it (the "caret hijack" task 667
+ * retired for the request wash only). A mark step shifts no position, so
+ * `tr.selection` maps through it unchanged: the door CANNOT move the caret.
+ *
+ * `attrs === null` strips every `linkedAnchor` over the range (what `unsetMark`
+ * did). Otherwise it mirrors TipTap's `setMark` merge exactly — a text node that
+ * already carries the mark keeps attrs the caller did not name (e.g.
+ * `pendingDelete`), one without it gets a fresh mark — so a re-stamp is
+ * byte-identical to the chain it replaces.
+ *
+ * Returns whether the range ADMITS the mark (some inline node whose parent
+ * allows it) — the applicability `setMark`'s own check answered — not whether
+ * the document changed (an idempotent re-stamp changes nothing and is fine).
+ */
+export function writeLinkedAnchorMark(
+  tr: Transaction,
+  range: { from: number; to: number },
+  attrs: Record<string, unknown> | null,
+): boolean {
+  const type = tr.doc.type.schema.marks.linkedAnchor;
+  if (!type || range.to <= range.from) return false;
+  const { from, to } = range;
+  if (attrs === null) {
+    tr.removeMark(from, to, type);
+    return true;
+  }
+  const doc = tr.doc; // mark steps move no positions: iterate the pre-step doc
+  let admitted = false;
+  doc.nodesBetween(from, to, (node, pos, parent) => {
+    if (!node.isInline) return true;
+    if (parent && !parent.type.allowsMarkType(type)) return false;
+    admitted = true;
+    const existing = type.isInSet(node.marks);
+    tr.addMark(
+      Math.max(pos, from),
+      Math.min(pos + node.nodeSize, to),
+      type.create(existing ? { ...existing.attrs, ...attrs } : attrs),
+    );
+    return false;
+  });
+  return admitted;
+}
+
+/**
+ * Dispatch one {@link writeLinkedAnchorMark} write on the live editor.
+ * `history: false` for every load-/lifecycle-correction write (re-stamp,
+ * re-anchor, a card-lifecycle strip): none is an editor-undoable user edit, so
+ * Cmd+Z must not resurrect a reaped mark with no card behind it.
+ */
+function dispatchLinkedAnchorMark(
+  editor: Editor,
+  range: { from: number; to: number },
+  attrs: Record<string, unknown> | null,
+  opts: { history: boolean },
+): boolean {
+  const tr = editor.state.tr;
+  const admitted = writeLinkedAnchorMark(tr, range, attrs);
+  if (!admitted) return false;
+  if (!opts.history) tr.setMeta("addToHistory", false);
+  if (tr.docChanged) editor.view.dispatch(tr);
+  return true;
+}
+
+/**
+ * Strip the mark for `anchorId`. Every caller is a CARD-lifecycle step (card
+ * delete, orphan reap, keep/revert of a pending change, a re-anchor release,
+ * a transient handle's cleanup) — the card side of it is not on the editor's
+ * undo stack, so neither is the strip (task 933: undo used to bring the mark
+ * back with no card, and the reaper would not re-run to catch it).
+ */
 function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
   const range = resolveTextRangeByAnchorId(editor, anchorId);
   if (!range) return;
-  editor
-    .chain()
-    .setTextSelection(range)
-    .unsetMark("linkedAnchor")
-    .setTextSelection(range.from)
-    .run();
+  dispatchLinkedAnchorMark(editor, range, null, { history: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -905,13 +979,20 @@ export function tryCreateLinkedAnchor(
   if (!probe.docChanged) return { ok: false, reason: "not-applicable" };
   if (!transactionAdmitted(editor, probe)) return { ok: false, reason: "filtered" };
   const docBefore = editor.state.doc;
-  const ok = editor
-    .chain()
-    .setTextSelection(sel)
-    .setMark("linkedAnchor", markAttrs)
-    .setTextSelection(sel.from)
-    .run();
-  if (!ok) return { ok: false, reason: "not-applicable" };
+  // A user gesture: on the undo stack, through the one write door (task 933).
+  // The door leaves the selection mapped; collapsing it is this gesture's OWN
+  // choice, made only when the anchored range IS the user's selection (the
+  // selection that was just annotated collapses to its start, as before). A
+  // caller that names some other range leaves the caret where the user put it.
+  const tr = editor.state.tr;
+  if (!writeLinkedAnchorMark(tr, sel, markAttrs)) {
+    return { ok: false, reason: "not-applicable" };
+  }
+  const { selection } = editor.state;
+  if (selection.from === sel.from && selection.to === sel.to) {
+    tr.setSelection(TextSelection.create(tr.doc, sel.from));
+  }
+  editor.view.dispatch(tr);
   // Measured, not assumed: the probe above and the dispatch share the same
   // filters, so this only fires if one of them disagrees with its own probe.
   if (editor.state.doc === docBefore) return { ok: false, reason: "filtered" };
@@ -989,19 +1070,21 @@ export function updateLinkedAnchorCard(
     }
     return true;
   });
-  editor
-    .chain()
-    .setTextSelection(range)
-    .setMark("linkedAnchor", {
+  // On the undo stack, like the create it completes: the two land in one
+  // history group, so a single undo removes the fresh anchor whole.
+  dispatchLinkedAnchorMark(
+    editor,
+    range,
+    {
       anchorId,
       kind: legacyKind,
       linkId: anchorId,
       linkKind: "anchor",
       linkCard: linkCardKeyFromToken(cardKind, cardId),
       tintColor,
-    })
-    .setTextSelection(range.from)
-    .run();
+    },
+    { history: true },
+  );
 }
 
 /**
@@ -1038,16 +1121,12 @@ export function restampLinkedAnchorForKind(
   // data-link-card spine token (`legacyDataKind` == the spine CardKind string
   // for every mark-carrying kind — see the crosswalk).
   const spineToken = legacyDataKindForCardKind(cardKind) ?? cardKind;
-  editor
-    .chain()
-    // Load/lifecycle correction: not an undoable user edit (mirrors the reload
-    // reconcile's addToHistory:false re-stamp).
-    .command(({ tr }) => {
-      tr.setMeta("addToHistory", false);
-      return true;
-    })
-    .setTextSelection(range)
-    .setMark("linkedAnchor", {
+  // Load/lifecycle correction: not an undoable user edit (mirrors the reload
+  // reconcile's history-exempt re-stamp).
+  dispatchLinkedAnchorMark(
+    editor,
+    range,
+    {
       anchorId,
       kind,
       linkId: anchorId,
@@ -1057,9 +1136,9 @@ export function restampLinkedAnchorForKind(
       // morphed mark's band is byte-identical to a created/reloaded one (amber
       // for highlight, null — no band — for every other kind).
       tintColor: defaultTintForLinkedAnchorKind(kind),
-    })
-    .setTextSelection(range.from)
-    .run();
+    },
+    { history: false },
+  );
 }
 
 /**
@@ -1185,16 +1264,11 @@ export function reanchorByText(
   // `revision-suggestion:<id>`); fall back to the kind-derived token otherwise.
   const cardKind = opts?.linkCardToken ?? legacyKindToCardKindString(kind);
   const linkCard = cardId ? linkCardKeyFromToken(cardKind, cardId) : "";
-  const docBefore = editor.state.doc;
-  const ok = editor
-    .chain()
-    // Load-time / gesture-time correction: not an undoable user edit.
-    .command(({ tr }) => {
-      tr.setMeta("addToHistory", false);
-      return true;
-    })
-    .setTextSelection({ from, to })
-    .setMark("linkedAnchor", {
+  // Load-time / gesture-time correction: not an undoable user edit.
+  const ok = dispatchLinkedAnchorMark(
+    editor,
+    { from, to },
+    {
       anchorId,
       kind,
       linkId: anchorId,
@@ -1202,9 +1276,9 @@ export function reanchorByText(
       linkCard,
       tintColor: tintColor ?? null,
       pendingDelete: opts?.pendingDelete ? true : null,
-    })
-    .setTextSelection(from)
-    .run();
+    },
+    { history: false },
+  );
   if (!ok) return null;
   return {
     anchorId,

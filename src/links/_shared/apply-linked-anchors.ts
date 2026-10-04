@@ -32,7 +32,11 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import { reanchorByText, resolveTextRangeByAnchorId } from "../links";
+import {
+  reanchorByText,
+  resolveTextRangeByAnchorId,
+  writeLinkedAnchorMark,
+} from "../links";
 import type { ModeBReapplyRecord } from "./reapply-mode-b-anchors";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,23 +141,21 @@ export function applyLinkedAnchorsImpl(
     // boundaries by `\vlid` — resolve the live range by anchorId and over-write.
     const range = resolveTextRangeByAnchorId(editor, rec.anchorId);
     if (!range) continue;
-    editor
-      .chain()
-      // Load-time correction: not an undoable user edit.
-      .command(({ tr }) => {
-        tr.setMeta("addToHistory", false);
-        return true;
-      })
-      .setTextSelection(range)
-      .setMark("linkedAnchor", {
-        anchorId: rec.anchorId,
-        kind: rec.kind,
-        linkId: rec.anchorId,
-        linkKind: "anchor",
-        linkCard: live.linkCard, // preserve (parser default "" on load; never clobber)
-        tintColor: expectedTint,
-      })
-      .setTextSelection(range.from)
-      .run();
+    // Load-time correction: not an undoable user edit — and, through the one
+    // write door, it leaves the caret where the restored UI state put it (task
+    // 933: this ran on every doc-open for every non-note anchor, and whichever
+    // of it and the cursor restore landed LAST won).
+    const tr = editor.state.tr;
+    writeLinkedAnchorMark(tr, range, {
+      anchorId: rec.anchorId,
+      kind: rec.kind,
+      linkId: rec.anchorId,
+      linkKind: "anchor",
+      linkCard: live.linkCard, // preserve (parser default "" on load; never clobber)
+      tintColor: expectedTint,
+    });
+    if (!tr.docChanged) continue;
+    tr.setMeta("addToHistory", false);
+    editor.view.dispatch(tr);
   }
 }
