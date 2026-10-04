@@ -264,7 +264,10 @@ describe("census — the loader delegates renames, and delegates them FIRST", ()
       "filterPrintPanels",
       "clampStack",
       "const validPanelId",
-      '"activeLeftBottom"', // the legacy-scalar delete list
+      // The legacy-scalar delete loop. The key list itself is the module
+      // constant `RETIRED_LAYOUT_KEYS` (task 929 — `persist` must know what the
+      // loader consumes), so the needle is the LOOP over it, not a literal.
+      "of RETIRED_LAYOUT_KEYS)",
     ]) {
       expect(rename, `applyPanelRenames must precede ${cleaner}`).toBeLessThan(
         at(cleaner, "last"),

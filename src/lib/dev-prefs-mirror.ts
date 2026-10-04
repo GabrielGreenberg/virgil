@@ -15,6 +15,10 @@
 
 import { useEffect } from "react";
 import { MIRRORABLE_STORAGE_KEYS } from "./dev-prefs-registry";
+import {
+  normalizeGlobalSlice,
+  VIEW_PREFS_GLOBAL_STORAGE_KEY,
+} from "@/hooks/useViewPrefs";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -24,7 +28,14 @@ function snapshot(): Record<string, unknown> | null {
     const raw = localStorage.getItem(key);
     if (!raw) continue;
     try {
-      out[key] = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
+      // The global view-prefs blob goes through the SAME door every live read
+      // uses (task 929): a value outside its declared domain, a retired panel
+      // id, or a key another build wrote must never reach the snapshot that
+      // `tools/promote-defaults.mjs` bakes into SHIPPED defaults — its
+      // whitelist checks keys, not values.
+      out[key] =
+        key === VIEW_PREFS_GLOBAL_STORAGE_KEY ? normalizeGlobalSlice(parsed) : parsed;
     } catch {
       // Corrupt blob — skip rather than poisoning the snapshot.
     }
