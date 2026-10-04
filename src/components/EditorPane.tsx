@@ -116,6 +116,7 @@ import {
 import {
   useLinkedAnchorReconciler,
   reapOrphanLinkedAnchors,
+  aliveLinkedAnchorIds,
 } from "@/links/_shared/useLinkedAnchorReconciler";
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
@@ -355,7 +356,6 @@ import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
 import type { ModeBBag } from "@/cards/mode-b-collections";
 import {
   reapplyPendingMarks,
-  pendingMarkAnchorIds,
   type PendingMarkCardLike,
 } from "@/links/_shared/reapply-pending-marks";
 import {
@@ -2281,32 +2281,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     archiveHook.reconcileAnchors(editor);
     // LAST, once: reap any in-doc `linkedAnchor` mark with no live owning card
     // (e.g. a parser-resurrected orphan `\vlid` whose card was deleted before
-    // this reload). Build the alive-set from the now-reconciled collections —
-    // the SAME six the `useLinkedAnchorReconciler` hook tracks — so a mark we
-    // just re-applied/reconciled above is alive and is NOT reaped.
-    const aliveIds = new Set<string>();
-    for (const cards of [
-      notesHookRaw.notes,
-      notesHookRaw.highlights,
-      cutterHookRaw.cards,
-      revisionsHookRaw.cards,
-      reportsHookRaw.cards,
-      todosHook.items,
-    ]) {
-      for (const c of cards) {
-        const ta = getTextAnchor(c);
-        if (ta) aliveIds.add(ta.anchorId);
-      }
-    }
-    // Pending-AI-change marks live at `appliedChange.anchorId`, which is NOT a
-    // card text-anchor (`getTextAnchor`) — so add them to the alive-set or the
-    // reaper would strip the mark we just re-stamped above. Flag-OFF → empty set.
-    for (const id of pendingMarkAnchorIds([
-      ...(revisionsHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
-      ...(cutterHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
-    ])) {
-      aliveIds.add(id);
-    }
+    // this reload). The alive-set comes from the ONE function the in-session
+    // reaper reads (`aliveLinkedAnchorIds` over the total Mode-B bag — task
+    // 938), so a mark we just re-applied/reconciled above is alive and is NOT
+    // reaped, and a Mode-B collection added to the SSOT reaches this pass too.
+    const aliveIds = aliveLinkedAnchorIds(modeBCardsRef.current);
     // DESTRUCTIVE: only reap when every sidecar loaded SUCCESSFULLY. If any
     // read threw, that kind's collection is the empty default (non-authoritative
     // — see `anyCardSidecarLoadError`), so `aliveIds` is missing its live

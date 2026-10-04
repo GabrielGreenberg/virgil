@@ -84,6 +84,35 @@ export function reapOrphanLinkedAnchors(
   for (const id of orphans) removeLinkedAnchor(editor, id);
 }
 
+/**
+ * The ONE alive-set: every `linkedAnchor` id a live card owns, derived from the
+ * total `ModeBBag` through `forEachModeBCard` (the `MODE_B_COLLECTIONS` SSOT).
+ * Read by BOTH orphan sweeps — this hook's collection-keyed sweep and the
+ * EditorPane load-reconcile pass — so a Mode-B collection added to the SSOT
+ * reaches both, and neither can reap a live kind's marks as orphans (task 938:
+ * the load pass used to hand-list six collections and agreed only by
+ * coincidence). O(cards), never a doc walk.
+ */
+export function aliveLinkedAnchorIds(bag: ModeBBag): Set<string> {
+  const ids = new Set<string>();
+  forEachModeBCard(bag, (record) => {
+    const ta = getTextAnchor(record);
+    if (ta) ids.add(ta.anchorId);
+  });
+  // Pending-AI-change marks live at `appliedChange.anchorId` (NOT a card text
+  // anchor). `reapOrphanLinkedAnchors` already exempts that mark kind, so this
+  // is belt-and-braces: the alive-set states every id a live card owns, not
+  // only the ones the reaper happens to inspect. The applied cards live in
+  // `comments` (revisions) + `cutterCards`; with none applied this adds nothing.
+  for (const id of pendingMarkAnchorIds([
+    ...(bag.comments as ReadonlyArray<PendingMarkCardLike>),
+    ...(bag.cutterCards as ReadonlyArray<PendingMarkCardLike>),
+  ])) {
+    ids.add(id);
+  }
+  return ids;
+}
+
 export interface UseLinkedAnchorReconcilerArgs {
   editor: Editor | null;
   /**
@@ -120,25 +149,7 @@ export function useLinkedAnchorReconciler({
   // collection-array identities — each hook only produces a new array when its
   // data actually changed. The alive-set is built from card stores (O(cards)),
   // never a per-keystroke doc walk.
-  const aliveAnchorIds = useMemo(() => {
-    const ids = new Set<string>();
-    forEachModeBCard(cards, (record) => {
-      const ta = getTextAnchor(record);
-      if (ta) ids.add(ta.anchorId);
-    });
-    // Pending-AI-change marks live at `appliedChange.anchorId` (NOT a card text
-    // anchor), so they must be added explicitly or the in-session sweep would
-    // strip an applied suggestion's blue mark as an orphan after load. The
-    // applied cards live in `comments` (revisions) + `cutterCards`. Flag-OFF →
-    // empty set (no applied cards), so this is a no-op when the feature is off.
-    for (const id of pendingMarkAnchorIds([
-      ...(cards.comments as ReadonlyArray<PendingMarkCardLike>),
-      ...(cards.cutterCards as ReadonlyArray<PendingMarkCardLike>),
-    ])) {
-      ids.add(id);
-    }
-    return ids;
-  }, [cards]);
+  const aliveAnchorIds = useMemo(() => aliveLinkedAnchorIds(cards), [cards]);
 
   useLayoutEffect(() => {
     if (!editor) return;
