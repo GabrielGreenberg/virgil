@@ -20,10 +20,14 @@
  *   3. **Last-anchor card with no content**: delete the card silently.
  *      The user wouldn't lose anything they typed.
  *
- * When a card carries an inline `linkedAnchor` mark (text-range anchor —
- * notes / cuts / revisions), we strip the mark only on the card-delete
- * path. In the multi-anchor unanchor branch the mark stays bound to the
- * surviving paragraphs.
+ * When a card carries an inline `linkedAnchor` mark (a Mode-B text-range
+ * anchor — ANY kind made from a selection: notes, cuts, revisions, reports,
+ * todos, …), we strip the mark only on the card-delete path. In the
+ * multi-anchor unanchor branch the mark stays bound to the surviving
+ * paragraphs. The door reads the mark off the CARD itself
+ * (`getTextAnchor`), never off a caller argument: it used to be passed by
+ * four of the six marker kinds, so a todo's tint outlived its card until the
+ * `useLinkedAnchorReconciler` sweep reaped it (task 939).
  *
  * Sibling unanchor paths (paragraph-deletion that orphans an anchor,
  * text-range deletion within a surviving paragraph) are handled in
@@ -33,7 +37,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import { removeLinkedAnchor, type CardWithLinks } from "@/links/links";
+import { getTextAnchor, removeLinkedAnchor, type CardWithLinks } from "@/links/links";
 import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   cardHasContent,
@@ -118,10 +122,10 @@ export interface DeleteMarginItemArgs {
    * old list where the old list was right.
    */
   anchorPids: readonly string[];
-  /** Inline text-range anchor id, if the card carried a `linkedAnchor`
-   *  mark. Set for notes / cuts / revisions; absent for paragraph-only
-   *  anchored cards. */
-  anchorId?: string;
+  // NOTE (task 939): no `anchorId` argument. The `linkedAnchor` mark to strip
+  // is read off the card (`getTextAnchor`) at commit time, so no caller can
+  // forget it — four of the six marker kinds used to pass it, todo and
+  // archive did not.
   /** Per-kind handler bundle for this `kind`. */
   handlers: MarginItemHandlers;
   /** Imperative confirm — typically from `useConfirmDialog().confirm`. */
@@ -134,8 +138,7 @@ export interface DeleteMarginItemArgs {
 /** See file header for the behavior contract. Pure async function — no
  *  React coupling, easy to unit-test. */
 export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void> {
-  const { cardId, paragraphId, anchorPids, anchorId, handlers, confirm, editor } =
-    args;
+  const { cardId, paragraphId, anchorPids, handlers, confirm, editor } = args;
   const card = handlers.findCard(cardId);
   if (!card) return;
 
@@ -184,6 +187,10 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
   // (and `removeLinkedAnchor` unsets every `linkedAnchor` over that range, so
   // the colocated blue pending mark goes with it), healed only by a reload.
   // "Cancel is a true no-op" is this file's contract — keep it true.
+  //
+  // The mark is read off the card BEFORE the delete (the handler drops it
+  // from its collection, so `findCard` cannot answer afterwards).
+  const anchorId = getTextAnchor(card)?.anchorId;
   const committed = await handlers.delete(cardId);
   if (committed === false) return; // declined downstream: card + mark preserved
   if (anchorId && editor) {

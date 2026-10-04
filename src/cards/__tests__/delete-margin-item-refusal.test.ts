@@ -31,14 +31,20 @@ import type { Editor } from "@tiptap/react";
 const editor = {} as Editor;
 
 /** A single-anchor card with user content, so the path reaches the confirm and
- *  then the delete — the branch that strips the mark. */
+ *  then the delete — the branch that strips the mark. It carries a Mode-B
+ *  text range: the door reads the mark to strip off the CARD (task 939). */
 function card(id = "c1"): CardWithLinks {
   return {
     id,
     kind: "suggestion",
     links: [
       {
-        anchor: { type: "textObject", textObjectIds: ["P1"] },
+        anchor: {
+          type: "textObject",
+          targetKind: "linkedRange",
+          textObjectIds: ["P1"],
+          textRange: { anchorId: "anc-b", textSnapshot: "span" },
+        },
       },
     ],
     user_text: "the user typed this",
@@ -70,7 +76,6 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
-      anchorId: "anc-b",
       editor,
       handlers: handlers(del),
       confirm: async () => true, // the user confirmed the DELETE...
@@ -93,7 +98,6 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
-      anchorId: "anc-b",
       editor,
       handlers: handlers(del),
       confirm: async () => true,
@@ -112,7 +116,6 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
-      anchorId: "anc-b",
       editor,
       handlers: handlers(del),
       confirm: async () => true,
@@ -133,7 +136,6 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
-      anchorId: "anc-b",
       editor,
       handlers: handlers(del),
       confirm: async () => false,

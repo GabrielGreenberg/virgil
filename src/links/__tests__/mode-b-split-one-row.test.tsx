@@ -147,7 +147,6 @@ describe("Mode-B card after an Enter split (task 934)", () => {
       cardId: "c1",
       paragraphId: rows[0].pid,
       anchorPids: rows[0].cardPids,
-      anchorId,
       handlers,
       confirm: async () => true,
       editor,
