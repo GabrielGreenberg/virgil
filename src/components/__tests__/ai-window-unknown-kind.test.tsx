@@ -35,6 +35,7 @@ import AIWindow, {
 } from "@/components/AIWindow";
 import { AI_REQUEST_KINDS, isAiRequestKind } from "@/lib/ai-request-kind";
 import { normalizeAiRequestRows } from "@/lib/ai-requests-store";
+import { isAiRequestStatus } from "@/lib/ai-request-open";
 import type { AiRequest } from "@/lib/types";
 
 function row(o: Partial<AiRequest> & { kind: string }): AiRequest {
@@ -186,6 +187,22 @@ describe("the store's read gate makes a row renderable without rewriting it", ()
     const [r] = normalizeAiRequestRows([{ id: "a", kind: "from-the-future" }]);
     expect(r.kind).toBe("from-the-future");
     expect(isAiRequestKind(r.kind)).toBe(false);
+  });
+
+  it("keeps an off-vocabulary STATUS verbatim but SAYS so, once (task 942)", () => {
+    // `isTerminalStatus` knows only complete/failed, so a hand edit's "done"
+    // reads open forever — the read gate must not let that be silent.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rows = [{ id: "s1", kind: "note", status: "done" }];
+    const [r] = normalizeAiRequestRows(rows);
+    normalizeAiRequestRows(rows); // a re-hydrate does not repeat the warning
+    expect(r.status).toBe("done");
+    expect(isAiRequestStatus(r.status)).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('"done"');
+    normalizeAiRequestRows([{ id: "s2", kind: "note", status: "pending" }]);
+    expect(warn).toHaveBeenCalledTimes(1); // an in-vocabulary status is quiet
+    warn.mockRestore();
   });
 
   it("fills in a MISSING kind, which has no value to preserve", () => {

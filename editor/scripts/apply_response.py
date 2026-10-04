@@ -167,6 +167,8 @@ from _common import (
     find_tex_file,
     is_ai_request_kind,
     is_terminal_status,
+    is_virtual_request_id,
+    parse_virtual_request_id,
     DeferredVersionBump,
     json_rebased,
     notification_deferred,
@@ -829,6 +831,12 @@ def _stamp_self_link_kind(panel: str, card: dict) -> None:
         ref["kind"] = kind
 
 
+def _die_missing_source(request_id, linked: dict) -> None:
+    die(f"virtual request {request_id}: no {linked.get('panel')} card {linked.get('cardId')!r} "
+        "to clear — nothing was written (the answer would land and close nothing, "
+        "so the request would re-surface). Re-run the drain for a live id.")
+
+
 class _Txn:
     def __init__(self, doc: Path):
         self.doc = doc
@@ -893,20 +901,28 @@ class _Txn:
         # (op.clearSourceFlag, default True) for every linked-completion path;
         # the one deliberate opt-out is create_card.py's examples block (a
         # virtual id with no distinct source card).
+        #
+        # Returns whether the source card was FOUND (task 942) — flag up or
+        # already down. A caller holding a virtual id must refuse on False: the
+        # flag IS that request's only state, so landing an answer that lowers
+        # nothing leaves it to re-surface on every drain. (A bridged `linkedTo`
+        # tolerates it — its Task row closes either way.)
         panel = linked.get("panel")
         card_id = linked.get("cardId")
         if panel not in PANEL_TO_SIDECAR or not card_id:
-            return
+            return False
         filename, list_key = PANEL_TO_SIDECAR[panel]
         path = sidecar(self.doc, filename)
         state = self.jget(path, None)
         if not isinstance(state, dict):
-            return
+            return False
         for c in state.get(list_key, []) or []:
-            if c.get("id") == card_id and c.get("aiRequest"):
-                c["aiRequest"] = False
-                self.mark(path)
-                break
+            if isinstance(c, dict) and c.get("id") == card_id:
+                if c.get("aiRequest"):
+                    c["aiRequest"] = False
+                    self.mark(path)
+                return True
+        return False
 
     def close_linked_request(self, linked: dict, *, result: str,
                              force: bool = False) -> bool:
@@ -1668,7 +1684,7 @@ def cmd_write(
     panel = op.get("panel")
     card = op.get("card")
     request_id = op.get("requestId")
-    is_virtual = isinstance(request_id, str) and request_id.startswith("virtual:")
+    is_virtual = is_virtual_request_id(request_id)
 
     txn = _Txn(doc)
     reflect_kind: str | None = None  # the Task kind → names the dev-dream memo's skill
@@ -1715,10 +1731,7 @@ def cmd_write(
         request_id = new_id
         reflect_kind = req["kind"]
     elif is_virtual:
-        parts = request_id.split(":", 2)
-        if len(parts) != 3:
-            die(f"malformed virtual request id: {request_id}")
-        linked = {"panel": parts[1], "cardId": parts[2]}
+        linked = parse_virtual_request_id(request_id)
     elif request_id:
         ar = txn.jget(ar_path, None)
         idx, req = (
@@ -1772,8 +1785,11 @@ def cmd_write(
     #    request's own `linkedTo` (or a virtual id); it is the source, never the
     #    card just produced. Only create_card.py's examples block opts out
     #    (clearSourceFlag:false — a virtual id with no distinct source card).
+    #    A virtual id whose source card is gone refuses before any byte lands
+    #    (task 942): there is no Task row to close, so nothing would end it.
     if op.get("clearSourceFlag", True) and isinstance(linked, dict):
-        txn.clear_source_flag(linked)
+        if not txn.clear_source_flag(linked) and is_virtual:
+            _die_missing_source(request_id, linked)
 
     # 5. The paper-file edits — .tex / .bib / settings / annotation (only when
     #    applying, not for a Level-3 proposal). All ride the same atomic commit.
@@ -1935,11 +1951,9 @@ def _mutation_commit(
     its row."""
     rid = str(request_id) if request_id else None
     linked = None
-    if rid and rid.startswith("virtual:"):
-        parts = rid.split(":", 2)
-        if len(parts) != 3 or not parts[1] or not parts[2]:
-            die(f"malformed virtual request id: {rid}")
-        linked = {"panel": parts[1], "cardId": parts[2]}
+    is_virtual = is_virtual_request_id(rid)
+    if is_virtual:
+        linked = parse_virtual_request_id(rid)
     elif rid:
         ar_path = sidecar(doc, "ai-requests.json")
         ar = txn.jget(ar_path, None)
@@ -1962,7 +1976,11 @@ def _mutation_commit(
             txn.mark(ar_path)
             linked = req.get("linkedTo")
     if clear_source_flag and isinstance(linked, dict):
-        txn.clear_source_flag(linked)
+        # A MECHANICAL op on a virtual id whose source card is gone refuses
+        # (task 942 — the same "would close nothing" rule as an unknown row
+        # id above); accept/reject keep their tolerance for a stale pointer.
+        if not txn.clear_source_flag(linked) and is_virtual and result is None:
+            _die_missing_source(rid, linked)
 
     notif_path, notif_content = notification_deferred(
         doc,

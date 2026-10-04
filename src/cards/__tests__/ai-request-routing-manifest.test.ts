@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_KINDS } from "@/cards/predicates";
+import { AI_REQUEST_LINK_PANELS } from "@/lib/ai-request-kind";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // src/cards/__tests__ → repo root → editor/scripts/ai_request_routing.json
@@ -39,6 +40,16 @@ describe("ai_request_routing.json manifest ↔ CARD_REGISTRY", () => {
     for (const [kind, route] of Object.entries(manifest.routing)) {
       expect(route).toEqual(CARD_REGISTRY[kind as keyof typeof CARD_REGISTRY].aiRequest);
     }
+  });
+
+  // Task 942: the Python side validates `virtual:<panel>:<cardId>` ids against
+  // the manifest's linkPanel set (`_common.AI_REQUEST_LINK_PANELS`); this pins
+  // that set to the TS `AiRequestLink["panel"]` union, across the language seam.
+  it("the manifest's linkPanel set is exactly AiRequestLink['panel']", () => {
+    const manifestPanels = [
+      ...new Set(Object.values(manifest.routing).map((r) => r.linkPanel)),
+    ].sort();
+    expect(manifestPanels).toEqual([...AI_REQUEST_LINK_PANELS].sort());
   });
 
   it("no non-flag-bearing kind leaks into the manifest", () => {

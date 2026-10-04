@@ -30,7 +30,7 @@
  * the parity is pinned across the language line by `ai-request-open-parity.test.ts`.
  */
 
-import type { AiRequestKind, AiRequestKindOnDisk } from "@/lib/types";
+import type { AiRequestKind, AiRequestKindOnDisk, AiRequestLink } from "@/lib/types";
 
 /**
  * Every member of `AiRequestKind`, as a compile-time-exhaustive tuple.
@@ -90,3 +90,33 @@ export function isAiRequestKind(kind: unknown): kind is AiRequestKind {
  * consumer can treat `kind` as a string without a second `typeof` check.
  */
 export const UNKNOWN_AI_REQUEST_KIND: AiRequestKindOnDisk = "unknown";
+
+/**
+ * Every `AiRequestLink["panel"]` token, as a compile-time-exhaustive tuple
+ * (task 942) — the panels a card-flag request can be linked to, and so the
+ * panels a Python `virtual:<panel>:<cardId>` id may name.
+ *
+ * The Python side derives its set from the `linkPanel` values of
+ * `editor/scripts/ai_request_routing.json` (`_common.AI_REQUEST_LINK_PANELS`),
+ * and `ai-request-routing-manifest.test.ts` pins that manifest set equal to
+ * this tuple — so the link-panel universe is one vocabulary across the
+ * language seam. `citations` is deliberately absent on both sides: no citation
+ * card carries an `aiRequest` flag.
+ */
+export const AI_REQUEST_LINK_PANELS = [
+  "notes",
+  "todos",
+  "cutter",
+  "revisions",
+  "reports",
+  "footnotes",
+] as const satisfies readonly AiRequestLink["panel"][];
+
+type _LinkPanelExhaustive = Exclude<
+  AiRequestLink["panel"],
+  (typeof AI_REQUEST_LINK_PANELS)[number]
+> extends never
+  ? true
+  : ["AiRequestLink.panel grew a member — add it to AI_REQUEST_LINK_PANELS"];
+const _linkPanelExhaustive: _LinkPanelExhaustive = true;
+void _linkPanelExhaustive;

@@ -63,6 +63,8 @@ from bib_family import (
     resolve_bib_family,
 )
 from _common import (
+    is_virtual_request_id,
+    parse_virtual_request_id,
     die,
     find_bib_file,
     find_paragraph_uuids,
@@ -476,7 +478,8 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     # apply_response, which splits it into {panel, cardId} to clear the source
     # card's aiRequest flag (no Task row is mutated, so a safety level / result
     # isn't persisted — a card-flag reply lands directly).
-    if request_id and request_id.startswith("virtual:") and not synthesize:
+    if is_virtual_request_id(request_id) and not synthesize:
+        parse_virtual_request_id(request_id)  # dies on a malformed / unknown-panel id
         if not anchor:
             die("--anchor <uuid> is required for a virtual (card-flag) request id "
                 "(resolve it from the source card)")

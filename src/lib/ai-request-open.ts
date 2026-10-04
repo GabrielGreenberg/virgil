@@ -50,6 +50,37 @@ export function isTerminalStatus(s: AiRequestStatus): boolean {
 }
 
 /**
+ * Every `AiRequestStatus`, as a compile-time-exhaustive tuple (task 942) — the
+ * STATUS twin of `AI_REQUEST_KINDS`. A row read back from disk carries a
+ * `string`, not the union: `isTerminalStatus` knows only `complete`/`failed`,
+ * so an off-vocabulary status (a hand edit's `"done"`) reads OPEN forever.
+ * `normalizeAiRequestRows` asks {@link isAiRequestStatus} and says so out loud.
+ */
+export const AI_REQUEST_STATUSES = [
+  "pending",
+  "in-progress",
+  "complete",
+  "failed",
+  "draft",
+  "submitted",
+] as const satisfies readonly AiRequestStatus[];
+
+type _StatusExhaustive = Exclude<
+  AiRequestStatus,
+  (typeof AI_REQUEST_STATUSES)[number]
+> extends never
+  ? true
+  : ["AiRequestStatus grew a member — add it to AI_REQUEST_STATUSES"];
+const _statusExhaustive: _StatusExhaustive = true;
+void _statusExhaustive;
+
+const STATUS_SET: ReadonlySet<string> = new Set<string>(AI_REQUEST_STATUSES);
+
+export function isAiRequestStatus(s: unknown): s is AiRequestStatus {
+  return typeof s === "string" && STATUS_SET.has(s);
+}
+
+/**
  * CLOSE a row: the ONE spelling of "this request ended", shared by every
  * terminal transition the app owns.
  *
