@@ -1,4 +1,4 @@
-import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { readPendingDiff, diffHasStructuralEntries } from "@/lib/tiptap/doc-structure";
@@ -25,21 +25,27 @@ export const sectionFoldingPluginKey = new PluginKey<SectionFoldingState>(
 );
 
 /**
- * Keystroke-sanctity gate (#29a): can this transaction have changed the fold
- * state? A fold changes ONLY via (1) an explicit fold-meta on this plugin
- * (toggle / collapseAll / expandAll / setFolded) or (2) a docChanged tx (the
- * apply reducer prunes dead fold UUIDs when a folded heading is deleted).
+ * The fold set's IDENTITY — the one "did the folds change?" signal (#29a, task
+ * 925). The apply reducer below keeps the SAME `folded` Set reference on every
+ * branch that changes no fold (a plain keystroke included, even while sections
+ * are folded and the decoration set maps forward) and replaces it on every real
+ * change (toggle / collapseAll / expandAll / setFolded / a prune that removed a
+ * folded heading). So "the folds changed between two states" is one reference
+ * compare of this value — O(1), whatever the transaction was.
  *
- * The section-fold persister in `useEditorUIState.ts` (an
- * `editor.on("transaction")` subscriber) gates on THIS so a structurally-null
- * keystroke (typing inside a paragraph: no fold meta, no docChanged) does ZERO
- * fold work. (The fold-chevron doc-wide resync no longer rides a transaction
- * subscriber at all — it moved to the shared plugin `view()` below, #29 nit-3 —
- * which uses its own O(1) `folded`-set reference bail rather than this
- * predicate.)
+ * Both per-transaction readers ask THIS rather than re-deriving a trigger set:
+ * the fold-chevron resync (the plugin `view().update` below, given `prevState`)
+ * and the section-fold persister in `useEditorUIState.ts` (an
+ * `editor.on("transaction")` subscriber, which remembers the last identity it
+ * wrote). Its predecessor, `transactionTouchesFold` (fold-meta OR docChanged),
+ * was true for EVERY keystroke, so the persister spread + array-compared the
+ * folded set per keystroke — O(folded sections) under an O(1) tag.
+ *
+ * `undefined` when the plugin is not installed (never a fresh empty Set, which
+ * would compare unequal on every call).
  */
-export function transactionTouchesFold(tr: Transaction): boolean {
-  return tr.getMeta(sectionFoldingPluginKey) !== undefined || tr.docChanged;
+export function foldedSetOf(state: EditorState): ReadonlySet<string> | undefined {
+  return sectionFoldingPluginKey.getState(state)?.folded;
 }
 
 type Meta =
@@ -290,7 +296,7 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
     // SEPARATE earlier transaction than the fold-toggle tx, so by the time a
     // fold meta arrives the uuid attr is already on the DOM.
     view(editorView: EditorView) {
-      const resync = (folded: Set<string>) => {
+      const resync = (folded: ReadonlySet<string>) => {
         const chevrons =
           editorView.dom.querySelectorAll<HTMLElement>(".heading-fold-chevron");
         chevrons.forEach((btn) => {
@@ -308,17 +314,13 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
       resync(getSectionFoldingState(editorView.state).folded);
       return {
         update(view: EditorView, prevState: EditorState) {
-          const next = sectionFoldingPluginKey.getState(view.state);
-          const prev = sectionFoldingPluginKey.getState(prevState);
           // O(1) reference bail — the keystroke fast-path. Keyed off the
-          // `folded` SET reference (not the state object): with the cached
-          // decoSet the state object legitimately churns per keystroke
-          // while folded (the .map carry-forward), but `folded` keeps its
-          // reference on every no-fold-change branch and is replaced on
-          // every real change (toggle/collapseAll/expandAll/setFolded/
-          // prune-with-removal).
-          if (!next || next.folded === prev?.folded) return;
-          resync(next.folded);
+          // `folded` SET identity (`foldedSetOf`), not the state object: with
+          // the cached decoSet the state object legitimately churns per
+          // keystroke while folded (the .map carry-forward).
+          const next = foldedSetOf(view.state);
+          if (!next || next === foldedSetOf(prevState)) return;
+          resync(next);
         },
       };
     },

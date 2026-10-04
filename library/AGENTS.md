@@ -144,15 +144,20 @@ verbatim: no plugin, hook, or effect may do work proportional to document
 size on each transaction. The library's ONE permitted
 `editor.on("update"|"transaction")` subscriber:
 
-- [library/hooks/usePgmarkPages.ts](hooks/usePgmarkPages.ts) — `\pgmark` page
-  collection, docChanged-gated (the Reader is read-only, so plain transactions
-  never fire it); layout re-scans go through a RAF-coalesced ResizeObserver
-  that additionally PARKS during pane drags; the `pages` array is
-  identity-gated (label+docY equality) so a no-op re-scan keeps consumer memos
-  (`PaperRender`'s `pagePickerEl` → `EditorPane` memo) intact.
+<!-- census:library-transaction-subscribers -->
+- `hooks/usePgmarkPages.ts` ([source](hooks/usePgmarkPages.ts)) — `\pgmark`
+  page collection, docChanged-gated (the Reader is read-only, so plain
+  transactions never fire it); layout re-scans go through a RAF-coalesced
+  ResizeObserver that additionally PARKS during pane drags; the `pages` array
+  is identity-gated (label+docY equality) so a no-op re-scan keeps consumer
+  memos (`PaperRender`'s `pagePickerEl` → `EditorPane` memo) intact.
+<!-- /census -->
 
 Anything new needs the O(1) justification + a matching entry in
-`PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS`, or CI fails. Verify with
+`PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS` AND a bullet in the census block
+above (the guardrail pins the two key sets equal), or CI fails. The library
+also has no plugin-view `update()` hook and no `selectionUpdate` subscriber;
+both twins are censused empty. Verify with
 `window.__virgilBusStats()` in the dev preview: typing N plain characters in
 an open paper must leave `emitCount` flat.
 

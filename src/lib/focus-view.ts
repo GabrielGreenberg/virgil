@@ -180,7 +180,7 @@ type FocusViewMeta = { band: FocusBand };
 export const focusViewPluginKey = new PluginKey<FocusViewState>("focusView");
 
 /**
- * Keystroke-sanctity gate (twin of `transactionTouchesFold`): can this
+ * Keystroke-sanctity gate: can this
  * transaction have changed the focus decorations? Only via (1) a focus-meta on
  * this plugin (band set / cleared) or (2) a docChanged tx (positions map; the
  * set rebuilds only when the block set/order changed).
