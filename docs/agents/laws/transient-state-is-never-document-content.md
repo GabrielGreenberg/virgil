@@ -60,13 +60,27 @@ into it belongs to it. That is the one edge behaviour a mark carrier got for fre
 thing that had to be ported.
 
 The producer is [src/links/\_shared/request-wash.ts](../../../src/links/_shared/request-wash.ts)
-(`paintRequestWash` / `requestWashTargets` / `requestWashKey`), read by ONE `EditorPane` effect off
-the derived Mode-B card bag. Cost went DOWN: two full doc walks per reconcile became N anchor
-resolutions (N = open requests) and one meta-only transaction, fired only when the desired set
-changes.
+(`paintRequestWash` / `requestWashTargets` / `requestWashKey`), driven by ONE hook,
+`useRequestWash`, off the derived Mode-B card bag. Cost went DOWN: two full doc walks per reconcile
+became N anchor resolutions (N = open requests) and one meta-only transaction, fired only when the
+desired set changes.
+
+**The re-entry half (task 936).** A decoration that only forward-maps is LOST when its range is
+deleted, and PM does not resurrect it when the text comes back. Undo of a delete (or a block move)
+restores the same uuid / `anchorId`, so a repaint keyed only on the desired set never fires — the
+wash stayed missing until reload. A derived band therefore has TWO triggers: the desired set
+changing, and its anchor RE-ENTERING the document. `useRequestWash` answers the second from the
+structural diff alone (`requestWashAnchorReentered`: `addedBlocks` / `changedBlocks` by uuid,
+`addedAnchors` by id) on `onAnyChange` — which a plain keystroke never fires — and repaints in a
+coalesced microtask (the bus emits inside the observer's plugin-view `update()`, where a nested
+dispatch would re-enter). Residual: clearing a Mode-A paragraph's TEXT (block survives) then undoing
+is content-only and stays unrepainted until the next desired-set change.
 
 CI: the contracts are pinned in
 [src/links/\_shared/\_\_tests\_\_/request-wash.test.ts](../../../src/links/_shared/__tests__/request-wash.test.ts)
 — no doc change and no caret move on toggle, a byte-identical `.tex`, a Mode-B card washed with its
 own anchor intact, and the band surviving an orphan sweep with an EMPTY alive-set (there is nothing
-left to exempt).
+left to exempt); and
+[request-wash-reentry.test.tsx](../../../src/links/_shared/__tests__/request-wash-reentry.test.tsx)
+— delete+undo restores the band (Mode-A and Mode-B), typing leaves `emitCount` flat and dispatches
+no repaint.
