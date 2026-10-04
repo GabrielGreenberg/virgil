@@ -145,6 +145,7 @@ A write subcommand commits, atomically and under the pen:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import sys
@@ -166,8 +167,9 @@ from _common import (
     find_tex_file,
     is_ai_request_kind,
     is_terminal_status,
-    json_dumps,
-    notification_appended,
+    DeferredVersionBump,
+    json_rebased,
+    notification_deferred,
     now_iso,
     read_json,
     resolve_doc,
@@ -180,7 +182,6 @@ from _common import (
     STATUS_PENDING,
     title_fields,
     TERMINAL_STATUSES,
-    version_bumped,
 )
 
 # The card tables are LOADED, not hand-listed (task 885): `card_tables.json` is
@@ -793,6 +794,14 @@ def _jsoncontent(body: str) -> dict:
 # loaded once and mutated in place (so multiple concerns touching the same file
 # compose); only files actually mutated (`dirty`) are written. Raw writes (the
 # .tex, notifications, version) are appended in order so version.txt lands last.
+#
+# The load is NOT what gets written (task 941). `jget` keeps a deep copy of each
+# sidecar as first read — the merge BASE — and `writes()` hands commit_under_pen
+# a deferred `json_rebased` content per dirty sidecar, which re-reads the file
+# INSIDE the pen and three-way merges base / ours / disk. So an app write that
+# landed between our read and our commit (a new AI-request row, a note edit)
+# survives, and a genuine collision is refused with nothing written. The
+# notification append and the version bump are likewise recomputed in the pen.
 # ---------------------------------------------------------------------------
 
 
@@ -824,18 +833,20 @@ class _Txn:
     def __init__(self, doc: Path):
         self.doc = doc
         self._loaded: dict[Path, object] = {}
+        self._base: dict[Path, object] = {}
         self._dirty: set[Path] = set()
-        self._raw: list[tuple[Path, str | None]] = []
+        self._raw: list[tuple[Path, object]] = []
 
     def jget(self, path: Path, default):
         if path not in self._loaded:
             self._loaded[path] = read_json(path, default)
+            self._base[path] = copy.deepcopy(self._loaded[path])
         return self._loaded[path]
 
     def mark(self, path: Path):
         self._dirty.add(path)
 
-    def add_raw(self, path: Path, content: str | None):
+    def add_raw(self, path: Path, content):
         self._raw.append((path, content))
 
     def append_card(self, panel: str, card: dict):
@@ -1007,9 +1018,10 @@ class _Txn:
             return True
         return False
 
-    def writes(self) -> list[tuple[Path, str | None]]:
-        out: list[tuple[Path, str | None]] = [
-            (p, json_dumps(self._loaded[p])) for p in self._loaded if p in self._dirty
+    def writes(self) -> list[tuple[Path, object]]:
+        out: list[tuple[Path, object]] = [
+            (p, json_rebased(p, self._base[p], self._loaded[p]))
+            for p in self._loaded if p in self._dirty
         ]
         out.extend(self._raw)
         return out
@@ -1769,15 +1781,16 @@ def cmd_write(
         _apply_paper_writes(doc, txn, op)
 
     # 6. Notification + version (version last → trails a consistent state).
-    notif_path, notif_content = notification_appended(
+    notif_path, notif_content = notification_deferred(
         doc,
         {"kind": "ai-request-complete", "at": now_iso(), "summary": summary, "requestId": request_id},
     )
     txn.add_raw(notif_path, notif_content)
-    vpath, vcontent, vnum = version_bumped(doc)
-    txn.add_raw(vpath, vcontent)
+    vbump = DeferredVersionBump(doc)
+    txn.add_raw(vbump.path, vbump)
 
     commit_under_pen(doc, txn.writes())
+    vnum = vbump.n
     # Dev-dream day-capture floor: reflect on THIS writeback (the one chokepoint
     # BOTH the CLI and create_card.py's in-process run_write_subcommand pass
     # through). The skill is named from the Task kind + the source-card panel
@@ -1857,15 +1870,16 @@ def cmd_revert(doc: Path, request_id: str) -> dict:
     ar["requests"][idx] = req
     txn.mark(ar_path)
 
-    notif_path, notif_content = notification_appended(
+    notif_path, notif_content = notification_deferred(
         doc,
         {"kind": "ai-request-failed", "at": now_iso(), "summary": f"Reverted request {request_id}", "requestId": request_id},
     )
     txn.add_raw(notif_path, notif_content)
-    vpath, vcontent, vnum = version_bumped(doc)
-    txn.add_raw(vpath, vcontent)
+    vbump = DeferredVersionBump(doc)
+    txn.add_raw(vbump.path, vbump)
 
     commit_under_pen(doc, txn.writes())
+    vnum = vbump.n
     # A revert is a writeback too — same day-capture floor as the other two
     # commit finalizers (cmd_write / _mutation_commit).
     _reflect_tail(doc, "revert", request_id)
@@ -1950,15 +1964,16 @@ def _mutation_commit(
     if clear_source_flag and isinstance(linked, dict):
         txn.clear_source_flag(linked)
 
-    notif_path, notif_content = notification_appended(
+    notif_path, notif_content = notification_deferred(
         doc,
         {"kind": "ai-request-complete", "at": now_iso(), "summary": summary, "requestId": request_id},
     )
     txn.add_raw(notif_path, notif_content)
-    vpath, vcontent, vnum = version_bumped(doc)
-    txn.add_raw(vpath, vcontent)
+    vbump = DeferredVersionBump(doc)
+    txn.add_raw(vbump.path, vbump)
 
     commit_under_pen(doc, txn.writes())
+    vnum = vbump.n
     # Dev-dream day-capture floor: reflect on this mutation. The skill is named
     # from the op label every caller stamps in `extra` (accept → accept-suggestion,
     # archive → archive-card, …). DEV-gated + best-effort inside.

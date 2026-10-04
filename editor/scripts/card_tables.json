@@ -13,6 +13,8 @@
     "  bodyFields          which record field(s) edit-card's --body writes, per kind — derived from CARD_REGISTRY[kind]",
     "                      .content: plain = no bodyField, body is `text`; richOnly = bodyField `content`, no `text`",
     "                      mirror; richMirror = bodyField `content` + a `text` mirror kept in sync.",
+    "  sidecarCollections  file → [{ key, idFields }] — equal to SIDECAR_COLLECTIONS (src/lib/sidecar-merge.ts). The writeback's",
+    "                      in-pen three-way merge (_common.json_merge3, task 941) identity-merges exactly these arrays.",
     "Python kind tokens are card_by_id.card_kind's (a revisions comment is the legacy `comment`; spine `revision-comment`)."
   ],
   "cardSidecars": {
@@ -31,5 +33,23 @@
     "plain": ["todo"],
     "richOnly": ["note", "footnote"],
     "richMirror": ["report", "report-request", "comment", "cutter-comment"]
+  },
+  "sidecarCollections": {
+    "annotations.json": [],
+    "archive.json": [{ "key": "snippets", "idFields": ["id"] }],
+    "bib-review-requests.json": [{ "key": "requests", "idFields": ["bibKey", "type"] }],
+    "bib-settings.json": [{ "key": "entryRequests", "idFields": ["id"] }],
+    "citations.json": [{ "key": "citations", "idFields": ["id"] }],
+    "cutter.json": [{ "key": "cards", "idFields": ["id"] }],
+    "dictionary.json": [{ "key": "words", "idFields": [] }],
+    "document-settings.json": [],
+    "footnotes.json": [{ "key": "footnotes", "idFields": ["id"] }],
+    "notes.json": [{ "key": "cards", "idFields": ["id"] }],
+    "orphaned-footnotes.json": [{ "key": "orphans", "idFields": ["footnoteId"] }],
+    "reports.json": [{ "key": "cards", "idFields": ["id"] }],
+    "revisions.json": [{ "key": "cards", "idFields": ["id"] }],
+    "suggestions.json": [{ "key": "suggestions", "idFields": ["id"] }],
+    "todos.json": [{ "key": "items", "idFields": ["id"] }],
+    "virgil.json": []
   }
 }

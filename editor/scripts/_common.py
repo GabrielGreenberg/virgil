@@ -27,7 +27,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 # --- BEGIN MIRRORED: refused-delete policy (task 496) ----------------------
@@ -547,6 +547,180 @@ def is_request_open(r: dict) -> bool:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# In-pen rebase (task 941) — the Python twin of task 220's rule
+#
+# A writeback reads its JSON sidecars long before it commits (the `.tex`
+# splice and the preservation measure run in between), and the app writes
+# the same files concurrently by design (`ai-requests.json` rows, card edits).
+# Serializing a snapshot read at T0 and writing it at T0+Δ silently REVERTS
+# whatever the app landed in that window. So no JSON sidecar is written from
+# its T0 snapshot: a write-set entry may carry a DEFERRED content — a
+# zero-arg callable — that `commit_under_pen` resolves only AFTER the pen is
+# taken, against the file as it is then. For a sidecar the deferred content
+# is a three-way merge (`json_merge3`) of the T0 base, the writer's own
+# version, and the current disk; a change both sides made to the SAME value
+# differently is refused (`SidecarConflict` → die, nothing written) rather
+# than guessed at.
+# ---------------------------------------------------------------------------
+
+Deferred = Callable[[], "str | None"]
+
+_MISSING: Any = object()
+
+
+class SidecarConflict(Exception):
+    """Both the writer and a concurrent writer changed the same JSON value."""
+
+
+# Which top-level arrays are RECORD collections, and what identifies a record —
+# the app's declared table (SIDECAR_COLLECTIONS, src/lib/sidecar-merge.ts),
+# projected into card_tables.json and pinned equal by card-tables-manifest.test.
+# Declared, never guessed from shape (task 719 rejected the heuristic as
+# ambiguous). `ai-requests.json` is absent from the app table by design — its
+# authority is ai-requests-store.ts (task 220), keyed by `id` — so its one
+# collection is stated here, beside the other Python spellings of that file.
+_AI_REQUESTS_COLLECTIONS = [{"key": "requests", "idFields": ["id"]}]
+_collections_table: dict[str, list[dict]] | None = None
+
+
+def sidecar_collections(filename: str) -> list[dict]:
+    """The declared record collections of one sidecar file. Loaded lazily, so a
+    bundle that ships `_common.py` without the table still imports; there every
+    file reads as undeclared, which fails CLOSED (a concurrent change to an
+    array refuses instead of merging)."""
+    global _collections_table
+    if filename == "ai-requests.json":
+        return _AI_REQUESTS_COLLECTIONS
+    if _collections_table is None:
+        try:
+            _collections_table = json.loads(
+                Path(__file__).with_name("card_tables.json").read_text(encoding="utf-8")
+            ).get("sidecarCollections", {})
+        except (OSError, ValueError):
+            _collections_table = {}
+    return _collections_table.get(filename, [])
+
+
+def _record_ids(records: list, id_fields: list[str]) -> list | None:
+    """Each record's composite identity, or None when any record cannot be
+    identified or two share one — then the list is not merged by identity."""
+    ids: list = []
+    for r in records:
+        if not id_fields:
+            rid = r if isinstance(r, (str, int, float)) else None
+        elif isinstance(r, dict) and all(
+            isinstance(r.get(f), (str, int, float)) for f in id_fields
+        ):
+            rid = "\u0000".join(str(r[f]) for f in id_fields)
+        else:
+            rid = None
+        if rid is None or rid in ids:
+            return None
+        ids.append(rid)
+    return ids
+
+
+def _merge_records(base: list, ours: list, theirs: list, id_fields: list[str],
+                   where: str) -> list:
+    """Merge three record lists by declared identity. A record appended on
+    either side survives, a delete on one side wins over an UNTOUCHED record on
+    the other, and a delete against an edit (or two different edits of one
+    field) is a conflict. Order follows `theirs` (the disk), with records only
+    `ours` added inserted after their predecessor in `ours`."""
+    bi, oi, ti = (_record_ids(x, id_fields) for x in (base, ours, theirs))
+    if bi is None or oi is None or ti is None:
+        raise SidecarConflict(f"{where}: changed here and concurrently")
+    bmap, omap, tmap = dict(zip(bi, base)), dict(zip(oi, ours)), dict(zip(ti, theirs))
+    out: list = []
+    out_ids: list = []
+    for rid, t in tmap.items():
+        at = f"{where}[{rid}]"
+        if rid in omap:
+            out.append(json_merge3(bmap.get(rid, _MISSING), omap[rid], t, at))
+            out_ids.append(rid)
+        elif rid in bmap:  # we deleted it
+            if t != bmap[rid]:
+                raise SidecarConflict(f"{at}: deleted here, edited concurrently")
+        else:  # they added it
+            out.append(t)
+            out_ids.append(rid)
+    for pos, rid in enumerate(oi):
+        if rid in tmap:
+            continue
+        at = f"{where}[{rid}]"
+        if rid in bmap:  # they deleted it
+            if omap[rid] != bmap[rid]:
+                raise SidecarConflict(f"{at}: edited here, deleted concurrently")
+            continue
+        # we added it — place after the nearest preceding record already out
+        idx = 0
+        for prev in reversed(oi[:pos]):
+            if prev in out_ids:
+                idx = out_ids.index(prev) + 1
+                break
+        out.insert(idx, omap[rid])
+        out_ids.insert(idx, rid)
+    return out
+
+
+def json_merge3(base: Any, ours: Any, theirs: Any, where: str = "$",
+                collections: list[dict] | None = None) -> Any:
+    """Three-way merge of JSON values. `_MISSING` stands for an absent key.
+    Returns the merge (possibly `_MISSING` = key absent) or raises
+    `SidecarConflict`. Objects merge per key; a top-level array that
+    `collections` declares merges per record (`_merge_records`); anything else
+    changed on both sides differently is a conflict.
+
+    Unlike the app's rule (sidecar-merge.ts), where a record the user touched
+    takes the LOCAL copy whole because an unsaved edit is the newer intent, the
+    writeback's change is the OLDER one here — so records merge field by field
+    and a true collision refuses rather than overwriting the user."""
+    if ours == theirs:
+        return ours
+    if ours == base:
+        return theirs
+    if theirs == base:
+        return ours
+    if isinstance(base, dict) and isinstance(ours, dict) and isinstance(theirs, dict):
+        declared = {c["key"]: c["idFields"] for c in (collections or [])}
+        out: dict = {}
+        keys = list(theirs) + [k for k in ours if k not in theirs]
+        for k in keys:
+            b, o, t = base.get(k, _MISSING), ours.get(k, _MISSING), theirs.get(k, _MISSING)
+            if (k in declared and isinstance(b, list) and isinstance(o, list)
+                    and isinstance(t, list) and not (o == t or o == b or t == b)):
+                m = _merge_records(b, o, t, declared[k], f"{where}.{k}")
+            else:
+                m = json_merge3(b, o, t, f"{where}.{k}")
+            if m is not _MISSING:
+                out[k] = m
+        return out
+    raise SidecarConflict(f"{where}: changed here and concurrently")
+
+
+def json_rebased(path: Path, base: Any, ours: Any) -> Deferred:
+    """Deferred content for a JSON sidecar the writer loaded as `base` and
+    changed to `ours`: resolved inside the pen against the file as it is THEN.
+    An untouched file (the common case) writes `ours` byte-for-byte as before."""
+    def resolve() -> str:
+        theirs = read_json(Path(path), default=_MISSING)
+        if theirs is _MISSING or theirs == base:
+            return json_dumps(ours)
+        try:
+            merged = json_merge3(base, ours, theirs,
+                                 collections=sidecar_collections(Path(path).name))
+        except SidecarConflict as e:
+            raise SidecarConflict(f"{Path(path).name} {e}") from None
+        return json_dumps(merged)
+    return resolve
+
+
+def resolve_writes(writes: list) -> list[tuple[Path, str | None]]:
+    """Materialize a write-set: call every deferred content, in order."""
+    return [(p, c() if callable(c) else c) for p, c in writes]
+
+
 # Each writer comes in two forms: a `*_planned`/`*_appended` form that READS
 # current state and RETURNS the (path, new-content) pair without touching disk
 # — so the contract paths can fold it into a single atomic_write — and a
@@ -556,13 +730,23 @@ def is_request_open(r: dict) -> bool:
 def notification_appended(doc: Path, item: dict) -> tuple[Path, str]:
     """Compute the next notifications.json content with `item` appended (cap
     200). Returns `(path, serialized)`; does not write."""
+    return sidecar(doc, "notifications.json"), _notifications_with(doc, item)
+
+
+def notification_deferred(doc: Path, item: dict) -> tuple[Path, Deferred]:
+    """`notification_appended` for a pen commit (task 941): the append is
+    REPLAYED on the inbox as it is inside the pen, not on a T0 read."""
+    return sidecar(doc, "notifications.json"), lambda: _notifications_with(doc, item)
+
+
+def _notifications_with(doc: Path, item: dict) -> str:
     path = sidecar(doc, "notifications.json")
     inbox = read_json(path, default={"items": []}) or {"items": []}
     items = inbox.get("items", []) if isinstance(inbox, dict) else []
     items = list(items) + [item]
     if len(items) > 200:
         items = items[-200:]
-    return path, json_dumps({"items": items})
+    return json_dumps({"items": items})
 
 
 def append_notification(doc: Path, item: dict) -> None:
@@ -586,6 +770,21 @@ def version_bumped(doc: Path) -> tuple[Path, str, int]:
     path = sidecar(doc, "version.txt")
     n = read_version(doc) + 1
     return path, str(n) + "\n", n
+
+
+class DeferredVersionBump:
+    """`version_bumped` for a pen commit (task 941): current + 1 is read inside
+    the pen. Use as a write-set content; `.n` holds the new number once the
+    commit has resolved it."""
+
+    def __init__(self, doc: Path):
+        self.doc = doc
+        self.path = sidecar(doc, "version.txt")
+        self.n: int | None = None
+
+    def __call__(self) -> str:
+        self.n = read_version(self.doc) + 1
+        return str(self.n) + "\n"
 
 
 def bump_version(doc: Path) -> int:
@@ -1526,7 +1725,7 @@ def release_pen(doc: Path) -> None:
     atomic_write(writes, fault_injectable=False)
 
 
-def commit_under_pen(doc: Path, writes: list[tuple[Path, str | None]]) -> None:
+def commit_under_pen(doc: Path, writes: list[tuple[Path, "str | None | Deferred"]]) -> None:
     """Run an atomic multi-file write while holding the pen. Acquire → commit →
     release; the release runs in a finally so a failed/rolled-back write still
     frees the pen and restores collab state.
@@ -1544,7 +1743,17 @@ def commit_under_pen(doc: Path, writes: list[tuple[Path, str | None]]) -> None:
     """
     acquire_pen(doc)
     try:
-        atomic_write(writes)
+        # Deferred contents (task 941) resolve HERE, after the pen is taken, so
+        # every JSON sidecar is written as a function of the file as it is now.
+        # A conflict dies before anything is written; the finally still frees
+        # the pen.
+        try:
+            resolved = resolve_writes(writes)
+        except SidecarConflict as e:
+            die(f"a sidecar changed underneath this writeback and the two edits "
+                f"collide ({e}); nothing was written — re-run to apply against "
+                f"the current state")
+        atomic_write(resolved)
     finally:
         try:
             release_pen(doc)

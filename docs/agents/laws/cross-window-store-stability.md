@@ -687,6 +687,54 @@ and back — and a real-Dropbox eyeball for the sync-masked half.
 
 ---
 
+## The skill-writeback half: the Python writer merges INSIDE the pen (task 941)
+
+Task 220 made the APP's sidecar writes a pure function of the file as it is on
+disk; the out-of-process writer — `apply_response.py`'s `_Txn`, which every
+`/editor/*` writeback goes through — still committed a whole-file snapshot it
+had read BEFORE the `.tex` splice and the preservation measure. Anything the
+app landed in that window (a fresh AI-request row from a raised flag, a note
+edit) was reverted with no error.
+
+- **No JSON sidecar is written from its T0 read.** `_Txn.jget` keeps a deep
+  copy of each sidecar as first read (the merge BASE); `writes()` hands
+  `commit_under_pen` a DEFERRED content (`_common.json_rebased`) per dirty
+  file, which `commit_under_pen` resolves only AFTER `acquire_pen`, re-reading
+  the file and three-way merging base / ours / disk (`json_merge3`). An
+  untouched file writes exactly what it always did. The notification append
+  (`notification_deferred`) and the version bump (`DeferredVersionBump`, whose
+  `.n` is the version reported) are likewise recomputed in the pen.
+- **Identity is DECLARED, not guessed.** Top-level record arrays merge by the
+  app's own `SIDECAR_COLLECTIONS`, projected into `card_tables.json`
+  (`sidecarCollections`, pinned verbatim by `card-tables-manifest.test.ts`);
+  `ai-requests.json`, absent from that table by design, is keyed by `id` in
+  `_common.sidecar_collections`. An undeclared array changed on both sides
+  fails CLOSED.
+- **The asymmetry with the app's rule is deliberate.** `sidecar-merge.ts`
+  takes a touched record's LOCAL copy whole, because an unsaved app edit is the
+  newer intent. In the writeback the skill's change is the OLDER intent, so
+  records merge field by field and a true collision (same value changed both
+  ways; delete against edit) is REFUSED — `die`, nothing written, pen released
+  — rather than overwriting the user. Re-running applies against the new state.
+- **The pen is only a signal.** The app does not consult it in
+  `ai-requests-store.ts`, so this closes the PYTHON side's window only; the
+  app's read→write is already in-critical-section and short. A write the app
+  lands between the in-pen re-read and `os.replace` (microseconds, no `.tex`
+  work in between) is the residual.
+- `create_card.py`'s pre-read of `ai-requests.json` is routing only (anchor,
+  safety level, kind check); it writes nothing, and the authoritative state is
+  the in-pen merge — a row that went terminal meanwhile collides on `status`
+  and refuses.
+
+CI: `editor/scripts/tests/test_txn_in_pen_rebase.py` injects the app write by
+wrapping `acquire_pen` (after every `_Txn` read, before the commit) and drives
+the real `archive` op: the app's row, a concurrent edit of ANOTHER note, the
+notification and the version all survive; editing the card being archived
+refuses with every file untouched. Four legs fail on the reinstated snapshot
+write.
+
+---
+
 ## The validated-re-read half (task 677)
 
 > **A re-hydration is a LOAD. It must run every repair the load path runs —
