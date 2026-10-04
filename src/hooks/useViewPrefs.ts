@@ -22,6 +22,7 @@ import {
   coerceRegistryPrefs,
   REGISTRY_DEFAULTS,
   REGISTRY_GLOBAL_KEYS,
+  VIEW_PREF_KEYS,
   VIEW_PREF_REGISTRY,
   type RegistryPrefs,
   type ViewPrefKey,
@@ -296,6 +297,14 @@ const RETIRED_PREF_KEYS = [
  *  `omniHideAllCards` (task 807). */
 const RETIRED_LEGACY_STORAGE_KEYS = ["virgil-omni-hide-all-cards"] as const;
 
+/** The ≤2-panel split model's keys (pre-`dockStack`, task 273). `loadPrefs`
+ *  folds them into `dockStack`/`collapsed*` and deletes them. */
+const RETIRED_LAYOUT_KEYS = [
+  "activeLeft", "activeRight", "activeLeftBottom", "activeRightBottom",
+  "splitLeftRatio", "splitRightRatio", "splitLeftOrigin", "splitRightOrigin",
+  "_stashedLeft", "_stashedRight", "dockSlots",
+] as const;
+
 const DEFAULT_PREFS: ViewPrefs = {
   // Registry defaults FIRST so every registry key (incl. `bibFilter`) gets a
   // value; the JSON spread comes AFTER. For a PROMOTED registry key the two
@@ -320,6 +329,9 @@ const DEFAULT_PREFS: ViewPrefs = {
 
 const LEGACY_STORAGE_KEY = "virgil-view-prefs";
 const GLOBAL_STORAGE_KEY = "virgil-view-prefs/global";
+/** Exported for the dev prefs mirror, which must read the global blob through
+ *  `normalizeGlobalSlice` rather than as raw bytes (task 929). */
+export const VIEW_PREFS_GLOBAL_STORAGE_KEY = GLOBAL_STORAGE_KEY;
 const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
 
 /**
@@ -359,6 +371,71 @@ type GlobalPrefKey =
   | StructuralGlobalPrefKey
   | (typeof REGISTRY_GLOBAL_KEYS)[number];
 const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
+
+// ── Version skew: closed-world on read, open-world on write (task 929) ──
+// A PWA routinely runs two BUILDS at once — an old window stays open while a
+// new one loads the update — and both write the same two blobs. So the
+// vocabulary on disk is not this build's vocabulary. Before this, `loadPrefs`
+// let EVERY stored key into live prefs and `persist` split them by THIS
+// build's scope table, rewriting each blob whole: a global pref added by a
+// newer build was read by the older window, re-homed into its WINDOW blob, and
+// dropped from the global blob on its next gesture — gone for every window.
+//
+// The rule now: live prefs hold only `KNOWN_PREF_SET` (closed on read), and
+// each blob is rewritten read-modify-write, carrying through every stored key
+// this build does not itself write there (open on write) — except the keys
+// this build CONSUMES (retired features and pre-rework layout shapes, which
+// `loadPrefs` folds and deletes; carrying them would resurrect them forever).
+
+/** Every key this build reads and writes — `DEFAULT_PREFS` is total over
+ *  `ViewPrefs` (no optional members), so its keys ARE the vocabulary. */
+const KNOWN_PREF_SET = new Set<string>(Object.keys(DEFAULT_PREFS));
+
+/** The registry keys that are WINDOW-scoped (`bibFilter`, …) — coerced against
+ *  their declared domain at load exactly as the global ones are by
+ *  `normalizeGlobalSlice`. Derived, never hand-listed. */
+const REGISTRY_WINDOW_KEYS = VIEW_PREF_KEYS.filter((k) => !GLOBAL_PREF_SET.has(k));
+
+/** Stored keys this build folds and DELETES at load. Never carried through a
+ *  write: they are this build's own retired vocabulary, not a newer build's. */
+const CONSUMED_PREF_KEYS = new Set<string>([
+  ...RETIRED_PREF_KEYS,
+  ...RETIRED_LAYOUT_KEYS,
+  // The pre-381 per-side omni lists, folded to `omniHiddenCategories`.
+  "omniCategories",
+]);
+
+/** Read-modify-write body for ONE blob: the keys this build writes there,
+ *  on top of whatever else is on disk that this build neither writes there nor
+ *  consumes. A newer build's key survives an older build's write untouched,
+ *  in the blob it was found in. */
+function withCarriedKeys(
+  key: string,
+  slice: Record<string, unknown>,
+): Record<string, unknown> {
+  const carried: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(readPrefBlob(key))) {
+    if (!(k in slice) && !CONSUMED_PREF_KEYS.has(k)) carried[k] = v;
+  }
+  return { ...carried, ...slice };
+}
+
+/** Closed-world filter: only this build's vocabulary reaches live prefs. */
+function pickKnown(blob: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(blob)) if (KNOWN_PREF_SET.has(k)) out[k] = v;
+  return out;
+}
+
+/** `appliedPrefMigrations` is a record of what has HAPPENED in this profile,
+ *  so two copies merge as a set union — never a replace. An older peer whose
+ *  blob predates a migration must not erase its id, or the next load would
+ *  re-apply the flip over a deliberate drag. */
+function unionIds(a: readonly string[], b: readonly string[]): string[] {
+  const out = [...a];
+  for (const id of b) if (!out.includes(id)) out.push(id);
+  return out;
+}
 
 /** The page-geometry subset of the global keys — the reading-measure prefs
  *  (page width + the four margins) the ephemeral Reader DOES want to track
@@ -880,8 +957,18 @@ export function loadPrefs(): ViewPrefs {
     // rename, so the rename must run first or the scrub deletes the very state
     // it exists to carry forward.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    //
+    // Each key is read from its OWN scope's blob first, the other blob only as
+    // a fallback (task 929): a stale copy in the wrong blob — one an older or
+    // newer build left there — can seed a missing value but never overrides
+    // the right one. Global keys: global wins (as before). Window keys: window
+    // wins (before, a global-blob copy silently overrode the window's own).
+    const unioned: Record<string, unknown> = { ...windowParsed, ...globalParsed };
+    for (const k of Object.keys(windowParsed)) {
+      if (KNOWN_PREF_SET.has(k) && !GLOBAL_PREF_SET.has(k)) unioned[k] = windowParsed[k];
+    }
     const parsed: any = scrubUnknownPanelIds(
-      applyPanelRenames({ ...windowParsed, ...globalParsed }, PANEL_RENAMES),
+      applyPanelRenames(unioned, PANEL_RENAMES),
     );
 
     // AF popout-key migration (read-time leg). Converts every persisted key to
@@ -982,11 +1069,7 @@ export function loadPrefs(): ViewPrefs {
     ) as ViewPrefs["dockStack"];
     const collapsedLeft = parsed.collapsedLeft ?? parsed.activeLeft === null;
     const collapsedRight = parsed.collapsedRight ?? parsed.activeRight === null;
-    for (const k of [
-      "activeLeft", "activeRight", "activeLeftBottom", "activeRightBottom",
-      "splitLeftRatio", "splitRightRatio", "splitLeftOrigin", "splitRightOrigin",
-      "_stashedLeft", "_stashedRight", "dockSlots",
-    ]) {
+    for (const k of RETIRED_LAYOUT_KEYS) {
       delete (parsed as Record<string, unknown>)[k];
     }
     // Retired prefs: keys that were persisted by a past build and whose
@@ -1037,9 +1120,21 @@ export function loadPrefs(): ViewPrefs {
     // (validated above). panelModes / floatPositions / panelWidths persist.
     // The stored per-window `dockStack` was written against the PRE-migration
     // placements, so the band-follows-icon enforcer runs last (task 899).
+    // Window-scoped registry keys get the same declared-domain coercion the
+    // global ones get inside `normalizeGlobalSlice` (task 929) — raw bytes
+    // never reach live prefs unvalidated on either side.
+    const windowRegistry: Record<string, unknown> = {};
+    const coercedAll = coerceRegistryPrefs(parsed) as Record<string, unknown>;
+    for (const k of REGISTRY_WINDOW_KEYS) {
+      if (k in coercedAll) windowRegistry[k] = coercedAll[k];
+    }
+
     return reconcileDockStackToPlacements({
       ...DEFAULT_PREFS,
-      ...parsed,
+      // Closed-world (task 929): a key this build does not know stays on disk,
+      // where `persist` carries it through; it never enters live prefs.
+      ...(pickKnown(parsed) as Partial<ViewPrefs>),
+      ...windowRegistry,
       // The normalized global values override `parsed`'s raw ones — the whole
       // point of the door. `placements` + `appliedPrefMigrations` then take the
       // one-shot side migration's result on top.
@@ -1220,9 +1315,17 @@ export function useViewPrefs(opts?: {
         // → shipped defaults) the scrub exists to make impossible.
         // A peer's drag can move a panel this window has DOCKED to the other
         // side; this window's per-window `dockStack` must follow (task 899).
-        setPrefs((prev) =>
-          reconcileDockStackToPlacements({ ...prev, ...normalizeGlobalSlice(globalSlice) }),
-        );
+        setPrefs((prev) => {
+          const normalized = normalizeGlobalSlice(globalSlice);
+          return reconcileDockStackToPlacements({
+            ...prev,
+            ...normalized,
+            appliedPrefMigrations: unionIds(
+              prev.appliedPrefMigrations,
+              normalized.appliedPrefMigrations,
+            ),
+          });
+        });
       } catch {
         // ignore parse failures
       }
@@ -1268,8 +1371,16 @@ export function useViewPrefs(opts?: {
           else windowSlice[k] = v;
         }
         // Idempotent: a persist whose slice matches disk wakes no peer.
-        writeStorageIfChanged(windowStorageKey(), JSON.stringify(windowSlice));
-        writeStorageIfChanged(GLOBAL_STORAGE_KEY, JSON.stringify(globalSlice));
+        // Read-modify-write (task 929): keys another BUILD wrote, which this
+        // one does not know, ride through in the blob they were found in.
+        writeStorageIfChanged(
+          windowStorageKey(),
+          JSON.stringify(withCarriedKeys(windowStorageKey(), windowSlice)),
+        );
+        writeStorageIfChanged(
+          GLOBAL_STORAGE_KEY,
+          JSON.stringify(withCarriedKeys(GLOBAL_STORAGE_KEY, globalSlice)),
+        );
         // Notify peers when any global key changed. Cheap shallow
         // compare on the global keys is enough — values are JSON-serializable
         // primitives, arrays, or plain objects. We fan out twice: the bus

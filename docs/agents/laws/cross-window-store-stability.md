@@ -733,6 +733,24 @@ Measured by neutering the handler back to the raw merge: both peer-sync legs
 fail. **Owed, not claimed:** a real two-window eyeball — multi-window
 behaviour masks in a single preview tab.
 
+## The version-skew half: closed on read, open on write (task 929)
+
+A PWA runs two BUILDS at once (an old window stays open across an update),
+so the keys on disk are not this build's vocabulary. The view-pref blobs are
+therefore **closed-world on read** (`loadPrefs` lets only `KNOWN_PREF_SET` —
+the keys of `DEFAULT_PREFS` — into live prefs) and **open-world on write**
+(`persist` is read-modify-write per blob via `withCarriedKeys`: every stored
+key this build neither writes to that blob nor CONSUMES rides through
+untouched). `CONSUMED_PREF_KEYS` (`RETIRED_PREF_KEYS` + `RETIRED_LAYOUT_KEYS` +
+`omniCategories`) is the only thing a write may delete. Each key is read from
+its own scope's blob first, the other blob only as a fallback; window-scoped
+registry keys are coerced like global ones; `appliedPrefMigrations` merges as
+a set UNION on peer sync; the dev prefs mirror snapshots the global blob
+through `normalizeGlobalSlice`. The global key set is pinned — a scope flip is
+a reviewed act.
+
+CI: [view-prefs-version-skew.test.tsx](../../../src/hooks/__tests__/view-prefs-version-skew.test.tsx).
+
 ## The out-of-band half: state that does NOT live in localStorage (task 766)
 
 Some app-wide facts live in IndexedDB — above all the Library folder handle
