@@ -21,7 +21,7 @@
 
 import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
-import { linkIdSelector } from "../link-dom-contract";
+import { DATA_LINK_ID, linkIdSelector } from "../link-dom-contract";
 import { useDocStructureBus } from "@/lib/tiptap/doc-structure";
 // Name from the view-only vocabulary (task 523). This attribute paints a
 // 45%/60% wash plus a ring from `--link-anchor-color`, which the print block
@@ -140,8 +140,9 @@ export function useLinkHighlight({
   //    shape the bus reports, so `onAnyChange` is what puts it back.
   //
   // `onAnyChange` is `emitCount`-gated: typing N plain characters fires it ZERO
-  // times (docs/agents/laws/keystroke-sanctity.md, "Keystroke sanctity"). The sweep is O(archived) and runs
-  // only off that channel or a prop change.
+  // times (docs/agents/laws/keystroke-sanctity.md, "Keystroke sanctity"). The
+  // sweep is ONE query over the Mode-B spans and runs only off that channel or
+  // a prop change.
   //
   // Residual, stated: a MARK-ATTRS re-stamp (a card-kind morph rewriting
   // `linkCard`) also recreates the span and does NOT wake the bus — but every
@@ -159,16 +160,17 @@ export function useLinkHighlight({
   useEffect(() => {
     if (!editor) return;
     const root = editor.view.dom;
+    // ONE root query per sweep (task 937): every Mode-B span, each checked
+    // against the archived set by its id — O(spans), not O(archived × DOM)
+    // as the per-id `querySelectorAll` loop it replaced was. Equality-bailed,
+    // so a sweep that changes nothing writes nothing.
     const sweep = () => {
-      const stale = root.querySelectorAll(
-        `.linked-anchor[${DATA_ANCHOR_ARCHIVED}]`,
-      );
-      for (const el of stale) el.removeAttribute(DATA_ANCHOR_ARCHIVED);
-      for (const anchorId of archivedAnchorIds) {
-        const spans = root.querySelectorAll(
-          `.linked-anchor${linkIdSelector(anchorId)}`,
-        );
-        for (const el of spans) el.setAttribute(DATA_ANCHOR_ARCHIVED, "true");
+      const spans = root.querySelectorAll(`.linked-anchor[${DATA_LINK_ID}]`);
+      for (const el of spans) {
+        const want = archivedAnchorIds.has(el.getAttribute(DATA_LINK_ID) ?? "");
+        if (want === el.hasAttribute(DATA_ANCHOR_ARCHIVED)) continue;
+        if (want) el.setAttribute(DATA_ANCHOR_ARCHIVED, "true");
+        else el.removeAttribute(DATA_ANCHOR_ARCHIVED);
       }
     };
     sweep();

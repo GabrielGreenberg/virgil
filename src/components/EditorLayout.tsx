@@ -140,7 +140,6 @@ import type { TabStripProps } from "./editor-layout/TabStrip";
 import type { StatusClusterProps } from "./editor-layout/StatusCluster";
 import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
 import { useFocusActions } from "./editor-layout/card-actions/focus";
-import { useCommentActions } from "./editor-layout/card-actions/comments";
 import { useFileActions } from "./editor-layout/card-actions/files";
 import { useRefActions } from "./editor-layout/card-actions/ref";
 import type { ActiveRef } from "@/lib/tiptap/label";
@@ -1149,7 +1148,6 @@ export default function EditorLayout() {
   // word count, LaTeX serialization). See useStructuralRevisions.
   const rev = useStructuralRevisions(editorInstance);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
-  const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
   // Anchored selection slots are declared above near useCutter — derived
   // from the cardStore via useAnchoredSelectionSlots.
   //
@@ -2510,20 +2508,6 @@ export default function EditorLayout() {
     };
   }, [editorInstance, deleteSnippet]);
 
-  // Todo drop actions — create a new todo, link its paragraph, seed its
-  // text from the dropped selection where applicable. Used both by the
-  // open TodoPanel (via onDropSelection/onDropParagraph props) and by
-  const pendingRevisionAnchorIdRef = useRef<string | null>(null);
-
-  const { handleAddComment } = useCommentActions({
-    editorRef,
-    pendingRevisionAnchorIdRef,
-    prefs,
-    setActiveLeft,
-    setActiveRight,
-    setPendingCommentText,
-  });
-
   // R21: the per-kind pristine discard callbacks are registered ONLY against
   // EditorPane's single live manager (see EditorPane.tsx). The duplicate set
   // that used to live here drove the render-dead shell manager and is gone.
@@ -3237,15 +3221,13 @@ export default function EditorLayout() {
     ? null
     : !visibleHighlightKinds.has("comment")
       ? null
-      : pendingCommentText
-        ? pendingCommentText
-        : commentHighlight
-          ? commentHighlight
-          : isPanelDocked(prefs, "revisions") &&
-              currentSuggestion &&
-              currentSuggestion.status === "pending"
-            ? currentSuggestion.original_text
-            : null;
+      : commentHighlight
+        ? commentHighlight
+        : isPanelDocked(prefs, "revisions") &&
+            currentSuggestion &&
+            currentSuggestion.status === "pending"
+          ? currentSuggestion.original_text
+          : null;
   // Error badge count — read from the per-doc owner (EditorPane) via paneState.
   const errorCount = paneState?.latexErrors.length ?? 0;
   // OmniView aggregates several child panels on one side. Omni is now the

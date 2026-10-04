@@ -13,7 +13,7 @@
  * ## The matching rule (explicit, because the quote is a lossy capture)
  *
  * The quoted text is captured as `doc.textBetween(from, to, " ")` (the
- * comment / revision capture in `card-actions/comments.ts`), so:
+ * revision / cutter quote capture), so:
  *
  * - **Atoms contribute nothing**, both in the capture (no `leafText`) and in
  *   the prose index (an atom has no text children) — a quote spanning a
