@@ -76,7 +76,34 @@ interface ToggleDef<D extends boolean = boolean> {
    *  the BROWSER's checker). Optional; rendered by the Display block. */
   hint?: string;
   promote?: boolean;
+  /** How the pref reaches the SCREEN through CSS (task 927) — see
+   *  `ViewPrefProjectionDecl`. Applied by ONE applier
+   *  (`src/lib/view-prefs/projection.ts`) onto the projecting instance's own
+   *  surfaces, never `<body>`. */
+  project?: ToggleProjectionDecl;
+  /** For a toggle with no CSS projection (or more than one effect): the code
+   *  that reads the value as a prop. A `display` toggle must declare `project`
+   *  or `consumedBy` — `view-pref-projection.test.ts` pins it, so a new row
+   *  cannot ship inert. Documentation the test reads, not a runtime switch. */
+  consumedBy?: string;
 }
+
+/**
+ * A toggle's CSS projection (task 927). `when` is the pref VALUE at which the
+ * projection is present — `{ class: "hide-card-titles", when: false }` paints
+ * the class while the pref is OFF. An `attr` projection writes an inherited
+ * HTML attribute (the native `spellcheck` switch) the same way.
+ */
+export type ToggleProjectionDecl =
+  | { readonly class: string; readonly when: boolean }
+  | { readonly attr: string; readonly value: string; readonly when: boolean };
+
+/** An enum's CSS projection: one class per value, always present. Spelled as
+ *  a template FUNCTION rather than a prefix string so the class family stays
+ *  visible to `dead-css-hook-census.test.ts` (a `name-${v}` template is a
+ *  producer it can see; a bare `"name-"` is not). */
+export type EnumProjectionDecl = { readonly classOf: (value: string) => string };
+
 interface EnumDef<V extends string> {
   kind: "enum";
   scope: ViewPrefScope;
@@ -86,6 +113,8 @@ interface EnumDef<V extends string> {
   menu?: ViewPrefMenuGroup;
   valueLabels: Record<V, string>;
   promote?: boolean;
+  /** See `EnumProjectionDecl` (task 927). */
+  project?: EnumProjectionDecl;
 }
 interface SetDef<E extends string | number> {
   kind: "set";
@@ -178,23 +207,34 @@ export const VIEW_PREF_REGISTRY = {
   // promote:false — ship default frozen at the registry value (task 057). A prior
   // promote-defaults folded Gabriel's personal snapshot and drifted this true→false;
   // opting out of promotion makes the registry the durable SSOT so it can't recur.
-  showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display", menuRowId: "par-titles", promote: false },
-  showCardTitles:       { kind: "toggle", scope: "global", default: SHIPPED.showCardTitles, label: "Card titles",       menu: "display", menuRowId: "card-titles" },
-  showLatexComments:    { kind: "toggle", scope: "global", default: SHIPPED.showLatexComments, label: "% comments",        menu: "display", menuRowId: "latex-comments" },
-  showHeadingLabels:    { kind: "toggle", scope: "global", default: SHIPPED.showHeadingLabels, label: "Labels",            menu: "display", menuRowId: "heading-labels" },
-  omniDimResting:       { kind: "toggle", scope: "global", default: SHIPPED.omniDimResting, label: "Dim cards at rest",  menu: "display", menuRowId: "omni-dim-resting" },
-  cardOutlineChrome:    { kind: "toggle", scope: "global", default: SHIPPED.cardOutlineChrome, label: "Card outline",       menu: "display", menuRowId: "card-outline" },
+  showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display", menuRowId: "par-titles", promote: false,
+                          project: { class: "hide-par-titles", when: false } },
+  showCardTitles:       { kind: "toggle", scope: "global", default: SHIPPED.showCardTitles, label: "Card titles",       menu: "display", menuRowId: "card-titles",
+                          project: { class: "hide-card-titles", when: false } },
+  showLatexComments:    { kind: "toggle", scope: "global", default: SHIPPED.showLatexComments, label: "% comments",        menu: "display", menuRowId: "latex-comments",
+                          project: { class: "hide-latex-comments", when: false } },
+  showHeadingLabels:    { kind: "toggle", scope: "global", default: SHIPPED.showHeadingLabels, label: "Labels",            menu: "display", menuRowId: "heading-labels",
+                          project: { class: "hide-heading-labels", when: false } },
+  omniDimResting:       { kind: "toggle", scope: "global", default: SHIPPED.omniDimResting, label: "Dim cards at rest",  menu: "display", menuRowId: "omni-dim-resting",
+                          consumedBy: "EditorPane → OmniHost `omniDimResting` → OmniViewPanel `dimResting` ([data-omni-dim])" },
+  cardOutlineChrome:    { kind: "toggle", scope: "global", default: SHIPPED.cardOutlineChrome, label: "Card outline",       menu: "display", menuRowId: "card-outline",
+                          project: { class: "card-outline-chrome", when: true } },
   // The browser's native spellcheck, made deliberate and switchable (task 517).
-  // Reflected onto <body> by `spellcheck-policy.ts` — a single inherited HTML
-  // attribute rather than a prop threaded into twelve `editorProps.attributes`
-  // blocks. Default ON = today's behaviour; task 518's own checker flips it.
+  // Projected (task 927) as a single inherited HTML attribute on the
+  // instance's own surfaces — the pane root and its FloatingPanels — rather
+  // than a prop threaded into twelve `editorProps.attributes` blocks (see
+  // `spellcheck-policy.ts`). Default ON = today's behaviour; task 518's own
+  // checker reads the same value as a prop.
   checkSpelling:        { kind: "toggle", scope: "global", default: SHIPPED.checkSpelling, label: "Check spelling",      menu: "display", menuRowId: "check-spelling",
-                          hint: "Virgil's spelling underline (a thin wavy line) — turning this off also stops the browser's own spellcheck (its dotted underline) everywhere in Virgil. Virgil has no grammar check." },
+                          hint: "Virgil's spelling underline (a thin wavy line) — turning this off also stops the browser's own spellcheck (its dotted underline) everywhere in Virgil. Virgil has no grammar check.",
+                          project: { attr: "spellcheck", value: "false", when: false },
+                          consumedBy: "EditorPane `spellcheckEnabled` → SpellcheckProvider (Virgil's own checker)" },
   // The CURATED typo table (task 519), and deliberately its own row rather
   // than a second meaning for `checkSpelling`: underlining a word and
   // REWRITING it are different permissions, and a user may want either
   // without the other. Default ON.
-  autocorrectTypos:     { kind: "toggle", scope: "global", default: SHIPPED.autocorrectTypos, label: "Autocorrect typos",   menu: "display", menuRowId: "autocorrect-typos" },
+  autocorrectTypos:     { kind: "toggle", scope: "global", default: SHIPPED.autocorrectTypos, label: "Autocorrect typos",   menu: "display", menuRowId: "autocorrect-typos",
+                          consumedBy: "EditorPane `autocorrectEnabled` → SpellcheckProvider" },
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: SHIPPED.showMarginalia, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
   hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: SHIPPED.hiddenMarginaliaTypes, members: HIDEABLE_MARKER_TYPES,
@@ -213,7 +253,8 @@ export const VIEW_PREF_REGISTRY = {
                    memberLabels: { 0: "Parts", 1: "Chapters", 2: "Sections", 3: "Subsections", 4: "Subsubsections", 5: "Paragraph headings", 6: "Subparagraph headings" } },
   dividerWidth: { kind: "enum", scope: "global", default: SHIPPED.dividerWidth, values: ["full", "mid", "text"],
                   label: "Divider preferences", menu: "dividers",
-                  valueLabels: { full: "Full width", mid: "Mid width", text: "Text width" } },
+                  valueLabels: { full: "Full width", mid: "Mid width", text: "Text width" },
+                  project: { classOf: (v: string) => `dividers-width-${v}` } },
   // Bibliography filter (NOT in the View menu; panel-local; window scope)
   bibFilter: { kind: "enum", scope: "window", default: "cited", values: ["cited", "all"],
                label: "Bibliography filter", valueLabels: { cited: "Cited entries only", all: "Full bibliography" } },

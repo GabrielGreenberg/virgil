@@ -471,7 +471,7 @@ describe("the print block carries ONE rule for the marker", () => {
 
   it("kills the appendix card outline with an UNSCOPED attention rule", () => {
     // A selected card printed into the appendix carries
-    // `body.card-outline-chrome [data-card-key][data-card-selected] { outline }`
+    // `.card-outline-chrome [data-card-key][data-card-selected] { outline }`
     // — and its root sits OUTSIDE `.tiptap` by design, which is exactly why the
     // var rule above is scoped and this one must not be.
     const unscoped = [...PRINT_BLOCK.matchAll(/([^{}]+)\{([^}]*)\}/g)].find(

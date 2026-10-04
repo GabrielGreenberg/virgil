@@ -67,10 +67,16 @@ import VirgilEditor, { type EditorHandle } from "./Editor";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SCROLL_PERSIST } from "@/lib/layout-gesture-probe";
 import AIWindow, { aiRequestDotStatus, type AiDotTone } from "./AIWindow";
-import { EditorChromeProvider } from "./editor-layout/chrome-context";
+import {
+  EditorChromeProvider,
+  ViewPrefProjectionProvider,
+  useStableViewPrefProjection,
+  useViewPrefProjectionAttrs,
+} from "./editor-layout/chrome-context";
 import {
   FULL_CHROME,
   filterPanelKinds,
+  viewPrefProjection,
   viewToggleClasses,
   type EditorChromeConfig,
 } from "./editor-layout/chrome-config";
@@ -4044,6 +4050,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `!!menuBar` has stopped meaning "not the Reader" everywhere it was used
   // to mean that).
   const viewToggleCls = viewToggleClasses(menuBar);
+  // The SAME instance's full projection (classes + the native `spellcheck`
+  // attribute), for the pane's own ROOT and — through
+  // `ViewPrefProjectionProvider` — every FloatingPanel it portals (task 927).
+  // Card surfaces (rails, omni, docked + floating panels) live outside the
+  // column, so the card-level toggles (`.hide-card-titles`,
+  // `.card-outline-chrome`) reach them here; it used to be EditorLayout's
+  // `<body>` writes, which the Reader's own instance could never reach.
+  // Memoised on primitive strings: a pane render that changes no pref
+  // re-renders no float.
+  const viewPrefRoot = useStableViewPrefProjection(viewPrefProjection(menuBar));
+  const viewPrefRootAttrs = useViewPrefProjectionAttrs(viewPrefRoot);
 
   // ── THE marker-lane policy (task 671) ───────────────────────────
   // ONE resolution, read by BOTH gates: this render filter (does an icon get
@@ -6488,6 +6505,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     <DiagnosticsProvider value={diagnostics}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar, mainTextEditable: editable }}>
+    <ViewPrefProjectionProvider value={viewPrefRoot}>
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
       >
@@ -6838,7 +6856,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           })()}
           <div
             ref={editorPaneRootRef}
-            className="editor-pane-root"
+            className={`editor-pane-root${viewPrefRoot.className ? ` ${viewPrefRoot.className}` : ""}`}
+            {...viewPrefRootAttrs}
             style={{
               display: "flex",
               flexDirection: "row",
@@ -8120,6 +8139,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         </CitationDisplayProvider>
       </CardAnchorProvider>
       </EditorRefProvider>
+    </ViewPrefProjectionProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
     </DiagnosticsProvider>

@@ -10,9 +10,10 @@
  * for free, and a NEW toggle ports to all three by editing this one function.
  *
  * Two guarantees are pinned here:
- *  1. Part-A safety gate: the new `.editor-pane-column` className string is
- *     BYTE-IDENTICAL to the pre-Issue-12 hand-built expression for every
- *     representative menuBar state (refactor preserved the output exactly).
+ *  1. Part-A safety gate: the `.editor-pane-column` className carries exactly
+ *     the TOKENS of the pre-Issue-12 hand-built expression for every
+ *     representative menuBar state (byte order relaxed by task 927, whose
+ *     registry projector emits in registry order).
  *  2. Single-source property: the view-toggle tokens carried by the column,
  *     the float body, and the overlay root are EXACTLY `viewToggleClasses`'s
  *     output (same tokens, same order) — so whatever that function emits
@@ -132,10 +133,18 @@ const FIXTURES: Array<{ name: string; menuBar: MenuBarArg }> = [
   },
 ];
 
-describe("viewToggleClasses — Part A byte-identity gate", () => {
+// Task 927 moved the per-key tokens onto the registry (`project` rows, one
+// projector), which emits them in REGISTRY order — the divider-width enum now
+// precedes the doc-derived `show-dividers-N` tokens. Token order is invisible
+// to CSS, so the frozen gate compares the token SET. The registry-only
+// card-level tokens (`hide-card-titles`, `card-outline-chrome`) are absent
+// from these fixtures because their shipped defaults project nothing.
+const tokenSet = (cls: string) => [...new Set(cls.split(/\s+/).filter(Boolean))].sort();
+
+describe("viewToggleClasses — Part A identity gate (token set)", () => {
   for (const { name, menuBar } of FIXTURES) {
-    it(`column className is byte-identical to the pre-Issue-12 expression: ${name}`, () => {
-      expect(columnClassNew(menuBar)).toBe(columnClassOld(menuBar));
+    it(`column className carries exactly the pre-Issue-12 tokens: ${name}`, () => {
+      expect(tokenSet(columnClassNew(menuBar))).toEqual(tokenSet(columnClassOld(menuBar)));
     });
   }
 

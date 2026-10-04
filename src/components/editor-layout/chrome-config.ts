@@ -13,6 +13,7 @@
  */
 
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
+import { projectViewPrefs } from "@/lib/view-prefs/projection";
 import {
   cardMutationWritable,
   READER_EDITABLE_CARD_KINDS,
@@ -87,26 +88,66 @@ export function mainTextEditable(chrome: EditorChromeConfig): boolean {
 }
 
 /**
- * Build the view-toggle class tokens that gate divider / hide-* / width
- * CSS. Mirrors the `editor-pane-column` className expression in
- * `EditorPane.tsx` (search "editor-pane-column") so DOM-portaled float
- * popouts get an ancestor carrying the same `.show-dividers-N`,
- * `.hide-par-titles`, `.hide-latex-comments`, `.hide-heading-labels`,
- * and `.dividers-width-*` classes the main column has. Returns `""` when
- * there's no MenuBar (Reader / no view toggles). Single source so the
- * float and the column can't drift.
+ * Build the view-toggle class tokens that gate divider / hide-* / width /
+ * card-outline CSS. Every REGISTRY-declared projection comes from the one
+ * applier (`projectViewPrefs`, task 927 — no per-key `if` here); the only
+ * hand-built tokens are `.show-dividers-N`, because they are not a function of
+ * the prefs alone (`activeDividerLevels` is the pref ∩ the levels the doc has).
+ *
+ * Consumed by the `editor-pane-column`, every float body, and the drag ghost
+ * (`.lifted-text-overlay`) — and, through `viewPrefProjection`, by the
+ * instance's own roots (`.editor-pane-root` and its `FloatingPanel`s). Returns
+ * `""` when there is no menu bundle at all. Single source so the surfaces
+ * can't drift.
  */
 export function viewToggleClasses(
   menuBar: import("../EditorPane").EditorPaneMenuBarBundle | undefined,
 ): string {
   if (!menuBar) return "";
-  const tokens: string[] = [];
-  if (menuBar.prefs.showParTitles === false) tokens.push("hide-par-titles");
-  if (menuBar.prefs.showLatexComments === false) tokens.push("hide-latex-comments");
-  if (menuBar.prefs.showHeadingLabels === false) tokens.push("hide-heading-labels");
+  const tokens: string[] = [...projectViewPrefs(menuBar.prefs).classes];
   for (const lvl of menuBar.activeDividerLevels) tokens.push(`show-dividers-${lvl}`);
-  tokens.push(`dividers-width-${menuBar.prefs.dividerWidth}`);
   return tokens.join(" ");
+}
+
+/**
+ * The FULL projection of one view-prefs instance onto a root it owns (task
+ * 927): the class string above plus the registry's attribute projections
+ * (the native `spellcheck` switch). Both halves are PRIMITIVE strings so a
+ * consumer can memoise on them — `attrsFromKey` rebuilds the attribute map.
+ */
+export interface ViewPrefRootProjection {
+  readonly className: string;
+  /** `name=value` pairs joined by `;` (`""` = no attributes). */
+  readonly attrKey: string;
+}
+
+export const EMPTY_VIEW_PREF_PROJECTION: ViewPrefRootProjection = {
+  className: "",
+  attrKey: "",
+};
+
+export function viewPrefProjection(
+  menuBar: import("../EditorPane").EditorPaneMenuBarBundle | undefined,
+): ViewPrefRootProjection {
+  if (!menuBar) return EMPTY_VIEW_PREF_PROJECTION;
+  const { attrs } = projectViewPrefs(menuBar.prefs);
+  return {
+    className: viewToggleClasses(menuBar),
+    attrKey: Object.entries(attrs)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(";"),
+  };
+}
+
+/** The attribute map an `attrKey` encodes — spread it onto the root. */
+export function attrsFromKey(attrKey: string): Record<string, string> {
+  if (!attrKey) return {};
+  return Object.fromEntries(
+    attrKey.split(";").map((kv) => {
+      const i = kv.indexOf("=");
+      return [kv.slice(0, i), kv.slice(i + 1)];
+    }),
+  );
 }
 
 export const FULL_CHROME: EditorChromeConfig = {

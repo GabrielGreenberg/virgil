@@ -564,9 +564,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // users who have it installed; these attributes are its documented
         // opt-out and inert for everyone else. Native spellcheck is NOT
         // decided here any more (task 517): it is one inherited `spellcheck`
-        // attribute on <body>, written from the `checkSpelling` view pref by
-        // `spellcheck-policy.ts`, so this surface and every card body / float
-        // follow one switch. Default ON (prose editor; A/B-measured no
+        // attribute on the owning pane's roots, projected from the
+        // `checkSpelling` registry row (task 927; see `spellcheck-policy.ts`),
+        // so this surface and every card body / float follow one switch. Default ON (prose editor; A/B-measured no
         // per-keystroke cost).
         "data-gramm": "false",
         "data-gramm_editor": "false",

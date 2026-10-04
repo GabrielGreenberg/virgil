@@ -35,7 +35,6 @@ import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
-import { useNativeSpellcheck } from "@/lib/spellcheck-policy";
 import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import {
@@ -946,46 +945,11 @@ export default function EditorLayout() {
   // heading labels, dividers, …) are persisted via ViewPrefs — global, mirrored
   // across windows, riding the personal-prefs promotion pipeline. They are READ
   // off `prefs` wherever needed and WRITTEN by key through the three registry
-  // writers above (task 274); the two below are pulled out only because a local
-  // effect reflects each onto a <body> class.
-  const showCardTitles = prefs.showCardTitles;
-
-  // Card +T add-title affordance visibility — the card analog of
-  // `showParTitles`. Unlike paragraph titles (gated by a class on
-  // `.editor-pane-column` via `viewToggleClasses`), cards render in the panel
-  // strips, the omni host, AND body-portaled float popouts — none under that
-  // column — so the gate lives on a body-level `.hide-card-titles` class that
-  // every card surface descends from.
-  // Reflect the pref onto <body> so the CSS gate reaches every card surface,
-  // including popouts portaled outside the React tree. Depends only on the
-  // boolean pref — zero per-keystroke work (keystroke sanctity).
-  useEffect(() => {
-    const cls = "hide-card-titles";
-    document.body.classList.toggle(cls, !showCardTitles);
-    return () => document.body.classList.remove(cls);
-  }, [showCardTitles]);
-
-  // Card outline chrome — the colored hover/select outline is OPT-IN
-  // (default off: retint/brighten stays, colored edge is gone), reflected to a
-  // body class so the CSS gate reaches every card surface (docked + omni +
-  // portaled floats), exactly like `showCardTitles`.
-  // Native (browser) spellcheck — the ONE mount of the policy. The write is a
-  // single inherited `spellcheck` attribute on <body>, so it reaches every
-  // prose surface at once (main editor, card bodies, floats, example cards)
-  // without a prop threaded into each one's `editorProps.attributes`, and the
-  // deliberate opt-outs stay opted out because a descendant `false` wins over
-  // an inherited value. See `src/lib/spellcheck-policy.ts`.
-  useNativeSpellcheck(prefs.checkSpelling);
-
-  const cardOutlineChrome = prefs.cardOutlineChrome;
-  // Reflect the opt-in pref onto <body>: the outline rules require
-  // `.card-outline-chrome`, so the default (class absent) is the no-outline
-  // look. Depends only on the boolean — zero per-keystroke work.
-  useEffect(() => {
-    const cls = "card-outline-chrome";
-    document.body.classList.toggle(cls, cardOutlineChrome);
-    return () => document.body.classList.remove(cls);
-  }, [cardOutlineChrome]);
+  // writers above (task 274). How a pref reaches the SCREEN through CSS is
+  // declared on its registry row and applied per INSTANCE by the pane that
+  // owns it (`.editor-pane-root` + its FloatingPanels, task 927) — never
+  // written on <body> from here, which the Library Reader's own instance could
+  // not reach.
   // Divider levels the user has ENABLED, as a Set for the ∩ below (the pref
   // itself is an array; only this derivation wants set semantics).
   const dividerLevels = useMemo(
