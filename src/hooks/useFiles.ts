@@ -35,10 +35,7 @@ import {
 } from "@/lib/example-doc/example-seeder";
 import { ensureRW, queryRW } from "@/lib/fsa-permissions";
 import { getWindowId } from "@/lib/multi-window/window-id";
-import {
-  claimWindowIdentity,
-  liveWindowIds,
-} from "@/lib/multi-window/window-liveness";
+import { settleWindowStartup } from "@/lib/multi-window/window-liveness";
 import {
   claimDoc,
   ownsDoc,
@@ -138,10 +135,10 @@ export function useFiles() {
     // the claim re-mints when that id's liveness lock is already held. Then
     // retire the tab records of windows that are gone and stale (task 603 —
     // no page event deletes them; see `sweepTabRecords`).
-    const identity = claimWindowIdentity();
-    identity
-      .then(() => liveWindowIds())
-      .then((live) => sweepTabRecords({ liveWindowIds: live }))
+    const startup = settleWindowStartup();
+    const identity = startup.then((s) => s.identity);
+    startup
+      .then(({ live }) => sweepTabRecords({ liveWindowIds: live }))
       .catch(() => {});
     (async () => {
       try {

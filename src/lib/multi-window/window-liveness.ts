@@ -8,8 +8,10 @@
  * open right now. That replaces the old windows registry — a record every
  * window rewrote every 30 s and on every tab change, which nothing read.
  *
- * Its one reader is the startup tab-record sweep (`sweepTabRecords`), which
- * must never delete the tabs of a window that is merely idle.
+ * Its readers are the startup sweeps of the per-window stores — the tab
+ * records (`sweepTabRecords`) and the per-window view-prefs blobs
+ * (`gcWindowPrefs`) — which must never delete the record of a window that is
+ * merely idle, and the reload door's readiness census.
  */
 
 import { getWindowId, remintWindowId } from "./window-id";
@@ -115,7 +117,42 @@ export async function liveWindowIds(): Promise<Set<string>> {
   return ids;
 }
 
+/** What every per-window store needs at startup, settled once per page. */
+export interface WindowStartup {
+  identity: WindowIdentity;
+  /** Windows alive when this page started (always including this one). */
+  live: Set<string>;
+}
+
+let startup: Promise<WindowStartup> | null = null;
+
+/**
+ * The ONE identity discipline for a per-window store (task 930). Every store
+ * keyed by the window id — the tab records (IndexedDB), the per-window
+ * view-prefs blob (localStorage) — follows the same three steps, and this is
+ * the door they take them through:
+ *
+ *   1. SEED from `identity.inheritedId` — a duplicated tab starts as a copy
+ *      of its source window (that is what "Duplicate tab" means);
+ *   2. PERSIST under `identity.id` — the CLAIMED id, which a re-minted twin
+ *      must write its seed under before its first reload, or the reload finds
+ *      nothing under its new id and resets;
+ *   3. SWEEP only ids absent from `live` — age alone may never retire the
+ *      record of a window that is still open.
+ *
+ * Memoized: one claim and one liveness snapshot per page.
+ */
+export function settleWindowStartup(): Promise<WindowStartup> {
+  if (startup) return startup;
+  startup = claimWindowIdentity().then(async (identity) => ({
+    identity,
+    live: await liveWindowIds(),
+  }));
+  return startup;
+}
+
 /** Test seam. */
 export function __resetWindowLivenessForTest(): void {
   claim = null;
+  startup = null;
 }
