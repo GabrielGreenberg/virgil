@@ -369,7 +369,9 @@ export interface ReconcileOpts {
  *     only surviving binding, so it becomes a paragraph anchor).
  *   - `source === 'mark'` → the mark survives; with `opts.liveMarkText`,
  *     REFRESH the winning link's `textSnapshot` to the live marked text
- *     (task 700 — the recovery key tracks edits inside the passage).
+ *     (task 700 — the recovery key tracks edits inside the passage), and
+ *     RE-POINT its `textObjectIds` to the mark's paragraph if they do not
+ *     already name it (task 934 — stored and resolved agree).
  *   - `source === 'orphan'` → no-op (nothing recoverable).
  *
  * `opts` is optional — called WITHOUT it (R0 pure callers / existing tests)
@@ -409,8 +411,9 @@ export function reconcileCardToResolved<T extends CardWithLinks>(
 /**
  * `source === 'mark'`: the winning Mode-B link's mark is live. Refresh its
  * `textSnapshot` from the live marked text (task 700) so the recovery key
- * tracks edits made inside the passage. Idempotent: a second pass reads the
- * same text and writes nothing. An EMPTY live read never overwrites — a
+ * tracks edits made inside the passage, and RE-POINT its `textObjectIds` to
+ * the mark's paragraph when they no longer name it (task 934). Idempotent: a
+ * second pass reads the same text and writes nothing. An EMPTY live read never overwrites — a
  * snapshot is only ever replaced by real words.
  */
 function refreshMarkSnapshot<T extends CardWithLinks>(
@@ -419,24 +422,33 @@ function refreshMarkSnapshot<T extends CardWithLinks>(
   links: Link[],
   liveMarkText: string | null | undefined,
 ): { card: T; changed: boolean } {
-  if (!liveMarkText) return { card, changed: false };
   const idx = res.linkIndex;
   if (idx == null || idx < 0 || idx >= links.length) return { card, changed: false };
   const link = links[idx];
   if (link.anchor.type !== "textObject" || !link.anchor.textRange) {
     return { card, changed: false };
   }
-  if (link.anchor.textRange.textSnapshot === liveMarkText) {
-    return { card, changed: false };
+  let anchor = link.anchor;
+  const range = link.anchor.textRange;
+  // Snapshot refresh (task 700) — only ever replaced by real words.
+  if (liveMarkText && range.textSnapshot !== liveMarkText) {
+    anchor = { ...anchor, textRange: { ...range, textSnapshot: liveMarkText } };
   }
+  // Pid re-point (task 934): the mark is the binding, so the stored pids
+  // follow it. An Enter split before the highlighted words carries the mark
+  // into a NEW paragraph while the stored pid stays live; left alone, every
+  // consumer of stored pids (omni, archive, search) names the old paragraph.
+  // Only when the stored pids name a DIFFERENT paragraph: an empty list makes
+  // no claim to disagree with, and one already naming the mark's paragraph
+  // is in agreement — both idempotent no-writes.
+  const markPid = res.paragraphId;
+  const stored = anchor.textObjectIds;
+  if (markPid && stored.length > 0 && !stored.includes(markPid)) {
+    anchor = { ...anchor, textObjectIds: [markPid] };
+  }
+  if (anchor === link.anchor) return { card, changed: false };
   const next = links.slice();
-  next[idx] = {
-    ...link,
-    anchor: {
-      ...link.anchor,
-      textRange: { ...link.anchor.textRange, textSnapshot: liveMarkText },
-    },
-  };
+  next[idx] = { ...link, anchor };
   return { card: { ...card, links: next }, changed: true };
 }
 
