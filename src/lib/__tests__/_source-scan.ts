@@ -665,3 +665,70 @@ export function enclosingDeclaration(src: string, offset: number): string {
   }
   return src.slice(lineStart, j + 1);
 }
+
+// ── Method-body resolution (task 925: one home) ─────────────────────────────
+// `plugin-apply-guardrail`'s private helpers, moved here when the keystroke-
+// subscriber census needed the same answers (a plugin `view()`'s returned
+// `update(` method, a same-file factory's body). Pass COMMENT-STRIPPED source.
+
+/** Index of the bracket closing the one opened at `i` (`open`/`close` pair). */
+export function matchFrom(s: string, i: number, open: string, close: string): number {
+  let depth = 0;
+  for (let j = i; j < s.length; j++) {
+    if (s[j] === open) depth++;
+    else if (s[j] === close) {
+      depth--;
+      if (depth === 0) return j;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Given the index of a parameter list's `(`, return `[bodyOpen, bodyClose]`
+ * for the `{ … }` that follows — skipping a return-type annotation's own
+ * braces (`): { a: B } {`), which sit between the params and the body.
+ * Returns null when the `(` is a CALL rather than a definition (the next
+ * significant token after `)` is not `{`, `:` or `=>`).
+ */
+export function bodyAfterParams(s: string, parenIdx: number): [number, number] | null {
+  const pe = matchFrom(s, parenIdx, "(", ")");
+  if (pe < 0) return null;
+  let k = pe + 1;
+  while (k < s.length && /\s/.test(s[k])) k++;
+  const next2 = s.slice(k, k + 2);
+  if (!(s[k] === "{" || s[k] === ":" || next2 === "=>")) return null;
+  let from = pe + 1;
+  for (;;) {
+    const b = s.indexOf("{", from);
+    if (b < 0) return null;
+    let p = b - 1;
+    while (p >= 0 && /\s/.test(s[p])) p--;
+    const prev = s[p];
+    // A brace introduced by `:` / `|` / `&` / `,` / `<` is a TYPE literal.
+    if (prev === ":" || prev === "|" || prev === "&" || prev === "," || prev === "<") {
+      const e = matchFrom(s, b, "{", "}");
+      if (e < 0) return null;
+      from = e + 1;
+      continue;
+    }
+    const be = matchFrom(s, b, "{", "}");
+    return be < 0 ? null : [b, be];
+  }
+}
+
+export function localFunctions(code: string): Map<string, string> {
+  const fns = new Map<string, string>();
+  const decl = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = decl.exec(code))) {
+    const b = bodyAfterParams(code, m.index + m[0].length - 1);
+    if (b) fns.set(m[1], code.slice(b[0], b[1] + 1));
+  }
+  const arrow = /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/g;
+  while ((m = arrow.exec(code))) {
+    const b = bodyAfterParams(code, m.index + m[0].length - 1);
+    if (b) fns.set(m[1], code.slice(b[0], b[1] + 1));
+  }
+  return fns;
+}

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import type { Transaction } from "@tiptap/pm/state";
 import {
   readSidecarIfExists,
   writeSidecar,
@@ -12,10 +11,7 @@ import {
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
 import { isAnchorableNode } from "@/lib/marginalia";
-import {
-  getSectionFoldingState,
-  transactionTouchesFold,
-} from "@/lib/section-folding";
+import { foldedSetOf } from "@/lib/section-folding";
 import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
 import {
   registerPendingFlusher,
@@ -352,18 +348,23 @@ export function useEditorUIState(
       }, SETTLE_MS);
     };
 
-    const onTransaction = (props: { transaction: Transaction }) => {
+    // The fold persister remembers the fold-set IDENTITY it last saw
+    // (`foldedSetOf`, task 925): the section-folding reducer keeps that Set's
+    // reference on every transaction that changes no fold and replaces it on
+    // every real change — an explicit fold meta OR the implicit prune when a
+    // folded heading is deleted. So a plain keystroke is one reference compare,
+    // O(1), even while sections are folded; the spread + array compare in
+    // `writeFolds` runs only on a real fold change.
+    let lastFolded = foldedSetOf(editor.state);
+    const onTransaction = () => {
       if (editor.isDestroyed) return;
-      // Folds can change via an explicit toggle/setFolded meta OR via
-      // implicit pruning when a folded heading is deleted (apply reducer
-      // drops dead UUIDs on docChanged). Reading on every transaction would
-      // be overkill; gate on either signal. `transactionTouchesFold` now gates
-      // ONLY this fold persister — the fold-chevron resync moved to the shared
-      // sectionFoldingPlugin `view()` (#29 nit-3) with its own O(1) reference
-      // bail, so it no longer rides this predicate.
-      if (!transactionTouchesFold(props.transaction)) return;
-      const folded = [...getSectionFoldingState(editor.state).folded];
-      writeFolds(folded);
+      const folded = foldedSetOf(editor.state);
+      if (folded === lastFolded) return;
+      // Not consumed before the sidecar has loaded (`writeFolds` would drop
+      // it): the first transaction after load still sees the change.
+      if (!loadedRef.current) return;
+      lastFolded = folded;
+      writeFolds(folded ? [...folded] : []);
     };
 
     editor.on("selectionUpdate", onSelection);

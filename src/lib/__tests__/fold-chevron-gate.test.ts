@@ -24,9 +24,10 @@
  * while a real fold toggle DOES repaint, proving the resync still works.
  *
  * Layers tested:
- *   1. `transactionTouchesFold` predicate — false for a non-fold tx. (The
- *      predicate survives: `useEditorUIState.ts`'s fold persister still gates
- *      on it, even though the chevron resync no longer does.)
+ *   1. `foldedSetOf` — the fold set's identity, the ONE change signal both
+ *      per-transaction readers ask (the chevron view and `useEditorUIState.ts`'s
+ *      fold persister, task 925): unchanged by a selection move AND by typing
+ *      while a section is folded; replaced by a real fold change.
  *   2. The mounted chevron's `classList.toggle` via a spy on its button —
  *      driven now by the shared plugin-view (and the per-node `update()`),
  *      not a per-heading transaction subscriber.
@@ -51,7 +52,7 @@ import {
 } from "@/lib/editor-extensions";
 import {
   sectionFoldingPluginKey,
-  transactionTouchesFold,
+  foldedSetOf,
 } from "@/lib/section-folding";
 
 /**
@@ -144,24 +145,36 @@ function posInLastParagraph(editor: Editor): number {
   return editor.state.doc.content.size - 1;
 }
 
-describe("#29a transactionTouchesFold predicate", () => {
-  it("is false for a selection-only transaction (no doc change, no fold meta)", () => {
+describe("#29a foldedSetOf — the fold set's identity (task 925)", () => {
+  it("is unchanged by a selection-only transaction", () => {
     const { editor } = buildTwoSectionEditor();
-    const tr = editor.state.tr.setSelection(
-      TextSelection.create(editor.state.doc, 1),
+    const before = foldedSetOf(editor.state);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)),
     );
-    expect(tr.docChanged).toBe(false);
-    expect(transactionTouchesFold(tr)).toBe(false);
+    expect(foldedSetOf(editor.state)).toBe(before);
     editor.destroy();
   });
 
-  it("is true for a fold-meta transaction", () => {
+  it("is unchanged by TYPING while a section is folded (the keystroke the old docChanged gate let through)", () => {
     const { editor } = buildTwoSectionEditor();
-    const tr = editor.state.tr.setMeta(sectionFoldingPluginKey, {
-      action: "toggle",
-      uuid: "h-A",
-    });
-    expect(transactionTouchesFold(tr)).toBe(true);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, { action: "toggle", uuid: "h-A" }),
+    );
+    const folded = foldedSetOf(editor.state);
+    expect(folded?.has("h-A")).toBe(true);
+    editor.view.dispatch(editor.state.tr.insertText("x", posInLastParagraph(editor)));
+    expect(foldedSetOf(editor.state)).toBe(folded);
+    editor.destroy();
+  });
+
+  it("is replaced by a fold-meta transaction", () => {
+    const { editor } = buildTwoSectionEditor();
+    const before = foldedSetOf(editor.state);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, { action: "toggle", uuid: "h-A" }),
+    );
+    expect(foldedSetOf(editor.state)).not.toBe(before);
     editor.destroy();
   });
 });
