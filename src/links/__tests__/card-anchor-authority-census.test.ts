@@ -156,9 +156,17 @@ describe("card-anchor authority census (task 369)", () => {
     expect(omniHost).toContain("useCardAnchorPass()");
     // The margin's adapter is production code (`buildMarginMarkerRows` /
     // `marginAnchorRowPid`) precisely so the contract test can drive BOTH
-    // readers. An inline re-derivation here is the pre-369 shape.
-    expect(editorPane).toContain("buildMarginMarkerRows(");
-    expect(editorPane).toContain("marginAnchorRowPid(");
+    // readers. An inline re-derivation here is the pre-369 shape. Since task
+    // 939 the margin builds every card marker through ONE registry-derived
+    // builder (`src/cards/margin-markers.ts`), which is where the adapter is
+    // read; EditorPane hands it the pass and must not re-derive rows itself.
+    const marginMarkers = codeOnly(
+      readFileSync(path.join(SRC, "cards", "margin-markers.ts"), "utf8"),
+    );
+    expect(editorPane).toContain("pushSourceMarkers(");
+    expect(editorPane).toContain("resolve: anchorPass.resolve");
+    expect(marginMarkers).toContain("buildMarginMarkerRows(");
+    expect(marginMarkers).toContain("marginAnchorRowPid(");
     // …and the omni readers are an EXACT SET, discovered from both sides:
     // every builder that TAKES the authority must READ it, and vice versa. A
     // count floor would let a 7th adopter mask a builder that regressed to a

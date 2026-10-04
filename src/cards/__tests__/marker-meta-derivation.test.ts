@@ -208,10 +208,11 @@ describe("marker labels derive from CARD_REGISTRY.label (task 756)", () => {
   it("EditorPane's marker-title fallbacks are registry reads, not literals", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const src = fs.readFileSync(
-      path.resolve(__dirname, "../../components/EditorPane.tsx"),
-      "utf8",
-    );
+    // Task 939: the titles live in the ONE marker builder now; EditorPane is
+    // still scanned so a hand-built branch reappearing there is caught too.
+    const src = ["../../components/EditorPane.tsx", "../margin-markers.ts"]
+      .map((f) => fs.readFileSync(path.resolve(__dirname, f), "utf8"))
+      .join("\n");
     // A `title: … || "<Word>"` fallback, or a card-label literal in the marker
     // title ternaries, is the drift this task retired.
     const labels = new Set(

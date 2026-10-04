@@ -360,12 +360,9 @@ export interface MarginaliaMarker {
   title?: string;
   /** When true the marker renders at reduced opacity (e.g. done todos) */
   muted?: boolean;
-  /**
-   * Linked anchor id, when this marker is bound to a specific text range
-   * via the `linkedAnchor` mark. Used to drive range highlighting on
-   * hover/click.
-   */
-  anchorId?: string;
+  // NOTE (task 939): no `anchorId` field. It claimed to drive range
+  // highlighting on hover/click, was written by four marker branches and read
+  // by nobody — the halo resolves the card's range through the card itself.
   /**
    * CHIP-B: the card's anchor resolved to `source:'orphan'` (its stored
    * uuid + mark + text-snapshot are ALL dead in the live doc — see

@@ -281,6 +281,11 @@ import {
   type MarginItemKind,
 } from "@/cards/delete-margin-item";
 import {
+  MARGIN_MARKER_SOURCES,
+  pushSourceMarkers,
+  type CardMarkerCtx,
+} from "@/cards/margin-markers";
+import {
   useAnchorRetargetApi,
   rehomeAbsorbedAnchor,
 } from "@/cards/retarget-anchors";
@@ -342,8 +347,6 @@ import {
 } from "@/links/links";
 import {
   buildCardAnchorPass,
-  buildMarginMarkerRows,
-  marginAnchorRowPid,
   sortCardsByResolvedAnchor,
 } from "@/links/card-anchor-rows";
 import { marginSideForMarkerType, type PanelSideMap } from "@/lib/margin-side";
@@ -3071,14 +3074,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       cardId: string,
       paragraphId: string,
       anchorPids: readonly string[],
-      anchorId?: string,
     ) =>
       deleteMarginItem({
         kind,
         cardId,
         paragraphId,
         anchorPids,
-        anchorId,
         handlers: marginItemHandlers[kind],
         confirm: confirmMarginItemDelete,
         editor: innerRef.current?.getEditor() ?? null,
@@ -3751,193 +3752,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     void rev.blocks;
     const result: MarginaliaMarker[] = [];
 
-    /**
-     * Resolve a card to its live marker paragraph(s) + orphan flag through the
-     * ONE card-anchor authority (`buildCardAnchorPass`, task 369) — the SAME
-     * rows the omni builders draw from, so the two renderers of a card's
-     * anchor can never disagree about whether it resolves. The whole rule
-     * (mount-gap fail-open, the `resolveAnchorState` classification, the
-     * multi-anchor seeding) lives in `src/links/card-anchor-rows.ts`; this is
-     * the margin's thin adapter onto it.
-     */
-    // NOTE the loops below no longer pre-check `getLinkedTextObjectIds(card)`
-    // before asking. That gate was the LAST place the two renderers could
-    // still disagree: a card whose stored pids are empty but whose snapshot
-    // (or surviving mark) still resolves — a Mode-B card that lost its
-    // textObjectIds is the shipped shape, see task 107 — got an anchored omni
-    // row and NO marker at all. A card with nothing to resolve returns zero
-    // rows here, so the loop emits nothing and the skip is the authority's.
-    const resolveMarkerPids = (c: CardWithLinks) =>
-      buildMarginMarkerRows(c, anchorPass.resolve);
-
-    // T5 Pillar E-2 / task 916: the anchor pid a marker names its omni row by
-    // — the row's IDENTITY, not its position in the live rows (an index there
-    // re-bound a standing pin to a different paragraph when a sibling anchor
-    // died). Answered over the RESOLVED rows, so a RECOVERED paragraph is found
-    // too (task 369); `undefined` for a single-row card (its omni row carries
-    // no suffix) so the bridge keys the bare card popKey.
-    const anchorPidFor = (c: CardWithLinks, pid: string): string | undefined =>
-      marginAnchorRowPid(c, pid, anchorPass.resolve);
-
-    // Notes
-    for (const n of notesHook.notes) {
-      const anchor = getTextAnchor(n);
-      for (const { pid, unanchored, cardPids } of resolveMarkerPids(n)) {
-        result.push({
-          id: `${n.id}:${pid}`,
-          entityId: n.id,
-          entityKind: "note",
-          type: "note",
-          textObjectId: pid,
-          title: n.title || CARD_REGISTRY.note.label,
-          unanchored,
-          onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorPidFor(n, pid)),
-          onDelete: () => {
-            void handleMarginItemDelete("note", n.id, pid, cardPids, anchor?.anchorId);
-          },
-          anchorId: anchor?.anchorId,
-        });
-      }
-    }
-
-    // Archive snippets
-    for (const snippet of archiveHook.snippets) {
-      for (const { pid, unanchored, cardPids } of resolveMarkerPids(snippet)) {
-        result.push({
-          id: `${snippet.id}:${pid}`,
-          entityId: snippet.id,
-          entityKind: "archive",
-          type: "archive",
-          textObjectId: pid,
-          title: CARD_REGISTRY.archive.label,
-          unanchored,
-          onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorPidFor(snippet, pid)),
-          onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid, cardPids); },
-        });
-      }
-    }
-
-    // Revision comments / suggestions — paragraph resolved through the SSOT
-    // (the resolver's `anchorIdToParagraph` rung replaces the old inline
-    // anchorId→paragraph doc walk). `orphan` (mark + uuid + snapshot all
-    // dead) still surfaces an `unanchored` marker rather than vanishing.
-    for (const r of revisionsHook.cards) {
-      // Skip only *resolved* suggestions (accepted/rejected). A `pending` card
-      // is awaiting review and an `applied` card is spliced into the doc but
-      // still awaiting an explicit "Keep" — both are live and keep their margin
-      // marker; `stale` (the paragraph drifted) likewise stays visible so the
-      // user can resolve it. Flag-OFF this is identical to the old
-      // `status !== "pending"` skip, since no card ever reaches applied/stale
-      // without the Phase-1b apply path (pending-changes-flag).
-      if (
-        r.kind === "suggestion" &&
-        (r.status === "accepted" || r.status === "rejected")
-      )
-        continue;
-      const revAnchor = getTextAnchor(r);
-      const anchorId = revAnchor?.anchorId;
-      const revKind: EntityKind =
-        r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
-      // An APPLIED suggestion (flag-ON, spliced-but-not-yet-kept) keeps its
-      // ordinary `revision` marker — no re-skin, and (as of the margin-declutter
-      // pass) no hover Keep/Revert chips either: the gutter marker is just a
-      // plain revision marker. Keep/Revert reach the change through the card and
-      // the in-context left-margin pill instead.
-      for (const { pid, unanchored, cardPids } of resolveMarkerPids(r)) {
-        result.push({
-          id: `${r.id}:${pid}`,
-          entityId: r.id,
-          entityKind: revKind,
-          type: "revision",
-          textObjectId: pid,
-          title: r.selectedText || CARD_REGISTRY[revKind].label,
-          unanchored,
-          anchorId,
-          onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: revKind, id: r.id }, clickY, anchorPidFor(r, pid)),
-          onDelete: () => {
-            void handleMarginItemDelete("revision", r.id, pid, cardPids, anchorId);
-          },
-        });
-      }
-    }
-
-    // Cutter cards
-    for (const c of cutterHook.cards) {
-      const cardAnchor = getTextAnchor(c);
-      const title = c.kind === "suggestion"
-        ? c.explanation || CARD_REGISTRY["cutter-suggestion"].label
-        : c.text || CARD_REGISTRY["cutter-comment"].label;
-      const cutKind: EntityKind =
-        c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
-      // An APPLIED cutter suggestion (flag-ON) keeps its ordinary `cut` marker —
-      // no re-skin and no hover Keep/Revert chips (margin-declutter pass); the
-      // gutter marker is plain. Keep/Revert reach the change through the card and
-      // the in-context left-margin pill instead.
-      for (const { pid, unanchored, cardPids } of resolveMarkerPids(c)) {
-        result.push({
-          id: `${c.id}:${pid}`,
-          entityId: c.id,
-          entityKind: cutKind,
-          type: "cut",
-          textObjectId: pid,
-          title,
-          unanchored,
-          onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorPidFor(c, pid)),
-          onDelete: () => {
-            void handleMarginItemDelete("cut", c.id, pid, cardPids, cardAnchor?.anchorId);
-          },
-          anchorId: cardAnchor?.anchorId,
-        });
-      }
-    }
-
-    // Reports (report + report-request) — both kinds share the "report" marker
-    for (const c of reportsHook.cards) {
-      const cardAnchor = getTextAnchor(c);
-      const title = c.kind === "report"
-        ? (c.title || c.text || CARD_REGISTRY.report.label)
-        : (c.text || CARD_REGISTRY["report-request"].label);
-      for (const { pid, unanchored, cardPids } of resolveMarkerPids(c)) {
-        result.push({
-          id: `${c.id}:${pid}`,
-          entityId: c.id,
-          entityKind: c.kind,
-          type: "report",
-          textObjectId: pid,
-          title,
-          unanchored,
-          onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorPidFor(c, pid)),
-          onDelete: () => {
-            void handleMarginItemDelete("report", c.id, pid, cardPids, cardAnchor?.anchorId);
-          },
-          anchorId: cardAnchor?.anchorId,
-        });
-      }
-    }
-
-    // Todo
-    for (const item of todosHook.items) {
-      for (const { pid, unanchored, cardPids } of resolveMarkerPids(item)) {
-        result.push({
-          id: `${item.id}:${pid}`,
-          entityId: item.id,
-          entityKind: "todo",
-          type: "todo",
-          textObjectId: pid,
-          title: item.text || CARD_REGISTRY.todo.label,
-          muted: item.done,
-          unanchored,
-          onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "todo", id: item.id }, clickY, anchorPidFor(item, pid)),
-          onDelete: () => { void handleMarginItemDelete("todo", item.id, pid, cardPids); },
-        });
-      }
-    }
+    // Card markers — ONE registry-derived builder (task 939). Each marker's
+    // `type` (and the delete door's kind) is READ from
+    // `CARD_REGISTRY[kind].markerType`, `entityKind` is set by construction,
+    // and every row comes from the ONE card-anchor authority
+    // (`buildCardAnchorPass`, task 369) — the SAME rows the omni builders draw
+    // from, so the two renderers of a card's anchor can never disagree about
+    // whether it resolves. A card with nothing to resolve returns zero rows,
+    // so the skip is the authority's (no `getLinkedTextObjectIds` pre-check;
+    // see task 107). The per-collection facts live in `MARGIN_MARKER_SOURCES`.
+    const markerCtx: CardMarkerCtx = {
+      resolve: anchorPass.resolve,
+      onClick: handleMarginMarkerClick,
+      onDelete: (kind, cardId, pid, cardPids) => {
+        void handleMarginItemDelete(kind, cardId, pid, cardPids);
+      },
+    };
+    const src = MARGIN_MARKER_SOURCES;
+    pushSourceMarkers(result, notesHook.notes, src.notes, markerCtx);
+    pushSourceMarkers(result, archiveHook.snippets, src.archive, markerCtx);
+    pushSourceMarkers(result, revisionsHook.cards, src.revisions, markerCtx);
+    pushSourceMarkers(result, cutterHook.cards, src.cutter, markerCtx);
+    pushSourceMarkers(result, reportsHook.cards, src.reports, markerCtx);
+    pushSourceMarkers(result, todosHook.items, src.todos, markerCtx);
 
     // Errors — only emitted when not dismissed, paragraph resolved
     for (const err of allLatexErrors) {
@@ -3980,9 +3817,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // the structural counters, so this dep re-derives the markers exactly when
     // the resolution can have changed — and never on a plain keystroke.
     anchorPass,
-    // The reactive editor instance — still a dep because several marker
-    // branches below read the live doc directly (the revision text-anchor
-    // walk, the error paragraph map).
+    // The reactive editor instance — still a dep because the error branch's
+    // paragraph map reads the live doc.
     editor,
   ]);
 
