@@ -34,6 +34,10 @@ import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/d
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 import { paneDockSlot } from "@/components/editor-layout/pane-dom";
+import {
+  useViewPrefProjection,
+  useViewPrefProjectionAttrs,
+} from "@/components/editor-layout/chrome-context";
 
 /**
  * Floating-shell resize clamps — the single source of truth for how small
@@ -326,6 +330,12 @@ function FloatingPanelInner({
   // so its anchor is present and EMPTY, and a document-global lookup portaled
   // the visible pane's panel straight into it.
   const isVisible = useIsVisible();
+  // The owning pane's view-pref projection (task 927): a float portals out of
+  // the pane's subtree, so it carries the pane's projected classes + native
+  // `spellcheck` attribute on its own root — the Reader's floats follow the
+  // Reader's toggles, the editor's the editor's. Empty outside a pane.
+  const viewPrefRoot = useViewPrefProjection();
+  const viewPrefAttrs = useViewPrefProjectionAttrs(viewPrefRoot);
   const [pos, setPos] = useState({
     x: initialX,
     y: initialY,
@@ -1234,7 +1244,8 @@ function FloatingPanelInner({
       data-floating-panel="true"
       data-panel-shell-mode={mode}
       data-panel-shell-id={panelId}
-      className="flex flex-col overflow-hidden"
+      className={`flex flex-col overflow-hidden${viewPrefRoot.className ? ` ${viewPrefRoot.className}` : ""}`}
+      {...viewPrefAttrs}
       style={
         accentTint
           ? ({ ...containerStyle, "--link-anchor-color": accentTint } as React.CSSProperties)

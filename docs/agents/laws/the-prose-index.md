@@ -136,11 +136,12 @@ Four rules it earned:
   twelve `editorProps.attributes` blocks that would each need a
   `checkSpelling` prop (the main editor, `RichTextField`, `BorrowedMainText`,
   nine float bodies, `ExampleCard`) and NONE of them sets `spellcheck` today.
-  The body attribute covers every surface that exists and every surface that
-  will, by construction — the same mechanism and the same reasoning as
-  `EditorLayout`'s `.hide-card-titles` / `.card-outline-chrome` body classes,
-  whose own comment gives the reason ("cards render in the panel strips, the
-  omni host, AND body-portaled float popouts").
+  The inherited attribute covers every surface that exists and every surface
+  that will, by construction — the same mechanism as the `.hide-card-titles` /
+  `.card-outline-chrome` classes. Since task 927 it is not a `<body>` write:
+  the registry row declares it and the one view-pref projector paints it on
+  the OWNING instance's roots (`.editor-pane-root` + each FloatingPanel the
+  pane portals), so the Library Reader's toggle reaches the Reader.
 - **ON is the ABSENCE of the attribute, not `"true"`.** The default state IS
   on, so the pref's default position leaves the DOM byte-identical to what
   shipped before the switch existed.

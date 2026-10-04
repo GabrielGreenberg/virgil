@@ -4165,15 +4165,17 @@ textarea,
  * identical in default/hover/selected states. The selected card's quiet
  * identity comes from its body tint (panel-theme), not a heavier ring.
  *
- * OPT-IN (task 026): the colored outline is now gated behind
- * `body.card-outline-chrome` — the `cardOutlineChrome` View pref (default
- * OFF). By default the hover/select feedback is the retint/brighten alone;
- * the retint (bg + neutral edge in panel-primitives) is a disjoint property
- * set, so it survives with the class absent. The reflect effect lives in
- * EditorLayout (body-class toggle, keystroke-safe). */
-body.card-outline-chrome [data-card-key][data-card-hovered="true"],
-body.card-outline-chrome [data-card-key][data-card-selected="true"],
-body.card-outline-chrome [data-card-key]:hover {
+ * OPT-IN (task 026): the colored outline is gated behind
+ * `.card-outline-chrome` — the `cardOutlineChrome` View pref (default OFF).
+ * By default the hover/select feedback is the retint/brighten alone; the
+ * retint (bg + neutral edge in panel-primitives) is a disjoint property set,
+ * so it survives with the class absent. The class is the pref's REGISTRY
+ * projection, painted on the owning instance's roots — `.editor-pane-root`
+ * and each FloatingPanel it portals (task 927; it used to sit on <body>,
+ * which the Library Reader's own toggle could not reach). */
+.card-outline-chrome [data-card-key][data-card-hovered="true"],
+.card-outline-chrome [data-card-key][data-card-selected="true"],
+.card-outline-chrome [data-card-key]:hover {
   outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
 }
@@ -4195,7 +4197,9 @@ body.card-outline-chrome [data-card-key]:hover {
  * the inner card stamps does not inherit UP to the host.
  * `data-contains-active-card` replaces the old `:has([data-card-*])` — the
  * reconciler stamps it upward at write time (perf Wave 0, plan P5.1). */
-body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"][data-contains-active-card="true"] {
+/* The projection sits ON the FloatingPanel root itself (it portals out of the
+ * pane), hence the compound selector rather than a descendant one. */
+.card-outline-chrome[data-floating-panel][data-panel-shell-mode="floating"][data-contains-active-card="true"] {
   box-shadow:
     var(--card-shadow-ambient),
     0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent)
@@ -4210,7 +4214,7 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
  * (0,4,0) against `.focus-outline:focus-visible`'s (0,2,0), so unscoped it
  * also deleted the card root's keyboard indicator, on every popped card,
  * silently (a popped card is selected, so the branch always matched). The
- * window ring it hands the job to is `body.card-outline-chrome`-gated and
+ * window ring it hands the job to is `.card-outline-chrome`-gated and
  * that pref is default OFF, so what it handed over to was nothing. Strictly
  * additive: it draws an outline only in a state where none was drawn before,
  * and every selection/hover state it was written for is untouched. */
@@ -5348,14 +5352,14 @@ html {
   display: none !important;
 }
 
-/* View toggles — hide the card +T add-title affordance (page-level
-   `showCardTitles`, the card analog of `showParTitles`). Gated on a
-   body-level `.hide-card-titles` class rather than the `.editor-pane-column`
-   ancestor that `.hide-par-titles` uses: cards live in the panel strips, the
-   omni host, AND body-portaled float popouts — none under that column — so
-   the class must sit on `document.body` to reach every card surface. Only the
-   empty-title `+T` prompt (`.card-title-add-only`) hides; existing set titles
-   stay visible, mirroring the paragraph-title behavior. */
+/* View toggles — hide the card +T add-title affordance (`showCardTitles`,
+   the card analog of `showParTitles`). Cards live in the panel strips, the
+   omni host, AND body-portaled float popouts — none under the
+   `.editor-pane-column` — so the class is the pref's registry projection on
+   the owning instance's ROOTS: `.editor-pane-root` and each FloatingPanel it
+   portals (task 927; formerly <body>, which only the editor's instance wrote).
+   Only the empty-title `+T` prompt (`.card-title-add-only`) hides; existing
+   set titles stay visible, mirroring the paragraph-title behavior. */
 .hide-card-titles .card-title-add-only {
   display: none !important;
 }
@@ -6041,7 +6045,7 @@ html {
 
      `outline` is the fourth zeroed property and the one a reader would omit: it
      is what a SELECTED card carries into the print appendix
-     (`body.card-outline-chrome [data-card-key][data-card-selected]`), which is
+     (`.card-outline-chrome [data-card-key][data-card-selected]`), which is
      OUTSIDE `.tiptap` by design — so its rule is deliberately unscoped. */
   .virgil-view-only {
     --tint-color: transparent !important;

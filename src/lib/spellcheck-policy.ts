@@ -10,25 +10,35 @@
  * of those decisions was right and none of them was STATED, so from outside the
  * pattern read as arbitrary — and there was no way to turn the thing off.
  *
- * ## The switch is ONE attribute on <body>, not a prop on every prose surface
+ * ## The switch is ONE inherited attribute per INSTANCE's roots
  *
  * `spellcheck` is an INHERITED HTML attribute: an element with no `spellcheck`
  * of its own acts on its ancestors', and an explicit descendant value wins over
- * an inherited one. So the whole policy is one write on `<body>`:
+ * an inherited one. So the whole policy is one attribute on the roots a
+ * view-prefs instance owns:
  *
  *   - pref ON  → no attribute at all (the browser default — byte-identical to
  *     the behaviour that shipped before this switch existed);
  *   - pref OFF → `spellcheck="false"`, inherited by every contenteditable and
- *     every input in the app, portaled float popouts included.
+ *     every input under those roots, portaled float popouts included.
+ *
+ * It is not written by this module. The `checkSpelling` registry row DECLARES
+ * it (`project: { attr: "spellcheck", value: "false", when: false }`) and the
+ * one view-pref projector applies it with the instance's classes — onto
+ * `EditorPane`'s `.editor-pane-root` and every `FloatingPanel` that pane
+ * portals (task 927). Until then it was a single write on `<body>` from
+ * `EditorLayout`, which the Library Reader's own instance could not reach:
+ * the Reader's "Check spelling" row changed nothing. App chrome outside any
+ * pane (top bar, dialogs) is now simply the browser's default.
  *
  * The alternative was a `checkSpelling` prop threaded into each surface's
  * ProseMirror `editorProps.attributes` — and there are TWELVE of those blocks
  * (the main editor, `RichTextField`, `BorrowedMainText`, nine float bodies,
  * `ExampleCard`), none of which sets `spellcheck` today. Twelve threads are
- * twelve chances for the thirteenth surface to be forgotten; the body attribute
- * covers every surface that exists and every surface that will, by
- * construction. It is the same mechanism — and the same reasoning — as
- * `EditorLayout`'s `.hide-card-titles` / `.card-outline-chrome` body classes.
+ * twelve chances for the thirteenth surface to be forgotten; the inherited
+ * attribute on the roots covers every surface under them by construction —
+ * the same mechanism as the `.hide-card-titles` / `.card-outline-chrome`
+ * projected classes.
  *
  * ## The deliberate opt-outs stay opted out
  *
@@ -54,7 +64,7 @@
  *
  *   - `NEVER_SPELLCHECK_*` — "a squiggle here would be nonsense" (a citekey
  *     field, a source pod). True in both positions of the preference.
- *   - the `<body>` attribute — "the user turned checking off". One write.
+ *   - the projected root attribute — "the user turned checking off".
  *   - `VIRGIL_CHECKED_ATTRS` — "VIRGIL underlines this surface, so the browser
  *     must not". Contributed by the plugin that PAINTS
  *     (`spellcheck-decorator.ts`), which is what makes the pair honest: it
@@ -66,7 +76,7 @@
  *
  * What is NOT Virgil-checked stays the browser's: the panel `<textarea>`s and
  * `<input>`s (suggestion fields, Todo rows, bib entry fields …) carry no
- * decorator, so they inherit `<body>` — checked natively while the preference
+ * decorator, so they inherit the root's — checked natively while the preference
  * is on, silenced with everything else when it is off. Declining the browser
  * there would leave them with no checker at all.
  *
@@ -87,8 +97,6 @@
  * its existing squiggles until it is next edited or refocused — a property of
  * the browser's checker, not of this write.)
  */
-
-import { useEffect } from "react";
 
 /**
  * The ProseMirror `editorProps.attributes` fragment for a surface that is
@@ -116,7 +124,8 @@ export const VIRGIL_CHECKED_ATTRS: { readonly spellcheck: "false" } = {
   spellcheck: "false",
 };
 
-/** The attribute this policy writes on `<body>`. */
+/** The attribute the `checkSpelling` projection writes (registry row,
+ *  `project: { attr: "spellcheck", … }`) on the owning instance's roots. */
 export const SPELLCHECK_ATTR = "spellcheck";
 
 /**
@@ -133,27 +142,4 @@ export function dropNativeSpellMarkers(el: Element | null | undefined): void {
   if (!el || el.getAttribute(SPELLCHECK_ATTR) !== "false") return;
   el.setAttribute(SPELLCHECK_ATTR, "true");
   el.setAttribute(SPELLCHECK_ATTR, "false");
-}
-
-/**
- * Reflect the preference onto `<body>`. ON removes the attribute rather than
- * writing `"true"`: the default state IS on, so the pref's default position
- * leaves the DOM exactly as it was before this switch existed.
- */
-export function applyNativeSpellcheck(on: boolean): void {
-  if (typeof document === "undefined") return;
-  if (on) document.body.removeAttribute(SPELLCHECK_ATTR);
-  else document.body.setAttribute(SPELLCHECK_ATTR, "false");
-}
-
-/**
- * Mount the policy. Called ONCE, from the app root that already reads the view
- * prefs (`EditorLayout`) — the census pins that it has exactly one caller, so a
- * second writer cannot come to disagree with the first about the attribute.
- */
-export function useNativeSpellcheck(on: boolean): void {
-  useEffect(() => {
-    applyNativeSpellcheck(on);
-    return () => applyNativeSpellcheck(true);
-  }, [on]);
 }

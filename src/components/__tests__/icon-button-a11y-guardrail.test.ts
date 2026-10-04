@@ -1569,7 +1569,7 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
   it("pins the ONE other writer of the card outline, and why it wins", () => {
     // Found while landing task 554 rather than assumed: `cardOutlineChrome`
     // (a View pref, default OFF) writes `outline` on the SAME element the
-    // OUTLINE member does, at (0,3,1) against this class's (0,2,0) — so with
+    // OUTLINE member does, at (0,3,0) against this class's (0,2,0) — so with
     // that pref on it wins, and a keyboard-focused card shows the themed
     // selection edge instead of `--edge-strong`. That is not a stranding
     // (Tab into a card SELECTS it, so the accent edge is drawn) and it is not
@@ -1590,11 +1590,11 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
     expect(writers).toEqual([
       ".focus-outline:focus",
       ".focus-outline:focus-visible",
-      // The PREF, whose three selectors share one block. (0,3,1) beats the
+      // The PREF, whose three selectors share one block. (0,3,0) beats the
       // class, and that is the stated interaction above.
-      'body.card-outline-chrome [data-card-key][data-card-hovered="true"],\n' +
-        'body.card-outline-chrome [data-card-key][data-card-selected="true"],\n' +
-        "body.card-outline-chrome [data-card-key]:hover",
+      '.card-outline-chrome [data-card-key][data-card-hovered="true"],\n' +
+        '.card-outline-chrome [data-card-key][data-card-selected="true"],\n' +
+        ".card-outline-chrome [data-card-key]:hover",
       // The popped-card suppression — (0,4,0), so it beat the class too, and
       // unscoped it deleted the indicator on EVERY popped card. Task 554
       // scoped it to `:not(:focus-visible)`, which is what its own sentence

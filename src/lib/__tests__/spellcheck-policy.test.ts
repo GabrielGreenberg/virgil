@@ -6,7 +6,8 @@
 // Eleven `spellcheck` decisions were scattered across the app and none of them
 // was collected into a rule, so from outside the pattern read as arbitrary and
 // there was no way to turn the thing off. The switch is a single inherited
-// `spellcheck` attribute on `<body>` rather than a `checkSpelling` prop
+// `spellcheck` attribute — since task 927 projected from the registry row onto
+// the OWNING instance's roots, formerly one `<body>` write — rather than a `checkSpelling` prop
 // threaded into each surface's `editorProps.attributes` — there are TWELVE of
 // those blocks (the main editor, RichTextField, BorrowedMainText, nine float
 // bodies, ExampleCard), none of which sets `spellcheck` today, so twelve
@@ -15,7 +16,7 @@
 // The leg with teeth is the CENSUS. The door was never the part that could
 // misbehave — a surface that opts out with a bare literal is, and it renders
 // perfectly while leaving "the surfaces deliberately left out" unstated.
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 import {
@@ -23,10 +24,14 @@ import {
   NEVER_SPELLCHECK_PROPS,
   VIRGIL_CHECKED_ATTRS,
   SPELLCHECK_ATTR,
-  applyNativeSpellcheck,
   dropNativeSpellMarkers,
 } from "@/lib/spellcheck-policy";
-import { VIEW_PREF_REGISTRY, toggleRowsInMenuGroup } from "@/lib/view-prefs/registry";
+import {
+  REGISTRY_DEFAULTS,
+  VIEW_PREF_REGISTRY,
+  toggleRowsInMenuGroup,
+} from "@/lib/view-prefs/registry";
+import { projectViewPrefs } from "@/lib/view-prefs/projection";
 import {
   commentsStripped,
   trackedFiles,
@@ -35,26 +40,25 @@ import {
 
 // ── A. the write ─────────────────────────────────────────────────────────────
 
-describe("the switch is one attribute on <body>", () => {
-  beforeEach(() => document.body.removeAttribute(SPELLCHECK_ATTR));
-
-  it("OFF writes `spellcheck=false`; ON removes the attribute entirely", () => {
-    applyNativeSpellcheck(false);
-    expect(document.body.getAttribute(SPELLCHECK_ATTR)).toBe("false");
+describe("the switch is one projected attribute (task 927)", () => {
+  it("OFF projects `spellcheck=false`; ON projects NO attribute", () => {
+    expect(
+      projectViewPrefs({ ...REGISTRY_DEFAULTS, checkSpelling: false }).attrs,
+    ).toEqual({ [SPELLCHECK_ATTR]: "false" });
     // ON is the ABSENCE of the attribute, not `"true"`: the default state IS
     // on, so the pref's default position leaves the DOM byte-identical to what
     // shipped before the switch existed.
-    applyNativeSpellcheck(true);
-    expect(document.body.hasAttribute(SPELLCHECK_ATTR)).toBe(false);
+    expect(
+      projectViewPrefs({ ...REGISTRY_DEFAULTS, checkSpelling: true }).attrs,
+    ).toEqual({});
   });
 
-  it("is idempotent in both positions", () => {
-    applyNativeSpellcheck(false);
-    applyNativeSpellcheck(false);
-    expect(document.body.getAttribute(SPELLCHECK_ATTR)).toBe("false");
-    applyNativeSpellcheck(true);
-    applyNativeSpellcheck(true);
-    expect(document.body.hasAttribute(SPELLCHECK_ATTR)).toBe(false);
+  it("the registry row declares it — no module writes it by hand", () => {
+    expect(VIEW_PREF_REGISTRY.checkSpelling.project).toEqual({
+      attr: SPELLCHECK_ATTR,
+      value: "false",
+      when: false,
+    });
   });
 
   it("dropNativeSpellMarkers re-edges a declining element and never turns a checker ON (task 806)", () => {
@@ -190,17 +194,20 @@ describe("census — every opt-out enters the door", () => {
     expect(props.length).toBeGreaterThanOrEqual(6);
   });
 
-  it("the policy has exactly ONE mount", () => {
-    // Two writers of one attribute is how they come to disagree. `useEffect`
-    // cleanup restores ON, so a second mount unmounting would silently
-    // re-enable spellcheck under the first.
-    const callers: string[] = [];
+  it("nothing writes the attribute on <body> (task 927)", () => {
+    // One `<body>` slot, two view-prefs instances (the editor's and the
+    // Library Reader's): the Reader's row changed nothing because only
+    // EditorLayout wrote it. The attribute is a registry projection now,
+    // applied per instance on its own roots — a body write would bring the
+    // fight back.
+    const writers: string[] = [];
     for (const abs of PRODUCTION) {
       const rel = abs.slice(REPO_ROOT.length + 1);
-      if (rel === DOOR) continue;
       const src = commentsStripped(readFileSync(abs, "utf8"));
-      if (/useNativeSpellcheck\s*\(/.test(src)) callers.push(rel);
+      if (/document\.body\.(set|remove)Attribute\(\s*(SPELLCHECK_ATTR|["']spellcheck["'])/.test(src))
+        writers.push(rel);
+      if (/useNativeSpellcheck\s*\(/.test(src)) writers.push(rel);
     }
-    expect(callers).toEqual(["src/components/EditorLayout.tsx"]);
+    expect(writers).toEqual([]);
   });
 });
