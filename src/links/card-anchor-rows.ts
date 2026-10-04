@@ -47,6 +47,7 @@ import {
   type ResolveIndex,
 } from "./resolve-card-anchor";
 import { resolveAnchorState, type AnchorIntent } from "./anchor-state";
+import { isModeB, type Link } from "./_shared/types";
 
 /** One live anchor a card renders on. */
 export interface CardAnchorRow {
@@ -65,7 +66,9 @@ export interface CardAnchorRows {
    *   - resolved  → ONE row per LIVE anchor, seeded with the RESOLVED
    *     paragraph (which may be a paragraph that is not among the card's
    *     stored pids at all — a mark- or snapshot-recovered one) followed by
-   *     every still-live stored pid, deduped and order-stable;
+   *     each link's own live paragraphs (a Mode-A link's live stored pids, a
+   *     live-marked Mode-B link's mark paragraph ONLY), deduped and
+   *     order-stable;
    *   - unresolved w/ stored anchors → exactly ONE row, keyed on the card's
    *     first stored pid so the marker keeps a stable id for the re-pin
    *     gesture;
@@ -177,23 +180,54 @@ export function resolveCardAnchorRows(
       : NO_ROWS;
   }
 
-  // Emit a row for EVERY live stored pid (multi-anchor Mode-A), not just the
+  // Emit a row for EVERY live anchor (multi-anchor Mode-A), not just the
   // resolver's first-live binding — a healthy multi-paragraph card would
   // otherwise silently drop P2..Pn and lose its per-pid detach affordance.
   // Seed with `res.paragraphId` so a mark-/snapshot-recovered paragraph that
-  // is NOT a raw stored pid is still rendered; then append every still-live
-  // stored pid, deduped, order-stable.
+  // is NOT a raw stored pid is still rendered; then append each link's OWN
+  // live paragraphs (`liveParagraphsOfLink`), deduped, order-stable.
+  //
+  // Per LINK, not per stored pid (task 934): a Mode-B link whose mark is live
+  // is anchored where its MARK is, and its stored `textObjectIds` are only a
+  // record of where the mark was born. Split the paragraph before the
+  // highlighted words (Enter) and the mark rides into the new tail P' while
+  // the stored pid P stays live — appending the flat stored-pid list painted
+  // a SECOND marker on P for the one highlight, and Delete on the real one
+  // took the multi-anchor branch and `unanchor`ed a pid the card never stored.
   const seen = new Set<string>();
   const rows: CardAnchorRow[] = [];
-  for (const pid of [
-    res.paragraphId,
-    ...pids.filter((p) => index.uuidToParagraph.has(p)),
-  ]) {
+  const candidates = [res.paragraphId];
+  for (const link of card.links ?? []) {
+    candidates.push(...liveParagraphsOfLink(link, index));
+  }
+  for (const pid of candidates) {
     if (seen.has(pid)) continue;
     seen.add(pid);
     rows.push({ pid, pos: index.uuidToPos.get(pid) ?? null });
   }
   return { rows, anchored: true };
+}
+
+/**
+ * The live paragraphs ONE link is anchored on — the per-link reading of the
+ * resolver's rungs 1, 2 and 2b (task 934):
+ *
+ *   - Mode-A → every live stored pid (multi-paragraph legacy links included);
+ *   - Mode-B with a LIVE mark → the mark's paragraph, and ONLY that — the
+ *     stored pids name where the highlight was born, not where it is;
+ *   - Mode-B whose mark is dead → its live stored pids (the RC1 self-heal);
+ *   - anything else → none.
+ */
+function liveParagraphsOfLink(link: Link, index: ResolveIndex): string[] {
+  if (link.anchor.type !== "textObject") return [];
+  if (isModeB(link)) {
+    const anchorId = link.anchor.textRange?.anchorId;
+    const markPid = anchorId ? index.anchorIdToParagraph.get(anchorId) : undefined;
+    if (markPid) return [markPid];
+  }
+  return link.anchor.textObjectIds.filter(
+    (p) => !!p && index.uuidToParagraph.has(p),
+  );
 }
 
 // ---------------------------------------------------------------------------

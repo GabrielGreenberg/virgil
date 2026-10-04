@@ -259,14 +259,16 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
   });
 
   it("multi-anchor: the `@<pid>` keying is answered over the RESOLVED rows on both sides", () => {
-    // The only shape where the RESOLVED paragraph is not a stored pid AND live
-    // stored pids remain: a Mode-B link whose `linkedAnchor` mark survives in
-    // P2 (rung 2) while its own stored `textObjectIds` still name live P1.
-    // Rung 1 skips `linkedRange` links, so the mark wins and the shared row
-    // order is [P2, P1] — where pre-369 the margin indexed the STORED pids, in
-    // which P2 does not appear at all.
+    // A genuinely multi-anchor card whose rows include a paragraph that is
+    // NOT a stored pid: a Mode-A link on live P1 plus a Mode-B link whose
+    // `linkedAnchor` mark survives in P2 (rung 2) while its own stored
+    // `textObjectIds` still name P1. Rung 1 seeds P1; the Mode-B link adds its
+    // MARK's paragraph P2 — pre-369 the margin indexed the STORED pids, in
+    // which P2 does not appear at all. (Before task 934 the Mode-B link ALONE
+    // drew [P2, P1] — a second marker for its stale stored pid; that is now
+    // one row, pinned in `mode-b-split-one-row.test.tsx`.)
     const editor = mountDocWithMark("A1");
-    const card = snippet("s3", [rangeLink("A1", "P1")]);
+    const card = snippet("s3", [paraLink("P1"), rangeLink("A1", "P1")]);
     const pass = buildCardAnchorPass(editor);
 
     const marginRows = buildMarginMarkerRows(card, pass.resolve);
@@ -274,8 +276,8 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
       unanchored: false,
     });
 
-    expect(marginRows.map((r) => r.pid)).toEqual(["P2", "P1"]);
-    expect(omniRows.map((r) => r.omniId)).toEqual(["base@P2", "base@P1"]);
+    expect(marginRows.map((r) => r.pid)).toEqual(["P1", "P2"]);
+    expect(omniRows.map((r) => r.omniId)).toEqual(["base@P1", "base@P2"]);
     for (let i = 0; i < marginRows.length; i++) {
       expect(omniRows[i].anchorUuid).toBe(marginRows[i].pid);
       expect(omniRows[i].anchorState).toBe("anchored");
