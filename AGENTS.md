@@ -42,7 +42,7 @@ Each law below is a load-bearing rule with a CI guard. The full doctrine — eve
 
 > **No plugin, hook, or React effect may do work proportional to document size on each keystroke.** Doc-walking work must be event-driven from the typed structural diff. Decoration plugins must use `DecorationSet.map(tr.mapping)` and re-scan only changed regions.
 
-**Consume the diff. Don't walk the doc.** From `appendTransaction`: `readPendingDiff(newState)`; from React: `useDocStructure` / `useDocStructureBus` / `useDocStructureEvent`; from a long-lived hook: `getBus(editor)`. A new `editor.on("update"|"transaction"|"selectionUpdate", …)` subscriber must be added to the guardrail's allowlist AND the doc's permitted-subscriber list, with a `[cost: …]` justification covering the CALLBACK, not just the gate. Verify with `window.__virgilBusStats()` — typing must leave `emitCount` flat.
+**Consume the diff. Don't walk the doc.** From `appendTransaction`: `readPendingDiff(newState)`; from React: `useStructuralRevisions` (memo deps) / `useDocStructureBus`; from a long-lived hook: `getBus(editor)`. A new `editor.on("update"|"transaction"|"selectionUpdate", …)` subscriber must be added to the guardrail's allowlist AND the doc's permitted-subscriber list, with a `[cost: …]` justification covering the CALLBACK, not just the gate. Verify with `window.__virgilBusStats()` — typing must leave `emitCount` flat.
 
 Doc: [docs/agents/laws/keystroke-sanctity.md](docs/agents/laws/keystroke-sanctity.md).
 CI: `keystroke-subscriber-guardrail.test.ts`, `float-source-touch-gate.test.tsx`, `plugin-apply-guardrail.test.ts`, `container-granularity.test.ts`, `decoration-probe-cost.test.ts`, `latex-command-cmd-only.test.ts` ….

@@ -19,12 +19,12 @@
  *       ],
  *     });
  *
- * From a React component:
+ * From a React component: per-category counters via
+ * `useStructuralRevisions(editor)` (`@/hooks/useStructuralRevisions`) for
+ * memo deps, or `useDocStructureBus(editor)` / `getBus(editor)` in an effect
+ * for a typed subscription:
  *
- *     const structure = useDocStructure(editor);
- *     useDocStructureEvent(editor, "onHeadingsRecomputable", (diff, structure) => {
- *       // …
- *     });
+ *     useEffect(() => getBus(editor)?.onHeadingsRecomputable(fn), [editor]);
  *
  * From a ProseMirror plugin's `appendTransaction`:
  *
@@ -35,11 +35,13 @@
  *     }
  */
 
+// The PUBLIC surface: every name below has a production caller outside this
+// module (task 924 — "a re-export is not a caller"). Test-only and
+// module-internal names (`docStructureKey`, `docStructureStateSpec`,
+// `applyDiff`, `EMPTY_STRUCTURE`, `inspectSteps`, `EMPTY_DIFF`, `isEmptyDiff`,
+// `createDocStructureBus`, …) are imported from their defining files.
 export {
   DocStructureObserver,
-  docStructureKey,
-  docStructureStateSpec,
-  type PluginState as DocStructurePluginState,
   readDocStructure,
   readPendingDiff,
   resolveTouchedBlock,
@@ -50,36 +52,18 @@ export {
   getMaterializeCount,
 } from "./observer-plugin";
 
-export {
-  attachBus,
-  getBus,
-  detachBus,
-  createDocStructureBus,
-  type DocStructureBus,
-  type Unsub,
-} from "./bus";
+// `attachBus` / `detachBus` stay module-internal: the observer plugin owns its
+// bus's lifetime, and a public door would let outside code attach or detach a
+// bus behind it (task 924).
+export { getBus, type DocStructureBus } from "./bus";
 
-export {
-  useDocStructure,
-  useDocStructureBus,
-  useDocStructureEvent,
-  useBlockContentChanged,
-  useExampleContentRevision,
-} from "./hook";
+export { useDocStructureBus, useExampleContentRevision } from "./hook";
 
-export {
-  buildInitial,
-  applyDiff,
-  EMPTY_STRUCTURE,
-} from "./structure-index";
-
-export { inspectSteps } from "./step-inspector";
+export { buildInitial } from "./structure-index";
 
 export { touchedBlockPositions } from "./diff-blocks";
 
 export {
-  EMPTY_DIFF,
-  isEmptyDiff,
   diffHasStructuralEntries,
   diffTouchesNumberingInputs,
   diffExamplesRecomputable,
@@ -91,6 +75,5 @@ export {
   type FigureEntry,
   type FootnoteEntry,
   type HeadingEntry,
-  type LabelEntry,
   type StructureDiff,
 } from "./types";
