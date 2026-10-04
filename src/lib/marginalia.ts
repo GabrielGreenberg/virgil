@@ -122,14 +122,24 @@ export function resolveMarginaliaHost(
 ): HTMLElement | null {
   if (!editor) return null;
   try {
-    return (
-      (editor.view?.dom?.closest(
-        MARGINALIA_HOST_SELECTOR,
-      ) as HTMLElement | null) ?? null
-    );
+    return resolveMarginaliaHostFromDom(editor.view?.dom);
   } catch {
     return null;
   }
+}
+
+/**
+ * The same resolution from an element already in hand — the door for a reader
+ * that holds the ProseMirror DOM rather than the editor (the viewport frame's
+ * pod edges, task 940). Both entry points climb the ONE selector, so "the pod"
+ * a frame measures is structurally the host the markers portal into; no reader
+ * may find it by the `.editor-pane-pod` class instead (pinned in
+ * `marginalia-host-contract.test.ts`).
+ */
+export function resolveMarginaliaHostFromDom(
+  el: Element | null | undefined,
+): HTMLElement | null {
+  return (el?.closest(MARGINALIA_HOST_SELECTOR) as HTMLElement | null) ?? null;
 }
 
 // ---------------------------------------------------------------------------

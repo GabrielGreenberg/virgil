@@ -353,6 +353,12 @@ export interface EditorGeometryService {
    * not yet attached, or no longer in the document. Consumers must
    * tolerate `null` by skipping render — that's the correct response
    * (the block isn't visible so its marginalia isn't visible either).
+   *
+   * `null` ALSO covers a measurement FAILURE: when `measureBlock` throws
+   * (a detached/re-minted node mid-transaction, a layout read on a node
+   * PM no longer owns), it answers `null` and the recompute pass EVICTS
+   * the block's entry, exactly as for a block that left the document. So `null` means "no usable geometry", not proof the block is
+   * outside the near zone — a caller must not infer "off-screen" from it.
    */
   getMetrics(uuid: string): AnchorNodeMetrics | null;
   /**

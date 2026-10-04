@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Editor } from "@tiptap/react";
+import { MARGINALIA_HOST_ATTR } from "@/lib/marginalia";
 import {
   computeViewportFrame,
   viewportFramesEqual,
@@ -52,6 +53,8 @@ function makeEditorEl(opts?: { hidden?: boolean }) {
   col.setAttribute("data-editor-col", "true");
   const pod = document.createElement("div");
   pod.className = "editor-pane-pod";
+  // The frame finds the pod through the marginalia-host door (task 940).
+  pod.setAttribute(MARGINALIA_HOST_ATTR, "");
   const editorEl = document.createElement("div");
   pod.appendChild(editorEl);
   col.appendChild(pod);
