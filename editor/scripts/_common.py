@@ -523,6 +523,44 @@ def is_ai_request_kind(kind) -> bool:
     return isinstance(kind, str) and kind in AI_REQUEST_KINDS
 
 
+#: The panels a `virtual:<panel>:<cardId>` request id may name (task 942) —
+#: the `linkPanel` tokens of the registry-derived routing manifest (the SAME
+#: set `list_requests.list_unbridged_card_flags` mints virtual ids from, and
+#: the TS `AI_REQUEST_LINK_PANELS` twin pinned by
+#: ai-request-routing-manifest.test.ts), plus `examples` — create_card.py's own
+#: Task-less example block. Deliberately NOT the writeback table: `citations`
+#: is a PANEL_TO_SIDECAR row, but no citation card carries an `aiRequest` flag,
+#: so a virtual id naming it addresses nothing.
+AI_REQUEST_LINK_PANELS: frozenset[str] = frozenset(
+    row["linkPanel"]
+    for row in json.loads(
+        Path(__file__).with_name("ai_request_routing.json").read_text(encoding="utf-8")
+    )["routing"].values()
+)
+VIRTUAL_ID_PANELS: frozenset[str] = AI_REQUEST_LINK_PANELS | {"examples"}
+
+
+def is_virtual_request_id(rid) -> bool:
+    return isinstance(rid, str) and rid.startswith("virtual:")
+
+
+def parse_virtual_request_id(rid: str) -> dict:
+    """Split a `virtual:<panel>:<cardId>` id into `{panel, cardId}` — the ONE
+    parser every writer of the card-flag address uses (task 942). Dies on a
+    malformed id, an empty part, or a panel outside VIRTUAL_ID_PANELS: before,
+    four hand-rolled splits accepted `virtual:note:x` (singular) or
+    `virtual:notes:` and the answer landed while clearing no flag, so the
+    request re-surfaced on every drain."""
+    parts = rid.split(":", 2) if isinstance(rid, str) else []
+    if len(parts) != 3 or parts[0] != "virtual" or not parts[1] or not parts[2]:
+        die(f"malformed virtual request id: {rid!r} — expected virtual:<panel>:<cardId>")
+    panel, card_id = parts[1], parts[2]
+    if panel not in VIRTUAL_ID_PANELS:
+        die(f"virtual request id {rid!r} names unknown panel {panel!r} — "
+            f"expected one of {sorted(VIRTUAL_ID_PANELS)}")
+    return {"panel": panel, "cardId": card_id}
+
+
 def is_request_open(r: dict) -> bool:
     """True iff the `ai-requests.json` row is still open to the drain — the
     byte-mirror of TS `isRequestOpen`, two clauses and one gate:

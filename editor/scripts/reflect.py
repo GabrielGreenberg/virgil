@@ -81,6 +81,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import (
+    VIRTUAL_ID_PANELS,
+    is_virtual_request_id,
     DevHomeUnresolved,
     atomic_write,
     dev_mode_enabled,
@@ -331,9 +333,10 @@ def _read_task(doc: Path, task_id: str) -> dict:
         return {**blank, "source": "task-less"}
 
     # virtual:<panel>:<cardId> — a card-flag Task; never carries a result row.
-    if task_id.startswith("virtual:"):
-        return {**blank, "found": True, "source": "card-flag",
-                "kind": task_id.split(":", 2)[1] if task_id.count(":") >= 2 else None}
+    if is_virtual_request_id(task_id):
+        parts = task_id.split(":", 2)
+        panel = parts[1] if len(parts) == 3 and parts[1] in VIRTUAL_ID_PANELS else None
+        return {**blank, "found": panel is not None, "source": "card-flag", "kind": panel}
 
     ar = read_json(sidecar(doc, "ai-requests.json"), default={"requests": []})
     if isinstance(ar, dict):

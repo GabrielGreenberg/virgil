@@ -50,6 +50,7 @@ import {
 } from "@/lib/multi-window/doc-pipeline";
 import { publishAiRequests } from "@/lib/ai-request-events";
 import { UNKNOWN_AI_REQUEST_KIND } from "@/lib/ai-request-kind";
+import { AI_REQUEST_STATUSES, isAiRequestStatus } from "@/lib/ai-request-open";
 
 /**
  * The one spelling of the sidecar filename — deliberately module-PRIVATE.
@@ -105,6 +106,14 @@ function requestsOf(state: AiRequestsState | null | undefined): AiRequest[] {
   return Array.isArray(state?.requests) ? state.requests : [];
 }
 
+// Once per (row, status) per session — the read gate runs on every re-hydrate.
+const warnedStatuses = new Set<string>();
+function firstSighting(key: string): boolean {
+  if (warnedStatuses.has(key)) return false;
+  warnedStatuses.add(key);
+  return true;
+}
+
 /**
  * THE inbound gate (task 682): make every row a renderable record, without
  * overwriting a value that carries meaning.
@@ -146,6 +155,19 @@ export function normalizeAiRequestRows(rows: readonly unknown[]): AiRequest[] {
     const r = raw as Record<string, unknown>;
     const str = (v: unknown, fallback: string) =>
       typeof v === "string" && v ? v : fallback;
+    // An off-vocabulary status is kept VERBATIM (rule 2) — but it reads OPEN
+    // to every predicate, forever, so it is never silent (task 942).
+    if (
+      typeof r.status === "string" &&
+      r.status &&
+      !isAiRequestStatus(r.status) &&
+      firstSighting(`${String(r.id)}\0${r.status}`)
+    ) {
+      console.warn(
+        `[ai-requests] request ${String(r.id ?? `#${i}`)} has unknown status ` +
+          `"${r.status}" — treated as open; expected one of ${AI_REQUEST_STATUSES.join(", ")}`,
+      );
+    }
     const linkedTo =
       typeof r.linkedTo === "object" && r.linkedTo !== null
         ? (r.linkedTo as Record<string, unknown>)
