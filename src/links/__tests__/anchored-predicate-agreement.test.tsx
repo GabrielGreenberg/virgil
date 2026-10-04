@@ -40,7 +40,8 @@ import {
   buildCardAnchorPass,
   sortCardsByResolvedAnchor,
 } from "@/links/card-anchor-rows";
-import { resolveLink, jumpToCard, type CardWithLinks } from "@/links/links";
+import { resolveLink, type CardWithLinks } from "@/links/links";
+import { jumpToCard } from "@/links/jump-to-card";
 import type { Link } from "@/links/_shared/types";
 import type { ArchivedSnippet } from "@/lib/types";
 

@@ -2027,3 +2027,12 @@ Rule: both halves stand on the READING LINE
 END of the doc cannot reach the line (scroll clamps), so there the fixed point is
 unreachable — the recorder may re-read a neighbour. CI:
 `reading-line.test.tsx` (fails with the recorder half reverted).
+
+### The act half: a Jump lands on the authority's WINNER, and a row jumps to its OWN anchor (task 935)
+
+Task 665 gave the ACT (`jumpToCard`) the gate's RUNGS but not the gate's ORDER: it ran `resolveLink`'s whole ladder PER LINK, in link order, and took the first link that resolved — while the marker, the omni row and the Jump gate bind to `resolveCardAnchor`'s winner, whose uuid rung runs across ALL links before any snapshot. A card `[L0: dead pid whose snapshot matches Px, L1: live pid Py]` drew its marker on Py and jumped to Px. And the six omni builders handed the jump the CARD, never the row, so every `@<pid>` row of a multi-anchor card jumped to the same paragraph.
+
+- **The act asks the authority's own pass.** `CardAnchorPass.jumpTarget(card, rowPid?)` ([src/links/card-anchor-rows.ts](../../../src/links/card-anchor-rows.ts)) names the landing place off the SAME index and ladder the rows are drawn from — the row's own pid when live, else the authority's winner (`linkIndex`, task 664), preferring a live mark of the card's on that paragraph. [src/links/jump-to-card.ts](../../../src/links/jump-to-card.ts) turns it into a scroll through ONE door, `jumpToTarget` (align-to-card / center + the `virgil-card-jumped` pin); inline-atom links, which the authority never binds, are its only `resolveLink` fallback. Reordering `jumpToCard`'s loop to match the authority was rejected: it re-implements the ladder a second time — the class 665 fought — and the authority census (`card-anchor-authority-census.test.ts` leg D) forbids a third ladder caller by construction.
+- **A row passes its pid.** Every omni builder calls `a.jumpToCard(card, sourceEl, row.anchorUuid)`; a row pid that died since the row was built falls back to the authority rather than jumping nowhere.
+
+CI: `jump-to-card-authority.test.tsx` (winner leg, snapshot leg, orphan leg, row-pid leg, dead-row fallback, and a census that every omni builder's jump passes `row.anchorUuid`); `gutter-stability-census.test.ts` counts one pin dispatch per jump door.

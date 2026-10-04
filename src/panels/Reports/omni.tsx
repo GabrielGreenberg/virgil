@@ -21,7 +21,7 @@ interface BuildArgs {
   cards: ReportItem[];
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
-  jumpToCard: (card: ReportItem, sourceEl?: HTMLElement | null) => void;
+  jumpToCard: (card: ReportItem, sourceEl?: HTMLElement | null, rowPid?: string | null) => void;
   resolveCardRows: CardAnchorResolver;
   updateReportContent: (id: string, content: JSONContent) => void;
   updateReportTitle: (id: string, title: string) => void;
@@ -64,7 +64,7 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
     const renderCard = (row: OmniAnchorRow) => {
       const omniId = row.omniId;
       const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
-        a.jumpToCard(card, sourceEl),
+        a.jumpToCard(card, sourceEl, row.anchorUuid),
       );
       return card.kind === "report" ? (
         <ReportCard

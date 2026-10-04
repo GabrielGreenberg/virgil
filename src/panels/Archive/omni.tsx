@@ -12,7 +12,7 @@ interface BuildArgs {
   archiveSnippets: ArchivedSnippet[];
   selectedArchiveId: string | null;
   setSelectedArchiveId: (id: string | null) => void;
-  jumpToCard: (card: ArchivedSnippet, sourceEl?: HTMLElement | null) => void;
+  jumpToCard: (card: ArchivedSnippet, sourceEl?: HTMLElement | null, rowPid?: string | null) => void;
   resolveCardRows: CardAnchorResolver;
   updateArchiveSnippet: (id: string, content: JSONContent) => void;
   updateArchiveSnippetTitle: (id: string, title: string) => void;
@@ -64,7 +64,7 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
             onUpdateTitle={a.updateArchiveSnippetTitle}
             onDelete={a.handleDeleteArchive}
             onJump={row.withJump((sourceEl?: HTMLElement | null) =>
-              a.jumpToCard(snippet, sourceEl),
+              a.jumpToCard(snippet, sourceEl, row.anchorUuid),
             )}
             onEditorFocus={a.setOverrideEditor}
             getCitationDisplayText={a.getCitationDisplayText}

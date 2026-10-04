@@ -218,9 +218,13 @@ describe("no call site keeps a private copy of the rule", () => {
     // … and the two jump paths, whose pin rides the scroll's verdict: the
     // `virgil-card-jumped` dispatch must sit behind the align door's report,
     // because the pin exists only to compensate for a scroll that happened.
-    const links = CODE.get(path.join(SRC, "links/links.ts"))!;
-    const dispatches = links.match(/moved\s*&&\s*omniKey/g) ?? [];
-    expect(dispatches.length).toBe(2);
+    // `jumpToLink` lives in links.ts; the card jump's door, `jumpToTarget`,
+    // in jump-to-card.ts (task 935) — one dispatch each.
+    for (const rel of ["links/links.ts", "links/jump-to-card.ts"]) {
+      const src = CODE.get(path.join(SRC, rel))!;
+      const dispatches = src.match(/moved\s*&&\s*omniKey/g) ?? [];
+      expect(dispatches.length, rel).toBe(1);
+    }
   });
 });
 

@@ -387,8 +387,8 @@ export function OmniHost(p: OmniHostProps) {
   // anchored?"; that is `resolveCardRows`.
   const findParagraphPos = anchorPass.posOf;
   const jumpToCard = useCallback(
-    (card: CardWithLinks, sourceEl?: HTMLElement | null) => {
-      editorRef.current?.jumpToCard(card, sourceEl);
+    (card: CardWithLinks, sourceEl?: HTMLElement | null, rowPid?: string | null) => {
+      editorRef.current?.jumpToCard(card, sourceEl, rowPid);
     },
     [editorRef],
   );

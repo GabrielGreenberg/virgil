@@ -18,9 +18,9 @@ import { Node as PMNode } from "@tiptap/pm/model";
 import {
   collectLinksFromEditor,
   jumpToLink,
-  jumpToCard,
   deleteLink,
 } from "@/links/links";
+import { jumpToCard } from "@/links/jump-to-card";
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
 import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
 import type { ModeBReapplyRecord } from "@/links/_shared/reapply-mode-b-anchors";
@@ -314,13 +314,19 @@ export interface EditorHandle {
   deleteCitation: (citationId: string) => void;
   getActiveParagraphId: () => string | null;
   scrollToParagraphId: (uuid: string) => void;
-  /** Jump to the first resolvable link on a card. Preferred over
-   *  scrollToParagraphId for any card that carries a `links[]` — it picks
-   *  the first anchor still present in the doc and respects Mode B
-   *  text-range anchors. When `sourceEl` is provided, the in-text marker
-   *  is aligned to that element's top edge (mirrors the marker→card
-   *  alignment used when clicking links in text). */
-  jumpToCard: (card: CardWithLinks, sourceEl?: HTMLElement | null) => boolean;
+  /** Jump to where a card is anchored. Preferred over scrollToParagraphId
+   *  for any card that carries a `links[]` — it lands where the anchor
+   *  authority (`resolveCardAnchor`) binds the card, the same place its
+   *  marker is drawn, and respects Mode B text-range anchors. `rowPid` is
+   *  a multi-anchor omni row's own paragraph: the row jumps to ITS anchor,
+   *  not the card's first (task 935). When `sourceEl` is provided, the
+   *  in-text marker is aligned to that element's top edge (mirrors the
+   *  marker→card alignment used when clicking links in text). */
+  jumpToCard: (
+    card: CardWithLinks,
+    sourceEl?: HTMLElement | null,
+    rowPid?: string | null,
+  ) => boolean;
   /** Jump to a specific link. Exposed so callers (omni, popped-out cards)
    *  can target a particular anchor when a card has several. */
   jumpToLink: (link: VirgilLink) => void;
@@ -1445,9 +1451,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         scrollBlockToReadingLine(editor.view, top);
       } catch { /* pos out of range */ }
     },
-    jumpToCard(card: CardWithLinks, sourceEl?: HTMLElement | null): boolean {
+    jumpToCard(
+      card: CardWithLinks,
+      sourceEl?: HTMLElement | null,
+      rowPid?: string | null,
+    ): boolean {
       if (!editor) return false;
-      return jumpToCard(editor, card, sourceEl);
+      return jumpToCard(editor, card, sourceEl, rowPid);
     },
     jumpToLink(link: VirgilLink): void {
       if (!editor) return;

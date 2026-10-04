@@ -102,7 +102,7 @@ describe("landOnBlock (task 711)", () => {
   it("the Editor handle's jump doors route through landOnBlock (no `+1 to be inside` guess)", () => {
     const src = readFileSync(join(__dirname, "../../../components/Editor.tsx"), "utf8");
     const heading = src.slice(src.indexOf("scrollToHeading(blockIndex: number): void"), src.indexOf("restoreArchive(content"));
-    const para = src.slice(src.indexOf("scrollToParagraphId(uuid: string): void"), src.indexOf("jumpToCard(card: CardWithLinks"));
+    const para = src.slice(src.indexOf("scrollToParagraphId(uuid: string): void"), src.indexOf("jumpToCard(", src.indexOf("scrollToParagraphId(uuid: string): void")));
     for (const body of [heading, para]) {
       expect(body).toContain("landOnBlock(editor.view");
       expect(body).not.toMatch(/\+ 1; \/\/ \+1 to be inside/);
