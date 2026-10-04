@@ -43,6 +43,7 @@ const tables = JSON.parse(
   cardSidecars: Record<string, SidecarRow>;
   archiveOriginPanels: string[];
   bodyFields: { plain: string[]; richOnly: string[]; richMirror: string[] };
+  sidecarCollections: Record<string, { key: string; idFields: string[] }[]>;
 };
 const corpus = JSON.parse(
   readFileSync(join(scripts, "tests/card_kind_cases.json"), "utf8"),
@@ -95,6 +96,16 @@ describe("card_tables.json cardSidecars ↔ the app's sidecar tables", () => {
     for (const [panel, r] of rows) {
       if (LEGACY_SIDECAR_FILENAMES.includes(r.file)) expect(r.writeback, panel).toBe(false);
     }
+  });
+});
+
+describe("card_tables.json sidecarCollections ↔ SIDECAR_COLLECTIONS", () => {
+  // task 941: the writeback's in-pen three-way merge (_common.json_merge3)
+  // identity-merges exactly the arrays the app declares — never a shape guess.
+  it("is the app's declared record-collection table, verbatim", () => {
+    expect(tables.sidecarCollections).toEqual(
+      JSON.parse(JSON.stringify(SIDECAR_COLLECTIONS)),
+    );
   });
 });
 
