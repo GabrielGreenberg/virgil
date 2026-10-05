@@ -1266,6 +1266,17 @@ export function hasTextAnchor(card: CardWithLinks): boolean {
   return getTextAnchor(card) !== null;
 }
 
+/** Does this card point at anything in the document — a Mode A paragraph
+ *  link or a Mode B text range? The ONE answer to "can this card jump?" for
+ *  the comment/suggestion card family (task 961): the Revisions and Cutter
+ *  comment cards and the shared `SuggestionCard` each re-typed this
+ *  disjunction inline, and the two comment twins grew a dead `!isOrphaned`
+ *  conjunct beside it (an orphan is BY DEFINITION un-anchored, so it could
+ *  never be false where this is true). */
+export function isCardAnchored(card: CardWithLinks): boolean {
+  return getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
+}
+
 export type AnchorSummary =
   | { kind: "selection"; words: number }
   | { kind: "paragraph"; words: number }
