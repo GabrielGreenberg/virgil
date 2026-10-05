@@ -80,6 +80,9 @@ export type MembershipChips = React.ComponentProps<
   typeof LibraryMembershipChips
 >["chips"];
 
+/** The answer of `checkRaw`: the text to commit, or why it cannot be. */
+export type RawCheck = { ok: true; text: string } | { ok: false; reason: string };
+
 export interface BibEntryPickerMenuProps {
   open: boolean;
   anchorEl?: HTMLElement | null;
@@ -103,6 +106,13 @@ export interface BibEntryPickerMenuProps {
    *  matching entry. Citation-card use enables this so an unknown citekey
    *  can still be locked in. */
   onCommitRaw?: (text: string) => void;
+  /** The raw commit's door (task 945): reads the trimmed free text and
+   *  answers the NORMALIZED text to commit, or the reason it cannot be
+   *  committed. A refused query offers no commit — the empty state shows the
+   *  reason in place of the commit button, and Enter stays put rather than
+   *  committing or closing — so nothing the caller would refuse to write ever
+   *  reaches `onCommitRaw` / `onEnterCommit`. Absent = the text as typed. */
+  checkRaw?: (text: string) => RawCheck;
   /** Enter-commits-the-whole-pick hook for a DEFERRED create popover (the
    *  citation / any keep-open picker). When set, Enter still STAGES the
    *  active/raw key through the normal pick path, then ALSO fires this so the
@@ -176,6 +186,7 @@ function BibEntryPickerMenuInner({
   getLibraryItem,
   getMembershipChips,
   onCommitRaw,
+  checkRaw,
   onEnterCommit,
   initialQuery,
   placeholder = "Search…",
@@ -251,6 +262,7 @@ function BibEntryPickerMenuInner({
         getLibraryItem={getLibraryItem}
         getMembershipChips={getMembershipChips}
         onCommitRaw={onCommitRaw}
+        checkRaw={checkRaw}
         onEnterCommit={onEnterCommit}
         initialQuery={initialQuery}
         placeholder={placeholder}
@@ -273,6 +285,7 @@ interface BodyProps {
   getLibraryItem?: (entry: BibEntry) => LibraryIndexItem | undefined;
   getMembershipChips?: (entry: BibEntry) => MembershipChips;
   onCommitRaw?: (text: string) => void;
+  checkRaw?: (text: string) => RawCheck;
   onEnterCommit?: (pickedKey?: string) => void;
   initialQuery?: string;
   placeholder: string;
@@ -295,6 +308,7 @@ function BibEntryPickerBody({
   getLibraryItem,
   getMembershipChips,
   onCommitRaw,
+  checkRaw,
   onEnterCommit,
   initialQuery,
   placeholder,
@@ -393,8 +407,19 @@ function BibEntryPickerBody({
   );
 
   const trimmedQuery = query.trim();
-  const showRawCommit =
+  const rawOffered =
     !!onCommitRaw && filtered.length === 0 && trimmedQuery.length > 0;
+  // The raw commit's door: what WOULD be committed, or why nothing can be.
+  const rawCheck = useMemo<RawCheck | null>(
+    () =>
+      rawOffered
+        ? (checkRaw?.(trimmedQuery) ?? { ok: true, text: trimmedQuery })
+        : null,
+    [rawOffered, checkRaw, trimmedQuery],
+  );
+  const rawText = rawCheck?.ok ? rawCheck.text : null;
+  const rawRefusal = rawCheck && !rawCheck.ok ? rawCheck.reason : null;
+  const showRawCommit = rawText !== null;
 
   // The active entry (the roving-active option), if any — used by Enter and by
   // the horizontal-arrow expand/collapse override.
@@ -426,9 +451,13 @@ function BibEntryPickerBody({
         if (activeEntry) {
           void performPick(activeEntry);
           onEnterCommit?.(activeEntry.key);
-        } else if (showRawCommit) {
-          onCommitRaw?.(trimmedQuery);
-          onEnterCommit?.(trimmedQuery);
+        } else if (rawText !== null) {
+          onCommitRaw?.(rawText);
+          onEnterCommit?.(rawText);
+        } else if (rawRefusal) {
+          // A refused raw key: stay open with the reason showing. Committing
+          // the earlier-staged keys here would close the popover and silently
+          // drop what the user just typed.
         } else {
           // Nothing to stage (empty list / empty query) — still let a create
           // popover commit whatever was staged earlier.
@@ -444,10 +473,10 @@ function BibEntryPickerBody({
     [
       activeEntry,
       performPick,
-      showRawCommit,
+      rawText,
+      rawRefusal,
       onCommitRaw,
       onEnterCommit,
-      trimmedQuery,
       cancel,
     ],
   );
@@ -536,7 +565,9 @@ function BibEntryPickerBody({
         {filtered.length === 0 ? (
           <div className="px-3 py-4 text-[11px] text-ink-muted text-center space-y-2">
             <div>
-              {trimmedQuery
+              {rawRefusal
+                ? `No entries match "${trimmedQuery}". ${rawRefusal}`
+                : trimmedQuery
                 ? emptyHint.noMatches(trimmedQuery)
                 : entries.length === 0
                   ? emptyHint.noEntries
@@ -545,7 +576,9 @@ function BibEntryPickerBody({
             {showRawCommit && (
               <Button
                 size="sm"
-                onClick={() => onCommitRaw?.(trimmedQuery)}
+                onClick={() => {
+                  if (rawText !== null) onCommitRaw?.(rawText);
+                }}
                 className="gap-1.5"
               >
                 <svg
@@ -560,7 +593,7 @@ function BibEntryPickerBody({
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                Use <span className="font-mono">{trimmedQuery}</span> as a raw
+                Use <span className="font-mono">{rawText}</span> as a raw
                 citekey
               </Button>
             )}
