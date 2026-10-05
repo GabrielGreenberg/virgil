@@ -119,6 +119,7 @@ export function Panel({
             ref={scrollRef}
             className={`${PANEL.list}${onKeyDown || scrollTabIndex != null ? " focus:outline-none" : ""}`}
             onClick={onClickEmpty}
+            data-click-exempt="empty-area deselect: a pointer convenience on the list's own scroll region; the list's keyboard contract is its onKeyDown"
             onKeyDown={onKeyDown}
             tabIndex={scrollTabIndex}
           >
