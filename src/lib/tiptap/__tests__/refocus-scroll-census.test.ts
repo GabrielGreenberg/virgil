@@ -54,9 +54,9 @@
  *    sites that spell it need no door.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { codeOnlyLines, enclosingDeclaration } from "@/lib/__tests__/_source-scan";
+import { codeOnlyLines, enclosingDeclaration, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const REPO = path.resolve(__dirname, "../../../..");
 const SILOS = [
@@ -77,17 +77,9 @@ const OPTS_OUT = /scrollIntoView:\s*false|\brefocusEditor\(/;
 const NAMES_ITS_TARGET = /\.setTextSelection\(|\.insertContentAt\(|\.scrollIntoView\(/;
 
 function walkSource(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "__tests__" || entry === "__fixtures__" || entry === "node_modules") continue;
-      out.push(...walkSource(full));
-    } else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) {
-      out.push(full);
-    }
-  }
-  return out;
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter(
+    (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f),
+  );
 }
 
 function bothSilos(): Array<{ rel: string; source: string }> {

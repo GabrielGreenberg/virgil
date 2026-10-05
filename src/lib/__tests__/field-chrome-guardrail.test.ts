@@ -34,9 +34,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { strip } from "./_source-scan";
+import { strip, walkFiles } from "./_source-scan";
 
 const REPO = path.resolve(__dirname, "../../..");
 const SRC = path.join(REPO, "src");
@@ -139,18 +139,7 @@ export const primitiveSites = (rel: string, source: string) =>
   tagSites(rel, source, PRIMITIVE_TAG);
 
 function walkSource(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      if (entry === "__tests__" || entry === "__fixtures__" || entry === "node_modules") continue;
-      out.push(...walkSource(full));
-    } else if (/\.tsx$/.test(entry)) {
-      out.push(full);
-    }
-  }
-  return out;
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter((f) => /\.tsx$/.test(f));
 }
 
 function walkBothSilos(): Array<{ rel: string; source: string }> {

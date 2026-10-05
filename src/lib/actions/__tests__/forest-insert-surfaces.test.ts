@@ -38,7 +38,7 @@
 // same gotcha every sibling action test carries.)
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 vi.mock("@/lib/storage", async () =>
@@ -63,7 +63,7 @@ import { blockRangeAllowsAction } from "@/text-objects/text-object-registry";
 import { freshForestSource, parseForestSource } from "@/lib/forest/grammar";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { parseLatex } from "@/lib/latex-parser";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 
 // ---------------------------------------------------------------------------
 // Real editor stack
@@ -491,14 +491,6 @@ describe("census — both surfaces enter the SHARED dispatch", () => {
 });
 
 function collectSources(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "node_modules" || name === "__tests__") continue;
-      collectSources(p, out);
-    } else if (/\.(ts|tsx)$/.test(name)) {
-      out.push(p);
-    }
-  }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.(ts|tsx)$/.test(p)) out.push(p);
   return out;
 }

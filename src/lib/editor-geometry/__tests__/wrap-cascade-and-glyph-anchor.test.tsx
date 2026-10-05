@@ -20,7 +20,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 vi.mock("@/lib/storage", () => {
@@ -41,6 +41,7 @@ import {
 } from "@/lib/editor-extensions";
 import { getOrCreateGeometry } from "../registry";
 import { GLYPH_ANCHOR_KINDS, resolveGlyphAnchor } from "../glyph-anchor";
+import { walkFiles } from "../../__tests__/_source-scan";
 
 // ── Observer fakes (the `blocks-at-y` harness shape, plus a firing RO) ───────
 
@@ -325,20 +326,8 @@ const SRC = path.resolve(__dirname, "../../..");
 const LIB = path.resolve(__dirname, "../../../../library");
 
 function walkSource(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      if (entry === "__tests__" || entry === "__fixtures__" || entry === "node_modules") {
-        continue;
-      }
-      out.push(...walkSource(full));
-    } else if (/\.(ts|tsx)$/.test(entry)) {
-      out.push(full);
-    }
-  }
-  return out;
+  // Skip test + fixture trees so the guard never scans itself.
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter((f) => /\.(ts|tsx)$/.test(f));
 }
 
 /** An EMISSION, not a mention: `setAttribute("data-glyph-anchor"…)` or the JSX

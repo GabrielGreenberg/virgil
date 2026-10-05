@@ -1,7 +1,7 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { commentsStripped, cssCommentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, cssCommentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 
 /**
  * Panel-chrome RAW COLOUR census (task 2026-08-02-286; second needle 284).
@@ -245,14 +245,8 @@ const hslIsChromatic = (s: number) => s !== 0;
 function censusFiles(): string[] {
   const out: string[] = [];
   const walk = (abs: string) => {
-    for (const name of readdirSync(abs)) {
-      const child = path.join(abs, name);
-      if (statSync(child).isDirectory()) {
-        if (name === "__tests__") continue;
-        walk(child);
-      } else if (/\.tsx?$/.test(name)) {
-        out.push(path.relative(ROOT, child).split(path.sep).join("/"));
-      }
+    for (const child of walkFiles(abs, { skipDirs: ["__tests__"] })) {
+      if (/\.tsx?$/.test(child)) out.push(path.relative(ROOT, child).split(path.sep).join("/"));
     }
   };
   walk(path.join(ROOT, "src/panels"));

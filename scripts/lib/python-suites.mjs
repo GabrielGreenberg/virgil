@@ -156,13 +156,17 @@ export function readTally(output) {
  * So HOME is a fresh empty directory and the env var is unset — what CI sees.
  * `PYTHONUSERBASE` is pinned to the real home's user site first, since on
  * macOS a `pip install --user` package (e.g. `requests`) lives under HOME and
- * moving HOME would otherwise hide it.
+ * moving HOME would otherwise hide it. Bytecode writes are off, so a run
+ * leaves no `__pycache__` in the tree the censuses walk.
  */
 let sandboxEnv = null;
 export function suiteEnv() {
   if (sandboxEnv) return sandboxEnv;
   const env = { ...process.env };
   delete env.VIRGIL_LIBRARY_ROOT;
+  // A suite leaves no bytecode behind: `__pycache__` beside the scripts is
+  // what a concurrently running source census raced on (task 954).
+  env.PYTHONDONTWRITEBYTECODE = "1";
   if (!env.PYTHONUSERBASE) {
     const ub = spawnSync("python3", ["-m", "site", "--user-base"], {
       encoding: "utf8",

@@ -28,8 +28,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { readFileSync } from "node:fs";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -242,15 +242,8 @@ const SRC = path.resolve(HERE, "../..");
 const LIBRARY = path.resolve(SRC, "../library");
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry.startsWith(".next")) continue;
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "__tests__") continue;
-      walk(full, out);
-    } else if (/\.(ts|tsx)$/.test(entry) && !/\.test\.tsx?$/.test(entry)) {
-      out.push(full);
-    }
+  for (const full of walkFiles(dir, { skipDirs: (n) => n === "__tests__" || n.startsWith(".next") })) {
+    if (/\.(ts|tsx)$/.test(full) && !/\.test\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }

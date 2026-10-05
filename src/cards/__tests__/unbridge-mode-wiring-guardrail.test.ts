@@ -40,8 +40,9 @@
 // express "you must pass something" but not "you must not have chosen it".
 
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const EXTS = [".ts", ".tsx"];
 
@@ -81,17 +82,9 @@ const PERMITTED_LITERAL_MODES: Array<{
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".next" || entry.startsWith(".")) continue;
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) {
-      if (entry === "__tests__") continue; // tests exercise both modes on purpose
-      walk(p, out);
-    } else if (
-      EXTS.some((e) => p.endsWith(e)) &&
-      !p.endsWith(".test.ts") &&
-      !p.endsWith(".test.tsx")
-    ) {
+  // tests exercise both modes on purpose, so `__tests__` is not walked
+  for (const p of walkFiles(dir, { skipDirs: (n) => n === "__tests__" || n.startsWith(".") })) {
+    if (EXTS.some((e) => p.endsWith(e)) && !p.endsWith(".test.ts") && !p.endsWith(".test.tsx")) {
       out.push(p);
     }
   }

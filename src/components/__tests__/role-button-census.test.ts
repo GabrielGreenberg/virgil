@@ -32,20 +32,15 @@
  * needle bites, so a green leg cannot be a blind one.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { commentsStripped, elementsNamed } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, elementsNamed, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const LEAF = "src/lib/activatable-props.ts";
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === "__tests__" || name === ".next") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.tsx?$/.test(p)) out.push(p);
-  }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.tsx?$/.test(p)) out.push(p);
   return out;
 }
 

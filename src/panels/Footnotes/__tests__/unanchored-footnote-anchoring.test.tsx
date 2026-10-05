@@ -58,9 +58,9 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { UnanchoredFootnoteCard } from "@/panels/Footnotes/FootnoteCard";
@@ -183,13 +183,7 @@ const SRC_ROOT = join(process.cwd(), "src");
 const PRIMITIVES = join(SRC_ROOT, "components", "panel-primitives.tsx");
 
 function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...walk(p));
-    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
-  }
-  return out;
+  return walkFiles(dir).filter((p) => /\.(ts|tsx)$/.test(p));
 }
 
 const rel = (f: string) => f.replace(process.cwd() + "/", "");

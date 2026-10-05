@@ -53,13 +53,13 @@
 // offer an inline caret declares `inlinePayloadFor`), and driven end to end in
 // `src/components/drop-mode/__tests__/inline-cursor-container-gate.test.tsx`.
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 // `strip(src, keepStrings, keepLines)` directly, not `commentsStripped`: this
 // census needs BOTH — literals kept (half B's needle lives inside one) AND
 // lines aligned (every hit reports `file:line`, and `commentsStripped` drops
 // the newlines inside a block comment).
-import { strip, codeOnlyLines } from "@/lib/__tests__/_source-scan";
+import { strip, codeOnlyLines, walkFiles } from "@/lib/__tests__/_source-scan";
 const keepLiteralsAligned = (src: string) => strip(src, true, true);
 import { ATOM_REGISTRY, type AtomKind } from "@/lib/tiptap/atom-registry";
 
@@ -103,11 +103,8 @@ const REPLACES_SELECTION = /\.(?:replaceSelectionWith|insertContent)\s*\(/;
 const OUT_OF_SCOPE = ["src/text-objects/text-object-registry.ts"];
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === ".git" || name === "__tests__") continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.tsx?$/.test(full) && !/\.test\.tsx?$/.test(full)) out.push(full);
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

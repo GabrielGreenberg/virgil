@@ -34,7 +34,7 @@
 //   C. The behavioural legs for the two kinds that were wrong, and for the
 //      agreement between the two surfaces that disagreed.
 import { describe, it, expect, vi } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 vi.mock("@/lib/storage", async () =>
@@ -56,19 +56,14 @@ import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
 import { resolveBlockFrame } from "@/text-objects/block-frame";
 import { measureBlock } from "@/hooks/useMarginaliaRegistry";
 import type { Editor } from "@tiptap/react";
+import { walkFiles } from "./_source-scan";
 
 const SRC = join(process.cwd(), "src");
 
 /** Every production `.ts`/`.tsx` under `src/`, tests and fixtures excluded. */
 function productionFiles(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      productionFiles(full, out);
-    } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-      out.push(full);
-    }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

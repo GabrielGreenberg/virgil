@@ -35,8 +35,8 @@
  * `handle-marker-ink-clearance.test.tsx` the ink bound the lane derives.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { basename, join, relative } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resolveBlockFrame, resolveContentEdges } from "@/text-objects/block-frame";
 import { clearCapTopCache } from "@/lib/text-metrics";
@@ -54,6 +54,7 @@ import {
   modelTextWidth,
   stubCanvas,
 } from "./_block-frame-fixtures";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const { editorLeft: LEFT, top: TOP, width: WIDTH, bandPx: BAND } = FIXTURE;
 const PROSE = FIXTURE.fontSizePx;
@@ -429,10 +430,9 @@ describe("the fixture builder is the ONE home for this DOM (task 663)", () => {
   function testFiles(): string[] {
     const out: string[] = [];
     const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const full = join(dir, name);
-        if (statSync(full).isDirectory()) walk(full);
-        else if (/\.test\.tsx?$/.test(name) || name.startsWith("_")) out.push(full);
+      for (const full of walkFiles(dir)) {
+        const name = basename(full);
+        if (/\.test\.tsx?$/.test(name) || name.startsWith("_")) out.push(full);
       }
     };
     walk(SRC);

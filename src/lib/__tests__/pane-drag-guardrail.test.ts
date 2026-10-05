@@ -51,7 +51,7 @@
 // handle classes this grep keys on (STYLE_GUIDE's documented authoring path).
 
 import { describe, it, expect } from "vitest";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -59,6 +59,7 @@ import {
   tagAround,
   tagsContaining,
   elementSubtree,
+  walkFiles,
 } from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -975,21 +976,11 @@ export function detectWindowDragGesture(source: string): boolean {
 }
 
 function walkSource(dir: string, includeEngine = false): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      // Skip test + fixture trees so the guard never scans itself, and the
-      // engine directory — the one sanctioned gesture owner.
-      if (entry === "__tests__" || entry === "__fixtures__") continue;
-      if (full === ENGINE_DIR && !includeEngine) continue;
-      out.push(...walkSource(full, includeEngine));
-    } else if (/\.(ts|tsx)$/.test(entry)) {
-      out.push(full);
-    }
-  }
-  return out;
+  // Skip test + fixture trees so the guard never scans itself, and the
+  // engine directory — the one sanctioned gesture owner.
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter(
+    (f) => /\.(ts|tsx)$/.test(f) && (includeEngine || !f.startsWith(ENGINE_DIR + path.sep)),
+  );
 }
 
 /** Both silos, keyed repo-relative ("src/…" / "library/…").

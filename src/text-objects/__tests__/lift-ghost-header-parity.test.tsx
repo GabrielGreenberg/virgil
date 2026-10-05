@@ -35,7 +35,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 // The shared float chrome pulls panel-primitives → `@/lib/storage`, whose
 // backend pick is a raw `require` the vitest resolver can't follow (the known
@@ -48,6 +48,7 @@ import { LiftedTextOverlay } from "@/text-objects/LiftedTextOverlay";
 import { FloatChrome, FLOAT_CHROME_CONTAINER_CLASS } from "@/floats/FloatChrome";
 import { CARD_FLOAT_HEADER_H } from "@/floats/float-policy";
 import type { TextObjectRef } from "@/text-objects/types";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const PARAGRAPH_REF: TextObjectRef = { kind: "paragraph", id: "para-uuid" };
 const LABEL = "Paragraph";
@@ -255,16 +256,8 @@ describe("lift ghost header ≡ the header it releases into (task 437)", () => {
 /* ── helpers ─────────────────────────────────────────────────────── */
 
 function walk(dir: string): string[] {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { readdirSync, statSync } = require("node:fs") as typeof import("node:fs");
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name.startsWith(".")) continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...walk(full));
-    else out.push(full);
-  }
-  return out;
+  const dot = (name: string) => name.startsWith(".");
+  return walkFiles(dir, { skipDirs: dot }).filter((full) => !dot(basename(full)));
 }
 
 function rel(abs: string): string {

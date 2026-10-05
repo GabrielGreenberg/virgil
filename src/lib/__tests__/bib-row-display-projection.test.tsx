@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   bibFieldDisplay,
   parseBibFile,
   serializeBibFile,
 } from "@/lib/bib-parser";
-import { codeOnlyLines } from "./_source-scan";
+import { codeOnlyLines, walkFiles } from "./_source-scan";
 import type { BibEntry } from "@/lib/types";
 
 /**
@@ -243,11 +243,8 @@ const FILE_MARKER = "bib-display-exempt-file:";
 const MARKER_WINDOW = 12;
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const e of readdirSync(dir)) {
-    if (e === "node_modules" || e === "__tests__" || e.startsWith(".")) continue;
-    const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.tsx?$/.test(e) && !/\.test\.tsx?$/.test(e)) out.push(p);
+  for (const p of walkFiles(dir, { skipDirs: (n) => n === "__tests__" || n.startsWith(".") })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

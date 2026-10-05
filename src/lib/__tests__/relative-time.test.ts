@@ -3,10 +3,11 @@
  * bucketing ladder, two registers (`long` "5m ago" / `compact` "5m"). Before it,
  * five surfaces each hand-wrote their own ladder with divergent edges.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatElapsed, formatRelativeTime } from "../relative-time";
+import { walkFiles } from "./_source-scan";
 
 const MIN = 60;
 const HOUR = 60 * MIN;
@@ -105,12 +106,7 @@ describe("census: no surface hand-writes its own ladder", () => {
   const OWNER = "lib/relative-time.ts";
 
   function walk(dir: string, out: string[] = []): string[] {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) {
-        if (name !== "__tests__" && name !== "node_modules") walk(p, out);
-      } else if (/\.tsx?$/.test(name)) out.push(p);
-    }
+    for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.tsx?$/.test(p)) out.push(p);
     return out;
   }
 

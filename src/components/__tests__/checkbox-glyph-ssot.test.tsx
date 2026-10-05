@@ -27,7 +27,7 @@
 // The colour half is guarded by `panel-chrome-palette-guardrail`, whose
 // `PERMITTED_RAW_VALUE_LITERALS` this task drained to empty; the two suites are
 // complementary — that one forbids a literal, this one pins what replaced it.
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
@@ -51,6 +51,7 @@ import { TodoRow } from "@/panels/Todo/TodoRow";
 import { accentInk, getPanelColor, DEFAULT_PANEL_COLORS } from "@/lib/panel-theme";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { TodoItem } from "@/lib/types";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 afterEach(cleanup);
 
@@ -272,14 +273,8 @@ describe("the palette comes from the SSOTs, not from this file", () => {
 function productionFiles(): string[] {
   const out: string[] = [];
   const walk = (abs: string) => {
-    for (const name of readdirSync(abs)) {
-      const child = path.join(abs, name);
-      if (statSync(child).isDirectory()) {
-        if (name === "__tests__") continue;
-        walk(child);
-      } else if (/\.tsx?$/.test(name)) {
-        out.push(path.relative(ROOT, child).split(path.sep).join("/"));
-      }
+    for (const child of walkFiles(abs, { skipDirs: ["__tests__"] })) {
+      if (/\.tsx?$/.test(child)) out.push(path.relative(ROOT, child).split(path.sep).join("/"));
     }
   };
   walk(path.join(ROOT, "src"));

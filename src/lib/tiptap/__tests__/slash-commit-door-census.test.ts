@@ -20,7 +20,7 @@
  * Every allowlist here is EMPTY. A hit is MIGRATE-it.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // TWO views of each file, and the split is load-bearing (the trap
 // `_source-scan`'s own header documents, and the one task 389 was burned by):
@@ -29,7 +29,7 @@ import { join } from "node:path";
 //   • `codeOnly` — literals blanked too — for the SYMBOL needles, because
 //     `action-registry.ts` names `VIRGIL_COMMANDS` inside error-message
 //     templates and would otherwise be indicted for prose.
-import { codeOnly, codeOnlyLines, strip } from "@/lib/__tests__/_source-scan";
+import { codeOnly, codeOnlyLines, strip, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const withStrings = (src: string) => strip(src, true, true);
 
@@ -40,22 +40,8 @@ const LIB = join(process.cwd(), "library");
 function productionFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const name of entries) {
-      const full = join(dir, name);
-      if (statSync(full).isDirectory()) {
-        if (name === "__tests__" || name === "node_modules") continue;
-        walk(full);
-        continue;
-      }
-      if (!/\.tsx?$/.test(name)) continue;
-      if (/\.test\.tsx?$/.test(name)) continue;
-      out.push(full);
+    for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+      if (/\.tsx?$/.test(full) && !/\.test\.tsx?$/.test(full)) out.push(full);
     }
   };
   walk(root);

@@ -608,6 +608,82 @@ export function trackedFiles(relRoot: string, ext: RegExp): string[] {
     .sort();
 }
 
+/**
+ * Directories no census ever means: dependency trees, VCS metadata, build
+ * output, and the bytecode caches Python writes NEXT TO the scripts the
+ * Library and editor silos ship.
+ */
+export const GENERATED_DIRS: ReadonlySet<string> = new Set([
+  "node_modules",
+  "__pycache__",
+  ".git",
+  ".next",
+  ".next-preview",
+  ".pytest_cache",
+]);
+
+/**
+ * THE disk walk for a census that must see the WORKING COPY (a file mid-write,
+ * a planted fixture) rather than `trackedFiles`' shipped population.
+ *
+ * Every census used to hand-roll `readdirSync` + `statSync` per entry, and that
+ * pair RACES anything writing the tree while vitest runs: Python's atomic
+ * `.pyc` write (`x.cpython-312.pyc.<pid>`, then rename) under
+ * `library/scripts/__pycache__/` — from a sibling suite spawning a script — made
+ * an entry vanish between the readdir and the stat, and the v0.1.127 deploy
+ * gate died on ENOENT in a guard about highlight marks (task 954). So:
+ *
+ * - entries are typed by the readdir itself (`withFileTypes`) — no per-entry
+ *   stat, so nothing can vanish between listing and asking;
+ * - `GENERATED_DIRS` are never entered (plus the caller's `skipDirs`);
+ * - a directory that vanishes before it is listed is an empty directory.
+ *
+ * Returns absolute FILE paths (symlinks to files included, as the old
+ * `statSync` walkers followed them), sorted. Callers filter by name/ext.
+ */
+export function walkFiles(
+  root: string,
+  opts: {
+    /** Directory NAMES never entered (on top of `GENERATED_DIRS`), or a
+     *  predicate over the name for rules like "any dot-directory". */
+    skipDirs?: Iterable<string> | ((name: string) => boolean);
+  } = {},
+): string[] {
+  const extra = opts.skipDirs;
+  const names = new Set([...GENERATED_DIRS, ...(typeof extra === "function" ? [] : (extra ?? []))]);
+  const skipped = (name: string) =>
+    names.has(name) || (typeof extra === "function" && extra(name));
+  const out: string[] = [];
+  const visit = (dir: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw e;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (!skipped(e.name)) visit(p);
+      } else if (e.isFile()) {
+        out.push(p);
+      } else if (e.isSymbolicLink()) {
+        let st: fs.Stats;
+        try {
+          st = fs.statSync(p);
+        } catch {
+          continue; // dangling, or vanished
+        }
+        if (st.isFile()) out.push(p);
+        else if (st.isDirectory() && !skipped(e.name)) visit(p);
+      }
+    }
+  };
+  visit(root);
+  return out.sort();
+}
+
 /** Test-only: drop the per-run cache so a leg that plants a file can re-ask. */
 export function resetTrackedFilesCache(): void {
   lsFilesCache.clear();

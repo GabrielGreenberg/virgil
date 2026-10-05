@@ -17,24 +17,18 @@
 //      raw Tailwind palette classes.
 
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 vi.mock("@/lib/storage", () => ({}));
 
 import { withDragCursor, CARD_DRAG_CURSOR_CLASS } from "@/components/panel-primitives";
 import { cardBodyPlaceholder, cardTypeLabel } from "@/panels/panel-registry";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const SRC = path.resolve(__dirname, "../..");
 
 function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    if (entry === "__tests__" || entry === "node_modules") continue;
-    if (statSync(full).isDirectory()) out.push(...walk(full));
-    else if (/\.tsx?$/.test(entry)) out.push(full);
-  }
-  return out;
+  return walkFiles(dir, { skipDirs: ["__tests__"] }).filter((f) => /\.tsx?$/.test(f));
 }
 
 const rel = (f: string) => path.relative(SRC, f).split(path.sep).join("/");

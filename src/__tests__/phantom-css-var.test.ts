@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { commentsStripped, cssCommentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, cssCommentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 
 /**
  * PHANTOM CSS VARIABLES — a `var(--token)` is a CLAIM that the token exists
@@ -87,20 +87,12 @@ const SKIP_DIRS = new Set([
 ]);
 
 function walkSource(rel: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(path.join(ROOT, rel));
-  } catch {
-    return out;
-  }
-  for (const name of entries) {
-    if (SKIP_DIRS.has(name)) continue;
-    const childRel = path.join(rel, name);
-    if (statSync(path.join(ROOT, childRel)).isDirectory()) walkSource(childRel, out);
+  for (const full of walkFiles(path.join(ROOT, rel), { skipDirs: SKIP_DIRS })) {
+    const name = path.basename(full);
     // `.mjs` too: the pref→CSS table is an import-free leaf the node promoter
     // shares (src/lib/pref-css-table.mjs, task 902), and its `cssVar:` rows
     // are the runtime writes this census credits.
-    else if (/\.(tsx?|mjs)$/.test(name) && !/\.test\./.test(name)) out.push(childRel);
+    if (/\.(tsx?|mjs)$/.test(name) && !/\.test\./.test(name)) out.push(path.relative(ROOT, full));
   }
   return out;
 }

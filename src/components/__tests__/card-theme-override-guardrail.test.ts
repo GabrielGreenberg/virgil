@@ -77,11 +77,12 @@
 //     does. A one-silo census is how ungoverned sites accumulate.
 
 import { describe, it, expect } from "vitest";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { SYSTEM_THEME_KEYS, type PanelThemeKey } from "@/lib/panel-theme";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
@@ -217,15 +218,9 @@ function kindKeyedRecords(text: string): { name: string; body: string }[] {
 }
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".next" || entry.startsWith(".next-")) continue;
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "__tests__") continue; // tests may pin the frozen tables on purpose
-      walk(full, out);
-    } else if (/\.(ts|tsx)$/.test(entry) && !/\.test\.tsx?$/.test(entry)) {
-      out.push(full);
-    }
+  // tests may pin the frozen tables on purpose, so `__tests__` is not walked
+  for (const full of walkFiles(dir, { skipDirs: (n) => n === "__tests__" || n.startsWith(".next-") })) {
+    if (/\.(ts|tsx)$/.test(full) && !/\.test\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }

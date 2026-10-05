@@ -27,8 +27,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { DecorationSet } from "@tiptap/pm/view";
@@ -38,7 +37,7 @@ import {
   paragraphIsCmdOnly,
 } from "@/lib/tiptap/cmd-only-paragraph";
 import { createParagraphWithTitle } from "@/lib/editor-extensions";
-import { codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
+import { codeOnly, commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 
 let editor: Editor | null = null;
 
@@ -257,11 +256,8 @@ describe("the stamp is a NodeView fact, not a decoration (task 430)", () => {
 const ROOTS = ["src", "library"];
 const SKIP_DIR = /(^|\/)(node_modules|\.next|dist|build|out|coverage)(\/|$)/;
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (SKIP_DIR.test(full)) continue;
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.tsx?$/.test(full)) out.push(full);
+  for (const full of walkFiles(dir, { skipDirs: (n) => SKIP_DIR.test(n) })) {
+    if (/\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }

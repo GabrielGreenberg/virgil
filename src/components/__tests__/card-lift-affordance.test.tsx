@@ -21,7 +21,7 @@
 // drag does nothing.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // panel-primitives transitively pulls `@/lib/storage` (the known barrel/
@@ -42,7 +42,7 @@ import type { ComponentProps } from "react";
 import { PanelCard, CARD_THEMES } from "@/components/panel-primitives";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { cardPopKey } from "@/panels/panel-registry";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { codeOnly, walkFiles } from "@/lib/__tests__/_source-scan";
 
 afterEach(cleanup);
 
@@ -232,11 +232,8 @@ describe("the lift grip paints iff the lift can land (task 277)", () => {
 const ROOT = join(__dirname, "..", "..", "..");
 
 function* sourceFiles(dir: string): Generator<string> {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === ".next" || name.startsWith(".")) continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) yield* sourceFiles(p);
-    else if (/\.tsx?$/.test(name)) yield p;
+  for (const p of walkFiles(dir, { skipDirs: (n) => n.startsWith(".") })) {
+    if (/\.tsx?$/.test(p)) yield p;
   }
 }
 

@@ -33,7 +33,7 @@
 // Legs 3+ are the behavioural contract, DERIVED from the registry (swept per
 // entry rather than enumerated) so a new pref is covered by declaration alone.
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -43,7 +43,7 @@ import {
   type ViewPrefKey,
   type SetViewPrefKey,
 } from "@/lib/view-prefs/registry";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { codeOnly, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const WINDOW_ID = "test-window";
 vi.mock("@/lib/multi-window/window-id", () => ({ getWindowId: () => WINDOW_ID }));
@@ -145,11 +145,8 @@ const RETIRED_NAMES = [
 function sourceFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const entry of readdirSync(dir)) {
-      if (entry === "node_modules" || entry === ".next" || entry.startsWith(".")) continue;
-      const full = path.join(dir, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (/\.(ts|tsx)$/.test(entry)) out.push(full);
+    for (const full of walkFiles(dir, { skipDirs: (n) => n.startsWith(".") })) {
+      if (/\.(ts|tsx)$/.test(full)) out.push(full);
     }
   };
   walk(root);

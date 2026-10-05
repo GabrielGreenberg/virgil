@@ -80,10 +80,10 @@
  * form that survives reformatting).
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { commentsStripped, tagAround } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, tagAround, walkFiles } from "@/lib/__tests__/_source-scan";
 import { TONE_TOKEN, type StatusTone } from "@/components/StatusDot";
 
 const ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -186,11 +186,9 @@ function isDotSized(tag: string): boolean {
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === "__tests__" || entry.startsWith(".")) continue;
-    const abs = path.join(dir, entry);
-    if (statSync(abs).isDirectory()) sourceFiles(abs, out);
-    else if (/\.tsx?$/.test(entry) && !/\.test\./.test(entry)) out.push(abs);
+  for (const abs of walkFiles(dir, { skipDirs: (n) => n === "__tests__" || n.startsWith(".") })) {
+    const name = path.basename(abs);
+    if (/\.tsx?$/.test(name) && !/\.test\./.test(name)) out.push(abs);
   }
   return out;
 }

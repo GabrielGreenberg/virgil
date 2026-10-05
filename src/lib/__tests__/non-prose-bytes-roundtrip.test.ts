@@ -32,9 +32,8 @@ import { describe, expect, it } from "vitest";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { readFileSync } from "node:fs";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import {
   CHAR_ESCAPE_LEADS,
   CHAR_ESCAPE_TABLE,
@@ -499,17 +498,8 @@ describe("M6 — a bare `{…}` group survives a save", () => {
 const SILOS = ["src", "library"];
 
 function walk(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return out;
-  }
-  for (const name of entries) {
-    if (name === "node_modules" || name === "__tests__" || name === ".next") continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(full);
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

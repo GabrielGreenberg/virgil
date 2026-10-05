@@ -27,8 +27,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 
 import {
   codeOnlyLines,
@@ -37,6 +37,7 @@ import {
   enclosingDeclaration,
   strip,
   tagsContaining,
+  walkFiles,
 } from "./_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..");
@@ -604,15 +605,8 @@ describe("census · ONE tone table for every surface that presents an interrupti
 function walk(rel: string): string[] {
   const out: string[] = [];
   const visit = (dir: string) => {
-    for (const name of readdirSync(join(ROOT, dir))) {
-      const child = `${dir}/${name}`;
-      const st = statSync(join(ROOT, child));
-      if (st.isDirectory()) {
-        if (name === "node_modules" || name === ".next") continue;
-        visit(child);
-      } else if (/\.tsx?$/.test(name)) {
-        out.push(child);
-      }
+    for (const full of walkFiles(join(ROOT, dir))) {
+      if (/\.tsx?$/.test(full)) out.push(`${dir}/${relative(join(ROOT, dir), full).split(sep).join("/")}`);
     }
   };
   visit(rel);

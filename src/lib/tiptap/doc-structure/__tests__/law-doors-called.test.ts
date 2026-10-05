@@ -16,8 +16,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { walkFiles } from "../../../__tests__/_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const MODULE_DIR = join("src", "lib", "tiptap", "doc-structure");
@@ -44,11 +45,8 @@ function citedDoors(text: string): string[] {
 }
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === "__tests__" || entry.startsWith(".")) continue;
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) sourceFiles(full, acc);
-    else if (/\.(ts|tsx)$/.test(entry) && !/\.test\.tsx?$/.test(entry)) acc.push(full);
+  for (const full of walkFiles(dir, { skipDirs: (n) => n === "__tests__" || n.startsWith(".") })) {
+    if (/\.(ts|tsx)$/.test(full) && !/\.test\.tsx?$/.test(full)) acc.push(full);
   }
   return acc;
 }
