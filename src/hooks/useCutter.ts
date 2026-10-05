@@ -149,18 +149,16 @@ function migrateCutterShape(raw: unknown): CutterState {
   const r = raw as { cards?: unknown; cuts?: unknown; goal?: unknown };
   const goal = migrateGoal(r.goal);
 
-  if (Array.isArray(r.cards)) {
-    return {
-      cards: r.cards
-        .map(migrateCard)
-        .filter((c): c is CutterCard => c !== null),
-      goal,
-    };
-  }
+  const cards: CutterCard[] = Array.isArray(r.cards)
+    ? r.cards.map(migrateCard).filter((c): c is CutterCard => c !== null)
+    : [];
 
-  // Legacy `cuts` shape — every cut becomes a comment.
+  // Legacy `cuts` shape — every cut becomes a comment. Folded in EVEN BESIDE a
+  // current `cards[]` (task 959): `cuts` is consumed and the load is written
+  // back, so a cut this branch skipped would be deleted from disk on open. A
+  // card already in `cards[]` wins its id.
   if (Array.isArray(r.cuts)) {
-    const cards: CutterCard[] = [];
+    const seen = new Set(cards.map((c) => c.id));
     for (const raw of r.cuts) {
       const c = (raw ?? {}) as {
         id?: string;
@@ -169,7 +167,8 @@ function migrateCutterShape(raw: unknown): CutterState {
         createdAt?: string;
         links?: unknown[];
       };
-      if (!c.id) continue;
+      if (!c.id || seen.has(c.id)) continue;
+      seen.add(c.id);
       const content = normalizeRichContent(c.content);
       const titlePart = (c.title || "").trim();
       const bodyPart = richJsonToPlainText(content) || "";
@@ -191,10 +190,9 @@ function migrateCutterShape(raw: unknown): CutterState {
         links,
       });
     }
-    return { cards, goal };
   }
 
-  return { cards: [], goal };
+  return { cards, goal };
 }
 
 /** Task 715 — `cuts` is the legacy top-level array consumed into `cards`. */
@@ -220,7 +218,9 @@ export function useCutter(
     docId,
     "cutter.json",
     EMPTY_STATE,
-    { migrate: migrateCutter, errorLabel: "cutter cards" },
+    // Written back on load (task 959): the migrator HEALS (`loadedCreatedAt`),
+    // and a heal that is never persisted re-heals to a new "now" every open.
+    { migrate: migrateCutter, errorLabel: "cutter cards", persistMigrationOnLoad: true },
   );
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
