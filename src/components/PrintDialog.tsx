@@ -19,6 +19,7 @@ import {
 } from "@/lib/print";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { Checkbox } from "./CheckSquare";
+import { SegmentedToggle } from "./SegmentedToggle";
 
 interface PrintDialogProps {
   open: boolean;
@@ -136,24 +137,20 @@ export default function PrintDialog({
         <fieldset>
           <legend className="text-xs text-ink-subtle mb-1">Font size</legend>
           <div className="flex items-center gap-1">
-            {PRINT_FONT_SIZES.map((size, i) => {
-              const active = Math.abs(options.fontSizeRem - size) < 0.001;
-              return (
-                <button
-                  key={size}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setFontSize(size)}
-                  className={`px-2 py-1 text-xs rounded border transition-colors ${
-                    active
-                      ? "bg-[var(--control-selected)] text-white border-[var(--control-selected)]"
-                      : "bg-surface border-edge-subtle text-ink-body hover-on-light"
-                  }`}
-                >
-                  {PRINT_FONT_LABELS[i]}
-                </button>
-              );
-            })}
+            <SegmentedToggle
+              ariaLabel="Font size"
+              size="sm"
+              value={
+                PRINT_FONT_SIZES.find(
+                  (size) => Math.abs(options.fontSizeRem - size) < 0.001,
+                ) ?? -1
+              }
+              onChange={setFontSize}
+              options={PRINT_FONT_SIZES.map((size, i) => ({
+                value: size,
+                label: PRINT_FONT_LABELS[i],
+              }))}
+            />
             <span className="ml-2 text-xs text-ink-muted tabular-nums">
               {options.fontSizeRem.toFixed(2)}rem
             </span>

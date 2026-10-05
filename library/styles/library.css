@@ -658,40 +658,13 @@
   color: var(--ink-muted, var(--muted));
 }
 
-/* ── Central view switch (segmented control in ProjectHeader) ────────── */
+/* ── Central view switch (segmented control in ProjectHeader) ──────────
+   Shape, palette, focus ring and pressed state come from the shared
+   `<SegmentedToggle>` (task 950); the Library chrome keeps only its mono
+   face, which the segments inherit. */
 
 .lib-viewswitch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  border: 1px solid var(--edge-subtle, var(--border-light));
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.lib-viewswitch-btn {
-  padding: 3px 10px;
-  border: none;
-  background: var(--surface);
-  color: var(--ink-body, var(--foreground));
-  font-size: 11px;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  cursor: pointer;
-  transition: background 120ms, color 120ms;
-}
-
-.lib-viewswitch-btn + .lib-viewswitch-btn {
-  border-left: 1px solid var(--edge-subtle, var(--border-light));
-}
-
-.lib-viewswitch-btn[aria-pressed="true"] {
-  background: var(--control-selected); /* F#12: warm taupe, not brown */
-  color: #fff;
-}
-
-.lib-viewswitch-btn[aria-pressed="false"]:hover {
-  background: var(--surface-muted, var(--library-bg));
 }
 
 /* ── Library list COLUMN boundary (`.list-col-resizer`) ────────────────

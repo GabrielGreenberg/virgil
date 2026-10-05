@@ -48,6 +48,7 @@ import {
   type TabDef,
 } from "./panel-tabs/PanelTabStrip";
 import { STRIP_SIDE_PAD } from "@/components/chrome/folder-tab-geometry";
+import { SegmentedToggle } from "@/components/SegmentedToggle";
 
 interface Props {
   panel: PanelKey;
@@ -683,25 +684,21 @@ function CentralListHeader({ onDashboard }: { onDashboard: () => void }) {
         flexShrink: 0,
       }}
     >
-      <div className="lib-viewswitch" role="group" aria-label="Central library view">
-        <button
-          type="button"
-          className="lib-viewswitch-btn"
-          aria-pressed={false}
-          onClick={onDashboard}
-        >
-          Dashboard
-        </button>
-        <button
-          type="button"
-          className="lib-viewswitch-btn"
-          aria-pressed={true}
-          // Already in Browse/list mode — pressed + inert.
-          onClick={() => {}}
-        >
-          Browse
-        </button>
-      </div>
+      <SegmentedToggle
+        className="lib-viewswitch"
+        ariaLabel="Central library view"
+        size="sm"
+        // Already in Browse/list mode — Browse is pressed and re-choosing it is
+        // inert; Dashboard leaves.
+        value="browse"
+        onChange={(view) => {
+          if (view === "dashboard") onDashboard();
+        }}
+        options={[
+          { value: "dashboard", label: "Dashboard" },
+          { value: "browse", label: "Browse" },
+        ]}
+      />
     </div>
   );
 }
