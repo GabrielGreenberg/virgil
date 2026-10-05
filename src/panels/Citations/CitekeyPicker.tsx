@@ -8,7 +8,10 @@
  * library-only entries shown as addable. Picking a library entry both
  * adds it to `references.bib` and reports the citekey back to the caller
  * in one motion. Free-text Enter on no match commits a raw citekey so
- * unknown sources can still be referenced from the card.
+ * unknown sources can still be referenced from the card — but only text that
+ * IS a citekey (or a comma list of them): the commit goes through
+ * `parseRawCitekeys`, the cite-side door of the one key rule (task 945), so a
+ * search phrase or a stray `}` / `%` never reaches the `.tex`.
  *
  * Thin wrapper around `BibEntryPickerMenu`.
  */
@@ -22,9 +25,11 @@ import {
 } from "@/hooks/useLibrary";
 import type { LibraryIndexItem } from "@/lib/library/library-types";
 import { membershipChipsFor } from "@/components/library/provenance-chips";
+import { parseRawCitekeys } from "@/lib/bib-entry-head";
 import {
   BibEntryPickerMenu,
   type MembershipChips,
+  type RawCheck,
   type RowState,
 } from "@/components/library/BibEntryPickerMenu";
 
@@ -153,11 +158,18 @@ export function CitekeyPicker({
     [paperByCitekey, onAddBibEntry, onSelectKey, onClose, keepOpenOnPick],
   );
 
+  const checkRaw = useCallback((raw: string): RawCheck => {
+    const parsed = parseRawCitekeys(raw);
+    return parsed.ok ? { ok: true, text: parsed.text } : parsed;
+  }, []);
+
   const onCommitRaw = useCallback(
     (raw: string) => {
-      const trimmed = raw.trim();
-      if (!trimmed) return;
-      onSelectKey(trimmed);
+      // The menu only offers text `checkRaw` passed; re-read it here anyway so
+      // this door holds for any caller.
+      const parsed = parseRawCitekeys(raw);
+      if (!parsed.ok) return;
+      onSelectKey(parsed.text);
       if (!keepOpenOnPick) onClose();
     },
     [onSelectKey, onClose, keepOpenOnPick],
@@ -176,6 +188,7 @@ export function CitekeyPicker({
       getLibraryItem={getLibraryItem}
       getMembershipChips={getMembershipChips}
       onCommitRaw={onCommitRaw}
+      checkRaw={checkRaw}
       onEnterCommit={onEnterCommit}
       initialQuery={initialQuery}
       placeholder="Search references or library…"

@@ -19,6 +19,7 @@ import {
   serializeCiteCommand,
   type ParsedCiteKey,
 } from "@/lib/bib-parser";
+import { parseRawCitekeys } from "@/lib/bib-entry-head";
 import {
   PanelCard,
   PANEL,
@@ -582,6 +583,12 @@ export function CitationCard({
   // component while rendering a different component".
   const setRowKey = useCallback(
     (rowId: string, key: string) => {
+      // The backstop of the cite-side key rule (task 945): a key MOVING into
+      // `\cite{…}` must be one (or a comma list of them). The picker already
+      // refuses with a reason; this keeps any other door from serializing a
+      // `}` / `%` / space verbatim into the user's `.tex`. Keys the row
+      // already carries are not re-judged — they are the user's own bytes.
+      if (!parseRawCitekeys(key).ok) return;
       const next = rows.map((r) => (r.id === rowId ? { ...r, key } : r));
       // Re-derive: changing the keyed-row count crosses the ≥2-keys threshold
       // either way, so the command shape follows (T6-C16, two-way).

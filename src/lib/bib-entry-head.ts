@@ -75,6 +75,50 @@ export function validateBibEntryType(type: string): BibHeadCheck {
 }
 
 /**
+ * Is this string a legal citekey on its own? The character half of the key
+ * rule — the part every door that WRITES a key answers to, whether the key is
+ * headed for a `.bib` block (`validateBibEntryHead`) or into a `\cite{…}` in
+ * the `.tex` (`parseRawCitekeys`, task 945). The collision half is the bib
+ * door's alone: a cite may name any key.
+ */
+export function validateCitekey(key: string): BibHeadCheck {
+  const k = key.trim();
+  if (!k) return { ok: false, reason: "A citation key is required." };
+  const bad = k.match(CITEKEY_FORBIDDEN);
+  if (bad) {
+    const shown = /\s/.test(bad[0]) ? "a space" : `“${bad[0]}”`;
+    return { ok: false, reason: `A citation key cannot contain ${shown}.` };
+  }
+  return { ok: true };
+}
+
+/**
+ * Read free text the user typed as one or more citekeys for a `\cite{…}`
+ * (task 945 — the citation picker's "use it as a raw citekey" commit).
+ *
+ * A comma separates keys, exactly as it does inside `\cite{a,b}`, so typing a
+ * list is honoured; every piece must then pass `validateCitekey`. The answer is
+ * the NORMALIZED text to write (`a,b` — pieces trimmed, empties dropped) or the
+ * first piece's reason, in the user's words. Without this a `}` or `%` typed
+ * into the picker landed verbatim in the user's `.tex`, and a search phrase
+ * that matched nothing (`Kripke naming`) became an undefined citation.
+ */
+export function parseRawCitekeys(
+  text: string,
+): { ok: true; keys: string[]; text: string } | { ok: false; reason: string } {
+  const keys = text
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+  if (keys.length === 0) return { ok: false, reason: "A citation key is required." };
+  for (const k of keys) {
+    const check = validateCitekey(k);
+    if (!check.ok) return check;
+  }
+  return { ok: true, keys, text: keys.join(",") };
+}
+
+/**
  * Is this `@type` + citekey pair writable to `references.bib`?
  *
  * `entries` is the list the entry lives in and `self` the address of the entry
@@ -91,12 +135,8 @@ export function validateBibEntryHead(
 
   const typeCheck = validateBibEntryType(type);
   if (!typeCheck.ok) return typeCheck;
-  if (!key) return { ok: false, reason: "A citation key is required." };
-  const bad = key.match(CITEKEY_FORBIDDEN);
-  if (bad) {
-    const shown = /\s/.test(bad[0]) ? "a space" : `“${bad[0]}”`;
-    return { ok: false, reason: `A citation key cannot contain ${shown}.` };
-  }
+  const keyCheck = validateCitekey(key);
+  if (!keyCheck.ok) return keyCheck;
 
   const selfIndex =
     context.self !== undefined
