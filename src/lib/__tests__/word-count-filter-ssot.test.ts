@@ -38,8 +38,8 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import {
@@ -54,7 +54,7 @@ import {
 } from "@/lib/word-count-core";
 import { DEFAULT_WORD_COUNT_CONFIG } from "@/hooks/useWordCountConfig";
 import { getSelectionCounts } from "@/hooks/useSelectionCounts";
-import { strip } from "@/lib/__tests__/_source-scan";
+import { strip, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const ALL_ON = Object.fromEntries(
   ALL_CATEGORIES.map((c) => [c, true]),
@@ -230,11 +230,8 @@ const LIBRARY = resolve(__dirname, "../../../library");
 const CORE = resolve(SRC, "lib/word-count-core.ts");
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "__tests__" || name === "node_modules") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.tsx?$/.test(name) && !/\.(d\.ts|test\.tsx?)$/.test(name)) out.push(p);
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.(d\.ts|test\.tsx?)$/.test(p)) out.push(p);
   }
   return out;
 }

@@ -36,7 +36,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
@@ -55,6 +55,7 @@ import { paragraphUuidAt } from "@/links/links";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { pickBlockType } from "@/components/MenuBar";
 import { headingAttrsForLevel } from "@/lib/tiptap/heading-level";
+import { walkFiles } from "../../__tests__/_source-scan";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Real editor stack (the same shape the sibling heading suites mount)
@@ -386,14 +387,8 @@ describe("paragraph → heading is a conversion, and still gets the defaults", (
 const SRC = join(process.cwd(), "src");
 
 function walkSources(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      walkSources(p, out);
-    } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-      out.push(p);
-    }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

@@ -70,10 +70,10 @@
 // and therefore leg 2's business.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { commentsStripped, elementsNamed, cssRuleBodies, cssCommentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, elementsNamed, cssRuleBodies, cssCommentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import {
   ROLE_MENU,
   declaresAnchoredSurface,
@@ -248,12 +248,7 @@ function declaresChrome(prop: string, value: string): boolean {
 }
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === ".next" || name === "__tests__") continue;
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.tsx?$/.test(name)) out.push(full);
-  }
+  for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.tsx?$/.test(full)) out.push(full);
   return out;
 }
 

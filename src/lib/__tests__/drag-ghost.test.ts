@@ -20,7 +20,7 @@
 //      the clamp (reintroducing the tear-off bug) fails CI.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -30,6 +30,7 @@ import {
   stampDragGhostLayer,
 } from "../drag-ghost";
 import { DRAG_GHOST_Z } from "@/floats/float-policy";
+import { walkFiles } from "./_source-scan";
 
 describe("buildTextDragGhost", () => {
   it("renders a tokenized card by default — no raw hex, no position", () => {
@@ -130,14 +131,8 @@ const LIBRARY = path.resolve(HERE, "../../../library"); // the Library silo
 const SSOT = path.resolve(SRC, "lib/drag-ghost.ts"); // the one sanctioned caller
 
 function walk(dir: string, hits: string[]): void {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === ".next" || name === ".git") continue;
-    const full = path.join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      walk(full, hits);
-      continue;
-    }
+  for (const full of walkFiles(dir)) {
+    const name = path.basename(full);
     if (!/\.(ts|tsx)$/.test(name)) continue;
     if (name.includes(".test.")) continue; // tests mock a fake dataTransfer
     if (full === SSOT) continue; // the SSOT suppresses the native ghost here
@@ -170,14 +165,8 @@ describe("drag-ghost SSOT source guard", () => {
 function sources(): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   const visit = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      if (name === "node_modules" || name === ".next" || name === ".git" || name === "__tests__")
-        continue;
-      const full = path.join(dir, name);
-      if (statSync(full).isDirectory()) {
-        visit(full);
-        continue;
-      }
+    for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+      const name = path.basename(full);
       if (!/\.(ts|tsx)$/.test(name) || name.includes(".test.")) continue;
       out.push([path.relative(path.resolve(SRC, ".."), full), readFileSync(full, "utf8")]);
     }

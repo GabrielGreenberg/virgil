@@ -40,8 +40,7 @@
 // with teeth here and a behavioural assertion is not.
 import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@tiptap/react";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { HEADING_TYPES } from "@/lib/heading-types";
@@ -51,7 +50,7 @@ import {
   matchSectioningUseAt,
   matchStarOptBraceAt,
 } from "@/lib/latex-lexer";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Harness — the real save pipeline, twice.
@@ -609,14 +608,8 @@ const SECTIONING_NAMES = HEADING_TYPES.map((t) => t.command);
 
 /** Every production `.ts`/`.tsx` under `src/`. */
 function productionSources(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) {
-      if (entry === "node_modules" || entry === "__tests__") continue;
-      productionSources(p, out);
-    } else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) {
-      out.push(p);
-    }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

@@ -108,8 +108,8 @@
  * inapplicable is the same move the `.d.ts` skip already made.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "fs";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 /** The two silos this census covers. `src/components` subsumes the former
  *  `editor-layout` entry, which itself subsumed `/panels` — see the two SCOPE
@@ -178,19 +178,15 @@ function isTypeOnlyModule(src: string): boolean {
 }
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "__tests__" || name === "node_modules") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
     // Source only. A `.d.ts` re-declaring a shape for consumption elsewhere, a
     // story, or a test fixture would each flag every member of its own `*Props`
     // with no honest fix available but an allowlist entry — which this guard's
     // header says is the wrong answer.
-    else if (/\.tsx?$/.test(name) && !/\.(d\.ts|stories\.tsx?|test\.tsx?)$/.test(name)) {
-      // …and neither can a `.ts` type SSOT, for exactly the same reason.
-      if (isTypeOnlyModule(readFileSync(p, "utf8"))) continue;
-      out.push(p);
-    }
+    if (!/\.tsx?$/.test(p) || /\.(d\.ts|stories\.tsx?|test\.tsx?)$/.test(p)) continue;
+    // …and neither can a `.ts` type SSOT, for exactly the same reason.
+    if (isTypeOnlyModule(readFileSync(p, "utf8"))) continue;
+    out.push(p);
   }
   return out;
 }

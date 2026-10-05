@@ -18,6 +18,13 @@ export default defineConfig({
     // 566: a mount that outlives jsdom teardown exits vitest 1 with every
     // test passing). The file registers it explicitly for every suite.
     setupFiles: ["./vitest.setup.ts"],
+    // No suite may leave Python bytecode in the tree it is scanning. A suite
+    // that spawns a `library/`/`editor/` script used to write
+    // `__pycache__/*.pyc` (atomically: a `.pyc.<pid>` temp, then a rename) in
+    // the very directories the source-walking censuses list — and a census
+    // that stat'd the temp between listing and asking died ENOENT in the
+    // deploy gate (task 954). Workers export this to every child they spawn.
+    env: { PYTHONDONTWRITEBYTECODE: "1" },
     include: [
       "src/**/__tests__/**/*.test.{ts,tsx}",
       "library/**/__tests__/**/*.test.{ts,tsx}",

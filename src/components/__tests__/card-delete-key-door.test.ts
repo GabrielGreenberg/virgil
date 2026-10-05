@@ -13,19 +13,14 @@
 // door, never an entry.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { codeOnly, commentsStripped, tagAround } from "@/lib/__tests__/_source-scan";
+import { codeOnly, commentsStripped, tagAround, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..");
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === "__tests__") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.tsx?$/.test(p)) out.push(p);
-  }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.tsx?$/.test(p)) out.push(p);
   return out;
 }
 

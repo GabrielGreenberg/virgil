@@ -8,7 +8,7 @@
  * slot and assert the paper's open path answers ABSENT, reports the slot,
  * clears it, and does not pay for it again on the next open.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -61,6 +61,7 @@ import {
   readMirror,
   type EmergencyMirrorEntry,
 } from "@/lib/emergency-mirror";
+import { walkFiles } from "./_source-scan";
 
 const STORE = Symbol("s") as never;
 
@@ -301,12 +302,7 @@ describe("the size estimate never becomes the allocation", () => {
 
 const SRC = join(__dirname, "..", "..");
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "__tests__" || name === "node_modules") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
-  }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.(ts|tsx)$/.test(p)) out.push(p);
   return out;
 }
 

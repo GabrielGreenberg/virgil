@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { commentsStripped, cssCommentsStripped, cssRuleBodies } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, cssCommentsStripped, cssRuleBodies, walkFiles } from "@/lib/__tests__/_source-scan";
 import { hexToRgb, rgbToHsl, contrastRatio } from "@/lib/color-math";
 
 /**
@@ -116,17 +116,9 @@ const SKIP_DIRS = new Set([
 ]);
 
 function walkSource(rel: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(path.join(ROOT, rel));
-  } catch {
-    return out;
-  }
-  for (const name of entries) {
-    if (SKIP_DIRS.has(name)) continue;
-    const childRel = path.join(rel, name);
-    if (statSync(path.join(ROOT, childRel)).isDirectory()) walkSource(childRel, out);
-    else if (/\.tsx?$/.test(name) && !/\.test\./.test(name)) out.push(childRel);
+  for (const full of walkFiles(path.join(ROOT, rel), { skipDirs: SKIP_DIRS })) {
+    const name = path.basename(full);
+    if (/\.tsx?$/.test(name) && !/\.test\./.test(name)) out.push(path.relative(ROOT, full));
   }
   return out;
 }

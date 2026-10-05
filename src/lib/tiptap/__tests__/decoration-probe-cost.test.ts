@@ -23,14 +23,13 @@
  * invisible to any behavioural test of this plugin.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { LatexCommandMark } from "@/lib/tiptap/latex-command";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 
 let editor: Editor | null = null;
 afterEach(() => {
@@ -266,11 +265,8 @@ const ROOTS = ["src", "library"];
 const SKIP_DIR = /(^|\/)(node_modules|\.next|dist|build|out|coverage)(\/|$)/;
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (SKIP_DIR.test(full)) continue;
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.tsx?$/.test(full)) out.push(full);
+  for (const full of walkFiles(dir, { skipDirs: (n) => SKIP_DIR.test(n) })) {
+    if (/\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }

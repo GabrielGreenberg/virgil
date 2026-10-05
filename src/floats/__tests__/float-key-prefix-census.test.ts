@@ -12,8 +12,9 @@
 // LEGACY-MIGRATION readers, whose whole job is to read the retired spellings.
 
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const SRC = join(__dirname, "..", "..");
 
@@ -27,14 +28,8 @@ const ALLOWED = new Set([
 const KEY_PREFIX_LITERAL = /["'`](?:float|textobject):/;
 
 function walk(dir: string, out: string[]): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      walk(full, out);
-    } else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-      out.push(full);
-    }
+  for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.(ts|tsx)$/.test(full) && !/\.test\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }

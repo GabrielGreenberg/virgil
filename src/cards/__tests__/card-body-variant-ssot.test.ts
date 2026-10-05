@@ -21,30 +21,20 @@
 // Archive/Footnote drift) trips this instead of shipping.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
 
 function walkSource(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      // Skip test + fixture trees so the guard never scans itself.
-      if (entry === "__tests__" || entry === "__fixtures__") continue;
-      out.push(...walkSource(full));
-    } else if (/\.tsx$/.test(entry)) {
-      out.push(full);
-    }
-  }
-  return out;
+  // Skip test + fixture trees so the guard never scans itself.
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter((f) => /\.tsx$/.test(f));
 }
 
 // A body-`variant` prop on an EditableCard, in either sanctioned shape:

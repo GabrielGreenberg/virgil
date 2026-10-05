@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CHAR_ESCAPE_TABLE,
@@ -10,7 +10,7 @@ import {
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
-import { commentsStripped } from "./_source-scan";
+import { commentsStripped, walkFiles } from "./_source-scan";
 
 /**
  * Task 2026-08-16-339 — escape and unescape are ONE table, not two hand lists.
@@ -256,15 +256,7 @@ const REPO_ROOT = join(__dirname, "..", "..", "..");
 function sourceFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const entry of readdirSync(dir)) {
-      const p = join(dir, entry);
-      if (statSync(p).isDirectory()) {
-        if (entry === "node_modules" || entry === "__tests__") continue;
-        walk(p);
-      } else if (/\.(ts|tsx)$/.test(entry)) {
-        out.push(p);
-      }
-    }
+    for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.(ts|tsx)$/.test(p)) out.push(p);
   };
   walk(join(REPO_ROOT, root));
   return out;

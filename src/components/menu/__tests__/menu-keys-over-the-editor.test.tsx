@@ -27,6 +27,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, act } from "@testing-library/react";
 import { DragHandleMenu } from "../../DragHandleMenu";
 import { cardActionRows } from "@/lib/actions/action-registry";
+import { walkFiles } from "../../../lib/__tests__/_source-scan";
 
 class ResizeObserverStub {
   observe() {}
@@ -216,19 +217,16 @@ describe("task 386's protection (the defect leg, re-run against the new predicat
 // contentEditable".
 describe("census — one resolver for the focused contentEditable", () => {
   it("no production file but caret-host.ts pairs document.activeElement with isContentEditable", async () => {
-    const { readdirSync, readFileSync, statSync } = await import("node:fs");
-    const { join, resolve } = await import("node:path");
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
 
     const SRC = resolve(__dirname, "../../..");
     const ALLOWED = resolve(SRC, "components/menu/caret-host.ts");
 
     const files: string[] = [];
     const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        if (name === "node_modules" || name === "__tests__") continue;
-        const p = join(dir, name);
-        if (statSync(p).isDirectory()) walk(p);
-        else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) files.push(p);
+      for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+        if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) files.push(p);
       }
     };
     walk(SRC);

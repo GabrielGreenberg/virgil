@@ -19,12 +19,11 @@
  * caller that writes the envelope itself spells neither function while doing it.
  */
 import { describe, expect, it, beforeEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { addStackItem, readStackItem } from "../useStack";
 import { STACK_STORAGE_KEY, type StackItem } from "@/lib/stack/types";
 import type { StackBibCtx } from "@/lib/stack/bib-carry";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import type { BibEntry } from "@/lib/types";
 
 const SMITH: BibEntry = {
@@ -122,11 +121,8 @@ describe("addStackItem — the bib question is answered at the door", () => {
 const SRC_ROOTS = ["src", "library"];
 
 function walk(dir: string, out: string[]): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name.startsWith(".")) continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.tsx?$/.test(name)) out.push(full);
+  for (const full of walkFiles(dir, { skipDirs: (n) => n.startsWith(".") })) {
+    if (/\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }

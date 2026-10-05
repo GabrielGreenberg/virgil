@@ -224,9 +224,9 @@ describe("computeSectionPathAt", () => {
 
 import { __blockVocabBuildCount } from "../block-vocab";
 import { getBus } from "@/lib/tiptap/doc-structure";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { codeOnly, walkFiles } from "@/lib/__tests__/_source-scan";
 
 describe("par-titled vocabulary cost (task 585)", () => {
   it("typing 20 characters into a uuid'd paragraph builds the vocabulary ONCE", () => {
@@ -285,17 +285,12 @@ describe("par-titled vocabulary cost (task 585)", () => {
     const root = join(__dirname, "../../.."); // src/
     const hits: string[] = [];
     const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const p = join(dir, name);
-        if (statSync(p).isDirectory()) {
-          if (name === "__tests__" || name === "node_modules") continue;
-          walk(p);
-        } else if (/\.(ts|tsx)$/.test(name)) {
-          if (p.includes(join("tiptap", "doc-structure"))) continue;
-          // Symbol needle → `codeOnly` (comments may NAME the retired key).
-          const src = codeOnly(readFileSync(p, "utf8"));
-          if (/structure\.version\b/.test(src)) hits.push(p);
-        }
+      for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+        if (!/\.(ts|tsx)$/.test(p)) continue;
+        if (p.includes(join("tiptap", "doc-structure"))) continue;
+        // Symbol needle → `codeOnly` (comments may NAME the retired key).
+        const src = codeOnly(readFileSync(p, "utf8"));
+        if (/structure\.version\b/.test(src)) hits.push(p);
       }
     };
     walk(root);

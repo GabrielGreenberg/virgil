@@ -83,7 +83,7 @@
 //     prose doctrine — the justifications live next to the code they govern.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -92,6 +92,7 @@ import {
   commentsStripped,
   localFunctions,
   matchFrom,
+  walkFiles,
 } from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -377,19 +378,8 @@ export function mainEditorOptionHandlers(source: string): string[] {
 }
 
 function walkSource(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      // Skip test + fixture trees so the guard never scans itself.
-      if (entry === "__tests__" || entry === "__fixtures__") continue;
-      out.push(...walkSource(full));
-    } else if (/\.(ts|tsx)$/.test(entry)) {
-      out.push(full);
-    }
-  }
-  return out;
+  // Skip test + fixture trees so the guard never scans itself.
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter((f) => /\.(ts|tsx)$/.test(f));
 }
 
 /** `{ silo-relative file → count }` for every file with a non-zero count. */

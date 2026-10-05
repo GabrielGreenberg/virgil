@@ -51,6 +51,9 @@ jobs:
 
       - name: Unit tests
         run: npx vitest run
+        # No bytecode in the tree the source censuses walk (task 954).
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
 
       # EVERY stdlib-python suite (editor/scripts + library/scripts), through
       # the same runner `npx vitest run` drives (task 622). This step used to
@@ -61,6 +64,8 @@ jobs:
       # detector once sat red for three days while every deploy stayed green).
       - name: Python script suites
         run: node scripts/lib/python-suites.mjs
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
 
   build:
     runs-on: ubuntu-latest

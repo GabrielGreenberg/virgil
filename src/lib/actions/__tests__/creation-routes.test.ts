@@ -16,7 +16,7 @@
 // a sentence by hand instead — is in
 // `src/__tests__/panel-empty-state-contract.test.ts` (PROVENANCE).
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -27,6 +27,7 @@ import {
   panelAddRoute,
 } from "../creation-routes";
 import { VIRGIL_ACTION_REGISTRY, type ActionId } from "../action-registry";
+import { walkFiles } from "../../__tests__/_source-scan";
 
 /** The sentence a panel with no "+" of its own teaches. */
 const sentenceFor = (id: ActionId, hasAdd = false) =>
@@ -127,14 +128,7 @@ describe("every action the panels name can be described", () => {
   const SRC = path.resolve(HERE, "../../.."); // src/
 
   function walk(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir)) {
-      if (entry === "node_modules" || entry === "__tests__") continue;
-      const full = path.join(dir, entry);
-      if (statSync(full).isDirectory()) out.push(...walk(full));
-      else if (/\.tsx?$/.test(entry)) out.push(full);
-    }
-    return out;
+    return walkFiles(dir, { skipDirs: ["__tests__"] }).filter((f) => /\.tsx?$/.test(f));
   }
 
   const MOUNTED: { file: string; action: ActionId }[] = walk(SRC).flatMap((f) =>

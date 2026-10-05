@@ -14,9 +14,10 @@
 // inside a component and are out of scope — the ladder starts at the panel band.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
@@ -46,14 +47,8 @@ const PATTERNS: RegExp[] = [
 const EXTS = new Set([".ts", ".tsx", ".css"]);
 
 function walk(dir: string, out: string[]): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      walk(full, out);
-    } else if (EXTS.has(path.extname(name)) && !/\.test\.tsx?$/.test(name)) {
-      out.push(full);
-    }
+  for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (EXTS.has(path.extname(full)) && !/\.test\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }

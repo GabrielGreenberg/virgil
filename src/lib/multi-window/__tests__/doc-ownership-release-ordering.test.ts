@@ -9,6 +9,7 @@
  * against a queued write, not only against a held lock.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { walkFiles } from "../../__tests__/_source-scan";
 
 const idb = new Map<string, unknown>();
 vi.mock("idb-keyval", () => ({
@@ -198,7 +199,7 @@ describe("releaseDoc ordering", () => {
 
 describe("the drain hook has a registrant", () => {
   it("@/lib/storage is the ONE registrant, and it registers drainDoc", async () => {
-    const { readFileSync, readdirSync, statSync } = await import("node:fs");
+    const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const root = join(process.cwd(), "src");
     const hits: string[] = [];
@@ -207,14 +208,8 @@ describe("the drain hook has a registrant", () => {
     const code = (src: string) =>
       src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     const walk = (dir: string) => {
-      for (const e of readdirSync(dir)) {
-        const p = join(dir, e);
-        if (statSync(p).isDirectory()) {
-          if (e === "node_modules" || e === "__tests__") continue;
-          walk(p);
-          continue;
-        }
-        if (!/\.(ts|tsx)$/.test(e)) continue;
+      for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+        if (!/\.(ts|tsx)$/.test(p)) continue;
         const src = readFileSync(p, "utf8");
         if (/\bregisterDocDrain\s*\(/.test(code(src))) hits.push(p.slice(root.length + 1));
       }

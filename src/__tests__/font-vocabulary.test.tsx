@@ -12,7 +12,7 @@
  *    module outside the catalogue re-spells a font list;
  *  - a picker whose stored value is outside its offer still SHOWS that value.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
@@ -31,6 +31,7 @@ import { PREFERENCES_TREE, isLeaf, type PrefNode, type PrefLeafFont } from "@/li
 import { PANEL_BODY_FONT_OPTIONS } from "@/lib/panel-typography";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import { FontPref } from "@/components/PreferenceTree";
+import { walkFiles } from "../lib/__tests__/_source-scan";
 
 const catalogue = new Set(ALL_CATALOGUE_FONTS);
 
@@ -91,13 +92,8 @@ describe("font vocabulary — one catalogue", () => {
     const root = path.resolve(__dirname, "../..");
     const offenders: string[] = [];
     const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const full = path.join(dir, name);
-        if (statSync(full).isDirectory()) {
-          if (name !== "__tests__" && name !== "node_modules") walk(full);
-          continue;
-        }
-        if (!/\.(ts|tsx)$/.test(name)) continue;
+      for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+        if (!/\.(ts|tsx)$/.test(full)) continue;
         const rel = path.relative(root, full).split(path.sep).join("/");
         if (allowed.has(rel)) continue;
         // An array literal holding two or more catalogue names in a row.

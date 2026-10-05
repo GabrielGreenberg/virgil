@@ -29,9 +29,9 @@
 // behavioural test of the door could see.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { codeOnly } from "./_source-scan";
+import { codeOnly, walkFiles } from "./_source-scan";
 import {
   detectBibFamily,
   DEFAULT_BIB_FAMILY,
@@ -185,14 +185,8 @@ We use \\autocite{smith2020}.
 const ROOT = join(__dirname, "..", "..", "..");
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "node_modules" || name === "__tests__") continue;
-      walk(p, out);
-    } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-      out.push(p);
-    }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

@@ -15,9 +15,9 @@
 // Allowlist: EMPTY. A hit is MIGRATE-it.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import {
   DocumentQueryScanner,
   HOLE,
@@ -29,13 +29,7 @@ const SRC = path.resolve(__dirname, "../../..");
 const LIBRARY = path.resolve(SRC, "../library");
 
 function walk(root: string, out: string[] = []): string[] {
-  if (!existsSync(root)) return out;
-  for (const entry of readdirSync(root)) {
-    if (entry === "node_modules") continue;
-    const full = path.join(root, entry);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.tsx?$/.test(entry)) out.push(full);
-  }
+  for (const full of walkFiles(root)) if (/\.tsx?$/.test(full)) out.push(full);
   return out;
 }
 

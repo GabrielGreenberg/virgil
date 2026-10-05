@@ -49,12 +49,12 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Editor } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
-import { codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
+import { codeOnly, commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids, serializeBodyOnly } from "@/lib/latex-serializer";
 import { setHeadingLevelInRange } from "@/lib/tiptap/heading-level";
@@ -725,20 +725,8 @@ const ROOT = join(__dirname, "..", "..", "..", "..");
 function productionFiles(dir: string): string[] {
   const out: string[] = [];
   const walk = (d: string) => {
-    for (const name of readdirSync(d)) {
-      const full = join(d, name);
-      let st;
-      try {
-        st = statSync(full);
-      } catch {
-        continue; // a file that vanished mid-scan (a stale __pycache__ entry)
-      }
-      if (st.isDirectory()) {
-        if (name === "__tests__" || name === "node_modules" || name === "__pycache__") continue;
-        walk(full);
-      } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-        out.push(full);
-      }
+    for (const full of walkFiles(d, { skipDirs: ["__tests__"] })) {
+      if (/\.tsx?$/.test(full) && !/\.test\.tsx?$/.test(full)) out.push(full);
     }
   };
   walk(dir);

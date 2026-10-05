@@ -71,9 +71,8 @@
  *       LOUD (a false accusation someone must investigate), not silent.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { readFileSync } from "fs";
+import { codeOnly, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const SRC = "src";
 const DECL = "src/components/editor-layout/floating-cards.tsx";
@@ -88,11 +87,8 @@ const PANE = "src/components/EditorPane.tsx";
 const PERMITTED_DEAD_CTX_FIELDS = new Set<string>([]);
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "__tests__" || name === "node_modules") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.tsx?$/.test(name) && !/\.(d\.ts|test\.tsx?)$/.test(name)) out.push(p);
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.(d\.ts|test\.tsx?)$/.test(p)) out.push(p);
   }
   return out;
 }

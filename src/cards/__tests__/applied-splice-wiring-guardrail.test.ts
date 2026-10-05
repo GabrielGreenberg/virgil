@@ -23,8 +23,8 @@
 // this repo (keystroke sanctity, scroll repositioners, highlight-mark writers).
 
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const ROOTS = ["src", "library"];
 const EXTS = [".ts", ".tsx"];
@@ -40,13 +40,9 @@ function isDeclaration(src: string, at: number): boolean {
 }
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".next" || entry.startsWith(".")) continue;
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) {
-      if (entry === "__tests__") continue; // tests construct deps bags freely
-      walk(p, out);
-    } else if (EXTS.some((e) => p.endsWith(e)) && !p.endsWith(".test.ts") && !p.endsWith(".test.tsx")) {
+  // tests construct deps bags freely, so `__tests__` is not walked
+  for (const p of walkFiles(dir, { skipDirs: (n) => n === "__tests__" || n.startsWith(".") })) {
+    if (EXTS.some((e) => p.endsWith(e)) && !p.endsWith(".test.ts") && !p.endsWith(".test.tsx")) {
       out.push(p);
     }
   }

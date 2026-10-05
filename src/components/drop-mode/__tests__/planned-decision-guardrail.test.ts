@@ -53,10 +53,10 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
@@ -108,17 +108,7 @@ const DROP_MODE = path.resolve(HERE, "..");
 const PERMITTED_UNPLANNED_FITS: Record<string, string> = {};
 
 function walkSource(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "__tests__" || entry === "__fixtures__") continue;
-      out.push(...walkSource(full));
-      continue;
-    }
-    if (/\.(ts|tsx)$/.test(entry)) out.push(full);
-  }
-  return out;
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter((f) => /\.(ts|tsx)$/.test(f));
 }
 
 /**

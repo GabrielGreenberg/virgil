@@ -45,6 +45,7 @@ import SearchPanel, {
   INITIAL_SEARCH_STATE,
   type SearchPanelState,
 } from "@/panels/Search/SearchPanel";
+import { walkFiles } from "../../../lib/__tests__/_source-scan";
 
 const SRC = join(process.cwd(), "src");
 
@@ -249,12 +250,5 @@ describe("census — the HOST resolves the offer; nothing hands the panel a lite
 });
 
 function walk(dir: string): string[] {
-  const { readdirSync, statSync } = require("node:fs") as typeof import("node:fs");
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...walk(full));
-    else if (/\.tsx?$/.test(name)) out.push(full);
-  }
-  return out.sort();
+  return walkFiles(dir).filter((full) => /\.tsx?$/.test(full));
 }

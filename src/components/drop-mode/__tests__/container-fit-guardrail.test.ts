@@ -129,9 +129,10 @@
 // would need the adoption hoisted the same way rather than the guard relaxed.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { walkFiles } from "../../../lib/__tests__/_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DROP_MODE = path.resolve(HERE, ".."); // src/components/drop-mode/
@@ -329,18 +330,7 @@ export function detectSpliceCall(line: string): boolean {
 }
 
 function walkSource(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      if (entry === "__tests__" || entry === "__fixtures__") continue;
-      out.push(...walkSource(full));
-    } else if (/\.(ts|tsx)$/.test(entry)) {
-      out.push(full);
-    }
-  }
-  return out;
+  return walkFiles(dir, { skipDirs: ["__tests__", "__fixtures__"] }).filter((f) => /\.(ts|tsx)$/.test(f));
 }
 
 interface SpliceSite {

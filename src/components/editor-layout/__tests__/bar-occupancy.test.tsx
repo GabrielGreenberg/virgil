@@ -52,7 +52,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRef, useEffect, useRef, useState } from "react";
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
-import { codeOnly, commentsStripped, tagsContaining } from "@/lib/__tests__/_source-scan";
+import { codeOnly, commentsStripped, tagsContaining, walkFiles } from "@/lib/__tests__/_source-scan";
 import {
   resolveBarOccupancy,
   BAR_FIT_EPSILON_PX,
@@ -778,16 +778,11 @@ describe("census · the structural floor and the shared cap", () => {
     }
     const offenders: string[] = [];
     const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir)) {
-        const full = path.join(dir, entry);
-        if (fs.statSync(full).isDirectory()) {
-          if (entry === "__tests__" || entry === "node_modules") continue;
-          walk(full);
-        } else if (/\.tsx?$/.test(entry)) {
-          const rel = path.relative(ROOT, full).split(path.sep).join("/");
-          if (rel === MODULE) continue;
-          if (/\.scrollLeft\s*(?:\+=|-=|=)[^=]/.test(codeOnly(read(rel)))) offenders.push(rel);
-        }
+      for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+        if (!/\.tsx?$/.test(full)) continue;
+        const rel = path.relative(ROOT, full).split(path.sep).join("/");
+        if (rel === MODULE) continue;
+        if (/\.scrollLeft\s*(?:\+=|-=|=)[^=]/.test(codeOnly(read(rel)))) offenders.push(rel);
       }
     };
     walk(path.join(ROOT, "src"));
@@ -982,24 +977,19 @@ describe("census · the structural floor and the shared cap", () => {
     // resolving its own collapse is, and that type-checks perfectly.
     const offenders: string[] = [];
     const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir)) {
-        const full = path.join(dir, entry);
-        if (fs.statSync(full).isDirectory()) {
-          if (entry === "__tests__") continue;
-          walk(full);
-        } else if (/\.tsx?$/.test(entry)) {
-          const rel = path.relative(ROOT, full).split(path.sep).join("/");
-          // The hook is the one legitimate caller; the module below it is
-          // where the function is DECLARED.
-          if (
-            rel.endsWith("editor-layout/useBarOccupancy.ts") ||
-            rel.endsWith("editor-layout/bar-occupancy.ts")
-          ) {
-            continue;
-          }
-          if (/\bresolveBarOccupancy\s*\(/.test(codeOnly(read(rel)))) {
-            offenders.push(rel);
-          }
+      for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+        if (!/\.tsx?$/.test(full)) continue;
+        const rel = path.relative(ROOT, full).split(path.sep).join("/");
+        // The hook is the one legitimate caller; the module below it is
+        // where the function is DECLARED.
+        if (
+          rel.endsWith("editor-layout/useBarOccupancy.ts") ||
+          rel.endsWith("editor-layout/bar-occupancy.ts")
+        ) {
+          continue;
+        }
+        if (/\bresolveBarOccupancy\s*\(/.test(codeOnly(read(rel)))) {
+          offenders.push(rel);
         }
       }
     };

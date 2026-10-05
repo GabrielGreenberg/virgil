@@ -27,12 +27,13 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-import { readFileSync, readdirSync, statSync } from "fs";
+import { readFileSync } from "fs";
 import { join } from "path";
 import { render, cleanup, fireEvent } from "@testing-library/react";
 import BibEntryCard from "@/components/BibEntryCard";
 import { MIME_CITATION } from "@/lib/marginalia";
 import type { BibEntry } from "@/lib/types";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 afterEach(cleanup);
 
@@ -168,16 +169,7 @@ describe("Icon-SSOT guardrail — the retired boxed-arrow jump glyphs are gone (
   // pre-SSOT holdouts; assert nothing in src/ re-introduces them so the glyph
   // can't drift back.
   function walkTsFiles(dir: string, out: string[] = []): string[] {
-    for (const name of readdirSync(dir)) {
-      const full = join(dir, name);
-      const st = statSync(full);
-      if (st.isDirectory()) {
-        if (name === "node_modules" || name === ".next") continue;
-        walkTsFiles(full, out);
-      } else if (/\.(ts|tsx)$/.test(name)) {
-        out.push(full);
-      }
-    }
+    for (const full of walkFiles(dir)) if (/\.(ts|tsx)$/.test(full)) out.push(full);
     return out;
   }
 

@@ -12,7 +12,7 @@
 //   4. CENSUS   — no windows-registry writer or pagehide-time tab deletion
 //                 remains in the source tree.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const idb = vi.hoisted(() => {
@@ -49,6 +49,7 @@ import {
 } from "@/lib/doc-index";
 import { liveWindowIds } from "@/lib/multi-window/window-liveness";
 import { getWindowId } from "@/lib/multi-window/window-id";
+import { walkFiles } from "./_source-scan";
 
 const DAY = 24 * 60 * 60 * 1000;
 const tabs = (ids: string[], savedAt?: number): TabsState => ({
@@ -127,11 +128,8 @@ describe("tab records outlive the page (task 603)", () => {
 describe("CENSUS — no write-only window registry, no pagehide tab deletion", () => {
   const root = join(__dirname, "..", "..", "..");
   function walk(dir: string, out: string[]): string[] {
-    for (const name of readdirSync(dir)) {
-      if (name === "node_modules" || name.startsWith(".")) continue;
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) walk(p, out);
-      else if (/\.(ts|tsx)$/.test(name) && !p.includes("__tests__")) out.push(p);
+    for (const p of walkFiles(dir, { skipDirs: (n) => n.startsWith(".") })) {
+      if (/\.(ts|tsx)$/.test(p) && !p.includes("__tests__")) out.push(p);
     }
     return out;
   }

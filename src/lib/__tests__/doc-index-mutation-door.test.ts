@@ -19,8 +19,8 @@
 // Neutered against the pre-601 doc-index.ts + storage-fsa.ts: the
 // interleaving leg loses paper B.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { basename, join, relative } from "node:path";
 
 const idb = vi.hoisted(() => {
   const data = new Map<string, unknown>();
@@ -90,6 +90,7 @@ import {
   renameDoc,
   deleteDocFromIndex,
 } from "@/lib/storage-fsa";
+import { walkFiles } from "./_source-scan";
 
 const A: FsaDocMeta = {
   id: "aaaaaaaa",
@@ -180,17 +181,8 @@ const ROOT = join(__dirname, "..", "..", "..");
 const SCAN = ["src", "editor", "library"].map((d) => join(ROOT, d));
 
 function walk(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return out;
-  }
-  for (const e of entries) {
-    if (e === "node_modules" || e.startsWith(".")) continue;
-    const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx|mjs|js)$/.test(e)) out.push(p);
+  for (const p of walkFiles(dir, { skipDirs: (n) => n.startsWith(".") })) {
+    if (/\.(ts|tsx|mjs|js)$/.test(p) && !basename(p).startsWith(".")) out.push(p);
   }
   return out;
 }

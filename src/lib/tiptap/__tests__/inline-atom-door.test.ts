@@ -19,7 +19,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -35,7 +35,7 @@ import {
   inlineCursorHostsNode,
   inlineCursorHostsPayload,
 } from "@/components/drop-mode/inline-host";
-import { strip } from "@/lib/__tests__/_source-scan";
+import { strip, walkFiles } from "@/lib/__tests__/_source-scan";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -152,11 +152,8 @@ const REPO = resolve(__dirname, "../../../..");
 const REGISTRY = "src/text-objects/text-object-registry.ts";
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === "__tests__") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(p);
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.(ts|tsx)$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

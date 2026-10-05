@@ -27,8 +27,9 @@
 // `library/scripts/tests/test_re_extract_door.py`, which drives the real
 // parser.
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
+import { walkFiles } from "../../../src/lib/__tests__/_source-scan";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SILOS = ["editor", "library"] as const;
@@ -36,11 +37,7 @@ const SILOS = ["editor", "library"] as const;
 function skillMarkdown(): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      const p = path.join(dir, name);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (name.endsWith(".md")) out.push(p);
-    }
+    for (const p of walkFiles(dir)) if (p.endsWith(".md")) out.push(p);
   };
   for (const silo of SILOS) walk(path.join(REPO_ROOT, silo, "skills"));
   return out;

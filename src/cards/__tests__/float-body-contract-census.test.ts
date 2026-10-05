@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { selectMirror } from "../floats/body-contract";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 /**
  * Task 724 — the CENSUS over the two contracts a card body hands its host.
@@ -44,11 +45,8 @@ const ROOT = join(__dirname, "..", "..");
 function sources(): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
-    for (const name of readdirSync(dir)) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (name.endsWith(".tsx")) out.push(p);
+    for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+      if (p.endsWith(".tsx")) out.push(p);
     }
   };
   walk(join(ROOT, "panels"));

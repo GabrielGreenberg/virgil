@@ -31,7 +31,7 @@
  * invariant they pin is the composition an actual render performs — not a
  * restatement of the arithmetic.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
@@ -60,6 +60,7 @@ import {
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import { SCROLLBAR_GUTTER } from "@/components/editor-layout/constants";
 import { MARGIN_MIN } from "@/hooks/useMarginEdit";
+import { walkFiles } from "./_source-scan";
 
 /** A 3-line node, so both columns AND a second row are exercised. */
 const NODE: AnchorNodeMetrics = {
@@ -314,11 +315,8 @@ describe("lane regime — the call site must ASK, and must measure the right ele
   // the grid simply never asked. A REQUIRED param forces a value; only a grep
   // can say the value wasn't a hardcoded `true`.
   function walk(dir: string, out: string[] = []): string[] {
-    for (const name of readdirSync(dir)) {
-      if (name === "node_modules" || name === "__tests__") continue;
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) walk(p, out);
-      else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(p);
+    for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+      if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
     }
     return out;
   }

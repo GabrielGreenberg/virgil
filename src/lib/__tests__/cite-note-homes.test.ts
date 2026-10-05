@@ -25,8 +25,8 @@
 // run through the identical harness so no leg can pass by dropping every note.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "fs";
+import { join, relative } from "path";
 import {
   parseCiteCommand,
   parseNatbibCommand,
@@ -39,7 +39,7 @@ import {
 } from "@/lib/cite-command-model";
 import { formatInlineCitation } from "@/lib/bib-parser";
 import type { BibEntry } from "@/lib/types";
-import { commentsStripped } from "./_source-scan";
+import { commentsStripped, walkFiles } from "./_source-scan";
 
 /** What `CitationCard.persist()` does: take the per-key rows the UI edits and
  *  re-serialize them for the document's package. The panel's own row builder is
@@ -278,17 +278,9 @@ const SSOT = join("src", "lib", "cite-command-model.ts");
 function productionFiles(): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
-    for (const name of readdirSync(join(REPO_ROOT, dir))) {
-      const rel = join(dir, name);
-      const abs = join(REPO_ROOT, rel);
-      if (statSync(abs).isDirectory()) {
-        if (name === "__tests__" || name === "node_modules") continue;
-        walk(rel);
-        continue;
-      }
-      if (!/\.tsx?$/.test(name)) continue;
-      if (/\.test\.tsx?$/.test(name)) continue;
-      out.push(rel);
+    for (const abs of walkFiles(join(REPO_ROOT, dir), { skipDirs: ["__tests__"] })) {
+      if (!/\.tsx?$/.test(abs) || /\.test\.tsx?$/.test(abs)) continue;
+      out.push(relative(REPO_ROOT, abs));
     }
   };
   walk("src");

@@ -11,7 +11,7 @@
 // reaper's strip was on the undo stack: Cmd+Z brought the mark back with no
 // card behind it, and nothing re-ran to catch it.
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 vi.mock("@/lib/storage", async () =>
@@ -33,6 +33,7 @@ import {
   updateLinkedAnchorCard,
 } from "@/links/links";
 import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -204,13 +205,8 @@ describe("census: src/links writes linkedAnchor only through the door", () => {
     const root = join(process.cwd(), "src/links");
     const offenders: string[] = [];
     const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const p = join(dir, name);
-        if (statSync(p).isDirectory()) {
-          if (name !== "__tests__") walk(p);
-          continue;
-        }
-        if (!/\.tsx?$/.test(name)) continue;
+      for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+        if (!/\.tsx?$/.test(p)) continue;
         readFileSync(p, "utf8")
           .split("\n")
           .forEach((line, i) => {

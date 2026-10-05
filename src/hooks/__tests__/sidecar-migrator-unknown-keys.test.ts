@@ -46,8 +46,9 @@ import { migrateRevisions } from "../useRevisions";
 import { migrateCutter } from "../useCutter";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
 import { migrateDocumentSettings } from "@/lib/document-settings";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 beforeEach(() => {
   mockRead.mockReset();
@@ -391,14 +392,8 @@ describe("withSidecarEnvelope", () => {
 const SRC = resolve(__dirname, "../..");
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
-      if (name === "node_modules" || name === "__tests__") continue;
-      walk(full, out);
-    } else if (full.endsWith(".ts") || full.endsWith(".tsx")) {
-      out.push(full);
-    }
+  for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (full.endsWith(".ts") || full.endsWith(".tsx")) out.push(full);
   }
   return out;
 }

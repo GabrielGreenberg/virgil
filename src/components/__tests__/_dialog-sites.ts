@@ -18,9 +18,9 @@
  * which is what each suite's prose canary needs.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { commentsStripped, elementsNamed } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, elementsNamed, walkFiles } from "@/lib/__tests__/_source-scan";
 
 /** `src/` — the app silo's walk root. */
 export const SRC_ROOT = join(__dirname, "..", "..");
@@ -40,15 +40,7 @@ export const LIBRARY_ROOT = join(SRC_ROOT, "..", "library");
 export const SHELL = ["components/system-dialog.tsx"];
 
 export function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) {
-      if (entry === "__tests__" || entry === "node_modules") continue;
-      walk(p, out);
-    } else if (/\.tsx?$/.test(entry)) {
-      out.push(p);
-    }
-  }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.tsx?$/.test(p)) out.push(p);
   return out;
 }
 

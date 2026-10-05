@@ -26,7 +26,7 @@
 // `CardListPanel` a `getArchived`), and every member is driven through the REAL
 // component at all three view modes × (raw empty / raw non-empty).
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect, vi, afterEach, type Mock } from "vitest";
@@ -54,6 +54,7 @@ import {
   type CardArchiveViewApi,
 } from "../card-archive-view";
 import type { PanelKind } from "../types";
+import { walkFiles } from "../../../lib/__tests__/_source-scan";
 
 afterEach(cleanup);
 
@@ -67,14 +68,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PANELS_DIR = path.resolve(HERE, "../.."); // src/panels/
 
 function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    if (entry === "__tests__" || entry === "_shared") continue;
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) out.push(...walk(full));
-    else if (entry.endsWith(".tsx")) out.push(full);
-  }
-  return out;
+  return walkFiles(dir, { skipDirs: ["__tests__", "_shared"] }).filter((f) => f.endsWith(".tsx"));
 }
 
 const ARCHIVABLE_PANELS: { file: string; kind: PanelKind }[] = walk(PANELS_DIR)

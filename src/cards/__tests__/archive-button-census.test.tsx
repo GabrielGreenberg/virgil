@@ -19,7 +19,7 @@
 //      identity) does not.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 vi.mock("@/lib/storage", async () =>
@@ -65,6 +65,7 @@ import { TodoRow } from "@/panels/Todo/TodoRow";
 import { CitationCard } from "@/panels/Citations/CitationCard";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { CitationRef, TodoItem } from "@/lib/types";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 afterEach(cleanup);
 
@@ -122,12 +123,8 @@ describe("archive button — shell census over every CardKind (task 822)", () =>
 describe("archive button — source census: a trash-bearing PanelCard passes cardId", () => {
   const SRC = join(process.cwd(), "src");
   function walk(dir: string, out: string[] = []): string[] {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) {
-        if (name === "__tests__" || name === "node_modules") continue;
-        walk(p, out);
-      } else if (p.endsWith(".tsx")) out.push(p);
+    for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+      if (p.endsWith(".tsx")) out.push(p);
     }
     return out;
   }

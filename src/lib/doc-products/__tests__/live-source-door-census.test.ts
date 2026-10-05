@@ -10,21 +10,16 @@
  * (CodeMirror has no render harness here).
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { walkFiles } from "../../__tests__/_source-scan";
 
 const ROOT = join(__dirname, "../../../..");
 const SRC = join(ROOT, "src");
 const DOOR = "src/lib/doc-products/pipeline.ts";
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      walk(p, out);
-    } else if (/\.(ts|tsx)$/.test(name)) out.push(p);
-  }
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.(ts|tsx)$/.test(p)) out.push(p);
   return out;
 }
 

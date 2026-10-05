@@ -40,13 +40,13 @@
 // an empty file list; (3) the vocabulary is DERIVED from the registry, so
 // deleting a row shrinks the needle visibly rather than silently.
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 // `strip(src, keepStrings=true, keepLines=true)`, not `codeOnly`: every needle
 // here matches INSIDE a string literal (`"footnoteId"`), so blanking literals
 // would make the whole census unfalsifiable — and lines must stay aligned
 // because each hit reports `file:line`.
-import { strip } from "@/lib/__tests__/_source-scan";
+import { strip, walkFiles } from "@/lib/__tests__/_source-scan";
 import {
   CARD_ATOMS,
   CARD_ATOM_ID_ATTRS,
@@ -86,11 +86,8 @@ const EACH_DOM_ID_ATTR = CARD_ATOM_DOM_ID_ATTRS.map(
 );
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === ".git" || name === "__tests__") continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.tsx?$/.test(full) && !/\.test\.tsx?$/.test(full)) out.push(full);
+  for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+    if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }

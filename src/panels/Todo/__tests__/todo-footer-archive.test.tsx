@@ -12,7 +12,7 @@
 
 import { NO_JUMP } from "@/links/card-anchor-rows";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 vi.mock("@/lib/storage", async () =>
@@ -36,6 +36,7 @@ import {
 import { CardArchiveActionsProvider } from "@/panels/_shared/card-archive-actions";
 import type { CardKind } from "@/cards/types";
 import type { TodoItem } from "@/lib/types";
+import { walkFiles } from "../../../lib/__tests__/_source-scan";
 
 afterEach(cleanup);
 
@@ -174,11 +175,8 @@ describe("Todo footer Archive archives — it never deletes (task 706)", () => {
 // delete/clear/remove/purge handler.
 describe("census: a control labelled Archive never reaches a delete door", () => {
   function walk(dir: string, out: string[] = []): string[] {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (name === "__tests__" || name === "node_modules") continue;
-      if (statSync(p).isDirectory()) walk(p, out);
-      else if (p.endsWith(".tsx")) out.push(p);
+    for (const p of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+      if (p.endsWith(".tsx")) out.push(p);
     }
     return out;
   }
