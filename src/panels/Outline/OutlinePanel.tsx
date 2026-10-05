@@ -349,6 +349,7 @@ function InlineLabel({
     <button
       type="button"
       className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer select-none rounded focus-ring"
+      data-iconbtn-exempt="outline label +: a glyph on the label's own type line, sized by the row's text by design"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
       {...iconHint({ label: "Add label", pos: "above" })}
     >
@@ -2020,7 +2021,10 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                 // first — so it addresses index 0 with no uuid by design, and
                 // stays correct under an insert above (task 285). It scrolls
                 // to the top (`null`) rather than to that block.
-                onClick={(e) => activateOutlineRow({ uuid: null, index: 0 }, null, e.shiftKey, rowActivation)}
+                onClick={(e) => {
+                  const docStart = { uuid: null, index: 0 };
+                  activateOutlineRow(docStart, null, e.shiftKey, rowActivation);
+                }}
               >
                 <span className="shrink-0" style={{ width: OUTLINE_TWIST_COL }} />
                 <span className="block min-w-0 flex-1 text-sm leading-snug break-words">
