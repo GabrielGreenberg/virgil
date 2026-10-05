@@ -393,6 +393,7 @@ export function BlockTypeDropdown({
         {...iconHint({ label: "Block type" })}
         aria-haspopup="menu"
         aria-expanded={open}
+        data-button-exempt="glyph + caret menu trigger, not a labelled action"
         className="px-1.5 py-0.5 rounded text-sm text-[var(--muted)] hover-on-light hover:text-ink-body flex items-center gap-1 focus-ring"
       >
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>

@@ -1577,6 +1577,7 @@ function CitationKeyRow({
             e.stopPropagation();
             setPgOpen(true);
           }}
+          data-button-exempt="10px hover-revealed row chip, below Button's sm scale"
           className="text-[10px] tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover-on-light opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
           data-hint="Add a page range or locator"
         >

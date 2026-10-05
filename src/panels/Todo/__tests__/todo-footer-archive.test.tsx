@@ -186,12 +186,12 @@ describe("census: a control labelled Archive never reaches a delete door", () =>
     let archiveButtons = 0;
     for (const file of [...walk(join("src", "panels")), ...walk(join("src", "components"))]) {
       const src = readFileSync(file, "utf8");
-      // Chunk = `<button …` up to its `</button>`; the label is the text
+      // Chunk = `<button …` (or `<Button …`) up to its close tag; the label is the text
       // immediately before the close tag; the handler is the brace-balanced
       // `onClick={…}` expression (arrow bodies contain `>`, so no attr regex).
-      for (const m of src.matchAll(/<button\b[\s\S]*?<\/button>/g)) {
+      for (const m of src.matchAll(/<[bB]utton\b[\s\S]*?<\/[bB]utton>/g)) {
         const chunk = m[0];
-        if (!/>\s*Archive\s*<\/button>$/.test(chunk)) continue;
+        if (!/>\s*Archive\s*<\/[bB]utton>$/.test(chunk)) continue;
         archiveButtons += 1;
         const at = chunk.indexOf("onClick={");
         let onClick = "";
