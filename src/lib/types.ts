@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/react";
 import type { Link } from "@/links/_shared/types";
+import type { FootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 
 export interface ParagraphMeta {
   title?: string;
@@ -536,7 +537,12 @@ export interface CitationInfo {
 
 // --- Footnotes (persistent state, supports unanchored) ---
 
-export interface FootnoteRef {
+/** `thanks` / `numberOverride` (task 947): the `.tex` markup the live atom
+ *  carries — `\thanks{…}` vs `\footnote{…}`, and `\footnote[3]{…}`'s mark.
+ *  Captured from the atom with the body, so archiving and re-placing the card
+ *  rebuilds the SAME command; absent ≡ plain `\footnote{}`. The one carried/
+ *  derived classification is `@/lib/footnote-source-attrs`. */
+export interface FootnoteRef extends FootnoteMarkupAttrs {
   id: string;
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. Archiving a footnote splices its
@@ -869,14 +875,15 @@ export interface BibSettings {
 
 // --- Orphaned Footnotes ---
 
-export interface OrphanedFootnote {
+// `thanks` / `numberOverride`: the dying footnote's markup attrs, preserved so
+// a re-dropped orphan restores them (FN-A2-02 — full-attr orphan clone, T2
+// §3b.1/§4.2; `numberOverride` joined in task 947, read off the same
+// `@/lib/footnote-source-attrs` list as the archive ref).
+export interface OrphanedFootnote extends FootnoteMarkupAttrs {
   footnoteId: string;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   content: unknown;
   title?: string;
-  // The dying footnote's `\thanks` attr, preserved so a re-dropped orphan
-  // restores it (FN-A2-02 — full-attr orphan clone, T2 §3b.1/§4.2).
-  thanks?: boolean;
   orphanedAt: string;
 }
 

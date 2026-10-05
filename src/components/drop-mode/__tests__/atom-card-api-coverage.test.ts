@@ -43,6 +43,10 @@ function recordingSources() {
       calls.push(`footnoteContentFor:${id}`);
       return { type: "doc", content: [{ type: "paragraph" }] };
     },
+    footnoteMarkupFor: (id) => {
+      calls.push(`footnoteMarkupFor:${id}`);
+      return {};
+    },
     markFootnoteAnchored: (id) => calls.push(`markFootnoteAnchored:${id}`),
     citationCommandFor: (id) => {
       calls.push(`citationCommandFor:${id}`);
@@ -125,6 +129,7 @@ describe("inline-atom card API coverage (task 233)", () => {
 
     expect(calls).toEqual([
       "footnoteContentFor:card-1",
+      "footnoteMarkupFor:card-1",
       "markFootnoteAnchored:card-1",
       "citationCommandFor:card-1",
       "markCitationAnchored:card-1",
@@ -136,6 +141,7 @@ describe("inline-atom card API coverage (task 233)", () => {
     // the drop the user committed to anchors rather than silently vanishing.
     const apis = buildInlineAtomCardApis({
       footnoteContentFor: () => null,
+      footnoteMarkupFor: () => ({}),
       markFootnoteAnchored: () => {},
       citationCommandFor: () => null,
       markCitationAnchored: () => {},

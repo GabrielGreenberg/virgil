@@ -200,6 +200,8 @@ export interface FootnoteInfo {
   pos: number;
   title?: string;
   thanks?: boolean;
+  /** `\footnote[3]{…}`'s mark (task 376 M5), null/absent on a plain footnote. */
+  numberOverride?: string | null;
 }
 
 export interface ExampleSubItem {
@@ -1053,6 +1055,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             pos,
             title: node.attrs.title || undefined,
             thanks: !!node.attrs.thanks,
+            numberOverride: (node.attrs.numberOverride as string | null) ?? null,
           });
         }
         return true;

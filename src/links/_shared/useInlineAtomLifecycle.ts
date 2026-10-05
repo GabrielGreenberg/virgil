@@ -46,6 +46,7 @@ import type {
 } from "@/lib/identity/identity-bus-consumer";
 import type { FootnoteEntry } from "@/lib/tiptap/doc-structure";
 import type { OrphanedFootnote } from "@/lib/types";
+import { pickFootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import {
   makeInlineAtomLifecyclePolicy,
   makeInlineAtomRegenMigrator,
@@ -99,7 +100,7 @@ export interface UseInlineAtomLifecycleArgs {
 }
 
 interface AtomSnapshot {
-  /** footnoteId → body/title/thanks, for the dying-body resolver + orphan gate. */
+  /** footnoteId → body/title/markup, for the dying-body resolver + orphan gate. */
   footnotes: Map<string, RemovedFootnoteContent>;
   /** Every live atom id (footnote + citation) for `isAtomLive`. */
   liveIds: Set<string>;
@@ -120,7 +121,7 @@ function snapshotAtoms(editor: Editor): AtomSnapshot {
           content,
           plainText: content ? richJsonToPlainText(content) : "",
           title,
-          thanks: !!node.attrs.thanks,
+          ...pickFootnoteMarkupAttrs(node.attrs),
         });
         liveIds.add(id);
       }

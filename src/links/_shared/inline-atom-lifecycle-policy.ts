@@ -66,11 +66,15 @@ import type {
 } from "@/lib/identity/identity-bus-consumer";
 import type { StructureDiff } from "@/lib/tiptap/doc-structure";
 import type { OrphanedFootnote } from "@/lib/types";
+import {
+  pickFootnoteMarkupAttrs,
+  type FootnoteMarkupAttrs,
+} from "@/lib/footnote-source-attrs";
 
-/** The body+title+thanks of a footnote whose marker just left, read from the
+/** The body+title+markup (`@/lib/footnote-source-attrs`) of a footnote whose marker just left, read from the
  *  consumer's liveness snapshot (the diff carries no body). `null` body ⇒ the
  *  footnote had no recoverable content (orphan-worthiness fails). */
-export interface RemovedFootnoteContent {
+export interface RemovedFootnoteContent extends FootnoteMarkupAttrs {
   /** Rich-body JSON (TipTap doc) of the dying footnote, or null if empty. */
   content: unknown | null;
   /** Plain-text flatten of body + title. Read by the REGEN matcher's
@@ -79,7 +83,6 @@ export interface RemovedFootnoteContent {
    *  flattened projection is a second, lossier table for the same question. */
   plainText: string;
   title?: string;
-  thanks?: boolean;
 }
 
 /** The injected surface the policy reconciles. Each method is side-effect-
@@ -217,7 +220,7 @@ export function makeInlineAtomLifecyclePolicy(
           footnoteId: id,
           content: dying.content,
           title: dying.title,
-          thanks: dying.thanks,
+          ...pickFootnoteMarkupAttrs(dying),
           orphanedAt: new Date().toISOString(),
         });
       } else {

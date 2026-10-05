@@ -3665,3 +3665,16 @@ the container gate does — `applies()` runs at menu render and must never throw
 
 CI: `capture-refusal-offer-parity.test.ts` (each row: refused selection → "disabled"
 + doc byte-identical; capturable → "ok" + run lands), `inline-atom-container-census.test.ts`.
+
+### The attr-list half (task 947)
+
+A capture that keeps a HAND-PICKED subset of an atom's attrs breaks this law one
+attr at a time. The footnote's archive ref, orphan record and re-anchor rebuild
+each kept their own list, so archiving a `\thanks{…}` / `\footnote[3]{…}` and
+re-placing it wrote a plain `\footnote{…}` (renumbering every later footnote).
+The classification now lives once in `src/lib/footnote-source-attrs.ts`
+(carried: `content`, `title`, `thanks`, `numberOverride`; derived: `number`,
+`footnoteId`, `linkId`, `linkKind`, `linkCard`), read by `useFootnotes`'
+capture, the orphan capture, the stack pull and `footnoteDropSpec`.
+CI: `footnote-source-attrs.test.ts` — its census fails until a new footnote
+attr is classified.

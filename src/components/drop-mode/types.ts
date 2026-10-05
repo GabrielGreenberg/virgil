@@ -13,6 +13,7 @@
 
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
+import type { FootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import type { ReactNode } from "react";
 import type { TextObjectKind } from "@/text-objects/types";
 import type {
@@ -282,19 +283,19 @@ export interface DropCtx {
  * `Record` over this union, so a kind added here and left unwired in
  * `EditorPane` is a COMPILE ERROR, not a silent empty atom.
  *
- * **Scope: the guard is per-KIND, not per-ATTR.** Each payload below is still a
- * hand-written list, and only covers what the CARD can supply. A known residual:
- * the `footnote` node also carries `title` and `thanks`, and `FootnoteRef` has
- * neither — so archiving a `\footnote[title]`/`\thanks{…}` already discards them
- * at splice time and the rebuild emits a plain `\footnote{}`. Same failure
- * SHAPE as task 233 (an attr the rebuilt atom can't regenerate), much smaller
- * loss. Closing it means persisting those fields on the ref first.
+ * **Scope: the guard is per-KIND; per-ATTR is the kind's own declaration.**
+ * The footnote payload is not hand-picked here: it is the body plus the
+ * carried MARKUP attrs `@/lib/footnote-source-attrs` declares (`\thanks`,
+ * `\footnote[3]`'s mark — task 947, which closed the residual this note used
+ * to record), and that module's census pins the list against the node's own
+ * `addAttributes()`. (`title` is the one carried attr not passed here: it is
+ * hydrated onto the atom from the ref when the atom appears, task 705.)
  */
 export interface InlineAtomCardAttrs {
-  /** The footnote body. It IS the atom's `content` attr and lives nowhere else
-   *  — losing it loses the user's text (task 233). NOT the whole node: `title`
-   *  and `thanks` have no home on `FootnoteRef` (see the scope note above). */
-  footnote: { content: JSONContent };
+  /** The footnote body — it IS the atom's `content` attr and lives nowhere
+   *  else, so losing it loses the user's text (task 233) — plus its markup, so
+   *  the rebuild writes the same LaTeX command (task 947). */
+  footnote: { content: JSONContent } & FootnoteMarkupAttrs;
   /** The serializable `\cite{…}`. Null for an empty/keyless DRAFT, which the
    *  citation create branch declines on. */
   citation: { command: string | null };

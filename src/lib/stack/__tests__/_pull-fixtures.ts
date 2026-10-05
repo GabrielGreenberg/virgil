@@ -84,6 +84,9 @@ export const POPULATED_SNAPSHOT_DATA: {
     aiRequest: true,
     unanchored: true,
     title: "A footnote title",
+    // Task 947: the `.tex` markup travels too — a pulled `\thanks` is still one.
+    thanks: true,
+    numberOverride: "3",
     content: RICH_BODY,
     createdAt: "2020-01-01T00:00:00.000Z",
   },
