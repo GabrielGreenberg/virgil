@@ -148,7 +148,10 @@ source request in place.
    `createdAt`, `author: "ai"`, `original_text` (verbatim from .tex,
    excluding the `%!v:<uuid>` marker — it is the accept-time stale-guard
    key), `suggested_text`, `explanation`, `user_text: ""`,
-   `instructions: "<request.text>"`, `status: "pending"`, `links[]` (the
+   `instructions: "<request.text>"` (the drain row's `text`, which
+   `list_requests.py` reads from the source comment's CURRENT body — never
+   the raw `ai-requests.json` row text, a bridge-time snapshot; task 955),
+   `status: "pending"`, `links[]` (the
    verbatim-copy anchor rule above, `target.ref.kind: "revision-suggestion"`), and
    `aiOriginRequestId: <requestId>` (load-bearing — `accept-suggestion`
    reads it) if the id doesn't start with `virtual:`.

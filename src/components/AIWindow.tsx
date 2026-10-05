@@ -304,6 +304,18 @@ function truncate(s: string | undefined, max = 140): string {
 
 /* ── Build view-models from raw hook state ─────────────────────────── */
 
+/** What a request row's `linkedTo` resolves to (see `BuildArgs.resolveLinkedCard`). */
+export type LinkedCardResolution =
+  // `text` is null when the card is there but carries no request text of
+  // its own (an id that resolves to a different subkind) — the row's stored
+  // text stands then.
+  | { state: "present"; text: string | null }
+  | { state: "absent" }
+  | { state: "unknown" };
+
+export const LINKED_CARD_ABSENT: LinkedCardResolution = { state: "absent" };
+export const LINKED_CARD_UNKNOWN: LinkedCardResolution = { state: "unknown" };
+
 export interface BuildArgs {
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
@@ -320,25 +332,30 @@ export interface BuildArgs {
   // `withdrawPanelAiRequest` path — same ending, no card flag to lower.
   clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
   /**
-   * Does this row's `linkedTo` actually RESOLVE to a card the owning panel
-   * holds? (task 697)
+   * What does this row's `linkedTo` RESOLVE to, right now? (tasks 697, 955)
    *
-   * Cancel used to ask only *"is there a link?"*, so a link pointing at a
-   * card that no longer exists took the card-linked path — and the panel
-   * setter behind it looked the card up in a render-time snapshot and gated
-   * itself on finding it, so the retraction died there: no row removed, no
-   * flag changed, no error. That gate is gone now (`bridgeFlagForCard`), but
-   * the question was wrong independently of it, so it is asked properly here
-   * too: an UNRESOLVED link has no card's flag to lower, and the honest
-   * retraction for it is the raw row delete.
+   * ONE lookup answers both questions the window asks of a linked card:
    *
-   * `false` means the owning panel has RESOLVED its read and genuinely holds
+   *  - **Is it there?** Cancel used to ask only *"is there a link?"*, so a
+   *    link pointing at a card that no longer exists took the card-linked
+   *    path and died in the panel setter — no row removed, no flag changed,
+   *    no error (task 697). An `absent` card has no flag to lower; the honest
+   *    retraction for it is the raw row delete.
+   *  - **What does it say?** A bridged row's `text` is a SNAPSHOT taken when
+   *    the bridge fired — the first committed fragment of a comment (the
+   *    first 250 ms typing pause), or the title at the moment a note's AI box
+   *    was ticked — and no later edit rewrites it (task 955). The card is the
+   *    SSOT for what the user asked, so a `present` card's `text` (the SAME
+   *    per-kind context function the bridge files with) is what the row
+   *    shows; the stored row text is only the fallback.
+   *
+   * `absent` means the owning panel has RESOLVED its read and genuinely holds
    * no such card. A panel still loading, or one whose sidecar read ERRORED —
-   * where the card is unknowable rather than absent — must answer `true`, so
-   * cancel keeps the linked path and never rewrites a sidecar it could not
-   * read (the write path's own law).
+   * where the card is unknowable rather than absent — must answer `unknown`,
+   * so cancel keeps the linked path and never rewrites a sidecar it could not
+   * read (the write path's own law), and the snippet falls back to the row.
    */
-  cardLinkResolves: (kind: CardKind, cardId: string) => boolean;
+  resolveLinkedCard: (kind: CardKind, cardId: string) => LinkedCardResolution;
 }
 
 /* ── The ONE state derivation (task 628) ────────────────────────────────
@@ -418,7 +435,9 @@ const FAMILY_CANCEL: {
       ? linkedCardKindFrom(r.kind, r.linkedTo.panel)
       : null;
     const linkedCardId = r.linkedTo?.cardId;
-    return linkedKind && linkedCardId && a.cardLinkResolves(linkedKind, linkedCardId)
+    return linkedKind &&
+      linkedCardId &&
+      a.resolveLinkedCard(linkedKind, linkedCardId).state !== "absent"
       ? () => a.clearLinkedAiRequest(linkedKind, linkedCardId)
       : () => a.withdrawPanelAiRequest(r.id);
   },
@@ -573,6 +592,15 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
     const linkedKind = r.linkedTo
       ? linkedCardKindFrom(r.kind, r.linkedTo.panel)
       : null;
+    // The snippet follows the card too (task 955): a bridged row's stored
+    // `text` is the fragment filed when the bridge fired, so a card that
+    // resolves supplies its CURRENT text; an absent or unknowable card falls
+    // back to what the row recorded.
+    const linked =
+      linkedKind && r.linkedTo
+        ? args.resolveLinkedCard(linkedKind, r.linkedTo.cardId)
+        : LINKED_CARD_UNKNOWN;
+    const text = (linked.state === "present" ? linked.text : null) ?? r.text;
     out.push({
       id: `panel:${r.id}`,
       kind: panelDisplayKind(r.kind),
@@ -582,10 +610,10 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
       // legible: its chip says "Unrecognized" and its label says what the file
       // actually calls it.
       label: r.kind,
-      snippet: r.text || "(empty draft)",
+      snippet: text || "(empty draft)",
       createdAt: r.createdAt,
       onCancel: cancelFor("panel", status, r, args),
-      hasUserText: !!r.text?.trim(),
+      hasUserText: !!text?.trim(),
     });
   }
 
@@ -693,8 +721,9 @@ export interface AIWindowProps {
   // Cancel a card-linked panel request — clears both the queue row and the
   // owning card's `aiRequest` flag (task 222). See BuildArgs.
   clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
-  // Does a row's `linkedTo` resolve to a live card? See BuildArgs (task 697).
-  cardLinkResolves: (kind: CardKind, cardId: string) => boolean;
+  // What a row's `linkedTo` resolves to — presence + current text. See
+  // BuildArgs (tasks 697, 955).
+  resolveLinkedCard: (kind: CardKind, cardId: string) => LinkedCardResolution;
 
   // Mutators
   requestBibReview: (
@@ -740,7 +769,7 @@ export default function AIWindow({
   addPanelAiRequest,
   withdrawPanelAiRequest,
   clearLinkedAiRequest,
-  cardLinkResolves,
+  resolveLinkedCard,
   requestBibReview,
   cancelBibReview,
   addEntryRequest,
@@ -773,7 +802,7 @@ export default function AIWindow({
         removeEntryRequest,
         withdrawPanelAiRequest,
         clearLinkedAiRequest,
-        cardLinkResolves,
+        resolveLinkedCard,
       }),
     [
       bibReviewRequests,
@@ -784,7 +813,7 @@ export default function AIWindow({
       removeEntryRequest,
       withdrawPanelAiRequest,
       clearLinkedAiRequest,
-      cardLinkResolves,
+      resolveLinkedCard,
     ],
   );
 

@@ -66,7 +66,13 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import VirgilEditor, { type EditorHandle } from "./Editor";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SCROLL_PERSIST } from "@/lib/layout-gesture-probe";
-import AIWindow, { aiRequestDotStatus, type AiDotTone } from "./AIWindow";
+import AIWindow, {
+  aiRequestDotStatus,
+  LINKED_CARD_ABSENT,
+  LINKED_CARD_UNKNOWN,
+  type AiDotTone,
+  type LinkedCardResolution,
+} from "./AIWindow";
 import {
   EditorChromeProvider,
   ViewPrefProjectionProvider,
@@ -146,7 +152,7 @@ import { useLibraryMasterBib } from "@/hooks/useLibrary";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
-import { useNotes } from "@/hooks/useNotes";
+import { highlightContext, noteContext, useNotes } from "@/hooks/useNotes";
 import { useAiRequests } from "@/hooks/useAiRequests";
 import {
   sourcesAreAuthoritative,
@@ -174,15 +180,15 @@ import { useDiagnostics, DiagnosticsProvider, useDiagnosticsContext } from "@/ho
 import { asBibFamily } from "@/lib/bib-family";
 import { useWordCount } from "@/hooks/useWordCount";
 import { EMPTY_CATEGORY_COUNTS } from "@/lib/word-count-core";
-import { useTodos } from "@/hooks/useTodos";
+import { todoContext, useTodos } from "@/hooks/useTodos";
 import { useArchive } from "@/hooks/useArchive";
-import { useCutter } from "@/hooks/useCutter";
-import { useReports } from "@/hooks/useReports";
-import { useRevisions } from "@/hooks/useRevisions";
+import { cutterCommentContext, useCutter } from "@/hooks/useCutter";
+import { reportRequestContext, useReports } from "@/hooks/useReports";
+import { revisionCommentContext, useRevisions } from "@/hooks/useRevisions";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
-import { useFootnotes, type FootnoteCapture } from "@/hooks/useFootnotes";
+import { footnoteRequestText, useFootnotes, type FootnoteCapture } from "@/hooks/useFootnotes";
 import { pickFootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import { selectAtomlessFootnoteRefs } from "@/panels/Footnotes/atomless-refs";
 import { staleAtomIntentIds } from "@/links/_shared/live-atom-intent";
@@ -6062,50 +6068,64 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [setAiRequestForKind],
   );
 
-  // Does a queue row's `linkedTo` RESOLVE to a card the owning panel holds?
-  // (task 697) The `(kind → owning collection)` fan-out of
-  // `setAiRequestForKind`, asked as a predicate instead of a dispatch, so the
-  // AIWindow's Cancel can tell "linked" from "linked to something that is
-  // still there" — the distinction it never drew, which is how a row whose
-  // card had vanished took the card-linked path and died in it.
+  // What does a queue row's `linkedTo` RESOLVE to? (tasks 697, 955) The
+  // `(kind → owning collection)` fan-out of `setAiRequestForKind`, asked as a
+  // lookup instead of a dispatch. ONE fan-out answers both of the AIWindow's
+  // questions: is the card still there (Cancel's linked-vs-raw routing —
+  // task 697, where a row whose card had vanished took the card-linked path
+  // and died in it), and what does it say NOW (the snippet — task 955, where
+  // a bridged row's stored `text` was the fragment filed when the bridge
+  // fired). The text comes from the SAME per-kind context function the bridge
+  // files with, so the window and the inbox cannot describe one card two ways.
   //
-  // TRUE IS THE SAFE ANSWER, and it is what an UNKNOWABLE card gets: a panel
-  // still loading, or one whose sidecar read ERRORED (`loadError` leaves the
-  // hook at its empty default while `ai-requests.json` reads fine — one of the
-  // ways Cancel went inert), knows of no cards at all, and treating that as
-  // "absent" would take the raw-delete branch and strand the card's flag lit
-  // over a row that no longer exists. Only a RESOLVED, error-free panel that
-  // genuinely holds no such card answers false. `footnotes` has no `loaded`
-  // gate by design (it is driven from the doc's atoms), so it answers on
-  // presence alone.
-  const cardLinkResolves = useCallback(
-    (kind: CardKind, cardId: string): boolean => {
-      const settled = (loaded: boolean, loadError: boolean) => loaded && !loadError;
+  // `unknown` IS THE SAFE ANSWER, and it is what an UNKNOWABLE card gets: a
+  // panel still loading, or one whose sidecar read ERRORED (`loadError` leaves
+  // the hook at its empty default while `ai-requests.json` reads fine — one of
+  // the ways Cancel went inert), knows of no cards at all, and treating that
+  // as "absent" would take the raw-delete branch and strand the card's flag
+  // lit over a row that no longer exists. Only a RESOLVED, error-free panel
+  // that genuinely holds no such card answers `absent`. `footnotes` has no
+  // `loaded` gate by design (it is driven from the doc's atoms), so it answers
+  // on presence alone.
+  const resolveLinkedCard = useCallback(
+    (kind: CardKind, cardId: string): LinkedCardResolution => {
+      const lookup = <C extends { id: string }>(
+        loaded: boolean,
+        loadError: boolean,
+        cards: readonly C[],
+        text: (card: C) => string | null,
+      ): LinkedCardResolution => {
+        const card = cards.find((c) => c.id === cardId);
+        if (card) return { state: "present", text: text(card) };
+        return loaded && !loadError ? LINKED_CARD_ABSENT : LINKED_CARD_UNKNOWN;
+      };
       switch (kind) {
         case "note":
-          return !settled(notesHook.loaded, notesHook.loadError)
-            || notesHook.notes.some((n) => n.id === cardId);
+          return lookup(notesHook.loaded, notesHook.loadError, notesHook.notes,
+            (n) => noteContext(n).text);
         case "highlight":
-          return !settled(notesHook.loaded, notesHook.loadError)
-            || notesHook.highlights.some((h) => h.id === cardId);
+          return lookup(notesHook.loaded, notesHook.loadError, notesHook.highlights,
+            (h) => highlightContext(h).text);
         case "todo":
-          return !settled(todosHook.loaded, todosHook.loadError)
-            || todosHook.items.some((i) => i.id === cardId);
+          return lookup(todosHook.loaded, todosHook.loadError, todosHook.items,
+            (t) => todoContext(t).text);
         case "report-request":
-          return !settled(reportsHook.loaded, reportsHook.loadError)
-            || reportsHook.cards.some((c) => c.id === cardId);
+          return lookup(reportsHook.loaded, reportsHook.loadError, reportsHook.cards,
+            (c) => (c.kind === "report-request" ? reportRequestContext(c).text : null));
         case "revision-comment":
-          return !settled(revisionsHook.loaded, revisionsHook.loadError)
-            || revisionsHook.cards.some((c) => c.id === cardId);
+          return lookup(revisionsHook.loaded, revisionsHook.loadError, revisionsHook.cards,
+            (c) => (c.kind === "comment" ? revisionCommentContext(c).text : null));
         case "cutter-comment":
-          return !settled(cutterHook.loaded, cutterHook.loadError)
-            || cutterHook.cards.some((c) => c.id === cardId);
-        case "footnote":
-          return footnotesHook.footnoteRefs.some((f) => f.id === cardId);
+          return lookup(cutterHook.loaded, cutterHook.loadError, cutterHook.cards,
+            (c) => (c.kind === "comment" ? cutterCommentContext(c).text : null));
+        case "footnote": {
+          const ref = footnotesHook.footnoteRefs.find((f) => f.id === cardId);
+          return ref ? { state: "present", text: footnoteRequestText(ref) } : LINKED_CARD_ABSENT;
+        }
         default:
-          // No owning collection to ask — treat as unresolved so cancel takes
-          // the raw delete rather than a dispatch that no-ops.
-          return false;
+          // No owning collection to ask — treat as absent so cancel takes the
+          // raw delete rather than a dispatch that no-ops.
+          return LINKED_CARD_ABSENT;
       }
     },
     [
@@ -6431,7 +6451,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               addPanelAiRequest={aiRequestsHook.addRequest}
               withdrawPanelAiRequest={aiRequestsHook.withdrawRequest}
               clearLinkedAiRequest={clearLinkedAiRequest}
-              cardLinkResolves={cardLinkResolves}
+              resolveLinkedCard={resolveLinkedCard}
               requestBibReview={bibReviewHook.requestReview}
               cancelBibReview={bibReviewHook.cancelRequest}
               addEntryRequest={bibSettingsHook.addEntryRequest}

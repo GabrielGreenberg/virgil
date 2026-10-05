@@ -68,7 +68,7 @@ vi.mock("@/lib/storage", () => ({
   ),
 }));
 
-import AIWindow, { buildRequests, type AIWindowProps } from "@/components/AIWindow";
+import AIWindow, { buildRequests, LINKED_CARD_UNKNOWN, type AIWindowProps } from "@/components/AIWindow";
 import {
   richFromPlainText,
   richJsonToPlainText,
@@ -162,7 +162,7 @@ function props(over: Partial<AIWindowProps> = {}): AIWindowProps {
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
-    cardLinkResolves: () => true, // task 697
+    resolveLinkedCard: () => LINKED_CARD_UNKNOWN, // task 697
     requestBibReview: noop,
     cancelBibReview: noop,
     addEntryRequest: noop,
@@ -352,7 +352,7 @@ describe("a text-seeded general comment is committed at birth and servable", () 
       removeEntryRequest: () => {},
       withdrawPanelAiRequest: () => {},
       clearLinkedAiRequest: () => {},
-      cardLinkResolves: () => true, // task 697
+      resolveLinkedCard: () => LINKED_CARD_UNKNOWN, // task 697
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].kind).toBe("revision-general");

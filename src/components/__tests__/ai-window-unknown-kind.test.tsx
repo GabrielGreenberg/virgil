@@ -31,6 +31,7 @@ import { render, screen, cleanup } from "@testing-library/react";
 import AIWindow, {
   buildRequests,
   aiRequestDotStatus,
+  LINKED_CARD_UNKNOWN,
   type AIWindowProps,
 } from "@/components/AIWindow";
 import { AI_REQUEST_KINDS, isAiRequestKind } from "@/lib/ai-request-kind";
@@ -65,7 +66,7 @@ function props(panelAiRequests: AiRequest[]): AIWindowProps {
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
-    cardLinkResolves: () => true, // task 697
+    resolveLinkedCard: () => LINKED_CARD_UNKNOWN, // task 697
     requestBibReview: noop,
     cancelBibReview: noop,
     addEntryRequest: noop,
@@ -85,7 +86,7 @@ function build(panelAiRequests: AiRequest[]) {
     removeEntryRequest: () => {},
     withdrawPanelAiRequest: () => {},
     clearLinkedAiRequest: () => {},
-    cardLinkResolves: () => true, // task 697
+    resolveLinkedCard: () => LINKED_CARD_UNKNOWN, // task 697
   });
 }
 
@@ -158,7 +159,7 @@ describe("an off-union kind cannot throw the AI window", () => {
       removeEntryRequest: () => {},
       withdrawPanelAiRequest,
       clearLinkedAiRequest: () => {},
-      cardLinkResolves: () => true, // task 697
+      resolveLinkedCard: () => LINKED_CARD_UNKNOWN, // task 697
     });
     vm.onCancel?.();
     expect(withdrawPanelAiRequest).toHaveBeenCalledWith("bad");

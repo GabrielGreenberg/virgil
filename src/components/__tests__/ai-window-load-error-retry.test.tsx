@@ -16,7 +16,7 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import AIWindow, { type AIWindowProps } from "@/components/AIWindow";
+import AIWindow, { LINKED_CARD_UNKNOWN, type AIWindowProps } from "@/components/AIWindow";
 import type { AiRequest } from "@/lib/types";
 
 afterEach(cleanup);
@@ -36,7 +36,7 @@ function props(refreshAll: () => void): AIWindowProps {
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
-    cardLinkResolves: () => true,
+    resolveLinkedCard: () => LINKED_CARD_UNKNOWN,
     requestBibReview: noop,
     cancelBibReview: noop,
     addEntryRequest: noop,

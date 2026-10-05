@@ -121,7 +121,7 @@ export const migrateReports = withSidecarEnvelope(migrateReportsShape);
 
 /** The `ai-requests.json` payload a report-request contributes — the ONE
  *  place its shape is written, shared by both bridge doors (task 697). */
-function reportRequestContext(card: ReportRequestCard): BridgeContext {
+export function reportRequestContext(card: ReportRequestCard): BridgeContext {
   return {
     text: card.text || "<report request>",
     paragraphIds: getLinkedTextObjectIds(card),

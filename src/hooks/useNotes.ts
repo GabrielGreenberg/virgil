@@ -113,7 +113,7 @@ export const migrateNotes = withSidecarEnvelope(migrateNotesShape, ["notes"]);
 
 /** The `ai-requests.json` payload a note contributes — named so both bridge
  *  doors (present card / absent card) read one shape (task 697). */
-function noteContext(note: UserNote): BridgeContext {
+export function noteContext(note: UserNote): BridgeContext {
   return {
     text: note.title || "<note>",
     paragraphIds: getLinkedTextObjectIds(note),
@@ -125,7 +125,7 @@ function noteContext(note: UserNote): BridgeContext {
  *  intrinsically Mode-B, so its anchor text is BOTH the body and the
  *  selection — including the `""` when there is no anchor, which is the
  *  shape already on disk. */
-function highlightContext(card: HighlightCard): BridgeContext {
+export function highlightContext(card: HighlightCard): BridgeContext {
   const anchorText = getTextAnchor(card)?.anchorText || "";
   return {
     text: anchorText || "<highlight>",

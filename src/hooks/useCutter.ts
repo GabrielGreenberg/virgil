@@ -204,7 +204,7 @@ export const migrateCutter = withSidecarEnvelope(migrateCutterShape, ["cuts"]);
  *  place its shape is written, shared by both bridge doors so the
  *  card-present payload cannot drift from the card-may-be-absent one. Read
  *  only on the ADD branch (see `bridgeFlagForCard`). */
-function cutterCommentContext(card: CutterCommentCard): BridgeContext {
+export function cutterCommentContext(card: CutterCommentCard): BridgeContext {
   return {
     text: card.text || "<cutter comment>",
     paragraphIds: getLinkedTextObjectIds(card),
