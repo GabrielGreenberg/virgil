@@ -10,7 +10,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { readSidecarIfExists, mutateSidecar } from "@/lib/storage";
-import { mergeSidecarState } from "@/lib/sidecar-merge";
+import { deepEqual, mergeSidecarState } from "@/lib/sidecar-merge";
 import {
   newMergeBase,
   writeSidecarMerged,
@@ -387,10 +387,21 @@ export function usePersistentState<S>(
           // migrated: between the mount bundle's read and this write a skill's
           // append can land, and a whole-snapshot write-back would delete it.
           // A `null` current means the file went away — then write nothing
-          // rather than re-creating it from memory.
+          // rather than re-creating it from memory. And where the in-lock read
+          // is the very file we migrated, write THAT migration rather than a
+          // second one (task 959): a migrator that HEALS (`loadedCreatedAt`)
+          // is not a pure function of its input — a re-run stamps a different
+          // "now" — so re-deriving would persist a value the open panel is not
+          // showing, and the card would change its age between two opens.
           if (h) {
             void mutateSidecar<S | null>(h, filename, null, (cur) =>
-              cur === null ? null : migrate ? migrate(cur) : cur,
+              cur === null
+                ? null
+                : deepEqual(cur, raw)
+                  ? migrated
+                  : migrate
+                    ? migrate(cur)
+                    : cur,
             ).catch(() => {});
           }
         }

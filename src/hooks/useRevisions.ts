@@ -157,36 +157,35 @@ function migrateRevisionsShape(raw: unknown): RevisionsState {
   };
   const tracker = migrateTracker(r.tracker);
 
-  if (Array.isArray(r.cards)) {
-    return {
-      cards: r.cards
-        .map(migrateCard)
-        .filter((c): c is RevisionCard => c !== null),
-      tracker,
-    };
-  }
+  const cards: RevisionCard[] = Array.isArray(r.cards)
+    ? r.cards.map(migrateCard).filter((c): c is RevisionCard => c !== null)
+    : [];
 
   // Legacy shapes — `comments[]` (recent) plus `generalRevisions[]` /
   // `textRevisions[]` (older). Every legacy entry becomes a comment card,
   // dropping the multi-turn dialogue model and the resolved/author plumbing.
+  // Folded in EVEN BESIDE a current `cards[]` (task 959): these keys are
+  // consumed, and the load is written back, so a legacy entry this branch
+  // skipped would be deleted from disk on open. A card already in `cards[]`
+  // wins its id.
   const sources: unknown[] = [];
   if (Array.isArray(r.comments)) sources.push(...r.comments);
   if (Array.isArray(r.generalRevisions)) sources.push(...r.generalRevisions);
   if (Array.isArray(r.textRevisions)) sources.push(...r.textRevisions);
   if (sources.length > 0) {
-    const seen = new Set<string>();
-    const cards: RevisionCard[] = [];
+    const seen = new Set(cards.map((c) => c.id));
+    const legacy: RevisionCard[] = [];
     for (const raw of sources) {
       const c = migrateRequestRecord(raw);
       if (!c || seen.has(c.id)) continue;
       seen.add(c.id);
-      cards.push(c);
+      legacy.push(c);
     }
-    cards.sort(byCreatedAt);
-    return { cards, tracker };
+    legacy.sort(byCreatedAt);
+    cards.push(...legacy);
   }
 
-  return { cards: [], tracker };
+  return { cards, tracker };
 }
 
 /** Task 715 — `comments` / `generalRevisions` / `textRevisions` are the legacy
@@ -216,7 +215,9 @@ export function useRevisions(
     docId,
     "revisions.json",
     EMPTY_STATE,
-    { migrate: migrateRevisions, errorLabel: "revisions" },
+    // Written back on load (task 959): the migrator HEALS (`loadedCreatedAt`),
+    // and a heal that is never persisted re-heals to a new "now" every open.
+    { migrate: migrateRevisions, errorLabel: "revisions", persistMigrationOnLoad: true },
   );
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;

@@ -104,9 +104,11 @@ export function withSidecarEnvelope<S extends object>(
  * healed it locally. Now every card migrator calls this: a stored value that
  * parses as a date is kept byte-for-byte; anything else heals to the load
  * time (task 105's choice — it does not lie about age the way the epoch
- * would), which `persistMigrationOnLoad` / the panel's next save then makes
- * stable. A loader may still drop a record for a missing `id`; never for a
- * missing or malformed `createdAt`.
+ * would), which `persistMigrationOnLoad` then makes stable — so a hook whose
+ * migrator calls this MUST register write-back (task 959: Revisions and Cutter
+ * did not, and a healed card got a new "now" on every open;
+ * `heal-writeback.test.tsx` censuses it). A loader may still drop a record for
+ * a missing `id`; never for a missing or malformed `createdAt`.
  */
 export function loadedCreatedAt(value: unknown): string {
   if (typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value))) {
