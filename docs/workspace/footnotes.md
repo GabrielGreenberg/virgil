@@ -1,4 +1,4 @@
-<!-- last-verified: 713f5f22 2026-10-04 -->
+<!-- last-verified: a02565b9 2026-10-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -70,7 +70,7 @@ typeset it. If the selection is not found verbatim in the paragraph,
 legacy HTML strings migrate on read), `createdAt`, an optional **`title?`** (task 705 — the card's user-typed title; a REAL
 persisted field, and its durable home, because the `.tex` cannot carry it. `handleEditFootnoteTitle` writes the atom attr non-undoably AND the ref through the
 task-703 upsert door; the load edge hydrates attr from ref, and the title rides
-`FootnoteEntry` through archive / clone / stack-pull), an optional **`aiRequest?`** flag (#55a — see
+`FootnoteEntry` through archive / clone / stack-pull), an optional **`thanks?`** / **`numberOverride?`** (task 947 — the atom's `\thanks{}` vs `\footnote{}` and `\footnote[3]{}` markup, captured with the body so an archived card re-places as the same command; the carried/derived attr list is `src/lib/footnote-source-attrs.ts`), an optional **`aiRequest?`** flag (#55a — see
 [the AI-request flag](#the-per-card-ai-request-flag-55a)), plus the family-wide
 optional **`archived?`** and (bug sweep #3) **`unanchored?`** flags — both **live**
 for footnotes now, mirroring `CitationRef` (see the archive note below). **There is no anchor / paragraphId
@@ -144,7 +144,7 @@ one-shot `archivedSuppress` seam in `inline-atom-lifecycle-policy.ts`) so a
 footnote can't be both archived and orphaned.
 
 The mirror has ONE upsert door (task 703): `useFootnotes`' `withRef` / `ensureRef` /
-`patchRef` seed a missing ref from the live atom (`resolveFootnoteBody`) — a
+`patchRef` seed a missing ref from the live atom (`resolveFootnoteCapture`) — a
 toolbar/slash/parsed footnote has no sidecar row until then — and refuse before
 the sidecar has loaded; `spliceAndArchiveAtom` calls `ensureRef` BEFORE it
 suppresses + deletes the atom and aborts with a notice if the capture fails. And a
@@ -168,7 +168,7 @@ shared `cardHasContent("footnote", { content, title })` (`src/cards/has-content.
 so a title-only (`\thanks`) footnote still orphans, and the gate matches the
 delete-confirm's content model. Orphans persist per-doc in
 `virgil/orphaned-footnotes.json` (`OrphanedFootnotesState` = `{ version: 1, orphans }`,
-each an `OrphanedFootnote` carrying `content` + optional `title`/`thanks`), owned
+each an `OrphanedFootnote` carrying `content` + optional `title`/`thanks`/`numberOverride`), owned
 by `useOrphanedFootnotes(docId)` (`src/hooks/useOrphanedFootnotes.ts`) — keyed
 per-doc, which kills cross-doc orphan bleed under multi-doc keep-alive (FN-A2-03)
 — and surfaced in both the Footnotes and Search panels. This hook is now the

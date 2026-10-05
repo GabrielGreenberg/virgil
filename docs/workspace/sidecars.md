@@ -1,4 +1,4 @@
-<!-- last-verified: 713f5f22 2026-10-04 -->
+<!-- last-verified: a02565b9 2026-10-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -127,7 +127,7 @@ TodoItem { id; text; titleAuto?; notes; done: boolean; aiRequest; createdAt;
 **`footnotes.json` — `FootnotesState { footnotes: FootnoteRef[] }`:**
 
 ```ts
-FootnoteRef { id; content; createdAt; title?; archived?; unanchored?; aiRequest? }  // no links/anchor
+FootnoteRef { id; content; createdAt; title?; thanks?; numberOverride?; archived?; unanchored?; aiRequest? }  // no links/anchor
 // `title` (task 705): the card's user-typed title. Its durable home is HERE because
 // the `.tex` cannot carry it; the atom's `title` attr is the runtime copy, hydrated
 // from this ref at load.
@@ -136,7 +136,7 @@ FootnoteRef { id; content; createdAt; title?; archived?; unanchored?; aiRequest?
 The `id` **is** the anchor — it equals the `\vfid{}` marker. Splice recipe +
 create flow: [footnotes.md](footnotes.md).
 
-`OrphanedFootnote { footnoteId; content; title?; thanks?; orphanedAt }` is the
+`OrphanedFootnote { footnoteId; content; title?; thanks?; numberOverride?; orphanedAt }` is the
 record the Footnotes (and Search) panels hold for a footnote whose `\footnote{}`
 marker vanished but whose body the user might recover/re-drop (`thanks?` preserves
 the dying footnote's `\thanks` attr for a full-attr re-drop). As of T2 it is now

@@ -1,4 +1,4 @@
-<!-- last-verified: 713f5f22 2026-10-04 -->
+<!-- last-verified: a02565b9 2026-10-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -214,8 +214,10 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
   true of a card whose anchor is dead; the Archive list orders on the same rows via
   `sortCardsByResolvedAnchor`. And the ACT now has the gate's rungs: `resolveLink`
   ([src/links/links.ts](../../src/links/links.ts)) carries the **snapshot** rung
-  (normalized through the authority's own `normalizeParagraphText`), so `jumpToCard`
-  can reach every card the gate calls anchored.
+  (normalized through the authority's own `normalizeParagraphText`). Since task 935
+  `jumpToCard` ([src/links/jump-to-card.ts](../../src/links/jump-to-card.ts)) no longer
+  walks links itself: it asks `CardAnchorPass.jumpTarget(card, rowPid?)` — the row's
+  pid when live, else the authority's winner — so it lands where the marker is.
 - **Legacy helpers.** `reconcileModeAAnchors` / `findParagraphIdBySnapshot` /
   `isModeAOrphaned` in [src/links/links.ts](../../src/links/links.ts) are kept exported
   **for their own tests only** — production funnels through the resolver SSOT. `isModeAOrphaned`

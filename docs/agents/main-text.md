@@ -1,4 +1,4 @@
-<!-- last-verified: 713f5f22 2026-10-04 -->
+<!-- last-verified: a02565b9 2026-10-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 
@@ -151,7 +151,7 @@ Why the invariant is written down (task 264): `VERBATIM_ENVS_FULL` was unified f
 
 ## Link architecture
 
-**SSOT: the `LinkKind` union + `Link` shape in [src/links/_shared/types.ts](../../src/links/_shared/types.ts).** Resolvers/jump/delete + `createLinkedAnchor` in [src/links/links.ts](../../src/links/links.ts); the marker DOM contract in [src/links/link-dom-contract.ts](../../src/links/link-dom-contract.ts). There is no per-kind link registry: `LINK_REGISTRY` was one, nothing read it, and task 202 deleted it — the table below is documentation of what the code does, not a mirror of a runtime table.
+**SSOT: the `LinkKind` union + `Link` shape in [src/links/_shared/types.ts](../../src/links/_shared/types.ts).** Resolvers/`jumpToLink`/delete + `createLinkedAnchor` in [src/links/links.ts](../../src/links/links.ts) (`jumpToCard` lives in [src/links/jump-to-card.ts](../../src/links/jump-to-card.ts), task 935); the marker DOM contract in [src/links/link-dom-contract.ts](../../src/links/link-dom-contract.ts). There is no per-kind link registry: `LINK_REGISTRY` was one, nothing read it, and task 202 deleted it — the table below is documentation of what the code does, not a mirror of a runtime table.
 
 ### Three kinds
 
@@ -283,7 +283,7 @@ After the chip-H drop-mode fold (PHASE 1/2, 296280a/79ccdad), the paragraph-anch
 From the header comment in `src/lib/marginalia.ts` (rewritten after the chip-H drop-mode fold):
 1. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a presentation row to `MARKER_META` (label / icon — panel + accent derive from the registry via `src/cards/marker-meta.ts`; the margin SIDE is not a row, see below).
 2. Register a `dropSpec` for each owning card kind (the `textObjectSideReanchorSpec` factory in [src/components/drop-mode/util/text-object-side-reanchor.ts](../../src/components/drop-mode/util/text-object-side-reanchor.ts), wired to a `ParagraphAnchorApi` sub-bag on the `DropCtx`) so the margin pin can re-anchor through the unified drop-mode controller; wire that sub-bag in `EditorPane`'s `DropModeProvider`.
-3. Emit the marker in `EditorPane.tsx`'s `marginaliaMarkers` builder carrying `entityKind` (the real `CardKind`) so the pin's `beginCardDropGesture` builds the correct `float:card:<kind>:<id>` key.
+3. Add the card collection's row to `MARGIN_MARKER_SOURCES` in [src/cards/margin-markers.ts](../../src/cards/margin-markers.ts) (task 939) — the ONE builder `EditorPane`'s `marginaliaMarkers` calls; it derives the marker type from `CARD_REGISTRY.markerType` and sets `entityKind` (the real `CardKind`) by construction, so the pin's `beginCardDropGesture` builds the correct `float:card:<kind>:<id>` key.
 
 ## Citations & bibliography
 

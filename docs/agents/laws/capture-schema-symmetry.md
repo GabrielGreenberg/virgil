@@ -3615,7 +3615,7 @@ An atom-bearing card's archive splices its atom out and relies on the SIDECAR
 ref to keep the body. That reliance is a capture, and it must be checked like
 one: `spliceAndArchiveAtom` calls `footnotesHook.ensureRef(id)` — the
 `footnotes.json` mirror's ONE upsert door, seeded from the live atom via the
-owner-supplied `resolveFootnoteBody` — BEFORE it arms the orphan suppression
+owner-supplied `resolveFootnoteCapture` — BEFORE it arms the orphan suppression
 and deletes, and refuses + notifies when the capture fails (no atom, or the
 sidecar has not loaded yet; the door never mints over the pre-load EMPTY).
 Every footnote setter that writes INTO a ref (`setArchived`,
