@@ -10,6 +10,10 @@ import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
 import { DEFAULT_PANEL_COLORS, type PanelThemeKey } from "./panel-theme";
 import type { PanelKind } from "@/panels/_shared/types";
+import {
+  SUGGESTION_SEARCH_FIELDS,
+  type SuggestionField,
+} from "@/panels/_shared/suggestion-field-vocabulary";
 import type { CardWithLinks } from "@/links/links";
 import type { CardAnchorResolver } from "@/links/card-anchor-rows";
 import type {
@@ -494,6 +498,26 @@ export function searchArchive(
   return out;
 }
 
+/* ── Suggestions (shared by Revisions + Cutter) ──────────────────────── */
+
+/** Scan a suggestion card's fields from the ONE list both families use
+ *  (`SUGGESTION_SEARCH_FIELDS`, task 958) — Cutter's own array had dropped
+ *  `user_text`, so a cut's human replacement was unfindable. */
+function scanSuggestion(
+  scope: SearchScope,
+  c: { id: string; archived?: boolean } & Record<SuggestionField, string>,
+  pos: ReturnType<typeof cardAnchor>,
+  re: RegExp,
+): SearchHit[] {
+  const out: SearchHit[] = [];
+  for (const { field, role } of SUGGESTION_SEARCH_FIELDS) {
+    for (const m of scanText(c[field] || "", re)) {
+      out.push(hitFromMatch(scope, c.id, pos, role, m, c.archived));
+    }
+  }
+  return out;
+}
+
 /* ── Cutter (comments + suggestions) ────────────────────────────────── */
 
 export function searchCutter(
@@ -510,15 +534,7 @@ export function searchCutter(
         out.push(hitFromMatch("cuts", c.id, pos, "body", m, c.archived));
       }
     } else {
-      for (const m of scanText(c.original_text, re)) {
-        out.push(hitFromMatch("cuts", c.id, pos, "title", m, c.archived));
-      }
-      for (const m of scanText(c.suggested_text, re)) {
-        out.push(hitFromMatch("cuts", c.id, pos, "body", m, c.archived));
-      }
-      for (const m of scanText(c.explanation, re)) {
-        out.push(hitFromMatch("cuts", c.id, pos, "body", m, c.archived));
-      }
+      out.push(...scanSuggestion("cuts", c, pos, re));
     }
   }
   return out;
@@ -562,18 +578,7 @@ export function searchComments(
         out.push(hitFromMatch("revisions", c.id, pos, "body", m, c.archived));
       }
     } else {
-      const checks: Array<{ value: string }> = [
-        { value: c.original_text },
-        { value: c.suggested_text },
-        { value: c.explanation },
-        { value: c.user_text },
-        { value: c.instructions },
-      ];
-      for (const { value } of checks) {
-        for (const m of scanText(value || "", re)) {
-          out.push(hitFromMatch("revisions", c.id, pos, "body", m, c.archived));
-        }
-      }
+      out.push(...scanSuggestion("revisions", c, pos, re));
     }
   }
   return out;

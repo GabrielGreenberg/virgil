@@ -99,3 +99,22 @@ export function hasSuggestionReplacement(
 ): boolean {
   return suggestionReplacement(card).trim() !== "";
 }
+
+// ── The SEARCH field list (task 958) ──────────────────────────────────────
+//
+// Revisions and Cutter suggestions carry the SAME five fields, but search
+// scanned them from two hand-kept arrays — and Cutter's omitted `user_text`, so
+// a cut suggestion's human replacement was unfindable. One list, both
+// families. `original_text` is the captured passage the card is ABOUT, so it
+// surfaces as the hit's title; everything else is body.
+
+export const SUGGESTION_SEARCH_FIELDS: ReadonlyArray<{
+  field: SuggestionField;
+  role: "title" | "body";
+}> = [
+  { field: "original_text", role: "title" },
+  { field: "user_text", role: "body" },
+  { field: "suggested_text", role: "body" },
+  { field: "explanation", role: "body" },
+  { field: "instructions", role: "body" },
+];

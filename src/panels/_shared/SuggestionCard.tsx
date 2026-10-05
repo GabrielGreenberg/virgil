@@ -40,6 +40,10 @@ import {
 // `suggested_text` deliberately stays raw: it is EDITABLE currency the user is
 // composing, and its cue must show exactly the bytes they typed.
 import { capturedPassageOneLine } from "@/panels/_shared/captured-passage";
+import {
+  hasSuggestionReplacement,
+  suggestionReplacement,
+} from "@/panels/_shared/suggestion-field-vocabulary";
 
 /**
  * THE suggestion card — one component, two families (task 714).
@@ -270,7 +274,11 @@ export function SuggestionCard({
       ) : compressed ? (
         <div className="px-3 pt-1.5 pb-1.5">
           <div style={{ ...cardBodyStyle, ...compressedBodyStyle(compressedLines) }}>
-            {card.suggested_text ? (
+            {/* What would LAND — `suggestionReplacement`, the one speller of
+                the user_text-over-suggested_text precedence (task 958): a human
+                revision is seeded `suggested_text: ""`, so reading that field
+                alone painted the author's own rewrite as a red deletion. */}
+            {hasSuggestionReplacement(card) ? (
               /* affirmative-green-exempt: a DIFF legend, not an affirmative
               control — `text-emerald-700/90` (added / suggested) reads only
               against the `text-red-700/70` (removed / original) two lines
@@ -281,7 +289,7 @@ export function SuggestionCard({
               means "this is the added text", and would leave the pair
               speaking two vocabularies. Repainting BOTH halves is a colour
               decision about the compressed diff dialect, not this sweep. */
-              <span className="text-emerald-700/90">{card.suggested_text.replace(/\s+/g, " ").trim()}</span>
+              <span className="text-emerald-700/90">{suggestionReplacement(card).replace(/\s+/g, " ").trim()}</span>
             ) : card.original_text ? (
               <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{capturedPassageOneLine({ latex: card.original_text, content: card.selectedContent })}</span></span>
             ) : (
