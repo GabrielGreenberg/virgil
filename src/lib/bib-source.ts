@@ -361,6 +361,85 @@ export function scanBibFields(block: string): BibFieldSpan[] {
   return fields;
 }
 
+/**
+ * The `@string` macro names ONE block's values depend on (task 949), lower-cased.
+ *
+ * A BibTeX value is a `#`-joined expression of TERMS — `{…}`, `"…"`, a number,
+ * or a bare macro name — and only the bare, non-numeric terms name a macro:
+ * `journal = jphil`, `title = "Essays" # vol`, `@string{full = jphil # " (NY)"}`.
+ * {@link scanBibFields} reads one delimited value per field and so cannot see
+ * a term after a `#`; this walk reads the whole expression at the block's own
+ * depth, so every term is seen. Works on entry, `@string` and `@preamble`
+ * blocks alike (offset 0 of `block` is its `@`).
+ */
+export function bibMacroReferences(block: string): string[] {
+  const head = scanBibSource(block).find((b) => b.start === 0);
+  if (!head) return [];
+  const bodyEnd = head.balanced ? head.end - 1 : head.end;
+  const out = new Set<string>();
+  // A term starts right after a `=` (a field / `@string` value) or a `#`, and
+  // — in a `@preamble`, which has no `=` — at the very start of the body.
+  let expectTerm = head.type === "preamble";
+  let i = head.bodyStart;
+  while (i < bodyEnd) {
+    const ch = block[i];
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    if (ch === "{") {
+      const close = walkBlockBody(block, i, bodyEnd + 1);
+      i = close === -1 ? bodyEnd : close;
+      expectTerm = false;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      let depth = 0;
+      while (j < bodyEnd) {
+        const c = block[j];
+        if (c === "\\") {
+          j += 2;
+          continue;
+        }
+        if (c === "{") depth++;
+        else if (c === "}") {
+          if (depth > 0) depth--;
+        } else if (c === '"' && depth === 0) break;
+        j++;
+      }
+      i = j + 1;
+      expectTerm = false;
+      continue;
+    }
+    if (ch === "=" || ch === "#") {
+      expectTerm = true;
+      i++;
+      continue;
+    }
+    if (isWordChar(ch)) {
+      let j = i;
+      while (j < bodyEnd && isWordChar(block[j])) j++;
+      const word = block.slice(i, j);
+      if (expectTerm && !/^\d+$/.test(word)) out.add(word.toLowerCase());
+      expectTerm = false;
+      i = j;
+      continue;
+    }
+    expectTerm = false;
+    i++;
+  }
+  return [...out];
+}
+
+/** The lower-cased name a `@string{name = …}` block defines, or `null`. */
+export function bibStringName(block: string): string | null {
+  const head = scanBibSource(block).find((b) => b.start === 0);
+  if (!head || head.type !== "string") return null;
+  const m = /^\s*([^\s=#{}",]+)\s*=/.exec(block.slice(head.bodyStart));
+  return m ? m[1].toLowerCase() : null;
+}
+
 /** What a caller wants changed inside ONE entry block. */
 export interface BibBlockEdit {
   /** New citekey. Omitted ⇒ unchanged. */
