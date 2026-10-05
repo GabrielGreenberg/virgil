@@ -8837,6 +8837,7 @@ function PaneRailBody({
         panelSide={bibliographyPanelSide}
         citations={citationsHook.citations}
         bibEntries={citationsHook.bibEntries}
+        bibRaw={citationsHook.bibRaw}
         bibPackage={citationsHook.bibPackage}
         addBibEntry={citationsHook.addBibEntry}
         saveBibEntry={citationsHook.saveBibEntry}

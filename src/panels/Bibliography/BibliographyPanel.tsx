@@ -89,6 +89,10 @@ function byProjectedAuthor(a: BibEntry, b: BibEntry): number {
 interface BibliographyPanelProps {
   citations: CitationRef[];
   bibEntries: BibEntry[];
+  /** The raw `.bib` text `bibEntries` projects — "Export cited.bib" exports
+   *  the cited entries' dependency CLOSURE from it (`@string` macros,
+   *  `@preamble`, crossref parents; task 949). */
+  bibSource?: string;
   selectedBibKey: string | null;
   onSelectBibKey: (key: string | null) => void;
   /** Takes the ENTRY, not its citekey (task 690) — a citekey names as many
@@ -129,6 +133,7 @@ const BIB_FILTER_OPTIONS = enumOptions("bibFilter");
 function BibliographyPanel({
   citations,
   bibEntries,
+  bibSource = "",
   selectedBibKey,
   onSelectBibKey,
   onSaveBibEntry,
@@ -421,7 +426,9 @@ function BibliographyPanel({
     // (BIB-F7-01, DATA-LOSS). `serializeBibForExport` rebuilds from fields when
     // `raw === ""`, so a "Save under new citekey"/library-added/AI-found entry
     // exports its reconstructed block instead of silently vanishing.
-    const content = serializeBibForExport(cited);
+    // …and from the SOURCE, so the file carries what those entries depend on
+    // (their `@string` macros, `@preamble`, crossref parents — task 949).
+    const content = serializeBibForExport(cited, bibSource);
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -431,7 +438,7 @@ function BibliographyPanel({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [bibEntries, citedKeys]);
+  }, [bibEntries, bibSource, citedKeys]);
 
   const handleAddFromCentralLibrary = useCallback(
     (anchor: DOMRect | null) => {

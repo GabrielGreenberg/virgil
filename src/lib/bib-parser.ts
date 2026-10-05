@@ -18,6 +18,8 @@ import type { BibEntry, BibSourceRef } from "./types";
 import { bibUidsOf, mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
 import {
   applyPatches,
+  bibMacroReferences,
+  bibStringName,
   bracesBalance,
   fieldAliasesOf,
   lineAnchoredOpeners,
@@ -451,12 +453,93 @@ export function serializeBibFileAgainst(
  * fresh `uid` is minted on the next import anyway). An entry with a non-empty
  * `raw` keeps its byte-exact source block (preserving the user's field order /
  * formatting); an entry with empty `raw` is reconstructed from `fields`.
+ *
+ * The export is a DEPENDENCY CLOSURE over `source` — the raw `.bib` text the
+ * entries were read from (task 949). A cited entry is not self-sufficient: it
+ * may name a `@string` macro (`journal = jphil`), a `crossref`/`xref`/`xdata`
+ * parent nobody `\cite`d, or a command a `@preamble` defines. Exporting the
+ * entries alone handed the user a file that compiles to EMPTY journal names
+ * and booktitles without a word. So the output is: every `@preamble`, then
+ * every `@string` the selection references (transitively, in source order),
+ * then the entries, then the crossref parents — after their children, which
+ * is where BibTeX requires them. Without `source` it degrades to the entries.
  */
-export function serializeBibForExport(entries: BibEntry[]): string {
+export function serializeBibForExport(entries: BibEntry[], source = ""): string {
+  const blocks = scanBibSource(source).filter((b) => b.balanced);
+  const textOf = (b: { start: number; end: number }) => source.slice(b.start, b.end);
+  const entryBlockByKey = new Map<string, string>();
+  for (const b of blocks) {
+    const lc = b.key.toLowerCase();
+    if (b.kind === "entry" && lc && !entryBlockByKey.has(lc)) entryBlockByKey.set(lc, textOf(b));
+  }
+
+  // 1. The ENTRY closure: the cited set, then every entry a `crossref` /
+  //    `xref` / `xdata` names, transitively (BibTeX does not cite a parent
+  //    just because a child crossrefs it — but it does need it in the file).
+  const selected = new Map<string, string>(); // lc key → block text, in emit order
+  const order: string[] = [];
+  for (const e of entries) {
+    const lc = e.key.toLowerCase();
+    if (selected.has(lc)) continue;
+    selected.set(lc, e.raw ? e.raw : reconstructBibtex(e));
+    order.push(lc);
+  }
+  const parentsOf = new Map<string, string[]>(); // lc key → lc keys it names
+  for (let i = 0; i < order.length; i++) {
+    const text = selected.get(order[i])!;
+    const named: string[] = [];
+    for (const f of scanBibFields(text)) {
+      if (f.name !== "crossref" && f.name !== "xref" && f.name !== "xdata") continue;
+      for (const k of text.slice(f.valueStart, f.valueEnd).split(",")) {
+        const lc = k.trim().toLowerCase();
+        if (lc) named.push(lc);
+      }
+    }
+    parentsOf.set(order[i], named);
+    for (const lc of named) {
+      if (selected.has(lc)) continue;
+      const parent = entryBlockByKey.get(lc);
+      if (parent === undefined) continue;
+      selected.set(lc, parent);
+      order.push(lc);
+    }
+  }
+
+  // 2. Placement: BibTeX resolves a crossref only when the PARENT comes after
+  //    every child naming it. A non-target keeps the caller's order; targets
+  //    (cited or pulled in) go last, children before parents.
+  const targets = new Set<string>();
+  for (const named of parentsOf.values()) for (const lc of named) if (selected.has(lc)) targets.add(lc);
+  const placed = order.filter((lc) => !targets.has(lc));
+  let pending = order.filter((lc) => targets.has(lc));
+  while (pending.length > 0) {
+    const ready = pending.filter(
+      (t) => !pending.some((c) => c !== t && (parentsOf.get(c) ?? []).includes(t)),
+    );
+    const batch = ready.length > 0 ? ready : pending; // a crossref cycle: keep source order
+    placed.push(...batch);
+    pending = pending.filter((t) => !batch.includes(t));
+  }
+
+  // 3. The MACRO closure: every `@string` a selected block (or a selected
+  //    `@string`, or a `@preamble`) references, transitively — emitted in
+  //    source order, ahead of the entries, so each is defined before use.
+  const preambles = blocks.filter((b) => b.type === "preamble").map(textOf);
+  const strings = blocks
+    .filter((b) => b.type === "string")
+    .map((b) => ({ text: textOf(b), name: bibStringName(textOf(b)) }));
+  const wanted = new Set<string>();
+  const queue = [...selected.values(), ...preambles].flatMap(bibMacroReferences);
+  while (queue.length > 0) {
+    const name = queue.pop()!;
+    if (wanted.has(name)) continue;
+    wanted.add(name);
+    for (const s of strings) if (s.name === name) queue.push(...bibMacroReferences(s.text));
+  }
+  const macros = strings.filter((s) => s.name !== null && wanted.has(s.name)).map((s) => s.text);
+
   return (
-    entries
-      .map((e) => (e.raw ? e.raw : reconstructBibtex(e)))
-      .join("\n\n") + "\n"
+    [...preambles, ...macros, ...placed.map((lc) => selected.get(lc)!)].join("\n\n") + "\n"
   );
 }
 

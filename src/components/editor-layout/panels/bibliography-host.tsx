@@ -21,6 +21,7 @@ export interface BibliographyHostProps {
   panelSide: Side | null;
   citations: CitationsHook["citations"];
   bibEntries: CitationsHook["bibEntries"];
+  bibRaw: CitationsHook["bibRaw"];
   bibPackage: CitationsHook["bibPackage"];
   addBibEntry: CitationsHook["addBibEntry"];
   saveBibEntry: CitationsHook["saveBibEntry"];
@@ -60,6 +61,7 @@ export function BibliographyHost(p: BibliographyHostProps) {
     <BibliographyPanel
       citations={p.citations}
       bibEntries={p.bibEntries}
+      bibSource={p.bibRaw}
       selectedBibKey={selectedBibKey}
       onSelectBibKey={setSelectedBibKey}
       onSaveBibEntry={p.saveBibEntry}
