@@ -200,7 +200,7 @@ export const migrateRevisions = withSidecarEnvelope(migrateRevisionsShape, [
 
 /** The `ai-requests.json` payload a revision-comment contributes — the ONE
  *  place its shape is written, shared by both bridge doors (task 697). */
-function revisionCommentContext(card: RevisionRequestCard): BridgeContext {
+export function revisionCommentContext(card: RevisionRequestCard): BridgeContext {
   return {
     text: card.text || "<revision comment>",
     paragraphIds: getLinkedTextObjectIds(card),

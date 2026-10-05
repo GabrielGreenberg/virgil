@@ -37,7 +37,12 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(),
 }));
 
-import { buildRequests, aiRequestDotStatus } from "@/components/AIWindow";
+import {
+  buildRequests,
+  aiRequestDotStatus,
+  LINKED_CARD_UNKNOWN,
+  type LinkedCardResolution,
+} from "@/components/AIWindow";
 import { requestState, isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
 import type {
   AiRequest,
@@ -94,7 +99,7 @@ interface Spies {
   removeEntryRequest?: (id: string) => void;
   withdrawPanelAiRequest?: (id: string) => void;
   clearLinkedAiRequest?: (kind: CardKind, cardId: string) => void;
-  cardLinkResolves?: (kind: CardKind, cardId: string) => boolean;
+  resolveLinkedCard?: (kind: CardKind, cardId: string) => LinkedCardResolution;
 }
 
 function build(
@@ -117,7 +122,7 @@ function build(
     clearLinkedAiRequest: spies.clearLinkedAiRequest ?? (() => {}),
     // task 697 — default: the link resolves (today's behaviour). The suites
     // that exercise a STRANDED row pass `() => false` explicitly.
-    cardLinkResolves: spies.cardLinkResolves ?? (() => true),
+    resolveLinkedCard: spies.resolveLinkedCard ?? (() => LINKED_CARD_UNKNOWN),
   });
 }
 

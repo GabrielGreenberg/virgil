@@ -62,6 +62,13 @@ export type FootnoteAnchorResolver = (
 export type FootnoteCapture = { content: JSONContent } & FootnoteMarkupAttrs;
 export type FootnoteCaptureResolver = (footnoteId: string) => FootnoteCapture | null;
 
+/** The request TEXT a footnote contributes to `ai-requests.json` — its body,
+ *  flattened. Shared by the bridge (what is filed) and the AI window's
+ *  linked-card reader (what is shown, task 955), so the two cannot drift. */
+export function footnoteRequestText(ref: Pick<FootnoteRef, "content">): string {
+  return richJsonToPlainText(normalizeRichContent(ref.content)).trim() || "<footnote>";
+}
+
 export function useFootnotes(
   docId: string | null,
   pristine?: PristineKindApi | null,
@@ -440,9 +447,7 @@ export function useFootnotes(
       // ref, so the degraded context keeps its paragraph ids.
       const anchor = resolveAnchor?.(id);
       bridgeFlagForCard(docId, "footnote", id, value, mode, ref, (found) => ({
-        text:
-          richJsonToPlainText(normalizeRichContent(found.content)).trim() ||
-          "<footnote>",
+        text: footnoteRequestText(found),
         paragraphIds: anchor?.paragraphIds,
         selectedText: anchor?.selectedText,
       }));

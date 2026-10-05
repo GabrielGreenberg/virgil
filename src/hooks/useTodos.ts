@@ -63,7 +63,7 @@ export const migrateTodos = withSidecarEnvelope(migrateTodosShape);
 /** The `ai-requests.json` payload a todo contributes — named so both bridge
  *  doors read one shape (task 697). A todo carries no Mode-B capture, so it
  *  contributes no `selectedText`. */
-function todoContext(todo: TodoItem): BridgeContext {
+export function todoContext(todo: TodoItem): BridgeContext {
   return {
     text: todo.text || "<todo>",
     paragraphIds: getLinkedTextObjectIds(todo),

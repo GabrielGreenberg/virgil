@@ -23,7 +23,7 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(),
 }));
 
-import { buildRequests, aiRequestDotStatus } from "@/components/AIWindow";
+import { buildRequests, aiRequestDotStatus, LINKED_CARD_UNKNOWN } from "@/components/AIWindow";
 import type { AiRequest } from "@/lib/types";
 
 function req(overrides: Partial<AiRequest> = {}): AiRequest {
@@ -45,7 +45,7 @@ const NOOPS = {
   clearLinkedAiRequest: () => {},
   // task 697: these rows' links all resolve — the default for suites that
   // aren't about the stranded case.
-  cardLinkResolves: () => true,
+  resolveLinkedCard: () => LINKED_CARD_UNKNOWN,
 };
 
 function listOne(r: AiRequest) {

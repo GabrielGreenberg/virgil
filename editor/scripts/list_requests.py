@@ -64,9 +64,16 @@ def emit(row: dict) -> None:
     print(json.dumps(row, ensure_ascii=False))
 
 
-def list_ai_requests(doc) -> tuple[list[dict], set[tuple[str, str]]]:
+def list_ai_requests(
+    doc, index: "_CardIndex | None" = None
+) -> tuple[list[dict], set[tuple[str, str]]]:
     """Returns (rows, bridged_links) where bridged_links is the set of
-    (panel, cardId) pairs already represented by an ai-requests entry."""
+    (panel, cardId) pairs already represented by an ai-requests entry.
+
+    A bridged row's `text` is read from its LINKED CARD when that resolves
+    (`live_linked_text`, task 955) — the stored row text is a snapshot from
+    bridge time and is only the fallback."""
+    index = index or _CardIndex(doc)
     state = read_json(sidecar(doc, "ai-requests.json"), default={"requests": []})
     if not isinstance(state, dict):
         return [], set()
@@ -106,7 +113,8 @@ def list_ai_requests(doc) -> tuple[list[dict], set[tuple[str, str]]]:
                 "source": "ai-requests",
                 "kind": r.get("kind", "unknown"),
                 "id": r.get("id"),
-                "text": r.get("text", ""),
+                "text": live_linked_text(index, r.get("kind"), linked)
+                or r.get("text", ""),
                 "paragraphIds": r.get("paragraphIds") or [],
                 "selectedText": r.get("selectedText"),
                 "linkedTo": linked,
@@ -180,7 +188,8 @@ _ROUTING: dict[str, dict[str, str]] = json.loads(
 #               from a shared file (notes.json holds note+highlight; cutter/
 #               revisions hold comment+suggestion; reports hold report+
 #               report-request) — or None to take every row (single-kind files).
-#   summary     the field to summarize from (footnote flattens rich JSON instead)
+#   summary     the field to summarize from (footnote flattens rich JSON instead;
+#               None → the card's Mode-B anchor text, the highlight's body)
 #   rich        True → `summary` is a rich JSONContent body to flatten, not a
 #               plain field.
 # The `_ROUTING`-vs-adapter key parity is pinned by test_unbridged_flag_fallback.py.
@@ -193,9 +202,12 @@ _STORAGE_ROWS: dict[str, dict] = {
         "panel": "notes",
         "match": ("kind", ("note",), True), "summary": "title", "rich": False,
     },
+    # A highlight is intrinsically Mode-B: its request text is its captured
+    # anchor text (TS `highlightContext`), not a title it does not carry —
+    # `summary: None` reads the Mode-B snapshot instead of a field.
     "highlight": {
         "panel": "notes",
-        "match": ("kind", ("highlight",), False), "summary": "title", "rich": False,
+        "match": ("kind", ("highlight",), False), "summary": None, "rich": False,
     },
     "todo": {
         "panel": "todos",
@@ -251,7 +263,77 @@ def _card_matches(card: dict, match: tuple | None) -> bool:
     return v in values
 
 
-def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
+def card_request_text(card: dict, adapter: dict) -> str | None:
+    """The request TEXT a card contributes — the Python twin of the per-kind TS
+    context functions the bridge files with (`cutterCommentContext`,
+    `noteContext`, …). ONE derivation for both drain legs: the unbridged
+    fallback's virtual row and a bridged row's live text (task 955)."""
+    field = adapter["summary"]
+    if field is None:
+        return card_text_anchor(card)
+    raw = card.get(field)
+    return rich_json_to_text(raw) if adapter["rich"] else raw
+
+
+# (wire kind, link panel) → card kind: the inverse of the routing manifest, so
+# a bridged row's `linkedTo` names the storage row its card lives under. The
+# PAIR is the key because `panel` alone is ambiguous (note/highlight share
+# notes.json; cutter/revisions share the "suggestion" wire kind).
+_CARD_KIND_BY_LINK: dict[tuple[str, str], str] = {
+    (route["kind"], route["linkPanel"]): card_kind
+    for card_kind, route in _ROUTING.items()
+}
+
+
+class _CardIndex:
+    """Lazily-parsed sidecar cards, each file read at most once per drain."""
+
+    def __init__(self, doc):
+        self.doc = doc
+        self._files: dict[str, dict | None] = {}
+
+    def state(self, filename: str):
+        if filename not in self._files:
+            self._files[filename] = read_json(sidecar(self.doc, filename), default=None)
+        return self._files[filename]
+
+    def cards(self, adapter: dict) -> list[dict]:
+        state = self.state(adapter["file"])
+        if not isinstance(state, dict):
+            return []
+        return [
+            c for c in (state.get(adapter["list_key"], []) or [])
+            if isinstance(c, dict) and _card_matches(c, adapter["match"])
+        ]
+
+
+def live_linked_text(index: "_CardIndex", wire_kind, linked) -> str | None:
+    """The CURRENT request text of the card a bridged row links to, or None
+    when the link does not resolve (card deleted, sidecar unreadable, unknown
+    kind) — the caller then keeps the row's stored text.
+
+    A bridged row's `text` is a SNAPSHOT taken when the bridge fired: the first
+    committed fragment of a comment (its first 250 ms typing pause), or a
+    note's title when its AI box was ticked — and no later edit rewrites it
+    (task 955). The card is the SSOT for what the user asked, so the drain
+    reads it, and the responder's ask-shape triage and its `instructions`
+    stamp see what the user actually wrote."""
+    if not (isinstance(linked, dict) and linked.get("panel") and linked.get("cardId")):
+        return None
+    card_kind = _CARD_KIND_BY_LINK.get((wire_kind, linked["panel"]))
+    adapter = STORAGE_ADAPTER.get(card_kind) if card_kind else None
+    if adapter is None:
+        return None
+    for c in index.cards(adapter):
+        if c.get("id") == linked["cardId"]:
+            text = card_request_text(c, adapter)
+            return text if isinstance(text, str) and text.strip() else None
+    return None
+
+
+def list_unbridged_card_flags(
+    doc, bridged: set[tuple[str, str]], index: "_CardIndex | None" = None
+) -> list[dict]:
     """Surface `aiRequest: true` cards that have no matching bridged entry.
 
     For each flag-bearing card kind (the manifest's keys), read its storage
@@ -262,8 +344,9 @@ def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
     revisions; report-request in reports.json); each is read under its own
     discriminator, so one file is walked once per kind that lives in it."""
     rows: list[dict] = []
-    # Cache each sidecar's parse so a shared file (notes.json) isn't re-read.
-    file_cache: dict[str, dict | None] = {}
+    # One parse per sidecar, shared with the bridged leg's live-text reads, so
+    # a shared file (notes.json) isn't re-read.
+    index = index or _CardIndex(doc)
     for card_kind, route in _ROUTING.items():
         adapter = STORAGE_ADAPTER.get(card_kind)
         if adapter is None:
@@ -277,17 +360,8 @@ def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
             continue
         wire_kind = route["kind"]
         panel = route["linkPanel"]
-        filename = adapter["file"]
-        if filename not in file_cache:
-            file_cache[filename] = read_json(sidecar(doc, filename), default=None)
-        state = file_cache[filename]
-        if not isinstance(state, dict):
-            continue
-        cards = state.get(adapter["list_key"], []) or []
-        for c in cards:
+        for c in index.cards(adapter):
             if not c.get("aiRequest"):
-                continue
-            if not _card_matches(c, adapter["match"]):
                 continue
             cid = c.get("id")
             if not cid:
@@ -296,10 +370,7 @@ def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
             # same wire link the bridge writes.
             if (panel, cid) in bridged:
                 continue
-            raw_summary = c.get(adapter["summary"])
-            summary = (
-                rich_json_to_text(raw_summary) if adapter["rich"] else raw_summary
-            )
+            summary = card_request_text(c, adapter)
             rows.append(
                 {
                     "source": "card-flag",
@@ -319,9 +390,10 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2:
         die("usage: list_requests.py <docPath>")
     doc = resolve_doc(argv[1])
-    ai_rows, bridged = list_ai_requests(doc)
+    index = _CardIndex(doc)
+    ai_rows, bridged = list_ai_requests(doc, index)
     bib_rows = list_bib_reviews(doc)
-    flag_rows = list_unbridged_card_flags(doc, bridged)
+    flag_rows = list_unbridged_card_flags(doc, bridged, index)
     for row in ai_rows + bib_rows + flag_rows:
         emit(row)
     # Brief summary on stderr so a piping skill can show counts at a glance.

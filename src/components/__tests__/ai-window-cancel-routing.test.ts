@@ -34,7 +34,12 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(),
 }));
 
-import { buildRequests } from "@/components/AIWindow";
+import {
+  buildRequests,
+  LINKED_CARD_ABSENT,
+  LINKED_CARD_UNKNOWN,
+  type LinkedCardResolution,
+} from "@/components/AIWindow";
 import { linkedCardKindFrom } from "@/cards/predicates";
 import type { AiRequest, AiRequestLink } from "@/lib/types";
 import type { CardKind } from "@/cards/types";
@@ -56,7 +61,7 @@ function build(
   spies: {
     withdrawPanelAiRequest?: (id: string) => void;
     clearLinkedAiRequest?: (kind: CardKind, cardId: string) => void;
-    cardLinkResolves?: (kind: CardKind, cardId: string) => boolean;
+    resolveLinkedCard?: (kind: CardKind, cardId: string) => LinkedCardResolution;
   },
 ) {
   const vms = buildRequests({
@@ -69,7 +74,7 @@ function build(
     withdrawPanelAiRequest: spies.withdrawPanelAiRequest ?? (() => {}),
     clearLinkedAiRequest: spies.clearLinkedAiRequest ?? (() => {}),
     // task 697 — default: the link resolves (today's behaviour).
-    cardLinkResolves: spies.cardLinkResolves ?? (() => true),
+    resolveLinkedCard: spies.resolveLinkedCard ?? (() => LINKED_CARD_UNKNOWN),
   });
   return vms.find((v) => v.id === `panel:${r.id}`)!;
 }
@@ -100,7 +105,7 @@ describe("AIWindow cancel routes card-linked requests through the both-faces cle
     const withdrawPanelAiRequest = vi.fn();
     const vm = build(
       req({ id: "stranded-1", kind: "todo", linkedTo: { panel: "todos", cardId: "gone" } }),
-      { clearLinkedAiRequest, withdrawPanelAiRequest, cardLinkResolves: () => false },
+      { clearLinkedAiRequest, withdrawPanelAiRequest, resolveLinkedCard: () => LINKED_CARD_ABSENT },
     );
     expect(vm.onCancel).toBeTypeOf("function");
     vm.onCancel!();
@@ -112,12 +117,12 @@ describe("AIWindow cancel routes card-linked requests through the both-faces cle
     // `cutter-comment` and `revision-comment` both ride the wire kind
     // "suggestion"; the probe has to be handed the pair-resolved kind or it
     // would ask the wrong panel whether the card is there.
-    const cardLinkResolves = vi.fn(() => true);
+    const resolveLinkedCard = vi.fn(() => LINKED_CARD_UNKNOWN);
     build(
       req({ kind: "suggestion", linkedTo: { panel: "cutter", cardId: "cx" } }),
-      { cardLinkResolves },
+      { resolveLinkedCard },
     ).onCancel!();
-    expect(cardLinkResolves).toHaveBeenCalledWith("cutter-comment", "cx");
+    expect(resolveLinkedCard).toHaveBeenCalledWith("cutter-comment", "cx");
   });
 
   it("unlinked composer request → onCancel keeps the raw withdrawPanelAiRequest(id) path", () => {

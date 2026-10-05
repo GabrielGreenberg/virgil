@@ -28,7 +28,7 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(),
 }));
 
-import AIWindow, { type AIWindowProps } from "@/components/AIWindow";
+import AIWindow, { LINKED_CARD_UNKNOWN, type AIWindowProps } from "@/components/AIWindow";
 import {
   DEFAULT_PANEL_COLORS,
   deriveCardPalette,
@@ -91,7 +91,7 @@ function props(): AIWindowProps {
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
-    cardLinkResolves: () => true, // task 697
+    resolveLinkedCard: () => LINKED_CARD_UNKNOWN, // task 697
     requestBibReview: noop,
     cancelBibReview: noop,
     addEntryRequest: noop,
