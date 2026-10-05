@@ -27,6 +27,10 @@ import { ARCHIVE_ORIGIN_PANELS } from "@/lib/archive-origin";
 import { SIDECAR_COLLECTIONS } from "@/lib/sidecar-merge";
 import { CARD_KIND_SIDECAR } from "@/lib/host-writability";
 import { LEGACY_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
+import {
+  FAMILY_MEANS_DELETION,
+  SUGGESTION_BLOCK_TEXT,
+} from "@/links/pending-change-actions";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scripts = join(here, "../../..", "editor/scripts");
@@ -176,5 +180,29 @@ describe("card_kind_cases.json ↔ cardKindFromRecord", () => {
 
   it("covers every card sidecar panel", () => {
     expect(new Set(corpus.cases.map((r) => r.panel))).toEqual(new Set(Object.keys(tables.cardSidecars)));
+  });
+});
+
+// Task 957 — the agent's `accept` op refuses an empty replacement for a family
+// where empty does not mean a cut. It reads that rule (and the sentence it
+// says) from card_tables.json, pinned here to the app's own table.
+describe("card_tables.json suggestionLanding ↔ FAMILY_MEANS_DELETION", () => {
+  const landing = (
+    JSON.parse(readFileSync(join(scripts, "card_tables.json"), "utf8")) as {
+      suggestionLanding: {
+        familyMeansDeletion: Record<string, boolean>;
+        noReplacementText: string;
+      };
+    }
+  ).suggestionLanding;
+
+  it("the family table is FAMILY_MEANS_DELETION, verbatim", () => {
+    expect(landing.familyMeansDeletion).toEqual({ ...FAMILY_MEANS_DELETION });
+  });
+
+  it("the refusal sentence is the app's no-replacement text", () => {
+    expect(landing.noReplacementText).toBe(
+      SUGGESTION_BLOCK_TEXT["no-replacement"],
+    );
   });
 });

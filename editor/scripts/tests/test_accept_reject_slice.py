@@ -246,6 +246,63 @@ check(r.returncode != 0 and "already rejected" in r.stderr, "accepting a rejecte
 r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "ea4d5253-406d-499e-85b6-8055956c9f95"}))
 check(r.returncode != 0 and "suggestion" in r.stderr, "accept refuses a non-suggestion card (a note)")
 
+# ===================================================== empty replacement (task 957)
+# An empty replacement is a deletion ONLY in Cutter (the app's
+# FAMILY_MEANS_DELETION, read from card_tables.json). A revision suggestion
+# with nothing typed is an unfinished draft: accept must REFUSE, writing nothing.
+TEX_SNAP = ["revisions.json", "cutter.json", "ai-requests.json", "notifications.json", "version.txt"]
+
+
+def files_snapshot(doc):
+    snap = {n: (hashlib.sha256((doc / "virgil" / n).read_bytes()).hexdigest()
+                if (doc / "virgil" / n).exists() else None) for n in TEX_SNAP}
+    snap["__tex__"] = hashlib.sha256(next(doc.glob("*.tex")).read_bytes()).hexdigest()
+    return snap
+
+
+print("\n=== empty revision suggestion: accept REFUSES, every file byte-identical ===")
+for label, suggested, user in [("empty", "", ""), ("whitespace", "  \n", " ")]:
+    sb = sandbox()
+    cid = f"rev-empty-{label}"
+    r = propose(sb, panel="revisions", card_id=cid, kind_label="revision-suggestion",
+                task_id=f"{cid}-task", anchor="6607", original=REV_ORIGINAL, suggested=suggested)
+    check(r.returncode == 0, f"[{label}] propose exited 0 (stderr={r.stderr.strip()[:160]})")
+    if user:
+        st = load(sb, "revisions.json")
+        next(c for c in st["cards"] if c["id"] == cid)["user_text"] = user
+        (sb / "virgil/revisions.json").write_text(json.dumps(st, indent=2))
+    before = files_snapshot(sb)
+    r = run(APPLY, str(sb), "accept", json.dumps({"cardId": cid}))
+    check(r.returncode != 0, f"[{label}] accept exits non-zero on an empty revision replacement")
+    check("No replacement text yet" in r.stderr,
+          f"[{label}] the refusal says the app's no-replacement sentence (stderr={r.stderr.strip()[:160]})")
+    check(files_snapshot(sb) == before, f"[{label}] .tex, card, Task, notifications, version all byte-identical")
+    check(REV_ORIGINAL in tex_of(sb), f"[{label}] the anchored passage is still in the .tex")
+    check(pen_gone(sb), f"[{label}] pen released")
+
+print("\n=== revision with user_text: the human's text is what lands ===")
+sb = sandbox()
+r = propose(sb, panel="revisions", card_id="rev-user", kind_label="revision-suggestion",
+            task_id="rev-user-task", anchor="6607", original=REV_ORIGINAL, suggested="")
+st = load(sb, "revisions.json")
+USER_TEXT = "Its survival into the present owes nothing to typography."
+next(c for c in st["cards"] if c["id"] == "rev-user")["user_text"] = USER_TEXT
+(sb / "virgil/revisions.json").write_text(json.dumps(st, indent=2))
+r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "rev-user"}))
+check(r.returncode == 0, f"accept exited 0 (stderr={r.stderr.strip()[:160]})")
+check(USER_TEXT in tex_of(sb) and REV_ORIGINAL not in tex_of(sb), "user_text spliced over original_text")
+
+print("\n=== empty cutter suggestion: still a cut — accept deletes the passage ===")
+sb = sandbox()
+CUT_ORIGINAL = REV_ORIGINAL
+r = propose(sb, panel="cutter", card_id="cut-empty", kind_label="cutter-suggestion",
+            task_id="cut-empty-task", anchor="6607", original=CUT_ORIGINAL, suggested="")
+check(r.returncode == 0, f"propose exited 0 (stderr={r.stderr.strip()[:160]})")
+r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "cut-empty"}))
+check(r.returncode == 0, f"accept exited 0 (stderr={r.stderr.strip()[:160]})")
+check(CUT_ORIGINAL not in tex_of(sb), "the cut passage is gone from the .tex")
+check(card_by_id(sb, "cutter.json", "cards", "cut-empty")["status"] == "accepted", "cutter card → accepted")
+
 # ===================================================== ATOMICITY (the headline proof)
 # A fault between the .tex splice and the card/Task update rolls BOTH back. The
 # accept write-set order is: revisions.json(card) #1, ai-requests.json(Task) #2,

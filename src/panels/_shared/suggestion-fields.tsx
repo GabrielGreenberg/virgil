@@ -26,6 +26,7 @@ import {
   SUGGESTION_BLOCK_TEXT,
   suggestionApplicability,
   suggestionInsertability,
+  suggestionLacksReplacement,
   type SuggestionLike,
 } from "@/links/pending-change-actions";
 import { usePreviewDir } from "@/links/pending-preview-store";
@@ -575,32 +576,50 @@ export function PendingActionRow({
     );
   }
   // FLAG OFF — the legacy pair, for EVERY author (task 716). Gated on the
-  // controller's presence alone: neither verb touches the document (Accept is a
+  // controller's presence: neither verb touches the document (Accept is a
   // status write plus an out-of-band AI request), so neither needs an editor.
+  // TASK 957 — and Accept asks the same family-aware landing question Apply
+  // does. An Accept on an empty revision draft queued `REPLACEMENT: ` and the
+  // agent's accept executed it as a DELETE of the passage; the reason is said
+  // in the same words as flag-ON Apply's refusal.
+  const acceptBlocked = suggestionLacksReplacement(card, family)
+    ? SUGGESTION_BLOCK_TEXT["no-replacement"]
+    : null;
   return (
-    <div className={`${row}${align === "start" ? " pt-1 pr-7" : ""}`}>
-      <Button
-        variant="danger"
-        size="sm"
-        disabled={!controller}
-        onClick={(e) => {
-          e.stopPropagation();
-          controller?.reject(family, id);
-        }}
-      >
-        Reject
-      </Button>
-      <Button
-        variant="warm"
-        size="sm"
-        disabled={!controller}
-        onClick={(e) => {
-          e.stopPropagation();
-          controller?.accept(family, id);
-        }}
-      >
-        Accept
-      </Button>
+    <div className={outer}>
+      <div className={row}>
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={!controller}
+          onClick={(e) => {
+            e.stopPropagation();
+            controller?.reject(family, id);
+          }}
+        >
+          Reject
+        </Button>
+        <Button
+          variant="warm"
+          size="sm"
+          disabled={!controller || acceptBlocked !== null}
+          title={acceptBlocked ?? undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            controller?.accept(family, id);
+          }}
+        >
+          Accept
+        </Button>
+      </div>
+      {acceptBlocked && (
+        <p
+          data-testid="pending-accept-blocked"
+          className="text-[11px] leading-snug text-[var(--muted)]"
+        >
+          {acceptBlocked}
+        </p>
+      )}
     </div>
   );
 }

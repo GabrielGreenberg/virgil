@@ -15,6 +15,9 @@
     "                      mirror; richMirror = bodyField `content` + a `text` mirror kept in sync.",
     "  sidecarCollections  file → [{ key, idFields }] — equal to SIDECAR_COLLECTIONS (src/lib/sidecar-merge.ts). The writeback's",
     "                      in-pen three-way merge (_common.json_merge3, task 941) identity-merges exactly these arrays.",
+    "  suggestionLanding   may a suggestion's replacement land? (task 957) familyMeansDeletion = FAMILY_MEANS_DELETION and",
+    "                      noReplacementText = SUGGESTION_BLOCK_TEXT['no-replacement'] (src/links/pending-change-actions.ts):",
+    "                      apply_response's accept refuses an empty replacement for a family where it does not mean a cut.",
     "Python kind tokens are card_by_id.card_kind's (a revisions comment is the legacy `comment`; spine `revision-comment`)."
   ],
   "cardSidecars": {
@@ -51,5 +54,9 @@
     "suggestions.json": [{ "key": "suggestions", "idFields": ["id"] }],
     "todos.json": [{ "key": "items", "idFields": ["id"] }],
     "virgil.json": []
+  },
+  "suggestionLanding": {
+    "familyMeansDeletion": { "cutter-suggestion": true, "revision-suggestion": false },
+    "noReplacementText": "No replacement text yet — this suggestion has nothing to put in the paper."
   }
 }

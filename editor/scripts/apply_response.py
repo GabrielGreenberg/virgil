@@ -34,8 +34,9 @@ bump, committed all-or-nothing under the pen):
 
 accept/reject (chip 13) consummate a Level-3 *proposal* — a suggestion card
 (revision- or cutter-) that draft-suggestion drafted with the .tex untouched and
-the Task left awaiting review. accept splices original_text → suggested_text into
-the .tex (the generic `replace-span` texEdit, stale-guarded), flips the card
+the Task left awaiting review. accept splices original_text → (user_text ||
+suggested_text) into the .tex (the generic `replace-span` texEdit, stale-guarded;
+an empty replacement is refused for a revision — task 957), flips the card
 status → accepted, and completes the originating Task (result=accepted) — all in
 ONE commit; it is the one mutation op that also carries a paper write. reject
 flips the card status → rejected + completes the Task (result=rejected), .tex
@@ -196,6 +197,10 @@ from _common import (
 _CARD_TABLES: dict = json.loads(
     Path(__file__).with_name("card_tables.json").read_text(encoding="utf-8")
 )
+
+# "May this suggestion's replacement land?" — the app's FAMILY_MEANS_DELETION +
+# its `no-replacement` sentence (src/links/pending-change-actions.ts), task 957.
+_SUGGESTION_LANDING: dict = _CARD_TABLES["suggestionLanding"]
 
 # Map panel names to (filename, list-key) for new-card insertion.
 PANEL_TO_SIDECAR: dict[str, tuple[str, str]] = {
@@ -2464,8 +2469,10 @@ def _resolve_proposal(doc: Path, op: dict, verb: str):
 
 
 def cmd_accept(doc: Path, op: dict) -> dict:
-    """Consummate an L3 proposal: splice original_text → suggested_text into the
-    .tex (generic replace-span, stale-guarded), flip the suggestion card →
+    """Consummate an L3 proposal: splice original_text → (user_text ||
+    suggested_text) into the .tex (generic replace-span, stale-guarded) —
+    REFUSED when that replacement is empty for a family where empty does not
+    mean a cut (a revision draft; task 957) — flip the suggestion card →
     accepted, and complete the originating Task (result=accepted). One atomic,
     pen-wrapped commit. Idempotent (accepting an accepted card is a no-op)."""
     res = _resolve_proposal(doc, op, "accept")
@@ -2485,11 +2492,21 @@ def cmd_accept(doc: Path, op: dict) -> dict:
     if not anchor:
         die(f"cannot accept {card_id}: the suggestion has no anchor paragraph "
             f"(links[*].anchor.textObjectIds) to splice at")
-    # The replacement mirrors the browser's accept: a revision suggestion honors
-    # a user refinement (user_text) over the AI draft (suggested_text); an empty
-    # value is a deletion (a Cutter "cut entirely"). The .tex write itself is the
-    # generic replace-span — no suggestion-specific splice code.
+    # The replacement mirrors the browser's `suggestionReplacement`: a human
+    # refinement (user_text) wins over the AI draft (suggested_text), byte-exact.
+    # The .tex write itself is the generic replace-span — no suggestion-specific
+    # splice code.
     replacement = card.get("user_text") or card.get("suggested_text") or ""
+    # An EMPTY replacement is a deletion only where the family says so (task
+    # 957). In Cutter it is the cut; in Revisions it is an unfinished draft, and
+    # splicing it deleted the passage the draft was written to improve. The
+    # family table is the app's FAMILY_MEANS_DELETION, read from card_tables.json
+    # (pinned by card-tables-manifest.test.ts) — the same refusal flag-ON Apply
+    # and flag-OFF Accept make in the browser, in the same words.
+    if not _SUGGESTION_LANDING["familyMeansDeletion"].get(kind, False) and not replacement.strip():
+        die(f"cannot accept {card_id}: {_SUGGESTION_LANDING['noReplacementText']} "
+            f"(a {kind} with an empty replacement is an unfinished draft, not a "
+            f"deletion — nothing was written)")
 
     txn = _Txn(doc)
     live = txn.card_ref(hit.filename, hit.list_key, card_id)

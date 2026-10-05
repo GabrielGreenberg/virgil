@@ -270,3 +270,60 @@ describe("the two capabilities are asked separately", () => {
     expect(enabled("Apply")).toBe(false);
   });
 });
+
+// TASK 957 — the flag-OFF Accept asks the same family-aware landing question
+// flag-ON Apply does. Accepting an empty revision draft queued an AI request
+// whose prompt read `REPLACEMENT: ` and the agent's accept op executed it as a
+// DELETE of the anchored passage. In Cutter an empty replacement IS the cut.
+describe("flag-OFF Accept refuses an empty revision replacement", () => {
+  const BLOCK =
+    "No replacement text yet — this suggestion has nothing to put in the paper.";
+
+  it.each(["human", "ai"] as const)(
+    "a %s revision card with no replacement: Accept disabled, the reason said",
+    (author) => {
+      setPendingChangesFlag(false);
+      const controller = makeController(false);
+      renderCard(
+        "revision-suggestion",
+        makeCard("revision-suggestion", {
+          author,
+          suggested_text: "",
+          user_text: "  ",
+        }),
+        controller,
+      );
+      expect(enabled("Accept")).toBe(false);
+      expect(enabled("Reject")).toBe(true);
+      expect(screen.getByTestId("pending-accept-blocked").textContent).toBe(BLOCK);
+      fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+      expect(controller.accept).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a revision card whose user typed a replacement: Accept live", () => {
+    setPendingChangesFlag(false);
+    renderCard(
+      "revision-suggestion",
+      makeCard("revision-suggestion", {
+        author: "human",
+        suggested_text: "",
+        user_text: "My own wording.",
+      }),
+      makeController(false),
+    );
+    expect(enabled("Accept")).toBe(true);
+    expect(screen.queryByTestId("pending-accept-blocked")).toBeNull();
+  });
+
+  it("an empty CUTTER suggestion is a cut: Accept stays live", () => {
+    setPendingChangesFlag(false);
+    renderCard(
+      "cutter-suggestion",
+      makeCard("cutter-suggestion", { suggested_text: "", user_text: "" }),
+      makeController(false),
+    );
+    expect(enabled("Accept")).toBe(true);
+    expect(screen.queryByTestId("pending-accept-blocked")).toBeNull();
+  });
+});
