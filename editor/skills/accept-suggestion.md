@@ -6,10 +6,12 @@ description: |
   "land this rewrite", "yes, make that change", "accept the cut", or as
   the mechanical apply step when the user approves a pending suggestion
   card. Resolves the card via card_by_id.py, verifies the proposal isn't
-  stale, then routes an `accept` op: splice original_text → suggested_text
-  into the .tex + flip the card status → accepted + complete the
-  originating Task (result=accepted), all in ONE atomic pen-protected
-  commit. Handles revision-suggestion AND cutter-suggestion. Does NOT
+  stale, then routes an `accept` op: splice original_text →
+  (user_text || suggested_text) into the .tex + flip the card status →
+  accepted + complete the originating Task (result=accepted), all in ONE
+  atomic pen-protected commit. Handles revision-suggestion AND
+  cutter-suggestion; REFUSES a revision whose replacement is empty (an
+  unfinished draft, not a deletion — only a Cutter cut deletes). Does NOT
   trigger for drafting a new suggestion (use /editor/draft-suggestion),
   dismissing one (use /editor/reject-suggestion), or editing a suggestion's
   OTHER fields — its suggested_text / user_text / explanation (use
@@ -32,8 +34,8 @@ Like the other existing-card ops it resolves the card with
 [`card_by_id.py`](../scripts/card_by_id.py) and routes the change through the one
 sanctioned writeback, [`apply_response.py`](../scripts/apply_response.py). The
 `accept` op does **three things in one atomic, pen-wrapped commit**: splices the
-`.tex` (`original_text` → `suggested_text` via the generic `replace-span`
-texEdit), flips the card `status` → `accepted`, and completes the originating
+`.tex` (`original_text` → `user_text || suggested_text` via the generic
+`replace-span` texEdit), flips the card `status` → `accepted`, and completes the originating
 Task (`result=accepted`) — plus the audit notification + version bump. A fault
 anywhere rolls **all three** back together (the `.tex`, the card, and the Task).
 
@@ -65,6 +67,10 @@ transaction — never hand-assemble a `texEdit` here.
      human-authored suggestion can still be accepted, but confirm intent first.
    - The card must carry `original_text`, `suggested_text`, and an anchor
      (`links[*].anchor.textObjectIds`). Missing any → stop.
+   - A `revision-suggestion` whose replacement (`user_text || suggested_text`)
+     is empty or whitespace → stop: it is an unfinished draft, and the op
+     refuses it (see Applicability). A Cutter suggestion with an empty
+     replacement is a cut and proceeds.
 
 2. **Stale-match pre-check (L3 trust).** Read the anchored paragraph and confirm
    `original_text` still appears there verbatim:
@@ -91,12 +97,20 @@ transaction — never hand-assemble a `texEdit` here.
 ## Applicability
 
 - **Acceptable** — `revision-suggestion` (in `revisions.json`) and
-  `cutter-suggestion` (in `cutter.json`), `status: pending`. An empty
-  `suggested_text` is a Cutter "cut entirely" — `accept` deletes the span.
+  `cutter-suggestion` (in `cutter.json`), `status: pending`. The replacement is
+  `user_text` when the human typed one, else `suggested_text`. An empty
+  replacement on a **Cutter** suggestion is a "cut entirely" — `accept` deletes
+  the span.
 - **Refused** — any non-suggestion kind; a proposal already `rejected`; a
   suggestion missing `original_text`/`suggested_text`/anchor; a proposal whose
-  `original_text` no longer matches the `.tex` (stale). The op refuses these
-  with a clear reason rather than splice blindly.
+  `original_text` no longer matches the `.tex` (stale); and a **revision**
+  suggestion whose replacement is empty or whitespace (task 957). A human
+  revision card starts with `suggested_text: ""` and invites the author to type
+  into "Your text" — accepting it untyped would DELETE the passage, so the op
+  refuses with "No replacement text yet — this suggestion has nothing to put in
+  the paper." (the app's own Apply/Accept wording; the family rule is
+  `card_tables.json` → `suggestionLanding`). The op refuses these with a clear
+  reason and writes nothing — `.tex`, card and Task untouched.
 
 > **This skill OWNS the `status` transition.** `edit-card` refuses
 > `--field status=…` on a suggestion by name (`apply_response.OP_OWNED_FIELDS`),
@@ -115,6 +129,10 @@ Done: accept-suggestion <cardId> (<cardKind>) — spliced into document.tex, sta
 On a stale refusal:
 ```
 Done: refused <cardId> — the paragraph changed since this proposal was drafted; original_text no longer matches. Nothing applied. Re-draft with /editor/draft-suggestion.
+```
+On an empty-revision refusal:
+```
+Done: refused <cardId> — this revision suggestion has no replacement text yet, so accepting it would delete the passage. Nothing applied. Type the new wording into "Your text" (or ask me to draft one with /editor/draft-suggestion), then accept.
 ```
 
 ## Safety

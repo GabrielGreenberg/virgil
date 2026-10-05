@@ -61,6 +61,7 @@ import {
 import {
   hasSuggestionReplacement,
   suggestionReplacement,
+  type SuggestionReplacementSource,
 } from "@/panels/_shared/suggestion-field-vocabulary";
 
 /** The applied-splice descriptor a `status:"applied"` suggestion card carries
@@ -549,9 +550,30 @@ export function suggestionApplicability(
     return { canApply: false, reason: "unanchored" };
   if (card.original_text.length === 0)
     return { canApply: false, reason: "no-capture" };
-  if (!FAMILY_MEANS_DELETION[family] && !hasSuggestionReplacement(card))
+  if (suggestionLacksReplacement(card, family))
     return { canApply: false, reason: "no-replacement" };
   return { canApply: true };
+}
+
+/**
+ * **Is this card's empty replacement a refusal rather than a cut?** The
+ * `no-replacement` half of {@link suggestionApplicability}, exported on its own
+ * because it is the ONE landing question every door asks — not only Apply.
+ * Task 957: the flag-OFF Accept (status→accepted + an AI request whose prompt
+ * reads `REPLACEMENT: `) and the agent's `accept` op in
+ * `editor/scripts/apply_response.py` both treated an empty replacement as a
+ * deletion for EVERY family, so an unfinished revision draft, accepted, deleted
+ * the passage it was written to improve. The legacy pair asks this predicate,
+ * and the Python door reads the same family table out of
+ * `editor/scripts/card_tables.json` (`suggestionLanding`), pinned to
+ * {@link FAMILY_MEANS_DELETION} and {@link SUGGESTION_BLOCK_TEXT} by
+ * `card-tables-manifest.test.ts`.
+ */
+export function suggestionLacksReplacement(
+  card: SuggestionReplacementSource,
+  family: PendingChangeFamily,
+): boolean {
+  return !FAMILY_MEANS_DELETION[family] && !hasSuggestionReplacement(card);
 }
 
 /**

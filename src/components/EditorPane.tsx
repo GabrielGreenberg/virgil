@@ -385,6 +385,7 @@ import {
   previewSuggested as previewSuggestedSuggestion,
   insertSuggestionBelow,
   settleAppliedChangeForLifecycle,
+  suggestionLacksReplacement,
   type PendingChangeCardDeps,
   type InsertBelowCardDeps,
 } from "@/links/pending-change-actions";
@@ -3453,6 +3454,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
       );
       if (!s) return;
+      // Task 957 — the button's own gate, re-asked at the action: never mark
+      // an empty draft accepted and queue an empty REPLACEMENT the agent would
+      // execute as a deletion.
+      if (suggestionLacksReplacement(s, "revision-suggestion")) return;
       revisionsHook.setSuggestionStatus(id, "accepted");
       aiRequestsHook.addRequest(
         "suggestion",
@@ -3467,6 +3472,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
       );
       if (!s) return;
+      // Task 957 — the button's own gate, re-asked at the action: never mark
+      // an empty draft accepted and queue an empty REPLACEMENT the agent would
+      // execute as a deletion.
+      if (suggestionLacksReplacement(s, "cutter-suggestion")) return;
       cutterHook.setSuggestionStatus(id, "accepted");
       aiRequestsHook.addRequest(
         "suggestion",
