@@ -1937,6 +1937,20 @@ the two Search toggles were spelled twice, had drifted together onto raw
 Tailwind amber + `--accent`, and were pinned by a directory census —
 `src/panels/Search/__tests__/search-token-convergence.test.ts`).
 
+**A segmented choice is the primitive: `<SegmentedToggle>`**
+([components/SegmentedToggle.tsx](components/SegmentedToggle.tsx), task 950).
+"Pick exactly one of N" — a search scope, a preview direction, a font size, a
+view switch — is a named `role="group"` of `aria-pressed` segments painted on
+the SOLID `--control-selected` path, `rounded-md` on the outer ends, a
+`.focus-ring` per segment (lifted above its neighbours; no `overflow-hidden`
+clipping it), and a disabled segment whose hint says WHY (`disabledHint`, also
+its `aria-description`). Four sites had hand-rolled it and drifted four ways
+(grey "on", `--accent` "on", no state, no ring, an unreachable reason).
+Censused by `components/__tests__/segmented-toggle-census.test.ts`: a
+hand-rolled pressed group, or sibling buttons painted by one state compared to
+several literals, fails CI. Independent on/off toggles (Search's `Aa`/`W`,
+Outline Edit/Focus) are not a choice and stay as above.
+
 ## Inputs
 
 `bg-surface border-edge-subtle rounded-md` (6px). Focus thickens the

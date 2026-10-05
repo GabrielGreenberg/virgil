@@ -48,6 +48,7 @@ export {
 } from "./suggestion-field-vocabulary";
 import type { SuggestionField } from "./suggestion-field-vocabulary";
 import { iconHint } from "@/components/Hint";
+import { SegmentedToggle } from "@/components/SegmentedToggle";
 
 /** The two cards share a
  *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
@@ -602,40 +603,6 @@ export function PendingActionRow({
   );
 }
 
-/** One segment of the Original / Suggested preview toggle. */
-function PreviewSegment({
-  label,
-  active,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      aria-label={`Preview ${label.toLowerCase()}`}
-      disabled={disabled}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className={`px-2 h-6 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none ${
-        active
-          ? "bg-accent-light text-accent"
-          : "bg-transparent text-ink-subtle hover-on-light hover:text-ink-body"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 /** The body of an `applied`-status card — the SURVIVING ORIGINAL-RECORD, now a
  *  3-axis control surface. Renders identically docked, in omni, and in a float,
  *  as stacked rows:
@@ -702,24 +669,23 @@ export function AppliedRecordBody({
       <div className="flex items-center gap-1.5 pb-1.5 border-b border-[var(--border)]">
         {/* NON-committing Original / Suggested preview toggle (flips the LIVE
             doc text so you can compare in place; never commits). */}
-        <div
-          role="group"
-          aria-label="Preview toggle"
-          className="inline-flex rounded-md border border-[var(--border)] overflow-hidden"
-        >
-          <PreviewSegment
-            label="Original"
-            active={previewDir === "original"}
-            disabled={disabled}
-            onClick={() => controller?.previewOriginal(family, id)}
-          />
-          <PreviewSegment
-            label="Suggested"
-            active={previewDir === "suggested"}
-            disabled={disabled}
-            onClick={() => controller?.previewSuggested(family, id)}
-          />
-        </div>
+        <SegmentedToggle
+          ariaLabel="Preview toggle"
+          size="sm"
+          value={previewDir}
+          disabled={disabled}
+          // The card header owns a lift gesture — a press here must not reach it.
+          isolatePointer
+          onChange={(dir) =>
+            dir === "original"
+              ? controller?.previewOriginal(family, id)
+              : controller?.previewSuggested(family, id)
+          }
+          options={[
+            { value: "original", label: "Original", ariaLabel: "Preview original" },
+            { value: "suggested", label: "Suggested", ariaLabel: "Preview suggested" },
+          ]}
+        />
         {/* The Keep / Dismiss pair — the SHARED control, mounted here and by
             the margin `PendingChangePill`. `"inside-lifting-card"` is the
             pointer policy this surface needs: the card header owns a lift

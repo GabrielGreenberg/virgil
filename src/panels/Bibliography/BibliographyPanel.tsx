@@ -32,6 +32,7 @@ import {
   type RowState,
 } from "@/components/library/LibraryEntryMenu";
 import { iconHint } from "@/components/Hint";
+import { SegmentedToggle } from "@/components/SegmentedToggle";
 import {
   VIEW_PREF_REGISTRY,
   enumOptions,
@@ -129,6 +130,13 @@ type BibFilter = RegistryPrefs["bibFilter"];
 /** The kebab's Display pair — a pick-ONE set (task 770 `MenuRadioGroup`).
  *  Values + labels are the registry's own (task 931). */
 const BIB_FILTER_OPTIONS = enumOptions("bibFilter");
+
+/** Why the Library search scope is unavailable. ONE string for both the
+ *  disabled segment's hint (the only place a user can meet the reason while
+ *  the segment is disabled) and the inline note shown if the library drops
+ *  while the Library scope is already active (task 950). */
+const LIBRARY_NOT_CONNECTED_HINT =
+  "Connect the central library to search master.bib.";
 
 function BibliographyPanel({
   citations,
@@ -745,43 +753,27 @@ function BibliographyPanel({
               density="dense"
               className="flex-1 min-w-0 text-xs px-2 py-1"
             />
-            <div className="flex items-center bg-surface border border-edge-subtle rounded overflow-hidden shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchScope("local");
-                  // Flipping away from library scope abandons the context that
-                  // raised the conflict strip — clear it so it can't linger over
-                  // the now-local list (task 096, Member A).
-                  setConflictDecision(null);
-                }}
-                className={`text-[10px] px-1.5 py-1 ${
-                  searchScope === "local"
-                    ? "bg-surface-muted text-ink-body"
-                    : "text-ink-muted hover:text-ink-body"
-                }`}
-                data-hint="Search local"
-              >
-                Local
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isLibraryConnected) setSearchScope("library");
-                }}
-                disabled={!isLibraryConnected}
-                className={`text-[10px] px-1.5 py-1 border-l border-edge-subtle ${
-                  searchScope === "library"
-                    ? "bg-surface-muted text-ink-body"
-                    : isLibraryConnected
-                      ? "text-ink-muted hover:text-ink-body"
-                      : "text-ink-faint cursor-not-allowed"
-                }`}
-                data-hint="Search library"
-              >
-                Library
-              </button>
-            </div>
+            <SegmentedToggle
+              ariaLabel="Search scope"
+              value={searchScope}
+              onChange={(scope) => {
+                setSearchScope(scope);
+                // Flipping away from library scope abandons the context that
+                // raised the conflict strip — clear it so it can't linger over
+                // the now-local list (task 096, Member A).
+                if (scope === "local") setConflictDecision(null);
+              }}
+              options={[
+                { value: "local", label: "Local", hint: "Search local" },
+                {
+                  value: "library",
+                  label: "Library",
+                  hint: "Search library",
+                  disabled: !isLibraryConnected,
+                  disabledHint: LIBRARY_NOT_CONNECTED_HINT,
+                },
+              ]}
+            />
             <button
               type="button"
               onClick={closeSearch}
@@ -796,7 +788,7 @@ function BibliographyPanel({
           </div>
           {searchScope === "library" && !isLibraryConnected && (
             <div className="text-[10px] text-ink-muted mt-1.5">
-              Connect the central library to search master.bib.
+              {LIBRARY_NOT_CONNECTED_HINT}
             </div>
           )}
           {searchScope === "library" &&
