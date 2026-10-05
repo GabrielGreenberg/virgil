@@ -2,7 +2,7 @@
 //
 // W5a — C4 data-loss + convergence on the BibEntryCard annotation field.
 //
-// BIB-F8-01 (DATA-LOSS): the annotation contentEditable persists on a ~400ms
+// BIB-F8-01 (DATA-LOSS): the annotation field persists on a short
 // debounce. Collapsing/closing the card (unmount) or blurring within that
 // window used to drop the edit — the orphaned timer fired against a now-null
 // ref and wrote ''. The field now FLUSHES on blur and on unmount, so a fast
@@ -46,18 +46,30 @@ function makeEntry(): BibEntry {
   } as BibEntry;
 }
 
-/** Find the live annotation contentEditable in a given card container. */
-function editorIn(container: HTMLElement): HTMLDivElement {
-  const el = container.querySelector<HTMLDivElement>(".annotation-editor");
-  if (!el) throw new Error("annotation editor not mounted");
-  return el;
+// Task 952: the field is the shared `RichTextField` (TipTap) now, so a
+// surface's "editor" is the TipTap instance PM hangs on its own DOM node, and
+// "typing" is a content change that emits an update (the same path a keystroke
+// takes into the field's debounce).
+type TiptapLike = {
+  view: { dom: HTMLElement };
+  commands: { setContent: (c: string, o?: { emitUpdate?: boolean }) => boolean };
+};
+
+/** Find the live annotation editor in a given card container. */
+function editorIn(container: HTMLElement): TiptapLike {
+  const dom = container.querySelector<HTMLElement & { editor?: TiptapLike }>(".rtf-content");
+  if (!dom?.editor) throw new Error("annotation editor not mounted");
+  return dom.editor;
 }
 
-/** Simulate the user typing `html` into a contentEditable + firing onInput. */
-function typeInto(el: HTMLElement, html: string) {
-  el.innerHTML = html;
-  fireEvent.input(el);
+/** Simulate the user typing `html` into the field. */
+function typeInto(ed: TiptapLike, html: string) {
+  act(() => {
+    ed.commands.setContent(html, { emitUpdate: true });
+  });
 }
+
+const textOf = (ed: TiptapLike) => ed.view.dom.textContent ?? "";
 
 /* ───────────────────────── single-store harness ───────────────────────── */
 //
@@ -110,7 +122,7 @@ describe("BibEntryCard annotation — flush before debounce (BIB-F8-01)", () => 
 
     // Type, then unmount WITHOUT advancing past the debounce (< 400ms).
     typeInto(editor, "<b>in-flight</b> note");
-    vi.advanceTimersByTime(100); // still well inside the 400ms debounce
+    vi.advanceTimersByTime(100); // still well inside the debounce window
     act(() => unmount());
 
     // The edit must have been flushed on unmount — NOT lost, NOT written as ''.
@@ -139,7 +151,7 @@ describe("BibEntryCard annotation — flush before debounce (BIB-F8-01)", () => 
 
     typeInto(editor, "blurred note");
     vi.advanceTimersByTime(50); // inside the window
-    fireEvent.blur(editor);
+    fireEvent.blur(editor.view.dom);
 
     const last = saved[saved.length - 1];
     expect(last[1]).toContain("blurred note");
@@ -231,7 +243,7 @@ describe("BibEntryCard annotation — docked⇄float convergence (BIB-F8-02)", (
       // The store got the float's value …
       expect(document.querySelector("[data-store]")!.textContent).toContain("from the float");
       // … and the DOCKED card (not focused) re-seeded from the shared source.
-      expect(dockedEd.innerHTML).toContain("from the float");
+      expect(textOf(dockedEd)).toContain("from the float");
     } finally {
       vi.useRealTimers();
     }
@@ -252,7 +264,7 @@ describe("BibEntryCard annotation — docked⇄float convergence (BIB-F8-02)", (
       typeInto(floatEd, "float text");
       act(() => vi.advanceTimersByTime(450));
       // Docked converged (no longer "stale").
-      expect(dockedEd.innerHTML).toContain("float text");
+      expect(textOf(dockedEd)).toContain("float text");
 
       // Now the docked surface appends — it serializes the CONVERGED DOM, so the
       // float's text is preserved, not overwritten by a stale empty doc.
@@ -263,7 +275,7 @@ describe("BibEntryCard annotation — docked⇄float convergence (BIB-F8-02)", (
       expect(storeText).toContain("float text");
       expect(storeText).toContain("docked text");
       // The float (not focused) re-seeded the merged value — convergence holds.
-      expect(floatEd.innerHTML).toContain("docked text");
+      expect(textOf(floatEd)).toContain("docked text");
     } finally {
       vi.useRealTimers();
     }
@@ -280,7 +292,7 @@ describe("BibEntryCard annotation — docked⇄float convergence (BIB-F8-02)", (
       const dockedEd = editorIn(surface("docked"));
 
       // User is actively editing the docked field (focused).
-      fireEvent.focus(dockedEd);
+      fireEvent.focus(dockedEd.view.dom);
       typeInto(dockedEd, "user typing");
 
       // Meanwhile the float commits a write to the shared store.
@@ -289,7 +301,7 @@ describe("BibEntryCard annotation — docked⇄float convergence (BIB-F8-02)", (
 
       // The focused docked field keeps the user's in-progress text — NOT
       // re-seeded out from under the caret.
-      expect(dockedEd.innerHTML).toContain("user typing");
+      expect(textOf(dockedEd)).toContain("user typing");
     } finally {
       vi.useRealTimers();
     }

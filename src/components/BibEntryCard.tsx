@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import type { BibEntry } from "@/lib/types";
 import type { BibEntrySave } from "@/hooks/useCitations";
 import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
@@ -8,7 +8,6 @@ import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } fro
 import { Input } from "./field-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
@@ -19,6 +18,9 @@ import {
   AMBER_PENDING_CHIP,
 } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
+import { annotationHtmlToRich, richToAnnotationHtml } from "@/lib/annotation-html";
+import RichTextField from "@/components/RichTextField";
+import type { JSONContent } from "@tiptap/react";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
 import { bibAddressOf } from "@/lib/bib-address";
@@ -101,207 +103,53 @@ export interface BibEntryCardProps {
   readOnly?: { reason: string };
 }
 
-/* ── Format toolbar ──────────────────────────────────────────────── */
-function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElement | null> }) {
-  const exec = (cmd: string, value?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(cmd, false, value);
-  };
-
-  return (
-    <div className="flex items-center gap-0.5 px-1 py-0.5 border-b border-edge-subtle">
-      <button onMouseDown={(e) => { e.preventDefault(); exec("bold"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-ink-body hover-on-light" data-hint="Bold">B</button>
-      <button onMouseDown={(e) => { e.preventDefault(); exec("italic"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs italic text-ink-body hover-on-light" data-hint="Italic">I</button>
-      <button onMouseDown={(e) => { e.preventDefault(); exec("underline"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-ink-body hover-on-light" data-hint="Underline">U</button>
-      <div className="w-px h-4 bg-edge-subtle mx-0.5" />
-      <button data-iconbtn-exempt="formatting toolbar: own active state + dark-context variant (STYLE_GUIDE)" onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light focus-ring" {...iconHint({ label: "Bullet list" })}>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="2" cy="4" r="1.5" /><rect x="5" y="3" width="10" height="2" rx="0.5" />
-          <circle cx="2" cy="8" r="1.5" /><rect x="5" y="7" width="10" height="2" rx="0.5" />
-          <circle cx="2" cy="12" r="1.5" /><rect x="5" y="11" width="10" height="2" rx="0.5" />
-        </svg>
-      </button>
-      <button onMouseDown={(e) => { e.preventDefault(); exec("insertOrderedList"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light" {...iconHint({ label: "Numbered list" })}>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text><rect x="5" y="3" width="10" height="2" rx="0.5" />
-          <text x="0" y="9.5" fontSize="5" fontWeight="600">2</text><rect x="5" y="7" width="10" height="2" rx="0.5" />
-          <text x="0" y="13.5" fontSize="5" fontWeight="600">3</text><rect x="5" y="11" width="10" height="2" rx="0.5" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
 /* ── Rich-text annotation editor ──────────────────────────────────── */
 //
-// C4 (BIB-F8-01 DATA-LOSS / BIB-F8-02 HIGH): one controlled, flushed annotation
-// field with a SINGLE owner. The owner of the value is the `useAnnotations`
-// sidecar store (keyed by BibEntry.uid) — the docked card and the popped float
-// both read/write it through the SAME `getAnnotation`/`setAnnotation` pair, so
-// there is exactly one source of truth. This component's job is to keep its
-// uncontrolled contentEditable faithful to that single source:
+// Task 952: the annotation is edited in the SHARED `RichTextField` — the same
+// TipTap stack and the same toolbar as footnote/note bodies — not a hand-rolled
+// contentEditable driven by the deprecated `document.execCommand`, whose
+// toolbar had drifted from the shared one (no focus ring on four of five
+// buttons, no small caps, no disabled state). One editor stack, one toolbar.
 //
-//   • FLUSH on blur AND unmount (BIB-F8-01). The debounce no longer survives an
-//     unmount as an orphaned timer that fires against a null ref and writes ''.
-//     Instead, on blur/unmount we synchronously commit the live DOM (while the
-//     ref is still mounted) and cancel the pending timer. A fast collapse/close/
-//     doc-switch within the debounce window therefore persists the edit instead
-//     of wiping it.
+// The value is still stored as sanitized HTML (`annotations.json`, keyed by
+// uid); `annotation-html.ts` is the bridge at the field boundary, one door
+// each way, with `sanitizeAnnotationHtml` on both (BIB-F5-01 — the stored
+// string is untrusted; a paste is parsed by the schema, never `innerHTML`'d).
 //
-//   • RE-SEED from the controlled `content` when an EXTERNAL writer changes it
-//     (BIB-F8-02). The seed effect now depends on `content`, so when the float
-//     saves, the docked instance re-renders with the fresh value and re-syncs
-//     its DOM — the two surfaces converge. We never re-seed while THIS field is
-//     focused (that would stomp the user's live caret), and we skip the echo of
-//     our own just-committed value (lastCommittedRef), so a save never clobbers
-//     in-progress typing or fights itself.
-//
-// The single write seam is `commit()`. SECURITY (BIB-F5-01) sanitization is
-// applied there (and on seed/paste) by a SEPARATE chip; this slice leaves that
-// one seam intact and adds no second writer.
+// C4 (BIB-F8-01 / BIB-F8-02) contracts, now held by `RichTextField` itself:
+//   • FLUSH on blur AND unmount — the debounce never outlives the field.
+//   • RE-SEED from the controlled `content` when another surface (the docked
+//     card ⇄ the popped float) writes the same entry — but never while THIS
+//     field is focused (that would stomp the caret); an entry switch
+//     (`instanceKey` = the citekey) remounts, so it always re-seeds.
 function AnnotationEditor({
   bibKey, content, onUpdate,
 }: {
   bibKey: string; content: string; onUpdate: (key: string, html: string) => void;
 }) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  // The HTML captured at the moment the debounce was last (re)scheduled. The
-  // unmount-flush reads THIS, not the live ref: React detaches the contentEditable
-  // ref during the commit phase, so by the time a passive-effect cleanup runs on
-  // unmount `editorRef.current` is already null. Capturing the value on input
-  // keeps the last-typed content recoverable across the unmount (BIB-F8-01).
-  const pendingHtmlRef = useRef<string | null>(null);
   const [focused, setFocused] = useState(false);
-  const onKeyDown = useTabIndent<HTMLDivElement>();
-
-  // Latest props captured in refs so the unmount-flush cleanup (which must run
-  // with empty deps to fire only on unmount, not on every prop change) reads
-  // current values without re-subscribing. Synced in an effect, not during
-  // render (react-hooks/refs); commit() — the only reader — runs from event
-  // handlers / effects after commit, so the post-render sync is in time.
-  const onUpdateRef = useRef(onUpdate);
-  const bibKeyRef = useRef(bibKey);
-  useEffect(() => {
-    onUpdateRef.current = onUpdate;
-    bibKeyRef.current = bibKey;
-  }, [onUpdate, bibKey]);
-
-  // The bibKey the DOM was last seeded for. A change means the entry switched
-  // (a new entry is never the "edit in progress"), so we always re-seed even
-  // from a focused field.
-  const seededKeyRef = useRef<string | null>(null);
-
-  // The single write seam. SECURITY (BIB-F5-01) sanitization is applied here by
-  // a separate chip — this is the one place an annotation HTML string is
-  // persisted, so the sanitizer slots in cleanly without a second writer.
-  //
-  // Reads the live DOM when mounted; falls back to the captured pending value
-  // when the ref has already been detached (unmount-flush path). Clears the
-  // pending capture once committed so a later flush can't double-write a stale
-  // value.
-  const commit = useCallback(() => {
-    const raw = editorRef.current?.innerHTML ?? pendingHtmlRef.current;
-    if (raw == null) return; // nothing live and nothing captured
-    pendingHtmlRef.current = null;
-    onUpdateRef.current(bibKeyRef.current, sanitizeAnnotationHtml(raw));
-  }, []);
-
-  // SECURITY (BIB-F5-01): seed the contentEditable from the untrusted stored
-  // HTML through the sanitizer, so an <img onerror>/<svg onload>/<iframe>
-  // payload never reaches the live innerHTML.
-  //
-  // BIB-F8-02: this effect now depends on `content`, so an EXTERNAL write (the
-  // other surface saving the same entry) re-seeds this DOM and the two surfaces
-  // converge. The seed is gated on focus to protect the user's live caret:
-  //   - ENTRY switch (bibKey changed): always re-seed — a different entry is
-  //     never the edit-in-progress, even if the field happens to be focused.
-  //   - same entry, content delta while NOT focused: re-seed — this is the
-  //     other surface's write landing; we own no live caret, so converge now.
-  //   - same entry, content delta while focused: DON'T touch the DOM — the user
-  //     owns the field; re-seeding would stomp their caret. Convergence for the
-  //     other surface happens on this field's next blur/commit (the user's edit
-  //     is authoritative while they type). The blur flush guarantees the store
-  //     ends up consistent, so the surfaces still converge — just on blur, not
-  //     mid-keystroke.
-  useEffect(() => {
-    const entrySwitched = seededKeyRef.current !== bibKey;
-    if (focused && !entrySwitched) return; // protect the live caret
-    const clean = sanitizeAnnotationHtml(content || "");
-    const el = editorRef.current;
-    if (el && el.innerHTML !== clean) el.innerHTML = clean;
-    seededKeyRef.current = bibKey;
-  }, [bibKey, content, focused]);
-
-  // …and on WRITE, so a payload is never persisted back to annotations.json.
-  // Debounced commit — keystroke-sane (no doc-size work; a single timer reset).
-  // Capture the live HTML on every input so the unmount-flush has a value even
-  // after the ref detaches (BIB-F8-01).
-  const handleInput = useCallback(() => {
-    pendingHtmlRef.current = editorRef.current?.innerHTML ?? "";
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(commit, 400);
-  }, [commit]);
-
-  // BIB-F8-01: flush on blur. Collapsing/closing the card deselects it (blur
-  // fires before the unmount), so the in-flight edit is committed synchronously
-  // — a fast collapse can no longer drop it.
-  const handleBlur = useCallback(() => {
-    setFocused(false);
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = undefined;
-    }
-    commit();
-  }, [commit]);
-
-  // BIB-F8-01: flush on UNMOUNT. The card body unmounts when it collapses /
-  // closes / the doc switches. We cancel the pending timer and, if an edit was
-  // in flight (pendingHtmlRef set), commit the captured value — the ref is
-  // already detached by now, so commit() reads the capture, not the DOM. The
-  // edit is never lost and no orphan timer fires against a null ref. Empty deps
-  // (commit is stable) → runs only on unmount.
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = undefined;
-      }
-      if (pendingHtmlRef.current != null) commit();
-    };
-  }, [commit]);
-
-  // Paste is the one live vector the seed/write paths don't cover (a pasted
-  // <img onerror> renders into the editable immediately). Intercept rich-HTML
-  // pastes, sanitize, and re-insert; plain-text pastes are already safe.
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
-    const html = e.clipboardData.getData("text/html");
-    if (!html) return;
-    e.preventDefault();
-    document.execCommand("insertHTML", false, sanitizeAnnotationHtml(html));
-    handleInput();
-  }, [handleInput]);
+  // The read door — sanitized once per stored value, not per render.
+  const value = useMemo(() => annotationHtmlToRich(content), [content]);
+  // The write door. Bound to `bibKey` through the closure, and RichTextField
+  // flushes a pending edit to the OUTGOING handler on a key change, so an edit
+  // can never land on the next entry.
+  const handleChange = useCallback(
+    (json: JSONContent) => onUpdate(bibKey, sanitizeAnnotationHtml(richToAnnotationHtml(json))),
+    [bibKey, onUpdate],
+  );
+  const handleFocusChange = useCallback((f: boolean) => setFocused(f), []);
 
   return (
-    <div onClick={(e) => e.stopPropagation()}>
-      {focused && <FormatToolbar editorRef={editorRef} />}
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={handleInput}
-        onPaste={handlePaste}
-        onFocus={() => setFocused(true)}
-        onBlur={handleBlur}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={onKeyDown}
-        className="annotation-editor px-3 py-2 text-sm text-ink-body leading-relaxed focus:outline-none min-h-[2.5rem]"
-        data-placeholder="Write an annotation for this reference..."
+    <div className="px-3 py-2 text-sm leading-relaxed" onClick={(e) => e.stopPropagation()}>
+      <RichTextField
+        value={value}
+        instanceKey={bibKey}
+        onChange={handleChange}
+        onFocusChange={handleFocusChange}
+        placeholder="Write an annotation for this reference..."
+        variant="note"
+        panelKey="bib"
+        hideToolbar={!focused}
       />
     </div>
   );

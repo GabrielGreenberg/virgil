@@ -322,6 +322,8 @@ function RichTextFieldImpl({
   );
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // The editor whose edit the debounce is holding — read by the unmount flush.
+  const pendingEditorRef = useRef<{ getJSON: () => JSONContent } | null>(null);
   const isFocusedRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -490,7 +492,10 @@ function RichTextFieldImpl({
       // hand-off (a different mechanism, with its own harness); until then
       // the blur edge below and the sidecar hook's own doors are the nets.
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      pendingEditorRef.current = editor;
       debounceRef.current = setTimeout(() => {
+        debounceRef.current = undefined;
+        pendingEditorRef.current = null;
         onChangeRef.current(editor.getJSON());
       }, 250);
     },
@@ -505,6 +510,7 @@ function RichTextFieldImpl({
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = undefined;
+        pendingEditorRef.current = null;
         onChangeRef.current(editor.getJSON());
       }
       onFocusChangeRef.current?.(false, null);
@@ -516,6 +522,26 @@ function RichTextFieldImpl({
   // at construction — a scope change without a remount would silently leave the
   // body on the old vocabulary.
   }, [instanceKey, schemaScope]);
+
+  // FLUSH the debounce when this editor goes away — unmount (a card collapses,
+  // a float closes, the doc switches) or an `instanceKey` remount (task 952,
+  // BIB-F8-01's contract moved here from the bibliography's hand-rolled fork).
+  // The timer used to outlive the component and fire its write afterwards;
+  // now the component owns it: the held edit is delivered ONCE, synchronously,
+  // and nothing fires later. The cleanup runs before the ref-sync effect above
+  // re-points `onChangeRef`, so the edit reaches the OUTGOING item's handler,
+  // never the next one's. (A destroyed TipTap editor still answers `getJSON`
+  // from its last state.)
+  useEffect(() => {
+    return () => {
+      if (!debounceRef.current) return;
+      clearTimeout(debounceRef.current);
+      debounceRef.current = undefined;
+      const pending = pendingEditorRef.current;
+      pendingEditorRef.current = null;
+      if (pending) onChangeRef.current(pending.getJSON());
+    };
+  }, [instanceKey]);
 
   // Editor-census probe (__editorCensus): one live-instance tick per mount.
   useEffect(() => registerEditorMount("rich-text-field"), []);
