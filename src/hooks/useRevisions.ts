@@ -36,7 +36,8 @@ import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { byCreatedAt } from "./useRecentlyAddedTracker";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -62,7 +63,7 @@ function migrateRequestRecord(raw: unknown): RevisionRequestCard | null {
     resolved?: boolean;
     turns?: Array<{ text?: string }>;
   };
-  if (!r.id || !r.createdAt) return null;
+  if (!r.id) return null;
   const content = normalizeRichContent(r.content);
   const text =
     typeof r.text === "string" && r.text.length > 0
@@ -75,7 +76,7 @@ function migrateRequestRecord(raw: unknown): RevisionRequestCard | null {
     kind: "comment",
     id: r.id,
     archived: r.archived,
-    createdAt: r.createdAt,
+    createdAt: loadedCreatedAt(r.createdAt),
     text,
     content,
     aiRequest: !!r.aiRequest,
@@ -98,7 +99,7 @@ function migrateRequestRecord(raw: unknown): RevisionRequestCard | null {
 
 function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
   const r = (raw ?? {}) as Partial<RevisionSuggestionCard>;
-  if (!r.id || !r.createdAt) return null;
+  if (!r.id) return null;
   const links = migrateCardLinks("revision-suggestion", raw);
   const status: RevisionSuggestionCard["status"] =
     r.status === "accepted" ||
@@ -111,7 +112,7 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
     kind: "suggestion",
     id: r.id,
     archived: r.archived,
-    createdAt: r.createdAt,
+    createdAt: loadedCreatedAt(r.createdAt),
     author: r.author === "ai" ? "ai" : "human",
     original_text: typeof r.original_text === "string" ? r.original_text : "",
     suggested_text: typeof r.suggested_text === "string" ? r.suggested_text : "",
@@ -181,7 +182,7 @@ function migrateRevisionsShape(raw: unknown): RevisionsState {
       seen.add(c.id);
       cards.push(c);
     }
-    cards.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    cards.sort(byCreatedAt);
     return { cards, tracker };
   }
 

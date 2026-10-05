@@ -21,7 +21,7 @@ import { CreationHint } from "@/panels/_shared/CreationHint";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
-import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
+import { byCreatedAt, withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { NoteCard } from "./NoteCard";
 import { HighlightCard } from "./HighlightCard";
 
@@ -71,10 +71,7 @@ export default function NotesPanel({
 }: NotesPanelProps) {
   const sortedCards = useMemo(
     () => {
-      const out = [...cards].sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
+      const out = [...cards].sort(byCreatedAt);
       return withRecentlyAddedFirst(out, recentlyAddedId, (c) => c.id);
     },
     [cards, recentlyAddedId],
