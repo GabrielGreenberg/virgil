@@ -10,6 +10,7 @@
  */
 
 import type { Editor, JSONContent } from "@tiptap/react";
+import { suggestionReplacement } from "@/panels/_shared/suggestion-field-vocabulary";
 import { generateEntityId } from "@/lib/uuid";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import { bibFieldDisplay } from "@/lib/bib-parser";
@@ -458,8 +459,7 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
         case "revision-suggestion":
         case "cutter-suggestion":
           text =
-            c.data.user_text ||
-            c.data.suggested_text ||
+            suggestionReplacement(c.data) ||
             c.data.original_text ||
             c.data.explanation;
           break;
