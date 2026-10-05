@@ -4225,7 +4225,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }),
     [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, todosHook, reportsHook, handleDeleteCitation, deleteFootnoteUnbridged],
   );
-  const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
+  // The pristine manager rides in so a clone of a still-blank card is itself
+  // blank-and-discardable (task 960) — decided at the API door, not per hook.
+  const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry, pristineManager);
   // Dev-only: assert the provider satisfies exactly CARD_REGISTRY's declared
   // lifecycle (the remaining gaps stay unwired; capability drift is loud).
   assertLifecycleCoverage(cardLifecycleRegistry);

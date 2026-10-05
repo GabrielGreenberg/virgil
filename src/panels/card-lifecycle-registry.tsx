@@ -46,6 +46,8 @@
 import { useMemo, useRef } from "react";
 import type { CardKind } from "./_shared/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { panelForCardKind } from "@/cards/predicates";
+import type { PristineCardManager } from "@/hooks/usePristineCardManager";
 
 /** Per-kind lifecycle operations.
  *
@@ -104,13 +106,52 @@ export interface CardLifecycleApi {
  *  without cascading re-renders. */
 export function useCardLifecycleApi(
   registry: CardLifecycleRegistry,
+  pristine?: PristineCardManager | null,
 ): CardLifecycleApi {
   const ref = useRef<CardLifecycleRegistry>(registry);
   ref.current = registry;
+  const pristineRef = useRef<PristineCardManager | null>(pristine ?? null);
+  pristineRef.current = pristine ?? null;
   return useMemo<CardLifecycleApi>(
-    () => ({ get: (kind) => ref.current[kind] ?? null }),
+    () => ({
+      get: (kind) => {
+        const ops = ref.current[kind] ?? null;
+        const manager = pristineRef.current;
+        if (!ops || !manager) return ops;
+        return withPristineClone(ops, kind, manager);
+      },
+    }),
     [],
   );
+}
+
+/** PRISTINE-NESS TRAVELS WITH THE CLONE (task 960). A card created blank is
+ *  registered pristine so a click-away discards it; a clone of it is just as
+ *  blank, so it must be just as discardable. This is the ONE door every
+ *  duplicate walker clones through, so the rule is stated here once rather
+ *  than re-decided (or forgotten) in each hook's `clone*` — before this, every
+ *  `clone*` copied the card and none consulted the tracker, so the source was
+ *  swept on click-away and its empty twin persisted in the sidecar forever.
+ *  The bucket is the owning panel (`panelForCardKind`, the same derivation
+ *  `EditorPane` uses to hand each hook its tracker), so the clone lands in the
+ *  very Set the source's own discard sweep reads. A clone of a COMMITTED
+ *  source is untouched. */
+function withPristineClone(
+  ops: CardLifecycle,
+  kind: CardKind,
+  manager: PristineCardManager,
+): CardLifecycle {
+  const bucket = panelForCardKind(kind);
+  if (!bucket) return ops;
+  const tracker = manager.forKind(bucket);
+  return {
+    ...ops,
+    clone: (sourceId) => {
+      const id = ops.clone(sourceId);
+      if (id && tracker.isPristine(sourceId)) tracker.markNew(id);
+      return id;
+    },
+  };
 }
 
 /** Dev-only: verify a per-doc lifecycle registry provides EXACTLY the ops the

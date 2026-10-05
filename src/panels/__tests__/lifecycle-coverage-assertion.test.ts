@@ -353,7 +353,7 @@ describe("the REAL lifecycle registry EditorPane builds conforms to CARD_REGISTR
       src,
       "the sliced registry is no longer what builds the lifecycle API — the " +
         "leg above would be checking a dead literal",
-    ).toContain("useCardLifecycleApi(cardLifecycleRegistry)");
+    ).toMatch(/useCardLifecycleApi\(cardLifecycleRegistry[,)]/);
     expect(
       src,
       "the dev-runtime half of this check (assertLifecycleCoverage) must still " +
