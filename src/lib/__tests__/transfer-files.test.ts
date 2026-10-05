@@ -272,12 +272,15 @@ describe("clipboard-image extraction — census (leg 3)", () => {
   });
 
   it("reading `getData` is NOT a file view — the needle stays precise", () => {
-    // BibEntryCard reads `clipboardData.getData("text/html")` and touches no
-    // files; a needle that indicted it would be a census nobody could keep.
-    const src = codeOnly(
-      fs.readFileSync(path.join(REPO, "src/components/BibEntryCard.tsx"), "utf8"),
-    );
-    expect(src).toContain("clipboardData.getData");
+    // A text read touches no files; a needle that indicted it would be a census
+    // nobody could keep. (This used to read BibEntryCard's paste handler live;
+    // task 952 retired that handler — the annotation is a RichTextField now, so
+    // the schema parses its pastes — and left no production text reader to
+    // witness, so the spelling is pinned here instead.)
+    const src = `
+      const html = e.clipboardData.getData("text/html");
+      const text = e.dataTransfer.getData("text/plain");
+    `;
     expect(RAW_VIEW.test(src)).toBe(false);
   });
 });

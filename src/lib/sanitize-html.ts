@@ -17,7 +17,7 @@
  *      no browsing context, so parsing alone runs no scripts and fetches no
  *      resources — the payload is neutralized before we even walk it.
  *   2. Rebuild a fresh tree keeping ONLY an allowlist of formatting tags, each
- *      recreated with ZERO attributes. Because no attacker attribute
+ *      recreated with ZERO attributes (bar a valueless `data-small-caps` flag). Because no attacker attribute
  *      (`onerror`, `src`, `href`, `style`, …) is ever copied and only inert
  *      formatting tags survive, the mutation-XSS surface is near zero.
  *
@@ -26,12 +26,26 @@
  * to a live element's `innerHTML`.
  */
 
-/** Inline + block formatting tags the annotation toolbar (`execCommand`) emits. */
+/** Inline + block formatting tags the annotation field stores: what
+ *  `richToAnnotationHtml` emits (task 952 — the field is a `RichTextField`
+ *  now) plus the legacy `execCommand` spellings (`b`/`i`/`div`/`strike`) that
+ *  annotations saved before it still carry. */
 const DEFAULT_ALLOWED_TAGS = new Set([
   "p", "div", "br", "span",
-  "b", "strong", "i", "em", "u", "s", "strike",
+  "b", "strong", "i", "em", "u", "s", "strike", "del", "code",
   "ul", "ol", "li",
 ]);
+
+/**
+ * The ONLY attributes that survive, per tag — each a VALUELESS flag, re-created
+ * with an empty value (never the attacker's), so no URL, script or style ever
+ * crosses. `span[data-small-caps]` is how the annotation field spells small
+ * caps (task 952), and the one spelling the HTML→JSON reader recognises
+ * without a `style` (`wrapperMarkForHtmlElement`).
+ */
+const DEFAULT_FLAG_ATTRS: Readonly<Record<string, readonly string[]>> = {
+  span: ["data-small-caps"],
+};
 
 /**
  * Disallowed tags whose entire subtree (including text) must be DROPPED rather
@@ -78,8 +92,11 @@ export function sanitizeRichHtml(html: string, opts: SanitizeOptions = {}): stri
       const tag = el.tagName.toLowerCase();
 
       if (allowed.has(tag)) {
-        // Recreate with ZERO attributes; recurse into the (sanitized) children.
+        // Recreate with ZERO attributes (bar the valueless flags above); recurse into the (sanitized) children.
         const clean = document.createElement(tag);
+        for (const flag of DEFAULT_FLAG_ATTRS[tag] ?? []) {
+          if (el.hasAttribute(flag)) clean.setAttribute(flag, "");
+        }
         appendClean(el, clean);
         dest.appendChild(clean);
       } else if (DROP_WHOLE.has(tag)) {

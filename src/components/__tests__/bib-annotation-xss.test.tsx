@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
-// SECURITY pin (BIB-F5-01): BibEntryCard's annotation editor seeds a
-// contentEditable's innerHTML from the persisted annotation string
+// SECURITY pin (BIB-F5-01): BibEntryCard's annotation editor seeds its
+// editor from the persisted annotation string
 // (annotations.json — written by answer-bib-review or carried in a shared
 // paper). That string is UNTRUSTED, so an <img onerror>/<script>/<svg onload>
 // payload must NOT inject live, event-firing DOM when the Annotations pod opens.
@@ -55,7 +55,7 @@ function renderCard(annotation: string) {
   );
 }
 
-/** Expand the Annotations pod so AnnotationEditor mounts and seeds innerHTML. */
+/** Expand the Annotations pod so AnnotationEditor mounts and seeds its editor. */
 function openAnnotations() {
   fireEvent.click(screen.getByText("Annotations"));
 }
@@ -67,13 +67,14 @@ describe("BibEntryCard annotation XSS", () => {
     );
     openAnnotations();
 
-    const editor = container.querySelector(".annotation-editor")!;
+    const editor = container.querySelector(".rtf-content")!;
     expect(editor).not.toBeNull();
     expect(editor.querySelector("img")).toBeNull();
     expect(editor.innerHTML).not.toMatch(/<img/i);
     expect(editor.innerHTML).not.toMatch(/onerror/i);
-    // The benign formatting survived.
-    expect(editor.innerHTML).toContain("<b>note</b>");
+    // The benign formatting survived (task 952: the shared field spells bold
+    // as <strong>).
+    expect(editor.innerHTML).toContain("<strong>note</strong>");
     expect((globalThis as { __bibPwned?: number }).__bibPwned).toBeUndefined();
   });
 
@@ -83,7 +84,7 @@ describe("BibEntryCard annotation XSS", () => {
     );
     openAnnotations();
 
-    const editor = container.querySelector(".annotation-editor")!;
+    const editor = container.querySelector(".rtf-content")!;
     expect(editor.querySelector("script")).toBeNull();
     expect(editor.innerHTML).not.toMatch(/<script/i);
     expect((globalThis as { __bibPwned2?: number }).__bibPwned2).toBeUndefined();
