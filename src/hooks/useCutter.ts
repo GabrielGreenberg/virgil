@@ -36,7 +36,7 @@ import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -61,7 +61,7 @@ function migrateGoal(raw: unknown): CutterGoal | null {
 
 function migrateComment(raw: unknown): CutterCommentCard | null {
   const r = (raw ?? {}) as Partial<CutterCommentCard>;
-  if (!r.id || !r.createdAt) return null;
+  if (!r.id) return null;
   const content = normalizeRichContent(r.content);
   const text =
     typeof r.text === "string" && r.text.length > 0
@@ -74,7 +74,7 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
     kind: "comment",
     id: r.id,
     archived: r.archived,
-    createdAt: r.createdAt,
+    createdAt: loadedCreatedAt(r.createdAt),
     text,
     content,
     aiRequest: !!r.aiRequest,
@@ -97,7 +97,7 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
 
 function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
   const r = (raw ?? {}) as Partial<CutterSuggestionCard>;
-  if (!r.id || !r.createdAt) return null;
+  if (!r.id) return null;
   const links = migrateCardLinks("cutter-suggestion", raw);
   const status: CutterSuggestionCard["status"] =
     r.status === "accepted" ||
@@ -110,7 +110,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     kind: "suggestion",
     id: r.id,
     archived: r.archived,
-    createdAt: r.createdAt,
+    createdAt: loadedCreatedAt(r.createdAt),
     author: r.author === "ai" ? "ai" : "human",
     original_text: typeof r.original_text === "string" ? r.original_text : "",
     suggested_text: typeof r.suggested_text === "string" ? r.suggested_text : "",
@@ -169,7 +169,7 @@ function migrateCutterShape(raw: unknown): CutterState {
         createdAt?: string;
         links?: unknown[];
       };
-      if (!c.id || !c.createdAt) continue;
+      if (!c.id) continue;
       const content = normalizeRichContent(c.content);
       const titlePart = (c.title || "").trim();
       const bodyPart = richJsonToPlainText(content) || "";
@@ -182,7 +182,7 @@ function migrateCutterShape(raw: unknown): CutterState {
       cards.push({
         kind: "comment",
         id: c.id,
-        createdAt: c.createdAt,
+        createdAt: loadedCreatedAt(c.createdAt),
         text,
         content,
         aiRequest: false,

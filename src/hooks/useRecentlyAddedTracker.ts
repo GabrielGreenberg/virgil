@@ -70,3 +70,21 @@ export function withRecentlyAddedFirst<T>(
   next.unshift(pinned);
   return next;
 }
+
+/**
+ * The ONE "oldest first" comparator for the card panels (task 946). Notes,
+ * Reports, Revisions and Cutter used to disagree about the same field — a
+ * Date-difference (NaN on a missing value → an inconsistent comparator) vs a
+ * `localeCompare` (throws on a missing value). Compares parsed instants, so an
+ * offset-bearing timestamp orders by time, not by spelling; an unparseable
+ * value sorts last; ties break on the raw string so the order is total.
+ */
+export function byCreatedAt<T extends { createdAt?: string }>(a: T, b: T): number {
+  const ta = Date.parse(a.createdAt ?? "");
+  const tb = Date.parse(b.createdAt ?? "");
+  const fa = Number.isFinite(ta);
+  const fb = Number.isFinite(tb);
+  if (fa && fb && ta !== tb) return ta - tb;
+  if (fa !== fb) return fa ? -1 : 1;
+  return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+}

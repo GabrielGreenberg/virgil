@@ -26,7 +26,7 @@ import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
-import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
+import { byCreatedAt, withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
 import { CutterGoalStrip } from "./CutterGoalStrip";
@@ -116,7 +116,7 @@ export default function CutterPanel({
         ? { kind: "suggestion", id: c.id, createdAt: c.createdAt, data: c }
         : { kind: "comment", id: c.id, createdAt: c.createdAt, data: c },
     );
-    out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    out.sort(byCreatedAt);
     return withRecentlyAddedFirst(out, recentlyAddedId, (i) => i.id);
   }, [cards, recentlyAddedId]);
 

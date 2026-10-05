@@ -91,3 +91,26 @@ export function withSidecarEnvelope<S extends object>(
 ): (raw: unknown) => S {
   return (raw: unknown) => carryUnknownKeys(raw, migrate(raw), consumedTopLevel);
 }
+
+/**
+ * `loadedCreatedAt` — ONE rule for a loaded card's creation time (task 946).
+ *
+ * `createdAt` is metadata the app can HEAL, not identity it cannot: a record
+ * an outside agent composed by hand, a hand edit, or a half-merged sync copy
+ * may lack it, and the card is still the user's card. Before this rule the
+ * card loaders answered four ways — Reports/Revisions/Cutter DROPPED the whole
+ * card (and Reports' `persistMigrationOnLoad` then deleted it from disk on
+ * open), Notes/Todos passed `undefined` through (a NaN sort), and the Archive
+ * healed it locally. Now every card migrator calls this: a stored value that
+ * parses as a date is kept byte-for-byte; anything else heals to the load
+ * time (task 105's choice — it does not lie about age the way the epoch
+ * would), which `persistMigrationOnLoad` / the panel's next save then makes
+ * stable. A loader may still drop a record for a missing `id`; never for a
+ * missing or malformed `createdAt`.
+ */
+export function loadedCreatedAt(value: unknown): string {
+  if (typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value))) {
+    return value;
+  }
+  return new Date().toISOString();
+}

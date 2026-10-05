@@ -34,7 +34,7 @@ import {
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope } from "@/cards/envelope";
-import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -45,7 +45,7 @@ const EMPTY_STATE: ReportsState = { cards: [] };
 
 function migrateReportRecord(raw: unknown): ReportCard | null {
   const r = (raw ?? {}) as Partial<ReportCard>;
-  if (!r.id || !r.createdAt) return null;
+  if (!r.id) return null;
   const content = normalizeRichContent(r.content);
   const text =
     typeof r.text === "string" && r.text.length > 0
@@ -57,7 +57,7 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
     kind: "report",
     id: r.id,
     archived: r.archived,
-    createdAt: r.createdAt,
+    createdAt: loadedCreatedAt(r.createdAt),
     author: r.author === "ai" ? "ai" : "human",
     // T6/C12: title provenance is recorded, not guessed. Keep a user-owned
     // title ("Report 8" the user typed), drop a recorded/legacy generated one,
@@ -75,7 +75,7 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
 
 function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
   const r = (raw ?? {}) as Partial<ReportRequestCard>;
-  if (!r.id || !r.createdAt) return null;
+  if (!r.id) return null;
   const content = normalizeRichContent(r.content);
   const text =
     typeof r.text === "string" && r.text.length > 0
@@ -86,7 +86,7 @@ function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
     kind: "report-request",
     id: r.id,
     archived: r.archived,
-    createdAt: r.createdAt,
+    createdAt: loadedCreatedAt(r.createdAt),
     text,
     content,
     aiRequest: !!r.aiRequest,
@@ -117,7 +117,7 @@ function migrateReportsShape(raw: unknown): ReportsState {
 }
 
 /** Task 715 — no legacy top-level key was ever consumed here. */
-const migrateReports = withSidecarEnvelope(migrateReportsShape);
+export const migrateReports = withSidecarEnvelope(migrateReportsShape);
 
 /** The `ai-requests.json` payload a report-request contributes — the ONE
  *  place its shape is written, shared by both bridge doors (task 697). */

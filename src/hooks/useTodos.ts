@@ -22,7 +22,7 @@ import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
 import { carryCardEnvelope } from "@/cards/envelope";
-import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -47,7 +47,7 @@ function migrateTodo(raw: unknown): TodoItem {
     notes: i.notes ?? "",
     done: !!i.done,
     aiRequest: !!i.aiRequest,
-    createdAt: i.createdAt!,
+    createdAt: loadedCreatedAt(i.createdAt),
     links: migrateCardLinks("todo", raw),
   });
 }
@@ -58,7 +58,7 @@ function migrateTodosShape(raw: unknown): TodoState {
 }
 
 /** Task 715 — no legacy top-level key was ever consumed here. */
-const migrateTodos = withSidecarEnvelope(migrateTodosShape);
+export const migrateTodos = withSidecarEnvelope(migrateTodosShape);
 
 /** The `ai-requests.json` payload a todo contributes — named so both bridge
  *  doors read one shape (task 697). A todo carries no Mode-B capture, so it

@@ -2580,3 +2580,19 @@ CI: `library/scripts/tests/test_citekey_path_safety.py` — predicate corpus,
 the doors, a `.bib` drop end to end (nothing written outside
 `papers/<safe-key>/`), and a census forbidding any `"papers" / <variable>` join
 outside `paper_folder`.
+
+## The load half: a loader drops a record only for missing IDENTITY (task 946)
+
+A card loader whose output is persisted (`persistMigrationOnLoad`, or simply
+the panel's next save) is an automatic write: what it filters out is deleted
+from disk. So a migrator may drop a record only when the record's identity
+cannot survive (`id` missing) — never for metadata it can HEAL. `createdAt`
+is the case that broke the rule: Reports/Revisions/Cutter dropped any card
+without one, which deleted a hand-composed or agent-written card on open.
+Every card migrator now heals it through ONE helper, `loadedCreatedAt`
+([src/lib/sidecar-migrate.ts](../../../src/lib/sidecar-migrate.ts)) — a
+parseable stored value is kept byte-for-byte, anything else becomes the load
+time — and the panels order cards through ONE comparator, `byCreatedAt`
+([src/hooks/useRecentlyAddedTracker.ts](../../../src/hooks/useRecentlyAddedTracker.ts)).
+
+CI: `src/hooks/__tests__/card-loader-createdAt-heal.test.ts`.

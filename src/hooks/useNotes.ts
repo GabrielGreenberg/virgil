@@ -34,7 +34,7 @@ import { morphCarriesAiRequest } from "@/cards/card-registry";
 import { carryCardEnvelope } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -55,7 +55,7 @@ function migrateNote(raw: unknown): UserNote {
     title: resolveLoadedTitle("note", r.title, r.titleAuto),
     titleAuto: resolveTitleAuto("note", r.title, r.titleAuto),
     content: normalizeRichContent(r.content),
-    createdAt: r.createdAt!,
+    createdAt: loadedCreatedAt(r.createdAt),
     aiRequest: !!r.aiRequest,
     links: migrateCardLinks("note", raw),
     // Task 076: `originalAnchor` (the Mode-B restore hint) is persisted state —
@@ -75,7 +75,7 @@ function migrateHighlight(raw: unknown): HighlightCard {
     // persistMigrationOnLoad then re-wrote the stripped record). Sibling of the
     // note migrator's `archived` carry, uncovered by card-archived-persist.
     archived: r.archived,
-    createdAt: r.createdAt!,
+    createdAt: loadedCreatedAt(r.createdAt),
     highlightColor:
       typeof r.highlightColor === "string" ? r.highlightColor : null,
     aiRequest: !!r.aiRequest,

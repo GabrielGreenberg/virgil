@@ -16,7 +16,7 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { archiveOriginOf, type ArchiveOrigin, type ArchiveOriginPanel } from "@/lib/archive-origin";
 import { usePersistentState } from "./usePersistentState";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -47,7 +47,7 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
     title: resolveLoadedTitle("archive", s.title, s.titleAuto),
     titleAuto: resolveTitleAuto("archive", s.title, s.titleAuto),
     content,
-    createdAt: s.createdAt || new Date().toISOString(),
+    createdAt: loadedCreatedAt(s.createdAt),
     // Carry the born-free intent through load (absent ≡ false); the
     // free-vs-orphaned split is derived from it via resolveAnchorState.
     unanchored: s.unanchored,
