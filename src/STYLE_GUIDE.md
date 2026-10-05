@@ -1123,6 +1123,16 @@ Five states. One implementation each.
   on `:focus-within` too, or it is not a tab stop at all (`display: none`
   removes it from the sequence). CI: `role-button-census.test.ts` — no
   production file spells `role="button"` in either medium; allowlist EMPTY.
+  The same defect one step EARLIER is a `<div onClick>` with no role at all
+  — a control the mouse can reach and Tab cannot (task 956: every Outline
+  row and rename/label trigger, while the rows' fold chevrons were buttons,
+  so Tab walked a column of "Expand section" stops that could fold a section
+  but never reach it). A `<div|span|li>` with an `onClick` is either a pure
+  `stopPropagation`/`preventDefault` guard, spreads `activatableProps`, or
+  states `data-click-exempt="<reason>"` at the site (a pointer convenience
+  with its own keyboard path, e.g. a list's empty-area deselect). CI: the
+  same census, "the click-only control" — `src/panels/**` allowlist EMPTY,
+  `src/components/**` a shrink-only ratchet.
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none`.
 

@@ -31,6 +31,7 @@ import {
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { MIME_OUTLINE_POD } from "@/lib/marginalia";
 import { iconHint } from "@/components/Hint";
+import { activatableProps } from "@/lib/activatable-props";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 
@@ -329,27 +330,30 @@ function InlineLabel({
 
   if (label) {
     return (
-      <div
-        className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate cursor-text hover:underline"
+      <button
+        type="button"
+        className="block max-w-full text-left text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate cursor-text hover:underline rounded focus-ring"
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         data-hint="Edit label"
         data-hint-pos="above"
       >
         {label}
-      </div>
+      </button>
     );
   }
 
-  // No label — show "+" on hover (parent row has `group` class)
+  // No label — show "+" on hover (parent row has `group` class), and on
+  // keyboard focus anywhere in the row: chrome revealed on `:hover` is
+  // revealed on `:focus-within` too (STYLE_GUIDE "Buttons", task 956).
   return (
-    <span
-      className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer select-none"
+    <button
+      type="button"
+      className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer select-none rounded focus-ring"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-      data-hint="Add label"
-      data-hint-pos="above"
+      {...iconHint({ label: "Add label", pos: "above" })}
     >
       +
-    </span>
+    </button>
   );
 }
 
@@ -616,6 +620,74 @@ export { buildPerBlockCounts, sumIncludedWords };
 /** The unlocked focus-band overlay, exported for its measure tests (task 709). */
 export { FocusBand as FocusBandOverlay };
 
+/* ── Row activation (task 956) ─────────────────────────────────────── */
+
+/** What a row does when activated, by click OR by Enter/Space. */
+interface RowActivation {
+  /** Unlocked focus selection is live: a row MOVES the band (Shift: expands it). */
+  focusEditing: boolean;
+  onScrollTo: (target: BlockAddress | null) => void;
+  onFocusMoveTo?: (target: BlockAddress) => void;
+  onFocusExpandTo?: (target: BlockAddress) => void;
+}
+
+/**
+ * The ONE router every Outline row activates through — heading rows,
+ * paragraph-title rows and "Document start" alike — so a click and a key
+ * press, and one row kind and another, cannot drift. `shiftKey` rides along
+ * from either event: Shift+click and Shift+Enter both mean "expand the focus
+ * band to here". `scrollTarget` differs from `focusTarget` only for
+ * "Document start", which scrolls to the top (`null`) but focuses index 0.
+ */
+function activateOutlineRow(
+  focusTarget: BlockAddress,
+  scrollTarget: BlockAddress | null,
+  shiftKey: boolean,
+  { focusEditing, onScrollTo, onFocusMoveTo, onFocusExpandTo }: RowActivation,
+): void {
+  if (focusEditing && onFocusMoveTo) {
+    if (shiftKey && onFocusExpandTo) onFocusExpandTo(focusTarget);
+    else onFocusMoveTo(focusTarget);
+  } else {
+    onScrollTo(scrollTarget);
+  }
+}
+
+/** A paragraph-title row: text only, so a real `<button>` (task 956). */
+function ParTitleRow({
+  pt,
+  paddingLeft,
+  dim,
+  activation,
+}: {
+  pt: { uuid: string | null; index: number; title: string };
+  paddingLeft: number;
+  dim: boolean;
+  activation: RowActivation;
+}) {
+  const target = { uuid: pt.uuid, index: pt.index };
+  return (
+    <button
+      type="button"
+      data-outline-pos={`pt-${pt.index}`}
+      className={`block w-full text-left cursor-pointer rounded text-[11px] text-[var(--par-title-color-dense,#b05756)] truncate focus-ring ${activation.focusEditing ? "" : "hover-on-light"}`}
+      style={{
+        paddingLeft,
+        paddingRight: 8,
+        paddingTop: 2,
+        paddingBottom: 2,
+        opacity: dim ? 0.3 : 1,
+        transition: "opacity 200ms ease",
+        position: "relative",
+        zIndex: 5,
+      }}
+      onClick={(e) => activateOutlineRow(target, target, e.shiftKey, activation)}
+    >
+      {pt.title}
+    </button>
+  );
+}
+
 /* ── View-mode tree row ────────────────────────────────────────────── */
 
 function OutlineNode({
@@ -677,25 +749,24 @@ function OutlineNode({
     return null;
   }
 
-  const handleRowClick = (target: BlockAddress) => (e: React.MouseEvent) => {
-    if (isFocusEditing && onFocusMoveTo && onFocusExpandTo) {
-      if (e.shiftKey) {
-        onFocusExpandTo(target);
-      } else {
-        onFocusMoveTo(target);
-      }
-    } else {
-      onScrollTo(target);
-    }
+  const activation: RowActivation = {
+    focusEditing: !!isFocusEditing,
+    onScrollTo,
+    onFocusMoveTo,
+    onFocusExpandTo,
   };
+  const headingTarget = { uuid: node.heading.uuid, index: node.heading.index };
 
   return (
     <div>
       <div
         data-outline-pos={`h-${node.heading.index}`}
-        className={`flex items-start group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
+        className={`flex items-start group cursor-pointer rounded focus-ring ${isFocusEditing ? "" : "hover-on-light"}`}
         style={{ paddingLeft: `${headingIndent(depth)}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
-        onClick={handleRowClick({ uuid: node.heading.uuid, index: node.heading.index })}
+        /* A container, not a <button>: it holds the fold chevron and the
+           label controls. The helper's target guard keeps Enter on THOSE
+           theirs (task 956). */
+        {...activatableProps((e) => activateOutlineRow(headingTarget, headingTarget, e.shiftKey, activation))}
       >
         {hasChildren ? (
           <button
@@ -786,24 +857,13 @@ function OutlineNode({
             if (focusState?.active && focusState.locked && ptOutside) return null;
             const ptDim = ptOutside && !!focusState?.locked;
             return (
-              <div
+              <ParTitleRow
                 key={`pt-${i}`}
-                data-outline-pos={`pt-${pt.index}`}
-                className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color-dense,#b05756)] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
-                style={{
-                  paddingLeft: `${parTitleIndent(depth)}px`,
-                  paddingRight: 8,
-                  paddingTop: 2,
-                  paddingBottom: 2,
-                  opacity: ptDim ? 0.3 : 1,
-                  transition: "opacity 200ms ease",
-                  position: "relative",
-                  zIndex: 5,
-                }}
-                onClick={handleRowClick({ uuid: pt.uuid, index: pt.index })}
-              >
-                {pt.title}
-              </div>
+                pt={pt}
+                paddingLeft={parTitleIndent(depth)}
+                dim={ptDim}
+                activation={activation}
+              />
             );
           })}
         </div>
@@ -1103,9 +1163,10 @@ const EditablePod = memo(function EditablePod({
             }`}
           />
         ) : (
-          <span
+          <button
+            type="button"
             onClick={() => { setEditText(pod.text); setEditing(true); }}
-            className={`flex-1 min-w-0 truncate cursor-text ${
+            className={`flex-1 min-w-0 text-left truncate cursor-text rounded focus-ring ${
               isParTitle
                 ? "text-[11px] text-[var(--par-title-color-dense,#b05756)]"
                 : pod.level <= 1
@@ -1116,7 +1177,7 @@ const EditablePod = memo(function EditablePod({
             }`}
           >
             {pod.text}
-          </span>
+          </button>
         )}
       </div>
       {dropPosition === "below" && (
@@ -1654,6 +1715,14 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
     () => resolveFocusStateFromSnapshot(focusBand, content),
     [focusBand, content],
   );
+  // The top-level rows ("Document start", preamble par-titles) route
+  // through the same activation as the tree's rows (task 956).
+  const rowActivation: RowActivation = {
+    focusEditing: !!(focusState?.active && !focusState.locked),
+    onScrollTo,
+    onFocusMoveTo,
+    onFocusExpandTo,
+  };
 
   const totalBlocks = useMemo(() => {
     if (!content || !content.content) return 0;
@@ -1934,9 +2003,10 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
             {/* Fixed top row — document start / title. Hidden when locked
                 focus excludes block index 0. */}
             {!(focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex)) && (
-              <div
+              <button
+                type="button"
                 data-outline-pos="docstart"
-                className={`flex items-start cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
+                className={`flex w-full text-left items-start cursor-pointer rounded focus-ring ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: headingIndent(0), paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP,
                   // Dim docstart only when LOCKED focus excludes block 0 — a mere
@@ -1946,33 +2016,26 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                   position: "relative",
                   zIndex: 5,
                 }}
-                onClick={(e) => {
-                  // "Document start" is a POSITIONAL fact — whatever block is
-                  // first — so it addresses index 0 with no uuid by design, and
-                  // stays correct under an insert above (task 285).
-                  if (focusState?.active && !focusState.locked && onFocusMoveTo) {
-                    const docStart = { uuid: null, index: 0 };
-                    if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(docStart);
-                    else onFocusMoveTo(docStart);
-                  } else {
-                    onScrollTo(null);
-                  }
-                }}
+                // "Document start" is a POSITIONAL fact — whatever block is
+                // first — so it addresses index 0 with no uuid by design, and
+                // stays correct under an insert above (task 285). It scrolls
+                // to the top (`null`) rather than to that block.
+                onClick={(e) => activateOutlineRow({ uuid: null, index: 0 }, null, e.shiftKey, rowActivation)}
               >
                 <span className="shrink-0" style={{ width: OUTLINE_TWIST_COL }} />
-                <div className="min-w-0 flex-1 text-sm leading-snug break-words">
+                <span className="block min-w-0 flex-1 text-sm leading-snug break-words">
                   {docTitle ? (
                     <span className="font-semibold text-ink-strong">{docTitle}</span>
                   ) : (
                     <span className="italic text-ink-muted">Document start</span>
                   )}
-                </div>
+                </span>
                 {showWordCount && (
                   <span className="text-[10px] text-ink-muted shrink-0 mt-0.5">
                     words
                   </span>
                 )}
-              </div>
+              </button>
             )}
 
             {showTitles && preambleTitles.length > 0 && (
@@ -1986,29 +2049,13 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                   if (focusState?.active && focusState.locked && ptOutside) return null;
                   const ptDim = ptOutside && !!focusState?.locked;
                   return (
-                    <div
+                    <ParTitleRow
                       key={`preamble-pt-${i}`}
-                      data-outline-pos={`pt-${pt.index}`}
-                      className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color-dense,#b05756)] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
-                      style={{
-                        paddingLeft: parTitleIndent(0), paddingRight: 8, paddingTop: 2, paddingBottom: 2,
-                        opacity: ptDim ? 0.3 : 1,
-                        transition: "opacity 200ms ease",
-                        position: "relative",
-                        zIndex: 5,
-                      }}
-                      onClick={(e) => {
-                        const target = { uuid: pt.uuid, index: pt.index };
-                        if (focusState?.active && !focusState.locked && onFocusMoveTo) {
-                          if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(target);
-                          else onFocusMoveTo(target);
-                        } else {
-                          onScrollTo(target);
-                        }
-                      }}
-                    >
-                      {pt.title}
-                    </div>
+                      pt={pt}
+                      paddingLeft={parTitleIndent(0)}
+                      dim={ptDim}
+                      activation={rowActivation}
+                    />
                   );
                 })}
               </div>
