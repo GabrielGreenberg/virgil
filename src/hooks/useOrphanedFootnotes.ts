@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, type Dispatch, type SetStateAc
 import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { usePersistentState } from "./usePersistentState";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { pickFootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import type { OrphanedFootnote, OrphanedFootnotesState } from "@/lib/types";
 
 /**
@@ -70,7 +71,8 @@ function migrateOrphansShape(raw: unknown): OrphanedFootnotesState {
       footnoteId: o.footnoteId as string,
       content: normalizeRichContent(o.content),
       title: typeof o.title === "string" ? o.title : undefined,
-      thanks: typeof o.thanks === "boolean" ? o.thanks : undefined,
+      // Markup attrs (task 947) in their one record spelling.
+      ...pickFootnoteMarkupAttrs(o),
       orphanedAt: typeof o.orphanedAt === "string" ? o.orphanedAt : new Date().toISOString(),
     }));
   return { version: 1, orphans };

@@ -95,7 +95,7 @@ function lastFootnotes(): FootnotesState | undefined {
 }
 
 /** The live doc holds `fn-live` (no sidecar ref); anything else is absent. */
-const liveBody = (id: string) => (id === "fn-live" ? BODY : null);
+const liveBody = (id: string) => (id === "fn-live" ? { content: BODY } : null);
 
 describe("useFootnotes — the upsert door (task 703)", () => {
   it("archiving a ref-less footnote captures its live body, flagged archived + unanchored", async () => {
@@ -226,6 +226,57 @@ describe("useFootnotes — the upsert door (task 703)", () => {
     expect(lastFootnotes()?.footnotes).toEqual([
       expect.objectContaining({ id: "fn-new", content: edited }),
     ]);
+  });
+
+  // Task 947: the capture takes the atom's MARKUP with its body, so the
+  // archived ref can rebuild `\thanks` / `\footnote[3]` rather than a plain
+  // `\footnote`.
+  it("archiving captures `thanks` and `numberOverride` from the live atom", async () => {
+    beginDocPipeline(DOC);
+    const live = (id: string) =>
+      id === "fn-thx"
+        ? { content: BODY, thanks: true }
+        : id === "fn-3"
+          ? { content: BODY, numberOverride: "3" }
+          : null;
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, undefined, live));
+    await flushLoad();
+
+    act(() => { result.current.setArchived("fn-thx", true); });
+    act(() => { result.current.setArchived("fn-3", true); });
+    const refs = lastFootnotes()?.footnotes ?? [];
+    expect(refs.find((f) => f.id === "fn-thx")).toMatchObject({ thanks: true, archived: true });
+    expect(refs.find((f) => f.id === "fn-thx")).not.toHaveProperty("numberOverride");
+    expect(refs.find((f) => f.id === "fn-3")).toMatchObject({ numberOverride: "3" });
+    expect(refs.find((f) => f.id === "fn-3")).not.toHaveProperty("thanks");
+    expect(result.current.markupFor("fn-thx")).toEqual({ thanks: true });
+    expect(result.current.markupFor("fn-3")).toEqual({ numberOverride: "3" });
+    expect(result.current.markupFor("fn-none")).toEqual({});
+  });
+
+  it("an EXISTING ref minted before the markup is refreshed from the atom at capture", async () => {
+    beginDocPipeline(DOC);
+    DISK["footnotes.json"] = {
+      footnotes: [{ id: "fn-old", content: BODY, createdAt: "2026-01-01T00:00:00.000Z", aiRequest: true }],
+    } satisfies FootnotesState;
+    let atomPresent = true;
+    const live = (id: string) =>
+      atomPresent && id === "fn-old" ? { content: BODY, thanks: true } : null;
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, undefined, live));
+    await flushLoad();
+
+    let ok = false;
+    act(() => { ok = result.current.ensureRef("fn-old"); });
+    expect(ok).toBe(true);
+    expect(lastFootnotes()?.footnotes[0]).toMatchObject({ id: "fn-old", thanks: true, aiRequest: true });
+
+    // Atomless, the ref is all there is — a capture leaves it alone (no write).
+    atomPresent = false;
+    const n = writes.length;
+    act(() => { ok = result.current.ensureRef("fn-old"); });
+    expect(ok).toBe(true);
+    expect(writes.length).toBe(n);
+    expect(result.current.markupFor("fn-old")).toEqual({ thanks: true });
   });
 });
 

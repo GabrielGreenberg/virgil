@@ -122,7 +122,7 @@ export function FootnoteCard({
       id={fn.footnoteId}
       cardKind="footnote"
       kind="footnote"
-      kindLabelOverride={fn.thanks ? "Acknowledgement" : undefined}
+      kindLabelOverride={footnoteKindLabel(fn)}
       selected={isHaloed}
       theme={theme}
       hideToolbar
@@ -244,6 +244,7 @@ export function OrphanedFootnoteCard({
       id={orphan.footnoteId}
       cardKind="footnote"
       kind="footnote"
+      kindLabelOverride={footnoteKindLabel(orphan)}
       selected={isHaloed}
       theme={theme}
       hideToolbar
@@ -352,6 +353,9 @@ export function UnanchoredFootnoteCard({
       id={fn.id}
       cardKind="footnote"
       kind="footnote"
+      // Task 947: the parked ref keeps its `\thanks` markup, so it keeps the
+      // label its anchored twin wore.
+      kindLabelOverride={footnoteKindLabel(fn)}
       selected={isHaloed}
       theme={theme}
       hideToolbar
@@ -405,3 +409,10 @@ export function UnanchoredFootnoteCard({
     />
   );
 }
+/** The kind label every footnote card twin (anchored / orphaned / parked)
+ *  shows: a `\thanks{…}` reads "Acknowledgement" (task 947 — one rule, so a
+ *  parked or orphaned acknowledgement no longer reverts to "Footnote"). */
+function footnoteKindLabel(attrs: { thanks?: boolean }): string | undefined {
+  return attrs.thanks ? "Acknowledgement" : undefined;
+}
+

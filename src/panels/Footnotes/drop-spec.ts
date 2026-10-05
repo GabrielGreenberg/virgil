@@ -37,6 +37,7 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { inlineAtomMoveSpec } from "@/components/drop-mode/util/inline-atom-move";
 import { CARD_ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { footnoteMarkupNodeAttrs } from "@/lib/footnote-source-attrs";
 
 /** The footnote atom's own registry row — the `{nodeName, idAttr}` pair the
  *  by-id resolver needs, read rather than re-spelled (task 645). */
@@ -57,10 +58,13 @@ export const footnoteDropSpec = inlineAtomMoveSpec({
     // its own. Same `{type:"doc",…}` shape the `\footnote` slash/menu create
     // path builds (commands.ts), normalized by the hook accessor.
     // Carry the card's EXISTING footnoteId so the new marker stays coupled to
-    // the card. `number: 0` lets the renumber pass assign the live number.
+    // the card. `number: 0` lets the renumber pass assign the live number. The
+    // markup (task 947) rebuilds the SAME command: a parked `\thanks{…}` comes
+    // back uncounted, so no later footnote is renumbered by its return.
     return footnoteNodeType.create({
       [ATOM.idAttr]: id,
       content: cardAttrs.content,
+      ...footnoteMarkupNodeAttrs(cardAttrs),
       number: 0,
     });
   },

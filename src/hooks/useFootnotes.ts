@@ -10,6 +10,11 @@ import {
 } from "@/lib/sidecar-merged-write";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
+import {
+  footnoteMarkupEqual,
+  pickFootnoteMarkupAttrs,
+  type FootnoteMarkupAttrs,
+} from "@/lib/footnote-source-attrs";
 import { generateShortId } from "@/lib/uuid";
 import {
   bridgeFlagForCard,
@@ -24,6 +29,13 @@ import type { PullSeed } from "@/lib/stack/pull-seed";
 
 const EMPTY: FootnotesState = { footnotes: [] };
 
+/** `ref` with its markup attrs REPLACED by `markup` (record spelling: a default
+ *  is an absent key, so a `\thanks` re-typed as `\footnote` drops the field). */
+function withFootnoteMarkup(ref: FootnoteRef, markup: FootnoteMarkupAttrs): FootnoteRef {
+  const { thanks: _t, numberOverride: _n, ...rest } = ref;
+  return { ...rest, ...markup };
+}
+
 /** The anchor context a footnote AI-request needs to be *drainable*: which
  *  paragraph(s) the footnote's `\footnote` atom sits in (so the skill can splice
  *  / act at the right place) and the surrounding selected text, if any. Unlike a
@@ -37,20 +49,24 @@ export type FootnoteAnchorResolver = (
   footnoteId: string,
 ) => { paragraphIds?: string[]; selectedText?: string };
 
-/** The LIVE body of a footnote's `\footnote` atom, or null when the doc holds
- *  no such atom. The seed for the mirror's ONE upsert door (`ensureRef`, task
- *  703): a footnote made in the app (toolbar / slash) or parsed from the `.tex`
- *  has NO `footnotes.json` ref — only the stack-pull factory ever called
- *  `addFootnote` — so a setter that needs the ref must first capture it from
- *  the doc. Same owner-supplied shape as `FootnoteAnchorResolver` (EditorPane
- *  closes over the editor ref); called only on a gesture, never per keystroke. */
-export type FootnoteBodyResolver = (footnoteId: string) => JSONContent | null;
+/** What the mirror captures from a footnote's LIVE `\footnote` atom: its body
+ *  AND its markup attrs (`\thanks` vs `\footnote`, `\footnote[3]`'s mark —
+ *  task 947), or null when the doc holds no such atom. The seed for the
+ *  mirror's ONE upsert door (`ensureRef`, task 703): a footnote made in the app
+ *  (toolbar / slash) or parsed from the `.tex` has NO `footnotes.json` ref —
+ *  only the stack-pull factory ever called `addFootnote` — so a setter that
+ *  needs the ref must first capture it from the doc. Which attrs travel is
+ *  `@/lib/footnote-source-attrs`, not this signature's choice. Same
+ *  owner-supplied shape as `FootnoteAnchorResolver` (EditorPane closes over the
+ *  editor ref); called only on a gesture, never per keystroke. */
+export type FootnoteCapture = { content: JSONContent } & FootnoteMarkupAttrs;
+export type FootnoteCaptureResolver = (footnoteId: string) => FootnoteCapture | null;
 
 export function useFootnotes(
   docId: string | null,
   pristine?: PristineKindApi | null,
   resolveAnchor?: FootnoteAnchorResolver | null,
-  resolveBody?: FootnoteBodyResolver | null,
+  resolveCapture?: FootnoteCaptureResolver | null,
 ) {
   const [state, setState] = useState<FootnotesState>(EMPTY);
   const stateRef = useRef(state);
@@ -99,7 +115,9 @@ export function useFootnotes(
         // Migrate legacy footnotes that stored content as HTML strings.
         const migrated: FootnotesState = {
           footnotes: data.footnotes.map((f) => ({
-            ...f,
+            // Markup attrs in their one record spelling (task 947): a default
+            // or malformed value reads as absent.
+            ...withFootnoteMarkup(f, pickFootnoteMarkupAttrs(f)),
             content: normalizeRichContent(f.content),
           })),
         };
@@ -139,37 +157,55 @@ export function useFootnotes(
   /** THE mirror's upsert door (task 703). Returns the collection with a ref
    *  for `id` guaranteed present — the existing one, or a fresh one seeded from
    *  `seed` (a caller that already holds the body) or else the LIVE atom via
-   *  `resolveBody` — or null when no ref exists and none can be captured (no
+   *  `resolveCapture` — or null when no ref exists and none can be captured (no
    *  atom, no resolver, or the sidecar has not loaded). Pure over `current`:
    *  the caller commits the result. Every setter that writes INTO a ref routes
    *  through here, so a footnote the sidecar has never seen is no longer a
-   *  silent no-op for archive / AI-request / body-edit. */
+   *  silent no-op for archive / AI-request / body-edit.
+   *
+   *  The MARKUP attrs (task 947) always come from the live atom when there is
+   *  one — for a fresh ref AND an existing one. While the atom is in the doc the
+   *  `.tex` is their authority (a `\footnote` the user re-typed as `\thanks`
+   *  since the ref was minted), so an existing ref is refreshed here rather
+   *  than trusted; atomless, the ref is all there is and is left alone. */
   const withRef = useCallback(
     (
       current: FootnotesState,
       id: string,
       seed?: JSONContent,
     ): FootnotesState | null => {
-      if (current.footnotes.some((f) => f.id === id)) return current;
-      if (!loadedRef.current) return null;
-      const body = seed ?? resolveBody?.(id) ?? null;
+      const existing = current.footnotes.find((f) => f.id === id);
+      if (!existing && !loadedRef.current) return null;
+      const live = resolveCapture?.(id) ?? null;
+      if (existing) {
+        if (!live) return current;
+        const markup = pickFootnoteMarkupAttrs(live);
+        if (footnoteMarkupEqual(pickFootnoteMarkupAttrs(existing), markup)) return current;
+        return {
+          footnotes: current.footnotes.map((f) =>
+            f.id === id ? withFootnoteMarkup(f, markup) : f,
+          ),
+        };
+      }
+      const body = seed ?? live?.content ?? null;
       if (!body) return null;
       const ref: FootnoteRef = {
         id,
         // Deep copy: never alias the live node's attr JSON (see `contentFor`).
         content: structuredClone(normalizeRichContent(body)),
         createdAt: new Date().toISOString(),
+        ...pickFootnoteMarkupAttrs(live),
       };
       return { footnotes: [...current.footnotes, ref] };
     },
-    [resolveBody],
+    [resolveCapture],
   );
 
-  /** Capture a footnote's live body into the mirror WITHOUT flipping any flag,
-   *  returning whether the ref now exists. The archive door calls this BEFORE
-   *  it splices the `\footnote` atom out (capture/schema symmetry: never delete
-   *  what you cannot restore) — after the splice there is nothing left to
-   *  capture from. Idempotent; writes only when it actually mints. */
+  /** Capture a footnote's live body + markup into the mirror WITHOUT flipping
+   *  any flag, returning whether the ref now exists. The archive door calls
+   *  this BEFORE it splices the `\footnote` atom out (capture/schema symmetry:
+   *  never delete what you cannot restore) — after the splice there is nothing
+   *  left to capture from. Idempotent; writes only when it actually changes. */
   const ensureRef = useCallback(
     (id: string): boolean => {
       const current = stateRef.current;
@@ -315,6 +351,16 @@ export function useFootnotes(
     [],
   );
 
+  /** The parked card's markup attrs (task 947) — the `contentFor` twin the
+   *  "anchor the unanchored" rebuild reads, so a re-placed `\thanks{…}` comes
+   *  back as `\thanks` (uncounted) and a `\footnote[3]{…}` keeps its `[3]`.
+   *  Record spelling; `{}` for a plain footnote or a missing ref. */
+  const markupFor = useCallback(
+    (id: string): FootnoteMarkupAttrs =>
+      pickFootnoteMarkupAttrs(stateRef.current.footnotes.find((f) => f.id === id)),
+    [],
+  );
+
   /** Reconcile a ref's own anchor intent once its `\footnote` atom is back in
    *  the prose (the drop spec's `onAnchored`). Clears BOTH flags, mirroring the
    *  citation twin's re-anchor rule: `setArchived(true)` sets `archived` +
@@ -416,6 +462,9 @@ export function useFootnotes(
       createdAt: new Date().toISOString(),
       // The title is the card's own writing (task 705) — a duplicate keeps it.
       ...(source.title ? { title: source.title } : {}),
+      // As does its markup (task 947): the duplicated block's atom is still a
+      // `\thanks` / `\footnote[3]`, so its mirror says so too.
+      ...pickFootnoteMarkupAttrs(source),
     };
     const next = { footnotes: [...stateRef.current.footnotes, newRef] };
     stateRef.current = next;
@@ -448,6 +497,7 @@ export function useFootnotes(
       setFootnoteAiRequest,
       cloneFootnote,
       contentFor,
+      markupFor,
       markAnchored,
     }),
     [
@@ -463,6 +513,7 @@ export function useFootnotes(
       setFootnoteAiRequest,
       cloneFootnote,
       contentFor,
+      markupFor,
       markAnchored,
     ],
   );

@@ -182,7 +182,8 @@ import { useRevisions } from "@/hooks/useRevisions";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
-import { useFootnotes } from "@/hooks/useFootnotes";
+import { useFootnotes, type FootnoteCapture } from "@/hooks/useFootnotes";
+import { pickFootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import { selectAtomlessFootnoteRefs } from "@/panels/Footnotes/atomless-refs";
 import { staleAtomIntentIds } from "@/links/_shared/live-atom-intent";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
@@ -1998,13 +1999,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Task 703: the LIVE body of a footnote's atom — the seed for the mirror's
   // upsert door. A toolbar/slash/parsed footnote has no footnotes.json ref, so
   // archive / AI-request / body-edit must capture one from the doc first.
-  // Stable (reads `innerRef.current` at call time); gesture-only.
-  const resolveFootnoteBody = useCallback(
-    (footnoteId: string): JSONContent | null => {
+  // Task 947: with its MARKUP (`\thanks` / `\footnote[3]`), so the archived
+  // ref can rebuild the same command. Stable (reads `innerRef.current` at call
+  // time); gesture-only.
+  const resolveFootnoteCapture = useCallback(
+    (footnoteId: string): FootnoteCapture | null => {
       const fn = innerRef.current
         ?.getFootnotes()
         .find((f) => f.footnoteId === footnoteId);
-      return fn ? (fn.content as JSONContent) : null;
+      return fn
+        ? { content: fn.content as JSONContent, ...pickFootnoteMarkupAttrs(fn) }
+        : null;
     },
     [],
   );
@@ -2012,7 +2017,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     docId,
     footnotePristine,
     resolveFootnoteAnchor,
-    resolveFootnoteBody,
+    resolveFootnoteCapture,
   );
   // The ONE door every footnote hard-delete entry point routes through so the
   // task-219 obligation — discharge the linked `ai-requests.json` row (terminate
@@ -2831,12 +2836,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () =>
       buildInlineAtomCardApis({
         footnoteContentFor: footnotesHook.contentFor,
+        footnoteMarkupFor: footnotesHook.markupFor,
         markFootnoteAnchored: footnotesHook.markAnchored,
         citationCommandFor: citationsHook.commandFor,
         markCitationAnchored: citationsHook.markAnchored,
       }),
     [
       footnotesHook.contentFor,
+      footnotesHook.markupFor,
       footnotesHook.markAnchored,
       citationsHook.commandFor,
       citationsHook.markAnchored,

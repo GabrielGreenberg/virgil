@@ -27,6 +27,7 @@
 
 import type { JSONContent } from "@tiptap/core";
 import { emptyRichContent } from "@/lib/footnote-content";
+import type { FootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import type {
   InlineAtomCardApi,
   InlineAtomCardApis,
@@ -42,6 +43,8 @@ import type {
 export interface InlineAtomCardApiSources {
   /** `useFootnotes.contentFor` — the card's live body, normalized to a doc. */
   footnoteContentFor: (id: string) => JSONContent | null;
+  /** `useFootnotes.markupFor` — the card's `\thanks` / `[mark]` (task 947). */
+  footnoteMarkupFor: (id: string) => FootnoteMarkupAttrs;
   /** `useFootnotes.markAnchored` — clear the ref's `unanchored`/`archived`. */
   markFootnoteAnchored: (id: string) => void;
   /** `useCitations.commandFor` — the card's `\cite{…}`, null for a draft. */
@@ -63,7 +66,10 @@ const INLINE_ATOM_CARD_BUILDERS: {
     // Never null: an empty body is a legal footnote, and a missing ref (the
     // card was deleted mid-gesture) degrades to the same empty create shape
     // rather than declining a drop the user already committed to.
-    atomAttrsFor: (id) => ({ content: s.footnoteContentFor(id) ?? emptyRichContent() }),
+    atomAttrsFor: (id) => ({
+      content: s.footnoteContentFor(id) ?? emptyRichContent(),
+      ...s.footnoteMarkupFor(id),
+    }),
     onAnchored: s.markFootnoteAnchored,
   }),
   citation: (s) => ({

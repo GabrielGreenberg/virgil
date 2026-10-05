@@ -64,7 +64,7 @@ const BODY = {
   type: "doc",
   content: [{ type: "paragraph", content: [{ type: "text", text: "Body" }] }],
 };
-const liveBody = (id: string) => (id === "fn-live" ? BODY : null);
+const liveBody = (id: string) => (id === "fn-live" ? { content: BODY } : null);
 
 beforeEach(() => {
   __resetForTests();
