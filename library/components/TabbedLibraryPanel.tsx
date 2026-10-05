@@ -225,15 +225,21 @@ export default function TabbedLibraryPanel({
     if (isProject(activeLibrary.id)) {
       // Membership comes from the doc's references.bib. Deleting from a
       // project library mutates that file directly — the central library
-      // and master.bib are untouched. Warn the user before writing,
-      // since any \cite{key} commands already in the document will be
-      // left dangling.
+      // and master.bib are untouched. Warn the user before writing; the
+      // dangling-cite sentence is stated only for a key the text actually
+      // cites (the project's `citedKeys`). The promise is true since task
+      // 944: the editor's library auto-add fires only when a key BECOMES
+      // cited, so it no longer re-appends a removed, still-cited entry.
       const libId = activeLibrary.id;
+      const citedKeys = project.citedKeys;
       return {
         deleteLabel: "Remove from references.bib…",
         onDelete: (citekey: string) => {
+          const consequence = citedKeys.has(citekey)
+            ? ` ${citekey} is cited in the text — those \\cite{${citekey}} commands will reference a missing entry.`
+            : ` ${citekey} is not cited in the text.`;
           const ok = window.confirm(
-            `Remove ${citekey} from this project's references.bib?\n\nThe entry stays in the central library — only this document's bibliography is affected. Any \\cite{${citekey}} commands already in the text will reference a missing entry.`,
+            `Remove ${citekey} from this project's references.bib?\n\nThe entry stays in the central library — only this document's bibliography is affected.${consequence}`,
           );
           if (!ok) return;
           entryActions.removeFromLibrary(libId, citekey);
@@ -254,7 +260,7 @@ export default function TabbedLibraryPanel({
       onTextReview: entryActions.queuePaperReview,
       onImportBib: entryActions.queueImportBib,
     };
-  }, [activeLibrary, entryActions]);
+  }, [activeLibrary, entryActions, project.citedKeys]);
 
   const visibleEntries = useMemo<CatalogEntry[]>(() => {
     if (!activeLibrary) return [];
