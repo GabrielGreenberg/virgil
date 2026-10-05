@@ -106,14 +106,13 @@ const RAW_PALETTE =
  */
 const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
   // The five-way suggestion STATUS DOT vocabulary. `accepted` was drained onto
-  // `--positive` (task 286); the other four are a traffic-light set whose home
-  // is arguably the `--status-*` family, and converging them would MOVE four
-  // colours (blue-400 vs --status-* has no member at all; amber-400 ≠
-  // --status-warn; red-400 ≠ --status-danger). That is a visual decision, not a
-  // swap.
+  // `--positive` (task 286) and `stale` onto `--amber-500` (task 951, the
+  // raw-amber sweep); the other three are a traffic-light set whose home is
+  // arguably the `--status-*` family, and converging them would MOVE three
+  // colours (blue-400 vs --status-* has no member at all; red-400 ≠
+  // --status-danger). That is a visual decision, not a swap.
   "src/panels/_shared/suggestion-fields.tsx :: bg-blue-400": "status-dot vocabulary; --status-* convergence is a visual call",
   "src/panels/_shared/suggestion-fields.tsx :: bg-sky-300": "status-dot vocabulary; --status-* convergence is a visual call",
-  "src/panels/_shared/suggestion-fields.tsx :: bg-amber-400": "status-dot vocabulary; --status-* convergence is a visual call",
   "src/panels/_shared/suggestion-fields.tsx :: bg-red-400": "status-dot vocabulary; --status-* convergence is a visual call",
 
   // The suggestion DIFF vocabulary: green = the proposed text, red = the text
@@ -153,7 +152,6 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
   // `src/panels/Search/__tests__/search-token-convergence.test.ts`.)
 
   // Singletons with no filed owner yet.
-  "src/panels/Bibliography/BibliographyPanel.tsx :: bg-amber-400": "in-flight pulse dot; wants the amber family or a --status-* member",
   "src/panels/Omni/OmniViewPanel.tsx :: border-sky-200": "omni notice strip edge; wants an informational edge token",
 };
 

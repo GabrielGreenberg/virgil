@@ -20,6 +20,7 @@ import {
 } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 import { iconHint } from "@/components/Hint";
+import { StatusDot } from "@/components/StatusDot";
 import { bibAddressOf } from "@/lib/bib-address";
 import { validateBibEntryHeadChange } from "@/lib/bib-entry-head";
 
@@ -98,16 +99,6 @@ export interface BibEntryCardProps {
    * citekey — the cross-target write again, one gesture further out).
    */
   readOnly?: { reason: string };
-}
-
-/* ── Pulsing dot for pending request ──────────────────────────────── */
-function PulsingDot() {
-  return (
-    <span className="relative flex h-2 w-2">
-      <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-    </span>
-  );
 }
 
 /* ── Format toolbar ──────────────────────────────────────────────── */
@@ -606,7 +597,7 @@ export default function BibEntryCard({
             }`}
             data-hint={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"} aria-description={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"}
           >
-            {fieldsReviewStatus === "pending" ? (<><PulsingDot /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><g transform="rotate(15 12 12)"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></g></svg><span>Request review</span></>)}
+            {fieldsReviewStatus === "pending" ? (<><StatusDot tone="pending" size="md" motion="ping" /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><g transform="rotate(15 12 12)"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></g></svg><span>Request review</span></>)}
           </button>
           )}
         </div>
@@ -748,7 +739,7 @@ export default function BibEntryCard({
             }`}
             data-hint={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"} aria-description={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"}
           >
-            {notesReviewStatus === "pending" ? (<><PulsingDot /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><g transform="rotate(15 12 12)"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></g></svg><span>Request annotation</span></>)}
+            {notesReviewStatus === "pending" ? (<><StatusDot tone="pending" size="md" motion="ping" /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><g transform="rotate(15 12 12)"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></g></svg><span>Request annotation</span></>)}
           </button>
         </div>
 
