@@ -1852,15 +1852,24 @@ function callSiteHits(
  * switch|radio|checkbox|menuitem*"` — STYLE_GUIDE names them out of scope for
  * the five variants), roving menu rows (`tabIndex={-1}`), and opaque spreads.
  * A button that paints no pill (a link-styled reset, a bare text row) is not
- * this leg's question either. */
+ * this leg's question either.
+ *
+ * A GHOST imitation counts as a pill too (task 962): rounding + horizontal
+ * padding + a fill painted only on HOVER (`hover-on-light` / `hover-on-dark` /
+ * `hover:bg-…`) is the `ghost` variant's whole shape, spelled by hand. The leg
+ * used to read base fills only, so the Todo footer's "Archive" — `ghost sm`
+ * with the wrong radius and text token, plus a second hand copy of
+ * `IconArchive` — passed it silently. */
 const BUTTON_EXEMPT = /(?<![\w-])data-button-exempt\s*=\s*"[^"]*\w[^"]*"/;
 const SELECTION_CONTROL =
   /(?<![\w-])(?:aria-pressed|aria-selected|aria-checked)\s*=|(?<![\w-])role\s*=\s*"(?:tab|option|switch|radio|checkbox|menuitem\w*)"/;
-/** Base (un-prefixed) utilities only: `hover:bg-…` paints a hover, not a pill. */
+/** Base (un-prefixed) utilities only: a hover fill is the GHOST pill's question (below). */
 const CLASS_FILL = /(?<![\w:\[-])bg-(?!transparent(?![\w-]))[\w\[(]/;
 const CLASS_BORDER = /(?<![\w:\[-])border(?:-edge[\w-]*|-\[[^\]]*\]|-(?:danger|accent|positive|ink)[\w-]*)?(?![\w-])/;
 const CLASS_ROUND = /(?<![\w:\[-])rounded(?![\w-]*-(?:none|0)(?![\w-]))/;
 const CLASS_PAD_X = /(?<![\w:\[-])px-/;
+/** A fill painted only on hover — the ghost variant's surface (task 962). */
+const CLASS_HOVER_FILL = /(?<![\w-])hover-on-(?:light|dark)(?![\w-])|(?<![\w\[-])hover:bg-(?!transparent(?![\w-]))[\w\[(]/;
 const STYLE_FILL = /\bbackground(?:Color)?\s*:\s*(?!"transparent"|'transparent'|undefined)/;
 const STYLE_BORDER = /\bborder\s*:\s*["'`]\s*\d/;
 const STYLE_ROUND = /\bborderRadius\s*:/;
@@ -1871,7 +1880,12 @@ export function paintsPill(tag: string): boolean {
     (CLASS_FILL.test(tag) || CLASS_BORDER.test(tag)) && CLASS_ROUND.test(tag) && CLASS_PAD_X.test(tag);
   const byStyle =
     (STYLE_FILL.test(tag) || STYLE_BORDER.test(tag)) && STYLE_ROUND.test(tag) && STYLE_PAD.test(tag);
-  return byClass || byStyle;
+  return byClass || byStyle || paintsGhostPill(tag);
+}
+
+/** Rounding + horizontal padding + a hover-only fill: `<Button variant="ghost">` by hand. */
+export function paintsGhostPill(tag: string): boolean {
+  return CLASS_HOVER_FILL.test(tag) && CLASS_ROUND.test(tag) && CLASS_PAD_X.test(tag);
 }
 
 describe("a text-labelled action button renders through <Button> (task 827)", () => {
@@ -1906,8 +1920,22 @@ describe("a text-labelled action button renders through <Button> (task 827)", ()
     expect(
       paintsPill(`<button style={{ background: "var(--accent)", padding: "8px 16px", borderRadius: "var(--radius-md)" }}>`),
     ).toBe(true);
-    // A hover wash is not a pill; nor is a divider edge or a link reset.
-    expect(paintsPill(`<button className="px-2 py-1 rounded hover:bg-surface-muted">`)).toBe(false);
+    // A hover-only fill on a padded, rounded button is the GHOST pill (task 962)…
+    expect(paintsPill(`<button className="px-2 py-1 rounded hover:bg-surface-muted">`)).toBe(true);
+    expect(
+      paintsPill(`<button className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover-on-light">`),
+    ).toBe(true);
+    expect(paintsPill(`<button className="px-2 rounded-md hover-on-dark">`)).toBe(true);
+    // …but a hover wash on an unpadded or unrounded row is not, nor a hover
+    // text colour alone, nor `hover:bg-transparent`.
+    expect(paintsPill(`<button className="w-full text-left hover-on-light">`)).toBe(false);
+    expect(paintsPill(`<button className="px-2 hover:bg-surface-muted">`)).toBe(false);
+    expect(paintsPill(`<button className="px-2 rounded hover:text-ink-body">`)).toBe(false);
+    expect(paintsPill(`<button className="px-2 rounded hover:bg-transparent">`)).toBe(false);
+    // A stated exemption clears a ghost imitation exactly as it clears a fill.
+    const ghostExempt = `<button data-button-exempt="10px card chip" className="px-1 rounded hover-on-light">`;
+    expect(paintsPill(ghostExempt) && !BUTTON_EXEMPT.test(ghostExempt)).toBe(false);
+    // Nor is a divider edge or a link reset.
     expect(paintsPill(`<button className="px-2 border-b rounded">`)).toBe(false);
     expect(paintsPill(`<button className="underline text-accent">`)).toBe(false);
     expect(paintsPill(`<button className="px-2 rounded bg-transparent">`)).toBe(false);

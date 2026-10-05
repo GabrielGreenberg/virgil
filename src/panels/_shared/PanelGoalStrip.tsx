@@ -141,6 +141,7 @@ export function PanelGoalStrip({
         <button
           type="button"
           onClick={startEditing}
+          data-button-exempt="11px inline strip chip, below Button's sm scale"
           className="ml-auto text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1.5 py-0.5 hover-on-light"
           data-hint="Set goal"
         >

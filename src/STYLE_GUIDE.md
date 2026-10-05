@@ -1907,7 +1907,9 @@ rather than authoring padding, hover and active classes by hand.
 
 **Guarded (task 827).** A raw `<button>` that shows a word and paints a PILL
 (a fill or a full border, plus rounding and horizontal padding — in its
-className or its inline style) fails `icon-button-a11y-guardrail.test.ts`
+className or its inline style; since task 962 a fill painted only on HOVER —
+`hover-on-light`, `hover-on-dark`, `hover:bg-…` — counts too, because that is
+the `ghost` variant spelled by hand) fails `icon-button-a11y-guardrail.test.ts`
 ("a text-labelled action button renders through <Button>") unless it states
 `data-button-exempt="<reason>"` at the site. No allowlist. There is ONE
 primary fill: the Library's gates used to paint `--accent` brown inline and

@@ -429,8 +429,9 @@ function parity(
     legacy: canonical(norm.html),
     // `data-iconbtn-exempt` is the icon-button census's site annotation (task
     // 826) — a stated reason a control is not on `iconbtn-*`, read by a test,
-    // painting nothing. It is not chrome, so it is not drift.
-    shipped: canonical(after.replace(/ data-iconbtn-exempt="[^"]*"/g, "")),
+    // painting nothing. It is not chrome, so it is not drift. Same for its
+    // sibling `data-button-exempt` (the `<Button>` census, tasks 827/962).
+    shipped: canonical(after.replace(/ data-(?:iconbtn|button)-exempt="[^"]*"/g, "")),
     substitutions: norm.substitutions,
     a11y: norm.a11y,
   };

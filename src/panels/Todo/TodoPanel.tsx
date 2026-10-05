@@ -4,6 +4,8 @@ import type { DockedJumpGate } from "@/links/card-anchor-rows";
 import { useMemo } from "react";
 import type { TodoItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
+import { Button } from "@/components/Button";
+import { IconArchive } from "@/components/editor-layout/panel-icons";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
@@ -129,18 +131,16 @@ export default function TodoPanel({
               {done.length} completed
             </span>
             {archiveActions.enabled && archivable.length > 0 ? (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={archiveCompleted}
               title="Archive completed todos (restore them from the Archives view)"
-              className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center gap-1.5"
+              className="gap-1.5"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 8v13H3V8" />
-                <path d="M1 3h22v5H1z" />
-                <path d="M10 12h4" />
-              </svg>
+              <IconArchive size={12} />
               Archive
-            </button>
+            </Button>
             ) : null}
           </div>
         ) : null

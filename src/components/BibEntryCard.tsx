@@ -655,6 +655,7 @@ export default function BibEntryCard({
             <span className="text-[10px] text-ink-muted">Added</span>
           ) : (
             <button
+              data-button-exempt="10px inline card-chrome chip, below Button's sm scale"
               onClick={(e) => { e.stopPropagation(); addAction.onAdd(); }}
               className="focus-ring text-[10px] text-positive-ink hover:text-positive-strong hover:bg-positive-soft px-1.5 py-0.5 rounded"
             >
