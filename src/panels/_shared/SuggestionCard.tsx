@@ -16,7 +16,7 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
+import { getLinkedTextObjectIds, hasTextAnchor, isCardAnchored } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { PANEL_KIND_TO_BODY_KEY } from "@/lib/panel-typography";
@@ -163,8 +163,7 @@ export function SuggestionCard({
   // `hasPendingCallbacks` gate.
   const isApplied = card.status === "applied";
   const isStale = card.status === "stale";
-  const isAnchored =
-    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
+  const isAnchored = isCardAnchored(card);
   const anchorKind: "selection" | "paragraph" | null = hasTextAnchor(card)
     ? "selection"
     : getLinkedTextObjectIds(card).length > 0

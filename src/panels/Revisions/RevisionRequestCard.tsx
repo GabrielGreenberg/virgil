@@ -14,8 +14,7 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import {
   getAnchorSummary,
-  getLinkedTextObjectIds,
-  hasTextAnchor,
+  isCardAnchored,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
@@ -54,9 +53,9 @@ export function RevisionRequestCard({
   extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardKindTheme("revision-comment");
-  const isAnchored =
-    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
-  const isOrphaned = !isAnchored && !!card.selectedText;
+  // The jump target exists iff the card is anchored (task 961: the old
+  // `&& !isOrphaned` conjunct was dead — an orphan is un-anchored by definition).
+  const jumpTo = isCardAnchored(card) ? onJump : undefined;
   const anchorSummary = getAnchorSummary(card, editor ?? null);
   const popped = usePoppedCards();
   const cardKey = popKey("revisions", card.id);
@@ -109,11 +108,11 @@ export function RevisionRequestCard({
       theme={theme}
       hideToolbar
       inlineDelete
-      canJump={isAnchored && !isOrphaned && !!onJump}
+      canJump={!!jumpTo}
       onJump={
-        onJump && isAnchored && !isOrphaned
+        jumpTo
           ? (e) =>
-              onJump(
+              jumpTo(
                 (e.currentTarget as HTMLElement).closest(
                   "[data-card]",
                 ) as HTMLElement | null,
@@ -126,7 +125,7 @@ export function RevisionRequestCard({
         ) as HTMLElement | null;
         ac.onBodyActivate({
           onSelect: () => onSelect(card.id),
-          jump: onJump && isAnchored && !isOrphaned ? () => onJump(el) : undefined,
+          jump: jumpTo ? () => jumpTo(el) : undefined,
         });
       }}
       onDelete={() => onDelete(card.id)}

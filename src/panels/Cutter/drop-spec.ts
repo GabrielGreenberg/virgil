@@ -1,9 +1,10 @@
 /**
  * Drop specs for popped-out Cutter cards.
  *
- * Two cardKey prefixes (`cutter-comment:${id}` and
- * `cutter-suggestion:${id}`) share one underlying `useCutter` hook,
- * so both specs map to `ctx.cutterCards`.
+ * Registration is by card KIND (`src/cards/drop-specs/index.ts`):
+ * `cutter-comment` and `cutter-suggestion` each register one of the specs
+ * below; both share one underlying `useCutter` hook, so both map to
+ * `ctx.cutterCards`.
  */
 
 import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
