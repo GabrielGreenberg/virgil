@@ -12,8 +12,9 @@
 // bare `.suggested_text` read cannot quietly reopen the class.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { walkFiles } from "@/lib/__tests__/_source-scan";
 
 vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
@@ -170,14 +171,12 @@ const ALLOW = new Set([
   "src/cards/morphs/index.ts",
 ]);
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (name === "__tests__" || name === "node_modules") continue;
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx)$/.test(name) && !/\.test\./.test(name)) out.push(p);
-  }
-  return out;
+// The race-proof walk door (task 954) — a per-entry statSync races a file
+// vanishing mid-walk.
+function walk(dir: string): string[] {
+  return walkFiles(dir, { skipDirs: ["__tests__", "node_modules"] }).filter(
+    (p) => /\.(ts|tsx)$/.test(p) && !/\.test\./.test(p),
+  );
 }
 
 describe("census: suggested_text reads go through suggestionReplacement", () => {
