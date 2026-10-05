@@ -47,7 +47,7 @@ import { iconHint } from "@/components/Hint";
  * What a dot MEANS. Every member maps to a token in `TONE_TOKEN` below.
  *
  * Stated exactly, since a guard that overstates its reach is the failure mode
- * this whole fix is about: four hand-rolled status dots survive OUTSIDE this
+ * this whole fix is about: three hand-rolled status dots survive OUTSIDE this
  * vocabulary, each recorded with a reason in `status-dot-ssot.test.ts`'s
  * `PERMITTED_HAND_ROLLED_STATUS_DOTS` — none of their values matches a token, so
  * each needs a colour decision task 315 had no mandate to make. That list may
@@ -60,6 +60,14 @@ import { iconHint } from "@/components/Hint";
  * mechanism that is switched off — disk watching paused), and the two tokens
  * differ. The `collab-*` pair is the pen indicator's own softer palette; see
  * the `--status-collab-*` block in globals.css for why it isn't the alarm ramp.
+ *
+ * `pending` is "an AI request is in flight" (task 951). It reads the warm
+ * `--amber-500` SCALE token on purpose, not `--status-warn`: every pending dot
+ * sits on (or beside) the amber attention family — `AMBER_PENDING_CHIP`,
+ * `AMBER_ATTENTION_STRIP` — and a dot must share its chip's family, which is
+ * exactly the drift `CompilePaneStatus`'s yellow dot shows when it doesn't.
+ * Before 951 these dots spelled raw Tailwind `bg-amber-400/500` — v4's oklch
+ * oranges, a different colour from the token their own chip paints.
  */
 export type StatusTone =
   | "danger"
@@ -69,7 +77,8 @@ export type StatusTone =
   | "muted"
   | "inactive"
   | "collab-active"
-  | "collab-idle";
+  | "collab-idle"
+  | "pending";
 
 /** The ONE tone→token map. Exported so CI can assert every value is a `var()`
  *  read and no call site re-derives a colour. */
@@ -82,6 +91,7 @@ export const TONE_TOKEN: Readonly<Record<StatusTone, string>> = {
   inactive: "var(--edge-strong)",
   "collab-active": "var(--status-collab-active)",
   "collab-idle": "var(--status-collab-idle)",
+  pending: "var(--amber-500)",
 };
 
 export type StatusDotSize = "sm" | "md";
@@ -92,6 +102,11 @@ const SIZE_CLASS: Readonly<Record<StatusDotSize, string>> = {
   sm: "w-1.5 h-1.5", // 6px — overlay badge / inline marker beside a label
   md: "w-2 h-2", //    8px — first-class state indicator inside a pill
 };
+
+/** How an in-flight dot MOVES. `pulse` fades the dot itself; `ping` keeps a
+ *  solid core under an expanding halo of the same tone. Both are
+ *  `motion-safe:` so reduced-motion users see a still dot. */
+export type StatusDotMotion = "pulse" | "ping";
 
 export type StatusDotProps = {
   /** What the dot means. Resolved to a token here, never by the caller. */
@@ -104,15 +119,32 @@ export type StatusDotProps = {
   /** Present ⇒ the dot carries a fact no adjacent text states, so it announces
    *  itself and gains a hover hint. Absent ⇒ `aria-hidden`. */
   label?: string;
+  /** Absent ⇒ a still dot. */
+  motion?: StatusDotMotion;
 };
 
-export function StatusDot({ tone, size, className, label }: StatusDotProps) {
+export function StatusDot({ tone, size, className, label, motion }: StatusDotProps) {
   const a11y = label ? iconHint({ label }) : { "aria-hidden": true as const };
+  const backgroundColor = TONE_TOKEN[tone];
+  if (motion === "ping") {
+    return (
+      <span
+        {...a11y}
+        className={`relative inline-flex shrink-0 ${SIZE_CLASS[size]}${className ? ` ${className}` : ""}`}
+      >
+        <span
+          className="motion-safe:animate-ping absolute inset-0 rounded-full opacity-75"
+          style={{ backgroundColor }}
+        />
+        <span className="relative inline-flex h-full w-full rounded-full" style={{ backgroundColor }} />
+      </span>
+    );
+  }
   return (
     <span
       {...a11y}
-      className={`${SIZE_CLASS[size]} rounded-full${className ? ` ${className}` : ""}`}
-      style={{ backgroundColor: TONE_TOKEN[tone] }}
+      className={`${SIZE_CLASS[size]} rounded-full${motion === "pulse" ? " motion-safe:animate-pulse" : ""}${className ? ` ${className}` : ""}`}
+      style={{ backgroundColor }}
     />
   );
 }

@@ -32,6 +32,7 @@ import {
   type RowState,
 } from "@/components/library/LibraryEntryMenu";
 import { iconHint } from "@/components/Hint";
+import { StatusDot } from "@/components/StatusDot";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
 import {
   VIEW_PREF_REGISTRY,
@@ -934,7 +935,7 @@ function BibliographyPanel({
               {new Date(req.createdAt).toLocaleDateString()}
               {req.status === "pending" && (
                 <span className="ml-1.5 inline-flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 motion-safe:animate-pulse" />
+                  <StatusDot tone="pending" size="sm" motion="pulse" />
                   Pending
                 </span>
               )}

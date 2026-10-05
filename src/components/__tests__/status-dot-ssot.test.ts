@@ -141,17 +141,7 @@ const PERMITTED_HAND_ROLLED_STATUS_DOTS: ReadonlyArray<[file: string, fragment: 
   [
     "src/panels/_shared/suggestion-fields.tsx",
     "STATUS_DOT[status]",
-    "a five-state Tailwind palette map (blue-400 / sky-300 / amber-400 / var(--positive) / red-400): four of the five resolve to no token, so adopting tones is a palette decision",
-  ],
-  [
-    "src/panels/Bibliography/BibliographyPanel.tsx",
-    "bg-amber-400 motion-safe:animate-pulse",
-    "pending pulse in raw Tailwind amber-400 (#fbbf24), which matches no token; also the only ANIMATED dot, a capability the primitive does not model",
-  ],
-  [
-    "src/components/BibEntryCard.tsx",
-    "rounded-full h-2 w-2 bg-amber-500",
-    "PulsingDot's core, under a second ping layer — same amber-400/500 question as the Bibliography pending dot, plus a two-layer shape",
+    "a five-state status map (blue-400 / sky-300 / var(--amber-500) / var(--positive) / red-400): three of the five still resolve to no token, so adopting tones is a palette decision",
   ],
   [
     "src/components/CompilePaneStatus.tsx",
@@ -308,6 +298,9 @@ describe("status-dot census: no hand-rolled dot outside the allowlists", () => {
       "src/components/CollabStatusPill.tsx",
       "src/components/editor-layout/StatusCluster.tsx",
       "src/components/ExternalChangeBadge.tsx",
+      // Task 951: the two Bibliography pending dots (one pulsing, one pinging).
+      "src/panels/Bibliography/BibliographyPanel.tsx",
+      "src/components/BibEntryCard.tsx",
     ]) {
       expect(converted.has(file)).toBe(false);
     }

@@ -111,9 +111,9 @@ describe("card chrome lives in the shell (task 825)", () => {
     const src = code(readFileSync(path.join(SRC, "components/BibEntryCard.tsx"), "utf8"));
     const raw = src
       .split("\n")
-      .filter((l) => /\b(?:text|bg|border|hover:bg|hover:text)-amber-\d{2,3}\b/.test(l))
-      // The PulsingDot's two spans answer to status-dot-ssot's allowlist.
-      .filter((l) => !/rounded-full/.test(l));
+      .filter((l) => /\b(?:text|bg|border|hover:bg|hover:text)-amber-\d{2,3}\b/.test(l));
+    // The pending dot is `<StatusDot tone="pending">` since task 951 — no
+    // rounded-full exemption remains.
     expect(raw).toEqual([]);
   });
 });
