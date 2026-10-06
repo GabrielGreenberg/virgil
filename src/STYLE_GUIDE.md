@@ -1134,7 +1134,10 @@ Five states. One implementation each.
   same census, "the click-only control" — `src/panels/**` allowlist EMPTY,
   `src/components/**` a shrink-only ratchet.
 - **Active.** `translate-y-[0.5px]` on press.
-- **Disabled.** `opacity-40 pointer-events-none`.
+- **Disabled.** `opacity-40 pointer-events-none` — for STANDALONE buttons.
+  A menu ROW greys differently, by ink alone (`text-ink-faint`, no opacity),
+  and takes it from `src/components/menu/row-tone.ts` (task 967) — see "A
+  command surface RENDERS its verdict".
 
 **Topbar buttons.** Every button in the 40px Virgil bar uses
 `.topbarbtn` (add `.topbarbtn-icon` for icon-only). One height (24px),
@@ -2758,6 +2761,12 @@ Enter/click commit refuses on.
   have `\section`"; a greyed one reads as "not here." Same reason
   `MenuActionRow` renders a real disabled `<button>` (`text-ink-faint
   cursor-not-allowed`) rather than dropping the row.
+- **One grey, one red — stated once** (task 967). Every `<Menu>` row
+  (`MenuActionRow`, `MenuToggleRow`, the grab/lightning `MenuItemsFromRegistry`
+  list) takes its disabled ink, destructive tone (`text-danger` +
+  `hover:bg-danger-soft`), body ink and roving background from
+  `src/components/menu/row-tone.ts`; separators are `<MenuSeparator>`. Rows keep
+  their own METRICS. CI: `menu-row-tone-census.test.tsx`.
 - **Roving navigation skips the greyed rows**, so the selection can only ever
   sit on something Enter can run — and the arrows are INERT rather than looping
   when every row is greyed.

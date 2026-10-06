@@ -18,6 +18,7 @@
 
 import type { ReactNode } from "react";
 import { useMenuItem } from "./useMenuItem";
+import { menuRowRovingStyle, menuRowToneClass, type MenuRowTone } from "./row-tone";
 
 /**
  * A command row's ink. `default` is body text; `danger` is the destructive
@@ -26,7 +27,7 @@ import { useMenuItem } from "./useMenuItem";
  * moment a row's look is a caller's string, the second delete row in the app
  * spells a different red.
  */
-export type MenuActionRowTone = "default" | "danger";
+export type MenuActionRowTone = MenuRowTone;
 
 export interface MenuActionRowProps {
   /** Unique within the menu. */
@@ -59,11 +60,8 @@ export function MenuActionRow({
     run: onSelect,
   });
   const itemProps = getItemProps();
-  const toneClass = disabled
-    ? "text-ink-faint cursor-not-allowed"
-    : tone === "danger"
-      ? "text-danger hover:bg-danger-soft transition-colors"
-      : "text-ink-body hover-on-light";
+  // State tones are the menu's ONE vocabulary (`row-tone.ts`, task 967).
+  const toneClass = menuRowToneClass(tone, disabled);
   return (
     <button
       {...itemProps}
@@ -78,7 +76,7 @@ export function MenuActionRow({
       // cited.bib* ACTION, and a 14px row under two 12px ones reads as a
       // different control.
       className={`w-full text-left px-3 py-1.5 text-xs ${toneClass}${leading ? " flex items-center gap-2" : ""}`}
-      style={{ background: active && !disabled ? "var(--menu-roving-bg)" : undefined }}
+      style={menuRowRovingStyle(active, disabled)}
     >
       {/* Markup stays byte-identical without a `leading` node — the flex
           wrapper only appears when there is something to sit beside the label,

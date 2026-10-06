@@ -10,11 +10,13 @@
  *
  * This component is presentation-light: it renders the same DOM the bespoke
  * `DragHandleMenu` did (icon + label + right-aligned single-letter hint, an
- * optional separator above) but via `useMenuItem` getters, so the item GAINS
+ * optional `<MenuSeparator>` above) but via `useMenuItem` getters, so the item GAINS
  * arrow nav + the data-active highlight without a markup rewrite.
  */
 
 import type { CSSProperties, ReactNode } from "react";
+import { MenuSeparator } from "./MenuChrome";
+import { menuRowRovingStyle, menuRowToneClass } from "./row-tone";
 import { useMenuItem } from "./useMenuItem";
 
 /** A row decorated with its per-open disabled state — what a caller passes
@@ -49,48 +51,27 @@ function RegistryItem({ row }: RegistryItemProps) {
   });
   const itemProps = getItemProps();
 
-  const baseColor = row.disabled
-    ? "var(--ink-subtle)"
-    : row.destructive
-      // No fallback: the token is defined unconditionally in globals.css, and
-      // the fallback this replaced spelled #b45757 — a DIFFERENT red from the
-      // token's own #ef4444, so it silently described a colour this row has
-      // never painted (task 2026-07-20-195).
-      ? "var(--danger)"
-      : "var(--ink-strong)";
-
+  // State tones (disabled grey, destructive red + its danger hover, body ink)
+  // are the menu's ONE vocabulary (`row-tone.ts`, task 967). This row used to
+  // spell its own: `--ink-subtle` at `opacity: 0.45` (greyed twice), and a
+  // destructive row that hovered with the NEUTRAL fill. Only the METRICS below
+  // are this icon list's own.
   const style: CSSProperties = {
     height: ITEM_H,
-    color: baseColor,
-    // The roving-active row paints the blue-tinted selection highlight, so the
-    // active item is unambiguous while arrowing (no focus move).
-    background: active && !row.disabled ? "var(--menu-roving-bg)" : "transparent",
-    opacity: row.disabled ? 0.45 : 1,
-    cursor: row.disabled ? "not-allowed" : "pointer",
+    ...menuRowRovingStyle(active, row.disabled),
   };
 
   return (
     <div>
-      {row.separator && (
-        <div
-          aria-hidden
-          style={{
-            height: 1,
-            margin: "4px 8px",
-            background: "var(--edge-hover)",
-            opacity: 0.5,
-          }}
-        />
-      )}
+      {row.separator && <MenuSeparator />}
       <button
         {...itemProps}
         type="button"
         disabled={row.disabled}
-        className={
-          row.disabled
-            ? "w-full flex items-center gap-2.5 px-3 text-sm text-left"
-            : "w-full flex items-center gap-2.5 px-3 text-sm text-left hover-on-light"
-        }
+        className={`w-full flex items-center gap-2.5 px-3 text-sm text-left ${menuRowToneClass(
+          row.destructive ? "danger" : "default",
+          row.disabled,
+        )}`}
         style={style}
       >
         <span

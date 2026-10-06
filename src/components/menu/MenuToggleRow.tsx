@@ -25,6 +25,7 @@
 
 import type { ReactNode } from "react";
 import { useMenuItem } from "./useMenuItem";
+import { menuRowRovingStyle, menuRowToneClass } from "./row-tone";
 
 export interface MenuToggleRowProps {
   /** Unique within the menu. */
@@ -106,8 +107,8 @@ export function MenuToggleRow({
       aria-checked={checked}
       data-hint={hint}
       aria-description={hint}
-      className={`w-full text-left ${pad} py-1.5 text-xs flex items-center justify-between gap-3 ${disabled ? "text-ink-subtle cursor-not-allowed opacity-55" : "text-ink-body hover-on-light"}`}
-      style={{ background: active && !disabled ? "var(--menu-roving-bg)" : undefined }}
+      className={`w-full text-left ${pad} py-1.5 text-xs flex items-center justify-between gap-3 ${menuRowToneClass("default", disabled)}`}
+      style={menuRowRovingStyle(active, disabled)}
     >
       {/* Markup stays byte-identical without a `leading` node — the wrapper
           only appears when there is something to sit beside the label, since

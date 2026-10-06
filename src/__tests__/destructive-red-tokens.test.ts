@@ -503,7 +503,7 @@ describe("the residual red spellings are a pinned census", () => {
  */
 const PINNED_DANGER_TEXT_UTILITY_SITES: Readonly<Record<string, string>> = {
   "src/components/Button.tsx": "variant=\"danger\" — destructive BUTTON label",
-  "src/components/menu/MenuActionRow.tsx": "destructive menu ROW",
+  "src/components/menu/row-tone.ts": "destructive menu ROW — the one tone every <Menu> row reads (task 967)",
 };
 
 const PINNED_DANGER_INLINE_SITES: Readonly<Record<string, string>> = {
@@ -512,7 +512,6 @@ const PINNED_DANGER_INLINE_SITES: Readonly<Record<string, string>> = {
   "library/components/Toaster.tsx": "attention toast's 3px EDGE (its label reads ERROR_INK)",
   "src/components/EditorLayout.tsx": "a dot's backgroundColor — a fill, not text",
   "src/components/SkillSyncControls.tsx": "sync-error pill's dismiss ICON (its text reads ERROR_INK)",
-  "src/components/menu/MenuItemsFromRegistry.tsx": "destructive menu ROW",
   "src/components/status/BarStatusPill.tsx": "destructive-choice menu ROW",
   "src/lib/interruption-tone.ts": "the danger register's EDGE (its ink is --ink-strong)",
   "src/panels/Errors/ErrorCard.tsx": "the severity BADGE icon (the severity word reads SEVERITY_INK)",
