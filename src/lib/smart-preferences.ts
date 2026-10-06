@@ -13,7 +13,12 @@
 
 import type { PrefLeaf } from "./preferences-tree";
 import { SANS_CORE_FONTS, SERIF_CORE_FONTS } from "./font-catalogue";
-import type { PanelThemeKey } from "./panel-theme";
+import {
+  PANEL_THEME_FAMILIES,
+  SYSTEM_THEME_KEYS,
+  type PanelThemeFamily,
+  type PanelThemeKey,
+} from "./panel-theme";
 import type { LinkableKey } from "./pref-links";
 
 export interface SmartPrefItem {
@@ -64,6 +69,42 @@ const panel = (
   label: string,
   description?: string,
 ): SmartPanelItem => ({ kind: "panel-color", panelKey, label, description });
+
+/** User-facing copy for each theme key's row in the "Panel theme" section
+ *  (task 977). A TOTAL record, so a new `PanelThemeKey` fails tsc until it has
+ *  a label. System keys carry copy too (the record stays total) but never
+ *  reach the section — they are not user-overridable. */
+export const PANEL_THEME_PREF_COPY: Readonly<
+  Record<PanelThemeKey, { label: string; description: string }>
+> = Object.freeze({
+  footnote:  { label: "Footnotes",    description: "Footnote cards, superscript markers, and anchor highlights." },
+  citation:  { label: "Citations",    description: "Citation cards, badges, and in-text highlights." },
+  bib:       { label: "Bibliography", description: "Bibliography entries and linked citation anchors." },
+  highlight: { label: "Highlights",   description: "Highlight cards and the in-text highlight band." },
+  example:   { label: "Examples",     description: "Example cards and their in-text anchors." },
+  revision:  { label: "Revisions",    description: "Revision cards and change markers." },
+  report:    { label: "Reports",      description: "Report cards and their margin markers." },
+  aiRequest: { label: "AI requests",  description: "AI-request accents (system colour, not editable)." },
+  note:      { label: "Margin notes", description: "Note cards and margin markers." },
+  archive:   { label: "Archive",      description: "Archived-snippet cards and anchors." },
+  todo:      { label: "To-dos",       description: "Task cards and checklist markers." },
+  cut:       { label: "Cuts",         description: "Deleted-text cards and strikethrough markers." },
+  error:     { label: "Errors",       description: "Compile-error cards (system colour, not editable)." },
+});
+
+/** The "Panel theme" rows, DERIVED from `PANEL_THEME_FAMILIES` (task 977) in
+ *  family order — the same membership the per-panel picker covers — minus the
+ *  non-overridable `SYSTEM_THEME_KEYS`. It used to be a hand list of eight that
+ *  silently omitted highlight, example and report. */
+export const PANEL_THEME_ITEMS: readonly SmartPanelItem[] = (
+  Object.keys(PANEL_THEME_FAMILIES) as PanelThemeFamily[]
+).flatMap((family) =>
+  PANEL_THEME_FAMILIES[family].keys
+    .filter((key) => !SYSTEM_THEME_KEYS.has(key))
+    .map((key) =>
+      panel(key, PANEL_THEME_PREF_COPY[key].label, PANEL_THEME_PREF_COPY[key].description),
+    ),
+);
 
 export const SMART_PREFERENCES: SmartSection[] = [
   {
@@ -120,14 +161,7 @@ export const SMART_PREFERENCES: SmartSection[] = [
     label: "Panel theme",
     description: "Base color for each kind of panel — tints its cards, badges, highlights, and marginalia markers.",
     items: [
-      panel("citation", "Citations", "Citation cards, badges, and in-text highlights."),
-      panel("bib",      "Bibliography", "Bibliography entries and linked citation anchors."),
-      panel("footnote", "Footnotes", "Footnote cards, superscript markers, and anchor highlights."),
-      panel("note",     "Margin notes", "Note cards and margin markers."),
-      panel("archive",  "Archive", "Archived-snippet cards and anchors."),
-      panel("todo",     "To-dos", "Task cards and checklist markers."),
-      panel("cut",      "Cuts", "Deleted-text cards and strikethrough markers."),
-      panel("revision", "Revisions", "Revision cards and change markers."),
+      ...PANEL_THEME_ITEMS,
     ],
   },
   {
