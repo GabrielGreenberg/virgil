@@ -43,7 +43,11 @@ import { generateShortId } from "@/lib/uuid";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
-import { restoreExcerptAtCaret } from "@/lib/tiptap/restore-excerpt";
+import {
+  restoreExcerptAtAnchor,
+  restoreExcerptAtCaret,
+  type ExcerptReturnAddress,
+} from "@/lib/tiptap/restore-excerpt";
 import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -277,7 +281,9 @@ export interface EditorHandle {
   /** Re-insert an archived excerpt at the caret. Returns whether the content
    *  actually LANDED — a caller that drops the archive entry afterwards is
    *  destroying the only copy, so it must not do so on a false. */
-  restoreArchive: (content: JSONContent) => boolean;
+  /** Put an archived excerpt back — at its return address when the clip has
+   *  a live anchor (task 965), else at the caret. True iff it landed. */
+  restoreArchive: (content: JSONContent, address?: ExcerptReturnAddress | null) => boolean;
   getFootnotes: () => FootnoteInfo[];
   scrollToFootnote: (footnoteId: string, sourceEl?: HTMLElement | null) => void;
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
@@ -1037,10 +1043,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // 0.5, below the detector's 0.25 line, so the prior section stuck.)
       if (el) scrollHeadingToActiveLine(editor.view.dom, el);
     },
-    restoreArchive(content: JSONContent): boolean {
+    restoreArchive(content: JSONContent, address?: ExcerptReturnAddress | null): boolean {
       // The return leg of the capture law — see `restoreExcerptAtCaret`. It
       // reports whether the excerpt LANDED, which is what makes it safe for the
-      // caller to then drop the archive entry holding the only copy.
+      // caller to then drop the archive entry holding the only copy. An
+      // anchored clip goes back where it came from (task 965); the caret is the
+      // door only for a clip with no address, or one whose anchor vanished
+      // between the panel's resolve and this click.
+      if (address) {
+        const landed = restoreExcerptAtAnchor(editor, content, address);
+        if (landed !== null) return landed;
+      }
       return restoreExcerptAtCaret(editor, content);
     },
     getFootnotes(): FootnoteInfo[] {

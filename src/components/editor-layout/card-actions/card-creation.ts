@@ -124,7 +124,7 @@ export interface CardCreationDeps {
   /** Archive — mints a snippet and (optionally) writes a Mode A
    *  paragraph link. The dispatcher owns the editor mutation (cleanup
    *  walker + tr.delete) before/around the call. */
-  archiveContent: (content: unknown, opts?: { unanchored?: boolean }) => ArchivedSnippet;
+  archiveContent: (content: unknown, opts?: { unanchored?: boolean; returnBefore?: string }) => ArchivedSnippet;
   updateArchiveSnippet: (id: string, content: unknown) => void;
   addArchiveTextObjectId: (
     id: string,
@@ -312,6 +312,9 @@ export interface CardCreationApi {
     content?: unknown;
     paragraphId?: string | null;
     targetKind?: TextObjectKind;
+    /** Task 965: the passage was cut from just BEFORE this block (the
+     *  capture's neighbour fell forward) — see `ArchivedSnippet.returnBefore`. */
+    returnBefore?: string;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   } & AutoFocusOpt) => ArchivedSnippet;
@@ -665,7 +668,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // Born-free when no paragraphId is supplied (nothing anchorable) — the
       // `if (opts.paragraphId)` guard below is the same signal, so record the
       // intent up front (task 104: free vs orphaned via resolveAnchorState).
-      const snippet = archiveContent(opts.text ?? "", { unanchored: !opts.paragraphId });
+      const snippet = archiveContent(opts.text ?? "", {
+        unanchored: !opts.paragraphId,
+        returnBefore: opts.returnBefore,
+      });
       if (opts.content !== undefined) {
         updateArchiveSnippet(snippet.id, opts.content);
       }

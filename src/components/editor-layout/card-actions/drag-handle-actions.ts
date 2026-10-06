@@ -46,7 +46,7 @@ import {
 import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import {
   collectRemovedAnchorUuids,
-  resolveDisplacedAnchorTarget,
+  resolveDisplacedAnchorPlacement,
 } from "@/text-objects/anchor-resolution";
 import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import type { CardCreationApi } from "./card-creation";
@@ -906,12 +906,13 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             settled.from,
             settled.to,
           );
-          const neighbour = resolveDisplacedAnchorTarget(
+          const placement = resolveDisplacedAnchorPlacement(
             ed.state.doc,
             settled.from,
             settled.to,
             displacedUuids,
           );
+          const neighbour = placement?.target ?? null;
           // Taken now, against the pre-delete doc, and APPLIED only once the
           // delete has landed (task 735) — see `commitRangeDelete`.
           const snapshot = neighbour
@@ -927,11 +928,20 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // For selection-ref Archive (a sub-range inside a paragraph),
           // the source paragraph survives and the ref already carries its
           // uuid, so we keep it — byte-identical to pre-491.
+          //
+          // RETURN ADDRESS (task 965): the anchor is also where Restore puts
+          // the text back — just AFTER it, unless the neighbour fell FORWARD
+          // (the capture began at the document's first block), in which case
+          // the passage came from just BEFORE it. Only the capture can see that
+          // side, so it is recorded on the snippet now. A selection archive's
+          // host paragraph survives and the clip lands after it.
           let snippetParagraphId: string = paragraphId;
           let snippetTargetKind: TextObjectKind = targetKind;
+          let snippetReturnBefore: string | undefined;
           if (ref.kind !== "selection") {
             snippetParagraphId = neighbour?.uuid ?? "";
             snippetTargetKind = neighbour?.kind ?? targetKind;
+            if (placement?.below) snippetReturnBefore = placement.target.uuid;
           }
           // ── THE DOCUMENT FIRST, THEN THE CARDS (task 735) ──────────────
           // Every sidecar write this gesture makes — the Mode-A re-home, the
@@ -960,6 +970,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 content: richContent,
                 paragraphId: snippetParagraphId,
                 targetKind: snippetTargetKind,
+                returnBefore: snippetReturnBefore,
                 mode: "omni",
               }).id;
             },

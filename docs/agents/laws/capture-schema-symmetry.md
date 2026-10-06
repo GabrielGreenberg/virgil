@@ -2017,6 +2017,21 @@ so the durable proof here is the unit contract — anchor notes to two adjacent
 paragraphs, Backspace-join them, and confirm no blank line and both markers on
 the survivor.
 
+#### Restore lands at the clip's RETURN ADDRESS, not the caret (task 965)
+
+An archive clip is anchored to the surviving paragraph beside the passage it cut
+(task 491) — so it already knows where it came from. `handleArchiveRestore`
+reads that anchor off the SAME authority Jump lands on (`anchorPass.jumpTarget`)
+and `restoreExcerptAtAnchor` inserts at the boundary of the anchor's TOP-LEVEL
+block: after it, or before it when the capture recorded `returnBefore` (the
+neighbour fell FORWARD because the passage began the document — a side only the
+capture can see; honoured only while the live anchor is still that block). A
+top-level gap encloses nothing, so legs 3–4 have nothing to ask; legs 1–2 are
+shared (`landExcerpt`). No live anchor → the caret door, unchanged. The agent's
+`cmd_restore` refuses excerpts outright, so there is no second landing rule to
+agree with. Pinned in `restore-excerpt.test.ts` ("the return address") and
+`archive-retarget-displaced-anchors.test.tsx`. A real-FSA eyeball is owed.
+
 ### The schema half: a TYPE contract is blind to the ATTRS the type carries
 
 Same law, the SCHEMA the excerpt body mounts (task 402, DATA LOSS) — and the

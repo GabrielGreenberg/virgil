@@ -112,7 +112,13 @@ export function restoreExcerptAtCaret(
   // landing is resolved rather than taken as `to`.
   const at = resolveRestoreLanding(editor, editor.state.selection.to);
   if (at === null) return false;
+  return landExcerpt(editor, at, content);
+}
 
+/** The insert + leg 2's measure, shared by both doors. The insert puts
+ *  the selection at the end of the landed text and `focus()` scrolls to it —
+ *  here that navigation is the point (the user sees where the text went). */
+function landExcerpt(editor: Editor, at: number, content: JSONContent): boolean {
   const before = editor.state.doc;
   try {
     editor.chain().focus().insertContentAt(at, content.content ?? []).run();
@@ -126,6 +132,68 @@ export function restoreExcerptAtCaret(
     return false;
   }
   return !editor.state.doc.eq(before);
+}
+
+/**
+ * Where an archived excerpt goes back to: its RETURN ADDRESS (task 965).
+ *
+ * The archive gesture anchors every clip to the surviving paragraph beside the
+ * passage it cut (task 491) — the PRECEDING one, or the following one when the
+ * passage began the document (`side: "before"`, recorded at capture because it
+ * cannot be re-derived once the passage is gone). So the clip already knows
+ * where it came from; Restore lands it there rather than at the caret, which
+ * may be pages away and would split whatever paragraph it sits in.
+ */
+export interface ExcerptReturnAddress {
+  /** The clip's LIVE anchor block, as the card authority resolved it. */
+  uuid: string;
+  side: "before" | "after";
+}
+
+/**
+ * Put an excerpt back at its return address. `null` means the address is not
+ * in the live document (the anchor was deleted since the authority resolved
+ * it) — the caller then has no address and falls back to the caret door.
+ * Otherwise reports whether it landed, exactly as `restoreExcerptAtCaret`
+ * does, and through the same legs 1–2.
+ *
+ * The landing is the boundary of the anchor's TOP-LEVEL block, never a spot
+ * inside it: a top-level gap encloses nothing, so a block insert there cannot
+ * split a paragraph, tear a list or example, or replace an anchored blank line
+ * — legs 3 and 4 have no question to ask. For an anchor nested in a container
+ * (a list item) that means the excerpt lands beside the whole container: the
+ * honest block-level answer, since landing inside it is the tear leg 3 exists
+ * to refuse.
+ *
+ * Resolved by IDENTITY against the live doc at click time (the
+ * addressing-across-an-async-gap law), not from a position the panel saw.
+ */
+export function restoreExcerptAtAnchor(
+  editor: Editor | null,
+  content: JSONContent | null | undefined,
+  address: ExcerptReturnAddress,
+): boolean | null {
+  if (!editor) return false;
+  const doc = editor.state.doc;
+  let blockPos = -1;
+  doc.descendants((node, pos) => {
+    if (blockPos !== -1) return false;
+    if ((node.attrs as { uuid?: string | null }).uuid === address.uuid) {
+      blockPos = pos;
+      return false;
+    }
+    return true;
+  });
+  if (blockPos === -1) return null;
+  if (content == null || typeof content !== "object") return false;
+  if (!canMountInSchema(editor.state.schema, content).ok) return false;
+  const $pos = doc.resolve(blockPos);
+  const top =
+    $pos.depth === 0
+      ? { from: blockPos, to: blockPos + doc.nodeAt(blockPos)!.nodeSize }
+      : { from: $pos.before(1), to: $pos.after(1) };
+  const at = address.side === "before" ? top.from : top.to;
+  return landExcerpt(editor, at, content);
 }
 
 /**
