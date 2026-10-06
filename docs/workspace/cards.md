@@ -1,4 +1,4 @@
-<!-- last-verified: a02565b9 2026-10-05 -->
+<!-- last-verified: 5f5d9be2 2026-10-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -218,7 +218,9 @@ holds *moved text objects* — but since task 712 that panel ALSO holds whole CA
 set aside through `/editor/archive-card` (`apply_response.py cmd_archive`). Such a
 snippet carries an ORIGIN record (`originalPanel` / `originalCard` / `archivedAt`)
 and Restore puts the card back in its panel ("Restore to Notes"); it never lands
-the body in the prose.
+the body in the prose. A text-object clip (no origin) Restores INTO the prose at
+its return address — beside its live anchor, on the `returnBefore` side when
+recorded (`restoreExcerptAtAnchor`, task 965) — with the caret only as fallback.
 
 - **`isArchivable(kind)`** ([predicates.ts](../../src/cards/predicates.ts)) —
   derived from provenance: `origin === "user"`, MINUS one exception.

@@ -1,4 +1,4 @@
-<!-- last-verified: a02565b9 2026-10-05 -->
+<!-- last-verified: 5f5d9be2 2026-10-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -206,8 +206,9 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
   uuids back to the `.tex` on load** (parity with `storage-dev`).
 - **"Is this card anchored?" has the same one door (task 665).** Every surface that
   gates a Jump — the popped float, the omni row, the margin marker, and since task 699
-  every DOCKED panel (a required `jumpGate` read off `CardAnchorProvider`'s one pass;
-  Archive's orphan badge and Todo's `isAnchored` too) — takes its
+  every DOCKED panel (a required `jumpGate` read off `CardAnchorProvider`'s one pass,
+  applied ONCE by the caller's `withJump` — task 966 deleted the card-side re-gates:
+  Archive's `orphaned`, Todo's `isAnchored`, the comment/suggestion family's check) — takes its
   verdict from the authority via `cardJumpGate(card, resolveCardRows)`
   ([src/links/card-anchor-rows.ts](../../src/links/card-anchor-rows.ts)), never from
   "the card STORES a link" (`getLinkedTextObjectIds(...).length`), which is equally

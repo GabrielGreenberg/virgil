@@ -1,4 +1,4 @@
-<!-- last-verified: a02565b9 2026-10-05 -->
+<!-- last-verified: 5f5d9be2 2026-10-06 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor, virgil -->
 
@@ -51,7 +51,7 @@ Layer 3 — DERIVATIVE DOCS (each has a clear upstream)
 Every Layer-2 and Layer-3 doc carries a small header block of HTML comments at the very top of the file (before the first heading). Three fields, each on its own line, each independently greppable:
 
 ```markdown
-<!-- last-verified: a02565b9 2026-10-05 -->
+<!-- last-verified: 5f5d9be2 2026-10-06 -->
 <!-- derives-from: <repo-root-relative-path>#<anchor>[, <path>#<anchor>...] -->
 <!-- covers-code: <repo-root-relative-path>[, <path>...] -->
 ```
@@ -173,7 +173,7 @@ A Task is a Card with lifecycle states the other kinds don't share (see [Cowork 
 
 ### The two workflows
 
-- **Workflow A — UI-initiated (note-card-based).** The user creates a note (paragraph-anchored, or selection/text-span-anchored) and AI-flags it. The card-flag bridge (`bridgeCardAiRequestFlag`, [src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts)) converts the flag into a Task in `ai-requests.json`. The agent drains via `/editor/review`. The note *is* the input — there is no separate "Virgil form." The same bridge also covers todos / cutter-comments / revision-comments (a different semantic class — *respond to this card* — same data path).
+- **Workflow A — UI-initiated (note-card-based).** The user creates a note (paragraph-anchored, or selection/text-span-anchored) and AI-flags it. The card-flag bridge (`bridgeCardAiRequestFlag`, [src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts)) converts the flag into a Task in `ai-requests.json`. The agent drains via `/editor/review`. The note *is* the input — there is no separate "Virgil form"; since task 955 a bridged row's `text` is read from the LIVE linked card (AIWindow's `resolveLinkedCard`, `list_requests.py`'s `card_request_text`), the stored row text only a fallback. The same bridge also covers todos / cutter-comments / revision-comments (a different semantic class — *respond to this card* — same data path).
 - **Workflow B — Claude chat.** The user addresses Virgil conversationally. Virgil resolves any ambiguity by **asking, never guessing** (anchor resolution puts the burden on whoever has the most context; chat-Claude must get disambiguating context from the user), then acts.
 
 ### Tasks vs Skills

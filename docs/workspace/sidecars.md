@@ -1,4 +1,4 @@
-<!-- last-verified: a02565b9 2026-10-05 -->
+<!-- last-verified: 5f5d9be2 2026-10-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -192,7 +192,11 @@ The replacement the Apply path splices is the HUMAN's own revision first —
 `src/links/pending-change-actions.ts`; the Python `apply_response.py` splices the
 same precedence). An EMPTY replacement is REFUSED in Revisions rather than applied
 as a silent paragraph delete; a Cutter cut, whose family MEANS deletion, still
-applies (task 713).
+applies (task 713). Since task 957 every landing door asks one rule,
+`suggestionLacksReplacement(card, family)` (flag-OFF Accept included), and
+`apply_response.py` reads the same rule from `card_tables.json`
+(`suggestionLanding`); since task 958 the readers (collapsed body, Search via
+`SUGGESTION_SEARCH_FIELDS`, stack snapshot) go through `suggestionReplacement` too.
 The `applied` / `stale` statuses + `appliedChange` are the pending-ai-changes
 in-doc splice path: `applied` = the suggestion is spliced into the doc as a blue,
 revertable mark; `appliedChange.originalText` is the pre-splice revert source.
