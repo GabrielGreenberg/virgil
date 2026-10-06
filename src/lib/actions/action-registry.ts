@@ -221,6 +221,8 @@ import {
   LIFECYCLE_ACTION_IDS,
 } from "@/text-objects/action-scope";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
+import { surfaceReadOnlyByHost } from "@/lib/tiptap/surface-editable";
+import { refusalPhrase, type Refusal } from "./refusal";
 import {
   sliceIsFullyCapturedBy,
   type CaptureVocabulary,
@@ -903,6 +905,18 @@ export interface ActionSpec {
    */
   applies(ctx: ActionContext): "ok" | "disabled" | "absent";
   /**
+   * WHY this row's own per-context BASE refused (task 968) — the reason half of
+   * `applies()`, for a row whose base asks a question the generic ladder in
+   * `verdictOf` cannot name on its own (a wrap row's CAPTURE half, a card row's
+   * kind-vs-container split). Asked only by `verdictOf`, only after `applies()`
+   * said `"disabled"` and the shared gates (pen / host / selection-mode) did not
+   * explain it. Built from the SAME predicates as the row's `applies()` — the
+   * gate factories return both halves — so the offer and its explanation
+   * cannot drift. Optional: a row without one gets `verdictOf`'s generic
+   * kind / container refusal.
+   */
+  refusal?(ctx: ActionContext): Refusal | null;
+  /**
    * Resolve the doc range the action operates on, when it differs from the
    * ref's natural range. Optional — defaults to the dispatcher's
    * `resolveRefRange` behavior (heading → heading-line for annotations / whole
@@ -1151,6 +1165,84 @@ function gateApplies(
   return "ok";
 }
 
+// ---------------------------------------------------------------------------
+// verdictOf (task 968) — the verdict WITH its reason.
+//
+// `applies()` is a bare verdict; a surface that paints only that greys a row
+// without saying why (STYLE_GUIDE "A command surface RENDERS its verdict").
+// `verdictOf` asks the row's own `applies()` for the STATE — so no surface's
+// grey can differ from the gate's — and, only when that state is `"disabled"`,
+// names the gate that refused by walking the same ladder in the same order:
+//
+//   1. the ctx-side read-only gate (`isCollabReadOnly`) — split by AXIS into
+//      the HOST (the Library Reader's `editableRef`) and the PEN, because
+//      "open read-only" and "your co-author has the pen" ask different things
+//      of the user. It is asked FIRST although `gateApplies` asks it after the
+//      row's base: when the whole menu is greyed, the read-only state is the
+//      true answer for every row, whatever else a row's kind would also refuse;
+//   2. the selection-mode gate (`selectionModeDisables`);
+//   3. the row's own base — its declared `refusal(ctx)` when the row has one,
+//      else the generic kind / container refusal at the ref.
+//
+// The words come from ONE table (`refusalPhrase`, `./refusal.ts`). Every
+// command surface calls this instead of `applies()` where it paints a row.
+// Gesture-rate (menu render / popup state), never per keystroke.
+// ---------------------------------------------------------------------------
+
+/** A row's state and, when greyed, why. `reason` is `null` unless `state` is
+ *  `"disabled"`. */
+export interface ActionVerdict {
+  state: "ok" | "disabled" | "absent";
+  reason: string | null;
+}
+
+export function verdictOf(spec: ActionSpec, ctx: ActionContext): ActionVerdict {
+  const state = spec.applies(ctx);
+  if (state !== "disabled") return { state, reason: null };
+  return { state, reason: refusalPhrase(refusalOf(spec, ctx)) };
+}
+
+/** The refusal behind a `"disabled"` verdict — `verdictOf`'s ladder. Exported
+ *  for the per-gate unit tests; surfaces read `verdictOf`. */
+export function refusalOf(spec: ActionSpec, ctx: ActionContext): Refusal {
+  if (isCollabReadOnly(ctx)) {
+    return { cause: surfaceReadOnlyByHost(ctx.editor ?? ctx.view) ? "host" : "pen" };
+  }
+  if (selectionModeDisables(spec.selection, ctx)) return { cause: "needs-selection" };
+  return spec.refusal?.(ctx) ?? genericRefusal(ctx);
+}
+
+/**
+ * The base refusal a row with no declared `refusal` gets: a KIND refusal for a
+ * kind-bearing block ref (the grab handle on a block whose kind excludes the
+ * action), else a CONTAINER refusal naming the block the caret / selection
+ * sits in.
+ */
+function genericRefusal(ctx: ActionContext): Refusal {
+  const ref = ctx.ref;
+  if (ref.kind !== "cursor" && ref.kind !== "selection") {
+    return { cause: "kind", subject: isTextObjectKind(ref.kind) ? ref.kind : null };
+  }
+  return { cause: "container", subject: containerAt(ctx, ref.kind === "cursor" ? ref.pos : ref.from) };
+}
+
+/**
+ * The block a refusal at `pos` is ABOUT: the innermost ancestor that is a
+ * TextObject kind other than a plain paragraph (a paragraph inside a list item
+ * is refused for being in the LIST ITEM). `null` when no live doc is threaded
+ * or nothing more specific than a paragraph encloses `pos`.
+ */
+function containerAt(ctx: ActionContext, pos: number): string | null {
+  const doc = ctx.view?.state?.doc;
+  if (!doc || typeof doc.resolve !== "function") return null;
+  const $pos = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
+  for (let d = $pos.depth; d > 0; d--) {
+    const name = $pos.node(d).type.name;
+    if (name !== "paragraph" && isTextObjectKind(name)) return name;
+  }
+  return null;
+}
+
 /**
  * The per-kind action filter the live `DragHandleMenu` applies:
  * `TEXT_OBJECT_REGISTRY[kind].actions` is the allow-list; an id NOT in it
@@ -1246,6 +1338,24 @@ function cardActionAllowedForCtx(id: CardActionId, ctx: ActionContext): boolean 
   const from = ref.kind === "cursor" ? ref.pos : ref.from;
   const to = ref.kind === "cursor" ? ref.pos : ref.to;
   return blockRangeAllowsAction(doc, from, to, id as DragHandleAction);
+}
+
+/**
+ * The reason half of `cardActionAllowedForCtx` (task 968): the curated KIND set
+ * refusing (the policy layer) is a `kind` refusal; the positional layer refusing
+ * is a `container` refusal about the block the scope starts in. Asked only after
+ * the row's `applies()` greyed and the shared gates did not explain it.
+ */
+function cardRefusal(id: CardActionId, ctx: ActionContext): Refusal | null {
+  const ref = ctx.ref;
+  if (ref.kind !== "cursor" && ref.kind !== "selection") {
+    if (!kindAllowsCardAction(ref, id)) {
+      return { cause: "kind", subject: isTextObjectKind(ref.kind) ? ref.kind : null };
+    }
+    const scope = cardResolveScope(id, ctx);
+    return { cause: "container", subject: scope ? containerAt(ctx, scope.from) : null };
+  }
+  return { cause: "container", subject: containerAt(ctx, ref.kind === "cursor" ? ref.pos : ref.from) };
 }
 
 /**
@@ -1926,6 +2036,7 @@ const TEX_ACTION_ROW: ActionSpec = {
   // Shared block-atom gate (CHIP 6a: `blockApplies`). A function declaration, so
   // it is hoisted above this row's definition.
   applies: blockInsertApplies("texBlock", TEX_CAPTURE),
+  refusal: blockInsertRefusal("texBlock", TEX_CAPTURE),
   run: texRun,
 };
 
@@ -1999,6 +2110,7 @@ const FOREST_ACTION_ROW: ActionSpec = {
   slashName: "forest",
   // Shared block-atom gate (CHIP 6a: `blockApplies` + the container check).
   applies: blockInsertApplies("forestBlock"),
+  refusal: blockInsertRefusal("forestBlock"),
   run: forestRun,
 };
 
@@ -2066,6 +2178,7 @@ const REF_ACTION_ROW: ActionSpec = {
   surfaces: { slash: true, lightning: true },
   slashName: "ref",
   applies: inlineAtomInsertApplies("labelRef"),
+  refusal: inlineAtomInsertRefusal("labelRef"),
   run: refRun,
 };
 
@@ -2378,6 +2491,7 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
   surfaces: { slash: true, lightning: true },
   slashName: "ex",
   applies: blockInsertApplies("exampleBlock", EXAMPLE_CAPTURE),
+  refusal: blockInsertRefusal("exampleBlock", EXAMPLE_CAPTURE),
   run: exampleRun,
 };
 
@@ -2473,13 +2587,30 @@ function blockInsertApplies(
   nodeName: string,
   capture?: CaptureVocabulary,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
+  const refusal = blockInsertRefusal(nodeName, capture);
   return (ctx: ActionContext) => {
     const base = blockApplies(ctx);
     if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
+    return refusal(ctx) ? "disabled" : "ok";
+  };
+}
+
+/**
+ * The container + capture half of `blockInsertApplies`, answered as a REFUSAL
+ * (task 968) so the row's `refusal` and its `applies()` read ONE predicate:
+ * `null` = this half does not refuse. Asked by `applies()` only after the
+ * `blockApplies` base passed; asked by `verdictOf` only after `applies()` said
+ * `"disabled"` and the shared gates did not explain it.
+ */
+function blockInsertRefusal(
+  nodeName: string,
+  capture?: CaptureVocabulary,
+): (ctx: ActionContext) => Refusal | null {
+  return (ctx: ActionContext) => {
     const ref = ctx.ref;
-    if (ref.kind !== "cursor" && ref.kind !== "selection") return base;
+    if (ref.kind !== "cursor" && ref.kind !== "selection") return null;
     const doc = ctx.view?.state?.doc;
-    if (!doc || typeof doc.resolve !== "function") return base; // no live view → allow
+    if (!doc || typeof doc.resolve !== "function") return null; // no live view → allow
     const insertType = doc.type.schema.nodes[nodeName];
     // RANGE form (task 641 — the block twin of the 428 widening its inline
     // sibling below already has): a selection ref is DELETED before the block
@@ -2487,11 +2618,13 @@ function blockInsertApplies(
     // from prose into a `codeBlock` / `latexComment` greys the cell. A cursor
     // ref is the caret form (from === to).
     const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
-    if (!blockRangeHostsBlockInsert(doc, from, to, insertType)) return "disabled";
+    if (!blockRangeHostsBlockInsert(doc, from, to, insertType)) {
+      return { cause: "container", subject: containerAt(ctx, from) };
+    }
     // CAPTURE half (task 907): a WRAP row's run also refuses a selection its
     // capture cannot carry — ask the run's own question, not a copy of it.
-    if (capture && !wrapCaptureHolds(doc, from, to, capture)) return "disabled";
-    return "ok";
+    if (capture && !wrapCaptureHolds(doc, from, to, capture)) return { cause: "capture" };
+    return null;
   };
 }
 
@@ -2523,23 +2656,37 @@ function inlineAtomInsertApplies(
   nodeName: string,
   capture?: CaptureVocabulary,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
+  const refusal = inlineAtomInsertRefusal(nodeName, capture);
   return (ctx: ActionContext) => {
     const base = blockApplies(ctx);
     if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
+    return refusal(ctx) ? "disabled" : "ok";
+  };
+}
+
+/** The container + capture half of `inlineAtomInsertApplies` as a REFUSAL
+ *  (task 968) — see `blockInsertRefusal`. */
+function inlineAtomInsertRefusal(
+  nodeName: string,
+  capture?: CaptureVocabulary,
+): (ctx: ActionContext) => Refusal | null {
+  return (ctx: ActionContext) => {
     const ref = ctx.ref;
-    if (ref.kind !== "cursor" && ref.kind !== "selection") return base;
+    if (ref.kind !== "cursor" && ref.kind !== "selection") return null;
     const doc = ctx.view?.state?.doc;
-    if (!doc || typeof doc.resolve !== "function") return base; // no live view → allow
+    if (!doc || typeof doc.resolve !== "function") return null; // no live view → allow
     const atomType = doc.type.schema.nodes[nodeName];
-    if (!atomType) return base; // atom absent from this schema → allow (historic)
+    if (!atomType) return null; // atom absent from this schema → allow (historic)
     // RANGE form (task 428): a selection ref is REPLACED by the atom, so every
     // textblock it reaches must host it — a selection running from prose into a
     // `codeBlock` greys the cell. A cursor ref is the caret form (from === to).
     const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
-    if (!inlineRangeAllowsAtom(doc, from, to, atomType)) return "disabled";
+    if (!inlineRangeAllowsAtom(doc, from, to, atomType)) {
+      return { cause: "container", subject: containerAt(ctx, from) };
+    }
     // CAPTURE half (task 907) — see `blockInsertApplies`.
-    if (capture && !wrapCaptureHolds(doc, from, to, capture)) return "disabled";
-    return "ok";
+    if (capture && !wrapCaptureHolds(doc, from, to, capture)) return { cause: "capture" };
+    return null;
   };
 }
 
@@ -2816,6 +2963,7 @@ const INLINE_MATH_ACTION_ROW: ActionSpec = {
   // Task 396: the CONTAINER-aware inline gate, not the bare `blockApplies` —
   // `$x$` in a `codeBlock` / `latexComment` splits the verbatim block.
   applies: inlineAtomInsertApplies("inlineMath", MATH_CAPTURE),
+  refusal: inlineAtomInsertRefusal("inlineMath", MATH_CAPTURE),
   run: mathRun("inline"),
 };
 const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
@@ -2827,6 +2975,7 @@ const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
   surfaces: { lightning: true, typed: true },
   inputRulePattern: TYPED_LATEX_INPUT_RULES["display-math"],
   applies: blockInsertApplies("displayMath", MATH_CAPTURE),
+  refusal: blockInsertRefusal("displayMath", MATH_CAPTURE),
   run: mathRun("display"),
 };
 const FIGURE_ACTION_ROW: ActionSpec = {
@@ -2836,6 +2985,7 @@ const FIGURE_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { lightning: true },
   applies: blockInsertApplies("figureBlock"),
+  refusal: blockInsertRefusal("figureBlock"),
   run: figureRun,
 };
 const GRAPHICS_ACTION_ROW: ActionSpec = {
@@ -2845,6 +2995,7 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { lightning: true },
   applies: blockInsertApplies("graphicsBlock"),
+  refusal: blockInsertRefusal("graphicsBlock"),
   run: graphicsRun,
 };
 
@@ -3456,6 +3607,7 @@ function cardRow(id: CardActionId): ActionSpec {
     ...(isCitation ? { inputRulePattern: CITE_RE_FULL } : {}),
     ...(isFootnote ? { inputRulePattern: FOOTNOTE_INPUT_RULE_PATTERN } : {}),
     applies: (ctx) => cardApplies(id, ctx, selection),
+    refusal: (ctx) => cardRefusal(id, ctx),
     resolveScope: (ctx) => cardResolveScope(id, ctx) ?? { from: 0, to: 0 },
     run: isCitation ? citationRun : isFootnote ? footnoteRun : (ctx) => cardRun(id, ctx),
   };

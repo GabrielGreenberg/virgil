@@ -62,6 +62,7 @@ import type { EditorState } from "@tiptap/pm/state";
 import {
   SLASH_NAME_TO_ACTION_ID,
   VIRGIL_ACTION_REGISTRY,
+  verdictOf,
   type ActionContext,
 } from "@/lib/actions/action-registry";
 import { paragraphUuidAt } from "@/links/links";
@@ -142,6 +143,30 @@ export function slashCommandVerdict(
     // pre-398 behaviour — rather than greying a whole popup on a defect in one
     // row's predicate.
     return "ok";
+  }
+}
+
+/**
+ * WHY a greyed slash command is greyed (task 968) — `verdictOf`'s reason for the
+ * same row and the same ctx `slashCommandVerdict` asks, so the popup's
+ * explanation and its grey come from one gate. `null` for a command that is not
+ * disabled, an unmapped name, or a gate that throws (fail open, as above).
+ * Asked by the popup RENDER for its disabled rows only — never in the plugin's
+ * per-transaction state derivation.
+ */
+export function slashCommandReason(
+  view: EditorView,
+  name: string,
+  state?: EditorState,
+): string | null {
+  const id = SLASH_NAME_TO_ACTION_ID[name];
+  if (!id) return null;
+  const spec = VIRGIL_ACTION_REGISTRY[id];
+  if (!spec) return null;
+  try {
+    return verdictOf(spec, buildSlashActionContext(view, state)).reason;
+  } catch {
+    return null;
   }
 }
 

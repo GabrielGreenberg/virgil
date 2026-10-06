@@ -109,8 +109,10 @@ function renderPanel(editable: boolean) {
 
 const menuEl = () =>
   document.querySelector('[aria-label="Selection actions"]') as HTMLElement | null;
-const cell = (hint: string) =>
-  menuEl()!.querySelector(`button[data-hint="${hint}"]`) as HTMLButtonElement | null;
+// By NAME (`aria-label`), not `data-hint`: since task 968 a greyed cell's hint
+// also carries WHY it is grey, while its name stays the cell's title.
+const cell = (name: string) =>
+  menuEl()!.querySelector(`button[aria-label="${name}"]`) as HTMLButtonElement | null;
 
 afterEach(() => {
   cleanup();
@@ -138,6 +140,14 @@ describe("Task 294 — grid cells share one disabled affordance", () => {
     expect(color!.style.cursor).toBe(bold!.style.cursor);
     expect(color!.style.opacity).toBe("0.4");
     expect(bold!.style.opacity).toBe("0.4");
+
+    // Task 968: and both SAY why — the reason follows the name in the hint and
+    // is the cell's accessible description; the name itself is unchanged.
+    for (const [el, name] of [[color!, "Text color"], [bold!, "Bold (⌘B)"]] as const) {
+      expect(el.getAttribute("aria-label")).toBe(name);
+      expect(el.getAttribute("aria-description")).toBe("Your co-author has the pen");
+      expect(el.getAttribute("data-hint")).toBe(`${name} — Your co-author has the pen`);
+    }
   });
 
   it("enabled state keeps the pointer cursor on both cells (no behavior change)", () => {
@@ -149,5 +159,8 @@ describe("Task 294 — grid cells share one disabled affordance", () => {
     expect(bold!.style.cursor).toBe("pointer");
     expect(color!.style.opacity).toBe("1");
     expect(bold!.style.opacity).toBe("1");
+    // An enabled cell's hint is its name alone, with no description.
+    expect(bold!.getAttribute("data-hint")).toBe("Bold (⌘B)");
+    expect(bold!.hasAttribute("aria-description")).toBe(false);
   });
 });

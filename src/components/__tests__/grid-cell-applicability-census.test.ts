@@ -124,8 +124,13 @@ describe("task 397 — every grid cell asks its own row", () => {
     //   • the CARD-LIST probe, `entry.applies(…)`, evaluated inside the per-entry
     //     `.map` so each card row answers for itself (task 061).
     // Anything else is a probe of one row rendered on another cell — the defect.
-    const receivers = [...SRC.matchAll(/([A-Za-z_$][\w$]*(?:\[[^\]]*\])?!?)\.applies\s*\(/g)]
-      .map((m) => m[1]!);
+    //
+    // Task 968: `verdictOf(row, ctx)` is the same question WITH its reason, so
+    // its row argument is held to the same two shapes.
+    const receivers = [
+      ...[...SRC.matchAll(/([A-Za-z_$][\w$]*(?:\[[^\]]*\])?!?)\.applies\s*\(/g)].map((m) => m[1]!),
+      ...[...SRC.matchAll(/\bverdictOf\s*\(\s*([A-Za-z_$][\w$]*(?:\[[^\]]*\])?!?)\s*,/g)].map((m) => m[1]!),
+    ];
     expect(receivers.length, "the applies() needle is stale").toBeGreaterThanOrEqual(2);
     for (const r of receivers) {
       expect(
