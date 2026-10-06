@@ -2448,11 +2448,14 @@ change. Centering a surgical confirm asks the user to approve a destruction
 with nothing on screen binding the question to its target. `anchorRef` keeps
 `variant="modal"` (scrim stays; `system-dialog.tsx` places it on the anchor
 and clamps to the viewport) — a placement of the modal variant, not a variant of
-its own, and the imperative `useConfirmDialog()` correctly centers because it has
-no source element. The codebase is not uniform yet: the card-delete family
-(`TodoRow`, the `panel-primitives` card delete) anchors, while
-`TexBlockNodeView`, `AIWindow` and the `EditorPane` archive confirms still
-center and should adopt `anchorRef` when next touched.
+its own. The imperative `useConfirmDialog().confirm()` centers by default (it
+has no source element) but takes the same `anchorRef` when the caller has one.
+The whole card-delete family anchors through ONE door, `usePanelCardTryDelete`,
+which REQUIRES the card's `anchorRef` (task 976) — so every kind's "This item
+has text" opens beside its card; the shell (`PanelCard`) also arms the
+Delete/Backspace key from the same trash thunk, so a card cannot offer one
+without the other. Still centered, and due `anchorRef` when next touched:
+`TexBlockNodeView`, `AIWindow` and the `EditorPane` archive confirms.
 
 **Two answers plus a way out.** `ConfirmDialog` takes an optional
 `secondaryLabel`/`onSecondary` pair rendering a third button between Cancel and

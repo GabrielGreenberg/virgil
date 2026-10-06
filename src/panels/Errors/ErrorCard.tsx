@@ -6,7 +6,6 @@ import {
   PanelCard,
   cardTitleStyle,
   compressedBodyStyle,
-  useCardDeleteKey,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
@@ -139,7 +138,6 @@ export function ErrorCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const compressed = !expanded;
   const compressedLines = useCompressedLines();
-  const handleDeleteKey = useCardDeleteKey(selected, () => onDismiss(err.id));
 
   // ONE jumpability answer per card, from the mount's declared semantics
   // (task 125) — used by BOTH the action (the body click below) and the
@@ -172,7 +170,6 @@ export function ErrorCard({
       onTrashClick={() => onDismiss(err.id)}
       cardId={err.id}
       extraCardClass=""
-      tabIndex={selected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(err.id);
@@ -182,7 +179,6 @@ export function ErrorCard({
         // highlight, so a refused jump costs the user nothing.
         jumpFromCard(e.currentTarget as EventTarget & HTMLElement);
       }}
-      onKeyDown={handleDeleteKey}
       kind="error"
       footnoteBadge={<ErrorBadge severity={err.severity} />}
       canJump={canJump}

@@ -40,6 +40,7 @@ import type { Editor } from "@tiptap/react";
 import { getTextAnchor, removeLinkedAnchor, type CardWithLinks } from "@/links/links";
 import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
+  CARD_DELETE_CONFIRM_MESSAGE,
   cardHasContent,
   type CardContentKind,
 } from "@/cards/has-content";
@@ -170,7 +171,7 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
       : handlers.contentKind;
   if (cardHasContent(contentKind, card)) {
     const ok = await confirm({
-      message: "This item has text. Delete it?",
+      message: CARD_DELETE_CONFIRM_MESSAGE,
       confirmLabel: "Delete",
       tone: "danger",
     });

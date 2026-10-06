@@ -83,6 +83,12 @@ function isAiAuthored(rec: Record<string, unknown>): boolean {
   return rec.author === "ai";
 }
 
+/** The ONE wording of the "this card has content — really delete it?" confirm
+ *  (task 976). Every door that asks it — the panel card's trash / Delete key
+ *  (`usePanelCardTryDelete`), the margin marker (`deleteMarginItem`), the
+ *  lifecycle runner — reads this string, so the question cannot drift by door. */
+export const CARD_DELETE_CONFIRM_MESSAGE = "This item has text. Delete it?";
+
 /**
  * True iff the card has user-authored content worth warning about before
  * destruction. The single registry-driven walker over the kind's declared
