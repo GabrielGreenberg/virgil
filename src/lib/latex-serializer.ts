@@ -52,6 +52,7 @@ import {
   projectDetectableLatex,
   startsBlockBoundary,
   wrapVerbatimEnvBody,
+  TEX_BLOCK_END_ESCAPE,
 } from "@/lib/latex-lexer";
 import type { BibFamily } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
@@ -591,9 +592,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "texBlock": {
       // Raw LaTeX passthrough. Contents emit verbatim between comment
       // sentinels so the compiler runs them as LaTeX; the parser
-      // recovers them by matching uuid. We escape any literal
-      // `%!vtex:end` in the body so a pasted snippet can't terminate
-      // the block early.
+      // recovers them by matching uuid. Any literal `%!vtex:end` in the
+      // body is escaped so a pasted snippet can't terminate the block
+      // early — injectively (task 973): `TEX_BLOCK_END_ESCAPE` stuffs the
+      // whole `%!v *tex:end` family, so a typed `%!v tex:end` survives too.
       const uuid = (node.attrs?.uuid as string) || "";
       const rawCode = (node.attrs?.code as string) || "";
       // Raw passthrough is unmodeled: run the shared vocabulary over its OWN
@@ -602,7 +604,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // vocabulary AND its inertness projection, so declared and detected can't
       // diverge — the projection is inside `declareFromRawLatex`, never here).
       declareFromRawLatex(rawCode);
-      const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
+      const escaped = TEX_BLOCK_END_ESCAPE.escape(rawCode);
       // carried-anchor-exempt: the anchor rides the `%!vtex:begin <uuid>`
       // SENTINEL LINE, not the body's last byte — so this arm is immune to the
       // task-405 class BY CONSTRUCTION rather than by placing the anchor well.

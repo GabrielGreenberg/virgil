@@ -76,6 +76,7 @@ import {
   endsParagraphAt,
   isLoneLineBlockCommand,
   wrapVerbatimEnvBody,
+  TEX_BLOCK_END_ESCAPE,
 } from "@/lib/latex-lexer";
 import {
   DEFAULT_EXAMPLE_DIALECT,
@@ -2179,9 +2180,9 @@ function parseBody(
         // unrelated content can lie past it.
         const advanceTo = eolAfterEnd === -1 ? ctx.src.length : eolAfterEnd + 1;
         let code = ctx.src.slice(bodyStart, bodyEnd);
-        // Unescape any `%!v tex:end` → `%!vtex:end` that the serializer
-        // emitted to protect user-pasted markers from terminating early.
-        code = code.replace(/%!v tex:end/g, "%!vtex:end");
+        // Inverse of the serializer's sentinel guard — one injective pair
+        // (task 973), so every body round-trips byte-for-byte.
+        code = TEX_BLOCK_END_ESCAPE.unescape(code);
         ctx.pos = advanceTo;
         parent.content.push({
           type: "texBlock",
