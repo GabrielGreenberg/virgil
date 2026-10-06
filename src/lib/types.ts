@@ -260,6 +260,15 @@ export interface ArchivedSnippet {
    *  sweep-to-linkless path, so a clip that HAD a link and lost it stays
    *  intent-less ⇒ orphaned. Absent ≡ false. */
   unanchored?: boolean;
+  /** RETURN SIDE (task 965). Restore puts an anchored excerpt back at its live
+   *  anchor — just AFTER the anchor block by default, because the archive
+   *  gesture anchors the clip to the paragraph PRECEDING the passage (task
+   *  491). When the capture began at the document's first block there is no
+   *  preceding paragraph and the anchor fell FORWARD; this field then names
+   *  that block's uuid, and Restore lands just BEFORE it. Read only while the
+   *  clip's live anchor IS that block — a clip the user re-anchored elsewhere
+   *  lands after its new anchor. Absent ≡ after. */
+  returnBefore?: string;
   /** All paragraphs this snippet is anchored to. See src/links/links.ts
    *  for helpers (getLinkedTextObjectIds, addTextObjectLink, …). */
   links: Link[];

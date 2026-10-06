@@ -25,7 +25,7 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { restoreExcerptAtCaret } from "../restore-excerpt";
+import { restoreExcerptAtAnchor, restoreExcerptAtCaret } from "../restore-excerpt";
 
 const PARA_UUID = "p00001";
 
@@ -452,5 +452,82 @@ describe("restoreExcerptAtCaret — the landing half (task 564)", () => {
     caretInSecondBlock(editor);
     expect(restoreExcerptAtCaret(editor, excerpt)).toBe(true);
     expect(blocks(editor).map(([t]) => t)).toEqual(["paragraph", "heading", "paragraph", "paragraph"]);
+  });
+});
+
+describe("restoreExcerptAtAnchor — the return address (task 965)", () => {
+  const para = (uuid: string, text: string) => ({
+    type: "paragraph",
+    attrs: { uuid },
+    content: [{ type: "text", text }],
+  });
+  const THREE = { type: "doc", content: [para("p1", "first"), para("p3", "third")] };
+  const P2 = { type: "doc", content: [para("p2", "second")] };
+  const texts = (editor: Editor) => {
+    const out: string[] = [];
+    editor.state.doc.forEach((n) => out.push(n.textContent));
+    return out;
+  };
+
+  it("lands just AFTER the anchor, whatever the caret — and never splits the caret's paragraph", () => {
+    const editor = mountEditor(THREE, []);
+    // Caret in the MIDDLE of "third" — the pre-965 door would split it.
+    let p3 = -1;
+    editor.state.doc.forEach((n, off) => {
+      if (n.attrs.uuid === "p3") p3 = off;
+    });
+    editor.commands.setTextSelection(p3 + 3);
+    expect(restoreExcerptAtAnchor(editor, P2, { uuid: "p1", side: "after" })).toBe(true);
+    expect(texts(editor)).toEqual(["first", "second", "third"]);
+  });
+
+  it("side 'before' lands just BEFORE the anchor (the capture began the document)", () => {
+    const editor = mountEditor({ type: "doc", content: [para("p3", "third")] }, []);
+    expect(
+      restoreExcerptAtAnchor(editor, { type: "doc", content: [para("p1", "first")] }, {
+        uuid: "p3",
+        side: "before",
+      }),
+    ).toBe(true);
+    expect(texts(editor)).toEqual(["first", "third"]);
+  });
+
+  it("an anchor nested in a list lands beside the WHOLE list — never inside it", () => {
+    const editor = mountEditor(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: [
+              { type: "listItem", attrs: { uuid: "li1" }, content: [para("lp1", "one")] },
+              { type: "listItem", attrs: { uuid: "li2" }, content: [para("lp2", "two")] },
+            ],
+          },
+          para("p3", "third"),
+        ],
+      },
+      [],
+    );
+    expect(restoreExcerptAtAnchor(editor, P2, { uuid: "li1", side: "after" })).toBe(true);
+    const types: string[] = [];
+    editor.state.doc.forEach((n) => types.push(n.type.name));
+    expect(types).toEqual(["bulletList", "paragraph", "paragraph"]);
+    expect(texts(editor)).toEqual(["onetwo", "second", "third"]);
+  });
+
+  it("an address not in the live doc answers null (no address) and touches nothing", () => {
+    const editor = mountEditor(THREE, []);
+    const before = editor.state.doc.toJSON();
+    expect(restoreExcerptAtAnchor(editor, P2, { uuid: "gone", side: "after" })).toBeNull();
+    expect(editor.state.doc.toJSON()).toEqual(before);
+  });
+
+  it("leg 1 still applies: a body the schema cannot hold is refused, doc untouched", () => {
+    const editor = mountEditor(THREE, []);
+    const before = editor.state.doc.toJSON();
+    const bad = { type: "doc", content: [{ type: "noSuchNode" }] };
+    expect(restoreExcerptAtAnchor(editor, bad, { uuid: "p1", side: "after" })).toBe(false);
+    expect(editor.state.doc.toJSON()).toEqual(before);
   });
 });

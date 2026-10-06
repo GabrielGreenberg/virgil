@@ -51,6 +51,7 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
     // Carry the born-free intent through load (absent ≡ false); the
     // free-vs-orphaned split is derived from it via resolveAnchorState.
     unanchored: s.unanchored,
+    returnBefore: typeof s.returnBefore === "string" && s.returnBefore ? s.returnBefore : undefined,
     links: migrateCardLinks("archive", raw),
   }, ["text"]);
 }
@@ -73,7 +74,10 @@ export function useArchive(docId: string | null) {
     });
 
   const archiveContent = useCallback(
-    (content: unknown, opts?: { unanchored?: boolean }): ArchivedSnippet => {
+    (
+      content: unknown,
+      opts?: { unanchored?: boolean; returnBefore?: string },
+    ): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
         // T6/C12 (FORK-1): blank title + machine-default provenance.
@@ -85,6 +89,8 @@ export function useArchive(docId: string | null) {
         // snippet is being created with no anchor target, so a link-less clip
         // reads "free" (neutral) rather than "orphaned" (red). Absent ≡ false.
         ...(opts?.unanchored ? { unanchored: true } : {}),
+        // Return side (task 965) — only the capture knows it. Absent ≡ after.
+        ...(opts?.returnBefore ? { returnBefore: opts.returnBefore } : {}),
         links: [],
       };
       update((prev) => ({ snippets: [...prev.snippets, snippet] }));

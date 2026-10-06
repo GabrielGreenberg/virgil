@@ -491,7 +491,7 @@ describe("task 393 — census: one door, and nothing re-derives it", () => {
     for (const rel of captureSites) {
       const src = codeOnly(fs.readFileSync(path.join(REPO, rel), "utf8"));
       expect(src, `${rel} must resolve the surviving neighbour`).toMatch(
-        /\bresolveDisplacedAnchorTarget\s*\(/,
+        /\bresolveDisplacedAnchor(?:Target|Placement)\s*\(/,
       );
       expect(src, `${rel} must retarget the displaced anchors`).toMatch(
         /\banchorRetarget\.retarget\s*\(/,
@@ -499,7 +499,8 @@ describe("task 393 — census: one door, and nothing re-derives it", () => {
       // ONE neighbour per gesture: the fresh snippet and the cards it displaced
       // must not be resolved twice, or they land on different paragraphs and
       // "stack up" is false.
-      const resolves = src.match(/\bresolveDisplacedAnchorTarget\s*\(/g) ?? [];
+      // (`…Placement` is the same resolution plus its side — task 965.)
+      const resolves = src.match(/\bresolveDisplacedAnchor(?:Target|Placement)\s*\(/g) ?? [];
       expect(resolves.length, `${rel} resolves the neighbour more than once`).toBe(1);
     }
   });

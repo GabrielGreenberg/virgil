@@ -243,6 +243,25 @@ export function resolveDisplacedAnchorTarget(
   to: number,
   removed: ReadonlySet<string>,
 ): AnchorableBlock | null {
+  return resolveDisplacedAnchorPlacement(doc, from, to, removed)?.target ?? null;
+}
+
+/**
+ * `resolveDisplacedAnchorTarget`'s answer PLUS which side of the captured
+ * range it sits on (task 965). Rungs 1 and 2 answer a block at or ABOVE the
+ * range — the passage came from just after it. Rung 3 (the forward fall at the
+ * document's first block) answers a block BELOW — the passage came from just
+ * before it. That direction is a fact only the capture can see: once the range
+ * is gone, "the clip is anchored to B" no longer says which side of B it left,
+ * so an archive that wants to put its text back where it came from must record
+ * it now (`ArchivedSnippet.returnBefore`).
+ */
+export function resolveDisplacedAnchorPlacement(
+  doc: PMNode,
+  from: number,
+  to: number,
+  removed: ReadonlySet<string>,
+): { target: AnchorableBlock; below: boolean } | null {
   // Rung 1 — a partially-captured host block keeps its identity.
   try {
     const $from = doc.resolve(Math.max(0, Math.min(from, doc.content.size)));
@@ -256,7 +275,10 @@ export function resolveDisplacedAnchorTarget(
         // sits strictly inside it, and `collectRemovedAnchorUuids` counts only
         // blocks the range wholly contains — so no `removed` check is asked
         // here (task 937 deleted one that could never fire).
-        return { uuid: uuid as string, kind: node.type.name as TextObjectKind };
+        return {
+          target: { uuid: uuid as string, kind: node.type.name as TextObjectKind },
+          below: false,
+        };
       }
     }
   } catch {
@@ -274,11 +296,11 @@ function neighbourAnchor(
   from: number,
   to: number,
   removed: ReadonlySet<string>,
-): AnchorableBlock | null {
+): { target: AnchorableBlock; below: boolean } | null {
   const prev = findPreviousAnchorableBlock(doc, from);
-  if (prev && !removed.has(prev.uuid)) return prev;
+  if (prev && !removed.has(prev.uuid)) return { target: prev, below: false };
   const next = findNextAnchorableBlock(doc, to);
-  if (next && !removed.has(next.uuid)) return next;
+  if (next && !removed.has(next.uuid)) return { target: next, below: true };
   return null;
 }
 

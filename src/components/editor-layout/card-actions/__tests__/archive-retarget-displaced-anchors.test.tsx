@@ -163,7 +163,7 @@ function makeCardStore() {
 
 function makeHarness(editor: Editor, handlers: Record<MarginItemKind, MarginItemHandlers>) {
   const notify = vi.fn();
-  const archiveCalls: { paragraphId: unknown }[] = [];
+  const archiveCalls: { paragraphId: unknown; returnBefore?: unknown }[] = [];
   let n = 0;
   const nextId = () => `card-${++n}`;
 
@@ -176,8 +176,8 @@ function makeHarness(editor: Editor, handlers: Record<MarginItemKind, MarginItem
     createCitation: () => ({ id: nextId() }),
     createCutterComment: () => ({ id: nextId() }),
     createReportRequest: () => ({ id: nextId() }),
-    createArchiveSnippet: (opts: { paragraphId?: unknown }) => {
-      archiveCalls.push({ paragraphId: opts.paragraphId });
+    createArchiveSnippet: (opts: { paragraphId?: unknown; returnBefore?: unknown }) => {
+      archiveCalls.push({ paragraphId: opts.paragraphId, returnBefore: opts.returnBefore });
       return { id: nextId() };
     },
   } as unknown as DragHandleActionsDeps["cardCreation"];
@@ -297,6 +297,19 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
     // orphaned: nothing above the first block to fall back on.
     expect(store.pidsOf("archive", "first-clip")).toEqual(["p-target"]);
     expect(h.archiveCalls[0].paragraphId).toBe("p-target");
+    // Task 965: the passage left from just BEFORE its anchor, and only the
+    // capture can see that — so the snippet records it for Restore.
+    expect(h.archiveCalls[0].returnBefore).toBe("p-target");
+  });
+
+  it("an ordinary (preceding-neighbour) archive records NO return side — absent ≡ after (task 965)", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const h = makeHarness(editor, makeCardStore().handlers);
+
+    await h.dispatch("archive", TARGET_REF);
+
+    expect(h.archiveCalls[0].paragraphId).toBe("p-before");
+    expect(h.archiveCalls[0].returnBefore).toBeUndefined();
   });
 
   it("a plain DELETE still ORPHANS — the two actions mean different things", async () => {

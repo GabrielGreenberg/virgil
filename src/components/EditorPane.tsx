@@ -63,6 +63,7 @@ import {
   type RefObject,
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
+import type { ExcerptReturnAddress } from "@/lib/tiptap/restore-excerpt";
 import VirgilEditor, { type EditorHandle } from "./Editor";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SCROLL_PERSIST } from "@/lib/layout-gesture-probe";
@@ -4974,9 +4975,20 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
   const handleArchiveRestore = useCallback((id: string) => {
     const origin = archiveHook.snippetOrigin(id);
+    // RETURN ADDRESS (task 965): an anchored clip goes back where it came
+    // from, read off the SAME authority its Jump lands on (`jumpTarget`), so
+    // Restore and Jump can never name two different places. Just after that
+    // block — or just before it when the capture recorded that the passage
+    // began the document (`returnBefore`, honoured only while the live anchor
+    // is still that block). No live anchor → no address → the caret.
+    const snippet = archiveHook.snippets.find((s) => s.id === id);
+    const anchorId = snippet ? anchorPass.jumpTarget(snippet)?.paragraphId ?? null : null;
+    const address: ExcerptReturnAddress | null = anchorId
+      ? { uuid: anchorId, side: snippet?.returnBefore === anchorId ? "before" : "after" }
+      : null;
     const restored = archiveHook.restoreSnippet(
       id,
-      (content) => innerRef.current?.restoreArchive(content) ?? false,
+      (content) => innerRef.current?.restoreArchive(content, address) ?? false,
       (panel, card) => reinstateByPanel[panel](card),
     );
     if (!restored && origin && origin.kind !== "excerpt") {
@@ -4991,6 +5003,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               "a card with the same id is already there. Nothing was removed from the Archive."
             : "Couldn't restore this card: its record of where it came from is " +
               "unreadable. Nothing was removed from the Archive.",
+      });
+      return;
+    }
+    if (!restored && address) {
+      // It had somewhere to go and still didn't land — a read-only host, or a
+      // body the document's schema can't hold. Moving the caret would not help,
+      // so don't tell the user to.
+      dragHandleNotify({
+        message:
+          "Couldn't put this back where it came from. Nothing was removed from the Archive.",
       });
       return;
     }
@@ -5016,7 +5038,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // that every card consumes — the same stability argument
     // `card-archive-actions` makes in its module doc. `restoreSnippet` is
     // stable per doc (it reads the live snippets off `stateRef`).
-  }, [archiveHook.restoreSnippet, archiveHook.snippetOrigin, reinstateByPanel, dragHandleNotify]);
+  }, [
+    archiveHook.restoreSnippet,
+    archiveHook.snippetOrigin,
+    archiveHook.snippets,
+    anchorPass,
+    reinstateByPanel,
+    dragHandleNotify,
+  ]);
   const handleArchiveDelete = useCallback((id: string) => {
     archiveHook.deleteSnippet(id);
     setSelectedArchiveId(null);
