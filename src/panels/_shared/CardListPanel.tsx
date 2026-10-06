@@ -96,7 +96,6 @@ export interface CardListPanelProps<T> {
   // Outline) pass neither, so `CardListPanel` is their only producer. Read that
   // as a pass-through contract, not as a slot a panel is expected to fill: a
   // panel that wants a badge derives it here.
-  title?: string;
   onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a small dropdown of choices
    *  instead of firing `onAdd`. Used by panels hosting more than one
@@ -129,7 +128,6 @@ export function CardListPanel<T>({
   onSelect,
   emptyState,
   listTrailing,
-  title,
   onAdd,
   onAddOptions,
   headerLeading,
@@ -234,7 +232,6 @@ export function CardListPanel<T>({
     <CardDisplayProvider value={{ compressedLines: DOCKED_COMPRESSED_LINES }}>
     <Panel
       kind={kind}
-      title={title}
       count={shownCount}
       countLabel={archivable ? archiveViewBadgeLabel(view) : undefined}
       onAdd={handleAdd}

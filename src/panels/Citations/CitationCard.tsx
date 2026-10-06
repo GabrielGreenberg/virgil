@@ -36,12 +36,10 @@ import { FONT_STACKS } from "@/lib/panel-typography";
 import { linkCardKey } from "@/links/link-dom-contract";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import BibEntryCard from "@/components/BibEntryCard";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
-import { popKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { useLibraryEntryLookup } from "@/hooks/useLibrary";
 import { OpenEntryLink } from "@/components/library/open-library-entry";
@@ -291,7 +289,6 @@ export interface CitationCardProps {
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   onDelete?: (id: string) => void;
   /** True when this card is a placeholder for a not-yet-created citation
@@ -321,7 +318,6 @@ export function CitationCard({
   wrapperClassName,
   wrapperStyle,
   extraDataAttrs,
-  onTogglePopout,
   isPoppedOut,
   onDelete,
   isDraft = false,
@@ -332,16 +328,22 @@ export function CitationCard({
   const lifetime = useViewLifetime();
   const theme = useCardKindTheme("citation");
   const bodyStyle = usePanelBodyStyle("citation");
-  const popped = usePoppedCards();
-  const cardKey = popKey("citations", cit.id);
   // Shared per-citekey library resolver — lets each cited reference offer the
   // same "open entry" affordance as the bibliography card (modular reuse).
   const lookupEntry = useLibraryEntryLookup();
-  const ac = useAnchoredCard({ kind: "citation", id: cit.id });
+  // The jump target exists only for a citation in the prose; a draft or a
+  // parked citation has no `\cite{}` atom to scroll to.
+  const { ac, cardKey, compressed: shellCompressed, shell } = useAnchoredCardShell({
+    kind: "citation",
+    id: cit.id,
+    isPoppedOut,
+    onSelect,
+    onJump: isAnchored ? onJump : undefined,
+  });
   const cardStore = useCardStore();
-  const isExpanded = isDraft || ac.expanded;
+  // A draft pins its body open (`isDraft || ac.expanded`).
+  const compressed = !isDraft && shellCompressed;
   const isHaloed = ac.selected || isSelected;
-  const compressed = !isExpanded && !isPoppedOut;
 
   // CI-F7-01 / OMNI-F7-01: deleting a citation removes the in-text `\cite{}`
   // atom. Route the trash through the SAME content-aware confirm every other
@@ -1015,12 +1017,6 @@ export function CitationCard({
   // a second speller here is exactly the fork the 503 cluster legislates
   // against. See `themedCardStyle` / `CARD_DROP_TARGET_RING`.
 
-  const onToggleFromCtx =
-    onTogglePopout ??
-    (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
-
   const types = bibPackage === "natbib" ? NATBIB_TYPES : BIBLATEX_TYPES;
 
   /* ── Preview (rendered HTML) ─────────────────────────────────────── */
@@ -1049,23 +1045,18 @@ export function CitationCard({
 
   const card = (
     <PanelCard
+      {...shell}
       data-link-card={linkCardKey("citation", cit.id)}
       data-pristine-card-id={cit.id}
-      data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       theme={theme}
       selected={isHaloed}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
       onTrashClick={!compressed && onDelete ? tryDelete : undefined}
       // A draft is not yet a stored citation, so it has no identity to archive
       // — withholding the id withholds the shell's archive button (task 822).
       cardId={isDraft ? undefined : cit.id}
-      cardKey={cardKey}
       dropDisabled={dropDisabled}
       isCollapsed={compressed}
-      onToggleExpanded={ac.onToggleExpanded}
       // Backlog #13: a draft forces `isExpanded` true (`isDraft || ac.expanded`),
       // so a header toggle would be silently broken — while drafting, the
       // header click SELECTS only and never flips the (pinned-open) body.
@@ -1086,27 +1077,12 @@ export function CitationCard({
       onDrop={handleCardDrop}
       className={wrapperClassName}
       style={wrapperStyle}
-      onClick={(e) => {
-        if (isDraft) return;
-        const card = (e.currentTarget as HTMLElement).closest(
-          "[data-card]",
-        ) as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect,
-          jump: isAnchored ? () => onJump(card) : undefined,
-        });
-      }}
-      onMouseEnter={() => cardStore.setHoverFor(ac.ref, true)}
-      onMouseLeave={() => cardStore.setHoverFor(ac.ref, false)}
+      // A draft is not yet a stored citation: its body click is inert and it
+      // offers no jump. (A parked citation has no `\cite{}` to jump to, so the
+      // shell's `canJump` already reads false for it.)
+      onClick={(e) => { if (!isDraft) shell.onClick(e); }}
       kind="citation"
-      canJump={!isDraft}
-      onJump={(e) =>
-        onJump(
-          (e.currentTarget as HTMLElement).closest(
-            "[data-card]",
-          ) as HTMLElement | null,
-        )
-      }
+      canJump={!isDraft && shell.canJump}
       // Task 316: one declaration for the parked look, its tooltip and the key
       // that makes the gesture reachable. `canAnchor` UNIFIES the two questions
       // that used to be asked separately — the tooltip was gated on `!isDraft`

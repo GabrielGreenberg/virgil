@@ -11,17 +11,13 @@ import {
   useCardDeleteKey,
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getTextAnchor, type CardWithLinks } from "@/links/links";
 import { isModeB } from "@/links/_shared/types";
 import { useLinkedAnchorText } from "@/links/_shared/useLinkedAnchorText";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { cardPopKey } from "@/panels/panel-registry";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { FONT_SERIF } from "@/lib/font-stacks";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { CapturedPassage, plainPassageContent } from "@/panels/_shared/captured-passage";
@@ -34,8 +30,6 @@ export function HighlightCard({
   onDelete,
   onSelect,
   onJump,
-  onHoverChange,
-  onTogglePopout,
   isPoppedOut,
   extraDataAttrs,
 }: {
@@ -47,8 +41,6 @@ export function HighlightCard({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
-  onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
@@ -65,19 +57,14 @@ export function HighlightCard({
   // through the card-anchor authority's gate, so the card re-derives nothing.
   // (The old local `isOrphaned` could never be true — it required text with
   // no anchor, and the text came FROM the anchor.)
-  const canJump = !!onJump;
-  const popped = usePoppedCards();
-  const cardKey = cardPopKey("highlight", card.id);
-  const onToggleFromCtx =
-    onTogglePopout ??
-    (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
-
-  const ac = useAnchoredCard({ kind: "highlight", id: card.id });
-  const cardStore = useCardStore();
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedLines, shell } = useAnchoredCardShell({
+    kind: "highlight",
+    id: card.id,
+    isPoppedOut,
+    onSelect: () => onSelect(card.id),
+    onJump,
+  });
   const isSelected = ac.selected || selected;
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedLines = useCompressedLines();
   // The keyboard path has no button for the host to withhold, so it arms the
   // permit-asking executor (task 637's door), never a raw `onDelete` (task 702).
   // `cardHasContent` is false for a highlight, so no confirm is ever raised.
@@ -110,40 +97,19 @@ export function HighlightCard({
 
   const cardEl = (
     <PanelCard
+      {...shell}
       ref={cardRef}
       data-highlight-entry={card.id}
-      data-card-key={cardKey}
       data-pristine-card-id={card.id}
       theme={theme}
       selected={isSelected}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      cardKey={cardKey}
       isCollapsed={compressed}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
       cardId={card.id}
       kind="highlight"
       kindOptions={onConvert ? morphOptionsFor("highlight") : undefined}
       onKindChange={onConvert ? (k) => onConvert("highlight", card.id, k) : undefined}
-      canJump={canJump}
-      onJump={(e) => {
-        if (onJump)
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-      }}
       tabIndex={isSelected ? 0 : -1}
-      onClick={(e) => {
-        e.stopPropagation();
-        const el = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(card.id),
-          jump: onJump ? () => onJump(el) : undefined,
-        });
-      }}
-      onMouseEnter={() => { cardStore.setHoverFor(ac.ref, true); onHoverChange?.(true); }}
-      onMouseLeave={() => { cardStore.setHoverFor(ac.ref, false); onHoverChange?.(false); }}
       onKeyDown={handleDeleteKey}
       className="mb-2"
       {...(extraDataAttrs ?? {})}

@@ -1914,8 +1914,7 @@ export function EditableCard({
       className={wrapperClassName}
       style={wrapperStyle}
       onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
-      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
-      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
+      onHoverChange={onHoverChange}
     >
       {/* Body. When the partner has claimed this card, dim it and gate
           pointer events so the user can't accidentally focus into it.
@@ -2736,6 +2735,12 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  (the AF window chrome). Only ever true together with `isPoppedOut`; the
    *  DOCKED path never sets it, so the docked header is untouched. */
   chromeless?: boolean;
+  /** Pointer hover, as one boolean channel: true on mouseenter, false on
+   *  mouseleave. The card shell's ONE hover spelling (task 963) — anchored
+   *  cards publish it to the card store via `useAnchoredCardShell`, and
+   *  `EditableCard` forwards its own `onHoverChange` here. Composes with any
+   *  caller `onMouseEnter`/`onMouseLeave`. */
+  onHoverChange?: (hovering: boolean) => void;
 }
 
 /** Cursor distance (px) the user must drag from a card's header before
@@ -2783,6 +2788,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onHeaderActivate,
     headerDisclosure = true,
     onMouseDown: callerMouseDown,
+    onMouseEnter: callerMouseEnter,
+    onMouseLeave: callerMouseLeave,
+    onHoverChange,
     kind,
     kindLabelOverride,
     kindOptions,
@@ -3161,6 +3169,14 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         if (e.defaultPrevented) return;
         onWrapperMouseDown(e);
       }}
+      onMouseEnter={callerMouseEnter || onHoverChange ? (e) => {
+        callerMouseEnter?.(e);
+        onHoverChange?.(true);
+      } : undefined}
+      onMouseLeave={callerMouseLeave || onHoverChange ? (e) => {
+        callerMouseLeave?.(e);
+        onHoverChange?.(false);
+      } : undefined}
       draggable={draggable}
       {...rest}
     >

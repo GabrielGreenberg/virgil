@@ -2,18 +2,12 @@
 
 import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
-import {
-  EditableCard,
-  makeCompressedSummary,
-} from "@/components/panel-primitives";
+import { EditableCard } from "@/components/panel-primitives";
 import { bodyVariantForCardKind } from "@/cards/predicates";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { cardBodyPlaceholder } from "@/panels/panel-registry";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 
 export function ArchiveCard({
   snippet,
@@ -28,7 +22,6 @@ export function ArchiveCard({
   getCitationDisplayText,
   onCitationCreated,
   extraDataAttrs,
-  onTogglePopout,
   isPoppedOut,
 }: {
   snippet: ArchivedSnippet;
@@ -43,31 +36,25 @@ export function ArchiveCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const isAnchored = !orphaned;
-  const cardStore = useCardStore();
   const theme = useCardKindTheme("archive");
-  const popped = usePoppedCards();
-  const cardKey = popKey("archive", snippet.id);
   const handleEditContent = (json: JSONContent) => {
     onEdit(snippet.id, normalizeRichContent(json));
   };
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
-  const ac = useAnchoredCard({ kind: "archive", id: snippet.id });
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedSummary, shell } = useAnchoredCardShell({
+    kind: "archive",
+    id: snippet.id,
+    isPoppedOut,
+    onSelect: () => onSelect(snippet.id),
+    onJump: isAnchored ? onJump : undefined,
+    summaryContent: snippet.content,
+  });
   const isSelected = ac.selected || selected;
-  const compressedLines = useCompressedLines();
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedSummary = compressed
-    ? (makeCompressedSummary(snippet.content, compressedLines) || "")
-    : undefined;
   const card = (
     <EditableCard
+      {...shell}
       id={snippet.id}
       cardKind="archive"
       kind="archive"
@@ -78,16 +65,6 @@ export function ArchiveCard({
       onEditorFocus={onEditorFocus}
       bodyTitle={snippet.title}
       onBodyTitleChange={(t) => onUpdateTitle(snippet.id, t)}
-      canJump={isAnchored && !!onJump}
-      onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
-      onClick={(e) => {
-        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(snippet.id),
-          jump: isAnchored && onJump ? () => onJump(card) : undefined,
-        });
-      }}
-      onHoverChange={(h) => cardStore.setHoverFor(ac.ref, h)}
       onDelete={() => onDelete(snippet.id)}
       value={snippet.content}
       variant={bodyVariantForCardKind("archive")}
@@ -97,16 +74,10 @@ export function ArchiveCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "archive-entry", value: snippet.id }}
-      extraDataAttrs={{ "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
+      extraDataAttrs={extraDataAttrs}
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={snippet.content}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;

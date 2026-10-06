@@ -18,14 +18,10 @@ import {
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { popKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { BorrowedMainText } from "@/components/BorrowedMainText";
 import { bodySchemaForCardKind } from "@/cards/predicates";
 import { useCardTier } from "@/cards/presence";
@@ -52,7 +48,6 @@ export interface ExampleCardProps {
   isSelected: boolean;
   onSelect: () => void;
   onJump: (sourceEl: HTMLElement | null) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   /** Extra `data-*` attributes forwarded onto the card root. Omni-view
    *  uses this to attach `data-omni-entry` directly on the card so the
@@ -447,24 +442,19 @@ export function ExampleCard({
   isSelected,
   onSelect,
   onJump,
-  onTogglePopout,
   isPoppedOut,
   extraDataAttrs,
 }: ExampleCardProps) {
   const theme = useCardKindTheme("example");
   const bodyStyle = usePanelBodyStyle("example");
-  const popped = usePoppedCards();
-  const cardKey = popKey("examples", example.exampleId);
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
-  const ac = useAnchoredCard({ kind: "example", id: example.exampleId });
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedLines, shell } = useAnchoredCardShell({
+    kind: "example",
+    id: example.exampleId,
+    isPoppedOut,
+    onSelect,
+    onJump,
+  });
   const isHaloed = ac.selected || isSelected;
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedLines = useCompressedLines();
-  const cardStore = useCardStore();
 
   const [showHelp, setShowHelp] = useState(false);
 
@@ -489,30 +479,14 @@ export function ExampleCard({
 
   const card = (
     <PanelCard
+      {...shell}
       ref={cardElRef}
       theme={theme}
       selected={isHaloed}
-      onClick={(e) => {
-        const card = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect,
-          jump: () => onJump(card),
-        });
-      }}
-      onMouseEnter={() => cardStore.setHoverFor(ac.ref, true)}
-      onMouseLeave={() => cardStore.setHoverFor(ac.ref, false)}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
       isCollapsed={compressed}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
       data-link-card={linkCardKey("example", example.exampleId)}
       {...(extraDataAttrs ?? {})}
       kind="example"
-      canJump
-      onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
     >
       {compressed ? (
         /* Collapsed preview (#43): full parity with expanded. When an editor

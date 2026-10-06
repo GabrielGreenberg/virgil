@@ -10,16 +10,13 @@ import {
   EditableCard,
   makeCompressedSummary,
 } from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import {
   getAnchorSummary,
   isCardAnchored,
 } from "@/links/links";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { cardBodyPlaceholder } from "@/panels/panel-registry";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { useExcerptCue } from "@/panels/_shared/suggestion-fields";
 
@@ -32,8 +29,6 @@ export function RevisionRequestCard({
   onDelete,
   onSelect,
   onJump,
-  onHoverChange,
-  onTogglePopout,
   isPoppedOut,
   editor,
   extraDataAttrs,
@@ -46,8 +41,6 @@ export function RevisionRequestCard({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
-  onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   editor?: Editor | null;
   extraDataAttrs?: Record<string, string>;
@@ -57,18 +50,14 @@ export function RevisionRequestCard({
   // `&& !isOrphaned` conjunct was dead — an orphan is un-anchored by definition).
   const jumpTo = isCardAnchored(card) ? onJump : undefined;
   const anchorSummary = getAnchorSummary(card, editor ?? null);
-  const popped = usePoppedCards();
-  const cardKey = popKey("revisions", card.id);
-  const onToggleFromCtx =
-    onTogglePopout ??
-    (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
-
-  const ac = useAnchoredCard({ kind: "revision-comment", id: card.id });
-  const cardStore = useCardStore();
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedLines, shell } = useAnchoredCardShell({
+    kind: "revision-comment",
+    id: card.id,
+    isPoppedOut,
+    onSelect: () => onSelect(card.id),
+    onJump: jumpTo,
+  });
   const isSelected = ac.selected || selected;
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedLines = useCompressedLines();
   // The captured-selection excerpt cue (SSOT for both comment cards). A
   // selection-anchored revision comment shows its excerpt (red italic) as the
   // compressed cue, falling back to the rich-text body summary.
@@ -97,6 +86,7 @@ export function RevisionRequestCard({
 
   const cardEl = (
     <EditableCard
+      {...shell}
       id={card.id}
       cardKind="revision-comment"
       kind="revision-comment"
@@ -108,26 +98,6 @@ export function RevisionRequestCard({
       theme={theme}
       hideToolbar
       inlineDelete
-      canJump={!!jumpTo}
-      onJump={
-        jumpTo
-          ? (e) =>
-              jumpTo(
-                (e.currentTarget as HTMLElement).closest(
-                  "[data-card]",
-                ) as HTMLElement | null,
-              )
-          : undefined
-      }
-      onClick={(e) => {
-        const el = (e?.currentTarget as HTMLElement | undefined)?.closest(
-          "[data-card]",
-        ) as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(card.id),
-          jump: jumpTo ? () => jumpTo(el) : undefined,
-        });
-      }}
       onDelete={() => onDelete(card.id)}
       aboveBody={excerptBlock}
       aiRequest={{ checked: card.aiRequest, onToggle: (next) => onSetAiRequest(card.id, next) }}
@@ -139,21 +109,10 @@ export function RevisionRequestCard({
       dataAttr={{ name: "revision-request-entry", value: card.id }}
       extraDataAttrs={{
         "data-pristine-card-id": card.id,
-        "data-card-key": cardKey,
         ...(extraDataAttrs || {}),
       }}
-      onHoverChange={(h) => {
-        cardStore.setHoverFor(ac.ref, h);
-        onHoverChange?.(h);
-      }}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return cardEl;

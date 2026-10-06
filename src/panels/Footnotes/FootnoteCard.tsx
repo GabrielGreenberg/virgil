@@ -13,11 +13,10 @@ import {
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 
 // FN-F7-01 (audit-confirmed dead code, removed): `startFootnoteDrag` set up a
 // native HTML5 drag (MIME_FOOTNOTE + an 80-char-truncated ghost) but had NO
@@ -63,10 +62,7 @@ export interface FootnoteCardProps {
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
-  wrapperClassName?: string;
-  wrapperStyle?: React.CSSProperties;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   /** BUG #55: per-card AI-request flag + toggle. When `onSetAiRequest` is
    *  supplied the expanded card renders the unified AiRequestCheckbox (same as
@@ -88,10 +84,7 @@ export function FootnoteCard({
   onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
-  wrapperClassName,
-  wrapperStyle,
   extraDataAttrs,
-  onTogglePopout,
   isPoppedOut,
   aiRequest,
   onSetAiRequest,
@@ -100,25 +93,20 @@ export function FootnoteCard({
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
-  const cardStore = useCardStore();
   const theme = useCardKindTheme("footnote");
-  const popped = usePoppedCards();
-  const cardKey = popKey("footnotes", fn.footnoteId);
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
-  const ac = useAnchoredCard({ kind: "footnote", id: fn.footnoteId });
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedSummary, shell } = useAnchoredCardShell({
+    kind: "footnote",
+    id: fn.footnoteId,
+    isPoppedOut,
+    onSelect,
+    onJump,
+    summaryContent: fn.content,
+  });
   const isHaloed = ac.selected || isSelected;
-  const compressedLines = useCompressedLines();
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedSummary = compressed
-    ? (makeCompressedSummary(fn.content, compressedLines) || "")
-    : undefined;
 
   const card = (
     <EditableCard
+      {...shell}
       id={fn.footnoteId}
       cardKind="footnote"
       kind="footnote"
@@ -131,16 +119,6 @@ export function FootnoteCard({
       footnoteBadge={<BadgeLabel label={fn.thanks ? "A" : fn.number} theme={theme} />}
       bodyTitle={fn.title}
       onBodyTitleChange={onEditTitle ?? undefined}
-      canJump
-      onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-      onClick={(e) => {
-        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect,
-          jump: onJump ? () => onJump(card) : undefined,
-        });
-      }}
-      onHoverChange={(h) => cardStore.setHoverFor(ac.ref, h)}
       onDelete={onDelete}
       aiRequest={
         onSetAiRequest && footnoteCanAiRequest(fn)
@@ -156,18 +134,10 @@ export function FootnoteCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "footnote-entry", value: fn.footnoteId }}
-      extraDataAttrs={{ "data-pristine-card-id": fn.footnoteId, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      wrapperClassName={wrapperClassName}
-      wrapperStyle={wrapperStyle}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
+      extraDataAttrs={{ "data-pristine-card-id": fn.footnoteId, ...(extraDataAttrs || {}) }}
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={fn.content}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;
@@ -183,8 +153,6 @@ export interface OrphanedFootnoteCardProps {
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
-  wrapperClassName?: string;
-  wrapperStyle?: React.CSSProperties;
   extraDataAttrs?: Record<string, string>;
 }
 
@@ -217,8 +185,6 @@ export function OrphanedFootnoteCard({
   onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
-  wrapperClassName,
-  wrapperStyle,
   extraDataAttrs,
 }: OrphanedFootnoteCardProps) {
   const handleEdit = useCallback(
@@ -268,8 +234,6 @@ export function OrphanedFootnoteCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "footnote-entry", value: orphan.footnoteId }}
       extraDataAttrs={extraDataAttrs}
-      wrapperClassName={wrapperClassName}
-      wrapperStyle={wrapperStyle}
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={orphan.content}
@@ -292,8 +256,6 @@ export interface UnanchoredFootnoteCardProps {
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
-  wrapperClassName?: string;
-  wrapperStyle?: React.CSSProperties;
   extraDataAttrs?: Record<string, string>;
   /** Set by the float builder when this card renders inside a popped-out
    *  window: suppresses the in-card header (AF's `FloatChrome` owns it) and
@@ -325,8 +287,6 @@ export function UnanchoredFootnoteCard({
   onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
-  wrapperClassName,
-  wrapperStyle,
   extraDataAttrs,
   isPoppedOut,
 }: UnanchoredFootnoteCardProps) {
@@ -399,8 +359,6 @@ export function UnanchoredFootnoteCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "footnote-entry", value: fn.id }}
       extraDataAttrs={extraDataAttrs}
-      wrapperClassName={wrapperClassName}
-      wrapperStyle={wrapperStyle}
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={content}

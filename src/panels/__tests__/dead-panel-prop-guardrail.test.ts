@@ -106,10 +106,41 @@
  * five members individually is what this file's own header calls the wrong
  * answer; excluding the FILE by the property that makes the question
  * inapplicable is the same move the `.d.ts` skip already made.
+ *
+ * ---------------------------------------------------------------------------
+ * TASK 963 — the member rule asks only the CALLEE's question, and the dead
+ * props were on the other side of the call.
+ *
+ * Twelve anchored cards declared optional `onTogglePopout` / `onHoverChange`
+ * overrides (the latter on six), each consumed faithfully in its own file
+ * (`onTogglePopout ?? fromContext`, `onHoverChange?.(h)`) — so the member rule
+ * passed them — and NO JSX site anywhere ever supplied one. Every card typed
+ * its props as an INLINE literal, which the member rule does not census either
+ * (see "Deliberately NOT widened" above). The new leg asks the CALLER's
+ * question instead: is each OPTIONAL prop of an exported `src/panels`
+ * component supplied by at least one product JSX site? It censuses inline AND
+ * named shapes, fails toward silence where supply is invisible to a grep
+ * (opaque spreads, non-JSX references, no JSX site at all), and is spelled in
+ * [`_never-supplied-props.ts`](./_never-supplied-props.ts). Measured on the
+ * pre-963 tree it flagged 26 members, every one a real never-passed prop (the
+ * overrides, three footnote cards' `wrapperClassName`/`wrapperStyle`, the
+ * suggestion twins' forwarded `onTogglePopout`, `CardListPanel.title`); all
+ * were DELETED, and the leg's allowlist is EMPTY.
+ *
+ * Scope is `src/panels` only. Run over `src/components` it reports ~38
+ * members, nearly all the optional `className` / `size` / `style` surface of
+ * shared primitives — an API offered to future callers, which is a different
+ * judgement from a card's override nobody wired.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { walkFiles } from "../../lib/__tests__/_source-scan";
+import {
+  exportedComponents,
+  neverSuppliedProps,
+  tagAttributes,
+  topLevelMembers,
+} from "./_never-supplied-props";
 
 /** The two silos this census covers. `src/components` subsumes the former
  *  `editor-layout` entry, which itself subsumed `/panels` — see the two SCOPE
@@ -418,5 +449,49 @@ describe("dead-prop guardrail — a declared prop nobody reads is a dead feature
       .map((m) => m[1])
       .filter((n) => members.has(n));
     expect(flagged.sort()).toEqual(["dischargedOne", "hiddenOne"]);
+  });
+
+  /** THE CALLER-SIDE LEG (task 963). An optional prop of a `src/panels`
+   *  component that no product JSX site supplies is an override nobody wired —
+   *  the same two honest fixes apply: WIRE a real caller, or DELETE it. No
+   *  allowlist: the set below is pinned EMPTY. */
+  const PERMITTED_NEVER_SUPPLIED = new Set<string>([]);
+
+  it("every optional src/panels component prop is supplied by some JSX caller", () => {
+    const flagged = neverSuppliedProps(["src/panels"]);
+    expect(flagged.filter((f) => !PERMITTED_NEVER_SUPPLIED.has(f))).toEqual([]);
+  });
+
+  it("the never-supplied allowlist is empty and stays that way", () => {
+    expect([...PERMITTED_NEVER_SUPPLIED]).toEqual([]);
+  });
+
+  /** CAN-SEE canary for the caller leg on a SYNTHETIC fixture (the 963 cards
+   *  are drained, so a canary standing on them would pass for no reason).
+   *  Spells the inline shape the cards used, a named `*Props` shape, a nested
+   *  type literal whose members must NOT count, and the three attribute forms
+   *  a call site supplies through (`a={…}`, a bare boolean, a literal spread). */
+  it("the caller-leg scanners see inline + named shapes and every supply form", () => {
+    const decl = [
+      "interface WideProps { must: string; maybe?: number; also?: boolean }",
+      "export function Wide({ must, maybe, also }: WideProps) { return null; }",
+      "export function Card({ id, onHoverChange, onTogglePopout, nested }: {",
+      "  id: string;",
+      "  onHoverChange?: (hovering: boolean) => void;",
+      "  onTogglePopout?: (anchor: DOMRect) => void;",
+      "  nested?: { inner?: string; deep: () => { x?: number } };",
+      "}) { return null; }",
+    ].join("\n");
+    const decls = exportedComponents("fixture.tsx", decl);
+    expect(decls.map((d) => [d.name, d.optional])).toEqual([
+      ["Wide", ["maybe", "also"]],
+      ["Card", ["onHoverChange", "onTogglePopout", "nested"]],
+    ]);
+    expect(topLevelMembers(" a?: (x: { y?: 1 }) => void; b: 2 ").map((m) => m.name)).toEqual(["a", "b"]);
+    expect(tagAttributes(` id={k} canJump {...{ nested: n, maybe }} onClick={() => f({ also: 1 })}`)).toEqual({
+      names: ["id", "canJump", "nested", "maybe", "onClick"],
+      opaque: false,
+    });
+    expect(tagAttributes(" id={k} {...rest}").opaque).toBe(true);
   });
 });

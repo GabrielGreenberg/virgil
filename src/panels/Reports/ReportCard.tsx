@@ -3,15 +3,11 @@
 import { useCallback } from "react";
 import type { JSONContent, Editor } from "@tiptap/react";
 import type { ReportCard as ReportCardData } from "@/lib/types";
-import { EditableCard, makeCompressedSummary } from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
+import { EditableCard } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { getLinkedTextObjectIds } from "@/links/links";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { cardBodyPlaceholder, cardPopKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { cardBodyPlaceholder } from "@/panels/panel-registry";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
@@ -30,8 +26,6 @@ export function ReportCard({
   getCitationDisplayText,
   onCitationCreated,
   extraDataAttrs,
-  onHoverChange,
-  onTogglePopout,
   isPoppedOut,
 }: {
   report: ReportCardData;
@@ -48,8 +42,6 @@ export function ReportCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
-  onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const handleChange = useCallback(
@@ -59,27 +51,20 @@ export function ReportCard({
     [report.id, onUpdate],
   );
 
-  const ac = useAnchoredCard({ kind: "report", id: report.id });
-  const cardStore = useCardStore();
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedSummary, shell } = useAnchoredCardShell({
+    kind: "report",
+    id: report.id,
+    isPoppedOut,
+    onSelect: () => onSelect(report.id),
+    onJump,
+    summaryContent: report.content,
+  });
   const isSelected = ac.selected || selected;
-  const _isOrphaned = getLinkedTextObjectIds(report).length === 0;
-  void _isOrphaned;
   const theme = useCardKindTheme("report");
-  const compressedLines = useCompressedLines();
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedSummary = compressed
-    ? (makeCompressedSummary(report.content, compressedLines) || "")
-    : undefined;
-  const popped = usePoppedCards();
-  const cardKey = cardPopKey("report", report.id);
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
 
   const card = (
     <EditableCard
+      {...shell}
       id={report.id}
       cardKind="report"
       kind="report"
@@ -92,15 +77,6 @@ export function ReportCard({
       onEditorFocus={onEditorFocus}
       bodyTitle={report.title}
       onBodyTitleChange={(t) => onUpdateTitle(report.id, t)}
-      canJump={!!onJump}
-      onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
-      onClick={(e) => {
-        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(report.id),
-          jump: onJump ? () => onJump(card) : undefined,
-        });
-      }}
       onDelete={() => onDelete(report.id)}
       footer={!compressed ? <AuthorByline author={report.author} createdAt={report.createdAt} /> : undefined}
       value={report.content}
@@ -111,16 +87,9 @@ export function ReportCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "report-entry", value: report.id }}
-      extraDataAttrs={{ "data-pristine-card-id": report.id, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      onHoverChange={(h) => { cardStore.setHoverFor(ac.ref, h); onHoverChange?.(h); }}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
+      extraDataAttrs={{ "data-pristine-card-id": report.id, ...(extraDataAttrs || {}) }}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;
