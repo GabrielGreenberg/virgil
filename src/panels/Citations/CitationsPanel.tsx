@@ -1,17 +1,14 @@
 "use client";
 
-import { useMemo, useEffect, useCallback, useState, memo, useRef } from "react";
+import { useMemo, useCallback, useState, memo, useRef } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 import type { BibEntrySave } from "@/hooks/useCitations";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
 // is a second speller that silently stops matching if it ever changes (202).
-import { linkCardSelector } from "@/links/link-dom-contract";
 import {
   ItemMenu,
   PANEL,
-  useCycle,
-  useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -20,7 +17,6 @@ import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
-import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import type { NestedContainerInfo } from "@/components/editor-layout/panels/nest-footnote-children";
@@ -196,52 +192,16 @@ function CitationsPanel({
     [onSelect, onScrollToMarker],
   );
 
+  // Keyboard activation: the shell selects the citation and scrolls its card
+  // into view; this adds the jump to the in-text marker.
   const onActivateCitation = useCallback(
-    (cit: CitationRef) => {
-      jumpToCitation(cit.id);
-      requestAnimationFrame(() => {
-        const card = panelScrollRef.current?.querySelector(
-          linkCardSelector("citation", cit.id),
-        );
-        card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      });
-    },
-    [jumpToCitation, panelScrollRef],
+    (cit: CitationRef) => onScrollToMarker(cit.id),
+    [onScrollToMarker],
   );
-
-  // The keyboard cycle must iterate the SAME set the panel renders. CardListPanel
-  // filters its list to the archive view (Active / Archives / All); feed the
-  // cycle that filtered list too, via the shared hook, so ArrowUp/Down never
-  // steps onto an archived, off-screen citation (M1). `getCitArchived` is stable
-  // so `visibleCitations` stays identity-stable for the cycle across renders,
-  // and CardListPanel receives the same accessor so both derive one set.
+  // CardListPanel filters (and keyboard-cycles) the archive view through this
+  // accessor, so ArrowUp/Down never steps onto an archived, off-screen
+  // citation (M1).
   const getCitArchived = useCallback((c: CitationRef) => !!c.archived, []);
-  const visibleCitations = useArchiveVisibleItems(
-    "citations",
-    orderedCitations,
-    getCitArchived,
-  );
-  const {
-    idx: cycleIdx,
-    next: cycleNext,
-    prev: cyclePrev,
-    setIdx: setCycleIdx,
-  } = useCycle(visibleCitations, onActivateCitation);
-
-  useEffect(() => {
-    if (!selectedId) {
-      if (cycleIdx != null) setCycleIdx(null);
-      return;
-    }
-    const i = visibleCitations.findIndex((c) => c.id === selectedId);
-    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedId, visibleCitations, cycleIdx, setCycleIdx]);
-
-  const handleNavKeys = useListNavKeys(
-    visibleCitations.length,
-    cycleNext,
-    cyclePrev,
-  );
 
   const sharedCardProps = {
     bibEntries,
@@ -420,8 +380,7 @@ function CitationsPanel({
         ) : undefined
       }
       scrollRef={panelScrollRef}
-      onKeyDown={handleNavKeys}
-      scrollTabIndex={0}
+      onActivateItem={onActivateCitation}
       renderCard={(cit, { selected }) => {
         // Part B / Phase 2a — a container-nested cite renders indented (`ml-4`,
         // pixel-matching the omni nesting + bib-under-cite) and carries a small

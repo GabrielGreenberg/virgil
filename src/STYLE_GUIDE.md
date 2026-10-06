@@ -1749,6 +1749,17 @@ voice in the historical migration record
 declarative when it was condensed into this guide — which is why the
 contract above is now testable rather than merely written down. Task 184.)
 
+**Every card list is arrow-navigable, through the shell.** `CardListPanel`
+makes its list body focusable and owns ArrowDown/ArrowUp (step the selection
+through the RENDERED, archive-filtered set, wrapping) and Enter on the list
+itself (re-activate the selected card); the stepped-to card scrolls into view.
+Arrows inside a card's own field edit text. A panel supplies only what a
+keyboard activation does beyond selecting — `onActivateItem`, usually the jump
+to the card's anchor through its own Jump gate (`dockedKeyboardJump`). No panel
+wires `useCycle`/`useListNavKeys` itself; the five that never copied those
+lines had no keyboard nav at all. Task 964, pinned by
+`panels/_shared/__tests__/card-list-keyboard-nav.test.tsx`.
+
 The panel strip (vertical column of toggles) uses 32×32 icon buttons.
 Active toggle: `bg-pod-dark/80 text-ink-strong` — the lit strip icon is
 the **only** active-panel cue. A panel looks **identical whether or not it

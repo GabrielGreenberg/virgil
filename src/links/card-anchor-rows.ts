@@ -460,6 +460,24 @@ export function cardJumpGate(
 export type DockedJumpGate = (card: CardWithLinks) => CardJumpGate;
 
 /**
+ * The KEYBOARD twin of a docked card's Jump button (task 964). An Arrow step or
+ * Enter in a docked card list selects the card (the `CardListPanel` shell does
+ * that) and then jumps to its anchor through the SAME gate the button reads —
+ * so a dead anchor selects without a no-op navigation (task 699), on every
+ * docked panel alike rather than on whichever ones remembered to spell it.
+ * `undefined` when the host passed no jump handler.
+ */
+export function dockedKeyboardJump<C extends CardWithLinks>(
+  jumpGate: DockedJumpGate,
+  onJumpToCard: ((card: C) => void) | undefined,
+): ((card: C) => void) | undefined {
+  if (!onJumpToCard) return undefined;
+  return (card) => {
+    jumpGate(card).withJump(onJumpToCard)?.(card);
+  };
+}
+
+/**
  * The gate for a float whose reachability is NOT a card-anchor question — a
  * footnote resolved from its own `\footnote` atom, a citation from its own
  * position, an example from its `\ex{…}` block, a bib/AI float that has no

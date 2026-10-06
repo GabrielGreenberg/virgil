@@ -1,6 +1,6 @@
 "use client";
 
-import type { DockedJumpGate } from "@/links/card-anchor-rows";
+import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
 import type { CardMorphHandler } from "@/cards/types";
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
@@ -104,6 +104,13 @@ export default function RevisionsPanel({
     [onAddRequest, onAddSuggestion],
   );
 
+  // Keyboard activation (task 964): the shell selects; this jumps through the
+  // card's own gate, the twin of its Jump button.
+  const keyboardJump = useMemo(
+    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+    [jumpGate, onJumpToCard],
+  );
+
   return (
     <CardListPanel<Item>
       kind="revisions"
@@ -129,6 +136,7 @@ export default function RevisionsPanel({
       getArchived={(it) => !!it.data.archived}
       selectedId={selectedId}
       onSelect={onSelect}
+      onActivateItem={keyboardJump && ((it) => keyboardJump(it.data))}
       emptyState={
         <div className={PANEL.empty}>
           No comments or revisions yet.

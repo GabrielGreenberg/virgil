@@ -1,16 +1,38 @@
 /**
  * Cardful panel variant.
  *
- * Owns iteration of the items array and the optional Pending-AI-Requests
- * section above the items. Does NOT own keyboard cycling or selection —
- * those vary too much per panel and stay inline (`useCycle` +
- * `PrevNextCounter` are passed via `headerExtras`).
+ * Owns iteration of the items array, the archive-view filter, and KEYBOARD
+ * LIST NAVIGATION (task 964). Selection stays controlled by the panel.
  *
  * `selectedId` is controlled by the panel; clicking the empty list area
  * calls `onSelect(null)` so panels don't have to wire that themselves.
+ *
+ * Keyboard navigation is the shell's, not the panel's. The list body is
+ * focusable; ArrowDown/ArrowUp step the selection through the RENDERED set
+ * (archive-filtered, so an archived off-screen card is never stepped onto),
+ * Enter on the list itself re-activates the selected card, and the stepped-to
+ * card is scrolled into view. The cursor is DERIVED from `selectedId` — there
+ * is no second index to re-sync. Arrows inside a card's own inputs edit text
+ * (the `useListNavKeys` editable-target guard). A panel whose activation does
+ * more than select (jump to the in-text marker) passes `onActivateItem`.
+ *
+ * This used to say cycling "varies too much per panel and stays inline".
+ * Measured, it did not vary: six panels repeated the same `useCycle` +
+ * re-sync effect + `useListNavKeys` lines, and the five that never copied
+ * them (Reports, Todo, Revisions, Cutter, Archive) had no keyboard nav at
+ * all. One owner means a new card panel cannot ship without it.
  */
 
-import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
+import { useListNavKeys } from "@/components/panel-primitives";
 import {
   CardDisplayProvider,
   DOCKED_COMPRESSED_LINES,
@@ -112,8 +134,11 @@ export interface CardListPanelProps<T> {
   panelExtras?: ReactNode;
   footer?: ReactNode;
   scrollRef?: React.Ref<HTMLDivElement>;
-  onKeyDown?: (e: React.KeyboardEvent) => void;
-  scrollTabIndex?: number;
+  /** Extra work when the KEYBOARD activates a card (Arrow step / Enter), run
+   *  after the shell has selected it via `onSelect`. Typically the jump to the
+   *  card's in-text marker, through the same gate the card's Jump button uses.
+   *  Omit ⇒ a keyboard step only selects (and scrolls the card into view). */
+  onActivateItem?: (item: T, index: number) => void;
 }
 
 export function CardListPanel<T>({
@@ -135,8 +160,7 @@ export function CardListPanel<T>({
   panelExtras,
   footer,
   scrollRef,
-  onKeyDown,
-  scrollTabIndex,
+  onActivateItem,
 }: CardListPanelProps<T>) {
   const handleEmptyClick = useCallback(() => onSelect(null), [onSelect]);
   const { getView, setView } = useCardArchiveView();
@@ -170,6 +194,58 @@ export function CardListPanel<T>({
     if (!getArchived || selectedId == null) return;
     if (!visibleItems.some((it) => getId(it) === selectedId)) onSelect(null);
   }, [getArchived, selectedId, visibleItems, getId, onSelect]);
+
+  // ── Keyboard list navigation (task 964) ──
+  // The cursor is the selection, read against the rendered set: no `useCycle`
+  // index to keep in step with `selectedId`, so a click, a margin pick or an
+  // omni pick moves the keyboard cursor for free.
+  const selectedIndex =
+    selectedId == null ? -1 : visibleItems.findIndex((it) => getId(it) === selectedId);
+  // The list element the last key event came through — where the stepped-to
+  // card is scrolled. Set by the key handler, so it is always the live body.
+  const navBodyRef = useRef<HTMLElement | null>(null);
+  const activateIndex = useCallback(
+    (i: number) => {
+      const item = visibleItems[i];
+      if (item === undefined) return;
+      onSelect(getId(item));
+      onActivateItem?.(item, i);
+      // Each rendered card is one child of the list body, in render order
+      // (`listTrailing` follows them), so the index addresses the card's DOM
+      // without a per-panel selector. Deferred a frame: selection can resize
+      // the card (expand), and "nearest" should see the settled box.
+      const body = navBodyRef.current;
+      requestAnimationFrame(() => {
+        const el = body?.children[i] as HTMLElement | undefined;
+        el?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+      });
+    },
+    [visibleItems, getId, onSelect, onActivateItem],
+  );
+  const stepNext = useCallback(() => {
+    const n = visibleItems.length;
+    activateIndex(selectedIndex < 0 ? 0 : (selectedIndex + 1) % n);
+  }, [visibleItems.length, selectedIndex, activateIndex]);
+  const stepPrev = useCallback(() => {
+    const n = visibleItems.length;
+    activateIndex(selectedIndex < 0 ? n - 1 : (selectedIndex - 1 + n) % n);
+  }, [visibleItems.length, selectedIndex, activateIndex]);
+  const arrowKeys = useListNavKeys(visibleItems.length, stepNext, stepPrev);
+  const handleNavKeys = useCallback(
+    (e: ReactKeyboardEvent) => {
+      navBodyRef.current = e.currentTarget as HTMLElement;
+      // Enter only when the LIST itself has focus — inside a card, Enter
+      // belongs to that card's buttons and fields.
+      if (e.key === "Enter" && e.target === e.currentTarget) {
+        if (visibleItems.length === 0) return;
+        e.preventDefault();
+        activateIndex(selectedIndex < 0 ? 0 : selectedIndex);
+        return;
+      }
+      arrowKeys(e);
+    },
+    [arrowKeys, visibleItems.length, selectedIndex, activateIndex],
+  );
 
   // Which empty state? The rule is one pure function in `card-archive-view`,
   // read here because this is the one place that holds BOTH sets — the raw
@@ -243,8 +319,8 @@ export function CardListPanel<T>({
       variant="list"
       scrollRef={scrollRef}
       onClickEmpty={handleEmptyClick}
-      onKeyDown={onKeyDown}
-      scrollTabIndex={scrollTabIndex}
+      onKeyDown={handleNavKeys}
+      scrollTabIndex={0}
     >
       {showEmpty ? (
         // Even with no items, a panel may have trailing content that must

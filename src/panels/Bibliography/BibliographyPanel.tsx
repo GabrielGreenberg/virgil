@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import type { BibEntrySave } from "@/hooks/useCitations";
-import { Button, ItemMenu, PANEL, useListNavKeys } from "@/components/panel-primitives";
+import { Button, ItemMenu, PANEL } from "@/components/panel-primitives";
 import { Input, Textarea } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
@@ -345,9 +345,9 @@ function BibliographyPanel({
   const { membershipMap } = useLibraryMemberships();
 
   // The list actually rendered by CardListPanel and walked by keyboard nav.
-  // Drives selectedIdx, goNext/goPrev, in-text positions, and PrevNextCounter
-  // so that local-search filtering and central-library results both flow
-  // through the same path.
+  // Drives keyboard nav (CardListPanel cycles exactly what it renders) and
+  // in-text positions, so that local-search filtering and central-library
+  // results both flow through the same path.
   const displayedEntries = useMemo(() => {
     if (showSearch && searchScope === "local" && searchQuery.trim()) {
       return searchLocalBib(sortedEntries, searchQuery);
@@ -383,11 +383,6 @@ function BibliographyPanel({
     return out;
   }, [libraryItems]);
 
-  const selectedIdx = useMemo(() => {
-    if (!selectedBibKey) return -1;
-    return displayedEntries.findIndex((e) => e.key === selectedBibKey);
-  }, [selectedBibKey, displayedEntries]);
-
   const navigateToEntry = useCallback(
     (key: string) => {
       handleSelectBibKey(key);
@@ -400,26 +395,6 @@ function BibliographyPanel({
     },
     [handleSelectBibKey],
   );
-
-  const goNext = useCallback(() => {
-    if (displayedEntries.length === 0) return;
-    const next =
-      selectedIdx === -1 ? 0 : (selectedIdx + 1) % displayedEntries.length;
-    navigateToEntry(displayedEntries[next].key);
-  }, [displayedEntries, selectedIdx, navigateToEntry]);
-
-  const goPrev = useCallback(() => {
-    if (displayedEntries.length === 0) return;
-    const prev =
-      selectedIdx === -1
-        ? displayedEntries.length - 1
-        : (selectedIdx - 1 + displayedEntries.length) % displayedEntries.length;
-    navigateToEntry(displayedEntries[prev].key);
-  }, [displayedEntries, selectedIdx, navigateToEntry]);
-
-  // Shared list-nav handler (the editable-target guard + ArrowUp/Down cycling
-  // this panel first grew inline is now the SSOT in `useListNavKeys`).
-  const handleNavKeys = useListNavKeys(displayedEntries.length, goNext, goPrev);
 
   const handleExportCited = useCallback(() => {
     const seen = new Set<string>();
@@ -619,7 +594,7 @@ function BibliographyPanel({
     // raised from the library-search "Add" affordance or the cross-library
     // dropdown, so the rendered list is library results / a local search that
     // never contains the suffixed `<key>-N` — `handleSelectBibKey(next)` alone
-    // would resolve to selectedIdx === -1 (an invisible add). Leave the search
+    // would select an entry the list does not render (an invisible add). Leave the search
     // context (which also clears the conflict strip), widen the filter — a
     // brand-new entry is uncited and hidden under "Cited only" — then
     // select + scroll the new entry into view.
@@ -976,8 +951,6 @@ function BibliographyPanel({
         </div>
       }
       scrollRef={listRef}
-      onKeyDown={handleNavKeys}
-      scrollTabIndex={0}
       listTrailing={listTrailing}
       renderCard={(entry, { selected }) => {
         const ids = keyToCitationIds()[entry.key] || [];

@@ -96,13 +96,21 @@ describe("task 479 — the Notes cycle is REACHABLE", () => {
     const props = baseProps({
       cards: [note("a", "2026-01-01"), note("b", "2026-01-02")],
     });
-    const { container } = render(<NotesPanel {...props} />);
+    // Selection is CONTROLLED (task 964: the shell's cursor is derived from
+    // `selectedId`), so the host's echo is part of the harness.
+    const { container, rerender } = render(<NotesPanel {...props} />);
+    const echo = () => {
+      const calls = (props.onSelectNote as ReturnType<typeof vi.fn>).mock.calls;
+      rerender(<NotesPanel {...props} selectedNoteId={calls[calls.length - 1][0]} />);
+    };
 
     fireEvent.keyDown(keyTarget(container), { key: "ArrowDown" });
     expect(props.onSelectNote).toHaveBeenCalledWith("a");
+    echo();
 
     fireEvent.keyDown(keyTarget(container), { key: "ArrowDown" });
     expect(props.onSelectNote).toHaveBeenLastCalledWith("b");
+    echo();
 
     fireEvent.keyDown(keyTarget(container), { key: "ArrowUp" });
     expect(props.onSelectNote).toHaveBeenLastCalledWith("a");
