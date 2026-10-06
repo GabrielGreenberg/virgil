@@ -390,8 +390,9 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
     expect(layout).toMatch(/const \w+ = insertInlineAtom\(/);
     expect(layout).toMatch(/\.refused\)\s*return;/);
     const editorSrc = read("src/components/Editor.tsx");
-    // Both footnote creators (`createFootnoteFromSelection`, `createEmptyFootnote`).
-    expect(editorSrc.match(/\.refused\)\s*return null;/g)?.length ?? 0).toBe(2);
+    // The one footnote creator, `createEmptyFootnote` (task 971 deleted the
+    // unreached `createFootnoteFromSelection`).
+    expect(editorSrc.match(/\.refused\)\s*return null;/g)?.length ?? 0).toBe(1);
   });
 
   it("the narrow type-only twin is NOT exported — one door, one answer", () => {

@@ -474,7 +474,7 @@ per-doc [`useOrphanedFootnotes`](../../src/hooks/useOrphanedFootnotes.ts) sideca
 hook + the per-pane [`useFootnoteOrphanBridges`](../../src/components/editor-layout/event-bridges/footnote-sync.ts) writer, FN-A2-03.) The footnote, note/highlight, and
 selection-to-card paths have no standalone hooks — they're endpoints on the
 `CardCreationApi` itself (`createFootnote` delegates to the editor handle's
-`createFootnoteFromSelection`; `createNote` / `createHighlight` wrap the
+`createEmptyFootnote`; `createNote` / `createHighlight` wrap the
 injected store `add*` deps).
 
 ### Reconciliation with the action-button audit

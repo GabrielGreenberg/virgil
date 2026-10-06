@@ -1641,7 +1641,7 @@ function footnoteRun(ctx: ActionContext): void {
   // (passing its `footnoteId`). ADOPT it — register the panel card with the
   // SAME `footnoteId` so the card and the in-doc atom share an identity, and
   // run the pristine + pin + select tail WITHOUT re-inserting (no double
-  // insert). Mirrors the menu's `createFootnote({ fromSelection: false })`
+  // insert). Mirrors the menu's `createFootnote({})` insert
   // lifecycle, minus the insert the PM caller already did.
   const payload = ctx.payload ?? {};
   const footnoteId =

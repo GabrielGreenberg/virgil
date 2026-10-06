@@ -454,11 +454,9 @@ describe("footnote: slash ⇄ typed-empty atom + card byte-identity (pristine)",
       existingFootnoteId: "_",
     });
 
-    // ADOPT (no double-insert): the call adopts the atom's id; never fromSelection.
+    // ADOPT (no double-insert): the call adopts the atom's id.
     expect(slashCall.existingFootnoteId).toBe(slashAtoms[0].footnoteId);
     expect(typedCall.existingFootnoteId).toBe(typedAtoms[0].footnoteId);
-    expect(slashCall.fromSelection).toBeUndefined();
-    expect(typedCall.fromSelection).toBeUndefined();
   });
 });
 

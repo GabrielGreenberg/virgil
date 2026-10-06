@@ -150,6 +150,29 @@ describe("insertInlineAtom — never scrolls the viewport", () => {
     editor.destroy();
   });
 
+  it("the footnote creator's shape: a range selection + `at: to` keeps the selected content (task 971)", () => {
+    // `createEmptyFootnote` passes `at: selection.to` for a RANGE so the empty
+    // footnote lands after the passage and never REPLACES it (the deleted
+    // `createFootnoteFromSelection` replaced it with flattened text, uncaptured).
+    const editor = mount();
+    editor.commands.setTextSelection({ from: 1, to: 6 });
+    const { from, to } = editor.state.selection;
+
+    const { refused, pos } = insertInlineAtom({
+      editor,
+      type: "footnote",
+      attrs: { footnoteId: "fn-range", content: { type: "doc", content: [{ type: "paragraph" }] }, number: 0, title: "" },
+      ...(from !== to ? { at: to } : {}),
+    });
+    flushRaf();
+
+    expect(refused).toBe(false);
+    expect(countType(editor, "footnote")).toBe(1);
+    expect(editor.state.doc.textContent).toBe("hello world");
+    expect(pos).toBe(6);
+    editor.destroy();
+  });
+
   it("inserts at the captured `at` position even when the live selection drifted, still no scroll", () => {
     const editor = mount();
     // Trigger captured the caret at position 4 ("hel|lo world"). Then the live
