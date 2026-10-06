@@ -203,6 +203,39 @@ describe("the rendered passage", () => {
     const { container } = render(<CapturedPassage latex="hi" />);
     expect(container.querySelector(".ProseMirror")).toBeNull();
   });
+
+  // Task 978 — task 823's live-render gate has a second door. A captured slice
+  // can hold a NodeView-only construct (an expex example's `(N)`), which the
+  // static surface cannot paint faithfully; the door must ask the same
+  // `bodyNeedsLiveRender` question EditableCard asks and mount the live twin.
+  it("mounts the live surface for a passage holding an example; prose stays static", () => {
+    const example = {
+      type: "doc",
+      content: [
+        {
+          type: "exampleBlock",
+          attrs: { number: 4 },
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Every linguist sleeps." }] },
+          ],
+        },
+      ],
+    };
+    const live = render(<CapturedPassage latex="" content={example} />);
+    expect(live.container.querySelector(".ProseMirror")).toBeTruthy();
+    expect(live.container.firstElementChild!.className).toContain("captured-passage");
+    cleanup();
+    const prose = render(
+      <CapturedPassage
+        latex=""
+        content={{
+          type: "doc",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "plain" }] }],
+        }}
+      />,
+    );
+    expect(prose.container.querySelector(".ProseMirror")).toBeNull();
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -253,7 +286,7 @@ describe("census — one door for a captured passage", () => {
     const hits = panelFiles.filter(
       (p) =>
         !p.endsWith("captured-passage.tsx") &&
-        /\bStaticBorrowedText\b/.test(codeOnly(fs.readFileSync(p, "utf8"))),
+        /\b(Static|Faithful)BorrowedText\b/.test(codeOnly(fs.readFileSync(p, "utf8"))),
     );
     expect(hits.map((p) => path.relative(process.cwd(), p))).toEqual([]);
   });

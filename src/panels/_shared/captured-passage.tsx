@@ -45,14 +45,17 @@
  *     (a body its schema cannot represent renders as
  *     `richJsonToPlainText`, never a blank).
  *
- * ## Why STATIC, not `BorrowedMainText`
+ * ## Static by default, live only when static would lie
  *
  * Nothing here is editable, so an editor buys nothing and costs a mount — the
  * card-presence-tier doctrine ("a collapsed card body mounts machinery
  * proportional to its usefulness"). `StaticBorrowedText` is the T1 surface and
- * is documented as visually identical to its live twin. Converting the two
- * pending-change foldouts onto this door therefore RETIRES two live editors as
- * well as unifying the answer.
+ * is visually identical to its live twin for every node with a static twin —
+ * but NOT for a NodeView-only construct (an expex example's numbering, a
+ * figure, a `%` comment), which a captured slice can hold. Task 823 made that a
+ * property of the body (`bodyNeedsLiveRender`); the door renders through
+ * `FaithfulBorrowedText`, which asks it, so such a passage mounts the live
+ * read-only surface and everything else stays static (task 978).
  *
  * ## Display-only
  *
@@ -67,7 +70,7 @@
 
 import { useMemo, type ReactNode } from "react";
 import type { JSONContent } from "@tiptap/react";
-import { StaticBorrowedText } from "@/components/StaticBorrowedText";
+import { FaithfulBorrowedText } from "@/components/FaithfulBorrowedText";
 import { richLatexToJson, richJsonToPlainText } from "@/lib/footnote-content";
 
 /** The two routes a captured passage arrives by. Both optional: a card may
@@ -159,8 +162,9 @@ export function CapturedPassage({
   );
   return (
     <div className={`captured-passage${className ? ` ${className}` : ""}`}>
-      <StaticBorrowedText
+      <FaithfulBorrowedText
         value={value}
+        instanceKey="captured-passage"
         variant={variant}
         bodyStyle={inkFree}
         schemaScope="excerpt"
