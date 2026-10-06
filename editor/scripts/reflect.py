@@ -323,6 +323,18 @@ def _bundle_version(doc: Path | None = None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _live_request_text(doc, row: dict) -> str:
+    """A Task row's request text, read through the drain's live-linked-text
+    door so a bridged row reports what the user asks NOW (task 955/980)."""
+    from list_requests import _CardIndex, live_linked_text
+
+    try:
+        live = live_linked_text(_CardIndex(doc), row.get("kind"), row.get("linkedTo"))
+    except Exception:  # noqa: BLE001 — a reflection must never die on a sidecar
+        live = None
+    return live or row.get("text", "")
+
+
 def _read_task(doc: Path, task_id: str) -> dict:
     """Resolve <taskId> to {found, kind, status, result, paragraphIds, safetyLevel,
     text, source}. Tolerant: "-" / not-found → a Task-less stub (result=None),
@@ -348,7 +360,11 @@ def _read_task(doc: Path, task_id: str) -> dict:
                     "result": r.get("result"),
                     "paragraphIds": r.get("paragraphIds") or [],
                     "safetyLevel": r.get("safetyLevel"),
-                    "text": r.get("text", ""),
+                    # The linked card's CURRENT ask, not the row's bridge-time
+                    # snapshot — the same read the drain makes (task 980;
+                    # `_request-load.md`). Kept for terminal rows too, which
+                    # the drain no longer emits.
+                    "text": _live_request_text(doc, r),
                 }
 
     br = read_json(sidecar(doc, "bib-review-requests.json"), default={"requests": []})

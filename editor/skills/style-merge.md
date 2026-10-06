@@ -39,11 +39,12 @@ If `<docPath>` is omitted, ask the user which doc.
 
 ## What you process
 
-A request qualifies if **all** of the following are true:
+A request — a drain row ([_request-load.md](_request-load.md)) —
+qualifies if **all** of the following are true:
 
 - `kind == "style-merge"`
-- `status == "submitted"`
-- `payload.kind == "style-merge"` and the four payload fields
+- `extra.status == "submitted"`
+- `payload` (the row's `extra.payload`) has `kind == "style-merge"` and the four payload fields
   (`targetStyleId`, `targetStyleName`, `targetPreamble`,
   `currentPreamble`) are present.
 
@@ -51,7 +52,9 @@ Skip everything else.
 
 ## Procedure
 
-1. **Load.** Read `<docPath>/virgil/ai-requests.json`. Read
+1. **Load.** Take the open `style-merge` rows from the drain
+   ([_request-load.md](_request-load.md) — `python3 editor/scripts/list_requests.py <docPath>`,
+   never the raw `ai-requests.json`; `payload` rides on `extra.payload`). Read
    `<docPath>/virgil/document-settings.json` (the per-doc
    `DocumentSettings` = `{ styleId }` — note it lives under `virgil/`,
    *not* the doc root). List the `.tex` files in `<docPath>/` — there
@@ -59,7 +62,7 @@ Skip everything else.
    Virgil app stores the filename inside its index; without that hint,
    pick the unique `.tex` at the top level of the folder).
 
-2. **Find candidates.** Filter `requests[]` to qualifying entries.
+2. **Find candidates.** Filter the drain rows to qualifying entries.
    If none, print "No pending style-merge requests" and exit.
 
 3. **For each request, surface what you're about to do:**

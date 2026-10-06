@@ -144,5 +144,21 @@ doc = make_doc({}, [bridged("q-odd", "mystery", "nowhere", "x1")])
 check(text_of(list_rows(doc), "q-odd") == FRAGMENT,
       "unroutable (kind, panel) pair → stored row text, no crash")
 
+print("\n=== reflect.py reads the same live text — terminal rows too (task 980) ===")
+sys.path.insert(0, str(ROOT / "editor/scripts"))
+import reflect  # noqa: E402
+
+done_row = {**bridged("q-done", "suggestion", "cutter", "cc1"), "status": "complete"}
+doc = make_doc(
+    {"cutter.json": {"cards": [comment("cc1", FULL)]}},
+    [bridged("q-cut", "suggestion", "cutter", "cc1"), done_row,
+     bridged("q-gone", "suggestion", "cutter", "missing")],
+)
+check(reflect._read_task(doc, "q-cut")["text"] == FULL, "reflect: open bridged row → live card text")
+check(reflect._read_task(doc, "q-done")["text"] == FULL,
+      "reflect: terminal row (absent from the drain) → live card text")
+check(reflect._read_task(doc, "q-gone")["text"] == FRAGMENT,
+      "reflect: unresolvable link → the stored row text stands")
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

@@ -64,7 +64,8 @@ this skill.
    dispatched run never reaches this gate; it is here for a direct
    invocation, which is the only route left that can get it wrong.
 
-2. **Load.** Request from `ai-requests.json`. Paragraph context
+2. **Load.** The request's drain row ([_request-load.md](_request-load.md) — never the raw
+   `ai-requests.json` row). Paragraph context
    (neighbors=2) for whatever paragraph(s) the request anchors to. If
    `selectedText` is set on the request, that's the precise target;
    otherwise the whole anchored paragraph is the target.

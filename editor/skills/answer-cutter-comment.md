@@ -107,10 +107,7 @@ once — see step 5).
      "aiOriginRequestId": "<requestId, if not virtual:-prefixed>"
    }
    ```
-   `instructions` is the drain row's `text` — `list_requests.py` reads it
-   from the source comment's CURRENT body (task 955). Never copy the raw
-   `ai-requests.json` row's `text`: it is a snapshot from bridge time,
-   often just the first few words the user typed.
+   `instructions` is the drain row's `text` ([_request-load.md](_request-load.md)).
    For the link anchor: **copy the source comment's first-link
    `anchor` object verbatim**. It is already in the canonical on-disk
    `LinkAnchor` shape — `type: "textObject"` + `textObjectIds`

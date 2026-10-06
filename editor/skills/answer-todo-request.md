@@ -32,9 +32,10 @@ matters" (write a note). Read the todo and dispatch.
 
 ## Procedure
 
-1. **Load.** The request from `ai-requests.json` (or `linkedTo` from
-   the virtual id), the source todo from `todos.json`, paragraph
-   context for the anchored paragraph(s).
+1. **Load.** The request's drain row ([_request-load.md](_request-load.md) — never the raw
+   `ai-requests.json` row), the source todo from `todos.json` (via
+   `linkedTo`, or the cardId in a virtual id), paragraph context for the
+   anchored paragraph(s).
 
 2. **Classify** — the shared ask-shape rule, [_ask-shape.md](_ask-shape.md),
    governs (this skill's classify step is where that doctrine was first
@@ -128,7 +129,8 @@ matters" (write a note). Read the todo and dispatch.
      `original_text` — verbatim from the anchored paragraph, **excluding** its
      trailing `%!v:<uuid>` marker (it is the accept-time stale-guard key) —
      `suggested_text`, `explanation`, `user_text: ""`,
-     `instructions: "<request.text>"`, `status: "pending"`, the canonical
+     `instructions: "<request.text>"` (the drain row's `text`,
+     [_request-load.md](_request-load.md)), `status: "pending"`, the canonical
      `links[]` anchor (`type: "textObject"` + `textObjectIds`), plus
      `aiOriginRequestId: <requestId>` when not `virtual:`-prefixed; see
      [`/editor/draft-suggestion`](draft-suggestion.md)), then land it via the

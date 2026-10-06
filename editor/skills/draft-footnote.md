@@ -194,8 +194,8 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
 
 ### Direct-create branch
 
-1. **Load context.** Read the request from `<docPath>/virgil/ai-requests.json`,
-   then gather what you need to compose a good footnote:
+1. **Load context.** Take the request's drain row ([_request-load.md](_request-load.md) —
+   never the raw `ai-requests.json` row), then gather what you need to compose a good footnote:
    ```bash
    python3 editor/scripts/get_para_context.py <docPath> <uuid> --neighbors=1
    python3 editor/scripts/cards_for_paragraph.py <docPath> <uuid>
