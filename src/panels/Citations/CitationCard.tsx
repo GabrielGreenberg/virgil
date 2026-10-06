@@ -24,6 +24,7 @@ import {
   PanelCard,
   PANEL,
   CardMetaLabel,
+  CardSeparator,
   cardTitleStyle,
   usePanelCardTryDelete,
   usePanelCardTryEmptyContent,
@@ -1166,16 +1167,7 @@ export function CitationCard({
             )}
           </div>
 
-          <div
-            className={`border-t transition-colors ${
-              isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"
-            }`}
-            style={
-              isSelected
-                ? { borderTopColor: theme.separatorSelected }
-                : undefined
-            }
-          />
+          <CardSeparator selected={isHaloed} theme={theme} />
 
           <div
             className="px-3 py-2 bg-surface-muted/30 space-y-1.5"

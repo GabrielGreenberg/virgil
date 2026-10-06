@@ -1407,7 +1407,11 @@ repaints live, with no re-stamp pass and no doc walk on a color change.
 Selection: border flips to `theme.borderSelected`, header tint flips
 from `headerDefault` to `headerSelected`, separator flips to
 `theme.separatorSelected`, plus a soft `shadow-sm`. The body never
-tints.
+tints. Every section rule on a card — PanelCard's header/body rule and any
+inner rule a card body draws — renders through ONE `CardSeparator`
+(`panel-primitives.tsx`), keyed on the same halo the card hands PanelCard as
+`selected` (never the host's `isSelected` alone); `card-separator-census.test.ts`
+pins that no card body re-spells it (task 969).
 
 Hover (not selected): only the border changes (`edge-hover` →
 `edge-strong`). The header and body don't react.
