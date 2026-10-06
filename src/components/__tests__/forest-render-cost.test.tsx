@@ -413,6 +413,48 @@ describe("a tree measured without a box re-measures when it gets one", () => {
       Element.prototype.getBoundingClientRect = prevRect;
     }
   });
+
+  // Task 972: an EMPTY label lays out as a padding-wide, zero-height box in an
+  // engine without `min-height: 1lh`. That is a real box, not a missing one —
+  // read as "no box" it marked the whole tree degraded for life, and every
+  // host resize re-measured a tree whose numbers were already exact.
+  it("an empty-label node does not mark a real-box tree degraded", async () => {
+    const prevRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function realBox(this: Element) {
+      const empty = this.classList.contains("forest-node") && this.textContent === "";
+      const w = empty ? 6 : 40;
+      const h = empty ? 0 : 18;
+      return {
+        width: w,
+        height: h,
+        top: 0,
+        left: 0,
+        right: w,
+        bottom: h,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    };
+    try {
+      const { container } = await mount(
+        "\\begin{forest}\n[S [NP [Det []] [N [dog]]] [VP [V [barks]]]]\n\\end{forest}",
+      );
+      const host = container.querySelector(".forest-tree")!;
+      expect(
+        [...container.querySelectorAll(".forest-node")].some((n) => n.textContent === ""),
+      ).toBe(true);
+
+      resetForestRenderStats();
+      await act(async () => {
+        deliverResize(host, 240);
+        await Promise.resolve();
+      });
+      expect(forestRenderStats()).toEqual({ parse: 0, measure: 0, layout: 0, render: 0 });
+    } finally {
+      Element.prototype.getBoundingClientRect = prevRect;
+    }
+  });
 });
 
 describe("editing the tree's own source re-derives it — once", () => {

@@ -18,6 +18,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseForestSource,
   describeForestRefusal,
+  labelTextOf,
   MAX_FOREST_DEPTH,
   MAX_FOREST_NODES,
   type ForestRefusalKind,
@@ -259,6 +260,27 @@ describe("roof", () => {
     expect(base.roofed).toBe(true);
     expect(base.label.some((s) => s.kind === "math")).toBe(true);
   });
+
+  // Task 972: the base's flat text is DERIVED from its painted segments, so an
+  // empty leaf cannot make the paint and the measure/a11y string disagree.
+  it("an empty leaf adds no separator — labelText IS the joined painted text", () => {
+    const tree = accept("[NP,roof [Det []] [N [dog]] [A [$\\alpha$]]]");
+    const base = tree.children[0];
+    const painted = base.label
+      .map((seg) => (seg.kind === "math" ? `$${seg.value}$` : seg.value))
+      .join("");
+    expect(painted).toBe("dog $\\alpha$");
+    expect(base.labelText).toBe(painted);
+    expect(base.labelText).toBe(labelTextOf(base.label));
+  });
+
+  it("every node's labelText is labelTextOf its segments", () => {
+    const walk = (n: ForestRenderNode): void => {
+      expect(n.labelText).toBe(labelTextOf(n.label));
+      n.children.forEach(walk);
+    };
+    walk(accept("[S [NP,roof [] [{the  dog}]] [VP [$v$ x] [``y'']]]"));
+  });
 });
 
 describe("refusals — each names its own construct", () => {
@@ -319,6 +341,12 @@ describe("refusals — each names its own construct", () => {
       body: "[$\\alpha [x]]",
       kind: "unterminated-math",
       token: "$",
+    },
+    {
+      name: "display math in a label (task 972)",
+      body: "[S [$$x$$]]",
+      kind: "display-math",
+      token: "$$",
     },
     {
       name: "a second root tree",
@@ -395,6 +423,7 @@ describe("refusals — each names its own construct", () => {
       "option",
       "command",
       "unterminated-math",
+      "display-math",
       "unbalanced",
       "multiple-roots",
       "trailing",
