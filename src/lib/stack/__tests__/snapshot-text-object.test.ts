@@ -44,6 +44,8 @@ import {
   snapshotSubObjectContent,
 } from "../snapshot";
 import type { StackItem } from "../types";
+import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
+import type { TextObjectKind } from "@/text-objects/types";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -183,6 +185,38 @@ describe("snapshotTextObject — capture (BUG #48 parity with cards)", () => {
   it("snapshotSubObjectContent returns null for an empty / unmappable item", () => {
     const ed = docOf(para("aaaa", "hello"));
     expect(snapshotSubObjectContent(ed, "ghost", SOURCE)).toBeNull();
+  });
+});
+
+// ── Task 970: the sub-object branch is driven by the registry facet ───────
+// `snapshotTextObject` used to route on a private `{listItem, exampleItem}`
+// set, so a new `isSubObject: true` kind would silently snapshot as a whole
+// `paragraph` payload. The branch is now `isSubObjectKind` (the registry
+// facet). The probe: the same uuid'd block snapshots as a `text` slice through
+// the sub-object branch and as a `paragraph` payload through the top-level one,
+// so the payload kind reveals which branch each registry kind took.
+describe("snapshotTextObject — sub-object routing reads the registry (task 970)", () => {
+  const kinds = Object.keys(TEXT_OBJECT_REGISTRY) as TextObjectKind[];
+  const subKinds = kinds.filter((k) => TEXT_OBJECT_REGISTRY[k].isSubObject);
+  const topKinds = kinds.filter(
+    (k) =>
+      !TEXT_OBJECT_REGISTRY[k].isSubObject &&
+      !TEXT_OBJECT_REGISTRY[k].isRange &&
+      k !== "heading",
+  );
+
+  it("the registry declares at least the known sub-object kinds", () => {
+    expect(subKinds).toEqual(expect.arrayContaining(["listItem", "exampleItem"]));
+  });
+
+  it.each(subKinds)("%s (isSubObject) takes the sub-object `text` branch", (kind) => {
+    const item = snapshotTextObject(docOf(para("p1", "probe")), { kind, id: "p1" }, SOURCE);
+    expect(item?.payload.kind).toBe("text");
+  });
+
+  it.each(topKinds)("%s (top-level) takes the `paragraph` branch", (kind) => {
+    const item = snapshotTextObject(docOf(para("p1", "probe")), { kind, id: "p1" }, SOURCE);
+    expect(item?.payload.kind).toBe("paragraph");
   });
 });
 

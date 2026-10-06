@@ -1203,6 +1203,18 @@ export function isRangeKind(kind: TextObjectKind): boolean {
 }
 
 /**
+ * Is `kind` a SUB-OBJECT — a node that lives inside a parent wrapper and
+ * can't stand alone at top level (a list item, an example item)? The ONE
+ * spelling of sub-object-ness: it reads the registry's `isSubObject` facet,
+ * so a new sub-object kind is picked up by every reader (the active-object
+ * walk, the stack snapshot) by setting that facet — never by a private
+ * `{listItem, exampleItem}` hand-list (task 970).
+ */
+export function isSubObjectKind(kind: TextObjectKind): boolean {
+  return TEXT_OBJECT_REGISTRY[kind].isSubObject;
+}
+
+/**
  * Is `name` a NODE-backed text-object kind — a registered kind that is not a
  * range kind? The question every "walk up the ancestors / read the DOM kind
  * attribute to find the enclosing text object" site asks.

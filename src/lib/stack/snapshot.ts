@@ -17,8 +17,8 @@ import { bibFieldDisplay } from "@/lib/bib-parser";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
-import type { TextObjectKind, TextObjectRef } from "@/text-objects/types";
-import { isRangeKind } from "@/text-objects/text-object-registry";
+import type { TextObjectRef } from "@/text-objects/types";
+import { isRangeKind, isSubObjectKind } from "@/text-objects/text-object-registry";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -267,12 +267,6 @@ export function snapshotSubObjectContent(
 }
 
 // ── Unified text-object snapshot dispatcher ───────────────────────────
-/** Sub-object kinds that wrap into a parent (can't stand alone at top level). */
-const SUB_OBJECT_KINDS: ReadonlySet<TextObjectKind> = new Set<TextObjectKind>([
-  "listItem",
-  "exampleItem",
-]);
-
 /**
  * The text-object analogue of `snapshotCard` — the SINGLE entry point that
  * `textObjectFloatable.snapshotForStack` calls so the snapshot logic lives in
@@ -282,8 +276,9 @@ const SUB_OBJECT_KINDS: ReadonlySet<TextObjectKind> = new Set<TextObjectKind>([
  *
  *   • heading      → `heading` payload (the whole dominated section)
  *   • linkedRange  → `text` slice (the marked range, identity stripped)
- *   • listItem /
- *     exampleItem  → `text` slice (the item's inner content)
+ *   • sub-object   → `text` slice (the item's inner content) — any kind
+ *     (listItem,     the registry marks `isSubObject` (`isSubObjectKind`)
+ *     exampleItem)
  *   • every other
  *     top-level node → `paragraph` payload (a single block by uuid)
  *
@@ -301,7 +296,7 @@ export function snapshotTextObject(
   if (isRangeKind(ref.kind)) {
     return snapshotLinkedRange(editor, ref.id, source);
   }
-  if (SUB_OBJECT_KINDS.has(ref.kind)) {
+  if (isSubObjectKind(ref.kind)) {
     return snapshotSubObjectContent(editor, ref.id, source);
   }
   // Every other text-object kind is a top-level persistent node addressable

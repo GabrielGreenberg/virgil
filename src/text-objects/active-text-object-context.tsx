@@ -13,8 +13,8 @@ import {
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
 import {
-  TEXT_OBJECT_REGISTRY,
   isNodeTextObjectKind,
+  isSubObjectKind,
 } from "./text-object-registry";
 import type {
   SelectionRef,
@@ -106,8 +106,7 @@ function resolveFromSelection(editor: Editor): ActiveTextObjectRef {
     if (!isNodeTextObjectKind(name)) continue;
     const id = node.attrs?.uuid as string | null;
     if (!id) continue;
-    const meta = TEXT_OBJECT_REGISTRY[name as TextObjectKind];
-    if (meta.isSubObject) {
+    if (isSubObjectKind(name)) {
       return { kind: name as TextObjectKind, id };
     }
     outermostTopLevel = { kind: name as TextObjectKind, id };
