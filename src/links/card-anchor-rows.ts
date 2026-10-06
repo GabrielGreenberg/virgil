@@ -421,9 +421,12 @@ export const NO_JUMP: WithJump = <H>(_handler: H): H | undefined => undefined;
 export interface CardJumpGate {
   /**
    * The authority's verdict: did the four-rung ladder bind this card to a live
-   * paragraph? This is the BODY's question too (archive's `orphaned` state, a
-   * todo's `isAnchored`), which is why the gate publishes it — but no surface
-   * may re-derive the Jump decision from it. That is `withJump`'s job.
+   * paragraph? Published for callers that need the verdict ITSELF (a docked
+   * badge, a float's chrome) — never to be handed to a card as a second
+   * "anchored" prop that re-gates `onJump`. The card receives the handler
+   * already passed through `withJump`, and an absent handler IS the shut gate
+   * (task 966 retired Archive's `orphaned` and Todo's `isAnchored`, which were
+   * read only to re-gate Jump). That is `withJump`'s job alone.
    */
   anchored: boolean;
   /** The Jump door. `undefined` back ⇒ the surface offers nothing. */

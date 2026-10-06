@@ -44,7 +44,7 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render, cleanup } from "@testing-library/react";
 import NotesPanel from "@/panels/Notes/NotesPanel";
@@ -191,6 +191,35 @@ describe("task 699 — census", () => {
     const src = read(rel);
     expect(src).toMatch(/useDockedJumpGate\(\)/);
     expect(src).toMatch(/jumpGate=\{jumpGate\}/);
+  });
+
+  // Task 966 — the gate is applied ONCE, by the caller. A card component that
+  // conditions `onJump` on its own "anchored" answer (a second prop, or a
+  // stored-link predicate like the retired `isCardAnchored`) is a parallel
+  // switch: it can only shut a door the caller already decided on, and the
+  // next change to one derivation silently diverges from the other.
+  //
+  // CitationCard is the one sanctioned reader: its `isAnchored` drives BODY
+  // state (`inDocument`), and its callers hand it an ungated `onJump`.
+  const CARD_REGATE_ALLOWED = new Set(["src/panels/Citations/CitationCard.tsx"]);
+  const cardFiles = (dir: string): string[] =>
+    readdirSync(join(REPO_ROOT, dir), { withFileTypes: true }).flatMap((e) => {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) return e.name === "__tests__" ? [] : cardFiles(rel);
+      return /\.tsx$/.test(e.name) ? [rel] : [];
+    });
+
+  it("no card component re-gates the `onJump` its caller already gated", () => {
+    const REGATE = /onJump\s*[:=]\s*\{?\s*[\w!.()]+\s*\?\s*onJump\s*:\s*undefined/;
+    const offenders = [...cardFiles("src/panels"), ...cardFiles("src/cards")]
+      .filter((rel) => !CARD_REGATE_ALLOWED.has(rel))
+      .filter((rel) => REGATE.test(read(rel)) || /\bisCardAnchored\s*\(/.test(read(rel)));
+    expect(offenders).toEqual([]);
+  });
+
+  it("ArchiveCard and TodoRow take no second anchored prop", () => {
+    expect(read("src/panels/Archive/ArchiveCard.tsx")).not.toMatch(/\borphaned\b/);
+    expect(read("src/panels/Todo/TodoRow.tsx")).not.toMatch(/\bisAnchored\b/);
   });
 
   it("the omni host reads the pane's ONE pass rather than building its own", () => {

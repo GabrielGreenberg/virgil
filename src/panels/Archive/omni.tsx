@@ -58,7 +58,6 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
             key={row.omniId}
             snippet={snippet}
             selected={isSelected}
-            orphaned={row.anchorState === "orphaned"}
             onSelect={a.setSelectedArchiveId}
             onEdit={(id, content) => a.updateArchiveSnippet(id, content)}
             onUpdateTitle={a.updateArchiveSnippetTitle}

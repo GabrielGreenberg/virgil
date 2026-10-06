@@ -124,7 +124,6 @@ export default function TodoPanel({
           onSetAiRequest={onSetAiRequest}
           onDelete={onDelete}
           onSelect={onSelectTodo}
-          isAnchored={jumpGate(item).anchored}
           onJump={
             onJumpToCard
               ? jumpGate(item).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(item, sourceEl))

@@ -15,7 +15,7 @@ import {
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { getLinkedTextObjectIds, hasTextAnchor, isCardAnchored } from "@/links/links";
+import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { PANEL_KIND_TO_BODY_KEY } from "@/lib/panel-typography";
 import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
@@ -156,7 +156,6 @@ export function SuggestionCard({
   // `hasPendingCallbacks` gate.
   const isApplied = card.status === "applied";
   const isStale = card.status === "stale";
-  const isAnchored = isCardAnchored(card);
   const anchorKind: "selection" | "paragraph" | null = hasTextAnchor(card)
     ? "selection"
     : getLinkedTextObjectIds(card).length > 0
@@ -169,7 +168,9 @@ export function SuggestionCard({
     id: card.id,
     isPoppedOut,
     onSelect: () => onSelect(card.id),
-    onJump: isAnchored ? onJump : undefined,
+    // Jump is gated ONCE, by the caller's `withJump` over the anchor authority
+    // (task 966) — a card-side "stores a link" re-gate was a second answer.
+    onJump,
   });
   const isSelected = ac.selected || selected;
   const cardBodyStyle = usePanelBodyStyle(bodyKey);

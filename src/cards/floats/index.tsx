@@ -358,14 +358,13 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
   // read — `ctx.anchoredIds`, a fold over the task-369 anchor authority
   // (`anchorPass.resolve(s).anchored`, EditorPane). It never restates it.
   //
-  // So `orphaned === true` means the four-rung ladder (live uuid → surviving
+  // So `jump.anchored === false` means the four-rung ladder (live uuid → surviving
   // `linkedAnchor` mark → RC1 self-heal → text-snapshot relocation) found
   // NOTHING, which strictly implies `resolveLink` finds nothing, which means
   // `jumpToCard` iterates the links, resolves none, and returns `false` having
-  // done nothing. A chevron above a body already rendering the orphan state was
-  // a control that could not work — the shape task 136 fixed for `citation` and
-  // task 277 for `footnote`, on the one kind whose other three renderers all
-  // gate correctly.
+  // done nothing. A chevron on an orphaned clip was a control that could not
+  // work — the shape task 136 fixed for `citation` and task 277 for
+  // `footnote`, on the one kind whose other three renderers all gate correctly.
   //
   // Gate BOTH the affordance and the handler (136's own rule) so a keyboard or
   // programmatic path can't reach the dead call.
@@ -378,7 +377,6 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
       <ArchiveCard
         snippet={snippet}
         selected={ctx.selectedArchiveId === snippet.id}
-        orphaned={!jump.anchored}
         onSelect={ctx.setSelectedArchiveId}
         onEdit={ctx.updateArchiveSnippet}
         onUpdateTitle={ctx.updateArchiveSnippetTitle}
@@ -558,7 +556,6 @@ registerCardFloatable("todo", (id, ctx: CardFloatCtx) => {
         onSetAiRequest={ctx.setTodoAiRequest}
         onDelete={ctx.deleteTodo}
         onSelect={ctx.setSelectedTodoId}
-        isAnchored={jump.anchored}
         onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(item, sourceEl))}
         isPoppedOut
       />

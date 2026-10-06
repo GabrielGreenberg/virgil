@@ -75,14 +75,13 @@ function ArchivePanel({
         </div>
       }
       renderCard={(s, { selected }) => {
-        // Task 699: ONE gate answers both the body's orphan state and the
-        // Jump door — the same verdict the float and the margin read.
+        // Task 699: ONE gate answers the Jump door — the same verdict the
+        // float and the margin read (task 966: the card does not re-gate).
         const gate = jumpGate(s);
         return (
         <ArchiveCard
           snippet={s}
           selected={selected}
-          orphaned={!gate.anchored}
           onSelect={onSelect}
           onEdit={onEdit}
           onUpdateTitle={onUpdateTitle}

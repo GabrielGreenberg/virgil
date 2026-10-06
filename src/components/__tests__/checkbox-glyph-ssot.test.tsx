@@ -448,7 +448,6 @@ describe("TodoRow renders the shared glyph", () => {
         onSetAiRequest={() => {}}
         onDelete={() => {}}
         onSelect={() => {}}
-        isAnchored={false}
       />,
     );
     const toggle = row.container.querySelector('[aria-label="Mark done"], [aria-label="Undo done"]');

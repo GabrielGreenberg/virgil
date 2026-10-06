@@ -56,7 +56,6 @@ function renderRow(item: TodoItem, onDelete = vi.fn()) {
       onSetAiRequest={vi.fn()}
       onDelete={onDelete}
       onSelect={vi.fn()}
-      isAnchored={false}
     />,
   );
   return { onDelete, ...utils };
@@ -120,7 +119,6 @@ describe("TodoRow delete-key focus guard (task 096)", () => {
         onSetAiRequest={vi.fn()}
         onDelete={onDelete}
         onSelect={vi.fn()}
-        isAnchored={false}
       />,
     );
     return onDelete;
