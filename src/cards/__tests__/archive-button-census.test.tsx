@@ -181,7 +181,6 @@ describe("archive button — the kinds the audit found (todo, citation)", () => 
           onSetAiRequest={vi.fn()}
           onDelete={vi.fn()}
           onSelect={vi.fn()}
-          isAnchored={false}
         />,
       ),
     );

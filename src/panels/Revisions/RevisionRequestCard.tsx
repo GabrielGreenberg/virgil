@@ -11,10 +11,7 @@ import {
   makeCompressedSummary,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import {
-  getAnchorSummary,
-  isCardAnchored,
-} from "@/links/links";
+import { getAnchorSummary } from "@/links/links";
 import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -46,16 +43,15 @@ export function RevisionRequestCard({
   extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardKindTheme("revision-comment");
-  // The jump target exists iff the card is anchored (task 961: the old
-  // `&& !isOrphaned` conjunct was dead — an orphan is un-anchored by definition).
-  const jumpTo = isCardAnchored(card) ? onJump : undefined;
   const anchorSummary = getAnchorSummary(card, editor ?? null);
   const { ac, compressed, compressedLines, shell } = useAnchoredCardShell({
     kind: "revision-comment",
     id: card.id,
     isPoppedOut,
     onSelect: () => onSelect(card.id),
-    onJump: jumpTo,
+  // Jump is gated ONCE, by the caller's `withJump` over the anchor authority
+  // (task 966) — a card-side "stores a link" re-gate was a second answer.
+    onJump,
   });
   const isSelected = ac.selected || selected;
   // The captured-selection excerpt cue (SSOT for both comment cards). A

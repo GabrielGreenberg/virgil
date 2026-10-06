@@ -60,7 +60,6 @@ function renderRow(item: TodoItem, onUpdateNotes = vi.fn()) {
       onSetAiRequest={vi.fn()}
       onDelete={vi.fn()}
       onSelect={vi.fn()}
-      isAnchored={false}
     />,
   );
   return { onUpdateNotes, ...utils };
@@ -87,7 +86,6 @@ describe("TodoRow notes external-resync (task 2026-07-12-102)", () => {
         onSetAiRequest={vi.fn()}
         onDelete={vi.fn()}
         onSelect={vi.fn()}
-        isAnchored={false}
       />,
     );
     expect((screen.getByPlaceholderText("Notes…") as HTMLTextAreaElement).value).toBe(
@@ -109,7 +107,6 @@ describe("TodoRow notes external-resync (task 2026-07-12-102)", () => {
         onSetAiRequest={vi.fn()}
         onDelete={vi.fn()}
         onSelect={vi.fn()}
-        isAnchored={false}
       />,
     );
     // Focus then blur with no typing — must not revert the external edit.
@@ -136,7 +133,6 @@ describe("TodoRow notes external-resync (task 2026-07-12-102)", () => {
         onSetAiRequest={vi.fn()}
         onDelete={vi.fn()}
         onSelect={vi.fn()}
-        isAnchored={false}
       />,
     );
     // The user's buffer is NOT clobbered.

@@ -76,7 +76,6 @@ function renderRow() {
       onSetAiRequest={vi.fn()}
       onDelete={vi.fn()}
       onSelect={vi.fn()}
-      isAnchored={false}
     />,
   );
 }

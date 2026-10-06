@@ -12,7 +12,6 @@ import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 export function ArchiveCard({
   snippet,
   selected,
-  orphaned,
   onSelect,
   onEdit,
   onUpdateTitle,
@@ -26,7 +25,6 @@ export function ArchiveCard({
 }: {
   snippet: ArchivedSnippet;
   selected: boolean;
-  orphaned?: boolean;
   onSelect: (id: string | null) => void;
   onEdit: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
@@ -38,7 +36,6 @@ export function ArchiveCard({
   extraDataAttrs?: Record<string, string>;
   isPoppedOut?: boolean;
 }) {
-  const isAnchored = !orphaned;
   const theme = useCardKindTheme("archive");
   const handleEditContent = (json: JSONContent) => {
     onEdit(snippet.id, normalizeRichContent(json));
@@ -48,7 +45,8 @@ export function ArchiveCard({
     id: snippet.id,
     isPoppedOut,
     onSelect: () => onSelect(snippet.id),
-    onJump: isAnchored ? onJump : undefined,
+    // Already gated by the caller's `withJump` (task 966) — never re-gated here.
+    onJump,
     summaryContent: snippet.content,
   });
   const isSelected = ac.selected || selected;

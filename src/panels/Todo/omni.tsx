@@ -34,9 +34,8 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
       unanchored: true,
     })) {
       // The row's own gate (task 655) — never `row.anchorUuid != null`, which
-      // is true of a card whose anchor is DEAD. `isAnchored` is the same
-      // question by another name (TodoRow reads it only alongside `onJump`),
-      // so it is derived from the gate's answer rather than asked twice.
+      // is true of a card whose anchor is DEAD. TodoRow takes no second
+      // anchored prop (task 966): `onJump` absent IS the shut gate.
       const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
         a.jumpToCard(item, sourceEl, row.anchorUuid),
       );
@@ -56,7 +55,6 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
             onSetAiRequest={a.setTodoAiRequest}
             onDelete={a.deleteTodo}
             onSelect={a.setSelectedTodoId}
-            isAnchored={onJump != null}
             onJump={onJump}
             extraDataAttrs={{ "data-omni-entry": row.omniId }}
           />

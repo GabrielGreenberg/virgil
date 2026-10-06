@@ -64,7 +64,6 @@ export function TodoRow({
   onDelete,
   onSelect,
   onJump,
-  isAnchored,
   extraDataAttrs,
   isPoppedOut,
 }: {
@@ -77,7 +76,6 @@ export function TodoRow({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
-  isAnchored: boolean;
   extraDataAttrs?: Record<string, string>;
   isPoppedOut?: boolean;
 }) {
@@ -137,7 +135,8 @@ export function TodoRow({
     id: item.id,
     isPoppedOut,
     onSelect: () => onSelect(item.id),
-    onJump: isAnchored ? onJump : undefined,
+    // Already gated by the caller's `withJump` (task 966) — never re-gated here.
+    onJump,
   });
   const isSelected = ac.selected || selected;
   // Todo is the lone editable card with a bare card-level delete-key handler
