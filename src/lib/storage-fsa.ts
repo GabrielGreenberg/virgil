@@ -525,17 +525,107 @@ async function readSidecarFromDisk<T>(
   docId: string,
   filename: string,
 ): Promise<T | null> {
+  return (await readSidecarBase<T>(docId, filename)).value;
+}
+
+/**
+ * The file revision a sidecar base read SAW — the precondition of the
+ * compare-and-swap in `mutateSidecar` (task 979). `absent` is a real
+ * observation, not a missing one: a write computed from "no file" must not land
+ * over a file that has since appeared.
+ */
+type SidecarBaseStamp =
+  | { absent: true }
+  | { absent: false; mtimeMs: number; size: number; text: string };
+
+/**
+ * `readSidecarFromDisk` plus the revision it read. One `getFile()` serves the
+ * bytes, the ledger stamp and the CAS stamp, so all three describe the same
+ * revision.
+ */
+async function readSidecarBase<T>(
+  docId: string,
+  filename: string,
+): Promise<{ value: T | null; stamp: SidecarBaseStamp }> {
   const docHandle = await requireDocHandle(docId);
   try {
     const virgil = await getVirgilSubdir(docHandle);
     const fileHandle = await virgil.getFileHandle(filename);
+    const file = await fileHandle.getFile();
+    const text = await file.text();
     // Read THROUGH the ledger: this is `mutateSidecar`'s in-lock base read, so
     // the fingerprint it stamps is the one the matching write is gated on.
-    const text = await readTrackedText(docId, `virgil/${filename}`, fileHandle);
-    return JSON.parse(text) as T;
+    // (Inlined `readTrackedText`, because the CAS needs the same `File`.)
+    try {
+      stampDiskFingerprint(
+        docId,
+        `virgil/${filename}`,
+        fingerprintOf({ mtimeMs: file.lastModified, size: file.size }, text),
+      );
+    } catch {
+      // A stamp can never break a read.
+    }
+    return {
+      value: JSON.parse(text) as T,
+      stamp: { absent: false, mtimeMs: file.lastModified, size: file.size, text },
+    };
   } catch (e) {
-    if (isNotFound(e)) return null;
+    if (isNotFound(e)) return { value: null, stamp: { absent: true } };
     throw e;
+  }
+}
+
+/**
+ * Does disk STILL hold the revision `stamp` describes? The compare half of
+ * `mutateSidecar`'s compare-and-swap (task 979).
+ *
+ * Cheap path: the live `{lastModified, size}` match — the DiskWatcher's own
+ * predicate. Where the stat moved, the bytes decide: a touch, or a foreign
+ * writer that put back exactly what we read, is not a change. Never throws a
+ * non-NotFound error as "holds": anything we cannot prove is "moved", and the
+ * caller re-reads (which surfaces a real I/O error on its own read).
+ */
+async function sidecarBaseStillHolds(
+  docId: string,
+  filename: string,
+  stamp: SidecarBaseStamp,
+): Promise<boolean> {
+  let file: File;
+  try {
+    const docHandle = await requireDocHandle(docId);
+    const virgil = await getVirgilSubdir(docHandle);
+    const fileHandle = await virgil.getFileHandle(filename);
+    file = await fileHandle.getFile();
+  } catch (e) {
+    return isNotFound(e) ? stamp.absent : false;
+  }
+  if (stamp.absent) return false;
+  if (file.lastModified === stamp.mtimeMs && file.size === stamp.size) {
+    return true;
+  }
+  try {
+    return (await file.text()) === stamp.text;
+  } catch {
+    return false;
+  }
+}
+
+/** How many times `mutateSidecar` re-reads + re-runs `mutate` after a foreign
+ *  writer moved the file under it before refusing. A cowork skill commits in
+ *  one `os.replace`, so a second attempt almost always holds; three is
+ *  "something is rewriting this file continuously", which is a refusal. */
+const SIDECAR_CAS_ATTEMPTS = 3;
+
+/** `mutateSidecar` could not land a write that would not overwrite bytes it
+ *  never read — a foreign writer kept moving the file (task 979). Nothing was
+ *  written; the disk keeps the foreign writer's content. */
+class SidecarContentionError extends Error {
+  constructor(readonly filename: string) {
+    super(
+      `virgil/${filename} kept changing on disk while Virgil was saving it; ` +
+        `nothing was overwritten`,
+    );
+    this.name = "SidecarContentionError";
   }
 }
 
@@ -667,13 +757,16 @@ export async function writeSidecar<T>(
  * doc-locked task as the write, so `mutate` always sees the freshest on-disk
  * value and no writer can interleave between the two halves.
  *
- * The read deliberately goes through `readSidecar` (a DIRECT disk read that
+ * The read deliberately goes DIRECT to disk (`readSidecarBase`, which
  * bypasses the bundle cache), never `readSidecarIfExists` — a cached snapshot
- * is exactly the stale base this exists to eliminate.
+ * is exactly the stale base this exists to eliminate. And because the lock
+ * cannot exclude an out-of-process writer, the write is a compare-and-swap
+ * against the revision that read saw (task 979).
  *
- * `mutate` must be PURE and cheap: it runs while the doc lock is held, and a
- * caller that also applies it to in-memory state runs it a second time on a
- * different base. Returning `null` means "nothing to change" — no write, no
+ * `mutate` must be PURE and cheap: it runs while the doc lock is held, it
+ * RE-RUNS on a fresh base when a foreign writer moved the file (task 979), and
+ * a caller that also applies it to in-memory state runs it again on a
+ * different base. A side effect it must have is idempotent or first-run-only. Returning `null` means "nothing to change" — no write, no
  * ledger stamp, and the call resolves `null`, so a caller can tell a no-op
  * apart from a landed write. A library-paper doc mutating a sidecar outside
  * its derived writable set (task 556) also resolves `null`: nothing was
@@ -697,11 +790,27 @@ export async function mutateSidecar<T>(
     h,
     sidecarWriteSubkey(filename),
     async () => {
-      const current = await readSidecar<T>(h.docId, filename, defaultValue);
-      const next = mutate(current);
-      if (next === null) return null;
-      await persistSidecarInLock(h.docId, filename, next);
-      return next;
+      // COMPARE-AND-SWAP (task 979). The queue + doc lock exclude every
+      // writer in THIS app — not the cowork skills, which commit from Python
+      // (`_common.commit_under_pen`: temp file + `os.replace`) and never take
+      // the app's lock. A skill commit landing between this read and the write
+      // used to be overwritten by `mutate(old)`: an agent-drafted card,
+      // silently gone. So re-check, immediately before writing, that disk still
+      // holds the revision `mutate` was computed from; where it moved, re-read
+      // and re-run `mutate` on the fresh base. The residual window is one stat
+      // → `createWritable`, not a whole read-mutate-serialize.
+      for (let attempt = 1; ; attempt++) {
+        const { value, stamp } = await readSidecarBase<T>(h.docId, filename);
+        const next = mutate(value ?? defaultValue);
+        if (next === null) return null;
+        if (await sidecarBaseStillHolds(h.docId, filename, stamp)) {
+          await persistSidecarInLock(h.docId, filename, next);
+          return next;
+        }
+        if (attempt >= SIDECAR_CAS_ATTEMPTS) {
+          throw new SidecarContentionError(filename);
+        }
+      }
     },
   );
   // `enqueueDocWrite` short-circuits a library-paper write outside the derived

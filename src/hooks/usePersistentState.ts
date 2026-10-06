@@ -394,6 +394,9 @@ export function usePersistentState<S>(
           // "now" — so re-deriving would persist a value the open panel is not
           // showing, and the card would change its age between two opens.
           if (h) {
+            // The cell this load seeded — captured so a doc switch (a fresh
+            // cell) or a later write (which advances this one) is detectable.
+            const cell = baselineRef.current;
             void mutateSidecar<S | null>(h, filename, null, (cur) =>
               cur === null
                 ? null
@@ -402,7 +405,27 @@ export function usePersistentState<S>(
                   : migrate
                     ? migrate(cur)
                     : cur,
-            ).catch(() => {});
+            )
+              .then((wrote) => {
+                // SHOW what was written (task 979). Where the in-lock read was
+                // NOT the file we loaded — a skill's commit landed between the
+                // mount read and this write-back — disk now holds a value the
+                // panel has never seen, and both I/Os stamped the ledger, so
+                // the SidecarWatcher will never report it: the agent's card was
+                // on disk but invisible until reopen. Adopt it the way the
+                // watcher's rehydrate does — as the new base, MERGED into
+                // memory so a user edit made meanwhile survives. Only while the
+                // cell still holds this load's base: a later write (or a doc
+                // switch) owns the base from then on, and merged against disk
+                // itself.
+                if (cancelled || wrote === null) return;
+                if (cell.value !== migrated || deepEqual(wrote, migrated)) return;
+                cell.value = wrote;
+                setState((prev) =>
+                  mergeSidecarState<S>(filename, migrated, wrote, prev),
+                );
+              })
+              .catch(() => {});
           }
         }
       })

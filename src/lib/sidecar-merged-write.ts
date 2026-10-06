@@ -74,9 +74,15 @@ export async function writeSidecarMerged<S>(
   let prior: S | null = null;
   try {
     await mutateSidecar<S | null>(h, filename, null, (current) => {
-      prior = base.value;
-      base.value = next;
-      advanced = true;
+      // FIRST run only: `mutateSidecar` re-runs this on a fresh base when a
+      // foreign writer moved the file (task 979), and by then the cell already
+      // holds `next` — re-capturing would make `next` its own base and the
+      // merge could no longer tell a local delete from an external append.
+      if (!advanced) {
+        prior = base.value;
+        base.value = next;
+        advanced = true;
+      }
       return mergeSidecarState<S>(
         filename,
         prior,
