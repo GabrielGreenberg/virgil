@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, memo } from "react";
+import { useCallback, memo } from "react";
 import type { ExampleInfo } from "@/components/Editor";
 import {
   ItemMenu,
   PANEL,
-  useCycle,
-  useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -35,29 +33,9 @@ function ExamplesPanel(props: ExamplesPanelProps) {
     onJump,
   } = props;
   const onActivate = useCallback(
-    (ex: ExampleInfo) => {
-      onSelect(ex.exampleId);
-      onJump(ex.exampleId);
-    },
-    [onSelect, onJump],
+    (ex: ExampleInfo) => onJump(ex.exampleId),
+    [onJump],
   );
-  const {
-    idx: cycleIdx,
-    next: cycleNext,
-    prev: cyclePrev,
-    setIdx: setCycleIdx,
-  } = useCycle(examples, onActivate);
-
-  useEffect(() => {
-    if (!selectedId) {
-      if (cycleIdx != null) setCycleIdx(null);
-      return;
-    }
-    const i = examples.findIndex((ex) => ex.exampleId === selectedId);
-    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedId, examples, cycleIdx, setCycleIdx]);
-
-  const handleNavKeys = useListNavKeys(examples.length, cycleNext, cyclePrev);
 
   return (
     <CardListPanel
@@ -79,8 +57,7 @@ function ExamplesPanel(props: ExamplesPanelProps) {
           <CreationHint action="example" />
         </div>
       }
-      onKeyDown={handleNavKeys}
-      scrollTabIndex={0}
+      onActivateItem={onActivate}
       renderCard={(ex, { selected }) => (
         <ExampleCard
           example={ex}

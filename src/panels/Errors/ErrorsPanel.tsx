@@ -114,7 +114,8 @@ function ErrorsPanel({
   // drives the omni halo and the editor's error highlight — but it only hands
   // the error to the mount's handler when this mount can actually reach it.
   // Without this, Arrow/Enter re-opened both defects the card gate closes,
-  // straight past the affordance.
+  // straight past the affordance. The keys themselves are CardListPanel's
+  // (task 964); this is what a keyboard activation adds to the selection.
   const jumpIfReachable = useCallback(
     (err: LatexError) => {
       if (canJumpToError(err, jump.mode, anchoredIds?.has(err.id) ?? false)) {
@@ -122,33 +123,6 @@ function ErrorsPanel({
       }
     },
     [jump, anchoredIds],
-  );
-
-  const handleNavKeys = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (filtered.length === 0) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        const next =
-          selectedIdx == null ? 0 : (selectedIdx + 1) % filtered.length;
-        onSelect(filtered[next].id);
-        jumpIfReachable(filtered[next]);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const prev =
-          selectedIdx == null
-            ? filtered.length - 1
-            : (selectedIdx - 1 + filtered.length) % filtered.length;
-        onSelect(filtered[prev].id);
-        jumpIfReachable(filtered[prev]);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const idx = selectedIdx ?? 0;
-        onSelect(filtered[idx].id);
-        jumpIfReachable(filtered[idx]);
-      }
-    },
-    [filtered, selectedIdx, onSelect, jumpIfReachable],
   );
 
   const headerExtras = (
@@ -195,8 +169,7 @@ function ErrorsPanel({
       getId={(e) => e.id}
       selectedId={selectedId}
       onSelect={onSelect}
-      scrollTabIndex={0}
-      onKeyDown={handleNavKeys}
+      onActivateItem={jumpIfReachable}
       emptyState={
         errors.length === 0 ? (
           <p className={PANEL.empty}>

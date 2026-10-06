@@ -1,19 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, memo } from "react";
+import { useCallback, useMemo, memo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { FootnoteInfo } from "@/components/Editor";
 import type { OrphanedFootnote, FootnoteRef } from "@/lib/types";
 import {
   ItemMenu,
   PANEL,
-  useCycle,
-  useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
-import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import {
@@ -107,44 +104,24 @@ function FootnotePanel({
     [orphanedFootnotes, unanchoredFootnotes, footnotes, recentlyAddedId],
   );
 
-  // C25 (FN-F2-02): cycle the RENDERED union, not the anchored sub-array, so
-  // ArrowUp/Down keyboard nav visits the orphan/ref cards that render at the top.
-  // Selection works for all kinds; only anchored footnotes have an in-text
-  // marker to scroll to (orphans + atomless refs have no callout), so the jump
-  // is gated.
+  // C25 (FN-F2-02): keyboard nav walks the RENDERED union (the shell cycles
+  // exactly what it renders), so ArrowUp/Down visits the orphan/ref cards at the
+  // top. Selection works for all kinds (the shell selects); only anchored
+  // footnotes have an in-text marker to scroll to (orphans + atomless refs have
+  // no callout), so the jump is gated.
   const onActivateItem = useCallback(
     (item: FootnoteItem) => {
-      onSelect(itemId(item));
       if (item.kind === "anchored") onScrollToMarker(item.data.footnoteId);
     },
-    [onSelect, onScrollToMarker],
+    [onScrollToMarker],
   );
-  // The keyboard cycle iterates the SAME set CardListPanel renders. Archived
-  // atomless refs filter out of the Active view; feed the cycle the archive-
-  // filtered list (via the shared hook, same accessor CardListPanel gets) so
-  // ArrowUp/Down never steps onto an archived, off-screen ref card (M1).
+  // Archived atomless refs filter out of the Active view; the shell reads this
+  // accessor both to render and to cycle, so keyboard nav never steps onto an
+  // archived, off-screen ref card (M1).
   const getFnArchived = useCallback(
     (it: FootnoteItem) => (it.kind === "ref" ? !!it.data.archived : false),
     [],
   );
-  const visibleItems = useArchiveVisibleItems("footnotes", items, getFnArchived);
-  const {
-    idx: cycleIdx,
-    next: cycleNext,
-    prev: cyclePrev,
-    setIdx: setCycleIdx,
-  } = useCycle(visibleItems, onActivateItem);
-
-  useEffect(() => {
-    if (!selectedId) {
-      if (cycleIdx != null) setCycleIdx(null);
-      return;
-    }
-    const i = visibleItems.findIndex((it) => itemId(it) === selectedId);
-    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedId, visibleItems, cycleIdx, setCycleIdx]);
-
-  const handleNavKeys = useListNavKeys(visibleItems.length, cycleNext, cyclePrev);
 
   return (
     <CardListPanel
@@ -175,8 +152,7 @@ function FootnotePanel({
           <CreationHint action="footnote" />
         </div>
       }
-      onKeyDown={handleNavKeys}
-      scrollTabIndex={0}
+      onActivateItem={onActivateItem}
       renderCard={(it, { selected }) => {
         if (it.kind === "anchored") {
           return (

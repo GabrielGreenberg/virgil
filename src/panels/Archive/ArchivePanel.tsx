@@ -1,7 +1,7 @@
 "use client";
 
-import type { DockedJumpGate } from "@/links/card-anchor-rows";
-import { memo } from "react";
+import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
+import { memo, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import {
@@ -44,6 +44,13 @@ function ArchivePanel({
   onCitationCreated,
   onEditorFocus,
 }: ArchivePanelProps) {
+  // Keyboard activation (task 964): the shell selects; this jumps through the
+  // card's own gate, the twin of its Jump button.
+  const keyboardJump = useMemo(
+    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+    [jumpGate, onJumpToCard],
+  );
+
   return (
     <CardListPanel
       kind="archive"
@@ -60,6 +67,7 @@ function ArchivePanel({
       getArchived={(s) => !!s.archived}
       selectedId={selectedId}
       onSelect={onSelect}
+      onActivateItem={keyboardJump}
       emptyState={
         <div className={PANEL.empty}>
           No archived text yet.

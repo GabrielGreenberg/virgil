@@ -1,6 +1,6 @@
 "use client";
 
-import type { DockedJumpGate } from "@/links/card-anchor-rows";
+import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
 import { useMemo } from "react";
 import type { TodoItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
@@ -80,6 +80,13 @@ export default function TodoPanel({
     for (const t of archivable) archiveActions.archive("todo", t.id);
   };
 
+  // Keyboard activation (task 964): the shell selects; this jumps through the
+  // card's own gate, the twin of its Jump button.
+  const keyboardJump = useMemo(
+    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+    [jumpGate, onJumpToCard],
+  );
+
   return (
     <CardListPanel
       kind="todo"
@@ -100,6 +107,7 @@ export default function TodoPanel({
       getArchived={isArchived}
       selectedId={selectedTodoId}
       onSelect={onSelectTodo}
+      onActivateItem={keyboardJump}
       emptyState={
         <div className={PANEL.empty}>
           No tasks yet.

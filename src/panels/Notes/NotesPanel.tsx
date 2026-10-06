@@ -1,8 +1,8 @@
 "use client";
 
-import type { DockedJumpGate } from "@/links/card-anchor-rows";
+import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
 import type { CardMorphHandler } from "@/cards/types";
-import { useEffect, useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type {
   UserNote,
@@ -12,13 +12,10 @@ import type {
 import {
   ItemMenu,
   PANEL,
-  useCycle,
-  useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
-import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import { byCreatedAt, withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -77,31 +74,14 @@ export default function NotesPanel({
     [cards, recentlyAddedId],
   );
 
-  const onActivateCard = useCallback(
-    (card: NoteCardItem) => {
-      onSelectNote(card.id);
-      // Keyboard activation goes through the SAME gate as the Jump button —
-      // a dead anchor selects without a no-op navigation (task 699).
-      if (onJumpToCard) jumpGate(card).withJump(onJumpToCard)?.(card);
-    },
-    [onSelectNote, onJumpToCard, jumpGate],
+  // Keyboard activation (task 964): the shell selects; this jumps through the
+  // card's own gate, the twin of its Jump button — a dead anchor selects
+  // without a no-op navigation (task 699).
+  const keyboardJump = useMemo(
+    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+    [jumpGate, onJumpToCard],
   );
-  // The keyboard cycle iterates the SAME set CardListPanel renders. Archived
-  // cards filter out of the Active view; feed the cycle the archive-filtered
-  // list (via the shared hook, same accessor CardListPanel gets) so ArrowUp/Down
-  // never steps onto an archived, off-screen card — the Footnotes/Citations
-  // contract.
   const getNoteArchived = useCallback((c: NoteCardItem) => !!c.archived, []);
-  const visibleCards = useArchiveVisibleItems("notes", sortedCards, getNoteArchived);
-  const { idx, next, prev, setIdx } = useCycle(visibleCards, onActivateCard);
-
-  useEffect(() => {
-    if (!selectedNoteId) return;
-    const i = visibleCards.findIndex((c) => c.id === selectedNoteId);
-    if (i >= 0 && i !== idx) setIdx(i);
-  }, [selectedNoteId, visibleCards, idx, setIdx]);
-
-  const handleNavKeys = useListNavKeys(visibleCards.length, next, prev);
 
   // "+" dropdown: lets the user explicitly pick which kind to create.
   const onAddOptions = useMemo(
@@ -132,8 +112,7 @@ export default function NotesPanel({
       getArchived={getNoteArchived}
       selectedId={selectedNoteId}
       onSelect={onSelectNote}
-      onKeyDown={handleNavKeys}
-      scrollTabIndex={0}
+      onActivateItem={keyboardJump}
       emptyState={
         <div className={PANEL.empty}>
           No notes or highlights yet.
