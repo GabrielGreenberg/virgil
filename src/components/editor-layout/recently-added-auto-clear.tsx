@@ -1,9 +1,65 @@
 "use client";
 
 import { useEffect } from "react";
-import { useSelectionsContext } from "./contexts/selections";
+import {
+  useSelectionsContext,
+  type SelectionsContextValue,
+} from "./contexts/selections";
 import { useRecentlyAddedContext } from "./contexts/recently-added";
-import type { RecentlyAddedKind } from "@/hooks/useRecentlyAddedTracker";
+import type {
+  RecentlyAddedKind,
+  RecentlyAddedTracker,
+} from "@/hooks/useRecentlyAddedTracker";
+
+/** The selection slots a pin can follow — every `selectedXId` field. */
+export type RecentlyAddedSelectionSlot = {
+  [K in keyof SelectionsContextValue]: K extends `selected${string}`
+    ? SelectionsContextValue[K] extends string | null
+      ? K
+      : never
+    : never;
+}[keyof SelectionsContextValue];
+
+/**
+ * THE table "pin bucket → the selection slot that holds it" (task 975). A
+ * total Record over `RecentlyAddedKind`, so a new pin bucket does not compile
+ * without its clear rule — the old hand list of seven `useClearOnSelectionDrift`
+ * rows silently missed `highlight` and `archive`, so a new highlight stayed
+ * pinned atop the Notes panel forever and masked every later note's pin.
+ *
+ * Must agree with the setter `finishCreate` is handed for the same bucket
+ * (`card-creation.ts`); `recently-added-slots.test.ts` pins that census.
+ */
+export const RECENTLY_ADDED_SELECTION_SLOT: Readonly<
+  Record<RecentlyAddedKind, RecentlyAddedSelectionSlot>
+> = {
+  note: "selectedNoteId",
+  // A highlight is a Notes-panel card, selected via `setSelectedNoteId`.
+  highlight: "selectedNoteId",
+  cutter: "selectedCutterCardId",
+  reports: "selectedReportCardId",
+  revision: "selectedCommentId",
+  todo: "selectedTodoId",
+  footnote: "selectedFootnoteId",
+  archive: "selectedArchiveId",
+  citation: "selectedCitationId",
+};
+
+const KINDS = Object.keys(RECENTLY_ADDED_SELECTION_SLOT) as RecentlyAddedKind[];
+
+/**
+ * Pure decision: which pinned buckets has the selection drifted away from?
+ * A pin holds only while its slot still selects the pinned id.
+ */
+export function driftedRecentlyAddedKinds(
+  pinned: Partial<Record<RecentlyAddedKind, string>>,
+  selections: Pick<SelectionsContextValue, RecentlyAddedSelectionSlot>,
+): RecentlyAddedKind[] {
+  return KINDS.filter((kind) => {
+    const id = pinned[kind];
+    return !!id && selections[RECENTLY_ADDED_SELECTION_SLOT[kind]] !== id;
+  });
+}
 
 /**
  * Single coordinator that releases the recently-added pin for any panel kind
@@ -27,28 +83,13 @@ function Effects({
   tracker,
   selections,
 }: {
-  tracker: NonNullable<ReturnType<typeof useRecentlyAddedContext>>;
-  selections: ReturnType<typeof useSelectionsContext>;
+  tracker: RecentlyAddedTracker;
+  selections: SelectionsContextValue;
 }) {
-  useClearOnSelectionDrift(tracker, "note", selections.selectedNoteId);
-  useClearOnSelectionDrift(tracker, "cutter", selections.selectedCutterCardId);
-  useClearOnSelectionDrift(tracker, "reports", selections.selectedReportCardId);
-  useClearOnSelectionDrift(tracker, "revision", selections.selectedCommentId);
-  useClearOnSelectionDrift(tracker, "todo", selections.selectedTodoId);
-  useClearOnSelectionDrift(tracker, "footnote", selections.selectedFootnoteId);
-  useClearOnSelectionDrift(tracker, "citation", selections.selectedCitationId);
-  return null;
-}
-
-function useClearOnSelectionDrift(
-  tracker: NonNullable<ReturnType<typeof useRecentlyAddedContext>>,
-  kind: RecentlyAddedKind,
-  selectedId: string | null,
-) {
-  const pinnedId = tracker.getId(kind);
   useEffect(() => {
-    if (pinnedId && selectedId !== pinnedId) {
+    for (const kind of driftedRecentlyAddedKinds(tracker.map, selections)) {
       tracker.clear(kind);
     }
-  }, [tracker, kind, pinnedId, selectedId]);
+  }, [tracker, selections]);
+  return null;
 }
