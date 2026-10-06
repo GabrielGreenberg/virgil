@@ -50,7 +50,6 @@ function makeDeps(over: Partial<CardDeps> = {}): CardDeps {
       current: {
         getEditor: () => ({ state: { doc: { descendants: () => {} } } }),
         createEmptyFootnote: () => ({ footnoteId: "fn-1" }),
-        createFootnoteFromSelection: () => ({ footnoteId: "fn-1" }),
       },
     } as never,
     addNote: (() => ({ id: "note-1" })) as never,

@@ -263,7 +263,6 @@ export interface CardCreationApi {
     targetKind?: TextObjectKind;
   } & AutoFocusOpt) => TodoItem;
   createFootnote: (opts: {
-    fromSelection?: boolean;
     /**
      * Adopt an ALREADY-INSERTED footnote atom instead of minting + inserting
      * one. The slash / typed surfaces (CHIP 4b) insert the `\footnote{}` atom
@@ -271,13 +270,12 @@ export interface CardCreationApi {
      * the citation durability principle), then route the CARD registration
      * here with the atom's id. When set, `createFootnote` runs ONLY the
      * pristine + pin + select + renumber tail against this id — it does NOT
-     * call `createEmptyFootnote` (which would DOUBLE-insert). Mutually
-     * exclusive with `fromSelection`. */
+     * call `createEmptyFootnote` (which would DOUBLE-insert). */
     existingFootnoteId?: string;
     /**
      * Adopt-path only: whether the adopted footnote is BLANK and so should be
      * marked pristine (click-away-discardable), matching the menu's empty
-     * footnote. The menu's `fromSelection:false` path is ALWAYS pristine
+     * footnote. The menu's insert path is ALWAYS pristine
      * (blank); the adopt path is pristine iff the PM caller inserted an empty
      * body. A typed `\footnote{some text}` carries real body content, so it
      * must NOT be reaped on click-away — the caller passes `pristine:false`
@@ -649,12 +647,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // BUG #31: never persist a generated title ("Footnote 2"). Leave the
       // title empty so the collapsed view + expanded title row show the
       // placeholder / +T affordance until the user types a real title.
-      const result = opts.fromSelection
-        ? handle.createFootnoteFromSelection({ title: "" })
-        : handle.createEmptyFootnote({ title: "" });
+      const result = handle.createEmptyFootnote({ title: "" });
       if (!result) return null;
       // No renumber (task 725) — see the adopt path above.
-      if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
+      markFootnotePristine(result.footnoteId);
       finishCreate("footnote", "footnote", setSelectedFootnoteId, result.footnoteId, opts);
       return result;
     },

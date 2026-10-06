@@ -420,9 +420,7 @@ describe("no double-insert", () => {
     expect(footnoteAtoms(editor)).toHaveLength(1);
     const call = createFootnote.mock.calls[0][0];
     expect(call.existingFootnoteId).toBe(footnoteAtoms(editor)[0].footnoteId);
-    // The adopt key is present (so the real createFootnote skips the insert);
-    // fromSelection is NOT set (that path WOULD insert).
-    expect(call.fromSelection).toBeUndefined();
+    // The adopt key is present (so the real createFootnote skips the insert).
   });
 });
 

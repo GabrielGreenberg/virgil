@@ -289,11 +289,14 @@ export interface EditorHandle {
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
   updateFootnoteTitle: (footnoteId: string, title: string) => void;
   deleteFootnote: (footnoteId: string) => void;
-  createFootnoteFromSelection: (opts?: { title?: string }) => { footnoteId: string } | null;
   /** Insert an empty footnote atom at the current cursor position (or
-   *  the start of the doc if no cursor) and return its id. Used by
-   *  toolbar actions that need to create a footnote regardless of
-   *  whether text is selected. */
+   *  the start of the doc if no cursor) and return its id. With a RANGE
+   *  selection the atom lands at the range's END and the selected content is
+   *  left untouched — the one footnote creator never deletes (task 971: the
+   *  former `createFootnoteFromSelection` replaced the selection with a
+   *  plain-text footnote, flattening marks and atoms with no capture check —
+   *  capture/schema symmetry; a future "footnote from selection" must go
+   *  through `sliceIsFullyCapturedBy`). */
   createEmptyFootnote: (opts?: { title?: string }) => { footnoteId: string } | null;
   // NO `renumberFootnotes` (task 725). Footnote numbers are DERIVED, and their
   // one owner is the extension's `appendTransaction` numberer, which runs
@@ -1144,39 +1147,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       };
       deleteLink(editor, link);
     },
-    createFootnoteFromSelection(opts): { footnoteId: string } | null {
-      if (!editor) return null;
-      const { from, to } = editor.state.selection;
-      if (from === to) return null;
-      const text = editor.state.doc.textBetween(from, to, " ");
-      if (!text.trim()) return null;
-      const existing = new Set<string>();
-      editor.state.doc.descendants((n) => {
-        if (n.type.name === "footnote" && n.attrs.footnoteId) {
-          existing.add(n.attrs.footnoteId as string);
-        }
-        return true;
-      });
-      const footnoteId = generateShortId(existing);
-      const content: TipJSON = {
-        type: "doc",
-        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-      };
-      // No scroll: inline atoms must never jump the viewport (insertInlineAtom
-      // enforces the invariant). insertContent replaces the selected range, so the
-      // highlighted text becomes the footnote's seed content.
-      const landed = insertInlineAtom({
-        editor,
-        type: "footnote",
-        attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
-      });
-      // THE REPORT IS THE PERMISSION (task 396): the door's container gate can
-      // refuse (a caret in a `text*` verbatim block). `null` is this handle's
-      // existing "no footnote was made" answer and every caller already reads it,
-      // so a refusal cannot leave a card behind with no atom.
-      if (landed.refused) return null;
-      return { footnoteId };
-    },
     createEmptyFootnote(opts): { footnoteId: string } | null {
       if (!editor) return null;
       const existing = new Set<string>();
@@ -1188,13 +1158,23 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       });
       const footnoteId = generateShortId(existing);
       const content: TipJSON = { type: "doc", content: [{ type: "paragraph" }] };
+      // A range selection is never REPLACED (task 971): `at` collapses the
+      // selection to its end before inserting, so an empty footnote cannot
+      // delete what the user had selected. A collapsed caret keeps the
+      // no-`at` form (insert at the live selection, unchanged).
+      const { from, to } = editor.state.selection;
       // No scroll: inline atoms must never jump the viewport.
       const landed = insertInlineAtom({
         editor,
         type: "footnote",
         attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
+        ...(from !== to ? { at: to } : {}),
       });
-      if (landed.refused) return null; // task 396 — see the sibling above.
+      // THE REPORT IS THE PERMISSION (task 396): the door's container gate can
+      // refuse (a caret in a `text*` verbatim block). `null` is this handle's
+      // "no footnote was made" answer and every caller already reads it, so a
+      // refusal cannot leave a card behind with no atom.
+      if (landed.refused) return null;
       return { footnoteId };
     },
     getExamples(): ExampleInfo[] {

@@ -414,9 +414,8 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       switch (action) {
         case "footnote": {
           // Footnote anchor goes at the end of the passage. Collapse the
-          // selection there before calling createFootnote — its
-          // `fromSelection: false` path inserts an empty footnote atom at
-          // the current cursor. `inlineInsertPos` is what makes "the end of
+          // selection there before calling createFootnote — it inserts an
+          // empty footnote atom at the current cursor. `inlineInsertPos` is what makes "the end of
           // the passage" a TEXT position for a container ref, where `range.to`
           // is a position between block children (task 148).
           try {
@@ -425,7 +424,6 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             /* ignore */
           }
           const result = cardCreation.createFootnote({
-            fromSelection: false,
             mode: "omni",
           });
           if (result) {
