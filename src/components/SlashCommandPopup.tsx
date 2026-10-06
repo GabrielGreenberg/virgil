@@ -28,6 +28,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { useSlashPopupState } from "@/lib/slash-popup-store";
 import { executeSlashSelectionAt } from "@/lib/tiptap/slash-popup";
+import { slashCommandReason } from "@/lib/tiptap/slash-applicability";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import {
@@ -40,6 +41,10 @@ import {
 } from "@/lib/pane-resize";
 
 const POPUP_WIDTH = 180;
+/** Task 968: a popup with greyed rows carries their reasons as a suffix, so it
+ *  widens to fit a short phrase beside the command (truncated past that; the
+ *  row's hint holds the whole text). */
+const POPUP_WIDTH_WITH_REASONS = 280;
 const VIEWPORT_MARGIN = 8;
 const GAP = 4;
 const ROW_HEIGHT = 24;
@@ -127,8 +132,9 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
   const popupHeight = state.filtered.length * ROW_HEIGHT + POPUP_PAD_Y * 2;
   const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
   const vh = typeof window !== "undefined" ? window.innerHeight : 768;
+  const width = state.disabled.length > 0 ? POPUP_WIDTH_WITH_REASONS : POPUP_WIDTH;
   let left = coords.left;
-  left = Math.max(VIEWPORT_MARGIN, Math.min(left, vw - POPUP_WIDTH - VIEWPORT_MARGIN));
+  left = Math.max(VIEWPORT_MARGIN, Math.min(left, vw - width - VIEWPORT_MARGIN));
   let top = coords.bottom + GAP;
   if (top + popupHeight > vh - VIEWPORT_MARGIN) {
     top = coords.top - popupHeight - GAP;
@@ -149,7 +155,7 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
         position: "fixed",
         left,
         top,
-        width: POPUP_WIDTH,
+        width,
         // Caret popup rides the open-chrome-menu tier (task 033), promoted off
         // the old ad-hoc `1000` so a popped card / lifted overlay can't occlude
         // it — matches NodeEditPopover + the <Menu> primitive.
@@ -170,24 +176,34 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
         // so what this row offers is what the commit accepts.
         const isDisabled = state.disabled.includes(name);
         const selected = i === state.selectedIndex && !isDisabled;
+        // Task 968: a greyed command SAYS why — a muted suffix on the row, the
+        // row's hint, and its accessible description. Same row, same ctx as
+        // the grey itself (`slashCommandReason` → `verdictOf`); asked only for
+        // the rows that ARE grey.
+        const why = isDisabled && editor ? slashCommandReason(editor.view, name) : null;
         return (
           <button
             key={name}
             type="button"
             disabled={isDisabled}
+            data-hint={why ?? undefined}
+            aria-description={why ?? undefined}
             onClick={() => {
               if (!editor) return;
               executeSlashSelectionAt(editor.view, i);
               editor.commands.focus();
             }}
-            className={`block w-full text-left px-3 font-mono text-xs ${
+            className={`flex w-full items-baseline gap-2 text-left px-3 font-mono text-xs ${
               isDisabled
                 ? "text-ink-faint cursor-not-allowed"
                 : `text-ink-body ${selected ? "bg-edge-subtle" : "hover-on-light"}`
             }`}
             style={{ height: ROW_HEIGHT, lineHeight: `${ROW_HEIGHT}px` }}
           >
-            {`\\${name}`}
+            <span className="shrink-0">{`\\${name}`}</span>
+            {why ? (
+              <span className="min-w-0 flex-1 truncate text-right font-sans">{why}</span>
+            ) : null}
           </button>
         );
       })}

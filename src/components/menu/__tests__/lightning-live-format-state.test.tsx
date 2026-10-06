@@ -101,9 +101,11 @@ function openPanel(ed: Editor) {
   );
 }
 
-const cell = (hint: string) =>
+// By NAME (`aria-label`), not `data-hint`: since task 968 a greyed cell's hint
+// also carries WHY it is grey, while its name stays the cell's title.
+const cell = (name: string) =>
   document.querySelector(
-    `[aria-label="Selection actions"] button[data-hint="${hint}"]`,
+    `[aria-label="Selection actions"] button[aria-label="${name}"]`,
   ) as HTMLButtonElement;
 const lit = (hint: string) => cell(hint).getAttribute("data-format-active") === "true";
 const frame = () =>

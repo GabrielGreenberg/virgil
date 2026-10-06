@@ -135,6 +135,23 @@ export function surfaceEditableNow(
 }
 
 /**
+ * Is this surface read-only because its HOST mounted it so (the `editableRef`
+ * axis — the Library Reader), as opposed to the pen (`view.editable`)? Asked
+ * only to EXPLAIN a refusal (task 968's reason channel names "open read-only"
+ * apart from "your co-author has the pen"); the gate itself stays
+ * `surfaceEditableNow`. `null` / a surface with no published ref → `false`.
+ *
+ * [cost: O(1).]
+ */
+export function surfaceReadOnlyByHost(
+  target: EditorLike | EditorView | null | undefined,
+): boolean {
+  if (!target) return false;
+  const ref = "view" in target ? refFrom(target) : refFrom(owningEditor(target));
+  return !!ref && !ref.current;
+}
+
+/**
  * The SSOT read, with ONE tolerance: a view that does not MODEL `editable` at
  * all — a hand-built harness view, a foreign embed — is not thereby a read-only
  * view. `surfaceIsEditable` would read `undefined` and answer `false`, turning

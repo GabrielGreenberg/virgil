@@ -302,8 +302,10 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
   it("the affordance judges a SELECTION ref over its whole range (task 428)", () => {
     // `inlineAtomInsertApplies` greys the `$x$` / `Cross-ref` cells; a selection
     // ref carries `from` AND `to`, and reading only `from` is the defect.
+    // Task 968: the range check lives in `inlineAtomInsertRefusal`, the one
+    // predicate the factory's `applies()` AND the row's `refusal` both read.
     const src = read("src/lib/actions/action-registry.ts");
-    const at = src.indexOf("function inlineAtomInsertApplies(");
+    const at = src.indexOf("function inlineAtomInsertRefusal(");
     expect(at).toBeGreaterThan(0);
     const body = src.slice(at, at + 1500);
     expect(body).toMatch(ASKS_INLINE_RANGE);

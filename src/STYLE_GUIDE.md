@@ -2784,6 +2784,19 @@ Enter/click commit refuses on.
   drift apart — and put the reason where the user reads it: a `title` on the
   control plus one muted line beneath it. A disabled control with no reason is
   the same silence one step further back.
+- **A registry row's grey says why, from the gate** (task 968). Surfaces paint
+  `verdictOf(row, ctx)` (`action-registry.ts`), not bare `applies()`: the same
+  state, plus the REASON named by walking the same gates — the pen, the host
+  (the Reader's read-only mount), the selection-mode gate, then the row's own
+  base (`ActionSpec.refusal`, built from the very predicate its `applies()`
+  reads; else a generic kind / container refusal). The words live in ONE table,
+  `refusalPhrase` (`src/lib/actions/refusal.ts`) — a surface never writes its
+  own. Rendering: a grab/lightning LIST row puts the reason on `data-hint` +
+  `aria-description` (a native disabled `<button>` still gets `pointerover`,
+  so the hint shows); a lightning GRID cell keeps its title as the name and
+  hints "Title — reason"; a slash row shows it as a muted right-hand suffix
+  (the popup widens while any row is grey) plus the hint. A read-only reason
+  outranks a row's own refusal: a whole-menu grey must explain itself.
 
 ### Z-index ladder
 

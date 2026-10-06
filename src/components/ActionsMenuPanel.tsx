@@ -37,7 +37,7 @@
  * this provider's exclude set (R8), so it needs no explicit exclusion.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useRef, useState } from "react";
 import { useLiveEditorSignature } from "@/lib/tiptap/use-live-editor-signature";
 import type { Editor } from "@tiptap/react";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
@@ -47,6 +47,7 @@ import {
   cardActionRows,
   extractInlineFromSlice,
   VIRGIL_ACTION_REGISTRY,
+  verdictOf,
   type ActionContext,
   type ActionId,
 } from "@/lib/actions/action-registry";
@@ -437,9 +438,8 @@ export function ActionsMenuPanel({
   // uniform OR keeps every cell rendering the same way). One ctx per call;
   // computed at menu-open, never per keystroke — keystroke sanctity.
   // ───────────────────────────────────────────────────────────────────────
-  const gridCellDisabled = (id: ActionId): boolean =>
-    !canEdit ||
-    VIRGIL_ACTION_REGISTRY[id]!.applies({
+  const gridCellCtx = (): ActionContext =>
+    ({
       editor,
       view: editor.view,
       ref: {
@@ -450,7 +450,16 @@ export function ActionsMenuPanel({
       },
       surface: "lightning",
       canEdit,
-    } as ActionContext) === "disabled";
+    }) as ActionContext;
+  const gridCellDisabled = (id: ActionId): boolean =>
+    !canEdit || VIRGIL_ACTION_REGISTRY[id]!.applies(gridCellCtx()) === "disabled";
+  // Task 968: WHY a cell is grey — the same row, the same ctx, through
+  // `verdictOf`. Read by each cell off `GridCellReasonContext` with its OWN id,
+  // so the 17 call sites above keep their one census-pinned `disabled=` door
+  // and no cell can explain itself with another cell's reason. Asked only for a
+  // cell that IS disabled (render-time, gesture rate).
+  const gridCellReason = (id: ActionId): string | null =>
+    verdictOf(VIRGIL_ACTION_REGISTRY[id]!, gridCellCtx()).reason;
 
   // The 11 card-action rows, decorated with their per-open disabled state, fed
   // to `<MenuItemsFromRegistry>` (the same mapper the grab menu uses). CHIP 7b:
@@ -469,7 +478,7 @@ export function ActionsMenuPanel({
   // item content). The asymmetry is by design, not a bug to "fix" — and since
   // BOTH derive from the ONE `menuTarget` (same `paragraphUuid`, same
   // `nodeKind`/`range`), they cannot diverge on anchor identity.
-  const cardRowDisabled = (entry: (typeof LIGHTNING_CARD_ROWS)[number]): boolean => {
+  const cardRowVerdict = (entry: (typeof LIGHTNING_CARD_ROWS)[number]) => {
     const applyRef =
       mode === "cursor"
         ? { kind: "cursor" as const, pos: range.from, paragraphId: paragraphUuid }
@@ -485,12 +494,12 @@ export function ActionsMenuPanel({
     // gesture ref short-circuited to "allow", so the lightning bolt let you add
     // a citation to a `titleField` / footnote to a codeBlock — the SAME
     // corruption the grab-bar already greyed out. Now all four surfaces agree.
-    return (
-      entry.applies({ ref: applyRef, canEdit, view: editor.view } as ActionContext) === "disabled"
-    );
+    // Task 968: `verdictOf` — the row's own `applies()` state plus WHY.
+    return verdictOf(entry, { ref: applyRef, canEdit, view: editor.view } as ActionContext);
   };
   const cardRows: DecoratedMenuRow[] = LIGHTNING_CARD_ROWS.map((entry) => {
-    const disabled = cardRowDisabled(entry);
+    const verdict = cardRowVerdict(entry);
+    const disabled = verdict.state === "disabled";
     return {
       id: entry.id,
       label: entry.label,
@@ -503,6 +512,7 @@ export function ActionsMenuPanel({
       separator: entry.separator,
       destructive: entry.destructive,
       disabled,
+      disabledReason: verdict.reason,
       run: () => runAction(entry.id as DragHandleAction),
     };
   });
@@ -520,8 +530,14 @@ export function ActionsMenuPanel({
     [
       canEdit ? "e" : "r",
       LIGHTNING_ACTIVE_MARKS.map((n) => (isActive(n) ? 1 : 0)).join(""),
-      LIGHTNING_GRID_CELL_IDS.map((id) => (gridCellDisabled(id) ? 1 : 0)).join(""),
-      LIGHTNING_CARD_ROWS.map((entry) => (cardRowDisabled(entry) ? 1 : 0)).join(""),
+      // Task 968: a greyed cell / row contributes its REASON, so a caret move
+      // that keeps a row grey but changes why (out of a title, into code)
+      // re-renders the hint too.
+      LIGHTNING_GRID_CELL_IDS.map((id) => (gridCellDisabled(id) ? gridCellReason(id) ?? 1 : 0)).join(","),
+      LIGHTNING_CARD_ROWS.map((entry) => {
+        const v = cardRowVerdict(entry);
+        return v.state === "disabled" ? v.reason ?? 1 : 0;
+      }).join(","),
     ].join("|"),
   );
 
@@ -557,6 +573,7 @@ export function ActionsMenuPanel({
         }}
       >
         {/* ── Formatting icon grid (4 cols × 5 rows) ─────────────── */}
+        <GridCellReasonContext.Provider value={gridCellReason}>
         <MenuGrid
           cols={GRID_COLS}
           style={{ gap: 2, padding: "0 4px" }}
@@ -820,6 +837,7 @@ export function ActionsMenuPanel({
             </svg>
           </FmtBtn>
         </MenuGrid>
+        </GridCellReasonContext.Provider>
 
         <div
           aria-hidden
@@ -957,11 +975,13 @@ function FmtBtn({
     run,
   });
   const itemProps = getItemProps();
+  const reason = useContext(GridCellReasonContext);
+  const why = disabled ? reason(id as ActionId) : null;
   return (
     <button
       {...itemProps}
       type="button"
-      {...iconHint({ label: title })}
+      {...gridCellHint(title, why)}
       disabled={disabled}
       data-format-active={active ? "true" : undefined}
       className={gridCellClassName(disabled)}
@@ -984,6 +1004,27 @@ function FmtBtn({
       {children}
     </button>
   );
+}
+
+/**
+ * WHY a grid cell is greyed (task 968), keyed by the cell's own action id. The
+ * panel provides `gridCellReason`; the default answers nothing, so a cell
+ * rendered outside the panel (a test harness) is simply unexplained, never
+ * mis-explained.
+ */
+const GridCellReasonContext = createContext<(id: ActionId) => string | null>(() => null);
+
+/**
+ * A grid cell's hint: its name, and — when greyed with a known reason — the
+ * reason after it ("Bold (⌘B) — Your co-author has the pen"), also announced as
+ * the cell's accessible DESCRIPTION. The NAME stays `title` (`iconHint`'s
+ * `aria-label`), so a reason never replaces what the cell is called.
+ */
+function gridCellHint(title: string, why: string | null) {
+  return {
+    ...iconHint({ label: title, hint: why ? `${title} — ${why}` : undefined }),
+    "aria-description": why ?? undefined,
+  };
 }
 
 /**
@@ -1010,6 +1051,8 @@ function ColorGridCell({
   run: (rect: DOMRect) => void;
 }) {
   const btnRef = useRef<HTMLButtonElement | null>(null);
+  const reason = useContext(GridCellReasonContext);
+  const why = disabled ? reason("text-color") : null;
   const { active: roving, getItemProps } = useMenuItem({
     id: "text-color",
     region: "grid",
@@ -1031,7 +1074,7 @@ function ColorGridCell({
         itemProps.ref(el);
       }}
       type="button"
-      {...iconHint({ label: "Text color" })}
+      {...gridCellHint("Text color", why)}
       disabled={disabled}
       onClick={
         disabled

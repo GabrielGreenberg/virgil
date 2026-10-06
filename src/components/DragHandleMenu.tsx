@@ -36,6 +36,7 @@ import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { TextObjectKind } from "@/text-objects/types";
 import {
   cardActionRows,
+  verdictOf,
   type ActionContext,
   type ActionRef,
 } from "@/lib/actions/action-registry";
@@ -173,33 +174,39 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, target, ed
       canEdit: canEdit && surfaceEditableNow(editor ?? null),
       view: editor?.view,
     } as ActionContext;
-    return cardRows.map<DecoratedMenuRow>((row) => ({
-      id: row.id,
-      label: row.label,
-      letter: row.letter,
-      // The destructive `delete` row also activates on Backspace / Delete —
-      // preserved from the bespoke keydown listener as a letter-alias.
-      letterAliases: row.id === "delete" ? ["Backspace", "Delete"] : undefined,
-      icon: row.icon,
-      separator: row.separator,
-      destructive: row.destructive,
-      disabled: row.applies(ctx) === "disabled",
-      run: () => {
-        if (!live) {
-          onSelect(row.id as DragHandleAction);
-          return;
-        }
-        // Asked at CLICK time, not render time: a transaction that landed
-        // since the last frame is already folded in. Null = the target went
-        // stale in that gap — refuse by closing, never act on shifted text.
-        const now = live.current();
-        if (!now) {
-          onClose();
-          return;
-        }
-        onSelect(row.id as DragHandleAction, now);
-      },
-    }));
+    return cardRows.map<DecoratedMenuRow>((row) => {
+      // Task 968: the verdict WITH its reason — the same `applies()` state,
+      // plus which gate refused, so a greyed row says why.
+      const verdict = verdictOf(row, ctx);
+      return {
+        id: row.id,
+        label: row.label,
+        letter: row.letter,
+        // The destructive `delete` row also activates on Backspace / Delete —
+        // preserved from the bespoke keydown listener as a letter-alias.
+        letterAliases: row.id === "delete" ? ["Backspace", "Delete"] : undefined,
+        icon: row.icon,
+        separator: row.separator,
+        destructive: row.destructive,
+        disabled: verdict.state === "disabled",
+        disabledReason: verdict.reason,
+        run: () => {
+          if (!live) {
+            onSelect(row.id as DragHandleAction);
+            return;
+          }
+          // Asked at CLICK time, not render time: a transaction that landed
+          // since the last frame is already folded in. Null = the target went
+          // stale in that gap — refuse by closing, never act on shifted text.
+          const now = live.current();
+          if (!now) {
+            onClose();
+            return;
+          }
+          onSelect(row.id as DragHandleAction, now);
+        },
+      };
+    });
   }, [target, kind, editor, canEdit, onSelect, onClose, live]);
 
   if (typeof document === "undefined") return null;

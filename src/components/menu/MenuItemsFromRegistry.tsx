@@ -30,6 +30,9 @@ export interface DecoratedMenuRow {
   separator?: boolean;
   destructive?: boolean;
   disabled: boolean;
+  /** WHY the row is greyed — `verdictOf(row, ctx).reason` (task 968). Shown as
+   *  the row's hint and announced as its description; ignored when enabled. */
+  disabledReason?: string | null;
   run: () => void;
 }
 
@@ -61,6 +64,12 @@ function RegistryItem({ row }: RegistryItemProps) {
     ...menuRowRovingStyle(active, row.disabled),
   };
 
+  // Task 968: a greyed row SAYS why (STYLE_GUIDE "A command surface RENDERS its
+  // verdict"). The reason is the hint (a native disabled `<button>` still gets
+  // `pointerover`, so `HintLayer` shows it on hover — no `pointer-events-none`
+  // in the row tone) and the accessible DESCRIPTION; the label stays the name.
+  const reason = row.disabled ? row.disabledReason || undefined : undefined;
+
   return (
     <div>
       {row.separator && <MenuSeparator />}
@@ -68,6 +77,8 @@ function RegistryItem({ row }: RegistryItemProps) {
         {...itemProps}
         type="button"
         disabled={row.disabled}
+        data-hint={reason}
+        aria-description={reason}
         className={`w-full flex items-center gap-2.5 px-3 text-sm text-left ${menuRowToneClass(
           row.destructive ? "danger" : "default",
           row.disabled,
