@@ -63,13 +63,11 @@ card so the user can drag it into the document.
    the user drags it to anchor), so no `--anchor` is needed here even for a
    virtual id: the citation card is never anchored at create time.
 
-1. **Load.** The request's text and `paragraphIds`:
-   - a real id → its row in `<docPath>/virgil/ai-requests.json`;
-   - `virtual:todos:<cardId>` → its row from
-     `python3 editor/scripts/list_requests.py <docPath>` (the only place a
-     virtual row exists — it carries `text`, `paragraphIds` and
-     `selectedText` read off the source todo). The ask is the todo's `text`
-     plus its `notes` in `todos.json`.
+1. **Load.** The request's text and `paragraphIds` from its drain row
+   ([_request-load.md](_request-load.md)) — a real id and a `virtual:todos:<cardId>` alike (the
+   drain is the only place a virtual row exists; it carries `text`,
+   `paragraphIds` and `selectedText` read off the source todo). For a todo,
+   the ask is the todo's `text` plus its `notes` in `todos.json`.
 
    Fetch paragraph context so the citation makes sense in place:
    - If the request has `paragraphIds`, run

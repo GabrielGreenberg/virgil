@@ -39,9 +39,9 @@ two paths:
 ## Procedure
 
 1. **Load context.**
-   - Read `<docPath>/virgil/ai-requests.json` and find the request by
-     id (skip if `<requestId>` starts with `virtual:` — those are
-     card-flag-only).
+   - Take the request's drain row from `list_requests.py` ([_request-load.md](_request-load.md) —
+     never the raw `ai-requests.json` row; a `virtual:` id exists only
+     there).
    - Read `<docPath>/virgil/notes.json` to find the source note when
      `linkedTo.panel == "notes"` (or for the virtual case, the cardId
      embedded in the request id).

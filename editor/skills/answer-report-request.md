@@ -38,7 +38,8 @@ Report Request by appending a **Report card authored by AI** to
 1. **Load.** The source Report Request from
    `<docPath>/virgil/reports.json` `cards[]` via `linkedTo.cardId` (the
    `report-request` card). Its `text` / `content` is what report the user
-   wants. Pull paragraph context for the request's anchor:
+   wants; the Task itself (`linkedTo`, `paragraphIds`, safety level) is its
+   drain row ([_request-load.md](_request-load.md)). Pull paragraph context for the request's anchor:
    ```bash
    python3 editor/scripts/get_para_context.py <docPath> <uuid> --neighbors=2
    ```
