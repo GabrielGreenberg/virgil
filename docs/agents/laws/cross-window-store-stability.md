@@ -733,6 +733,38 @@ notification and the version all survive; editing the card being archived
 refuses with every file untouched. Four legs fail on the reinstated snapshot
 write.
 
+### The app's half of that window: `mutateSidecar` is a COMPARE-AND-SWAP (task 979)
+
+Task 941 closed the Python side; the app side still trusted its lock, which is
+in-process only. A skill's `os.replace` landing between `mutateSidecar`'s
+in-lock read and its write was overwritten by `mutate(old)` — and since task
+959's open-time write-backs (Python's `json_dumps` never byte-matches the app's
+serializer, so the first open after ANY skill write re-writes the file), that
+window opened on every panel open after an agent write.
+
+- **The door.** `mutateSidecar` reads through `readSidecarBase` (value + the
+  `{lastModified, size, text}` revision it saw, or `absent`), runs `mutate`,
+  then `sidecarBaseStillHolds` re-stats immediately before writing. Moved →
+  re-read and re-run `mutate` on the fresh base; a stat move with identical
+  bytes (a touch) holds. Three moves → `SidecarContentionError`, nothing written
+  — a refusal, never a guess. One door, every caller. Residual: one stat →
+  `createWritable`.
+- **`mutate` may re-run.** Pure by contract already; a side effect it has must
+  be idempotent or first-run-only. `writeSidecarMerged` captures its base cell
+  on the FIRST run only — a re-capture would make `next` its own base and turn
+  a local delete into "untouched".
+- **The write-back shows what it wrote.** Where the in-lock read was not the
+  file the mount read loaded, `usePersistentState` adopts the write-back's
+  result as the new base and merges it into state (the rehydrate path's
+  shape) — both I/Os stamped the ledger, so the SidecarWatcher would never have
+  reported the agent's card. Only while the cell still holds the load's base.
+- The dev backend's `mutateSidecar` is unchanged (dev-only, cannot ship).
+
+CI: `mutate-sidecar-cas.test.ts` (real storage-fsa over a stat-bearing fake;
+the foreign write lands inside `mutate`), `writeback-adopts-foreign.test.tsx`.
+Five legs fail on the reverted door; the merged-write leg fails alone on the
+reverted first-run guard.
+
 ---
 
 ## The validated-re-read half (task 677)
