@@ -93,6 +93,20 @@ function measureLabel(el: HTMLElement | null, node: ForestRenderNode): MeasuredL
     if (rect.width > 0 && rect.height > 0) {
       return { width: rect.width, height: rect.height, degraded: false };
     }
+    // A laid-out box (it has its padding's width) with no height is an EMPTY
+    // label, not a missing box — `.forest-node { min-height: 1lh }` gives it a
+    // line in CSS, and this is the same answer for an engine without `lh`.
+    // It is exact: an empty label's box IS its padding by one line. Reading it
+    // as "no box" marked the whole tree degraded for life and defeated
+    // `measure-watch`'s "already exact" gate (task 972).
+    if (rect.width > 0 && node.label.length === 0 && typeof window !== "undefined") {
+      const cs = window.getComputedStyle(el);
+      const fontSizePx = parseFloat(cs.fontSize);
+      const line = Number.isFinite(fontSizePx)
+        ? resolveLineHeightPx(cs, fontSizePx)
+        : FALLBACK_LINE_PX;
+      return { width: rect.width, height: line, degraded: false };
+    }
     // No box (detached / display:none) — ask the canvas for the width of the
     // flat label, which is exact for a text-only label and an approximation
     // for one carrying math.

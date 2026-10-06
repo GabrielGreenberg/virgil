@@ -1986,6 +1986,9 @@ textarea {
   position: absolute;
   white-space: nowrap;
   padding: 0 3px;
+  /* An empty label still occupies one line, so its box is real and measured
+     exact (task 972) — edges meet it where the layout placed it. */
+  min-height: 1lh;
 }
 /* Math inside a node label takes the document's math ink, exactly as inline
    math in prose does — the label is prose, not chrome. */

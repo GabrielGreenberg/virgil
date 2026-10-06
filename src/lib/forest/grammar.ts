@@ -63,11 +63,26 @@ export type ForestLabelSegment =
  */
 export interface ForestRenderNode {
   label: ForestLabelSegment[];
-  /** The label as flat text — the measurement fallback and the a11y string. */
+  /** The label as flat text — the measurement fallback and the a11y string.
+   *  Always `labelTextOf(label)`: DERIVED from the painted segments, never
+   *  accumulated beside them (task 972). */
   labelText: string;
   /** Draw a triangle over THIS box (and terminate its incoming edge at the apex). */
   roofed: boolean;
   children: ForestRenderNode[];
+}
+
+/**
+ * The ONE answer to "what does this label read as, flat?" — math as `$…$`, text
+ * verbatim. The paint (the segments), the canvas measure rung and the
+ * screen-reader string all read this, so they measure and announce one string.
+ *
+ * Before task 972 a roofed base accumulated its flat text separately from its
+ * segments (a `" "` separator per leaf in the paint, only non-empty texts in
+ * the flat string), and the two disagreed exactly where a leaf was empty.
+ */
+export function labelTextOf(segments: readonly ForestLabelSegment[]): string {
+  return segments.map((seg) => (seg.kind === "math" ? `$${seg.value}$` : seg.value)).join("");
 }
 
 // ── Refusals ────────────────────────────────────────────────────────────────
@@ -85,6 +100,7 @@ export type ForestRefusalKind =
   | "option"
   | "command"
   | "unterminated-math"
+  | "display-math"
   | "unbalanced"
   | "multiple-roots"
   | "trailing"
@@ -160,6 +176,8 @@ export function describeForestRefusal(kind: ForestRefusalKind, token: string): s
       return `LaTeX command \`${t}\` in a node label`;
     case "unterminated-math":
       return "unterminated `$` in a node label";
+    case "display-math":
+      return "display math `$$` in a node label (only inline `$…$` is supported)";
     case "unbalanced":
       return `unbalanced \`${t}\``;
     case "multiple-roots":
@@ -307,7 +325,6 @@ function findMatchingBraceLive(src: string, open: number, limit: number): number
 /** A parsed node, before roofs are resolved. */
 interface RawNode {
   label: ForestLabelSegment[];
-  labelText: string;
   roof: boolean;
   /** Offset of the `roof` option, so a nested-roof refusal can point AT it. */
   roofOffset: number;
@@ -316,7 +333,6 @@ interface RawNode {
 
 interface LabelScan {
   segments: ForestLabelSegment[];
-  text: string;
   end: number;
 }
 
@@ -409,6 +425,10 @@ function scanLabel(
     if (stopAtDelims && (ch === "[" || ch === "]" || ch === ",")) break;
 
     if (ch === "$") {
+      // `$$` is DISPLAY math — not a label construct. Read as inline math it
+      // scanned `$$x$$` as math "", text "x", math "": two empty placeholders
+      // painted under no badge (task 972). Refuse it whole, by name.
+      if (src[i + 1] === "$") refuse("display-math", "$$", i);
       // Inline math. The close is the next unescaped `$`.
       let j = i + 1;
       let close = -1;
@@ -473,20 +493,14 @@ function scanLabel(
     if (last.kind === "text") last.value = last.value.replace(/ +$/, "");
   }
   const kept = segments.filter((s) => s.kind !== "text" || s.value.length > 0);
+  // The flat string is NOT carried here: it is `labelTextOf(segments)`,
+  // derived at the one place a render node is built, so the text a label is
+  // MEASURED and ANNOUNCED by is the text the spans paint (``x'' is six bytes
+  // and “x” is three — see `borderBoxFromTextWidth`). No second whitespace
+  // pass either: each run was collapsed BEFORE the display projection, and
+  // re-collapsing would flatten a `~` tie (U+00A0) back into a space.
   return {
     segments: kept,
-    // Rebuilt from the (projected) SEGMENTS rather than from a raw accumulator,
-    // so the flat string a label is MEASURED and ANNOUNCED by is the same text
-    // the spans paint — ``x'' is six bytes and “x” is three, and the two
-    // measurement rungs have to agree (see `borderBoxFromTextWidth`).
-    //
-    // No second whitespace pass: each run was collapsed BEFORE the projection
-    // and the edges are trimmed above. Re-collapsing here would undo the
-    // door's own work — `\s` matches U+00A0, so a `~` TIE the projection just
-    // produced would be flattened back into an ordinary space.
-    text: kept
-      .map((seg) => (seg.kind === "math" ? `$${seg.value}$` : seg.value))
-      .join(""),
     end: i,
   };
 }
@@ -598,7 +612,7 @@ function scanNode(
     refuse("text-after-child", src.slice(i, Math.min(limit, i + TOKEN_CLIP)), i);
   }
   return {
-    node: { label: label.segments, labelText: label.text, roof, roofOffset, children },
+    node: { label: label.segments, roof, roofOffset, children },
     end: i + 1,
   };
 }
@@ -607,14 +621,16 @@ function scanNode(
 
 /** Every leaf label of a subtree, in document order — the base line a roof
  *  collapses its descendants into, exactly as forest's own `roof` does. */
-function collectLeafSegments(node: RawNode, out: ForestLabelSegment[], texts: string[]): void {
+function collectLeafSegments(node: RawNode, out: ForestLabelSegment[]): void {
   if (node.children.length === 0) {
+    // An EMPTY leaf contributes nothing — not even its separator, or the base
+    // line would paint a doubled / leading space for a word that is not there.
+    if (node.label.length === 0) return;
     if (out.length > 0) out.push({ kind: "text", value: " " });
     for (const seg of node.label) out.push(seg);
-    if (node.labelText) texts.push(node.labelText);
     return;
   }
-  for (const child of node.children) collectLeafSegments(child, out, texts);
+  for (const child of node.children) collectLeafSegments(child, out);
 }
 
 /** The offset of the first `roof` option strictly below `node`, or -1. */
@@ -641,27 +657,21 @@ function flattenRoofs(node: RawNode): ForestRenderNode {
   if (node.roof) {
     const nested = roofBelow(node);
     if (nested >= 0) refuse("nested-roof", "roof", nested);
-    if (node.children.length === 0) {
-      return { label: node.label, labelText: node.labelText, roofed: true, children: [] };
-    }
+    if (node.children.length === 0) return renderNode(node.label, true, []);
     const segs: ForestLabelSegment[] = [];
-    const texts: string[] = [];
-    for (const child of node.children) collectLeafSegments(child, segs, texts);
-    return {
-      label: node.label,
-      labelText: node.labelText,
-      roofed: false,
-      children: [
-        { label: segs, labelText: texts.join(" "), roofed: true, children: [] },
-      ],
-    };
+    for (const child of node.children) collectLeafSegments(child, segs);
+    return renderNode(node.label, false, [renderNode(segs, true, [])]);
   }
-  return {
-    label: node.label,
-    labelText: node.labelText,
-    roofed: false,
-    children: node.children.map(flattenRoofs),
-  };
+  return renderNode(node.label, false, node.children.map(flattenRoofs));
+}
+
+/** The one constructor of a render node — where `labelText` is derived. */
+function renderNode(
+  label: ForestLabelSegment[],
+  roofed: boolean,
+  children: ForestRenderNode[],
+): ForestRenderNode {
+  return { label, labelText: labelTextOf(label), roofed, children };
 }
 
 // ── The door ────────────────────────────────────────────────────────────────
