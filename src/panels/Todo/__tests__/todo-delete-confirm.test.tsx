@@ -20,7 +20,7 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { TodoRow } from "@/panels/Todo/TodoRow";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { TodoItem } from "@/lib/types";
@@ -81,11 +81,13 @@ describe("TodoRow delete-confirm (task 067 facet 2)", () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 
-  it("confirming the dialog then calls onDelete", () => {
+  it("confirming the dialog then calls onDelete", async () => {
     const { onDelete } = renderRow(makeTodo({ text: "buy milk" }));
     fireEvent.click(screen.getByLabelText("Delete"));
     fireEvent.click(screen.getByText("Delete", { selector: "button" }));
-    expect(onDelete).toHaveBeenCalledWith("t1");
+    // The shared door's confirm is a promise (task 976), so the delete lands a
+    // microtask after the press.
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("t1"));
   });
 
   it("a pristine (blank text + notes) todo trash deletes immediately — no confirm", () => {
@@ -156,5 +158,53 @@ describe("TodoRow delete-key focus guard (task 096)", () => {
     expect(shell).not.toBeNull();
     fireEvent.keyDown(shell!, { key: "Backspace" });
     expect(onDelete).toHaveBeenCalledWith("t1");
+  });
+});
+
+// task 976 — the todo answers to the HALO (store selection OR panel prop), and
+// its confirm is THE card-delete door's, opened beside the card.
+describe("TodoRow on the shared card-delete door (task 976)", () => {
+  function renderStoreSelected(item: TodoItem, onDelete = vi.fn()) {
+    cardStore.expand(REF);
+    // Selected through the shared card store (margin marker / omni / jump),
+    // NOT the panel prop — the case that used to get no halo and no key.
+    cardStore.select(REF);
+    render(
+      <TodoRow
+        item={item}
+        selected={false}
+        onToggle={vi.fn()}
+        onUpdate={vi.fn()}
+        onUpdateNotes={vi.fn()}
+        onSetAiRequest={vi.fn()}
+        onDelete={onDelete}
+        onSelect={vi.fn()}
+      />,
+    );
+    const shell = document.querySelector<HTMLElement>('[data-todo-entry="t1"]')!;
+    return { onDelete, shell };
+  }
+
+  it("a store-selected todo paints the halo and is keyboard-reachable", () => {
+    const { shell } = renderStoreSelected(makeTodo({ text: "buy milk" }));
+    expect(shell.hasAttribute("data-selected")).toBe(true);
+    expect(shell.tabIndex).toBe(0);
+  });
+
+  it("Backspace on a store-selected PRISTINE todo deletes it", () => {
+    const { onDelete, shell } = renderStoreSelected(makeTodo());
+    fireEvent.keyDown(shell, { key: "Backspace" });
+    expect(onDelete).toHaveBeenCalledWith("t1");
+  });
+
+  it("Delete on a store-selected todo WITH text opens the confirm, beside the card", () => {
+    const { onDelete, shell } = renderStoreSelected(makeTodo({ text: "buy milk" }));
+    fireEvent.keyDown(shell, { key: "Delete" });
+    expect(onDelete).not.toHaveBeenCalled();
+    const message = screen.getByText("This item has text. Delete it?");
+    // Anchored placement: the frame is positioned against the card, not
+    // flex-centred in the scrim.
+    const frame = message.closest<HTMLElement>("[tabindex='-1']")!;
+    expect(frame.style.position).toBe("fixed");
   });
 });

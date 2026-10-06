@@ -11,7 +11,6 @@ import {
   CardEmptyText,
   PanelCard,
   compressedBodyStyle,
-  useCardDeleteKey,
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
@@ -183,8 +182,8 @@ export function SuggestionCard({
     card,
     card.id,
     onDelete,
+    { anchorRef: cardRef },
   );
-  const handleDeleteKey = useCardDeleteKey(isSelected, tryDelete);
 
   return (
     <PanelCard
@@ -214,8 +213,6 @@ export function SuggestionCard({
       // No archive button renders (`ARCHIVE_BUTTON_EXEMPT_KINDS`, task 020):
       // dismiss already preserves a suggestion.
       cardId={card.id}
-      tabIndex={isSelected ? 0 : -1}
-      onKeyDown={handleDeleteKey}
       className="mb-2"
       kind={family}
       kindOptions={onConvert ? morphOptionsFor(family, card) : undefined}

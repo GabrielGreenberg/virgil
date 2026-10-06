@@ -222,6 +222,11 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   tone?: ConfirmTone;
   hideCancel?: boolean;
+  /** Position the dialog beside this element instead of screen-centred — the
+   *  imperative form of `ConfirmDialogProps.anchorRef`. A card's delete confirm
+   *  passes its card root (task 976: `usePanelCardTryDelete`), so every kind's
+   *  "This item has text" opens in the same place. */
+  anchorRef?: RefObject<HTMLElement | null>;
   /**
    * Make this confirm SUPPRESSIBLE: the dialog grows a "Don't show this again"
    * checkbox, and a confirm the user has already answered that way resolves
@@ -340,6 +345,7 @@ export function useConfirmDialog() {
       cancelLabel={pending.cancelLabel}
       tone={pending.tone}
       hideCancel={pending.hideCancel}
+      anchorRef={pending.anchorRef}
       suppressId={pending.suppressId}
       onSuppressChange={(checked) => {
         suppressBoxRef.current.checked = checked;

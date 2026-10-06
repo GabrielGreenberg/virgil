@@ -271,6 +271,7 @@ describe("401 · door 2 — usePanelCardTryDelete confirms", () => {
       () => {
         /* the delete itself is irrelevant — the CONFIRM is the contract */
       },
+      { anchorRef: { current: null } },
     );
     return (
       <div>

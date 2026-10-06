@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
+import { type ReactNode, type RefObject, type HTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize/layout-gesture-park";
@@ -35,8 +35,8 @@ import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
 import { useFieldDraft } from "./field-draft";
 import { FOCUS_OUTLINE_CLASS, withFocusIndicator } from "./focus-indicator";
 import { useFieldEditSession } from "@/lib/field-edit-session";
-import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
-import { cardHasContent } from "@/cards/has-content";
+import { useConfirmDialog } from "./ConfirmDialog";
+import { CARD_DELETE_CONFIRM_MESSAGE, cardHasContent } from "@/cards/has-content";
 import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, hasArchiveButton, isExcerptCardKind, bodySchemaForCardKind } from "@/cards/predicates";
 import type { CardBodySchemaScope } from "@/lib/tiptap-extensions";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
@@ -146,6 +146,10 @@ export function useCardDeleteKey(
   return useCallback(
     (e: ReactKeyboardEvent) => {
       if (!selected || !onDelete) return;
+      // A key that BUBBLED here through the React tree from a portal (a body
+      // editor's toolbar, a picker) did not happen in this card's DOM — it is
+      // not "the card is selected and the user pressed Delete".
+      if (e.target instanceof Node && e.currentTarget instanceof Node && !e.currentTarget.contains(e.target)) return;
       if (keyEventFromInteractiveControl(e)) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
@@ -225,41 +229,59 @@ export function useCardArchiveAffordance(
  * block, once — so citation + both suggestions + any future PanelCard-direct kind
  * share ONE confirm path (the "one SSOT, not N inlined copies" shape).
  *
- * Returns `{ tryDelete, dialog }`. Call `tryDelete()` from the trash button and
- * (via {@link useCardDeleteKey}) the Delete/Backspace key; render `dialog` inside
- * the card. When `cardHasContent(kind, card)` is true it awaits the confirm and
- * bails on cancel; otherwise (a pristine/empty card) it deletes straight through,
- * no nag. `onDelete` may be undefined (e.g. a draft with no delete wired) — then
+ * Returns `{ tryDelete, dialog }`. Pass `tryDelete` to {@link PanelCard} as
+ * `onTrashClick` — the shell arms BOTH the docked trash and the Delete/Backspace
+ * key from it (task 976) — and render `dialog` inside the card. When
+ * `cardHasContent(kind, card)` is true it awaits the confirm and bails on
+ * cancel; otherwise (a pristine/empty card) it deletes straight through, no nag.
+ * `onDelete` may be undefined (e.g. a draft with no delete wired) — then
  * `tryDelete` is a no-op. `opts.message`/`opts.confirmLabel` override the shared
- * default ("This item has text. Delete it?") for kinds with a domain-specific
- * prompt (a citation is "referenced in the document").
+ * {@link CARD_DELETE_CONFIRM_MESSAGE} for kinds with a domain-specific prompt (a
+ * citation is "referenced in the document").
+ *
+ * **Every card-delete confirm in the app is THIS door** (task 976). It used to
+ * be one of three: `EditableCard` and `TodoRow` each kept their own
+ * `confirmOpen` state + controlled `<ConfirmDialog anchorRef={cardRef}>`, while
+ * this hook opened SCREEN-CENTRED — so a note's confirm sat beside the card and
+ * a highlight's in the middle of the window. Now:
+ *  - `opts.anchorRef` is REQUIRED: the confirm always opens beside the card it
+ *    is about, whichever kind it is; and
+ *  - `opts.readCard`, when given, is read AT DELETE TIME instead of `card` —
+ *    for a surface whose content lives partly outside its committed record
+ *    (`EditableCard`'s live title input, committed on blur only).
  */
 export function usePanelCardTryDelete(
   kind: CardKind,
   card: unknown,
   id: string,
   onDelete: ((id: string) => void) | undefined,
-  opts?: { message?: string; confirmLabel?: string },
+  opts: {
+    anchorRef: RefObject<HTMLElement | null>;
+    readCard?: () => unknown;
+    message?: string;
+    confirmLabel?: string;
+  },
 ): { tryDelete: () => void; dialog: ReactNode } {
   const { confirm, dialog } = useConfirmDialog();
-  const message = opts?.message ?? "This item has text. Delete it?";
-  const confirmLabel = opts?.confirmLabel ?? "Delete";
+  const message = opts.message ?? CARD_DELETE_CONFIRM_MESSAGE;
+  const confirmLabel = opts.confirmLabel ?? "Delete";
+  const { anchorRef, readCard } = opts;
   // The host permit (task 637). `PanelCard` already withholds the trash button
   // under a host that refuses this kind's sidecar, but this hook is ALSO the
-  // executor `useCardDeleteKey` arms for these kinds — a keyboard path with no
+  // executor the shell's Delete/Backspace key arms — a keyboard path with no
   // button to hide — so the question is asked here too rather than trusted to
   // the render above.
   const deleteAllowed = useCardDeleteAllowed(kind);
   const tryDelete = useCallback(() => {
     if (!onDelete || !deleteAllowed) return;
     void (async () => {
-      if (cardHasContent(kind, card)) {
-        const ok = await confirm({ message, confirmLabel, tone: "danger" });
+      if (cardHasContent(kind, readCard ? readCard() : card)) {
+        const ok = await confirm({ message, confirmLabel, tone: "danger", anchorRef });
         if (!ok) return;
       }
       onDelete(id);
     })();
-  }, [kind, card, id, onDelete, deleteAllowed, confirm, message, confirmLabel]);
+  }, [kind, card, readCard, id, onDelete, deleteAllowed, confirm, message, confirmLabel, anchorRef]);
   return { tryDelete, dialog };
 }
 
@@ -1670,7 +1692,6 @@ export function EditableCard({
     : "card";
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   // Presence tier for the COLLAPSED borrowed body (perf Wave 3; flag off ⇒ 3
   // ⇒ legacy live branch). Policy "static": collapsed footnote/archive prose
@@ -1747,37 +1768,43 @@ export function EditableCard({
   const doRestore = restorable ? () => cardRestore.restore(kind, id) : undefined;
   const restoreLabel = restorable ? cardRestore.label?.(kind, id) : undefined;
 
-  /** Check whether the card has any visible USER content. Routes through the
-   *  kind-aware `cardHasContent` (the SAME predicate `deleteMarginItem` uses),
-   *  passing the card's content body + title — so the confirm sees the title a
-   *  body-only read missed (REP-F7-01: a titled-but-empty-body report now
-   *  confirms). `value` is the rich body (the kind's `content` field) and
-   *  `bodyTitle` is the user title; together they cover every kind rendered via
-   *  EditableCard with an `onDelete` (note/archive/footnote/report and the
-   *  comment kinds — none of which has user content outside body+title). */
-  const hasContent = useCallback(
-    () =>
-      cardHasContent(kind, {
-        content: value,
-        // The LIVE title wins over the committed prop when a title input is
-        // mounted (task 386) — the input commits on blur, so mid-typing
-        // `bodyTitle` is the value from before the user started. A card whose
-        // only content is the title being typed must CONFIRM, never delete
-        // straight through.
-        title: liveTitleOf(titleInputsRef.current) ?? bodyTitle,
-      }),
-    [kind, value, bodyTitle],
+  /** The record the content gate reads — the kind-aware `cardHasContent` (the
+   *  SAME predicate `deleteMarginItem` uses) over the card's content body +
+   *  title, so the confirm sees the title a body-only read missed (REP-F7-01: a
+   *  titled-but-empty-body report now confirms). `value` is the rich body (the
+   *  kind's `content` field) and `bodyTitle` is the user title; together they
+   *  cover every kind rendered via EditableCard with an `onDelete`
+   *  (note/archive/footnote/report and the comment kinds — none of which has
+   *  user content outside body+title). Read AT DELETE TIME, through the shared
+   *  door's `readCard`, because the title input commits on blur. */
+  const readCard = useCallback(
+    () => ({
+      content: value,
+      // The LIVE title wins over the committed prop when a title input is
+      // mounted (task 386) — the input commits on blur, so mid-typing
+      // `bodyTitle` is the value from before the user started. A card whose
+      // only content is the title being typed must CONFIRM, never delete
+      // straight through.
+      title: liveTitleOf(titleInputsRef.current) ?? bodyTitle,
+    }),
+    [value, bodyTitle],
   );
 
-  /** Delete with confirmation if there is content. */
-  const tryDelete = useCallback(() => {
-    if (!onDeleteAllowed) return;
-    if (hasContent()) {
-      setConfirmOpen(true);
-    } else {
-      onDeleteAllowed();
-    }
-  }, [onDeleteAllowed, hasContent]);
+  /** Delete with confirmation if there is content — through THE card-delete
+   *  door (task 976), which anchors the confirm to this card exactly as every
+   *  `PanelCard`-direct sibling's now is. This used to be a second copy of
+   *  that door with its own `confirmOpen` state and controlled dialog. */
+  const deleteThunk = useMemo(
+    () => (onDeleteAllowed ? () => onDeleteAllowed() : undefined),
+    [onDeleteAllowed],
+  );
+  const { tryDelete, dialog: deleteConfirmDialog } = usePanelCardTryDelete(
+    kind,
+    undefined,
+    id,
+    deleteThunk,
+    { anchorRef: cardRef, readCard },
+  );
 
   /** The shell-level delete key. Retired onto the SHARED door in task 386: the
    *  bespoke copy that used to live here guarded only on `isFocused` — the BODY
@@ -2060,17 +2087,7 @@ export function EditableCard({
       {/* Optional footer (e.g. archive action buttons) */}
       {footer}
 
-      {onDeleteAllowed && (
-        <ConfirmDialog
-          open={confirmOpen}
-          message="This item has text. Delete it?"
-          confirmLabel="Delete"
-          tone="danger"
-          anchorRef={cardRef}
-          onConfirm={() => { setConfirmOpen(false); onDeleteAllowed(); }}
-          onCancel={() => setConfirmOpen(false)}
-        />
-      )}
+      {deleteConfirmDialog}
     </PanelCard>
     </CardTitleRegistryContext.Provider>
     </CardClaimContext.Provider>
@@ -2820,6 +2837,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     showSeparator = true,
     chromeless,
     draggable,
+    onKeyDown: callerKeyDown,
+    tabIndex: callerTabIndex,
     ...rest
   },
   ref,
@@ -2847,6 +2866,25 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // `EditableCard`, and the executor to `usePanelCardTryDelete` — all three read
   // {@link useCardDeleteAllowed}.
   const deleteAllowed = useCardDeleteAllowed(kind);
+  // ── The Delete key rides the trash (task 976) ─────────────────────
+  // A card that offers a trash button offers the Delete/Backspace key on the
+  // SAME thunk, armed HERE rather than by each kind — so a card cannot have one
+  // without the other. (A citation had the trash and no key for as long as the
+  // two were wired per card.) The caller's own `onKeyDown` runs first; a
+  // handler that already acted (`defaultPrevented`) wins, which is how
+  // `EditableCard` keeps its wider arm (it deletes by key even where it shows
+  // no docked trash). The arm is `selected`, the HALO prop — the one signal the
+  // user can see — and the card root is made keyboard-reachable while it is.
+  const armedDelete = onTrashClick && deleteAllowed ? onTrashClick : undefined;
+  const deleteKey = useCardDeleteKey(selected, armedDelete);
+  const handleKeyDown =
+    callerKeyDown || armedDelete
+      ? (e: ReactKeyboardEvent<HTMLDivElement>) => {
+          callerKeyDown?.(e);
+          if (!e.defaultPrevented) deleteKey(e);
+        }
+      : undefined;
+  const tabIndex = callerTabIndex ?? (armedDelete ? (selected ? 0 : -1) : undefined);
   // The archive button rides the trash (task 822): derived here, in the shell,
   // so every kind that shows a trash button gets it — see `hasArchiveButton`.
   const { archive: onArchiveClick, isArchived } = useCardArchiveAffordance(kind, cardId);
@@ -3126,8 +3164,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // class internals. Present-only when selected (CSS matches on presence).
       data-selected={selected ? "" : undefined}
       title={title}
-      // The card ROOT is a keyboard target — `EditableCard` and four panels
-      // thread `tabIndex={selected ? 0 : -1}` — and PanelCard renders it, so
+      // The card ROOT is a keyboard target — `tabIndex={selected ? 0 : -1}`,
+      // threaded by `EditableCard` or derived above from an armed trash (task
+      // 976) — and PanelCard renders it, so
       // its focus indicator is PanelCard's (task 554). It is the OUTLINE
       // member of the door, not the ring: `themedCardStyle` below writes the
       // ambient lift as an INLINE `box-shadow`, which beats every stylesheet
@@ -3195,6 +3234,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         onHoverChange?.(false);
       } : undefined}
       draggable={draggable}
+      tabIndex={tabIndex}
+      onKeyDown={handleKeyDown}
       {...rest}
     >
       {renderUnifiedHeader ? (

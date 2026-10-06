@@ -57,7 +57,7 @@
 
 import { CARD_REGISTRY, canMorphCard } from "../card-registry";
 import { describeDrops, morphDropsTone } from "../morph-drop-fields";
-import { morphDropsHeld } from "../has-content";
+import { CARD_DELETE_CONFIRM_MESSAGE, morphDropsHeld } from "../has-content";
 import type { CardKind } from "../types";
 import type { CardLifecycleSink } from "./card-lifecycle-signal";
 import {
@@ -421,7 +421,7 @@ export async function runCardLifecycleEvent(
   // 1. CONFIRM — the caller resolved `hasContent` from the kind-aware predicate.
   if (ev.hasContent) {
     const ok = await deps.confirm({
-      message: "This item has text. Delete it?",
+      message: CARD_DELETE_CONFIRM_MESSAGE,
       confirmLabel: "Delete",
       tone: "danger",
     });

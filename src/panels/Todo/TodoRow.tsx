@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useMemo } from "react";
 import type { TodoItem } from "@/lib/types";
 import {
   PANEL,
@@ -9,12 +9,9 @@ import {
   AiRequestRow,
   CheckSquare,
   checkboxSemantics,
-  useCardDeleteKey,
-  useCardDeleteAllowed,
+  usePanelCardTryDelete,
 } from "@/components/panel-primitives";
-import ConfirmDialog from "@/components/ConfirmDialog";
 import { useFieldDraft } from "@/components/field-draft";
-import { cardHasContent } from "@/cards/has-content";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -80,7 +77,6 @@ export function TodoRow({
   isPoppedOut?: boolean;
 }) {
   const [notes, setNotes] = useState(item.notes);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   // Version-subscribed, so the "Todo color" override re-tints the docked card
   // live — the same source the todo margin marker and the popped-out float
@@ -110,25 +106,19 @@ export function TodoRow({
     notesDraft.commit(notes, (v) => onUpdateNotes(item.id, v));
   };
 
-  // Delete-with-confirm — route the todo trash + panel Delete/Backspace through
-  // the `cardHasContent` SSOT like every sibling panel (task 067 facet 2; todo
-  // was the lone anchored-body panel whose trash skipped the content gate). Use
-  // the LIVE local `notes` (committed on blur only) so typing-then-trashing
-  // without first blurring the textarea still trips the confirm.
-  //
-  // It also asks the HOST PERMIT (task 702): this thunk is what the keyboard
-  // delete arms, and a key has no button for the host to withhold — the same
-  // question `usePanelCardTryDelete` asks for every sibling (task 637). Todo
-  // keeps its own thunk only for the card-anchored dialog + live `notes`.
-  const deleteAllowed = useCardDeleteAllowed("todo");
-  const tryDelete = useCallback(() => {
-    if (!deleteAllowed) return;
-    if (cardHasContent("todo", { ...item, notes })) {
-      setConfirmOpen(true);
-    } else {
-      onDelete(item.id);
-    }
-  }, [item, notes, onDelete, deleteAllowed]);
+  // Delete-with-confirm — THE card-delete door (task 976), like every sibling.
+  // It reads the LIVE local `notes` (committed on blur only) so typing-then-
+  // trashing without first blurring the textarea still trips the confirm, asks
+  // the host permit (task 702 — the key has no button to withhold), and opens
+  // the confirm beside this card. Todo used to keep a private copy of all three.
+  const liveRecord = useMemo(() => ({ ...item, notes }), [item, notes]);
+  const { tryDelete, dialog: deleteConfirmDialog } = usePanelCardTryDelete(
+    "todo",
+    liveRecord,
+    item.id,
+    onDelete,
+    { anchorRef: cardRef },
+  );
 
   const { ac, compressed, shell } = useAnchoredCardShell({
     kind: "todo",
@@ -138,12 +128,11 @@ export function TodoRow({
     // Already gated by the caller's `withJump` (task 966) — never re-gated here.
     onJump,
   });
+  // The HALO — store selection (margin marker / omni / jump) OR the panel's
+  // own. It is what PanelCard paints and what arms its Delete key (task 976:
+  // passing the bare panel prop left a store-selected todo unhaloed and deaf to
+  // Delete while every sibling answered).
   const isSelected = ac.selected || selected;
-  // Todo is the lone editable card with a bare card-level delete-key handler
-  // (plain <input> title + <textarea> notes, no EditableCard focus-tracking).
-  // The shared hook bakes in the interactive-control guard so a Backspace typed
-  // inside a field edits text instead of deleting the card (tasks 096 + 110).
-  const handleDeleteKey = useCardDeleteKey(selected, tryDelete);
 
   const card = (
     <>
@@ -154,14 +143,12 @@ export function TodoRow({
       {...(extraDataAttrs || {})}
       data-pristine-card-id={item.id}
       theme={theme}
-      selected={selected}
+      selected={isSelected}
       isCollapsed={compressed}
       onTrashClick={tryDelete}
       cardId={item.id}
       extraCardClass=""
-      tabIndex={isSelected ? 0 : -1}
       onFocusCapture={() => { if (!isSelected) onSelect(item.id); }}
-      onKeyDown={handleDeleteKey}
       kind="todo"
       headerTrailing={<TodoDoneToggle item={item} onToggle={onToggle} />}
     >
@@ -202,15 +189,7 @@ export function TodoRow({
         />
       )}
     </PanelCard>
-    <ConfirmDialog
-      open={confirmOpen}
-      message="This item has text. Delete it?"
-      confirmLabel="Delete"
-      tone="danger"
-      anchorRef={cardRef}
-      onConfirm={() => { setConfirmOpen(false); onDelete(item.id); }}
-      onCancel={() => setConfirmOpen(false)}
-    />
+    {deleteConfirmDialog}
     </>
   );
   return card;

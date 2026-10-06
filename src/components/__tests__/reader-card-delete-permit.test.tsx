@@ -170,7 +170,7 @@ describe("EditableCard under a host that refuses the kind's sidecar", () => {
 // ---------------------------------------------------------------------------
 
 function DirectCard({ kind, onDelete }: { kind: CardKind; onDelete: (id: string) => void }) {
-  const { tryDelete, dialog } = usePanelCardTryDelete(kind, {}, "d1", onDelete);
+  const { tryDelete, dialog } = usePanelCardTryDelete(kind, {}, "d1", onDelete, { anchorRef: { current: null } });
   return (
     <PanelCard
       theme={CARD_THEMES.citation}
@@ -212,7 +212,9 @@ describe("PanelCard-direct cards inherit the same permit", () => {
     const onDelete = vi.fn();
     let fire: (() => void) | null = null;
     function Probe() {
-      const { tryDelete } = usePanelCardTryDelete("cutter-suggestion", {}, "s1", onDelete);
+      const { tryDelete } = usePanelCardTryDelete("cutter-suggestion", {}, "s1", onDelete, {
+        anchorRef: { current: null },
+      });
       fire = tryDelete;
       return null;
     }

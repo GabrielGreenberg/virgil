@@ -8,7 +8,6 @@ import {
   PANEL,
   PanelCard,
   compressedBodyStyle,
-  useCardDeleteKey,
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
@@ -65,16 +64,16 @@ export function HighlightCard({
     onJump,
   });
   const isSelected = ac.selected || selected;
-  // The keyboard path has no button for the host to withhold, so it arms the
-  // permit-asking executor (task 637's door), never a raw `onDelete` (task 702).
-  // `cardHasContent` is false for a highlight, so no confirm is ever raised.
+  // The trash AND the shell's Delete key arm the permit-asking executor (task
+  // 637's door), never a raw `onDelete` (task 702). `cardHasContent` is false
+  // for a highlight, so no confirm is ever raised.
   const { tryDelete, dialog: deleteConfirmDialog } = usePanelCardTryDelete(
     "highlight",
     card,
     card.id,
     onDelete,
+    { anchorRef: cardRef },
   );
-  const handleDeleteKey = useCardDeleteKey(isSelected, tryDelete);
 
   // The card body renders the highlighted text in the document's serif
   // face (matching the editor) so the snippet reads like an excerpt.
@@ -109,8 +108,6 @@ export function HighlightCard({
       kind="highlight"
       kindOptions={onConvert ? morphOptionsFor("highlight") : undefined}
       onKindChange={onConvert ? (k) => onConvert("highlight", card.id, k) : undefined}
-      tabIndex={isSelected ? 0 : -1}
-      onKeyDown={handleDeleteKey}
       className="mb-2"
       {...(extraDataAttrs ?? {})}
     >

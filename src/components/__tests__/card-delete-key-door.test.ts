@@ -150,62 +150,111 @@ describe("a destructive bare-key shortcut bails on an editable target (task 386 
 
 // Task 702 — the PERMIT half. The door above guarantees the key's GUARDS; it
 // cannot see what the key RUNS. A keyboard delete has no button for the host
-// to withhold, so the thunk a call site arms must itself ask the host permit
-// (task 637): `usePanelCardTryDelete`'s `tryDelete`, or a local thunk gated on
-// `useCardDeleteAllowed`. HighlightCard armed a raw `() => onDelete(card.id)`
-// and TodoRow a local thunk that never asked — both latent under today's
-// Reader allowlist, live the moment it narrows.
-describe("card-delete key: the armed thunk asks the host permit (task 702)", () => {
+// to withhold, so the thunk it arms must itself ask the host permit (task 637).
+//
+// Task 976 moved the ARM into the shell: `PanelCard` arms Delete/Backspace from
+// its own `onTrashClick` (gated on the same permit that hides the trash), so a
+// card cannot offer the trash without the key — a citation did, for as long as
+// each kind wired its own `useCardDeleteKey`. The census therefore reads the
+// TRASH thunk each card hands the shell: it must be the shared executor
+// (`usePanelCardTryDelete`, which asks the permit and owns the content
+// confirm), never a raw `onDelete`, and no card may arm the key itself.
+describe("card-delete key: the shell arms it from the trash, and the thunk asks the permit (tasks 702 + 976)", () => {
   /** A call site that DISMISSES rather than deletes a card record — no sidecar
    *  card write for a host to refuse. Scoped to the file AND the verb. */
   const DISMISS_EXEMPTIONS = [
     { file: "src/panels/Errors/ErrorCard.tsx", arg: /^\(\)\s*=>\s*onDismiss\(/ },
   ];
 
-  function callSites(): { rel: string; src: string; arg: string }[] {
+  function trashSites(): { rel: string; src: string; arg: string }[] {
     const out: { rel: string; src: string; arg: string }[] = [];
     for (const file of CARD_SOURCES) {
       if (file === DOOR_FILE) continue;
       const src = commentsStripped(readFileSync(file, "utf8"));
-      for (const m of src.matchAll(/useCardDeleteKey\(\s*[^,]+,\s*([^;]+?)\);/g)) {
+      for (const m of src.matchAll(/onTrashClick=\{([^}]*(?:\}[^}]*)?)\}\s*$/gm)) {
         out.push({ rel: relative(ROOT, file), src, arg: m[1].trim() });
       }
     }
     return out;
   }
 
-  it("census canary: the scan still finds the known call sites", () => {
-    // Floor lowered 5 → 4 by task 714: the Revisions and Cutter suggestion
-    // cards were hand transcriptions of one another and armed the key twice
-    // with the same thunk; they are now ONE component (`_shared/SuggestionCard`)
-    // arming it once. A canary floor is a "the scan is not vacuous" tooth, and
-    // four live sites still satisfy it — this is the census shrinking because a
-    // duplicate went away, not because a site stopped being checked.
-    expect(callSites().length).toBeGreaterThanOrEqual(4);
+  it("census canary: the scan still finds the known trash sites", () => {
+    // Todo, Highlight, Citation, the shared Suggestion card, Error.
+    expect(trashSites().length).toBeGreaterThanOrEqual(5);
   });
 
-  it("no call site arms a raw onDelete; every deleting site consults the permit", () => {
+  it("no card arms the delete key itself — the shell does, from the trash", () => {
+    const bad = CARD_SOURCES.filter((f) => f !== DOOR_FILE)
+      .filter((f) => /\buseCardDeleteKey\(/.test(commentsStripped(readFileSync(f, "utf8"))))
+      .map((f) => relative(ROOT, f));
+    expect(bad).toEqual([]);
+    // …and the shell really does arm it from the trash thunk.
+    const door = commentsStripped(readFileSync(DOOR_FILE, "utf8"));
+    expect(door).toMatch(/const armedDelete = onTrashClick && deleteAllowed \? onTrashClick : undefined;/);
+    expect(door).toMatch(/useCardDeleteKey\(selected, armedDelete\)/);
+  });
+
+  it("no trash thunk is a raw onDelete; every deleting card routes through the shared executor", () => {
     const bad: string[] = [];
-    for (const site of callSites()) {
+    for (const site of trashSites()) {
       const exempt = DISMISS_EXEMPTIONS.find(
         (e) => e.file === site.rel && e.arg.test(site.arg),
       );
       if (exempt) continue;
       if (/\bonDelete\s*\(/.test(site.arg)) {
-        bad.push(`${site.rel}: raw onDelete armed (${site.arg})`);
+        bad.push(`${site.rel}: raw onDelete on the trash (${site.arg})`);
         continue;
       }
-      if (!/\busePanelCardTryDelete\(|\buseCardDeleteAllowed\(/.test(site.src)) {
-        bad.push(`${site.rel}: armed thunk never asks the host permit`);
+      if (!/\busePanelCardTryDelete\(/.test(site.src)) {
+        bad.push(`${site.rel}: trash thunk is not the shared executor`);
       }
     }
     expect(bad).toEqual([]);
   });
 
-  it("every dismiss exemption still covers a live call site", () => {
-    const sites = callSites();
+  it("every dismiss exemption still covers a live trash site", () => {
+    const sites = trashSites();
     for (const ex of DISMISS_EXEMPTIONS) {
       expect(sites.some((s) => s.rel === ex.file && ex.arg.test(s.arg))).toBe(true);
     }
+  });
+});
+
+// Task 976 — the CONFIRM half. Three copies of "delete this card, confirming if
+// it has content" (EditableCard, TodoRow, the shared hook) drifted on placement:
+// two opened beside the card, the hook screen-centred. There is one now.
+describe("card-delete confirm: ONE door (task 976)", () => {
+  const SRC_ROOT = join(ROOT, "src");
+  const ALL_SOURCES = walk(SRC_ROOT);
+
+  it("the confirm wording is spelled once, in has-content.ts", () => {
+    const owner = join(SRC_ROOT, "cards", "has-content.ts");
+    const hits = ALL_SOURCES.filter((f) => f !== owner)
+      .filter((f) => commentsStripped(readFileSync(f, "utf8")).includes("This item has text. Delete it?"))
+      .map((f) => relative(ROOT, f));
+    expect(hits).toEqual([]);
+  });
+
+  it("no card surface renders its own controlled <ConfirmDialog> for a delete", () => {
+    const bad: string[] = [];
+    for (const file of CARD_SOURCES) {
+      const src = commentsStripped(readFileSync(file, "utf8"));
+      for (const m of src.matchAll(/<ConfirmDialog\b/g)) {
+        const tag = tagAround(src, m.index! + 1) ?? src.slice(m.index!, m.index! + 600);
+        if (DESTRUCTIVE.test(tag) || /CARD_DELETE_CONFIRM_MESSAGE/.test(tag)) {
+          bad.push(`${relative(ROOT, file)}:${src.slice(0, m.index!).split("\n").length}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("the shared executor REQUIRES the card anchor and hands it to the confirm", () => {
+    const door = commentsStripped(readFileSync(DOOR_FILE, "utf8"));
+    const hook = door.slice(door.indexOf("export function usePanelCardTryDelete("));
+    const sig = hook.slice(0, hook.indexOf("{ tryDelete: () => void; dialog: ReactNode }"));
+    expect(sig).toMatch(/anchorRef: RefObject<HTMLElement \| null>;/);
+    expect(sig).not.toMatch(/anchorRef\?:/);
+    expect(hook.slice(0, 2000)).toMatch(/confirm\(\{[^}]*anchorRef[^}]*\}\)/);
   });
 });

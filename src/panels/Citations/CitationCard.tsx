@@ -345,6 +345,8 @@ export function CitationCard({
   // A draft pins its body open (`isDraft || ac.expanded`).
   const compressed = !isDraft && shellCompressed;
   const isHaloed = ac.selected || isSelected;
+  // The card root — what the delete confirm opens beside (task 976).
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // CI-F7-01 / OMNI-F7-01: deleting a citation removes the in-text `\cite{}`
   // atom. Route the trash through the SAME content-aware confirm every other
@@ -358,7 +360,10 @@ export function CitationCard({
     cit,
     cit.id,
     onDelete,
-    { message: "This citation is referenced in the document. Delete it?" },
+    {
+      anchorRef: cardRef,
+      message: "This citation is referenced in the document. Delete it?",
+    },
   );
 
   // THE OTHER HALF OF THE SAME OBLIGATION (task 683). The trash is not the only
@@ -1051,8 +1056,13 @@ export function CitationCard({
       data-pristine-card-id={cit.id}
       {...(extraDataAttrs || {})}
       theme={theme}
+      ref={cardRef}
       selected={isHaloed}
-      onTrashClick={!compressed && onDelete ? tryDelete : undefined}
+      // The trash thunk is ALSO what the shell's Delete key arms (task 976) —
+      // a citation used to have the button and no key. PanelCard itself hides
+      // the button while the card is collapsed; the key stays live, as on
+      // every sibling.
+      onTrashClick={onDelete ? tryDelete : undefined}
       // A draft is not yet a stored citation, so it has no identity to archive
       // — withholding the id withholds the shell's archive button (task 822).
       cardId={isDraft ? undefined : cit.id}
