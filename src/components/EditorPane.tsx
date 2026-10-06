@@ -1979,7 +1979,32 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     appendTodos: todosHook.appendItems,
     relinkRequests: aiRequestsHook.relinkRequests,
   });
-  const archiveHook = useArchive(docId);
+  const archiveHookRaw = useArchive(docId);
+  // Archive's delete rides the SAME executor as the five siblings above (task
+  // 974). `lifecycle.delete: false` on its registry row is R18 — archive does
+  // not CASCADE when its anchor paragraph is deleted — and says nothing about a
+  // user deleting the card itself, which owes what every departing card owes:
+  // the `card-deleted` signal, so the pane's sink prunes its `cardStore` ref and
+  // closes its popped `float:card:archive:<id>` key (task 789). Archive has no
+  // aiRequest routing, so the executor no-ops the unbridge. Wrapping at the
+  // hook-memo level means every door that threads `archiveHook.deleteSnippet`
+  // — margin marker, panel trash, the footnote-sync bridge — inherits it.
+  const deleteArchiveSnippet = useMemo(
+    () =>
+      makeUnbridgingDelete({
+        resolveKind: (id) =>
+          archiveHookRaw.snippets.some((s) => s.id === id) ? "archive" : null,
+        rawDelete: archiveHookRaw.deleteSnippet,
+        unbridge: unbridgeAiRequestRow,
+        appliedSplice: appliedSpliceOps,
+        signal: cardLifecycleSignal,
+      }),
+    [archiveHookRaw.snippets, archiveHookRaw.deleteSnippet, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+  );
+  const archiveHook = useMemo(
+    () => ({ ...archiveHookRaw, deleteSnippet: deleteArchiveSnippet }),
+    [archiveHookRaw, deleteArchiveSnippet],
+  );
   // #55b: resolve a footnote's anchoring paragraph(s) from the LIVE doc, so the
   // bridged AI-request carries `paragraphIds` and is actually drainable (the
   // skill halts on empty paragraphIds). A footnote's anchor isn't in the
@@ -5032,6 +5057,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       });
       return;
     }
+    if (origin?.kind === "card") {
+      // A reinstated CARD leaves the Archive outright (`restoreSnippet` removes
+      // the snippet — it does not retire it), so the archive card is gone as
+      // surely as a trash-click deletes it and owes the same `card-deleted`
+      // signal (task 974): this pane's sink closes its popped
+      // `float:card:archive:<id>` and prunes its store refs. Not routed through
+      // the executor because there is nothing for it to confirm, settle or
+      // unbridge — the card moved, verbatim, to its own panel. An excerpt
+      // restore RETIRES the snippet (it stays, set aside), so it signals nothing.
+      cardLifecycleSignal({ type: "card-deleted", kind: "archive", id });
+    }
     setSelectedArchiveId(null);
     // Depends on the CALLBACK, not the whole hook object: `archiveHook`'s
     // identity changes on every snippet edit, and this feeds a context value
@@ -5045,6 +5081,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     anchorPass,
     reinstateByPanel,
     dragHandleNotify,
+    cardLifecycleSignal,
   ]);
   const handleArchiveDelete = useCallback((id: string) => {
     archiveHook.deleteSnippet(id);

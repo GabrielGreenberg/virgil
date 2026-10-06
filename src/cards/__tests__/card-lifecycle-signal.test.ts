@@ -204,6 +204,39 @@ describe("the sink's FLOAT half (task 789 — a deleted card's popped window clo
     expect(floats.state.poppedOutCards).toEqual([]);
   });
 
+  it("archive too (task 974) — R18's no-CASCADE flag does not exempt a user delete from the float close", async () => {
+    // `CARD_REGISTRY.archive.lifecycle.delete === false` is about the anchor
+    // paragraph's deletion cascading, not the user deleting the card; the
+    // executor must not read it as "skip the signal".
+    const floats = makeFloats([cardPopKey("note", "n0"), cardPopKey("archive", "a1")]);
+    const store = createCardStore();
+    store.select({ kind: "archive", id: "a1" });
+    const removed: string[] = [];
+    const del = makeUnbridgingDelete({
+      resolveKind: () => "archive",
+      rawDelete: (id) => {
+        removed.push(id);
+      },
+      unbridge: async () => {
+        throw new Error("archive has no aiRequest routing — must not unbridge");
+      },
+      signal: makeCardLifecycleSink(store, () => floats),
+    });
+    expect(await del("a1")).toBe(true);
+    expect(removed).toEqual(["a1"]);
+    expect(floats.state.poppedOutCards).toEqual([cardPopKey("note", "n0")]);
+    expect(floats.state.cardFloatPositions[cardPopKey("archive", "a1")]).toBeUndefined();
+    expect(store.getState().selected).toBeNull();
+  });
+
+  it("the card-origin archive restore signals card-deleted for the archive key (task 974)", () => {
+    const src = readFileSync(join(__dirname, "../../components/EditorPane.tsx"), "utf8");
+    const at = src.indexOf("const handleArchiveRestore = useCallback(");
+    const end = src.indexOf("const handleArchiveDelete", at);
+    const body = src.slice(at, end);
+    expect(body).toMatch(/origin\?\.kind === "card"[\s\S]*cardLifecycleSignal\(\{ type: "card-deleted", kind: "archive", id \}\)/);
+  });
+
   it("the morph executor's signal carries the remap (no hand remap beside it)", async () => {
     const floats = makeFloats([cardPopKey("note", "n1")]);
     const ok = await runCardLifecycleEvent(

@@ -23,9 +23,12 @@
  * the key lived on: top of the Cmd-W focus stack (so Cmd-W "closed" an
  * invisible float and did nothing), counted in new-float placement, persisted
  * across reload, and resurrected at its old rect on undo. Every door that
- * reports `card-deleted` / `card-morphed` — the morph chokepoint and every
- * `makeUnbridgingDelete` wrapper, all kinds — now closes/re-keys the float from
- * this one place. (The inline-atom kinds keep their bus-diff close in
+ * reports `card-deleted` / `card-morphed` — the morph chokepoint, every
+ * `makeUnbridgingDelete` wrapper (archive's included since task 974 — it had
+ * been read as exempt off R18's no-CASCADE flag) and the card-origin archive
+ * restore — now closes/re-keys the float from this one place. WHICH poppable
+ * kinds reach it, and why the rest don't need to, is pinned per kind by
+ * `card-deleted-door-census.test.ts` — not asserted here in prose. (The inline-atom kinds keep their bus-diff close in
  * `inline-atom-lifecycle-policy.ts` §(c): an atom removed by a keystroke or a
  * code-view edit never passes through this executor, so that close is not a
  * duplicate of this one but the same obligation on a different door.)
