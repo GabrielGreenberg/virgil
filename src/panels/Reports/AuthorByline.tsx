@@ -7,8 +7,10 @@ import { AuthorChip } from "@/panels/_shared/suggestion-fields";
  *  Composes the shared `AuthorChip` pill ("AI" / "Human") — the same primitive
  *  the Cutter and Revision suggestion cards render — and adds the card's
  *  createdAt as a compact timestamp. Only Reports carry a byline; Report
- *  Requests (the user's "ask") never do. We never display "Claude" —
- *  AI-authored reports read as "AI", matching the Revisions convention. */
+ *  Requests (the user's "ask") never do. The AUTHOR ATTRIBUTION reads "AI",
+ *  never "Claude", matching the Revisions convention. (Copy that addresses the
+ *  agent by name — "What should Claude report on?" — is a different register
+ *  and is not governed here.) */
 export function AuthorByline({
   author,
   createdAt,

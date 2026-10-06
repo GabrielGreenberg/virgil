@@ -14,15 +14,11 @@ import {
   useCardDeleteKey,
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getLinkedTextObjectIds, hasTextAnchor, isCardAnchored } from "@/links/links";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { PANEL_KIND_TO_BODY_KEY } from "@/lib/panel-typography";
-import { cardPopKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import {
   PendingActionRow,
@@ -110,7 +106,6 @@ export function SuggestionCard({
   onDelete,
   onSelect,
   onJump,
-  onTogglePopout,
   isPoppedOut,
   extraDataAttrs,
 }: {
@@ -131,13 +126,11 @@ export function SuggestionCard({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
   const { bodyKey } = familyFacets(family);
   const theme = useCardKindTheme(family);
-  const cardStore = useCardStore();
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
   // TASK 716 — the STATUS picks the body. The rollout flag does NOT.
@@ -169,18 +162,16 @@ export function SuggestionCard({
     : getLinkedTextObjectIds(card).length > 0
       ? "paragraph"
       : null;
-  const popped = usePoppedCards();
-  // Unified AF key: the suggestion gets its own kind token (no legacy `s:`
-  // infix). Was `popKey("revisions", `s:${card.id}`)` → `revision:s:<id>`.
-  const cardKey = cardPopKey(family, card.id);
-  const onToggleFromCtx =
-    onTogglePopout ??
-    (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
-  const ac = useAnchoredCard({ kind: family, id: card.id });
-  const isExpanded = ac.expanded;
+  // Unified AF key (`cardPopKey(family, id)`): the suggestion gets its own kind
+  // token (no legacy `s:` infix). Was `popKey("revisions", `s:${card.id}`)`.
+  const { ac, compressed, compressedLines, shell } = useAnchoredCardShell({
+    kind: family,
+    id: card.id,
+    isPoppedOut,
+    onSelect: () => onSelect(card.id),
+    onJump: isAnchored ? onJump : undefined,
+  });
   const isSelected = ac.selected || selected;
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedLines = useCompressedLines();
   const cardBodyStyle = usePanelBodyStyle(bodyKey);
   // CI-F7-01 class: this card renders via PanelCard directly (like CitationCard),
   // so its docked trash + Delete-key must route through the SAME content-aware
@@ -196,6 +187,7 @@ export function SuggestionCard({
 
   return (
     <PanelCard
+      {...shell}
       ref={cardRef}
       // The docked hook the panel + its suites address this row by, spelled off
       // the family rather than per-file: `data-revision-suggestion-entry` /
@@ -210,45 +202,23 @@ export function SuggestionCard({
       // no false vouch. (Nor may this comment spell such a class name: the
       // census scans source text, comments included.)
       {...{ ["data-" + family + "-entry"]: card.id }}
-      data-card-key={cardKey}
       data-pristine-card-id={card.id}
       {...(extraDataAttrs || {})}
       theme={theme}
       selected={isSelected}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      cardKey={cardKey}
       // Applied cards always show their (minimal) body, so the header must not
       // display a misleading collapsed chevron.
       isCollapsed={compressed && !isApplied}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
       // No archive button renders (`ARCHIVE_BUTTON_EXEMPT_KINDS`, task 020):
       // dismiss already preserves a suggestion.
       cardId={card.id}
       tabIndex={isSelected ? 0 : -1}
-      onClick={(e) => {
-        e.stopPropagation();
-        const el = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(card.id),
-          jump: isAnchored && onJump ? () => onJump(el) : undefined,
-        });
-      }}
-      onMouseEnter={() => cardStore.setHoverFor(ac.ref, true)}
-      onMouseLeave={() => cardStore.setHoverFor(ac.ref, false)}
       onKeyDown={handleDeleteKey}
       className="mb-2"
       kind={family}
       kindOptions={onConvert ? morphOptionsFor(family, card) : undefined}
       onKindChange={onConvert ? (k) => onConvert(family, card.id, k) : undefined}
-      canJump={isAnchored && !!onJump}
-      onJump={(e) => {
-        if (onJump && isAnchored)
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-      }}
       headerTrailing={<SuggestionTrailing status={card.status} author={card.author} />}
     >
       {isApplied ? (

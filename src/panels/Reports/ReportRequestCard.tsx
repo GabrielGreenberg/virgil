@@ -3,20 +3,14 @@
 import { useCallback } from "react";
 import type { JSONContent, Editor } from "@tiptap/react";
 import type { ReportRequestCard as ReportRequestCardData } from "@/lib/types";
-import {
-  EditableCard,
-  makeCompressedSummary,
-} from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
+import { EditableCard } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { cardBodyPlaceholder, cardPopKey } from "@/panels/panel-registry";
+import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 
 export function ReportRequestCard({
   request,
@@ -31,8 +25,6 @@ export function ReportRequestCard({
   getCitationDisplayText,
   onCitationCreated,
   extraDataAttrs,
-  onHoverChange,
-  onTogglePopout,
   isPoppedOut,
 }: {
   request: ReportRequestCardData;
@@ -48,8 +40,6 @@ export function ReportRequestCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
-  onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const handleChange = useCallback(
@@ -59,25 +49,20 @@ export function ReportRequestCard({
     [request.id, onUpdate],
   );
 
-  const ac = useAnchoredCard({ kind: "report-request", id: request.id });
-  const cardStore = useCardStore();
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedSummary, shell } = useAnchoredCardShell({
+    kind: "report-request",
+    id: request.id,
+    isPoppedOut,
+    onSelect: () => onSelect(request.id),
+    onJump,
+    summaryContent: request.content,
+  });
   const isSelected = ac.selected || selected;
   const theme = useCardKindTheme("report-request");
-  const compressedLines = useCompressedLines();
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedSummary = compressed
-    ? (makeCompressedSummary(request.content, compressedLines) || "")
-    : undefined;
-  const popped = usePoppedCards();
-  const cardKey = cardPopKey("report-request", request.id);
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
 
   const card = (
     <EditableCard
+      {...shell}
       id={request.id}
       cardKind="report-request"
       kind="report-request"
@@ -90,15 +75,6 @@ export function ReportRequestCard({
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      canJump={!!onJump}
-      onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
-      onClick={(e) => {
-        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(request.id),
-          jump: onJump ? () => onJump(card) : undefined,
-        });
-      }}
       onDelete={() => onDelete(request.id)}
       aiRequest={
         onSetAiRequest
@@ -113,16 +89,9 @@ export function ReportRequestCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "report-request-entry", value: request.id }}
-      extraDataAttrs={{ "data-pristine-card-id": request.id, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      onHoverChange={(h) => { cardStore.setHoverFor(ac.ref, h); onHoverChange?.(h); }}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
+      extraDataAttrs={{ "data-pristine-card-id": request.id, ...(extraDataAttrs || {}) }}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;

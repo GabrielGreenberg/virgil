@@ -118,7 +118,6 @@ export interface ErrorCardProps {
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
   onDismiss: (id: string) => void;
-  onHoverChange?: (hovering: boolean) => void;
   extraDataAttrs?: Record<string, string>;
 }
 
@@ -135,7 +134,6 @@ export function ErrorCard({
   onSelect,
   onJump,
   onDismiss,
-  onHoverChange,
   extraDataAttrs,
 }: ErrorCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -185,8 +183,6 @@ export function ErrorCard({
         jumpFromCard(e.currentTarget as EventTarget & HTMLElement);
       }}
       onKeyDown={handleDeleteKey}
-      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
-      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
       kind="error"
       footnoteBadge={<ErrorBadge severity={err.severity} />}
       canJump={canJump}

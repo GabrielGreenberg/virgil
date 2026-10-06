@@ -4,20 +4,14 @@ import { useCallback } from "react";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import type { JSONContent } from "@tiptap/react";
 import type { UserNote } from "@/lib/types";
-import {
-  EditableCard,
-  makeCompressedSummary,
-} from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
+import { EditableCard } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { cardBodyPlaceholder, cardPopKey } from "@/panels/panel-registry";
+import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
 import { canMorphNoteToHighlight } from "@/cards/morphs";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 
 export function NoteCard({
   note,
@@ -33,8 +27,6 @@ export function NoteCard({
   getCitationDisplayText,
   onCitationCreated,
   extraDataAttrs,
-  onHoverChange,
-  onTogglePopout,
   isPoppedOut,
 }: {
   note: UserNote;
@@ -52,8 +44,6 @@ export function NoteCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
-  onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const handleChange = useCallback(
@@ -63,26 +53,20 @@ export function NoteCard({
     [note.id, onUpdate],
   );
 
-  const ac = useAnchoredCard({ kind: "note", id: note.id });
-  const cardStore = useCardStore();
   // N1 (A4): the two axes are independent. ac.expanded drives open/closed
   // (multi-card); ac.selected drives the halo (single). The legacy `selected`
   // prop folds into SELECTION ONLY now — expansion is its own axis, never
   // derived from selection.
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedSummary, shell } = useAnchoredCardShell({
+    kind: "note",
+    id: note.id,
+    isPoppedOut,
+    onSelect: () => onSelect(note.id),
+    onJump,
+    summaryContent: note.content,
+  });
   const isSelected = ac.selected || selected;
   const theme = useCardKindTheme("note");
-  const compressedLines = useCompressedLines();
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedSummary = compressed
-    ? (makeCompressedSummary(note.content, compressedLines) || "")
-    : undefined;
-  const popped = usePoppedCards();
-  const cardKey = cardPopKey("note", note.id);
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
 
   // WS7 (A6): the note→highlight chevron is gated off for paragraph-only
   // Mode-A notes (and orphaned ones) — no text range, nothing to tint.
@@ -92,6 +76,7 @@ export function NoteCard({
 
   const card = (
     <EditableCard
+      {...shell}
       id={note.id}
       cardKind="note"
       kind="note"
@@ -106,15 +91,6 @@ export function NoteCard({
       onEditorFocus={onEditorFocus}
       bodyTitle={note.title}
       onBodyTitleChange={(t) => onUpdateTitle(note.id, t)}
-      canJump={!!onJump}
-      onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
-      onClick={(e) => {
-        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(note.id),
-          jump: onJump ? () => onJump(card) : undefined,
-        });
-      }}
       onDelete={() => onDelete(note.id)}
       aiRequest={
         onSetAiRequest
@@ -129,16 +105,9 @@ export function NoteCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "note-entry", value: note.id }}
-      extraDataAttrs={{ "data-pristine-card-id": note.id, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      onHoverChange={(h) => { cardStore.setHoverFor(ac.ref, h); onHoverChange?.(h); }}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
+      extraDataAttrs={{ "data-pristine-card-id": note.id, ...(extraDataAttrs || {}) }}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   // Popped: AF's FloatHost wraps this body in a FloatWindow + FloatChrome; the

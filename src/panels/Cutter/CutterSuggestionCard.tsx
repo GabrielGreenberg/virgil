@@ -40,7 +40,6 @@ export function CutterSuggestionCard(props: {
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {

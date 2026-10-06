@@ -61,8 +61,6 @@ export interface BibEntryCardProps {
   isCited?: boolean;
   /** Called when user clicks the target icon to jump to this entry in the text. Only shown when selected. */
   onJump?: (sourceEl: HTMLElement | null) => void;
-  /** When provided, renders a popout chevron at the left edge of the header. */
-  onTogglePopout?: (anchor: DOMRect) => void;
   /** Whether this card is currently rendered in a floating window. */
   isPoppedOut?: boolean;
   /** Meta block stacked BELOW the title line (layers 2 + 3 of the card:
@@ -160,7 +158,7 @@ export default function BibEntryCard({
   entry, isSelected, onClick, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onSaveBibEntry,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
-  onTogglePopout, isPoppedOut, headerMeta, addAction, readOnly,
+  isPoppedOut, headerMeta, addAction, readOnly,
 }: BibEntryCardProps) {
   /**
    * THE gate (task 692). Every write callback this card holds is reachable
@@ -611,10 +609,9 @@ export default function BibEntryCard({
     </>
   );
 
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped && popKey
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
-      : undefined);
+  const onToggleFromCtx = popped && popKey
+    ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
+    : undefined;
 
   const compressed = !isSelected && !isPoppedOut;
 

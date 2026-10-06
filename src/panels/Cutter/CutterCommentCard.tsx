@@ -7,19 +7,16 @@ import {
   EditableCard,
   makeCompressedSummary,
 } from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import {
   getAnchorSummary,
   isCardAnchored,
 } from "@/links/links";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { cardBodyPlaceholder, cardPopKey } from "@/panels/panel-registry";
+import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { useExcerptCue } from "@/panels/_shared/suggestion-fields";
 
@@ -32,8 +29,6 @@ export function CutterCommentCard({
   onDelete,
   onSelect,
   onJump,
-  onHoverChange,
-  onTogglePopout,
   isPoppedOut,
   editor,
   extraDataAttrs,
@@ -47,8 +42,6 @@ export function CutterCommentCard({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
-  onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   editor?: Editor | null;
   extraDataAttrs?: Record<string, string>;
@@ -58,18 +51,14 @@ export function CutterCommentCard({
   // `&& !isOrphaned` conjunct was dead — an orphan is un-anchored by definition).
   const jumpTo = isCardAnchored(card) ? onJump : undefined;
   const anchorSummary = getAnchorSummary(card, editor ?? null);
-  const popped = usePoppedCards();
-  const cardKey = cardPopKey("cutter-comment", card.id);
-  const onToggleFromCtx =
-    onTogglePopout ??
-    (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
-
-  const ac = useAnchoredCard({ kind: "cutter-comment", id: card.id });
-  const cardStore = useCardStore();
-  const isExpanded = ac.expanded;
+  const { ac, compressed, compressedLines, shell } = useAnchoredCardShell({
+    kind: "cutter-comment",
+    id: card.id,
+    isPoppedOut,
+    onSelect: () => onSelect(card.id),
+    onJump: jumpTo,
+  });
   const isSelected = ac.selected || selected;
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedLines = useCompressedLines();
   // The captured-selection excerpt cue (SSOT for both comment cards). The cut
   // excerpt is the cutter card's distinctive compressed cue — show it (red
   // italic) when present, falling back to the rich-text body summary.
@@ -98,6 +87,7 @@ export function CutterCommentCard({
 
   const cardEl = (
     <EditableCard
+      {...shell}
       id={card.id}
       cardKind="cutter-comment"
       kind="cutter-comment"
@@ -109,26 +99,6 @@ export function CutterCommentCard({
       theme={theme}
       hideToolbar
       inlineDelete
-      canJump={!!jumpTo}
-      onJump={
-        jumpTo
-          ? (e) =>
-              jumpTo(
-                (e.currentTarget as HTMLElement).closest(
-                  "[data-card]",
-                ) as HTMLElement | null,
-              )
-          : undefined
-      }
-      onClick={(e) => {
-        const el = (e?.currentTarget as HTMLElement | undefined)?.closest(
-          "[data-card]",
-        ) as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(card.id),
-          jump: jumpTo ? () => jumpTo(el) : undefined,
-        });
-      }}
       onDelete={() => onDelete(card.id)}
       aboveBody={excerptBlock}
       aiRequest={{ checked: card.aiRequest, onToggle: (next) => onSetAiRequest(card.id, next) }}
@@ -140,21 +110,10 @@ export function CutterCommentCard({
       dataAttr={{ name: "cutter-comment-entry", value: card.id }}
       extraDataAttrs={{
         "data-pristine-card-id": card.id,
-        "data-card-key": cardKey,
         ...(extraDataAttrs || {}),
       }}
-      onHoverChange={(h) => {
-        cardStore.setHoverFor(ac.ref, h);
-        onHoverChange?.(h);
-      }}
-      onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
 

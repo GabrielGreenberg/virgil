@@ -3,8 +3,9 @@
  *
  * Replaces the repeated outer-flex-column + PanelHeader + scroll-body
  * triplet that every panel re-implements today. `kind` drives the
- * registry lookup for the default title; everything else is overridable
- * via slots.
+ * registry lookup for the title (the registry label is its one source —
+ * task 963 deleted the never-passed `title` override); everything else is
+ * overridable via slots.
  *
  * `variant: "raw"` is the escape hatch for panels that need to own their
  * scroll element (e.g. Outline, Search) — Panel still renders the chrome
@@ -22,8 +23,6 @@ import type { PanelKind } from "./types";
 
 export interface PanelProps {
   kind: PanelKind;
-  /** Override registry label. */
-  title?: string;
   /** Optional count badge in the header. */
   count?: number;
   /** A short uppercase label rendered BESIDE the count, naming a non-default
@@ -70,7 +69,6 @@ export interface PanelProps {
 
 export function Panel({
   kind,
-  title,
   count,
   countLabel,
   onAdd,
@@ -88,7 +86,6 @@ export function Panel({
   children,
 }: PanelProps) {
   const entry = PANEL_REGISTRY[kind];
-  const resolvedTitle = title ?? entry.label;
   // Per-panel body typography vars (font-size override) scoped to this
   // panel root. The matching `.panel-body-typo` rules in globals.css use
   // these vars to size descendant body text in both list and in-text
@@ -103,7 +100,7 @@ export function Panel({
         className="w-full bg-transparent flex flex-col overflow-hidden h-full panel-body-typo"
       >
         <PanelHeader
-          title={resolvedTitle}
+          title={entry.label}
           count={count}
           countLabel={countLabel}
           onAdd={onAdd}

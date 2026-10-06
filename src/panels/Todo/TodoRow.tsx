@@ -15,13 +15,11 @@ import {
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { useFieldDraft } from "@/components/field-draft";
 import { cardHasContent } from "@/cards/has-content";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
-import { cardBodyPlaceholder, cardTypeLabel, popKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { cardBodyPlaceholder, cardTypeLabel } from "@/panels/panel-registry";
+import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { iconHint } from "@/components/Hint";
 
 /** The done/undone checkbox shown in a Todo's header (docked) and its float
@@ -68,7 +66,6 @@ export function TodoRow({
   onJump,
   isAnchored,
   extraDataAttrs,
-  onTogglePopout,
   isPoppedOut,
 }: {
   item: TodoItem;
@@ -82,14 +79,11 @@ export function TodoRow({
   onJump?: (sourceEl: HTMLElement | null) => void;
   isAnchored: boolean;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const [notes, setNotes] = useState(item.notes);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const popped = usePoppedCards();
-  const cardKey = popKey("todo", item.id);
   // Version-subscribed, so the "Todo color" override re-tints the docked card
   // live — the same source the todo margin marker and the popped-out float
   // already read. Never bind `CARD_THEMES.todo` at module scope: that table is
@@ -138,15 +132,14 @@ export function TodoRow({
     }
   }, [item, notes, onDelete, deleteAllowed]);
 
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
-  const ac = useAnchoredCard({ kind: "todo", id: item.id });
-  const cardStore = useCardStore();
-  const isExpanded = ac.expanded;
+  const { ac, compressed, shell } = useAnchoredCardShell({
+    kind: "todo",
+    id: item.id,
+    isPoppedOut,
+    onSelect: () => onSelect(item.id),
+    onJump: isAnchored ? onJump : undefined,
+  });
   const isSelected = ac.selected || selected;
-  const compressed = !isExpanded && !isPoppedOut;
   // Todo is the lone editable card with a bare card-level delete-key handler
   // (plain <input> title + <textarea> notes, no EditableCard focus-tracking).
   // The shared hook bakes in the interactive-control guard so a Backspace typed
@@ -156,39 +149,21 @@ export function TodoRow({
   const card = (
     <>
     <PanelCard
+      {...shell}
       ref={cardRef}
       data-todo-entry={item.id}
-      data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       data-pristine-card-id={item.id}
       theme={theme}
       selected={selected}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      cardKey={cardKey}
       isCollapsed={compressed}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
       cardId={item.id}
       extraCardClass=""
       tabIndex={isSelected ? 0 : -1}
-      onClick={(e) => {
-        e.stopPropagation();
-        const card = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(item.id),
-          jump: isAnchored && onJump ? () => onJump(card) : undefined,
-        });
-      }}
-      onMouseEnter={() => cardStore.setHoverFor(ac.ref, true)}
-      onMouseLeave={() => cardStore.setHoverFor(ac.ref, false)}
       onFocusCapture={() => { if (!isSelected) onSelect(item.id); }}
       onKeyDown={handleDeleteKey}
       kind="todo"
-      canJump={isAnchored && !!onJump}
-      onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
       headerTrailing={<TodoDoneToggle item={item} onToggle={onToggle} />}
     >
       <div className={`${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}>
