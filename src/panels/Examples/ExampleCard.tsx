@@ -1,7 +1,7 @@
 "use client";
 
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   useEditor,
   EditorContent,
@@ -15,6 +15,7 @@ import type { ExampleInfo, EditorHandle } from "@/components/Editor";
 import { linkCardKey } from "@/links/link-dom-contract";
 import {
   CardEmptyText,
+  CardSeparator,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -457,6 +458,7 @@ export function ExampleCard({
   const isHaloed = ac.selected || isSelected;
 
   const [showHelp, setShowHelp] = useState(false);
+  const helpId = useId();
 
   // The directly-editable expex body needs the main editor (to seed + write
   // back). Self-sourced from context so the card body is identical in every
@@ -647,10 +649,7 @@ export function ExampleCard({
       </div>
 
       {/* ── Footer: Help ─────────────────────────────────────────── */}
-      <div
-        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
+      <CardSeparator selected={isHaloed} theme={theme} />
       <div className="flex items-center gap-1.5 px-3 py-1 bg-surface-muted/30">
         <button
           data-iconbtn-exempt="bordered control: its border/fill is the affordance, not a hover lozenge"
@@ -659,6 +658,8 @@ export function ExampleCard({
             setShowHelp((v) => !v);
           }}
           className="text-[10px] px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold focus-ring"
+          aria-expanded={showHelp}
+          aria-controls={helpId}
           {...iconHint({ label: showHelp ? "Hide help" : "Help", pos: "above" })}
         >
           ?
@@ -669,11 +670,9 @@ export function ExampleCard({
       {/* ── Help panel: brief expex explainer ────────────────────── */}
       {showHelp && (
         <>
+          <CardSeparator selected={isHaloed} theme={theme} />
           <div
-            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-          />
-          <div
+            id={helpId}
             className="px-3 py-2 text-[11px] leading-snug text-ink-body bg-[var(--amber-50)]/40"
             onClick={(e) => e.stopPropagation()}
           >

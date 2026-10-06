@@ -2749,6 +2749,23 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
  *  the header still work. */
 const CARD_LIFT_THRESHOLD = 5;
 
+/** The ONE card section separator (task 969; STYLE_GUIDE "Selection"): a
+ *  hairline that flips to `theme.separatorSelected` while the card is
+ *  selected, else `border-edge-subtle` brightening to `border-edge-hover` on
+ *  the card's hover. `PanelCard` draws its header/body rule through it, and a
+ *  card body that needs an inner rule renders it too — passing the SAME halo
+ *  it hands `PanelCard` as `selected`, so every rule on a card follows one
+ *  selection signal. `card-separator-census.test.ts` pins that no other file
+ *  spells the literal. */
+export function CardSeparator({ selected, theme }: { selected: boolean; theme: CardTheme }) {
+  return (
+    <div
+      className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+      style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
+    />
+  );
+}
+
 /** The grab-cursor pair a draggable card root wears. */
 export const CARD_DRAG_CURSOR_CLASS = "cursor-grab active:cursor-grabbing";
 
@@ -3276,12 +3293,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
               <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
             )}
           </div>
-          {showSeparator && (
-            <div
-              className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-              style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
-            />
-          )}
+          {showSeparator && <CardSeparator selected={selected} theme={theme} />}
           {/* `display:contents` keeps the body id resolvable for the chevron's
               `aria-controls` without inserting a layout box. */}
           <div id={bodyId} style={{ display: "contents" }}>{children}</div>
