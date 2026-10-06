@@ -231,4 +231,17 @@ describe("verbatim codeBlock is byte-raw (task 207)", () => {
     expect(bodies[1]).toBe(body);
     expect(texts[1]).toBe(texts[0]);
   });
+
+  // Task 973: the `\end{verbatim}` escape is injective — a body that already
+  // reads like the escaped form survives byte-for-byte.
+  it.each([
+    "\\end{verbatim%!v-esc}",
+    "\\end{verbatim%!v-esc%!v-esc}",
+    "a\n\\end{verbatim}\n\\end{verbatim%!v-esc}\nb",
+  ])("round-trips the escape family member %j", (body) => {
+    const { blocks, topLevel, text } = roundTrip(body);
+    expect(blocks).toHaveLength(1);
+    expect(topLevel).toBe(1);
+    expect(text).toBe(body);
+  });
 });

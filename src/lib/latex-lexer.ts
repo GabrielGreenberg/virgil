@@ -225,6 +225,55 @@ export function verbatimFormOf(attrs: unknown): VerbatimForm {
 }
 
 /**
+ * An INJECTIVE escape for a delimiter that may appear inside a raw body
+ * (task 973) — byte-stuffing, spelled once.
+ *
+ * A delimiter is split as `head` + `tail`; escaping inserts one `pad` between
+ * them. The naive pair (`head tail` → `head pad tail`, and back) is not
+ * one-to-one: bytes the user really typed as `head pad tail` come back as
+ * `head tail` on the next load — an automatic write that rewrites raw source.
+ * So the WHOLE family is escaped: `head pad* tail` gains exactly one `pad`, and
+ * the unescape removes exactly one. Every string round-trips, and the escaped
+ * body can never contain the bare delimiter (it always carries ≥ 1 pad). Old
+ * files load identically: a once-escaped `head pad tail` still unescapes to
+ * the delimiter.
+ *
+ * `pad` must not be able to manufacture a new `head` or `tail` occurrence —
+ * true of both wearers below.
+ */
+export interface DelimiterEscape {
+  escape(body: string): string;
+  unescape(body: string): string;
+}
+
+function regexLiteral(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function stuffedDelimiterEscape(
+  head: string,
+  pad: string,
+  tail: string,
+): DelimiterEscape {
+  const h = regexLiteral(head);
+  const p = regexLiteral(pad);
+  const t = regexLiteral(tail);
+  const family = new RegExp(`${h}((?:${p})*)${t}`, "g");
+  const escaped = new RegExp(`${h}${p}((?:${p})*)${t}`, "g");
+  return {
+    escape: (body) => body.replace(family, (_m, pads: string) => head + pad + pads + tail),
+    unescape: (body) => body.replace(escaped, (_m, pads: string) => head + pads + tail),
+  };
+}
+
+/** `\end{verbatim}` inside a verbatim env body. */
+const VERBATIM_END_ESCAPE = stuffedDelimiterEscape("\\end{verbatim", "%!v-esc", "}");
+
+/** `%!vtex:end` inside a texBlock body (`%!vtex:begin/end <uuid>` sentinels).
+ *  The parser and serializer both go through this one pair. */
+export const TEX_BLOCK_END_ESCAPE = stuffedDelimiterEscape("%!v", " ", "tex:end");
+
+/**
  * THE `verbatim` env body ↔ `.tex` pair, spelled once (task 338).
  *
  * A body line reading `\end{verbatim}` would close the environment early, so
@@ -240,7 +289,7 @@ export function verbatimFormOf(attrs: unknown): VerbatimForm {
  * not exist at all — the block was silently DROPPED.
  */
 export function wrapVerbatimEnvBody(inner: string): string {
-  const escaped = inner.replace(/\\end\{verbatim\}/g, "\\end{verbatim%!v-esc}");
+  const escaped = VERBATIM_END_ESCAPE.escape(inner);
   return `\\begin{verbatim}\n${escaped}\n\\end{verbatim}`;
 }
 
@@ -251,7 +300,7 @@ export function unwrapVerbatimEnvBody(envContent: string): string {
   let text = envContent;
   if (text.startsWith("\n")) text = text.slice(1);
   if (text.endsWith("\n")) text = text.slice(0, -1);
-  return text.replace(/\\end\{verbatim%!v-esc\}/g, "\\end{verbatim}");
+  return VERBATIM_END_ESCAPE.unescape(text);
 }
 
 /** True when a mark list carries the verbatim carrier — the ONE test every

@@ -91,6 +91,38 @@ After.`;
     expect(blocks[0].attrs.code).toBe(body);
   });
 
+  // Task 973: the escape is INJECTIVE — a body that already reads like an
+  // escaped sentinel (`%!v tex:end`, any number of spaces) must come back
+  // byte-for-byte, not collapsed to `%!vtex:end`.
+  it.each([
+    "%!vtex:end",
+    "%!v tex:end",
+    "%!v  tex:end",
+    "%!v   tex:end abcd",
+    "%!vtex:end abcd",
+    "a %!vtex:end b %!v tex:end c %!v  tex:end d",
+    "%!v tex:end\n%!vtex:end abcd\n%!v tex:endless",
+    "%!v%!vtex:end%!v tex:end",
+    "%!v\ttex:end",
+  ])("round-trips the sentinel family member %j", (body) => {
+    const json = {
+      type: "doc",
+      content: [{ type: "texBlock", attrs: { uuid: "abcd", code: body } }],
+    };
+    const tex = serializeBody(json);
+    // The only live end sentinel is the block's own closing line.
+    expect(tex.match(/%!vtex:end/g)).toHaveLength(1);
+    const blocks = findTexBlocks(parseBody(tex));
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].attrs.code).toBe(body);
+  });
+
+  it("still loads a pre-973 file whose escaped body reads `%!v tex:end`", () => {
+    const input = `%!vtex:begin abcd\nx %!v tex:end abcd y\n%!vtex:end abcd\n\n`;
+    const blocks = findTexBlocks(parseBody(input));
+    expect(blocks[0].attrs.code).toBe("x %!vtex:end abcd y");
+  });
+
   it("handles two adjacent texBlocks", () => {
     const input = `%!vtex:begin aaaa\nfirst\n%!vtex:end aaaa\n\n%!vtex:begin bbbb\nsecond\n%!vtex:end bbbb\n\n`;
     const json = parseBody(input);
