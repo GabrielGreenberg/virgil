@@ -18,8 +18,8 @@
 //       keymap binds (`editor.commands.keyboardShortcut("Mod-b")`, the exact
 //       StarterKit binding) produce a BYTE-IDENTICAL doc: same mark on the same
 //       range, same wrap node. The oracle's "Format marks" rows assert these two
-//       surfaces "stay behaviorally identical"; `surfaces.keyboard` is FALSE on
-//       the row (keybindings owned by StarterKit) but the keystroke is live.
+//       surfaces "stay behaviorally identical"; the binding is StarterKit's, and
+//       since task 985 the row STATES it (`keybinding`, `surfaces.keyboard`).
 //
 //   (B) applySelectionMode TAXONOMY (DA-5):
 //       - format rows are `selection: "ignored"` → STAY "ok" at a collapsed
@@ -252,19 +252,25 @@ const BOLD = VIRGIL_ACTION_REGISTRY["bold"]!;
 const ITALIC = VIRGIL_ACTION_REGISTRY["italic"]!;
 const STRIKE = VIRGIL_ACTION_REGISTRY["strike"]!;
 const CODE = VIRGIL_ACTION_REGISTRY["code"]!;
+const SMALL_CAPS = VIRGIL_ACTION_REGISTRY["small-caps"]!;
 const BULLET = VIRGIL_ACTION_REGISTRY["bullet-list"]!;
 const ORDERED = VIRGIL_ACTION_REGISTRY["ordered-list"]!;
 const BLOCKQUOTE = VIRGIL_ACTION_REGISTRY["blockquote"]!;
 const TEXT_COLOR = VIRGIL_ACTION_REGISTRY["text-color"]!;
 const HIGHLIGHT = VIRGIL_ACTION_REGISTRY["highlight"]!;
 
-// The mark name each toggle id maps to + the keymap binding StarterKit owns.
+// The mark name each toggle id maps to + the chord the ROW declares (task 985).
+// The chord is read off `row.keybinding` — never restated here — so this suite
+// PINS the registry's record (which the ⚡ grid advertises through `<Kbd>`) to
+// the keymap that actually runs: a changed binding fails (A) below instead of
+// leaving the hint lying.
 const MARK_ROWS: ReadonlyArray<{ row: ActionSpec; mark: string; chord: string }> = [
-  { row: BOLD, mark: "bold", chord: "Mod-b" },
-  { row: ITALIC, mark: "italic", chord: "Mod-i" },
-  { row: STRIKE, mark: "strike", chord: "Mod-Shift-s" },
-  { row: CODE, mark: "code", chord: "Mod-e" },
-];
+  { row: BOLD, mark: "bold" },
+  { row: ITALIC, mark: "italic" },
+  { row: STRIKE, mark: "strike" },
+  { row: CODE, mark: "code" },
+  { row: SMALL_CAPS, mark: "smallCaps" },
+].map((r) => ({ ...r, chord: r.row.keybinding! }));
 
 const WRAPPER_ROWS: ReadonlyArray<{ row: ActionSpec; wrap: string }> = [
   { row: BULLET, wrap: "bulletList" },
@@ -336,13 +342,21 @@ function unmarkedNeighbors(editor: Editor, mark: string): boolean {
   return ok;
 }
 
+describe("(A) every declared chord is pressed by this suite (task 985)", () => {
+  it("the rows with a `keybinding` are exactly MARK_ROWS ∪ WRAPPER_ROWS", () => {
+    const declared = Object.values(VIRGIL_ACTION_REGISTRY)
+      .filter((r) => r?.keybinding)
+      .map((r) => r!.id)
+      .sort();
+    const pressed = [...MARK_ROWS, ...WRAPPER_ROWS].map((r) => r.row.id).sort();
+    expect(declared).toEqual(pressed);
+  });
+});
+
 describe("(A) wrapper toggle: registry run() ≡ keyboard chord (same wrap node)", () => {
-  // bullet-list / ordered-list / blockquote — StarterKit owns the chords too.
-  const WRAP_CHORDS: Record<string, string> = {
-    "bullet-list": "Mod-Shift-8",
-    "ordered-list": "Mod-Shift-7",
-    blockquote: "Mod-Shift-b",
-  };
+  // bullet-list / ordered-list / blockquote — StarterKit owns the chords too;
+  // the chord is the row's own `keybinding` (task 985). The hard pin through
+  // the real key dispatch is `wrapper-surfaces-guard.test.ts`.
   for (const { row, wrap } of WRAPPER_ROWS) {
     it(`${row.id}: run() and the chord both wrap the block in a ${wrap}`, () => {
       const e1 = mountEditor([paragraph("wrap me")]);
@@ -352,7 +366,7 @@ describe("(A) wrapper toggle: registry run() ≡ keyboard chord (same wrap node)
 
       const e2 = mountEditor([paragraph("wrap me")]);
       placeCaret(e2, 3);
-      e2.commands.keyboardShortcut(WRAP_CHORDS[row.id]);
+      e2.commands.keyboardShortcut(row.keybinding!);
       // The keymap chord may or may not be the canonical StarterKit chord across
       // versions; assert the run() path definitively wrapped, and that IF the
       // chord resolved it produced the SAME node type (no divergent wrap).
@@ -407,8 +421,10 @@ describe("(B) selection-mode taxonomy: format is 'ignored' (stays ok at a caret)
       // routed through the wrapper door — and false on the marks, whose chords
       // StarterKit owns outright.
       expect(row.surfaces.grab ?? false).toBe(false);
+      // Task 985: every toggle row STATES its chord (keyboard TRUE); only the
+      // popover-opening text-color has none.
       const isWrapper = [BULLET, ORDERED, BLOCKQUOTE].includes(row);
-      expect(row.surfaces.keyboard ?? false).toBe(isWrapper);
+      expect(row.surfaces.keyboard ?? false).toBe(row !== TEXT_COLOR);
       expect(row.surfaces.typed ?? false).toBe(isWrapper);
     }
   });

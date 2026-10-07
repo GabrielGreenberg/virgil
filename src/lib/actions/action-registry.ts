@@ -3251,14 +3251,27 @@ function formatToggleRow(
         keybinding: string;
         inputRulePattern: RegExp;
       }
-    | { mark: string; wrapper?: never; slash?: never },
+    | {
+        mark: string;
+        wrapper?: never;
+        slash?: never;
+        /**
+         * Task 985: a MARK row records its chord too. The binding is the mark
+         * extension's own (`StarterKit`'s `Mod-b`/`Mod-i`/`Mod-Shift-s`/`Mod-e`,
+         * `small-caps.ts`'s `Mod-Shift-k`) — the row does not OWN it, it STATES
+         * it, once, so the ⚡ grid's hint (`<Kbd>` via `iconHint({ keys })`)
+         * reads the chord from here instead of hand-spelling `⌘B` into the
+         * cell's name. `format-keybinding-pin.test.ts` presses each declared
+         * chord through the real stack, so a changed binding fails CI rather
+         * than leaving the hint lying.
+         */
+        keybinding: string;
+      },
 ): ActionSpec {
   const wrapperNode = opts.wrapper;
   const slash = opts.wrapper !== undefined ? opts.slash : markSlash(opts.mark);
-  const pmLand =
-    opts.wrapper !== undefined
-      ? { typed: true, keyboard: true, keybinding: opts.keybinding, inputRulePattern: opts.inputRulePattern }
-      : null;
+  const keybinding = opts.keybinding;
+  const inputRulePattern = opts.wrapper !== undefined ? opts.inputRulePattern : undefined;
   return {
     id,
     label,
@@ -3268,11 +3281,13 @@ function formatToggleRow(
     surfaces: {
       lightning: true,
       ...(slash ? { slash: true } : {}),
-      ...(pmLand ? { typed: true, keyboard: true } : {}),
+      ...(inputRulePattern ? { typed: true } : {}),
+      keyboard: true,
     },
     ...(slash ? { slashName: slash.name } : {}),
     ...(slash?.aliases ? { slashAliases: slash.aliases } : {}),
-    ...(pmLand ? { keybinding: pmLand.keybinding, inputRulePattern: pmLand.inputRulePattern } : {}),
+    keybinding,
+    ...(inputRulePattern ? { inputRulePattern } : {}),
     applies:
       opts.wrapper !== undefined
         ? wrapperApplies(opts.wrapper)
@@ -3314,14 +3329,14 @@ function markSlash(mark: string): { name: string; aliases?: string[] } | undefin
  *  from the wrapper-mark table, because a writer with LaTeX habits reaches for
  *  `\sc` / `\textbf` (the earlier "a mark is not a slash command" stance was
  *  overruled by Gabriel's request). */
-const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold(), { mark: "bold" });
-const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic(), { mark: "italic" });
-const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike(), { mark: "strike" });
+const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold(), { mark: "bold", keybinding: "Mod-b" });
+const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic(), { mark: "italic", keybinding: "Mod-i" });
+const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike(), { mark: "strike", keybinding: "Mod-Shift-s" });
 // Small caps (task 808) — `\textsc{…}`, a row of the wrapper-mark vocabulary
 // table. Its Mod-Shift-K chord is the mark's own binding (`SmallCaps`), like
 // every mark toggle's (Mod-B / Mod-I are StarterKit's).
-const SMALL_CAPS_ACTION_ROW = formatToggleRow("small-caps", "Small caps", (c) => c.toggleSmallCaps(), { mark: "smallCaps" });
-const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode(), { mark: "code" });
+const SMALL_CAPS_ACTION_ROW = formatToggleRow("small-caps", "Small caps", (c) => c.toggleSmallCaps(), { mark: "smallCaps", keybinding: "Mod-Shift-k" });
+const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode(), { mark: "code", keybinding: "Mod-e" });
 /** The five MARK toggle rows — the format rows built on the `mark` arm. Their
  *  slash names feed `SLASH_NAME_TO_ACTION_ID` (task 891), and
  *  `assertActionCoverage` partitions the format slice on it (a mark owns the
@@ -4220,9 +4235,6 @@ export function assertActionCoverage(): string[] {
   // (`\textsc`/`\sc`, …, derived from the wrapper-mark table); only
   // `text-color` (it needs a color argument) is slash-less.
   const formatIdsWithSlash = slashOwnersAmong(COVERED_FORMAT_IDS);
-  // The chord/input-rule partition is WRAPPER-ness, no longer slash-ness: a
-  // mark is slash-reachable but its bindings are StarterKit's / its own mark's.
-  const formatWrapperIds = new Set<ActionId>(formatWrapperIdsOf(formatIdsWithSlash));
 
   // (1)+(2)+(3) the CARD slice is fully + correctly covered.
   for (const id of COVERED_CARD_IDS) {
@@ -4398,7 +4410,10 @@ export function assertActionCoverage(): string[] {
   // that says those surfaces do not exist while they destroy examples is the
   // "guard overstates its reach" failure. So the partition is now: WRAPPERS
   // must claim typed + keyboard and carry `inputRulePattern` + `keybinding`;
-  // MARKS must claim neither.
+  // MARKS must claim neither. RENEGOTIATED AGAIN (task 985): a mark's chord is
+  // StarterKit's to OWN but the row's to STATE — the ⚡ grid advertised three of
+  // eight chords from hand-spelled `⌘B` names — so every toggle row now claims
+  // keyboard + `keybinding`; only the WRAPPERS claim typed.
   for (const id of COVERED_FORMAT_IDS) {
     const row = VIRGIL_ACTION_REGISTRY[id];
     if (!row) {
@@ -4428,19 +4443,22 @@ export function assertActionCoverage(): string[] {
         `[actions] format id "${id}" claims a grab surface it does not expose`,
       );
     }
-    if (formatWrapperIds.has(id)) {
-      // the structural WRAPPERS own the StarterKit chord (task 427). Their
-      // markdown INPUT RULE is the typed arm's, below — the wrappers are the
-      // typed surface's second PROVIDER and are reconciled there with the
-      // typed-LaTeX census in one place.
-      if (!row.surfaces.keyboard || !row.keybinding) {
+    if (id === "text-color") {
+      // the one format row with no chord (it opens a popover).
+      if (row.surfaces.keyboard || row.keybinding) {
         problems.push(
-          `[actions] format id "${id}" must set surfaces.keyboard + keybinding (the wrapper owns a StarterKit chord)`,
+          `[actions] format id "${id}" claims a keyboard surface it does not expose`,
         );
       }
-    } else if (row.surfaces.keyboard || row.keybinding) {
+    } else if (!row.surfaces.keyboard || !row.keybinding) {
+      // EVERY toggle row records its chord (task 985): the WRAPPERS own a
+      // StarterKit chord (task 427), the MARKS state their extension's — the
+      // ⚡ grid's hint reads it, and `format-keybinding-pin.test.ts` presses it.
+      // The wrappers' markdown INPUT RULE is the typed arm's, below — the
+      // wrappers are the typed surface's second PROVIDER and are reconciled
+      // there with the typed-LaTeX census in one place.
       problems.push(
-        `[actions] format id "${id}" claims a keyboard surface it does not expose (a mark's bindings are StarterKit's)`,
+        `[actions] format id "${id}" must set surfaces.keyboard + keybinding (every toggle row states its chord)`,
       );
     }
     if (formatIdsWithSlash.has(id)) {

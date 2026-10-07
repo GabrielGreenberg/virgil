@@ -124,39 +124,39 @@ describe("task 738 — the open lightning grid follows the live editor", () => {
   it("clicking the Bold cell lights it; clicking again unlights it", async () => {
     editor = mount();
     openPanel(editor);
-    expect(lit("Bold (⌘B)")).toBe(false);
+    expect(lit("Bold")).toBe(false);
 
-    fireEvent.click(cell("Bold (⌘B)"));
+    fireEvent.click(cell("Bold"));
     await frame();
     expect(editor.isActive("bold")).toBe(true);
-    expect(lit("Bold (⌘B)")).toBe(true);
+    expect(lit("Bold")).toBe(true);
 
-    fireEvent.click(cell("Bold (⌘B)"));
+    fireEvent.click(cell("Bold"));
     await frame();
     expect(editor.isActive("bold")).toBe(false);
-    expect(lit("Bold (⌘B)")).toBe(false);
+    expect(lit("Bold")).toBe(false);
   });
 
-  it("a toggle dispatched on the editor itself (⌘B's path) is followed", async () => {
+  it("a toggle dispatched on the editor itself (the Mod-b chord's path) is followed", async () => {
     editor = mount();
     openPanel(editor);
     act(() => {
       editor!.chain().setTextSelection(BETA).toggleItalic().run();
     });
     await frame();
-    expect(lit("Italic (⌘I)")).toBe(true);
+    expect(lit("Italic")).toBe(true);
   });
 
   it("a transaction that changes a row's applies() re-greys its cell", async () => {
     editor = mount();
     openPanel(editor);
-    expect(cell("Bold (⌘B)").disabled).toBe(false);
+    expect(cell("Bold").disabled).toBe(false);
     // A codeBlock admits no marks — the bold row's applies() now says disabled.
     act(() => {
       editor!.chain().setTextSelection(BETA).setCodeBlock().setTextSelection(BETA).run();
     });
     await frame();
-    expect(cell("Bold (⌘B)").disabled).toBe(true);
+    expect(cell("Bold").disabled).toBe(true);
   });
 });
 

@@ -498,7 +498,7 @@ describe("format rows (CHIP 6b — completes the grid fold)", () => {
   // A registry that denied those surfaces existed was the "guard overstates
   // its reach" failure; the rows now RECORD them and the factories route both
   // through the one wrapper door.
-  it("each format row is category 'format', backbone 'tiptap-chain', on the lightning grid, never grab; WRAPPERS record their chord + input rule, MARKS claim neither", () => {
+  it("each format row is category 'format', backbone 'tiptap-chain', on the lightning grid, never grab; WRAPPERS record their chord + input rule, MARKS record their chord only", () => {
     for (const id of FORMAT_IDS) {
       const r = row(id);
       expect(r.id).toBe(id);
@@ -513,10 +513,17 @@ describe("format rows (CHIP 6b — completes the grid fold)", () => {
         expect(r.keybinding, id).toMatch(/^Mod-Shift-[87b]$/);
       } else {
         expect(r.surfaces.typed, id).toBeFalsy();
-        expect(r.surfaces.keyboard, id).toBeFalsy();
         // No input-rule pattern on a MARK row (StarterKit owns the marks).
         expect(r.inputRulePattern, id).toBeUndefined();
-        expect(r.keybinding, id).toBeUndefined();
+        // Task 985: a MARK row STATES its extension's chord (the ⚡ grid's hint
+        // reads it); only text-color, a popover opener, has none.
+        if (id === "text-color") {
+          expect(r.surfaces.keyboard, id).toBeFalsy();
+          expect(r.keybinding, id).toBeUndefined();
+        } else {
+          expect(r.surfaces.keyboard, id).toBe(true);
+          expect(r.keybinding, id).toMatch(/^Mod-(Shift-)?[a-z]$/);
+        }
       }
     }
   });
