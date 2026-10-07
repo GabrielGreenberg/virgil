@@ -244,6 +244,12 @@ describe("CardKindDropdown — on the primitive", () => {
       "true",
       "false",
     ]);
+    // The set is scoped as ONE radio group (task 997 — via `MenuRadioGroup`;
+    // the hand-built rows had no group at all).
+    const group = rows[0].closest('[role="group"]');
+    expect(group).not.toBeNull();
+    expect(group!.getAttribute("aria-label")).toBe("Card type");
+    expect(rows.every((r) => group!.contains(r))).toBe(true);
 
     fireEvent.click(rows[1]);
     await settle();
