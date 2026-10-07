@@ -50,6 +50,7 @@ export {
 import type { SuggestionField } from "./suggestion-field-vocabulary";
 import { iconHint } from "@/components/Hint";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
+import { useCopyFlash } from "@/hooks/useCopyFlash";
 
 /** The two cards share a
  *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
@@ -188,17 +189,11 @@ export function SuggestionTrailing({
 }
 
 export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFlash();
   const handle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!text) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      })
-      .catch(() => {});
+    void copy(text);
   };
   return (
     <button

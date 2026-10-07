@@ -587,7 +587,6 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
         getReviewStatus={ctx.getBibReviewStatus}
         getReviewNotes={ctx.getBibReviewNotes}
         onSaveBibEntry={ctx.saveBibEntry}
-        bibPackage={ctx.bibPackage}
         bibEntries={ctx.bibEntries}
         isCited={isCited}
         isPoppedOut

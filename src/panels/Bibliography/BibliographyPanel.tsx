@@ -110,7 +110,6 @@ interface BibliographyPanelProps {
   allEditorCitations?: Array<{ citationId: string; command: string; keys: string[] }>;
   onScrollToCitation?: (citationId: string, sourceEl?: HTMLElement | null) => void;
   onActiveCitationChange?: (citationId: string | null) => void;
-  bibPackage?: string;
   onAddBibEntry?: (entry: BibEntry) => void;
   docId: string | null;
   entryRequests: BibEntryRequest[];
@@ -156,7 +155,6 @@ function BibliographyPanel({
   allEditorCitations = [],
   onScrollToCitation,
   onActiveCitationChange,
-  bibPackage,
   onAddBibEntry,
   docId,
   entryRequests,
@@ -1029,7 +1027,6 @@ function BibliographyPanel({
             getReviewStatus={getReviewStatus}
             getReviewNotes={getReviewNotes}
             onSaveBibEntry={onSaveBibEntry}
-            bibPackage={bibPackage}
             bibEntries={bibEntries}
             isCited={isCited}
             headerMeta={headerMeta}

@@ -73,6 +73,7 @@ import { useMenuContext } from "@/components/menu/context";
 import { iconHint } from "@/components/Hint";
 import { Button } from "@/components/Button";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
+import { useCopyFlash } from "@/hooks/useCopyFlash";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -940,13 +941,10 @@ function ExpandedDetails({
 }
 
 function CitekeyRow({ citekey }: { citekey: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFlash();
   const onCopy = useCallback(() => {
-    void navigator.clipboard.writeText(citekey).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [citekey]);
+    void copy(citekey);
+  }, [citekey, copy]);
   return (
     <div className="flex items-center gap-1.5 text-[10.5px] text-ink-muted font-mono">
       <span>citekey:</span>
