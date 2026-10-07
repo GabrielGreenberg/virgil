@@ -2685,6 +2685,17 @@ call `close` themselves (`ItemMenu`). Non-interactive chrome is `<MenuSeparator>
 / `<MenuSectionLabel>` — the divider and the small uppercase caption, previously
 copied as class literals into ten and seven places respectively.
 
+**A trigger that cannot BE that button** (the ⚡ bolt — a fixed pane-overlay
+portal; the grab handle; the heading lozenge's type chip — NodeView DOM; a
+hand-rolled toolbar trigger) takes the same contract piecewise from
+`menu/menu-trigger.ts`, which `AnchoredMenu` itself consumes: `useMenuTrigger`
+(element in state + ARIA props), `menuTriggerAria(role, open)` to spread, or
+`paintMenuTriggerAria` for vanilla DOM. Its element goes into the provider's
+`excludeRefs` and its activation is `open ? close : open` — otherwise the
+capture-phase click-outside closes on the press and the click re-opens, a
+remount where the user asked for "close" (task 992). Never hand-spell
+`aria-haspopup="menu"`; `menu-trigger-census.test.ts` fails it.
+
 Why the shell exists, given the primitive already did (task 143): `ItemMenu` had
 folded onto `MenuProvider` and hard-codes a kebab trigger, so a "+" button, a
 horizontal kebab and a "More ⌄" chip each re-derived the plumbing above — and

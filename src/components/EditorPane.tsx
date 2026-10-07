@@ -243,7 +243,7 @@ import {
 } from "@/lib/stack/stack-terminal";
 import type { StackBibCtx } from "@/lib/stack/bib-carry";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
-import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
+import { DragHandleMenuProvider, sameDragHandleRef, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 // CHIP 4a-i — the PM→React bridge. EditorPane publishes an
 // `EditorActionsHandle` into the module-singleton so plugin-land code (slash /
 // typed, wired in 4a-ii) can reach the registry's React-land `run()`s. The
@@ -276,6 +276,7 @@ import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-fl
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { elementAnchor, type LiveAnchor } from "./menu/live-anchor";
+import { paintMenuTriggerAria } from "./menu/menu-trigger";
 import { useConfirmDialog } from "./ConfirmDialog";
 import {
   labelRenameConfirmCopy,
@@ -4308,17 +4309,30 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const [dragHandleMenuState, setDragHandleMenuState] = useState<{
     ref: DragHandleRef;
     anchorRect: DOMRect;
+    // The grab handle that opened it — the menu's trigger (task 992).
+    triggerEl?: HTMLElement;
   } | null>(null);
   const openDragHandleMenu = useCallback(
-    (ref: DragHandleRef, anchorRect: DOMRect) => {
-      setDragHandleMenuState({ ref, anchorRect });
+    (ref: DragHandleRef, anchorRect: DOMRect, triggerEl?: HTMLElement) => {
+      setDragHandleMenuState((prev) =>
+        // A TOGGLE: the handle that opened this menu, for the same target,
+        // closes it. A different handle (or the same one re-homed onto another
+        // block) re-targets.
+        prev && triggerEl && prev.triggerEl === triggerEl && sameDragHandleRef(prev.ref, ref)
+          ? null
+          : { ref, anchorRect, triggerEl },
+      );
     },
     [],
   );
   const closeDragHandleMenu = useCallback(() => setDragHandleMenuState(null), []);
   const dragHandleMenuApi = useMemo<DragHandleMenuApi>(
-    () => ({ open: openDragHandleMenu, dispatch: dragHandleActions.dispatch }),
-    [openDragHandleMenu, dragHandleActions.dispatch],
+    () => ({
+      open: openDragHandleMenu,
+      close: closeDragHandleMenu,
+      dispatch: dragHandleActions.dispatch,
+    }),
+    [openDragHandleMenu, closeDragHandleMenu, dragHandleActions.dispatch],
   );
 
   // ─── PM→React action bridge (CHIP 4a-i — INERT) ─────────────────────
@@ -4558,27 +4572,44 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // Live re-read of the chip (task 747), minted once per open so the menu
     // follows the lozenge on scroll.
     trackAnchor?: LiveAnchor;
+    // The chip itself — the menu's TRIGGER (task 992): exempted from the
+    // menu's click-outside so a re-click reaches the toggle below, and painted
+    // with `aria-expanded` for as long as the menu is open.
+    anchorEl?: HTMLElement;
     currentLevel: number;
     onPick: (pick: HeadingTypePick) => void;
   } | null>(null);
   const openHeadingTypeMenu = useCallback(
-    ({
-      anchorEl,
-      ...params
-    }: {
+    (params: {
       anchorRect: DOMRect;
       anchorEl?: HTMLElement;
       currentLevel: number;
       onPick: (pick: HeadingTypePick) => void;
     }) => {
-      setHeadingTypeMenuState({
-        ...params,
-        trackAnchor: anchorEl ? elementAnchor(anchorEl) : undefined,
-      });
+      setHeadingTypeMenuState((prev) =>
+        // A TOGGLE: the chip that opened the open menu closes it.
+        prev && params.anchorEl && prev.anchorEl === params.anchorEl
+          ? null
+          : {
+              ...params,
+              trackAnchor: params.anchorEl
+                ? elementAnchor(params.anchorEl)
+                : undefined,
+            },
+      );
     },
     [],
   );
   const closeHeadingTypeMenu = useCallback(() => setHeadingTypeMenuState(null), []);
+  // The chip is NodeView DOM React does not render, so its half of the trigger
+  // contract is PAINTED on each open/close edge (the NodeView's
+  // `ignoreMutation` covers its whole annotation strip, so PM never sees it).
+  const headingTypeTriggerEl = headingTypeMenuState?.anchorEl ?? null;
+  useEffect(() => {
+    if (!headingTypeTriggerEl) return;
+    paintMenuTriggerAria(headingTypeTriggerEl, "menu", true);
+    return () => paintMenuTriggerAria(headingTypeTriggerEl, "menu", false);
+  }, [headingTypeTriggerEl]);
 
   // ONE confirm-dialog instance for every question a NodeView asks through
   // `<VirgilEditor>`'s optional callbacks — the heading lozenge's ×, the
@@ -7976,6 +8007,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           {dragHandleMenuState && (
             <DragHandleMenu
               anchorRect={dragHandleMenuState.anchorRect}
+              triggerEl={dragHandleMenuState.triggerEl}
               kind={dragHandleMenuState.ref.kind}
               // Task 145: pass the REAL ref (a selection carries its live
               // from/to) + the live editor so the menu decoration resolves a
@@ -8012,6 +8044,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             <HeadingTypeMenu
               anchorRect={headingTypeMenuState.anchorRect}
               trackAnchor={headingTypeMenuState.trackAnchor}
+              triggerEl={headingTypeMenuState.anchorEl}
               currentLevel={headingTypeMenuState.currentLevel}
               documentClass={documentClassName}
               onPick={(pick) => {

@@ -226,6 +226,7 @@ describe("ActionsMenuPanel action list renders from the registry", () => {
   ) {
     const api = {
       open: vi.fn(),
+      close: vi.fn(),
       dispatch,
     };
     const utils = render(

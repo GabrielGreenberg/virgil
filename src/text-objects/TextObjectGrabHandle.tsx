@@ -905,6 +905,10 @@ export function TextObjectGrabHandle({ editor }: Props) {
       // so a missing host degrades to a no-op lift, which is acceptable: the
       // host is always present under EditorPane.)
       cleanup();
+      // The handle is its menu's (click-outside-exempt) trigger (task 992), so
+      // this press did not close an open menu — a press that becomes a LIFT
+      // closes it here, rather than carrying the menu under the drag.
+      dragHandleMenuRef.current?.close();
       // `terminalPolicy: "grab"` = the legacy grab-handle terminal behavior
       // (ghost-over-content → move; ghost-out-of-content → popout spawn).
       // `origin` is the mousemove coords at threshold cross — the cursor IS
@@ -930,7 +934,7 @@ export function TextObjectGrabHandle({ editor }: Props) {
       const open = dragHandleMenuRef.current?.open;
       if (open) {
         const rect = handleEl.getBoundingClientRect();
-        open(startRef, rect);
+        open(startRef, rect, handleEl);
       }
       cleanup();
     };

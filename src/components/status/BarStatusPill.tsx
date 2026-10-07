@@ -54,6 +54,7 @@ import { ANCHORED_MENU_PLACEMENTS } from "@/components/menu/AnchoredMenu";
 import { useMenuItem } from "@/components/menu/useMenuItem";
 import { menuRowRovingStyle, menuRowToneClass } from "@/components/menu/row-tone";
 import { iconHint } from "@/components/Hint";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 /** The pill's registers: the leaf's four, plus the pill's own `quiet`. */
 export type BarStatusTone = InterruptionTone | "quiet";
@@ -338,8 +339,7 @@ export function BarStatusPill({
           onClick={toggleMenu}
           className="iconbtn-sm iconbtn-on-dark"
           {...iconHint({ label: menu.kebabLabel })}
-          aria-haspopup="menu"
-          aria-expanded={open}
+          {...menuTriggerAria("menu", open)}
         >
           <KebabIcon />
         </button>

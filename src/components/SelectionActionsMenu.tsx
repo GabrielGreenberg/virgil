@@ -30,6 +30,7 @@ import { resolveAnchorableNode, resolveAnchorUuidAndKind } from "@/lib/anchor-uu
 import type { TextObjectKind } from "@/text-objects/types";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
+import { useMenuTrigger } from "./menu/menu-trigger";
 import { useHint } from "./Hint";
 import {
   coordsAtPosCached,
@@ -213,7 +214,16 @@ export function SelectionActionsMenu({
   // mouseup → false; edge-only, never on the editor transaction path, so it
   // adds no per-keystroke work (keystroke sanctity).
   const [suppressed, setSuppressed] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // The bolt is a menu TRIGGER that cannot be an `AnchoredMenu` button (a
+  // `position:fixed` pane-overlay portal), so it takes the shared trigger
+  // contract piecewise (task 992): its element rides `ActionsMenuPanel`'s
+  // `excludeRefs` so a re-click is a toggle rather than a close-then-remount,
+  // and it announces `aria-haspopup`/`aria-expanded`.
+  const {
+    triggerEl: boltEl,
+    triggerRef: boltRef,
+    triggerProps: boltTriggerProps,
+  } = useMenuTrigger({ open: menuTarget !== null });
   // The placement scheduler, published for the out-of-band pokes below. It is
   // a REF, not an effect dep, deliberately: `cacheVersion` in the dep array
   // tore down and re-registered this entire effect (window capture listeners,
@@ -481,7 +491,14 @@ export function SelectionActionsMenu({
   // off-screen, in lock-step with the off-screen-drop close effect.
   const showBolt = placement.visible && !suppressed;
 
-  const openMenu = () => {
+  // A TOGGLE, like its keyboard twin Cmd+/ above: pressing the bolt while its
+  // menu is open closes it (the bolt is excluded from the menu's click-outside,
+  // so this click is the ONLY thing that sees the press).
+  const toggleMenu = () => {
+    if (menuTarget) {
+      setMenuTarget(null);
+      return;
+    }
     if (!placement.range) return;
     const resolved = resolveAnchorUuidAndKind(
       editor.view,
@@ -517,14 +534,15 @@ export function SelectionActionsMenu({
     ? (
     <PaneOverlayPortal>
     <button
-      ref={buttonRef}
+      ref={boltRef}
       type="button"
       aria-label="Open actions menu"
+      {...boltTriggerProps}
       {...hint}
       // Prevent the mousedown from blurring the editor / clearing the
       // selection before the click registers.
       onMouseDown={(e) => e.preventDefault()}
-      onClick={openMenu}
+      onClick={toggleMenu}
       // Resting bg lives on the CLASS layer (`bg-[var(--pod-editor)]`), NOT
       // inline: an inline `background` shorthand sets `background-color` and,
       // as an inline declaration, beats any non-`!important` selector —
@@ -589,6 +607,7 @@ export function SelectionActionsMenu({
           width: BUTTON_SIZE,
           height: BUTTON_SIZE,
         }}
+        triggerEl={boltEl}
         onClose={() => setMenuTarget(null)}
         documentClass={documentClass}
       />

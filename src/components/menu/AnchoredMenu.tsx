@@ -56,6 +56,7 @@ import {
 } from "react";
 import { withFocusIndicator } from "@/components/focus-indicator";
 import { MenuProvider } from "./MenuProvider";
+import { useMenuTrigger } from "./menu-trigger";
 import type { MenuLayout, MenuOrientation, MenuRole } from "./types";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 
@@ -293,12 +294,15 @@ export function AnchoredMenu({
 }: AnchoredMenuProps) {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  // The trigger element in STATE, not a ref — `excludeRefs` is read during
-  // render (it is a prop), and a ref read there is both a lint error and a real
-  // staleness hazard: the value React sees is whatever was current at the last
-  // render, so a trigger that attached after it would be exempted from
-  // click-outside one commit late. State re-renders when the element attaches.
-  const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
+  // The trigger half — the element (in STATE, so `excludeRefs` below sees it
+  // the commit it attaches) and its `aria-haspopup`/`aria-expanded` — comes
+  // from the ONE trigger contract (task 992), which the bolt and the other
+  // triggers that cannot be this button share.
+  const {
+    triggerEl,
+    triggerRef: setTriggerEl,
+    triggerProps,
+  } = useMenuTrigger({ open, role });
   // The activedescendant HOST (task 477). Rows are `tabIndex: -1` and never
   // receive `.focus()` (the house roving model), so the element that keeps DOM
   // focus while the menu is open is the trigger this shell owns — and until
@@ -374,14 +378,10 @@ export function AnchoredMenu({
         style={triggerStyle}
         data-hint={triggerHint}
         aria-label={triggerAriaLabel ?? ariaLabel}
-        // DERIVED from the container role rather than hard-coded, now that the
-        // role is a caller's choice: `aria-haspopup` names what the trigger
-        // opens, so a trigger that opens a `role="dialog"` swatch grid
-        // announcing "menu" tells a screen-reader user to expect a command list
-        // and arrow through it. The default is unchanged for every existing
-        // consumer, all of which leave `role` at "menu".
-        aria-haspopup={role === "menu" ? "menu" : role}
-        aria-expanded={open}
+        // `aria-haspopup` DERIVED from the container role (a `listbox` trigger
+        // must not promise a command list) + `aria-expanded` — see
+        // `menu-trigger.ts`.
+        {...triggerProps}
       >
         {trigger(open)}
       </button>

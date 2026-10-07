@@ -28,6 +28,7 @@ import RowMenu from "@library/components/RowMenu";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle, type FsaDocMeta } from "@/lib/doc-index";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 interface Props {
   /** Every known Virgil doc — used to resolve `myPaperIds` to display
@@ -199,8 +200,7 @@ export default function MyPapersPod({
             (e.currentTarget as HTMLButtonElement).style.background =
               "transparent";
           }}
-          aria-haspopup="menu"
-          aria-expanded={popupOpen}
+          {...menuTriggerAria("menu", popupOpen)}
         >
           <span style={{ width: 14, textAlign: "center" }}>+</span>
           <span>Add paper</span>

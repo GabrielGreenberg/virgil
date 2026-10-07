@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 /**
  * RowMenu — the single portaled three-dot (⋮) menu primitive for the
@@ -148,8 +149,7 @@ export default function RowMenu({
         onKeyDown={(e) => e.stopPropagation()}
         title={title ?? (disabled ? "Unavailable" : ariaLabel)}
         aria-label={ariaLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
+        {...menuTriggerAria("menu", open)}
         disabled={disabled}
         draggable={false}
         onDragStart={(e) => e.preventDefault()}

@@ -45,6 +45,7 @@ import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
 import { menuRowRovingStyle } from "./menu/row-tone";
 import { iconHint } from "@/components/Hint";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 interface Props {
   docs: FsaDocMeta[];
@@ -261,8 +262,7 @@ export function TabPlusMenu({
         className="topbarbtn topbarbtn-icon"
         style={{ padding: "0 4px" }}
         {...iconHint({ label: "Open paper or create new" })}
-        aria-haspopup="menu"
-        aria-expanded={open}
+        {...menuTriggerAria("menu", open)}
       >
         <IconPlus />
       </button>
