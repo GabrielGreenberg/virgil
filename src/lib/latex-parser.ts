@@ -2227,14 +2227,23 @@ function parseBody(
         continue;
       }
       const eol = ctx.src.indexOf("\n", ctx.pos);
-      const rawComment = eol !== -1
-        ? ctx.src.slice(ctx.pos + 1, eol).trim()
-        : ctx.src.slice(ctx.pos + 1).trim();
+      // The node's content is THE BYTES AFTER `%`, verbatim (task 990) — no
+      // `.trim()`. A trim here plus the serializer's re-added `% ` rewrote
+      // `%%%% Banner` → `% %%% Banner`, `%TODO` → `% TODO` and `%   indented`
+      // → `% indented` on the first save. Only a CRLF file's line-ending `\r`
+      // is dropped (it is the line break's, not the comment's). The boundary
+      // vocabulary is `commentBodyFromLine` (`latex-comment-convert.ts`).
+      const rawComment = (eol !== -1
+        ? ctx.src.slice(ctx.pos + 1, eol)
+        : ctx.src.slice(ctx.pos + 1)
+      ).replace(/\r$/, "");
       // unterminated-ok: line-bounded comment scan — and the bytes are CAPTURED
       // into `rawComment` above, so nothing is claimed and nothing is dropped.
       ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
       // Strip trailing %!v:xxxx UUID anchor from comment text
-      const { text: commentText, uuid: commentUuid } = stripUuidAnchor(rawComment);
+      const { text: commentText, uuid: commentUuid } = stripUuidAnchor(rawComment, {
+        verbatimBody: true,
+      });
       // latexComment holds its text as native inline content now (`text*`),
       // not an `attrs.text` — empty comments carry no content child.
       parent.content.push({
@@ -2317,12 +2326,22 @@ function parseBody(
  * anchors themselves must still be present for either branch to fire, so this
  * can never mistake a trailing `\url{…a%20b}` for an anchor.
  */
-function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
+function stripUuidAnchor(
+  text: string,
+  opts: { verbatimBody?: boolean } = {},
+): { text: string; uuid: string | null } {
   // Group 1: one or more %!v:xxxx markers. Group 2 (optional): a comment
   // remainder the user typed after them, which stays content.
   const match = text.match(/(\s*(?:%!v:[0-9a-f]{4}\s*)+)(%[^\n]*)?$/);
   if (match) {
-    const head = text.slice(0, match.index).trimEnd();
+    // A `%` comment's body is its bytes, verbatim (task 990): only the ONE
+    // separator space `uuidAnchorSuffix` emits before the anchor is the
+    // anchor's — any whitespace before that is the body's own, so
+    // `%   trailing   %!v:abcd` keeps its trailing run across a cycle.
+    const lead = match[1].match(/^\s*/)?.[0] ?? "";
+    const head = opts.verbatimBody
+      ? text.slice(0, match.index) + lead.slice(1)
+      : text.slice(0, match.index).trimEnd();
     const remainder = match[2] ? match[2].trimEnd() : "";
     // Extract the last UUID from the matched markers
     const uuids = [...match[1].matchAll(new RegExp(NODE_UUID_REGEX.source, "g"))];
@@ -3610,9 +3629,10 @@ function parseExampleBodyAsBlocks(
       // uses, on the comment carrier this time, so it re-emits as the exact
       // `% …` line it was read from and lands back here as a fixed point.
       //
-      // The `% ` prefix is re-added because the block parser strips it when it
-      // builds the node's text — this is the inverse of that read, and it is
-      // the same pair the serializer's `latexComment` case emits.
+      // The `%` is re-added because the block parser strips exactly it when it
+      // builds the node's text (the body is the bytes after `%`, task 990) —
+      // the inverse of that read, the same pair the serializer's
+      // `latexComment` case emits.
       const commentText = (child.content ?? []).map((c) => c.text ?? "").join("");
       out.push({
         type: "paragraph",
@@ -3620,7 +3640,7 @@ function parseExampleBodyAsBlocks(
         content: [
           {
             type: "text",
-            text: `% ${commentText}`,
+            text: `%${commentText}`,
             marks: [commentTailMark()],
           },
         ],

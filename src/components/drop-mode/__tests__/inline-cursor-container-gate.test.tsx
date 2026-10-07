@@ -446,7 +446,7 @@ describe("every inline splice refuses rather than tear the block", () => {
     footnoteDropSpec.applyDrop(placement, "footnote:fn-1", ctx);
     expect(tex(editor)).toBe(before);
     // The promotion this prevents, named in the bytes it would have produced.
-    expect(tex(editor)).toContain("% % todo fix later");
+    expect(tex(editor)).toContain("%% todo fix later");
   });
 
   it("CONTROL — the same CREATE in prose lands", () => {
@@ -564,7 +564,7 @@ describe("every inline splice refuses rather than tear the block", () => {
     // …and the corruption it hides, in the bytes.
     const bytes = serializeBodyOnly(tr.doc.toJSON() as never);
     expect(bytes).toContain("\\cite{a} fix later");
-    expect(bytes).not.toContain("% % todo fix later");
+    expect(bytes).not.toContain("%% todo fix later");
   });
 
   it("STACK-PULL of a slice carrying an atom — refused, doc byte-identical", () => {

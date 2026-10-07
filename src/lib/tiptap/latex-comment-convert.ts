@@ -6,7 +6,7 @@ import { rangeHoldsOnlyText } from "./typed-prose-gate";
  * THE paragraph → `latexComment` conversion — one creator, every surface
  * (task 639).
  *
- * A `latexComment` is reachable by TYPING (`% ` at the start of a paragraph,
+ * A `latexComment` is reachable by TYPING (`%` at the start of a paragraph,
  * `latex-comment.ts`'s input rule) and, since task 639 gave the kind a registry
  * row, by `latexCommentRun` (`action-registry.ts`) — the door a menu / slash /
  * keyboard surface would call. The registry exists to end the "two creators for
@@ -40,16 +40,15 @@ export function makeComment(
   return nodeType.create(null, text ? schema.text(text) : null);
 }
 
-/** Drop the source-level `%` marker (and its one optional space) from a line of
- *  comment text. The comment node stores the BODY; the `% ` prefix is chrome the
- *  NodeView paints and the serializer re-emits. */
-export function stripCommentPrefix(text: string): string {
-  return text.replace(/^% ?/, "");
-}
+// The body boundary (where a comment's text starts after its `%`) is owned by
+// `@/lib/latex-comment-body` (task 990) — the same vocabulary the parser and
+// serializer read. Re-exported here for the editor creators.
+export { commentBodyFromLine, commentBodyFromProse } from "@/lib/latex-comment-body";
 
 /**
  * Convert the paragraph node at `paragraphPos` into a `latexComment` holding
- * `commentText`, landing the caret at the start of the new comment's content.
+ * `commentText` (the bytes after `%`, verbatim — task 990), landing the caret
+ * `caretOffset` characters into the new comment's content (default: its start).
  *
  * Returns the built transaction, or `null` when the conversion must be REFUSED:
  * no `latexComment` in this schema, the node at `paragraphPos` is not a
@@ -65,6 +64,7 @@ export function commentifyParagraph(
   },
   paragraphPos: number,
   commentText: string,
+  caretOffset = 0,
 ): Transaction | null {
   const nodeType = state.schema.nodes.latexComment;
   if (!nodeType) return null;
@@ -86,9 +86,10 @@ export function commentifyParagraph(
     paragraphPos + node.nodeSize,
     makeComment(nodeType, state.schema, commentText),
   );
-  // Land the caret INSIDE the new comment (native TextSelection), at the start
-  // of its content — no auto-focus hack, no lost keystroke. The comment node
-  // now sits at `paragraphPos`; its content interior starts one position in.
-  tr.setSelection(TextSelection.create(tr.doc, paragraphPos + 1));
+  // Land the caret INSIDE the new comment (native TextSelection) — no
+  // auto-focus hack, no lost keystroke. The comment node now sits at
+  // `paragraphPos`; its content interior starts one position in.
+  const offset = Math.max(0, Math.min(caretOffset, commentText.length));
+  tr.setSelection(TextSelection.create(tr.doc, paragraphPos + 1 + offset));
   return tr;
 }

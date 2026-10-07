@@ -266,7 +266,7 @@ import {
 // cannot diverge (task 639). Plain `@tiptap/pm`, no React.
 import {
   commentifyParagraph,
-  stripCommentPrefix,
+  commentBodyFromProse,
 } from "@/lib/tiptap/latex-comment-convert";
 // VALUE import: the canonical float-key builder. The citation soft-route
 // focuses the new card's library-picker input via the SAME key the card
@@ -3712,8 +3712,8 @@ const CARD_ACTION_ROWS: Readonly<Record<CardActionId, ActionSpec>> = mapRecord(
 // ---------------------------------------------------------------------------
 
 /**
- * Convert the caret's paragraph into a `latexComment` holding its text (with
- * any leading `% ` marker stripped, so converting an already-`%`-prefixed line
+ * Convert the caret's paragraph into a `latexComment` holding its text (an
+ * already-`%`-prefixed line keeps its own bytes after the `%`, so converting it
  * is idempotent rather than doubling the marker). Operates purely on `ctx.view`
  * — no React, no bridge — like `texRun` / `titleFieldRun`.
  *
@@ -3729,10 +3729,16 @@ export function latexCommentRun(ctx: ActionContext): void {
   const $from = state.doc.resolve(state.selection.from);
   if ($from.parent.type.name !== "paragraph") return;
   const paragraphPos = $from.before($from.depth);
+  // The body is the bytes after `%` (task 990): prose gets the conventional
+  // one-space lead (`% a note to self`), an already-`%` line keeps its own
+  // bytes. The caret lands after any supplied lead, at the words.
+  const prose = $from.parent.textContent;
+  const body = commentBodyFromProse(prose);
   const tr = commentifyParagraph(
     state,
     paragraphPos,
-    stripCommentPrefix($from.parent.textContent),
+    body,
+    prose.startsWith("%") ? 0 : 1,
   );
   if (!tr) return; // refused — the paragraph holds something a comment can't carry
   view.dispatch(tr.scrollIntoView());

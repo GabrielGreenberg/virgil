@@ -10,6 +10,7 @@
 import type { JSONContent } from "@tiptap/react";
 import type { CardBodyBlockAtom } from "@/lib/node-attr-sets";
 import { generateShortId } from "@/lib/uuid";
+import { commentBodyForEmit } from "@/lib/latex-comment-body";
 import {
   emitMarker,
   markerArgStart,
@@ -605,8 +606,9 @@ const BLOCK_ATOM_TO_LATEX: Record<
   // `texBlock` gives one line up.
   forestBlock: (node) => (node.attrs?.source as string) || "",
   latexComment: (node) => {
+    // The body is the bytes after `%`, verbatim (task 990).
     const text = (node.content ?? []).map((c) => c.text ?? "").join("");
-    return `% ${text}`;
+    return `%${commentBodyForEmit(text)}`;
   },
   figureBlock: (node) => {
     // Bare-bones rebuild — the structured caption + sources we'd
@@ -1104,8 +1106,9 @@ const BLOCK_ATOM_TO_PLAIN: Record<
     return source || "[graphic]";
   },
   latexComment: (node) => {
+    // The body is the bytes after `%`, verbatim (task 990).
     const text = (node.content ?? []).map((c) => c.text ?? "").join("");
-    return `% ${text}`;
+    return `%${commentBodyForEmit(text)}`;
   },
 };
 
