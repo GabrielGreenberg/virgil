@@ -43,6 +43,8 @@
  * — into the general statement instead of leaving it beside it.
  */
 
+import { isDeliberateKeyPress } from "@/lib/key-intent";
+
 export type DialogEnterVerdict =
   /** The shell activates the dialog's registered cued default. */
   | { kind: "cued-default" }
@@ -155,8 +157,7 @@ export function isPlainEnter(e: KeyboardEvent): boolean {
   // A HELD Enter must not repeat-fire a confirm. Pre-389 that could only happen
   // with the button already focused, where the browser owns the repeat; now the
   // shell answers from anywhere, so it owns the rule.
-  if (e.repeat) return false;
   // Enter during IME composition commits the candidate; it is not an activation.
-  if (e.isComposing || e.keyCode === 229) return false;
-  return true;
+  // Both rules are the shared key-intent gate (task 994).
+  return isDeliberateKeyPress(e);
 }

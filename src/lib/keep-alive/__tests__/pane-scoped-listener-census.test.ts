@@ -134,6 +134,11 @@ const LEDGER: Record<string, Row> = {
     events: ["window.keydown"],
     why: "arrow-key navigation for an open menu",
   },
+  "lib/key-intent.ts": {
+    scope: "gesture",
+    events: ["window.keydown", "window.keyup", "window.blur"],
+    why: "swallows the auto-repeat of the ONE held key that just activated a menu row, until its keyup (task 994)",
+  },
   "components/panel-primitives.tsx": {
     scope: "gesture",
     events: ["document.pointermove", "window.mousemove", "window.mouseup"],
