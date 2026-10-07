@@ -27,7 +27,7 @@
  * rides the provider's `trackAnchor` option. Behavior is otherwise identical.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import { EXAMPLE_DOC_ID } from "@/lib/example-doc/example-identity";
 import { ensureRW } from "@/lib/fsa-permissions";
@@ -38,12 +38,13 @@ import {
   selectRecentDocs,
 } from "@/lib/recent-docs";
 import { IconPlus } from "./editor-layout/panel-icons";
-import { Kbd } from "./Kbd";
 import { FolderIcon, RecentPaperRow } from "./RecentPapersList";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
-import { menuRowRovingStyle } from "./menu/row-tone";
+import { MenuActionRow } from "./menu/MenuActionRow";
+import { MenuSeparator } from "./menu/MenuChrome";
+import { NEW_WINDOW_SHORTCUT } from "@/lib/multi-window/new-window-shortcut";
 import { iconHint } from "@/components/Hint";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
@@ -177,69 +178,69 @@ export function TabPlusMenu({
               />
             ))}
           </div>
-          <div aria-hidden className="my-1.5 mx-2 h-px bg-edge-hover/50" />
+          <MenuSeparator />
         </>
       )}
       {!devStorage && (
-        <MenuActionItem
+        <MenuActionRow
           id="open-folder"
           label="Open folder…"
-          run={() => {
+          onSelect={() => {
             onOpenFolder();
             close();
           }}
-        >
-          <FolderIcon />
-        </MenuActionItem>
+          size="launcher"
+          leading={<FolderIcon />}
+        />
       )}
-      <MenuActionItem
+      <MenuActionRow
         id="create-new"
         label="Create new document…"
-        run={() => {
+        onSelect={() => {
           onCreateNew();
           close();
         }}
-      >
-        <PlusIcon />
-      </MenuActionItem>
+        size="launcher"
+        leading={<PlusIcon />}
+      />
       {exampleAvailable && (
-        <MenuActionItem
+        <MenuActionRow
           id="open-example"
           label="Open example document"
-          run={() => {
+          onSelect={() => {
             onOpenExample();
             close();
           }}
-        >
-          <ExampleIcon />
-        </MenuActionItem>
+          size="launcher"
+          leading={<ExampleIcon />}
+        />
       )}
       {exampleAvailable && currentDocId === EXAMPLE_DOC_ID && (
-        <MenuActionItem
+        <MenuActionRow
           id="reset-example"
           label="Reset example document"
-          run={() => {
+          onSelect={() => {
             onResetExample();
             close();
           }}
-        >
-          <ResetIcon />
-        </MenuActionItem>
+          size="launcher"
+          leading={<ResetIcon />}
+        />
       )}
       {canMultiWindow && (
         <>
-          <div aria-hidden className="my-1.5 mx-2 h-px bg-edge-hover/50" />
-          <MenuActionItem
+          <MenuSeparator />
+          <MenuActionRow
             id="new-window"
             label="New Virgil window"
-            shortcut="Mod+Shift+N"
-            run={() => {
+            shortcut={NEW_WINDOW_SHORTCUT}
+            onSelect={() => {
               onOpenNewWindow();
               close();
             }}
-          >
-            <WindowIcon />
-          </MenuActionItem>
+            size="launcher"
+            leading={<WindowIcon />}
+          />
         </>
       )}
     </MenuProvider>
@@ -291,38 +292,6 @@ function RecentRowItem({
     run: () => onOpen(doc.id),
   });
   return <RecentPaperRow doc={doc} itemProps={getItemProps()} active={active} />;
-}
-
-/**
- * An action row (Open folder… / Create new… / New window). Registered as a menu
- * item so arrow nav + Enter/Space reach it; `run` = the row's existing handler.
- */
-function MenuActionItem({
-  id,
-  label,
-  run,
-  children,
-  shortcut,
-}: {
-  id: string;
-  label: string;
-  run: () => void;
-  children: ReactNode;
-  shortcut?: string;
-}) {
-  const { active, getItemProps } = useMenuItem({ id, region: "list", run });
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-ink-strong hover-on-light text-left"
-      style={menuRowRovingStyle(active, false)}
-    >
-      {children}
-      <span className="flex-1">{label}</span>
-      {shortcut && <Kbd keys={shortcut} />}
-    </button>
-  );
 }
 
 function WindowIcon() {

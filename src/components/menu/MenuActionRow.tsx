@@ -17,8 +17,14 @@
  */
 
 import type { ReactNode } from "react";
+import { Kbd } from "../Kbd";
 import { useMenuItem } from "./useMenuItem";
-import { menuRowRovingStyle, menuRowToneClass, type MenuRowTone } from "./row-tone";
+import {
+  menuRowReasonProps,
+  menuRowRovingStyle,
+  menuRowToneClass,
+  type MenuRowTone,
+} from "./row-tone";
 
 /**
  * A command row's ink. `default` is body text; `danger` is the destructive
@@ -33,7 +39,35 @@ export interface MenuActionRowProps {
   /** Unique within the menu. */
   id: string;
   label: string;
+  /**
+   * Greyed. Omitted, it is DERIVED from `disabledReason` — a row that knows
+   * why it is greyed is greyed by saying so, so the reason cannot be dropped
+   * where it is known (task 998). Pass it alone only where there is no
+   * sentence to give.
+   */
   disabled?: boolean;
+  /**
+   * WHY the row is greyed (task 968's "a greyed command says why", extended to
+   * this row by task 998). Rendered exactly as the registry rows render their
+   * verdict's reason: the row's hint and its accessible description. Ignored
+   * on an enabled row.
+   */
+  disabledReason?: string;
+  /**
+   * A portable chord (`"Mod+Shift+N"`) rendered as a trailing `<Kbd>`. Pass the
+   * SAME constant the binding matches (`matchesPortableChord`, or
+   * `keysFromKeybinding(row.keybinding)`), never a hand-spelled copy — the
+   * hint and the binding drift silently otherwise (task 985).
+   */
+  shortcut?: string;
+  /**
+   * Row metrics. `"compact"` (default) is the 12px command row every panel
+   * menu shares (task 477). `"launcher"` is the 14px row of a menu whose other
+   * rows are 14px too — the tab strip's "+" menu, where these commands sit
+   * under `RecentPaperRow`'s 14px paper names. Metrics only; the state tones
+   * are the same either way.
+   */
+  size?: "compact" | "launcher";
   /** Ink + hover tint. Default `"default"`. */
   tone?: MenuActionRowTone;
   /**
@@ -48,11 +82,15 @@ export interface MenuActionRowProps {
 export function MenuActionRow({
   id,
   label,
-  disabled = false,
+  disabled: disabledProp,
+  disabledReason,
+  shortcut,
+  size = "compact",
   tone = "default",
   leading,
   onSelect,
 }: MenuActionRowProps) {
+  const disabled = disabledProp ?? !!disabledReason;
   const { active, getItemProps } = useMenuItem({
     id,
     region: "list",
@@ -62,11 +100,18 @@ export function MenuActionRow({
   const itemProps = getItemProps();
   // State tones are the menu's ONE vocabulary (`row-tone.ts`, task 967).
   const toneClass = menuRowToneClass(tone, disabled);
+  const metrics = size === "launcher" ? "text-sm" : "text-xs";
+  const flex = size === "launcher"
+    ? " flex items-center gap-2.5"
+    : leading || shortcut
+      ? " flex items-center gap-2"
+      : "";
   return (
     <button
       {...itemProps}
       type="button"
       disabled={disabled}
+      {...menuRowReasonProps(disabled, disabledReason)}
       // ROW METRICS, shared with `MenuToggleRow` (task 477). This row shipped
       // `text-sm px-3 py-1` while every other row in the app — the toggle row,
       // and the four hand-rolled families this task retired — was
@@ -75,14 +120,16 @@ export function MenuActionRow({
       // Bibliography's kebab stacks two filter TOGGLES above an *Export
       // cited.bib* ACTION, and a 14px row under two 12px ones reads as a
       // different control.
-      className={`w-full text-left px-3 py-1.5 text-xs ${toneClass}${leading ? " flex items-center gap-2" : ""}`}
+      className={`w-full text-left px-3 py-1.5 ${metrics} ${toneClass}${flex}`}
       style={menuRowRovingStyle(active, disabled)}
     >
       {/* Markup stays byte-identical without a `leading` node — the flex
           wrapper only appears when there is something to sit beside the label,
-          the same rule `MenuToggleRow` follows. */}
+          the same rule `MenuToggleRow` follows. A trailing shortcut needs the
+          label to take the slack, so only then is it wrapped. */}
       {leading}
-      {label}
+      {shortcut ? <span className="flex-1">{label}</span> : label}
+      {shortcut && <Kbd keys={shortcut} />}
     </button>
   );
 }

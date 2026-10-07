@@ -16,7 +16,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { MenuSeparator } from "./MenuChrome";
-import { menuRowRovingStyle, menuRowToneClass } from "./row-tone";
+import { menuRowReasonProps, menuRowRovingStyle, menuRowToneClass } from "./row-tone";
 import { useMenuItem } from "./useMenuItem";
 
 /** A row decorated with its per-open disabled state — what a caller passes
@@ -65,10 +65,7 @@ function RegistryItem({ row }: RegistryItemProps) {
   };
 
   // Task 968: a greyed row SAYS why (STYLE_GUIDE "A command surface RENDERS its
-  // verdict"). The reason is the hint (a native disabled `<button>` still gets
-  // `pointerover`, so `HintLayer` shows it on hover — no `pointer-events-none`
-  // in the row tone) and the accessible DESCRIPTION; the label stays the name.
-  const reason = row.disabled ? row.disabledReason || undefined : undefined;
+  // verdict") — through the row-tone door every row shares (task 998).
 
   return (
     <div>
@@ -77,8 +74,7 @@ function RegistryItem({ row }: RegistryItemProps) {
         {...itemProps}
         type="button"
         disabled={row.disabled}
-        data-hint={reason}
-        aria-description={reason}
+        {...menuRowReasonProps(!!row.disabled, row.disabledReason)}
         className={`w-full flex items-center gap-2.5 px-3 text-sm text-left ${menuRowToneClass(
           row.destructive ? "danger" : "default",
           row.disabled,

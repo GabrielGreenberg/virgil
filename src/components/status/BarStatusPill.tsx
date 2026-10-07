@@ -52,7 +52,7 @@ import {
 import { MenuProvider } from "@/components/menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "@/components/menu/AnchoredMenu";
 import { useMenuItem } from "@/components/menu/useMenuItem";
-import { menuRowRovingStyle, menuRowToneClass } from "@/components/menu/row-tone";
+import { menuRowReasonProps, menuRowRovingStyle, menuRowToneClass } from "@/components/menu/row-tone";
 import { iconHint } from "@/components/Hint";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
@@ -153,16 +153,23 @@ export function BarStatusMenuRow({
   label,
   detail,
   danger,
-  disabled,
+  disabled: disabledProp,
+  disabledReason,
   run,
 }: {
   id: string;
   label: string;
   detail?: string;
   danger?: boolean;
+  /** Greyed; derived from `disabledReason` when omitted (`MenuActionRow`'s
+   *  contract, task 998). */
   disabled?: boolean;
+  /** WHY the row is greyed — its hint + accessible description, through the
+   *  menu's one reason door (`menuRowReasonProps`, task 998). */
+  disabledReason?: string;
   run: () => void;
 }) {
+  const disabled = disabledProp ?? !!disabledReason;
   // `disabled` reaches the registry too, so a greyed row is arrow-skipped and
   // Enter cannot run it; its grey, its danger ink and its roving fill are the
   // menu's row tones (task 986) — this row used to dim `opacity-50` and spell
@@ -173,6 +180,7 @@ export function BarStatusMenuRow({
       {...getItemProps()}
       type="button"
       disabled={disabled}
+      {...menuRowReasonProps(!!disabled, disabledReason)}
       className={`w-full flex flex-col items-start gap-0.5 px-3 py-1.5 text-left ${menuRowToneClass(danger ? "danger" : "default", !!disabled)}`}
       style={menuRowRovingStyle(active, !!disabled)}
       data-bar-status-menu-row={id}

@@ -2784,6 +2784,13 @@ Enter/click commit refuses on.
   have `\section`"; a greyed one reads as "not here." Same reason
   `MenuActionRow` renders a real disabled `<button>` (`text-ink-faint
   cursor-not-allowed`) rather than dropping the row.
+- **A greyed row says why — on every row kind** (task 998). `MenuActionRow` and
+  `BarStatusMenuRow` take `disabledReason` (and derive `disabled` from it); the
+  registry rows take `verdictOf(...).reason`. All render it through ONE door,
+  `menuRowReasonProps` (row hint + `aria-description`). A row's advertised
+  chord (`MenuActionRow shortcut=`) is the constant its binding MATCHES
+  (`matchesPortableChord`), never a hand-spelled copy. CI:
+  `menu-disabled-reason.test.tsx`.
 - **One grey, one red — stated once** (task 967). Every `<Menu>` row
   (`MenuActionRow`, `MenuToggleRow`, the grab/lightning `MenuItemsFromRegistry`
   list) takes its disabled ink, destructive tone (`text-danger` +
