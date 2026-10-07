@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useMemo,
-  useState,
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
@@ -54,7 +53,9 @@ import {
   type AnchoredCardRef,
 } from "@/links/_shared/anchored-card-store";
 import { iconHint } from "@/components/Hint";
-import { useMenuDismiss } from "@/components/menu/useMenuDismiss";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import { useMenuItem } from "@/components/menu/useMenuItem";
+import { menuRowRovingStyle } from "@/components/menu/row-tone";
 
 interface MarginaliaProps {
   editor: Editor | null;
@@ -438,17 +439,18 @@ export function MarkerButton({
 
 /**
  * Overflow "+K" pill (R16). Renders in the grid's reserved last cell when a
- * node's markers don't all fit; clicking it opens a small popover beside the
- * margin listing the hidden markers as ordinary `MarkerButton`s (click /
- * delete / drag behave exactly like in-grid markers). Render-layer only —
- * the open state is local, closed by click-away / Escape / marker click.
+ * node's markers don't all fit; clicking it opens a small menu beside the
+ * margin listing the hidden markers (click / delete / drag behave exactly like
+ * in-grid markers).
  *
- * Its PLACEMENT is pod-relative (coordinates from the marginalia layout pass —
- * the scroll-anchor law's branch (a)); its SURFACE is the menu tier
- * (`.menu-surface`) and its dismissal is `useMenuDismiss`, like every other
- * menu (task 819). It does not mount `MenuProvider`: its rows are full
- * `MarkerButton`s (drag / Delete / click), which the roving controller would
- * have to learn to drive — a rewrite, not a shell swap.
+ * The TRIGGER's placement is pod-relative (coordinates from the marginalia
+ * layout pass — the scroll-anchor law's branch (a)); the MENU is the shared
+ * `AnchoredMenu` (task 997), a RAF-coalesced fixed portal that tracks the
+ * trigger (branch (b)). Before that this was a hand-built `role="menu"` whose
+ * children were bare `MarkerButton`s — a screen reader heard a menu with ZERO
+ * items, the trigger hand-spelled `aria-haspopup="true"`, and nothing roved.
+ * `UnanchoredCardsChip` had fixed that exact defect for its own marker list
+ * (task 477); the two now share ONE row, `MarkerMenuRow`.
  */
 function OverflowPill({
   group,
@@ -457,25 +459,19 @@ function OverflowPill({
   group: MarkerOverflowGroup;
   dragEnabled: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-
-  // Click-away + Escape close through the one menu-dismiss door (task 819).
-  // Nothing is staged here, so dismiss and cancel are the same door. The
-  // container is the whole root, so a press on the "+K" trigger is INSIDE and
-  // its own onClick toggles the popover shut.
-  const close = useCallback(() => setOpen(false), []);
-  useMenuDismiss({ containerRef: rootRef, onClose: close, open });
-
   const count = group.hidden.length;
   const label = `${count} hidden marker${count === 1 ? "" : "s"}`;
 
   return (
-    <div ref={rootRef} className="pointer-events-none" data-marginalia-overflow={`${group.side}:${group.textObjectId}`}>
-      <button
-        type="button"
-        className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded focus:outline-none bg-surface text-ink-muted hover:text-ink-body"
-        style={{
+    // `data-marginalia-overflow` is the hook the drop-mode click-through rule
+    // and the card-selection click-away both read (content-drag guardrail).
+    <div className="pointer-events-none" data-marginalia-overflow={`${group.side}:${group.textObjectId}`}>
+      <AnchoredMenu
+        ariaLabel={label}
+        align={group.side === "left" ? "start" : "end"}
+        wrapperClassName="contents"
+        triggerClassName="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded bg-surface text-ink-muted hover:text-ink-body"
+        triggerStyle={{
           left: group.cell.x,
           top: group.cell.y,
           width: MARGINALIA_ICON_SIZE,
@@ -486,39 +482,82 @@ function OverflowPill({
           lineHeight: 1,
           padding: 0,
         }}
-        {...iconHint({ label })}
-        aria-haspopup="true"
-        aria-expanded={open}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
+        triggerHint={label}
+        menuClassName="min-w-[180px] px-1.5"
+        trigger={() => <>+{count}</>}
       >
-        +{count}
-      </button>
-      {open && (
-        <div
-          className="menu-surface pointer-events-auto absolute z-30 flex flex-col"
-          style={{
-            top: group.cell.y + MARGINALIA_ICON_SIZE + 4,
-            [group.side]: 2,
-            padding: 5,
-            gap: 4,
-          }}
-          role="menu"
-          aria-label={label}
-        >
-          {group.hidden.map((m) => (
-            <MarkerButton
-              key={`${m.type}:${m.id}`}
-              m={m}
-              dragEnabled={dragEnabled}
-              onActivated={() => setOpen(false)}
-            />
-          ))}
-        </div>
-      )}
+        {({ close }) => (
+          <div className="flex flex-col gap-1">
+            {group.hidden.map((m) => (
+              <MarkerMenuRow
+                key={`${m.type}:${m.id}`}
+                m={m}
+                dragEnabled={dragEnabled}
+                onActivated={close}
+              />
+            ))}
+          </div>
+        )}
+      </AnchoredMenu>
+    </div>
+  );
+}
+
+/**
+ * ONE marker listed in a menu, registered into the enclosing `MenuProvider`
+ * (task 477; shared by `UnanchoredCardsChip` and the "+K" `OverflowPill` since
+ * task 997).
+ *
+ * The registration wraps rather than replaces the marker button, the shape
+ * `BlockTypeGridCell` already uses for a compound cell: `MarkerButton` is
+ * SHARED with the marginalia lane, where there is no provider at all and
+ * `useMenuItem` would throw — and its own gesture surface (a click that opens
+ * the card's panel, a press-drag that starts the drop-mode re-anchor) is what
+ * must keep working. So the ROW carries the ARIA and the roving cursor, and its
+ * `run` clicks the button the user would have clicked. A bare `MarkerButton`
+ * list would leave the registry EMPTY — worse than no controller at all, since
+ * the window-capture keydown still consumes Enter/Space/every arrow.
+ */
+export function MarkerMenuRow({
+  m,
+  dragEnabled,
+  onActivated,
+}: {
+  m: MarginaliaMarker;
+  dragEnabled: boolean;
+  onActivated: () => void;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const { active, getItemProps } = useMenuItem({
+    id: `${m.type}:${m.id}`,
+    region: "list",
+    // Keyboard activation: click the marker's own button, so the one gesture
+    // path stays the button's (panel open + `onActivated` close) rather than a
+    // second copy of it here.
+    run: useCallback(() => {
+      wrapRef.current?.querySelector("button")?.click();
+    }, []),
+  });
+  const itemProps = getItemProps();
+  return (
+    <div
+      ref={(el) => {
+        wrapRef.current = el;
+        itemProps.ref(el);
+      }}
+      role={itemProps.role}
+      id={itemProps.id}
+      tabIndex={itemProps.tabIndex}
+      data-active={itemProps["data-active"]}
+      onMouseEnter={itemProps.onMouseEnter}
+      onMouseMove={itemProps.onMouseMove}
+      className="flex items-center gap-2 rounded px-1"
+      style={menuRowRovingStyle(active, false)}
+    >
+      <MarkerButton m={m} dragEnabled={dragEnabled} onActivated={onActivated} />
+      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-muted">
+        {m.title || MARKER_META[m.type].label}
+      </span>
     </div>
   );
 }

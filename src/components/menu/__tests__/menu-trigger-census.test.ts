@@ -166,13 +166,24 @@ describe("menu-trigger census (task 992)", () => {
     ).toEqual([]);
   });
 
-  it('C: nobody hand-spells aria-haspopup="menu"', () => {
+  it("C: nobody hand-spells aria-haspopup (any value)", () => {
+    // Widened in task 997 from `="menu"` to ANY spelling: `Marginalia`'s "+K"
+    // overflow trigger wrote `aria-haspopup="true"` (which means "menu", so it
+    // was the same promise in a spelling this leg did not read) on a menu
+    // outside every provider. A JSX attribute or an object key, any value —
+    // the contract derives the value from the container's role.
+    const HAND_SPELLED = /\baria-haspopup=|["']aria-haspopup["']\s*:/;
     const offenders = ALL.filter(
       ({ key, source }) =>
-        key !== "src/components/menu/menu-trigger.ts" &&
-        /aria-haspopup=\{?\s*["']menu["']/.test(source),
+        key !== "src/components/menu/menu-trigger.ts" && HAND_SPELLED.test(source),
     ).map((s) => s.key);
     expect(offenders).toEqual([]);
+  });
+
+  it("C is red on the shipped `aria-haspopup=\"true\"` spelling", () => {
+    const HAND_SPELLED = /\baria-haspopup=|["']aria-haspopup["']\s*:/;
+    expect(HAND_SPELLED.test(`<button aria-haspopup="true" aria-expanded={open} />`)).toBe(true);
+    expect(HAND_SPELLED.test(`<button {...menuTriggerAria("menu", open)} />`)).toBe(false);
   });
 
   it("D: every allowlist entry names a live role=menu provider", () => {

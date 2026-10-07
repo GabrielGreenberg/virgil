@@ -13,28 +13,26 @@
  * renders via `<MenuProvider layout="list" role="menu" portal>`; the provider
  * owns positioning (`useFloatingMenuPosition`, the old manual below/flip-above
  * positioner → `placements`), click-outside dismissal, the Escape handler, and
- * the keyboard controller. Each heading-level row + "No heading" calls
- * `useMenuItem` and spreads `getItemProps()` onto its existing `<button>` (no
- * markup rewrite). The menu GAINS Up/Down/Home/End arrow nav with a visible
+ * the keyboard controller. The rows render through the menu's own row doors —
+ * the levels via `MenuRadioGroup`, "No heading" via `MenuActionRow` (task
+ * 997). The menu GAINS Up/Down/Home/End arrow nav with a visible
  * `data-active` highlight + `aria-activedescendant` (NO focus theft — the PM
  * view's contentEditable holds the caret). PRESERVED: the current-level
- * checkmark (now also `aria-checked`/`data-current`), the disabled levels stay
+ * checkmark (now also `aria-checked`), the disabled levels stay
  * VISIBLE + greyed + arrow-skipped + inert, Escape-close, click-outside.
  */
 
-import type { CSSProperties } from "react";
 import { headingLevelOptions } from "@/lib/document-class";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
 import type { LiveAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
 import { MenuSeparator } from "./menu/MenuChrome";
-import { menuRowRovingStyle, menuRowToneClass } from "./menu/row-tone";
-import { useMenuItem } from "./menu/useMenuItem";
+import { MenuRadioGroup } from "./menu/MenuRadioGroup";
+import { MenuActionRow } from "./menu/MenuActionRow";
 
 const MENU_W = 200;
 const MENU_PAD_Y = 6;
-const ITEM_H = 28;
 
 // The old manual positioner placed the menu start-aligned below the anchor and
 // flipped it above on viewport overflow (`:45` of the pre-migration file). That
@@ -58,65 +56,6 @@ interface Props {
   documentClass: string | null;
   onPick: (pick: HeadingTypePick) => void;
   onClose: () => void;
-}
-
-interface HeadingRowProps {
-  id: string;
-  label: string;
-  disabled: boolean;
-  /** Current-selected level marker (the checkmark + aria-checked/data-current). */
-  current: boolean;
-  /** Hover tooltip (the unsupported-by-documentclass explanation), or undefined. */
-  hint?: string;
-  /** Whether to reserve the leading checkmark gutter. "No heading" omits it. */
-  showCheckGutter: boolean;
-  run: () => void;
-}
-
-/** One heading-level row. Registers into the menu registry via `useMenuItem`
- *  and spreads `getItemProps()` onto its existing `<button>` so it GAINS arrow
- *  nav + the `data-active` highlight without a markup rewrite. */
-function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }: HeadingRowProps) {
-  const { active, getItemProps } = useMenuItem({
-    id,
-    region: "list",
-    // The level rows are a pick-ONE set — `menuitemradio` (task 770; a plain
-    // `menuitem` may not carry `aria-checked`). "No heading" is a command.
-    role: showCheckGutter ? "menuitemradio" : undefined,
-    disabled,
-    run,
-  });
-  const itemProps = getItemProps();
-
-  // Roving fill + disabled grey are the menu's row tones (task 986) — this
-  // row used to dim to 0.55 over `--ink-subtle`, a third grey.
-  const style: CSSProperties = { height: ITEM_H, ...menuRowRovingStyle(active, disabled) };
-
-  return (
-    <button
-      {...itemProps}
-      type="button"
-      disabled={disabled}
-      // The current-level marker — `aria-checked` for assistive tech plus a
-      // `data-current` hook, alongside the visible ✓ glyph. Only meaningful on
-      // the level rows; "No heading" never carries the current marker.
-      aria-checked={showCheckGutter ? current : undefined}
-      data-current={current ? "" : undefined}
-      data-hint={hint}
-      aria-description={hint}
-      className={`w-full flex items-center gap-2 px-3 text-sm text-left ${menuRowToneClass("default", disabled)}`}
-      style={style}
-    >
-      {showCheckGutter ? (
-        <span style={{ width: 14, display: "inline-block", color: "var(--accent)" }}>
-          {current ? "✓" : ""}
-        </span>
-      ) : (
-        <span style={{ width: 14, display: "inline-block" }} />
-      )}
-      <span className="flex-1">{label}</span>
-    </button>
-  );
 }
 
 export function HeadingTypeMenu({ anchorRect, trackAnchor, triggerEl = null, currentLevel, documentClass, onPick, onClose }: Props) {
@@ -145,26 +84,30 @@ export function HeadingTypeMenu({ anchorRect, trackAnchor, triggerEl = null, cur
         padding: `${MENU_PAD_Y}px 0`,
       }}
     >
-      {options.map((option) => (
-        <HeadingRow
-          key={option.level}
-          id={`level-${option.level}`}
-          label={option.name}
-          disabled={option.disabled}
-          current={option.level === currentLevel}
-          hint={option.hint}
-          showCheckGutter
-          run={() => onPick({ kind: "level", level: option.level })}
-        />
-      ))}
+      {/* The levels are a pick-ONE set (a block is exactly one level), so
+          they go through the radio door — the SAME component the ¶ block-type
+          dropdown (`MenuBar`'s BlockTypeDropdown) renders these choices with
+          (task 997). This list hand-built its radio rows until then: a second
+          row vocabulary (leading ✓, `text-sm`, 28px) for the same choices,
+          and no `role="group"` scoping the set. "No heading" is a COMMAND,
+          not a radio option, so it is a sibling action row. */}
+      <MenuRadioGroup
+        idPrefix="level-"
+        ariaLabel="Heading level"
+        options={options.map((o) => ({
+          value: o.level,
+          label: o.name,
+          disabled: o.disabled,
+          hint: o.hint,
+        }))}
+        value={currentLevel}
+        onPick={(level) => onPick({ kind: "level", level })}
+      />
       <MenuSeparator />
-      <HeadingRow
+      <MenuActionRow
         id="no-heading"
         label="No heading"
-        disabled={false}
-        current={false}
-        showCheckGutter={false}
-        run={() => onPick({ kind: "no-heading" })}
+        onSelect={() => onPick({ kind: "no-heading" })}
       />
     </MenuProvider>
   );
