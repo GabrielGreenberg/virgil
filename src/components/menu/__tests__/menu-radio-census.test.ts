@@ -80,6 +80,34 @@ describe("pick-one menu rows go through MenuRadioGroup (task 770)", () => {
   });
 
   // ── the census can SEE (synthetic fixtures, never a drained live line) ──
+  it("no hand-spelled menuitemradio outside the door (task 997)", () => {
+    // The leg above reads `<MenuToggleRow>` tags, so a pick-one set built from
+    // RAW `useMenuItem` rows was invisible to it: the card-type menu
+    // (`CardKindOption`) and the heading lozenge's level rows (`HeadingRow`)
+    // each spelled `role: "menuitemradio"` by hand — no `role="group"`, and the
+    // card menu's own roving fill. Asked by the literal instead: the role is
+    // written in exactly the door that derives it, and the two type unions
+    // that name it.
+    const PERMITTED = new Set(
+      [
+        "components/menu/MenuRadioGroup.tsx",
+        "components/menu/MenuToggleRow.tsx",
+        "components/menu/types.ts",
+      ].map((r) => path.join(SRC, r)),
+    );
+    const offenders: string[] = [];
+    for (const file of [...walkSource(SRC), ...walkSource(LIBRARY)]) {
+      if (PERMITTED.has(file)) continue;
+      if (/["']menuitemradio["']/.test(stripComments(readFileSync(file, "utf8"))))
+        offenders.push(path.relative(path.dirname(SRC), file));
+    }
+    expect(
+      offenders,
+      "A pick-ONE set renders through <MenuRadioGroup>; a sibling command row " +
+        "(\"No heading\") is a <MenuActionRow> beside it.",
+    ).toEqual([]);
+  });
+
   it("flags an equality-checked row and a role-spelled row", () => {
     expect(
       pickOneOffences(`<MenuToggleRow id="a" checked={mode === "x"} onToggle={() => set("x")} />`),

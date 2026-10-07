@@ -329,7 +329,7 @@ const VIEW_MENU_PLACEMENTS: FloatingMenuPlacement[] = [
  * keyboard controller, and the ARIA wiring. Each block-type row calls
  * `useMenuItem` and spreads `getItemProps()` onto its `<button>` (no markup
  * rewrite). GAINS Up/Down/Home/End arrow nav + Enter; PRESERVES the
- * current-level checkmark (now also `aria-checked`/`data-current`),
+ * current-level checkmark (now also `aria-checked`),
  * click-outside + Escape close, and the collab
  * read-only gate.
  *

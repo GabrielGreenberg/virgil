@@ -56,7 +56,7 @@ import { isCardMutationAllowed } from "./editor-layout/chrome-config";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { AnchoredMenu } from "./menu/AnchoredMenu";
 import { MenuActionRow } from "./menu/MenuActionRow";
-import { useMenuItem } from "./menu/useMenuItem";
+import { MenuRadioGroup } from "./menu/MenuRadioGroup";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -1007,65 +1007,25 @@ function CardKindDropdown({
         </>
       )}
     >
-      {({ close }) =>
-        options.map((opt) => (
-          <CardKindOption
-            key={opt}
-            opt={opt}
-            current={kind}
-            onPick={() => {
-              close();
-              if (opt !== kind) onChange(opt);
-            }}
-          />
-        ))
-      }
+      {/* A card has exactly ONE kind — picking one un-picks the other — so
+          the options are a pick-one set and go through the radio door (task
+          997). Until then this menu hand-built its `menuitemradio` rows: no
+          `role="group"` scoping the set, and a roving fill of its own
+          (`bg-surface-muted-strong`) so the keyboard highlight was a
+          different colour here from every other menu. */}
+      {({ close }) => (
+        <MenuRadioGroup
+          idPrefix="kind-"
+          ariaLabel="Card type"
+          options={options.map((opt) => ({ value: opt, label: cardTypeLabel(opt) }))}
+          value={kind}
+          onPick={(opt) => {
+            close();
+            if (opt !== kind) onChange(opt);
+          }}
+        />
+      )}
     </AnchoredMenu>
-  );
-}
-
-/** One row of the card-type menu. Registered via `useMenuItem` so arrow nav +
- *  the roving highlight reach it (the hand-rolled version had neither), and
- *  `aria-checked` states which type the card currently IS — a fact the old
- *  bolded-text-only row conveyed to sighted users alone.
- *
- *  `menuitemradio`, not `menuitemcheckbox`: a card has exactly one kind and
- *  picking one un-picks the other, which is the radio semantic. (Its sibling
- *  `MenuToggleRow` is a checkbox correctly — `*` and `Aa` on a citation are
- *  genuinely independent.) */
-function CardKindOption({
-  opt,
-  current,
-  onPick,
-}: {
-  opt: CardKind;
-  current: CardKind;
-  onPick: () => void;
-}) {
-  const isCurrent = opt === current;
-  const { active, getItemProps } = useMenuItem({
-    id: `kind-${opt}`,
-    role: "menuitemradio",
-    run: onPick,
-  });
-  return (
-    <button
-      {...getItemProps()}
-      // No per-row click fence: `MenuProvider` stops the click at the menu
-      // CONTAINER (task 181), which is what keeps this row from reaching the
-      // unified card header — a `role="button"` whose `onClick` runs
-      // `headerActivate()`, so an unfenced pick would morph the card AND
-      // collapse/select it in one gesture, including on the pick-the-kind-it-
-      // already-is no-op path. A fence here would leave the surface's own `py-1`
-      // padding band unfenced, which is why it belongs one level up.
-      type="button"
-      aria-checked={isCurrent}
-      className={`w-full text-left text-[11px] uppercase tracking-wider px-3 py-1 transition-colors ${
-        isCurrent ? "text-ink-body font-medium" : "text-[var(--muted)]"
-      } ${active ? "bg-surface-muted-strong" : "hover-on-light"}`}
-    >
-      {cardTypeLabel(opt)}
-    </button>
   );
 }
 

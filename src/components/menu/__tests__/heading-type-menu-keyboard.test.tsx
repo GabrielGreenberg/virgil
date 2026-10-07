@@ -6,7 +6,7 @@
 // drag-handle-menu-keyboard.test.tsx:
 //
 //   - click selects a level (onPick) / "No heading" (onPick no-heading);
-//   - the current-level row carries the ✓ marker + aria-checked/data-current;
+//   - the current-level row carries the visible ✓ marker + aria-checked;
 //   - disabled levels (unsupported by the documentclass) stay VISIBLE + greyed
 //     + unselectable (click is inert) + arrow-skipped;
 //   - Escape closes (onClose); click-outside dismisses;
@@ -54,13 +54,20 @@ function activeButton(): HTMLButtonElement | undefined {
 
 function labelOf(b: HTMLButtonElement | undefined): string {
   if (!b) return "";
-  // The label is the last span (the leading span is the checkmark gutter).
-  const spans = b.querySelectorAll("span");
-  return spans[spans.length - 1]?.textContent ?? "";
+  // The row's text minus the ✓ glyph column (`MenuToggleRow` reserves it on
+  // every radio row; task 997 moved the levels onto `MenuRadioGroup`).
+  return (b.textContent ?? "").replace("✓", "").trim();
 }
 
 function buttonByLabel(label: string): HTMLButtonElement | undefined {
   return menuButtons().find((b) => labelOf(b) === label);
+}
+
+/** The ✓ column is reserved on every radio row and HIDDEN (opacity-0) when
+ *  unchecked, so "shows ✓" is the glyph span's visibility, not its presence. */
+function checkVisible(b: HTMLButtonElement): boolean {
+  const glyph = Array.from(b.querySelectorAll("span")).find((s) => s.textContent === "✓");
+  return !!glyph && !glyph.className.includes("opacity-0");
 }
 
 const NO_HEADING = "No heading";
@@ -96,19 +103,17 @@ describe("HeadingTypeMenu — click selection parity", () => {
 });
 
 describe("HeadingTypeMenu — current-level marker", () => {
-  it("marks the current level with ✓ + aria-checked + data-current; others unmarked", () => {
+  it("marks the current level with a visible ✓ + aria-checked; others unmarked", () => {
     render(
       <HeadingTypeMenu anchorRect={RECT} currentLevel={3} documentClass={null} onPick={() => {}} onClose={() => {}} />,
     );
     const subsection = buttonByLabel("Subsection"); // level 3
     expect(subsection!.getAttribute("aria-checked")).toBe("true");
-    expect(subsection!.hasAttribute("data-current")).toBe(true);
-    expect(subsection!.textContent).toContain("✓");
+    expect(checkVisible(subsection!)).toBe(true);
 
     const section = buttonByLabel("Section"); // level 2 — not current
     expect(section!.getAttribute("aria-checked")).toBe("false");
-    expect(section!.hasAttribute("data-current")).toBe(false);
-    expect(section!.textContent).not.toContain("✓");
+    expect(checkVisible(section!)).toBe(false);
   });
 
   it("'No heading' never carries the current marker", () => {
@@ -117,7 +122,7 @@ describe("HeadingTypeMenu — current-level marker", () => {
     );
     const noHeading = buttonByLabel(NO_HEADING)!;
     expect(noHeading.hasAttribute("aria-checked")).toBe(false);
-    expect(noHeading.hasAttribute("data-current")).toBe(false);
+    expect(noHeading.getAttribute("role")).toBe("menuitem");
   });
 });
 
