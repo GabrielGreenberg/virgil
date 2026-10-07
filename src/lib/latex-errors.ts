@@ -25,8 +25,19 @@ export interface LatexError {
   /** 1-based column. */
   column?: number;
   message: string;
-  /** Secondary context — TeX log "<context>" line, or rule id elaboration. */
+  /**
+   * Source CONTEXT, rendered monospace — the TeX log's `l.N <source>` tail or
+   * the offending key (a citekey, a label). Short, verbatim, never prose: a
+   * consumer may search the document for it (`useDiagnostics` pins on it).
+   */
   detail?: string;
+  /**
+   * What the USER should do about it — plain prose, rendered as wrapping body
+   * text in the expanded card (task 982). Distinct from `detail` by role: a
+   * fix-it sentence is read, not matched against source, so it must never sit
+   * in the mono context slot where it truncates and is searched as text.
+   */
+  remedy?: string;
   /** Lint rule id or compile-pattern label. */
   ruleId?: string;
   /**
