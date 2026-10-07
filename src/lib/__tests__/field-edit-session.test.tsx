@@ -454,9 +454,15 @@ describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
   it("is exactly the declared set, and none of them blurs", () => {
     // CitationCard appears in BOTH censuses and that is correct: its Code box
     // takes the door (task 555) while its citekey field still unmounts.
+    //
+    // bib-review-request (task 981, declared by task 987): its compose note
+    // has NO blur commit — Return mints the request and Escape drops the
+    // draft, and BOTH endings unmount the input, so there is no second ending
+    // for the door to suppress. A member, not a convert.
     expect(unmountingCancelFields()).toEqual([
       "library/components/BibCard.tsx",
       "src/components/ManageStylesModal.tsx",
+      "src/components/bib-review-request.tsx",
       "src/components/editor-layout/TabStrip.tsx",
       "src/panels/Bibliography/BibliographyPanel.tsx",
       "src/panels/Citations/CitationCard.tsx",
