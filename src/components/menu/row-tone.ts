@@ -48,6 +48,22 @@ export function menuRowRovingStyle(active: boolean, disabled: boolean): CSSPrope
   return { background: active && !disabled ? "var(--menu-roving-bg)" : undefined };
 }
 
+/**
+ * The attributes a greyed row carries to SAY WHY (task 968; one door since
+ * task 998): the reason is the row's hint (a native disabled `<button>` still
+ * gets `pointerover`, so `HintLayer` shows it on hover — which is why the
+ * disabled tone has no `pointer-events-none`) and its accessible DESCRIPTION;
+ * the label stays the name. An enabled row, or one with no reason, carries
+ * neither attribute — markup is unchanged.
+ */
+export function menuRowReasonProps(
+  disabled: boolean,
+  reason: string | null | undefined,
+): { "data-hint"?: string; "aria-description"?: string } {
+  if (!disabled || !reason) return {};
+  return { "data-hint": reason, "aria-description": reason };
+}
+
 /** A grid cell's state (the lightning menu's formatting grid). */
 export interface MenuCellState {
   /** The roving (keyboard-cursor) cell. */

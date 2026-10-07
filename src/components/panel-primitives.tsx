@@ -3359,6 +3359,9 @@ export function PanelHeader({
     label: string;
     onClick: (anchorRect?: DOMRect) => void;
     disabled?: boolean;
+    /** WHY the option is greyed — handed to `MenuActionRow`, which derives
+     *  `disabled` from it (task 998). */
+    disabledReason?: string;
   }[];
   /** Content rendered at the far left of the header, before the title.
    *  Typical use: the panel's three-dots options menu. */
@@ -3426,6 +3429,9 @@ function HeaderAddDropdown({
     label: string;
     onClick: (anchorRect?: DOMRect) => void;
     disabled?: boolean;
+    /** WHY the option is greyed — handed to `MenuActionRow`, which derives
+     *  `disabled` from it (task 998). */
+    disabledReason?: string;
   }[];
 }) {
   return (
@@ -3462,6 +3468,7 @@ function HeaderAddDropdown({
             id={`${i}-${o.label.replace(/[^a-zA-Z0-9_-]+/g, "-")}`}
             label={o.label}
             disabled={o.disabled}
+            disabledReason={o.disabledReason}
             onSelect={() => {
               close();
               o.onClick(anchorRect ?? undefined);

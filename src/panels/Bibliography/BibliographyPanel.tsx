@@ -649,7 +649,7 @@ function BibliographyPanel({
       <MenuActionRow
         id="export-cited"
         label="Export cited.bib"
-        disabled={citedKeys.size === 0}
+        disabledReason={citedKeys.size === 0 ? "The paper cites nothing yet" : undefined}
         leading={
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -688,7 +688,7 @@ function BibliographyPanel({
     {
       label: "Search library…",
       onClick: (rect?: DOMRect) => handleAddFromCentralLibrary(rect ?? null),
-      disabled: !isLibraryConnected,
+      disabledReason: isLibraryConnected ? undefined : LIBRARY_NOT_CONNECTED_HINT,
     },
     {
       label: "Request entry",

@@ -247,6 +247,8 @@ import {
 } from "@/lib/doc-index";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
 import { iconHint } from "@/components/Hint";
+import { matchesPortableChord } from "@/lib/portable-chord";
+import { NEW_WINDOW_SHORTCUT } from "@/lib/multi-window/new-window-shortcut";
 
 
 export default function EditorLayout() {
@@ -2701,16 +2703,11 @@ export default function EditorLayout() {
     }
   }, []);
 
-  // Cmd-Shift-N → new window. Distinct from Cmd-N (browser default)
-  // and Cmd-Shift-P / Cmd-P (used by Print + paragraph nav).
+  // NEW_WINDOW_SHORTCUT (⌘⇧N) → new window. The chord is stated once and
+  // the "+" menu's hint renders the same string (task 998).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const isNew =
-        (e.metaKey || e.ctrlKey) &&
-        e.shiftKey &&
-        !e.altKey &&
-        e.key.toLowerCase() === "n";
-      if (!isNew) return;
+      if (!matchesPortableChord(e, NEW_WINDOW_SHORTCUT)) return;
       e.preventDefault();
       openNewVirgilWindow();
     };
