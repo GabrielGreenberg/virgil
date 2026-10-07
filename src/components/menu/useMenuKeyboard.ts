@@ -32,6 +32,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { buildLetterMap } from "./nav-core";
 import { isEditableEventTarget } from "@/lib/drag-blocklist";
 import { isImeComposing, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
+import { claimActiveDescendant, type ActiveDescendantClaim } from "./caret-host";
 import type { MenuRegistry } from "./registry";
 import type { MenuLayout, MenuOrientation, NavDir } from "./types";
 
@@ -47,7 +48,10 @@ export interface UseMenuKeyboardOptions {
    * editor-focused command menu this is the PM view's contentEditable (or its
    * container); for a combobox it's the owned `<input>`. The controller writes
    * the attribute on active-id changes and clears it on close. A getter so the
-   * caller can resolve a live element lazily.
+   * caller can resolve a live element lazily — but it is asked ONCE per open
+   * (re-asked only while it answered null or its element left the DOM), and
+   * the element it answered is this open menu's for keydown ownership
+   * (task 995).
    */
   getActiveDescendantHost?: () => HTMLElement | null;
   /**
@@ -128,6 +132,28 @@ export function useMenuKeyboard(
       onArrowHorizontal,
     };
   });
+
+  // The host THIS open menu owns (task 995) — resolved through the getter
+  // ONCE, then kept for the controller's lifetime (the provider mounts the
+  // controller per open). Ownership is a fact about the open, not about
+  // wherever focus sits at the moment a key arrives: re-asking the getter per
+  // keydown handed a drifted-to editable the menu's keys. Re-resolved only
+  // while unresolved (null) or when the captured element left the DOM (a
+  // combobox whose `<input>` mounts with its edit mode), and the
+  // `aria-activedescendant` claim follows the element it was taken on.
+  const ownedHostRef = useRef<{
+    el: HTMLElement;
+    claim: ActiveDescendantClaim;
+  } | null>(null);
+  const ownedHost = useCallback((): HTMLElement | null => {
+    const cur = ownedHostRef.current;
+    if (cur && cur.el.isConnected) return cur.el;
+    const el = stateRef.current.getActiveDescendantHost?.() ?? null;
+    if (cur && cur.el === el) return el;
+    cur?.claim.release();
+    ownedHostRef.current = el ? { el, claim: claimActiveDescendant(el) } : null;
+    return el;
+  }, []);
 
   // The letter-map memo, keyed on the registry version so it rebuilds ONLY on a
   // registration change (mount/unmount/disabled-flip), never per keystroke —
@@ -258,14 +284,19 @@ export function useMenuKeyboard(
     if (!open || !isTop) return;
     if (typeof window === "undefined") return;
     // Does this keydown belong to the editable THIS menu parked the caret in?
-    // Resolved once per keydown (not per render) off the host getter the
-    // provider already passes down. Narrowed to a contentEditable host on
+    // Answered against the host captured when the menu OPENED (task 995) —
+    // never live focus, which can drift to another editable while the menu
+    // stays open (nothing closes it on focus-out). Narrowed to a contentEditable host on
     // purpose: a menu whose focus lives in an owned `<input>` declares that
     // through the combobox keyboard SOURCE, which installs no window listener
     // at all — so an input host never reaches this predicate legitimately.
     const ownsEditableTarget = (target: EventTarget | null): boolean => {
-      const host = stateRef.current.getActiveDescendantHost?.();
-      if (!host || !host.isContentEditable) return false;
+      // The CAPTURED element only — never a fresh resolve, which would read
+      // live focus at exactly the moment it may have drifted. (The sync
+      // effect below captures on open; a menu that captured nothing owns no
+      // editable, so every editable's keys pass through.)
+      const host = ownedHostRef.current?.el;
+      if (!host || !host.isConnected || !host.isContentEditable) return false;
       if (target === host) return true;
       return target instanceof Node && host.contains(target);
     };
@@ -330,19 +361,20 @@ export function useMenuKeyboard(
         const el = registry.refFor(activeId);
         el?.scrollIntoView?.({ block: "nearest" });
       }
-      const host = stateRef.current.getActiveDescendantHost?.();
-      if (!host) return;
-      if (activeId) host.setAttribute("aria-activedescendant", registry.domIdFor(activeId));
-      else host.removeAttribute("aria-activedescendant");
+      // Written through this menu's CLAIM on its owned host (task 995): a
+      // nested menu sharing the host shows on top, and releasing the claim on
+      // close re-shows the parent's active row instead of stripping it.
+      if (!ownedHost()) return;
+      ownedHostRef.current?.claim.set(activeId ? registry.domIdFor(activeId) : null);
     };
     sync();
     const unsub = registry.subscribe(sync);
     return () => {
       unsub();
-      const host = stateRef.current.getActiveDescendantHost?.();
-      host?.removeAttribute("aria-activedescendant");
+      ownedHostRef.current?.claim.release();
+      ownedHostRef.current = null;
     };
-  }, [open, registry]);
+  }, [open, registry, ownedHost]);
 
   return useMemo(() => ({ handleKeyDown }), [handleKeyDown]);
 }
