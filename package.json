@@ -18,6 +18,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:guards": "vitest run --config vitest.guards.config.ts",
     "test:prefs": "node tools/check-prefs-coverage.mjs",
     "check:coherence": "node tools/check-coherence.mjs",
     "check:radius": "node scripts/check-radius-tokens.mjs",
