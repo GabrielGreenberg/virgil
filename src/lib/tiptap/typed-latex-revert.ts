@@ -3,6 +3,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { ReplaceStep, type Step } from "@tiptap/pm/transform";
 import { collabReadOnly } from "./collab-read-only-gate";
 import type { TypedLatexActionId } from "./typed-latex-input-rules";
+import { isImeComposing } from "@/lib/key-intent";
 
 /**
  * THE typed-LaTeX revert contract (task 991) — "Backspace right after a typed
@@ -163,7 +164,7 @@ function isPlainBackspace(event: KeyboardEvent): boolean {
     !event.altKey &&
     !event.ctrlKey &&
     !event.metaKey &&
-    !event.isComposing
+    !isImeComposing(event)
   );
 }
 

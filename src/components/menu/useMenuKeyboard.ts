@@ -31,6 +31,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { buildLetterMap } from "./nav-core";
 import { isEditableEventTarget } from "@/lib/drag-blocklist";
+import { isImeComposing, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import type { MenuRegistry } from "./registry";
 import type { MenuLayout, MenuOrientation, NavDir } from "./types";
 
@@ -153,7 +154,28 @@ export function useMenuKeyboard(
     // editor selection gestures.
     const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
 
+    // Keys an IME is composing with are the IME's (task 994): the Enter that
+    // COMMITS a candidate in a combobox query — or in the editor behind an
+    // editor-anchored menu — is not "activate the active row", and the arrows
+    // walk the candidate list, not the menu. Pass every one through.
+    // (React's synthetic event carries `isComposing` only on its `nativeEvent`.)
+    const native = "nativeEvent" in e ? e.nativeEvent : e;
+    if (isImeComposing(native)) return false;
+
+    // An ACTIVATION answers the first press only (task 994). A held key's
+    // auto-repeat is swallowed (consumed, never run again), and a successful
+    // activation arms `swallowRepeatsUntilKeyup` — the menu usually closes on
+    // activation and takes this controller's listener with it, so without the
+    // arm a held Backspace that ran `DragHandleMenu`'s delete row went on to
+    // delete text in the editor the menu uncovered. Nav arrows keep repeating:
+    // a held ArrowDown walking the list is the expected feel.
+    const activated = (ran: boolean): boolean => {
+      if (ran) swallowRepeatsUntilKeyup(native);
+      return ran;
+    };
+
     if (plain && (e.key === "Enter" || e.key === " " || e.key === "Spacebar")) {
+      if (e.repeat) return true;
       // Consume ONLY if something actually ran (task 477). This is the
       // defence-in-depth half of that task: `consume()` used to answer true
       // whatever the registry held, and `preventDefault()` + `stopPropagation()`
@@ -168,7 +190,7 @@ export function useMenuKeyboard(
       // Deliberately Enter/Space ONLY: an arrow that falls through moves the
       // EDITOR CARET behind an open menu, which is a real side effect, where a
       // consumed arrow in a menu with no rows is an inert swallow.
-      return reg.activate();
+      return activated(reg.activate());
     }
 
     const dir = NAV_KEYS[e.key];
@@ -207,7 +229,7 @@ export function useMenuKeyboard(
       }
       const id = letterMapRef.current.map.get(e.key.toUpperCase());
       if (id) {
-        reg.activateById(id);
+        if (!e.repeat) activated(reg.activateById(id));
         return true;
       }
     }
