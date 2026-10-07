@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin } from "@tiptap/pm/state";
 import type { Node as PMNode, NodeType, ResolvedPos } from "@tiptap/pm/model";
 import katex from "katex";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
@@ -15,6 +15,7 @@ import { collabReadOnly } from "./collab-read-only-gate";
 // the `inline-math` / `display-math` rows and these rules cannot recognize a
 // different math vocabulary.
 import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // Task 232: the INLINE atom's structural DOM facets (`data-type` / `class`) come
 // from the atom SSOT rather than hardcoded literals, so a NodeView rename can't
@@ -221,10 +222,15 @@ export const InlineMath = Node.create<MathOptions>({
 
   addProseMirrorPlugins() {
     const nodeType = this.type;
+    // Task 991: Backspace right after the typed `$` conversion gives the
+    // literal back.
+    const inlineRevert = typedLatexRevertSpec("inline-math", "inlineMathInput");
     return [
       new Plugin({
-        key: new PluginKey("inlineMathInput"),
+        key: inlineRevert.key,
+        state: inlineRevert.state,
         props: {
+          handleDOMEvents: inlineRevert.handleDOMEvents,
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
             // typed-LaTeX surfaces — cite/footnote/display-math/comment).
@@ -260,7 +266,7 @@ export const InlineMath = Node.create<MathOptions>({
               from,
               nodeType.create({ latex })
             );
-            view.dispatch(tr);
+            view.dispatch(armTypedLatexRevert(tr, inlineRevert.key, from, _to, text));
             return true;
           },
         },
@@ -338,10 +344,15 @@ export const DisplayMath = Node.create<MathOptions>({
 
   addProseMirrorPlugins() {
     const nodeType = this.type;
+    // Task 991: Backspace right after the typed `$` conversion gives the
+    // literal back.
+    const displayRevert = typedLatexRevertSpec("display-math", "displayMathInput");
     return [
       new Plugin({
-        key: new PluginKey("displayMathInput"),
+        key: displayRevert.key,
+        state: displayRevert.state,
         props: {
+          handleDOMEvents: displayRevert.handleDOMEvents,
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
             // typed-LaTeX surfaces — cite/footnote/inline-math/comment).
@@ -371,7 +382,7 @@ export const DisplayMath = Node.create<MathOptions>({
                 from,
                 nodeType.create({ latex: "" })
               );
-              view.dispatch(tr);
+              view.dispatch(armTypedLatexRevert(tr, displayRevert.key, from, _to, text));
               return true;
             }
 
@@ -387,7 +398,7 @@ export const DisplayMath = Node.create<MathOptions>({
               from,
               nodeType.create({ latex })
             );
-            view.dispatch(tr);
+            view.dispatch(armTypedLatexRevert(tr, displayRevert.key, from, _to, text));
             return true;
           },
         },
