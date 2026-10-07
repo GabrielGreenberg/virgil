@@ -62,6 +62,7 @@ import {
 import {
   SLASH_NAME_TO_ACTION_ID,
   VIRGIL_ACTION_REGISTRY,
+  verdictOf,
 } from "@/lib/actions/action-registry";
 import { serializeToLatex } from "@/lib/latex-serializer";
 
@@ -318,6 +319,93 @@ describe("a refused slash command consumes nothing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 1b. Task 989 — the title-field rows (`\title` / `\author` / `\date`)
+// ---------------------------------------------------------------------------
+
+describe("title-field rows refuse inside markless verbatim blocks (task 989)", () => {
+  const TITLE_ROWS = ["title", "author", "date"] as const;
+  const VERBATIM = ["codeBlock", "latexComment"] as const;
+  const cases = VERBATIM.flatMap((c) => TITLE_ROWS.map((n) => [c, n] as const));
+
+  function titleFieldCount(ed: Editor): number {
+    let n = 0;
+    ed.state.doc.forEach((child) => {
+      if (child.type.name === "titleField") n += 1;
+    });
+    return n;
+  }
+
+  it.each(cases)(
+    "%s + \\%s — greyed with a reason; Enter and Tab leave the doc byte-identical",
+    (container, name) => {
+      for (const key of ["Enter", "Tab"]) {
+        const ed = mount();
+        caretIn(ed, container);
+        const titlesBefore = titleFieldCount(ed);
+        typeSlash(ed, name);
+        const typed = serializeToLatex(ed.state.doc.toJSON() as never);
+        const st = popup(ed)!;
+        expect(st.disabled).toContain(name);
+        // task 968: the grey carries the container's reason.
+        const spec = VIRGIL_ACTION_REGISTRY[SLASH_NAME_TO_ACTION_ID[name]!]!;
+        const v = verdictOf(spec, buildSlashActionContext(ed.view));
+        expect(v.state).toBe("disabled");
+        expect(v.reason).toMatch(/^Not available inside this /);
+        press(ed, key);
+        expect(serializeToLatex(ed.state.doc.toJSON() as never)).toBe(typed);
+        expect(titleFieldCount(ed)).toBe(titlesBefore);
+        expect(ed.state.doc.child(CONTAINER_INDEX[container]).textContent).toContain(
+          `\\${name}`,
+        );
+      }
+    },
+  );
+
+  it.each(VERBATIM)("%s — the POPUP-LESS `\\date` + Enter door refuses too", (container) => {
+    const ed = mount();
+    caretIn(ed, container);
+    typeSlash(ed, "date");
+    press(ed, "Escape");
+    expect(popup(ed)).toBeNull();
+    const typed = serializeToLatex(ed.state.doc.toJSON() as never);
+    press(ed, "Enter");
+    expect(ed.state.doc.child(CONTAINER_INDEX[container]).textContent).toContain("\\date");
+    expect(serializeToLatex(ed.state.doc.toJSON() as never)).toContain("\\date");
+    expect(typed).toContain("\\date");
+    expect(titleFieldCount(ed)).toBe(1);
+  });
+
+  it("the run itself refuses from a verbatim caret (defence in depth)", () => {
+    const ed = mount();
+    caretIn(ed, "codeBlock");
+    const before = serializeToLatex(ed.state.doc.toJSON() as never);
+    VIRGIL_ACTION_REGISTRY.date!.run(buildSlashActionContext(ed.view));
+    expect(serializeToLatex(ed.state.doc.toJSON() as never)).toBe(before);
+    expect(titleFieldCount(ed)).toBe(1);
+  });
+
+  it("control: in a paragraph `\\date` + Enter still creates the date field", () => {
+    const ed = mount();
+    caretIn(ed, "paragraph");
+    typeSlash(ed, "date");
+    expect(popup(ed)!.disabled).not.toContain("date");
+    expect(press(ed, "Enter")).toBe(true);
+    let dates = 0;
+    ed.state.doc.forEach((c) => {
+      if (c.type.name === "titleField" && c.attrs.field === "date") dates += 1;
+    });
+    expect(dates).toBe(1);
+    expect(ed.state.doc.textBetween(0, ed.state.doc.content.size, " ")).not.toContain("\\date");
+  });
+
+  it("control: in a titleField the title rows stay live (jumping between fields)", () => {
+    const ed = mount();
+    caretIn(ed, "titleField");
+    for (const n of TITLE_ROWS) expect(slashCommandVerdict(ed.view, n)).toBe("ok");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 2. The OFFER carries the registry's verdict
 // ---------------------------------------------------------------------------
 
@@ -341,10 +429,16 @@ describe("the popup renders the registry's verdict", () => {
     typeSlash(ed, "");
     expect(popup(ed)!.disabled).toEqual([]);
 
-    const ed2 = mount();
-    caretIn(ed2, "codeBlock");
-    typeSlash(ed2, "");
-    expect(popup(ed2)!.disabled.length).toBeGreaterThan(3);
+    // Task 989: the `> 3` count this leg used to assert is what let the three
+    // title rows sit LIVE in a code block. A markless verbatim block is not a
+    // place ANY command runs from, so assert the whole list.
+    for (const c of ["codeBlock", "latexComment"] as const) {
+      const edN = mount();
+      caretIn(edN, c);
+      typeSlash(edN, "");
+      const st = popup(edN)!;
+      expect(st.disabled, c).toEqual([...VIRGIL_COMMAND_NAMES]);
+    }
   });
 
   it("re-derives when the DOC changes under an unchanged query", () => {
@@ -375,8 +469,9 @@ describe("the popup renders the registry's verdict", () => {
 describe("navigation skips greyed rows", () => {
   // The two index helpers are asserted DIRECTLY, and that is not laziness: with
   // today's vocabulary no container produces a row list whose FIRST entry is
-  // greyed while a later one is live (`\title`/`\author`/`\date` take the bare
-  // `blockApplies`, which is "ok" at any caret, and they lead the list), so an
+  // greyed while a later one is live (`\title`/`\author`/`\date` lead the list
+  // and are "ok" everywhere except a markless verbatim block — where, since task
+  // 989, EVERY row is greyed), so an
   // integration leg for the initial selection is vacuous by construction — it
   // passes with the helper deleted. Stated rather than shipped as a leg that
   // looks like it proves something.

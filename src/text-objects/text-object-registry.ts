@@ -1530,9 +1530,41 @@ export function posBlockAllowsAction(
  * `posHostsBlockInsert` below, which resolves the full position.
  */
 export function blockTypeHostsBlockInsert(parentType: NodeType): boolean {
-  if (parentType.spec.marks === "") return false; // codeBlock / latexComment
+  if (isMarklessVerbatimType(parentType)) return false; // codeBlock / latexComment
   if (parentType.name === "titleField") return false; // preamble singleton
   return true;
+}
+
+/**
+ * Is `type` a MARKLESS verbatim textblock (`codeBlock`, `latexComment`) —
+ * `marks: ""`, its text literal LaTeX source? Read from the schema so a future
+ * verbatim kind is covered by shipping. The ONE spelling of the fact; private,
+ * read by {@link blockTypeHostsBlockInsert} and
+ * {@link blockRangeReachesVerbatim}.
+ */
+function isMarklessVerbatimType(type: NodeType): boolean {
+  return type.isTextblock && type.spec.marks === "";
+}
+
+/**
+ * Does the range `[from, to]` (a caret when `from === to`) reach a MARKLESS
+ * verbatim textblock? (task 989.)
+ *
+ * The CONTAINER question for an action that does not land at the caret and so
+ * cannot be asked {@link blockRangeHostsBlockInsert}'s survival question — the
+ * `\title` / `\author` / `\date` rows insert at the DOC TOP, and are rightly
+ * live in a `titleField` (jumping between title fields is their purpose), but
+ * a caret inside literal source is not a place a command runs from: the slash
+ * commit would delete the typed `\date` out of the user's verbatim text and
+ * teleport them. Same walk as every range gate here (`rangeTextblockTypes`),
+ * bounded by the range, never the doc.
+ */
+export function blockRangeReachesVerbatim(
+  doc: PMNode,
+  from: number,
+  to: number,
+): boolean {
+  return rangeTextblockTypes(doc, from, to).some(isMarklessVerbatimType);
 }
 
 /**
