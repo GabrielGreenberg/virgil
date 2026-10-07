@@ -26,7 +26,7 @@
  * card owns (`useReviewRequestComposer`).
  */
 
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   AMBER_ATTENTION_STRIP,
   AMBER_PENDING_CHIP,

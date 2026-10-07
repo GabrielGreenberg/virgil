@@ -7,8 +7,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { walkFiles } from "@/lib/__tests__/_source-scan";
 import { useCopyFlash, COPY_FLASH_MS } from "@/hooks/useCopyFlash";
 
 let writeText: ReturnType<typeof vi.fn>;
@@ -102,20 +103,12 @@ describe("census: clipboard writes go through useCopyFlash", () => {
   it("no component outside the hook calls navigator.clipboard.writeText", () => {
     const root = join(__dirname, "..", "..");
     const offenders: string[] = [];
-    const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const p = join(dir, name);
-        if (statSync(p).isDirectory()) {
-          if (name === "__tests__" || name === "node_modules") continue;
-          walk(p);
-        } else if (/\.(ts|tsx)$/.test(name)) {
-          if (readFileSync(p, "utf8").includes("clipboard.writeText")) {
-            offenders.push(relative(root, p));
-          }
-        }
+    for (const p of walkFiles(root, { skipDirs: ["__tests__"] })) {
+      if (!/\.(ts|tsx)$/.test(p)) continue;
+      if (readFileSync(p, "utf8").includes("clipboard.writeText")) {
+        offenders.push(relative(root, p));
       }
-    };
-    walk(root);
+    }
     expect(offenders).toEqual(["hooks/useCopyFlash.ts"]);
   });
 });

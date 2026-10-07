@@ -5,20 +5,15 @@
 // drift (it keyed on the host's `isSelected` while PanelCard keyed on the halo).
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const SRC = join(__dirname, "..", "..");
 const PRIMITIVE = "components/panel-primitives.tsx";
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "__tests__" || name === "node_modules") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(tsx?|jsx?)$/.test(name)) out.push(p);
-  }
-  return out;
+function walk(dir: string): string[] {
+  return walkFiles(dir, { skipDirs: ["__tests__"] }).filter((p) => /\.(tsx?|jsx?)$/.test(p));
 }
 
 describe("card separator census (task 969)", () => {
