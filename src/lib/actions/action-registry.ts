@@ -214,6 +214,7 @@ import {
   INLINE_INSERT_ACTIONS,
   blockRangeHostsBlockInsert,
   blockTypeHostsBlockInsert,
+  blockRangeReachesVerbatim,
 } from "@/text-objects/text-object-registry";
 import {
   actionScopeClass,
@@ -1789,6 +1790,10 @@ function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
     if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
   // only gate: see `isCollabReadOnly` (task 638).
+    // Task 989 defence-in-depth (the 147/229 idiom): the row's own container
+    // refusal, re-asked so a caller that skips `applies()` cannot act from
+    // inside literal source either.
+    if (titleFieldRefusal(ctx)) return;
     const view = ctx.view;
     const { state } = view;
     const titleFieldType = state.schema.nodes.titleField;
@@ -1895,11 +1900,15 @@ function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
  * against `VIRGIL_COMMAND_NAMES`. No menu/typed/keyboard twin by design — a
  * titleField is a doc-top singleton, not a card.
  *
- * `applies` mirrors heading/tex: a selection / caret can always insert (the node
- * hoists to the top regardless of where the caret sits); a non-text atom-block
- * ref has no meaningful invocation → "disabled" via the shared `blockApplies`.
- * In practice these are only invoked from a caret (the slash command), so "ok"
- * everywhere reachable.
+ * `applies` = the shared `blockApplies` base (a non-text atom-block ref has no
+ * meaningful invocation → "disabled"; collab read-only greys) PLUS a CONTAINER
+ * half, `titleFieldRefusal` (task 989): a caret / selection reaching a MARKLESS
+ * verbatim block (`codeBlock` / `latexComment`) is refused. The node hoists to
+ * the doc top wherever the caret sits, so the old base answered "ok" there too —
+ * and the slash commit then deleted the typed `\date` out of the user's literal
+ * source and teleported the caret. A `titleField` caret stays "ok": jumping
+ * between title fields is the intended behaviour. The row's `refusal` and its
+ * `applies()` read the ONE predicate, and `titleFieldRun` re-asks it.
  */
 function titleFieldRow(field: TitleActionId): ActionSpec {
   const label = field.charAt(0).toUpperCase() + field.slice(1);
@@ -1913,9 +1922,32 @@ function titleFieldRow(field: TitleActionId): ActionSpec {
     selection: "ignored",
     surfaces: { slash: true },
     slashName: field,
-    applies: (ctx) => blockApplies(ctx),
+    applies: (ctx) => {
+      const base = blockApplies(ctx);
+      if (base !== "ok") return base;
+      return titleFieldRefusal(ctx) ? "disabled" : "ok";
+    },
+    refusal: titleFieldRefusal,
     run: titleFieldRun(field),
   };
+}
+
+/**
+ * The title rows' CONTAINER refusal (task 989): a cursor / selection that
+ * reaches a markless verbatim textblock (`blockRangeReachesVerbatim` — schema
+ * `marks: ""`, never a name list). `null` = no refusal. Read by the row's
+ * `applies()`, its `refusal` (task 968's `verdictOf` reason — "Not available
+ * inside this code block") and `titleFieldRun`, so offer, explanation and commit
+ * ask one question. No live doc ⇒ allow (the shared fallback).
+ */
+function titleFieldRefusal(ctx: ActionContext): Refusal | null {
+  const ref = ctx.ref;
+  if (ref.kind !== "cursor" && ref.kind !== "selection") return null;
+  const doc = ctx.view?.state?.doc;
+  if (!doc || typeof doc.resolve !== "function") return null;
+  const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
+  if (!blockRangeReachesVerbatim(doc, from, to)) return null;
+  return { cause: "container", subject: containerAt(ctx, from) };
 }
 
 /** The 3 title-field rows, in canonical doc-top order. Exhaustive over

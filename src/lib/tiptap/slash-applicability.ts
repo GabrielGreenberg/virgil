@@ -212,9 +212,10 @@ export function slashDisabledNames(
  * greyed, or `0` when every row is greyed.
  *
  * The fallback matters — with every command refused (a caret in a markless
- * verbatim block) the popup still opens and still has a selected row, and Enter
- * on it falls through to the editor's own handler rather than becoming a dead
- * key. See `slash-popup.ts`'s Enter branch.
+ * verbatim block) the popup still opens and still has a selected row. Enter on
+ * it is CONSUMED as a refusal — the popup closes and the document is unchanged
+ * (activating a disabled control does nothing); the user's NEXT Enter is the
+ * editor's own. See `slash-popup.ts`'s Enter branch.
  */
 export function firstEnabledIndex(
   names: readonly string[],
