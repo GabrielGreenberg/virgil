@@ -47,3 +47,41 @@ export function menuRowToneClass(tone: MenuRowTone, disabled: boolean): string {
 export function menuRowRovingStyle(active: boolean, disabled: boolean): CSSProperties {
   return { background: active && !disabled ? "var(--menu-roving-bg)" : undefined };
 }
+
+/** A grid cell's state (the lightning menu's formatting grid). */
+export interface MenuCellState {
+  /** The roving (keyboard-cursor) cell. */
+  roving: boolean;
+  disabled?: boolean;
+  /** The cell's format is applied to the selection (bold-is-on). */
+  applied?: boolean;
+  /** The cell's resting ink when neither applied nor disabled. */
+  ink?: string;
+}
+
+/**
+ * The grid-cell variant of the row tones (task 986). An icon cell in the
+ * lightning grid and a card row in the list under it are ONE menu, so a greyed
+ * cell is the same grey as a greyed row — `--ink-faint` + `not-allowed`, no
+ * dimming opacity (which used to make the cell `0.4` over `--ink-muted`, a
+ * second grey beside the row's `text-ink-faint`). The cell's third state,
+ * "format applied", is a muted surface that LOSES to the roving fill by rule,
+ * so the arrow cursor stays unambiguous even on an applied format; disabled
+ * wins over both for the ink.
+ */
+export function menuCellToneStyle({
+  roving,
+  disabled = false,
+  applied = false,
+  ink = "var(--ink-muted)",
+}: MenuCellState): CSSProperties {
+  return {
+    background: roving && !disabled
+      ? "var(--menu-roving-bg)"
+      : applied
+        ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
+        : "transparent",
+    color: disabled ? "var(--ink-faint)" : applied ? "var(--ink-strong)" : ink,
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}

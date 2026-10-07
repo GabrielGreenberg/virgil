@@ -496,14 +496,14 @@ describe("census · ONE tone table for every surface that presents an interrupti
     expect(hits().spellers, "a surface presenting an interruption paints its own palette").toEqual([]);
   });
 
-  it("every exemption marker still excuses a real hit, and the excused set is exactly the one shared menu row", () => {
+  it("every exemption marker still excuses a real hit, and the excused set is EMPTY", () => {
     // A marker that has stopped excusing anything is a standing licence for
     // the next literal added beneath it — so the excused set is pinned EXACTLY,
     // and each marker must sit above a hit. Pre-769 the row was copied into
-    // two badges (and a third copy lacked the ink); it is ONE row now.
-    expect(hits().excused.map((h) => h.split(" · ")[0].replace(/:\d+$/, "")).sort()).toEqual([
-      BAR_PILL,
-    ]);
+    // two badges (and a third copy lacked the ink); it was ONE row after 769,
+    // and since task 986 that row takes its destructive ink from the menu's
+    // `row-tone.ts` like every other menu row, so nothing here is excused.
+    expect(hits().excused.map((h) => h.split(" · ")[0].replace(/:\d+$/, "")).sort()).toEqual([]);
     for (const rel of scanned()) {
       const rawLines = read(rel).split("\n");
       const stripped = strip(read(rel), true, true).split("\n");

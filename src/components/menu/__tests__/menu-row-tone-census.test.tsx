@@ -17,6 +17,19 @@
 //      spells a row-state literal (disabled ink, a dimming opacity, the danger
 //      tint, the roving background), and none but `MenuChrome.tsx` spells a
 //      separator — so a fourth row cannot invent a fourth grey.
+//   3. CONSUMER CENSUS (task 986) — the same rule one ring out. Leg 2 walked
+//      only the primitive's own directory, and the menus that USE the primitive
+//      live outside it: the lightning grid painted a second grey (`opacity 0.4`
+//      over `--ink-muted`) beside the registry rows' `text-ink-faint`,
+//      `HeadingTypeMenu` a third, two menus hand-drew the divider 967 had just
+//      replaced, and the roving fill was spelled 12× outside the owner. The
+//      population is DERIVED — every source file that imports a `menu/` module —
+//      so a new menu is in scope the day it is written. Per file: the roving
+//      background is forbidden anywhere (nothing but a menu row paints it); the
+//      full state vocabulary is forbidden inside every declaration that calls
+//      `useMenuItem` (the row/cell components — the rest of a big consumer like
+//      `OutlinePanel` legitimately greys non-menu UI); and the hand-drawn rule
+//      (`height: 1` over an `--edge-*` fill) is forbidden anywhere.
 
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -29,6 +42,7 @@ import { MenuItemsFromRegistry } from "../MenuItemsFromRegistry";
 import { MenuSeparator } from "../MenuChrome";
 import { menuRowToneClass } from "../row-tone";
 import { SRC, stripComments, walkSource } from "./_menu-census";
+import { enclosingDeclaration } from "../../../lib/__tests__/_source-scan";
 
 class ResizeObserverStub {
   observe() {}
@@ -146,5 +160,91 @@ describe("menu row tones — census", () => {
       expect(re.test(owner), name).toBe(true);
     }
     expect(SEPARATOR_LITERALS.test(readFileSync(SEPARATOR_OWNER, "utf8"))).toBe(true);
+  });
+});
+
+// ── Leg 3: the consumers (task 986) ──────────────────────────────────────────
+
+const MENU_DIR = path.join(SRC, "components/menu");
+const IMPORTS_MENU = /from\s+["'](?:@\/components\/menu|(?:\.\.?\/)+(?:components\/)?menu)\//;
+// The fill as a CSS var OR as its Tailwind token class (`bg-menu-roving`).
+const ROVING = /--menu-roving-bg|\bbg-menu-roving\b/;
+const HAND_DRAWN_RULE = /height:\s*1\s*,[^}]*?var\(--edge-/;
+const ITEM_STATE_LITERALS: Array<[string, RegExp]> = [
+  ["disabled ink", /\bink-faint\b/],
+  ["disabled cursor", /cursor-not-allowed|cursor:\s*["']?not-allowed/],
+  // `opacity-100` is a hover-REVEAL's resting state, not a dimming.
+  ["dimming opacity", /\bopacity-(?:[1-9]\d?)\b|opacity:\s*(?:\w+\s*\?\s*)?0?\.\d/],
+  ["danger tint", /\bbg-danger-soft\b|--danger\b/],
+];
+
+/** The offences of ONE consumer source (comment-stripped), by the leg-3 rule. */
+function consumerOffences(rel: string, code: string): string[] {
+  const out: string[] = [];
+  if (ROVING.test(code)) out.push(`${rel}: roving background — use menuRowRovingStyle / menuCellToneStyle`);
+  if (HAND_DRAWN_RULE.test(code)) out.push(`${rel}: hand-drawn separator — use <MenuSeparator>`);
+  const seen = new Set<string>();
+  for (const m of code.matchAll(/\buseMenuItem\s*\(/g)) {
+    const decl = enclosingDeclaration(code, m.index!);
+    if (seen.has(decl)) continue;
+    seen.add(decl);
+    const name = /^\s*(?:export\s+)?(?:function\s+(\w+)|const\s+(\w+))/.exec(decl)?.slice(1).find(Boolean) ?? "?";
+    for (const [what, re] of ITEM_STATE_LITERALS) {
+      if (re.test(decl)) out.push(`${rel}::${name}: ${what} (${re}) — use row-tone.ts`);
+    }
+  }
+  return out;
+}
+
+function menuConsumers(): string[] {
+  return walkSource(SRC).filter(
+    (f) => !f.startsWith(MENU_DIR + path.sep) && IMPORTS_MENU.test(readFileSync(f, "utf8")),
+  );
+}
+
+describe("menu row tones — consumer census (task 986)", () => {
+  it("no menu consumer re-spells the roving fill, a row/cell state, or the separator", () => {
+    const offences = menuConsumers().flatMap((f) =>
+      consumerOffences(path.relative(SRC, f), stripComments(readFileSync(f, "utf8"))),
+    );
+    expect(offences).toEqual([]);
+  });
+
+  it("the population is derived and non-vacuous — it reaches the menus 986 fixed", () => {
+    const rels = menuConsumers().map((f) => path.relative(SRC, f).split(path.sep).join("/"));
+    for (const must of [
+      "components/ActionsMenuPanel.tsx",
+      "components/HeadingTypeMenu.tsx",
+      "components/MenuBar.tsx",
+      "components/TabPlusMenu.tsx",
+      "components/UnanchoredCardsChip.tsx",
+      "components/RecentPapersList.tsx",
+      "components/CollabStatusPill.tsx",
+      "components/status/BarStatusPill.tsx",
+    ]) {
+      expect(rels, must).toContain(must);
+    }
+    const itemDecls = menuConsumers().reduce(
+      (n, f) => n + (stripComments(readFileSync(f, "utf8")).match(/\buseMenuItem\s*\(/g)?.length ?? 0),
+      0,
+    );
+    expect(itemDecls).toBeGreaterThanOrEqual(10);
+  });
+
+  it("catches a re-introduced literal in a consumer (each rule fires)", () => {
+    const row = (body: string) =>
+      `function Row({ disabled }) {\n  const { active, getItemProps } = useMenuItem({ id: "x", run });\n  ${body}\n}`;
+    expect(consumerOffences("x.tsx", row(`const s = { background: active ? "var(--menu-roving-bg)" : undefined };`))).toHaveLength(1);
+    expect(consumerOffences("x.tsx", row(`const c = selected ? "bg-menu-roving" : "";`))).toHaveLength(1);
+    expect(consumerOffences("x.tsx", row(`const s = { opacity: disabled ? 0.4 : 1 };`))).toHaveLength(1);
+    expect(consumerOffences("x.tsx", row(`const c = "text-ink-faint";`))).toHaveLength(1);
+    expect(consumerOffences("x.tsx", row(`const c = { color: "var(--danger)" };`))).toHaveLength(1);
+    expect(
+      consumerOffences("x.tsx", `const sep = <div style={{ height: 1, margin: "4px 8px", background: "var(--edge-hover)" }} />;`),
+    ).toHaveLength(1);
+    // Outside a `useMenuItem` declaration the state vocabulary is someone
+    // else's (a big consumer's non-menu UI) — only the roving fill and the
+    // hand-drawn rule are file-wide.
+    expect(consumerOffences("x.tsx", `function Other() { return "text-ink-faint opacity-40"; }`)).toEqual([]);
   });
 });

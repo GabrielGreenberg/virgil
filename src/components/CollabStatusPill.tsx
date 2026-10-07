@@ -28,6 +28,7 @@ import { useCollabContext } from "@/hooks/useCollab";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
+import { menuRowRovingStyle, menuRowToneClass } from "./menu/row-tone";
 import { iconHint } from "@/components/Hint";
 import { Button } from "./Button";
 
@@ -52,8 +53,8 @@ function EditIdentityRow({ onSelect }: { onSelect: () => void }) {
     <button
       {...getItemProps()}
       type="button"
-      className="w-full text-left px-3 py-1.5 text-[11px] text-ink-body hover-on-light"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      className={`w-full text-left px-3 py-1.5 text-[11px] ${menuRowToneClass("default", false)}`}
+      style={menuRowRovingStyle(active, false)}
     >
       Edit identity…
     </button>

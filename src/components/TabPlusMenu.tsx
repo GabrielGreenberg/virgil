@@ -43,6 +43,7 @@ import { FolderIcon, RecentPaperRow } from "./RecentPapersList";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
+import { menuRowRovingStyle } from "./menu/row-tone";
 import { iconHint } from "@/components/Hint";
 
 interface Props {
@@ -315,9 +316,7 @@ function MenuActionItem({
       {...getItemProps()}
       type="button"
       className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-ink-strong hover-on-light text-left"
-      style={{
-        background: active ? "var(--menu-roving-bg)" : undefined,
-      }}
+      style={menuRowRovingStyle(active, false)}
     >
       {children}
       <span className="flex-1">{label}</span>

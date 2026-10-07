@@ -14,6 +14,7 @@ import {
 } from "@/lib/view-prefs/registry";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
+import { menuRowRovingStyle, menuRowToneClass } from "./menu/row-tone";
 import { MenuToggleRow } from "./menu/MenuToggleRow";
 import { MenuRadioGroup } from "./menu/MenuRadioGroup";
 import { MenuSeparator, MenuSectionLabel } from "./menu/MenuChrome";
@@ -489,8 +490,8 @@ function ViewGroupRow({
       {...getItemProps()}
       type="button"
       aria-expanded={expanded}
-      className={`w-full text-left ${pad} py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3`}
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      className={`w-full text-left ${pad} py-1.5 text-xs ${menuRowToneClass("default", false)} flex items-center justify-between gap-3`}
+      style={menuRowRovingStyle(active, false)}
     >
       <span>{label}</span>
       <svg className="w-3 h-3 text-ink-muted motion-safe:transition-transform" style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -508,8 +509,8 @@ function ViewActionRow({ id, label, onRun }: { id: string; label: string; onRun:
     <button
       {...getItemProps()}
       type="button"
-      className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-3"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      className={`w-full text-left px-3 py-1.5 text-xs ${menuRowToneClass("default", false)} flex items-center gap-3`}
+      style={menuRowRovingStyle(active, false)}
     >
       <span>{label}</span>
     </button>
@@ -525,8 +526,8 @@ function SpellWordRow({ id, word, scopeLabel, onRemove }: { id: string; word: st
       {...getItemProps()}
       type="button"
       aria-label={`Remove “${word}” from ${scopeLabel}`}
-      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      className={`w-full text-left pl-6 pr-3 py-1.5 text-xs ${menuRowToneClass("default", false)} flex items-center justify-between gap-3`}
+      style={menuRowRovingStyle(active, false)}
     >
       <span className="truncate">{word}</span>
       <span aria-hidden className="text-ink-muted shrink-0">Remove</span>

@@ -5,6 +5,7 @@ import { BadgeOrphaned, CARD_THEMES } from "@/components/panel-primitives";
 import { useCallback, useRef } from "react";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { useMenuItem } from "@/components/menu/useMenuItem";
+import { menuRowRovingStyle } from "@/components/menu/row-tone";
 import { MarkerButton } from "@/components/Marginalia";
 
 /**
@@ -178,7 +179,7 @@ function UnanchoredRow({
       data-active={itemProps["data-active"]}
       onMouseEnter={itemProps.onMouseEnter}
       className="flex items-center gap-2 rounded px-1"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      style={menuRowRovingStyle(active, false)}
     >
       <MarkerButton m={m} dragEnabled={dragEnabled} onActivated={onActivated} />
       <span className="min-w-0 flex-1 truncate text-[11px] text-ink-muted">
