@@ -1137,7 +1137,8 @@ Five states. One implementation each.
 - **Disabled.** `opacity-40 pointer-events-none` — for STANDALONE buttons.
   A menu ROW greys differently, by ink alone (`text-ink-faint`, no opacity),
   and takes it from `src/components/menu/row-tone.ts` (task 967) — see "A
-  command surface RENDERS its verdict".
+  command surface RENDERS its verdict". So does a menu's icon CELL (the
+  lightning grid, task 986): a menu cell is not a standalone button.
 
 **Topbar buttons.** Every button in the 40px Virgil bar uses
 `.topbarbtn` (add `.topbarbtn-icon` for icon-only). One height (24px),
@@ -2778,6 +2779,15 @@ Enter/click commit refuses on.
   `hover:bg-danger-soft`), body ink and roving background from
   `src/components/menu/row-tone.ts`; separators are `<MenuSeparator>`. Rows keep
   their own METRICS. CI: `menu-row-tone-census.test.tsx`.
+  **The rule reaches every menu, not just the primitive's folder** (task 986):
+  any row or cell a consumer registers with `useMenuItem` — MenuBar's View rows,
+  the tab-plus and status-pill menus, the heading picker, the lightning grid —
+  paints roving / disabled / danger through `row-tone.ts`. The lightning
+  FORMATTING GRID uses the cell variant `menuCellToneStyle` (roving > applied >
+  rest; disabled = the row's `--ink-faint` + `not-allowed`, no dimming opacity),
+  so a greyed icon cell and a greyed card row in the same open menu are one
+  grey. The grid→list break is a plain `<MenuSeparator>`. The census's
+  population is derived (every file importing a `menu/` module).
 - **Roving navigation skips the greyed rows**, so the selection can only ever
   sit on something Enter can run — and the arrows are INERT rather than looping
   when every row is greyed.

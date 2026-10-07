@@ -28,6 +28,8 @@ import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
 import type { LiveAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
+import { MenuSeparator } from "./menu/MenuChrome";
+import { menuRowRovingStyle, menuRowToneClass } from "./menu/row-tone";
 import { useMenuItem } from "./menu/useMenuItem";
 
 const MENU_W = 200;
@@ -83,15 +85,9 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
   });
   const itemProps = getItemProps();
 
-  const style: CSSProperties = {
-    height: ITEM_H,
-    color: disabled ? "var(--ink-subtle)" : "var(--ink-strong)",
-    // The roving-active row paints the blue-tinted selection highlight, so the
-    // active item is unambiguous while arrowing (no focus move).
-    background: active && !disabled ? "var(--menu-roving-bg)" : "transparent",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.55 : 1,
-  };
+  // Roving fill + disabled grey are the menu's row tones (task 986) — this
+  // row used to dim to 0.55 over `--ink-subtle`, a third grey.
+  const style: CSSProperties = { height: ITEM_H, ...menuRowRovingStyle(active, disabled) };
 
   return (
     <button
@@ -105,11 +101,7 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
       data-current={current ? "" : undefined}
       data-hint={hint}
       aria-description={hint}
-      className={
-        disabled
-          ? "w-full flex items-center gap-2 px-3 text-sm text-left"
-          : "w-full flex items-center gap-2 px-3 text-sm text-left hover-on-light"
-      }
+      className={`w-full flex items-center gap-2 px-3 text-sm text-left ${menuRowToneClass("default", disabled)}`}
       style={style}
     >
       {showCheckGutter ? (
@@ -161,15 +153,7 @@ export function HeadingTypeMenu({ anchorRect, trackAnchor, currentLevel, documen
           run={() => onPick({ kind: "level", level: option.level })}
         />
       ))}
-      <div
-        aria-hidden
-        style={{
-          height: 1,
-          margin: "4px 8px",
-          background: "var(--edge-hover)",
-          opacity: 0.5,
-        }}
-      />
+      <MenuSeparator />
       <HeadingRow
         id="no-heading"
         label="No heading"

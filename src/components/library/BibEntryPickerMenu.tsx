@@ -68,6 +68,7 @@ import { bibStateTone } from "@/lib/library/status-tone";
 import { LibraryMembershipChips } from "@/components/library/provenance-chips";
 import { MenuProvider } from "@/components/menu/MenuProvider";
 import { useMenuItem } from "@/components/menu/useMenuItem";
+import { menuRowRovingStyle } from "@/components/menu/row-tone";
 import { useMenuCombobox } from "@/components/menu/useMenuCombobox";
 import { useMenuContext } from "@/components/menu/context";
 import { iconHint } from "@/components/Hint";
@@ -677,9 +678,8 @@ function BibEntryPickerRow({
         if ((e.target as HTMLElement).closest("button")) return;
         itemProps.onClick(e);
       }}
-      className={`group relative px-2.5 py-1.5 cursor-pointer ${
-        selected ? "bg-menu-roving" : "hover-on-light"
-      }`}
+      className={`group relative px-2.5 py-1.5 cursor-pointer ${selected ? "" : "hover-on-light"}`}
+      style={selected ? { ...itemProps.style, ...menuRowRovingStyle(true, false) } : itemProps.style}
     >
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">

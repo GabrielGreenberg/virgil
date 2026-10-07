@@ -12,6 +12,7 @@
 
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { MenuItemProps } from "./menu/types";
+import { menuRowRovingStyle } from "./menu/row-tone";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   RECENT_PAPERS_START_SCREEN_LIMIT,
@@ -84,9 +85,7 @@ export function RecentPaperRow({
       onClick={itemProps ? itemProps.onClick : () => onOpen?.(doc.id)}
       className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover-on-light text-left"
       style={
-        active
-          ? { ...itemProps?.style, background: "var(--menu-roving-bg)" }
-          : itemProps?.style
+        active ? { ...itemProps?.style, ...menuRowRovingStyle(true, false) } : itemProps?.style
       }
     >
       <FolderIcon />

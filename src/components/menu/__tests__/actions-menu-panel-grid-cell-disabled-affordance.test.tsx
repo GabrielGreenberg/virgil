@@ -7,8 +7,9 @@
 // Pre-294 the color cell's disabled cursor was a `disabled ? "pointer" :
 // "pointer"` tautology, so it showed a `pointer` cursor while every FmtBtn cell
 // (bold/italic/…) correctly showed `not-allowed`. The fix routes both cell kinds
-// through the shared `gridCellShellStyle` helper, so this test pins that the
-// disabled cursor + opacity now MATCH across the two primitives. It goes RED on
+// through one helper (since task 986, `menuCellToneStyle` in row-tone.ts), so
+// this test pins that the
+// disabled cursor + ink now MATCH across the two primitives. It goes RED on
 // the old tautology (color cell cursor === "pointer") and GREEN once both share
 // the shell.
 
@@ -123,7 +124,7 @@ afterEach(() => {
 });
 
 describe("Task 294 — grid cells share one disabled affordance", () => {
-  it("both the color cell and a FmtBtn cell paint not-allowed + 0.4 opacity when disabled", () => {
+  it("both the color cell and a FmtBtn cell paint not-allowed + the menu's disabled ink when disabled", () => {
     renderPanel(/* editable */ false);
 
     const color = cell("Text color");
@@ -136,12 +137,16 @@ describe("Task 294 — grid cells share one disabled affordance", () => {
     expect(bold!.disabled).toBe(true);
 
     // The color cell no longer shows the tautological `pointer` — it matches
-    // FmtBtn's `not-allowed`, and both carry the greyed 0.4 opacity.
+    // FmtBtn's `not-allowed`, and both carry the menu's ONE disabled grey —
+    // `--ink-faint`, no dimming opacity (task 986: the cells used to dim to
+    // 0.4, a second grey beside the registry rows' `text-ink-faint`).
     expect(color!.style.cursor).toBe("not-allowed");
     expect(bold!.style.cursor).toBe("not-allowed");
     expect(color!.style.cursor).toBe(bold!.style.cursor);
-    expect(color!.style.opacity).toBe("0.4");
-    expect(bold!.style.opacity).toBe("0.4");
+    expect(color!.style.opacity).toBe("");
+    expect(bold!.style.opacity).toBe("");
+    expect(color!.style.color).toBe("var(--ink-faint)");
+    expect(bold!.style.color).toBe("var(--ink-faint)");
 
     // Task 968: and both SAY why — the reason follows the name in the hint and
     // is the cell's accessible description; the name itself is unchanged.
@@ -159,8 +164,9 @@ describe("Task 294 — grid cells share one disabled affordance", () => {
     const bold = cell("Bold");
     expect(color!.style.cursor).toBe("pointer");
     expect(bold!.style.cursor).toBe("pointer");
-    expect(color!.style.opacity).toBe("1");
-    expect(bold!.style.opacity).toBe("1");
+    expect(color!.style.opacity).toBe("");
+    expect(bold!.style.opacity).toBe("");
+    expect(bold!.style.color).not.toBe("var(--ink-faint)");
     // An enabled cell's hint is its name alone, with no description.
     expect(bold!.getAttribute("data-hint")).toBe("Bold");
     expect(bold!.hasAttribute("aria-description")).toBe(false);

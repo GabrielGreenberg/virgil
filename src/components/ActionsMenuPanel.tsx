@@ -68,6 +68,8 @@ import {
   type DecoratedMenuRow,
 } from "./menu/MenuItemsFromRegistry";
 import { useMenuItem } from "./menu/useMenuItem";
+import { MenuSeparator } from "./menu/MenuChrome";
+import { menuCellToneStyle, menuRowRovingStyle } from "./menu/row-tone";
 import { iconHint } from "@/components/Hint";
 import { keysFromKeybinding } from "@/components/Kbd";
 
@@ -824,15 +826,7 @@ export function ActionsMenuPanel({
         </MenuGrid>
         </GridCellReasonContext.Provider>
 
-        <div
-          aria-hidden
-          style={{
-            height: 1,
-            margin: "6px 8px",
-            background: "var(--edge-hover)",
-            opacity: 0.5,
-          }}
-        />
+        <MenuSeparator />
 
         {/* ── Card action list (11 rows) ─────────────────────────── */}
         <MenuList className="lightning-card-list">
@@ -881,34 +875,14 @@ export function ActionsMenuPanel({
 
 /**
  * Shared shell for the lightning grid's two `<button>`-based cells (`FmtBtn`
- * and `ColorGridCell`). It owns the axes on which those two primitives must
- * NOT drift: the fixed row height, the borderless surface, and — the axis that
- * DID drift (task 294) — the **disabled affordance** (`not-allowed` cursor +
- * 0.4 opacity). Both cells hand-rolled these inline and diverged: the color
- * cell's disabled cursor was a `pointer ? "pointer" : "pointer"` tautology
- * while `FmtBtn` correctly painted `not-allowed`. Routing both through one
- * helper makes that class of drift unrepresentable.
- *
- * `background` stays caller-owned — `FmtBtn` paints a third format-applied
- * state (`active`) the color cell lacks, so the cells compute their own
- * background and pass it in. `BlockTypeGridCell` is deliberately NOT a consumer:
- * it's a `<div>`-wrapped nested-dropdown trigger with no `disabled` prop (a
- * structurally different shape), so it stays bespoke.
+ * and `ColorGridCell`): the fixed row height and the borderless surface. The
+ * STATE look — roving fill, format-applied surface, disabled ink + cursor — is
+ * the menu's, not the grid's (task 986): `menuCellToneStyle` in
+ * `menu/row-tone.ts`, so a greyed cell is the same grey as a greyed card row
+ * in the list below it (the cell used to dim to `0.4` over `--ink-muted`).
  */
-function gridCellShellStyle({
-  disabled,
-  background,
-}: {
-  disabled?: boolean;
-  background: string;
-}): React.CSSProperties {
-  return {
-    height: FORMATTING_ROW_H,
-    background,
-    border: "none",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.4 : 1,
-  };
+function gridCellShellStyle(): React.CSSProperties {
+  return { height: FORMATTING_ROW_H, border: "none" };
 }
 
 /**
@@ -973,19 +947,10 @@ function FmtBtn({
       data-format-active={active ? "true" : undefined}
       className={gridCellClassName(disabled)}
       style={{
-        ...gridCellShellStyle({
-          disabled,
-          // The roving (keyboard-cursor) cell paints the blue-tinted selection
-          // highlight and WINS over the format-is-applied state, so the arrow
-          // cursor stays unambiguous even when it lands on an applied format;
-          // an applied-but-not-roving cell keeps the stronger muted surface.
-          background: roving && !disabled
-            ? "var(--menu-roving-bg)"
-            : active
-              ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
-              : "transparent",
-        }),
-        color: active ? "var(--ink-strong)" : "var(--ink-muted)",
+        ...gridCellShellStyle(),
+        // Roving WINS over format-applied (the arrow cursor stays unambiguous
+        // on an applied format); disabled greys the ink — one rule, the menu's.
+        ...menuCellToneStyle({ roving, disabled, applied: active }),
       }}
     >
       {children}
@@ -1076,12 +1041,8 @@ function ColorGridCell({
       }
       className={gridCellClassName(disabled, "flex-col")}
       style={{
-        ...gridCellShellStyle({
-          disabled,
-          background:
-            roving && !disabled ? "var(--menu-roving-bg)" : "transparent",
-        }),
-        color: "var(--ink-strong)",
+        ...gridCellShellStyle(),
+        ...menuCellToneStyle({ roving, disabled, ink: "var(--ink-strong)" }),
         padding: 0,
         lineHeight: 1,
       }}
@@ -1147,7 +1108,7 @@ function BlockTypeGridCell({
       style={{
         height: FORMATTING_ROW_H,
         borderRadius: "var(--radius-sm)",
-        background: roving ? "var(--menu-roving-bg)" : "transparent",
+        ...menuRowRovingStyle(roving, false),
       }}
     >
       <BlockTypeDropdown editor={editor} documentClass={documentClass} />

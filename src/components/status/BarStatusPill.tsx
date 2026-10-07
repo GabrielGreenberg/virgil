@@ -52,6 +52,7 @@ import {
 import { MenuProvider } from "@/components/menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "@/components/menu/AnchoredMenu";
 import { useMenuItem } from "@/components/menu/useMenuItem";
+import { menuRowRovingStyle, menuRowToneClass } from "@/components/menu/row-tone";
 import { iconHint } from "@/components/Hint";
 
 /** The pill's registers: the leaf's four, plus the pill's own `quiet`. */
@@ -161,24 +162,21 @@ export function BarStatusMenuRow({
   disabled?: boolean;
   run: () => void;
 }) {
-  const { active, getItemProps } = useMenuItem({ id, region: "list", run });
+  // `disabled` reaches the registry too, so a greyed row is arrow-skipped and
+  // Enter cannot run it; its grey, its danger ink and its roving fill are the
+  // menu's row tones (task 986) — this row used to dim `opacity-50` and spell
+  // its own `--danger` label ink.
+  const { active, getItemProps } = useMenuItem({ id, region: "list", disabled, run });
   return (
     <button
       {...getItemProps()}
       type="button"
       disabled={disabled}
-      className="w-full flex flex-col items-start gap-0.5 px-3 py-1.5 text-left hover-on-light disabled:opacity-50"
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+      className={`w-full flex flex-col items-start gap-0.5 px-3 py-1.5 text-left ${menuRowToneClass(danger ? "danger" : "default", !!disabled)}`}
+      style={menuRowRovingStyle(active, !!disabled)}
       data-bar-status-menu-row={id}
     >
-      <span
-        className="text-[12px]"
-        // interruption-tone-exempt: a destructive-CHOICE ink for this menu row —
-        // task 528's family ("a button's paint describes what pressing it
-        // DOES"), not an interruption register; the row paints a choice, never
-        // the state the pill above it presents.
-        style={{ color: danger ? "var(--danger)" : "var(--ink-strong)" }}
-      >
+      <span className="text-[12px]">
         {label}
       </span>
       {detail && (
