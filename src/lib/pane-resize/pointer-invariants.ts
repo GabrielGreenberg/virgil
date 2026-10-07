@@ -42,6 +42,49 @@ export function isMissedRelease(e: { buttons: number }): boolean {
 }
 
 /**
+ * The END edge for a LATCH — a "the primary button is held" flag that tracks
+ * no movement of its own, so `isMissedRelease` has no move handler to live in
+ * (task 993). The ⚡ bolt's editor-press latch is the shape: it took the start
+ * gate, cleared only on a window `mouseup`, and so a release the page never saw
+ * (Cmd+Tab with the button held, macOS Ctrl+click's context menu eating the
+ * mouseup — Ctrl+click is `button 0`, so it passes the start gate) wedged the
+ * latch until some later click anywhere.
+ *
+ * Arm it at the press; `onEnd` fires EXACTLY ONCE, on the first of:
+ *   - the real `mouseup`,
+ *   - a `mousemove` that `isMissedRelease` (the release happened elsewhere),
+ *   - a `contextmenu` (the menu that is about to eat the release),
+ *   - a window `blur` (focus left the window mid-press).
+ * All four are window-capture listeners, armed only while the press is held
+ * and removed on the end edge — zero cost between presses, none per keystroke.
+ * The returned disposer disarms without firing (effect cleanup).
+ */
+export function watchHeldPress(onEnd: () => void): () => void {
+  let armed = true;
+  const disarm = () => {
+    if (!armed) return;
+    armed = false;
+    window.removeEventListener("mouseup", end, true);
+    window.removeEventListener("mousemove", onMove, true);
+    window.removeEventListener("contextmenu", end, true);
+    window.removeEventListener("blur", end, true);
+  };
+  function end() {
+    if (!armed) return;
+    disarm();
+    onEnd();
+  }
+  function onMove(e: MouseEvent) {
+    if (isMissedRelease(e)) end();
+  }
+  window.addEventListener("mouseup", end, true);
+  window.addEventListener("mousemove", onMove, true);
+  window.addEventListener("contextmenu", end, true);
+  window.addEventListener("blur", end, true);
+  return disarm;
+}
+
+/**
  * A live gesture — or a live EDIT SESSION — OWNS the keys it answers.
  *
  * Whichever it is, it is the INNERMOST transient thing on screen — more

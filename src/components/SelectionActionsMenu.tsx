@@ -23,7 +23,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
+import { isPrimaryDragStart, watchHeldPress } from "@/lib/pane-resize/pointer-invariants";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { resolveAnchorableNode, resolveAnchorUuidAndKind } from "@/lib/anchor-uuid";
@@ -211,7 +211,7 @@ export function SelectionActionsMenu({
   // *logical* on/off-screen state — the sole legitimate reason to close the
   // menu — while `suppressed` hides the bolt during motion without touching it.
   // Flips on scroll-start / editor-mousedown → true and on scroll-idle /
-  // mouseup → false; edge-only, never on the editor transaction path, so it
+  // the press's end edge (`watchHeldPress`, task 993) → false; edge-only, never on the editor transaction path, so it
   // adds no per-keystroke work (keystroke sanctity).
   const [suppressed, setSuppressed] = useState(false);
   // The bolt is a menu TRIGGER that cannot be an `AnchoredMenu` button (a
@@ -310,6 +310,16 @@ export function SelectionActionsMenu({
       setSuppressed(false);
       update();
     };
+    // The press latch's END edge (task 993): not just the window `mouseup` —
+    // `watchHeldPress` also ends it on a missed-release move, a context menu
+    // and a window blur, so a release the page never sees can't keep the bolt
+    // hidden until the user's next click.
+    let disarmPress: (() => void) | null = null;
+    const onPressEnd = () => {
+      disarmPress = null;
+      mouseDownInEditor = false;
+      settle();
+    };
     const onMouseDown = (e: MouseEvent) => {
       // The engine's start gate (SSOT, never re-derived).
       if (!isPrimaryDragStart(e)) return;
@@ -317,13 +327,10 @@ export function SelectionActionsMenu({
       const t = e.target as Node | null;
       if (t && editor.view.dom.contains(t)) {
         mouseDownInEditor = true;
+        disarmPress?.();
+        disarmPress = watchHeldPress(onPressEnd);
         suppress();
       }
-    };
-    const onMouseUp = () => {
-      if (!mouseDownInEditor) return;
-      mouseDownInEditor = false;
-      settle();
     };
     const onScroll = () => {
       if (scrollIdleTimer === null) {
@@ -343,11 +350,10 @@ export function SelectionActionsMenu({
       editor.on("blur", update);
     }
     run();
-    // Mousedown/mouseup at window scope: the drag may originate inside
-    // the editor and complete outside, so we need both ends. Captured
-    // phase to beat React's bubbling cleanup.
+    // Mousedown at window scope: the drag may originate inside the editor
+    // and complete outside, so its end edge (`watchHeldPress`) is window-scope
+    // too. Captured phase to beat React's bubbling cleanup.
     window.addEventListener("mousedown", onMouseDown, true);
-    window.addEventListener("mouseup", onMouseUp, true);
     // Scroll: the editor's scroll parent only. Window-scope previously
     // fired this handler for every panel/list scroll in the app even
     // though the menu only tracks the editor's vertical scroll.
@@ -380,7 +386,7 @@ export function SelectionActionsMenu({
       }
       offGesture();
       window.removeEventListener("mousedown", onMouseDown, true);
-      window.removeEventListener("mouseup", onMouseUp, true);
+      disarmPress?.();
       scrollParent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
     };

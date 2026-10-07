@@ -96,8 +96,8 @@ const LEDGER: Record<string, Row> = {
   },
   "components/SelectionActionsMenu.tsx": {
     scope: "visible",
-    events: ["window.mousedown", "window.mouseup", "window.resize", "window.keydown"],
-    why: "resize gated on visibility; mousedown bails unless inside this editor (mouseup follows its flag); keydown bails unless this editor is focused",
+    events: ["window.mousedown", "window.resize", "window.keydown"],
+    why: "resize gated on visibility; mousedown bails unless inside this editor (its end edge is watchHeldPress, armed only by that press — task 993); keydown bails unless this editor is focused",
   },
   "components/SlashCommandPopup.tsx": {
     scope: "open-state",
@@ -259,6 +259,11 @@ const LEDGER: Record<string, Row> = {
     scope: "singleton",
     events: ["window.resize"],
     why: "one app-wide gesture publisher",
+  },
+  "lib/pane-resize/pointer-invariants.ts": {
+    scope: "gesture",
+    events: ["window.mouseup", "window.mousemove", "window.contextmenu", "window.blur"],
+    why: "watchHeldPress: a press latch's end edge, armed at the press in the pane it started in and removed on the first end event (task 993)",
   },
   "lib/pane-resize/use-pane-resize-handle.ts": {
     scope: "gesture",
