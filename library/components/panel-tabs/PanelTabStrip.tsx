@@ -31,6 +31,7 @@ import {
 } from "@/components/chrome/tab-strip-occupancy";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 // F#15 — the occupancy ladder this strip pioneered (inactive tabs absorb the
 // squeeze first and ellipsize their names to a floor; the active tab resists;
@@ -1077,8 +1078,7 @@ function TabMenuTrigger({
         onMouseDown={(e) => e.stopPropagation()}
         title="Library options"
         aria-label="Library options"
-        aria-haspopup="menu"
-        aria-expanded={open}
+        {...menuTriggerAria("menu", open)}
         style={{
           flexShrink: 0,
           background: "transparent",

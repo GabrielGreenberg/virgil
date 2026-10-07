@@ -85,6 +85,9 @@ interface Props {
    *  open. Absent only for a legacy viewless caller (no `ref`/`editor`). */
   onSelect: (action: DragHandleAction, ref?: DragHandleRef) => void;
   onClose: () => void;
+  /** The grab handle that opened the menu — exempted from click-outside so
+   *  re-pressing it toggles (task 992). */
+  triggerEl?: HTMLElement | null;
   /** The kind that opened the menu. Drives the registry's per-kind `applies()`
    *  grey-out. `"selection"` is the gesture-input case. A bare `kind` with no
    *  `target`/`editor` exposes the full action list for a selection (the legacy
@@ -125,7 +128,7 @@ interface Props {
   canEdit?: boolean;
 }
 
-export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, target, editor, canEdit = true }: Props) {
+export function DragHandleMenu({ anchorRect, onSelect, onClose, triggerEl = null, kind, target, editor, canEdit = true }: Props) {
   // TASK 737 — the menu FOLLOWS the live document while it is open: the target
   // span is mapped through every transaction, the anchor re-derives from the
   // target's live position (and on scroll/resize), the rows re-ask `applies()`
@@ -221,6 +224,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, target, ed
       placements={DRAG_HANDLE_PLACEMENTS}
       letterShortcuts
       getActiveDescendantHost={caretEditableHost}
+      excludeRefs={[triggerEl]}
       onClose={onClose}
       ariaLabel="Passage actions"
       containerStyle={{

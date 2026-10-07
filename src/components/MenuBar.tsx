@@ -42,6 +42,7 @@ import { classAllowsHeadingLevel, headingLevelOptions } from "@/lib/document-cla
 import { HEADING_TYPES } from "@/lib/heading-types";
 import { iconHint } from "@/components/Hint";
 import { useSpellDictionaries } from "@/lib/spell/spellcheck-context";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
 // / `handleExampleMenuPick`) were RETIRED here. The single canonical example
@@ -392,8 +393,7 @@ export function BlockTypeDropdown({
         ref={setTrigger}
         onClick={() => setOpen((o) => !o)}
         {...iconHint({ label: "Block type" })}
-        aria-haspopup="menu"
-        aria-expanded={open}
+        {...menuTriggerAria("menu", open)}
         data-button-exempt="glyph + caret menu trigger, not a labelled action"
         className="px-1.5 py-0.5 rounded text-sm text-[var(--muted)] hover-on-light hover:text-ink-body flex items-center gap-1 focus-ring"
       >
@@ -645,8 +645,7 @@ export function ViewMenu({
         onClick={() => setOpen(!open)}
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"} focus-ring`}
         {...iconHint({ label: "View options" })}
-        aria-haspopup="menu"
-        aria-expanded={open}
+        {...menuTriggerAria("menu", open)}
       >
         <svg
           width="3.69"

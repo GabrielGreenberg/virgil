@@ -51,6 +51,9 @@ interface Props {
   /** Live re-read of the lozenge chip (task 747) — the menu follows it on
    *  scroll. See `menu/live-anchor`. */
   trackAnchor?: LiveAnchor;
+  /** The lozenge's type chip that opened the menu — exempted from
+   *  click-outside so re-clicking it toggles (task 992). */
+  triggerEl?: HTMLElement | null;
   currentLevel: number;
   documentClass: string | null;
   onPick: (pick: HeadingTypePick) => void;
@@ -116,7 +119,7 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
   );
 }
 
-export function HeadingTypeMenu({ anchorRect, trackAnchor, currentLevel, documentClass, onPick, onClose }: Props) {
+export function HeadingTypeMenu({ anchorRect, trackAnchor, triggerEl = null, currentLevel, documentClass, onPick, onClose }: Props) {
   // The rows AND their per-class verdicts come from the ONE derivation the ¶
   // block-type dropdown also maps (task 752), so the two heading pickers can
   // no longer disagree about which levels this document can carry.
@@ -134,6 +137,7 @@ export function HeadingTypeMenu({ anchorRect, trackAnchor, currentLevel, documen
       placements={HEADING_TYPE_PLACEMENTS}
       gap={4}
       getActiveDescendantHost={caretEditableHost}
+      excludeRefs={[triggerEl]}
       onClose={onClose}
       ariaLabel="Heading type"
       containerStyle={{

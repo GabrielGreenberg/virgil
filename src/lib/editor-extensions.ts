@@ -56,6 +56,7 @@ import {
 import { focusViewPlugin } from "@/lib/focus-view";
 import { headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "@/components/HeadingTypeMenu";
+import { paintMenuTriggerAria } from "@/components/menu/menu-trigger";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
@@ -1245,7 +1246,9 @@ export function createHeadingWithLabel(
           // 1. Type chip — the heading-type menu trigger.
           const typeChip = chromeButton("heading-annotation-type-chip");
           typeChip.dataset.action = "type-menu";
-          typeChip.setAttribute("aria-haspopup", "menu");
+          // The menu-trigger contract (task 992): `aria-haspopup` + a resting
+          // `aria-expanded="false"`; EditorPane re-paints it while open.
+          paintMenuTriggerAria(typeChip, "menu", false);
           typeChip.title = "Change heading type";
           const typeText = document.createElement("span");
           typeText.textContent = typeName;

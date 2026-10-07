@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 export interface AiRequestItem<K extends string = string> {
   kind: K;
@@ -144,8 +145,7 @@ export default function PaperAiRequestsMenu<K extends string>({
         type="button"
         onClick={toggle}
         title={disabled ? "Select a paper to file AI requests" : "AI requests"}
-        aria-haspopup="menu"
-        aria-expanded={open}
+        {...menuTriggerAria("menu", open)}
         disabled={disabled}
         style={triggerStyle(disabled, queuedCount > 0)}
       >

@@ -31,6 +31,7 @@ import { useMenuItem } from "./menu/useMenuItem";
 import { menuRowRovingStyle, menuRowToneClass } from "./menu/row-tone";
 import { iconHint } from "@/components/Hint";
 import { Button } from "./Button";
+import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 // Anchor the kebab dropdown below its trigger, flipping above when the topbar
 // sits near the viewport bottom. Matches ExternalChangeBadge (the sibling
@@ -279,8 +280,7 @@ function CollabStatusPill({
         type="button"
         onClick={toggleMenu}
         {...iconHint({ label: "Collaborator options" })}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
+        {...menuTriggerAria("menu", menuOpen)}
         className="iconbtn-sm iconbtn-on-dark"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

@@ -173,6 +173,10 @@ export interface ActionsMenuPanelProps {
     width: number;
     height: number;
   };
+  /** The element that opened this menu (the ⚡ bolt), exempted from
+   *  click-outside so a press on it reaches its own toggle instead of closing
+   *  the menu for the click to re-open (task 992). */
+  triggerEl?: HTMLElement | null;
   onClose: () => void;
   /** The document's `\documentclass` (null = unknown), for the ¶ block-type
    *  dropdown's per-class heading rows (task 752). */
@@ -191,6 +195,7 @@ export function ActionsMenuPanel({
   range,
   mode,
   triggerRect,
+  triggerEl = null,
   onClose,
   documentClass = null,
 }: ActionsMenuPanelProps) {
@@ -565,8 +570,9 @@ export function ActionsMenuPanel({
         dismissOn={{ escape: { stopPropagation: true } }}
         // The spawned color popover portals to document.body, so a click into it
         // would otherwise land "outside" and dismiss the panel. Register its
-        // live element so the click-outside treats it as "inside" (R8).
-        excludeRefs={[colorPopoverEl]}
+        // live element so the click-outside treats it as "inside" (R8). The
+        // trigger rides the same list, so re-pressing it toggles (task 992).
+        excludeRefs={[triggerEl, colorPopoverEl]}
         onClose={onClose}
         ariaLabel="Selection actions"
         containerClassName="selection-actions-menu"
