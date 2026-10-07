@@ -16,6 +16,11 @@ import {
 // The typed-LaTeX census (task 639) — this rule's trigger pattern is READ from
 // the table the action registry reconciles its `surfaces.typed` flags against.
 import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import {
+  armTypedLatexRevert,
+  isTypedLatexRevert,
+  typedLatexRevertSpec,
+} from "./typed-latex-revert";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
 // content — NOT an atom with its text stashed in an attr + a parallel
@@ -198,10 +203,15 @@ export const LatexComment = Node.create<LatexCommentOptions>({
     // JSONContent so round-tripping works.
     if (this.options.cardContext) return [];
     const nodeType = this.type;
+    // Task 991: Backspace right after `%` became a comment gives the `%` back
+    // (outranking the empty-comment dissolve below, which would drop it).
+    const commentRevert = typedLatexRevertSpec("latex-comment", "latexCommentInput");
     return [
       new Plugin({
-        key: new PluginKey("latexCommentInput"),
+        key: commentRevert.key,
+        state: commentRevert.state,
         props: {
+          handleDOMEvents: commentRevert.handleDOMEvents,
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
             // typed-LaTeX surfaces — cite/footnote/inline-math/display-math).
@@ -255,7 +265,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
               combined.length - 1,
             );
             if (!tr) return false; // refused (an inline atom would be deleted)
-            view.dispatch(tr);
+            view.dispatch(armTypedLatexRevert(tr, commentRevert.key, from, _to, text));
             return true;
           },
         },
@@ -269,6 +279,9 @@ export const LatexComment = Node.create<LatexCommentOptions>({
         key: new PluginKey("latexCommentNormalize"),
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+          // Task 991: a Backspace-revert of the typed `%` deliberately leaves
+          // a literal `%` paragraph — re-commenting it would undo the undo.
+          if (transactions.some(isTypedLatexRevert)) return null;
           const pending = readPendingDiff(newState);
           if (!pending) return null;
 

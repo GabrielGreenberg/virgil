@@ -39,6 +39,7 @@ import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-fl
 // — and the table `assertActionCoverage` reconciles against is the one this
 // rule actually matches with, not a description of it.
 import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 // CHIP 4b: the PM→React bridge the typed-LaTeX `\footnote{}` input rule uses to
@@ -159,10 +160,16 @@ export const Footnote = Node.create<FootnoteOptions>({
     const docIdRef = this.options.docIdRef;
     // The orphan detector's deferred-event scope (task 844) — see its plugin.
     let orphanLifetime: ViewLifetime | null = null;
+    // Task 991: Backspace right after a typed `\footnote{…}` gives the literal
+    // back (in practice the new card takes focus, which disarms it — see
+    // `typed-latex-revert.ts`).
+    const footnoteRevert = typedLatexRevertSpec("footnote", "footnoteInput");
     return [
       new Plugin({
-        key: new PluginKey("footnoteInput"),
+        key: footnoteRevert.key,
+        state: footnoteRevert.state,
         props: {
+          handleDOMEvents: footnoteRevert.handleDOMEvents,
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (same rationale as
             // citation.ts). PM suppresses input on a non-editable view; guard
@@ -220,7 +227,7 @@ export const Footnote = Node.create<FootnoteOptions>({
               return true;
             });
             writeFootnoteNumbers(trFixed, typedPositions);
-            view.dispatch(trFixed);
+            view.dispatch(armTypedLatexRevert(trFixed, footnoteRevert.key, from, _to, text));
             // Register the panel card via the registry's `footnote.run`
             // (surface "typed"). The bridge ADOPTS this just-inserted atom (via
             // `createFootnote({ existingFootnoteId })` — pinned, NO re-insert)

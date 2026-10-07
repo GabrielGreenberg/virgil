@@ -10,6 +10,7 @@ import { CITE_RE_BARE } from "@/lib/cite-commands";
 // matches with, not a description of it. (The bare `\cite ` soft-route stays on
 // its own `CITE_RE_BARE`; the row records the canonical full form.)
 import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
 import { generateShortId } from "@/lib/uuid";
 // The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
 // speller (task 202) — a hand-built `citation:${id}` here was a second copy.
@@ -121,6 +122,8 @@ export const Citation = Node.create<CitationOptions>({
   addProseMirrorPlugins() {
     const nodeType = this.type;
     const idGenerator = this.options.idGenerator;
+    // Task 991: Backspace right after a typed `\cite` gives the literal back.
+    const citationRevert = typedLatexRevertSpec("citation", "citationInput");
     return [
       new Plugin({
         key: new PluginKey("citationClipboardText"),
@@ -155,8 +158,10 @@ export const Citation = Node.create<CitationOptions>({
         },
       }),
       new Plugin({
-        key: new PluginKey("citationInput"),
+        key: citationRevert.key,
+        state: citationRevert.state,
         props: {
+          handleDOMEvents: citationRevert.handleDOMEvents,
           handleTextInput(view, from, to, text) {
             // CHIP 7b: uniform collab read-only gate. PM already suppresses
             // `handleTextInput` on a non-editable view, but guard explicitly so
@@ -205,12 +210,16 @@ export const Citation = Node.create<CitationOptions>({
                 const citationId = idGenerator(existing);
                 // Insert the atom SYNCHRONOUSLY (lands even if React is
                 // unmounted).
+                // `from` is the PRE-insert caret (the typed "}" is not in the
+                // doc yet), so the atom replaces `start..from` and consumes the
+                // "}" — task 991: the old `from + text.length` end ate the
+                // character AFTER the caret.
                 const tr = state.tr.replaceWith(
                   start,
-                  from + text.length,
+                  from,
                   nodeType.create({ citationId, command, displayText: "" }),
                 );
-                view.dispatch(tr);
+                view.dispatch(armTypedLatexRevert(tr, citationRevert.key, from, to, text));
                 // BUG FIX (CHIP 4a-ii): typed `\cite{key}` previously made NO
                 // card. Now register the panel card via the registry's
                 // `citation.run` (surface "typed"), the SAME destination as
@@ -259,7 +268,7 @@ export const Citation = Node.create<CitationOptions>({
                   from,
                   nodeType.create({ citationId, command, displayText: "" }),
                 );
-                view.dispatch(tr);
+                view.dispatch(armTypedLatexRevert(tr, citationRevert.key, from, to, text));
                 // Register the panel card via the registry's `citation.run`
                 // (surface "typed"). Replaces the retired
                 // `virgil-citation-create` CustomEvent + its two listeners.

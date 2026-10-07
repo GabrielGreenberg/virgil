@@ -115,6 +115,32 @@ describe("typed-LaTeX census — the table IS the live surface", () => {
     }
   });
 
+  it("every census entry carries the Backspace-revert contract (task 991)", () => {
+    // One surface, one revert behaviour: the StarterKit half gets
+    // `undoInputRule` from TipTap core; each Virgil rule must spread
+    // `typedLatexRevertSpec(<its own id>, …)` into its plugin and arm its
+    // conversion through `armTypedLatexRevert(`. A sixth rule cannot ship
+    // without a revert, and no rule can borrow another's.
+    for (const id of TYPED_LATEX_ACTION_IDS) {
+      const src = read(RULE_SOURCE[id]);
+      expect(
+        src.includes(`typedLatexRevertSpec("${id}"`),
+        `${RULE_SOURCE[id]} must install typedLatexRevertSpec("${id}", …)`,
+      ).toBe(true);
+      expect(
+        src.includes("armTypedLatexRevert("),
+        `${RULE_SOURCE[id]} must arm its conversion via armTypedLatexRevert(`,
+      ).toBe(true);
+    }
+    // One arming call per conversion BRANCH — a branch added without one
+    // changes the count and has to be looked at.
+    const armed = (f: string) => (read(f).match(/armTypedLatexRevert\(/g) ?? []).length;
+    expect(armed("citation.ts")).toBe(2); // full `\cite{…}` + bare `\cite `
+    expect(armed("footnote.ts")).toBe(1);
+    expect(armed("math.ts")).toBe(3); // inline + display (empty `$$` + closing)
+    expect(armed("latex-comment.ts")).toBe(1);
+  });
+
   it("SELF-CHECK: the file needle really does fire on a gated rule", () => {
     // A census that silently matched nothing would pass every leg above.
     const src = read("math.ts");
