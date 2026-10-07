@@ -280,6 +280,7 @@ export interface CitationCardProps {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
+  getReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   /** THE bib-entry write door (task 691) — one write per Save, for the inline
    *  `BibEntryCard` expansion below. Takes the ENTRY, not its citekey (task
    *  690) — see `bib-address.ts`. Before the door this surface handed the card
@@ -314,6 +315,7 @@ export function CitationCard({
   onRequestReview,
   onCancelReview,
   getReviewStatus,
+  getReviewNotes,
   onSaveBibEntry,
   isAnchored = true,
   wrapperClassName,
@@ -1355,6 +1357,7 @@ export function CitationCard({
         onRequestReview={onRequestReview!}
         onCancelReview={onCancelReview!}
         getReviewStatus={getReviewStatus!}
+        getReviewNotes={getReviewNotes}
         onSaveBibEntry={onSaveBibEntry!}
         bibPackage={bibPackage}
         bibEntries={bibEntries}

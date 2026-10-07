@@ -280,6 +280,20 @@ export function useBibReview(
     [state.requests, matchesKey]
   );
 
+  /**
+   * The note a PENDING request was sent with (task 981) — read back from the
+   * row, never from card-local state, so a reload or the popped float shows
+   * what the skill will actually receive (`requestNotes`, consumed by
+   * `/editor/answer-bib-review`).
+   */
+  const getRequestNotes = useCallback(
+    (bibKey: string, type: "fields" | "notes"): string | undefined =>
+      state.requests.find(
+        (r) => matchesKey(r, bibKey) && r.type === type && r.status === "pending",
+      )?.requestNotes,
+    [state.requests, matchesKey],
+  );
+
   const clearRequest = useCallback((bibKey: string, type: "fields" | "notes") => {
     setState((prev) => {
       const next = {
@@ -339,6 +353,7 @@ export function useBibReview(
       requestReview,
       cancelRequest,
       getRequestStatus,
+      getRequestNotes,
       clearRequest,
       refresh,
       renameBibKey,
@@ -348,6 +363,7 @@ export function useBibReview(
       requestReview,
       cancelRequest,
       getRequestStatus,
+      getRequestNotes,
       clearRequest,
       refresh,
       renameBibKey,

@@ -5611,6 +5611,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       requestBibReview: bibReviewHook.requestReview,
       cancelBibReview: bibReviewHook.cancelRequest,
       getBibReviewStatus: bibReviewHook.getRequestStatus,
+      getBibReviewNotes: bibReviewHook.getRequestNotes,
       saveBibEntry: citationsHook.saveBibEntry,
       addBibEntry: citationsHook.addBibEntry,
 
@@ -8420,6 +8421,7 @@ function PaneRail({
           requestBibReview={bibReviewHook.requestReview}
           cancelBibReview={bibReviewHook.cancelRequest}
           getBibReviewStatus={bibReviewHook.getRequestStatus}
+          getBibReviewNotes={bibReviewHook.getRequestNotes}
           notesCards={notesHook.cards}
           updateNote={notesHook.updateNote}
           updateNoteTitle={notesHook.updateNoteTitle}
@@ -8772,6 +8774,7 @@ function PaneRailBody({
         requestBibReview={bibReviewHook.requestReview}
         cancelBibReview={bibReviewHook.cancelRequest}
         getBibReviewStatus={bibReviewHook.getRequestStatus}
+        getBibReviewNotes={bibReviewHook.getRequestNotes}
         citationPositionMap={citationPositionMap}
         pendingCitationCreate={pendingCitationCreate}
         setPendingCitationCreate={setPendingCitationCreate}
@@ -8943,6 +8946,7 @@ function PaneRailBody({
         requestBibReview={bibReviewHook.requestReview}
         cancelBibReview={bibReviewHook.cancelRequest}
         getBibReviewStatus={bibReviewHook.getRequestStatus}
+        getBibReviewNotes={bibReviewHook.getRequestNotes}
         allEditorCitations={allEditorCitations}
         citationPositionMap={citationPositionMap}
         setBibActiveCitationId={setBibActiveCitationId}

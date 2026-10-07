@@ -199,6 +199,8 @@ export interface PoppedCardDeps {
   requestBibReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   getBibReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
+  /** The note the PENDING request was sent with (task 981). */
+  getBibReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   /** THE bib-entry write door — one write per Save gesture (task 691). */
   saveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
   addBibEntry: (entry: import("@/lib/types").BibEntry) => void;

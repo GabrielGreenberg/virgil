@@ -30,6 +30,7 @@ export interface BibliographyHostProps {
   requestBibReview: BibReviewHook["requestReview"];
   cancelBibReview: BibReviewHook["cancelRequest"];
   getBibReviewStatus: BibReviewHook["getRequestStatus"];
+  getBibReviewNotes?: BibReviewHook["getRequestNotes"];
   allEditorCitations: Array<{ citationId: string; command: string; keys: string[]; pos: number }>;
   citationPositionMap: Map<string, number>;
   setBibActiveCitationId: Dispatch<SetStateAction<string | null>>;
@@ -70,6 +71,7 @@ export function BibliographyHost(p: BibliographyHostProps) {
       onRequestReview={p.requestBibReview}
       onCancelReview={p.cancelBibReview}
       getReviewStatus={p.getBibReviewStatus}
+      getReviewNotes={p.getBibReviewNotes}
       allEditorCitations={p.allEditorCitations}
       onScrollToCitation={(id, sourceEl) => editorRef.current?.scrollToCitation(id, sourceEl)}
       onActiveCitationChange={p.setBibActiveCitationId}

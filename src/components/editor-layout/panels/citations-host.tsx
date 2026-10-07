@@ -41,6 +41,7 @@ export interface CitationsHostProps {
   requestBibReview: BibReviewHook["requestReview"];
   cancelBibReview: BibReviewHook["cancelRequest"];
   getBibReviewStatus: BibReviewHook["getRequestStatus"];
+  getBibReviewNotes?: BibReviewHook["getRequestNotes"];
   citationPositionMap: Map<string, number>;
   pendingCitationCreate: string | null;
   setPendingCitationCreate: Dispatch<SetStateAction<string | null>>;
@@ -119,6 +120,7 @@ export function CitationsHost(p: CitationsHostProps) {
       onRequestReview={p.requestBibReview}
       onCancelReview={p.cancelBibReview}
       getReviewStatus={p.getBibReviewStatus}
+      getReviewNotes={p.getBibReviewNotes}
       onSaveBibEntry={p.saveBibEntry}
       onAddBibEntry={p.addBibEntry}
       recentlyAddedId={recentlyAddedId}

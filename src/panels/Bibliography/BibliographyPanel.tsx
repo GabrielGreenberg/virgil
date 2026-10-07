@@ -106,6 +106,7 @@ interface BibliographyPanelProps {
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
+  getReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   allEditorCitations?: Array<{ citationId: string; command: string; keys: string[] }>;
   onScrollToCitation?: (citationId: string, sourceEl?: HTMLElement | null) => void;
   onActiveCitationChange?: (citationId: string | null) => void;
@@ -151,6 +152,7 @@ function BibliographyPanel({
   onRequestReview,
   onCancelReview,
   getReviewStatus,
+  getReviewNotes,
   allEditorCitations = [],
   onScrollToCitation,
   onActiveCitationChange,
@@ -1025,6 +1027,7 @@ function BibliographyPanel({
             onRequestReview={onRequestReview}
             onCancelReview={onCancelReview}
             getReviewStatus={getReviewStatus}
+            getReviewNotes={getReviewNotes}
             onSaveBibEntry={onSaveBibEntry}
             bibPackage={bibPackage}
             bibEntries={bibEntries}
