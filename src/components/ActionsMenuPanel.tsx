@@ -1110,6 +1110,7 @@ function BlockTypeGridCell({
       id={itemProps.id}
       data-active={itemProps["data-active"]}
       onMouseEnter={itemProps.onMouseEnter}
+      onMouseMove={itemProps.onMouseMove}
       className="flex items-center justify-center"
       style={{
         height: FORMATTING_ROW_H,

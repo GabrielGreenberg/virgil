@@ -124,8 +124,14 @@ export interface UseMenuItemResult {
   /** Whether this node is currently disabled (mirror of the registered flag). */
   disabled: boolean;
   /** Spread onto the item element. Carries role / id / aria-disabled /
-   *  tabIndex:-1 / data-active / onClick / onMouseEnter / ref. */
+   *  tabIndex:-1 / data-active / onClick / onMouseEnter / onMouseMove / ref. */
   getItemProps: () => MenuItemProps;
+}
+
+/** The slice of a mouse event the pointer door reads. */
+export interface MenuPointerEvent {
+  clientX: number;
+  clientY: number;
 }
 
 /** The prop bag `getItemProps()` returns (design §2.2). */
@@ -140,7 +146,10 @@ export interface MenuItemProps {
   tabIndex: -1;
   "data-active": "" | undefined;
   onClick: (e: { preventDefault?: () => void }) => void;
-  onMouseEnter: () => void;
+  /** Hover halves of the registry's pointer door (task 996) — a consumer that
+   *  forwards props by hand must forward BOTH. */
+  onMouseEnter: (e: MenuPointerEvent) => void;
+  onMouseMove: (e: MenuPointerEvent) => void;
   ref: (el: HTMLElement | null) => void;
   style?: CSSProperties;
 }

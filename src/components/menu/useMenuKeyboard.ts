@@ -357,7 +357,9 @@ export function useMenuKeyboard(
       // `scrollIntoView` effect. NO `.focus()` (roving aria-activedescendant
       // only), so the editor caret / combobox input keeps focus. `nearest`
       // matches the old hand-rolled behavior and is a no-op when in view.
-      if (activeId) {
+      // A POINTER-set row is already under the cursor; scrolling for it would
+      // slide the list under a still cursor and re-fire hover (task 996).
+      if (activeId && !registry.activeSetByPointer()) {
         const el = registry.refFor(activeId);
         el?.scrollIntoView?.({ block: "nearest" });
       }

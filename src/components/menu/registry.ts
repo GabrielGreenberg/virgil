@@ -88,6 +88,22 @@ export class MenuRegistry implements MenuRegistryHandle {
   private active: string | null = null;
   private mem: NavMemory = freshNavMemory();
 
+  // ── pointer intent (task 996) ──
+  // A row's `mouseenter` is not evidence the user MOVED the mouse: when an
+  // arrow key scrolls a height-clamped list, the browser re-hit-tests the
+  // STATIONARY cursor and fires `mouseenter` on whichever row slid under it.
+  // Treating that as hover handed the highlight straight back to the pointer —
+  // arrows looked stuck and Enter ran the hovered row. So the registry tracks
+  // the last pointer position it saw (rows' enter/move + the container's
+  // move, see `pointerAt`) and, after keyboard navigation, accepts a hover only
+  // once that position has actually CHANGED.
+  private keyboardNav = false;
+  private lastPointer: { x: number; y: number } | null = null;
+  // Who set the current `active`: a pointer hover needs no scroll-into-view
+  // (the row is under the cursor), and scrolling for it is what lets a
+  // half-clipped hovered row drag the list under the cursor.
+  private activeFromPointer = false;
+
   private listeners = new Set<Listener>();
 
   constructor(menuId: string, layout: MenuLayout) {
@@ -244,6 +260,35 @@ export class MenuRegistry implements MenuRegistryHandle {
   }
 
   setActive(id: string | null): void {
+    this.setActiveFrom(id, false);
+  }
+
+  /**
+   * The ONE pointer door (task 996). `id` is the row under the pointer (a row's
+   * `mouseenter` / `mousemove`), or null for a move over the menu's non-row
+   * area (the container's own `mousemove`), which only records the position.
+   * A stationary pointer — same client coordinates as last seen, or none seen
+   * yet — cannot take the highlight from keyboard navigation; a real move ends
+   * keyboard mode. Cost: a coordinate compare per pointer event, none per key.
+   */
+  pointerAt(id: string | null, x: number, y: number): void {
+    const prev = this.lastPointer;
+    const moved = prev !== null && (prev.x !== x || prev.y !== y);
+    if (!prev || moved) this.lastPointer = { x, y };
+    if (this.keyboardNav) {
+      if (!moved) return;
+      this.keyboardNav = false;
+    }
+    if (id !== null) this.setActiveFrom(id, true);
+  }
+
+  /** Whether the current active node was set by the pointer (no scroll-into-
+   *  view owed) rather than by keyboard / programmatic navigation. */
+  activeSetByPointer(): boolean {
+    return this.active !== null && this.activeFromPointer;
+  }
+
+  private setActiveFrom(id: string | null, fromPointer: boolean): void {
     if (this.active === id) return;
     // Ignore a disabled / unknown / widget node (mouse over a greyed row keeps
     // the prior active item — matches "disabled is inert").
@@ -252,10 +297,14 @@ export class MenuRegistry implements MenuRegistryHandle {
       if (!rec || rec.disabled || rec.region === "widget") return;
     }
     this.active = id;
+    this.activeFromPointer = fromPointer;
     this.notify();
   }
 
   move(dir: NavDir): void {
+    // Keyboard mode: until the pointer really moves, a hover cannot take the
+    // highlight back (see `pointerAt`).
+    this.keyboardNav = true;
     const next = computeNextActive(
       this.layout,
       this.items(),
@@ -266,6 +315,7 @@ export class MenuRegistry implements MenuRegistryHandle {
     );
     if (next !== this.active) {
       this.active = next;
+      this.activeFromPointer = false;
       this.notify();
     }
   }

@@ -178,6 +178,7 @@ function UnanchoredRow({
       tabIndex={itemProps.tabIndex}
       data-active={itemProps["data-active"]}
       onMouseEnter={itemProps.onMouseEnter}
+      onMouseMove={itemProps.onMouseMove}
       className="flex items-center gap-2 rounded px-1"
       style={menuRowRovingStyle(active, false)}
     >
