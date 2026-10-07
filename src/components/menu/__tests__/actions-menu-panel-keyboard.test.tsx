@@ -175,14 +175,14 @@ describe("ActionsMenuPanel — composite GRID nav", () => {
   it("ArrowDown with no active lands on the first grid cell (Bold)", () => {
     renderPanel();
     key("ArrowDown");
-    expect(activeHint()).toBe("Bold (⌘B)");
+    expect(activeHint()).toBe("Bold");
   });
 
   it("ArrowRight steps within the first grid row (Bold → Italic → Strike → Code), clamping at the row end", () => {
     renderPanel();
     key("ArrowDown"); // Bold (0,0)
     key("ArrowRight");
-    expect(activeHint()).toBe("Italic (⌘I)");
+    expect(activeHint()).toBe("Italic");
     key("ArrowRight");
     expect(activeHint()).toBe("Strikethrough");
     key("ArrowRight");
@@ -195,7 +195,7 @@ describe("ActionsMenuPanel — composite GRID nav", () => {
     renderPanel();
     key("ArrowDown"); // Bold (0,0)
     key("ArrowLeft");
-    expect(activeHint()).toBe("Bold (⌘B)");
+    expect(activeHint()).toBe("Bold");
   });
 
   it("ArrowDown moves between grid rows by column (Code → Blockquote → Text color → Cross-ref)", () => {
@@ -209,7 +209,7 @@ describe("ActionsMenuPanel — composite GRID nav", () => {
     key("ArrowDown");
     expect(activeHint()).toBe("Text color"); // (2,3)
     key("ArrowDown");
-    expect(activeHint()).toBe("Insert cross-reference (\\ref)"); // (3,3)
+    expect(activeHint()).toBe("Cross-ref"); // (3,3)
   });
 });
 
@@ -227,9 +227,9 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
     key("ArrowDown"); // Block type (1,0)
     key("ArrowDown"); // Example (2,0)
     key("ArrowDown"); // \tex (3,0)
-    expect(activeHint()).toBe("Insert raw LaTeX block");
+    expect(activeHint()).toBe("Raw LaTeX");
     key("ArrowDown"); // forest (4,0) — the partial last row
-    expect(activeHint()).toBe("Insert syntax tree (forest)");
+    expect(activeHint()).toBe("Syntax tree");
     key("ArrowDown"); // off the last row → first card
     expect(activeCardLabel()).toBe(cardActionRows("lightning")[0].label); // Highlight
   });
@@ -250,13 +250,13 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
     key("ArrowDown"); // Ordered list (1,2)
     key("ArrowDown"); // Display math (2,2)
     key("ArrowDown"); // graphics (3,2)
-    expect(activeHint()).toBe("Insert image");
+    expect(activeHint()).toBe("Image");
     key("ArrowDown"); // small caps (4,1) — clamped to the last row's extent
-    expect(activeHint()).toBe("Small caps (⇧⌘K)");
+    expect(activeHint()).toBe("Small caps");
     key("ArrowDown"); // → first card
     expect(activeCardLabel()).toBe(cardActionRows("lightning")[0].label);
     key("ArrowUp"); // back into the grid at {maxRow, clamped}
-    expect(activeHint()).toBe("Small caps (⇧⌘K)");
+    expect(activeHint()).toBe("Small caps");
   });
 
   it("ArrowDown/Up navigate WITHIN the card list once inside it", () => {

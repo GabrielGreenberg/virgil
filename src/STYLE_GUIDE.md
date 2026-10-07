@@ -2250,7 +2250,11 @@ has no state channel of its own, so it *is* state-dependent — pass it through
 `Ctrl` elsewhere; `Enter`→⏎, `Esc`, `/`, letters…). This is the **only** way to
 render a shortcut — no hardcoded `⌘…` strings. Used inside hint bubbles
 (`data-hint-keys`), menus, and popover hints. `useIsMac()` / `formatShortcut()`
-back it (`src/components/Kbd.tsx`).
+back it (`src/components/Kbd.tsx`). A chord an ACTION has is stated once, on
+its registry row (`keybinding`, ProseMirror form `Mod-Shift-s`), and a surface
+advertises it via `keysFromKeybinding(row.keybinding)` — never restated; the
+chord never goes into a NAME/`aria-label`. `shortcut-glyph-census.test.ts`
+forbids modifier glyphs outside `Kbd.tsx`.
 
 ### Positioning
 

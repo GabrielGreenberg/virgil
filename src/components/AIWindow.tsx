@@ -1079,8 +1079,7 @@ export default function AIWindow({
                               (composerNeedsBibKey && !composerBibKey.trim()) ||
                               (!composerNeedsBibKey && !composerText.trim())
                             }
-                            title="Submit (⌘↵)"
-                            data-hint="Submit"
+                            {...iconHint({ label: "Submit", keys: "Mod+Enter" })}
                           >
                             Submit
                           </Button>

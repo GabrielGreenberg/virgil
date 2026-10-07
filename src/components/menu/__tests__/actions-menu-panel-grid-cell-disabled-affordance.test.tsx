@@ -40,6 +40,8 @@ vi.mock("@/lib/storage", async () =>
 );
 
 import { ActionsMenuPanel } from "../../ActionsMenuPanel";
+import { formatShortcut, keysFromKeybinding } from "../../Kbd";
+import { VIRGIL_ACTION_REGISTRY } from "@/lib/actions/action-registry";
 import { DragHandleMenuProvider } from "../../editor-layout/card-actions/drag-handle-menu-context";
 
 const RECT = { left: 100, top: 100, right: 120, bottom: 140, width: 20, height: 40 };
@@ -125,7 +127,7 @@ describe("Task 294 — grid cells share one disabled affordance", () => {
     renderPanel(/* editable */ false);
 
     const color = cell("Text color");
-    const bold = cell("Bold (⌘B)");
+    const bold = cell("Bold");
     expect(color).toBeTruthy();
     expect(bold).toBeTruthy();
 
@@ -143,7 +145,7 @@ describe("Task 294 — grid cells share one disabled affordance", () => {
 
     // Task 968: and both SAY why — the reason follows the name in the hint and
     // is the cell's accessible description; the name itself is unchanged.
-    for (const [el, name] of [[color!, "Text color"], [bold!, "Bold (⌘B)"]] as const) {
+    for (const [el, name] of [[color!, "Text color"], [bold!, "Bold"]] as const) {
       expect(el.getAttribute("aria-label")).toBe(name);
       expect(el.getAttribute("aria-description")).toBe("Your co-author has the pen");
       expect(el.getAttribute("data-hint")).toBe(`${name} — Your co-author has the pen`);
@@ -154,13 +156,43 @@ describe("Task 294 — grid cells share one disabled affordance", () => {
     renderPanel(/* editable */ true);
 
     const color = cell("Text color");
-    const bold = cell("Bold (⌘B)");
+    const bold = cell("Bold");
     expect(color!.style.cursor).toBe("pointer");
     expect(bold!.style.cursor).toBe("pointer");
     expect(color!.style.opacity).toBe("1");
     expect(bold!.style.opacity).toBe("1");
     // An enabled cell's hint is its name alone, with no description.
-    expect(bold!.getAttribute("data-hint")).toBe("Bold (⌘B)");
+    expect(bold!.getAttribute("data-hint")).toBe("Bold");
     expect(bold!.hasAttribute("aria-description")).toBe(false);
+  });
+});
+
+describe("Task 985 — a grid cell's name and chord come from its registry row", () => {
+  it("every chorded cell advertises the row's keybinding as data-hint-keys; no name carries a glyph", () => {
+    renderPanel(/* editable */ true);
+    const chorded = Object.values(VIRGIL_ACTION_REGISTRY).filter(
+      (r) => r?.surfaces.lightning && r.keybinding,
+    );
+    // all eight toggle rows: five marks + three wrappers
+    expect(chorded.map((r) => r!.id).sort()).toEqual(
+      ["blockquote", "bold", "bullet-list", "code", "italic", "ordered-list", "small-caps", "strike"],
+    );
+    for (const row of chorded) {
+      const el = cell(row!.label);
+      expect(el, row!.id).toBeTruthy();
+      expect(el!.getAttribute("data-hint"), row!.id).toBe(row!.label);
+      expect(el!.getAttribute("data-hint-keys"), row!.id).toBe(keysFromKeybinding(row!.keybinding!));
+    }
+    for (const el of menuEl()!.querySelectorAll("button[aria-label]")) {
+      expect(el.getAttribute("aria-label")).not.toMatch(/[⌘⇧⌥]/);
+    }
+  });
+
+  it("keysFromKeybinding translates the PM form to Kbd's portable form", () => {
+    expect(keysFromKeybinding("Mod-Shift-s")).toBe("Mod+Shift+s");
+    expect(keysFromKeybinding("Mod-b")).toBe("Mod+b");
+    expect(keysFromKeybinding("Mod--")).toBe("Mod+-");
+    expect(formatShortcut(keysFromKeybinding("Mod-Shift-s"), true)).toBe("⌘⇧S");
+    expect(formatShortcut(keysFromKeybinding("Mod-Shift-s"), false)).toBe("Ctrl+Shift+S");
   });
 });

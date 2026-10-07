@@ -69,6 +69,7 @@ import {
 } from "./menu/MenuItemsFromRegistry";
 import { useMenuItem } from "./menu/useMenuItem";
 import { iconHint } from "@/components/Hint";
+import { keysFromKeybinding } from "@/components/Kbd";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
 const DEFAULT_PALETTE = [
@@ -583,7 +584,6 @@ export function ActionsMenuPanel({
             id="bold"
             row={0}
             col={0}
-            title="Bold (⌘B)"
             active={isActive("bold")}
             disabled={gridCellDisabled("bold")}
             run={() => runGridAction("bold")}
@@ -596,7 +596,6 @@ export function ActionsMenuPanel({
             id="italic"
             row={0}
             col={1}
-            title="Italic (⌘I)"
             active={isActive("italic")}
             disabled={gridCellDisabled("italic")}
             run={() => runGridAction("italic")}
@@ -609,7 +608,6 @@ export function ActionsMenuPanel({
             id="strike"
             row={0}
             col={2}
-            title="Strikethrough"
             active={isActive("strike")}
             disabled={gridCellDisabled("strike")}
             run={() => runGridAction("strike")}
@@ -623,7 +621,6 @@ export function ActionsMenuPanel({
             id="code"
             row={0}
             col={3}
-            title="Inline code"
             active={isActive("code")}
             disabled={gridCellDisabled("code")}
             run={() => runGridAction("code")}
@@ -647,7 +644,6 @@ export function ActionsMenuPanel({
             id="bullet-list"
             row={1}
             col={1}
-            title="Bullet list"
             active={isActive("bulletList")}
             disabled={gridCellDisabled("bullet-list")}
             run={() => runGridAction("bullet-list")}
@@ -665,7 +661,6 @@ export function ActionsMenuPanel({
             id="ordered-list"
             row={1}
             col={2}
-            title="Numbered list"
             active={isActive("orderedList")}
             disabled={gridCellDisabled("ordered-list")}
             run={() => runGridAction("ordered-list")}
@@ -683,7 +678,6 @@ export function ActionsMenuPanel({
             id="blockquote"
             row={1}
             col={3}
-            title="Blockquote"
             active={isActive("blockquote")}
             disabled={gridCellDisabled("blockquote")}
             run={() => runGridAction("blockquote")}
@@ -698,7 +692,6 @@ export function ActionsMenuPanel({
             id="example"
             row={2}
             col={0}
-            title="Wrap selection in example block"
             disabled={gridCellDisabled("example")}
             run={() => runGridAction("example")}
           >
@@ -708,7 +701,6 @@ export function ActionsMenuPanel({
             id="inline-math"
             row={2}
             col={1}
-            title="Wrap selection in inline math"
             disabled={gridCellDisabled("inline-math")}
             run={() => runGridAction("inline-math")}
           >
@@ -720,7 +712,6 @@ export function ActionsMenuPanel({
             id="display-math"
             row={2}
             col={2}
-            title="Wrap selection in display math"
             disabled={gridCellDisabled("display-math")}
             run={() => runGridAction("display-math")}
           >
@@ -744,7 +735,6 @@ export function ActionsMenuPanel({
             id="tex"
             row={3}
             col={0}
-            title="Insert raw LaTeX block"
             disabled={gridCellDisabled("tex")}
             run={() => runGridAction("tex")}
           >
@@ -756,7 +746,6 @@ export function ActionsMenuPanel({
             id="figure"
             row={3}
             col={1}
-            title="Insert figure block"
             disabled={gridCellDisabled("figure")}
             run={() => runGridAction("figure")}
           >
@@ -768,7 +757,6 @@ export function ActionsMenuPanel({
             id="graphics"
             row={3}
             col={2}
-            title="Insert image"
             disabled={gridCellDisabled("graphics")}
             run={() => runGridAction("graphics")}
           >
@@ -786,7 +774,6 @@ export function ActionsMenuPanel({
             id="ref"
             row={3}
             col={3}
-            title="Insert cross-reference (\ref)"
             disabled={gridCellDisabled("ref")}
             run={() => runGridAction("ref")}
           >
@@ -809,7 +796,6 @@ export function ActionsMenuPanel({
             id="forest"
             row={4}
             col={0}
-            title="Insert syntax tree (forest)"
             disabled={gridCellDisabled("forest")}
             run={() => runGridAction("forest")}
           >
@@ -826,7 +812,6 @@ export function ActionsMenuPanel({
             id="small-caps"
             row={4}
             col={1}
-            title="Small caps (⇧⌘K)"
             active={isActive("smallCaps")}
             disabled={gridCellDisabled("small-caps")}
             run={() => runGridAction("small-caps")}
@@ -944,8 +929,8 @@ function gridCellClassName(disabled?: boolean, extra?: string): string {
  * rewrite. `run` = the cell's existing action; `active` = the format-is-applied
  * state (bold-is-on), painted distinctly from the roving-active highlight.
  *
- * The `data-hint` + `aria-label` carry the title (the registry-render test reads
- * grid cells via `data-hint`).
+ * The `data-hint` + `aria-label` carry the row's label (the registry-render test
+ * reads grid cells via `data-hint`).
  */
 function FmtBtn({
   id,
@@ -953,16 +938,17 @@ function FmtBtn({
   col,
   children,
   run,
-  title,
   active,
   disabled,
 }: {
-  id: string;
+  /** The registry row this cell runs — its NAME is the row's `label` and its
+   *  advertised chord the row's `keybinding` (task 985), so the grid carries
+   *  no second vocabulary beside the slash popup and the grab menu. */
+  id: ActionId;
   row: number;
   col: number;
   children: React.ReactNode;
   run: () => void;
-  title: string;
   active?: boolean;
   /** CHIP 7b: collab read-only greys the cell + inerts the click. */
   disabled?: boolean;
@@ -976,12 +962,13 @@ function FmtBtn({
   });
   const itemProps = getItemProps();
   const reason = useContext(GridCellReasonContext);
-  const why = disabled ? reason(id as ActionId) : null;
+  const why = disabled ? reason(id) : null;
+  const spec = VIRGIL_ACTION_REGISTRY[id];
   return (
     <button
       {...itemProps}
       type="button"
-      {...gridCellHint(title, why)}
+      {...gridCellHint(spec.label, why, spec.keybinding)}
       disabled={disabled}
       data-format-active={active ? "true" : undefined}
       className={gridCellClassName(disabled)}
@@ -1016,13 +1003,19 @@ const GridCellReasonContext = createContext<(id: ActionId) => string | null>(() 
 
 /**
  * A grid cell's hint: its name, and — when greyed with a known reason — the
- * reason after it ("Bold (⌘B) — Your co-author has the pen"), also announced as
- * the cell's accessible DESCRIPTION. The NAME stays `title` (`iconHint`'s
- * `aria-label`), so a reason never replaces what the cell is called.
+ * reason after it ("Bold — Your co-author has the pen"), also announced as the
+ * cell's accessible DESCRIPTION. The NAME stays `name` (`iconHint`'s
+ * `aria-label`), so a reason never replaces what the cell is called. The chord
+ * (a registry `keybinding`) rides as `data-hint-keys`, rendered by `<Kbd>` —
+ * platform-aware, and never part of the accessible name (task 985).
  */
-function gridCellHint(title: string, why: string | null) {
+function gridCellHint(name: string, why: string | null, keybinding?: string) {
   return {
-    ...iconHint({ label: title, hint: why ? `${title} — ${why}` : undefined }),
+    ...iconHint({
+      label: name,
+      hint: why ? `${name} — ${why}` : undefined,
+      keys: keybinding ? keysFromKeybinding(keybinding) : undefined,
+    }),
     "aria-description": why ?? undefined,
   };
 }
@@ -1074,7 +1067,7 @@ function ColorGridCell({
         itemProps.ref(el);
       }}
       type="button"
-      {...gridCellHint("Text color", why)}
+      {...gridCellHint(VIRGIL_ACTION_REGISTRY["text-color"].label, why)}
       disabled={disabled}
       onClick={
         disabled

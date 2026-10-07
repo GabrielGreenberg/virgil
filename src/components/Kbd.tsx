@@ -103,6 +103,19 @@ export function formatShortcut(keys: string, mac: boolean): string {
   return tokens.join(mac ? "" : "+");
 }
 
+/** A ProseMirror/TipTap keybinding (`"Mod-Shift-s"`, the form the registry's
+ *  `keybinding` and every `addKeyboardShortcuts()` use) in the portable `+`
+ *  form `<Kbd>` / `data-hint-keys` take (`"Mod+Shift+s"`). The one translation
+ *  between the two spellings, so a surface advertising a chord reads the SAME
+ *  string the keymap binds (task 985). A trailing `-` names the minus key. */
+export function keysFromKeybinding(binding: string): string {
+  const parts = binding.split("-");
+  if (binding.endsWith("-")) {
+    parts.splice(parts.length - 2, 2, "-");
+  }
+  return parts.join("+");
+}
+
 export function Kbd({
   keys,
   className,
