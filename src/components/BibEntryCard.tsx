@@ -12,18 +12,18 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
-import {
-  AMBER_ATTENTION_INK,
-  AMBER_ATTENTION_STRIP,
-  AMBER_PENDING_CHIP,
-} from "@/panels/_shared/amber-attention";
+import { AMBER_ATTENTION_INK } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 import { annotationHtmlToRich, richToAnnotationHtml } from "@/lib/annotation-html";
 import RichTextField from "@/components/RichTextField";
 import type { JSONContent } from "@tiptap/react";
 import { iconHint } from "@/components/Hint";
-import { StatusDot } from "@/components/StatusDot";
 import { bibAddressOf } from "@/lib/bib-address";
+import {
+  ReviewRequestChip,
+  ReviewRequestStrip,
+  useReviewRequestComposer,
+} from "@/components/bib-review-request";
 import { validateBibEntryHeadChange } from "@/lib/bib-entry-head";
 
 export interface BibEntryCardProps {
@@ -41,6 +41,9 @@ export interface BibEntryCardProps {
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
+  /** The note a PENDING request was sent with, read back from the persisted
+   *  row (task 981) — so the strip shows what the skill will receive. */
+  getReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   /**
    * Save this entry — ONE write for the whole gesture (task 691). Takes the
    * ENTRY, not its citekey (task 690): a citekey names as many blocks as carry
@@ -156,7 +159,7 @@ function AnnotationEditor({
 /* ── BibEntryCard ─────────────────────────────────────────────────── */
 export default function BibEntryCard({
   entry, isSelected, onClick, getAnnotation, setAnnotation,
-  onRequestReview, onCancelReview, getReviewStatus, onSaveBibEntry,
+  onRequestReview, onCancelReview, getReviewStatus, getReviewNotes, onSaveBibEntry,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
   isPoppedOut, headerMeta, addAction, readOnly,
 }: BibEntryCardProps) {
@@ -195,11 +198,7 @@ export default function BibEntryCard({
   const [editBibType, setEditBibType] = useState("");
   const [editBibKey, setEditBibKey] = useState("");
   const [showBibWarning, setShowBibWarning] = useState(false);
-  const [requestNoteDrafts, setRequestNoteDrafts] = useState<Record<string, string>>({});
-  const [requestNoteOpen, setRequestNoteOpen] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
-
-  const draftKey = (type: string) => `${entry.key}:${type}`;
 
   // DISPLAY — projected through the bib-row door (task 409), so `L{\'o}pez`
   // and `\&` read as characters here exactly as they do in body text. The
@@ -211,8 +210,17 @@ export default function BibEntryCard({
   const annotation = getAnnotation(entry.key);
   const fieldsReviewStatus = getReviewStatus(entry.key, "fields");
   const notesReviewStatus = getReviewStatus(entry.key, "notes");
-  const fieldsDk = draftKey("fields");
-  const notesDk = draftKey("notes");
+  // THE review-request control (task 981) — compose-then-send, one state
+  // machine for both pods. A review request is a WRITE (it mints an AI request
+  // against this paper's inbox), so its doors come through `writes`: a preview
+  // card hands over null and the composer can mint nothing.
+  const reviewComposer = useReviewRequestComposer({
+    bibKey: entry.key,
+    request: writes?.requestReview ?? null,
+    cancel: writes?.cancelReview ?? null,
+    getStatus: getReviewStatus,
+    onOpen: (type) => (type === "fields" ? setFieldsOpen(true) : setAnnotationOpen(true)),
+  });
 
   /**
    * Is the head the user has typed writable to `references.bib`? Read twice —
@@ -326,25 +334,6 @@ export default function BibEntryCard({
     });
   }, [entry.key, bibPackage, bibEntries]);
 
-  const handleRequestToggle = (type: "fields" | "notes") => {
-    // A review request is a WRITE — it mints an AI request against this
-    // paper's inbox, keyed by a citekey the preview card does not own.
-    if (!writes) return;
-    const status = getReviewStatus(entry.key, type);
-    const dk = draftKey(type);
-    if (status === "pending") {
-      writes.cancelReview(entry.key, type);
-      setRequestNoteOpen((prev) => { const n = new Set(prev); n.delete(dk); return n; });
-      setRequestNoteDrafts((prev) => { const n = { ...prev }; delete n[dk]; return n; });
-    } else {
-      const notes = requestNoteDrafts[dk] || "";
-      writes.requestReview(entry.key, type, notes || undefined);
-      if (type === "fields") setFieldsOpen(true);
-      else setAnnotationOpen(true);
-      setRequestNoteOpen((prev) => { const n = new Set(prev); n.add(dk); return n; });
-    }
-  };
-
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
   // The jump-to-citation chevron is always rendered (when the entry is cited)
   // so its hover/selected opacity states can fade in/out without layout shift.
@@ -434,29 +423,19 @@ export default function BibEntryCard({
             <span>BibTeX Fields</span>
           </button>
           {writes && (
-          <button
-            onClick={(e) => { e.stopPropagation(); handleRequestToggle("fields"); }}
-            className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-              fieldsReviewStatus === "pending"
-                ? AMBER_PENDING_CHIP
-                : "text-ink-muted hover:text-ink-body hover-on-light"
-            }`}
-            data-hint={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"} aria-description={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"}
-          >
-            {fieldsReviewStatus === "pending" ? (<><StatusDot tone="pending" size="md" motion="ping" /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><g transform="rotate(15 12 12)"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></g></svg><span>Request review</span></>)}
-          </button>
+          <ReviewRequestChip type="fields" status={fieldsReviewStatus} composer={reviewComposer} />
           )}
         </div>
 
         {fieldsOpen && (
           <div className="mt-1.5 space-y-1.5">
-            {requestNoteOpen.has(fieldsDk) && fieldsReviewStatus === "pending" && (
-              <div className={`${AMBER_ATTENTION_STRIP} rounded-md border overflow-hidden`} onClick={(e) => e.stopPropagation()}>
-                <input type="text" value={requestNoteDrafts[fieldsDk] || ""}
-                  onChange={(e) => setRequestNoteDrafts((prev) => ({ ...prev, [fieldsDk]: e.target.value }))}
-                  placeholder="Request annotation..."
-                  className="w-full text-xs bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
-              </div>
+            {writes && (
+              <ReviewRequestStrip
+                type="fields"
+                status={fieldsReviewStatus}
+                sentNote={getReviewNotes?.(entry.key, "fields")}
+                composer={reviewComposer}
+              />
             )}
             <div className={PANEL.subpod}>
               {editingBib ? (
@@ -576,29 +555,17 @@ export default function BibEntryCard({
             <Chevron expanded={annotationOpen} />
             <span>Annotations</span>
           </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); handleRequestToggle("notes"); }}
-            className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-              notesReviewStatus === "pending"
-                ? AMBER_PENDING_CHIP
-                : "text-ink-muted hover:text-ink-body hover-on-light"
-            }`}
-            data-hint={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"} aria-description={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"}
-          >
-            {notesReviewStatus === "pending" ? (<><StatusDot tone="pending" size="md" motion="ping" /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><g transform="rotate(15 12 12)"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></g></svg><span>Request annotation</span></>)}
-          </button>
+          <ReviewRequestChip type="notes" status={notesReviewStatus} composer={reviewComposer} />
         </div>
 
         {annotationOpen && (
           <div className="mt-1.5 space-y-1.5">
-            {requestNoteOpen.has(notesDk) && notesReviewStatus === "pending" && (
-              <div className={`${AMBER_ATTENTION_STRIP} rounded-md border overflow-hidden`} onClick={(e) => e.stopPropagation()}>
-                <input type="text" value={requestNoteDrafts[notesDk] || ""}
-                  onChange={(e) => setRequestNoteDrafts((prev) => ({ ...prev, [notesDk]: e.target.value }))}
-                  placeholder="Request annotation..."
-                  className="w-full text-xs bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
-              </div>
-            )}
+            <ReviewRequestStrip
+              type="notes"
+              status={notesReviewStatus}
+              sentNote={getReviewNotes?.(entry.key, "notes")}
+              composer={reviewComposer}
+            />
             <div className={PANEL.subpodWhite}>
               <AnnotationEditor bibKey={entry.key} content={annotation} onUpdate={writes.setAnnotation} />
             </div>

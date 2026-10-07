@@ -32,11 +32,15 @@ const read = (rel: string) => readFileSync(resolve(here, rel), "utf8");
 const sharedSource = read("../../_shared/amber-attention.ts");
 const panelSource = read("../BibliographyPanel.tsx");
 const cardSource = read("../../../components/BibEntryCard.tsx");
+// Task 981 folded the card's two hand-rolled request-note strips into ONE
+// shared control, so the card's amber strips now render from there.
+const reviewRequestSource = read("../../../components/bib-review-request.tsx");
 
 // Every file that renders an amber-attention surface — the guard spans all of
-// them so the family can't re-fragment in any one file.
-const consumerSources = { panelSource, cardSource };
-const allSources = { sharedSource, ...consumerSources };
+// them so the family can't re-fragment in any one file. The card itself stays
+// in the no-re-inlining scans even though it no longer renders a strip.
+const consumerSources = { panelSource, reviewRequestSource };
+const allSources = { sharedSource, cardSource, ...consumerSources };
 
 describe("Bibliography amber attention-strip convergence (tasks 280, 305)", () => {
   it("never pairs an amber fill with a neutral border on one element", () => {
@@ -81,15 +85,16 @@ describe("Bibliography amber attention-strip convergence (tasks 280, 305)", () =
     }
     // The panel keeps its three surfaces on the SSOT.
     expect([...panelSource.matchAll(/\$\{AMBER_ATTENTION_STRIP\}/g)].length).toBe(3);
-    // The card keeps both request-note strips on the SSOT.
-    expect([...cardSource.matchAll(/\$\{AMBER_ATTENTION_STRIP\}/g)].length).toBe(2);
+    // The card's request control keeps both of its strips (composing note,
+    // sent note) on the SSOT.
+    expect([...reviewRequestSource.matchAll(/\$\{AMBER_ATTENTION_STRIP\}/g)].length).toBe(2);
   });
 
   it("no consumer re-inlines a raw amber-attention strip", () => {
     // The exact re-fragmented literal 305 killed: a raw Tailwind amber strip
     // (bypassing the tokens) must not reappear in any consumer.
     const rawAmberStrip = /border-amber-200[^"'`]*bg-amber-50\/\d+/;
-    for (const [name, src] of Object.entries(consumerSources)) {
+    for (const [name, src] of Object.entries({ cardSource, ...consumerSources })) {
       expect(src, name).not.toMatch(rawAmberStrip);
     }
   });

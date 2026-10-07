@@ -56,6 +56,7 @@ interface CitationsPanelProps {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
+  getReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   /** Takes the ENTRY, not its citekey (task 690) — see `bib-address.ts`. */
   /** THE bib-entry write door — one write per Save gesture (task 691). */
   onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
@@ -114,6 +115,7 @@ function CitationsPanel({
   onRequestReview,
   onCancelReview,
   getReviewStatus,
+  getReviewNotes,
   onSaveBibEntry,
   onAddBibEntry,
   recentlyAddedId,
@@ -215,6 +217,7 @@ function CitationsPanel({
     onRequestReview,
     onCancelReview,
     getReviewStatus,
+    getReviewNotes,
     onSaveBibEntry,
   };
 

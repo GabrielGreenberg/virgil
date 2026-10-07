@@ -31,6 +31,7 @@ interface BuildArgs {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
+  getBibReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   saveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
 }
 
@@ -72,6 +73,7 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
           onRequestReview={a.requestBibReview}
           onCancelReview={a.cancelBibReview}
           getReviewStatus={a.getBibReviewStatus}
+          getReviewNotes={a.getBibReviewNotes}
           onSaveBibEntry={a.saveBibEntry}
           extraDataAttrs={{ "data-omni-entry": id }}
         />

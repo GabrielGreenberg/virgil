@@ -106,6 +106,7 @@ export interface OmniHostProps {
   requestBibReview: BibReviewHook["requestReview"];
   cancelBibReview: BibReviewHook["cancelRequest"];
   getBibReviewStatus: BibReviewHook["getRequestStatus"];
+  getBibReviewNotes?: BibReviewHook["getRequestNotes"];
   // Notes (polymorphic: hosts both `note` and `highlight` cards)
   notesCards: NotesHook["cards"];
   updateNote: NotesHook["updateNote"];
@@ -507,6 +508,7 @@ export function OmniHost(p: OmniHostProps) {
       requestBibReview: p.requestBibReview,
       cancelBibReview: p.cancelBibReview,
       getBibReviewStatus: p.getBibReviewStatus,
+      getBibReviewNotes: p.getBibReviewNotes,
       saveBibEntry: p.saveBibEntry,
     }),
     ...buildNoteOmniItems({
@@ -654,7 +656,7 @@ export function OmniHost(p: OmniHostProps) {
     // Citation/bib handlers
     p.updateCitation, p.getFormattedBib, p.saveBibEntry,
     p.getAnnotation, p.setAnnotation,
-    p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus,
+    p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus, p.getBibReviewNotes,
     // Note handlers
     p.updateNote, p.updateNoteTitle, p.morphCard, p.deleteNote,
     // Archive handlers
