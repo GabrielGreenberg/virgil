@@ -22,7 +22,6 @@ export interface BibliographyHostProps {
   citations: CitationsHook["citations"];
   bibEntries: CitationsHook["bibEntries"];
   bibRaw: CitationsHook["bibRaw"];
-  bibPackage: CitationsHook["bibPackage"];
   addBibEntry: CitationsHook["addBibEntry"];
   saveBibEntry: CitationsHook["saveBibEntry"];
   getAnnotation: AnnotationsHook["getAnnotation"];
@@ -75,7 +74,6 @@ export function BibliographyHost(p: BibliographyHostProps) {
       allEditorCitations={p.allEditorCitations}
       onScrollToCitation={(id, sourceEl) => editorRef.current?.scrollToCitation(id, sourceEl)}
       onActiveCitationChange={p.setBibActiveCitationId}
-      bibPackage={p.bibPackage}
       onAddBibEntry={p.addBibEntry}
       docId={p.currentDocId}
       entryRequests={p.entryRequests}

@@ -52,6 +52,7 @@ import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
+import { useCopyFlash } from "@/hooks/useCopyFlash";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1359,7 +1360,6 @@ export function CitationCard({
         getReviewStatus={getReviewStatus!}
         getReviewNotes={getReviewNotes}
         onSaveBibEntry={onSaveBibEntry!}
-        bibPackage={bibPackage}
         bibEntries={bibEntries}
         isCited
       />
@@ -1443,15 +1443,14 @@ function CitationKeyRow({
   onRemove,
   registerAnchor,
 }: CitationKeyRowProps) {
-  // The ROW owns its timers' lifetime too (task 686) — it is its own
-  // component, so it gets its own scope rather than borrowing the card's.
-  const lifetime = useViewLifetime();
   const trimmed = row.key.trim();
   const entry = trimmed ? bibEntryMap.get(trimmed) : undefined;
   const [pgOpen, setPgOpen] = useState(!!row.postnote);
   const [pgDraft, setPgDraft] = useState(row.postnote || "");
   const pgInputRef = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState(false);
+  // The ROW owns its timers' lifetime too (task 686) — its only timer is the
+  // copy flash, which `useCopyFlash` arms through the row's own scope.
+  const { copied, copy } = useCopyFlash();
 
   useEffect(() => {
     setPgDraft(row.postnote || "");
@@ -1479,14 +1478,8 @@ function CitationKeyRow({
   const copyCitekey = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!trimmed) return;
-    void navigator.clipboard.writeText(trimmed).then(() => {
-      // Both halves are bounded by the row: the clipboard promise resolves off
-      // the microtask queue, so a row torn down between the click and the
-      // resolve would otherwise arm a 1.5 s timer against a dead component.
-      if (lifetime.disposed) return;
-      setCopied(true);
-      lifetime.setTimeout(() => setCopied(false), 1500);
-    });
+    // The flash is bounded by the row's lifetime inside the hook (task 984).
+    void copy(trimmed);
   };
 
   // The +range / postnote affordance trails the citation display line inline

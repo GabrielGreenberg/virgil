@@ -25,6 +25,7 @@ import {
   useReviewRequestComposer,
 } from "@/components/bib-review-request";
 import { validateBibEntryHeadChange } from "@/lib/bib-entry-head";
+import { useCopyFlash } from "@/hooks/useCopyFlash";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -56,8 +57,6 @@ export interface BibEntryCardProps {
    */
   onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
-  /** Bib package ("natbib" | "biblatex") — used to determine the default cite command for drag. */
-  bibPackage?: string;
   /** Bib entries list — needed for formatMinimalCitation in drag ghost. */
   bibEntries?: BibEntry[];
   /** Whether this entry is cited in the document. */
@@ -160,7 +159,7 @@ function AnnotationEditor({
 export default function BibEntryCard({
   entry, isSelected, onClick, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, getReviewNotes, onSaveBibEntry,
-  occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
+  occurrenceInfo, bibEntries, isCited = true, onJump,
   isPoppedOut, headerMeta, addAction, readOnly,
 }: BibEntryCardProps) {
   /**
@@ -198,7 +197,7 @@ export default function BibEntryCard({
   const [editBibType, setEditBibType] = useState("");
   const [editBibKey, setEditBibKey] = useState("");
   const [showBibWarning, setShowBibWarning] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFlash();
 
   // DISPLAY — projected through the bib-row door (task 409), so `L{\'o}pez`
   // and `\&` read as characters here exactly as they do in body text. The
@@ -299,10 +298,7 @@ export default function BibEntryCard({
   };
 
   const handleCopyKey = () => {
-    navigator.clipboard.writeText(entry.key).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+    void copy(entry.key);
   };
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
@@ -332,7 +328,7 @@ export default function BibEntryCard({
       cursorOffsetX: 10,
       cursorOffsetY: 14,
     });
-  }, [entry.key, bibPackage, bibEntries]);
+  }, [entry.key, bibEntries]);
 
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
   // The jump-to-citation chevron is always rendered (when the entry is cited)
