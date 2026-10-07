@@ -17,7 +17,13 @@
 
 import type { LatexError } from "./latex-errors";
 import { makeErrorId } from "./latex-errors";
-import { KNOWN_CITE_COMMANDS, MULTI_CITE_NAMES } from "./cite-commands";
+import {
+  CITE_CMDS,
+  LATEX_RULE,
+  REF_CMDS,
+  undefinedRuleId,
+  type LatexRuleId,
+} from "./latex-rules";
 import { isVerbatimFamilyEnv } from "./latex-lexer";
 
 export interface SyntaxCheckOptions {
@@ -35,49 +41,10 @@ export interface SyntaxCheckOptions {
 // `Verbatim` and the `comment` package and the round trip did not. Both are now
 // members, so the fork is retired in the direction of the more complete list.
 
-const REF_CMDS = new Set([
-  "ref",
-  "Ref",
-  "eqref",
-  "pageref",
-  "Pageref",
-  "autoref",
-  "Autoref",
-  "cref",
-  "Cref",
-  "vref",
-  "Vref",
-  "nameref",
-  "Nameref",
-]);
-
-/**
- * Single-key cite commands whose `{key}` the undefined-citation diagnostic
- * validates against the .bib. DERIVED from the shared citation-command
- * registry (`cite-commands.ts`) so the linter's vocabulary can never silently
- * drift from the round-trip parser's — a registry addition is picked up here
- * automatically (the "derive, don't duplicate" SSOT rule). Two exclusions:
- *
- *  - `nocite` — matched by name in the extraction loop below; it's
- *    informational (`\nocite{*}` cites everything), so its keys are never
- *    recorded for validation.
- *  - the MULTI-cite forms (`\cites`, `\textcites`, `\parencites`,
- *    `\autocites`, `\footcites`, `\smartcites`) — they take a repeated
- *    `{key}` / `(pre)(post)` argument shape that the single-`{key}` extractor
- *    at the `CITE_CMDS.has(macroName)` branch does NOT parse. Including them
- *    would mis-read or skip their keys. Recognizing them correctly needs the
- *    extractor to walk repeated `{key}` groups — a scoped follow-up.
- *
- * Both the lowercase and capitalized-first-letter forms are recognized (natbib
- * + biblatex support `\Citet` / `\Autocite` etc. for sentence starts), mirroring
- * the registry's own caps convention (see `ALL_NAMES` in cite-commands.ts).
- */
-const CITE_CMDS = new Set<string>();
-for (const base of KNOWN_CITE_COMMANDS) {
-  if (base === "nocite" || MULTI_CITE_NAMES.has(base)) continue;
-  CITE_CMDS.add(base);
-  CITE_CMDS.add(base[0].toUpperCase() + base.slice(1));
-}
+// REF_CMDS / CITE_CMDS — the commands whose `{key}` the undefined-ref /
+// undefined-cite checks validate — live in `./latex-rules` with the rest of
+// the rule vocabulary, because the `${cmd}-undefined` id they mint is read
+// back there to title the card (task 983).
 
 /** Bib keys that are intentionally allowed but won't appear in .bib —
  *  e.g. `\nocite{*}` cites all entries; `*` is not a real key. */
@@ -163,7 +130,7 @@ function pushErr(
   starts: number[],
   idx: number,
   message: string,
-  ruleId: string,
+  ruleId: LatexRuleId,
   detail?: string,
 ): void {
   const { line, col } = lineColFromIdx(starts, idx);
@@ -263,7 +230,7 @@ export function runSyntaxChecks(
               lineStarts,
               macroIdx,
               `\\end{${envName}} with no matching \\begin`,
-              "env-unmatched-end",
+              LATEX_RULE.envUnmatchedEnd,
             );
           } else if (top.name !== envName) {
             const topPos = lineColFromIdx(lineStarts, top.idx);
@@ -272,7 +239,7 @@ export function runSyntaxChecks(
               lineStarts,
               macroIdx,
               `\\end{${envName}} does not match \\begin{${top.name}} on line ${topPos.line}`,
-              "env-mismatch",
+              LATEX_RULE.envMismatch,
             );
             envStack.pop();
           } else {
@@ -351,7 +318,7 @@ export function runSyntaxChecks(
     }
     if (c === "}") {
       if (braceStack.length === 0) {
-        pushErr(errors, lineStarts, i, "Unmatched closing brace `}`", "brace-unmatched-close");
+        pushErr(errors, lineStarts, i, "Unmatched closing brace `}`", LATEX_RULE.braceUnmatchedClose);
       } else {
         braceStack.pop();
       }
@@ -384,7 +351,7 @@ export function runSyntaxChecks(
   }
 
   for (const idx of braceStack) {
-    pushErr(errors, lineStarts, idx, "Unmatched opening brace `{`", "brace-unmatched-open");
+    pushErr(errors, lineStarts, idx, "Unmatched opening brace `{`", LATEX_RULE.braceUnmatchedOpen);
   }
   for (const env of envStack) {
     pushErr(
@@ -392,14 +359,14 @@ export function runSyntaxChecks(
       lineStarts,
       env.idx,
       `Unclosed environment \\begin{${env.name}}`,
-      "env-unmatched-begin",
+      LATEX_RULE.envUnmatchedBegin,
     );
   }
   if (inlineMathIdx != null) {
-    pushErr(errors, lineStarts, inlineMathIdx, "Unclosed inline math `$`", "math-unmatched-inline");
+    pushErr(errors, lineStarts, inlineMathIdx, "Unclosed inline math `$`", LATEX_RULE.mathUnmatchedInline);
   }
   if (displayMathIdx != null) {
-    pushErr(errors, lineStarts, displayMathIdx, "Unclosed display math `$$`", "math-unmatched-display");
+    pushErr(errors, lineStarts, displayMathIdx, "Unclosed display math `$$`", LATEX_RULE.mathUnmatchedDisplay);
   }
 
   for (const r of refs) {
@@ -409,7 +376,7 @@ export function runSyntaxChecks(
         lineStarts,
         r.idx,
         `\\${r.cmd}{${r.key}} → undefined label`,
-        `${r.cmd}-undefined`,
+        undefinedRuleId(r.cmd),
         r.key,
       );
     }
@@ -423,7 +390,7 @@ export function runSyntaxChecks(
           lineStarts,
           c.idx,
           `\\${c.cmd}{${c.key}} → key not in bibliography`,
-          `${c.cmd}-undefined`,
+          undefinedRuleId(c.cmd),
           c.key,
         );
       }

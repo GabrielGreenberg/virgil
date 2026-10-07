@@ -9,6 +9,7 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
+import { ruleTitle } from "@/lib/latex-rules";
 import { canJumpToError, type ErrorJumpMode } from "./error-jump";
 import { iconHint } from "@/components/Hint";
 import { ERROR_INK } from "@/lib/error-ink";
@@ -37,29 +38,13 @@ const SEVERITY_INK: Record<LatexErrorSeverity, string> = {
   error: ERROR_INK,
 };
 
-/** Short, stable title derived from rule id / message. Prefers a known rule
- *  id (e.g. "Missing reference") so the card's header scans at a glance. */
+/** Short, stable title for the card header. A rule id titles from the ONE
+ *  rule vocabulary (`@/lib/latex-rules`, task 983) so the header scans at a
+ *  glance; an id outside it — or no id — titles from the message's first
+ *  line, never from a mechanically de-hyphenated id. */
 export function errorTitle(err: LatexError): string {
-  if (err.ruleId) {
-    switch (err.ruleId) {
-      case "ref-undefined":
-        return "Missing reference";
-      case "cite-undefined":
-        return "Missing citation";
-      case "env-mismatch":
-        return "Environment mismatch";
-      case "brace-unbalanced":
-        return "Unbalanced braces";
-      case "math-unbalanced":
-        return "Unbalanced math";
-      case "parse-failure":
-        return "Parse error";
-      case "offline-package":
-        return "Package unavailable offline";
-      default:
-        return err.ruleId.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
-    }
-  }
+  const curated = err.ruleId ? ruleTitle(err.ruleId) : null;
+  if (curated) return curated;
   const firstLine = err.message.split("\n")[0];
   return firstLine.length > 60 ? firstLine.slice(0, 60) + "\u2026" : firstLine;
 }

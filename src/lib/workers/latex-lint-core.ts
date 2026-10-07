@@ -9,6 +9,7 @@
 
 import type { LatexError } from "@/lib/latex-errors";
 import { assignContentIds, makeErrorId } from "@/lib/latex-errors";
+import { LATEX_RULE } from "@/lib/latex-rules";
 import { runSyntaxChecks } from "@/lib/syntax-check";
 
 interface VFileMessage {
@@ -106,6 +107,6 @@ function failureRecord(prefix: string, err: unknown): LatexError {
     severity: "error",
     line: 0,
     message: `${prefix}: ${detail}`,
-    ruleId: "parse-failure",
+    ruleId: LATEX_RULE.parseFailure,
   };
 }
