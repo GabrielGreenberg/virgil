@@ -11,7 +11,7 @@ import { rangeHoldsOnlyText } from "./typed-prose-gate";
 import {
   commentifyParagraph,
   makeComment,
-  stripCommentPrefix,
+  commentBodyFromLine,
 } from "./latex-comment-convert";
 // The typed-LaTeX census (task 639) — this rule's trigger pattern is READ from
 // the table the action registry reconciles its `surfaces.typed` flags against.
@@ -53,7 +53,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
   group: "block textObject",
   content: "text*",
   // A LaTeX comment is raw source text after `%` — no marks (bold/italic/etc.),
-  // which keeps `.tex` serialization a trivial `% ${textContent}` and avoids
+  // which keeps `.tex` serialization a trivial `%${textContent}` and avoids
   // emitting meaningless `\textbf{}` inside a comment.
   marks: "",
   // …and `code` is the SAME FACT in the framework's own vocabulary (task 512).
@@ -108,9 +108,14 @@ export const LatexComment = Node.create<LatexCommentOptions>({
     return [
       {
         tag: 'div[data-type="latex-comment"]',
-        // The `% ` prefix is a non-editable widget, not content — only the
+        // The `%` prefix is a non-editable widget, not content — only the
         // `.latex-comment-editable` span holds the real text.
         contentElement: ".latex-comment-editable",
+        // The body is the bytes after `%`, verbatim (task 990), so its own
+        // leading/inner spaces are content and must survive a copy/paste.
+        // `true` (not "full") keeps spaces but still folds a newline to a
+        // space — the one-source-line hazard `whitespace: "normal"` guards.
+        preserveWhitespace: true,
       },
     ];
   },
@@ -122,7 +127,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
         "data-type": "latex-comment",
         class: "latex-comment",
       }),
-      ["span", { class: "latex-comment-prefix", contenteditable: "false" }, "% "],
+      ["span", { class: "latex-comment-prefix", contenteditable: "false" }, "%"],
       ["span", { class: "latex-comment-editable" }, 0],
     ];
   },
@@ -227,16 +232,28 @@ export const LatexComment = Node.create<LatexCommentOptions>({
             const blockStart = $from.start();
             const blockEnd = $from.end();
             // The TRIGGER-SPECIFIC harvest: the typed character has not landed
-            // in the doc yet, so it is folded in here. The MUTATION (and the
-            // task-578 markless-`text*` refusal that must travel with it) is
-            // the shared creator's.
+            // in the doc yet, so it is folded in here — the LINE as it reads
+            // after this keystroke. The MUTATION (and the task-578
+            // markless-`text*` refusal that must travel with it) is the shared
+            // creator's.
+            //
+            // The body is that line's bytes after `%`, verbatim (task 990): `%`
+            // converts with body "" and the user's next space lands as the
+            // body's first byte, so typing `% note` stores ` note` and writes
+            // exactly `% note`; when the trigger IS the space after `%`, it is
+            // already in the body and the caret lands after it.
             const fullText = state.doc.textBetween(blockStart, blockEnd, "", "");
-            const commentText = stripCommentPrefix(
-              fullText.startsWith("%")
-                ? fullText
-                : text + fullText.slice($from.parentOffset),
+            const $to = state.doc.resolve(_to);
+            const afterOffset =
+              $to.parent === $from.parent ? $to.parentOffset : $from.parentOffset;
+            const line = combined + fullText.slice(afterOffset);
+            const commentText = commentBodyFromLine(line);
+            const tr = commentifyParagraph(
+              state,
+              blockStart - 1,
+              commentText,
+              combined.length - 1,
             );
-            const tr = commentifyParagraph(state, blockStart - 1, commentText);
             if (!tr) return false; // refused (an inline atom would be deleted)
             view.dispatch(tr);
             return true;
@@ -274,7 +291,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
             // text-only comment.
             if (!rangeHoldsOnlyText(newState.doc, block.pos + 1, block.pos + node.nodeSize - 1)) continue;
             if (text.startsWith("% ") || text === "%") {
-              const commentText = stripCommentPrefix(text);
+              const commentText = commentBodyFromLine(text);
               changes.push({ pos: block.pos, size: node.nodeSize, text: commentText });
             }
           }
@@ -310,7 +327,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
         dom.style.fontFamily = "var(--font-mono), 'SF Mono', 'Fira Code', monospace";
         dom.style.fontSize = "12px";
         dom.style.padding = "2px 0";
-        dom.textContent = `% ${node.textContent}`;
+        dom.textContent = `%${node.textContent}`;
         return { dom };
       }
 
@@ -349,7 +366,9 @@ export const LatexComment = Node.create<LatexCommentOptions>({
 
       const pre = document.createElement("span");
       pre.className = "latex-comment-prefix";
-      pre.textContent = "% ";
+      // `%` alone is the chrome — the body is the bytes after it (task 990),
+      // so a conventional comment's space is its own first content byte.
+      pre.textContent = "%";
       pre.contentEditable = "false";
       content.appendChild(pre);
 

@@ -284,10 +284,13 @@ describe("two-cycle round trips over the shapes `code` could have moved", () => 
       assignUuids(d2);
       const out2 = serializeBodyOnly(d2);
       expect(out2).toBe(out1);
-      // …and the comment's own bytes survive both cycles verbatim.
-      const comment = out1.split("\n").find((l) => l.startsWith("%"));
-      expect(comment).toBeTruthy();
-      expect(out2).toContain(comment as string);
+      // …and the SOURCE's comment line survives into `out1` verbatim (task 990).
+      // The pre-990 leg compared `out1` to `out2` only — a fixed point after one
+      // cycle — so the src → out1 rewrite (`%   spaced out   ` → `% spaced out`)
+      // passed. Compared to the source, it cannot.
+      const srcLine = src.split("\n").find((l) => l.startsWith("%")) as string;
+      const outLine = out1.split("\n").find((l) => l.startsWith("%")) as string;
+      expect(outLine.replace(/ %!v:[0-9a-f]{4}$/, "")).toBe(srcLine);
     });
   }
 });

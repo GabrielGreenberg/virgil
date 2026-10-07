@@ -82,7 +82,8 @@ describe("latexComment — .tex round-trip (text as native inline content)", () 
     const comment = findNode(doc, "latexComment");
     expect(comment).not.toBeNull();
     expect(comment?.attrs?.text).toBeUndefined();
-    expect(commentText(comment)).toBe("hello world");
+    // The body is the bytes after `%`, verbatim (task 990) — its own space too.
+    expect(commentText(comment)).toBe(" hello world");
   });
 
   it("parses an empty `%` line into an empty comment (no content child)", () => {
@@ -99,12 +100,13 @@ describe("latexComment — .tex round-trip (text as native inline content)", () 
         {
           type: "latexComment",
           attrs: { uuid: "aaaa" },
-          content: [{ type: "text", text: "a note to self" }],
+          content: [{ type: "text", text: " a note to self" }],
         },
       ],
     };
     const out = serializeBodyOnly(doc);
     expect(out).toContain("% a note to self");
+    expect(out).not.toContain("%  a note");
   });
 
   it("round-trips parse → serialize → parse byte-stably", () => {
@@ -114,8 +116,54 @@ describe("latexComment — .tex round-trip (text as native inline content)", () 
     expect(twice).toBe(once);
     // The comment text survives verbatim through the loop.
     expect(commentText(findNode(parseLatex(once), "latexComment"))).toBe(
-      "first comment",
+      " first comment",
     );
+  });
+
+  // Task 990 — compare to the SOURCE, not just a fixed point. The pre-990
+  // parser trimmed and the serializer re-added `% `, so every shape below but
+  // `% normal` was rewritten on the first save while a fixed-point leg stayed
+  // green.
+  const SOURCE_LINES = [
+    "%%%% Heading banner %%%%",
+    "%TODO fix",
+    "%   indented code",
+    "%   trailing   ",
+    "% normal",
+    "%",
+    "%%",
+  ];
+  for (const line of SOURCE_LINES) {
+    it(`writes ${JSON.stringify(line)} back byte-identical`, () => {
+      const src = `Alpha.\n\n${line}\n\nBeta.\n`;
+      const out1 = serializeBodyOnly(parseLatex(src));
+      expect(out1.split("\n")).toContain(line);
+      expect(serializeBodyOnly(parseLatex(out1))).toBe(out1);
+    });
+  }
+
+  it("keeps the body verbatim across a `%!v:` anchor, trailing run included", () => {
+    for (const line of ["%TODO fix", "%   trailing   ", "% normal", "%"]) {
+      const src = `${line} %!v:abcd\n`;
+      const doc = parseLatex(src);
+      const comment = findNode(doc, "latexComment");
+      expect(comment?.attrs?.uuid).toBe("abcd");
+      expect(commentText(comment)).toBe(line.slice(1));
+      expect(serializeBodyOnly(doc).split("\n")[0]).toBe(`${line} %!v:abcd`);
+    }
+  });
+
+  it("drops only a CRLF line's `\\r`, never body bytes", () => {
+    const comment = findNode(parseLatex("%TODO x\r\nProse.\r\n"), "latexComment");
+    expect(commentText(comment)).toBe("TODO x");
+  });
+
+  it("defuses a body that would re-read as a Virgil `%!v` line marker", () => {
+    const doc: JSONContent = {
+      type: "doc",
+      content: [{ type: "latexComment", content: [{ type: "text", text: "!vtex:begin abcd" }] }],
+    };
+    expect(serializeBodyOnly(doc)).toContain("% !vtex:begin abcd");
   });
 });
 
@@ -156,6 +204,44 @@ describe("latexComment — editable-block keymap / input behaviour", () => {
     const sel = ed.state.selection;
     expect(sel instanceof TextSelection).toBe(true);
     expect(sel.$from.parent.type.name).toBe("latexComment");
+  });
+
+  /** Type one character the way the browser feeds ProseMirror — through the
+   *  shipped `handleTextInput` prop, falling back to a plain insert. */
+  function typeText(ed: Editor, text: string) {
+    for (const ch of text) {
+      const { from, to } = ed.state.selection;
+      const handled = ed.view.someProp("handleTextInput", (f) =>
+        (f as (...a: unknown[]) => boolean)(ed.view, from, to, ch),
+      );
+      if (!handled) ed.view.dispatch(ed.state.tr.insertText(ch, from, to));
+    }
+  }
+
+  it("typing `% note` stores ` note`, writes exactly `% note`, and reloads to the same model (task 990)", () => {
+    const ed = mount({ type: "doc", content: [{ type: "paragraph" }] });
+    ed.commands.setTextSelection(1);
+    typeText(ed, "% note");
+    const json = ed.getJSON();
+    const live = commentText(findNode(json, "latexComment"));
+    // Pre-990: body " note" written `%  note` (doubled), trimmed to "note" on reload.
+    expect(live).toBe(" note");
+    const out = serializeBodyOnly(json);
+    expect(out.split("\n")).toContain("% note");
+    expect(commentText(findNode(parseLatex(out), "latexComment"))).toBe(live);
+  });
+
+  it("typing `%` before existing words keeps the line as typed", () => {
+    const ed = mount({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "TODO later" }] }],
+    });
+    ed.commands.setTextSelection(1);
+    typeText(ed, "%");
+    expect(commentText(findNode(ed.getJSON(), "latexComment"))).toBe("TODO later");
+    expect(serializeBodyOnly(ed.getJSON()).split("\n")).toContain("%TODO later");
+    // The caret sits right after the typed `%` — at the body's start.
+    expect(ed.state.selection.$from.parentOffset).toBe(0);
   });
 
   it("Enter inside a comment inserts a paragraph AFTER it, never splitting it (18c)", () => {
@@ -348,9 +434,13 @@ describe("latexComment — the shared paragraph→comment creator (task 639)", (
     expect(allOfType(json, "paragraph").map(commentText)).toEqual(
       allOfType(json, "paragraph").map(() => ""),
     );
-    expect(commentText(findNode(json, "latexComment"))).toBe("a note to self");
+    // Prose gets the conventional one-space lead, so it is written
+    // `% a note to self` (task 990); the caret lands at the words.
+    expect(commentText(findNode(json, "latexComment"))).toBe(" a note to self");
+    expect(serializeBodyOnly(json)).toContain("% a note to self\n");
     expect(ed.state.selection instanceof TextSelection).toBe(true);
     expect(ed.state.selection.$from.parent.type.name).toBe("latexComment");
+    expect(ed.state.selection.$from.parentOffset).toBe(1);
   });
 
   it("is idempotent about the `% ` marker — converting an already-prefixed line does not double it", () => {
@@ -360,7 +450,8 @@ describe("latexComment — the shared paragraph→comment creator (task 639)", (
     });
     ed.commands.setTextSelection(3);
     latexCommentRun(ctxFor(ed) as never);
-    expect(commentText(findNode(ed.getJSON(), "latexComment"))).toBe("already marked");
+    expect(commentText(findNode(ed.getJSON(), "latexComment"))).toBe(" already marked");
+    expect(serializeBodyOnly(ed.getJSON())).toContain("% already marked\n");
   });
 
   it("REFUSES a paragraph holding an inline atom — the 578 door travels with the mutation", () => {

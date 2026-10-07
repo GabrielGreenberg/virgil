@@ -421,16 +421,16 @@ describe("census — no arm appends onto a carried body without the door", () =>
     // interpolation immediately followed by the anchor) rather than those two
     // names, so a third emitter cannot escape it by picking a new variable.
     //
-    // Its two legitimate hits are REPORTED rather than excluded by name, so a
-    // third one has to be looked at. Neither is a carried body: `latexComment`
-    // builds from the node's own CHILD CONTENT (`content: text*`), and the
-    // heading's `labelStr` is a `\\label{…}` the EMITTER wraps, so in both the
-    // last byte before the anchor is one this file wrote — there is no tail a
-    // pod could type past.
+    // Its legitimate hit is REPORTED rather than excluded by name, so a second
+    // one has to be looked at. It is not a carried body: the heading's
+    // `labelStr` is a `\\label{…}` the EMITTER wraps, so the last byte before
+    // the anchor is one this file wrote — there is no tail a pod could type
+    // past. (`latexComment` was the other hit until task 990 routed its body
+    // through `commentBodyForEmit(…)`; it builds from the node's own CHILD
+    // CONTENT on a `%` line, where the anchor is comment bytes either way.)
     const RETIRED = /\$\{[A-Za-z_$][\w$]*\}\$\{anchor\}/g;
     expect(CODE.match(RETIRED) ?? []).toEqual([
       "${labelStr}${anchor}",
-      "${text}${anchor}",
     ]);
     // A SYNTHETIC canary, never one of the drained lines: a canary standing on
     // the defect evaporates the moment the defect is fixed.

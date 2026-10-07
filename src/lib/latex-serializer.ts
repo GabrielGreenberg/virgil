@@ -19,6 +19,7 @@ import {
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
+import { commentBodyForEmit } from "@/lib/latex-comment-body";
 import { graphicsCommandEnd } from "@/lib/figures/parse-attrs";
 import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import { headingTypeCommand } from "@/lib/heading-types";
@@ -957,7 +958,9 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // `attrs.text` — flatten the text nodes raw, via the shared markless
       // byte-passthrough helper it shares with `codeBlock`.
       const text = serializeMarklessTextBody(node.content);
-      return `% ${text}${anchor}\n`;
+      // The body is the BYTES AFTER `%`, verbatim (task 990) — no injected
+      // space, so `%%%% Banner`, `%TODO` and `%   indented` leave as they came.
+      return `%${commentBodyForEmit(text)}${anchor}\n`;
     }
 
     case "citation": {
