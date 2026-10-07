@@ -8,7 +8,7 @@
  * so they populate the SAME snapshot and the nav controller is source-agnostic.
  *
  * `getItemProps()` returns `{ role, id, aria-disabled, tabIndex: -1,
- * data-active, onClick, onMouseEnter, ref }`. Items NEVER receive `.focus()`
+ * data-active, onClick, onMouseEnter, onMouseMove, ref }`. Items NEVER receive `.focus()`
  * (roving aria-activedescendant only) so the editor caret never moves.
  *
  * Keystroke sanctity: the registration write only bumps the registry's version
@@ -181,8 +181,15 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
         // it (task 477).
         stableRun();
       },
-      onMouseEnter: () => {
-        if (!disabled) registry.setActive(id);
+      // Both halves feed the registry's ONE pointer door (task 996): a
+      // `mouseenter` alone may be the list scrolling under a still cursor, so
+      // the registry decides from the coordinates; `mousemove` lets a real
+      // nudge within the row reclaim the highlight after keyboard nav.
+      onMouseEnter: (e) => {
+        if (!disabled) registry.pointerAt(id, e.clientX, e.clientY);
+      },
+      onMouseMove: (e) => {
+        if (!disabled) registry.pointerAt(id, e.clientX, e.clientY);
       },
       ref: setRef,
     };

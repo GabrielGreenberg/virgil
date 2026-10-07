@@ -450,6 +450,11 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
       // `AnchoredMenu closeOnInsideClick`, whose wrapper is a descendant of this
       // element and therefore runs first.
       onClick={(e) => e.stopPropagation()}
+      // The container half of the pointer door (task 996): a move over the
+      // menu's padding / headers records where the cursor is, so a list
+      // scrolled under it by the arrow keys is recognised as the cursor NOT
+      // having moved. Rows report through their own enter/move props.
+      onMouseMove={(e) => registry.pointerAt(null, e.clientX, e.clientY)}
     >
       <MenuContext.Provider value={ctxValue}>
         <MenuStackContext.Provider value={stackValue}>
