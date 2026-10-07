@@ -83,6 +83,7 @@ function ErrorsPanel({
       (e) =>
         e.message.toLowerCase().includes(q) ||
         (e.detail?.toLowerCase().includes(q) ?? false) ||
+        (e.remedy?.toLowerCase().includes(q) ?? false) ||
         (e.ruleId?.toLowerCase().includes(q) ?? false),
     );
   }, [visible, filter]);

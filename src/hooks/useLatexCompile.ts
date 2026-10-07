@@ -316,7 +316,7 @@ function saltDiagnostics(
  * format error or a hang. Deduped; line 0 (no source location). Salted +
  * ordinal-tagged so the line-0 ids never collide.
  */
-function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
+export function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
   const misses = result.offlineMisses;
   if (!misses || misses.length === 0) return [];
   const seen = new Set<string>();
@@ -333,7 +333,7 @@ function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
       severity: "error",
       line: 0,
       message,
-      detail:
+      remedy:
         "This package hasn't been cached yet. Connect to the internet and compile once to make it available offline.",
       ruleId: "offline-package",
     });
@@ -347,7 +347,7 @@ function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
  * short of half its packages (task 454). Distinct from an offline miss: these
  * were attempted and the network answered.
  */
-function downloadFailureErrors(result: CompileResult, salt: string): LatexError[] {
+export function downloadFailureErrors(result: CompileResult, salt: string): LatexError[] {
   const failures = result.downloadFailures;
   if (!failures || failures.length === 0) return [];
   const seen = new Set<string>();
@@ -364,7 +364,7 @@ function downloadFailureErrors(result: CompileResult, salt: string): LatexError[
       severity: "error",
       line: 0,
       message,
-      detail:
+      remedy:
         `The TeX package mirror did not return this file (${f.reason}). Check your network connection and compile again — packages already downloaded are cached, so a retry resumes where this one stopped.`,
       ruleId: "package-download-failed",
     });

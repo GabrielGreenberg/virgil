@@ -204,8 +204,13 @@ export function ErrorCard({
         <div className="mb-1" style={cardTitleStyle(theme)} data-hint={title}>
           {title}
         </div>
+        {/* Expanded = the user asked to READ it: the snippet and the mono
+            context wrap rather than truncate (task 982). */}
         {snippet && (
-          <div className="text-xs italic text-ink-muted border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 card-mono truncate">
+          <div
+            data-error-snippet=""
+            className="text-xs italic text-ink-muted border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 card-mono whitespace-pre-wrap break-all"
+          >
             {snippet}
           </div>
         )}
@@ -237,8 +242,20 @@ export function ErrorCard({
           {err.message}
         </div>
 
+        {err.remedy && (
+          <div
+            data-error-remedy=""
+            className="text-xs text-ink-body leading-snug break-words mt-1"
+          >
+            {err.remedy}
+          </div>
+        )}
+
         {err.detail && (
-          <div className="text-[10px] card-mono text-ink-muted mt-1 truncate">
+          <div
+            data-error-detail=""
+            className="text-[10px] card-mono text-ink-muted mt-1 whitespace-pre-wrap break-all"
+          >
             {err.detail}
           </div>
         )}
