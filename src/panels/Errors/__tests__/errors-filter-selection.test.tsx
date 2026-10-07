@@ -84,7 +84,9 @@ describe("ErrorsPanel — local text filter vs. shared selection (task 124)", ()
     });
     // The selected card is filtered out of the docked list...
     expect(screen.queryByText(/Undefined reference/)).toBeNull();
-    expect(screen.getByText(/Overfull hbox/)).toBeTruthy();
+    // (`overfull` is outside the rule vocabulary, so the card titles from its
+    // message too — task 983 — and the text appears as title AND body.)
+    expect(screen.getAllByText(/Overfull hbox/).length).toBeGreaterThan(0);
     // ...but the shared selection is untouched (omni halo + editor highlight persist).
     expect(props.onSelect).not.toHaveBeenCalled();
   });

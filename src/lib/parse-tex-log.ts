@@ -1,5 +1,6 @@
 import type { LatexError } from "./latex-errors";
 import { makeErrorId } from "./latex-errors";
+import { LATEX_RULE } from "./latex-rules";
 
 /**
  * Structured extraction of error/warning entries from a pdfTeX log (P5).
@@ -236,7 +237,7 @@ export function parseTexLog(log: string, status = 0): LatexError[] {
         line,
         message,
         detail,
-        ruleId: "tex-error",
+        ruleId: LATEX_RULE.texError,
         file: currentFile,
       });
       continue;
@@ -258,7 +259,7 @@ export function parseTexLog(log: string, status = 0): LatexError[] {
         severity: "warning",
         line,
         message,
-        ruleId: "latex-warning",
+        ruleId: LATEX_RULE.latexWarning,
         file: currentFile,
       });
     }
@@ -278,7 +279,7 @@ export function parseTexLog(log: string, status = 0): LatexError[] {
       severity: "error",
       line: 0,
       message,
-      ruleId: "compile-abort",
+      ruleId: LATEX_RULE.compileAbort,
     });
   }
 

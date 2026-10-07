@@ -13,6 +13,7 @@ import {
 } from "@/lib/document-class";
 import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import { makeErrorId, type LatexError } from "@/lib/latex-errors";
+import { LATEX_RULE } from "@/lib/latex-rules";
 import { compileService } from "@/lib/compile/compile-service";
 import { finishCompile } from "@/lib/compile/compile-progress";
 import type { CompileResult } from "@/lib/compile/compile-types";
@@ -335,7 +336,7 @@ export function offlineMissErrors(result: CompileResult, salt: string): LatexErr
       message,
       remedy:
         "This package hasn't been cached yet. Connect to the internet and compile once to make it available offline.",
-      ruleId: "offline-package",
+      ruleId: LATEX_RULE.offlinePackage,
     });
   }
   return errors;
@@ -366,7 +367,7 @@ export function downloadFailureErrors(result: CompileResult, salt: string): Late
       message,
       remedy:
         `The TeX package mirror did not return this file (${f.reason}). Check your network connection and compile again — packages already downloaded are cached, so a retry resumes where this one stopped.`,
-      ruleId: "package-download-failed",
+      ruleId: LATEX_RULE.packageDownloadFailed,
     });
   }
   return errors;
