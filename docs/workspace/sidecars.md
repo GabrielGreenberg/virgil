@@ -1,4 +1,4 @@
-<!-- last-verified: 5f5d9be2 2026-10-06 -->
+<!-- last-verified: f972daa3 2026-10-07 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -276,6 +276,12 @@ the serialized write critical section (`mutateSidecar`) and published on success
 a stale edit whose row is gone DECLINES rather than resurrecting it. The filename
 constant is module-private — address the file through the authority, never
 through `mutateSidecar` directly.
+
+Since task 979 `mutateSidecar` is a **compare-and-swap** against the out-of-process
+cowork writer: it re-stats the file immediately before writing and, if a skill's
+`os.replace` landed in between, re-reads and re-runs `mutate` (so `mutate` must be
+pure / idempotent); three moves → a contention error, nothing written. Doctrine:
+[cross-window-store-stability.md](../agents/laws/cross-window-store-stability.md).
 
 Since task 719 it is **no longer the exception**: every record-collection sidecar
 MERGES against a base inside the write's critical section. `SIDECAR_COLLECTIONS` +

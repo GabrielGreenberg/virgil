@@ -1,4 +1,4 @@
-<!-- last-verified: 5f5d9be2 2026-10-06 -->
+<!-- last-verified: f972daa3 2026-10-07 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts, src/components/PomodoroTimer.tsx, src/lib/pomodoro-timer.ts -->
 
@@ -119,6 +119,8 @@ Omni-eligible panels (shown in Omni view): notes, footnotes, citations, reports,
 Omni-view surfaces a **`OmniBulkPendingHeader`** when applied-pending changes exist: since 209eac4d it's a **navigator** — `[▲ prev] [counter "i of N"] [▼ next] … [⋮]` — where ▲/▼ step the applied changes in doc order (scroll-into-view + light the blue range, via `sortAppliedKeysByDocPos` in [pending-change-nav.ts](../../src/links/pending-change-nav.ts)) and the ⋮ kebab holds Keep-all / Dismiss-all (was a flat count + Keep-all/Dismiss-all strip). **It renders on ONE side, chosen by PLACEMENT (task 420):** `appliedPendingSide(categorySides)` ([omni-categories.ts](../../src/panels/Omni/omni-categories.ts)) resolves the side from the derived category placements (the task-381 ladder), with the family set derived from `APPLIED_SPLICE_KIND_LIST` and a stated tie-break (first family → Revisions). The old per-host gate was a per-side VIEW-FILTER predicate, so Revisions and Cutter on opposite strips gave two navigators driving one cursor, and hiding both in the filter menu removed the only document-wide way to find/keep/revert unreviewed applied AI text while the blue ranges stayed live in the `.tex`. Placement decides WHERE; visibility decides nothing.
 
 Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/panels/Cutter/omni.tsx](../../src/panels/Cutter/omni.tsx), [src/panels/Errors/omni.tsx](../../src/panels/Errors/omni.tsx), [src/panels/Revisions/omni.tsx](../../src/panels/Revisions/omni.tsx)) exporting a `buildXOmniItems(args): OmniItem[]` builder. The orchestrator-side host [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx) imports each builder and concatenates the results into the per-side omni columns. New omni-eligible panels add their builder there.
+
+**Error-card titles come from ONE rule vocabulary** (task 983): every producer (`syntax-check.ts`, `parse-tex-log.ts`, `useLatexCompile.ts`, the lint worker) spells its rule id through `LATEX_RULE` in [src/lib/latex-rules.ts](../../src/lib/latex-rules.ts), whose title table is a `Record` over the same union; the remedy is prose on its own field and the expanded card wraps rather than truncates (task 982).
 
 ### Per-card archive
 

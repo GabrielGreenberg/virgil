@@ -1,4 +1,4 @@
-<!-- last-verified: 5f5d9be2 2026-10-06 -->
+<!-- last-verified: f972daa3 2026-10-07 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -47,7 +47,7 @@ marker** except as a side effect of the content it wraps.
 | `\vexid{<4hex>}` | an **exampleBlock** (`\ex`/`\pex`) | block no-op macro | emitted before `\ex`/`\pex`. |
 | `\vxid{<4hex>}` | an **exampleItem** (`\a` row) | block no-op macro | emitted before `\a`; a stray `\vxid` at body scope is discarded so it can't accrete. |
 | `\vlid{<4hex>}…\vlidend{<4hex>}` | a **linkedRange** (the `linkedAnchor` mark's span) | paired inline no-op macros | opened where the mark starts, closed where it ends; ranges open at a block boundary are closed and reopened. Reassembled on parse by `applyLinkedAnchorBoundaries`. |
-| `%!vtex:begin <id>` … `%!vtex:end <id>` | a **texBlock** (raw-LaTeX passthrough) | block comment sentinels | bracket a verbatim body slurped without recursive parse; a literal `%!vtex:end` inside the body is escaped to `%!v tex:end`. **Fail-closed** (task 356): a `begin` whose `end` never appears is NOT a texBlock — the line falls through to the ordinary comment branch and is defused on the way out (`% !vtex:begin …`), rather than slurping the document tail. |
+| `%!vtex:begin <id>` … `%!vtex:end <id>` | a **texBlock** (raw-LaTeX passthrough) | block comment sentinels | bracket a verbatim body slurped without recursive parse; a literal `%!vtex:end` inside the body is escaped to `%!v tex:end` — byte-STUFFED (task 973: `TEX_BLOCK_END_ESCAPE = stuffedDelimiterEscape(...)` in `latex-lexer.ts` adds one pad on the way out and removes one on the way in, so a typed `%!v tex:end` round-trips too; the verbatim `\end{verbatim}` escape shares the door). **Fail-closed** (task 356): a `begin` whose `end` never appears is NOT a texBlock — the line falls through to the ordinary comment branch and is defused on the way out (`% !vtex:begin …`), rather than slurping the document tail. |
 
 SSOTs: the `\v*` command vocabulary — every marker's spelling AND which entity
 it identifies → `src/lib/latex-markers.ts` (`VIRGIL_MARKERS`, keyed by carrier;
