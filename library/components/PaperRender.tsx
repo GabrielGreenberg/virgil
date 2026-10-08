@@ -17,7 +17,10 @@ import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
-import { getSession, setListScrollQuiet } from "@library/lib/view-session-store";
+import {
+  getSession,
+  setListScrollQuiet,
+} from "@library/lib/view-session-store";
 import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PageScrollLozenge from "./PageScrollLozenge";
 import PagePicker from "./PagePicker";
@@ -130,7 +133,8 @@ export default function PaperRender({
   const [tex, setTex] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
 
-  const isIndexed = indexedState === "indexed" || indexedState === "deepIndexed";
+  const isIndexed =
+    indexedState === "indexed" || indexedState === "deepIndexed";
 
   // Register the paper folder under a synthetic `library-paper:<citekey>`
   // docId FIRST, then load `main.tex` and unblock EditorPane mount.
@@ -198,7 +202,8 @@ export default function PaperRender({
     let cancelled = false;
     (async () => {
       try {
-        const t = (await readTextFile(handle, `papers/${citekey}/main.tex`)) ?? "";
+        const t =
+          (await readTextFile(handle, `papers/${citekey}/main.tex`)) ?? "";
         if (cancelled || t === texRef.current) return;
         setParseError(null);
         setTex(t);
@@ -226,10 +231,10 @@ export default function PaperRender({
           margin: 16,
         }}
       >
-        This paper hasn&apos;t been indexed yet. Use the <strong>Index</strong> or{" "}
-        <strong>Deep&nbsp;index</strong> button in the header above to queue it,
-        then run <code>/library/index-pending</code> in a Claude session to drain
-        the queue.
+        This paper hasn&apos;t been indexed yet. Use the <strong>Index</strong>{" "}
+        or <strong>Deep&nbsp;index</strong> button in the header above to queue
+        it, then run <code>/library/index-pending</code> in a Claude session to
+        drain the queue.
       </div>
     );
   }
@@ -360,7 +365,8 @@ function PaperReader({
   );
   useEffect(
     () => () => {
-      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+      if (scrollRafRef.current !== null)
+        cancelAnimationFrame(scrollRafRef.current);
     },
     [],
   );
@@ -379,8 +385,8 @@ function PaperReader({
   useEffect(() => {
     if (restoredRef.current) return;
     if (!content || !scrollEl) return;
-    const saved = getSession().scopes[scope]?.[panel]?.lists[scrollSessionLibId]
-      ?.scrollTop;
+    const saved =
+      getSession().scopes[scope]?.[panel]?.lists[scrollSessionLibId]?.scrollTop;
     if (!saved || saved <= 0) {
       restoredRef.current = true; // nothing to restore
       restoringRef.current = false;
@@ -394,7 +400,8 @@ function PaperReader({
     const baseline = scrollEl.scrollTop;
     let raf = 0;
     const deadline =
-      (typeof performance !== "undefined" ? performance.now() : Date.now()) + 1000;
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) +
+      1000;
     const finish = () => {
       restoredRef.current = true;
       restoringRef.current = false;
@@ -448,15 +455,12 @@ function PaperReader({
     }
   }, [tex, onParseError]);
 
-  // Chrome-band page picker element, memoized on the fields PagePicker actually
-  // renders from — NOT on the `pgmarkPages` object, which usePgmarkPages returns
-  // as a fresh literal every render. `pages` identity is GUARANTEED stable by
-  // the hook's equality gate (R4): any recompute that finds the same
-  // (label, docY) marks — a same-page scroll, a resize-storm settle, a
-  // docChanged re-scan with unchanged marks — returns the SAME array
-  // reference. With `currentLabel` (value) and `scrollToPage` (ref) likewise
-  // stable, this element re-creates only when the shown page label or the
-  // marks actually change, and EditorPane's memo() bails on everything else.
+  // Chrome-band page picker element, memoized on the `pgmarkPages` object.
+  // usePgmarkPages keeps that object's identity until the marks or the current
+  // page change (task 1010) — a same-page scroll, a resize-storm settle, a
+  // docChanged re-scan with unchanged marks all return the SAME object — so
+  // this element re-creates only on a real page change and EditorPane's memo()
+  // bails on everything else.
   // Must sit above the early returns below (hooks run unconditionally).
   const pagePickerEl = useMemo(
     () =>
@@ -468,9 +472,7 @@ function PaperReader({
           <PagePicker pages={pgmarkPages} dense />
         </span>
       ) : undefined,
-    // Intentionally keyed on the sub-fields, not the fresh `pgmarkPages` object.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pgmarkPages?.pages, pgmarkPages?.currentLabel, pgmarkPages?.scrollToPage],
+    [pgmarkPages],
   );
 
   if (parseError) {

@@ -14,6 +14,9 @@
 //      pagePickerEl memo (and through it EditorPane's memo()) is keyed on.
 //   6. The ResizeObserver re-scan PARKS during a pane-resize gesture and
 //      settles exactly once on the end edge (plan §P3 defense-in-depth).
+//   7. Task 1010: scroll is not React state. Scroll frames that stay on one
+//      page cost the host ZERO renders and keep the returned object's
+//      identity; crossing a pgmark costs exactly ONE render.
 //
 // Keystroke sanctity: the hook recollects ONLY on editor create/docChanged,
 // never per keystroke — asserted indirectly by re-collecting on a docChanged
@@ -30,7 +33,11 @@ import {
   type LayoutGestureInfo,
 } from "@/lib/pane-resize/layout-gesture-bus";
 
-const DRAG: LayoutGestureInfo = { kind: "pane", id: "gutter-under-test", axis: "x" };
+const DRAG: LayoutGestureInfo = {
+  kind: "pane",
+  id: "gutter-under-test",
+  axis: "x",
+};
 
 afterEach(() => {
   cleanup();
@@ -70,7 +77,14 @@ function makeFixture(
     chip.textContent = `\\pgmark{${spec.label}}`;
     // docY = rect.top - containerRect.top(0) + scrollTop(0) = rect.top.
     chip.getBoundingClientRect = () =>
-      ({ top: spec.docY, left: 0, right: 0, bottom: spec.docY, width: 0, height: 0 }) as DOMRect;
+      ({
+        top: spec.docY,
+        left: 0,
+        right: 0,
+        bottom: spec.docY,
+        width: 0,
+        height: 0,
+      }) as DOMRect;
     dom.appendChild(chip);
   }
 
@@ -174,20 +188,33 @@ describe("usePgmarkPages", () => {
     chip.className = "pgmark-chip";
     chip.textContent = "\\pgmark{2}";
     chip.getBoundingClientRect = () =>
-      ({ top: 600, left: 0, right: 0, bottom: 600, width: 0, height: 0 }) as DOMRect;
+      ({
+        top: 600,
+        left: 0,
+        right: 0,
+        bottom: 600,
+        width: 0,
+        height: 0,
+      }) as DOMRect;
     (editor as { view: { dom: HTMLElement } }).view.dom.appendChild(chip);
 
     act(() => {
-      (editor as { __emit: (e: string, a: unknown) => void }).__emit("transaction", {
-        transaction: { docChanged: false },
-      });
+      (editor as { __emit: (e: string, a: unknown) => void }).__emit(
+        "transaction",
+        {
+          transaction: { docChanged: false },
+        },
+      );
     });
     expect(result.current.pages).toHaveLength(1); // not re-scanned
 
     act(() => {
-      (editor as { __emit: (e: string, a: unknown) => void }).__emit("transaction", {
-        transaction: { docChanged: true },
-      });
+      (editor as { __emit: (e: string, a: unknown) => void }).__emit(
+        "transaction",
+        {
+          transaction: { docChanged: true },
+        },
+      );
     });
     expect(result.current.pages).toHaveLength(2); // re-scanned on docChanged
   });
@@ -207,9 +234,12 @@ describe("usePgmarkPages", () => {
     // `setPages(next)` with a fresh array — changes ONLY identity, never
     // values, so this toBe is the one assertion that fails on a gate revert.
     act(() => {
-      (editor as { __emit: (e: string, a: unknown) => void }).__emit("transaction", {
-        transaction: { docChanged: true },
-      });
+      (editor as { __emit: (e: string, a: unknown) => void }).__emit(
+        "transaction",
+        {
+          transaction: { docChanged: true },
+        },
+      );
     });
     expect(result.current.pages).toBe(before);
 
@@ -218,12 +248,22 @@ describe("usePgmarkPages", () => {
     chip.className = "pgmark-chip";
     chip.textContent = "\\pgmark{3}";
     chip.getBoundingClientRect = () =>
-      ({ top: 900, left: 0, right: 0, bottom: 900, width: 0, height: 0 }) as DOMRect;
+      ({
+        top: 900,
+        left: 0,
+        right: 0,
+        bottom: 900,
+        width: 0,
+        height: 0,
+      }) as DOMRect;
     (editor as { view: { dom: HTMLElement } }).view.dom.appendChild(chip);
     act(() => {
-      (editor as { __emit: (e: string, a: unknown) => void }).__emit("transaction", {
-        transaction: { docChanged: true },
-      });
+      (editor as { __emit: (e: string, a: unknown) => void }).__emit(
+        "transaction",
+        {
+          transaction: { docChanged: true },
+        },
+      );
     });
     expect(result.current.pages).not.toBe(before);
     expect(result.current.pages.map((p) => p.label)).toEqual(["1", "2", "3"]);
@@ -284,6 +324,62 @@ describe("usePgmarkPages", () => {
       expect(scans.mock.calls.length).toBe(baseline + 1);
     } finally {
       globalThis.ResizeObserver = RealRO;
+    }
+  });
+
+  it("task 1010: same-page scroll frames do not re-render the host; crossing a pgmark re-renders exactly once", () => {
+    const { editor, container } = makeFixture(
+      [
+        { label: "1", docY: 0 },
+        { label: "2", docY: 500 },
+        { label: "3", docY: 1000 },
+      ],
+      { clientHeight: 100 },
+    );
+    // A QUEUED rAF, flushed per frame: the file's synchronous shim returns its
+    // handle after the callback has already cleared the coalescing slot, which
+    // would wedge every scroll after the first.
+    const queue: FrameRequestCallback[] = [];
+    const syncRaf = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) =>
+      queue.push(cb)) as typeof requestAnimationFrame;
+    const flushFrame = () => queue.splice(0).forEach((cb) => cb(0));
+    try {
+      let renders = 0;
+      const { result } = renderHook(() => {
+        renders++;
+        return usePgmarkPages(editor as never, container);
+      });
+      const settled = renders;
+      const before = result.current;
+      expect(before.currentLabel).toBe("1");
+
+      const scrollTo = (top: number) =>
+        act(() => {
+          container.scrollTop = top;
+          container.dispatchEvent(new Event("scroll"));
+          flushFrame();
+        });
+
+      // Several frames, all within page 1 (probe = top + 35 < 500).
+      for (const top of [10, 80, 200, 333, 450]) scrollTo(top);
+      expect(renders).toBe(settled);
+      expect(result.current).toBe(before);
+
+      // Cross page 2's anchor → exactly one render, new label.
+      scrollTo(480);
+      expect(renders).toBe(settled + 1);
+      expect(result.current.currentLabel).toBe("2");
+      expect(result.current.currentIndex).toBe(1);
+      expect(result.current).not.toBe(before);
+      const onPage2 = result.current;
+
+      // More frames inside page 2 → still no render, same object.
+      for (const top of [500, 700, 900]) scrollTo(top);
+      expect(renders).toBe(settled + 1);
+      expect(result.current).toBe(onPage2);
+    } finally {
+      globalThis.requestAnimationFrame = syncRaf;
     }
   });
 });
