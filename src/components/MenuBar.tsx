@@ -36,7 +36,7 @@ import { paragraphUuidAt } from "@/links/links";
 // bails on — so the dropdown's OUT-of-scope levels (0/5/6), which never reach
 // `headingRun`, can't corrupt a titleField / codeBlock / latexComment either.
 import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
-import { setHeadingLevelInRange } from "@/lib/tiptap/heading-level";
+import { setHeadingLevelInRange, setParagraphInRange } from "@/lib/tiptap/heading-level";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { classAllowsHeadingLevel, headingLevelOptions } from "@/lib/document-class";
 import { HEADING_TYPES } from "@/lib/heading-types";
@@ -262,6 +262,19 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
     .run();
 }
 
+/** Whether any heading lies in the current selection (the mixed-range test
+ *  behind the ¶ dropdown's checkmark — task 1003). */
+function selectionHoldsHeading(editor: Editor): boolean {
+  const { from, to } = editor.state.selection;
+  let found = false;
+  editor.state.doc.nodesBetween(from, to, (node) => {
+    if (found) return false;
+    if (node.type.name === "heading") found = true;
+    return !node.isTextblock;
+  });
+  return found;
+}
+
 /** Apply a BlockType row's pick — the shared verb behind a click AND an
  *  Enter activation (so keyboard + mouse take the identical path).
  *  Exported for the task-153 container-gate regression test. */
@@ -282,10 +295,23 @@ export function pickBlockType(
   if (value !== BODY_TEXT_VALUE && !classAllowsHeadingLevel(documentClass, parseInt(value)))
     return;
   if (value === BODY_TEXT_VALUE) {
-    // 'Body' is the explicit way OUT of heading-hood — setParagraph,
-    // no toggle needed (CHIP 5a: the heading items no longer toggle
-    // off, so 'Body' is the canonical return-to-paragraph).
-    if (editor.isActive("heading")) editor.chain().focus().setParagraph().run();
+    // 'Body' is the explicit way OUT of heading-hood (CHIP 5a: the heading
+    // items no longer toggle off). Task 1003: over the WHOLE selection, the
+    // same range the levels convert — through the inverse door, which demotes
+    // only headings (a range with none is a no-op). The old
+    // `isActive("heading")` gate was true only when headings covered the
+    // ENTIRE selection, so a heading+paragraph range silently did nothing.
+    editor
+      .chain()
+      .focus()
+      .command(({ tr, dispatch }) => {
+        const paragraphType = editor.schema.nodes.paragraph;
+        if (!paragraphType) return false;
+        if (dispatch)
+          setParagraphInRange(tr, tr.selection.from, tr.selection.to, paragraphType);
+        return true;
+      })
+      .run();
   } else {
     // CHIP 5a: SET (never toggle). Levels 1–4 route through the
     // registry's canonical headingRun; 0/5/6 fall back to a direct
@@ -370,7 +396,15 @@ export function BlockTypeDropdown({
   const activeLevel = HEADING_TYPES.find((h) =>
     editor.isActive("heading", { level: h.level }),
   )?.level;
-  const current = activeLevel === undefined ? BODY_TEXT_VALUE : String(activeLevel);
+  // Task 1003: a MIXED selection (a heading and a paragraph) checks NO row —
+  // none describes the range, and checking "Body text" told the user the row
+  // they needed was already applied. O(selection), like `isActive` itself.
+  const current =
+    activeLevel !== undefined
+      ? String(activeLevel)
+      : selectionHoldsHeading(editor)
+        ? null
+        : BODY_TEXT_VALUE;
 
   // The activedescendant host: the focusable trigger button. The window-capture
   // keyboard controller fires regardless of focus, but a screen reader tracks

@@ -82,7 +82,12 @@ interface FakeChain {
 
 /** Just enough of TipTap's CommandProps for the heading pick's callback. */
 interface FakeCommandProps {
-  tr: { selection: { from: number; to: number }; setBlockType: (...a: unknown[]) => unknown };
+  tr: {
+    selection: { from: number; to: number };
+    setBlockType: (...a: unknown[]) => unknown;
+    doc: { nodesBetween: (f: number, t: number, cb: (n: unknown, pos: number) => unknown) => void };
+    mapping: { map: (pos: number) => number };
+  };
   dispatch: (() => void) | undefined;
 }
 
@@ -103,14 +108,23 @@ function makeEditor(currentLevel: number | null) {
     run,
   };
   const setBlockType = vi.fn();
+  const headingType = { name: "heading" };
+  const paragraphType = { name: "paragraph", spec: { attrs: { uuid: {} } } };
+  // The doc as a range walk sees it: one block at pos 0, a heading iff
+  // `currentLevel` is set (task 1003 — "Body text" walks the selection).
+  const doc = {
+    nodesBetween: (_f: number, _t: number, cb: (n: unknown, pos: number) => unknown) => {
+      cb({ type: currentLevel !== null ? headingType : paragraphType, isTextblock: true, attrs: {} }, 0);
+    },
+  };
   const commandProps: FakeCommandProps = {
-    tr: { selection: { from: 1, to: 1 }, setBlockType },
+    tr: { selection: { from: 1, to: 1 }, setBlockType, doc, mapping: { map: (p) => p } },
     dispatch: () => {},
   };
-  const headingType = { name: "heading" };
   const editor = {
     isEditable: true,
-    schema: { nodes: { heading: headingType } },
+    schema: { nodes: { heading: headingType, paragraph: paragraphType } },
+    state: { selection: { from: 1, to: 1 }, doc },
     isActive: (name: string, attrs?: { level?: number }) => {
       if (name !== "heading") return false;
       if (attrs && typeof attrs.level === "number") return currentLevel === attrs.level;
@@ -121,7 +135,7 @@ function makeEditor(currentLevel: number | null) {
     // keeps it and where the surface-editability door reads it (task 733).
     view: { editable: true, state: { selection: { head: 1 }, doc: {} } },
   } as unknown as Editor;
-  return { editor, chain, run, setBlockType, headingType };
+  return { editor, chain, run, setBlockType, headingType, paragraphType };
 }
 
 function blockButtons(): HTMLButtonElement[] {
@@ -175,12 +189,16 @@ describe("BlockTypeDropdown — portaled render + click selection", () => {
     expect(body.getAttribute("role")).toBe("menuitemradio");
   });
 
-  it("clicking 'Body text' calls setParagraph + closes", () => {
-    const { editor, chain } = makeEditor(2); // currently a heading
+  it("clicking 'Body text' demotes through the ONE door + closes", () => {
+    // Task 1003: `setParagraphInRange` (heading-level.ts), not `setParagraph()`.
+    const { editor, chain, setBlockType, paragraphType } = makeEditor(2); // a heading
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
     fireEvent.click(blockButtonByLabel("Body text")!);
-    expect(chain.setParagraph).toHaveBeenCalledTimes(1);
+    expect(chain.setParagraph).not.toHaveBeenCalled();
+    expect(chain.command).toHaveBeenCalledTimes(1);
+    expect(setBlockType).toHaveBeenCalledTimes(1);
+    expect(setBlockType.mock.calls[0][2]).toBe(paragraphType);
     expect(document.querySelector('[role="menu"]')).toBeNull(); // closed
   });
 
@@ -223,19 +241,20 @@ describe("BlockTypeDropdown — portaled render + click selection", () => {
   });
 
   it("a read-only editor makes the pick inert (no chain call)", () => {
-    const { editor, chain } = makeEditor(2);
+    const { editor, chain, setBlockType } = makeEditor(2);
     (editor as unknown as { isEditable: boolean }).isEditable = false;
     (editor.view as unknown as { editable: boolean }).editable = false;
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
     fireEvent.click(blockButtonByLabel("Body text")!);
-    expect(chain.setParagraph).not.toHaveBeenCalled();
+    expect(chain.command).not.toHaveBeenCalled();
+    expect(setBlockType).not.toHaveBeenCalled();
   });
 });
 
 describe("BlockTypeDropdown — NEW keyboard navigation", () => {
   it("Down/Up move a visible data-active highlight; Enter activates it", () => {
-    const { editor, chain } = makeEditor(null);
+    const { editor, setBlockType } = makeEditor(null);
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
 
@@ -246,11 +265,11 @@ describe("BlockTypeDropdown — NEW keyboard navigation", () => {
     key("ArrowUp");
     expect(labelOf(activeBlockButton())).toBe("Body text");
 
-    // Enter on Body text — editor is a paragraph so setParagraph is NOT called
-    // (the 'Body' branch only runs when a heading is active), but the menu closes.
+    // Enter on Body text — the range holds no heading, so nothing is retyped
+    // (task 1003: a natural no-op of the demote door), but the menu closes.
     key("Enter");
     expect(document.querySelector('[role="menu"]')).toBeNull();
-    expect(chain.setParagraph).not.toHaveBeenCalled();
+    expect(setBlockType).not.toHaveBeenCalled();
   });
 
   it("End jumps to the last row (Subparagraph heading), Home back to the first", () => {

@@ -381,6 +381,66 @@ describe("paragraph → heading is a conversion, and still gets the defaults", (
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+// (3b) THE INVERSE — task 1003: "Body text" demotes every heading in the range
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("task 1003: demote-to-paragraph has one door, over the whole range", () => {
+  function selectAll(editor: Editor) {
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 2, editor.state.doc.content.size - 1),
+      ),
+    );
+  }
+
+  it("Body text on a heading+paragraph selection demotes the heading (was a silent no-op)", () => {
+    const editor = mountHeadingFixture();
+    selectAll(editor);
+    pickBlockType(editor, "p");
+    expect(editor.state.doc.child(0).type.name).toBe("paragraph");
+    expect(editor.state.doc.child(1).type.name).toBe("paragraph");
+    // Identity carried across the retype, by construction.
+    expect(editor.state.doc.child(0).attrs.uuid).toBe("h-intro");
+    expect(editor.state.doc.child(1).attrs.uuid).toBe("para-A");
+  });
+
+  it("only HEADINGS are demoted — a code block in the range is left alone", () => {
+    const editor = mount([
+      { type: "heading", attrs: { ...FIXTURE_ATTRS }, content: [{ type: "text", text: "Introduction" }] },
+      { type: "codeBlock", content: [{ type: "text", text: "x = 1" }] },
+    ]);
+    selectAll(editor);
+    pickBlockType(editor, "p");
+    expect(editor.state.doc.child(0).type.name).toBe("paragraph");
+    expect(editor.state.doc.child(0).attrs.uuid).toBe("h-intro");
+    expect(editor.state.doc.child(1).type.name).toBe("codeBlock");
+  });
+
+  it("the chip's \"No heading\" still demotes, through the same door", () => {
+    const editor = mountHeadingFixture();
+    const chip = (editor.view.dom as HTMLElement).querySelector<HTMLElement>(
+      '[data-action="type-menu"]',
+    );
+    lastTypeMenu = null;
+    chip!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    takeTypeMenu()!.onPick({ kind: "no-heading" });
+    expect(editor.state.doc.child(0).type.name).toBe("paragraph");
+    expect(editor.state.doc.child(0).attrs.uuid).toBe("h-intro");
+  });
+
+  it("census: no source outside the door retypes to paragraph by hand", () => {
+    const offenders: string[] = [];
+    for (const file of walkSources(SRC)) {
+      if (file === join(SRC, "lib", "tiptap", "heading-level.ts")) continue;
+      const body = code(readFileSync(file, "utf8"));
+      if (/\.setParagraph\(\)|setBlockType\([^)]*paragraph(Type)?\s*\)/.test(body.replace(/\n/g, " ")))
+        offenders.push(relative(SRC, file));
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 // (4) CENSUS — discover the write population; a fourth surface cannot slip it
 // ───────────────────────────────────────────────────────────────────────────
 

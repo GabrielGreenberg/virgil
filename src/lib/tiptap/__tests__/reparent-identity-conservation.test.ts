@@ -786,7 +786,8 @@ const SWEPT_COMMANDS: Partial<
   toggleOrderedList: "M7",
   toggleBlockquote: "M4b, M5, and the split-lift + heading controls",
   setBlockType: "M8 (the Heading action) and M8b (the demote chip)",
-  setParagraph: "M8b",
+  // `setParagraph` retired (task 1003): both demote surfaces now go through
+  // `setParagraphInRange` in heading-level.ts, a `setBlockType` (swept above).
 };
 
 describe("499 CENSUS: every re-parenting command family is swept", () => {
