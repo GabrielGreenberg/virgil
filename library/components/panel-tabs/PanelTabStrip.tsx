@@ -3,7 +3,9 @@
 import {
   forwardRef,
   Fragment,
+  useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type DragEvent,
@@ -11,12 +13,11 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { flushSync } from "react-dom";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
 import { isCentral } from "@library/lib/library-store";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
-import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
 import {
   STRIP_SIDE_PAD,
@@ -30,8 +31,11 @@ import {
   useTabStripScroller,
 } from "@/components/chrome/tab-strip-occupancy";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
-import { FONT_MONO } from "@/lib/font-stacks";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
+import { MenuProvider } from "@/components/menu/MenuProvider";
+import { ANCHORED_MENU_PLACEMENTS } from "@/components/menu/AnchoredMenu";
+import { MenuActionRow } from "@/components/menu/MenuActionRow";
+import { MenuSectionLabel, MenuSeparator } from "@/components/menu/MenuChrome";
 
 // F#15 — the occupancy ladder this strip pioneered (inactive tabs absorb the
 // squeeze first and ellipsize their names to a floor; the active tab resists;
@@ -132,9 +136,6 @@ export function PanelTabStrip({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  // Rect captured at toggle so the portaled AddTabMenu can anchor to the "+"
-  // button without reading a ref during render (react-hooks/refs).
-  const [addAnchorRect, setAddAnchorRect] = useState<DOMRect | null>(null);
   const [tabMenuOpenId, setTabMenuOpenId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -152,7 +153,10 @@ export function PanelTabStrip({
 
   const stripRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Map<string, HTMLElement>>(new Map());
-  const addBtnRef = useRef<HTMLButtonElement | null>(null);
+  // The "+" button as an ELEMENT in state (not a ref), so the menu it opens
+  // can name it as its anchor / click-outside exemption / focus-return target
+  // during render (react-hooks/refs).
+  const [addBtnEl, setAddBtnEl] = useState<HTMLButtonElement | null>(null);
 
   // F#15 scroll-active-into-view — the SHARED scroll half of the ladder
   // (task 561): engages only past the floors (above them the tabs share the
@@ -704,15 +708,13 @@ export function PanelTabStrip({
       {showAddTab && (
         <div style={{ position: "relative", flexShrink: 0 }}>
           <AddTabButton
-            ref={addBtnRef}
-            onClick={() => {
-              setAddAnchorRect(addBtnRef.current?.getBoundingClientRect() ?? null);
-              setMenuOpen((v) => !v);
-            }}
+            ref={setAddBtnEl}
+            open={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
           />
-          {menuOpen && addAnchorRect && (
+          {menuOpen && addBtnEl && (
             <AddTabMenu
-              anchorRect={addAnchorRect}
+              trigger={addBtnEl}
               recent={showRecent ? recentLibraries : []}
               onNewLibrary={handleNewLibrary}
               onOpenRecent={handleOpenRecent}
@@ -1001,8 +1003,11 @@ function CloseButton({
   );
 }
 
-const AddTabButton = forwardRef<HTMLButtonElement, { onClick: () => void }>(
-  function AddTabButton({ onClick }, ref) {
+const AddTabButton = forwardRef<
+  HTMLButtonElement,
+  { open: boolean; onClick: () => void }
+>(
+  function AddTabButton({ open, onClick }, ref) {
   return (
     <button
       data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
@@ -1012,6 +1017,7 @@ const AddTabButton = forwardRef<HTMLButtonElement, { onClick: () => void }>(
       onClick={onClick}
       title="New tab"
       aria-label="New tab"
+      {...menuTriggerAria("menu", open)}
       style={{
         flexShrink: 0,
         background: "transparent",
@@ -1051,11 +1057,10 @@ function TabMenuTrigger({
   pushRight?: boolean;
 }) {
   const idleColor = muted ? "var(--muted)" : "var(--foreground)";
-  const btnRef = useRef<HTMLButtonElement | null>(null);
-  // Capture the trigger rect into state at toggle time (not during render) so
-  // the portaled popup can anchor to it — mirrors TabPlusMenu's pattern and
-  // keeps the react-hooks/refs rule happy.
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  // The trigger as an ELEMENT in state, so the menu can anchor to it (and
+  // re-read it per reposition), exempt it from click-outside and return focus
+  // to it, all during render (react-hooks/refs).
+  const [btnEl, setBtnEl] = useState<HTMLButtonElement | null>(null);
   return (
     <div
       style={{
@@ -1068,11 +1073,10 @@ function TabMenuTrigger({
       <button
         data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
         className="focus-ring"
-        ref={btnRef}
+        ref={setBtnEl}
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          setAnchorRect(btnRef.current?.getBoundingClientRect() ?? null);
           onToggle();
         }}
         onMouseDown={(e) => e.stopPropagation()}
@@ -1109,228 +1113,114 @@ function TabMenuTrigger({
       >
         ⋮
       </button>
-      {open && anchorRect && (
-        <PanelMenuPopup anchorRect={anchorRect} items={items} onClose={onClose} />
+      {open && btnEl && (
+        <StripMenu trigger={btnEl} ariaLabel="Library options" minWidth={180} onClose={onClose}>
+          {items.map((item, i) => (
+            <MenuActionRow
+              key={i}
+              id={`item-${i}`}
+              label={item.label}
+              size="launcher"
+              onSelect={item.onClick}
+            />
+          ))}
+        </StripMenu>
       )}
     </div>
   );
 }
 
-// Body-portaled so it escapes the folder frame's overflow:hidden and the
-// tab strip's horizontal scroll-overflow (both clip absolutely-positioned
-// children). Anchored to the trigger via getBoundingClientRect +
-// useFloatingMenuPosition, the same convention the editor chrome menus use.
-function PanelMenuPopup({
-  anchorRect,
-  items,
+/**
+ * The tab strip's two menus — a tab's ⋮ and the "+" — on the app's ONE menu
+ * door (task 1011). Their triggers live in OTHER components (a tab, the strip)
+ * and their open state is the strip's, so they mount `MenuProvider` directly
+ * rather than `AnchoredMenu` (which owns its own button); everything else the
+ * shell would supply is passed here, once, for both:
+ *   - placement against the LIVE trigger rect, re-read per RAF-coalesced
+ *     reposition, with the measured vertical AND horizontal flip (the old pair
+ *     listed only `below/above-start`, so a "+" near the right edge clamped
+ *     instead of flipping);
+ *   - the trigger in `excludeRefs` — the old hand-rolled outside-mousedown
+ *     closed the menu on the trigger's own press and the click then reopened it
+ *     (the task-094 toggle bug);
+ *   - roving ↑/↓ nav with the trigger as activedescendant host, Escape as the
+ *     CANCEL channel returning focus to the trigger, click-away as DISMISS, and
+ *     row activation closing the menu (`closeOnActivate`);
+ *   - the `.menu-surface` chrome (they painted `--surface` + `--pod-shadow`).
+ * Portaled by the provider, so the folder frame's overflow:hidden and the
+ * strip's scroll-overflow cannot clip them.
+ */
+function StripMenu({
+  trigger,
+  ariaLabel,
+  minWidth,
   onClose,
+  children,
 }: {
-  anchorRect: DOMRect | null;
-  items: PanelMenuItem[];
+  trigger: HTMLElement;
+  ariaLabel: string;
+  minWidth: number;
   onClose: () => void;
+  children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
-    anchorRect,
-    placements: [
-      { side: "below", align: "start" },
-      { side: "above", align: "start" },
-    ],
-    gap: 4,
-  });
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const t = setTimeout(() => {
-      window.addEventListener("mousedown", onDown);
-    }, 0);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      ref={(el) => {
-        ref.current = el;
-        positionRef(el);
-      }}
-      role="menu"
-      style={{
-        ...positionStyle,
-        minWidth: 180,
-        background: "var(--surface)",
-        border: "1px solid var(--border-light)",
-        borderRadius: "var(--radius-md)",
-        boxShadow: "var(--pod-shadow)",
-        padding: "4px 0",
-        zIndex: 2000,
-      }}
+  const menuId = useId();
+  const readAnchor = useCallback(() => trigger.getBoundingClientRect(), [trigger]);
+  const host = useCallback(() => trigger, [trigger]);
+  return (
+    <MenuProvider
+      id={`strip-menu-${menuId}`}
+      layout="list"
+      ariaLabel={ariaLabel}
+      anchorRect={readAnchor}
+      trackAnchor={readAnchor}
+      placements={ANCHORED_MENU_PLACEMENTS.start}
+      gap={4}
+      maxHeight
+      excludeRefs={[trigger]}
+      getActiveDescendantHost={host}
+      returnFocusOnCancel={host}
+      closeOnActivate
+      onClose={onClose}
+      containerClassName="py-1"
+      containerStyle={{ minWidth }}
     >
-      {items.map((item, i) => (
-        <MenuItem
-          key={i}
-          onClick={() => {
-            item.onClick();
-            onClose();
-          }}
-        >
-          {item.label}
-        </MenuItem>
-      ))}
-    </div>,
-    document.body,
+      {children}
+    </MenuProvider>
   );
 }
 
-// Body-portaled for the same reason as PanelMenuPopup — the folder frame's
-// overflow:hidden + the strip's scroll-overflow would otherwise clip it.
 function AddTabMenu({
-  anchorRect,
+  trigger,
   recent,
   onNewLibrary,
   onOpenRecent,
   onClose,
 }: {
-  anchorRect: DOMRect | null;
+  trigger: HTMLElement;
   recent: RecentLibrary[];
   onNewLibrary: () => void;
   onOpenRecent: (id: string) => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
-    anchorRect,
-    placements: [
-      { side: "below", align: "start" },
-      { side: "above", align: "start" },
-    ],
-    gap: 4,
-  });
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const t = setTimeout(() => {
-      window.addEventListener("mousedown", onDown);
-    }, 0);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      ref={(el) => {
-        ref.current = el;
-        positionRef(el);
-      }}
-      role="menu"
-      style={{
-        ...positionStyle,
-        minWidth: 200,
-        background: "var(--surface)",
-        border: "1px solid var(--border-light)",
-        borderRadius: "var(--radius-md)",
-        boxShadow: "var(--pod-shadow)",
-        padding: "4px 0",
-        zIndex: 2000,
-      }}
-    >
-      <MenuItem onClick={onNewLibrary}>+ New Library</MenuItem>
+  return (
+    <StripMenu trigger={trigger} ariaLabel="New tab" minWidth={200} onClose={onClose}>
+      <MenuActionRow id="new-library" label="+ New Library" size="launcher" onSelect={onNewLibrary} />
       {recent.length > 0 && (
         <>
-          <div
-            style={{
-              height: 1,
-              background: "var(--border)",
-              margin: "4px 0",
-            }}
-          />
-          <div
-            style={{
-              fontSize: 10,
-              color: "var(--muted)",
-              padding: "2px 12px 4px",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontFamily: FONT_MONO,
-            }}
-          >
-            Recent
-          </div>
+          <MenuSeparator />
+          <MenuSectionLabel>Recent</MenuSectionLabel>
           {recent.map((lib) => (
-            <MenuItem key={lib.id} onClick={() => onOpenRecent(lib.id)}>
-              {lib.label}
-            </MenuItem>
+            <MenuActionRow
+              key={lib.id}
+              id={`recent-${lib.id}`}
+              label={lib.label}
+              size="launcher"
+              onSelect={() => onOpenRecent(lib.id)}
+            />
           ))}
         </>
       )}
-    </div>,
-    document.body,
-  );
-}
-
-function MenuItem({
-  children,
-  onClick,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      style={{
-        display: "block",
-        width: "100%",
-        textAlign: "left",
-        background: "transparent",
-        border: "none",
-        padding: "6px 12px",
-        fontSize: 13,
-        color: "var(--foreground)",
-        cursor: "pointer",
-        fontFamily: "inherit",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "var(--accent-light)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-      }}
-    >
-      {children}
-    </button>
+    </StripMenu>
   );
 }
 

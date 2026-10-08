@@ -84,8 +84,9 @@ describe("declared-menu ARIA census (task 997)", () => {
     const keys = population.map((h) => h.key);
     for (const k of [
       "src/components/library/MyPapersPod.tsx::MyPapersPod",
-      "library/components/RowMenu.tsx::RowMenu",
-      "library/components/PaperAiRequestsMenu.tsx::PaperAiRequestsMenu",
+      // The Library silo's two (`RowMenu`, `PaperAiRequestsMenu`) left this
+      // population in task 1011 — they mount `AnchoredMenu` now — so the pod's
+      // "+ Add paper" menu is the one hand-declared menu left to answer.
     ]) {
       expect(keys, k).toContain(k);
     }

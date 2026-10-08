@@ -508,7 +508,6 @@ const PINNED_DANGER_TEXT_UTILITY_SITES: Readonly<Record<string, string>> = {
 
 const PINNED_DANGER_INLINE_SITES: Readonly<Record<string, string>> = {
   "library/components/LibraryView.tsx": "sync-error banner's dismiss ICON (its text reads ERROR_INK)",
-  "library/components/RowMenu.tsx": "destructive menu ROW",
   "library/components/Toaster.tsx": "attention toast's 3px EDGE (its label reads ERROR_INK)",
   "src/components/EditorLayout.tsx": "a dot's backgroundColor — a fill, not text",
   "src/components/SkillSyncControls.tsx": "sync-error pill's dismiss ICON (its text reads ERROR_INK)",

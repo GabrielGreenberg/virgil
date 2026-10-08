@@ -408,7 +408,6 @@ function SectionHeader({
           minWidth={184}
           triggerStyle={{
             flexShrink: 0,
-            background: "transparent",
             border: "none",
             width: 22,
             height: 22,
