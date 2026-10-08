@@ -312,6 +312,74 @@ describe("useDiagnostics", () => {
     }
   });
 
+  it("a superseding jump cancels the previous jump's pending retries (task 1007)", () => {
+    vi.useFakeTimers();
+    const eA = lintErr(1, "in aaaa");
+    const eB = lintErr(5, "in bbbb");
+    MOCK_LINT_ERRORS = [eA, eB];
+    const { ref, scrollToParagraphId } = makeHandleRef(null);
+    const { result } = renderHook(() =>
+      useDiagnostics(baseOptions({ editorHandleRef: ref })),
+    );
+
+    act(() => {
+      result.current.jumpToErrorVisual(eA);
+    });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    act(() => {
+      result.current.jumpToErrorVisual(eB);
+    });
+    const bImmediate = scrollToParagraphId.mock.calls.length - 1;
+    expect(scrollToParagraphId.mock.calls[bImmediate][0]).toBe("bbbb");
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    const after = scrollToParagraphId.mock.calls.slice(bImmediate);
+    expect(after.length).toBe(3); // B immediate + B's 2 retries
+    for (const call of after) expect(call[0]).toBe("bbbb");
+  });
+
+  it("selecting a different error by another door cancels the jump's retries", () => {
+    vi.useFakeTimers();
+    const eA = lintErr(1, "in aaaa");
+    const eB = lintErr(5, "in bbbb");
+    MOCK_LINT_ERRORS = [eA, eB];
+    const { ref, scrollToParagraphId } = makeHandleRef(null);
+    const { result } = renderHook(() =>
+      useDiagnostics(baseOptions({ editorHandleRef: ref })),
+    );
+    act(() => {
+      result.current.jumpToErrorVisual(eA);
+    });
+    act(() => {
+      result.current.setSelectedErrorId(eB.id);
+    });
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(scrollToParagraphId.mock.calls.length).toBe(1);
+  });
+
+  it("unmount drops a jump's pending retries", () => {
+    vi.useFakeTimers();
+    const e = lintErr(1, "jump target");
+    MOCK_LINT_ERRORS = [e];
+    const { ref, scrollToParagraphId } = makeHandleRef(null);
+    const { result, unmount } = renderHook(() =>
+      useDiagnostics(baseOptions({ editorHandleRef: ref })),
+    );
+    act(() => {
+      result.current.jumpToErrorVisual(e);
+    });
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(scrollToParagraphId.mock.calls.length).toBe(1);
+  });
+
   it("jumpToErrorVisual does not scroll when the error has no resolvable paragraph", () => {
     vi.useFakeTimers();
     const e = lintErr(6, "no paragraph"); // line 6 → outside any %!v: range

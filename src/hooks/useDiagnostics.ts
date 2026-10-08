@@ -20,10 +20,12 @@
  * fully local (search already originates in `EditorPane`).
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import { useLatexLint } from "@/hooks/useLatexLint";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
+import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { pruneExpanded } from "@/panels/Errors/expansion";
@@ -96,6 +98,10 @@ export function useDiagnostics({
   compileErrors,
   knownBibKeys,
 }: UseDiagnosticsOptions): UseDiagnostics {
+  // The ONE timer scope this hook arms through (the timers law's React half):
+  // the jump's settle retries die with the pane. Declared first so its
+  // disposal precedes every effect cleanup below.
+  const lifetime = useViewLifetime();
   const lintErrors = useLatexLint({ text: sourceText, knownBibKeys });
 
   const allLatexErrors = useMemo<LatexError[]>(() => {
@@ -260,8 +266,26 @@ export function useDiagnostics({
   // retries absorb the old cross-mode pending-scroll drain effect — under the
   // multi-doc keep-alive the visual editor is warm-mounted, so a jump issued
   // right after the shell flips out of PDF view lands once layout settles.
+  //
+  // The retries occupy ONE owned slot (task 1007): a jump cancels whatever the
+  // previous jump still has pending before arming its own, so stepping A → B
+  // through the list (arrow keys fire a jump per step) can never let A's late
+  // retry scroll the editor back to A. The slot also empties when the
+  // selection moves to a different error by any other door (see the effect
+  // below), and the scope's disposal drops it on unmount.
+  const jumpRetriesRef = useRef<{ errorId: string; timers: ViewTimer[] } | null>(
+    null,
+  );
+  const cancelJumpRetries = useCallback(() => {
+    const slot = jumpRetriesRef.current;
+    if (!slot) return;
+    for (const t of slot.timers) lifetime.clear(t);
+    jumpRetriesRef.current = null;
+  }, [lifetime]);
+
   const jumpToErrorVisual = useCallback(
     (err: LatexError) => {
+      cancelJumpRetries();
       setSelectedErrorId(err.id);
       setErrorHighlightRange(computeErrorHighlightRange(err));
       const paraId = paragraphByErrorId.get(err.id);
@@ -274,11 +298,20 @@ export function useDiagnostics({
         }
       };
       doScroll();
-      setTimeout(doScroll, 200);
-      setTimeout(doScroll, 500);
+      jumpRetriesRef.current = {
+        errorId: err.id,
+        timers: [lifetime.setTimeout(doScroll, 200), lifetime.setTimeout(doScroll, 500)],
+      };
     },
-    [computeErrorHighlightRange, paragraphByErrorId, editorHandleRef],
+    [cancelJumpRetries, lifetime, computeErrorHighlightRange, paragraphByErrorId, editorHandleRef],
   );
+
+  // A selection that moves off the jumped-to error (another door's
+  // setSelectedErrorId, a clear) retires that jump's pending retries.
+  useEffect(() => {
+    const slot = jumpRetriesRef.current;
+    if (slot && slot.errorId !== selectedErrorId) cancelJumpRetries();
+  }, [selectedErrorId, cancelJumpRetries]);
 
   // The visual jump's capability (task 125): the handler PLUS the semantics it
   // implements, bound here at the handler's own definition rather than restated
