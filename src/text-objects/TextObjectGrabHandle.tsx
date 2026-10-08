@@ -878,6 +878,8 @@ export function TextObjectGrabHandle({ editor }: Props) {
           safeTo,
           { transient: true },
         );
+        // null also means REFUSED: the selection partly overlaps an existing
+        // annotation, which a new mark would overwrite (task 1001) — no lift.
         if (!hydrated) {
           cleanup();
           return;

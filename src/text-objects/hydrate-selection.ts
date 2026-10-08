@@ -23,6 +23,7 @@
  * See TEXT-OBJECT-REFACTOR.md §9.
  */
 
+import type { MarkType, Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 import { generateShortId } from "@/lib/uuid";
 import type { TextObjectRef } from "./types";
@@ -38,6 +39,18 @@ import type { TextObjectRef } from "./types";
  * already-hydrated selection. Other cards anchored to that range
  * continue to point at the same id.
  *
+ * NEVER overwrites an existing anchor (task 1001). `linkedAnchor` excludes
+ * its own type (one anchor per character), so `addMark` over text that
+ * already carries an anchor would REPLACE that note's / highlight's mark
+ * with the new one — and a transient handle is stripped on popout close,
+ * taking the overwritten slice of the annotation with it. So a selection
+ * that touches an anchor it is not wholly covered by is REFUSED (null):
+ * the grab does not lift, and the annotation is untouched. Coverage is read
+ * from every text node in `[from, to)` (the intersection of the anchor ids
+ * each carries), never from `doc.resolve(from).marks()` — the mark is
+ * `inclusive: false`, so at an anchor's START boundary `marks()` reports
+ * the text BEFORE `from` and the covering anchor was invisible.
+ *
  * `opts.transient` (the plain selection grab — see TextObjectGrabHandle):
  * stamp the freshly-minted mark with `kind:"transient"` so it renders as a
  * cardless, invisible range handle (no card, no highlight; renderHTML omits
@@ -48,8 +61,9 @@ import type { TextObjectRef } from "./types";
  * existing kind is preserved (so re-grabbing over a real note never demotes
  * it to transient, and its cleanup never deletes the note).
  *
- * Returns null if the range is empty or the schema doesn't have the
- * `linkedAnchor` mark (defensive — shouldn't happen in practice).
+ * Returns null if the range is empty, the schema doesn't have the
+ * `linkedAnchor` mark (defensive — shouldn't happen in practice), or the
+ * range partly overlaps an existing anchor (see above).
  */
 export function hydrateSelectionToTextObject(
   view: EditorView,
@@ -61,32 +75,15 @@ export function hydrateSelectionToTextObject(
   const markType = view.state.schema.marks.linkedAnchor;
   if (!markType) return null;
 
-  // Look for an existing linkedAnchor that already fully covers the
-  // range. If found, reuse its anchorId so multiple cards over the same
-  // range share identity.
-  let existingId: string | null = null;
-  const startMarks = view.state.doc.resolve(from).marks();
-  const startAnchor = startMarks.find((m) => m.type === markType);
-  if (startAnchor) {
-    // Verify the mark extends at least to `to`.
-    const id = startAnchor.attrs.anchorId as string | undefined;
-    if (id) {
-      let coversTo = true;
-      view.state.doc.nodesBetween(from, to, (node) => {
-        if (!node.isText) return true;
-        const has = node.marks.some(
-          (m) => m.type === markType && m.attrs.anchorId === id,
-        );
-        if (!has) coversTo = false;
-        return true;
-      });
-      if (coversTo) existingId = id;
-    }
+  const coverage = readAnchorCoverage(view.state.doc, from, to, markType);
+  // An anchor on EVERY text node of the range: reuse its id so multiple
+  // cards / popouts over the same range share identity.
+  if (coverage.covering) {
+    return { kind: "linkedRange", id: coverage.covering };
   }
-
-  if (existingId) {
-    return { kind: "linkedRange", id: existingId };
-  }
+  // Some text carries an anchor that does not cover the whole range: a new
+  // mark would overwrite it there. Refuse rather than damage the annotation.
+  if (coverage.touchesAnchor) return null;
 
   // Collect existing anchorIds in the doc so the new one doesn't collide.
   const existing = new Set<string>();
@@ -109,4 +106,32 @@ export function hydrateSelectionToTextObject(
   view.dispatch(view.state.tr.addMark(from, to, mark));
 
   return { kind: "linkedRange", id: anchorId };
+}
+
+/**
+ * What `linkedAnchor`s the text in `[from, to)` carries: `covering` is an
+ * anchor id present on EVERY text node of the range (null if none), and
+ * `touchesAnchor` whether ANY text node carries one.
+ */
+function readAnchorCoverage(
+  doc: PMNode,
+  from: number,
+  to: number,
+  markType: MarkType,
+): { covering: string | null; touchesAnchor: boolean } {
+  let common = null as string[] | null;
+  let touchesAnchor = false;
+  doc.nodesBetween(from, to, (node) => {
+    if (!node.isText) return true;
+    const ids: string[] = [];
+    for (const m of node.marks) {
+      if (m.type !== markType) continue;
+      const id = m.attrs.anchorId as string | undefined;
+      if (id) ids.push(id);
+    }
+    if (ids.length > 0) touchesAnchor = true;
+    common = common === null ? ids : common.filter((id) => ids.includes(id));
+    return true;
+  });
+  return { covering: common?.[0] ?? null, touchesAnchor };
 }
