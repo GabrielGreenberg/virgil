@@ -25,12 +25,12 @@
  *    styled from `globals.css` — these are different controls, they never
  *    drifted, and forcing them onto the primitive would be a worse app. They
  *    carry none of the needles, so they are invisible here by construction.
- *  - **The `library/` silo's inline-styled fields.** They paint from
- *    `var(--border-light)` / `var(--radius-sm)` in `style={{…}}`, a separate
- *    token system with no Tailwind class to grep. The walk still covers
- *    `library/` so a Tailwind-class field landing there IS caught — which is
- *    the drift path that actually exists, since the shared components live in
- *    `src/`.
+ *
+ * The `library/` silo's inline-STYLED fields used to be on this list (they
+ * paint in `style={{…}}`, with no Tailwind class to grep). That exclusion
+ * hid five fields with `outline: "none"` and no focus state at all; task 1012
+ * migrated them onto the primitive and Leg 5 now reads `style={…}` — named
+ * style consts included — in both silos.
  */
 
 import { describe, it, expect } from "vitest";
@@ -168,8 +168,9 @@ describe("field-chrome census — the walk works", () => {
   it("finds the field elements in both silos", () => {
     // Anchored on a floor rather than a list so ordinary refactors don't churn
     // it, but high enough that a walk which stopped working can't pass.
-    expect(SITES.length).toBeGreaterThanOrEqual(40);
-    expect(TEXT_SITES.length).toBeGreaterThanOrEqual(25);
+    // (40 → 30 and 25 → 20 at task 1012, which moved ten library fields onto the primitive.)
+    expect(SITES.length).toBeGreaterThanOrEqual(30);
+    expect(TEXT_SITES.length).toBeGreaterThanOrEqual(20);
     expect(new Set(SITES.map((s) => s.rel.split("/")[0]))).toEqual(
       new Set(["src", "library"]),
     );
@@ -435,7 +436,145 @@ describe("field-chrome census — no color utility appended to a primitive", () 
   });
 });
 
-/* ── Leg 5: the stripper self-check ─────────────────────────────────────── */
+/* ── Leg 5: inline-STYLE chrome — the `library/` silo's spelling (task 1012) ─ */
+
+describe("field-chrome census — no field chrome spelled in style={…}", () => {
+  /**
+   * Legs 2–4 read CLASS strings, and the `library/` silo spells its chrome in
+   * `style={{…}}` instead — so until task 1012 its fields sat outside the census
+   * entirely, and every one of them had drifted the same way: a hand-painted
+   * border with `outline: "none"` and NOTHING in its place, i.e. no keyboard
+   * focus indicator at all (BibEditModal, the paper header's AI-instructions
+   * box, BibCard's note, the catalog search, the page picker). The exclusion
+   * was about the guard's REACH (no Tailwind class to grep); it never decided
+   * those fields should have no focus state. This leg is the reach.
+   *
+   * Two needles, one per direction of the same defect:
+   *  - a RAW field painting a border box inline (`border: "1px solid …"` or a
+   *    `borderRadius`) is hand-rolled chrome → migrate it onto the primitive;
+   *  - a PRIMITIVE call setting a chrome property inline (border, radius,
+   *    background, color, outline) re-blinds it — an inline style beats the
+   *    primitive's utility classes outright, focus-visible thicken included.
+   *
+   * A style object passed BY NAME (`style={inputStyle}`, `{...inputStyle, …}`)
+   * is resolved to its same-file `const` body — BibEditModal's six fields all
+   * took their chrome that way, so a tag-only read would have seen nothing.
+   *
+   * Chromeless fields stay invisible by construction: an inline rename editor
+   * spells `border: "none"` (no `solid`) and no radius.
+   */
+  const INLINE_RAW_CHROME = /\bborder:\s*["'`][^"'`]*\bsolid\b|\bborderRadius\s*:/;
+  const INLINE_PRIMITIVE_CHROME =
+    /\b(?:border|borderColor|borderRadius|borderWidth|background|backgroundColor|color|outline)\s*:/;
+
+  /** The tag's own text plus the body of every same-file `const` it names in
+   *  `style={X}` or a `...X` spread. */
+  function withNamedStyles(tag: string, src: string): string {
+    const names = new Set<string>();
+    for (const m of tag.matchAll(/style=\{\s*([A-Za-z_$][\w$]*)\s*\}|\.\.\.([A-Za-z_$][\w$]*)/g)) {
+      names.add(m[1] ?? m[2]);
+    }
+    let out = tag;
+    for (const name of names) {
+      const decl = new RegExp(`\\bconst\\s+${name}\\b[^=]*=\\s*\\{`).exec(src);
+      if (!decl) continue;
+      let i = decl.index + decl[0].length;
+      let depth = 1;
+      const start = i;
+      while (i < src.length && depth > 0) {
+        if (src[i] === "{") depth++;
+        else if (src[i] === "}") depth--;
+        i++;
+      }
+      out += ` ${src.slice(start, i)}`;
+    }
+    return out;
+  }
+
+  /** The style={…} attribute of a tag, named styles resolved. Only the style
+   *  is read, so a `color` PROP or an `onChange` handler can't trip it. */
+  function styleOf(tag: string, src: string): string {
+    const at = tag.indexOf("style={");
+    if (at < 0) return "";
+    let i = at + "style={".length;
+    let depth = 1;
+    while (i < tag.length && depth > 0) {
+      if (tag[i] === "{") depth++;
+      else if (tag[i] === "}") depth--;
+      i++;
+    }
+    const attr = tag.slice(at, i);
+    return withNamedStyles(attr, src);
+  }
+
+  // The const lookup reads the comment-stripped source, but only for a file
+  // that HAS a site: `strip` is not linear on every file in the walk (it
+  // stalls on at least one non-field module), and a field-less file has no
+  // style to resolve anyway.
+  const inlineRawOffenders = (rel: string, source: string) => {
+    const sites = fieldSites(rel, source).filter((s) => !NON_TEXT_TYPE.test(s.tag));
+    if (sites.length === 0) return [];
+    const src = strip(source, true);
+    return sites.filter((s) => INLINE_RAW_CHROME.test(styleOf(s.tag, src)));
+  };
+  const inlinePrimitiveOffenders = (rel: string, source: string) => {
+    const sites = primitiveSites(rel, source);
+    if (sites.length === 0) return [];
+    const src = strip(source, true);
+    return sites.filter((s) => INLINE_PRIMITIVE_CHROME.test(styleOf(s.tag, src)));
+  };
+
+  it("no raw field paints a border box inline", () => {
+    const offenders = FILES.filter((f) => f.rel !== PRIMITIVE)
+      .flatMap((f) => inlineRawOffenders(f.rel, f.source))
+      .map((s) => s.rel);
+    // Use `<Input>` / `<Select>` / `<Textarea>` (`density="dense"` for the
+    // 4px library rung) and keep only the BOX (width, padding, font) inline.
+    expect([...new Set(offenders)].sort()).toEqual(
+      Object.keys(PERMITTED_BESPOKE_FIELDS).sort(),
+    );
+  });
+
+  it("no primitive call overrides its chrome inline", () => {
+    const offenders = FILES.flatMap((f) => inlinePrimitiveOffenders(f.rel, f.source)).map(
+      (s) => `${s.rel} :: ${s.tag.slice(0, 120)}`,
+    );
+    // An inline style beats the primitive's classes — including its
+    // `focus-visible:border-edge-strong` — so this IS the pre-1012 defect,
+    // one indirection in. Pick a `tone` / `ink` / `density` prop instead.
+    expect(offenders).toEqual([]);
+  });
+
+  it("catches the pre-1012 shapes and leaves a chromeless editor alone", () => {
+    // Verbatim shape of BibEditModal's pre-fix field: chrome via a named const.
+    const named = `
+      const inputStyle: React.CSSProperties = {
+        width: "100%",
+        border: "1px solid var(--border-light)",
+        borderRadius: "var(--radius-sm)",
+        outline: "none",
+      };
+      export function F() { return <input type="text" value={v} style={inputStyle} />; }`;
+    expect(inlineRawOffenders("library/x.tsx", named)).toHaveLength(1);
+    // …and spread into a literal.
+    const spread = named.replace("style={inputStyle}", "style={{ ...inputStyle, fontFamily: MONO }}");
+    expect(inlineRawOffenders("library/x.tsx", spread)).toHaveLength(1);
+    // Verbatim LeftList's pre-fix catalog search: chrome in the literal.
+    const literal = `<input value={q} style={{ width: "100%", border: "1px solid var(--border-light)", borderRadius: "var(--radius-sm)", outline: "none" }} />`;
+    expect(inlineRawOffenders("library/x.tsx", literal)).toHaveLength(1);
+    // A chromeless inline rename (LibrariesNavigator / PanelTabStrip shape).
+    const chromeless = `<input value={v} style={{ background: "transparent", border: "none", outline: "none", padding: 0 }} />`;
+    expect(inlineRawOffenders("library/x.tsx", chromeless)).toHaveLength(0);
+    // A primitive whose inline style re-paints the chrome (re-blinding it)…
+    const reblind = `<Input density="dense" style={{ width: 40, border: "1px solid red", outline: "none" }} />`;
+    expect(inlinePrimitiveOffenders("library/x.tsx", reblind)).toHaveLength(1);
+    // …versus one that keeps only the box.
+    const boxOnly = `<Textarea density="dense" style={{ width: "100%", padding: "5px 8px", fontSize: 13, resize: "vertical" }} />`;
+    expect(inlinePrimitiveOffenders("library/x.tsx", boxOnly)).toHaveLength(0);
+  });
+});
+
+/* ── Leg 6: the stripper self-check ─────────────────────────────────────── */
 
 describe("field-chrome census — the stripper does not swallow", () => {
   it("keeps string literals and roughly all of a real file", () => {

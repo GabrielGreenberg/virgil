@@ -2014,6 +2014,15 @@ property are resolved by *stylesheet* order, not class order:
 | `density` | `control` (default, `rounded-md` 6px) · `dense` (`rounded-sm` 4px) | Which rung of the radius scale — see "Radius scale": a primary control is 6px, a "form input inside a popover" (card micro-field, popover, inline card row) is 4px. |
 | `invalid` | boolean | Conflict state: border + text flip to `--danger`. Never hand-spell a red. |
 
+**The `library/` silo takes the primitive too, box inline** (task 1012).
+Its fields used to paint their chrome in `style={{…}}` with
+`outline: "none"` and no focus state at all. Now: `<Input density="dense"
+style={{ width, padding, fontSize }}>` — the box may stay inline, the
+chrome may NOT (an inline `border`/`background`/`outline` beats the
+primitive's classes, focus-visible thicken included). Both "search the
+library" boxes are one control, `LibrarySearchInput`. The field-chrome
+census reads `style={…}` (named style consts included) in both silos.
+
 **Field labels: use `<Field>`, never a sibling `<label>`** (task 869). A
 label written beside its control with no `htmlFor` labels nothing — clicking
 it focuses nothing and a screen reader announces an unlabeled box — and five

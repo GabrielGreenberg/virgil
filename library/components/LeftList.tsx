@@ -47,6 +47,7 @@ import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
 import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
 import { FONT_MONO } from "@/lib/font-stacks";
+import LibrarySearchInput from "./LibrarySearchInput";
 
 // The header grid and every row consume ONE inherited template var
 // (COL_TEMPLATE_VAR / COL_TEMPLATE_REF from list-columns.ts), defined on the
@@ -512,19 +513,12 @@ export default function LeftList({
           background: "var(--surface)",
         }}
       >
-        <input
+        <LibrarySearchInput
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search title, author, citekey…"
-          style={{
-            width: "100%",
-            padding: "6px 10px",
-            border: "1px solid var(--border-light)",
-            borderRadius: "var(--radius-sm)",
-            background: "var(--background)",
-            fontSize: 13,
-            outline: "none",
-          }}
+          aria-label="Search the library"
+          style={{ width: "100%", padding: "6px 10px", fontSize: 13 }}
         />
         <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
           {filtered.length} of {entries.length} papers

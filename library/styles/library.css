@@ -450,20 +450,16 @@
   padding: 0 18px 12px;
 }
 
+/* The BOX only. Chrome (border, radius, background, the focus-visible
+   thicken) is the field primitive's, via LibrarySearchInput (task 1012) — a
+   border/background here would race the primitive's utilities on stylesheet
+   order and re-split the two library search boxes this unified. */
 .lib-dashboard-search {
   flex: 1;
   min-width: 0;
   padding: 9px 12px;
-  border: 1px solid var(--border-light, var(--edge-subtle));
-  border-radius: var(--radius-md);
-  background: var(--background);
   font-size: 14px;
-  outline: none;
   transition: border-color 120ms;
-}
-
-.lib-dashboard-search:focus {
-  border-color: var(--edge-strong, var(--accent));
 }
 
 .lib-dashboard-browsebtn {

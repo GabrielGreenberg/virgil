@@ -29,6 +29,7 @@ import SystemDialog, {
   SystemDialogFooter,
 } from "@/components/system-dialog";
 import { Button } from "@/components/Button";
+import { Input, Select, Textarea } from "@/components/field-primitives";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { ERROR_INK } from "@/lib/error-ink";
@@ -406,15 +407,16 @@ function FormView({
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <Section label="Identity">
         <Row label="type">
-          <select
+          <Select
+            density="dense"
             value={type}
             onChange={(e) => setType(e.target.value)}
-            style={inputStyle}
+            style={fieldBox}
           >
             {typeOptions(baseType, type).map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
-          </select>
+          </Select>
         </Row>
       </Section>
 
@@ -507,18 +509,19 @@ function FieldInputs({
       {keys.map((k) => (
         <Row key={k} label={k}>
           {textareas?.has(k) ? (
-            <textarea
+            <Textarea
+              density="dense"
               value={fields[k] ?? ""}
               onChange={(e) => updateField(k, e.target.value)}
               rows={k === "abstract" ? 4 : 2}
-              style={{ ...inputStyle, fontFamily: FONT_SANS, resize: "vertical" }}
+              style={{ ...fieldBox, resize: "vertical" }}
             />
           ) : (
-            <input
-              type="text"
+            <Input
+              density="dense"
               value={fields[k] ?? ""}
               onChange={(e) => updateField(k, e.target.value)}
-              style={inputStyle}
+              style={fieldBox}
             />
           )}
         </Row>
@@ -582,19 +585,19 @@ function ExtraRows({
             columnGap: 8,
           }}
         >
-          <input
-            type="text"
+          <Input
+            density="dense"
             placeholder="field"
             value={r.key}
             onChange={(e) => updateRow(r.id, { key: e.target.value })}
-            style={{ ...inputStyle, fontFamily: FONT_MONO }}
+            style={{ ...fieldBox, fontFamily: FONT_MONO }}
           />
-          <input
-            type="text"
+          <Input
+            density="dense"
             placeholder="value"
             value={r.value}
             onChange={(e) => updateRow(r.id, { value: e.target.value })}
-            style={inputStyle}
+            style={fieldBox}
           />
           <button
             data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
@@ -642,13 +645,14 @@ function RawView({
         Edit the raw BibTeX block. The citekey is fixed — changing it here is ignored
         on save (re-trigger triage to rename a paper).
       </div>
-      <textarea
+      <Textarea
+        density="dense"
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         {...NEVER_SPELLCHECK_PROPS}
         rows={18}
         style={{
-          ...inputStyle,
+          ...fieldBox,
           fontFamily: FONT_MONO,
           fontSize: 12,
           lineHeight: 1.5,
@@ -666,17 +670,18 @@ function RawView({
 // Helpers
 // ────────────────────────────────────────────────────────────────────────
 
-const inputStyle: React.CSSProperties = {
+/** The BOX every field here shares — width, padding, type. The CHROME
+ *  (border, radius, background, ink, the focus-visible thicken) is the field
+ *  primitive's (`src/components/field-primitives.tsx`, task 1012): pre-1012 this
+ *  object spelled the chrome inline with `outline: "none"` and nothing in its
+ *  place, so a keyboard user tabbing through the modal could not see which
+ *  field had focus. Never put a border/background/outline back here — an
+ *  inline style beats the primitive's class and would silently re-blind it. */
+const fieldBox: React.CSSProperties = {
   width: "100%",
   padding: "5px 8px",
-  border: "1px solid var(--border-light)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--background)",
   fontSize: 13,
-  outline: "none",
   fontFamily: FONT_SANS,
-  color: "var(--foreground)",
-  boxSizing: "border-box",
 };
 
 /** The stock types, plus the disk type and the current pick when either is

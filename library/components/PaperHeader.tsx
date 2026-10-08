@@ -23,6 +23,7 @@ import { BibEntryChrome } from "@/components/library/bib-entry-chrome";
 import { dispatchOpenLibrary } from "@/components/library/open-library-entry";
 import { CopyIcon } from "@/components/icons/CopyIcon";
 import { ExternalLinkIcon } from "@/components/icons/ExternalLinkIcon";
+import { Textarea } from "@/components/field-primitives";
 import { indexStateTier } from "@/lib/library/status-tone";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PagePicker from "./PagePicker";
@@ -660,7 +661,8 @@ export default function PaperHeader({
             >
               instructions
             </label>
-            <textarea
+            <Textarea
+              density="dense"
               id="paper-ai-instructions"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
@@ -673,11 +675,6 @@ export default function PaperHeader({
                 fontFamily: FONT_MONO,
                 fontSize: 12,
                 lineHeight: 1.4,
-                color: "var(--foreground)",
-                background: "var(--surface)",
-                border: "1px solid var(--border-light)",
-                borderRadius: "var(--radius-sm)",
-                outline: "none",
               }}
             />
           </div>

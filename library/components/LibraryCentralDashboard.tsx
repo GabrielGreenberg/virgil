@@ -7,6 +7,7 @@ import { computeCatalogStats, type CatalogStats } from "@library/lib/catalog-sta
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
 import { bibFieldDisplay } from "@library/lib/bib-parser";
 import { IndexedPill, BibPill } from "./StatusPill";
+import LibrarySearchInput from "./LibrarySearchInput";
 
 /** How many fuzzy matches the inline palette renders before collapsing the
  *  rest behind a "Browse all N matches" footer. Keeps the dashboard light —
@@ -73,7 +74,7 @@ export default function LibraryCentralDashboard({
       </header>
 
       <div className="lib-dashboard-searchrow">
-        <input
+        <LibrarySearchInput
           ref={inputRef}
           autoFocus
           value={query}
