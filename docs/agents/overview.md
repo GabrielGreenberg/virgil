@@ -1,4 +1,4 @@
-<!-- last-verified: f972daa3 2026-10-07 -->
+<!-- last-verified: 8d12cfcf 2026-10-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/cards, src/floats, src/panels, src/text-objects, src/types, library, editor, virgil, package.json -->
 
@@ -25,6 +25,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 - **Storage**: File System Access API (disk) + IndexedDB (prefs, tab state, folder handles)
 - **Bibliography**: citation-js
 - **Language**: TypeScript, React 19
+- **Tests**: vitest (`npm test`); `npm run test:guards` runs just the whole-tree guard/census family (~260 files, ~15 s), membership DERIVED in `src/lib/__tests__/_guard-family.ts` (task 988)
 
 ## Top-level `src/` map
 

@@ -1,4 +1,4 @@
-<!-- last-verified: f972daa3 2026-10-07 -->
+<!-- last-verified: 8d12cfcf 2026-10-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 
@@ -157,7 +157,7 @@ Why the invariant is written down (task 264): `VERBATIM_ENVS_FULL` was unified f
 
 | Kind | Anchor | Marker (in text) | Multiplicity | Card kind(s) |
 |---|---|---|---|---|
-| `footnote` | inline atom (footnote node) | superscript number | 1:1 by construction at CREATE time (each link mints its own target card id). Not an enforced invariant: copy/pasting an atom in-document duplicates its id, and only `duplicate-slice` and stack-pull re-mint | footnote |
+| `footnote` | inline atom (footnote node) | superscript number | 1:1 by construction at CREATE time (each link mints its own target card id). Not an enforced invariant: copy/pasting an atom in-document duplicates its id, and only `duplicate-slice` (once per ENTITY since task 1002 — one remint table per walk; copied `\label`s get a fresh `<key>-N`) and stack-pull re-mint | footnote |
 | `citation` | inline atom (citation node) | styled pill | 1:1 by construction, same caveat | citation |
 | `anchor` | any TextObject (`targetKind`) — paragraph, heading, list item, example item, atom block, or linkedRange | margin icon (+ optional text highlight for `linkedRange`) | many | note, highlight, revision, cut, archive, todo, report |
 

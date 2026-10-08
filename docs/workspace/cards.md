@@ -1,4 +1,4 @@
-<!-- last-verified: f972daa3 2026-10-07 -->
+<!-- last-verified: 8d12cfcf 2026-10-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -78,7 +78,9 @@ formerly-parallel tables are **derived** from it, never extended by hand
   `cutter-comment`, though **both persist `kind: "comment"`** on disk. The
   read-side classifier is `cardKindFromRecord(record, panel)`
   ([predicates.ts](../../src/cards/predicates.ts)) — an on-disk `kind` + the
-  owning panel resolve to the spine kind.
+  owning panel resolve to the spine kind. Since task 999 both directions read ONE
+  declared table, `STORED_KIND_BY_PANEL` (first row per panel = fallback);
+  `storedKindForCardKind` is the inverse.
 
 Operationally: **never infer a card's registry `CardKind` from its on-disk `kind`
 alone — you also need the sidecar file it came from.** A `kind: "suggestion"`

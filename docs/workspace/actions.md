@@ -1,4 +1,4 @@
-<!-- last-verified: f972daa3 2026-10-07 -->
+<!-- last-verified: 8d12cfcf 2026-10-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -218,7 +218,7 @@ citation is refused in a `titleField` at every surface entering the door (the
 `Editor.tsx` citation/bib drop, drop-mode's inline host, the create-popover commit),
 while inline math, cross-refs and footnotes stay legal there. The typed `\cite` /
 `\footnote` rules and the `/cite` / `/footnote` commands dropped their hand-paired
-policy checks and ask the door alone. Its narrow type-only twin
+policy checks and ask the door alone. Since task 989 the `\title`/`\author`/`\date` rows carry a container half too (`titleFieldRefusal` over the schema-derived `blockRangeReachesVerbatim`): they refuse inside markless verbatim blocks, read by `applies()`, the refusal verdict and `titleFieldRun`. Its narrow type-only twin
 `blockTypeHostsInlineAtom` was made **private** in task 396: a type-only helper cannot clamp
 a stale caret, every real consumer holds a position, and an exported one is an invitation to
 ask the smaller question. The same gate is consulted by the slash/menu heading conversion (`headingRun` in
@@ -362,7 +362,9 @@ overflow popover onto it (and onto `useMenuDismiss`). The four caret-parking men
 `HeadingTypeMenu`, `SelectionColorPopover`) resolve their editable through ONE
 `caretEditableHost` ([caret-host.ts](../../src/components/menu/caret-host.ts)), and
 `useMenuKeyboard`'s window-capture handler takes only keys arriving at THAT editable
-(task 734). **An open menu follows the live document** (tasks 737–738): the grab menu's
+(task 734); since task 995 that host is captured ONCE per open, not re-read per keydown.
+Every menu trigger is a real toggle through `useMenuTrigger` ([menu-trigger.ts](../../src/components/menu/menu-trigger.ts), task 992), and menu keys
+act only on fresh deliberate presses ([key-intent.ts](../../src/lib/key-intent.ts), task 994). **An open menu follows the live document** (tasks 737–738): the grab menu's
 target span is mapped through every transaction and its anchor re-derived
 ([grab-menu-target.ts](../../src/components/editor-layout/card-actions/grab-menu-target.ts),
 `useLiveGrabTarget`; an edit inside the span closes the menu), and the lightning grid
@@ -686,6 +688,7 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 | `Tab` / `Shift-Tab` | move to the next / previous gloss cell (append a cell at the end) | inside a gloss row (`ExpexNumbering`) | [expex.ts](../../src/lib/tiptap/expex.ts) |
 | `Enter` | exit the comment — insert a paragraph after it and move the caret there (a comment is one `%` source line, never multi-line) | caret inside a `latexComment` | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
 | `Delete` / `Backspace` | delete the whole `latexComment` block; `Backspace` at the start of an EMPTY comment dissolves it back to a plain paragraph | node-selected `latexComment` (delete) / empty-comment caret (dissolve) | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
+| `Backspace` | restore the typed literal — the press RIGHT AFTER a typed-LaTeX conversion (`\cite`, `\footnote`, `$`, `$$`, `%`) undoes it (task 991); any other key, caret move or blur disarms | immediately after a typed-rule conversion | [typed-latex-revert.ts](../../src/lib/tiptap/typed-latex-revert.ts) |
 | `Backspace` / `Delete` | list-boundary handling — gates upstream's `ListKeymap` on an ITEM-scoped `atListItemStart` and DELEGATES to its own helpers; a declined press falls through to the core chain (which merges the block inside the same item). Task 418: upstream's `isAtStartOfNode` is TEXTBLOCK-scoped, so Backspace on a second paragraph inside a `listItem` destroyed the item and its uuid | around a list (`listKeymap: false` in StarterKit — every `StarterKit.configure` site; card + excerpt bodies get the same gate from `buildCardBodySchema`, task 879) | [list-keymap.ts](../../src/lib/tiptap/list-keymap.ts) |
 
 ### Inherited TipTap defaults (enabled in StarterKit)
