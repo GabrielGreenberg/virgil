@@ -55,11 +55,19 @@ const PROBE_FRACTION = 0.35;
  * The current-page index is recomputed on scroll, RAF-coalesced to one compute
  * per frame. No work is proportional to document size on a plain keystroke.
  *
+ * Scroll is a READING input, not React state (task 1010): the live scrollTop /
+ * clientHeight are read inside the RAF callback and folded straight into the
+ * current-page index, which is the only scroll-derived state — set behind an
+ * equality bail, so a scroll frame that stays on the same page renders NOTHING.
+ * The host (RightDetail → PaperHeader → PaperRender) re-renders only when the
+ * page actually changes.
+ *
  * Identity guarantee (R4): `pages` is equality-gated on the (label, docY)
  * sequence — ANY recompute that finds the same marks keeps the SAME array
- * reference, so consumers may memoize on `pages` identity (PaperRender's
- * `pagePickerEl` does; it keeps EditorPane's memo() intact through resize
- * settles and no-op re-scans).
+ * reference. The returned `PgmarkPages` OBJECT is memoized on
+ * `[pages, currentIndex, scrollToPage]`, so it too keeps its identity until the
+ * marks or the current page change — consumers memoize on the object itself
+ * (PaperRender's `pagePickerEl` does; it keeps EditorPane's memo() intact).
  */
 /** label+docY sequence equality — the `pages` identity gate above. */
 function pageMarksEqual(a: PageMark[], b: PageMark[]): boolean {
@@ -74,10 +82,27 @@ export function usePgmarkPages(
   scrollContainer: HTMLElement | null,
 ): PgmarkPages {
   const [pages, setPages] = useState<PageMark[]>([]);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [containerH, setContainerH] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(-1);
+  // The latest marks, readable from the RAF callbacks without a re-render.
+  const pagesRef = useRef<PageMark[]>(pages);
+  const currentIndexRef = useRef(currentIndex);
   const scrollRaf = useRef<number | null>(null);
   const roRaf = useRef<number | null>(null);
+
+  // Fold the container's LIVE scroll position into the current-page index.
+  // The ref-side equality bail means a same-page call never reaches setState
+  // (React's own same-value bail can still render the host once).
+  const syncCurrentIndex = useCallback(() => {
+    if (!scrollContainer) return;
+    const next = currentIndexAt(
+      pagesRef.current,
+      scrollContainer.scrollTop,
+      scrollContainer.clientHeight,
+    );
+    if (next === currentIndexRef.current) return;
+    currentIndexRef.current = next;
+    setCurrentIndex(next);
+  }, [scrollContainer]);
 
   // ── Collect pgmarks from the rendered DOM ─────────────────────────
   // Each `.pgmark-chip` is the inline decoration over the literal
@@ -109,9 +134,13 @@ export function usePgmarkPages(
     // changed, so downstream memos keyed on `pages` (PaperRender's
     // pagePickerEl → EditorPane memo()) bail instead of re-rendering the
     // reader subtree on every no-op re-scan.
-    setPages((prev) => (pageMarksEqual(prev, next) ? prev : next));
-    setContainerH(scrollContainer.clientHeight);
-  }, [editor, scrollContainer]);
+    if (!pageMarksEqual(pagesRef.current, next)) {
+      pagesRef.current = next;
+      setPages(next);
+    }
+    // Marks and/or the viewport height may have moved — re-derive the page.
+    syncCurrentIndex();
+  }, [editor, scrollContainer, syncCurrentIndex]);
 
   // Recollect on editor `create` (first run after the view mounts) and on
   // docChanged transactions only — NOT on every transaction. The Reader is
@@ -171,19 +200,18 @@ export function usePgmarkPages(
     };
   }, [editor, scrollContainer, collectPages]);
 
-  // Track scrollTop (RAF-coalesced) so current-page recomputes once per frame.
+  // Recompute the current page on scroll, RAF-coalesced to once per frame. The
+  // scroll position is read live in the callback, never held as state.
   useEffect(() => {
     if (!scrollContainer) return;
     const onScroll = () => {
       if (scrollRaf.current !== null) return;
       scrollRaf.current = requestAnimationFrame(() => {
         scrollRaf.current = null;
-        setScrollTop(scrollContainer.scrollTop);
-        setContainerH(scrollContainer.clientHeight);
+        syncCurrentIndex();
       });
     };
-    setScrollTop(scrollContainer.scrollTop);
-    setContainerH(scrollContainer.clientHeight);
+    syncCurrentIndex();
     scrollContainer.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       scrollContainer.removeEventListener("scroll", onScroll);
@@ -192,25 +220,7 @@ export function usePgmarkPages(
         scrollRaf.current = null;
       }
     };
-  }, [scrollContainer]);
-
-  // Current page = the last pgmark whose docY is at or above the viewport's
-  // near-top reference line (same probe the strip used).
-  const currentIndex = useMemo(() => {
-    if (pages.length === 0) return -1;
-    const probe = scrollTop + containerH * PROBE_FRACTION;
-    let last = 0;
-    for (let i = 0; i < pages.length; i++) {
-      if (pages[i].docY <= probe) last = i;
-      else break;
-    }
-    return last;
-  }, [pages, scrollTop, containerH]);
-
-  const currentLabel =
-    currentIndex >= 0 && currentIndex < pages.length
-      ? pages[currentIndex].label
-      : null;
+  }, [scrollContainer, syncCurrentIndex]);
 
   const scrollToPage = useCallback(
     (target: string | number) => {
@@ -228,5 +238,35 @@ export function usePgmarkPages(
     [scrollContainer, pages],
   );
 
-  return { pages, currentIndex, currentLabel, scrollToPage };
+  return useMemo(() => {
+    // Clamp: `pages` and `currentIndex` are set together, but never index past
+    // the marks this render actually holds.
+    const index =
+      pages.length === 0
+        ? -1
+        : Math.min(Math.max(currentIndex, 0), pages.length - 1);
+    return {
+      pages,
+      currentIndex: index,
+      currentLabel: index >= 0 ? pages[index].label : null,
+      scrollToPage,
+    };
+  }, [pages, currentIndex, scrollToPage]);
+}
+
+/** Current page = the last pgmark whose docY is at or above the viewport's
+ *  near-top reference line (same probe the strip used); -1 with no pages. */
+function currentIndexAt(
+  pages: PageMark[],
+  scrollTop: number,
+  containerH: number,
+): number {
+  if (pages.length === 0) return -1;
+  const probe = scrollTop + containerH * PROBE_FRACTION;
+  let last = 0;
+  for (let i = 0; i < pages.length; i++) {
+    if (pages[i].docY <= probe) last = i;
+    else break;
+  }
+  return last;
 }
