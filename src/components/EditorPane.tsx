@@ -221,7 +221,16 @@ import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footn
 import { bridgeCardAiRequestFlag, ABSENT_CARD_CONTEXT } from "@/lib/ai-request-bridge";
 import { richFromPlainText } from "@/lib/footnote-content";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
-import { panelForCardKind, isArchivable, archiveRemovesAtom, excerptCardKinds } from "@/cards/predicates";
+import {
+  panelForCardKind,
+  isArchivable,
+  archiveRemovesAtom,
+  excerptCardKinds,
+  cardKindFromRecord,
+  storedKindForCardKind,
+  type PolymorphicPanel,
+  type StoredKindOf,
+} from "@/cards/predicates";
 import {
   CardArchiveActionsProvider,
   type CardArchiveActionsApi,
@@ -982,6 +991,13 @@ export interface EditorPaneProps {
 // identity-stable across a switch (gated `isActive ? real : undefined`, stable
 // module constants, ref-cached per-slot callbacks, and the split-out
 // `editorPaneViewPrefsInactive` bundle).
+/** What the morph chokepoint needs from a polymorphic panel's hook: its live
+ *  records and its in-place kind flip, typed by the panel's stored tokens. */
+type MorphHost<P extends PolymorphicPanel> = {
+  cards: readonly CardWithLinks[];
+  convertCard: (id: string, toKind: StoredKindOf<P>) => void;
+};
+
 const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function EditorPane(
   {
     docId,
@@ -1615,30 +1631,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // The FROM-kind record itself, read ONCE: the anchorId restamp below needs
       // it, and so does the confirm, which names only what THIS card holds
       // (task 755 — an empty note → highlight asks nothing).
-      const morphSource = ((): CardWithLinks | null => {
-        let cards: readonly CardWithLinks[];
-        switch (fromCardKind) {
-          case "note":
-          case "highlight":
-            cards = notesHookRaw.cards;
-            break;
-          case "revision-comment":
-          case "revision-suggestion":
-            cards = revisionsHookRaw.cards;
-            break;
-          case "cutter-comment":
-          case "cutter-suggestion":
-            cards = cutterHookRaw.cards;
-            break;
-          case "report":
-          case "report-request":
-            cards = reportsHookRaw.cards;
-            break;
-          default:
-            return null;
-        }
-        return cards.find((c) => c.id === id) ?? null;
-      })();
+      // The panel hooks that own the morphing kinds, keyed by panel — total
+      // over `PolymorphicPanel`, so a morphing panel with no host is a compile
+      // error. Which host (and which stored token) a kind lives under is read
+      // from `storedKindForCardKind` — the one declared pairing (task 999) —
+      // never re-spelled here as a per-kind switch.
+      const morphHosts: { [P in PolymorphicPanel]: MorphHost<P> } = {
+        notes: notesHookRaw,
+        revisions: revisionsHookRaw,
+        cutter: cutterHookRaw,
+        reports: reportsHookRaw,
+      };
+      const fromAddress = storedKindForCardKind(fromCardKind);
+      const morphSource: CardWithLinks | null = fromAddress
+        ? morphHosts[fromAddress.panel].cards.find((c) => c.id === id) ?? null
+        : null;
       const morphAnchorId = morphSource
         ? getTextAnchor(morphSource)?.anchorId ?? null
         : null;
@@ -1668,32 +1675,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             // is a fact about the kind the card is BECOMING, so it is derived
             // from that kind. Keying on the from-kind happened to agree only
             // because every morphing panel holds exactly a pair (task 722).
-            switch (toCardKind) {
-              case "revision-suggestion":
-                revisionsHookRaw.convertCard(id, "suggestion");
-                break;
-              case "revision-comment":
-                revisionsHookRaw.convertCard(id, "comment");
-                break;
-              case "cutter-suggestion":
-                cutterHookRaw.convertCard(id, "suggestion");
-                break;
-              case "cutter-comment":
-                cutterHookRaw.convertCard(id, "comment");
-                break;
-              case "report-request":
-                reportsHookRaw.convertCard(id, "report-request");
-                break;
-              case "report":
-                reportsHookRaw.convertCard(id, "report");
-                break;
-              case "highlight":
-                notesHookRaw.convertCard(id, "highlight");
-                break;
-              case "note":
-                notesHookRaw.convertCard(id, "note");
-                break;
-            }
+            const to = storedKindForCardKind(toCardKind);
+            if (!to) return;
+            // `to` pairs a panel with ITS stored token, but TS cannot correlate
+            // the union's two halves through the indexed host — widen once.
+            (morphHosts[to.panel].convertCard as (id: string, stored: string) => void)(
+              id,
+              to.stored,
+            );
           },
         },
       );
@@ -1750,8 +1739,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       makeUnbridgingDelete({
         resolveKind: (id) => {
           const c = revisionsHookRaw.cards.find((r) => r.id === id);
-          if (!c) return null;
-          return c.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
+          return c ? cardKindFromRecord(c, "revisions") : null;
         },
         rawDelete: revisionsHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
@@ -1765,8 +1753,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       makeUnbridgingDelete({
         resolveKind: (id) => {
           const c = cutterHookRaw.cards.find((r) => r.id === id);
-          if (!c) return null;
-          return c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
+          return c ? cardKindFromRecord(c, "cutter") : null;
         },
         rawDelete: cutterHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
@@ -1823,7 +1810,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       makeUnbridgingDelete({
         resolveKind: (id) => {
           const c = reportsHookRaw.cards.find((r) => r.id === id);
-          return c?.kind === "report-request" ? "report-request" : "report";
+          return c ? cardKindFromRecord(c, "reports") : null;
         },
         rawDelete: reportsHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
