@@ -263,11 +263,17 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
 }
 
 /** Whether any heading lies in the current selection (the mixed-range test
- *  behind the ¶ dropdown's checkmark — task 1003). */
+ *  behind the ¶ dropdown's checkmark — task 1003). Read via `editor.view.state`
+ *  and asked only when the doc can answer (a live ProseMirror doc) — the same
+ *  "no live doc → no verdict" fallback `pickBlockType`'s range gate takes, so a
+ *  doc-less editor renders the dropdown instead of throwing (task 1006). */
 function selectionHoldsHeading(editor: Editor): boolean {
-  const { from, to } = editor.state.selection;
+  const state = editor.view?.state;
+  const doc = state?.doc as typeof state.doc | undefined;
+  if (!state || !doc || typeof doc.nodesBetween !== "function") return false;
+  const { from, to } = state.selection;
   let found = false;
-  editor.state.doc.nodesBetween(from, to, (node) => {
+  doc.nodesBetween(from, to, (node) => {
     if (found) return false;
     if (node.type.name === "heading") found = true;
     return !node.isTextblock;
