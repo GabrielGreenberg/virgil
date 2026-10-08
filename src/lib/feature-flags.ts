@@ -263,6 +263,7 @@ export const NON_FLAG_VIRGIL_KEYS: Readonly<Record<string, string>> = {
   "virgil:pref-css-paint": "the editor-prefs custom properties last painted, replayed before first paint (pref-css-bootstrap.ts)",
   "virgil:tex-delimiters-changed": "DOM event name (not a storage key)",
   "virgil:tex-delimiters-will-change": "DOM event name (not a storage key)",
+  "virgil:same-window-storage": "DOM event name (not a storage key) — the in-window twin of `storage` (cross-window-storage.ts, task 1014)",
 };
 
 /** Stored spellings that mean ON, in every flag. */
