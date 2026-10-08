@@ -1,12 +1,9 @@
 "use client";
 
 import {
-  useEffect,
   useMemo,
-  useRef,
   useState,
   type DragEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import {
@@ -18,6 +15,7 @@ import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import NavPod from "./NavPod";
 import RowMenu, { type RowMenuEntry } from "./RowMenu";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { InlineRenameInput } from "@/components/InlineRenameInput";
 
 interface Props {
   registry: Registry;
@@ -84,25 +82,13 @@ export default function LibrariesNavigator({
     [registry.libraries],
   );
 
+  // The draft and the edit's ending live in `InlineRenameInput` (task 1013);
+  // this owner holds only WHICH row is being renamed.
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draftLabel, setDraftLabel] = useState("");
-
-  const startEditing = (id: string, label: string) => {
-    setEditingId(id);
-    setDraftLabel(label);
-  };
-  const commitEdit = () => {
-    if (!editingId) return;
-    const label = draftLabel.trim() || "Untitled";
-    onRenameLibrary(editingId, label);
-    setEditingId(null);
-  };
-  const cancelEdit = () => setEditingId(null);
 
   const handleCreate = () => {
     const id = onCreateLibrary();
     setEditingId(id);
-    setDraftLabel("Untitled");
   };
 
   const centralMenu: RowMenuEntry[] = [
@@ -115,7 +101,7 @@ export default function LibrariesNavigator({
   ];
 
   const customMenu = (lib: Library): RowMenuEntry[] => [
-    { key: "rename", label: "Rename", onSelect: () => startEditing(lib.id, lib.label) },
+    { key: "rename", label: "Rename", onSelect: () => setEditingId(lib.id) },
     ...(onAddBibToLibrary
       ? [{ key: "addbib", label: "Add from .bib…", onSelect: () => onAddBibToLibrary(lib.id) }]
       : []),
@@ -182,11 +168,9 @@ export default function LibrariesNavigator({
             isOpen={openLibraryIds.has(lib.id)}
             onClick={() => onOpenLibrary(lib.id)}
             editing={editingId === lib.id}
-            draftLabel={editingId === lib.id ? draftLabel : undefined}
-            onDraftChange={setDraftLabel}
-            onCommitEdit={commitEdit}
-            onCancelEdit={cancelEdit}
-            onStartEdit={() => startEditing(lib.id, lib.label)}
+            onRename={(next) => onRenameLibrary(lib.id, next)}
+            onEndEdit={() => setEditingId(null)}
+            onStartEdit={() => setEditingId(lib.id)}
             dropTargetLibId={lib.id}
             onDropEntries={onAddEntriesToLibrary}
             menuItems={customMenu(lib)}
@@ -204,10 +188,8 @@ interface NavRowProps {
   isOpen: boolean;
   onClick: () => void;
   editing?: boolean;
-  draftLabel?: string;
-  onDraftChange?: (v: string) => void;
-  onCommitEdit?: () => void;
-  onCancelEdit?: () => void;
+  onRename?: (next: string) => void;
+  onEndEdit?: () => void;
   onStartEdit?: () => void;
   /** When set, the row accepts entry drops and forwards them via
    *  onDropEntries. */
@@ -224,10 +206,8 @@ function NavRow({
   isOpen,
   onClick,
   editing,
-  draftLabel,
-  onDraftChange,
-  onCommitEdit,
-  onCancelEdit,
+  onRename,
+  onEndEdit,
   onStartEdit,
   dropTargetLibId,
   onDropEntries,
@@ -325,11 +305,12 @@ function NavRow({
         />
       )}
       {editing ? (
-        <RowTitleInput
-          value={draftLabel ?? ""}
-          onChange={(v) => onDraftChange?.(v)}
-          onCommit={() => onCommitEdit?.()}
-          onCancel={() => onCancelEdit?.()}
+        <InlineRenameInput
+          initialValue={label}
+          emptyValue="Untitled"
+          aria-label="Library name"
+          onRename={(next) => onRename?.(next)}
+          onClose={() => onEndEdit?.()}
         />
       ) : (
         <span
@@ -440,56 +421,5 @@ function EmptyHint({ children }: { children: ReactNode }) {
     >
       {children}
     </div>
-  );
-}
-
-function RowTitleInput({
-  value,
-  onChange,
-  onCommit,
-  onCancel,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onCommit: () => void;
-  onCancel: () => void;
-}) {
-  const ref = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    el.select();
-  }, []);
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      onCommit();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel();
-    }
-  };
-  return (
-    <input
-      ref={ref}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onBlur={onCommit}
-      onKeyDown={handleKeyDown}
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        flex: 1,
-        background: "transparent",
-        border: "none",
-        outline: "none",
-        padding: 0,
-        margin: 0,
-        fontSize: 13,
-        lineHeight: "16px",
-        fontFamily: "inherit",
-        color: "inherit",
-      }}
-    />
   );
 }

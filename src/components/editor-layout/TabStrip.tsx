@@ -22,6 +22,7 @@ import { addEntryToLibraryGlobal } from "@library/lib/library-store";
 import { IconLibrary, IconX } from "./panel-icons";
 import { DocumentFolderTab } from "./DocumentFolderTab";
 import { InlineTabLabel } from "./InlineTabLabel";
+import { InlineRenameInput } from "@/components/InlineRenameInput";
 import { TabSeparator } from "./TabSeparator";
 import { TabPlusMenu } from "../TabPlusMenu";
 import { PaperDropIndicator } from "./PaperDropIndicator";
@@ -79,9 +80,6 @@ export type TabStripProps = {
   // Inline-rename state (doc tabs).
   editingTabId: string | null;
   setEditingTabId: Dispatch<SetStateAction<string | null>>;
-  nameInput: string;
-  setNameInput: Dispatch<SetStateAction<string>>;
-  nameInputRef: RefObject<HTMLInputElement | null>;
 
   // Strip refs + paper/library drop state.
   tabStripRef: RefObject<HTMLDivElement | null>;
@@ -137,9 +135,6 @@ function TabStripImpl(props: TabStripProps) {
     devStorage,
     editingTabId,
     setEditingTabId,
-    nameInput,
-    setNameInput,
-    nameInputRef,
     tabStripRef,
     outerTabRefs,
     paperDropIndex,
@@ -483,11 +478,6 @@ function TabStripImpl(props: TabStripProps) {
       doc.name && doc.name !== doc.folderName ? doc.name : composedDefault;
     if (isDocPaneActive) {
       const isEditing = editingTabId === doc.id;
-      const commit = () => {
-        const next = nameInput.trim();
-        if (next && next !== displayName) onRenameDoc(doc.id, next);
-        setEditingTabId(null);
-      };
       pushSeparator("folder", doc.id);
       tabNodes.push(
         <div
@@ -510,29 +500,21 @@ function TabStripImpl(props: TabStripProps) {
             }}
           >
             {isEditing ? (
-              <input
-                ref={nameInputRef}
-                type="text"
-                value={nameInput}
-                size={Math.max(nameInput.length + 1, 8)}
-                onChange={(e) => setNameInput(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                onDoubleClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    commit();
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    setEditingTabId(null);
-                  }
-                }}
-                onBlur={commit}
+              <InlineRenameInput
+                initialValue={displayName}
+                fit="content"
+                minChars={8}
+                aria-label="Document name"
+                onRename={(next) => onRenameDoc(doc.id, next)}
+                onClose={() => setEditingTabId(null)}
                 // The same cap the label it replaces carries: `size` grows the
                 // input with the typed name, and past the strip's clip the
                 // user would be typing blind with no scroll to follow them.
-                style={{ maxWidth: TAB_LABEL_MAX_PX }}
-                className="text-[13px] leading-4 bg-transparent outline-none border-b border-ink-muted min-w-0 px-0"
+                style={{
+                  maxWidth: TAB_LABEL_MAX_PX,
+                  minWidth: 0,
+                  borderBottom: "1px solid var(--ink-muted)",
+                }}
               />
             ) : (
               <span
@@ -547,7 +529,6 @@ function TabStripImpl(props: TabStripProps) {
                 style={{ maxWidth: TAB_LABEL_MAX_PX }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  setNameInput(displayName);
                   setEditingTabId(doc.id);
                 }}
               >

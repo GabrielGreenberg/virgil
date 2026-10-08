@@ -2001,7 +2001,6 @@ export default function EditorLayout() {
   // (Phase C) the dead `sortedArchiveSnippets` memo was removed — it was never
   // read or passed; the Archive panel sorts inside EditorPane now.
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
-  const [nameInput, setNameInput] = useState("");
   // Refs to each rendered outer-tab pair (keyed by entry id — doc id or
   // `paper:<citekey>`). Used by the tab-strip's drop handler to compute
   // an insertion index when a paper inner tab is dragged onto the bar.
@@ -2020,15 +2019,6 @@ export default function EditorLayout() {
   useEffect(() => {
     setFsaSupported(hasFsaSupport());
   }, []);
-  const nameInputRef = useRef<HTMLInputElement>(null);
-
-
-  useEffect(() => {
-    if (editingTabId) {
-      nameInputRef.current?.focus();
-      nameInputRef.current?.select();
-    }
-  }, [editingTabId]);
 
   // Whenever the active doc changes, look up its handle in idb and
   // query (don't request) readwrite permission. The result drives the
@@ -3051,9 +3041,6 @@ export default function EditorLayout() {
       devStorage,
       editingTabId,
       setEditingTabId,
-      nameInput,
-      setNameInput,
-      nameInputRef,
       tabStripRef,
       outerTabRefs,
       paperDropIndex,
@@ -3089,8 +3076,6 @@ export default function EditorLayout() {
       devStorage,
       editingTabId,
       setEditingTabId,
-      nameInput,
-      setNameInput,
       paperDropIndex,
       setPaperDropIndex,
       entryDropOuterLibId,
