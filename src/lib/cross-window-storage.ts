@@ -38,9 +38,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { onTabHidden } from "@/lib/tab-hidden";
 
+/** The in-window twin of the native `storage` event (task 1014). */
+const SAME_WINDOW_EVENT = "virgil:same-window-storage";
+
+/**
+ * Announce a write to `key` to the subscribers in THIS window.
+ *
+ * The native `storage` event reaches every PEER window but never the writing
+ * one — which is right for a store whose writer is also its only in-window
+ * reader, and wrong for a per-BROWSER value read by several per-PANE caches
+ * in one window (the collab identity: N keep-alive `EditorPane`s, each its own
+ * `useCollab`). Such a store calls this after its write, and every
+ * {@link subscribeToStorageKey} subscriber for `key` hears it exactly as a
+ * peer window's write — one handler, one re-read path, both directions.
+ */
+export function announceStorageKey(key: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<string>(SAME_WINDOW_EVENT, { detail: key }));
+}
+
 /**
  * Call `onChange` whenever a PEER window mutates `key` in `localStorage`
- * (including via `localStorage.clear()`). Returns an unsubscribe function.
+ * (including via `localStorage.clear()`), or a writer in THIS window announces
+ * it through {@link announceStorageKey}. Returns an unsubscribe function.
  *
  * The handler re-reads storage through its own parse/validate path, so
  * validation lives in exactly one place per store rather than being duplicated
@@ -63,8 +83,15 @@ export function subscribeToStorageKey(
     if (e.key === null ? e.storageArea !== localStorage : e.key !== key) return;
     onChange(e.key);
   };
+  const local = (e: Event) => {
+    if ((e as CustomEvent<string>).detail === key) onChange(key);
+  };
   window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
+  window.addEventListener(SAME_WINDOW_EVENT, local);
+  return () => {
+    window.removeEventListener("storage", handler);
+    window.removeEventListener(SAME_WINDOW_EVENT, local);
+  };
 }
 
 /**

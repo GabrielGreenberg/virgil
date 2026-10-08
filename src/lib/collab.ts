@@ -10,6 +10,8 @@
  * No live-cursor co-editing — turn-taking only.
  */
 
+import { announceStorageKey } from "@/lib/cross-window-storage";
+
 /* ── Constants ────────────────────────────────────────────────────── */
 
 export const COLLAB_SIDECAR_FILE = "collab.json";
@@ -192,13 +194,25 @@ export function loadIdentity(): CollabIdentity | null {
   return null;
 }
 
+/**
+ * THE identity write door (task 1014). The identity is per-BROWSER but cached
+ * per PANE (every mounted `useCollab`) and projected onto every paper's
+ * `collab.json` (pen holder, presence, participants). Peer windows hear the
+ * write through the native `storage` event; this window's other panes hear it
+ * through the in-window announcement — and each `useCollab` that hears an
+ * actual change migrates its paper's sidecar from the old name to the new one.
+ * An unchanged identity announces nothing.
+ */
 export function saveIdentity(identity: CollabIdentity): void {
   if (typeof window === "undefined") return;
+  const value = JSON.stringify(identity);
   try {
-    localStorage.setItem(COLLAB_IDENTITY_KEY, JSON.stringify(identity));
+    if (localStorage.getItem(COLLAB_IDENTITY_KEY) === value) return;
+    localStorage.setItem(COLLAB_IDENTITY_KEY, value);
   } catch {
-    /* ignore */
+    return;
   }
+  announceStorageKey(COLLAB_IDENTITY_KEY);
 }
 
 /* ── Pure update helpers ──────────────────────────────────────────── */

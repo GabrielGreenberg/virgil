@@ -28,6 +28,7 @@ import {
 import {
   COLLAB_SIDECAR_FILE,
   EMPTY_COLLAB_SIDECAR,
+  type CollabIdentity,
   type CollabSidecar,
 } from "@/lib/collab";
 
@@ -93,6 +94,79 @@ export function releaseSelf(me: string): CollabMutator {
       const { [me]: _gone, ...rest } = next.presence;
       next = { ...next, presence: rest };
     }
+    return next === prev ? null : next;
+  };
+}
+
+/**
+ * Move every trace of participant `from` onto identity `to` (task 1014) — the
+ * pen holder, the pen's request queue, the presence entry (which carries the
+ * focus claim and selections) and the participants roster. Pure; returns
+ * `prev` itself when `from` appears nowhere (and the roster already carries
+ * `to`'s colour), so a second application is a no-op — N panes on one paper
+ * and N windows racing through {@link mutateCollab} converge.
+ *
+ * Where `to` already has a slot (a stale entry from an earlier rename back),
+ * the fresher presence heartbeat wins and the request queue keeps one entry.
+ */
+export function renameParticipant(
+  prev: CollabSidecar,
+  from: string,
+  to: CollabIdentity,
+): CollabSidecar {
+  if (from === to.name) return prev;
+  let next = prev;
+
+  const pen = prev.pen;
+  const requests = pen.requestedBy ?? [];
+  if (pen.holder === from || requests.some((r) => r.name === from)) {
+    const seen = new Set<string>();
+    const requestedBy = requests
+      .map((r) => (r.name === from ? { ...r, name: to.name } : r))
+      .filter((r) => (seen.has(r.name) ? false : (seen.add(r.name), true)));
+    next = {
+      ...next,
+      pen: {
+        ...pen,
+        holder: pen.holder === from ? to.name : pen.holder,
+        requestedBy,
+      },
+    };
+  }
+
+  const mine = prev.presence[from];
+  if (mine) {
+    const { [from]: _old, ...rest } = prev.presence;
+    const theirs = rest[to.name];
+    const keep =
+      theirs && Date.parse(theirs.lastHeartbeat) > Date.parse(mine.lastHeartbeat)
+        ? theirs
+        : mine;
+    next = { ...next, presence: { ...rest, [to.name]: keep } };
+  }
+
+  const old = prev.participants.find((p) => p.name === from);
+  const existing = prev.participants.find((p) => p.name === to.name);
+  if (old || (existing && existing.color !== to.color)) {
+    // In place, keeping the roster's order: the old slot becomes the new
+    // name (dropping a separate stale `to` slot, if any).
+    const target = old ? from : to.name;
+    next = {
+      ...next,
+      participants: prev.participants
+        .filter((p) => !(old && p.name === to.name))
+        .map((p) => (p.name === target ? { ...p, name: to.name, color: to.color } : p)),
+    };
+  }
+
+  return next;
+}
+
+/** {@link renameParticipant} as a write-queue mutator: `null` when nothing
+ *  of `from`'s is on disk (no write). */
+export function renameSelf(from: string, to: CollabIdentity): CollabMutator {
+  return (prev) => {
+    const next = renameParticipant(prev, from, to);
     return next === prev ? null : next;
   };
 }

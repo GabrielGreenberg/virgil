@@ -27,7 +27,12 @@ import {
   useState,
 } from "react";
 import { readSidecar, readTextFile } from "@/lib/storage";
-import { mutateCollab, releaseSelf } from "@/lib/collab-store";
+import {
+  mutateCollab,
+  releaseSelf,
+  renameSelf,
+  type CollabMutator,
+} from "@/lib/collab-store";
 import {
   COLLAB_SIDECAR_FILE,
   COLLAB_TIMINGS,
@@ -177,19 +182,6 @@ export function useCollab(docId: string | null): CollabHook {
   docIdRef.current = docId;
   const identityRef = useRef(identity);
   identityRef.current = identity;
-  // Task 768 — the identity is per-BROWSER, not per-window: an "Edit identity"
-  // in a peer window must reach this one too, or its pen heartbeat, claims,
-  // unload release and `mergeKeepingSelf` keep writing under the OLD name (and
-  // the pills judge `iHavePen` against it). Re-read through the one door.
-  useEffect(
-    () =>
-      subscribeToStorageKey(COLLAB_IDENTITY_KEY, () => {
-        const next = loadIdentity();
-        identityRef.current = next;
-        setIdentityState(next);
-      }),
-    [],
-  );
   const lastActivityWriteRef = useRef(0);
   const lastSelectionRef = useRef<string>("");
   const lastCursorRef = useRef<string | null>(null);
@@ -211,13 +203,15 @@ export function useCollab(docId: string | null): CollabHook {
    *  been issued in the meantime.
    */
   const mutate = useCallback(
-    async (fn: (prev: CollabSidecar) => CollabSidecar): Promise<void> => {
+    async (fn: CollabMutator): Promise<void> => {
       const id = docIdRef.current;
       if (!id) return;
       const seq = ++mutateSeqRef.current;
       const optimistic = fn(sidecarRef.current);
-      sidecarRef.current = optimistic;
-      setSidecar(optimistic);
+      if (optimistic) {
+        sidecarRef.current = optimistic;
+        setSidecar(optimistic);
+      }
       const landed = await mutateCollab(id, (fresh) =>
         fn(mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null)),
       );
@@ -226,6 +220,33 @@ export function useCollab(docId: string | null): CollabHook {
       setSidecar(landed);
     },
     [],
+  );
+
+  // Task 768 + 1014 — the identity is per-BROWSER, cached here per PANE. A
+  // change made anywhere — a peer window (native `storage` event) or this
+  // window, this pane or a keep-alive sibling (`saveIdentity`'s in-window
+  // announcement) — reaches every mounted hook through this ONE subscription,
+  // or its pen heartbeat, claims, unload release and `mergeKeepingSelf` keep
+  // writing under the OLD name. And the old name is projected onto this
+  // paper's sidecar (pen holder, presence, roster): renaming only the cache
+  // would leave `iHavePen` false for a pen this user still holds, so the
+  // change also MIGRATES the sidecar old → new, idempotently.
+  useEffect(
+    () =>
+      subscribeToStorageKey(COLLAB_IDENTITY_KEY, () => {
+        const before = identityRef.current;
+        const next = loadIdentity();
+        identityRef.current = next;
+        setIdentityState(next);
+        if (
+          before &&
+          next &&
+          (before.name !== next.name || before.color !== next.color)
+        ) {
+          void mutate(renameSelf(before.name, next));
+        }
+      }),
+    [mutate],
   );
 
   /* ── Load + poll the sidecar ─────────────────────────────────── */
@@ -399,10 +420,10 @@ export function useCollab(docId: string | null): CollabHook {
 
   /* ── Actions ─────────────────────────────────────────────────── */
 
+  // Through the door only: `saveIdentity` announces the change, and the
+  // subscription above (in this hook and every sibling's) adopts + migrates.
   const setIdentity = useCallback((next: CollabIdentity) => {
     saveIdentity(next);
-    setIdentityState(next);
-    identityRef.current = next;
   }, []);
 
   const enableCollab = useCallback(async () => {
