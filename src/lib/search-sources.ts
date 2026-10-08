@@ -53,6 +53,12 @@ export interface SearchHit {
   before: string;
   match: string;
   after: string;
+  /** The snippet producer CUT context here (more text exists past `before`'s
+   *  start / `after`'s end within the hit's own bounds), so the result card
+   *  draws a "…". A reported fact from `snippetAround`, never inferred from
+   *  the context's length. Absent = not clipped. */
+  clippedBefore?: boolean;
+  clippedAfter?: boolean;
   /** Which field of the item was matched. */
   field?: "title" | "body" | "text" | "notes" | "key" | "author";
   unanchored?: boolean;
@@ -95,8 +101,49 @@ export interface EditorCitationItem {
   pos: number;
 }
 
-/** Context chars on each side of a match. */
-const CTX = 40;
+/** Context chars on each side of a match — the ONE declaration (task 1004);
+ *  the panel's mark clamp derives from it. */
+export const SNIPPET_CTX = 40;
+
+export interface Snippet {
+  before: string;
+  after: string;
+  clippedBefore: boolean;
+  clippedAfter: boolean;
+}
+
+/**
+ * The ONE snippet producer for every search scope (task 1004). Cuts up to
+ * `SNIPPET_CTX` chars of context either side of `[start, end)`, never past the
+ * optional `[lo, hi)` bounds — main-text passes the hit's own block span so a
+ * hit near a paragraph edge doesn't borrow the neighbouring block (a heading,
+ * often) as context — and REPORTS whether it cut, so the "…" is a fact rather
+ * than a guess from `before.length === CTX`.
+ */
+export function snippetAround(
+  text: string,
+  start: number,
+  end: number,
+  lo = 0,
+  hi = text.length,
+): Snippet {
+  const b = Math.max(lo, start - SNIPPET_CTX);
+  const a = Math.min(hi, end + SNIPPET_CTX);
+  return {
+    before: text.slice(b, Math.max(b, start)),
+    after: text.slice(Math.min(end, a), a),
+    clippedBefore: b > lo,
+    clippedAfter: a < hi,
+  };
+}
+
+/** Normalize a snippet's flags onto a hit: only a real cut carries a field. */
+function clipFlags(s: Pick<Snippet, "clippedBefore" | "clippedAfter">) {
+  return {
+    ...(s.clippedBefore ? { clippedBefore: true } : {}),
+    ...(s.clippedAfter ? { clippedAfter: true } : {}),
+  };
+}
 const UNANCHORED = Number.MAX_SAFE_INTEGER;
 
 /** Human-readable label shown next to chips / in result labels. */
@@ -260,24 +307,11 @@ export function compileQuery(
   }
 }
 
+type ScanMatch = Snippet & { start: number; end: number; match: string };
+
 /** Iterate regex matches and return per-match context snippets. */
-function scanText(
-  text: string,
-  re: RegExp,
-): Array<{
-  start: number;
-  end: number;
-  match: string;
-  before: string;
-  after: string;
-}> {
-  const out: Array<{
-    start: number;
-    end: number;
-    match: string;
-    before: string;
-    after: string;
-  }> = [];
+function scanText(text: string, re: RegExp): ScanMatch[] {
+  const out: ScanMatch[] = [];
   if (!text) return out;
   re.lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -288,8 +322,7 @@ function scanText(
       start,
       end,
       match: m[0],
-      before: text.slice(Math.max(0, start - CTX), start),
-      after: text.slice(end, end + CTX),
+      ...snippetAround(text, start, end),
     });
     // Avoid zero-width infinite loops (shouldn't happen with escaped input).
     if (m[0].length === 0) re.lastIndex++;
@@ -334,7 +367,7 @@ function hitFromMatch(
   itemId: string | undefined,
   at: number | CardAnchor | null,
   field: SearchHit["field"],
-  m: { start: number; end: number; match: string; before: string; after: string },
+  m: ScanMatch,
   archived?: boolean,
 ): SearchHit {
   const anchored = at != null;
@@ -348,6 +381,7 @@ function hitFromMatch(
     before: m.before,
     match: m.match,
     after: m.after,
+    ...clipFlags(m),
     field,
     unanchored: !anchored,
     archived: archived || undefined,
@@ -601,6 +635,7 @@ export function searchBibliography(
         before: m.before,
         match: m.match,
         after: m.after,
+        ...clipFlags(m),
         field: "key",
         unanchored: true,
       });
@@ -616,6 +651,7 @@ export function searchBibliography(
           before: m.before,
           match: m.match,
           after: m.after,
+          ...clipFlags(m),
           field: fieldName === "author" ? "author" : "body",
           unanchored: true,
         });
