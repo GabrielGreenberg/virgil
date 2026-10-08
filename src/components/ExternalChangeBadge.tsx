@@ -13,9 +13,10 @@
  *
  * Severity → tone/label/actions (§4/§5):
  *   - severity === null            → renders NOTHING (the common clean case).
- *   - paused (permission lost)     → MUTED, non-actionable "Watching paused"
- *                                    variant; no Reload offered (defer to
- *                                    DocPermissionGate to re-grant).
+ *   - paused (permission lost)     → MUTED "Watching paused" variant; no
+ *                                    Reload offered. Its one door is the
+ *                                    folder RE-GRANT (task 1016) — the place
+ *                                    "Resolve…" lands while paused.
  *   - 'change' (no unsaved edits)  → AMBER. "Changed on disk" /
  *                                    "Removed on disk". Reload (no confirm) +
  *                                    Dismiss. Nothing of the user's is at
@@ -77,6 +78,8 @@ import { describeAge } from "@/lib/save-state";
 import { toneForInterruptionKind } from "@/lib/interruption-tone";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 import { useDocumentInterruption } from "@/hooks/useDocumentInterruption";
+import { getDocHandle } from "@/lib/doc-index";
+import { ensureRW } from "@/lib/fsa-permissions";
 import {
   conflictOutcomeNotice,
   interruptionPillLabel,
@@ -268,25 +271,75 @@ function ExternalChangeBadge() {
     await watcher?.acknowledge();
   }, [closeMenu, watcher]);
 
+  // TASK 1016 — the paused tier's one door: re-grant the folder. A permission
+  // loss keeps the change ledger AND `autosavePauseReason: "conflict"`, so the
+  // save badge still offers "Resolve…", which routes HERE — and pre-1016 this
+  // tier rendered no menu, so the request opened an anchorless, invisible one.
+  // The menu row's click is the user gesture `requestPermission` needs; once
+  // granted, one poll clears `paused` and the ordinary conflict doors appear.
+  const activeDocId = diskCtx?.activeDocId;
+  const handleReconnect = useCallback(async () => {
+    closeMenu();
+    if (!activeDocId) return;
+    const handle = await getDocHandle(activeDocId);
+    const granted = handle ? await ensureRW(handle).catch(() => false) : false;
+    if (granted) {
+      await watcher?.pollNow();
+      return;
+    }
+    await confirm({
+      title: "Access not granted",
+      message:
+        "Virgil still can't read this paper's folder, so it can't compare the file on disk with your version. Choose Allow access again and accept the browser prompt.",
+      confirmLabel: "OK",
+      hideCancel: true,
+    });
+  }, [closeMenu, activeDocId, watcher, confirm]);
+
   // ── render gate ────────────────────────────────────────────────────
   // Clean — OR no provider at all (no doc open) → render nothing. The no-doc
   // case arrives here as the clean snapshot (severity null) from
   // useExternalChangesOrNull, so this single check covers both.
   if (state.severity == null) return null;
 
-  // Paused (permission lost mid-session): a MUTED, non-actionable variant. We
-  // do NOT offer Reload while watching is paused — DocPermissionGate owns the
-  // re-grant. Renders as a quiet grey pill.
+  // Paused (permission lost mid-session): a MUTED pill — no Reload, since
+  // nothing can be read until the folder is re-granted. Its kebab carries that
+  // re-grant (task 1016). Keyed apart from the live pill so the transition
+  // REMOUNTS the kebab: a menu open on one variant can never survive into the
+  // other (the controller resets when its kebab detaches).
   if (state.paused) {
     return (
       <BarStatusPill
+        key="paused"
         tone="quiet"
         glyph={<PausedDot />}
         label="Watching paused"
         ariaLabel="Disk watching paused"
         hint="Disk watching paused — file access was lost"
         data={{ "data-external-change-badge": "paused" }}
-      />
+        menu={{
+          controller: menuCtl,
+          id: "external-change-menu",
+          ariaLabel: "Disk watching actions",
+          kebabLabel: "Disk watching options",
+          containerClassName: "min-w-[240px] max-w-[320px] py-1",
+          children: (
+            <>
+              <BarStatusMenuRow
+                id="reconnect"
+                label="Allow access…"
+                detail="Re-grant Virgil access to this paper's folder so it can compare the file on disk with your version."
+                run={() => void handleReconnect()}
+              />
+              <BarStatusMenuDetail>
+                Virgil lost access to this paper&apos;s folder after the file changed on disk. Saving stays paused and nothing is lost until you reconnect.
+              </BarStatusMenuDetail>
+            </>
+          ),
+        }}
+      >
+        {dialog}
+      </BarStatusPill>
     );
   }
 
@@ -309,6 +362,7 @@ function ExternalChangeBadge() {
 
   return (
     <BarStatusPill
+      key="live"
       tone={tone}
       glyph={isConflict ? <ConflictIcon /> : <ReloadIcon />}
       label={copy.label}
