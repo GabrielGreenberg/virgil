@@ -46,8 +46,10 @@ export const LIBRARY = path.resolve(HERE, "../../../../library"); // the Library
  * `src/` is NOT drained of menus, and saying so plainly is the point: four
  * entries here are real hand-rolled menus whose PLACEMENT migration is
  * outstanding (the Fonts-dialog combobox, the slash popup, the library pod's
- * add menu, the Help menu's hover sub-menu), beside the two Library-silo
- * holdouts and the declarations that trip the shape without being menus at all.
+ * add menu, the Help menu's hover sub-menu), beside the declarations that trip
+ * the shape without being menus at all. The Library silo's two holdouts
+ * (`RowMenu`, `PaperAiRequestsMenu`) migrated in task 1011 — with the tab
+ * strip's two hand-dismissed popups — so the census now enforces the silo.
  * Since task 459 every one of them is answered on the SURFACE axis by
  * `menu-surface-guardrail`, which reads this list rather than a population of
  * its own — a holdout on placement is not an exemption from chrome.
@@ -67,10 +69,6 @@ export const PERMITTED_HAND_ROLLED_ANCHORED_SURFACES: Record<string, string> = {
     "NOT AN ANCHORED MENU — a stack card thumbnail: absolutely-positioned card chrome with a shadow, whose rect read feeds the stack's drag/hit-test, not a placement.",
   "library/components/LeftListRow.tsx::LeftListRow":
     "NOT AN ANCHORED MENU — a catalog list row. Surfaced only when the detectors learned to read a multi-line className (task 181): its rect read builds the DRAG GHOST, and the positioned surface is that ghost's count badge, written as an inline `style=\"position:absolute;…\"` string (its own box-shadow was dropped by task 817 — the ghost's one lift now covers it). It opens no popup.",
-  "library/components/RowMenu.tsx::RowMenu":
-    "LIBRARY-SILO HOLDOUT (known follow-up, not an exemption). The catalog row kebab: portal + `position:fixed`, `role=\"menu\"`, Escape, and a deferred outside-mousedown — so it is the most complete of the hand-rolls — but it flips off an `items.length * ITEM_HEIGHT` ESTIMATE (the `HeaderAddDropdown` mistake), never flips horizontally, and never re-anchors. The silo CAN import the primitive (`PanelTabStrip` already imports `useFloatingMenuPosition`), so this is a migration nobody has done yet.",
-  "library/components/PaperAiRequestsMenu.tsx::PaperAiRequestsMenu":
-    "LIBRARY-SILO HOLDOUT (known follow-up, not an exemption). The per-paper AI-request checkbox menu: `top`/`left` from the trigger rect with NO flip in either axis, so it runs off the bottom of a short window. It is also the ONE menu in either silo that restores focus to its trigger on Escape — a capability the shared primitive does not have (it navigates by roving `aria-activedescendant` and never focuses items), so migrating it means teaching the primitive focus return, not just swapping the shell.",
 
   // ── The three surfaced by the CSS_ANCHORED signal (task 181) and NOT
   //    migrated in it. Each is a real follow-up with a stated reason it is a

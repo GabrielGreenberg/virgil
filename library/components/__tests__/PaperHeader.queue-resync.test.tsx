@@ -85,9 +85,12 @@ afterEach(() => {
   cleanup();
 });
 
-/** Open the AI-requests dropdown and read each item's checked state. */
-function checkedItems(): string[] {
+/** Open the AI-requests dropdown and read each item's checked state. The menu
+ *  is on the shared `AnchoredMenu` door (task 1011), whose positioner keeps it
+ *  `visibility:hidden` until its first measure — so let that land first. */
+async function checkedItems(): Promise<string[]> {
   fireEvent.click(screen.getByRole("button", { name: /AI requests/i }));
+  await act(flush);
   return screen
     .getAllByRole("menuitemcheckbox")
     .filter((el) => el.getAttribute("aria-checked") === "true")
@@ -121,7 +124,7 @@ describe("PaperHeader — AI-request state re-syncs without a remount (task 132)
     await mountHeader();
     await act(flush);
 
-    expect(checkedItems()).toEqual(["Deep index"]);
+    expect(await checkedItems()).toEqual(["Deep index"]);
     expect(
       screen.getByRole("button", { name: /AI requests/i }).textContent,
     ).toContain("1");
@@ -148,7 +151,7 @@ describe("PaperHeader — AI-request state re-syncs without a remount (task 132)
     const { refreshQueueState } = await import("@library/lib/queue-state-store");
     await mountHeader();
     await act(flush);
-    expect(checkedItems()).toEqual([]);
+    expect(await checkedItems()).toEqual([]);
 
     // A row action in the list files a bib review for this paper.
     disk.files.set("alpha2020.json", {
@@ -207,7 +210,7 @@ describe("PaperHeader — AI-request state re-syncs without a remount (task 132)
     });
     await mountHeader();
     await act(flush);
-    expect(checkedItems()).toEqual(["Index"]);
+    expect(await checkedItems()).toEqual(["Index"]);
   });
 
   it("task 765: an in-place citekey change clears the per-paper note", async () => {

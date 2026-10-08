@@ -540,6 +540,12 @@ export default function PaperHeader({
             <BibPill state={entry.bib.state} long />
             {entry.bib.imported && <BibImportedPill long />}
             <PaperAiRequestsMenu
+              // Keyed by paper (task 1011): an OPEN menu is per-paper state,
+              // and this header is reused in place across a paper switch, so
+              // a switch that arrives without a press (keyboard, the
+              // `virgil-open-library` event) would otherwise leave it open
+              // toggling the NEW paper's requests.
+              key={citekey ?? ""}
               items={aiRequestItems}
               onToggle={(kind, next) => void onToggle(kind, next)}
               disabled={!handle || !citekey}

@@ -116,6 +116,24 @@ export interface MenuProviderProps {
    *  surface stages work that a dismissal commits and Escape must abandon. */
   onCancel?: () => void;
   /**
+   * Where DOM focus goes when Escape cancels the menu (task 1011) — the
+   * trigger that opened it. Escape is the keyboard user's way OUT, and a menu
+   * whose container unmounts while it holds focus (a row the user clicked,
+   * which takes focus as a `<button>`) drops that focus on `<body>`: the next
+   * Tab starts from the top of the page. Returning it to the trigger is the
+   * WAI-ARIA menu-button contract, and it was the one capability the Library's
+   * hand-rolled AI-request menu had that this primitive did not.
+   *
+   * Only the CANCEL door returns focus. A click-away DISMISS went somewhere
+   * else on purpose, and a row activation that closes the menu is the row's
+   * own business (it may navigate). And focus is only RETURNED, never stolen:
+   * the move happens only when focus is inside the menu or has fallen to
+   * `<body>` — a trigger that still holds it (the house roving model, task
+   * 477) is left alone, and an editor-anchored menu, which keeps focus in the
+   * ProseMirror view, simply never supplies this.
+   */
+  returnFocusOnCancel?: () => HTMLElement | null;
+  /**
    * Activating a REGISTERED row dismisses this menu (task 477). The MENU-layer
    * twin of `AnchoredMenu`'s `closeOnInsideClick`, which forwards it: that flag
    * is a DOM `onClick` on a wrapper div, and the keyboard controller runs a row
@@ -192,6 +210,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     keyboardSource = "window",
     onClose,
     onCancel,
+    returnFocusOnCancel,
     closeOnActivate = false,
     ariaLabel,
     surface = "menu",
@@ -336,11 +355,30 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   }, [parentMenu]);
 
   // ── dismissal ──
+  // The CANCEL door, with the optional focus return folded in (task 1011).
+  // `undefined` when there is nothing to fold, so `useMenuDismiss` keeps its
+  // own `onCancel ?? onClose` default and every existing caller is unchanged.
+  const cancelDoor = useMemo(() => {
+    if (!returnFocusOnCancel) return onCancel;
+    return () => {
+      const target = returnFocusOnCancel();
+      const held =
+        typeof document === "undefined" ? null : document.activeElement;
+      const shouldReturn =
+        !!target &&
+        target !== held &&
+        (held === null ||
+          held === document.body ||
+          !!containerRef.current?.contains(held));
+      (onCancel ?? onClose)();
+      if (shouldReturn) target.focus({ preventScroll: true });
+    };
+  }, [returnFocusOnCancel, onCancel, onClose]);
   useMenuDismiss({
     containerRef,
     getExcludes,
     onClose,
-    onCancel,
+    onCancel: cancelDoor,
     escape: {
       stopPropagation: dismissOn?.escape?.stopPropagation ?? true,
       onEscape,

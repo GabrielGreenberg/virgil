@@ -242,6 +242,9 @@ export interface AnchoredMenuProps {
   triggerStyle?: CSSProperties;
   /** Trigger tooltip (`data-hint`). */
   triggerHint?: string;
+  /** A disabled trigger: the button is `disabled`, so it neither opens the
+   *  menu nor takes focus (the Library's un-triaged catalog row, task 1011). */
+  triggerDisabled?: boolean;
   /** Trigger accessible name. Defaults to `ariaLabel`. */
   triggerAriaLabel?: string;
   /** Wrapper (positioning context for the trigger) className. */
@@ -285,6 +288,7 @@ export function AnchoredMenu({
   triggerOwnsFocusIndicator = false,
   triggerStyle,
   triggerHint,
+  triggerDisabled = false,
   triggerAriaLabel,
   wrapperClassName = "relative shrink-0",
   menuClassName,
@@ -376,6 +380,7 @@ export function AnchoredMenu({
           triggerOwnsFocusIndicator,
         )}
         style={triggerStyle}
+        disabled={triggerDisabled || undefined}
         data-hint={triggerHint}
         aria-label={triggerAriaLabel ?? ariaLabel}
         // `aria-haspopup` DERIVED from the container role (a `listbox` trigger
@@ -401,6 +406,10 @@ export function AnchoredMenu({
           // the click re-opens it (task 094).
           excludeRefs={[triggerEl]}
           getActiveDescendantHost={activeDescendantHost}
+          // Escape hands focus back to the trigger (task 1011) — the same
+          // element that hosts activedescendant, so "where the keyboard user
+          // stands" is stated once for both.
+          returnFocusOnCancel={activeDescendantHost}
           onClose={close}
           closeOnActivate={closeOnInsideClick}
           ariaLabel={ariaLabel}
@@ -415,6 +424,16 @@ export function AnchoredMenu({
             <div
               onClick={(e) => {
                 e.stopPropagation();
+                // A greyed row is inert, so a click on it is not a pick: the
+                // menu stays open (task 1011 — the keyboard path already
+                // skips disabled rows; this is the pointer twin).
+                if (
+                  (e.target as Element | null)?.closest?.(
+                    'button:disabled, [aria-disabled="true"]',
+                  )
+                ) {
+                  return;
+                }
                 close();
               }}
             >

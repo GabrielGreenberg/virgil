@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
-import { createPortal } from "react-dom";
-import { menuTriggerAria } from "@/components/menu/menu-trigger";
+import type { CSSProperties, ReactNode } from "react";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import { MenuActionRow } from "@/components/menu/MenuActionRow";
+import { MenuSeparator } from "@/components/menu/MenuChrome";
 
 /**
  * RowMenu — the single portaled three-dot (⋮) menu primitive for the
@@ -17,10 +12,15 @@ import { menuTriggerAria } from "@/components/menu/menu-trigger";
  * is refactored onto it too, so "a row's overflow menu" is ONE component
  * with one trigger/positioning/escape/outside-click behaviour everywhere.
  *
- * Declarative: callers pass an `items` array; the primitive owns the
- * trigger button, the portaled popup, viewport-aware up/down placement,
- * outside-click + Escape close, and click-through suppression (so opening
- * or selecting never fires the underlying row's onClick).
+ * Declarative: callers pass an `items` array. Since task 1011 this is a thin
+ * adapter over the app's ONE menu door (`AnchoredMenu`): measured flip on
+ * both axes + re-anchor, roving ↑/↓ nav, Escape (cancel, focus back to the
+ * trigger) vs click-away (dismiss), the menu-trigger ARIA contract, the
+ * `.menu-surface` chrome and the shared row tones. What stays HERE is only
+ * the Library's declarative item vocabulary and its trigger look. Click-
+ * through suppression (opening or selecting never fires the underlying row's
+ * onClick) comes from the shell: the trigger stops its click and the provider
+ * fences the menu container.
  *
  * Lives in `library/components/` and is import-safe from
  * `src/components/library/` too (MyPapersPod), matching the existing
@@ -63,9 +63,6 @@ interface RowMenuProps {
   triggerStyle?: CSSProperties;
 }
 
-const MENU_MARGIN = 6;
-const ITEM_HEIGHT = 30; // rough per-item height for the flip heuristic
-
 export default function RowMenu({
   items,
   disabled = false,
@@ -75,139 +72,52 @@ export default function RowMenu({
   minWidth = 168,
   triggerStyle,
 }: RowMenuProps) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<
-    { right: number; top: number } | { right: number; bottom: number } | null
-  >(null);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  const toggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (disabled) return;
-    if (open) {
-      setOpen(false);
-      return;
-    }
-    const rect = btnRef.current?.getBoundingClientRect();
-    if (rect) {
-      const right = window.innerWidth - rect.right;
-      // Estimate the popup height and flip above the trigger when there
-      // isn't room below (left-rail pods sit near the viewport bottom).
-      const estHeight =
-        items.length * ITEM_HEIGHT + MENU_MARGIN * 2;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < estHeight && rect.top > spaceBelow) {
-        setPos({ right, bottom: window.innerHeight - rect.top + 2 });
-      } else {
-        setPos({ right, top: rect.bottom + 2 });
-      }
-    }
-    setOpen(true);
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (btnRef.current?.contains(t)) return;
-      if (menuRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    // Defer attaching so the click that opened the menu doesn't close it.
-    const t = setTimeout(() => window.addEventListener("mousedown", onDown), 0);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const runAction = (e: React.MouseEvent, item: RowMenuAction) => {
-    e.stopPropagation();
-    if (item.disabled) return;
-    setOpen(false);
-    item.onSelect();
-  };
-
-  // Resolve the trigger style once so hover can revert to its real base
-  // background (transparent for both the ⋮ and the header "+").
-  const resolvedTriggerStyle = triggerStyle ?? defaultTriggerStyle(disabled);
-  const baseBg = (resolvedTriggerStyle.background as string | undefined) ?? "transparent";
+  // The trigger's background is the hover tint's (a class), so a caller's
+  // inline `background` — the resting value the old `onMouseEnter` repaint
+  // restored — would pin it and kill the hover. Every caller's was
+  // `transparent`, which a `<button>` already is under the preflight.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { background: _restingBg, ...resolvedTriggerStyle } =
+    triggerStyle ?? defaultTriggerStyle(disabled);
 
   return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={toggle}
-        onKeyDown={(e) => e.stopPropagation()}
-        title={title ?? (disabled ? "Unavailable" : ariaLabel)}
-        aria-label={ariaLabel}
-        {...menuTriggerAria("menu", open)}
-        disabled={disabled}
-        draggable={false}
-        onDragStart={(e) => e.preventDefault()}
-        onMouseEnter={(e) => {
-          if (disabled) return;
-          (e.currentTarget as HTMLButtonElement).style.background =
-            "rgba(0, 0, 0, 0.06)";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = baseBg;
-        }}
-        style={resolvedTriggerStyle}
+    // Keys pressed ON the trigger are the trigger's: a row that navigates on
+    // Enter / arrows must not also act when the user opens its menu. (An OPEN
+    // menu's keys never get this far — its controller reads them at window
+    // capture.)
+    <div style={{ display: "contents" }} onKeyDown={(e) => e.stopPropagation()}>
+      <AnchoredMenu
+        ariaLabel={ariaLabel}
+        // The kebab sits at a row's RIGHT edge, so the menu drops leftward and
+        // flips on the MEASURED body (the `items.length * ITEM_HEIGHT`
+        // estimate it replaces misjudged dividers and long labels).
+        align="end"
+        gap={2}
+        trigger={() => glyph}
+        triggerDisabled={disabled}
+        triggerHint={title ?? (disabled ? "Unavailable" : ariaLabel)}
+        triggerClassName={disabled ? undefined : "hover:bg-black/[0.06]"}
+        triggerStyle={resolvedTriggerStyle}
+        wrapperClassName="relative shrink-0 flex"
+        containerStyle={{ minWidth }}
+        closeOnInsideClick
       >
-        {glyph}
-      </button>
-      {open &&
-        pos &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role="menu"
-            style={{
-              position: "fixed",
-              right: pos.right,
-              ...("top" in pos ? { top: pos.top } : { bottom: pos.bottom }),
-              minWidth,
-              // MENU tier (task 459). Its PLACEMENT is a stated follow-up on
-              // `PERMITTED_HAND_ROLLED_ANCHORED_SURFACES`; a holdout on that
-              // axis is not an exemption on this one. It had a fourth
-              // vocabulary — `--surface` + `--border-light` + the CONTROL
-              // radius (4px, against every menu's 8) + the pod shadow named
-              // directly — which is the drift the shared tier ends.
-              background: "var(--menu-bg)",
-              border: "var(--menu-border)",
-              borderRadius: "var(--menu-radius)",
-              boxShadow: "var(--menu-shadow)",
-              padding: "4px 0",
-              zIndex: 200,
-            }}
-          >
-            {items.map((item) =>
-              isDivider(item) ? (
-                <MenuDivider key={item.key} />
-              ) : (
-                <MenuItem
-                  key={item.key}
-                  onClick={(e) => runAction(e, item)}
-                  destructive={item.destructive}
-                  disabled={item.disabled}
-                >
-                  {item.label}
-                </MenuItem>
-              ),
-            )}
-          </div>,
-          document.body,
+        {items.map((item) =>
+          isDivider(item) ? (
+            <MenuSeparator key={item.key} />
+          ) : (
+            <MenuActionRow
+              key={item.key}
+              id={item.key}
+              label={item.label}
+              tone={item.destructive ? "danger" : "default"}
+              disabled={item.disabled}
+              onSelect={item.onSelect}
+            />
+          ),
         )}
-    </>
+      </AnchoredMenu>
+    </div>
   );
 }
 
@@ -217,7 +127,6 @@ function defaultTriggerStyle(disabled: boolean): CSSProperties {
     height: 24,
     padding: 0,
     border: "none",
-    background: "transparent",
     color: disabled ? "var(--muted-light)" : "var(--muted)",
     cursor: disabled ? "default" : "pointer",
     fontSize: 16,
@@ -229,58 +138,4 @@ function defaultTriggerStyle(disabled: boolean): CSSProperties {
     justifyContent: "center",
     flexShrink: 0,
   };
-}
-
-function MenuItem({
-  children,
-  onClick,
-  destructive = false,
-  disabled = false,
-}: {
-  children: ReactNode;
-  onClick: (e: React.MouseEvent) => void;
-  destructive?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: "block",
-        width: "100%",
-        textAlign: "left",
-        background: "transparent",
-        border: "none",
-        padding: "6px 12px",
-        fontSize: 13,
-        color: disabled
-          ? "var(--muted-light)"
-          : destructive
-            ? "var(--danger)"
-            : "var(--foreground)",
-        cursor: disabled ? "default" : "pointer",
-        fontFamily: "inherit",
-        whiteSpace: "nowrap",
-      }}
-      onMouseEnter={(e) => {
-        if (disabled) return;
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "var(--accent-light)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function MenuDivider() {
-  return (
-    <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
-  );
 }
