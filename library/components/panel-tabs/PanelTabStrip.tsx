@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
   type DragEvent,
-  type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -19,6 +18,7 @@ import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_
 import { isCentral } from "@library/lib/library-store";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { PanelFolderTab } from "./PanelFolderTab";
+import { InlineRenameInput } from "@/components/InlineRenameInput";
 import {
   STRIP_SIDE_PAD,
   STRIP_TOP_HEADROOM,
@@ -133,8 +133,9 @@ export function PanelTabStrip({
   showRecent = false,
   fileDragActive = false,
 }: Props) {
+  // Which tab is being renamed; its draft and ending live in
+  // `InlineRenameInput` (task 1013).
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draftLabel, setDraftLabel] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [tabMenuOpenId, setTabMenuOpenId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -234,27 +235,10 @@ export function PanelTabStrip({
     };
   }, [activeId, tabs.length, panelRef]);
 
-  const startEditing = (id: string, label: string) => {
-    setEditingId(id);
-    setDraftLabel(label);
-  };
-
-  const commitEdit = () => {
-    if (!editingId) return;
-    const label = draftLabel.trim() || "Untitled";
-    onRename(editingId, label);
-    setEditingId(null);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-  };
-
   const handleNewLibrary = () => {
     const id = onCreate();
     setMenuOpen(false);
     setEditingId(id);
-    setDraftLabel("Untitled");
   };
 
   const handleOpenRecent = (id: string) => {
@@ -626,11 +610,13 @@ export function PanelTabStrip({
                 )}
                 {tab.icon}
                 {isEditing ? (
-                  <TabTitleInput
-                    value={draftLabel}
-                    onChange={setDraftLabel}
-                    onCommit={commitEdit}
-                    onCancel={cancelEdit}
+                  <InlineRenameInput
+                    initialValue={tab.label}
+                    emptyValue="Untitled"
+                    fit="content"
+                    aria-label="Tab name"
+                    onRename={(next) => onRename(tab.id, next)}
+                    onClose={() => setEditingId(null)}
                   />
                 ) : (
                   <span
@@ -651,7 +637,7 @@ export function PanelTabStrip({
                     }}
                     onDoubleClick={
                       tab.renamable
-                        ? () => startEditing(tab.id, tab.label)
+                        ? () => setEditingId(tab.id)
                         : undefined
                     }
                   >
@@ -1221,59 +1207,6 @@ function AddTabMenu({
         </>
       )}
     </StripMenu>
-  );
-}
-
-function TabTitleInput({
-  value,
-  onChange,
-  onCommit,
-  onCancel,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onCommit: () => void;
-  onCancel: () => void;
-}) {
-  const ref = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    el.select();
-  }, []);
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      onCommit();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel();
-    }
-  };
-
-  return (
-    <input
-      ref={ref}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onBlur={onCommit}
-      onKeyDown={handleKeyDown}
-      size={Math.max(value.length, 1)}
-      style={{
-        background: "transparent",
-        border: "none",
-        outline: "none",
-        padding: 0,
-        margin: 0,
-        fontSize: 13,
-        lineHeight: "16px",
-        fontFamily: "inherit",
-        color: "inherit",
-      }}
-    />
   );
 }
 

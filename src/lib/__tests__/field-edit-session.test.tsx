@@ -343,12 +343,19 @@ describe("CENSUS — a cancelling field takes the door", () => {
     // COMMIT needed the door (an async commit whose confirm steals focus), not
     // because its cancel changed — so the family's own posture is unchanged and
     // pinned below.
+    //
+    // WIDENED (task 1013): `InlineRenameInput` is the ONE inline-rename field
+    // the editor doc tab, the Library tab strip and the Libraries navigator
+    // row now render. Its three hand-rolled predecessors cancelled by
+    // UNMOUNTING (the editor tab strip sat in the family below; the two
+    // Library copies hid from both scans behind a named `handleKeyDown`).
     const found = cancellingFields();
     const rels = [...new Set(found.map((h) => h.rel))].sort();
     expect(rels).toEqual([
       "library/components/PagePicker.tsx",
       "src/components/FigureAnnotation.tsx",
       "src/components/FigureBlockNodeView.tsx",
+      "src/components/InlineRenameInput.tsx",
       "src/components/SourcePodNodeView.tsx",
       "src/components/panel-primitives.tsx",
       "src/panels/Citations/CitationCard.tsx",
@@ -459,11 +466,13 @@ describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
     // has NO blur commit — Return mints the request and Escape drops the
     // draft, and BOTH endings unmount the input, so there is no second ending
     // for the door to suppress. A member, not a convert.
+    //
+    // `editor-layout/TabStrip.tsx` LEFT (task 1013): its doc-tab rename box is
+    // now `InlineRenameInput`, which takes the door (census above).
     expect(unmountingCancelFields()).toEqual([
       "library/components/BibCard.tsx",
       "src/components/ManageStylesModal.tsx",
       "src/components/bib-review-request.tsx",
-      "src/components/editor-layout/TabStrip.tsx",
       "src/panels/Bibliography/BibliographyPanel.tsx",
       "src/panels/Citations/CitationCard.tsx",
       "src/panels/Outline/OutlinePanel.tsx",
