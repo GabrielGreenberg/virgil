@@ -113,8 +113,10 @@ describe("Search panel token convergence (task 309)", () => {
   it("announces the toggles' pressed state", () => {
     // The semantic half of "match the app's other toggles": the shared
     // utilities key their paint on `aria-pressed`, and a hand-rolled toggle
-    // that paints the same state must at least announce it.
-    expect([...panelSource.matchAll(/aria-pressed=/g)].length).toBe(2);
+    // that paints the same state must at least announce it. Three sites:
+    // `Aa`, `W`, and `ScopeChip` (task 1005 — the chips are toggles too; the
+    // rendered census is `search-header-toggles-a11y.test.tsx`).
+    expect([...panelSource.matchAll(/aria-pressed=/g)].length).toBe(3);
   });
 
   it("washes the result match from the amber-highlight family", () => {

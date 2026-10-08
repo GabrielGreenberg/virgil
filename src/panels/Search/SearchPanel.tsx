@@ -179,7 +179,7 @@ export function clampMark(match: string): string {
  * conditional class) — here it is announced state, not a selector.
  */
 const MODE_TOGGLE_BASE =
-  "text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors";
+  "focus-ring text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors";
 const MODE_TOGGLE_ON =
   "border-[var(--control-selected-ink)] text-[var(--control-selected-ink)] bg-[var(--control-selected-tint)]";
 const MODE_TOGGLE_OFF = "border-edge-hover text-ink-muted hover:text-ink-body";
@@ -1177,6 +1177,10 @@ function useScopeAccent(): (scope: SearchScope) => string {
   };
 }
 
+/** A scope filter chip is a TOGGLE: its state is announced through
+ *  `aria-pressed` (STYLE_GUIDE "Buttons" — hand-rolled toggles still announce
+ *  it), so the `✓` is decoration and stays out of the accessible name. The
+ *  filter palette is task 309's ruling and is untouched here (task 1005). */
 function ScopeChip({
   scope,
   enabled,
@@ -1191,7 +1195,8 @@ function ScopeChip({
     <button
       type="button"
       onClick={onToggle}
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+      aria-pressed={enabled}
+      className={`focus-ring inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
         enabled
           ? "border-edge-hover bg-white/70 text-ink-body"
           : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
@@ -1207,7 +1212,11 @@ function ScopeChip({
         }}
       />
       <span>{SCOPE_LABEL[scope]}</span>
-      {enabled && <span className="text-[9px] leading-none">✓</span>}
+      {enabled && (
+        <span aria-hidden className="text-[9px] leading-none">
+          ✓
+        </span>
+      )}
     </button>
   );
 }
