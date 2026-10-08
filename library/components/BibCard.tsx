@@ -12,6 +12,7 @@ import {
 import { reconstructBibtex } from "@library/lib/reconstruct-bibtex";
 import { bibFieldDisplay } from "@library/lib/bib-parser";
 import { Button } from "@/components/Button";
+import { Textarea } from "@/components/field-primitives";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
@@ -256,7 +257,8 @@ export function AiNotePanel({
         {title}
       </div>
       {extraHeader}
-      <textarea
+      <Textarea
+        density="dense"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -265,15 +267,10 @@ export function AiNotePanel({
         style={{
           width: "100%",
           padding: "8px 10px",
-          border: "1px solid var(--border-light)",
-          borderRadius: "var(--radius-sm)",
-          background: "var(--surface)",
           fontFamily: FONT_SANS,
           fontSize: 13,
           lineHeight: 1.4,
           resize: "vertical",
-          outline: "none",
-          boxSizing: "border-box",
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {

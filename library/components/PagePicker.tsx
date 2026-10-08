@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { useFieldEditSession } from "@/lib/field-edit-session";
+import { Input } from "@/components/field-primitives";
 
 /** `[label] / count` printed-page selector — seeds the input with the current
  *  page label, jumps to the typed LABEL on Enter / go. Renders nothing for
@@ -61,7 +62,8 @@ export default function PagePicker({
       title="Jump to a printed page"
     >
       {!narrow && <span aria-hidden="true">p.</span>}
-      <input
+      <Input
+        density="dense"
         type="text"
         value={shown}
         onFocus={() => {
@@ -97,11 +99,6 @@ export default function PagePicker({
           fontFamily: FONT_MONO,
           fontSize: 11,
           textAlign: "center",
-          color: "var(--foreground)",
-          background: "var(--surface)",
-          border: "1px solid var(--border-light)",
-          borderRadius: "var(--radius-sm)",
-          outline: "none",
         }}
       />
       <span aria-hidden="true">/ {marks.length}</span>
