@@ -165,7 +165,7 @@ function useSelectionsValue(
       // card focused; otherwise default to "cutter-comment". (Polymorphic
       //-aware callers should set the store directly with the right kind.)
       const kind: EntityKind =
-        focused && focused.kind === "cutter-suggestion" ? "cutter-suggestion" : "cutter-comment";
+        focused?.kind ?? "cutter-comment";
       store.select({ kind, id: nextId });
     },
     [store],
@@ -185,7 +185,7 @@ function useSelectionsValue(
         return;
       }
       const kind: EntityKind =
-        focused && focused.kind === "report-request" ? "report-request" : "report";
+        focused?.kind ?? "report";
       store.select({ kind, id: nextId });
     },
     [store],
@@ -203,7 +203,7 @@ function useSelectionsValue(
         return;
       }
       const kind: EntityKind =
-        focused && focused.kind === "revision-suggestion" ? "revision-suggestion" : "revision-comment";
+        focused?.kind ?? "revision-comment";
       store.select({ kind, id: nextId });
     },
     [store],

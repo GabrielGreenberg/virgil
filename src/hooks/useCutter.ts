@@ -33,6 +33,7 @@ import {
   type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
+import { cardKindFromRecord, type StoredKindOf } from "@/cards/predicates";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
@@ -583,15 +584,13 @@ export function useCutter(
    *  remap rides on `convertCardWithRemap` in EditorPane (the morph chokepoint),
    *  so a popped-then-morphed card keeps its window. */
   const convertCard = useCallback(
-    (id: string, toKind: "comment" | "suggestion") => {
+    (id: string, toKind: StoredKindOf<"cutter">) => {
       pristine.markDirty(id);
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) => {
           if (c.id !== id || c.kind === toKind) return c;
-          const fromKind =
-            c.kind === "comment" ? "cutter-comment" : "cutter-suggestion";
-          return applyCardMorph(fromKind, c);
+          return applyCardMorph(cardKindFromRecord(c, "cutter"), c);
         }),
       }));
     },
@@ -638,7 +637,7 @@ export function useCutter(
           c.id === id
             ? addTextObjectLink(
                 c,
-                c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
+                cardKindFromRecord(c, "cutter"),
                 paragraphId,
                 targetKind,
                 paragraphSnapshot,
@@ -778,7 +777,7 @@ export function useCutter(
         if (!card) return prev;
         const existing = getTextAnchor(card);
         if (existing?.anchorId === anchorId) return prev;
-        const kind = card.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
+        const kind = cardKindFromRecord(card, "cutter");
         return {
           ...prev,
           cards: prev.cards.map((c) =>

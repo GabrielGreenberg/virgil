@@ -33,6 +33,7 @@ import {
   type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
+import { cardKindFromRecord, type StoredKindOf } from "@/cards/predicates";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
@@ -585,15 +586,13 @@ export function useRevisions(
    *  salvages text fields across the shape change. The float-key remap rides
    *  on `convertCardWithRemap` in EditorPane (the morph chokepoint). */
   const convertCard = useCallback(
-    (id: string, toKind: "comment" | "suggestion") => {
+    (id: string, toKind: StoredKindOf<"revisions">) => {
       pristine.markDirty(id);
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) => {
           if (c.id !== id || c.kind === toKind) return c;
-          const fromKind =
-            c.kind === "comment" ? "revision-comment" : "revision-suggestion";
-          return applyCardMorph(fromKind, c);
+          return applyCardMorph(cardKindFromRecord(c, "revisions"), c);
         }),
       }));
     },
@@ -628,7 +627,7 @@ export function useRevisions(
           c.id === id
             ? addTextObjectLink(
                 c,
-                c.kind === "suggestion" ? "revision-suggestion" : "revision-comment",
+                cardKindFromRecord(c, "revisions"),
                 paragraphId,
                 targetKind,
                 paragraphSnapshot,
@@ -769,7 +768,7 @@ export function useRevisions(
         if (!card) return prev;
         const existing = getTextAnchor(card);
         if (existing?.anchorId === anchorId) return prev;
-        const kind = card.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
+        const kind = cardKindFromRecord(card, "revisions");
         return {
           ...prev,
           cards: prev.cards.map((c) =>
@@ -803,7 +802,7 @@ export function useRevisions(
             getTextAnchor(c)?.anchorId === anchorId
               ? clearTextAnchorLink(
                   c,
-                  c.kind === "suggestion" ? "revision-suggestion" : "revision-comment",
+                  cardKindFromRecord(c, "revisions"),
                 )
               : c,
           ),

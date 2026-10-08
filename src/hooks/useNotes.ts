@@ -30,6 +30,7 @@ import {
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { applyCardMorph } from "@/cards/morphs";
+import { cardKindFromRecord } from "@/cards/predicates";
 import { morphCarriesAiRequest } from "@/cards/card-registry";
 import { carryCardEnvelope } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
@@ -642,7 +643,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         if (!card) return prev;
         const existing = getTextAnchor(card);
         if (existing?.anchorId === anchorId) return prev;
-        const kind = card.kind === "highlight" ? "highlight" : "note";
+        const kind = cardKindFromRecord(card, "notes");
         return {
           cards: prev.cards.map((c) =>
             c.id === id

@@ -212,26 +212,6 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 /**
- * Read-side classifier: resolve an on-disk card record's *data discriminator*
- * (`record.kind`) to its spine `CardKind`. `panel` disambiguates the families
- * that share an on-disk discriminator — both Cutter and Revisions records carry
- * `kind: "comment" | "suggestion"`, so the panel decides whether `"suggestion"`
- * means `cutter-suggestion` or `revision-suggestion`.
- *
- * This is the read-side INVERSE of the A9 morph write-side (`applyCardMorph` /
- * `getCardMorphConverter`): morph FLIPS a record's `kind` to its sibling and
- * salvages fields; this READS the current `kind` back to a spine kind. They are
- * deliberately NOT merged — different layer (read-classification vs in-place
- * data transform), different inputs (a panel-tagged record vs a registered
- * converter closure). Keep them apart; the morph layer lives in
- * `card-registry.tsx` + `cards/morphs/`, this is the link/anchor read layer.
- *
- * O(1): a `record.kind` string compare + panel switch. No collection scan, no
- * doc walk (keystroke sanctity). The caller still does the linear
- * `collection.find(e => e.id === id)` to fetch the record — that's the existing
- * `findEntity` contract, unchanged.
- */
-/**
  * In-text anchor accent map — the SSOT-derived replacement for the two
  * hand-mirrored hex tables that used to live in `globals.css`:
  *
@@ -327,24 +307,82 @@ const LINKED_CARD_KIND_BY_PAIR: Map<string, CardKind> = (() => {
   return m;
 })();
 
+/**
+ * THE stored-kind ↔ card-kind pairing (task 999) — one declared table, both
+ * directions derived from it. A polymorphic panel keeps two card kinds in ONE
+ * sidecar collection and tells them apart by the record's own `kind` field (its
+ * STORED discriminator); this table is the only place that says which stored
+ * token is which spine `CardKind`, per panel. `cardKindFromRecord` reads it
+ * forward (record → kind), `storedKindForCardKind` backward (kind → panel +
+ * token the owning hook's `convertCard` expects). A third kind in a panel, or a
+ * renamed discriminator, is one row here — not a hunt through every hook,
+ * marker source and delete wrapper that used to re-spell it as a ternary
+ * (pinned by `stored-kind-pairing-census.test.ts`).
+ *
+ * The FIRST row of each panel is its fallback: an on-disk record whose `kind`
+ * is missing or unrecognised classifies as that kind (the comment/report/note
+ * kind — the one every legacy record predates the discriminator as).
+ */
+export const STORED_KIND_BY_PANEL = {
+  notes: { note: "note", highlight: "highlight" },
+  revisions: { comment: "revision-comment", suggestion: "revision-suggestion" },
+  cutter: { comment: "cutter-comment", suggestion: "cutter-suggestion" },
+  reports: { report: "report", "report-request": "report-request" },
+} as const satisfies Partial<Record<PanelKind, Readonly<Record<string, CardKind>>>>;
+
+/** A panel whose one collection holds more than one card kind. */
+export type PolymorphicPanel = keyof typeof STORED_KIND_BY_PANEL;
+/** The stored `record.kind` discriminators panel `P` writes. */
+export type StoredKindOf<P extends PolymorphicPanel> = keyof (typeof STORED_KIND_BY_PANEL)[P];
+/** Where a polymorphic-panel card kind lives: its panel and stored token. */
+export type StoredKindAddress = {
+  [P in PolymorphicPanel]: { panel: P; stored: StoredKindOf<P> };
+}[PolymorphicPanel];
+
+const isPolymorphicPanel = (p: PanelKind): p is PolymorphicPanel =>
+  Object.prototype.hasOwnProperty.call(STORED_KIND_BY_PANEL, p);
+
+const STORED_ADDRESS_BY_KIND: Map<CardKind, StoredKindAddress> = (() => {
+  const m = new Map<CardKind, StoredKindAddress>();
+  for (const panel of Object.keys(STORED_KIND_BY_PANEL) as PolymorphicPanel[]) {
+    const row: Readonly<Record<string, CardKind>> = STORED_KIND_BY_PANEL[panel];
+    for (const [stored, kind] of Object.entries(row)) {
+      m.set(kind, { panel, stored } as StoredKindAddress);
+    }
+  }
+  return m;
+})();
+
+/**
+ * The read-side classifier: an on-disk record's stored `kind` → its spine
+ * `CardKind`, disambiguated by the owning panel (cutter and revisions both
+ * store `"comment" | "suggestion"`). Reads `STORED_KIND_BY_PANEL`; an unknown
+ * token falls back to the panel's first row. Monomorphic panels answer their
+ * single anchored kind. O(1) — no collection scan, no doc walk.
+ *
+ * Not the morph: `applyCardMorph` (A9) FLIPS a record's `kind` and salvages
+ * fields; this only READS the current `kind` back to a spine kind. Different
+ * layer, kept apart — they share only this table's vocabulary.
+ */
 export function cardKindFromRecord(
   record: { kind?: string },
   panel: PanelKind,
 ): CardKind {
-  switch (panel) {
-    case "cutter":
-      return record.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
-    case "revisions":
-      return record.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
-    case "reports":
-      return record.kind === "report-request" ? "report-request" : "report";
-    default: {
-      // Monomorphic panels: the panel's single anchored kind. `cardKindsForPanel`
-      // returns >1 only for the polymorphic panels handled above (and `notes`,
-      // whose note/highlight split rides separate collections, not `record.kind`
-      // — callers pass the concrete ref kind there, never route through here).
-      const kinds = cardKindsForPanel(panel);
-      return kinds[0] ?? "note";
+  if (isPolymorphicPanel(panel)) {
+    const row: Readonly<Record<string, CardKind>> = STORED_KIND_BY_PANEL[panel];
+    if (record.kind !== undefined && Object.prototype.hasOwnProperty.call(row, record.kind)) {
+      return row[record.kind];
     }
+    return Object.values(row)[0];
   }
+  return cardKindsForPanel(panel)[0] ?? "note";
+}
+
+/**
+ * The inverse: which panel holds card kind `kind`, and which stored token its
+ * hook's `convertCard` / record `kind` spells it as. `null` for a kind that
+ * lives in no polymorphic panel. Round-trips with `cardKindFromRecord`.
+ */
+export function storedKindForCardKind(kind: CardKind): StoredKindAddress | null {
+  return STORED_ADDRESS_BY_KIND.get(kind) ?? null;
 }

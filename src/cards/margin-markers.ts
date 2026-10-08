@@ -28,6 +28,7 @@ import {
   type CardAnchorResolver,
 } from "@/links/card-anchor-rows";
 import { CARD_REGISTRY } from "./card-registry";
+import { cardKindFromRecord } from "./predicates";
 import type { MarginItemKind } from "./delete-margin-item";
 import type { CardKind } from "./types";
 
@@ -85,7 +86,7 @@ const archive: MarginMarkerSource = {
 
 const revisions: MarginMarkerSource<SuggestionLike & { status?: string; selectedText?: string }> = {
   kinds: ["revision-comment", "revision-suggestion"],
-  kindOf: (r) => (r.kind === "suggestion" ? "revision-suggestion" : "revision-comment"),
+  kindOf: (r) => cardKindFromRecord(r, "revisions"),
   title: (r, k) => r.selectedText || label(k),
   // Skip only *resolved* suggestions (accepted/rejected). A `pending` card is
   // awaiting review and an `applied` card is spliced into the doc but still
@@ -99,7 +100,7 @@ const revisions: MarginMarkerSource<SuggestionLike & { status?: string; selected
 
 const cutter: MarginMarkerSource<SuggestionLike & { explanation?: string; text?: string }> = {
   kinds: ["cutter-comment", "cutter-suggestion"],
-  kindOf: (c) => (c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment"),
+  kindOf: (c) => cardKindFromRecord(c, "cutter"),
   // An APPLIED cutter suggestion keeps its ordinary `cut` marker (see above).
   title: (c, k) => (c.kind === "suggestion" ? c.explanation : c.text) || label(k),
 };
