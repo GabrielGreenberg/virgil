@@ -40,6 +40,7 @@
 
 import {
   useCallback,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -94,12 +95,20 @@ const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
 
 /** Open/close state + anchor for a pill's kebab menu. Lives in the badge
  *  (not the pill) so a badge can OPEN its own menu from outside — the save
- *  badge's "Resolve…" routes here via `useBlockingFlowRequest`. */
+ *  badge's "Resolve…" routes here via `useBlockingFlowRequest`.
+ *
+ *  > **The menu's lifetime is the KEBAB's** (task 1016). The state lives in
+ *  > the badge, but it may only be `open` while the kebab it anchors to is
+ *  > mounted: `openMenu`/`toggleMenu` are no-ops with no kebab (a request
+ *  > that has nowhere to land opens nothing rather than an invisible menu),
+ *  > and the kebab's callback ref RESETS the state when it detaches — so a
+ *  > badge that renders no pill (its condition cleared) or a menu-less
+ *  > variant cannot carry a stale `open` into its next appearance, where it
+ *  > would pop unprompted at old coordinates. */
 export interface BarStatusMenuController {
   open: boolean;
   anchorRect: DOMRect | null;
-  /** The kebab trigger, held in STATE (a callback ref) rather than a ref
-   *  object, so the controller can travel through render as a prop. */
+  /** The kebab trigger's callback ref. Detaching it closes the menu. */
   setKebabEl: (el: HTMLButtonElement | null) => void;
   /** The pill wrapper, held in STATE (not a ref) so it can be passed to the
    *  menu provider's `excludeRefs` without reading a ref during render. */
@@ -115,24 +124,38 @@ export function useBarStatusMenu(): BarStatusMenuController {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
-  const [kebabEl, setKebabEl] = useState<HTMLButtonElement | null>(null);
+  // A REF, not state: refs attach in the commit BEFORE effects run, so an
+  // `openMenu` fired from a mount effect (a blocking-flow request that arrived
+  // before the pill appeared) already sees the kebab — a state mirror would
+  // still read the previous render's `null` and drop the request.
+  const kebabRef = useRef<HTMLButtonElement | null>(null);
 
   const closeMenu = useCallback(() => {
     setOpen(false);
     setAnchorRect(null);
   }, []);
+  const setKebabEl = useCallback((el: HTMLButtonElement | null) => {
+    kebabRef.current = el;
+    if (!el) {
+      setOpen(false);
+      setAnchorRect(null);
+    }
+  }, []);
   const openMenu = useCallback(() => {
+    const el = kebabRef.current;
+    if (!el) return;
     setOpen(true);
-    setAnchorRect(kebabEl?.getBoundingClientRect() ?? null);
-  }, [kebabEl]);
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
   const toggleMenu = useCallback(() => {
+    const el = kebabRef.current;
     setOpen((o) => {
-      const next = !o;
-      setAnchorRect(next ? (kebabEl?.getBoundingClientRect() ?? null) : null);
+      const next = !o && !!el;
+      setAnchorRect(next && el ? el.getBoundingClientRect() : null);
       return next;
     });
-  }, [kebabEl]);
-  const trackAnchor = useCallback(() => kebabEl?.getBoundingClientRect() ?? null, [kebabEl]);
+  }, []);
+  const trackAnchor = useCallback(() => kebabRef.current?.getBoundingClientRect() ?? null, []);
   return { open, anchorRect, setKebabEl, wrapEl, setWrapEl, openMenu, closeMenu, toggleMenu, trackAnchor };
 }
 
