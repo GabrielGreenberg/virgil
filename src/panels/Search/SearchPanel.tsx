@@ -32,6 +32,8 @@ import {
   SCOPE_TO_CARD_THEME,
   scopeDotBackground,
   compileQuery,
+  snippetAround,
+  SNIPPET_CTX,
 } from "@/lib/search-sources";
 import {
   buildCardAnchorPass,
@@ -137,15 +139,15 @@ const DROPDOWN_SCOPES: SearchScope[] = SCOPE_ORDER.filter(
   (s) => !PRIMARY_SCOPES.includes(s),
 );
 
-const CTX = 40;
 // SR-F1-03: the matched run rendered inside the amber <mark> was unclamped — a
 // multi-thousand-char pasted query rendered its entire matched text, blowing
-// out the result card. The before/after context is already capped at CTX; cap
+// out the result card. The before/after context is already capped at
+// SNIPPET_CTX (the one snippet producer's constant, task 1004); cap
 // the match at a generous multiple of it (enough to read a sentence-length
 // match in full, but bounded) and append an ellipsis when truncated. Clamping
 // at the render sink covers EVERY scope's `match` uniformly (mainText + the
 // search-sources hits) without touching the position/live-range logic.
-const MARK_MAX = CTX * 3;
+const MARK_MAX = SNIPPET_CTX * 3;
 export function clampMark(match: string): string {
   if (match.length <= MARK_MAX) return match;
   return match.slice(0, MARK_MAX).trimEnd() + "…";
@@ -383,9 +385,6 @@ export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
     const matchStart = m.index;
     const matchEnd = matchStart + m[0].length;
 
-    const before = docText.slice(Math.max(0, matchStart - CTX), matchStart);
-    const after = docText.slice(matchEnd, matchEnd + CTX);
-
     // Anchor the hit to the block the match STARTS in. A match that crosses a
     // block boundary (rare — only a query containing the "\n" separator) is
     // clamped to its starting block, which is the correct, safe behavior:
@@ -401,13 +400,26 @@ export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
         clampedEnd === matchStart
           ? pmFrom
           : proseOffsetToPos(startSpan, clampedEnd, "end");
+      // Context is cut from the hit's OWN block (task 1004): the joined
+      // index text runs every prose block together with "\n", so an
+      // unbounded slice borrowed the previous block (often a heading) as
+      // "before" and the next paragraph's opening as "after".
+      const snip = snippetAround(
+        docText,
+        matchStart,
+        clampedEnd,
+        startSpan.textStart,
+        startSpan.textEnd,
+      );
       out.push({
         scope: "mainText",
         from: pmFrom,
         to: pmTo,
-        before,
+        before: snip.before,
         match: m[0],
-        after,
+        after: snip.after,
+        ...(snip.clippedBefore ? { clippedBefore: true } : {}),
+        ...(snip.clippedAfter ? { clippedAfter: true } : {}),
         field: "body",
         // `offset` is the PM-position offset within the block (NOT a char
         // offset) so `resolveLiveBlockRange` can recover `from` as
@@ -1298,7 +1310,7 @@ const ResultCard = memo(function ResultCard({
         <div className="text-sm text-ink-body leading-snug break-words">
           {result.before.length > 0 && (
             <span className="text-ink-muted">
-              {result.before.length === CTX ? "\u2026" : ""}
+              {result.clippedBefore ? "\u2026" : ""}
               {result.before}
             </span>
           )}
@@ -1313,7 +1325,7 @@ const ResultCard = memo(function ResultCard({
           {result.after.length > 0 && (
             <span className="text-ink-muted">
               {result.after}
-              {result.after.length === CTX ? "\u2026" : ""}
+              {result.clippedAfter ? "\u2026" : ""}
             </span>
           )}
         </div>
