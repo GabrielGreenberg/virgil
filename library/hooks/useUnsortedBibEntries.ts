@@ -73,14 +73,16 @@ export function useUnsortedBibEntries(handle: FileSystemDirectoryHandle | null) 
     }
 
     setByFile((prev) => {
-      // Skip the state update if nothing changed (cheap stable check by
-      // comparing the per-file entry-count signature). Avoids feedback
-      // loops on the polling timer.
+      // Skip the state update if nothing changed, so the polling timer
+      // can't churn LibraryView's synthesized rows. The text cache above
+      // makes REFERENCE identity exact: an unchanged file reuses its prior
+      // parsed array, a changed one gets a new array. Never compare entry
+      // counts — an edit that keeps the count (a fixed title, author,
+      // year, citekey) would be parsed and then silently dropped.
       if (prev.size === next.size) {
         let same = true;
         for (const [k, v] of next) {
-          const pv = prev.get(k);
-          if (!pv || pv.length !== v.length) { same = false; break; }
+          if (prev.get(k) !== v) { same = false; break; }
         }
         if (same) return prev;
       }
