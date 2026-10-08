@@ -28,6 +28,9 @@ import {
 import {
   COLLAB_SIDECAR_FILE,
   EMPTY_COLLAB_SIDECAR,
+  derivePen,
+  ensureParticipant,
+  touchPresence,
   type CollabIdentity,
   type CollabSidecar,
 } from "@/lib/collab";
@@ -95,6 +98,80 @@ export function releaseSelf(me: string): CollabMutator {
       next = { ...next, presence: rest };
     }
     return next === prev ? null : next;
+  };
+}
+
+/* ── The pen state machine (task 1015) ─────────────────────────────
+ *
+ * Each pen transition states its PRECONDITION against the fresh disk value
+ * and returns `null` (no write) when it fails. The pill offers each button
+ * from a state up to one poll old, so "the pen looked free / mine / stale"
+ * is a claim about the PAST — the mutator re-asks it of the present, inside
+ * the queue, where a partner's take-over or a near-simultaneous take has
+ * already landed. Without the check, a stale-UI Pass erased the partner's
+ * freshly-held pen and the second of two Takes silently stole the first. */
+
+/** Who may take the pen how: `take` only when it is free (or already
+ *  mine — a re-take refreshes); `take-over` also when the holder's
+ *  heartbeat is stale per {@link derivePen}, the same clock the pill reads. */
+export type PenTakeMode = "take" | "take-over";
+
+export function canTakePen(
+  prev: CollabSidecar,
+  me: string,
+  mode: PenTakeMode,
+  now = Date.now(),
+): boolean {
+  const holder = prev.pen.holder;
+  if (!holder || holder === me) return true;
+  return mode === "take-over" && derivePen(prev.pen, now).status === "stale";
+}
+
+/** Take (or take over) the pen for `me`: enable collab, join the roster and
+ *  presence, become holder, drop my own pending request. `null` when the
+ *  pen on disk is not takable in `mode`. */
+export function takePenMutator(
+  me: CollabIdentity,
+  mode: PenTakeMode,
+  clock: () => number = Date.now,
+): CollabMutator {
+  return (prev) => {
+    const t = clock();
+    if (!canTakePen(prev, me.name, mode, t)) return null;
+    const now = new Date(t).toISOString();
+    let next = ensureParticipant(prev, me);
+    next = touchPresence(next, me.name, {});
+    return {
+      ...next,
+      enabled: true,
+      pen: {
+        holder: me.name,
+        since: now,
+        lastHeartbeat: now,
+        lastActivity: now,
+        requestedBy: (prev.pen.requestedBy ?? []).filter(
+          (r) => r.name !== me.name,
+        ),
+      },
+    };
+  };
+}
+
+/** Pass (put down) the pen — only MY pen. `null` when someone else holds
+ *  it on disk (it was taken over since the UI last polled) or it is free. */
+export function passPenMutator(me: string): CollabMutator {
+  return (prev) => {
+    if (prev.pen.holder !== me) return null;
+    return {
+      ...prev,
+      pen: {
+        holder: null,
+        since: null,
+        lastHeartbeat: null,
+        lastActivity: null,
+        requestedBy: [],
+      },
+    };
   };
 }
 

@@ -138,4 +138,38 @@ describe("useCollab — collab.json writes go through the mutate door (task 872)
     // And the hook adopts the authoritative post-write sidecar.
     expect(result.current.sidecar.presence.Bob).toEqual(presence(T1));
   });
+
+  // Task 1015 — the pen transitions re-check their precondition on disk.
+  it("a stale-UI Pass after a partner took over erases nothing, and the pill adopts the truth", async () => {
+    const { result } = await mountPolled();
+    // Bob takes over after Ada's last poll.
+    const v = structuredClone(disk.value) as CollabSidecar;
+    const now = new Date().toISOString();
+    v.pen = { holder: "Bob", since: now, lastHeartbeat: now, lastActivity: now, requestedBy: [] };
+    disk.value = v;
+    const writesBefore = disk.writes;
+    await act(async () => {
+      await result.current.passPen();
+    });
+    expect((disk.value as CollabSidecar).pen.holder).toBe("Bob");
+    expect(disk.writes).toBe(writesBefore);
+    // The optimistic "free" was rolled forward to the disk truth.
+    expect(result.current.sidecar.pen.holder).toBe("Bob");
+    expect(result.current.iHavePen).toBe(false);
+  });
+
+  it("a Take on a pen a partner took seconds ago does not steal it", async () => {
+    disk.value = { ...adaHolds(), pen: { holder: null, since: null, lastHeartbeat: null, lastActivity: null, requestedBy: [] } };
+    const { result } = renderHook(() => useCollab("doc-1"));
+    await waitFor(() => expect(result.current.sidecar.enabled).toBe(true));
+    const v = structuredClone(disk.value) as CollabSidecar;
+    const now = new Date().toISOString();
+    v.pen = { holder: "Bob", since: now, lastHeartbeat: now, lastActivity: now, requestedBy: [] };
+    disk.value = v;
+    await act(async () => {
+      await result.current.takePen();
+    });
+    expect((disk.value as CollabSidecar).pen.holder).toBe("Bob");
+    expect(result.current.sidecar.pen.holder).toBe("Bob");
+  });
 });

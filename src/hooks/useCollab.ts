@@ -29,8 +29,10 @@ import {
 import { readSidecar, readTextFile } from "@/lib/storage";
 import {
   mutateCollab,
+  passPenMutator,
   releaseSelf,
   renameSelf,
+  takePenMutator,
   type CollabMutator,
 } from "@/lib/collab-store";
 import {
@@ -212,12 +214,22 @@ export function useCollab(docId: string | null): CollabHook {
         sidecarRef.current = optimistic;
         setSidecar(optimistic);
       }
-      const landed = await mutateCollab(id, (fresh) =>
-        fn(mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null)),
-      );
-      if (!landed || seq !== mutateSeqRef.current || docIdRef.current !== id) return;
-      sidecarRef.current = landed;
-      setSidecar(landed);
+      // A mutator that REFUSES on the fresh read (task 1015 — its
+      // precondition held against our poll-old state but not against disk)
+      // writes nothing; adopt the base it refused, or the optimistic update
+      // above would show the stale belief until the next poll. Reset per run:
+      // the CAS may re-run `fn` on a newer base.
+      let refusedBase: CollabSidecar | null = null;
+      const landed = await mutateCollab(id, (fresh) => {
+        const base = mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null);
+        const next = fn(base);
+        refusedBase = next === null ? base : null;
+        return next;
+      });
+      const truth = landed ?? refusedBase;
+      if (!truth || seq !== mutateSeqRef.current || docIdRef.current !== id) return;
+      sidecarRef.current = truth;
+      setSidecar(truth);
     },
     [],
   );
@@ -447,40 +459,19 @@ export function useCollab(docId: string | null): CollabHook {
     });
   }, [mutate]);
 
+  // The pen transitions are the store's pure state machine (task 1015): each
+  // re-checks its precondition against the FRESH disk read, so a button
+  // offered from a poll-old state can't erase or steal a partner's pen.
   const takePen = useCallback(async () => {
     const me = identityRef.current;
     if (!me) return;
-    await mutate((prev) => {
-      const now = new Date().toISOString();
-      let next = ensureParticipant(prev, me);
-      next = touchPresence(next, me.name, {});
-      return {
-        ...next,
-        enabled: true,
-        pen: {
-          holder: me.name,
-          since: now,
-          lastHeartbeat: now,
-          lastActivity: now,
-          requestedBy: (prev.pen.requestedBy ?? []).filter(
-            (r) => r.name !== me.name,
-          ),
-        },
-      };
-    });
+    await mutate(takePenMutator(me, "take"));
   }, [mutate]);
 
   const passPen = useCallback(async () => {
-    await mutate((prev) => ({
-      ...prev,
-      pen: {
-        holder: null,
-        since: null,
-        lastHeartbeat: null,
-        lastActivity: null,
-        requestedBy: [],
-      },
-    }));
+    const me = identityRef.current?.name;
+    if (!me) return;
+    await mutate(passPenMutator(me));
   }, [mutate]);
 
   const requestPen = useCallback(async () => {
@@ -503,8 +494,10 @@ export function useCollab(docId: string | null): CollabHook {
   }, [mutate]);
 
   const takeOver = useCallback(async () => {
-    await takePen();
-  }, [takePen]);
+    const me = identityRef.current;
+    if (!me) return;
+    await mutate(takePenMutator(me, "take-over"));
+  }, [mutate]);
 
   const bumpActivity = useCallback(() => {
     const me = identityRef.current?.name;
