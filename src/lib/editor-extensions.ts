@@ -28,7 +28,7 @@ import { buildRefTargetIndexPM, resolveRefDisplay } from "@/lib/ref-display";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { setAttrIfChanged, setDataIfChanged } from "@/lib/tiptap/idempotent-dom";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
-import { headingAttrsForLevel } from "@/lib/tiptap/heading-level";
+import { headingAttrsForLevel, setParagraphInRange } from "@/lib/tiptap/heading-level";
 import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
@@ -1356,7 +1356,8 @@ export function createHeadingWithLabel(
           if (!headingNode || headingNode.type.name !== "heading") return;
           const paragraphType = nodeEditor.state.schema.nodes.paragraph;
           if (!paragraphType) return;
-          const tr = nodeEditor.state.tr.setBlockType(p, p + 1, paragraphType);
+          // Task 1003: the same door the BlockType "Body text" row takes.
+          const tr = setParagraphInRange(nodeEditor.state.tr, p, p + 1, paragraphType);
           nodeEditor.view.dispatch(tr);
         }
 
