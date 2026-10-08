@@ -28,7 +28,6 @@ import {
   LAYOUT_SITE_SECTION_PATH,
 } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
-import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
@@ -909,12 +908,6 @@ export default function EditorLayout() {
     openTabs.some((t) => t.id === e.id),
   );
   const keepAliveDocIds = renderedKeepAliveEntries.map((e) => e.id);
-
-  // A plain selection grab pops out a cardless `linkedRange` whose invisible
-  // transient anchor must be stripped from the doc when the popout closes
-  // (it's a gesture handle, not an annotation). Watches poppedOutCards so it
-  // catches every close path.
-  useTransientAnchorCleanup(editorInstance, prefs.poppedOutCards);
 
   // ── Collab pen → TipTap read-only gate.
   // When collab is enabled and the partner holds the pen, the editor is

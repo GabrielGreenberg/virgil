@@ -406,6 +406,24 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
         captureToStackRef.current != null &&
         canCaptureToStack(cardKey);
 
+      // ── Who owns a plain selection grab's transient anchor (task 1000) ──
+      // The invisible `kind:"transient"` handle lives exactly as long as the
+      // thing holding it. A `"grab"` lift minted it for THIS gesture, so the
+      // gesture owns it until the popout terminal hands it to a float (whose
+      // close strips it — `useTransientAnchorCleanup`, per pane). A `"float"`
+      // lift is driven from a float that is ALREADY open and already owns the
+      // anchor: a no-op release leaves that float open and must leave its range
+      // connected, and a committed move closes the float (`postDrop:"close"`),
+      // whose owner strips. So the float policy NEVER strips here — every
+      // terminal below asks this one function instead of deciding alone.
+      // GUARDED (a no-op unless truly transient), so a grab that reused a REAL
+      // annotation's range never deletes that note/highlight/cut/revision.
+      const releaseGestureAnchor = (r: TextObjectRef) => {
+        if (terminalPolicy !== "grab") return;
+        if (!isRangeKind(r.kind)) return;
+        removeTransientAnchor(editor, r.id);
+      };
+
       // Live overlay state mirrored as a local closure variable so the
       // mousemove handler can mutate cursor / mode without a state-read
       // through React. We still call `setOverlay({...})` to publish to the
@@ -722,9 +740,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
             // and the mark has no further job. GUARDED, so a grab that reused
             // a REAL annotation's range never deletes that note. Same call the
             // move and float terminals make.
-            if (isRangeKind(liveRef.kind)) {
-              removeTransientAnchor(editor, liveRef.id);
-            }
+            releaseGestureAnchor(liveRef);
             liveOverlay = null;
             setOverlay(null);
             cleanup();
@@ -741,13 +757,10 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // cancel when placement is null or classifyDrop returns "no-op", so
           // we always route through it.)
           await commitDropSession();
-          // L3f-2: strip the transient (cardless, invisible) anchor minted for
-          // a plain selection grab now that its move committed/cancelled — see
-          // the grab branch below for the full rationale. GUARDED, so a grab
-          // that reused a REAL annotation's range never deletes that note.
-          if (isRangeKind(liveRef.kind)) {
-            removeTransientAnchor(editor, liveRef.id);
-          }
+          // NO strip here (task 1000): the open float owns the transient
+          // anchor, not this gesture. A no-op release keeps the float — and
+          // its range — connected; a committed move closes the float, and the
+          // float's close strips (`releaseGestureAnchor` header).
           liveOverlay = null;
           setOverlay(null);
           cleanup();
@@ -833,9 +846,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // never deletes that note/highlight/cut/revision. (L3f-1 deferred
           // this move/cancel cleanup; popout-close is handled by the
           // `useTransientAnchorCleanup` poppedOutCards watcher.)
-          if (isRangeKind(liveRef.kind)) {
-            removeTransientAnchor(editor, liveRef.id);
-          }
+          releaseGestureAnchor(liveRef);
         }
         liveOverlay = null;
         setOverlay(null);
@@ -869,9 +880,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // (move) and popout paths already nulled `liveOverlay` before
           // calling cleanup, so they don't double-handle here: move strips via
           // the onUp branch above, popout-close via the watcher.
-          if (isRangeKind(liveOverlay.ref.kind)) {
-            removeTransientAnchor(editor, liveOverlay.ref.id);
-          }
+          releaseGestureAnchor(liveOverlay.ref);
           liveOverlay = null;
           setOverlay(null);
         }
