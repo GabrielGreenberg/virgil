@@ -62,6 +62,7 @@ import {
   type LinkedAnchorKind,
 } from "@/links/links";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { collectLabelKeysIn } from "@/lib/labels";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
@@ -666,10 +667,16 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
               /* ignore — selection placement is best-effort */
             }
           };
+          // Every `\label` key the paper already declares — read ONCE so the
+          // dry and real walks derive the SAME fresh keys for the copy's
+          // declarations (task 1002). One O(doc) walk per Duplicate gesture.
+          const takenLabels = collectLabelKeysIn(ed.state.doc);
           const dryTr = ed.state.tr.replace(
             outer.to,
             outer.to,
-            duplicateSlice(slice, dryCloneLifecycle(cardLifecycle)),
+            duplicateSlice(slice, dryCloneLifecycle(cardLifecycle), undefined, {
+              takenLabels,
+            }),
           );
           // Pre-dispatch schema validation. PM's `Node.check` throws
           // when the new doc shape violates a content rule (e.g. two
@@ -693,7 +700,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           }
           const diag = createDuplicateDiagnostics();
           const cloneLog = recordingCloneLifecycle(cardLifecycle);
-          const cloned = duplicateSlice(slice, cloneLog.api, diag);
+          const cloned = duplicateSlice(slice, cloneLog.api, diag, { takenLabels });
           const tr = ed.state.tr.replace(outer.to, outer.to, cloned);
           placeDupSelection(tr);
           if (!commitDocThenCards(ed, tr)) {

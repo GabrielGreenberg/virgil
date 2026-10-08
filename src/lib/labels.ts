@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { LABEL_DECLARING_NODE_TYPES } from "@/lib/node-attr-sets";
 import { forEachJsonDeep, nestedBodyOf } from "@/lib/inline-content";
 
@@ -36,8 +36,9 @@ function scanRaw(text: string, out: Set<string>): void {
   while ((m = LABEL_RE.exec(text)) !== null) out.add(m[1]);
 }
 
-/** All distinct `\label{...}` keys currently declared in `doc`. */
-export function collectLabelKeysIn(doc: PMNode): Set<string> {
+/** All distinct `\label{...}` keys currently declared in `doc` — or in a
+ *  bare fragment (a slice's content), whose top-level nodes count too. */
+export function collectLabelKeysIn(doc: PMNode | Fragment): Set<string> {
   const keys = new Set<string>();
   doc.descendants((nd) => {
     if (LABEL_DECLARING_NODE_TYPES.has(nd.type.name)) {
