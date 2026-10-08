@@ -42,6 +42,7 @@ import type {
   DiagnosticsEditorHandle,
 } from "../useDiagnostics";
 import type { Editor } from "@tiptap/react";
+import { Schema } from "@tiptap/pm/model";
 
 // ── Fixture source ──────────────────────────────────────────────────────────
 // Line 1: content line for paragraph aaaa (start)
@@ -378,6 +379,43 @@ describe("useDiagnostics", () => {
       vi.advanceTimersByTime(600);
     });
     expect(scrollToParagraphId.mock.calls.length).toBe(1);
+  });
+
+  it("task 1008: an undefined-ref highlight lands on the atom in the error's paragraph, not on matching prose elsewhere", () => {
+    const schema = new Schema({
+      nodes: {
+        doc: { content: "paragraph+" },
+        paragraph: { content: "inline*", attrs: { uuid: { default: null } } },
+        text: { group: "inline" },
+        labelRef: { group: "inline", inline: true, atom: true, attrs: { label: { default: "" } } },
+      },
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { uuid: "aaaa" }, [schema.text("is defined here")]),
+      schema.node("paragraph", { uuid: "bbbb" }, [
+        schema.text("see "),
+        schema.node("labelRef", { label: "def" }),
+      ]),
+    ]);
+    const p1End = doc.child(0).nodeSize;
+    const fakeEditor = { state: { doc } } as unknown as Editor;
+    const withAtom = lintErr(4, "undefined label", "def"); // line 4 → bbbb
+    const atomGone = lintErr(1, "undefined label", "gone"); // line 1 → aaaa
+    MOCK_LINT_ERRORS = [atomGone, withAtom];
+    const { ref } = makeHandleRef(fakeEditor);
+    const { result } = renderHook(() =>
+      useDiagnostics(baseOptions({ editorHandleRef: ref })),
+    );
+
+    const r = result.current.computeErrorHighlightRange(withAtom)!;
+    expect(r.from).toBeGreaterThanOrEqual(p1End);
+    expect(doc.nodeAt(r.from)?.type.name).toBe("labelRef");
+
+    // Atom gone, paragraph resolves → whole paragraph.
+    expect(result.current.computeErrorHighlightRange(atomGone)).toEqual({
+      from: 1,
+      to: p1End - 1,
+    });
   });
 
   it("jumpToErrorVisual does not scroll when the error has no resolvable paragraph", () => {

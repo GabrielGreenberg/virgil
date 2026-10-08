@@ -28,6 +28,8 @@ import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
+import { resolveErrorHighlightRange } from "@/lib/error-highlight-range";
+import { getBus } from "@/lib/tiptap/doc-structure";
 import { pruneExpanded } from "@/panels/Errors/expansion";
 import type { ErrorJump } from "@/panels/Errors";
 import { pruneDismissed } from "@/lib/diagnostics-store";
@@ -204,49 +206,19 @@ export function useDiagnostics({
     return m.size === 0 ? EMPTY_STRING_MAP : m;
   }, [sourceText, allLatexErrors]);
 
-  // Compute the rich-text range to highlight for an error:
-  //   1. If `err.detail` (the offending key) appears as plain text, pin there.
-  //   2. Else scope to the error's paragraph via its UUID.
-  //   3. Else null.
+  // The rich-text range to highlight for an error: the offending ref/cite
+  // ATOM inside the error's paragraph, else the whole paragraph, else null —
+  // never a prose search across the doc (task 1008; error-highlight-range.ts).
   const computeErrorHighlightRange = useCallback(
     (err: LatexError): Range | null => {
       const ed = editorHandleRef.current?.getEditor();
       if (!ed) return null;
-
-      if (err.detail) {
-        let hit: Range | null = null;
-        ed.state.doc.descendants((node, pos) => {
-          if (hit) return false;
-          if (!node.isText || !node.text) return true;
-          const i = node.text.indexOf(err.detail!);
-          if (i !== -1) {
-            hit = { from: pos + i, to: pos + i + err.detail!.length };
-            return false;
-          }
-          return true;
-        });
-        if (hit) return hit;
-      }
-
-      const paraId = paragraphByErrorId.get(err.id);
-      if (paraId) {
-        let paraFrom: number | null = null;
-        let paraTo: number | null = null;
-        ed.state.doc.descendants((node, pos) => {
-          if (paraFrom !== null) return false;
-          if (node.attrs?.uuid === paraId) {
-            paraFrom = pos + 1;
-            paraTo = pos + node.nodeSize - 1;
-            return false;
-          }
-          return true;
-        });
-        if (paraFrom !== null && paraTo !== null) {
-          return { from: paraFrom, to: paraTo };
-        }
-      }
-
-      return null;
+      return resolveErrorHighlightRange(
+        ed.state.doc,
+        getBus(ed)?.structure ?? null,
+        paragraphByErrorId.get(err.id),
+        err.detail,
+      );
     },
     [paragraphByErrorId, editorHandleRef],
   );
