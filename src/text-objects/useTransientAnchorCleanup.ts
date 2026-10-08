@@ -26,6 +26,13 @@
  * out to be a real card anchor (a grab that reused a note's range), so a real
  * annotation is never deleted on close.
  *
+ * OWNED PER PANE (task 1000): mounted by every `EditorPane` with ITS editor,
+ * never once by the layout with the ACTIVE one. `poppedOutCards` is
+ * window-global while the anchor lives in exactly one doc, so an active-editor
+ * watcher stripped the wrong doc whenever the popout closed with another pane
+ * in front — and then forgot the id, leaking the mark into the owning doc's
+ * .tex. Per pane, the owning doc always strips; the rest are guarded no-ops.
+ *
  * Keystroke-safe: depends only on the editor instance and the
  * `poppedOutCards` identity — neither changes on a plain keystroke — and does
  * O(closed linkedRange popouts) work, never O(doc), per fire.

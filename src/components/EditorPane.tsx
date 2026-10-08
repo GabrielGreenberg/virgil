@@ -205,6 +205,7 @@ import { FloatHost } from "@/floats/FloatHost";
 import { captureFloatToStack } from "@/floats/resolve-floatable";
 import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { LiftHost } from "@/text-objects/LiftHost";
+import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { CARD_REGISTRY, resolveMorphTarget } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
 import { CardPresenceProvider } from "@/cards/presence";
@@ -998,6 +999,9 @@ type MorphHost<P extends PolymorphicPanel> = {
   convertCard: (id: string, toKind: StoredKindOf<P>) => void;
 };
 
+/** Stable empty popout list for a pane mounted without `viewPrefs` (Reader). */
+const NO_POPPED_KEYS: readonly string[] = [];
+
 const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function EditorPane(
   {
     docId,
@@ -1123,6 +1127,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         ? (editor.getJSON() as JSONContent)
         : null,
     [editor, rev.headings, rev.blocks, rev.labels, outlineDocTick],
+  );
+
+  // A plain selection grab's invisible transient anchor is stripped when its
+  // popout closes — by THIS pane, in THIS pane's doc (task 1000). The popout
+  // list is window-global, but the anchor lives in exactly one doc; a single
+  // layout-level watcher bound to the ACTIVE editor stripped the wrong doc
+  // whenever the popout closed while another pane was in front, leaking
+  // `\vlid…\vlidend` into the owning doc's .tex. Every keep-alive pane
+  // watches; the strip is a guarded no-op in the panes whose doc lacks the id.
+  useTransientAnchorCleanup(
+    editor,
+    viewPrefs?.prefs.poppedOutCards ?? NO_POPPED_KEYS,
   );
 
   const handleEditorReady = useCallback(

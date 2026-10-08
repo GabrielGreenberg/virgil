@@ -471,3 +471,44 @@ describe("the icon's own chrome speaks once, and truly (task 456)", () => {
     expect(btn.style.background, "the darken returns when the drag ends").toBe(hovered);
   });
 });
+
+// Task 1000 — a `float`-policy lift is driven from a float that ALREADY owns
+// the transient anchor. A no-op release leaves that float open, so stripping
+// here disconnected it (its body resolved no range → SourceMissingBanner). The
+// gesture strips only what the gesture minted: the `grab` policy.
+describe("the transient anchor's owner (task 1000)", () => {
+  it("a `float`-policy no-op release (outside content) keeps the anchor", async () => {
+    beginLift({ kind: "linkedRange", terminalPolicy: "float" });
+    move(AWAY.x, AWAY.y);
+    await up(AWAY.x, AWAY.y);
+    expect(commitDropSession).toHaveBeenCalledTimes(1);
+    expect(removeTransientAnchor).not.toHaveBeenCalled();
+  });
+
+  it("a `float`-policy release over content leaves the strip to the float's close", async () => {
+    inContentZone.current = () => true;
+    beginLift({ kind: "linkedRange", terminalPolicy: "float" });
+    move(AWAY.x, AWAY.y);
+    await up(AWAY.x, AWAY.y);
+    expect(commitDropSession).toHaveBeenCalledTimes(1);
+    expect(removeTransientAnchor).not.toHaveBeenCalled();
+  });
+
+  it("CONTROL — a `grab`-policy ghost release still strips the gesture's own anchor", async () => {
+    inContentZone.current = () => true;
+    beginLift({ kind: "linkedRange" });
+    move(AWAY.x, AWAY.y);
+    await up(AWAY.x, AWAY.y);
+    expect(commitDropSession).toHaveBeenCalledTimes(1);
+    expect(removeTransientAnchor).toHaveBeenCalledTimes(1);
+    expect(removeTransientAnchor.mock.calls[0][1]).toBe("u1");
+  });
+
+  it("CONTROL — a `grab`-policy popout hands the anchor to the float (no strip)", async () => {
+    const h = beginLift({ kind: "linkedRange" });
+    move(AWAY.x, AWAY.y);
+    await up(AWAY.x, AWAY.y);
+    expect(h.popOutAtRect).toHaveBeenCalledTimes(1);
+    expect(removeTransientAnchor).not.toHaveBeenCalled();
+  });
+});
