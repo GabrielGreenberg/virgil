@@ -438,29 +438,123 @@ export function skipCommentContinuationAt(
   return i;
 }
 
-/** The inline-`\verb` delimiter class, as ONE definition. `\verb` is a control
- *  WORD, so it is terminated by a non-letter — the delimiter must not be a
- *  letter (else `\verbatim` / `\verbdef` mis-lex as `\verb` + a delimiter), and
- *  LaTeX also forbids `*` and whitespace. */
-const INLINE_VERB_DELIM = "[^a-zA-Z*\\s]";
-
-/** Global scanner form — `\verb*?<delim>`, for stripping passes. */
-export function inlineVerbOpenRe(): RegExp {
-  return new RegExp(`\\\\verb(\\*?)(${INLINE_VERB_DELIM})`, "g");
+/**
+ * The INLINE verbatim family — every command whose argument TeX reads with
+ * catcodes changed, so its payload is LITERAL bytes (task 1020). One row per
+ * command, read by the ONE matcher below ({@link matchInlineVerbAt}); nothing
+ * else enumerates these names.
+ *
+ * Until task 1020 the matcher knew only `\verb`, while the ENV half of the same
+ * family ({@link VERBATIM_ENVS_FULL}) already listed `lstlisting` and `minted`.
+ * Their inline siblings therefore fell through to the prose path:
+ * `\lstinline|a_b|` saved as `\lstinline|a\_b|`, and the listing printed a
+ * backslash. A command listed here is claimed whole — name, star, options,
+ * language and both delimiters — as one byte-literal run.
+ *
+ * - `star`: accepts a `*` right after the name (`\verb*`, fancyvrb's `\Verb*`).
+ * - `options`: accepts one `[…]` (`\lstinline[language=C]|…|`).
+ * - `lang`: requires a `{language}` group before the payload (`\mintinline`).
+ * - `braceForm`: a payload opened by `{` closes at its MATCHING `}`
+ *   (`\lstinline{a_b}`, `\mintinline{py}{x % 2}`). Without it a `{` is an
+ *   ordinary delimiter and closes at the next `{`, which is `\verb`'s grammar.
+ */
+export interface InlineVerbatimCommand {
+  readonly name: string;
+  readonly star: boolean;
+  readonly options: boolean;
+  readonly lang: boolean;
+  readonly braceForm: boolean;
 }
 
-/** Sticky twin of the same opener, for the anchored matcher below. Module-
- *  scoped and `lastIndex`-driven so the parse hot path (one call per backslash
- *  in every paragraph) allocates neither a RegExp nor a sliced string. */
-const INLINE_VERB_OPEN_STICKY = new RegExp(
-  `\\\\verb(\\*?)(${INLINE_VERB_DELIM})`,
-  "y",
-);
+export const INLINE_VERBATIM_COMMANDS: readonly InlineVerbatimCommand[] = [
+  { name: "verb", star: true, options: false, lang: false, braceForm: false },
+  { name: "Verb", star: true, options: true, lang: false, braceForm: false },
+  { name: "spverb", star: false, options: false, lang: false, braceForm: false },
+  { name: "lstinline", star: false, options: true, lang: false, braceForm: true },
+  { name: "mintinline", star: false, options: true, lang: true, braceForm: true },
+];
+
+/** Does any {@link INLINE_VERBATIM_COMMANDS} name occur in `src`? A cheap
+ *  pre-filter for passes that would otherwise scan every line. */
+export function mayContainInlineVerbatim(src: string): boolean {
+  for (const c of INLINE_VERBATIM_COMMANDS) {
+    if (src.includes(`\\${c.name}`)) return true;
+  }
+  return false;
+}
+
+/** A delimiter may not be a letter (else `\verbatim` / `\verbdef` mis-lex as
+ *  `\verb` + a delimiter), a `*`, or whitespace — LaTeX forbids those. */
+function isInlineVerbDelim(ch: string | undefined): boolean {
+  return ch !== undefined && ch !== "*" && !/[a-zA-Z\s]/.test(ch);
+}
+
+/** The `[…]` options group at `i`, brace-aware and single-line: the index just
+ *  past its `]`, or -1. */
+function skipInlineVerbOptions(text: string, i: number): number {
+  let depth = 0;
+  for (let j = i + 1; j < text.length; j++) {
+    const ch = text[j];
+    if (ch === "\n") return -1;
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+    else if (ch === "]" && depth <= 0) return j + 1;
+  }
+  return -1;
+}
 
 /**
- * Anchored form: does a `\verb<delim>…<delim>` run start at `i`? Returns the
- * run's exclusive end index (so `text.slice(i, end)` is the whole literal
- * spelling, delimiters included) or -1.
+ * Read an inline verbatim run at `i`. `null` ⇒ no family command opens here;
+ * `end === -1` ⇒ one OPENS here but its payload never closes on this line.
+ */
+function readInlineVerbatimAt(
+  text: string,
+  i: number,
+): { end: number } | null {
+  if (text[i] !== "\\") return null;
+  for (const c of INLINE_VERBATIM_COMMANDS) {
+    if (!text.startsWith(c.name, i + 1)) continue;
+    let p = i + 1 + c.name.length;
+    if (c.star && text[p] === "*") p++;
+    if (c.options && text[p] === "[") {
+      p = skipInlineVerbOptions(text, p);
+      if (p === -1) return null;
+    }
+    if (c.lang) {
+      if (text[p] !== "{") return null;
+      const close = text.indexOf("}", p);
+      const eol = text.indexOf("\n", p);
+      if (close === -1 || (eol !== -1 && eol < close)) return null;
+      p = close + 1;
+    }
+    const delim = text[p];
+    if (!isInlineVerbDelim(delim)) {
+      // `\lstinline` read as a word here (`\lstinlinex`) — not this command;
+      // a shorter name cannot match either, so stop.
+      return null;
+    }
+    const payloadStart = p + 1;
+    const eol = text.indexOf("\n", payloadStart);
+    const limit = eol === -1 ? text.length : eol;
+    if (c.braceForm && delim === "{") {
+      let depth = 1;
+      for (let j = payloadStart; j < limit; j++) {
+        if (text[j] === "{") depth++;
+        else if (text[j] === "}" && --depth === 0) return { end: j + 1 };
+      }
+      return { end: -1 };
+    }
+    const closeIdx = text.indexOf(delim, payloadStart);
+    if (closeIdx === -1 || closeIdx >= limit) return { end: -1 };
+    return { end: closeIdx + 1 };
+  }
+  return null;
+}
+
+/**
+ * Anchored form: does an inline verbatim run ({@link INLINE_VERBATIM_COMMANDS})
+ * start at `i`? Returns the run's exclusive end index (so `text.slice(i, end)`
+ * is the whole literal spelling, command and delimiters included) or -1.
  *
  * Shared by BOTH inline parsers — the main one in `latex-parser.ts` and the
  * footnote/card fork in `footnote-content.ts` — so the two can't drift on what
@@ -474,15 +568,8 @@ const INLINE_VERB_OPEN_STICKY = new RegExp(
  * the same bytes were verbatim to one silo and prose to the other.
  */
 export function matchInlineVerbAt(text: string, i: number): number {
-  INLINE_VERB_OPEN_STICKY.lastIndex = i;
-  const m = INLINE_VERB_OPEN_STICKY.exec(text);
-  if (!m) return -1;
-  const payloadStart = i + m[0].length;
-  const closeIdx = text.indexOf(m[2], payloadStart);
-  if (closeIdx === -1) return -1;
-  const eol = text.indexOf("\n", payloadStart);
-  if (eol !== -1 && eol < closeIdx) return -1;
-  return closeIdx + 1;
+  const run = readInlineVerbatimAt(text, i);
+  return run ? run.end : -1;
 }
 
 
@@ -1073,36 +1160,33 @@ export function skipLineCommentAt(src: string, pos: number): number {
   return nl === -1 ? src.length : nl + 1;
 }
 
-/** Drop inline `\verb<delim>…<delim>` / `\verb*<delim>…<delim>` runs from a
- *  single line, leaving everything else intact. The delimiter is the char
- *  right after `\verb`/`\verb*` and must be a non-letter (so `\verbatim`,
- *  `\verbdef`, etc. are left untouched), non-`*`, non-space char — the same
- *  boundary the parser's inline-verb matcher uses — literally so: both read
- *  the {@link inlineVerbOpenRe} / {@link matchInlineVerbAt} pair above, and
- *  both stop the close search at the newline, so the drop projection and the
- *  node-producing parsers can't drift on what counts as a verb run. An
- *  unterminated `\verb` on the line drops to end-of-line here (verb runs do
- *  not cross a newline); over there it simply doesn't match, and the text
- *  falls through as ordinary prose. */
+/** Drop inline verbatim runs ({@link INLINE_VERBATIM_COMMANDS}) from a single
+ *  line, leaving everything else intact. Reads the SAME
+ *  {@link readInlineVerbatimAt} the node-producing parsers read through
+ *  {@link matchInlineVerbAt}, and both stop the close search at the newline,
+ *  so the drop projection and the parsers can't drift on what counts as a verb
+ *  run. An unterminated run on the line drops to end-of-line here (verb runs
+ *  do not cross a newline); over there it simply doesn't match, and the text
+ *  falls through as ordinary prose. A control symbol (`\\`) is stepped over
+ *  whole, so `\\verb|x|` is a line break followed by prose, not a run. */
 function stripInlineVerb(line: string, blank: (s: string) => string): string {
-  const re = inlineVerbOpenRe();
   let out = "";
   let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(line)) !== null) {
-    const delim = m[2];
-    out += line.slice(last, m.index);
-    const payloadStart = m.index + m[0].length;
-    const close = line.indexOf(delim, payloadStart);
-    if (close === -1) {
-      // Unterminated: drop to end of line.
-      out += blank(line.slice(m.index));
-      last = line.length;
-      break;
+  let i = line.indexOf("\\");
+  while (i !== -1 && i < line.length) {
+    const run = readInlineVerbatimAt(line, i);
+    if (run) {
+      out += line.slice(last, i);
+      if (run.end === -1) {
+        out += blank(line.slice(i));
+        return out;
+      }
+      out += blank(line.slice(i, run.end));
+      last = run.end;
+      i = line.indexOf("\\", run.end);
+      continue;
     }
-    out += blank(line.slice(m.index, close + 1));
-    last = close + 1;
-    re.lastIndex = last;
+    i = line.indexOf("\\", i + 2);
   }
   out += line.slice(last);
   return out;
@@ -1141,7 +1225,7 @@ export function projectLiveLatex(
   // when inlineVerb is on, a bare `\verb…` line contains neither `%` nor a
   // verbatim begin, so we must not take the fast path if it might carry a
   // `\verb`.)
-  const mayHaveInlineVerb = inlineVerb && src.includes("\\verb");
+  const mayHaveInlineVerb = inlineVerb && mayContainInlineVerbatim(src);
   if (!src.includes("%") && !beginRe.test(src) && !mayHaveInlineVerb) {
     return src;
   }
@@ -1983,8 +2067,9 @@ export const LINGUEX_UNMODELLED_RE = /\\(?:z\.|[a-z]g\.)/;
 export function skipOpaqueConstructAt(src: string, pos: number): number {
   if (src[pos] !== "\\") return -1;
 
-  // Inline `\verb<delim>…<delim>` — a literal run that can hide anything.
-  if (src.startsWith("\\verb", pos)) {
+  // An inline verbatim run (`\verb|…|`, `\lstinline{…}`, …) — a literal run
+  // that can hide anything.
+  {
     const verbEnd = matchInlineVerbAt(src, pos);
     if (verbEnd !== -1) return verbEnd;
   }
