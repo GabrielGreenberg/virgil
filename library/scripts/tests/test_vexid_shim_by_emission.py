@@ -33,6 +33,25 @@ def test_apply_declares_vexid_when_it_mints_one():
     assert out.index(bc.VEXID_SHIM) < out.index("\\begin{document}")
 
 
+_MULTI = (
+    "\n".join(tex_emit.preamble_lines("T"))
+    + "\\begin{document}\n\n"
+    + "(1) John left.\n\n(2) Pairs:\n(2a) Mary sang.\n(2b) Sue danced.\n\n\\end{document}\n"
+)
+
+
+def test_vexid_immediately_precedes_every_opener():
+    """The parser consumes a PRECEDING `\\vexid` (task 1030): the marker must
+    sit directly before each `\\ex` / `\\pex`, never after it."""
+    import re
+
+    out = bc._apply(_MULTI, bc._gather_examples(_MULTI))
+    openers = re.findall(r"(\\vexid\{[^}]*\})?\\(p?ex)\[", out)
+    assert [k for _, k in openers] == ["ex", "pex"], out
+    assert all(marker for marker, _ in openers), out
+    assert not re.search(r"\\p?ex\[[^\]]*\]\s*\\vexid", out), out
+
+
 def test_shim_is_idempotent_and_respects_existing_declarations():
     once = bc.ensure_vexid_shim(_PAPER)
     assert bc.ensure_vexid_shim(once) == once

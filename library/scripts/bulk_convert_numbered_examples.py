@@ -181,7 +181,14 @@ def ensure_vexid_shim(text: str) -> str:
 def _apply(text: str, examples: list[dict]) -> str:
     """Rewrite text replacing each example's paragraph with an
     `\\ex` / `\\pex` block with a `\\vexid{<uuid>}` marker. Apply in
-    reverse position order so offsets stay valid."""
+    reverse position order so offsets stay valid.
+
+    The marker goes IMMEDIATELY BEFORE `\\ex` / `\\pex`, byte-for-byte the
+    shape the app's serializer emits (`\\vexid{id}\\ex[...]`): the parser
+    stashes a PRECEDING `\\vexid` and hands it to the next `\\ex`, so a
+    marker written after the opener is silently discarded and the editor
+    mints a fresh id on every open (task 1030). Pinned against `parseLatex`
+    by library/lib/__tests__/bulk-convert-vexid-roundtrip.test.ts."""
     new_text = text
     for ex in reversed(examples):
         vexid = str(uuid.uuid4())
@@ -201,14 +208,14 @@ def _apply(text: str, examples: list[dict]) -> str:
         # Build the replacement.
         if ex["kind"] == "ex":
             replacement = (
-                f"\\ex[exno={ex['exno']}] \\vexid{{{vexid}}}\n{ex['body']}\n\\xe\n"
+                f"\\vexid{{{vexid}}}\\ex[exno={ex['exno']}]\n{ex['body']}\n\\xe\n"
             )
         else:
             sub_items = "\n".join(
                 f"\\a {s['body']}" for s in ex["sub_items"]
             )
             replacement = (
-                f"\\pex[exno={ex['exno']}] \\vexid{{{vexid}}}\n"
+                f"\\vexid{{{vexid}}}\\pex[exno={ex['exno']}]\n"
                 f"{ex['body']}\n{sub_items}\n\\xe\n"
             )
         new_text = new_text[:start] + replacement + new_text[end_char:]
