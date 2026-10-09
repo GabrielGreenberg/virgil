@@ -601,3 +601,18 @@ the drop is deferred one microtask and re-checked so a same-commit
 release→retain keeps the instance); the paper folder's doc-handle row is leased
 the same way inside `PaperRender`. Pinned by `anchored-card-store.test.ts` and
 `PaperRender.content-revision.test.tsx`.
+
+### The inverse half: an app-global value is not mounted per pane (task 1027)
+
+The law's mirror image: a component that renders from APP-GLOBAL state (one
+module store, one session) and portals to `document.body` must mount ONCE, not
+inside a per-pane provider — N panes otherwise paint N stacked copies, each
+re-rendering on every edge, and any single module slot they write becomes
+last-writer-wins. The drop-mode overlays (the drop bar + the inline-atom ghost)
+were rendered by `DropModeProvider` (one per `EditorPane`); they now live in
+[DropModeOverlays.tsx](../../../src/components/drop-mode/DropModeOverlays.tsx),
+mounted once in `src/app/page.tsx`, and the provider keeps only the per-pane
+half (ctx registration + its confirm dialog). The ghost's node slot also
+releases owner-guarded (`detachGhostNode(node)` clears only if `node` still
+owns it). Pinned by `drop-overlays-single-mount.test.tsx` (one render site, one
+mount site; the ghost survives the first-mounted pane unmounting mid-drag).

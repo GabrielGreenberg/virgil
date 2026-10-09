@@ -1,10 +1,13 @@
 "use client";
 
 /**
- * Mounts the drop-mode indicator + confirmation dialog, and registers
- * the per-doc `DropCtx` with the controller. Mount one instance near
- * the layout root (sibling to `<DockOutline/>` and friends) where the
+ * Registers this pane's per-doc `DropCtx` with the controller and mounts the
+ * pane's confirmation dialog. One instance per `EditorPane`, where the
  * `usePoppedCards` and main-editor refs are already available.
+ *
+ * The app-global overlays (the drop bar + the inline-atom ghost) are NOT
+ * mounted here — they render from the one global session, so they mount once
+ * at app level in `DropModeOverlays` (task 1027).
  *
  * The component takes:
  *   - `mainEditor` — used so specs can enforce `targetScope: "main-only"`.
@@ -19,8 +22,6 @@ import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { useConfirmDialog } from "../ConfirmDialog";
 import { registerDropCtx } from "./controller";
-import { DropModeIndicator } from "./Indicator";
-import { InlineAtomGhost } from "./InlineAtomGhost";
 import type {
   DropCtx,
   InlineAtomCardApis,
@@ -166,11 +167,5 @@ export function DropModeProvider({
     // effect references only refs and a module import.)
   }, []);
 
-  return (
-    <>
-      <DropModeIndicator />
-      <InlineAtomGhost />
-      {dialog}
-    </>
-  );
+  return <>{dialog}</>;
 }
