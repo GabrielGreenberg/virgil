@@ -92,7 +92,7 @@ import {
 } from "@/lib/tiptap/node-identity";
 import { fitNodesAtInsert } from "./drop-context";
 import { adoptSliceIntoSchema, insertLanded } from "../schema-adopt";
-import { commitCrossEditorMove } from "../commit-seam";
+import { commitCrossEditorMove, dispatchPlan } from "../commit-seam";
 import {
   insertNodesAdvancing,
   resolveInsertPos,
@@ -260,12 +260,10 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
       // no container is being entered. The between-blocks branch below fits.
       tr.replace(at, at, slice);
       selectInserted(tr, at, slice.size);
-      return {
-        commit: () => {
-          targetEditor.view.dispatch(tr);
-          targetEditor.view.focus();
-        },
-      };
+      // The commit's answer IS the report (task 1024): a vetoed dispatch
+      // (read-only host, pen handed off) reaches `finishApply` as `false`, so
+      // the float this move was dragged from is not closed over nothing.
+      return dispatchPlan(targetEditor, tr);
     }
 
     // Cross-editor: insert into the target first, then delete from the source.
@@ -295,7 +293,7 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
         // this one is dispatched second (the pre-321 order). This is the one
         // genuinely cross-editor spec — a main-doc selection released in a card
         // body — so it is the one where the ordering is not merely theoretical.
-        commitCrossEditorMove({
+        return commitCrossEditorMove({
           target: targetEditor,
           insertTr,
           source: sourceEditor,
@@ -405,12 +403,7 @@ function planRangeBetweenBlocks(
     // coordinates. Mapping it again would double-count the delete.
     const span = insertNodesAdvancing(tr, { liveAt: start }, owned);
     placeCaretAtLanding(tr, span);
-    return {
-      commit: () => {
-        targetEditor.view.dispatch(tr);
-        targetEditor.view.focus();
-      },
-    };
+    return dispatchPlan(targetEditor, tr);
   }
 
   // Cross-editor: insert into the target first, then delete from the source.
@@ -453,7 +446,7 @@ function planRangeBetweenBlocks(
       // transferred: the payload landed in a different document, where a
       // main-doc block id means nothing. Identity uniqueness is a per-document
       // invariant.
-      commitCrossEditorMove({
+      return commitCrossEditorMove({
         target: targetEditor,
         insertTr,
         source: sourceEditor,

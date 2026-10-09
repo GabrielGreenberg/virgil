@@ -751,8 +751,10 @@ function finishApply(
 ) {
   let applied = false;
   try {
-    spec.applyDrop(placement, cardKey, ctx);
-    applied = true;
+    // The spec's own report (task 1024), not "nothing threw": a commit refused
+    // at the seam — a surface that turned read-only mid-drag, a vetoed
+    // dispatch — answers `false` and is treated as the `no-op` it is.
+    applied = spec.applyDrop(placement, cardKey, ctx);
   } catch (err) {
     // Don't leave the session hanging if applyDrop throws — log for the
     // dev and exit cleanly.
@@ -763,8 +765,10 @@ function finishApply(
   // target paragraph's `%!v:<uuid>` reaches the `.tex` on the card's fast
   // clock — even when the paragraph already carried a UUID and so dispatched
   // no mint tx (the RC3 gap). ONE flush per commit (this is the single mouseup
-  // commit per gesture); the hit-test mint-flush during the drag coalesces with
-  // it (the wired flush dedupes by content — see `useDocument.flushAnchorCommit`).
+  // commit per gesture). The hit-test never mints (`mint: false`); the only
+  // other flush is `commitDropSession`'s release-time sentinel mint, which this
+  // one coalesces with (the wired flush dedupes by content — see
+  // `useDocument.flushAnchorCommit`).
   // Only paragraph-side placements re-anchor a card to a paragraph; between-
   // blocks / inline-cursor drops (content moves, inline atoms) carry no
   // paragraphId and need no anchor flush. We already passed the `no-op` gate in
@@ -777,9 +781,12 @@ function finishApply(
   // an `applyDrop` that THREW logged to the console and still closed the float,
   // which is the harshest form of this bug class — the card the user was
   // dragging disappears on the one path where something actually went wrong.
-  // (The silent half — a spec that refuses by returning — no longer reaches
-  // here at all: a planned spec resolves its refusals in `planDrop`, so
-  // `classifyDrop` reports `no-op` and `commitDropSession` cancels.)
+  // The silent half — a spec that refuses by returning — is closed twice over:
+  // a planned spec resolves what it CAN know in `planDrop` (so `classifyDrop`
+  // reports `no-op` and `commitDropSession` cancels), and what only the commit
+  // can know (the pen or host flipped mid-drag, a dispatch vetoed) comes back
+  // here as `applied === false` (task 1024). Either way the float stays and the
+  // session ends — the same outcome as a `no-op` decision.
   if (applied && spec.postDrop === "close") {
     ctx.closePopout(cardKey);
   }

@@ -134,8 +134,8 @@ function liveEditor(doc: PMNode, selection?: { from: number; to: number }) {
 
 /** Doc B: an empty destination whose bibliography starts EMPTY, recording what
  *  the pull writes into it. `landedCiteAt` snapshots how many cite atoms the
- *  doc held when the first entry was upserted — the ordering guarantee (a
- *  pulled cite is never momentarily dangling). */
+ *  doc held when the first entry was upserted — the ordering guarantee (the
+ *  carry runs only once the cite has LANDED, task 1024). */
 function destination(existingNotes: Record<string, string> = {}) {
   const doc = schema.node("doc", null, [schema.node("paragraph", { uuid: "dest-1" }, [schema.text("dest")])]);
   const harness = liveEditor(doc);
@@ -229,8 +229,11 @@ describe("cross-doc stack pull — a cite riding CONTENT carries its bibliograph
     // …and the cite itself really landed, so this is a bib-complete insert
     // rather than a refusal that trivially satisfies the assertions above.
     expect(dest.countCites()).toBe(1);
-    // The entry is in place BEFORE the cite lands — never momentarily dangling.
-    expect(dest.citesAtFirstUpsert()).toBe(0);
+    // The carry FOLLOWS the landing (task 1024 — commit-seam obligation 2: a
+    // sidecar write runs only after a dispatch that landed, so a vetoed pull
+    // writes no `.bib`). The cite is unresolved only inside this one
+    // synchronous commit; task 235 had the carry first, which a veto defeated.
+    expect(dest.citesAtFirstUpsert()).toBe(1);
   });
 
   it("PARAGRAPH payload: the whole block's cites travel with it", () => {

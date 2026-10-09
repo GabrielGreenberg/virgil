@@ -29,6 +29,7 @@ import type { Editor } from "@tiptap/react";
 import type { DropPlan, DropSpec, Placement } from "../types";
 import { fitNodesAtInsert } from "../specs/drop-context";
 import { plannedDropSpec } from "../planned-spec";
+import { dispatchPlan } from "../commit-seam";
 import { isSelfDrop } from "../self-drop";
 import { insertNodesAdvancing, placeCaretAtLanding } from "./mapped-insert";
 import { parseAnyKey } from "@/floats/float-key";
@@ -100,12 +101,7 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       // — tearing one node into two that both keep its uuid.
       const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, fit.nodes);
       placeCaretAtLanding(tr, span);
-      return {
-        commit: () => {
-          editor.view.dispatch(tr);
-          editor.view.focus();
-        },
-      };
+      return dispatchPlan(editor, tr);
     },
   });
 }

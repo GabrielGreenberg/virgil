@@ -88,8 +88,16 @@ export type PlacementKind = Placement["kind"];
  */
 export interface DropPlan {
   /** Dispatch the resolved transaction(s) / call the resolved factories. Runs
-   *  exactly once, from `applyDrop`, after the decision. */
-  commit: () => void;
+   *  exactly once, from `applyDrop`, after the decision.
+   *
+   *  Returns whether the drop LANDED (task 1024). A plan can still be refused
+   *  at the commit — the collab pen or the host's editability can flip between
+   *  hover and release, and a `filterTransaction` veto drops a dispatch
+   *  without a throw — so "did not throw" is not "applied". Route a dispatch
+   *  through a commit-seam door (`dispatchPlan` / `commitDocThenCards` /
+   *  `commitCrossEditorMove`) and return ITS answer; never a bare
+   *  `view.dispatch`. */
+  commit: () => boolean;
 }
 
 /**
@@ -560,8 +568,11 @@ export interface DropSpec {
     ctx: DropCtx,
   ) => DropDecision;
   /** Carry out the drop. Called after classifyDrop returns apply (or
-   *  after the user confirms a confirm decision). */
-  applyDrop: (placement: Placement, cardKey: string, ctx: DropCtx) => void;
+   *  after the user confirms a confirm decision). Returns whether the drop
+   *  LANDED (task 1024): `false` is a commit-time refusal, and `finishApply`
+   *  then neither flushes an anchor nor runs `postDrop: "close"` — the float
+   *  the user was dragging stays, exactly as it does for a `no-op` decision. */
+  applyDrop: (placement: Placement, cardKey: string, ctx: DropCtx) => boolean;
   /**
    * Present iff this spec was built by `plannedDropSpec` (planned-spec.ts):
    * the ONE resolution both doors above are generated from — source lookup,

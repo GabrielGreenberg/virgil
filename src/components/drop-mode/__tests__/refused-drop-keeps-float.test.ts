@@ -111,14 +111,21 @@ function harness(opts?: { dispatchThrows?: boolean }): Harness {
   const doc = buildDoc();
   const dispatched: Transaction[] = [];
   const closed: string[] = [];
-  const state = EditorState.create({ schema, doc });
+  // The dispatch APPLIES: since task 1024 a commit reports whether its
+  // dispatch landed (the doc advanced), so a harness whose dispatch drops every
+  // transaction is a VETO, and would read as a refusal.
+  let state = EditorState.create({ schema, doc });
   const editor = {
-    state,
+    get state() {
+      return state;
+    },
     schema,
     view: {
+      editable: true,
       dispatch: (tr: Transaction) => {
         if (opts?.dispatchThrows) throw new Error("dispatch exploded");
         dispatched.push(tr);
+        state = state.apply(tr);
       },
       focus: () => {},
     },

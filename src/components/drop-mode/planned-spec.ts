@@ -56,15 +56,19 @@
  * reads is the dead-field class this codebase legislates against (task 227). Add
  * it WITH its first real caller — the derivation below is where it would go.
  *
- * **The one limit, stated rather than papered over.** `finishApply` reads
- * "applied" as "`applyDrop` did not throw", so a plan that resolved at classify
- * time and refuses at apply time would still be reported as applied. That
- * cannot happen today: a planned spec only ever answers `apply` or `no-op`, so
- * the two calls are back-to-back in ONE tick with no dispatch between them and
- * the second sees the same state as the first. It becomes reachable the moment
- * something here can return `confirm` — the `await` in `commitDropSession` is
- * where the document could move — so whoever adds the `decide` hook above owes
- * `applyDrop` a way to report the refusal, not just the absence of a throw.
+ * **A commit can still refuse — and it SAYS so (task 1024).** The promise
+ * above is about what the PLAN can know. What it cannot know is resolved at the
+ * commit: task 648's commit seam re-asks the collab pen and the host's
+ * editability for every surface at the moment of dispatch, and measures that
+ * the dispatch LANDED (a `filterTransaction` veto drops it without a throw). So
+ * `DropPlan.commit()` returns that answer and `applyDrop` passes it on;
+ * `finishApply` gates the anchor flush and `postDrop: "close"` on it rather
+ * than on "nothing threw". Before 1024 the commit returned `void` and this
+ * paragraph claimed the case "cannot happen today" — it could: a source that
+ * turned read-only mid-drag passed the hover (which asks the target alone),
+ * was refused at the commit, and the float closed over an unchanged document.
+ * Pinned by `drop-commit-report.test.ts`; the census there holds every planned
+ * spec's dispatch to a commit-seam door.
  */
 
 // `DropPlan` / `DropPlanner` live on the type leaf (types.ts) beside the
@@ -157,8 +161,9 @@ export function plannedDropSpec(opts: PlannedDropSpecOptions): DropSpec {
       ? { kind: "apply" }
       : { kind: "no-op" };
   const applyDrop: DropSpec["applyDrop"] = (placement, cardKey, ctx) => {
-    // Re-plan rather than reuse — see the module header.
-    planOrRefuse(planDrop, placement, cardKey, ctx)?.commit();
+    // Re-plan rather than reuse — see the module header. A plan that no
+    // longer resolves, or whose commit is refused, did not land (task 1024).
+    return planOrRefuse(planDrop, placement, cardKey, ctx)?.commit() ?? false;
   };
   const spec: DropSpec = { ...rest, planDrop, classifyDrop, applyDrop };
   PLANNED_DOORS.set(spec, { classifyDrop, applyDrop });

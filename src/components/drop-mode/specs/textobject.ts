@@ -52,6 +52,7 @@ import {
   fitNodesAtInsert,
 } from "./drop-context";
 import { plannedDropSpec } from "../planned-spec";
+import { dispatchPlan } from "../commit-seam";
 import { isSelfDrop } from "../self-drop";
 import { insertNodesAdvancing, placeCaretAtLanding } from "../util/mapped-insert";
 import type { DropPlan, DropSpec, Placement } from "../types";
@@ -228,12 +229,7 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
       toInsert,
     );
     placeCaretAtLanding(tr, span);
-    return {
-      commit: () => {
-        targetEditor.view.dispatch(tr);
-        targetEditor.view.focus();
-      },
-    };
+    return dispatchPlan(targetEditor, tr);
   },
 });
 

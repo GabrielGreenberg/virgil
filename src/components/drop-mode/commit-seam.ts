@@ -48,6 +48,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
+import type { DropPlan } from "./types";
 
 /**
  * May every surface this commit is about to mutate be mutated RIGHT NOW?
@@ -114,6 +115,34 @@ export function commitDocThenCards(
   if (!dispatchLanded(editor, tr)) return false;
   cards?.();
   return true;
+}
+
+/**
+ * THE SINGLE-EDITOR PLAN DOOR (task 1024) — the `DropPlan` every planned spec
+ * returns for a drop that is ONE dispatch into ONE editor.
+ *
+ * `commit()` answers `DropPlan`'s question — *did it land?* — through
+ * `commitDocThenCards` (editability re-asked at the seam, the dispatch
+ * measured), and only a landed dispatch takes the focus. `after` is the
+ * compound's non-ProseMirror half (a sidecar write) and runs only on a landed
+ * dispatch, exactly as `commitDocThenCards`' `cards` does.
+ *
+ * Before this door each spec's `commit` was a bare `view.dispatch(tr)`, so a
+ * vetoed transaction reached `finishApply` as "applied" and `postDrop: "close"`
+ * dismissed the float the user was holding over a document that never changed.
+ */
+export function dispatchPlan(
+  editor: Editor,
+  tr: Transaction,
+  after?: () => void,
+): DropPlan {
+  return {
+    commit: () => {
+      if (!commitDocThenCards(editor, tr, after)) return false;
+      editor.view.focus();
+      return true;
+    },
+  };
 }
 
 /** One cross-editor move: insert into `target`, then remove from `source`. */

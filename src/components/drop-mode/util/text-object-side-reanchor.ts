@@ -61,11 +61,11 @@ export function textObjectSideReanchorSpec(
       };
     },
     applyDrop(placement, cardKey, ctx) {
-      if (placement.kind !== "paragraph-side") return;
+      if (placement.kind !== "paragraph-side") return false;
       const api = opts.getApi(ctx);
-      if (!api) return;
+      if (!api) return false;
       const id = extractId(cardKey);
-      if (!id || !api.exists(id)) return;
+      if (!id || !api.exists(id)) return false;
       // Phase 4: if the card carries a Mode B textRange anchor, snapshot
       // it onto `card.originalAnchor` BEFORE remove+add wipes the link
       // (note/highlight only — the kinds whose type records one).
@@ -114,6 +114,7 @@ export function textObjectSideReanchorSpec(
         // The drop placement is always paragraph-side → targetKind "paragraph".
         api.addTextObjectLink(id, placement.paragraphId, "paragraph", snapshot);
       }
+      return true;
     },
     postDrop: "keep",
   };
