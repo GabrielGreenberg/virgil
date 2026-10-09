@@ -9,6 +9,7 @@ import {
 } from "@/hooks/useWordCountConfig";
 import { Panel } from "@/panels/_shared/Panel";
 import { CardMetaLabel } from "@/components/panel-primitives";
+import { Checkbox } from "@/components/CheckSquare";
 
 interface WordCountPanelProps {
   counts: CategoryCounts;
@@ -17,11 +18,16 @@ interface WordCountPanelProps {
 
 const ALL_CATS: Category[] = ALL_CATEGORIES;
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+/** Every count this panel prints goes through here, so the headline, the
+ *  Selection stats and the breakdown rows it sums can't be spelled two ways
+ *  ("11,843" beside "11843") — task 1028. */
+const fmt = (n: number) => n.toLocaleString();
+
+function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col items-center">
       <span className="text-base font-medium text-ink-strong tabular-nums">
-        {value}
+        {fmt(value)}
       </span>
       <CardMetaLabel>{label}</CardMetaLabel>
     </div>
@@ -55,13 +61,13 @@ export default function WordCountPanel({
       <div className="px-4 py-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
         <div className="flex items-baseline gap-1.5">
           <span className="text-base font-medium text-ink-strong tabular-nums leading-none">
-            {filteredTotal.toLocaleString()}
+            {fmt(filteredTotal)}
           </span>
           <CardMetaLabel className="leading-none">words</CardMetaLabel>
         </div>
         <div className="flex items-baseline gap-1.5">
           <span className="text-base font-medium text-ink-strong tabular-nums leading-none">
-            {filteredChars.toLocaleString()}
+            {fmt(filteredChars)}
           </span>
           <CardMetaLabel className="leading-none">chars</CardMetaLabel>
         </div>
@@ -91,36 +97,41 @@ export default function WordCountPanel({
               filteredTotal > 0 && included
                 ? Math.round((wc / filteredTotal) * 100)
                 : 0;
+            // An include/exclude toggle IS a checkbox: it takes the shared
+            // control so its state reaches assistive tech and its glyph is
+            // the one CheckSquare (task 1028), not a hand-drawn tick.
             return (
-              <button
+              <Checkbox
                 key={cat}
-                onClick={() => toggleCat(cat)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 hover-on-light ${
+                checked={included}
+                onChange={() => toggleCat(cat)}
+                className={`w-full px-3 py-1.5 hover-on-light ${
                   i < catsWithWords.length - 1
                     ? "border-b border-edge-subtle"
                     : ""
                 }`}
                 data-hint="Toggle category"
+                trailing={
+                  <>
+                    <span
+                      className={`text-xs tabular-nums ${included ? "text-ink-strong" : "text-ink-faint"}`}
+                    >
+                      {fmt(wc)}
+                    </span>
+                    <span
+                      className={`text-[10px] w-8 text-right ${included ? "text-[var(--muted)]" : "text-ink-faint"}`}
+                    >
+                      {included ? `${pct}%` : "off"}
+                    </span>
+                  </>
+                }
               >
-                <span className="w-4 text-center text-xs text-[var(--accent)]">
-                  {included ? "\u2713" : ""}
-                </span>
                 <span
-                  className={`text-xs flex-1 text-left ${included ? "text-ink-body" : "text-ink-muted"}`}
+                  className={`text-xs ${included ? "text-ink-body" : "text-ink-muted"}`}
                 >
                   {CATEGORY_LABELS[cat]}
                 </span>
-                <span
-                  className={`text-xs tabular-nums ${included ? "text-ink-strong" : "text-ink-faint"}`}
-                >
-                  {wc}
-                </span>
-                <span
-                  className={`text-[10px] w-8 text-right ${included ? "text-[var(--muted)]" : "text-ink-faint"}`}
-                >
-                  {included ? `${pct}%` : "off"}
-                </span>
-              </button>
+              </Checkbox>
             );
           })}
         </div>

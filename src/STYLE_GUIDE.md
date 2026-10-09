@@ -2140,6 +2140,12 @@ else spells the role, and nothing draws a box from a `<span>` filled with
 `--accent` — Fonts…' pin toggle and Print's option rows did, and are retired
 (`checkbox-glyph-ssot.test.tsx` census).
 
+**An include/exclude row is a checkbox too** (task 1028): a list row that toggles
+whether its item counts — the Word Count breakdown — is `<Checkbox>` with its
+figures in the `trailing` slot (pinned right; the label grows), never a bare
+`<button>` with a `{on ? "✓" : ""}` tick. The census flags that conditional tick
+anywhere outside a declared holdout.
+
 ### Reset-to-default (task 903)
 
 **One per-row reset control: `ResetButton`** (`ResetButton.tsx`, a ghost

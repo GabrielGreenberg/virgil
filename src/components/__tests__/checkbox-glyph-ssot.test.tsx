@@ -349,6 +349,26 @@ describe("nobody re-authors the glyph (the leg with teeth)", () => {
     ).toEqual([]);
   });
 
+  /* Task 1028 — the include-toggle that claimed NOTHING. The Word Count
+   * breakdown rows drew a unicode tick in a bare `<button>` keyed on a boolean:
+   * no SVG square, no role, so every needle above missed it, and a screen reader
+   * never heard which categories the app's word totals count. The needle is the
+   * conditional glyph itself — narrow on purpose, so a static "✓ Authenticated"
+   * chip or a menu's MenuToggleRow cannot trip it. A boolean-keyed tick is a
+   * checkbox: take `Checkbox`, or be a declared holdout below. */
+  it("no boolean-keyed tick glyph stands in for a checkbox", () => {
+    // Task 997 (menu-primitive migration) owns this one: the Help menu's
+    // "Helper mode" row moves to a menu toggle row there, not to Checkbox.
+    const HOLDOUTS = ["src/components/editor-layout/StatusCluster.tsx"];
+    const TICK = /\?\s*"(?:\\u2713|\u2713)"\s*:\s*""/;
+    const offenders = files.filter((rel) =>
+      TICK.test(readFileSync(path.join(ROOT, rel), "utf8")),
+    );
+    expect(offenders.filter((rel) => !HOLDOUTS.includes(rel))).toEqual([]);
+    // A holdout that has migrated must leave the list, or it shelters the next one.
+    for (const rel of HOLDOUTS) expect(offenders, rel).toContain(rel);
+  });
+
   it("none of the five retired literals survives in either glyph's file", () => {
     for (const rel of ["src/components/CheckSquare.tsx", "src/components/panel-primitives.tsx", "src/panels/Todo/TodoRow.tsx"]) {
       const src = readFileSync(path.join(ROOT, rel), "utf8");

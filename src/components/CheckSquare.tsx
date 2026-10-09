@@ -147,6 +147,12 @@ export interface CheckboxProps
   onChange: (next: boolean) => void;
   /** The visible label — also the accessible name. */
   children: ReactNode;
+  /** Content pinned to the row's far edge after the label (task 1028 — the
+   *  Word Count breakdown's count + percentage). When present the label grows
+   *  to fill the row, so the caller's `className` should make the button
+   *  full-width. Not hidden from assistive tech: it joins the accessible name
+   *  after the label ("Footnotes 312 45%"). */
+  trailing?: ReactNode;
   variant?: CheckSquareVariant;
 }
 
@@ -157,6 +163,7 @@ export function Checkbox({
   checked,
   onChange,
   children,
+  trailing,
   variant = "done",
   className,
   disabled,
@@ -178,7 +185,8 @@ export function Checkbox({
       )}
     >
       <CheckSquare variant={variant} checked={checked} />
-      <span>{children}</span>
+      <span className={trailing != null ? "flex-1 min-w-0" : undefined}>{children}</span>
+      {trailing}
     </button>
   );
 }
