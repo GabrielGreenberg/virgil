@@ -305,22 +305,22 @@ describe("plannedDropSpec — the decision IS the plan", () => {
       allowedPlacements: ["between-blocks"],
       targetScope: "any-editor",
       postDrop: "close",
-      planDrop: () => (refuse ? null : { commit: () => commits.push("ran") }),
+      planDrop: () => (refuse ? null : { commit: () => (commits.push("ran"), true) }),
     });
 
     expect(spec.classifyDrop(nowhere, "k", emptyCtx)).toEqual({ kind: "no-op" });
-    spec.applyDrop(nowhere, "k", emptyCtx);
+    expect(spec.applyDrop(nowhere, "k", emptyCtx)).toBe(false);
     expect(commits).toEqual([]);
 
     refuse = false;
     expect(spec.classifyDrop(nowhere, "k", emptyCtx)).toEqual({ kind: "apply" });
-    spec.applyDrop(nowhere, "k", emptyCtx);
+    expect(spec.applyDrop(nowhere, "k", emptyCtx)).toBe(true);
     expect(commits).toEqual(["ran"]);
   });
 
   it("a resolved plan classifies as apply and commits exactly once", () => {
     let commits = 0;
-    const plan: DropPlan = { commit: () => void commits++ };
+    const plan: DropPlan = { commit: () => (commits++, true) };
     const spec = plannedDropSpec({
       allowedPlacements: ["between-blocks"],
       targetScope: "any-editor",
@@ -346,12 +346,27 @@ describe("plannedDropSpec — the decision IS the plan", () => {
       postDrop: "close",
       planDrop: () => {
         const mine = ++generation;
-        return { commit: () => committed.push(mine) };
+        return { commit: () => (committed.push(mine), true) };
       },
     });
     spec.classifyDrop(nowhere, "k", emptyCtx); // generation 1, discarded
     spec.applyDrop(nowhere, "k", emptyCtx); // generation 2, the one that runs
     expect(committed).toEqual([2]);
+  });
+
+  it("a commit-time refusal is REPORTED — applyDrop returns the commit's answer (task 1024)", () => {
+    // The plan resolved (classify said apply), but the commit seam refused —
+    // the pen or the host flipped between hover and release. `applyDrop` must
+    // pass that `false` on, or `finishApply` reads "did not throw" as applied
+    // and `postDrop: "close"` dismisses the float over an unchanged document.
+    const spec = plannedDropSpec({
+      allowedPlacements: ["between-blocks"],
+      targetScope: "any-editor",
+      postDrop: "close",
+      planDrop: () => ({ commit: () => false }),
+    });
+    expect(spec.classifyDrop(nowhere, "k", emptyCtx)).toEqual({ kind: "apply" });
+    expect(spec.applyDrop(nowhere, "k", emptyCtx)).toBe(false);
   });
 
   it("a planner that THROWS is a refusal, on BOTH doors", () => {
@@ -388,7 +403,7 @@ describe("plannedDropSpec — the decision IS the plan", () => {
     });
     expect(hasDerivedDecision(planned)).toBe(true);
 
-    const forked: DropSpec = { ...planned, applyDrop: () => {} };
+    const forked: DropSpec = { ...planned, applyDrop: () => true };
     expect(typeof forked.planDrop).toBe("function"); // still published…
     expect(hasDerivedDecision(forked)).toBe(false); // …but no longer derived.
   });

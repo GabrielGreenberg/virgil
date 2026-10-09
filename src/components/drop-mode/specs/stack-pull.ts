@@ -54,6 +54,7 @@ import { pullSeed } from "@/lib/stack/pull-seed";
 import { generateShortId } from "@/lib/uuid";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 import { rangeSliceToBlocks } from "@/lib/linked-anchor-range";
+import { dispatchPlan } from "../commit-seam";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 // The identity collectors + paste-as-new minting are node-identity's (task 878):
 // one eligibility rule, one collision set, shared with the move.
@@ -374,11 +375,16 @@ function withBibUpsert(
   if (!stack) return null;
   return {
     commit: () => {
-      // Before the payload lands, so a pulled cite is never momentarily
-      // dangling. Idempotent — a same-doc pull re-upserts entries that are
-      // already there and writes nothing new.
+      // AFTER the payload lands, and only if it did (task 1024 — commit-seam's
+      // obligation 2: a sidecar write never passes through ProseMirror, so
+      // nothing can filter it, and it must be conditioned on the dispatch it
+      // depends on). Before 1024 this ran FIRST, and a pull whose dispatch was
+      // vetoed still upserted the destination's `.bib`. The cite is dangling
+      // only between the dispatch and this line, inside ONE synchronous commit.
+      // Idempotent — a same-doc pull re-upserts entries already there.
+      if (!inner.commit()) return false;
       applyBibCarry(carry, stack);
-      inner.commit();
+      return true;
     },
   };
 }
@@ -469,12 +475,7 @@ function planInsertText(
       cursor += blockTr.doc.content.size - before;
     }
     selectInserted(blockTr, placement.insertPos, cursor - placement.insertPos);
-    return {
-      commit: () => {
-        editor.view.dispatch(blockTr);
-        editor.view.focus();
-      },
-    };
+    return dispatchPlan(editor, blockTr);
   }
   const target = placement.pos;
   // CONTAINER (task 414), defence in depth behind the hit-test's gate: a
@@ -507,12 +508,7 @@ function planInsertText(
   } catch {
     /* ignore selection failure — content is in regardless */
   }
-  return {
-    commit: () => {
-      editor.view.dispatch(tr);
-      editor.view.focus();
-    },
-  };
+  return dispatchPlan(editor, tr);
 }
 
 // ── Paragraph payload ─────────────────────────────────────────────────
@@ -547,12 +543,7 @@ function planInsertParagraph(
   const fitted = fit.nodes[0];
   const tr = editor.state.tr.insert(placement.insertPos, fitted);
   selectInserted(tr, placement.insertPos, fitted.nodeSize);
-  return {
-    commit: () => {
-      editor.view.dispatch(tr);
-      editor.view.focus();
-    },
-  };
+  return dispatchPlan(editor, tr);
 }
 
 // ── Heading payload ───────────────────────────────────────────────────
@@ -594,12 +585,7 @@ function planInsertHeading(
   const tr = editor.state.tr.insert(placement.insertPos, fitted as PMNode[]);
   const totalSize = fitted.reduce((s, n) => s + n.nodeSize, 0);
   selectInserted(tr, placement.insertPos, totalSize);
-  return {
-    commit: () => {
-      editor.view.dispatch(tr);
-      editor.view.focus();
-    },
-  };
+  return dispatchPlan(editor, tr);
 }
 
 function selectInserted(
@@ -707,7 +693,8 @@ function planCardDrop(
         // The entry IS this card's payload, so it is upserted here as the
         // card's own action, not as a reference. Its user-authored annotation
         // rides `item.bib` like every other referenced key's does and is
-        // re-attached by `withBibUpsert` before this runs (task 235).
+        // re-attached by `withBibUpsert` once this has run (task 235; it ran
+        // first until task 1024 moved the carry after the landing).
         return () => void stack.upsertBibEntry(card.data);
       case "todo":
         return () => void stack.addTodo(paragraphId, pullSeed("todo", card.data));
@@ -767,5 +754,12 @@ function planCardDrop(
   // payload carried — which is why a `\cite` riding a TEXT slice arrived
   // dangling. Both now ride `item.bib` and are discharged by `withBibUpsert`
   // for every payload family alike.
-  return { commit: create };
+  // A card pull is a sidecar factory, not a ProseMirror dispatch, so there is
+  // no veto to measure: the factory ran, and that is the landing.
+  return {
+    commit: () => {
+      create();
+      return true;
+    },
+  };
 }

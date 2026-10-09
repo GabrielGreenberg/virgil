@@ -343,7 +343,7 @@ export function inlineAtomMoveSpec<
       // rule `plannedDropSpec` follows, so the transaction dispatched below is
       // always built against the state it lands in.
       const plan = resolveDrop(placement, cardKey, ctx);
-      if (!plan || placement.kind !== "inline-cursor") return;
+      if (!plan || placement.kind !== "inline-cursor") return false;
       // ── COMMIT SEAM (task 648), obligation 1: ask editability HERE, for
       // every surface this compound will mutate. The grab gesture asked at
       // mousedown (`inline-atom-grab.ts`) and the float-header path never asked
@@ -353,7 +353,7 @@ export function inlineAtomMoveSpec<
       // asked before either is touched: a move whose source cannot be emptied
       // must not deposit a copy in the target. See `commit-seam.ts`.
       const sourceEditorOf = plan.kind === "create" ? null : plan.src.editor;
-      if (!commitSurfacesWritable(placement.editor, sourceEditorOf)) return;
+      if (!commitSurfacesWritable(placement.editor, sourceEditorOf)) return false;
       if (plan.kind === "create") {
         const landed = insertNewAtom(
           placement.editor,
@@ -366,7 +366,7 @@ export function inlineAtomMoveSpec<
         // insert having actually landed. Before task 648 it fired regardless,
         // and a vetoed insert left the card in NEITHER panel list: no marker
         // for the anchored list, no flags for the atomless one.
-        if (!landed) return;
+        if (!landed) return false;
         // The OTHER half of anchoring (task 233): the card is now in the
         // prose, so its own "parked, re-placeable" intent must clear.
         // Without this the sidecar keeps `unanchored` (and, for a card that
@@ -388,7 +388,7 @@ export function inlineAtomMoveSpec<
         if (id && opts.cardApiKind && placement.editor === ctx.mainEditor) {
           cardApiFor(opts.cardApiKind, ctx)?.onAnchored?.(id);
         }
-        return;
+        return true;
       }
       if (plan.kind === "move-within") {
         // Single transaction: delete + adjusted insert (see helper) — one
@@ -396,8 +396,14 @@ export function inlineAtomMoveSpec<
         // gate above still covers it: a vetoed move is now a no-op rather than
         // a no-op that stole focus.
         const { node, from, to } = plan.src;
-        moveInlineAtomWithin(placement.editor, node, from, to, placement.pos, opts.select);
-        return;
+        return moveInlineAtomWithin(
+          placement.editor,
+          node,
+          from,
+          to,
+          placement.pos,
+          opts.select,
+        );
       }
       // Cross-editor move: insert first (preserves node identity), then
       // delete in source. Order matters less for atoms than for
@@ -417,7 +423,7 @@ export function inlineAtomMoveSpec<
       // as the same-editor path). Selection-only, addToHistory:false — and now
       // it, too, only happens on a landed insert.
       const { editor: sourceEditor, from, to } = plan.src;
-      commitCrossEditorMove({
+      return commitCrossEditorMove({
         target: placement.editor,
         insertTr: plan.insertTr,
         source: sourceEditor,
