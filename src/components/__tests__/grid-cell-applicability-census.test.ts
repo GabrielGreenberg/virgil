@@ -54,7 +54,7 @@ const BESPOKE_CELLS: Record<string, { id: string | null; why: string }> = {
   },
   BlockTypeGridCell: {
     id: null,
-    why: "a nested-menu trigger for the BlockType dropdown — it dispatches no action row of its own, so there is no row to ask; its ITEMS carry their own per-level gating",
+    why: "a nested-menu trigger for the BlockType dropdown — it dispatches no action row of its own, so there is no row to ask; its ITEMS carry their own per-level gating. It still greys on the SURFACE axis every row folds in (`!canEdit`, task 1017) — and on nothing else",
   },
 };
 
@@ -107,7 +107,12 @@ describe("task 397 — every grid cell asks its own row", () => {
       for (const hit of elementsNamed(SRC, name)) {
         if (!/\brow=\{/.test(hit.tag)) continue; // the declaration, not a call site
         if (id === null) {
-          expect(ANY_DISABLED.test(hit.tag), `${name} declares no action row, so it must render no disabled= prop`).toBe(false);
+          // Task 1017: no row to ask, but the read-only surface verdict is
+          // not a row's — it is the `!canEdit` every row's door ORs in. That
+          // and only that (pre-1017 this cell took NO disabled= and offered
+          // rows on a read-only surface that the verb then dropped).
+          const m = ANY_DISABLED.exec(hit.tag);
+          expect(m?.[1]?.trim(), `${name} declares no action row, so its disabled= must be exactly the surface verdict \`!canEdit\``).toBe("!canEdit");
         } else {
           expect(hit.tag, `${name} must ask the ${id} row`).toMatch(OWN_ID(id));
         }

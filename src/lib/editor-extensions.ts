@@ -106,7 +106,7 @@ import {
 } from "@/lib/tiptap-extensions";
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
-import type { SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
+import { surfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 
 // --- Heading callback refs (threaded from the host component) ----------
 // Formerly lexical closures inside VirgilEditor; the heading NodeView reads
@@ -873,6 +873,15 @@ export function createHeadingWithLabel(
         const getTarget = (): Editor =>
           isFloat ? (host?.getMainEditor() ?? nodeEditor) : nodeEditor;
 
+        // Task 1017: ONE write gate for every chip verb (type menu, level
+        // change, demote, # toggle, label edit, ×). The read-only enforcer
+        // would drop the write anyway, but only AFTER the chip offered it —
+        // the silent-drop pattern `surface-editable.ts` exists to prevent.
+        // Asked of BOTH editors: a float's own surface AND the main editor
+        // its structural writes proxy to. Read at gesture time — O(1).
+        const chipMayWrite = (): boolean =>
+          surfaceEditableNow(nodeEditor) && surfaceEditableNow(getTarget());
+
         // Every timer this view arms — the label input's focus frame, blur
         // guard and refocus KEEPER — is bounded by the view's teardown (task
         // 548 — `view-lifetime.ts`). Disposed in `destroy()` below.
@@ -1313,6 +1322,7 @@ export function createHeadingWithLabel(
         renderAnnot();
 
         function toggleNumbered() {
+          if (!chipMayWrite()) return;
           // Proxies to MAIN in a float (target === host editor).
           const target = getTarget();
           const resolved = resolveHeadingInTarget(target);
@@ -1325,6 +1335,7 @@ export function createHeadingWithLabel(
         }
 
         function applyLevelChange(newLevel: number) {
+          if (!chipMayWrite()) return;
           // Proxies to MAIN in a float (target === host editor).
           const target = getTarget();
           const resolved = resolveHeadingInTarget(target);
@@ -1347,6 +1358,7 @@ export function createHeadingWithLabel(
         }
 
         function demoteToParagraph() {
+          if (!chipMayWrite()) return;
           // Gated off in floats: demoting the section's own heading to a
           // paragraph would dissolve the float's subject (decision 3).
           if (isFloat) return;
@@ -1376,6 +1388,8 @@ export function createHeadingWithLabel(
           if (!ok) return;
           // Re-resolve after the modal — the doc shouldn't have shifted
           // while the user was deciding, but cheap insurance.
+          // The modal is a wait: the pen may have passed while it was open.
+          if (!chipMayWrite()) return;
           const pos2 = typeof getPos === "function" ? getPos() : null;
           if (pos2 == null) return;
           const hn = nodeEditor.state.doc.nodeAt(pos2);
@@ -1415,6 +1429,9 @@ export function createHeadingWithLabel(
         annot.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
+          // Task 1017: a read-only surface opens no type menu, starts no
+          // label edit, asks no delete confirm — every verb below writes.
+          if (!chipMayWrite()) return;
           const start = e.target as HTMLElement;
           let cursor: HTMLElement | null = start;
           while (cursor && cursor !== annot) {

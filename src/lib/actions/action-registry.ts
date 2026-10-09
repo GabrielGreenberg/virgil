@@ -1203,12 +1203,18 @@ export function verdictOf(spec: ActionSpec, ctx: ActionContext): ActionVerdict {
   return { state, reason: refusalPhrase(refusalOf(spec, ctx)) };
 }
 
+/** The refusal for a READ-ONLY surface: "host" when its host mounted it so
+ *  (the Library Reader), else "pen" (the partner holds it). Shared by
+ *  `refusalOf` and the door that greys with no registry row behind it (the
+ *  lightning grid's ¶ block-type cell, task 1017). */
+export function readOnlyRefusal(target: Parameters<typeof surfaceReadOnlyByHost>[0]): Refusal {
+  return { cause: surfaceReadOnlyByHost(target) ? "host" : "pen" };
+}
+
 /** The refusal behind a `"disabled"` verdict — `verdictOf`'s ladder. Exported
  *  for the per-gate unit tests; surfaces read `verdictOf`. */
 export function refusalOf(spec: ActionSpec, ctx: ActionContext): Refusal {
-  if (isCollabReadOnly(ctx)) {
-    return { cause: surfaceReadOnlyByHost(ctx.editor ?? ctx.view) ? "host" : "pen" };
-  }
+  if (isCollabReadOnly(ctx)) return readOnlyRefusal(ctx.editor ?? ctx.view);
   if (selectionModeDisables(spec.selection, ctx)) return { cause: "needs-selection" };
   return spec.refusal?.(ctx) ?? genericRefusal(ctx);
 }

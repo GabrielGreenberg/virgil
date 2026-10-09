@@ -27,7 +27,18 @@ class ResizeObserverStub {
 // The nested block-type trigger + block inserters need a live editor; mock them
 // (orthogonal to the disabled-affordance axis under test).
 vi.mock("../../MenuBar", () => ({
-  BlockTypeDropdown: () => <button data-hint="Block type">¶</button>,
+  // Task 1017: forwards the read-only verdict the panel hands it, so the
+  // wiring leg below can see what ¶ was told.
+  BlockTypeDropdown: (p: { disabled?: boolean; disabledReason?: string | null }) => (
+    <button
+      data-hint="Block type"
+      data-testid="block-type"
+      disabled={p.disabled}
+      data-reason={p.disabledReason ?? ""}
+    >
+      ¶
+    </button>
+  ),
 }));
 // Task 638: `ActionsMenuPanel` now reads the collab pen through
 // `useCollabContext`, and `@/hooks/useCollab` transitively imports `@/lib/storage`
@@ -200,5 +211,23 @@ describe("Task 985 — a grid cell's name and chord come from its registry row",
     expect(keysFromKeybinding("Mod--")).toBe("Mod+-");
     expect(formatShortcut(keysFromKeybinding("Mod-Shift-s"), true)).toBe("⌘⇧S");
     expect(formatShortcut(keysFromKeybinding("Mod-Shift-s"), false)).toBe("Ctrl+Shift+S");
+  });
+});
+
+describe("Task 1017 — ¶ greys on the SAME verdict as its sibling cells", () => {
+  const blockType = () =>
+    menuEl()!.querySelector('[data-testid="block-type"]') as HTMLButtonElement;
+
+  it("read-only: ¶ is handed disabled + the pen reason", () => {
+    renderPanel(/* editable */ false);
+    expect(cell("Bold")!.disabled).toBe(true);
+    expect(blockType().disabled).toBe(true);
+    expect(blockType().getAttribute("data-reason")).toBe("Your co-author has the pen");
+  });
+
+  it("editable: ¶ is live with no reason", () => {
+    renderPanel(/* editable */ true);
+    expect(blockType().disabled).toBe(false);
+    expect(blockType().getAttribute("data-reason")).toBe("");
   });
 });
