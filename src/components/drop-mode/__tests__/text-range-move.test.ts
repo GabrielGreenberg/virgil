@@ -278,3 +278,148 @@ describe("text-range-move between-blocks drop (L3f-3)", () => {
     });
   });
 });
+
+// ── Task 1023: a move conserves REAL anchor identity ─────────────────────────
+//
+// The grab REUSES an existing anchor's id when one covers the selection, so
+// dragging exactly the words of a note moves under `linkedRange:<the note's
+// id>`. The payload used to strip every anchor (paste semantics) while the
+// commit deleted the source — the note's id then existed nowhere and the
+// orphan guard unlinked the card. A move is not a copy.
+
+const realAnchor = (id: string) =>
+  schema.marks.linkedAnchor.create({ anchorId: id, kind: "note" });
+
+function anchorIdsIn(d: PMNode): string[] {
+  const ids = new Set<string>();
+  d.descendants((n) => {
+    for (const m of n.marks) {
+      if (m.type.name === "linkedAnchor") ids.add(m.attrs.anchorId as string);
+    }
+    return true;
+  });
+  return [...ids].sort();
+}
+
+function textUnder(d: PMNode, id: string): string {
+  let out = "";
+  d.descendants((n) => {
+    if (n.isText && n.marks.some((m) => m.attrs.anchorId === id)) out += n.text;
+    return true;
+  });
+  return out;
+}
+
+const inlineAt = (editor: Editor, pos: number): Placement => ({
+  kind: "inline-cursor",
+  editor,
+  pos,
+  rect,
+});
+
+describe("text-range-move conserves a REAL anchor's identity (task 1023)", () => {
+  it("between-blocks: the moved words keep the note's SAME anchor id — nothing orphans", () => {
+    const d = doc(
+      para(t("alpha "), t("NOTED", [realAnchor("a1")]), t(" gamma")),
+      para(t("second")),
+    );
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const gap = d.firstChild!.nodeSize;
+
+    expect(textRangeMoveDropSpec.classifyDrop(betweenBlocks(editor, gap), KEY, ctx)).toEqual({
+      kind: "apply",
+    });
+    textRangeMoveDropSpec.applyDrop(betweenBlocks(editor, gap), KEY, ctx);
+
+    const result = dispatched[0].doc;
+    expect(paraTexts(result)).toEqual(["alpha  gamma", "NOTED", "second"]);
+    // The id survives the transaction, on exactly the moved words (so the
+    // orphan guard has no vanished id to report).
+    expect(anchorIdsIn(result)).toEqual(["a1"]);
+    expect(textUnder(result, "a1")).toBe("NOTED");
+    expect(result.child(1).firstChild!.marks[0].attrs.kind).toBe("note");
+  });
+
+  it("inline-cursor: the moved words keep the note's SAME anchor id", () => {
+    const d = doc(
+      para(t("alpha "), t("NOTED", [realAnchor("a1")]), t(" gamma")),
+      para(t("second")),
+    );
+    const { editor, dispatched, ctx } = mockEditor(d);
+    // Caret between "sec" and "ond" in the second paragraph.
+    const caret = d.firstChild!.nodeSize + 1 + 3;
+
+    expect(textRangeMoveDropSpec.classifyDrop(inlineAt(editor, caret), KEY, ctx)).toEqual({
+      kind: "apply",
+    });
+    textRangeMoveDropSpec.applyDrop(inlineAt(editor, caret), KEY, ctx);
+
+    const result = dispatched[0].doc;
+    expect(paraTexts(result)).toEqual(["alpha  gamma", "secNOTEDond"]);
+    expect(anchorIdsIn(result)).toEqual(["a1"]);
+    expect(textUnder(result, "a1")).toBe("NOTED");
+  });
+
+  it("positive control: the gesture's TRANSIENT handle is still shed", () => {
+    const d = doc(
+      para(t("alpha "), t("BETA", [anchor("a1")]), t(" gamma")),
+      para(t("second")),
+    );
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const caret = d.firstChild!.nodeSize + 1 + 3;
+    textRangeMoveDropSpec.applyDrop(inlineAt(editor, caret), KEY, ctx);
+    const result = dispatched[0].doc;
+    expect(paraTexts(result)).toEqual(["alpha  gamma", "secBETAond"]);
+    expect(hasAnchorMark(result)).toBe(false);
+  });
+
+  it("an anchor the range only PARTLY holds is shed from the payload and keeps its id at the source", () => {
+    // a1 is discontinuous ("A" … "C"); its BOUNDING range holds the start of
+    // a third anchor b2, whose tail lies outside the moved range.
+    const d = doc(
+      para(
+        t("A", [realAnchor("a1")]),
+        t("bb", [realAnchor("b2")]),
+        t("C", [realAnchor("a1")]),
+        t("dd", [realAnchor("b2")]),
+        t(" tail"),
+      ),
+      para(t("second")),
+    );
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const gap = d.firstChild!.nodeSize;
+    textRangeMoveDropSpec.applyDrop(betweenBlocks(editor, gap), KEY, ctx);
+    const result = dispatched[0].doc;
+    expect(paraTexts(result)).toEqual(["dd tail", "AbbC", "second"]);
+    expect(textUnder(result, "a1")).toBe("AC"); // travelled whole
+    expect(textUnder(result, "b2")).toBe("dd"); // stayed, never duplicated
+    expect(result.child(1).textContent).toBe("AbbC");
+  });
+
+  it("cross-editor: a payload carrying a real anchor REFUSES (no-op) — an id means nothing in another doc", () => {
+    const d = doc(para(t("alpha "), t("NOTED", [realAnchor("a1")]), t(" gamma")));
+    const { editor: main, dispatched, ctx } = mockEditor(d);
+    const card = mockEditor(doc(para(t("card body"))));
+    const cardGap = card.editor.state.doc.content.size;
+
+    expect(
+      textRangeMoveDropSpec.classifyDrop(betweenBlocks(card.editor, cardGap), KEY, ctx),
+    ).toEqual({ kind: "no-op" });
+    expect(
+      textRangeMoveDropSpec.classifyDrop(inlineAt(card.editor, 3), KEY, ctx),
+    ).toEqual({ kind: "no-op" });
+    expect(dispatched).toHaveLength(0);
+    expect(card.dispatched).toHaveLength(0);
+    void main;
+  });
+
+  it("cross-editor: a TRANSIENT-only payload is still allowed to move", () => {
+    const d = doc(para(t("alpha "), t("BETA", [anchor("a1")]), t(" gamma")));
+    const { ctx } = mockEditor(d);
+    const card = mockEditor(doc(para(t("card body"))));
+    const cardGap = card.editor.state.doc.content.size;
+    expect(
+      textRangeMoveDropSpec.classifyDrop(betweenBlocks(card.editor, cardGap), KEY, ctx),
+    ).toEqual({ kind: "apply" });
+  });
+});
