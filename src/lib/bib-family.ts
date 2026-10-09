@@ -33,6 +33,7 @@ import {
   preambleSliceOfProjected,
   projectDetectableLatex,
 } from "@/lib/latex-lexer";
+import { preambleProvidesPackage } from "@/lib/document-class";
 
 export type BibFamily = "natbib" | "biblatex";
 
@@ -126,6 +127,10 @@ function normalizeCiteName(command: string): string | null {
  * Data, not a branch — a new package is one more row.
  */
 export const FOREIGN_CITE_PACKAGES: readonly string[] = [
+  // `cite` (task 1019): kernel `\cite` with sorted/compressed numeric labels.
+  // natbib on top of it clashes, and natbib's author-year mode under the
+  // paper's numeric `.bst` aborts the bibliography.
+  "cite",
   "apacite",
   "harvard",
   "chicago",
@@ -179,8 +184,10 @@ export function detectCommandBibFamily(source: string): BibFamily | null {
 export function detectPreambleBibFamily(preamble: string): BibFamily | null {
   // The lexer's ONE load reader (task 781) — whitespace between the pieces,
   // comma lists, `\RequirePackage`, wrappers (`biblatex-chicago`).
-  if (preambleListLoadsPackage(preamble, "biblatex")) return "biblatex";
-  if (preambleListLoadsPackage(preamble, "natbib")) return "natbib";
+  // A class that loads a family itself (`elsarticle` → natbib) counts too
+  // (task 1019) — to TeX it is the same load.
+  if (preambleProvidesPackage(preamble, "biblatex")) return "biblatex";
+  if (preambleProvidesPackage(preamble, "natbib")) return "natbib";
   return null;
 }
 

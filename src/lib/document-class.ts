@@ -9,6 +9,7 @@
 
 import {
   matchSectioningUseAt,
+  preambleListLoadsPackage,
   projectLiveLatex,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
@@ -97,6 +98,55 @@ export function rewriteDocumentClass(latex: string, newClass: string): string {
   const optsPart = info.options != null ? `[${info.options}]` : "";
   const replacement = `\\documentclass${optsPart}{${newClass}}`;
   return latex.slice(0, info.matchStart) + replacement + latex.slice(info.matchEnd);
+}
+
+/**
+ * Packages a document CLASS loads itself (task 1019). To TeX a class's own
+ * `\RequirePackage{natbib}` is a load like any other, so a preamble under
+ * `elsarticle` already has natbib whether or not it says so — and injecting
+ * the other bib family over it is the fatal "Incompatible package" the task
+ * measured. Only rows we have read in the class files belong here: an absent
+ * class answers "provides nothing", which is today's behaviour.
+ */
+export const CLASS_PROVIDED_PACKAGES: Readonly<Record<string, readonly string[]>> = {
+  elsarticle: ["natbib"],
+  revtex4: ["natbib"],
+  "revtex4-1": ["natbib"],
+  "revtex4-2": ["natbib"],
+  sp: ["natbib"],
+  semprag: ["natbib"],
+  langscibook: ["biblatex"],
+};
+
+const LIVE_DOCUMENTCLASS_RE = /\\documentclass(?:\s*\[[^\]]*\])?\s*\{([^}]+)\}/;
+
+/**
+ * Does this (live, projected) preamble's `\documentclass` load `name`?
+ * Wrapper-aware the same way the lexer's load reader is.
+ */
+export function classProvidesPackage(livePreamble: string, name: string): boolean {
+  // The input is ALREADY live bytes (every caller hands a projection), so the
+  // first `\documentclass` is the live one — no second projection per ask.
+  const cls = LIVE_DOCUMENTCLASS_RE.exec(livePreamble)?.[1].trim();
+  if (!cls || !Object.prototype.hasOwnProperty.call(CLASS_PROVIDED_PACKAGES, cls)) {
+    return false;
+  }
+  return CLASS_PROVIDED_PACKAGES[cls].some(
+    (p) => p === name || p.startsWith(name + "-"),
+  );
+}
+
+/**
+ * THE question "is package X in force in this preamble?" — loaded by the
+ * preamble itself (the lexer's one load reader) OR by its class. Requirement
+ * satisfaction and bib-family detection both ask it here, so a class that
+ * provides a package satisfies it everywhere at once.
+ */
+export function preambleProvidesPackage(livePreamble: string, name: string): boolean {
+  return (
+    preambleListLoadsPackage(livePreamble, name) ||
+    classProvidesPackage(livePreamble, name)
+  );
 }
 
 // Sectioning commands a class accepts. `letter` has none. `beamer` allows

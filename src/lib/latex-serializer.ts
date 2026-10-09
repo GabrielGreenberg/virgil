@@ -1856,8 +1856,12 @@ export function assembleLatex(
   // cite emit-sites declared. The declared/authoritative family is reconciled
   // against the preamble by ensurePreambleRequirements (inject the RIGHT
   // family; warn — never delete — on a hard conflict).
-  const declaredFamily: BibFamily | null =
-    options?.bibFamily ?? foldBibFamilies(parts);
+  // A family a cite emit-site PINNED is also a NEED (task 1019): it joins
+  // `required`, which is what the injector asks "is a family needed at all?";
+  // the per-doc choice below only answers WHICH.
+  const emittedFamily = foldBibFamilies(parts);
+  if (emittedFamily) required.add(emittedFamily);
+  const declaredFamily: BibFamily | null = options?.bibFamily ?? emittedFamily;
 
   const rawPreamble = ensurePreambleRequirements(
     options?.preamble ?? DEFAULT_PREAMBLE,
