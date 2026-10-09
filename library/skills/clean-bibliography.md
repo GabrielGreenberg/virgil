@@ -93,7 +93,7 @@ below — which runs after §3g and BEFORE §Bibliography synthesis. That
 ordering is load-bearing, not tidiness: `synthesize_canonical_entries.py`
 gates entirely on `missing-bib-entry:` lines it reads back out of
 `.virgil/catalog.json`, so while the write was deferred to `deep-index.md`
-step 5 (which runs after the whole §3 dispatch) synthesis consumed the
+step 5 (which runs after the whole [deep-index.md](deep-index.md) §3 dispatch) synthesis consumed the
 *previous* pass's warnings and was a guaranteed no-op on every first pass.
 
 The write is safe to do here because `update_catalog_entry.py` now takes

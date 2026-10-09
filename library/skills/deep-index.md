@@ -184,8 +184,9 @@ asks; resume is always the default.
 **No prior baseline?** If `.virgil/baselines/$ARGUMENTS-pre-deepindex.tex`
 doesn't exist (paper indexed before baselines were added), copy
 `main.tex` to that path **before Step 0** — the first step that can modify
-the file, since di-preflight §0.1 strips lending-slip / JSTOR boilerplate
-and §0.4 may rewrite a Caesar-shifted body. A baseline taken after those
+the file, since [di-preflight.md](di-preflight.md) §0.1 strips
+lending-slip / JSTOR boilerplate and [di-preflight.md](di-preflight.md)
+§0.4 may rewrite a Caesar-shifted body. A baseline taken after those
 would not be the pre-deep-index state, so `--fresh` could not restore it
 and `repair_pgmarks --resume-baseline` would measure its 50% safeguard
 against an already-modified file. Future re-runs can then
@@ -228,7 +229,7 @@ di-preflight proceeds as `article`; so does this pass.
 **Idempotent on a resume.** Every 0.x detection fires only when the
 offending block is actually present, so a re-run on an already-preflighted
 paper is a no-op — with one deliberate exception, the `--dry-run`-first
-metadata-mismatch apply, which di-preflight §0.2 already gates on "the bib
+metadata-mismatch apply, which [di-preflight.md](di-preflight.md) §0.2 already gates on "the bib
 is already `@book` with a matching title → skip". Nothing here needs a
 "have we preflighted?" flag.
 
@@ -441,7 +442,7 @@ Patch fields:
 - `indexed.exampleCount` — count top-level `\ex` / `\pex` blocks
   (single + multi, including unnumbered `\ex<*>`). **Do not count**
   `\a` items, `\begin{xlist}` sub-items, or nested gloss tiers.
-  Examples skipped per §3.h₂'s "Bias toward not converting" don't
+  Examples skipped per [di-examples.md](di-examples.md)'s "Bias toward not converting" rule don't
   count (they live as prose; the `examples-not-converted:` warning
   logs them).
 - `indexed.pgmarkCount` — recompute only if §1b's `repair_pgmarks.py`
@@ -513,7 +514,7 @@ next authentication of the entry. If one shows up on a resume, the fix is
 not anything in this pass.
 
 Concatenate the fresh lines from §3d (`footnote-recovery-needed:`, at
-most one), §3.h₂ (`examples-not-converted:` per skipped region), and
+most one), §3h (`examples-not-converted:` per skipped region), and
 §3i's validator (`pgmark-duplicate:` / `pgmark-gap:` /
 `pgmark-out-of-order:` against the post-repair file). You do **not**
 need to read the existing array and re-supply it: pass
@@ -667,7 +668,7 @@ the same summary log.
 **The exact invocation lives in [di-validate.md](di-validate.md) §9.5 —
 run it from there; do not re-type it here.** That section is the SSOT for
 the command line as well as the full check inventory and the empty-state
-template, and it states why the run must carry `--exit-on-suppressed`:
+template (the exact block a clean paper's section carries), and it states why the run must carry `--exit-on-suppressed`:
 without the flag the audit exits **1** on a paper whose every remaining
 finding sits in a catalog-suppressed category, and an agent reading a
 non-zero exit as "not clean" keeps iterating on findings a prior pass

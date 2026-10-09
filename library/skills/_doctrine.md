@@ -373,7 +373,8 @@ so a kind that starts being produced is named here or CI fails.
 
 - **Subskill-owned**, persisted by the producing subskill itself:
   `missing-bib-entry:`, `ambiguous-citation:`, `numeric-citation-style:`
-  (`/library/clean-bibliography`, end of its §3g) and
+  (`/library/clean-bibliography`, end of
+  [clean-bibliography.md](clean-bibliography.md) §3g) and
   `metadata-mismatch:` (`/library/di-preflight`, its Step 0.2). They are
   written at source because the producing subskill's own later step reads
   the line back out of the catalog — `synthesize_canonical_entries.py`
@@ -434,7 +435,7 @@ heads differ from the kinds above and which has its own append-if-absent
 writer (`add_validator_suppression.py`). If a missing entry from a prior
 pass has since been added to `references.bib` (e.g. by a manual edit),
 the rerun drops it from warnings. Same for stale pgmark-continuity
-findings that have been resolved by the §1b repair pass.
+findings that have been resolved by the [deep-index.md](deep-index.md) §1b repair pass.
 
 When merging or rewriting math fragments on a second pass, **scan
 the merge region for `\pgmark{N}` markers first and pull them out to

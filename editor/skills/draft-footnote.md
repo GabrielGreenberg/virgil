@@ -76,7 +76,7 @@ card:
    a per-card AI-request flag the user toggled on a footnote they already
    wrote — i.e. **a free-text comment box on an existing card**, structurally
    the same input the note / todo / revisions responders guard, and the
-   doctrine's §1 says every such box is heterogeneous. So a user who flags a
+   doctrine's [_ask-shape.md](_ask-shape.md) §1 says every such box is heterogeneous. So a user who flags a
    footnote and types *"can you check this quote against the source?"* is
    asking for **findings**, not for their footnote to be rewritten.
 
@@ -87,7 +87,7 @@ card:
      "did X really publish this in 1978"? → **emit a report instead**, and do
      not touch the footnote. A footnote's body is apparatus prose, not a
      verification result with page cites; compressing findings into it is the
-     tell §3 names, and it costs the user twice — the findings arrive truncated
+     tell [_ask-shape.md](_ask-shape.md) §3 names, and it costs the user twice — the findings arrive truncated
      *and* their footnote comes back edited when they never asked for that.
      ```bash
      t=$(mktemp -d -t virgil-txt)
@@ -114,7 +114,7 @@ card:
      `paragraphIds` at all, halt (step 4) rather than guessing.
 
      That one call drains the Task, so emit the report **instead of** a
-     footnote, never alongside one (§4), and name both kinds in the `Done:`
+     footnote, never alongside one ([_ask-shape.md](_ask-shape.md) §4), and name both kinds in the `Done:`
      line so the redirect is visible. **Then skip 0b, branch E and steps 1–3,
      and go straight to the re-route reply in step 4** — the Task is already
      `complete`, and a footnote written after it is a second answer the user
@@ -122,7 +122,7 @@ card:
    - Does the ask want the footnote's **prose** written, revised, expanded,
      tightened, re-toned, or a cite added to it? → that is what this skill
      does; carry on to the shape branch.
-   - **On a genuine coin-flip the panel wins** (§5). An ask that both raises a
+   - **On a genuine coin-flip the panel wins** ([_ask-shape.md](_ask-shape.md) §5). An ask that both raises a
      question and wants the note improved is a footnote with the answer in it —
      that is the case the default handles well. Re-route on a *clear* mismatch
      only.
