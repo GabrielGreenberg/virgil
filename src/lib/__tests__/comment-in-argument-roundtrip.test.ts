@@ -16,11 +16,20 @@ import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
 import {
+  extractFigureAttrs,
   extractFigureSources,
   withReplacedFigurePath,
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
-import { extractBraced, findMatchingBrace, matchCommandArgumentRun } from "@/lib/latex-lexer";
+import {
+  extractBraced,
+  findMatchingBrace,
+  matchCommandArgumentRun,
+  projectLiveLatex,
+} from "@/lib/latex-lexer";
+import { extractCaptionText } from "@/lib/word-count-core";
+import { matchCiteCommandAt } from "@/lib/cite-commands";
+import { rewriteCiteCommandString } from "@/lib/identity/bib-cite-rewrite";
 
 const PRE = "\\documentclass{article}\n\\begin{document}\n";
 const POST = "\n\\end{document}\n";
@@ -157,5 +166,78 @@ describe("task 777 M4 — the figure readers ignore a commented-out \\includegra
     expect(out).toContain("{draft.png}");
     expect(out).toContain("{new.png}");
     expect(out).not.toContain("{final.png}");
+  });
+});
+
+// Task 1021 — the private group scanners 777 left behind. Every round-tripping
+// group/bracket read now goes through THE scanner (`findGroupClose` via
+// `extractBraced` / `extractBracketed`), so a `}`/`]` in a comment or inside a
+// nested group is never the delimiter.
+describe("task 1021 — the private scanners 777 left behind", () => {
+  const FIG =
+    "\\begin{figure}\n\\includegraphics{a.png}\n\\caption{Results % old ending}\n for X.}\n\\end{figure}";
+
+  /** Canonical layout may re-space a construct, so the contract is: the
+   *  load-bearing spelling survives the first save, and the second moves nothing. */
+  function expectFixed(input: string, needle: string): void {
+    const c1 = save(PRE + input + POST);
+    expect(body(save(c1)), "second save must not move the bytes").toBe(body(c1));
+    expect(body(c1)).toContain(needle);
+  }
+
+  it("a } inside a comment in a figure \\caption does not close it (two cycles)", () => {
+    expectFixed(FIG, "\\caption{Results % old ending}\n for X.}\n\\end{figure}");
+  });
+
+  it("the figure reader keeps the rest of the caption inside it", () => {
+    const env = FIG.slice("\\begin{figure}".length, FIG.indexOf("\\end{figure}"));
+    expect(extractFigureAttrs(env).caption).toBe("Results % old ending}\n for X.");
+  });
+
+  it("a nested ] in the \\caption short title and \\includegraphics options", () => {
+    const env = "\n\\includegraphics[trim={0 1]2 0}]{a.png}\n\\caption[Sh{o]r}t]{Long.}\n";
+    const attrs = extractFigureAttrs(env);
+    expect(attrs.sources[0]?.options).toBe("trim={0 1]2 0}");
+    expect(attrs.sources[0]?.path).toBe("a.png");
+    expect(attrs.caption).toBe("Long.");
+  });
+
+  it("an accent base holding a comment is refused, not closed inside the comment", () => {
+    expectStable("x \\'{e % old}\n} y");
+  });
+
+  it.each([
+    ["\\ex[exno={1]a}] header", "\\ex[exno={1]a}] Sentence.\n\\xe", "\\ex[exno={1]a}]\nSentence."],
+    [
+      "\\begingl[opts] with a nested ]",
+      "\\ex\n\\begingl[glstyle={a]b}]\n\\gla foo bar //\n\\glft t //\n\\endgl\n\\xe",
+      "\\begingl[glstyle={a]b}]\n\\gla foo bar //",
+    ],
+  ])("%s keeps the whole option group (two cycles)", (_label, input, needle) => {
+    expectFixed(input, needle);
+  });
+
+  it("the word counter reads a caption past a commented brace", () => {
+    expect(extractCaptionText("\\caption{Alpha % x}\n beta}")).toEqual(["Alpha % x\n beta"]);
+  });
+
+  it("a cite's optional argument closes at the LAST bracket", () => {
+    const m = matchCiteCommandAt("\\cite[see {a]b}]{k} rest", 0);
+    expect(m?.command).toBe("\\cite[see {a]b}]{k}");
+    expect(rewriteCiteCommandString("\\cite[see {a]b}]{k}", "k", "j")).toBe(
+      "\\cite[see {a]b}]{j}",
+    );
+  });
+
+  it("projectLiveLatex: a % or \\begin{verbatim} INSIDE an inline verbatim run is payload", () => {
+    const opts = { inlineVerb: true, preserveOffsets: true } as const;
+    const a = "\\verb|a%b| live";
+    expect(projectLiveLatex(a, opts)).toBe(" ".repeat("\\verb|a%b|".length) + " live");
+    const b = "\\lstinline{\\begin{verbatim}} live\nnext";
+    expect(projectLiveLatex(b, opts)).toBe(
+      " ".repeat("\\lstinline{\\begin{verbatim}}".length) + " live\nnext",
+    );
+    // A real comment after the run is still a comment.
+    expect(projectLiveLatex("\\verb|x| a % c", opts)).toBe("         a    ");
   });
 });

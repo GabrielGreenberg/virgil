@@ -14,7 +14,7 @@
  * - The optional starred suffix is matched outside this list as `(\*?)`.
  */
 
-import { extractBraced } from "@/lib/latex-lexer";
+import { extractBraced, extractBracketed } from "@/lib/latex-lexer";
 
 // Canonical (lowercase) base command names that accept the multi-cite
 // `\cmds[pre1][post1]{key1}[pre2][post2]{key2}…` syntax.
@@ -228,10 +228,12 @@ export function matchCiteCommandAt(
     const unitStart = pos;
     let brackets = "";
     for (let n = 0; n < 2 && text[pos] === "["; n++) {
-      const close = text.indexOf("]", pos);
-      if (close === -1) break;
-      brackets += text.slice(pos, close + 1);
-      pos = close + 1;
+      // THE optional-argument reader (task 1021): `[see {a]b}]` closes at the
+      // LAST bracket, and a `]` in a `%` comment is not a delimiter.
+      const opt = extractBracketed(text, pos);
+      if (!opt) break;
+      brackets += text.slice(pos, opt.end);
+      pos = opt.end;
     }
     if (text[pos] !== "{") {
       // Optional args with no key after them are not ours — give them back so

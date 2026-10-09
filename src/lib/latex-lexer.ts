@@ -1169,6 +1169,9 @@ export function skipLineCommentAt(src: string, pos: number): number {
  *  do not cross a newline); over there it simply doesn't match, and the text
  *  falls through as ordinary prose. A control symbol (`\\`) is stepped over
  *  whole, so `\\verb|x|` is a line break followed by prose, not a run. */
+/** Offset-preserving blank: a span becomes the same number of spaces. */
+const blankSame = (sp: string): string => " ".repeat(sp.length);
+
 function stripInlineVerb(line: string, blank: (s: string) => string): string {
   let out = "";
   let last = 0;
@@ -1269,8 +1272,14 @@ export function projectLiveLatex(
       // Outside verbatim: a comment tail wins over any `\begin{verbatim}` that
       // sits at or after it — that begin is itself commented out. Only a begin
       // strictly BEFORE the comment is a real open.
-      const begin = beginRe.exec(line);
-      const comment = commentTailStart(line);
+      //
+      // With `inlineVerb` on, both are located on the line with its inline
+      // verbatim runs BLANKED in place (same length, so every offset still
+      // indexes `line`): a `%` or a `\begin{verbatim}` INSIDE `\verb|a%b|` /
+      // `\lstinline{…}` is payload, not a comment or an open (task 1021).
+      const probe = inlineVerb ? stripInlineVerb(line, blankSame) : line;
+      const begin = beginRe.exec(probe);
+      const comment = commentTailStart(probe);
       if (!begin || (comment !== -1 && begin.index >= comment)) {
         const visible = comment === -1 ? line : line.slice(0, comment);
         kept += inlineVerb ? stripInlineVerb(visible, blank) : visible;
