@@ -51,7 +51,7 @@ vi.mock("@/lib/latex-serializer", async (importOriginal) => {
   };
 });
 
-import { Editor } from "@tiptap/core";
+import { Editor, Node } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import {
   assembleLiveSource,
@@ -68,8 +68,33 @@ import { extractPreambleAndPostamble } from "@/lib/latex-parser";
 let editor: Editor | null = null;
 let products: DocProducts | null = null;
 
+/** A bare inline `citation` atom — just the `command` attr the serializer's
+ *  cite emit-site reads — so a test body can CITE without mounting the real
+ *  extension's NodeView (task 1019: a bib family is injected only when the
+ *  body needs one). Usage: `<cite-stub data-command="\\citeauthor{k}">`. */
+const CiteStub = Node.create({
+  name: "citation",
+  group: "inline",
+  inline: true,
+  atom: true,
+  addAttributes() {
+    return {
+      command: {
+        default: "",
+        parseHTML: (el: HTMLElement) => el.getAttribute("data-command") ?? "",
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "cite-stub" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["cite-stub", HTMLAttributes];
+  },
+});
+
 function makeEditor(content: string): Editor {
-  editor = new Editor({ extensions: [StarterKit], content });
+  editor = new Editor({ extensions: [StarterKit, CiteStub], content });
   return editor;
 }
 
@@ -235,18 +260,20 @@ describe("doc-products pipeline", () => {
   });
 
   it("a bibFamily switch re-derives sourceText with no editor edit (592)", async () => {
-    const ed = makeEditor("<p>alpha</p>");
+    // The body CITES (task 1019: a family is injected only on the body's
+    // need — the declared family answers WHICH), so the switch is visible.
+    const ed = makeEditor('<p>alpha <cite-stub data-command="\\citeauthor{k}"></cite-stub></p>');
     const p = attach(ed);
     await settle();
     const before = p.snapshot().sourceText!;
-    expect(before).not.toContain("natbib");
+    expect(before).not.toContain("biblatex");
 
     // The user's Package control fires NO transaction — the value just moves.
-    bibFamily = "natbib";
+    bibFamily = "biblatex";
     p.revalidate();
     await settle();
     const after = p.snapshot().sourceText!;
-    expect(after).toContain("natbib");
+    expect(after).toContain("biblatex");
     expect(after).not.toBe(before);
   });
 
@@ -402,10 +429,12 @@ describe("doc-products pipeline", () => {
   });
 
   it("assembleLiveSource: the pipeline path and the unmounted fallback agree, and both honour bibFamily (865)", async () => {
-    // A body with NO cite folds to no family: without an authoritative
-    // family the preamble gets no bib package at all — which is exactly what
+    // A body whose only cite is SHARED (`\citeauthor`) needs SOME family but
+    // pins none: the authoritative family decides which (task 1019 — an
+    // uncited body would get no family whatever was declared). Without one
+    // the detector's baseline default is natbib — which is exactly the split
     // the code view's seed used to show while save/compile wrote biblatex.
-    const ed = makeEditor("<p>alpha</p>");
+    const ed = makeEditor('<p>alpha <cite-stub data-command="\\citeauthor{k}"></cite-stub></p>');
     const delims = {
       preamble: "\\documentclass{article}\n\\begin{document}\n",
       postamble: "\n\\end{document}\n",
