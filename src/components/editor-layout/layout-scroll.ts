@@ -221,3 +221,37 @@ export function scrollEntryIntoView(
 ) {
   entry.scrollIntoView(opts ?? { behavior: "instant", block: "nearest" });
 }
+
+/**
+ * The ONE "scroll a panel entry into view once its panel mounts" door
+ * (task 1033). Every caller that opens a panel and then wants its card on
+ * screen goes through here: `openForCard` (a main-text click) and the strip-
+ * icon click (`useStripHandlers`).
+ *
+ * VISIBLE pane first, fail-open (task 873's door): panel-entry ids are 4-hex
+ * short ids, unique only per DOCUMENT, so under multi-doc keep-alive the same
+ * selector can match a card in a hidden (`display:none`) pane that comes first
+ * in DOM order — a bare `document.querySelector` scrolls that invisible card
+ * and the gesture is a silent no-op.
+ *
+ * `frames` is how many animation frames to wait for the list to render
+ * (a freshly opened band needs two; an already-open one needs one).
+ * `targetY` aligns the entry to a viewport Y (necessity-gated) instead of a
+ * plain scroll-into-view, whose options `scroll` supplies.
+ */
+export function scrollPanelEntryAfterMount(
+  selector: string,
+  opts: { frames?: number; targetY?: number; scroll?: ScrollIntoViewOptions } = {},
+): void {
+  const { frames = 1, targetY, scroll } = opts;
+  const run = (left: number) => {
+    requestAnimationFrame(() => {
+      if (left > 1) return run(left - 1);
+      const entry = resolvePaneMarker(selector, "fail-open");
+      if (!entry) return;
+      if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
+      else scrollEntryIntoView(entry, scroll);
+    });
+  };
+  run(Math.max(1, frames));
+}

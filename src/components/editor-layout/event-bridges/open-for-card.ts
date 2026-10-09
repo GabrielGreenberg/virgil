@@ -3,7 +3,11 @@ import { dockedSideOf } from "@/hooks/view-prefs-derived";
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
-import { alignEntryToYIfNeeded, scrollEntryIntoView } from "../layout-scroll";
+import {
+  alignEntryToYIfNeeded,
+  scrollEntryIntoView,
+  scrollPanelEntryAfterMount,
+} from "../layout-scroll";
 import { resolvePaneMarker } from "../pane-dom";
 
 /**
@@ -95,15 +99,6 @@ function resolveHomeSide(prefs: ViewPrefs, panelId: PanelId, fallback: Side): Si
   return prefs.placements.find((p) => p.id === panelId)?.side ?? fallback;
 }
 
-function scrollAfterMount(selector: string, targetY?: number) {
-  requestAnimationFrame(() => {
-    const entry = resolvePaneMarker(selector, "fail-open");
-    if (!entry) return;
-    if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
-    else scrollEntryIntoView(entry);
-  });
-}
-
 export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void {
   const { omniKey, entrySelector, panelId, targetY, skipScroll } = args;
   const {
@@ -132,7 +127,7 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
 
   // Rule 2: Native panel already open on home side → just scroll.
   if (isActive) {
-    scrollAfterMount(entrySelector, targetY);
+    scrollPanelEntryAfterMount(entrySelector, { targetY });
     return;
   }
 
