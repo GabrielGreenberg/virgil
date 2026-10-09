@@ -101,6 +101,20 @@ describe("FloatChrome header tint (#20)", () => {
   });
 });
 
+describe("FloatChrome plain-title kind label (task 1029)", () => {
+  it("wears the ONE .card-meta-label class the docked CardTypeLabel wears", () => {
+    // Pop-out continuity: a float with no titleNode slot (footnote, todo,
+    // archive, citation, example, paragraph-only note) used to hand-roll a
+    // twin on --ink-muted. Assert the CLASS, not computed color — jsdom
+    // resolves no CSS vars.
+    renderChrome(undefined);
+    const label = screen.getByText("Note");
+    expect(label.classList.contains("card-meta-label")).toBe(true);
+    expect(label.className).toContain("truncate");
+    expect(label.className).not.toMatch(/ink-muted|tracking-wider|text-\[10px\]/);
+  });
+});
+
 describe("FloatChrome (re)anchor drop button (chip D)", () => {
   const DROP_LABEL = "Drop note into text";
 

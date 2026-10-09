@@ -153,9 +153,11 @@ export function FloatChromeContent(props: FloatChromeContentProps) {
   return (
     <>
       <FloatGrip />
+      {/* Plain-title kind label: the SAME `.card-meta-label` class the docked
+          `CardTypeLabel` wears (task 1029), so a popped card keeps its gray. */}
       {titleNode ?? (
         <span
-          className="text-[10px] text-[var(--ink-muted)] uppercase tracking-wider font-medium truncate"
+          className="card-meta-label truncate"
           style={{ fontFamily: FLOAT_HEADER_FONT_FAMILY }}
         >
           {title}

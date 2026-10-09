@@ -256,7 +256,7 @@ export function FieldTitleRow({
             <Chevron expanded={!folded} />
           </button>
         )}
-        <span className="text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium">
+        <span className="card-meta-label">
           {label}
         </span>
         {kindHint && (
@@ -735,7 +735,7 @@ export function AppliedRecordBody({
           e.stopPropagation();
           setShowOriginal((v) => !v);
         }}
-        className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-medium text-[var(--muted)] hover:text-ink-strong cursor-pointer"
+        className="card-meta-label flex items-center gap-1.5 hover:text-ink-strong cursor-pointer"
       >
         <span>Original text</span> <Chevron expanded={showOriginal} />
       </button>
@@ -839,7 +839,7 @@ export function PendingAiRecordBody({
           e.stopPropagation();
           setShowOriginal((v) => !v);
         }}
-        className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-medium text-[var(--muted)] hover:text-ink-strong cursor-pointer"
+        className="card-meta-label flex items-center gap-1.5 hover:text-ink-strong cursor-pointer"
       >
         <span>Original text</span> <Chevron expanded={showOriginal} />
       </button>
