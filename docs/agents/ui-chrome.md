@@ -1,4 +1,4 @@
-<!-- last-verified: 8d12cfcf 2026-10-08 -->
+<!-- last-verified: fc17055d 2026-10-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts, src/components/PomodoroTimer.tsx, src/lib/pomodoro-timer.ts -->
 
@@ -225,6 +225,8 @@ Triggers and keys have one contract each (tasks 992–997): [menu-trigger.ts](..
 
 Migrated onto it (Phases A–C): the grab-bar/drag-handle menu (`DragHandleMenu`), the lightning panel (`ActionsMenuPanel`), `SelectionColorPopover`, `LabelRefPopover`, `HeadingTypeMenu`, `TabPlusMenu`, `BibEntryPickerMenu` (combobox path), and `BlockTypeDropdown` + MenuBar's `ViewMenu`. The **slash popup is a documented exception** (not migrated) — see the design doc.
 
+The Library's four menus (row menu, paper AI-requests menu, panel-tab strip, libraries navigator) moved onto this primitive too (task 1011). Every inline rename (tab strip, Library) is ONE [`InlineRenameInput`](../../src/components/InlineRenameInput.tsx), ended through the field-edit-session door (task 1013). A bar status menu lives exactly as long as its kebab (task 1016).
+
 **One placement owner (tasks 745–751).** Every `MenuProvider` portals; the docked `portal={false}` branch is DELETED (task 751 — its two consumers, the View menu and the ¶ dropdown, hand-rolled a RAF flip; the View menu had no height cap and the dropdown rendered in flow). A rect-opened menu passes a live `trackAnchor` thunk from [live-anchor.ts](../../src/components/menu/live-anchor.ts) (`elementAnchor` / `caretAnchor` / `nodeAnchor`, task 747), which `useFloatingMenuPosition` re-reads RAF-coalesced so the menu follows its anchor on scroll; under `maxHeight` its no-fit fallback takes the side with more room. Outside press is read on `pointerdown` (window, capture; `mousedown` fallback) and `onClose` rides a ref (task 746). Nav order is read from the DOM, and a `disabled`/nav-field flip is an upsert, not an unmount (task 745). The write-only `registryFor`/`publishRegistry` table and the dead `useMenuGrid` context are deleted (task 748; `menu-export-census.test.ts`). CI: `menu-live-anchor-census.test.ts`, `menubar-menus-placement.test.tsx`.
 
 **`<AnchoredMenu>` — the TRIGGER half (task 295).** `MenuProvider` owns everything about an OPEN menu and deliberately owned nothing about the button that opens one, so each consumer hand-rolled the same six things (`open` state, an anchor `DOMRect`, a `trackAnchor` thunk, the `excludeRefs` self-close guard, `aria-haspopup`/`aria-expanded`, and the surface's chrome classes) — and each dropped a different subset (no viewport flip, no re-anchor, no menu ARIA/Escape). `AnchoredMenu` renders the `<button>` itself (callers supply only its content, as a function of `open`), captures + re-reads the anchor rect, defaults `maxHeight` ON (flip up / scroll rather than rendering unreachable rows), and registers the trigger in `excludeRefs`. **The primitive owns the menu SURFACE** — no menu authors its own chrome classes. Closing stays the caller's business (`children` may be a render prop receiving `{ close, anchorRect }`; `closeOnInsideClick` covers opaque children like `ItemMenu`). Placement vocabulary: `ANCHORED_MENU_PLACEMENTS`. CI: `menu-surface-guardrail.test.ts` + `menu-surface-contract.test.tsx`.
@@ -391,6 +393,8 @@ Supporting UI:
 - **CollabClaimPill** ([src/components/CollabClaimPill.tsx](../../src/components/CollabClaimPill.tsx)) — per-card focus-claim indicator.
 - **CollaboratorIdentityDialog** ([src/components/CollaboratorIdentityDialog.tsx](../../src/components/CollaboratorIdentityDialog.tsx)) — prompts for display name + color on first enable.
 - Editor read-only gating: when the partner holds the pen, the TipTap editor is set non-editable.
+
+Identity change is a door (task 1014): every pane adopts a new collaborator identity and migrates its paper's pen/presence; the pen transitions (Pass/Take/Take over) re-check their precondition on the fresh disk read (task 1015).
 
 State: `useCollab()` in [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts). Types/constants in [src/lib/collab.ts](../../src/lib/collab.ts). Sidecar: `collab.json`.
 

@@ -1,4 +1,4 @@
-<!-- last-verified: 8d12cfcf 2026-10-08 -->
+<!-- last-verified: fc17055d 2026-10-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -72,7 +72,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\\*`, `\\[2pt]`, `\\*[1ex]` | carried on `latexCommand` — Virgil doesn't model break spacing, so the whole token + its argument run rides the carrier (`matchLineBreakAt`, task 349 M4) |
 | `~` (tie) | **U+00A0** in the document, re-emitted as `~`. A tie is a `"glyph"` member of `CHAR_ESCAPE_TABLE`, so provenance lives as two distinct code points; a prose-typed ASCII `~` still emits `\textasciitilde{}` (task 349 M5) |
 | a BARE `{ … }` group | braces carried on `latexCommand`, content stays editable prose (`matchBraceGroupAt`, task 349 M6). An escaped `\{` is still a literal brace |
-| a mid-line `% …` tail | text under the **`latexCommentTail`** mark — *not typeset at all*, re-emitted verbatim (`matchCommentTailAt`, task 347). A comment line between two prose lines does NOT break the paragraph, because LaTeX doesn't break there. Since task 777 a tail is recognized at EVERY inline depth (inside `\emph{}` / `\section{}` / `\caption{}`, and in footnote / card bodies) — never escaped to a printed `\%`; brace matching is comment-aware through the lexer's one `findGroupClose` (verbatim-argument commands `\url`/`\href`/`\path`/`\nolinkurl` stay blind) |
+| a mid-line `% …` tail | text under the **`latexCommentTail`** mark — *not typeset at all*, re-emitted verbatim (`matchCommentTailAt`, task 347). A comment line between two prose lines does NOT break the paragraph, because LaTeX doesn't break there. Since task 777 a tail is recognized at EVERY inline depth (inside `\emph{}` / `\section{}` / `\caption{}`, and in footnote / card bodies) — never escaped to a printed `\%`; brace matching is comment-aware through the lexer's one `findGroupClose` (verbatim-argument commands `\url`/`\href`/`\path`/`\nolinkurl` stay blind) Since task 1021 every round-tripping group/bracket read goes through the comment-aware `findGroupClose`, so a `}` inside a comment never closes a caption/argument. |
 | `\verb<d>…<d>` | text under the **`latexVerbatim`** mark (byte-literal — no typography, no escaping) |
 
 ## The opaque fallbacks
