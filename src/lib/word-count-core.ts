@@ -38,7 +38,12 @@
  */
 
 import type { JSONContent } from "@tiptap/react";
-import { LATEX_COMMENT_TAIL_MARK, LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
+import {
+  extractBraced,
+  extractBracketed,
+  LATEX_COMMENT_TAIL_MARK,
+  LATEX_VERBATIM_MARK,
+} from "@/lib/latex-lexer";
 import { normalizeRichContent } from "@/lib/footnote-content";
 
 export type Category =
@@ -152,26 +157,17 @@ export function extractCaptionText(raw: string): string[] {
     if (pos < raw.length && raw[pos] === "*") pos++;
     // skip optional [...]
     if (pos < raw.length && raw[pos] === "[") {
-      const close = raw.indexOf("]", pos);
-      if (close !== -1) pos = close + 1;
+      const opt = extractBracketed(raw, pos);
+      if (opt) pos = opt.end;
     }
-    // expect {
+    // expect { — read by THE group scanner (task 1021), so a `}` inside a `%`
+    // comment does not end the caption early.
     if (pos < raw.length && raw[pos] === "{") {
-      let depth = 1;
-      const start = pos + 1;
-      pos++;
-      while (pos < raw.length && depth > 0) {
-        if (raw[pos] === "\\" && pos + 1 < raw.length) {
-          pos += 2; // skip escaped char
-          continue;
-        }
-        if (raw[pos] === "{") depth++;
-        else if (raw[pos] === "}") depth--;
-        if (depth > 0) pos++;
-      }
-      if (depth === 0) {
+      const braced = extractBraced(raw, pos);
+      if (braced) {
+        pos = braced.end - 1;
         // Strip inner LaTeX commands to get plain text
-        const inner = raw.slice(start, pos);
+        const inner = braced.content;
         const plain = inner
           .replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])*\{([^}]*)\}/g, "$2") // \cmd{text} → text
           .replace(/\\[a-zA-Z]+\*?/g, "") // bare \commands

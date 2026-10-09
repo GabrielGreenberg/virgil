@@ -731,13 +731,24 @@ export function findUnescaped(text: string, delim: string, from: number): number
   return k;
 }
 
-/** Find the index of the `}` matching the `{` at `open`. -1 if unbalanced. */
+/**
+ * The `}` closing an ACCENT BASE group at `open`, or -1.
+ *
+ * Not the lexer's `findGroupClose` — this module is the zero-import leaf the
+ * lexer itself imports, so it cannot call up. It does not need to: an accent
+ * base is a letter, a special letter or a nested accent, never a comment. So
+ * where the shared scanner would read a `%` comment as inert, this one REFUSES
+ * the group (task 1021): `\'{e % x}\n}` is not an accent Virgil models, and the
+ * construct falls through to the byte-verbatim carrier rather than closing on
+ * a brace that TeX never sees. -1 if unbalanced.
+ */
 function findMatchingBrace(text: string, open: number): number {
   if (text[open] !== "{") return -1;
   let depth = 1;
   let i = open + 1;
   while (i < text.length) {
     const ch = text[i];
+    if (ch === "%" && !isEscaped(text, i)) return -1;
     if (ch === "{" && !isEscaped(text, i)) depth++;
     else if (ch === "}" && !isEscaped(text, i)) {
       depth--;

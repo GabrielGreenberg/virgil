@@ -38,6 +38,7 @@
 
 import type { Editor } from "@tiptap/react";
 import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
+import { findGroupClose } from "@/lib/latex-lexer";
 
 /**
  * Rewrite every occurrence of the citekey `oldKey` → `newKey` inside a single
@@ -74,7 +75,8 @@ export function rewriteCiteCommandString(
   while (i < command.length) {
     const ch = command[i];
     if (ch === "[" || ch === "{") {
-      const close = matchingClose(command, i);
+      // THE group scanner (task 1021): brace-nested, escape- and comment-aware.
+      const close = findGroupClose(command, i);
       if (close < 0) break; // unbalanced tail — copy it verbatim below
       if (ch === "[") {
         out += command.slice(i, close + 1);
@@ -92,21 +94,6 @@ export function rewriteCiteCommandString(
   }
   out += command.slice(i);
   return changed ? out : command;
-}
-
-/** Index of the `]`/`}` closing the group that opens at `open`, honoring
- *  nested braces (an optional argument may hold `{…}`); -1 when unbalanced. */
-function matchingClose(s: string, open: number): number {
-  const closer = s[open] === "[" ? "]" : "}";
-  let depth = 0;
-  for (let j = open + 1; j < s.length; j++) {
-    const c = s[j];
-    if (c === "\\") { j++; continue; }
-    if (c === "{") depth++;
-    else if (c === "}" && depth > 0) depth--;
-    else if (c === closer && depth === 0) return j;
-  }
-  return -1;
 }
 
 /** Replace exact-equal tokens of a comma-separated key list, keeping every

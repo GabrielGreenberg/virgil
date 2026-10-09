@@ -1773,10 +1773,12 @@ function parseBody(
       // item-level `\a[exno=N]` override keeps (task 244).
       let glossOptions: string | null = null;
       if (ctx.src[ctx.pos] === "[") {
-        const close = ctx.src.indexOf("]", ctx.pos);
-        if (close !== -1) {
-          glossOptions = ctx.src.slice(ctx.pos + 1, close);
-          ctx.pos = close + 1;
+        // THE optional-argument reader (task 1021): brace- and comment-aware,
+        // so `\begingl[glstyle={a]b}]` closes at the LAST bracket.
+        const opt = extractBracketed(ctx.src, ctx.pos);
+        if (opt) {
+          glossOptions = opt.content;
+          ctx.pos = opt.end;
         }
       }
       const bodyStart = ctx.pos;
@@ -2853,12 +2855,14 @@ function readExpexHeader(
   let exnoOverride: string | null = null;
   let rawOptions = "";
   while (cursor < src.length && src[cursor] === "[") {
-    const close = src.indexOf("]", cursor);
-    if (close === -1) break;
-    const m = src.slice(cursor + 1, close).match(/exno\s*=\s*([^,\s]+)/);
+    // THE optional-argument reader (task 1021) — never a local `indexOf("]")`:
+    // `\ex[exno={1]a}]` closes at the LAST bracket, not inside the group.
+    const opt = extractBracketed(src, cursor);
+    if (!opt) break;
+    const m = opt.content.match(/exno\s*=\s*([^,\s]+)/);
     if (m) exnoOverride = m[1];
-    rawOptions += src.slice(cursor, close + 1);
-    cursor = close + 1;
+    rawOptions += src.slice(cursor, opt.end);
+    cursor = opt.end;
   }
   let tag = "";
   if (src[cursor] === "<") {

@@ -3,7 +3,12 @@
 // structured attrs that drive figure display, and by the tex-mode popover
 // to re-extract attrs when the user edits the source.
 
-import { projectLiveLatex } from "@/lib/latex-lexer";
+import {
+  extractBraced,
+  extractBracketed,
+  matchInlineVerbAt,
+  projectLiveLatex,
+} from "@/lib/latex-lexer";
 
 export interface FigureSource {
   /** Path argument of `\includegraphics{...}` — may lack an extension. */
@@ -78,26 +83,13 @@ export interface GraphicsAttrs {
   widthPercent: number | null;
 }
 
-/** Find the body of the next `\caption{...}` (balanced braces) starting at
- *  pos in src, or null if there isn't one. */
+/** The `{...}` group at `openPos` — body + index past the close — or null.
+ *  Read by THE group scanner (`extractBraced`, task 777 / 1021), so a `}` inside
+ *  a `%` comment is not a delimiter: `\caption{A % old}\n B.}` keeps `B.`
+ *  inside the caption, exactly as TeX reads it. */
 function findBracedBody(src: string, openPos: number): { body: string; end: number } | null {
-  if (src[openPos] !== "{") return null;
-  let depth = 1;
-  let i = openPos + 1;
-  while (i < src.length) {
-    const ch = src[i];
-    if (ch === "\\" && i + 1 < src.length) {
-      i += 2;
-      continue;
-    }
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) return { body: src.slice(openPos + 1, i), end: i + 1 };
-    }
-    i++;
-  }
-  return null;
+  const braced = extractBraced(src, openPos);
+  return braced ? { body: braced.content, end: braced.end } : null;
 }
 
 /** Parse a width=… directive into a CSS percentage. Returns null if the
@@ -128,10 +120,10 @@ export function matchIncludegraphics(
   if (src[i] === "*") i++;
   // Optional [options], possibly multiple
   while (src[i] === "[") {
-    const close = src.indexOf("]", i);
-    if (close === -1) return null;
-    options += src.slice(i, close + 1);
-    i = close + 1;
+    const opt = extractBracketed(src, i);
+    if (!opt) return null;
+    options += src.slice(i, opt.end);
+    i = opt.end;
   }
   if (src[i] !== "{") return null;
   const braced = findBracedBody(src, i);
@@ -315,50 +307,6 @@ function readEnvArg(src: string, pos: number): { name: string; end: number } {
   return { name: braced.body.trim().replace(/\*$/, ""), end: braced.end };
 }
 
-/** Skip past inline verbatim (`\verb<d>…<d>`, `\lstinline[opts]<d>…<d>`), whose
- *  body is literal text: a `%` in there is a percent sign, not a comment, and a
- *  `\label{…}` in there declares nothing. Returns the index after the closing
- *  delimiter, or `pos` when the shape isn't recognized.
- *
- *  Two rules keep the skip from OVER-reaching, since anything it swallows is
- *  invisible to the rest of the scan:
- *   • only `\lstinline` gets the `[options]` pre-scan, and it is brace-… sorry,
- *     BRACKET-nesting aware (`[keywordstyle=[2]\color{red}]` is a listings
- *     idiom). `\verb` has NO optional argument — a `[` after it IS the
- *     delimiter (`\verb[x[`), so scanning for a `]` there would run into the
- *     next line and eat the figure's caption.
- *   • both the option list and the closing delimiter must be found ON THE SAME
- *     LINE. A `\verb` argument cannot contain a newline in LaTeX, so a
- *     delimiter that "matches" further down the file is not a match — it is a
- *     shape we don't understand, and the safe answer is to skip nothing. */
-function skipInlineVerbatim(src: string, pos: number, allowOptions: boolean): number {
-  const nl = src.indexOf("\n", pos);
-  const lineEnd = nl === -1 ? src.length : nl;
-  let i = pos;
-  if (allowOptions && src[i] === "[") {
-    let bracket = 0;
-    let j = i;
-    for (; j < lineEnd; j++) {
-      if (src[j] === "[") bracket++;
-      else if (src[j] === "]") {
-        bracket--;
-        if (bracket === 0) {
-          j++;
-          break;
-        }
-      }
-    }
-    if (bracket !== 0) return pos;
-    i = j;
-  }
-  const delim = src[i];
-  // A letter/space/star isn't a delimiter, and a brace one is degenerate
-  // (`\verb{x{` closes on `{`, not `}`) — refuse rather than guess.
-  if (!delim || /[\sA-Za-z*{}]/.test(delim)) return pos;
-  const close = src.indexOf(delim, i + 1);
-  return close === -1 || close >= lineEnd ? pos : close + 1;
-}
-
 /** One lexical pass over a figure env body: find the figure's OWN `\caption`
  *  and `\label`s — skipping comments and inline verbatim, and treating a
  *  caption-owning environment as opaque. See the block comment above for why
@@ -384,6 +332,14 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
       i++;
       continue;
     }
+    // Inline verbatim (the whole `INLINE_VERBATIM_COMMANDS` family, task 1021):
+    // a `%` in there is a percent sign and a `\label{…}` declares nothing. An
+    // unterminated run skips nothing — the shape is not understood.
+    const verbEnd = matchInlineVerbAt(envContent, i);
+    if (verbEnd !== -1) {
+      i = verbEnd;
+      continue;
+    }
     const m = CONTROL_WORD_RE.exec(envContent.slice(i));
     if (!m) {
       // Escaped character (`\\`, `\%`, `\{`, …) — consume both bytes.
@@ -392,11 +348,6 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
     }
     const name = m[1];
     const afterName = i + m[0].length;
-    if (name === "verb" || name === "lstinline") {
-      const after = skipInlineVerbatim(envContent, afterName, name === "lstinline");
-      i = after > afterName ? after : afterName;
-      continue;
-    }
     if (name === "begin" || name === "end") {
       const env = readEnvArg(envContent, afterName);
       // Only a caption-owning env changes ownership; a box env is transparent.
@@ -423,10 +374,10 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
       // Optional `[short]` list-of-figures argument (task 263) — opaque.
       let short: string | null = null;
       if (envContent[j] === "[") {
-        const close = envContent.indexOf("]", j);
-        if (close !== -1) {
-          short = envContent.slice(j + 1, close);
-          j = close + 1;
+        const opt = extractBracketed(envContent, j);
+        if (opt) {
+          short = opt.content;
+          j = opt.end;
         }
       }
       while (j < envContent.length && /\s/.test(envContent[j])) j++;
