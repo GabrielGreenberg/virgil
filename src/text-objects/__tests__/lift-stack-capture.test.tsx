@@ -48,13 +48,36 @@ vi.mock("@/lib/storage", async () =>
 // The session machinery (hit-test, indicator, LayoutGestureBus edges) is not
 // what this suite measures — but WHICH of the three terminals ran is, so these
 // stay observable.
-const beginDropSession = vi.fn();
-const commitDropSession = vi.fn(async () => undefined);
-const cancelDropSession = vi.fn();
+// A minimal LIVE session (task 1025): begin opens it, commit/cancel end it,
+// and an ending fires the `onDropSessionEnd` subscribers — the controller's
+// own contract — so an ending the gesture did NOT cause (Escape, a pane
+// teardown) is representable via `endSessionExternally`.
+const sessionState = { live: false, endListeners: new Set<() => void>() };
+function endSession() {
+  if (!sessionState.live) return;
+  sessionState.live = false;
+  for (const cb of Array.from(sessionState.endListeners)) cb();
+}
+const beginDropSession = vi.fn(() => {
+  if (sessionState.live) return false;
+  sessionState.live = true;
+  return true;
+});
+const commitDropSession = vi.fn(async () => endSession());
+const cancelDropSession = vi.fn(() => endSession());
+/** The controller ending the session on a path the gesture cannot see —
+ *  its Escape handler, or `registerDropCtx`'s dispose on pane unmount. */
+const endSessionExternally = () => act(() => endSession());
 vi.mock("@/components/drop-mode/controller", () => ({
-  beginDropSession: (a: unknown) => beginDropSession(a),
+  beginDropSession: () => beginDropSession(),
   commitDropSession: () => commitDropSession(),
   cancelDropSession: () => cancelDropSession(),
+  onDropSessionEnd: (cb: () => void) => {
+    sessionState.endListeners.add(cb);
+    return () => {
+      sessionState.endListeners.delete(cb);
+    };
+  },
 }));
 
 // The transient-anchor strip: the one thing a `linkedRange` capture owes that
@@ -130,6 +153,8 @@ const ORIGIN = { x: 300, y: 400 };
 let rafQueue: FrameRequestCallback[] = [];
 
 beforeEach(() => {
+  sessionState.live = false;
+  sessionState.endListeners.clear();
   beginDropSession.mockClear();
   commitDropSession.mockClear();
   cancelDropSession.mockClear();
@@ -510,5 +535,60 @@ describe("the transient anchor's owner (task 1000)", () => {
     await up(AWAY.x, AWAY.y);
     expect(h.popOutAtRect).toHaveBeenCalledTimes(1);
     expect(removeTransientAnchor).not.toHaveBeenCalled();
+  });
+});
+
+// Task 1025 — "Escape means cancel": a gesture's terminals act only while ITS
+// session is alive. The controller's Escape ends the session; the trailing
+// mouseup used to still run the Stack capture / popout spawn, because the
+// gesture's own window listeners outlived the session they belonged to.
+describe("a terminal acts only while its session is alive (task 1025)", () => {
+  it("Escape mid-lift, release over the Stack icon → NO capture, overlay gone", async () => {
+    const h = beginLift({ kind: "linkedRange" });
+    move(ON_ICON.x, ON_ICON.y);
+    expect(getStackDropTarget()).toBe(true);
+
+    endSessionExternally();
+    expect(h.overlayMounted(), "the overlay tears down on the cancel").toBe(false);
+    expect(getStackDropTarget(), "the ring clears with it").toBe(false);
+    // The cancel releases the gesture's transient anchor at once.
+    expect(removeTransientAnchor).toHaveBeenCalledTimes(1);
+
+    await up(ON_ICON.x, ON_ICON.y);
+    expect(h.capture).not.toHaveBeenCalled();
+    expect(h.popOutAtRect).not.toHaveBeenCalled();
+    expect(commitDropSession).not.toHaveBeenCalled();
+  });
+
+  it("Escape mid-lift, release off-content → NO popout spawned", async () => {
+    const h = beginLift();
+    move(AWAY.x, AWAY.y);
+    endSessionExternally();
+    await up(AWAY.x, AWAY.y);
+    expect(h.popOutAtRect).not.toHaveBeenCalled();
+    expect(h.overlayMounted()).toBe(false);
+  });
+
+  it("Escape mid-lift, release over content → NO commit", async () => {
+    inContentZone.current = () => true;
+    beginLift();
+    move(AWAY.x, AWAY.y);
+    endSessionExternally();
+    await up(AWAY.x, AWAY.y);
+    expect(commitDropSession).not.toHaveBeenCalled();
+  });
+
+  it("a lift whose session was REFUSED never cancels the session another gesture owns", async () => {
+    // Another gesture's session is live; this lift's `beginDropSession` is
+    // refused (first gesture wins).
+    sessionState.live = true;
+    const h = beginLift();
+    move(AWAY.x, AWAY.y);
+    await up(AWAY.x, AWAY.y);
+    // The popout terminal still runs (it needs no session) …
+    expect(h.popOutAtRect).toHaveBeenCalledTimes(1);
+    // … but the foreign session survives the lift's end.
+    expect(sessionState.live).toBe(true);
+    expect(cancelDropSession).not.toHaveBeenCalled();
   });
 });

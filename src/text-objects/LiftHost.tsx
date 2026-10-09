@@ -54,6 +54,7 @@ import {
   beginDropSession,
   cancelDropSession,
   commitDropSession,
+  onDropSessionEnd,
 } from "@/components/drop-mode/controller";
 import { removeTransientAnchor } from "@/links/links";
 import { resolveDomForUuid } from "@/lib/marginalia-blocks";
@@ -573,7 +574,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
       // (popout release / no-op). The controller's hit-test + Indicator render
       // run for the full gesture lifetime; in popout mode the hit-test
       // resolves to null and the Indicator hides automatically.
-      beginDropSession({
+      const began = beginDropSession({
         cardKey,
         // The PRESS point, not the threshold-cross point — see
         // `LiftOptions.grabOrigin`.
@@ -586,6 +587,36 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
         // multi-doc keep-alive).
         editor,
       });
+      // The gesture's terminals act only while ITS session is alive (task
+      // 1025, "Escape means cancel"). A session ends on paths this gesture
+      // cannot see — Escape, a pane teardown (`registerDropCtx` dispose), the
+      // controller's own failsafe — and the window listeners below would
+      // otherwise outlive it: the trailing mouseup still captured to the Stack
+      // or spawned a popout the user had cancelled. So the gesture subscribes
+      // to its session's end (the `inline-atom-grab` shape) and, on an end it
+      // did not cause, runs `cleanup()` at once — overlay gone, listeners
+      // removed, transient anchor released — so no terminal is left to fire.
+      // `sessionLive` is ALSO the ownership fact: this gesture ends a session
+      // only while it holds one, never "whatever session is live" (a lift
+      // whose `beginDropSession` was refused must not cancel another gesture).
+      let sessionLive = began;
+      // Set by `onUp` before it runs a terminal: an ending the terminal itself
+      // causes (commit / cancel) is its own, not an abort.
+      let terminalRunning = false;
+      let offSessionEnd: (() => void) | null = began
+        ? onDropSessionEnd(() => {
+            sessionLive = false;
+            offSessionEnd?.();
+            offSessionEnd = null;
+            if (!terminalRunning) cleanup();
+          })
+        : null;
+      const cancelOwnSession = () => {
+        if (sessionLive) cancelDropSession();
+      };
+      const commitOwnSession = async () => {
+        if (sessionLive) await commitDropSession();
+      };
 
       // ── Transform-only motion (wave 2 P4, the D3 fix). The pre-wave shape
       // was a React setOverlay per RAW mousemove — a render of the overlay
@@ -683,6 +714,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
       };
 
       const onUp = async (upEv: MouseEvent) => {
+        terminalRunning = true;
         if (!liveOverlay) {
           cleanup();
           return;
@@ -734,7 +766,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
             // is a capture, not a doc move, so it cancels — same as the popout
             // branch. `cleanup()` would do this defensively anyway; doing it
             // here keeps the three terminals symmetric.
-            cancelDropSession();
+            cancelOwnSession();
             // L3f-2: strip the transient (cardless, invisible) anchor minted
             // for a plain selection grab — the capture read the marked range
             // and the mark has no further job. GUARDED, so a grab that reused
@@ -756,7 +788,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // the still-open float stays put. (commitDropSession itself bails to
           // cancel when placement is null or classifyDrop returns "no-op", so
           // we always route through it.)
-          await commitDropSession();
+          await commitOwnSession();
           // NO strip here (task 1000): the open float owns the transient
           // anchor, not this gesture. A no-op release keeps the float — and
           // its range — connected; a committed move closes the float, and the
@@ -780,7 +812,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // the controller's listeners and the Indicator (already hidden in
           // popout mode because no placement resolves outside the pod) need to
           // tear down.
-          cancelDropSession();
+          cancelOwnSession();
           // L1.12: spawn the real popout with chrome-inclusive coords so its
           // body-content rect (after subtracting the header height and body
           // padding) lands at exactly the text rect the overlay was holding.
@@ -835,7 +867,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           // not over a block) OR the spec's classifyDrop returns "no-op"
           // (insertPos inside source), commitDropSession ends the session
           // silently with no doc change.
-          await commitDropSession();
+          await commitOwnSession();
           // L3f-2: strip the transient (cardless, invisible) anchor minted for
           // a plain selection grab now that its move committed. On an actual
           // move the marked text was deleted (the mark went with it) and the
@@ -854,6 +886,10 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
       };
 
       const cleanup = () => {
+        // Unsubscribe FIRST: the `cancelOwnSession()` below ends the session,
+        // and its end must not re-enter this function.
+        offSessionEnd?.();
+        offSessionEnd = null;
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         document.documentElement.removeEventListener("mouseleave", onDocLeave);
@@ -884,13 +920,12 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
           liveOverlay = null;
           setOverlay(null);
         }
-        // Defensive: end any drop session this gesture started.
-        // `cancelDropSession` is idempotent — a no-op when no session is
-        // active (committed-path, instant-popout path, or short-circuit before
-        // threshold cross). Catches the Escape-mid-gesture case (controller
-        // cancels itself) where the gesture handler then races to cleanup with
-        // the session already gone.
-        cancelDropSession();
+        // Defensive: end the drop session this gesture started, if it is still
+        // alive (an abort — the missed-release bail). A no-op once the session
+        // ended (a terminal committed/cancelled it, or Escape / a pane teardown
+        // ended it and the end subscriber brought us here), and never a cancel
+        // of a session some OTHER gesture owns.
+        cancelOwnSession();
       };
 
       window.addEventListener("mousemove", onMove);
