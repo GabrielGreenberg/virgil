@@ -33,6 +33,8 @@ import {
   resolvePaneMarker,
 } from "../pane-dom";
 import { measureOmniGap } from "../panel-column";
+import { placeInStack } from "@/hooks/view-prefs-dock";
+import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import { computeColumnSpawnRect } from "../spawn-position";
 import {
   readDockGeometry,
@@ -280,9 +282,68 @@ describe("M2 — measureOmniGap", () => {
     expect(measureOmniGap("left")).toBe(600);
   });
 
-  it("fails open to the pre-438 answer when every pane is hidden", () => {
+  it("answers NOT MEASURED (undefined) when every pane is hidden — not a zero-rect 'full' (task 1034)", () => {
     buildPane({ id: "only-hidden", visible: false, colLeft: 48, bands: [0] });
+    expect(measureOmniGap("left")).toBeUndefined();
+  });
+
+  it("answers NOT MEASURED for a column with no stack frame (a COLLAPSED side) — task 1034", () => {
+    const col = document.createElement("div");
+    col.setAttribute("data-panel-column-side", "left");
+    stubVisible(col, true);
+    document.body.appendChild(col);
+    expect(measureOmniGap("left")).toBeUndefined();
+  });
+
+  it("answers NOT MEASURED when no column is mounted at all", () => {
+    expect(measureOmniGap("right")).toBeUndefined();
+  });
+
+  it("still answers a measured 0 when bands fill the visible frame", () => {
+    const col = document.createElement("div");
+    col.setAttribute("data-panel-column-side", "left");
+    stubVisible(col, true);
+    const frame = document.createElement("div");
+    frame.setAttribute("data-stack-frame", "left");
+    stubVisible(frame, true);
+    stubRect(frame, { left: 0, top: 40, width: 320, height: 300 });
+    const band = document.createElement("div");
+    band.setAttribute("data-dock-slot", "left-0");
+    stubRect(band, { left: 0, top: 40, width: 320, height: 300 });
+    frame.appendChild(band);
+    col.appendChild(frame);
+    document.body.appendChild(col);
     expect(measureOmniGap("left")).toBe(0);
+  });
+});
+
+describe("M2b — a strip-open on a COLLAPSED side keeps the docked band (task 1034)", () => {
+  it("measureOmniGap → placeInStack: both bands docked, side re-expanded", () => {
+    // A collapsed right column renders no `[data-stack-frame]`.
+    const col = document.createElement("div");
+    col.setAttribute("data-panel-column-side", "right");
+    stubVisible(col, true);
+    document.body.appendChild(col);
+
+    const A = "footnotes" as PanelId;
+    const B = "citations" as PanelId;
+    const p = {
+      placements: [],
+      dockStack: { left: [], right: [A] },
+      panelMRU: { left: [], right: [A] },
+      poppedOutPanels: [],
+      poppedOutCards: [],
+      floatPositions: {},
+      panelModes: {},
+      collapsedLeft: false,
+      collapsedRight: true,
+    } as unknown as ViewPrefs;
+
+    // Pre-fix the gap read 0 ("full") and A was evicted before the column
+    // re-expanded with room for both.
+    const next = placeInStack(p, B, "right", { freeSpacePx: measureOmniGap("right") });
+    expect(next.dockStack.right).toEqual([A, B]);
+    expect(next.collapsedRight).toBe(false);
   });
 });
 

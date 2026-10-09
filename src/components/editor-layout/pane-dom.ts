@@ -33,7 +33,9 @@
  *  - `"fail-open"` — a MEASUREMENT reader (`measureOmniGap`, `computeColumnSpawnRect`,
  *    `findRowScroll`). Measuring the wrong column is the pre-438 status quo;
  *    answering `null` turns a working feature off. So when no match is visible,
- *    hand back the first match at all.
+ *    hand back the first match at all. (A reader may still decline to MEASURE
+ *    an unrendered match — `measureOmniGap` answers `undefined`, "not
+ *    measured", rather than a zero-rect reading; task 1034.)
  *  - `"fail-closed"` — an ANCHOR the caller acts THROUGH rather than measures
  *    (`FloatingPanel`'s dock-slot anchor; print isolation's paper page). An
  *    invisible anchor is strictly WORSE than the caller's own fallback: the
