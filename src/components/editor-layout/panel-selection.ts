@@ -15,7 +15,7 @@ import { linkCardSelector } from "@/links/link-dom-contract";
  *
  * Returns null for panels with no selection concept (search, outline,
  * wordcount, cutter, revisions, errors, suggestions, bibliography,
- * omni, blank).
+ * omni).
  */
 export function getPanelSelection(
   panelId: PanelId,

@@ -8273,7 +8273,7 @@ function IconStrip({
       data-strip-side={side}
       className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-20 self-start"
     >
-      {/* View-controls pod: collapse/expand, blank. The split toggle is
+      {/* View-controls pod: collapse/expand. The split toggle is
           retired — panels now stack as bands over omni. */}
       <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
         <button

@@ -557,3 +557,65 @@ describe("pane-dom census, derived — any document-global data-* read is listed
     expect(names[0] in EXEMPT_GLOBAL_MARKERS).toBe(false);
   });
 });
+
+/** True when a folded selector names NOTHING the derived census can read —
+ *  every character it contributes is a HOLE or selector punctuation, so no
+ *  `data-*`, class, id or tag name survives the fold. Such a read is a
+ *  document-global query the leg above passes by construction: it inspects
+ *  only the names a selector folds TO. */
+function isOpaqueSelector(selector: string): boolean {
+  return selector.includes(HOLE) && !/[A-Za-z]/.test(selector);
+}
+
+describe("pane-dom census, derived — no document-global selector folds to nothing (task 1033)", () => {
+  // The leg above stated its own limit in prose: a selector the scanner cannot
+  // fold at all is invisible to it. Task 1033's strip-click scroll
+  // (`document.querySelector(sel.selector)`, a property of a runtime object)
+  // was exactly that read, resolving a per-document card id off document under
+  // multi-pane keep-alive. This leg turns the stated limit into a measured one:
+  // an opaque document-global selector fails unless it is listed WITH A REASON.
+  // The doors themselves take a selector PARAMETER by design, which is the point
+  // of a door — their callers are what the legs above census.
+  const DOORS = new Set([DOOR, "components/editor-layout/layout-scroll.ts"]);
+  const EXEMPT_OPAQUE: Record<string, string> = {};
+
+  function survey() {
+    const hits: string[] = [];
+    for (const file of CODE.keys()) {
+      const r = rel(file);
+      if (DOORS.has(r)) continue;
+      for (const q of SCANNER.documentQueries(file)) {
+        if (isOpaqueSelector(q.selector)) hits.push(`${r} → ${q.hit}`);
+      }
+    }
+    return hits;
+  }
+
+  it("no unlisted production document query has an unfoldable selector", () => {
+    expect(survey().filter((h) => !(h in EXEMPT_OPAQUE))).toEqual([]);
+  });
+
+  it("every opaque exemption is earned and states a reason", () => {
+    const seen = new Set(survey());
+    for (const [k, why] of Object.entries(EXEMPT_OPAQUE)) {
+      expect(seen.has(k), `${k} is stale — delete it`).toBe(true);
+      expect(why.length, `${k} needs a real reason`).toBeGreaterThan(20);
+    }
+  });
+
+  it("sees task 1033's actual spelling (canary)", () => {
+    const [q] = scanSynthetic(
+      "declare const sel: { selector: string };\nexport const el = document.querySelector(sel.selector) as HTMLElement | null;",
+    );
+    expect(isOpaqueSelector(q.selector)).toBe(true);
+    // …a selector that folds to a name is the OTHER leg's business, not this one's.
+    const [named] = scanSynthetic(
+      'export const f = (id: string) => document.querySelector(`[data-note-entry="${id}"]`);',
+    );
+    expect(isOpaqueSelector(named.selector)).toBe(false);
+    // …and a relative query is legal, so it is not a document query at all.
+    expect(
+      scanSynthetic("declare const sel: { selector: string };\nexport const f = (r: Element) => r.querySelector(sel.selector);"),
+    ).toEqual([]);
+  });
+});

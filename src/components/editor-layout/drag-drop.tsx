@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
-import { scrollEntryIntoView } from "./layout-scroll";
+import { scrollPanelEntryAfterMount } from "./layout-scroll";
 import { measureOmniGap } from "./panel-column";
 import { paneStrip } from "./pane-dom";
 import { onLayoutGestureSetChange } from "@/lib/pane-resize";
@@ -63,14 +63,15 @@ export function useStripHandlers(deps: {
       openPanelDocked(id, side, measureOmniGap(side));
 
       // If the panel has a selected card, scroll to it once the panel
-      // mounts. Two rAFs so the list has time to render.
+      // mounts — two frames so the freshly opened band's list has rendered.
+      // Through the visible-pane-first door `openForCard` uses (task 1033):
+      // the selected id is unique only per document, so a hidden keep-alive
+      // pane can hold a card with the same selector.
       const sel = getPanelSelection(id, selections);
       if (!sel) return;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const entry = document.querySelector(sel.selector) as HTMLElement | null;
-          if (entry) scrollEntryIntoView(entry, { behavior: "instant", block: "start" });
-        });
+      scrollPanelEntryAfterMount(sel.selector, {
+        frames: 2,
+        scroll: { behavior: "instant", block: "start" },
       });
     },
     [
@@ -510,9 +511,8 @@ export function StripButton({
   );
 
   // Bail-out AFTER all hooks (react-hooks/rules-of-hooks: hook order must be
-  // unconditional). Never truthy for a real strip panel today — even `blank`
-  // maps to `() => null` — but a future icon-less panel id would otherwise
-  // change hook order and crash.
+  // unconditional). Never truthy for a real strip panel today, but a future
+  // icon-less panel id would otherwise change hook order and crash.
   if (!renderIcon) return null;
 
   return (
