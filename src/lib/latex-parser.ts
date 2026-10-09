@@ -332,6 +332,38 @@ function stripTitleFieldsFromText(text: string): string {
 }
 
 /**
+ * The DECLARATION switches a title field may open with — the run the parser
+ * lifts into `titleField.rawPrefix` and the serializer re-emits verbatim
+ * (task 1022). Only switches belong here: a size, family, series or shape
+ * declaration takes no argument and governs the rest of the group, so it
+ * really is a prefix. A WRAPPER command (`\textbf{…}`, `\textit{…}`,
+ * `\textsf{…}`) takes a brace argument and is NOT a prefix — lifting its name
+ * left its braces behind as stray carriers; it falls to the inline walker,
+ * where the wrapper-mark table (`WRAPPER_MARK_ROWS`, task 808) makes it a real
+ * mark or a carrier preserves it.
+ */
+export const TITLE_PREFIX_SWITCHES = [
+  // size
+  "tiny", "scriptsize", "footnotesize", "small", "normalsize",
+  "large", "Large", "LARGE", "huge", "Huge",
+  // family / series / shape
+  "rmfamily", "sffamily", "ttfamily",
+  "bfseries", "mdseries",
+  "itshape", "slshape", "scshape", "upshape", "normalfont",
+] as const;
+
+const TITLE_PREFIX_RE = new RegExp(
+  `^(?:\\\\(?:${TITLE_PREFIX_SWITCHES.join("|")})(?![a-zA-Z@])\\s*)+`,
+);
+
+/** The leading run of {@link TITLE_PREFIX_SWITCHES} in a title field's raw
+ *  content (with the whitespace after each), or `""`. Word-bounded, so
+ *  `\smallskip` is not `\small` + `skip`. */
+export function matchTitlePrefix(rawContent: string): string {
+  return rawContent.match(TITLE_PREFIX_RE)?.[0] ?? "";
+}
+
+/**
  * Parse the hoistable `\title{…}` / `\author{…}` / `\date{…}` commands from a
  * preamble string into `titleField` nodes, so title commands placed before
  * `\begin{document}` are visible and editable in the editor.
@@ -346,12 +378,8 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
   const nodes: JSONContent[] = [];
   for (const occ of hoistablePreambleTitleFields(preamble)) {
     let rawContent = occ.inner;
-    let rawPrefix = "";
-    const prefixMatch = rawContent.match(/^((?:\\(?:rmfamily|Large|large|huge|Huge|bfseries|itshape|sffamily|normalsize|small|footnotesize|tiny|textbf|textit|textsf)\s*)+)/);
-    if (prefixMatch) {
-      rawPrefix = prefixMatch[1];
-      rawContent = rawContent.slice(rawPrefix.length);
-    }
+    const rawPrefix = matchTitlePrefix(rawContent);
+    rawContent = rawContent.slice(rawPrefix.length);
     let isToday = false;
     if (rawContent.trim() === "\\today") {
       isToday = true;
@@ -1510,12 +1538,8 @@ function parseBody(
         }
         // Strip LaTeX formatting commands from content, store as rawPrefix
         let rawContent = inner.content;
-        let rawPrefix = "";
-        const prefixMatch = rawContent.match(/^((?:\\(?:rmfamily|Large|large|huge|Huge|bfseries|itshape|sffamily|normalsize|small|footnotesize|tiny|textbf|textit|textsf)\s*)+)/);
-        if (prefixMatch) {
-          rawPrefix = prefixMatch[1];
-          rawContent = rawContent.slice(rawPrefix.length);
-        }
+        const rawPrefix = matchTitlePrefix(rawContent);
+        rawContent = rawContent.slice(rawPrefix.length);
         // Replace \today with actual date for display
         let isToday = false;
         if (rawContent.trim() === "\\today") {
