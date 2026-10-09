@@ -45,6 +45,7 @@ import {
   hasCommentTailMark,
   hasVerbatimMark,
   matchBraceGroupAt,
+  matchStrayBraceAt,
   matchCommandToken,
   matchCommandArgumentRun,
   matchControlSymbolAt,
@@ -52,6 +53,7 @@ import {
   matchCommentTailAt,
   matchInlineVerbAt,
   matchLineBreakAt,
+  splitTopLevelParagraphs,
   verbatimMark,
 } from "@/lib/latex-lexer";
 
@@ -450,9 +452,14 @@ function serializeInlineRun(
 
 /**
  * Serialize a footnote/note JSONContent body to a LaTeX-friendly inline string
- * suitable for `\footnote{...}`. Lists become bullet-prefixed runs and
- * paragraphs are joined with single spaces — same conventions the legacy
- * htmlToLatex helper used.
+ * suitable for `\footnote{...}`. Lists become bullet-prefixed runs.
+ *
+ * Top-level PARAGRAPHS are separated by a blank line (task 1018) — TeX's
+ * `\par`, legal inside `\footnote`/`\thanks`, whose argument is `\long`.
+ * Until 1018 they were joined with a single space, so a paragraph break typed
+ * in a footnote card vanished on save, and a multi-paragraph footnote read
+ * from source came back as one paragraph. {@link richLatexToJson} splits on
+ * the same blank lines, so the pair round-trips.
  */
 export function richJsonToLatex(
   json: JSONContent,
@@ -486,7 +493,7 @@ export function richJsonToLatex(
       return (node.content || []).map(walk).join("");
     }
     if (node.type === "doc") {
-      return (node.content || []).map(walk).join(" ");
+      return (node.content || []).map(walk).join("\n\n");
     }
     // `displayMath` is registered as an INLINE atom in the card schema
     // (BORROWED_INLINE_ATOM_NAMES), so it is not a member of the block-atom
@@ -572,6 +579,10 @@ function normalizeBodyWhitespace(s: string): string {
       // A line break that puts a comment at the START of its line is kept:
       // `a\n% whole line` would otherwise become `a % whole line`.
       if (out !== "" && run.includes("\n") && matchCommentTailAt(s, j)) out += run;
+      // A BLANK line is TeX's `\par`, not whitespace (task 1018): collapsing
+      // it to a space merges two paragraphs. It is normalized to exactly one
+      // blank line — the spelling `richLatexToJson` splits on.
+      else if (out !== "" && j < s.length && /\n[ \t\r\f]*\n/.test(run)) out += "\n\n";
       else if (out !== "" && j < s.length) out += " ";
       i = j;
       continue;
@@ -642,10 +653,16 @@ const BLOCK_ATOM_TO_LATEX: Record<
  */
 export function richLatexToJson(latex: string): JSONContent {
   if (!latex || !latex.trim()) return emptyRichContent();
-  const inline = parseInlineLatex(latex);
+  // One paragraph per top-level blank line (task 1018) — a multi-paragraph
+  // `\footnote{One.\n\nTwo.}` is legal LaTeX and opens as two paragraphs.
+  const paragraphs = splitTopLevelParagraphs(latex);
+  if (paragraphs.length === 0) return emptyRichContent();
   return {
     type: "doc",
-    content: [{ type: "paragraph", content: inline.length ? inline : [] }],
+    content: paragraphs.map((p) => {
+      const inline = parseInlineLatex(p);
+      return { type: "paragraph", content: inline.length ? inline : [] };
+    }),
   };
 }
 
@@ -720,6 +737,22 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
           marks: [{ type: "latexCommand" }],
         });
         i = group.end;
+        continue;
+      }
+    }
+
+    // A STRAY brace — one no group claims — is a source byte, carried raw
+    // rather than escaped into printed text (task 1018).
+    {
+      const strayEnd = matchStrayBraceAt(text, i);
+      if (strayEnd !== -1) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: text.slice(i, strayEnd),
+          marks: [{ type: "latexCommand" }],
+        });
+        i = strayEnd;
         continue;
       }
     }

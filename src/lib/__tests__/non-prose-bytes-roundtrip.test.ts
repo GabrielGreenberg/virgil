@@ -461,9 +461,13 @@ describe("M6 — a bare `{…}` group survives a save", () => {
     expectStable("A \\mycmd{[}x{]} tail.\n");
   });
 
-  it("CONTROL — an unbalanced `{` still fails closed to today's escaping", () => {
+  it("CONTROL — an unbalanced `{` is not a group, and is carried raw rather than escaped", () => {
+    // Pre-1018 this pinned the escape (`\{a, b`): a stray brace fell into the
+    // prose buffer and was saved as a PRINTED brace. Task 1018 carries it on
+    // the raw-LaTeX mark instead — still not a group, but byte-preserving.
     const out = twoCycles("The set {a, b is finite.\n");
-    expect(out).toContain("\\{a, b is finite.");
+    expect(out).toContain("The set {a, b is finite.");
+    expect(out).not.toContain("\\{");
   });
 
   it("CONTROL — a command's own argument braces are still its arguments", () => {
