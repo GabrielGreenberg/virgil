@@ -354,9 +354,9 @@ false positive" (shimojima2015semantic memo).
 
 **Empty-state template.** On a clean paper the script prints exactly
 this block, and the summary log carries it verbatim — the
-`## Audit punch-list` section is never omitted, and never paraphrased
-to "none" or "clean", because the empty punch-list is half of the
-`DEEP_INDEX_RESOLVED` condition ([_doctrine.md](_doctrine.md) §2):
+`## Audit punch-list` section is never omitted or shortened to "None",
+because the empty punch-list is half of the
+orchestrator's resolved terminal state ([_doctrine.md](_doctrine.md) §2):
 
 ```markdown
 ## Audit punch-list
