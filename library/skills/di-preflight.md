@@ -68,9 +68,20 @@ The orchestrator reads this, so it is greppable and terminal:
 
 - `PREFLIGHT_OK` — the gates ran; the pass may continue. Print the
   Step 0.5 genre label on the line above it as `genre: <label>`.
-- `PREFLIGHT_BLOCKED` — a gate below says there is nothing here to
-  deep-index. Print the reason and the exact recovery command above the
-  keyword. Today Step 0.0 is the only producer.
+- `PREFLIGHT_BLOCKED reason=<token>` — a gate below says this pass must
+  not proceed. Print the cause and the exact recovery command above the
+  keyword line. `<token>` is one of the STALLED reason tokens in
+  [_doctrine.md](_doctrine.md) §0 — the orchestrator copies it verbatim
+  into its stalled banner's `Reason:` line. Two producers, two tokens:
+  - Step 0.0 (empty body) → `reason=extraction-empty-body`
+  - Step 0.2 (metadata lock) → `reason=metadata-lock`
+
+This skill **never prints a `DEEP_INDEX_*` keyword** and never appends
+the `deep-index-blocked` notification — both belong to the
+orchestrator, which acts on this verdict once
+([deep-index.md](deep-index.md) §Step 0). A subskill that printed the
+orchestrator's terminal keyword would leave its own verdict line
+missing, and the stall would be reported twice or not at all.
 
 A non-`none` metadata mismatch, an unrecognized genre, a Caesar step
 skipped for want of its conditions — none of those block. They are flags,
@@ -110,7 +121,8 @@ density and prints either "PDF already has text layer; no OCR needed." or
   the script telling you which question it *can't* answer, not a failure
   of this gate.
 
-Then emit `PREFLIGHT_BLOCKED` and stop. Do not run 0.1–0.6 — they all
+Then emit `PREFLIGHT_BLOCKED reason=extraction-empty-body` and stop.
+Do not run 0.1–0.6 — they all
 operate on a body that isn't there.
 
 **Never pass `--force-install`.** `ocrmypdf` + `tesseract` are *required*
@@ -181,9 +193,11 @@ enforces it.** If the catalog row carries `metadataLock: true`
 writes nothing and returns
 `{"blocked": true, "reason": "metadataLock: true on catalog row; pass
 blocked"}` — from BOTH the `--dry-run` and the commit invocation, before
-it reads the cover page. That is not a preflight failure to route: stop
-the pass, emit `DEEP_INDEX_STALLED` with reason token `metadata-lock`,
-and append the `deep-index-blocked` notification per §4. Do not
+it reads the cover page. Emit `PREFLIGHT_BLOCKED reason=metadata-lock`
+(print the script's `reason` string above it) and stop — do not run
+0.3–0.6. The orchestrator turns that verdict into the stalled banner
+and the `deep-index-blocked` notification ([_doctrine.md](_doctrine.md)
+§4); this skill prints neither. Do not
 hand-apply the twin in [di-clean-prose.md](di-clean-prose.md) §3a
 instead — the lock binds the operator as well as the script.
 

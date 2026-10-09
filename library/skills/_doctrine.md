@@ -74,7 +74,8 @@ explicitly pinned the metadata: a locked row BLOCKS the metadata
 rewrite. Do not touch `master.bib` or the catalog `title`. The lock
 stalls the pass only where the mismatch policy would actually rewrite
 (`apply_metadata_mismatch_policy.py` exits 2, `"blocked": true` —
-[di-preflight.md](di-preflight.md) Step 0.2); then emit
+[di-preflight.md](di-preflight.md) Step 0.2); di-preflight reports
+`PREFLIGHT_BLOCKED reason=metadata-lock`, and the orchestrator emits
 `DEEP_INDEX_STALLED` with a notification of
 `kind: "deep-index-blocked"` and reason
 `metadataLock: true on catalog row; pass blocked`. This is the
