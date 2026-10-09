@@ -46,6 +46,7 @@ vi.mock("@/components/drop-mode/controller", () => ({
   beginDropSession: vi.fn(),
   commitDropSession: vi.fn(async () => undefined),
   cancelDropSession: vi.fn(),
+  onDropSessionEnd: () => () => undefined,
 }));
 
 // The anchor resolve is O(1) through the `data-uuid` decoration in production;

@@ -685,6 +685,7 @@ export async function commitDropSession(): Promise<void> {
   // call harmlessly for the cancel legs below.
   endContentGesture();
   const s = session;
+  const serial = sessionSerial;
   // The ctx this gesture STARTED in — never a re-read of "the active pane",
   // which can have changed under a long drag (a background pane mounting, the
   // user tabbing away) and would apply the drop against a different document.
@@ -732,6 +733,13 @@ export async function commitDropSession(): Promise<void> {
       // suppression skips the QUESTION and never the spec.
       suppressId: decision.suppressId,
     });
+    // The await is an async gap the session may not survive (task 1025): a
+    // pane unmount disposes its DropCtx and cancels the session while the
+    // dialog is open. A continuation acts only while ITS session is alive —
+    // by serial, since `session` is re-spread per placement update — so a
+    // late `true` never applies against a torn-down ctx, and a late `false`
+    // never ends a session that is not its own.
+    if (!session || sessionSerial !== serial) return;
     if (ok) {
       finishApply(s.spec, placement, s.cardKey, ctx);
     } else {
