@@ -9,6 +9,7 @@ import {
 } from "@/hooks/useViewPrefs";
 import { BandDivider } from "../panel-primitives";
 import { paneColumn } from "./pane-dom";
+import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 
 /** One docked band in a column's stack: a panel id plus an optional
  *  resized height (px). Absent height ⇒ content-sized (flex auto). */
@@ -19,7 +20,16 @@ export type BandSpec = { id: PanelId; height?: number };
  * the "omni gap" a newly-opened panel can grow into before it has to
  * displace the least-recently-used band. One-shot synchronous read; no
  * observers. Returns the full sticky-frame height when no bands are
- * docked. 0 when the side column isn't mounted.
+ * docked.
+ *
+ * `undefined` means NOT MEASURED, and is a different answer from `0` ("measured,
+ * no room") — task 1034. There is nothing to measure when there is no column,
+ * no stack frame (a COLLAPSED column renders none — yet its `dockStack` is
+ * intact and re-expands on the open), or a frame that isn't rendered (every
+ * pane hidden, so every rect is zero). Answering `0` for those read as "full"
+ * to `placeInStack`, which evicted the LRU band before the column even
+ * re-expanded. `undefined` is the openers' own spelling of "no measurement":
+ * cap only, no fit check.
  *
  * Agents E and S call this at open-time and pass the result as
  * `freeSpacePx` to the viewPrefs openers so the fit check can decide
@@ -30,14 +40,16 @@ export type BandSpec = { id: PanelId; height?: number };
  * keep-alive is a `display:none` doc pane whenever the Library Reader is the
  * visible one — every rect zero, so BOTH branches below return 0, so
  * `placeInStack`'s `fits = freeSpacePx >= MIN_BAND_PX` is false for every
- * Reader strip-open and the second panel you open evicts the first.
+ * Reader strip-open and the second panel you open evicts the first. (When
+ * EVERY pane is hidden the fail-open column is unrendered too — now
+ * `undefined`, not a zero-rect "full".)
  */
-export function measureOmniGap(side: Side): number {
-  if (typeof document === "undefined") return 0;
+export function measureOmniGap(side: Side): number | undefined {
+  if (typeof document === "undefined") return undefined;
   const col = paneColumn(side);
-  if (!col) return 0;
+  if (!col) return undefined;
   const frame = col.querySelector<HTMLElement>(`[${DATA_STACK_FRAME}]`);
-  if (!frame) return 0;
+  if (!frame || !isPaneElementVisible(frame)) return undefined;
   const frameRect = frame.getBoundingClientRect();
   const bands = frame.querySelectorAll<HTMLElement>("[data-dock-slot]");
   if (bands.length === 0) return frameRect.height;
