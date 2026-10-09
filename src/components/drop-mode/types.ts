@@ -547,8 +547,16 @@ export interface DropSpec {
    * UUIDs in the main document — re-anchoring them to a paragraph
    * inside another card's body has no meaning, so they declare
    * `"main-only"`. Content items and inline atoms declare `"any-editor"`.
+   *
+   * `"source-editor"` (task 1026): a MOVE whose `planDrop` resolves its source
+   * inside `placement.editor` (block-move, the text-object spec) can only ever
+   * commit in the document the payload already lives in. It declares that
+   * here, and the hit-test refuses every editor but `sourceRangeFor`'s — so
+   * the hover cannot paint a bar the commit will always refuse. Such a spec
+   * MUST state `sourceRangeFor`; "any-editor" is reserved for genuinely
+   * cross-editor moves (`target-scope-census.test.ts`).
    */
-  targetScope: "main-only" | "any-editor";
+  targetScope: "main-only" | "any-editor" | "source-editor";
   /**
    * Decide what to do on release. Runs at mouseup with the final
    * placement. Returning `no-op` cancels silently; `apply` runs

@@ -103,6 +103,14 @@ export function hitTest(
   // `view.editable` exactly as before.
   if (!surfaceEditableNow(editor)) return null;
   if (spec.targetScope === "main-only" && editor !== mainEditor) return null;
+  // TASK 1026 — a spec that resolves its source in the TARGET document can
+  // only ever land where the source already lives. Without this rung the bar
+  // painted over a card body / a sibling pane and the commit found no source
+  // there (silent no-op). The session's resolved source range names that
+  // document; no range means nothing to move, so nowhere is a target.
+  if (spec.targetScope === "source-editor" && editor !== sourceRange?.editor) {
+    return null;
+  }
   if (targetIsSourceCardBody(editor, sourceCardKey)) return null;
 
   let posResult: { pos: number; inside: number } | null;
