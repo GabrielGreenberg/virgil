@@ -882,7 +882,9 @@ export interface UnanchoredCardCue {
 
 /** Small uppercase overline naming the card type ("Citation", "Footnote", …).
  *  Used by `CardKindHeader` (unified card chrome) as the single-kind case.
- *  Matches the style first introduced on Comment cards. */
+ *  Wears the ONE `.card-meta-label` class (task 1029) — the same class a
+ *  float's plain-title span and the `CardKindDropdown` trigger wear, so the
+ *  label keeps its gray docked, popped out, or morphable. */
 export function CardTypeLabel({
   kind,
   labelOverride,
@@ -894,7 +896,7 @@ export function CardTypeLabel({
 }) {
   return (
     <span
-      className={`text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium${className ? ` ${className}` : ""}`}
+      className={`card-meta-label${className ? ` ${className}` : ""}`}
     >
       {labelOverride ?? cardTypeLabel(kind)}
     </span>
@@ -995,7 +997,7 @@ function CardKindDropdown({
       align="start"
       triggerHint="Change card type"
       triggerAriaLabel="Change card type"
-      triggerClassName="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
+      triggerClassName="card-meta-label inline-flex items-center gap-0.5 hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
       wrapperClassName="relative inline-flex items-center"
       menuClassName="min-w-[120px]"
       trigger={() => (

@@ -742,8 +742,17 @@ anything at 10.5 / 11 / 11.5px is a stray:
 
 | Tier | Spec | Use | Token |
 |---|---|---|---|
-| **META** | 10px / 500 / uppercase / tracking-wide / `var(--muted)` | row labels ("Type", "Code"), key rows, chips, CODE text | `.card-meta-label` / `CardMetaLabel` |
+| **META** | 10px / 500 / uppercase / 0.05em (`tracking-wider`) / `var(--muted)` | row labels ("Type", "Code"), key rows, chips, CODE text, **the card-header kind label** | `.card-meta-label` / `CardMetaLabel` / `CardTypeLabel` |
 | **CONTENT** | 12px | entry rows, inputs, previews | `.card-content-row` (or the panel body style) |
+
+**The kind label has one class** (task 1029). The docked header's
+`CardTypeLabel`, the `CardKindDropdown` morph trigger, a popped float's
+plain-title span (`FloatChrome`) and the suggestion-field section labels all
+wear `.card-meta-label` — never a hand-typed `text-[10px] … uppercase
+tracking-wider` (that twin is how a popped card's label drifted to
+`--ink-muted`, a different gray from its docked self). The class lives in
+`@layer components`, so a call site composes `truncate` or a `hover:text-*`
+over it with plain utilities. Census: `card-ui-consistency.test.tsx`.
 
 Mono inside cards always routes through the override-first stack
 `var(--font-mono-override, var(--font-mono)), monospace` — the `.card-mono`

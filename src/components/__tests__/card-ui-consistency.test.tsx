@@ -43,6 +43,7 @@ import { render, cleanup } from "@testing-library/react";
 import {
   PanelCard,
   CardMetaLabel,
+  CardTypeLabel,
   CARD_THEMES,
   PANEL,
   cardTitleStyle,
@@ -163,6 +164,41 @@ describe("T2: in-card tier primitives", () => {
     expect(style.color).toBe(theme.titleColor);
     // Unthemed fallback keeps the par-title color var.
     expect(cardTitleStyle().color).toBe("var(--par-title-color, #c45a5a)");
+  });
+});
+
+describe("T2: the card kind label is ONE class (task 1029)", () => {
+  it("CardTypeLabel renders the .card-meta-label token", () => {
+    const { container } = render(<CardTypeLabel kind="footnote" />);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.classList.contains("card-meta-label")).toBe(true);
+  });
+
+  // CENSUS: the META/kind-label recipe is spelled once, in globals.css. A
+  // hand-typed `text-[10px] … uppercase tracking-wider` twin is how the
+  // popped float's label drifted to --ink-muted (a different gray from the
+  // docked card). These are the card-chrome files that render a kind label.
+  const SITES = [
+    "../panel-primitives.tsx",
+    "../../floats/FloatChrome.tsx",
+    "../../panels/_shared/suggestion-fields.tsx",
+  ];
+  for (const rel of SITES) {
+    it(`${rel.split("/").pop()} spells no hand-rolled 10px uppercase label`, () => {
+      const src = readFileSync(resolve(__dirname, rel), "utf8");
+      const offenders = src
+        .split("\n")
+        .filter((l) => /text-\[10px\]/.test(l) && /\buppercase\b/.test(l));
+      expect(offenders, "use the .card-meta-label class").toEqual([]);
+    });
+  }
+
+  it(".card-meta-label sits in @layer components so call-site utilities compose", () => {
+    // Unlayered, the class would beat every Tailwind utility (they live in
+    // @layer utilities) — the CardKindDropdown trigger's hover:text-ink-body
+    // and the suggestion toggles' hover ink would silently die.
+    const css = readFileSync(resolve(__dirname, "../../app/globals.css"), "utf8");
+    expect(css).toMatch(/@layer components\s*\{\s*\.card-meta-label\s*\{/);
   });
 });
 

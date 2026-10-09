@@ -2355,13 +2355,24 @@ textarea {
  *             body text, whose default is the same 12px).
  * Anything at 10.5 / 11 / 11.5px is a stray — use one of these.
  * React-side primitive: CardMetaLabel (panel-primitives); mono-in-card uses
- * the .card-mono class directly. */
-.card-meta-label {
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em; /* tracking-wide */
-  color: var(--muted);
+ * the .card-mono class directly.
+ *
+ * `.card-meta-label` is ALSO the card-header KIND label (task 1029): the
+ * docked `CardTypeLabel`, the `CardKindDropdown` morph trigger, a float's
+ * plain-title span (FloatChrome — so popping a card out keeps its label's
+ * gray) and the suggestion-field section labels all wear this ONE class
+ * instead of hand-typing `text-[10px] … uppercase tracking-wider`. It sits in
+ * `@layer components` so a call site's utilities (`truncate`, a
+ * `hover:text-*`) compose over it by layer — an unlayered class would beat
+ * every Tailwind utility and silently kill a trigger's hover ink. */
+@layer components {
+  .card-meta-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em; /* Tailwind v4 tracking-wider */
+    color: var(--muted);
+  }
 }
 .card-content-row {
   font-size: 12px;
