@@ -7,11 +7,16 @@
  * (`renderGhost` / `liftSourceRect` in `text-object-registry.ts`), and the
  * `text-range-move` drop spec all resolve a marked range one way — no copies.
  *
- * `stripLinkedAnchorMarks` — remove every `linkedAnchor` mark from a slice's
- * text, mirroring `LinkedAnchorGuard.transformPasted`
- * (src/lib/tiptap/linked-anchor.ts): a moved (or pasted) run must not carry
- * the transient — or any — anchor identity. AnchorIds mint exactly once at
- * hydration; copies do not propagate identity.
+ * `stripLinkedAnchorMarks` — remove `linkedAnchor` marks from a slice's text,
+ * mirroring `LinkedAnchorGuard.transformPasted`
+ * (src/lib/tiptap/linked-anchor.ts): a PASTED run must not carry any anchor
+ * identity (a paste is a COPY — a second live id would collide). AnchorIds mint
+ * exactly once at hydration; copies do not propagate identity.
+ *
+ * `moveSliceOf` — the payload of a MOVE, which is the opposite case (task
+ * 1023): "a move conserves identity; a split mints it" (task 320). Every REAL
+ * anchor the range wholly contains travels with its words; only the gesture's
+ * own transient handle, and any anchor the range only partly holds, are shed.
  *
  * `rangeSliceToBlocks` — the range→block-nodes form shared by the float
  * (`sliceAsDoc`) and the `text-range-move` between-paragraphs drop (L3f-3):
@@ -148,17 +153,24 @@ export function readLinkedAnchorText(
 }
 
 /**
- * Return a copy of `slice` with every `linkedAnchor` mark removed from its
- * text nodes (recursively, preserving open depths + all other marks). The
- * rebuild mirrors `LinkedAnchorGuard.transformPasted` exactly so a moved run
- * and a pasted run shed the anchor identity identically.
+ * Return a copy of `slice` with its `linkedAnchor` marks removed from its text
+ * nodes (recursively, preserving open depths + all other marks). The rebuild
+ * mirrors `LinkedAnchorGuard.transformPasted` exactly. With no `keep`, EVERY
+ * anchor is shed — the paste / copy semantics. `keep` names the anchor ids
+ * that survive; `moveSliceOf` is the one caller that passes it.
  */
-export function stripLinkedAnchorMarks(slice: Slice): Slice {
+export function stripLinkedAnchorMarks(
+  slice: Slice,
+  keep?: ReadonlySet<string>,
+): Slice {
+  const shed = (m: { type: { name: string }; attrs: Record<string, unknown> }) =>
+    m.type.name === "linkedAnchor" &&
+    !(keep && keep.has(m.attrs.anchorId as string));
   const rebuild = (frag: Fragment): Fragment => {
     const out: PMNode[] = [];
     frag.forEach((n) => {
       if (n.isText) {
-        const filtered = n.marks.filter((m) => m.type.name !== "linkedAnchor");
+        const filtered = n.marks.filter((m) => !shed(m));
         out.push(filtered.length === n.marks.length ? n : n.mark(filtered));
       } else {
         out.push(n.copy(rebuild(n.content)));
@@ -167,6 +179,64 @@ export function stripLinkedAnchorMarks(slice: Slice): Slice {
     return Fragment.fromArray(out);
   };
   return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
+}
+
+/**
+ * The payload of MOVING `[from, to)` within `state`'s document (task 1023).
+ *
+ * A move is not a paste. A paste is a COPY: the source keeps its anchor, so a
+ * second live id would collide, and `stripLinkedAnchorMarks` sheds them all. A
+ * move DELETES the source — so an anchor stripped from the payload exists
+ * nowhere afterwards, `LinkedAnchorGuard` reports it vanished, and every card
+ * hook PERMANENTLY unlinks its note / highlight / cut / revision from the very
+ * words the user moved. This is task 320's "a move conserves identity; a split
+ * mints it", stated for mark anchors:
+ *
+ *  • a REAL anchor whose whole extent lies inside the range TRAVELS — the move
+ *    takes all of it, so its id stays unique and the card follows its words;
+ *  • a TRANSIENT anchor (`kind: "transient"`, the plain grab's own cardless
+ *    handle) is shed — it is gesture scaffolding, not an annotation;
+ *  • a real anchor the range only PARTLY holds is shed from the payload and
+ *    keeps its id on the residue left at the source. Carrying it would make one
+ *    id answer to two separated runs. (`hydrateSelectionToTextObject` refuses a
+ *    selection that partly overlaps an anchor, and the range a grab moves is the
+ *    hydrated anchor's own bounding range — but that range is BOUNDING, so a
+ *    discontinuous anchor's gap can hold the edge of a third one. Asked, not
+ *    assumed.)
+ *
+ * `travelling` is the set of real ids the payload carries. A caller moving the
+ * slice into a DIFFERENT document must ask it: an anchor id means nothing
+ * there, so such a move can neither carry the id nor drop it without orphaning
+ * the card.
+ *
+ * Cost: O(range) to collect the ids, plus one `resolveLinkedAnchorRange` per
+ * distinct real id (O(that anchor's range) through the DocStructure snapshot).
+ */
+export function moveSliceOf(
+  state: EditorState,
+  from: number,
+  to: number,
+): { slice: Slice; travelling: ReadonlySet<string> } {
+  const real = new Set<string>();
+  state.doc.nodesBetween(from, to, (n) => {
+    if (!n.isText) return true;
+    for (const m of n.marks) {
+      if (m.type.name !== "linkedAnchor") continue;
+      if (m.attrs.kind === "transient") continue;
+      const id = m.attrs.anchorId;
+      if (typeof id === "string" && id) real.add(id);
+    }
+    return false;
+  });
+  const travelling = new Set<string>();
+  for (const id of real) {
+    const extent = resolveLinkedAnchorRange(state, id);
+    if (extent && extent.from >= from && extent.to <= to) travelling.add(id);
+  }
+  return {
+    slice: stripLinkedAnchorMarks(state.doc.slice(from, to), travelling),
+    travelling,
+  };
 }
 
 /**
@@ -181,9 +251,10 @@ export function stripLinkedAnchorMarks(slice: Slice): Slice {
  * block; a slice that already spans whole blocks comes through as block
  * children → keep them as siblings; an empty slice → one empty paragraph.
  * New paragraphs carry default attrs (uuid null, minted lazily like any
- * freshly-created block). Shedding the `linkedAnchor` handle is the caller's
- * concern — `stripLinkedAnchorMarks` the slice first when the moved run must
- * not carry it (the float keeps it; the move strips it).
+ * freshly-created block). Which anchors the blocks carry is the caller's
+ * concern — the float keeps them all; the move builds its slice through
+ * `moveSliceOf`, which sheds the transient handle and keeps every real anchor
+ * it wholly holds.
  */
 export function rangeSliceToBlocks(slice: Slice, schema: Schema): PMNode[] {
   const children: PMNode[] = [];

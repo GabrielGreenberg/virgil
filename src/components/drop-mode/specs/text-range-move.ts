@@ -22,11 +22,21 @@
  * fitted individually (N blocks into a list / example gap → N items, matching
  * every other wrap site).
  *
- * The moved slice has every `linkedAnchor` mark STRIPPED
- * (`stripLinkedAnchorMarks`, mirroring `LinkedAnchorGuard.transformPasted`):
- * the relocated text carries no anchor identity — no transient handle litter,
- * consistent with paste semantics. The source-side transient mark is removed
- * separately by the grab handle's `removeTransientAnchor` after commit.
+ * ANCHORS (task 1023) — a move is NOT a paste. The payload comes from
+ * `moveSliceOf`: the grab's TRANSIENT handle is shed (no handle litter), but
+ * every REAL `linkedAnchor` the range wholly holds TRAVELS with its words. The
+ * grab REUSES an existing anchor's id when one covers the selection, so
+ * dragging exactly the words of a note moves the note's own mark — and this
+ * used to strip it (paste semantics) while the commit deleted the source, so
+ * the id vanished, `LinkedAnchorGuard` reported it orphaned and the note was
+ * permanently unlinked from the words the user moved. Same-editor, the mark
+ * travels and nothing orphans. CROSS-editor (a main-doc run released in a card
+ * body) a payload carrying a real anchor is REFUSED: an anchor id means nothing
+ * in another document, so the move could neither keep it nor drop it without
+ * orphaning the card — moving annotated text out of the paper is a
+ * capture/schema-symmetry question, not something a drop may decide silently.
+ * The source-side transient mark is removed separately by the grab handle's
+ * `removeTransientAnchor` after commit (guarded — it never removes a real one).
  *
  * IDENTITY (task 320) — "a move conserves identity; a split mints it."
  * The cut is TEXT-bounded (`findLinkedAnchorRange` returns text positions), so
@@ -72,7 +82,7 @@ import {
 import {
   resolveLinkedAnchorRange,
   rangeSliceToBlocks,
-  stripLinkedAnchorMarks,
+  moveSliceOf,
 } from "@/lib/linked-anchor-range";
 import {
   collectAtomIds,
@@ -182,10 +192,12 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     const { editor: targetEditor, pos: insertPos } = placement;
     const { editor: sourceEditor, from, to } = src;
 
-    // The payload: the marked slice with every linkedAnchor mark stripped, so
-    // the relocated text sheds the transient (or any) anchor identity.
-    const raw = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
+    // The payload: the transient handle shed, every real anchor the range
+    // wholly holds kept (task 1023 — see ANCHORS above). Cross-editor, a
+    // travelling anchor refuses the move.
+    const { slice: raw, travelling } = moveSliceOf(sourceEditor.state, from, to);
     if (raw.size === 0) return null;
+    if (targetEditor !== sourceEditor && travelling.size > 0) return null;
 
     // ADOPT before the branch, not inside it (task 328). The two obligations
     // are separate: the `container-fit-exempt:` markers below are true about
@@ -321,8 +333,9 @@ function selectInserted(
  * IDENTITY note at the top of this file. The difference from a node move: the
  * payload is the range's slice converted to blocks (`rangeSliceToBlocks` — an
  * inline run → one paragraph, a multi-block range → its blocks), not a whole
- * node, with the `linkedAnchor` mark stripped so the run sheds the transient
- * handle (consistent with the inline move + paste).
+ * node, built through `moveSliceOf` so the transient handle sheds and every
+ * real anchor the range wholly holds travels (the same payload as the inline
+ * move).
  *
  * Returns a PLAN, not a dispatch (task 321): every branch that can refuse
  * returns `null`, and `planDrop` hands that straight to `classifyDrop` as a
@@ -337,8 +350,11 @@ function planRangeBetweenBlocks(
   const targetEditor = placement.editor;
   const insertPos = placement.insertPos;
 
-  const slice = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
+  // Real anchors travel; the transient handle sheds; cross-editor, a
+  // travelling anchor refuses (task 1023 — see ANCHORS at the top).
+  const { slice, travelling } = moveSliceOf(sourceEditor.state, from, to);
   if (slice.size === 0) return null;
+  if (targetEditor !== sourceEditor && travelling.size > 0) return null;
   const schema = sourceEditor.state.schema;
   const blocks = rangeSliceToBlocks(slice, schema);
   if (blocks.length === 0) return null;
