@@ -379,11 +379,19 @@ const VIEW_MENU_PLACEMENTS: FloatingMenuPlacement[] = [
 export function BlockTypeDropdown({
   editor,
   documentClass = null,
+  disabled = false,
+  disabledReason = null,
 }: {
   editor: Editor;
   /** The document's `\documentclass` (EditorPane's `documentClassName`), or
    *  null when unknown — decides which heading rows are greyed (task 752). */
   documentClass?: string | null;
+  /** Task 1017: the host surface's `canEdit` verdict, inverted. A read-only
+   *  surface (partner holds the pen / Library Reader) greys the trigger with
+   *  its reason instead of opening rows that `pickBlockType` then drops. */
+  disabled?: boolean;
+  /** WHY the trigger is grey — task 968's reason vocabulary. */
+  disabledReason?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -431,16 +439,26 @@ export function BlockTypeDropdown({
     <div className="relative">
       <button
         ref={setTrigger}
+        type="button"
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        {...iconHint({ label: "Block type" })}
+        {...iconHint({
+          label: "Block type",
+          hint: disabled && disabledReason ? `Block type — ${disabledReason}` : undefined,
+        })}
+        aria-description={disabled && disabledReason ? disabledReason : undefined}
         {...menuTriggerAria("menu", open)}
         data-button-exempt="glyph + caret menu trigger, not a labelled action"
-        className="px-1.5 py-0.5 rounded text-sm text-[var(--muted)] hover-on-light hover:text-ink-body flex items-center gap-1 focus-ring"
+        className={`px-1.5 py-0.5 rounded text-sm flex items-center gap-1 focus-ring ${
+          disabled
+            ? "text-ink-faint cursor-not-allowed"
+            : "text-[var(--muted)] hover-on-light hover:text-ink-body"
+        }`}
       >
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
       </button>
-      {open && (
+      {open && !disabled && (
         <MenuProvider
           id="block-type"
           layout="list"

@@ -48,9 +48,11 @@ import {
   extractInlineFromSlice,
   VIRGIL_ACTION_REGISTRY,
   verdictOf,
+  readOnlyRefusal,
   type ActionContext,
   type ActionId,
 } from "@/lib/actions/action-registry";
+import { refusalPhrase } from "@/lib/actions/refusal";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
@@ -647,6 +649,7 @@ export function ActionsMenuPanel({
             col={0}
             editor={editor}
             documentClass={documentClass}
+            disabled={!canEdit}
           />
           <FmtBtn
             id="bullet-list"
@@ -1083,17 +1086,25 @@ function BlockTypeGridCell({
   col,
   editor,
   documentClass,
+  disabled,
 }: {
   row: number;
   col: number;
   editor: Editor;
   documentClass: string | null;
+  /** Task 1017: the panel's `!canEdit` — the SAME verdict every sibling cell
+   *  greys on, so ¶ cannot offer rows `pickBlockType` would silently drop. */
+  disabled: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  // The only way this cell greys is the surface being read-only, so its reason
+  // is the read-only refusal (pen vs host) — no registry row to ask.
+  const why = disabled ? refusalPhrase(readOnlyRefusal(editor)) : null;
   const { active: roving, getItemProps } = useMenuItem({
     id: "block-type",
     region: "grid",
     coords: { row, col },
+    disabled,
     // Keyboard activation: click the BlockTypeDropdown's own trigger button.
     run: () => {
       wrapRef.current?.querySelector("button")?.click();
@@ -1115,10 +1126,15 @@ function BlockTypeGridCell({
       style={{
         height: FORMATTING_ROW_H,
         borderRadius: "var(--radius-sm)",
-        ...menuRowRovingStyle(roving, false),
+        ...menuRowRovingStyle(roving, disabled),
       }}
     >
-      <BlockTypeDropdown editor={editor} documentClass={documentClass} />
+      <BlockTypeDropdown
+        editor={editor}
+        documentClass={documentClass}
+        disabled={disabled}
+        disabledReason={why}
+      />
     </div>
   );
 }
