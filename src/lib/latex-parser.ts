@@ -40,6 +40,8 @@ import {
 import {
   extractBraced,
   extractBracketed,
+  findGroupClose,
+  groupCrossesStructure,
   findMatchingEnv,
   findMatchingGloss,
   findMatchingXe,
@@ -56,6 +58,7 @@ import {
   findUnescaped,
   matchBeginEnvAt,
   matchBraceGroupAt,
+  matchStrayBraceAt,
   matchCommandToken,
   matchCommandArgumentRun,
   matchSectioningCommandAt,
@@ -523,6 +526,22 @@ export function parseInlineContent(
           marks: [{ type: "latexCommand" }],
         });
         i = group.end;
+        continue;
+      }
+    }
+
+    // A STRAY brace — one no group claims — is a source byte, carried raw
+    // rather than escaped into printed text (task 1018).
+    {
+      const strayEnd = matchStrayBraceAt(text, i);
+      if (strayEnd !== -1) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: text.slice(i, strayEnd),
+          marks: [{ type: "latexCommand" }],
+        });
+        i = strayEnd;
         continue;
       }
     }
@@ -2613,28 +2632,51 @@ function readParagraph(ctx: ParseContext): string {
   // ("Paragraph ended before \footnote was complete"), and no `\vfid` is
   // emitted, so it has stopped being a footnote at all.
   //
-  // Only the COMMAND-boundary test is gated. The blank-line and comment breaks
-  // stay unconditional, and that is what bounds the damage of an unbalanced
-  // `{` in hand-written source: depth is re-zeroed at every paragraph, so a
-  // stray brace can cost at most the rest of its own paragraph's boundary
-  // splits, never the rest of the file.
-  let braceDepth = 0;
+  // The BLANK-LINE break is gated too, but not on depth alone (task 1018). A
+  // blank line is TeX's `\par`, and `\par` is legal inside a `\long` argument
+  // — LaTeX2e's `\@footnotetext` is `\long`, as are `\thanks`, `\parbox`,
+  // `\textbf` and a bare `{\itshape …}` group — so a multi-paragraph footnote
+  // is ordinary source, not an error (the pre-1018 comment here claimed LaTeX
+  // rejects it; it does not). Breaking there tore `\footnote{One.\n\nTwo.}` in
+  // two: the footnote was demoted to a grey command and its orphan braces were
+  // saved as printed `\{`/`\}`.
+  //
+  // So at a blank line inside an open group we ASK whether the innermost group
+  // actually closes — the one comment-aware group scanner (`findGroupClose`,
+  // task 777), bounded by `groupCrossesStructure` (no group reaches across a
+  // sectioning command or the document's end). If it closes, the blank line is
+  // inside an argument and the paragraph continues. If it does not — a stray
+  // `{` in hand-written source — the break stands, and that is what still
+  // bounds the damage: depth is re-zeroed at every paragraph, so a stray brace
+  // costs at most its own paragraph's boundary splits, never the rest of the
+  // file.
+  //
+  // `openBraces` holds the positions of the open groups, innermost last. A
+  // brace inside a `%` comment is not counted — the same reading
+  // `findGroupClose` makes, so the two cannot disagree about which `{` is open.
+  const openBraces: number[] = [];
+  let inCommentTail = false;
   // Are we inside a line-start `%` comment? Maintained forward as we scan (the
   // `startsLineComment` SSOT answers the OPENING question; a comment always
   // ends at its newline), and read only by the block-boundary test below.
   let inLineComment = false;
   while (ctx.pos < ctx.src.length) {
-    if (ctx.src[ctx.pos] === "\n") inLineComment = false;
-    else if (
-      !inLineComment &&
-      ctx.src[ctx.pos] === "%" &&
-      startsLineComment(ctx.src, ctx.pos)
-    ) {
-      inLineComment = true;
+    if (ctx.src[ctx.pos] === "\n") {
+      inLineComment = false;
+      inCommentTail = false;
+    } else if (ctx.src[ctx.pos] === "%" && !inCommentTail && matchCommentTailAt(ctx.src, ctx.pos)) {
+      inCommentTail = true;
+      if (!inLineComment && startsLineComment(ctx.src, ctx.pos)) inLineComment = true;
     }
 
-    // Double newline ends paragraph
-    if (ctx.src[ctx.pos] === "\n" && ctx.pos + 1 < ctx.src.length && ctx.src[ctx.pos + 1] === "\n") {
+    // Double newline ends paragraph — unless it sits inside a group that
+    // closes (task 1018, above).
+    if (
+      ctx.src[ctx.pos] === "\n" &&
+      ctx.pos + 1 < ctx.src.length &&
+      ctx.src[ctx.pos + 1] === "\n" &&
+      !blankLineIsInsideGroup(ctx.src, openBraces)
+    ) {
       ctx.pos += 2;
       break;
     }
@@ -2660,7 +2702,7 @@ function readParagraph(ctx: ParseContext): string {
     if (
       ctx.src[ctx.pos] === "\\" &&
       result.trim() &&
-      braceDepth === 0 &&
+      openBraces.length === 0 &&
       // …and is not sitting inside a COMMENT. A block-level command LaTeX
       // never reads is not a block boundary — the same rule task 341 drew for
       // a command inside a braced argument, one construct over. Without it,
@@ -2715,15 +2757,27 @@ function readParagraph(ctx: ParseContext): string {
     }
 
     const ch = ctx.src[ctx.pos];
-    if ((ch === "{" || ch === "}") && !isEscaped(ctx.src, ctx.pos)) {
-      // Clamp at 0: a stray `}` must not drive the depth negative and make the
-      // next real `{` look balanced.
-      braceDepth = ch === "{" ? braceDepth + 1 : Math.max(0, braceDepth - 1);
+    if ((ch === "{" || ch === "}") && !inCommentTail && !isEscaped(ctx.src, ctx.pos)) {
+      // A stray `}` pops nothing: it must not drive the depth negative and make
+      // the next real `{` look balanced.
+      if (ch === "{") openBraces.push(ctx.pos);
+      else openBraces.pop();
     }
     result += ch;
     ctx.pos++;
   }
   return result.trim();
+}
+
+/** Is the blank line at the paragraph reader's cursor INSIDE a braced group
+ *  that genuinely closes (task 1018)? `openBraces` are the positions of the
+ *  groups open there, innermost last. */
+function blankLineIsInsideGroup(src: string, openBraces: readonly number[]): boolean {
+  if (openBraces.length === 0) return false;
+  const open = openBraces[openBraces.length - 1];
+  const close = findGroupClose(src, open);
+  if (close === -1) return false;
+  return !groupCrossesStructure(src.slice(open + 1, close));
 }
 
 // ---------------------------------------------------------------------------

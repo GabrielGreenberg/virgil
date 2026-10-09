@@ -1608,6 +1608,54 @@ export function findGroupClose(
 }
 
 /**
+ * Split an argument body into its PARAGRAPHS (task 1018): the slices between
+ * the blank lines that stand OUTSIDE every braced group, each trimmed, empties
+ * dropped. A blank line is TeX's `\par`; one nested inside a group
+ * (`\textbf{a\n\nb}`) belongs to that group and does not split. Groups are
+ * skipped by the ONE group scanner ({@link findGroupClose}), and a `%` comment
+ * or an inline `\verb` run is stepped over whole, so a brace or newline inside
+ * either cannot move a boundary. An unbalanced `{` is read as a single byte —
+ * the body is already bounded by its own argument, so nothing can be swallowed.
+ */
+export function splitTopLevelParagraphs(text: string): string[] {
+  const out: string[] = [];
+  let from = 0;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "\\") {
+      const verb = matchInlineVerbAt(text, i);
+      i = verb !== -1 ? verb : i + 2;
+      continue;
+    }
+    if (ch === "%") {
+      const tail = matchCommentTailAt(text, i);
+      if (tail) {
+        i = tail.end;
+        continue;
+      }
+    }
+    if (ch === "{") {
+      const close = findGroupClose(text, i);
+      i = close === -1 ? i + 1 : close + 1;
+      continue;
+    }
+    if (ch === "\n") {
+      const m = /^\n[ \t\r\f]*\n\s*/.exec(text.slice(i, i + 256));
+      if (m) {
+        out.push(text.slice(from, i));
+        i += m[0].length;
+        from = i;
+        continue;
+      }
+    }
+    i++;
+  }
+  out.push(text.slice(from));
+  return out.map((p) => p.trim()).filter((p) => p !== "");
+}
+
+/**
  * Find the index of the `}` matching the `{` at `open`. Returns -1 if the
  * char at `open` is not `{` or the group is unbalanced. `\{`/`\}` are treated
  * as literal (an escaped brace does not change depth), with escaping decided
@@ -2218,9 +2266,10 @@ export interface CommandArgumentRun {
  *  - the group scanners are the SSOT pair (`extractBraced` / `extractBracketed`),
  *    which FAIL CLOSED on an unbalanced group — the run simply ends there, which
  *    is byte-for-byte the pre-349 behaviour for that shape;
- *  - a group whose content spans a BLANK LINE is refused. A paragraph's text is
- *    all either inline parser is ever handed, so this cannot fire on Virgil's
- *    own output; it bounds a caller that passes a wider slice;
+ *  - a group that reaches across document STRUCTURE (a line-start sectioning
+ *    command, `\begin{document}`/`\end{document}`) is refused —
+ *    {@link groupCrossesStructure}. (Until task 1018 this refused any BLANK
+ *    line, which is a `\par` TeX allows inside a `\long` argument;)
  *  - the group count is capped at TeX's own `#1`…`#9`.
  *
  * A `{[}` / `{]}` PROTECTION also ends the run, and that rule is asked of
@@ -2253,7 +2302,7 @@ export function matchCommandArgumentRun(
         ? extractBraced(text, p, { verbatim })
         : extractBracketed(text, p);
     if (!group) break;
-    if (/\n[ \t]*\n/.test(group.content)) break;
+    if (groupCrossesStructure(group.content)) break;
     groups.push({
       kind: ch === "{" ? "brace" : "bracket",
       content: group.content,
@@ -2424,8 +2473,9 @@ export function matchSectioningCommandAt(
  *
  *  - `extractBraced` FAILS CLOSED on an unbalanced group, so a stray `{` in
  *    hand-written prose can never swallow the rest of the document;
- *  - a group whose content spans a BLANK LINE is refused (that bounds a caller
- *    handing over a wider slice than one paragraph);
+ *  - a group that reaches across document structure is refused
+ *    ({@link groupCrossesStructure}, task 1018 — a blank line alone is a
+ *    legal `\par` inside the group, not a bound);
  *  - a `{[}` / `{]}` PROTECTION is not a group, and that rule is ASKED of
  *    `CHAR_ESCAPE_TABLE` rather than re-spelled.
  *
@@ -2442,8 +2492,65 @@ export function matchBraceGroupAt(
   if (matchCharEscapeAt(text, pos)) return null;
   const group = extractBraced(text, pos);
   if (!group) return null;
-  if (/\n[ \t]*\n/.test(group.content)) return null;
+  if (groupCrossesStructure(group.content)) return null;
   return group;
+}
+
+/**
+ * A STRAY brace at `pos` — an unescaped `{` that opens no group
+ * {@link matchBraceGroupAt} will claim, or an unescaped `}` with no opener —
+ * and the index just past it; else -1 (task 1018, second half).
+ *
+ * Whatever the inline parsers cannot pair is still a SOURCE byte, never prose:
+ * left in the prose buffer, the escape table rewrote it to `\{`/`\}`, so a
+ * hand-written unbalanced brace — or one orphaned by a paragraph split — was
+ * saved as a printed brace (the task-349 class: prose escape vocabulary
+ * applied to bytes that were never prose). The callers carry it on the
+ * raw-LaTeX mark, so the fallback is byte-preserving.
+ */
+export function matchStrayBraceAt(text: string, pos: number): number {
+  const ch = text[pos];
+  if ((ch !== "{" && ch !== "}") || isEscaped(text, pos)) return -1;
+  if (matchCharEscapeAt(text, pos)) return -1;
+  if (ch === "{" && matchBraceGroupAt(text, pos)) return -1;
+  return pos + 1;
+}
+
+/**
+ * **How far a braced group may reach** (task 1018) — the ONE bound every
+ * group reader shares: the paragraph reader deciding whether a blank line
+ * ends the paragraph, the argument run, and the bare-group carrier.
+ *
+ * A blank line is NOT the bound. TeX reads a blank line as `\par`, and
+ * `\par` is legal inside a `\long` argument — `\footnote` (LaTeX2e's
+ * `\@footnotetext` is `\long`), `\thanks`, `\parbox`, `\textbf`, a bare
+ * `{\itshape …}` group. Multi-paragraph footnotes are routine in humanities
+ * papers. Until 1018 three readers refused any group spanning a blank line and
+ * the paragraph reader broke at one unconditionally, so `\footnote{One.\n\nTwo.}`
+ * opened as a grey command plus orphan braces, and the orphans were saved as
+ * printed `\{`/`\}`.
+ *
+ * What a group may NOT reach across is document STRUCTURE: a line-start
+ * sectioning command or a `\begin{document}`/`\end{document}`. No argument may
+ * legally hold one, so a group that "closes" only beyond one is a stray `{` in
+ * hand-written source meeting a stray `}` sections later — and claiming it
+ * would fold the headings between into one paragraph. Refusing there keeps the
+ * pre-1018 bounded-damage property where it matters.
+ */
+export function groupCrossesStructure(content: string): boolean {
+  const lineStart = /(^|\n)[ \t]*\\/g;
+  let m: RegExpExecArray | null;
+  while ((m = lineStart.exec(content)) !== null) {
+    const at = m.index + m[0].length - 1;
+    if (matchSectioningUseAt(content, at)) return true;
+    if (
+      content.startsWith("\\begin{document}", at) ||
+      content.startsWith("\\end{document}", at)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
