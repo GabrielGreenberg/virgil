@@ -235,12 +235,18 @@ is already `@book` with a matching title → skip". Nothing here needs a
 **Skipped when the converged-resume short-circuit above fired** — that
 branch dispatches no subskills at all and re-emits the prior keyword.
 
-**If di-preflight reports `PREFLIGHT_BLOCKED`** (today: only Step 0.0's
-empty body), stop the pass: leave `indexed.state` untouched, append a
-`deep-index-blocked` notification, and emit the §Output-format stalled
-banner with reason `extraction-empty-body`. Do not run §1 — a preprocessing
-pass over an empty body produces a clean-looking log for a document with
-nothing in it.
+**If di-preflight reports `PREFLIGHT_BLOCKED reason=<token>`**, stop the
+pass: leave `indexed.state` untouched, append ONE `deep-index-blocked`
+notification (this orchestrator is its only appender for a Step 0 block),
+and emit the §Output-format stalled banner with `Reason: <token>` copied
+verbatim. The tokens are the STALLED vocabulary in
+[_doctrine.md](_doctrine.md) §0; di-preflight's producers today are Step
+0.0 (`extraction-empty-body`) and Step 0.2 (`metadata-lock`). Do not run
+§1 — a preprocessing pass over an empty body produces a clean-looking log
+for a document with nothing in it, and over a locked row it reaches the
+very rewrite the lock forbids. A verdict line carrying neither
+`PREFLIGHT_OK` nor `PREFLIGHT_BLOCKED` is a protocol violation by the
+subskill: treat it as a block, never as OK.
 
 ### 1. Run deterministic preprocessing
 
@@ -761,8 +767,9 @@ DEEP_INDEX_NARROW_RESIDUAL
 ```
 
 **Stalled** (pathological-loop guard fired, OR three-iteration
-validator abort, OR a metadata-lock block (`metadataLock: true` on the
-catalog row), OR Step 0 reported `PREFLIGHT_BLOCKED`):
+validator abort, OR Step 0 reported `PREFLIGHT_BLOCKED reason=<token>` —
+`extraction-empty-body`, or `metadata-lock` (`metadataLock: true` on the
+catalog row with a rewrite pending)):
 
 ```
 ⚠ Deep indexing stalled: $ARGUMENTS
