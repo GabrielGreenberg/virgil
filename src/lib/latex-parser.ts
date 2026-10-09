@@ -1994,6 +1994,20 @@ function parseBody(
         }
       }
 
+      // An `[…]` the arm below does not MODEL is not the arm's to drop (task
+      // 1020). The dispatcher strips an abutting bracket from every env, but
+      // only the arms in `ENV_ARMS_MODELING_OPT_ARG` have somewhere to put it;
+      // `quote` and `verbatim` take no option in LaTeX, so for them those
+      // bytes are PRINTED TEXT (`\begin{quote}[Note] …` opens with "[Note]"),
+      // and the arm silently deleted them on the first save. Such an env is
+      // refused whole to the byte-literal carrier — the 342/356 answer — and
+      // the table is positive, so an arm added later is carried until it
+      // claims the bracket rather than dropping it until someone notices.
+      if (optArg && !ENV_ARMS_MODELING_OPT_ARG.has(env)) {
+        pushVerbatimEnvCarrier(parent, env, optArg, envContent, envUuid);
+        continue;
+      }
+
       switch (env) {
         case FOREST_ENV_NAME: {
           // `\begin{forest}…\end{forest}` — a tree, CLAIMED WHOLE (task 383).
@@ -2398,6 +2412,20 @@ interface ListItemSlice {
  * drop the rest, which is the whitelist-drop-without-carrier class this and
  * task 350 exist to close.
  */
+/**
+ * The env-dispatcher arms that MODEL an `\begin{env}[…]` bracket — each stores
+ * it on its node and its serializer arm re-emits it (`listOptions` for the
+ * lists, `placement` for figures). Every other env that arrives with a
+ * bracket is carried whole (task 1020); see the gate above the dispatcher's
+ * `switch`.
+ */
+const ENV_ARMS_MODELING_OPT_ARG: ReadonlySet<string> = new Set([
+  "itemize",
+  "enumerate",
+  "figure",
+  "figure*",
+]);
+
 function pushVerbatimEnvCarrier(
   parent: JSONContent,
   env: string,
