@@ -85,7 +85,8 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
     const move = resolveMoveSource(editor.state.doc, ref.kind, ref.id);
     return move ? { editor, from: move.from, to: move.to } : null;
   },
-  targetScope: "any-editor",
+  // Same-editor by construction (header SCOPE note) — task 1026.
+  targetScope: "source-editor",
   postDrop: "close",
   /**
    * ONE resolution, two doors (task 321). Every refusal below — an

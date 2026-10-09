@@ -54,7 +54,8 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       const src = findSource(opts, editor, cardKey);
       return src ? { editor, from: src.from, to: src.to } : null;
     },
-    targetScope: "any-editor",
+    // Same-editor by construction — `locateSource` resolves in the TARGET doc.
+    targetScope: "source-editor",
     postDrop: "close",
     /**
      * ONE resolution, two doors (task 321). The container fit's `reject` — an
