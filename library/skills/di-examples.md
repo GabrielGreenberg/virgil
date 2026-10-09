@@ -474,7 +474,7 @@ step 5 to merge into `entry.indexed.warnings`.
 > exactly one locator per warning, and apply the same fallback
 > consistently across all `examples-not-converted:`,
 > `missing-bib-entry:`, and `ambiguous-citation:` warnings emitted
-> for the same paper. The §8 log section follows the same fallback
+> for the same paper. The [deep-index.md](deep-index.md) §8 log section follows the same fallback
 > rule.
 
 **Do NOT convert `\begin{enumerate}` blocks.** Even when the prose
@@ -616,8 +616,8 @@ body scope and the validator (3i) passes them. The one trap: a
 pgmark inside a `\begingl…\endgl` aligned tier line (e.g. between
 `\gla` and `\glb`) is body-scope by the validator's lights but the
 renderer treats one tier line as one logical row and may swallow
-the marker. Mitigation, mirroring the rule from §3c and the
-second-pass caution under "Idempotency": **before wrapping any
+the marker. Mitigation, mirroring the scope rules of
+[di-clean-prose.md](di-clean-prose.md) §3c: **before wrapping any
 region, scan it for `\pgmark{N}` markers and pull them out to a
 blank line just before the wrap**. Never place a pgmark inside a
 single tier line. If a page boundary truly cuts mid-gloss in the
@@ -677,7 +677,7 @@ already in the source PDF; we just need to locate and inject them):
 > extraction itself belonging to /library/index-paper. The PDF text isn't
 > being re-extracted; existing prose is just being annotated with
 > page anchors using `pdftotext` lookups (a Tier-1 operation per
-> §3d).
+> [recover-footnotes.md](recover-footnotes.md) §Tier 1).
 
 > **Recovery 2 — page-break body fragments.** Detect paragraphs
 > that end with a hyphen (`-`) followed by a blank line and a new
@@ -697,7 +697,8 @@ already in the source PDF; we just need to locate and inject them):
 > `commit-` + `ment` → `commit\footnote{...}\pgmark{N}ment`) or
 > starts a fresh paragraph after the page break, since that's a
 > context-dependent call the script can't safely make. The
-> pre-flight duplicate-check rule from §3d applies: before
+> pre-flight duplicate-check rule from
+> [recover-footnotes.md](recover-footnotes.md) §Pre-Tier 1 applies: before
 > inserting, grep for the leading 4-6 words to make sure the text
 > isn't already preserved (truncated) elsewhere nearby.
 

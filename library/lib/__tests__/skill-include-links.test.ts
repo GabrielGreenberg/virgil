@@ -94,6 +94,23 @@
 // DO ship (its siblings, and its pointers into the skill set), which is the
 // half that was silently broken.
 //
+// SECTION POINTERS (task 1032). Leg 1 proves `[x.md](x.md)` names a FILE; it
+// says nothing about the `§9.5` after it. The deep-index family was split out
+// of one monolith whose numbering (`§1b`, `§3d`, `§3.h₂`, `§8`) survived in
+// the subskills as BARE pointers that now meant a different file, or none: 21
+// of them, measured, plus `di-examples` citing a `§3c` it does not have and a
+// "caution under Idempotency" that was never written. The leg: every `§<token>`
+// in skill markdown resolves to an ANCHOR — a heading, or a bold numbered rule
+// (`**4. …**`, the include-doctrine form) — in the file it names; a pointer
+// that names no file means its OWN file. A chained `§A and §B` inherits A's
+// file. Skipped: frontmatter, a pointer inside a double-quoted example
+// utterance ("cite in §6"), one into a target outside the silo (the dev-only
+// `MEMO_*` and `EDITOR_SKILLS_V1` specs, which leg 3 already keeps out of
+// shipped skills). Allowlist EMPTY: a hit is NAME-the-file or fix the number.
+// Stated limit: a pointer can resolve to the right HEADING and still promise
+// content the section lacks (`deep-index.md` §9.5's "empty-state template",
+// which `di-validate.md` §9.5 did not carry) — that one is pinned by content.
+//
 // And a third leg keeps the myth from growing back in the place it lived: no
 // skill markdown may claim transclusion. Scoped to skill markdown, which is
 // what an AGENT reads; the same phrase inside a `.ts` comment is a note to a
@@ -224,6 +241,108 @@ function deepIndexFamily(): string[] {
     if (m && m[1] === "deep-index") family.push(file);
   }
   return family.sort();
+}
+
+/** Section pointers that may resolve to no anchor. DELIBERATELY EMPTY: an
+ *  entry is a cross-reference an agent follows to nothing. A hit is
+ *  NAME-the-file (link it) or correct the section number. */
+const PERMITTED_DANGLING_SECTION_POINTERS: string[] = [];
+
+/** A `§` section token: digit-led (`9.5`, `3c`, `0.1`) or word-led
+ *  (`Persistence`, `Pre-Tier`). */
+const SECTION = /§\s*([0-9](?:[A-Za-z0-9.]*[A-Za-z0-9])?|[A-Za-z][A-Za-z-]*[A-Za-z])/g;
+
+/** What may sit immediately before a `§` and name the file it points into. */
+const NAMED_FILE =
+  /(?:\[[^\]\n]*\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)|`([A-Za-z0-9_.-]+\.md)`|(?<![\w/.`-])([A-Za-z0-9_-]+\.md))(?:'s)?[\s>]*(?:\*\*)?\s*$/;
+
+/** A pointer into a document that is not skill markdown at all. */
+const EXTERNAL_SPEC = /(?:EDITOR_SKILLS_V1|spec(?:'s own)?)\s*$/;
+
+/** The previous pointer, when this one continues it (`§0.1 strips … and
+ *  §0.4` does not qualify; `§3e/§3f`, `§0 / §Scope`, `§4 and §5`,
+ *  `§Scope doctrine + §Anti-patterns` do). */
+const CHAINED = /§\s*[A-Za-z0-9.-]+(?:\s+[a-z]+)?\s*(?:\/|,|\+|and|or)\s*$/;
+
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+
+/** The lines a pointer may land on: headings, and bold numbered rules. */
+function anchorsOf(src: string): { line: string; heading: number }[] {
+  const out: { line: string; heading: number }[] = [];
+  let inFence = false;
+  for (const line of src.split("\n")) {
+    if (/^\s*```/.test(line)) inFence = !inFence;
+    if (inFence) continue;
+    const h = /^(#{1,6})\s/.exec(line);
+    if (h) out.push({ line, heading: h[1].length });
+    else if (/^\*\*[A-Za-z0-9.]+[.)]?\s/.test(line)) out.push({ line, heading: 0 });
+  }
+  return out;
+}
+
+/** Does `token` name an anchor in `src`? A heading/rule carrying it as a
+ *  whole token (`Step 9.5`, `### 9.5.`, `## §0`, `**4. …**`), or — the
+ *  compound form `§1b` — heading `1` followed, before the next heading, by a
+ *  bold sub-item `**b. …**`. */
+function resolvesIn(src: string, token: string): boolean {
+  const anchors = anchorsOf(src);
+  const whole = (t: string) =>
+    new RegExp(
+      // A hyphen in a word token stands for the heading's space
+      // (`§Output-format` → `## Output format`).
+      `(^|[^A-Za-z0-9.])${escapeRe(t).replace(/\\-/g, "[-\\s]")}(?![A-Za-z0-9]|\\.[0-9])`,
+      "i",
+    );
+  if (anchors.some((a) => whole(token).test(a.line))) return true;
+  const compound = /^([0-9]+(?:\.[0-9]+)*)([a-z])$/.exec(token);
+  if (!compound) return false;
+  const [, num, letter] = compound;
+  const start = anchors.findIndex((a) => a.heading > 0 && whole(num).test(a.line));
+  if (start < 0) return false;
+  for (const a of anchors.slice(start + 1)) {
+    if (a.heading > 0) return false;
+    if (a.line.startsWith(`**${letter}.`)) return true;
+  }
+  return false;
+}
+
+/** Is offset `i` inside a double-quoted span of its paragraph (an example
+ *  utterance, not a cross-reference)? */
+function insideQuotedExample(src: string, i: number): boolean {
+  const paraStart = src.lastIndexOf("\n\n", i) + 1;
+  return (src.slice(paraStart, i).match(/"/g) ?? []).length % 2 === 1;
+}
+
+/** Every dangling `§` pointer in `src` (attributed to `file`). Takes the text
+ *  so the canary below runs the same code as the sweep. */
+function danglingSectionPointers(file: string, src: string): string[] {
+  const out: string[] = [];
+  const fm = /^---\n[\s\S]*?\n---/.exec(src);
+  const bodyStart = fm ? fm[0].length : 0;
+  let prevTarget: string | null = null;
+  let prevEnd = -1;
+  for (const m of src.matchAll(SECTION)) {
+    const i = m.index!;
+    if (i < bodyStart || insideQuotedExample(src, i)) continue;
+    const before = src.slice(Math.max(0, i - 200), i);
+    let target: string | null = file;
+    const named = NAMED_FILE.exec(before);
+    if (named) {
+      target = join(dirname(file), named[1] ?? named[2] ?? named[3]);
+    } else if (prevTarget && i - prevEnd < 24 && CHAINED.test(src.slice(0, i))) {
+      target = prevTarget;
+    } else if (EXTERNAL_SPEC.test(before)) {
+      target = null;
+    }
+    prevEnd = i + m[0].length;
+    prevTarget = target;
+    if (!target || (target !== file && !existsSync(join(repoRoot, target)))) continue;
+    const targetSrc = target === file ? src : read(target);
+    if (resolvesIn(targetSrc, m[1])) continue;
+    const line = src.slice(0, i).split("\n").length;
+    out.push(`${file}:${line} -> ${target === file ? "(self)" : target} §${m[1]}`);
+  }
+  return out;
 }
 
 describe("skill include links", () => {
@@ -368,6 +487,58 @@ describe("skill include links", () => {
       "deep-index",
       "index-paper",
     ]);
+  });
+
+  it("resolves every `§` section pointer to an anchor in the file it names", () => {
+    const dangling: string[] = [];
+    let checked = 0;
+    for (const file of skillFiles()) {
+      const src = read(file);
+      checked += [...src.matchAll(SECTION)].length;
+      dangling.push(...danglingSectionPointers(file, src));
+    }
+    // Measured at 1032: 193 pointers across both silos.
+    expect(checked).toBeGreaterThan(150);
+    expect(
+      dangling.filter((d) => !PERMITTED_DANGLING_SECTION_POINTERS.includes(d)),
+    ).toEqual([]);
+    expect(PERMITTED_DANGLING_SECTION_POINTERS).toEqual([]);
+
+    // The resolver must be able to SEE a miss, in each of its forms.
+    const canary = [
+      "# Canary",
+      "## Step 9.5 — Audit",
+      "### 1. Run",
+      "**b. `repair`** — removes",
+      "",
+      "Per §9.5 and §1b, but not §7 or §1c; [_doctrine.md](_doctrine.md) §0",
+      "and [_doctrine.md](_doctrine.md) §99; see §9.5 / §42.",
+      'Example: "cite it in §6".',
+    ].join("\n");
+    expect(danglingSectionPointers("library/skills/canary.md", canary)).toEqual([
+      "library/skills/canary.md:6 -> (self) §7",
+      "library/skills/canary.md:6 -> (self) §1c",
+      "library/skills/canary.md:7 -> library/skills/_doctrine.md §99",
+      "library/skills/canary.md:7 -> (self) §42",
+    ]);
+  });
+
+  it("gives the §9.5 audit punch-list the empty-state template it is cited for", () => {
+    // `deep-index.md` §9.5 sends the reader to `di-validate.md` §9.5 for "the
+    // empty-state template"; until task 1032 neither file had one, and each
+    // claimed the other owned the narrative. The empty punch-list is half of
+    // `DEEP_INDEX_RESOLVED`, so its written form is pinned to the script's own
+    // clean output — one string, read from the script, not re-typed here.
+    const script = read("library/scripts/audit_deepindex.py");
+    const clean = /if not findings:\s*\n\s*return "## Audit punch-list\\n\\n([^"\\]+)\\n"/.exec(script);
+    expect(clean, "audit_deepindex.py's clean-output literal moved").not.toBeNull();
+    const validate = read("library/skills/di-validate.md");
+    const step = validate.slice(validate.indexOf("## Step 9.5"));
+    expect(step).toContain("## Step 9.5");
+    expect(step).toMatch(/Empty-state template/);
+    expect(step).toContain(`## Audit punch-list\n\n${clean![1]}`);
+    // And the back-pointer no longer hands the narrative to deep-index.
+    expect(validate).not.toMatch(/narrative[\s\S]{0,80}lives in \[deep-index\.md\]/);
   });
 
   it("holds every deep-index family member to its `_doctrine.md` pointer", () => {

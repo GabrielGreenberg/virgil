@@ -56,9 +56,11 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 > false positives mean the agent makes bad decisions.
 
 Operates on `papers/$ARGUMENTS/main.tex` and the catalog row. The
-§9.5 audit punch-list narrative (which depends on the validator's
-outputs) lives in [deep-index.md](deep-index.md) §9.5 as part of the
-orchestrator's convergence-driving section.
+§9.5 audit punch-list — its command line, its check inventory and its
+empty-state template — lives HERE, in Step 9.5 below.
+[deep-index.md](deep-index.md) §9.5 says only WHEN the orchestrator
+runs it (every pass, after steps 1–9) and points here for everything
+else.
 
 ## Step 3i — Pgmark validation (hard gate)
 
@@ -124,7 +126,7 @@ fine. Common fixes:
 
 - `pgmark-scope: math display` — split the surrounding `\[...\]`
   into two displays with the pgmark on its own line between them
-  (see §3c in the orchestrator).
+  (see the scope rules in [di-clean-prose.md](di-clean-prose.md) §3c).
 - `pgmark-scope: argument of \<cmd>` — pull the pgmark out of the
   command's brace argument and place it on its own line before the
   command.
@@ -169,7 +171,7 @@ gate the pass.
 > has no baseline to compare against and will mark **every**
 > continuity gap as "new". To handle this:
 >
-> 1. **Before** running the preprocessor in §1, copy
+> 1. **Before** running the preprocessor in [deep-index.md](deep-index.md) §1, copy
 >    `papers/$ARGUMENTS/main.tex` to
 >    `.virgil/baselines/$ARGUMENTS-pre-deepindex.tex` (`mkdir -p`
 >    the dir if missing). This is the snapshot of pre-deep-index
@@ -350,6 +352,25 @@ finding sits in a category the catalog explicitly marked
 distinguish "work remaining" from "work the prior pass declared a
 false positive" (shimojima2015semantic memo).
 
+**Empty-state template.** On a clean paper the script prints exactly
+this block, and the summary log carries it verbatim — the
+`## Audit punch-list` section is never omitted or shortened to "None",
+because the empty punch-list is half of the
+orchestrator's resolved terminal state ([_doctrine.md](_doctrine.md) §2):
+
+```markdown
+## Audit punch-list
+
+Clean. No remaining issues detected.
+```
+
+Every other output is one bullet per finding, `- [<category>] <description>`.
+A punch-list whose every bullet sits in a catalog-suppressed category
+still PRINTS those bullets (the exit is 0 only because of
+`--exit-on-suppressed`) — so the section is not the empty-state
+template, and the pass records them as already-adjudicated, not as new
+work.
+
 Reports remaining issues across:
 
 - Invisible characters / ligatures.
@@ -377,7 +398,8 @@ Reports remaining issues across:
 ## Outstanding-work classification
 
 Walk the [_doctrine.md](_doctrine.md) self-check checklist before
-tagging anything. The three allowed categories (§0 / §Scope doctrine):
+tagging anything. The three allowed categories ([_doctrine.md](_doctrine.md) §0 /
+§Scope doctrine):
 
 - `source-missing` — page literally absent from PDF.
 - `figure-reconstruction` — raster-only figure content.
