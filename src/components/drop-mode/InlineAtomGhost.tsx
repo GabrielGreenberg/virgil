@@ -29,7 +29,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDropSession } from "./controller";
-import { attachGhostNode, useInlineAtomGhost } from "./inline-atom-ghost";
+import {
+  attachGhostNode,
+  detachGhostNode,
+  useInlineAtomGhost,
+} from "./inline-atom-ghost";
 
 export function InlineAtomGhost() {
   const ghost = useInlineAtomGhost();
@@ -39,8 +43,10 @@ export function InlineAtomGhost() {
   // Stable identity, so React calls it only on mount/unmount — never per
   // render, which would re-register the node and re-flush the channel.
   const setBodyRef = useCallback((node: HTMLDivElement | null) => {
+    const prev = bodyRef.current;
     bodyRef.current = node;
-    attachGhostNode(node);
+    if (node) attachGhostNode(node);
+    else if (prev) detachGhostNode(prev);
   }, []);
 
   // The clone is an HTMLElement, not a React tree — attach it directly via a

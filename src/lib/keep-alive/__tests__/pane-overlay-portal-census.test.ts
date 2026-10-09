@@ -87,16 +87,9 @@ const LEDGER: Record<string, Row> = {
     count: 1,
     why: "the lift overlay lives for one text-lift drag",
   },
-  "components/drop-mode/Indicator.tsx": {
-    scope: "gesture",
-    count: 1,
-    why: "drop indicator of a live drop-mode session",
-  },
-  "components/drop-mode/InlineAtomGhost.tsx": {
-    scope: "gesture",
-    count: 1,
-    why: "the dragged atom's ghost, for one drag",
-  },
+  // (The drop bar + inline-atom ghost left the pane closure in task 1027: they
+  // render from the one app-global session and mount once, in
+  // `DropModeOverlays` at `src/app/page.tsx`.)
   "components/CardLiftOutline.tsx": {
     scope: "gesture",
     count: 1,

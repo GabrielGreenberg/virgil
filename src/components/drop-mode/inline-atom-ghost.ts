@@ -97,10 +97,28 @@ const _motion = createTransformChannel({
  * frame queued before the portal existed (which applied nothing) is folded
  * into this write rather than left to land later.
  */
-export function attachGhostNode(node: HTMLElement | null): void {
+export function attachGhostNode(node: HTMLElement): void {
   _node = node;
   _motion.reset();
-  if (node) _motion.flush();
+  _motion.flush();
+}
+
+/**
+ * Release the slot — but only if `node` still OWNS it. A departing host removes
+ * only its own entry (the per-doc-services law, task 1027): a host unmounting
+ * after another has attached must not null the live host's slot, or the ghost
+ * stops following the cursor mid-drag. The overlay mounts once at app level, so
+ * this is the structural floor, not the expected path.
+ */
+export function detachGhostNode(node: HTMLElement): void {
+  if (_node !== node) return;
+  _node = null;
+  _motion.reset();
+}
+
+/** Test seam: the node the motion channel currently writes. */
+export function __getGhostNode(): HTMLElement | null {
+  return _node;
 }
 
 function subscribe(fn: () => void): () => void {
