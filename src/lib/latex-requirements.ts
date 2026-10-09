@@ -44,6 +44,7 @@ import {
   type BibFamily,
   type BibFamilyConflict,
 } from "@/lib/bib-family";
+import { preambleProvidesPackage } from "@/lib/document-class";
 import { PACKAGE_DETECTORS } from "@/lib/latex-requirement-collector";
 import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
 
@@ -82,7 +83,9 @@ function packageReq(name: string, options?: string): LatexRequirement {
     // The lexer's ONE load reader (task 781): `\RequirePackage`, options,
     // comma lists, whitespace between the pieces, and wrapper packages
     // (`biblatex-chicago` loads — so satisfies and gates — `biblatex`).
-    isSatisfied: (live) => preambleListLoadsPackage(live, name),
+    // A package the CLASS loads (`elsarticle` → natbib) is in force too
+    // (task 1019) — so it is never stacked a second time.
+    isSatisfied: (live) => preambleProvidesPackage(live, name),
   };
 }
 
@@ -235,6 +238,12 @@ const SHARED_NON_KERNEL_RE = familyRe(
   ),
 );
 
+// biblatex's bibliography-printing commands are not cites, but a body that
+// prints a biblatex bibliography needs biblatex as surely as `\autocite` does
+// — and once a family is injected only on the body's NEED (task 1019), a
+// `\cite`-only body printing with `\printbibliography` must still count.
+const BIBLATEX_BODY_RE = /\\print(?:bibliography|bibheading)(?![a-zA-Z])/;
+
 /**
  * Project the serialized body down to its DETECTABLE LaTeX: drop
  * `%`-comment tails (respecting `\%`) and the contents of
@@ -278,7 +287,12 @@ export function detectBodyRequirements(bodyLatex: string): BodyRequirements {
     if (d.re.test(scannable)) required.add(d.id);
   }
   if (NATBIB_ONLY_RE.test(scannable)) required.add("natbib");
-  else if (BIBLATEX_ONLY_RE.test(scannable)) required.add("biblatex");
+  else if (
+    BIBLATEX_ONLY_RE.test(scannable) ||
+    BIBLATEX_BODY_RE.test(scannable)
+  ) {
+    required.add("biblatex");
+  }
   else if (SHARED_NON_KERNEL_RE.test(scannable)) {
     required.add("natbib");
     required.bibFamilyDefaulted = true;
@@ -377,8 +391,19 @@ export function ensurePreambleRequirements(
   // Resolve which bib family the body/authoritative choice needs. Prefer the
   // explicit declared family; else derive from what `required` already carries
   // (the fallback detector puts exactly one of natbib/biblatex in there).
-  const declaredFamily: BibFamily | null =
-    opts?.declaredBibFamily ??
+  //
+  // WHETHER a family is needed is the BODY's answer, not the declaration's
+  // (task 1019): `required` carries natbib/biblatex only when a cite (or
+  // `\printbibliography`) actually needs one — the detector's buckets, and the
+  // serializer's cite emit-sites folded in. The declared family only says
+  // WHICH. The editor declares a family on every save (the per-doc setting is
+  // never null), so asking the declaration "is one needed?" injected
+  // `\usepackage{natbib}` into papers that cite nothing, or cite through the
+  // kernel under `\usepackage{cite}` — rewriting a preamble that compiled.
+  const bodyNeedsFamily = effective.has("natbib") || effective.has("biblatex");
+  const declaredFamily: BibFamily | null = !bodyNeedsFamily
+    ? null
+    : opts?.declaredBibFamily ??
     (effective.has("natbib")
       ? "natbib"
       : effective.has("biblatex")

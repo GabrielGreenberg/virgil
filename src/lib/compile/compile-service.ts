@@ -48,7 +48,12 @@ import {
   writeEngineFile,
   type EngineCloseMode,
 } from "@/lib/swiftlatex";
-import { preambleListLoadsPackage } from "@/lib/latex-lexer";
+import {
+  listPackageLoads,
+  packageLoadIncludes,
+  preambleListLoadsPackage,
+  type PackageLoad,
+} from "@/lib/latex-lexer";
 import { captureNewAssets } from "@/lib/tex-assets";
 import { parseTexLog } from "@/lib/parse-tex-log";
 import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-file";
@@ -122,20 +127,44 @@ const TEXT_EXTS = new Set([
 // backend=bibtex. This loses some biblatex features (Unicode sorting, a few
 // style options) but covers the vast majority of papers. (Moved verbatim from
 // the old hook — the service is the sole rewriter now.)
-function rewriteBiblatexBackend(text: string): string {
-  return text.replace(
-    // Whitespace-tolerant (task 781): `\usepackage {biblatex}` and options on
-    // one line with the list on the next are the same load to TeX.
-    /\\usepackage\s*(?:\[([^\]]*)\])?\s*\{\s*biblatex\s*\}/g,
-    (match, opts?: string) => {
-      if (!opts) return "\\usepackage[backend=bibtex]{biblatex}";
-      if (/\bbackend\s*=\s*bibtex\b/.test(opts)) return match;
-      if (/\bbackend\s*=\s*biber\b/.test(opts)) {
-        return `\\usepackage[${opts.replace(/\bbackend\s*=\s*biber\b/, "backend=bibtex")}]{biblatex}`;
-      }
-      if (/\bbackend\s*=/.test(opts)) return match;
-      return `\\usepackage[${opts.trim()},backend=bibtex]{biblatex}`;
-    },
+//
+// The loads are found through the lexer's ONE load reader (task 1019) — the
+// same one `prepareFiles` GATES this rewrite on — so every spelling that gates
+// is also rewritten: wrappers (`biblatex-chicago`, which passes its options on
+// to biblatex), comma lists, `\RequirePackage`, spaced pieces. Before, the gate
+// said yes and a private regex matching only `\usepackage[..]{biblatex}` said
+// nothing to rewrite, so the backend stayed biber and the PDF had no
+// bibliography.
+export function rewriteBiblatexBackend(text: string): string {
+  let out = "";
+  let at = 0;
+  for (const load of listPackageLoads(text)) {
+    if (!packageLoadIncludes(load, "biblatex")) continue;
+    const replacement = rewriteBiblatexLoad(load, text.slice(load.start, load.end));
+    out += text.slice(at, load.start) + replacement;
+    at = load.end;
+  }
+  return out + text.slice(at);
+}
+
+function rewriteBiblatexLoad(load: PackageLoad, original: string): string {
+  const opts = load.options;
+  if (opts !== null) {
+    if (/\bbackend\s*=\s*bibtex\b/.test(opts)) return original;
+    if (/\bbackend\s*=\s*biber\b/.test(opts)) {
+      return load.withOptions(
+        opts.replace(/\bbackend\s*=\s*biber\b/, "backend=bibtex"),
+      );
+    }
+    if (/\bbackend\s*=/.test(opts)) return original;
+  }
+  // A comma list shares its options with every entry, and `csquotes` (say)
+  // rejects an unknown `backend` key — so the option goes to biblatex alone.
+  if (load.entries.length > 1) {
+    return `\\PassOptionsToPackage{backend=bibtex}{biblatex}${original}`;
+  }
+  return load.withOptions(
+    opts === null || opts.trim() === "" ? "backend=bibtex" : `${opts.trim()},backend=bibtex`,
   );
 }
 

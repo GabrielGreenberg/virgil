@@ -1340,15 +1340,59 @@ export function preambleListLoadsPackage(
   livePreambleText: string,
   name: string,
 ): boolean {
-  const re = /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g;
+  return listPackageLoads(livePreambleText).some((load) =>
+    packageLoadIncludes(load, name),
+  );
+}
+
+/**
+ * One `\usepackage` / `\RequirePackage` as {@link preambleListLoadsPackage}
+ * reads it, WITH its span — so a caller that must REWRITE a load (the compile
+ * copy's biblatex backend, task 1019) finds it through the same reader that
+ * GATES the rewrite, and the two cannot disagree about which spellings count.
+ */
+export interface PackageLoad {
+  /** Offset of the load's `\` in the scanned text. */
+  readonly start: number;
+  /** Offset just past the load's closing `}`. */
+  readonly end: number;
+  readonly command: "usepackage" | "RequirePackage";
+  /** The `[options]` contents, or null when the load has none. */
+  readonly options: string | null;
+  /** The comma-list entries, each trimmed (empty entries dropped). */
+  readonly entries: readonly string[];
+  /** Rebuild the load with new options, keeping its own whitespace + list. */
+  withOptions(options: string): string;
+}
+
+/** Every package load in `text`, in source order. Comments/verbatim are the
+ *  caller's projection's business, exactly as for the boolean reader. */
+export function listPackageLoads(text: string): PackageLoad[] {
+  const re =
+    /\\(usepackage|RequirePackage)(\s*)(?:\[([^\]]*)\])?(\s*)\{([^}]*)\}/g;
+  const out: PackageLoad[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(livePreambleText)) !== null) {
-    for (const entry of m[1].split(",")) {
-      const p = entry.trim();
-      if (p === name || p.startsWith(name + "-")) return true;
-    }
+  while ((m = re.exec(text)) !== null) {
+    const [, command, ws1, options, ws2, list] = m;
+    out.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      command: command as PackageLoad["command"],
+      options: options ?? null,
+      entries: list
+        .split(",")
+        .map((e) => e.trim())
+        .filter((e) => e.length > 0),
+      withOptions: (opts) => `\\${command}${ws1}[${opts}]${ws2}{${list}}`,
+    });
   }
-  return false;
+  return out;
+}
+
+/** Does this load load `name` — directly, or through a `<name>-<suffix>`
+ *  WRAPPER (`biblatex-chicago` loads `biblatex`)? */
+export function packageLoadIncludes(load: PackageLoad, name: string): boolean {
+  return load.entries.some((p) => p === name || p.startsWith(name + "-"));
 }
 
 // ---------------------------------------------------------------------------
