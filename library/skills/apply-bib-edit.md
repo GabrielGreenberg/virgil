@@ -113,21 +113,22 @@ All paths below are relative to the library root.
    vice versa). Call the locked CLI shim instead:
 
    ```bash
-   cat > "/tmp/$CITEKEY-bibedit-set.json" <<'EOF'
+   t=$(mktemp -d -t virgil-apply-bib-edit)
+   cat > "$t/set.json" <<'EOF'
    { "title": "...", "note": "..." }
    EOF
-   cat > "/tmp/$CITEKEY-bibedit-base.bib" <<'EOF'
+   cat > "$t/base.bib" <<'EOF'
    <bibEdit.baseRaw, verbatim>
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "$CITEKEY" \
      --entry-type "<bibEdit.type>" \
-     --fields-file "/tmp/$CITEKEY-bibedit-set.json" \
+     --fields-file "$t/set.json" \
      --merge-existing \
      --drop-field "<one per name in bibEdit.remove>" \
-     --base-raw-file "/tmp/$CITEKEY-bibedit-base.bib" \
+     --base-raw-file "$t/base.bib" \
      --base-type "<bibEdit.baseType>"
    rc=$?
-   rm -f "/tmp/$CITEKEY-bibedit-set.json" "/tmp/$CITEKEY-bibedit-base.bib"
+   rm -rf "$t"
    echo "exit=$rc"
    ```
 
@@ -203,7 +204,8 @@ All paths below are relative to the library root.
    Construct a patch:
 
    ```bash
-   cat > "/tmp/$CITEKEY-bibedit-patch.json" <<'EOF'
+   t=$(mktemp -d -t virgil-apply-bib-edit)
+   cat > "$t/patch.json" <<'EOF'
    {
      "title": "<new title or omit>",
      "authors": [...],
@@ -219,8 +221,8 @@ All paths below are relative to the library root.
    }
    EOF
    python3 .virgil/scripts/library/update_catalog_entry.py "$CITEKEY" \
-     --patch-file "/tmp/$CITEKEY-bibedit-patch.json"
-   rm "/tmp/$CITEKEY-bibedit-patch.json"
+     --patch-file "$t/patch.json"
+   rm -rf "$t"
    ```
 
    Include top-level `title`/`authors`/`year`/`doi` only for the
@@ -272,13 +274,14 @@ All paths below are relative to the library root.
 6. **Append a notification** via the locked CLI shim:
 
    ```bash
-   cat > "/tmp/$CITEKEY-bibedit-notify.json" <<'EOF'
+   t=$(mktemp -d -t virgil-apply-bib-edit)
+   cat > "$t/notify.json" <<'EOF'
    { "kind": "authenticated", "citekey": "<citekey>", "at": "<now ISO>",
      "summary": "Applied manual edit (<N> field changes)" }
    EOF
    python3 .virgil/scripts/library/append_inbox_item.py \
-     --item-file "/tmp/$CITEKEY-bibedit-notify.json"
-   rm "/tmp/$CITEKEY-bibedit-notify.json"
+     --item-file "$t/notify.json"
+   rm -rf "$t"
    ```
 
    (The `authenticated` kind is reused — the frontend renders it as a

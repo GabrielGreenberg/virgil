@@ -212,13 +212,14 @@ a top-level `warnings` key is invisible to all of them. And a bare
 kind on it, so declare the kind you recomputed and let the shim merge:
 
 ```bash
-cat > /tmp/$ARGUMENTS-mismatch-warning.json <<'EOF'
+t=$(mktemp -d -t virgil-di-preflight)
+cat > "$t/mismatch-warning.json" <<'EOF'
 { "indexed": { "warnings": ["metadata-mismatch: <kind>"] } }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-mismatch-warning.json \
+  --patch-file "$t/mismatch-warning.json" \
   --recompute-warning-kind metadata-mismatch
-rm /tmp/$ARGUMENTS-mismatch-warning.json
+rm -rf "$t"
 ```
 
 `metadata-mismatch` is recomputed per preflight pass: pass an empty

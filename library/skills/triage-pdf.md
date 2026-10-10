@@ -219,7 +219,8 @@ directory).
       if needed). Skip steps 5–10 — no new bib entry, no queue write.
       Append a notification via the locked CLI shim:
       ```bash
-      cat > /tmp/variant-notify.json <<'EOF'
+      t=$(mktemp -d -t virgil-triage-pdf)
+      cat > "$t/variant-notify.json" <<'EOF'
       {
         "kind": "triaged",
         "summary": "Kept <filename> as variant archive of <existing-citekey>",
@@ -227,8 +228,8 @@ directory).
       }
       EOF
       python3 .virgil/scripts/library/append_inbox_item.py \
-        --item-file /tmp/variant-notify.json
-      rm /tmp/variant-notify.json
+        --item-file "$t/variant-notify.json"
+      rm -rf "$t"
       python3 .virgil/scripts/library/bump_catalog_version.py
       ```
       Then stop.
@@ -275,15 +276,16 @@ directory).
    locked CLI shim — do **not** Read/Write `master.bib` directly:
 
    ```bash
-   cat > /tmp/<citekey>-triage-fields.json <<'EOF'
+   t=$(mktemp -d -t virgil-triage-pdf)
+   cat > "$t/fields.json" <<'EOF'
    { "author": "...", "title": "...", "year": "<YYYY>", ... }
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
-     --fields-file /tmp/<citekey>-triage-fields.json \
+     --fields-file "$t/fields.json" \
      --bib-state unverified
    rc=$?
-   rm /tmp/<citekey>-triage-fields.json
+   rm -rf "$t"
    echo "exit=$rc"
    ```
 
@@ -409,14 +411,15 @@ directory).
     via the locked CLI shims:
 
     ```bash
-    cat > /tmp/<citekey>-triaged.json <<'EOF'
+    t=$(mktemp -d -t virgil-triage-pdf)
+    cat > "$t/triaged.json" <<'EOF'
     { "kind": "triaged",
       "summary": "Triaged <filename> → <citekey> (<entry_type>)",
       "at": "<ISO>" }
     EOF
     python3 .virgil/scripts/library/append_inbox_item.py \
-      --item-file /tmp/<citekey>-triaged.json
-    rm /tmp/<citekey>-triaged.json
+      --item-file "$t/triaged.json"
+    rm -rf "$t"
     python3 .virgil/scripts/library/bump_catalog_version.py
     ```
 
@@ -456,11 +459,20 @@ When `<filename>` ends with `.bib`, do NOT treat it as one document. Fan it out
 through the batch engine, SCOPED TO THIS FILE with `--only`:
 
 ```bash
+run_dir=$(mktemp -d -t virgil-triage-pdf) || exit 1
+echo "runDir=$run_dir"
 python3 .virgil/scripts/library/triage_batch.py \
-  --library . --only "<filename>" --output /tmp/bib-triage.jsonl
-# (review/edit the JSONL if desired — each line is one bib entry)
+  --library . --only "<filename>" --output "$run_dir/bib-triage.jsonl"
+```
+
+Review/edit `<runDir>/bib-triage.jsonl` if desired — each line is one bib
+entry; `<runDir>` is the path the block above printed, carried as a literal
+per [_scratch.md](_scratch.md). Then apply:
+
+```bash
 python3 .virgil/scripts/library/triage_apply.py \
-  --input /tmp/bib-triage.jsonl --library .
+  --input <runDir>/bib-triage.jsonl --library .
+rm -rf <runDir>
 ```
 
 `--only` takes a bare filename relative to `unsorted/` and errors (exit 2)

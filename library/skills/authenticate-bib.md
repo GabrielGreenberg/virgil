@@ -88,9 +88,16 @@ directory).
    block you read as the **base** for step 5's write. The lookups below take
    minutes; a manual bib edit (`/library/apply-bib-edit`) can land in that
    window, and step 5 must not overwrite a field the user changed since this
-   read (task 796):
+   read (task 796). This block also mints the run's scratch directory —
+   the files below span several calls and minutes of network lookups, so
+   they live in ONE per-run directory, never at a citekey-derived fixed name
+   (two runs on one key would cross-read each other's evidence). Carry the
+   printed path as `<runDir>` into every later block, per
+   [_scratch.md](_scratch.md):
    ```bash
-   python3 - "<citekey>" > "/tmp/<citekey>-auth-base.bib" <<'PY'
+   run_dir=$(mktemp -d -t virgil-authenticate-bib) || exit 1
+   echo "runDir=$run_dir"
+   python3 - "<citekey>" > "$run_dir/base.bib" <<'PY'
    import sys; from pathlib import Path
    sys.path.insert(0, ".virgil/scripts/library")
    from _tools import master_entry_for
@@ -162,11 +169,11 @@ directory).
    `.virgil/scripts/library/`.
    ```bash
    python3 .virgil/scripts/library/bib_auth.py --citekey <citekey> --library . \
-     | tee /tmp/<citekey>-auth-result.json
+     | tee <runDir>/result.json
    ```
    Prints the `AuthResult` as JSON (`state`, `sources`, `score`,
    `matched_record`, `field_changes`, `proposed_type`), and keeps it in
-   `/tmp/<citekey>-auth-result.json` for step 4b — don't re-run the helper.
+   `<runDir>/result.json` for step 4b — don't re-run the helper.
 
    **Don't hand-marshal the seed values.** The entry must reach the helper
    exactly as it appears in `master.bib` — verbatim, no cleanup, no
@@ -323,13 +330,13 @@ directory).
    changes (same shape as the helper's — `{"field", "from", "to", "source",
    "at"}`; `[]` when there are none) and let the helper decide:
    ```bash
-   cat > /tmp/<citekey>-auth-tier1.json <<'EOF'
+   cat > <runDir>/tier1.json <<'EOF'
    [ ... ]
    EOF
    python3 .virgil/scripts/library/bib_auth.py settle-verdict \
-     --result-file /tmp/<citekey>-auth-result.json \
-     --tier1-file /tmp/<citekey>-auth-tier1.json \
-     | tee /tmp/<citekey>-auth-verdict.json
+     --result-file <runDir>/result.json \
+     --tier1-file <runDir>/tier1.json \
+     | tee <runDir>/verdict.json
    ```
    The printed block's `state` is `<final_state>` for step 5. The upgrade
    rule lives in `bib_auth.settle_auth_verdict`, not here: an `unverified`
@@ -426,19 +433,19 @@ directory).
    the entry you write matches theirs.
 
    ```bash
-   cat > /tmp/<citekey>-auth-fields.json <<'EOF'
+   cat > <runDir>/fields.json <<'EOF'
    { "title": "...", "author": "...", "year": "...", ... }
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<proposed_type or entry_type>" \
-     --fields-file /tmp/<citekey>-auth-fields.json \
+     --fields-file <runDir>/fields.json \
      --bib-state "<final_state from step 4b>" \
      --merge-existing \
      --drop-field <each name in r["proposed_drop_fields"], one flag apiece> \
-     --base-raw-file "/tmp/<citekey>-auth-base.bib" \
+     --base-raw-file <runDir>/base.bib \
      --base-type "<entry_type as read in step 1>"
    rc=$?
-   rm /tmp/<citekey>-auth-fields.json "/tmp/<citekey>-auth-base.bib"
+   rm <runDir>/fields.json <runDir>/base.bib
    echo "exit=$rc"
    ```
 
@@ -456,7 +463,7 @@ directory).
    - **0** — applied. Continue with step 6.
    - **5** — applied EXCEPT the changes stderr lists as held. Continue with
      step 6, but delete the held fields' entries from `fieldChanges` in
-     `/tmp/<citekey>-auth-verdict.json` (step 7 records that file) and name
+     `<runDir>/verdict.json` (step 7 records that file) and name
      them in the reply ("kept your edit to `title`").
    - **6** — nothing written: the entry left master.bib mid-run. Report
      it, then skip to step 9 (retiring is right — a retry re-fails).
@@ -504,7 +511,7 @@ directory).
    they can't drift, and record step 4b's verdict. The citekey and the
    verdict file go in as **argv**:
    ```bash
-   python3 - "<citekey>" /tmp/<citekey>-auth-verdict.json <<'PY'
+   python3 - "<citekey>" <runDir>/verdict.json <<'PY'
    import sys, json
    from pathlib import Path
    sys.path.insert(0, ".virgil/scripts/library")
@@ -513,8 +520,8 @@ directory).
    settled = _sync_catalog_entry_from_master(Path("."), sys.argv[1], verdict)
    print(f"settled state: {settled}")
    PY
-   rm /tmp/<citekey>-auth-result.json /tmp/<citekey>-auth-tier1.json \
-      /tmp/<citekey>-auth-verdict.json
+   rm <runDir>/result.json <runDir>/tier1.json \
+      <runDir>/verdict.json
    ```
 
    **`settled state:` is the state this run ENDED with — use it, not
@@ -580,7 +587,7 @@ directory).
    # declared, and that is how a finding fixed during this run (or by the user
    # since the last run) stops being flagged. Append-if-absent could never
    # clear it, which is why this channel is a per-kind RECOMPUTE.
-   cat > /tmp/<citekey>-coherence.json <<'EOF'
+   cat > <runDir>/coherence.json <<'EOF'
    {
      "indexed": {
        "warnings": [
@@ -590,9 +597,9 @@ directory).
    }
    EOF
    python3 .virgil/scripts/library/update_catalog_entry.py "<citekey>" \
-     --patch-file /tmp/<citekey>-coherence.json \
+     --patch-file <runDir>/coherence.json \
      --recompute-warning-kind bib-coherence
-   rm /tmp/<citekey>-coherence.json
+   rm <runDir>/coherence.json
    ```
 
    Every line must start `bib-coherence: ` — the shim drops and re-appends by
@@ -637,15 +644,15 @@ directory).
    > — a held re-run is not a failure.
 
    ```bash
-   cat > /tmp/<citekey>-auth-notify.json <<'EOF'
+   cat > <runDir>/notify.json <<'EOF'
    { "kind": "<settled state from step 7>",
      "citekey": "<citekey>",
      "at": "<now ISO>",
      "summary": "<citekey>: <settled state> via <sources> (<N> field changes)" }
    EOF
    python3 .virgil/scripts/library/append_inbox_item.py \
-     --item-file /tmp/<citekey>-auth-notify.json
-   rm /tmp/<citekey>-auth-notify.json
+     --item-file <runDir>/notify.json
+   rm <runDir>/notify.json
    ```
 
 9. **Retire the request.** Mark the queued request done so the next drain
@@ -657,6 +664,7 @@ directory).
    the only writer on the skill side (task 1041):
    ```bash
    python3 .virgil/scripts/library/queue_slot.py retire --kind authenticate --citekey <citekey>
+   rm -rf <runDir>
    ```
 
 10. **(No-op.)** The `% bib.state = <X>` marker comment is updated as

@@ -338,8 +338,10 @@ python3 .virgil/scripts/library/recover_chapter_titles.py $ARGUMENTS
 For book TOC-driven heading insertion:
 
 ```bash
-python3 .virgil/scripts/library/extract_book_toc.py $ARGUMENTS --out /tmp/$ARGUMENTS-toc.json
-python3 .virgil/scripts/library/book_chapter_locator.py $ARGUMENTS /tmp/$ARGUMENTS-toc.json
+t=$(mktemp -d -t virgil-di-clean-prose)
+python3 .virgil/scripts/library/extract_book_toc.py $ARGUMENTS --out "$t/toc.json"
+python3 .virgil/scripts/library/book_chapter_locator.py $ARGUMENTS "$t/toc.json"
+rm -rf "$t"
 ```
 
 > **Verify the result.** After running, scan the diff: if the inserted

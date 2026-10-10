@@ -74,11 +74,16 @@ All paths in the rest of this skill resolve against the library root.
 > **Every step is a separate Bash call — the shell does not carry over.**
 > Your Bash tool keeps neither exported variables nor `cd` between calls,
 > and the steps below are separated by whole subagent waves. So nothing is
-> handed between steps through the shell: Step 0's preflight writes the
+> handed between steps through the shell: Step 0 mints this run's own
+> scratch directory and prints it (`runDir=…`), and its preflight writes the
 > run's state (library root, snapshot dir, filter/force/dry-run, batch) to
-> **`/tmp/merge-bibs-run.json`** plus a sourceable
-> **`/tmp/merge-bibs-run.json.env`**, and every later fenced block begins
-> with `. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"`. A
+> **`<runDir>/run.json`** plus a sourceable
+> **`<runDir>/run.json.env`**. Every later fenced block begins
+> with `. <runDir>/run.json.env && cd "$VIRGIL_LIBRARY_ROOT"`, where you
+> substitute the printed path for `<runDir>` exactly as you substitute a
+> citekey — per [_scratch.md](_scratch.md), never a fixed name: a second
+> merge on ANOTHER library would overwrite a shared one, and this run's
+> next block would `cd` into — and write — the other library. A
 > value you `export` in one block is EMPTY in the next — which is exactly
 > how the postflight once compared master.bib with itself and said "clean"
 > (task 798).
@@ -137,16 +142,19 @@ again), substituting the user's flags for `<user flags>`:
 # stdout is the JSON; stderr (retention-prune warnings etc.) goes to its OWN
 # file — merged into stdout it corrupts the JSON and json.load crashes,
 # silently skipping the writer check and the batch policy (task 798).
+# This run's scratch dir — carry the printed path as <runDir> from here on.
+run_dir=$(mktemp -d -t virgil-merge-bibs) || exit 1
+echo "runDir=$run_dir"
 python3 .virgil/scripts/library/merge_bibs_preflight.py \
-  --run-state /tmp/merge-bibs-run.json <user flags> \
-  > /tmp/merge-bibs-preflight.json 2> /tmp/merge-bibs-preflight.err
+  --run-state "$run_dir/run.json" <user flags> \
+  > "$run_dir/preflight.json" 2> "$run_dir/preflight.err"
 preflight_rc=$?
 if [ $preflight_rc -ne 0 ]; then
   echo "preflight failed (rc=$preflight_rc):"
-  cat /tmp/merge-bibs-preflight.err /tmp/merge-bibs-preflight.json
+  cat "$run_dir/preflight.err" "$run_dir/preflight.json"
   exit 1
 fi
-[ -s /tmp/merge-bibs-preflight.err ] && { echo "preflight warnings:"; cat /tmp/merge-bibs-preflight.err; }
+[ -s "$run_dir/preflight.err" ] && { echo "preflight warnings:"; cat "$run_dir/preflight.err"; }
 ```
 
 Parse the JSON and apply the policy:
@@ -154,7 +162,7 @@ Parse the JSON and apply the policy:
 ```bash
 python3 - <<'PY'
 import json, os, sys
-pf = json.load(open("/tmp/merge-bibs-preflight.json"))
+pf = json.load(open("<runDir>/preflight.json"))
 # Surface a short status line for the user.
 print(f"Snapshot:       {pf['snapshot_dir']}")
 print(f"Sync mounted:   {pf['sync_mounted']} ({pf['sync_kind'] or 'n/a'})")
@@ -204,7 +212,7 @@ Now decide whether to bail. The policy is computed by the preflight itself
 
 - **Otherwise**: `run.batch` is the user's `--batch` or the recommended
   default. It, the snapshot path, and the filter/force/dry-run flags are
-  now in `/tmp/merge-bibs-run.json.env` — the ONLY way later steps get them.
+  now in `<runDir>/run.json.env` — the ONLY way later steps get them.
 
 If you bail in this step, the snapshot has still been taken — surface
 its path to the user as something they can roll back to if anything
@@ -223,7 +231,7 @@ at import time). Libraries imported before the flag existed fall back to
 the legacy report-mtime check so they aren't needlessly re-scanned.
 
 ```bash
-. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
+. <runDir>/run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 python3 .virgil/scripts/library/merge_bibs_worklist.py --run-state "$MERGE_RUN_STATE"
 ```
 
@@ -248,7 +256,7 @@ Library-wide bib merge: nothing to do (0 papers in worklist).
 
 Read `$MERGE_REPORT_DIR/_worklist.txt` into memory, and read the batch
 size, dry-run flag and report directory from the run state (`run.batch`,
-`run.dry_run`, and `MERGE_REPORT_DIR` in `/tmp/merge-bibs-run.json.env`) —
+`run.dry_run`, and `MERGE_REPORT_DIR` in `<runDir>/run.json.env`) —
 not from your memory of the args. Walk the worklist in chunks of `BATCH`. **For each chunk, emit `BATCH` `Agent` tool
 calls in a single message.** That's how the Claude Code harness
 runs them concurrently — sequential `Agent` calls run one at a time.
@@ -325,7 +333,7 @@ key you find — an unknown state then shows up as an extra line, which is visib
 and fixable, instead of vanishing.
 
 ```bash
-. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
+. <runDir>/run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 python3 - <<'PY'
 import json, os, sys
 from collections import Counter
@@ -380,7 +388,7 @@ out = {
 print(json.dumps(out, indent=2))
 
 # Step 4 sources these instead of hand-transcribing them into the env.
-env_path = Path("/tmp/merge-bibs-totals.env")
+env_path = Path("<runDir>/totals.env")
 # `export` matters: the Step 4 memo heredoc reads MANUAL_PAPERS via os.environ,
 # so a plain shell assignment would not reach it.
 env_path.write_text(
@@ -460,9 +468,9 @@ Roll back only when `alerts[]` is non-empty; the script hands you the exact
 commands in `restore_commands`.
 
 ```bash
-. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
+. <runDir>/run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 python3 .virgil/scripts/library/merge_bibs_postflight.py \
-  --snapshot-dir "$SNAPSHOT_DIR" > /tmp/merge-bibs-postflight.json
+  --snapshot-dir "$SNAPSHOT_DIR" > <runDir>/postflight.json
 echo "postflight rc=$?"
 ```
 
@@ -477,7 +485,7 @@ Inspect the result:
 ```bash
 python3 - <<'PY'
 import json
-p = json.load(open("/tmp/merge-bibs-postflight.json"))
+p = json.load(open("<runDir>/postflight.json"))
 if p.get("error"):
     print(f"Postflight: COULD NOT RUN — {p['error']}")
 elif p.get("clean"):
@@ -509,18 +517,18 @@ Append one summary notification to the library inbox (skip if
 `--dry-run`):
 
 ```bash
-. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
+. <runDir>/run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
 if [ "$DRY_RUN" != "1" ]; then
   now="$(python3 -c 'import time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))')"
-  cat > /tmp/merge-bibs-notify.json <<EOF
+  cat > <runDir>/notify.json <<EOF
 {
   "kind": "authenticated",
   "at": "$now",
   "summary": "Library-wide bib merge: +<added_total> added, ~<dup> deferred, ⤬<trans> transient skipped, ?<manual> need review"
 }
 EOF
-  python3 .virgil/scripts/library/append_inbox_item.py --item-file /tmp/merge-bibs-notify.json
-  rm /tmp/merge-bibs-notify.json
+  python3 .virgil/scripts/library/append_inbox_item.py --item-file <runDir>/notify.json
+  rm <runDir>/notify.json
 fi
 ```
 
@@ -532,8 +540,8 @@ items later. Skip the memo entirely otherwise.
 # don't hand-transcribe them into the env, that is how this branch silently
 # died (unset MANUAL_REVIEW → `[: : integer expression expected`, rc 2).
 # DRY_RUN + VIRGIL_LIBRARY_ROOT come from the run state the same way.
-. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
-. /tmp/merge-bibs-totals.env
+. <runDir>/run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
+. <runDir>/totals.env
 if [ "${MANUAL_REVIEW:-0}" -gt 0 ] && [ "$DRY_RUN" != "1" ]; then
   date="$(date +%Y-%m-%d)"
   memo=".virgil/memos/${date}-bib-merge.md"
@@ -567,6 +575,9 @@ fi
 
 `MANUAL_PAPERS` arrives from the sourced file above; export `RUN_AT="<iso>"`
 into the env yourself before the heredoc runs.
+
+Last, remove the run's scratch directory (the snapshot lives elsewhere and is
+kept): `rm -rf <runDir>`.
 
 ---
 

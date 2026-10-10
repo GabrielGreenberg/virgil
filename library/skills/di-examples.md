@@ -161,9 +161,11 @@ The split is idempotent; safe to re-run.
 examples):
 
 ```bash
+proposals=$(mktemp -t virgil-di-examples)
 python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex \
-    --out /tmp/$ARGUMENTS-proposals.json
-# review the proposals, then:
+    --out "$proposals"
+echo "proposals: $proposals"
+# review the proposals file printed above (scratch per _scratch.md), then:
 python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex --apply
 ```
 

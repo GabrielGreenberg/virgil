@@ -746,7 +746,8 @@ outstanding-work agenda, so the paper would report "inline rewrite skipped"
 forever on a pass where the rewrite ran.
 
 ```bash
-cat > /tmp/$ARGUMENTS-cleanbib-warnings.json <<'EOF'
+t=$(mktemp -d -t virgil-clean-bibliography)
+cat > "$t/warnings.json" <<'EOF'
 {
   "indexed": {
     "warnings": [
@@ -757,11 +758,11 @@ cat > /tmp/$ARGUMENTS-cleanbib-warnings.json <<'EOF'
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-cleanbib-warnings.json \
+  --patch-file "$t/warnings.json" \
   --recompute-warning-kind missing-bib-entry \
   --recompute-warning-kind ambiguous-citation \
   --recompute-warning-kind numeric-citation-style
-rm /tmp/$ARGUMENTS-cleanbib-warnings.json
+rm -rf "$t"
 ```
 
 **Numeric / Vancouver sources** (§3g's early exit) — declare
@@ -770,7 +771,8 @@ rm /tmp/$ARGUMENTS-cleanbib-warnings.json
 prior author-year pass's findings rather than recompute them:
 
 ```bash
-cat > /tmp/$ARGUMENTS-cleanbib-warnings.json <<'EOF'
+t=$(mktemp -d -t virgil-clean-bibliography)
+cat > "$t/warnings.json" <<'EOF'
 {
   "indexed": {
     "warnings": [
@@ -780,9 +782,9 @@ cat > /tmp/$ARGUMENTS-cleanbib-warnings.json <<'EOF'
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-cleanbib-warnings.json \
+  --patch-file "$t/warnings.json" \
   --recompute-warning-kind numeric-citation-style
-rm /tmp/$ARGUMENTS-cleanbib-warnings.json
+rm -rf "$t"
 ```
 
 Declare only what you recomputed — and every line you supply must be of a kind

@@ -154,11 +154,11 @@ Detach-and-poll instead. Two phases:
 **Phase A — kick off the drain detached, return immediately.**
 ```bash
 cd <library-root>
-ts=$(date +%s)
+log=$(mktemp -t virgil-drain-log)
 nohup python3 .virgil/scripts/library/drain_queue.py \
-  > /tmp/drain_$ts.log 2>&1 &
+  > "$log" 2>&1 &
 disown
-echo "drain pid=$! log=/tmp/drain_$ts.log"
+echo "drain pid=$! log=$log"
 ```
 The drain now outlives the current shell / agent turn. Capture the
 log path so the next phase can tail it.
