@@ -47,6 +47,14 @@ The contract, stated once:
    the user already queued (or one in flight) is left exactly as it is. The
    CLI's `write --kind deepIndex` goes through it, which makes this the one
    enqueue a skill prompt (the front door's Queue branch) needs.
+8. **The review manifest is the shadow of the authenticate slot** (task 1041).
+   `pending-reviews.json` lists the pending `authenticate` requests. The app
+   keeps it beside its own writes (`queueBibReview` adds, `cancelBibReview`
+   drops — `library/lib/queue.ts`); here `write_request(kind="authenticate")`
+   adds the row and `retire --kind authenticate` drops it, under one sidecar
+   lock with an atomic write and an argv citekey. No skill edits the file by
+   hand. The row arithmetic (`with_pending_review` / `without_pending_review`)
+   is pinned to queue.ts's by `queue-slot-parity.test.ts`.
 
 CLI (the door for skill prompts that enqueue work)::
 
@@ -78,8 +86,13 @@ from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (  # noqa: E402
+    StateFileUnreadable,
+    _atomic_write_text,
+    _flock_path,
+    citekey_matches,
     is_path_safe_citekey,
     paper_folder,
+    read_json_state,
     require_path_safe_citekey,
     unlink_tolerant,
 )
@@ -106,10 +119,11 @@ LEGACY_KIND_ALIASES: dict[str, str] = {"richIndex": "deepIndex"}
 LEGACY_SLOT_SUFFIXES: dict[str, tuple[str, ...]] = {"deepIndex": ("-richindex",)}
 
 # Files in the queue folder that are NOT requests, whatever their extension.
-# `pending-reviews.json` is the app's bib-review manifest
-# (`library/lib/queue.ts` `addPendingReview`), written and never deleted.
+# `pending-reviews.json` is the bib-review manifest (contract item 8),
+# written and never deleted.
 # Mirrored by `QUEUE_NON_REQUEST_FILENAMES` in library/lib/queue.ts.
-NON_REQUEST_FILENAMES: tuple[str, ...] = ("pending-reviews.json",)
+PENDING_REVIEWS_FILENAME = "pending-reviews.json"
+NON_REQUEST_FILENAMES: tuple[str, ...] = (PENDING_REVIEWS_FILENAME,)
 # A rotated/legacy retirement marker that happens to end in `.json`.
 DONE_JSON_SUFFIX = ".done.json"
 
@@ -243,6 +257,82 @@ def _migrate_legacy_occupant(qdir: Path, citekey: str, target_kind: str) -> bool
     return True
 
 
+# ── the review manifest (contract item 8) ─────────────────────────────
+
+# The kind whose pending requests the manifest shadows.
+REVIEW_KIND = "authenticate"
+
+
+def _row_is(row: Any, citekey: str) -> bool:
+    """Is this manifest row `citekey`'s? NFC-insensitive (`citekey_matches`);
+    a malformed row is nobody's."""
+    stored = row.get("citekey") if isinstance(row, dict) else None
+    return isinstance(stored, str) and citekey_matches(stored, citekey)
+
+
+def without_pending_review(doc: Any, citekey: str) -> list[Any]:
+    """The manifest's rows without `citekey`'s row. A malformed row (not an
+    object, no citekey) is kept, never raised on — mirrors queue.ts
+    `withoutPendingReview`."""
+    rows = doc.get("pendingReviews") if isinstance(doc, dict) else None
+    if not isinstance(rows, list):
+        return []
+    return [r for r in rows if not _row_is(r, citekey)]
+
+
+def with_pending_review(doc: Any, citekey: str, requested_at: str) -> list[Any]:
+    """The manifest's rows with `citekey`'s row (re)placed last — mirrors
+    queue.ts `withPendingReview`."""
+    return without_pending_review(doc, citekey) + [
+        {"citekey": citekey, "requestedAt": requested_at}
+    ]
+
+
+def pending_reviews_path(library: Path) -> Path:
+    return queue_dir(library) / PENDING_REVIEWS_FILENAME
+
+
+def _update_pending_reviews(library: Path, citekey: str, requested_at: Optional[str]) -> str:
+    """Add (`requested_at` given) or drop `citekey`'s manifest row under the
+    manifest's sidecar lock, written atomically. Returns "added", "removed",
+    "absent" (drop with no manifest or no row: nothing written) or
+    "unreadable" (the file exists but is not a manifest: left byte-identical,
+    a copy preserved aside by `read_json_state`). Never raises for the
+    manifest's own state — it is a shadow, and a broken shadow must not fail
+    the request write or retirement it rides on."""
+    require_path_safe_citekey(citekey)
+    path = pending_reviews_path(library)
+    with _flock_path(path.with_name(path.name + ".lock")):
+        try:
+            doc = read_json_state(path, lambda: None, shape={"pendingReviews": list})
+        except StateFileUnreadable as e:
+            print(f"queue_slot: {e}", file=sys.stderr)
+            return "unreadable"
+        if requested_at is None:
+            if doc is None:
+                return "absent"
+            rows = without_pending_review(doc, citekey)
+            if not any(_row_is(r, citekey) for r in doc.get("pendingReviews") or []):
+                return "absent"
+            result = "removed"
+        else:
+            rows = with_pending_review(doc, citekey, requested_at)
+            result = "added"
+        out = dict(doc) if isinstance(doc, dict) else {}
+        out["pendingReviews"] = rows
+        out["updatedAt"] = _now()
+        _atomic_write_text(path, json.dumps(out, indent=2) + "\n")
+        return result
+
+
+def add_pending_review(library: Path, citekey: str, requested_at: str) -> str:
+    return _update_pending_reviews(library, citekey, requested_at)
+
+
+def remove_pending_review(library: Path, citekey: str) -> str:
+    return _update_pending_reviews(library, citekey, None)
+
+
 def write_request(
     library: Path,
     kind: str,
@@ -287,6 +377,8 @@ def write_request(
     if extra:
         entry.update(extra)
     path.write_text(json.dumps(entry, indent=2) + "\n")
+    if normalize_kind(kind) == REVIEW_KIND:
+        add_pending_review(library, citekey, entry["requestedAt"])
     return WRITTEN, path
 
 
@@ -444,16 +536,27 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(out))
         return 3 if result in REFUSED_RESULTS else 0
 
-    path = find_request(library, args.kind, args.citekey)
+    return retire(library, args.kind, args.citekey)
+
+
+def retire(library: Path, kind: str, citekey: str) -> int:
+    """Mark the pending `kind` request for `citekey` done. Retiring an
+    `authenticate` request also drops its review-manifest row — even when no
+    request is queued, so a stale row left by an older run is cleaned up."""
+    path = find_request(library, kind, citekey)
+    out: dict[str, Any]
     if path is None:
-        print(json.dumps({"result": "nothing-queued"}))
-        return 0
-    qdir = path.parent
-    retire_done(qdir, path.stem)
-    done = path.with_suffix(".done")
-    done.write_text(path.read_text())
-    unlink_tolerant(path, what="retired queue entry")
-    print(json.dumps({"result": "retired", "file": done.name}))
+        out = {"result": "nothing-queued"}
+    else:
+        qdir = path.parent
+        retire_done(qdir, path.stem)
+        done = path.with_suffix(".done")
+        done.write_text(path.read_text())
+        unlink_tolerant(path, what="retired queue entry")
+        out = {"result": "retired", "file": done.name}
+    if normalize_kind(kind) == REVIEW_KIND:
+        out["manifest"] = remove_pending_review(library, citekey)
+    print(json.dumps(out))
     return 0
 
 

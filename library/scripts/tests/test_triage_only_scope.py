@@ -42,6 +42,7 @@ _SCRIPTS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SCRIPTS))
 
 from _standalone import main as _standalone_main  # noqa: E402
+import queue_slot  # noqa: E402
 import triage_batch as tb  # noqa: E402
 
 BATCH = _SCRIPTS / "triage_batch.py"
@@ -226,7 +227,9 @@ def _queued(library: Path) -> list[str]:
     # own slot filename since task 618 (`<ck>-auth.json`, …).
     if not q.exists():
         return []
-    return sorted(json.loads(p.read_text())["citekey"] for p in q.glob("*.json"))
+    # Requests only, through the one population predicate — the review
+    # manifest (`pending-reviews.json`) shares the folder (task 1041).
+    return sorted(json.loads(p.read_text())["citekey"] for p in queue_slot.request_files(q))
 
 
 def test_only_run_leaves_the_bystander_untouched_through_apply(tmp_path):

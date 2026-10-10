@@ -258,7 +258,8 @@ export const QUEUE_SLOT_SUFFIX: Record<Exclude<QueueKind, "triage">, string> = {
  *  `NON_REQUEST_FILENAMES` / `DONE_JSON_SUFFIX` in
  *  `library/scripts/queue_slot.py`, pinned by `queue-slot-parity.test.ts`
  *  (task 794). */
-export const QUEUE_NON_REQUEST_FILENAMES: readonly string[] = ["pending-reviews.json"];
+export const QUEUE_PENDING_REVIEWS_FILENAME = "pending-reviews.json";
+export const QUEUE_NON_REQUEST_FILENAMES: readonly string[] = [QUEUE_PENDING_REVIEWS_FILENAME];
 export const QUEUE_DONE_JSON_SUFFIX = ".done.json";
 
 /** The one status that means "waiting to be worked" (`PENDING_STATUS`). */
@@ -462,7 +463,39 @@ export interface PendingReviewsFile {
   updatedAt: string;
 }
 
-const PENDING_REVIEWS_PATH = `${SUBDIRS.queue}/pending-reviews.json`;
+const PENDING_REVIEWS_PATH = `${SUBDIRS.queue}/${QUEUE_PENDING_REVIEWS_FILENAME}`;
+
+// The manifest is the SHADOW of the pending `authenticate` requests: a request
+// written adds its row, a request cancelled or retired drops it. Two doors
+// keep it — this one (the app) and `queue_slot.py` (the skills: `write --kind
+// authenticate` adds, `retire --kind authenticate` drops; task 1041). The
+// row arithmetic is stated by the two pure helpers below and pinned equal to
+// `queue_slot.with_pending_review` / `without_pending_review` by
+// `queue-slot-parity.test.ts`. A malformed row (not an object, no citekey) is
+// KEPT — the manifest is not ours to repair — and never throws.
+
+function manifestRows(cur: unknown): unknown[] {
+  const rows = (cur as { pendingReviews?: unknown } | null | undefined)?.pendingReviews;
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** Is this manifest row `citekey`'s? NFC-insensitive, like
+ *  `queue_slot._row_is` (`citekey_matches`); a malformed row is nobody's. */
+function rowIs(row: unknown, citekey: string): boolean {
+  const stored =
+    row !== null && typeof row === "object" ? (row as { citekey?: unknown }).citekey : undefined;
+  return typeof stored === "string" && stored.normalize("NFC") === citekey.normalize("NFC");
+}
+
+/** The manifest's rows with `citekey`'s row (re)placed last. */
+export function withPendingReview(cur: unknown, citekey: string, requestedAt: string): unknown[] {
+  return [...withoutPendingReview(cur, citekey), { citekey, requestedAt }];
+}
+
+/** The manifest's rows without `citekey`'s row. */
+export function withoutPendingReview(cur: unknown, citekey: string): unknown[] {
+  return manifestRows(cur).filter((r) => !rowIs(r, citekey));
+}
 
 export async function addPendingReview(
   root: FileSystemDirectoryHandle,
@@ -470,10 +503,8 @@ export async function addPendingReview(
   requestedAt: string,
 ): Promise<void> {
   const cur = await readJsonFile<PendingReviewsFile>(root, PENDING_REVIEWS_PATH);
-  const reviews = cur?.pendingReviews?.filter((r) => r.citekey !== citekey) ?? [];
-  reviews.push({ citekey, requestedAt });
   await writeJsonFile(root, PENDING_REVIEWS_PATH, {
-    pendingReviews: reviews,
+    pendingReviews: withPendingReview(cur, citekey, requestedAt) as PendingReviewEntry[],
     updatedAt: new Date().toISOString(),
   } satisfies PendingReviewsFile);
 }
@@ -496,9 +527,8 @@ export async function removePendingReview(
 ): Promise<void> {
   const cur = await readJsonFile<PendingReviewsFile>(root, PENDING_REVIEWS_PATH);
   if (!cur) return;
-  const reviews = cur.pendingReviews.filter((r) => r.citekey !== citekey);
   await writeJsonFile(root, PENDING_REVIEWS_PATH, {
-    pendingReviews: reviews,
+    pendingReviews: withoutPendingReview(cur, citekey) as PendingReviewEntry[],
     updatedAt: new Date().toISOString(),
   } satisfies PendingReviewsFile);
 }

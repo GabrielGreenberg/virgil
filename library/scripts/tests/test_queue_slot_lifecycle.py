@@ -420,6 +420,124 @@ def test_deep_index_refuses_an_in_flight_slot(tmp_path, capsys):
     assert not (q / "a.json").exists()
 
 
+# ── task 1041: the review manifest has a door on the Python side ─────────
+
+def _review_rows(lib: Path) -> list:
+    return _read(_qdir(lib) / "pending-reviews.json")["pendingReviews"]
+
+
+def test_authenticate_write_adds_manifest_row(tmp_path, capsys):
+    assert _cli(["write", "--kind", "authenticate", "--citekey", "a",
+                 "--library", str(tmp_path)]) == 0
+    capsys.readouterr()
+    rows = _review_rows(tmp_path)
+    assert [r["citekey"] for r in rows] == ["a"]
+    assert rows[0]["requestedAt"] == _read(_qdir(tmp_path) / "a-auth.json")["requestedAt"]
+    # Another kind's write leaves the manifest alone.
+    assert _cli(["write", "--kind", "index", "--citekey", "b",
+                 "--library", str(tmp_path)]) == 0
+    assert [r["citekey"] for r in _review_rows(tmp_path)] == ["a"]
+
+
+def test_authenticate_retire_drops_only_its_row(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _put(q / "pending-reviews.json", pendingReviews=[
+        {"citekey": "a", "requestedAt": "x"},
+        {"citekey": "b", "requestedAt": "y"},
+    ], updatedAt="z")
+    _put(q / "a-auth.json", kind="authenticate", status="requested",
+         citekey="a", requestedAt="x", attempts=0)
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", "a",
+                 "--library", str(tmp_path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"result": "retired", "file": "a-auth.done", "manifest": "removed"}
+    assert _review_rows(tmp_path) == [{"citekey": "b", "requestedAt": "y"}]
+
+
+def test_retire_cleans_a_stale_row_with_nothing_queued(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _put(q / "pending-reviews.json", pendingReviews=[{"citekey": "a", "requestedAt": "x"}])
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", "a",
+                 "--library", str(tmp_path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"result": "nothing-queued", "manifest": "removed"}
+    assert _review_rows(tmp_path) == []
+    # No manifest at all: nothing is created.
+    q2 = _qdir(tmp_path / "other")
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", "a",
+                 "--library", str(tmp_path / "other")]) == 0
+    assert json.loads(capsys.readouterr().out)["manifest"] == "absent"
+    assert not (q2 / "pending-reviews.json").exists()
+
+
+def test_apostrophe_citekey_goes_through_argv(tmp_path, capsys):
+    key = "o'neill2020"
+    q = _qdir(tmp_path)
+    _put(q / "pending-reviews.json", pendingReviews=[{"citekey": key, "requestedAt": "x"}])
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", key,
+                 "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["manifest"] == "removed"
+    assert _review_rows(tmp_path) == []
+
+
+def test_malformed_rows_are_kept_not_raised_on(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    junk = [None, 3, "s", {"requestedAt": "no-citekey"}]
+    _put(q / "pending-reviews.json", pendingReviews=[*junk, {"citekey": "a", "requestedAt": "x"}])
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", "a",
+                 "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["manifest"] == "removed"
+    assert _review_rows(tmp_path) == junk
+
+
+def test_unreadable_manifest_is_left_byte_identical(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    (q / "pending-reviews.json").write_text("{not json")
+    _put(q / "a-auth.json", kind="authenticate", status="requested",
+         citekey="a", requestedAt="x", attempts=0)
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", "a",
+                 "--library", str(tmp_path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    # The request is still retired; the shadow's damage does not block it.
+    assert out["result"] == "retired" and out["manifest"] == "unreadable"
+    assert (q / "pending-reviews.json").read_text() == "{not json"
+
+
+def test_concurrent_add_under_the_lock_survives_a_removal(tmp_path):
+    """A writer holding the manifest lock adds a row; a removal that starts
+    meanwhile waits, then reads the FRESH file — the add is not lost."""
+    import threading
+
+    _as_library(tmp_path)
+    q = _qdir(tmp_path)
+    path = q / "pending-reviews.json"
+    _put(path, pendingReviews=[{"citekey": "a", "requestedAt": "x"}])
+    held, release = threading.Event(), threading.Event()
+
+    def other_writer():
+        with queue_slot._flock_path(path.with_name(path.name + ".lock")):
+            held.set()
+            release.wait(5)
+            doc = _read(path)
+            doc["pendingReviews"].append({"citekey": "b", "requestedAt": "y"})
+            _put(path, **doc)
+
+    t = threading.Thread(target=other_writer)
+    t.start()
+    assert held.wait(5)
+    result: list = []
+    r = threading.Thread(target=lambda: result.append(
+        queue_slot.remove_pending_review(tmp_path, "a")))
+    r.start()
+    time.sleep(0.1)
+    assert result == []  # blocked on the lock
+    release.set()
+    t.join(5)
+    r.join(5)
+    assert result == ["removed"]
+    assert [x["citekey"] for x in _review_rows(tmp_path)] == ["b"]
+
+
 if __name__ == "__main__":
     from _standalone import main
 

@@ -648,23 +648,13 @@ directory).
    rm /tmp/<citekey>-auth-notify.json
    ```
 
-9. **Remove from pending-reviews manifest.** Read
-   `.virgil/queue/pending-reviews.json`, remove the entry for this citekey, and
-   write back. This keeps the manifest in sync so subsequent skill runs
-   don't re-process it.
-   ```bash
-   python3 -c '
-   import json; from pathlib import Path
-   p = Path(".virgil/queue/pending-reviews.json")
-   if p.exists():
-       d = json.loads(p.read_text())
-       d["pendingReviews"] = [r for r in d.get("pendingReviews", []) if r["citekey"] != "<citekey>"]
-       p.write_text(json.dumps(d, indent=2) + "\n")
-   '
-   ```
-   Then retire the queued request itself, so the next drain does not
-   dispatch it again (it finds the request in `<citekey>-auth.json` or in
-   an older shared `<citekey>.json`; a no-op when nothing is queued):
+9. **Retire the request.** Mark the queued request done so the next drain
+   does not dispatch it again (it finds the request in `<citekey>-auth.json`
+   or in an older shared `<citekey>.json`). The same call drops this
+   citekey's row from `.virgil/queue/pending-reviews.json` — under a lock,
+   written atomically, even when no request was queued — so subsequent skill
+   runs don't re-process it. Never edit that manifest by hand; this door is
+   the only writer on the skill side (task 1041):
    ```bash
    python3 .virgil/scripts/library/queue_slot.py retire --kind authenticate --citekey <citekey>
    ```
