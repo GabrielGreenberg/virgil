@@ -82,6 +82,13 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
   group: "block textObject",
   content: "figureCaption?",
   selectable: true,
+  // The figure's sides are an editing BOUNDARY (task 1042), as `exampleBlock`'s
+  // and `exampleGloss`'s are: Backspace at the caption's start, Delete at its
+  // end, and the same keys from the paragraphs either side no longer join
+  // text across the figure (a paragraph merged INTO the caption), lift the
+  // caption out of it (the image dropped), or carry the caret into the NEXT
+  // figure's caption. Inside, the caption edits like any textblock.
+  isolating: true,
 
   addOptions() {
     return {
