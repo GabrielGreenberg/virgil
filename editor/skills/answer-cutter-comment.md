@@ -124,8 +124,9 @@ once — see step 5).
    panel + record kind on every write anyway (task 783), so a wrong token is
    overwritten rather than shipped.
 
-   `aiOriginRequestId` is **load-bearing**: `/editor/accept-suggestion`
-   reads it to complete the originating Task on accept. Emit it for a real
+   `aiOriginRequestId` is **load-bearing**: both finishers read it to complete
+   the originating Task — the editor's Accept / Keep / Reject / Dismiss and
+   `/editor/accept-suggestion` / `reject-suggestion` (task 1043). Emit it for a real
    `ai-requests.json` id; omit it for a `virtual:`-prefixed one.
 
    `instructions` carries the source comment's `text` (the prompt

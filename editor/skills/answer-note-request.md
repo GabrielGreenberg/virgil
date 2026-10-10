@@ -169,8 +169,8 @@ two paths:
 
    `create_card.py` re-validates the anchor against the `.tex` and refuses if it
    isn't found (no partial write); it is idempotent — re-running on a terminal
-   Task is a no-op. The `aiOriginRequestId` the editor reads for Accept / Reject /
-   Redo is stamped **automatically** for a real `requestId` (never for a
+   Task is a no-op. The `aiOriginRequestId` back-pointer (the card→Task link a
+   later Accept / Reject finalizes the Task through) is stamped **automatically** for a real `requestId` (never for a
    `virtual:` id — there's no Task to point at), so don't hand-build it. This
    replaces the old "hand-build the note JSON, then call `apply_response.py`"
    dance — one `create_card.py` call now owns the build + apply.

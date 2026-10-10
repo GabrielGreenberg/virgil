@@ -219,7 +219,8 @@ import {
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag, ABSENT_CARD_CONTEXT } from "@/lib/ai-request-bridge";
 import { richFromPlainText } from "@/lib/footnote-content";
-import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
+import type { AiRequestSyncMode, ProposalResult } from "@/lib/ai-request-bridge";
+import { finalizeProposal, withProposalFinalize } from "@/links/proposal-finalize";
 import {
   panelForCardKind,
   isArchivable,
@@ -1444,9 +1445,36 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
   const notesHookRaw = useNotes(docId, notePristine);
   const aiRequestsHook = useAiRequests(docId);
-  const cutterHookRaw = useCutter(docId, cutPristine);
+  // Constructed before the suggestion families: accepting an AI proposal that
+  // answered a todo closes that todo (task 1043, `finalizeTodoSetDone` below).
+  const todosHookRaw = useTodos(docId, todoPristine);
+  // PROPOSAL FINALIZE (task 1043). Every app-side ending of an AI proposal —
+  // legacy Accept/Reject, Keep/Dismiss, Insert-below, the stale Dismiss, the
+  // lifecycle SETTLE — lands in a family hook's `setSuggestionStatus`, so the
+  // finalize rule wraps THAT, once, here: a terminal transition on a card
+  // carrying `aiOriginRequestId` completes its Task (`accepted|rejected`) and,
+  // on accept, closes the todo it answered — `cmd_accept`/`cmd_reject`'s shape.
+  // Fires on a status commit only, never per transaction (keystroke sanctity).
+  const finalizeTodoSetDone = todosHookRaw.setDone;
+  const onProposalFinalize = useCallback(
+    (requestId: string, result: ProposalResult) => {
+      void finalizeProposal(docId, requestId, result, (todoId) =>
+        finalizeTodoSetDone(todoId, true),
+      );
+    },
+    [docId, finalizeTodoSetDone],
+  );
+  const cutterHookUnfinalized = useCutter(docId, cutPristine);
+  const cutterHookRaw = useMemo(
+    () => withProposalFinalize(cutterHookUnfinalized, onProposalFinalize),
+    [cutterHookUnfinalized, onProposalFinalize],
+  );
   const reportsHookRaw = useReports(docId, reportPristine);
-  const revisionsHookRaw = useRevisions(docId, revisionPristine);
+  const revisionsHookUnfinalized = useRevisions(docId, revisionPristine);
+  const revisionsHookRaw = useMemo(
+    () => withProposalFinalize(revisionsHookUnfinalized, onProposalFinalize),
+    [revisionsHookUnfinalized, onProposalFinalize],
+  );
   // Per-family deps bag for the shared `pending-change-actions` sequence. Built
   // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
   // identity is keystroke-stable (deps: the keystroke-stable hook object), which
@@ -1862,7 +1890,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => ({ ...notesHookRaw, convertCard: morphCard, deleteNote: deleteNoteCard }),
     [notesHookRaw, morphCard, deleteNoteCard],
   );
-  const todosHookRaw = useTodos(docId, todoPristine);
   // A todo always resolves to the single routed kind `"todo"`; wrap its raw
   // delete so a flagged-then-deleted todo unbridges its ai-requests.json row
   // (task 219), through the same executor as every other kind.

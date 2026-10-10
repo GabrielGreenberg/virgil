@@ -222,6 +222,33 @@ check(task["status"] == "complete" and task.get("result") == "rejected", "Task �
 check(hashlib.sha256(tex_of(sb).encode()).hexdigest() == tex_before,
       "document.tex byte-for-byte unchanged (reject never edits the .tex)")
 
+# ===== task 1043: a todo answered by a proposal closes on ACCEPT, stays open on REJECT
+print("\n=== todo-linked proposal: accept closes the todo (same commit); reject leaves it open ===")
+TODO_ID = "681c97be-e10f-42f3-88ea-09158cf8a13c"  # an open todo in the sample
+for verb, card_id in (("accept", "rev-todo-a"), ("reject", "rev-todo-r")):
+    sb = sandbox()
+    tid = f"todo-task-{verb}"
+    add_request(sb, {"id": tid, "kind": "todo", "text": "tighten the opening",
+                     "createdAt": ISO, "status": "pending", "paragraphIds": ["6607"],
+                     "linkedTo": {"panel": "todos", "cardId": TODO_ID}})
+    check(not card_by_id(sb, "todos.json", "items", TODO_ID).get("done"), f"{verb}: todo starts open")
+    r = draft_proposal(sb, panel="revisions", card_id=card_id, kind_label="revision-suggestion",
+                       task_id=tid, anchor="6607", original=live_first_sentence(sb, "6607"),
+                       suggested="That this notation endured is no accident.")
+    check(r.returncode == 0, f"{verb}: propose exited 0 (stderr={r.stderr.strip()[:160]})")
+    check(not card_by_id(sb, "todos.json", "items", TODO_ID).get("done"),
+          f"{verb}: todo still open after the proposal LANDS (the user has not decided)")
+    r = run(APPLY, str(sb), verb, json.dumps({"cardId": card_id}))
+    check(r.returncode == 0, f"{verb} exited 0 (stderr={r.stderr.strip()[:160]})")
+    task = req_by_id(sb, tid)
+    check(task["status"] == "complete" and task.get("result") == f"{verb}ed",
+          f"{verb}: Task → complete / {verb}ed")
+    done = bool(card_by_id(sb, "todos.json", "items", TODO_ID).get("done"))
+    if verb == "accept":
+        check(done, "accept: the answered todo is CLOSED (done) in the same commit")
+    else:
+        check(not done, "reject: the todo stays OPEN (the ask is still unanswered)")
+
 # ===== task 787: a DRAINED Task stays drained — a stray second landing is refused
 print("\n=== drained Task: report re-route drains it, a stray cut proposal is REFUSED ===")
 sb = sandbox()
