@@ -28,13 +28,10 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from _refs_section import body_end as refs_body_end
 
 
 SECTION_RE = re.compile(r"^\\section\{([^}]+)\}", re.M)
-REFS_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited|Notes|Endnotes|Index)\b",
-    re.M | re.I,
-)
 
 
 def find_notes_block(text: str, chapter_start: int, chapter_end: int) -> tuple[int, int, list[tuple[int, str]]] | None:
@@ -104,12 +101,11 @@ def find_call_site_in_chapter(text: str, chapter_start: int,
 def reattach(text: str) -> tuple[str, dict]:
     # Identify body chapters.
     sections = list(SECTION_RE.finditer(text))
-    refs = REFS_RE.search(text)
-    body_end = refs.start() if refs else len(text)
+    body_end = refs_body_end(text, back_matter=True)
 
     chapters = []
     for i, m in enumerate(sections):
-        if refs and m.start() >= refs.start():
+        if m.start() >= body_end:
             break
         start = m.start()
         end = sections[i + 1].start() if i + 1 < len(sections) else body_end

@@ -35,12 +35,9 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _refs_section import body_end as refs_body_end
 
 
-REFS_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited|Notes|Endnotes|Index)\b",
-    re.M | re.I,
-)
 LEADING_DIGIT_NO_SEP_RE = re.compile(
     r"^(\d{1,3})([A-Z\"'“‘])",
     re.M,
@@ -53,8 +50,7 @@ PARAGRAPH_START_NUM_RE = re.compile(r"^(\d{1,3})[\.\s]+[A-Z]", re.M)
 
 def _body_range(text: str) -> tuple[int, int]:
     """Return (body_start, body_end) excluding back-matter."""
-    refs_m = REFS_RE.search(text)
-    body_end = refs_m.start() if refs_m else len(text)
+    body_end = refs_body_end(text, back_matter=True)
     # Body start: after \maketitle or after \begin{document}.
     body_start = 0
     mt = text.find("\\maketitle")

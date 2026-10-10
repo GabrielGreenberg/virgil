@@ -20,13 +20,9 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _refs_section import references_span
 
 
-REFS_HEAD_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited)\}",
-    re.M | re.I,
-)
-NEXT_SECTION_RE = re.compile(r"^\\section\{", re.M)
 ALREADY_ITEMIZED_RE = re.compile(r"\\begin\{itemize\}[\s\S]*?\\textbf\{")
 YEAR_RE = re.compile(r"\b(1[6-9]\d{2}|20\d{2})([a-c]?)\b")
 
@@ -107,13 +103,10 @@ def itemize_paper(paper_dir: Path, dry_run: bool = False) -> dict:
     if not tex_path.exists():
         return {"error": "main.tex not found"}
     text = tex_path.read_text(encoding="utf-8")
-    head_m = REFS_HEAD_RE.search(text)
-    if not head_m:
+    span = references_span(text)
+    if not span:
         return {"error": "no References section found"}
-    refs_start = head_m.end()
-    after = text[refs_start:]
-    next_m = NEXT_SECTION_RE.search(after)
-    refs_end = refs_start + (next_m.start() if next_m else len(after))
+    refs_start, refs_end = span.body_start, span.end
     refs_section = text[refs_start:refs_end]
 
     if ALREADY_ITEMIZED_RE.search(refs_section):

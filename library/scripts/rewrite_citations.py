@@ -3,7 +3,8 @@
 
 Parses references.bib (treating both `author = {}` and `editor = {}`
 fields identically) into a {(normalized-surname-tuple, year) → citekey}
-map. Walks the body region (everything before \\section{References}),
+map. Walks the body region (everything before the References heading, as
+`_refs_section.body_end` locates it),
 finding bare `Author Year` and `(Author Year)` mentions, and rewrites:
 
 - `(Author Year)` parenthetical → `\\cite{key}`
@@ -25,6 +26,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
+from _refs_section import body_end, references_span
 
 
 def normalize_surname(s: str) -> str:
@@ -223,9 +225,7 @@ def _is_valid_year(year_str: str) -> bool:
 
 def rewrite_citations(text: str, bibmap: dict[tuple, str],
                       style: str = "chicago") -> tuple[str, int, list[str]]:
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
 
@@ -337,9 +337,7 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str],
 
 def rewrite_bracket_keys(text: str, bracket_map: dict[str, str]) -> tuple[str, int]:
     """For bracket-key style: rewrite inline `[KEY]` to `\\cite{citekey}`."""
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
     count = 0
@@ -402,9 +400,7 @@ def rewrite_bracket_numeric(
 
     Skips occurrences inside the References section itself.
     """
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
     count = 0
@@ -448,9 +444,7 @@ def rewrite_bracket_author_year(
 ) -> tuple[str, int, list[str]]:
     """SIGGRAPH/Eurographics inline style: rewrite `[Author Year]` and
     `[A1 Y1; A2 Y2]` multi-citation. Also handles textual `Author [Year]`."""
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
 
@@ -508,9 +502,7 @@ def rewrite_author_year_paren(
     whole author-year, which is wrong here — only the year is in
     parens in the source.
     """
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
     count = 0
@@ -559,9 +551,7 @@ def rewrite_bracket_locator(
     used for bib lookup; remaining authors fall through to the bibmap's
     "any-author" index for cross-checking.
     """
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
     count = 0
@@ -677,9 +667,7 @@ def rewrite_possessive(
 ) -> tuple[str, int]:
     """Rewrite possessive forms `Author's Year` to
     `\\citeauthor{key}'s \\citeyearpar{key}` (clark1990quotations memo)."""
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
     count = 0
@@ -725,9 +713,7 @@ def rewrite_multi_year_same_author(
     unbalanced parens (cohenmscoherence memo). This pass runs FIRST so
     the standard rewriter sees a clean `\\citealt{...}` instead.
     """
-    refs_start = text.find(r"\section{References}")
-    if refs_start < 0:
-        refs_start = len(text)
+    refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
     count = 0
@@ -852,11 +838,8 @@ def main() -> int:
         bracket_map = parse_bracket_keys(bib_path)
         new_tex, count = rewrite_bracket_keys(tex, bracket_map)
     elif style == "bracket-numeric":
-        refs_start = tex.find(r"\section{References}")
-        if refs_start < 0:
-            refs_section = ""
-        else:
-            refs_section = tex[refs_start:]
+        refs_span = references_span(tex)
+        refs_section = tex[refs_span.head_start:] if refs_span else ""
         numeric_map = parse_numeric_bracket_keys(refs_section)
         new_tex, count = rewrite_bracket_numeric(tex, numeric_map)
     elif style == "bracket-author-year":

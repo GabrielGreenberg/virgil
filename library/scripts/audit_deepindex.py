@@ -42,6 +42,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import citekey_matches, suppression_categories_from_catalog  # noqa: E402
+from _refs_section import body_end, is_heading_line
 
 
 # ── Finding-category vocabulary (the ONE declaration) ───────────────────
@@ -149,14 +150,10 @@ BRAND_NAME_ALLOWLIST = frozenset({
     "WordNet", "ConceptNet", "FrameNet", "VerbNet", "PropBank",
 })
 
-# Backreferences-section heading: matches `\section{}` / `\section*{}`.
-# The case-error scan skips text inside any References section to avoid
-# flagging surname capitalization in author lists. (kriegeskorte memo:
-# arXiv references for 50 papers/year produced 50+ false positives.)
-REFS_SECTION_RE = re.compile(
-    r"\\section\*?\{(References|Bibliography|Works\s*Cited)\b",
-    re.I,
-)
+# The case-error scan skips text from the References heading on (located
+# by `_refs_section.body_end`, task 1038) to avoid flagging surname
+# capitalization in author lists. (kriegeskorte memo: arXiv references for
+# 50 papers/year produced 50+ false positives.)
 
 # Word-internal NBSP between two lowercase letters.
 WORD_NBSP_RE = re.compile(r"[a-z] [a-z]")
@@ -185,15 +182,13 @@ FIGURE_CAPTION_RE = re.compile(
 # positive on documents with no footnotes at all.)
 FOOTNOTE_CMD_RE = re.compile(r"\\footnote\{")
 
-# Section heads that begin the back-matter (or front-matter Contents)
-# for purposes of skipping the leaked-FN scan. Including Contents /
+# Front-matter Contents heads, which (with the back-matter heads
+# `_refs_section.is_heading_line(…, back_matter=True)` recognizes) stop
+# the leaked-FN scan. Including Contents /
 # TOC heads keeps numbered chapter listings inside `\section{Contents}`
 # out of the leaked-FN count.
-BACK_MATTER_OR_FRONT_TOC_RE = re.compile(
-    r"^\s*\\section\{("
-    r"References|Bibliography|Works\s*Cited|Notes|Endnotes|Index|"
-    r"Contents|Table\s+of\s+Contents|TOC"
-    r")\b",
+FRONT_TOC_RE = re.compile(
+    r"^\s*\\section\{(Contents|Table\s+of\s+Contents|TOC)\b",
     re.IGNORECASE,
 )
 
@@ -282,11 +277,7 @@ def count_case_errors(text: str) -> tuple[int, list[int]]:
     legitimate capitalization read as false positives)."""
     # Truncate at the first References-like section so author lists
     # aren't scanned. (kriegeskorte memo.)
-    body_end_match = REFS_SECTION_RE.search(text)
-    if body_end_match:
-        body = text[: body_end_match.start()]
-    else:
-        body = text
+    body = text[: body_end(text)]
     # Strip LaTeX command bodies to avoid false positives on intended camelCase.
     no_cmd = re.sub(r"\\[a-zA-Z]+\{[^}]*\}", "", body)
     # Strip math spans so identifiers like `posM` inside `$pos_M$` don't
@@ -361,7 +352,7 @@ def count_leaked_footnotes(text: str) -> tuple[int, list[int]]:
             continue
         if not body_started:
             continue
-        if BACK_MATTER_OR_FRONT_TOC_RE.match(line):
+        if FRONT_TOC_RE.match(line) or is_heading_line(line, back_matter=True):
             in_back_matter = True
         if in_back_matter:
             continue

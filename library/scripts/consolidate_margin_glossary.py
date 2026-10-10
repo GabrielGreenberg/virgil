@@ -31,6 +31,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _refs_section import body_end as refs_body_end
 
 
 # Term-definition paragraph: short Title-Case term, colon, definition.
@@ -39,17 +40,13 @@ TERM_DEF_RE = re.compile(
     re.M,
 )
 SECTION_RE = re.compile(r"\\section\{[^}]+\}", re.M)
-REFS_HEAD_RE = re.compile(
-    r"\\section\{(References|Bibliography|Works Cited|Notes)\b", re.I,
-)
 
 
 def _find_clusters(text: str) -> list[list[tuple[int, int, str, str]]]:
     """Group consecutive term-def matches into clusters when each
     pair is separated by no more than one paragraph break."""
     paragraphs = list(re.finditer(r"[^\n]+(?:\n(?!\n)[^\n]*)*", text))
-    refs_m = REFS_HEAD_RE.search(text)
-    body_end = refs_m.start() if refs_m else len(text)
+    body_end = refs_body_end(text, back_matter=True)
 
     matches: list[tuple[int, int, str, str]] = []
     for m in TERM_DEF_RE.finditer(text):

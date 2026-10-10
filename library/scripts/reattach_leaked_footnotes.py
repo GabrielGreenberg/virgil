@@ -45,6 +45,7 @@ import re
 import sys
 from pathlib import Path
 from typing import NamedTuple
+from _refs_section import body_end as refs_body_end
 
 
 # Paragraph-start leaked-footnote pattern. Matches either:
@@ -59,12 +60,8 @@ LEAKED_PARA_RE = re.compile(
 # starred-form headings in books and edited volumes act as boundaries.
 SECTION_RE = re.compile(r"^\\section\*?\{([^}]+)\}", re.M)
 
-# References / bibliography section boundary. Matches `\section{}` and
-# `\section*{}` — the starred form is common in books and edited volumes.
-REFS_RE = re.compile(
-    r"^\\section\*?\{(References|Bibliography|Works Cited|Notes|Endnotes|Index)\b",
-    re.M | re.I,
-)
+# The References / back-matter boundary is `_refs_section.body_end`
+# (task 1038), which takes starred headings too.
 
 # Contents / TOC section start (front-matter).
 TOC_SECTION_RE = re.compile(
@@ -212,14 +209,13 @@ def _position_in_protected_arg(text: str, pos: int) -> bool:
 def find_chapter_boundaries(text: str) -> list[tuple[int, int]]:
     """Return list of (chapter_start, chapter_end) char offsets in text."""
     sections = list(SECTION_RE.finditer(text))
-    refs_match = REFS_RE.search(text)
-    body_end = refs_match.start() if refs_match else len(text)
+    body_end = refs_body_end(text, back_matter=True)
     boundaries: list[tuple[int, int]] = []
     if not sections:
         # No chapters; treat whole-body as one.
         return [(0, body_end)]
     for i, m in enumerate(sections):
-        if refs_match and m.start() >= refs_match.start():
+        if m.start() >= body_end:
             break
         start = m.start()
         end = sections[i + 1].start() if i + 1 < len(sections) else body_end
