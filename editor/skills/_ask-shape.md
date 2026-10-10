@@ -66,7 +66,7 @@ not of whether one exists.** That is the axis, and getting it wrong
 documents a call that dies. Three tiers:
 
 - **Tier 1 — a SELF-SUFFICIENT builder** (`note`, `report`, `todo`,
-  `footnote`, `report-request`): everything it needs is something you are
+  `footnote`, `report-request`, `suggestion`): everything it needs is something you are
   holding. Declare the Task kind you are draining and let the contract do
   the write:
   ```bash
@@ -111,9 +111,19 @@ documents a call that dies. Three tiers:
   and the citation card in one atomic op. **Do not call
   `--kind=citation` to answer "find me a source for this"** — you have no
   citekey, and the call dies.
-- **Tier 3 — NO builder** (`suggestion`): hand off to
-  [`/editor/draft-suggestion`](draft-suggestion.md), which owns the L3
-  propose path (`apply_response.py complete-task --propose`).
+  `suggestion` takes three texts in place of `--body` — `--original` (the
+  span, VERBATIM from the paragraph you already hold; never the `%!v:`
+  marker), `--suggested`, `--explanation` — and lands as an L3 proposal; the
+  door refuses a non-verbatim span or an empty revision before any write
+  (task 1044, [`create-card.md`](create-card.md)). Same one hop:
+  `create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> --accept-task-kind
+  <the Task's kind> --original "@$t/original" --suggested "@$t/suggested"
+  --explanation "@$t/explanation"`.
+- **Tier 3 — NO builder** (none today): hand off to the skill that owns the
+  write. `suggestion` sat here, handed off to
+  [`/editor/draft-suggestion`](draft-suggestion.md), until task 1044 gave it
+  a builder (`--kind=suggestion`) — a kind with no `create_card.py` builder
+  for one would land here again.
 
 Tiers 2 and 3 differ in their reason and agree in their shape: a handoff.
 State the reason, not just the destination — a future kind that gains a

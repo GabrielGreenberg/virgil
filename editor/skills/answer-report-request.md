@@ -70,8 +70,9 @@ Report Request by appending a **Report card authored by AI** to
    the helper through heredoc scratch files, never as quoted argv — see
    [`_op-json.md`](_op-json.md).
 
-   - Real `requestId` (`kind: report`, `linkedTo.panel == "reports"`): anchor
-     is read from the Task —
+   - Real `requestId` (`kind: report`, `linkedTo.panel == "reports"`): pass
+     the row's `paragraphIds[0]` as `--anchor` (a no-op for a real id — the
+     same one call shape every re-route uses, [_ask-shape.md](_ask-shape.md)) —
      ```bash
      t=$(mktemp -d -t virgil-txt)
      cat > "$t/title" <<'TXT'
@@ -81,7 +82,7 @@ Report Request by appending a **Report card authored by AI** to
      <report body>
      TXT
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-         --author ai --title "@$t/title" --body "@$t/body"; rc=$?
+         --anchor <uuid> --author ai --title "@$t/title" --body "@$t/body"; rc=$?
      rm -rf "$t"
      exit "$rc"
      ```
@@ -111,6 +112,37 @@ Report Request by appending a **Report card authored by AI** to
    ```
    Done: drafted report <id> for request <requestId>. Output: reports.json (+ ai-requests.json status/result, notifications, version).
    ```
+   For the prose-edit re-route (below):
+   ```
+   Done: drafted suggestion <id> for report request <requestId> (a report Task answered as a suggestion) — awaiting review. Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
+   ```
+
+**The prose-edit path (a).** If the honest answer to the request is a change
+to the prose rather than a report ([_ask-shape.md](_ask-shape.md)), answer it
+**instead of** step 3 with a suggestion — one call, the same door every
+responder lands proposals through (task 1044). The door anchors the card to
+the Report Request's own anchor, files it in `revisions.json`, mints the id /
+self-link, stamps `instructions` and `aiOriginRequestId`, leaves the Task
+awaiting review, and refuses before any write if `original_text` is not
+verbatim in the anchored paragraph (exclude the `%!v:` marker) or the
+replacement is empty:
+```bash
+t=$(mktemp -d -t virgil-txt)
+cat > "$t/original" <<'TXT'
+<the span, verbatim from the .tex>
+TXT
+cat > "$t/suggested" <<'TXT'
+<your replacement>
+TXT
+cat > "$t/explanation" <<'TXT'
+<one or two sentences>
+TXT
+python3 editor/scripts/create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> \
+    --accept-task-kind report --original "@$t/original" \
+    --suggested "@$t/suggested" --explanation "@$t/explanation"; rc=$?
+rm -rf "$t"
+exit "$rc"
+```
 
 ## Idempotency
 
@@ -129,7 +161,7 @@ Skipped <requestId> (already complete).
   card; `create_card.py` clears the request's `aiRequest` flag for you.
 - Never mutate `document.tex` — a Report is apparatus anchored beside the
   paragraph, not a change to the prose. If the user actually wanted a
-  prose edit, draft a revision suggestion instead
-  (`/editor/draft-suggestion`). This is the ask-shape rule read from the
+  prose edit, answer with a suggestion instead (the prose-edit path (a)
+  above). This is the ask-shape rule read from the
   Reports side — [_ask-shape.md](_ask-shape.md) states it once, in both
   directions, for every panel.

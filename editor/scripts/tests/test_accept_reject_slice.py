@@ -188,7 +188,7 @@ check(card_by_id(sb, "cutter.json", "cards", SAMPLE_CUTTER)["status"] == "accept
 print("\n=== reject: dismiss a proposal, Task completed, .tex byte-for-byte unchanged ===")
 sb = sandbox()
 r = propose(sb, panel="cutter", card_id="cut-rej-1", kind_label="cutter-suggestion",
-            task_id="cut-prop-1", anchor="5505", original="anything", suggested="never applied")
+            task_id="cut-prop-1", anchor="5505", original="made permanent", suggested="never applied")
 check(r.returncode == 0, f"propose exited 0 (stderr={r.stderr.strip()[:160]})")
 tex_before = hashlib.sha256(tex_of(sb).encode()).hexdigest()
 r = run(APPLY, str(sb), "reject", json.dumps({"cardId": "cut-rej-1"}))
@@ -264,13 +264,23 @@ print("\n=== empty revision suggestion: accept REFUSES, every file byte-identica
 for label, suggested, user in [("empty", "", ""), ("whitespace", "  \n", " ")]:
     sb = sandbox()
     cid = f"rev-empty-{label}"
+    # Task 1044: the write door now refuses this at PROPOSE, nothing written…
+    before = files_snapshot(sb)
     r = propose(sb, panel="revisions", card_id=cid, kind_label="revision-suggestion",
                 task_id=f"{cid}-task", anchor="6607", original=REV_ORIGINAL, suggested=suggested)
+    check(r.returncode != 0 and "No replacement text yet" in r.stderr,
+          f"[{label}] propose REFUSES an empty revision replacement (stderr={r.stderr.strip()[:160]})")
+    check(files_snapshot(sb) == before, f"[{label}] the refused propose wrote nothing")
+    # …so accept's own guard is reached the one way left: a landed draft whose
+    # text was emptied afterwards (the human cleared it in the panel).
+    r = propose(sb, panel="revisions", card_id=cid, kind_label="revision-suggestion",
+                task_id=f"{cid}-task", anchor="6607", original=REV_ORIGINAL, suggested="a draft")
     check(r.returncode == 0, f"[{label}] propose exited 0 (stderr={r.stderr.strip()[:160]})")
-    if user:
-        st = load(sb, "revisions.json")
-        next(c for c in st["cards"] if c["id"] == cid)["user_text"] = user
-        (sb / "virgil/revisions.json").write_text(json.dumps(st, indent=2))
+    st = load(sb, "revisions.json")
+    landed = next(c for c in st["cards"] if c["id"] == cid)
+    landed["suggested_text"] = suggested
+    landed["user_text"] = user
+    (sb / "virgil/revisions.json").write_text(json.dumps(st, indent=2))
     before = files_snapshot(sb)
     r = run(APPLY, str(sb), "accept", json.dumps({"cardId": cid}))
     check(r.returncode != 0, f"[{label}] accept exits non-zero on an empty revision replacement")
@@ -283,7 +293,8 @@ for label, suggested, user in [("empty", "", ""), ("whitespace", "  \n", " ")]:
 print("\n=== revision with user_text: the human's text is what lands ===")
 sb = sandbox()
 r = propose(sb, panel="revisions", card_id="rev-user", kind_label="revision-suggestion",
-            task_id="rev-user-task", anchor="6607", original=REV_ORIGINAL, suggested="")
+            task_id="rev-user-task", anchor="6607", original=REV_ORIGINAL, suggested="the AI draft")
+check(r.returncode == 0, f"propose exited 0 (stderr={r.stderr.strip()[:160]})")
 st = load(sb, "revisions.json")
 USER_TEXT = "Its survival into the present owes nothing to typography."
 next(c for c in st["cards"] if c["id"] == "rev-user")["user_text"] = USER_TEXT

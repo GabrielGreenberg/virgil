@@ -38,20 +38,24 @@ The skill set turns those signals into responses:
   `/editor/answer-todo-request` — card-create responders; their
   **terminal-complete** branches route the writeback through
   `create_card.py` → `apply_response.py` (chip 11), and their **propose-flow**
-  branches (the answer-note path-(a) / answer-todo text-edit → suggestion) now
-  draft via `apply_response.py complete-task --propose` (chip 14). No skill
-  hand-builds card JSON for these any more.
+  branches (the answer-note path-(a) / answer-todo text-edit → suggestion) land
+  through `create_card.py --kind=suggestion` (task 1044 — the proposal door
+  over `complete-task --propose`). No skill hand-builds card JSON any more.
 - `/editor/find-citation` — adds a `.bib` entry + a citation card as **one
   atomic op** through the contract (chip 12): the card rides `panel`/`card` and
   the `references.bib` append rides `bibEdit`, so a crash can't orphan one
   against the other.
 - `/editor/answer-cutter-comment`, `/editor/answer-revision-request`,
   `/editor/draft-suggestion` — responder-kind emitters (comment / the
-  suggestion family). On the contract as of **chip 14**: a suggestion proposal
-  drafts via `apply_response.py complete-task --propose` (the card lands, the
-  Task is left awaiting review, the `.tex` untouched) — directly consumable by
-  chip 13's `accept`; `answer-revision-request`'s path-(b) sibling request is a
-  terminal `complete-task` create. No more legacy default-apply.
+  suggestion family). Since **task 1044** every proposal is BUILT by one door,
+  `create_card.py --kind=suggestion` (panel derived from the Task, source
+  anchor copied, ids / self-link / `aiOriginRequestId` minted), which lands it
+  via `complete-task --propose` (the card lands, the Task is left awaiting
+  review, the `.tex` untouched) — directly consumable by chip 13's `accept`.
+  The write door refuses a proposal whose `original_text` is not verbatim in
+  its anchored paragraph, or whose revision replacement is empty, before any
+  byte lands — the same questions accept asks. `answer-revision-request`'s
+  sibling reply is `--kind=comment`, a terminal create.
 - `/editor/accept-suggestion`, `/editor/reject-suggestion` — the **L3
   consummation** (chip 13). A drafted suggestion proposal (revision- or
   cutter-) is reviewed, then either **accepted** — spliced into the `.tex`

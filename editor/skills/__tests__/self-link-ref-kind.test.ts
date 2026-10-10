@@ -46,11 +46,15 @@ function refKinds(): { file: string; kind: string }[] {
 describe("skill markdown — every link ref.kind is a spine CardKind (task 783)", () => {
   const found = refKinds();
 
-  it("the census sees the suggestion skills' self-links (not vacuous)", () => {
-    const files = new Set(found.map((f) => f.file));
-    for (const f of ["draft-suggestion.md", "answer-cutter-comment.md", "answer-revision-request.md"]) {
-      expect(files, f).toContain(f);
-    }
+  it("the census patterns still SEE a ref.kind (not vacuous)", () => {
+    // Since task 1044 no skill hand-builds a card or its self-link — the
+    // proposal family lands through `create_card.py --kind=suggestion|comment`
+    // (proposal-builder-door.test.ts forbids the JSON block), so the live
+    // population is legitimately empty. Prove the patterns would still catch
+    // the next hand-restated token rather than passing over nothing.
+    const sample = '"target": { "type": "card", "ref": {"kind": "suggestion", "id": "x"} }';
+    const hits = REF_KIND_PATTERNS.flatMap((re) => [...sample.matchAll(re)].map((m) => m[1]));
+    expect(hits).toContain("suggestion");
   });
 
   it("no skill spells a non-CardKind ref.kind token", () => {

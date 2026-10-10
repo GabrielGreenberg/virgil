@@ -143,12 +143,11 @@ const EXCLUDED_NON_FLAG_TARGETS: Record<string, string> = {
  *
  *  EXACT-SET exemption with a stated reason, so an entry that has stopped
  *  excusing anything fails rather than standing as a licence. */
-const PERMITTED_NO_REROUTE_DOOR: Record<string, string> = {
-  "editor/skills/answer-report-request.md":
-    "its re-route target is a `suggestion` — doctrine tier 3, NO create_card.py " +
-    "builder — so its door is a handoff to /editor/draft-suggestion, not a " +
-    "`--accept-task-kind` flag.",
-};
+//
+// EMPTY since task 1044: `answer-report-request` was the one member (its
+// re-route target, `suggestion`, had no create_card.py builder), and it now
+// spells `--kind=suggestion --accept-task-kind report` like everyone else.
+const PERMITTED_NO_REROUTE_DOOR: Record<string, string> = {};
 
 const RE_ROUTING_SKILLS = REFERENCING_SKILLS.filter(
   (s) => !(s in PERMITTED_NO_REROUTE_DOOR),
@@ -194,15 +193,19 @@ describe("ask-shape doctrine (SSOT + referencing responders)", () => {
     expect(flat(SSOT)).toMatch(/genuinely ambiguous, the panel wins/i);
   });
 
-  it("SSOT keeps the mechanism ASYMMETRIC — `suggestion` has no create_card builder", () => {
-    // create_card.py's CARDED_BUILDERS covers footnote/citation/note/todo/
-    // report/report-request — NOT suggestion. A future edit that flattens this
-    // into one uniform "--accept-task-kind" rule would document a call that
-    // dies. Pin both halves.
+  it("SSOT files `suggestion` in tier 1 WITH its own flags (task 1044)", () => {
+    // Until task 1044 `suggestion` had no create_card builder and was the
+    // tier-3 handoff. It now has one (`--kind=suggestion`), but a builder whose
+    // inputs are not `--body` must SAY so where the one-hop call is taught, or
+    // the documented call dies on a missing --original. Pin the tier, the
+    // flags, and the tier-3 slot left for the next builder-less kind.
     const doc = flat(SSOT);
     expect(doc).toContain("--accept-task-kind");
-    expect(doc).toMatch(/no builder|no `create_card\.py` builder for one/i);
-    expect(doc).toMatch(/draft-suggestion/);
+    const tier1 = /Tier 1 — a SELF-SUFFICIENT builder\*\*\s*\(([^)]*)\)/.exec(doc);
+    expect(tier1![1]).toMatch(/suggestion/);
+    expect(doc).toMatch(/--kind=suggestion/);
+    expect(doc).toMatch(/--original/);
+    expect(doc).toMatch(/no `create_card\.py` builder for one/i);
   });
 
   it("states the axis as what the builder NEEDS, not whether one exists", () => {

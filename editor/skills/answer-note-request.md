@@ -175,26 +175,29 @@ two paths:
    replaces the old "hand-build the note JSON, then call `apply_response.py`"
    dance — one `create_card.py` call now owns the build + apply.
 
-   **Path (a) — doc-edit → suggestion (L3 propose).** Emit a **suggestion card**
-   in `revisions.json` and land it via the contract's propose path. See
-   [`/editor/draft-suggestion`](draft-suggestion.md) for the full card shape:
-   `author: "ai"`, `status: "pending"`, `original_text` verbatim from the
-   anchored paragraph (the accept-time stale-guard key — exclude the `%!v:`
-   marker), `suggested_text`, the canonical `links[]` anchor
-   (`type: "textObject"` + `textObjectIds`), and `aiOriginRequestId:
-   <requestId>` when the id isn't `virtual:`-prefixed.
-   The op carries FREE TEXT (the whole card, and a `summary` quoting the
-   user's own words), so it goes through an `@` scratch file — see
-   [`_op-json.md`](_op-json.md) for the rule and why:
+   **Path (a) — doc-edit → suggestion (L3 propose).**
+   One `create_card.py --kind=suggestion` call builds and lands the
+   suggestion card (task 1044): the door anchors it to the source note's own
+   anchor, files it in `revisions.json`, mints the id / self-link, stamps
+   `instructions` and `aiOriginRequestId` (not for a `virtual:` id), and
+   refuses before any write if `original_text` is not verbatim in the
+   anchored paragraph (exclude the `%!v:` marker) or the replacement is
+   empty. Texts go through `@` scratch files ([`_op-json.md`](_op-json.md)):
    ```bash
-   op=$(mktemp -t virgil-op)
-   cat > "$op" <<'JSON'
-   { "requestId": "<requestId>", "panel": "revisions",
-     "card": { ...the suggestion... },
-     "summary": "Drafted a suggestion: <first 60 chars>", "clearSourceFlag": true }
-   JSON
-   python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
-   rm -f "$op"
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/original" <<'TXT'
+   <the span, verbatim from the .tex>
+   TXT
+   cat > "$t/suggested" <<'TXT'
+   <your replacement>
+   TXT
+   cat > "$t/explanation" <<'TXT'
+   <one or two sentences>
+   TXT
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> \
+       --accept-task-kind note --original "@$t/original" \
+       --suggested "@$t/suggested" --explanation "@$t/explanation"; rc=$?
+   rm -rf "$t"
    exit "$rc"
    ```
    The card lands and the Task is left **awaiting review** (`status:

@@ -315,7 +315,10 @@ describe("op-json delivery — the CENSUS (allowlist EMPTY)", () => {
 
   it("the population is non-vacuous — the census is looking at real sites", () => {
     const sites = allSites();
-    expect(sites.filter((s) => s.freeText).length).toBeGreaterThanOrEqual(13);
+    // 13 → 8 in task 1044: the five hand-built proposal ops (`complete-task
+    // --propose` with a card JSON) became `create_card.py --kind=suggestion`
+    // flag calls — sites the FLAG census below covers instead.
+    expect(sites.filter((s) => s.freeText).length).toBeGreaterThanOrEqual(8);
     expect(sites.filter((s) => !s.freeText).length).toBeGreaterThanOrEqual(6);
   });
 
@@ -397,7 +400,8 @@ describe("op-json delivery — every free-text site points at the SSOT", () => {
         " The rule is authored ONCE in the include and referenced — do not" +
         " paraphrase it back into a skill.",
     ).toEqual([]);
-    expect(freeTextSkills().length).toBeGreaterThanOrEqual(8);
+    // 8 → 5 in task 1044 (the proposal responders now pass flags, not an op).
+    expect(freeTextSkills().length).toBeGreaterThanOrEqual(5);
   });
 
   it("every free-text site spells the scratch shape it links to", () => {
@@ -613,7 +617,7 @@ const allFlagSites = () => siloFiles().flatMap((f) => flagSites(f, FREE_TEXT_FLA
 describe("free-text FLAGS — both helpers read `@<path>` (task 815)", () => {
   it("create_card.py declares every free-text flag with type=text_arg", () => {
     expect(textArgFlags(HELPERS.create_card).sort()).toEqual(
-      ["body", "item", "notes", "task-text", "title"].sort(),
+      ["body", "explanation", "item", "notes", "original", "suggested", "task-text", "title"].sort(),
     );
   });
 

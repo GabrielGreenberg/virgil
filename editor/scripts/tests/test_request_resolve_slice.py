@@ -183,7 +183,7 @@ TODO_ID = "ea401798-8d6b-4b4e-9b58-c48ae02437e2"
 def draft_suggestion_proposal(doc, *, clear_source_flag):
     card = {
         "kind": "suggestion", "id": "rev-resolve-1", "createdAt": ISO, "author": "ai",
-        "original_text": "orig", "suggested_text": "tighter", "explanation": "tightened",
+        "original_text": "I have something to add", "suggested_text": "tighter", "explanation": "tightened",
         "user_text": "", "instructions": "tighten this", "status": "pending", "selectedText": "",
         "links": [{
             "id": "link-rev-resolve-1", "kind": "anchor",
