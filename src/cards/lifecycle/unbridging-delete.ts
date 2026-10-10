@@ -78,6 +78,13 @@ export interface UnbridgingDeleteDeps {
    *  Required: the pane that owns the delete is the only one whose `cardStore`
    *  it may prune (task 739). */
   signal: CardLifecycleSink;
+  /** The record being deleted, for the executor's FINALIZE obligation (task
+   *  1046 — a deleted AI proposal ends the Task it answers). Wired by the doors
+   *  whose panels hold proposals (the suggestion families); omitted elsewhere,
+   *  where the step has nothing to judge. */
+  resolveCard?: (id: string) => unknown;
+  /** Forwarded to the executor's FINALIZE step (`finalizeLeavingProposal`). */
+  finalizeLeavingProposal?: (card: unknown) => void;
 }
 
 /**
@@ -112,13 +119,14 @@ export function makeUnbridgingDelete(
       return true;
     }
     return runCardLifecycleEvent(
-      { type: "delete", kind, id, hasContent: false },
+      { type: "delete", kind, id, hasContent: false, card: deps.resolveCard?.(id) },
       {
         confirm: async () => true, // upstream already confirmed
         unbridgeAiRequest: deps.unbridge,
         mutate: () => deps.rawDelete(id),
         appliedSplice: deps.appliedSplice,
         signal: deps.signal,
+        finalizeLeavingProposal: deps.finalizeLeavingProposal,
       },
     );
   };

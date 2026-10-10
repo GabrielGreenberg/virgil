@@ -957,6 +957,27 @@ class _Txn:
                 return True
         return False
 
+    def finalize_request(self, request_id: str, *, result: str) -> bool:
+        # Close ONE row by id, tolerantly: an unknown or already-terminal row
+        # writes nothing (returns False). The leave-rule door (task 1046 —
+        # cmd_archive's Leg C): the row a proposal ANSWERS is reachable only by
+        # the card's `aiOriginRequestId`, never by `linkedTo`. Unlike
+        # `_mutation_commit`'s by-id flip it never overwrites a terminal row's
+        # result, and it neither lowers a source flag nor closes a todo — the
+        # app twin is `finalizeProposalRequest` with "rejected".
+        ar_path = sidecar(self.doc, "ai-requests.json")
+        ar = self.jget(ar_path, None)
+        if not isinstance(ar, dict) or not isinstance(ar.get("requests"), list):
+            return False
+        idx, req = find_request(ar, request_id)
+        if req is None or is_terminal_status(req.get("status")):
+            return False
+        req["status"] = STATUS_COMPLETE
+        req["result"] = result
+        ar["requests"][idx] = req
+        self.mark(ar_path)
+        return True
+
     def close_linked_request(self, linked: dict, *, result: str,
                              force: bool = False) -> bool:
         # Flip EVERY matching linked `ai-requests.json` row ({panel, cardId}) to
@@ -2206,6 +2227,20 @@ def _archive_title(card: dict) -> dict:
     return title_fields("archive", t)
 
 
+def _leaving_proposal_origin(kind: str, card) -> str | None:
+    """THE LEAVE RULE (task 1046), script side — byte-twin of
+    `leavingProposalRequestId` in `src/links/proposal-finalize.ts`: a suggestion
+    carrying `aiOriginRequestId` that leaves (archive) while still non-terminal
+    names the Task it answers; anything else returns None. A proposal already
+    accepted/rejected finalized its Task when it got there."""
+    if kind not in SUGGESTION_KINDS or not isinstance(card, dict):
+        return None
+    if card.get("status") in ("accepted", "rejected"):
+        return None
+    rid = card.get("aiOriginRequestId")
+    return rid if isinstance(rid, str) and rid else None
+
+
 def cmd_archive(doc: Path, op: dict) -> dict:
     """Move a panel card to archive.json, preserving its origin so restore is
     lossless. `archive.json`'s documented `ArchivedSnippet { id, title,
@@ -2246,6 +2281,15 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     # (guarded) when unflagged.
     txn.close_linked_request({"panel": panel, "cardId": card_id},
                              result=RESULT_AUTO_APPLIED, force=True)
+    # Terminal-transition resolve, Leg C (the ANSWER card — task 1046): an AI
+    # proposal is not the card its Task is linked to, so Leg A can't reach the
+    # row it answers. Archiving it while still non-terminal ends that Task
+    # `rejected` (set aside, not taken — the source todo stays open). Skipped
+    # when the caller's own requestId names that same row (`_mutation_commit`
+    # closes it then).
+    origin = _leaving_proposal_origin(kind, original)
+    if origin and origin != op.get("requestId"):
+        txn.finalize_request(origin, result=RESULT_REJECTED)
     snippet = {
         "id": card_id,
         **_archive_title(original),

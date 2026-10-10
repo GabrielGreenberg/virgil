@@ -29,6 +29,13 @@
  *   4. SIGNAL   — publish ONE `card-deleted` / `card-morphed` signal (the D6
  *      seam) that W2b's reconciler consumes to prune / re-key `cardStore`
  *      (REP-F6-02 / OMNI-F6-02 for the sidecar kinds).
+ *   5. FINALIZE — when the ending record is an AI PROPOSAL (it carries
+ *      `aiOriginRequestId`; the record is the ANSWER to a Task, not the card the
+ *      Task is linked to), end that Task too (task 1046). UNBRIDGE cannot reach
+ *      it — it matches rows by `linkedTo`, and is gated on the kind declaring
+ *      `aiRequest`, which suggestion kinds don't. Which records qualify is
+ *      `proposal-finalize.ts`'s leave rule; the executor only says WHEN (the
+ *      record really ended, and SETTLE did not already finalize it).
  *
  * THE THIRD STATE CLASS. The obligations above exist because a lifecycle event
  * ends a record that other stores still reference. Three carriers of that class
@@ -112,10 +119,25 @@ export interface CardLifecycleDeps {
    *  event can only reach the store of the pane that ran it (task 739). A door
    *  that forgets it is a compile error, not a cross-doc leak. */
   signal: CardLifecycleSink;
+  /** The FINALIZE obligation (obligation 5, task 1046): hand the ENDED record
+   *  to the proposal leave rule (`finalizeLeavingProposal` in
+   *  `src/links/proposal-finalize.ts`), which ends the Task an AI proposal
+   *  answers and ignores every other record. OPTIONAL like `appliedSplice`: a
+   *  host with no ai-request wiring omits it. Called only after a committed
+   *  mutation, and only when the event carried the record (`card`). */
+  finalizeLeavingProposal?: (card: unknown) => void;
 }
 
 export type LifecycleEvent =
-  | { type: "delete"; kind: CardKind; id: string; hasContent: boolean }
+  | {
+      type: "delete";
+      kind: CardKind;
+      id: string;
+      hasContent: boolean;
+      /** The record as it stands before the delete, for FINALIZE (task 1046).
+       *  Omitted → obligation 5 is skipped (nothing to judge). */
+      card?: unknown;
+    }
   | {
       type: "morph";
       fromKind: CardKind;
@@ -341,19 +363,27 @@ export async function settleAppliedSpliceForCard(
   return (await ops.settle(kind, id, resolution)) ? "settled" : "declined";
 }
 
-/** The executor's view of the door above: proceed, or don't. */
+/** The executor's view of the door above. `"declined"` → don't proceed;
+ *  `"settled"` additionally tells FINALIZE the record's status already reached a
+ *  terminal state (keep → accepted, revert → rejected), which finalized its Task
+ *  through `withProposalFinalize` — so the leave rule must not run a second,
+ *  possibly contradictory, finalize. */
 async function settleAppliedSplice(
   ev: LifecycleEvent,
   deps: CardLifecycleDeps,
-): Promise<boolean> {
+): Promise<AppliedSpliceSettleOutcome> {
   const kind = ev.type === "morph" ? ev.fromKind : ev.kind;
-  const outcome = await settleAppliedSpliceForCard(
-    ev.type,
-    kind,
-    ev.id,
-    deps.appliedSplice,
-  );
-  return outcome !== "declined";
+  return settleAppliedSpliceForCard(ev.type, kind, ev.id, deps.appliedSplice);
+}
+
+/** Obligation 5 — FINALIZE (task 1046). Runs after a committed mutation. */
+function finalizeEndedRecord(
+  ev: LifecycleEvent,
+  settled: AppliedSpliceSettleOutcome,
+  deps: CardLifecycleDeps,
+): void {
+  if (settled === "settled" || ev.card == null) return;
+  deps.finalizeLeavingProposal?.(ev.card);
 }
 
 /**
@@ -393,7 +423,8 @@ export async function runCardLifecycleEvent(
 
     // 2. SETTLE — resolve any live in-document splice this record owns BEFORE
     //    the kind flips, so the range can never outlive its manager (238).
-    if (!(await settleAppliedSplice(ev, deps))) return false;
+    const settled = await settleAppliedSplice(ev, deps);
+    if (settled === "declined") return false;
 
     // 3. UNBRIDGE — fire BEFORE the mutation so the pending inbox entry is
     //    cleared in the same logical step. Only when the morph DROPS aiRequest
@@ -414,6 +445,10 @@ export async function runCardLifecycleEvent(
     //    {fromKind,id}→{toKind,id} (task 739: this pane's, never every pane's)
     //    and remaps its popped float key in lockstep (789).
     deps.signal({ type: "card-morphed", fromKind: ev.fromKind, toKind: morph.to, id: ev.id });
+
+    // 6. FINALIZE — a pending proposal morphed out of the suggestion kind has
+    //    stopped being a proposal; its Task ends (task 1046).
+    finalizeEndedRecord(ev, settled, deps);
     return true;
   }
 
@@ -435,7 +470,8 @@ export async function runCardLifecycleEvent(
   //    confirm), so this prompt is the only dialog the executor raises; it asks
   //    a genuinely different question — what happens to the document, not
   //    whether the card goes.
-  if (!(await settleAppliedSplice(ev, deps))) return false;
+  const settled = await settleAppliedSplice(ev, deps);
+  if (settled === "declined") return false;
 
   // 3. UNBRIDGE — a delete of an aiRequest-bearing kind drops its flag → clear
   //    the pending inbox entry (REP-F7-02, the symmetric delete leak). Same
@@ -451,5 +487,8 @@ export async function runCardLifecycleEvent(
   // 5. SIGNAL — the D6 seam: the pane's sink prunes any ref keyed on {kind,id}
   //    in ITS cardStore (task 739) and closes the card's popped float (789).
   deps.signal({ type: "card-deleted", kind: ev.kind, id: ev.id });
+
+  // 6. FINALIZE — a deleted AI proposal ends the Task it answers (task 1046).
+  finalizeEndedRecord(ev, settled, deps);
   return true;
 }

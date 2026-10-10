@@ -56,6 +56,46 @@ export function proposalOriginRequestId(card: unknown): string | null {
 }
 
 /**
+ * THE LEAVE RULE (task 1046) — a proposal can also END by being REMOVED: a
+ * delete, an archive, or a morph out of the suggestion kind. None of those is a
+ * status transition, so `withProposalFinalize` never sees them, and the Task
+ * the proposal answers was left `in-progress` + `resultId` forever — the same
+ * stranded row 1043 fixed for Accept/Reject, by the other way a proposal ends.
+ *
+ * So the rule is stated about the CARD, not the verb: a suggestion carrying
+ * `aiOriginRequestId` that leaves while still NON-terminal ends its Task with
+ * `LEAVING_PROPOSAL_RESULT` ("rejected" — the user set the proposal aside
+ * without taking it; the ask is still unanswered, so the source todo stays
+ * open). A proposal already accepted/rejected finalized its Task when it got
+ * there, so leaving writes nothing. Returns the Task id, or null.
+ *
+ * Read by BOTH app doors — the lifecycle executor's delete/morph legs
+ * (`finalizeLeavingProposal` dep, wired in EditorPane) and the archive toggle —
+ * and mirrored script-side by `apply_response.py` `_leaving_proposal_origin`
+ * (cmd_archive). `stored kind === "suggestion"` is the same family test
+ * `withProposalFinalize` makes.
+ */
+export const LEAVING_PROPOSAL_RESULT: ProposalResult = "rejected";
+
+export function leavingProposalRequestId(card: unknown): string | null {
+  if (!card || typeof card !== "object") return null;
+  const c = card as { kind?: unknown; status?: unknown };
+  if (c.kind !== "suggestion") return null;
+  if (c.status === "accepted" || c.status === "rejected") return null;
+  return proposalOriginRequestId(card);
+}
+
+/** Apply the leave rule to `card`: when it is a non-terminal AI proposal, hand
+ *  its Task to `onFinalize` with `LEAVING_PROPOSAL_RESULT`. */
+export function finalizeLeavingProposal(
+  card: unknown,
+  onFinalize: (requestId: string, result: ProposalResult) => void,
+): void {
+  const requestId = leavingProposalRequestId(card);
+  if (requestId) onFinalize(requestId, LEAVING_PROPOSAL_RESULT);
+}
+
+/**
  * The SOURCE closure: which todo (if any) does finalizing with `result` close?
  * Only an ACCEPT closes — the ask was answered. A REJECT leaves the todo open:
  * the ask is still unanswered, and re-opening the Task instead would re-run the

@@ -356,5 +356,64 @@ check(before == snapshot(sb), "full rollback — the committed .tex splice was r
 check(REV_ORIGINAL in tex_of(sb) and REV_SUGGESTED not in tex_of(sb), "original text restored in the .tex")
 check(pen_gone(sb), "pen released even though the write failed")
 
+# ===================================================== the LEAVE rule (task 1046)
+SAMPLE_TODO = "681c97be-e10f-42f3-88ea-09158cf8a13c"  # an open sample todo
+
+
+def link_task_to_todo(doc, rid):
+    """Make the synthesized Task one that answers a todo (the source card), so a
+    test can assert the leave rule leaves that todo OPEN."""
+    p = doc / "virgil" / "ai-requests.json"
+    ar = json.loads(p.read_text())
+    for row in ar["requests"]:
+        if row.get("id") == rid:
+            row["linkedTo"] = {"panel": "todos", "cardId": SAMPLE_TODO}
+    p.write_text(json.dumps(ar, indent=2))
+
+
+def todo_done(doc):
+    return next(t for t in load(doc, "todos.json")["items"] if t["id"] == SAMPLE_TODO).get("done")
+
+
+print("\n=== leave rule: archiving a PENDING proposal ends the Task it answers (rejected) ===")
+sb = sandbox()
+propose(sb, panel="revisions", card_id="rev-leave-1", kind_label="revision-suggestion",
+        task_id="rev-leave-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+link_task_to_todo(sb, "rev-leave-task")
+done_before = todo_done(sb)
+r = run(APPLY, str(sb), "archive", json.dumps({"cardId": "rev-leave-1"}))
+check(r.returncode == 0, f"archive exited 0 (stderr={r.stderr.strip()[:160]})")
+task = req_by_id(sb, "rev-leave-task")
+check(task["status"] == "complete" and task.get("result") == "rejected",
+      "the answered Task → complete / rejected (not stranded in-progress)")
+check(todo_done(sb) == done_before, "the source todo is untouched (the ask is still unanswered)")
+# Restore brings the proposal back pending over a completed Task; accepting it
+# must still work (the by-id completion tolerates a terminal row).
+r = run(APPLY, str(sb), "restore", json.dumps({"cardId": "rev-leave-1"}))
+check(r.returncode == 0, f"restore exited 0 (stderr={r.stderr.strip()[:160]})")
+check(card_by_id(sb, "revisions.json", "cards", "rev-leave-1")["status"] == "pending",
+      "restored proposal is pending again")
+r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "rev-leave-1"}))
+check(r.returncode == 0, f"accept of a restored proposal exited 0 (stderr={r.stderr.strip()[:160]})")
+check(REV_SUGGESTED in tex_of(sb), "…and its text landed")
+
+print("\n=== leave rule: archiving a SETTLED proposal writes no second completion ===")
+sb = sandbox()
+propose(sb, panel="cutter", card_id="cut-leave-2", kind_label="cutter-suggestion",
+        task_id="cut-leave-task", anchor="5505", original="made permanent", suggested="x")
+run(APPLY, str(sb), "reject", json.dumps({"cardId": "cut-leave-2"}))
+before = req_by_id(sb, "cut-leave-task")
+r = run(APPLY, str(sb), "archive", json.dumps({"cardId": "cut-leave-2"}))
+check(r.returncode == 0, f"archive exited 0 (stderr={r.stderr.strip()[:160]})")
+check(req_by_id(sb, "cut-leave-task") == before, "the already-finalized Task row is byte-identical")
+
+print("\n=== leave rule: a human suggestion (no back-pointer) touches no Task ===")
+sb = sandbox()
+ar_before = load(sb, "ai-requests.json")
+r = run(APPLY, str(sb), "archive", json.dumps({"cardId": SAMPLE_CUTTER}))
+check(r.returncode == 0, f"archive exited 0 (stderr={r.stderr.strip()[:160]})")
+check(load(sb, "ai-requests.json") == ar_before or ar_before is None,
+      "ai-requests.json unchanged by archiving a suggestion with no aiOriginRequestId")
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

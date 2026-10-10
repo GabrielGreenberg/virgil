@@ -220,7 +220,11 @@ import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footn
 import { bridgeCardAiRequestFlag, ABSENT_CARD_CONTEXT } from "@/lib/ai-request-bridge";
 import { richFromPlainText } from "@/lib/footnote-content";
 import type { AiRequestSyncMode, ProposalResult } from "@/lib/ai-request-bridge";
-import { finalizeProposal, withProposalFinalize } from "@/links/proposal-finalize";
+import {
+  finalizeLeavingProposal,
+  finalizeProposal,
+  withProposalFinalize,
+} from "@/links/proposal-finalize";
 import {
   panelForCardKind,
   isArchivable,
@@ -1464,6 +1468,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [docId, finalizeTodoSetDone],
   );
+  // The LEAVE half of the same rule (task 1046): a proposal that is deleted,
+  // archived or morphed away while still non-terminal ends its Task too
+  // ("rejected" — the source todo stays open). Fed to the lifecycle executor's
+  // FINALIZE step and to the archive toggle; the rule itself lives in
+  // `proposal-finalize.ts`.
+  const onProposalLeave = useCallback(
+    (card: unknown) => finalizeLeavingProposal(card, onProposalFinalize),
+    [onProposalFinalize],
+  );
   const cutterHookUnfinalized = useCutter(docId, cutPristine);
   const cutterHookRaw = useMemo(
     () => withProposalFinalize(cutterHookUnfinalized, onProposalFinalize),
@@ -1710,6 +1723,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           appliedSplice: appliedSpliceOps,
           // SIGNAL — this pane's own cardStore re-key (task 739).
           signal: cardLifecycleSignal,
+          // FINALIZE — a pending AI proposal morphed into a comment ends its
+          // Task (task 1046).
+          finalizeLeavingProposal: onProposalLeave,
           mutate: () => {
             // Dispatch to the owning panel hook with its expected data toKind.
             // Keyed on the RESOLVED TARGET, never on the FROM kind: the data
@@ -1744,7 +1760,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // The popout-key remap is the `card-morphed` signal's float half, owned
       // by this pane's lifecycle sink (task 789) — not re-done here.
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow, cardLifecycleSignal],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow, cardLifecycleSignal, onProposalLeave],
   );
   // The ONE kind-chevron handler every morphing card is wired to — docked,
   // omni and float chrome alike. It is the chokepoint itself, minus the promise.
@@ -1787,8 +1803,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
+        resolveCard: (id) => revisionsHookRaw.cards.find((r) => r.id === id),
+        finalizeLeavingProposal: onProposalLeave,
       }),
-    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
   );
   const deleteCutterCard = useMemo(
     () =>
@@ -1801,8 +1819,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
+        resolveCard: (id) => cutterHookRaw.cards.find((r) => r.id === id),
+        finalizeLeavingProposal: onProposalLeave,
       }),
-    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
   );
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: morphCard, deleteCard: deleteRevisionCard }),
@@ -6370,12 +6390,24 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // Archiving (the INTO-archived transition) also resolves any pending AI
       // request on the card; unarchiving does NOT re-open it (restore stays
       // resolved — archiving is a deliberate set-aside).
-      if (!currentlyArchived) clearAiRequestForKind(kind, id);
+      // An archived AI PROPOSAL also ends the Task it ANSWERS (task 1046) — a
+      // row `clearAiRequestForKind` can't reach (it matches by `linkedTo`, and
+      // the proposal is the answer, never the linked card). Only the suggestion
+      // families hold proposals; the leave rule ignores everything else.
+      if (!currentlyArchived) {
+        clearAiRequestForKind(kind, id);
+        const bag = modeBCardsRef.current;
+        onProposalLeave(
+          bag.comments.find((c) => c.id === id) ??
+            bag.cutterCards.find((c) => c.id === id),
+        );
+      }
       setArchivedForKind(kind, id, !currentlyArchived);
     },
     [
       setArchivedForKind,
       clearAiRequestForKind,
+      onProposalLeave,
       spliceAndArchiveAtom,
       confirmArchiveAtom,
     ],

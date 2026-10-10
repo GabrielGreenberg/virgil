@@ -50,6 +50,16 @@ pen**, with the audit notification + version bump. Fully reversible by
      `list_requests.py` / `/editor/review` on either leg. A `restore` brings the
      card back **unflagged** — un-archiving does not re-open the request. On an
      unflagged card this is a guarded no-op. See task 2026-07-05-049.
+   - **Archiving an AI PROPOSAL ends the Task it ANSWERS** (task 1046): a
+     revision-/cutter-suggestion carrying `aiOriginRequestId` that is still
+     non-terminal (`pending` / `applied` / `stale`) completes that Task with
+     `result: rejected` — set aside, not taken, so the source todo stays open.
+     The bullet above reaches only rows LINKED to the card; the proposal is the
+     answer, never the linked card, so this is a second leg. An already
+     accepted/rejected proposal finalized its Task when it got there (no second
+     write). Restoring it brings it back `pending` over the completed Task;
+     accepting it then still works. The editor's delete / archive / morph-away
+     apply the same rule (`src/links/proposal-finalize.ts`).
 
 ## Applicability (derived from the manifest)
 
