@@ -31,10 +31,11 @@
 //      metadata-lock recipe ran with an empty citekey. (Prose may NAME the
 //      variable — the doctrine has to, to forbid it; only a fence runs.)
 //   4. The twin is byte-identical, and `_op-json.md` points at it.
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { fenceBlocks } from "./_shell-fence";
+import { walkFiles } from "../../../src/lib/__tests__/_source-scan";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 
@@ -63,29 +64,20 @@ function argumentsHits(source: string): string[] {
 
 /** Every top-level directory that authors skills: `<silo>/skills/`. */
 function skillDirs(): string[] {
-  return readdirSync(REPO_ROOT)
-    .filter((d) => !d.startsWith(".") && d !== "node_modules")
-    .map((d) => path.join(d, "skills"))
-    .filter((d) => {
-      const abs = path.join(REPO_ROOT, d);
-      return existsSync(abs) && statSync(abs).isDirectory();
-    })
+  return readdirSync(REPO_ROOT, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "node_modules")
+    .map((d) => path.join(d.name, "skills"))
+    .filter((d) => existsSync(path.join(REPO_ROOT, d)))
     .sort();
 }
 
 /** Every skill markdown under the discovered dirs (tests excluded), repo-relative. */
 function skillMarkdown(): string[] {
-  const out: string[] = [];
-  const walk = (rel: string) => {
-    for (const name of readdirSync(path.join(REPO_ROOT, rel)).sort()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      const child = path.join(rel, name);
-      if (statSync(path.join(REPO_ROOT, child)).isDirectory()) walk(child);
-      else if (name.endsWith(".md")) out.push(child);
-    }
-  };
-  skillDirs().forEach(walk);
-  return out;
+  return skillDirs()
+    .flatMap((d) => walkFiles(path.join(REPO_ROOT, d), { skipDirs: ["__tests__"] }))
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => path.relative(REPO_ROOT, f))
+    .sort();
 }
 
 const read = (rel: string) => readFileSync(path.join(REPO_ROOT, rel), "utf8");
