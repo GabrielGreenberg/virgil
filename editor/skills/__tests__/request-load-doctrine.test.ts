@@ -15,6 +15,17 @@
 //      hand-listed);
 //   2. no skill says it loads its request from the raw `ai-requests.json`;
 //   3. any skill stamping `<request.text>` carries the pointer that defines it.
+//
+// Task 1045 adds the IDEMPOTENCY legs: the "already answered?" check is stated
+// once in the SSOT. Before, four responders each restated it in their own words
+// — two as a bare `status: "complete"` test (which reads the raw row the rule
+// forbids and misses the answered-L3 `in-progress`+`resultId` state), one skill
+// had none, and two COMPLETING limit paths replied "Skipped", the word the rest
+// use for "did nothing". So:
+//
+//   4. no skill makes its own `status: "complete"` skip test;
+//   5. every `Skipped <requestId>` reply template is the SSOT's exact one;
+//   6. a skill's `## Idempotency` section links the SSOT.
 
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -94,5 +105,52 @@ describe("request-load rule (SSOT + every responder)", () => {
   it.each(SKILLS)("%s: any `<request.text>` stamp is defined by the rule", (file) => {
     if (!read(file).includes("<request.text>")) return;
     expect(read(file)).toContain(POINTER);
+  });
+});
+
+describe("idempotency rule (SSOT + every responder, task 1045)", () => {
+  /** The SSOT's one reply for a closed request / writer noop. */
+  const SKIP_REPLY = "Skipped <requestId> (already answered).";
+
+  it("SSOT states the rule: drain decides, writers are the belt, Skipped means nothing happened", () => {
+    const doc = flat(SSOT);
+    expect(doc).toMatch(/## Idempotency/);
+    expect(doc).toContain(SKIP_REPLY);
+    expect(doc).toMatch(/Do \*\*not\*\* test the row's `status` yourself/);
+    expect(doc).toMatch(/`in-progress` WITH a `resultId`/);
+    expect(doc).toMatch(/"noop": true/);
+    expect(doc).toMatch(/`Skipped` means nothing happened/);
+    expect(doc).toMatch(/Done: <requestId> — could not act: <reason>\./);
+  });
+
+  it.each(SKILLS)("%s makes no `status: \"complete\"` skip test of its own", (file) => {
+    const doc = flat(file);
+    // The spellings the forked sections took: "If the request is already
+    // `status: "complete"`, skip" and "… or the request is already `status: …`".
+    expect(doc).not.toMatch(/already `status: "complete"`/);
+    expect(doc).not.toMatch(/if the request is already (?:`status|complete)/i);
+  });
+
+  it.each(SKILLS)("%s: every `Skipped <requestId>` reply is the SSOT's", (file) => {
+    const replies = read(file).match(/Skipped <requestId>[^\n]*/g) ?? [];
+    for (const r of replies) expect(r.trim()).toBe(SKIP_REPLY);
+  });
+
+  it.each(SKILLS)("%s: an Idempotency section links the SSOT", (file) => {
+    const m = read(file).match(/^## Idempotency\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+    if (!m) return;
+    expect(m[1]).toContain(POINTER);
+  });
+
+  it("the responders that carried a forked section (and todo, which had none) carry the linked one", () => {
+    for (const f of [
+      "answer-note-request.md",
+      "answer-report-request.md",
+      "answer-cutter-comment.md",
+      "answer-revision-request.md",
+      "answer-todo-request.md",
+    ]) {
+      expect(read(`editor/skills/${f}`)).toMatch(/^## Idempotency$/m);
+    }
   });
 });

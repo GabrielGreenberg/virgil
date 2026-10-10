@@ -231,10 +231,16 @@ matters" (write a note). Read the todo and dispatch.
      ```
      Handed off request <requestId> (todo <cardId>) to /editor/find-citation — a citation needs a sourced bib entry, which that skill owns; it drains this Task.
      ```
-   - Limit-explanation:
+   - Limit-explanation (the Task is COMPLETED with a note — not skipped):
      ```
-     Skipped <requestId>: <reason>. Source todo <cardId> marked done with note.
+     Done: <requestId> — could not act: <reason>. Source todo <cardId> marked done with note.
      ```
+
+## Idempotency
+
+One rule for every responder: [_request-load.md](_request-load.md) →
+"Idempotency". The drain decides whether `<requestId>` is still open, and a
+writer's `noop: true` is the belt — never a `status` test of your own.
 
 ## Safety
 

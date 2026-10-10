@@ -224,10 +224,9 @@ two paths:
 
 ## Idempotency
 
-If the request is already `status: "complete"`, skip with:
-```
-Skipped <requestId> (already complete).
-```
+One rule for every responder: [_request-load.md](_request-load.md) →
+"Idempotency". The drain decides whether `<requestId>` is still open, and a
+writer's `noop: true` is the belt — never a `status` test of your own.
 
 ## Safety
 

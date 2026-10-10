@@ -322,5 +322,5 @@ exit "$rc"
 ```
 And reply:
 ```
-Skipped <requestId>: no source found matching '<criteria>'.
+Done: <requestId> — could not act: no source found matching '<criteria>'.
 ```

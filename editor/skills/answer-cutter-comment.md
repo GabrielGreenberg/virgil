@@ -128,17 +128,9 @@ once — see step 5).
 
 ## Idempotency
 
-If a cutter suggestion with `aiOriginRequestId == <requestId>` already exists
-(the cut path — the proposal carries that back-pointer) **or** the request is
-already `status: "complete"` (the report path completed the Task), skip with:
-```
-Skipped <requestId> (already answered).
-```
-A cut proposal leaves the Task `in-progress` (awaiting review), **not**
-`complete` — so the *card-existence* check, not the status check, is what
-prevents a double-draft. (`list_requests.py` already stops surfacing an
-`in-progress`-with-`resultId` proposal, and `apply_response.py` refuses any
-landing on a terminal Task — belt-and-suspenders against a duplicate dispatch.)
+One rule for every responder: [_request-load.md](_request-load.md) →
+"Idempotency". The drain decides whether `<requestId>` is still open, and a
+writer's `noop: true` is the belt — never a `status` test of your own.
 
 ## Safety
 

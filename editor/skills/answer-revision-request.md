@@ -162,19 +162,9 @@ source request in place.
 
 ## Idempotency
 
-If a sibling reply card with `aiOriginRequestId == <requestId>` already exists
-(path a — the proposal carries that back-pointer) **or** the request is already
-`status: "complete"` (paths (b)/(c) — the landed card completed the Task),
-skip with:
-```
-Skipped <requestId> (already answered).
-```
-A path-(a) proposal leaves the Task `in-progress` (awaiting review), **not**
-`complete` — so the *card-existence* check, not the status check, is what
-prevents a double-draft. Don't re-draft a proposal just because its Task isn't
-terminal yet. (As of the resultId-gated drain rule, `list_requests.py` already
-stops surfacing an `in-progress`-with-`resultId` proposal — so this guard is now
-belt-and-suspenders against a duplicate dispatch, no longer the only defense.)
+One rule for every responder: [_request-load.md](_request-load.md) →
+"Idempotency". The drain decides whether `<requestId>` is still open, and a
+writer's `noop: true` is the belt — never a `status` test of your own.
 
 ## Safety
 
