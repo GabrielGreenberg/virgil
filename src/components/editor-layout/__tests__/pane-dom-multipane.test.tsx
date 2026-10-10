@@ -358,7 +358,7 @@ describe("M3 — the dock hit-test", () => {
   it("does not snap a float dragged to the viewport top-left onto a hidden column", () => {
     buildTwoPanes();
     const geom = readDockGeometry();
-    // The hidden column's corner is (0, TOP_BAR + podGap) = (0, 42) — nearer
+    // The hidden column's corner is (0, frame.top) — x = 0, nearer
     // the top-left than any real column's, so pre-fix it won the proximity
     // test outright and answered a ZERO-SIZE outline rect at the bottom of a
     // stack the user was nowhere near.

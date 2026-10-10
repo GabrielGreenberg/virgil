@@ -53,9 +53,11 @@ import { strip } from "@/lib/__tests__/_source-scan";
  * fixture defines its own — the same technique `dropctx-multipane-registry`
  * uses for visibility. The numbers are chosen so each answer below is
  * unambiguous: `--pod-gap` is unset in jsdom, so the module's own fallback of
- * 10 applies and the snap corner sits at TOP_BAR + podGap = 42. */
+ * 10 applies. The snap corner is the MEASURED frame's outer-top corner
+ * (task 1036 — no predicted bar height), so it sits at (1200, FRAME.top). */
 const COL = { left: 900, top: 0, width: 300, height: 800 }; // right edge 1200
 const FRAME = { left: 905, top: 45, width: 290, height: 700 };
+const CORNER_Y = FRAME.top;
 const BAND0 = { left: 910, top: 50, width: 280, height: 200 }; // midpoint 150
 const BAND1 = { left: 910, top: 260, width: 280, height: 200 }; // midpoint 360
 
@@ -297,17 +299,17 @@ describe("what the outline OFFERS is what the release ACCEPTS", () => {
     mountDockFixture();
     const { header, onMaybeRedock } = mountFloat();
     // Land the float's top-RIGHT corner on the right column's snap corner
-    // (x + width = 1200, y = TOP_BAR + podGap = 42) with the cursor at y=300,
+    // (x + width = 1200, y = CORNER_Y) with the cursor at y=300,
     // which sits below band0's midpoint and above band1's → insertion index 1.
     fireEvent.mouseDown(header, { clientX: 500, clientY: 500, ...HELD });
-    move(500 + (880 - INIT.x), 500 + (42 - INIT.y)); // → nx 880, ny 42
+    move(500 + (880 - INIT.x), 500 + (CORNER_Y - INIT.y)); // → nx 880, ny CORNER_Y
     flushFrame();
 
     const previewed = getDockDragTarget();
     expect(previewed, "the outline previews a set-down target").not.toBeNull();
     expect(previewed!.side).toBe("right");
 
-    up(500 + (880 - INIT.x), 500 + (42 - INIT.y));
+    up(500 + (880 - INIT.x), 500 + (CORNER_Y - INIT.y));
     expect(onMaybeRedock).toHaveBeenCalledTimes(1);
     expect(onMaybeRedock).toHaveBeenCalledWith({
       side: previewed!.side,
@@ -428,11 +430,11 @@ describe("a gesture that begins DOCKED", () => {
     expect(onUndock).toHaveBeenCalledTimes(1);
     // Move 2: the first move that needs geometry, i.e. the first one AFTER the
     // undock commit — so the sweep sees the post-undock stack.
-    move(501 + (880 - BAND0.left), 500 + (42 - BAND0.top));
+    move(501 + (880 - BAND0.left), 500 + (CORNER_Y - BAND0.top));
     expect(rectReads, "the sweep happened, and not before the undock").toBeGreaterThan(0);
     flushFrame();
 
-    up(501 + (880 - BAND0.left), 500 + (42 - BAND0.top));
+    up(501 + (880 - BAND0.left), 500 + (CORNER_Y - BAND0.top));
     expect(
       onMaybeRedock,
       "a docked→float→dock round trip still redocks (the release reads the same door)",
@@ -450,8 +452,8 @@ describe("a gesture that begins DOCKED", () => {
     fireEvent.mouseDown(header, { clientX: 500, clientY: 500, ...HELD });
     // One movement only — the undock — landing the float's top-right corner on
     // the right column's snap corner.
-    move(500 + (880 - BAND0.left), 500 + (42 - BAND0.top));
-    up(500 + (880 - BAND0.left), 500 + (42 - BAND0.top));
+    move(500 + (880 - BAND0.left), 500 + (CORNER_Y - BAND0.top));
+    up(500 + (880 - BAND0.left), 500 + (CORNER_Y - BAND0.top));
     expect(onMaybeRedock).toHaveBeenCalledTimes(1);
   });
 });
@@ -506,7 +508,7 @@ describe("the pointer invariants (imported from the engine's SSOT)", () => {
         panelId="notes"
         mode="floating"
         initialX={880}
-        initialY={42}
+        initialY={CORNER_Y}
         initialWidth={320}
         initialHeight={700}
         zIndex={1200}
@@ -553,7 +555,7 @@ describe("dock geometry: ONE sweep, then pure arithmetic", () => {
     expect(snap.columns[0].bands).toEqual([BAND0, BAND1]);
     expect(snap.columns[0].frame).toEqual(FRAME);
 
-    const panel = { x: 880, y: 42, width: 320, height: 240 }; // corner-on
+    const panel = { x: 880, y: CORNER_Y, width: 320, height: 240 }; // corner-on
     // Insertion index = bands whose midpoint is above the probe y.
     for (const [y, index, rect] of [
       [100, 0, BAND0],
@@ -568,11 +570,11 @@ describe("dock geometry: ONE sweep, then pure arithmetic", () => {
   it("refuses a panel outside the proximity threshold", () => {
     mountDockFixture();
     const snap = readDockGeometry();
-    const far = { x: 880, y: 42 + AUTO_DOCK_PROXIMITY + 1, width: 320, height: 240 };
+    const far = { x: 880, y: CORNER_Y + AUTO_DOCK_PROXIMITY + 1, width: 320, height: 240 };
     expect(resolveDockTargetByPanelProximity(snap, far)).toBeNull();
     // Falls back to the panel's vertical centre with no cursor — the shipped
     // behaviour when a release carries no trustworthy coordinate.
-    const on = { x: 880, y: 42, width: 320, height: 40 }; // centre y = 62
+    const on = { x: 880, y: CORNER_Y, width: 320, height: 40 }; // centre y = 65
     expect(resolveDockTargetByPanelProximity(snap, on)?.index).toBe(0);
   });
 
@@ -585,6 +587,43 @@ describe("dock geometry: ONE sweep, then pure arithmetic", () => {
     stubRect(col, { ...COL, left: 400, width: 300 });
     expect(readDockGeometry().columns[0].left).toBe(400);
     expect(snap.columns[0].left).toBe(900);
+  });
+
+  // Task 1036: the snap corner is the MEASURED frame top, never a predicted
+  // 32px bar. Under WCO the bar grows to the OS title-bar strip, and in the
+  // Library Reader the pane sits below the Library's own chrome.
+  it("snaps at the measured frame corner whatever the bar's height (WCO / Reader)", () => {
+    for (const top of [44, 200]) {
+      document.body.innerHTML = "";
+      const col = mountDockFixture();
+      stubRect(col.querySelector<HTMLElement>("[data-stack-frame]")!, { ...FRAME, top });
+      const snap = readDockGeometry();
+      const onCorner = { x: 880, y: top, width: 320, height: 40 };
+      expect(resolveDockTargetByPanelProximity(snap, onCorner), `frame.top ${top}`).not.toBeNull();
+    }
+    // At top 200 the old predicted corner (32 + podGap = 42) is 158px off.
+    const snap = readDockGeometry();
+    expect(resolveDockTargetByPanelProximity(snap, { x: 880, y: 42, width: 320, height: 40 })).toBeNull();
+  });
+
+  it("a collapsed column's phantom frame takes its vertical extent from measurement", () => {
+    // 0-wide sticky frame (collapsed column): its own top/height still hold.
+    const col = mountDockFixture();
+    const frame = col.querySelector<HTMLElement>("[data-stack-frame]")!;
+    stubRect(frame, { ...FRAME, width: 0, top: 60 });
+    expect(readDockGeometry().columns[0].frame).toMatchObject({ top: 60, height: FRAME.height });
+
+    // No usable frame at all: the pane's scroll row, inset by pod-gap.
+    document.body.innerHTML = "";
+    const row = document.createElement("div");
+    row.setAttribute("data-virgil-row-scroll", "");
+    stubRect(row, { left: 0, top: 120, width: 1200, height: 600 });
+    Object.defineProperty(row, "clientHeight", { value: 600 });
+    document.body.appendChild(row);
+    const col2 = mountDockFixture();
+    col2.querySelector("[data-stack-frame]")!.remove();
+    row.appendChild(col2);
+    expect(readDockGeometry().columns[0].frame).toMatchObject({ top: 130, height: 580 });
   });
 
   it("answers with no columns off-screen of any dock (and never throws)", () => {

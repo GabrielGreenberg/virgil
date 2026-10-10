@@ -90,9 +90,6 @@ export function useDockDragTarget(): DockDragTarget | null {
  */
 export const AUTO_DOCK_PROXIMITY = 80;
 
-/** Approx. height of the Virgil bar above the dock region. */
-const TOP_BAR = 32;
-
 /** `--pod-gap`'s fallback when the custom property is unset/unparseable. */
 const DEFAULT_POD_GAP = 10;
 
@@ -135,8 +132,8 @@ export interface DockRect {
 export interface DockColumnGeometry {
   side: Side;
   /** The column's own horizontal extent at capture time. The proximity test
-   *  snaps to a column's OUTER edge and derives its corner y from
-   *  `TOP_BAR + podGap`, so the vertical extent is not part of the answer —
+   *  snaps to a column's OUTER edge and takes its corner y from the measured
+   *  `frame.top`, so the column's vertical extent is not part of the answer —
    *  capturing `top`/`bottom` would be two fields nothing reads (their only
    *  reader was the point-in-column test deleted with `findDockTargetAtPoint`). */
   left: number;
@@ -170,8 +167,17 @@ function readBandRects(col: HTMLElement): DockRect[] {
 }
 
 /** The viewport rect of a column's stack frame (the sticky dock region).
- *  Falls back to a phantom derived from the column rect + pod-gap when
- *  the frame element isn't present. */
+ *
+ *  Every coordinate is MEASURED, never predicted (task 1036). The frame used
+ *  to fall back to a phantom whose top was `TOP_BAR (32) + podGap` and whose
+ *  height was `innerHeight - 32 - 2·podGap` — the window formula task 792
+ *  retired from `panel-column.tsx`: the Virgil bar is not 32px under WCO (it
+ *  grows to the OS title-bar strip) and the pane is not at the window top in
+ *  the Library Reader. The phantom's horizontal extent still derives from the
+ *  column rect + pod-gap (a COLLAPSED column's frame is 0px wide); its
+ *  vertical extent is the frame's own when it has one (a sticky frame in a
+ *  0-wide column still reports its true top/height), else the pane's scroll
+ *  row — the box the sticky frame pins inside — inset by pod-gap. */
 function readStackFrameRect(
   col: HTMLElement,
   colRect: { left: number; right: number },
@@ -179,20 +185,30 @@ function readStackFrameRect(
   podGap: number,
 ): DockRect {
   const frame = col.querySelector<HTMLElement>("[data-stack-frame]");
-  if (frame) {
-    const r = frame.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) {
-      return { left: r.left, top: r.top, width: r.width, height: r.height };
-    }
+  const r = frame?.getBoundingClientRect();
+  if (r && r.width > 0 && r.height > 0) {
+    return { left: r.left, top: r.top, width: r.width, height: r.height };
   }
   const podLeft = side === "left" ? colRect.left + 4 : colRect.left + 4 + podGap;
   const podRight = side === "left" ? colRect.right - 4 - podGap : colRect.right - 4;
-  return {
-    left: podLeft,
-    top: TOP_BAR + podGap,
-    width: podRight - podLeft,
-    height: window.innerHeight - TOP_BAR - 2 * podGap,
-  };
+  const vertical =
+    r && r.height > 0 ? { top: r.top, height: r.height } : readScrollportBand(col, podGap);
+  return { left: podLeft, width: podRight - podLeft, ...vertical };
+}
+
+/** The vertical band a sticky stack frame pins inside: the pane's scroll row
+ *  (`[data-virgil-row-scroll]`, an ancestor of every panel column in every
+ *  host) inset by pod-gap top and bottom — the same box `panel-column.tsx`'s
+ *  `frameTop`/`frameH` describe in CSS. Only a column outside any scroll row
+ *  (a test harness) falls to the window. */
+function readScrollportBand(
+  col: HTMLElement,
+  podGap: number,
+): { top: number; height: number } {
+  const row = col.closest<HTMLElement>("[data-virgil-row-scroll]");
+  const top = row ? row.getBoundingClientRect().top : 0;
+  const height = row ? row.clientHeight : window.innerHeight;
+  return { top: top + podGap, height: height - 2 * podGap };
 }
 
 /**
@@ -204,7 +220,7 @@ function readStackFrameRect(
  * Membership comes from `paneColumns()` (task 438), not a document-global
  * sweep: under multi-pane keep-alive up to four `EditorPane`s are mounted and a
  * HIDDEN one's column reports `left = right = 0`, so its snap corner
- * `(0, TOP_BAR + podGap)` sits nearer the viewport's top-left than any real
+ * `(0, frame.top)` sits nearer the viewport's top-left than any real
  * column's and wins `resolveDockTargetByPanelProximity` outright — after which
  * `resolveBandTargetIn` reads that column's all-zero band rects and answers
  * `index = bands.length` with a zero-size outline. Same shape task 272 recorded
@@ -303,10 +319,11 @@ export function resolveDockTargetByPanelProximity(
   let best: DockColumnGeometry | null = null;
   let bestDist = Infinity;
   for (const col of geom.columns) {
-    // Snap corner at the dock frame's predicted outer-top corner
-    // (TOP_BAR + podGap — consistent regardless of toolbar extension).
+    // Snap corner at the dock frame's MEASURED outer-top corner — the visible
+    // frame corner the user lays the panel on, whatever the bar's height
+    // (WCO) or the pane's offset (Library Reader). Task 1036.
     const cornerX = col.side === "left" ? col.left : col.right;
-    const cornerY = TOP_BAR + geom.podGap;
+    const cornerY = col.frame.top;
     const panelCornerX =
       col.side === "left" ? panelRect.x : panelRect.x + panelRect.width;
     const panelCornerY = panelRect.y;

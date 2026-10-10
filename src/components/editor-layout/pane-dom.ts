@@ -121,7 +121,7 @@ export function paneColumn(side: Side): HTMLElement | null {
 
 /** Every panel column in the visible pane, both sides — the dock sweep's
  *  membership. A hidden column reports `left = right = 0`, whose snap corner
- *  `(0, TOP_BAR + podGap)` is nearer the viewport's top-left than any real
+ *  `(0, frame.top)` is nearer the viewport's top-left than any real
  *  column's, so it would win the proximity test outright. */
 export function paneColumns(): HTMLElement[] {
   return resolvePaneMarkers("[data-panel-column-side]");
