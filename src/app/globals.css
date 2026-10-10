@@ -526,7 +526,7 @@
      precisely the live token at that alpha (same derive-don't-hand-pick
      pattern as --library-edge above).
      Composed shadows, not bare colors, so the two body-portaled outlines
-     (CardLiftOutline / DockOutline) consume ONE token instead of keeping
+     (the dock + card-lift outlines in DragOutlines.tsx) consume ONE token instead of keeping
      byte-identical copies of the same two-layer halo in sync by hand. */
   --drag-outline-border: 1.5px solid var(--drag-highlight);
   /* Lift/dock outline: soft outer halo + tighter inner highlight. */

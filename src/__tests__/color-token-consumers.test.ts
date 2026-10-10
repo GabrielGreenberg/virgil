@@ -86,8 +86,7 @@ describe("drag glow layers derive from the --drag-highlight preference", () => {
   });
 
   it.each([
-    "src/components/CardLiftOutline.tsx",
-    "src/components/editor-layout/DockOutline.tsx",
+    "src/components/drag-outline/DragOutlines.tsx",
     "src/components/EditorPane.tsx",
   ])("leaves no rgb(59, 130, 246) literal in %s", (rel) => {
     expect(read(rel)).not.toMatch(/59\s*,\s*130\s*,\s*246/);
@@ -95,12 +94,11 @@ describe("drag glow layers derive from the --drag-highlight preference", () => {
 
   it("gives the two body-portaled outlines ONE shared definition", () => {
     // They used to carry byte-identical copies of the same two-layer halo.
-    // Both must now read the same tokens, so the pair cannot drift apart.
-    for (const rel of ["src/components/CardLiftOutline.tsx", "src/components/editor-layout/DockOutline.tsx"]) {
-      const src = read(rel);
-      expect(src).toContain('const OUTLINE_BORDER = "var(--drag-outline-border)"');
-      expect(src).toContain('const OUTLINE_GLOW = "var(--drag-glow-outline)"');
-    }
+    // Both read the same tokens, so the pair cannot drift apart — and since
+    // task 1035 they are one primitive (`DragOutline`) in one file.
+    const src = read("src/components/drag-outline/DragOutlines.tsx");
+    expect(src).toContain('const OUTLINE_BORDER = "var(--drag-outline-border)"');
+    expect(src).toContain('const OUTLINE_GLOW = "var(--drag-glow-outline)"');
   });
 });
 

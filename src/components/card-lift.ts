@@ -16,7 +16,7 @@ import { useEffect, useState } from "react";
  *     float-drop.
  *
  * Module-level (not React Context) because the producer (PanelCard's
- * lift gesture) and consumers (CardLiftOutline + FloatCard) live in
+ * lift gesture) and consumers (DragOutlines' card-lift outline + FloatCard) live in
  * unrelated subtrees.
  *
  * Mirrors the shape of `dock-drag.ts` for panel undock — separate from
