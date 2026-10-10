@@ -45,7 +45,10 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { render, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { PanelCard, CARD_THEMES } from "@/components/panel-primitives";
+import { EditorChromeProvider } from "@/components/editor-layout/chrome-context";
+import { FULL_CHROME } from "@/components/editor-layout/chrome-config";
 import { useState, type ComponentProps } from "react";
 import { CardListPanel } from "../CardListPanel";
 import ReportsPanel from "@/panels/Reports/ReportsPanel";
@@ -241,6 +244,119 @@ describe("task 964 — CardListPanel owns list navigation", () => {
     fireEvent.keyDown(listBody(container), { key: "ArrowDown" });
     fireEvent.keyDown(listBody(container), { key: "Enter" });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+// ── (2b) The cursor is the RENDERED ROW, and it carries focus (task 1049) ────
+//
+// Two symptoms of one root — the cursor named a selection id, never the row it
+// stepped to: (a) two rows sharing a selection id (Bibliography's duplicate
+// citekey blocks, task 690) trapped ArrowDown on the pair forever; (b) focus
+// never moved, so PanelCard's Delete arm (task 976 — on the card root, gated
+// on `selected`) never saw a Delete pressed after an arrow step.
+
+type DupRow = { id: string; rk: string };
+
+function DupShell({ items, spy }: { items: DupRow[]; spy: (id: string | null) => void }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  return (
+    <CardListPanel<DupRow>
+      kind="bibliography"
+      items={items}
+      getId={(r) => r.id}
+      getRenderKey={(r) => r.rk}
+      selectedId={selectedId}
+      onSelect={(id) => {
+        spy(id);
+        setSelectedId(id);
+      }}
+      renderCard={(r) => <div data-testid="dup-card">{r.rk}</div>}
+    />
+  );
+}
+
+describe("task 1049 — a shared selection id cannot trap the cursor", () => {
+  it("ArrowDown passes a duplicate pair; ArrowUp passes it back", () => {
+    const spy = vi.fn();
+    const { container } = render(
+      <DupShell
+        items={[{ id: "a", rk: "a1" }, { id: "a", rk: "a2" }, { id: "b", rk: "b" }]}
+        spy={spy}
+      />,
+    );
+    const body = listBody(container);
+    fireEvent.keyDown(body, { key: "ArrowDown" }); // a1
+    fireEvent.keyDown(body, { key: "ArrowDown" }); // a2
+    fireEvent.keyDown(body, { key: "ArrowDown" }); // b — pre-fix: a2 again
+    expect(spy.mock.calls.map((c) => c[0])).toEqual(["a", "a", "b"]);
+    fireEvent.keyDown(body, { key: "ArrowUp" }); // a2
+    fireEvent.keyDown(body, { key: "ArrowUp" }); // a1
+    fireEvent.keyDown(body, { key: "ArrowUp" }); // wraps to b — pre-fix: a1→… never b
+    expect(spy.mock.calls.map((c) => c[0])).toEqual(["a", "a", "b", "a", "a", "b"]);
+  });
+});
+
+function TrashShell({ ids, deletes }: { ids: string[]; deletes: Record<string, () => void> }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  return (
+    <EditorChromeProvider value={FULL_CHROME}>
+      <CardListPanel<{ id: string }>
+        kind="notes"
+        items={ids.map((id) => ({ id }))}
+        getId={(r) => r.id}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        onActivateItem={(r) => activations.push(r.id)}
+        renderCard={(r, { selected }) => (
+          <PanelCard
+            theme={CARD_THEMES.note}
+            selected={selected}
+            kind="note"
+            onTrashClick={deletes[r.id]}
+          >
+            <input data-testid={`input-${r.id}`} defaultValue="" />
+          </PanelCard>
+        )}
+      />
+    </EditorChromeProvider>
+  );
+}
+let activations: string[] = [];
+
+describe("task 1049 — the keyboard focuses the card it steps to", () => {
+  it("after ArrowDown ×2 focus is on the 2nd card root, and Delete deletes IT", async () => {
+    const deletes = { a: vi.fn(), b: vi.fn(), c: vi.fn() };
+    const { container } = render(<TrashShell ids={["a", "b", "c"]} deletes={deletes} />);
+    const body = listBody(container);
+    body.focus();
+    fireEvent.keyDown(body, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect((document.activeElement as HTMLElement).matches("[data-card]")).toBe(true),
+    );
+    // The next arrow arrives from the focused card and bubbles to the list.
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    const cards = container.querySelectorAll<HTMLElement>("[data-card]");
+    await waitFor(() => expect(document.activeElement).toBe(cards[1]));
+    fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+    expect(deletes.b).toHaveBeenCalledTimes(1);
+    expect(deletes.a).not.toHaveBeenCalled();
+    expect(deletes.c).not.toHaveBeenCalled();
+  });
+
+  it("Enter on a focused card root re-activates; Enter in a card's input does not", async () => {
+    activations = [];
+    const { container, getByTestId } = render(
+      <TrashShell ids={["a", "b"]} deletes={{ a: vi.fn(), b: vi.fn() }} />,
+    );
+    const body = listBody(container);
+    fireEvent.keyDown(body, { key: "ArrowDown" });
+    const cards = container.querySelectorAll<HTMLElement>("[data-card]");
+    await waitFor(() => expect(document.activeElement).toBe(cards[0]));
+    activations = [];
+    fireEvent.keyDown(cards[0], { key: "Enter" });
+    expect(activations).toEqual(["a"]);
+    fireEvent.keyDown(getByTestId("input-a"), { key: "Enter" });
+    expect(activations).toEqual(["a"]);
   });
 });
 

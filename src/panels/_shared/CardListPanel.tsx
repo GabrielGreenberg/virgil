@@ -11,8 +11,11 @@
  * focusable; ArrowDown/ArrowUp step the selection through the RENDERED set
  * (archive-filtered, so an archived off-screen card is never stepped onto),
  * Enter on the list itself re-activates the selected card, and the stepped-to
- * card is scrolled into view. The cursor is DERIVED from `selectedId` — there
- * is no second index to re-sync. Arrows inside a card's own inputs edit text
+ * card is scrolled into view AND focused (task 1049 — so the Delete key
+ * PanelCard arms on the selected card reaches it). The cursor is DERIVED from
+ * `selectedId` — there is no second index to re-sync — except that a keyboard
+ * step remembers the ROW it landed on, so two rows sharing a selection id
+ * (Bibliography's duplicate citekeys) cannot trap it. Arrows inside a card's own inputs edit text
  * (the `useListNavKeys` editable-target guard). A panel whose activation does
  * more than select (jump to the in-text marker) passes `onActivateItem`.
  *
@@ -29,6 +32,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
@@ -195,12 +199,28 @@ export function CardListPanel<T>({
     if (!visibleItems.some((it) => getId(it) === selectedId)) onSelect(null);
   }, [getArchived, selectedId, visibleItems, getId, onSelect]);
 
-  // ── Keyboard list navigation (task 964) ──
+  // ── Keyboard list navigation (task 964; the cursor is a ROW, task 1049) ──
   // The cursor is the selection, read against the rendered set: no `useCycle`
   // index to keep in step with `selectedId`, so a click, a margin pick or an
   // omni pick moves the keyboard cursor for free.
-  const selectedIndex =
-    selectedId == null ? -1 : visibleItems.findIndex((it) => getId(it) === selectedId);
+  //
+  // But a selection id is not a row. Bibliography lists two `.bib` blocks that
+  // share one citekey (task 690), so `findIndex(id)` resolves the second block
+  // back to the FIRST, and ArrowDown could never pass the pair. The keyboard
+  // therefore remembers the ROW it stepped to, by render key, and that row wins
+  // while it is still rendered AND still carries the selected id; anything
+  // else (a click, a margin or omni pick, the row vanishing) falls back to the
+  // first row with the selected id.
+  const renderKeyOf = getRenderKey ?? getId;
+  const [cursorKey, setCursorKey] = useState<string | null>(null);
+  const selectedIndex = useMemo(() => {
+    if (selectedId == null) return -1;
+    if (cursorKey != null) {
+      const i = visibleItems.findIndex((it) => renderKeyOf(it) === cursorKey);
+      if (i >= 0 && getId(visibleItems[i]) === selectedId) return i;
+    }
+    return visibleItems.findIndex((it) => getId(it) === selectedId);
+  }, [selectedId, cursorKey, visibleItems, renderKeyOf, getId]);
   // The list element the last key event came through — where the stepped-to
   // card is scrolled. Set by the key handler, so it is always the live body.
   const navBodyRef = useRef<HTMLElement | null>(null);
@@ -208,19 +228,23 @@ export function CardListPanel<T>({
     (i: number) => {
       const item = visibleItems[i];
       if (item === undefined) return;
+      setCursorKey(renderKeyOf(item));
       onSelect(getId(item));
       onActivateItem?.(item, i);
       // Each rendered card is one child of the list body, in render order
       // (`listTrailing` follows them), so the index addresses the card's DOM
       // without a per-panel selector. Deferred a frame: selection can resize
-      // the card (expand), and "nearest" should see the settled box.
+      // the card (expand), and "nearest" should see the settled box — and the
+      // card only becomes focusable once it renders as selected.
       const body = navBodyRef.current;
       requestAnimationFrame(() => {
         const el = body?.children[i] as HTMLElement | undefined;
-        el?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+        if (!el) return;
+        focusSteppedCard(el, body);
+        el.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
       });
     },
-    [visibleItems, getId, onSelect, onActivateItem],
+    [visibleItems, renderKeyOf, getId, onSelect, onActivateItem],
   );
   const stepNext = useCallback(() => {
     const n = visibleItems.length;
@@ -234,9 +258,10 @@ export function CardListPanel<T>({
   const handleNavKeys = useCallback(
     (e: ReactKeyboardEvent) => {
       navBodyRef.current = e.currentTarget as HTMLElement;
-      // Enter only when the LIST itself has focus — inside a card, Enter
+      // Enter only when the LIST itself or a card ROOT has focus (the keyboard
+      // puts focus on the stepped-to card) — on a control inside a card, Enter
       // belongs to that card's buttons and fields.
-      if (e.key === "Enter" && e.target === e.currentTarget) {
+      if (e.key === "Enter" && !e.defaultPrevented && isNavKeyTarget(e)) {
         if (visibleItems.length === 0) return;
         e.preventDefault();
         activateIndex(selectedIndex < 0 ? 0 : selectedIndex);
@@ -351,4 +376,42 @@ export function CardListPanel<T>({
     </Panel>
     </CardDisplayProvider>
   );
+}
+
+/** The card ROOT inside a list-body child — the child itself, or the first
+ *  `[data-card]` within it (a panel may wrap its card in a row element). */
+function cardRootOf(el: HTMLElement): HTMLElement | null {
+  return el.matches("[data-card]") ? el : el.querySelector<HTMLElement>("[data-card]");
+}
+
+/** Give DOM focus to the card the keyboard stepped to (task 1049), finishing
+ *  the roving tabindex task 976 started: PanelCard arms Delete on its root,
+ *  gated on `selected`, so a Delete only reaches the selected card when focus
+ *  is ON it. A card that is not focusable (no trash, so no `tabindex`) leaves
+ *  focus on the list body — never on the previously focused, now-deselected
+ *  card. Arrow keys bubble from the card to the list, so stepping continues. */
+function focusSteppedCard(el: HTMLElement, body: HTMLElement | null) {
+  const card = cardRootOf(el);
+  const target = card?.hasAttribute("tabindex") ? card : body;
+  if (target && target.ownerDocument.activeElement !== target) {
+    target.focus({ preventScroll: true });
+  }
+}
+
+/** Is this key event addressed to the LIST (its body, or a card root the
+ *  keyboard focused) rather than to a control inside a card? */
+function isNavKeyTarget(e: ReactKeyboardEvent): boolean {
+  if (e.target === e.currentTarget) return true;
+  const t = e.target;
+  return (
+    t instanceof HTMLElement &&
+    t.matches("[data-card]") &&
+    isTopCardRoot(t, e.currentTarget as HTMLElement)
+  );
+}
+
+/** A card root that is not nested inside another card of this list. */
+function isTopCardRoot(card: HTMLElement, body: HTMLElement): boolean {
+  const outer = card.parentElement?.closest("[data-card]");
+  return outer == null || !body.contains(outer);
 }
