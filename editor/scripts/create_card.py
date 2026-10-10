@@ -440,6 +440,38 @@ WORKFLOW_A_KINDS = {
     "report-request": set(),
 }
 
+# A Task flagged ON an existing card is an act-on-existing ask, and for these
+# carded kinds that means REVISE, never CREATE: a footnote / citation is an
+# id-equality atom in the .tex, so a create here splices a SECOND
+# \vfid{}\footnote{} (or cite) beside the one the user flagged and drains the
+# Task as answered (task 1048). Map: carded kind -> the source panel whose link
+# makes it a revise, and the door that revises. Deliberately absent: note
+# (answer-note-request's sibling note IS the answer), todo / report /
+# report-request (their responders answer a flagged card with a NEW card of a
+# different shape). The check reads the Task's `linkedTo` or the virtual id's
+# panel — the same derivation _create_proposal makes (task 1044).
+REVISE_NOT_CREATE = {
+    "footnote": ("footnotes", "/editor/draft-footnote branch E (/editor/edit-card <cardId> --body, "
+                              "which keeps the .tex \\footnote{} in sync and drains this Task)"),
+    "citation": ("citations", "/editor/find-citation (a citation card is coupled to its .tex cite "
+                              "and references.bib; it is revised there, never re-cited)"),
+}
+assert {panel for panel, _ in REVISE_NOT_CREATE.values()} <= AR.ATOM_BEARING_PANELS, \
+    "REVISE_NOT_CREATE names a non-atom panel — a sibling card there is a legitimate answer"
+
+
+def _refuse_create_on_flagged_card(kind: str, request_id: str | None, linked: dict | None) -> None:
+    """Refuse a carded create that would duplicate the card the Task is flagged on."""
+    rule = REVISE_NOT_CREATE.get(kind)
+    if rule is None or not isinstance(linked, dict):
+        return
+    panel, door = rule
+    if linked.get("panel") == panel:
+        die(f"request {request_id} is flagged ON an existing {kind} "
+            f"({panel}:{linked.get('cardId')}) — it asks to REVISE that card, and "
+            f"create-card --kind={kind} would add a duplicate. Use {door}.")
+
+
 # Pin ALL_KINDS to what this script actually dispatches (carded + tex-only), so
 # the coherence-checked literal can't drift from the implementation.
 assert ALL_KINDS == set(CARDED_BUILDERS) | TEX_ONLY_KINDS, "ALL_KINDS drifted from the implemented dispatch"
@@ -484,7 +516,8 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     # card's aiRequest flag (no Task row is mutated, so a safety level / result
     # isn't persisted — a card-flag reply lands directly).
     if is_virtual_request_id(request_id) and not synthesize:
-        parse_virtual_request_id(request_id)  # dies on a malformed / unknown-panel id
+        linked = parse_virtual_request_id(request_id)  # dies on a malformed / unknown-panel id
+        _refuse_create_on_flagged_card(a.kind, request_id, linked)
         if not anchor:
             die("--anchor <uuid> is required for a virtual (card-flag) request id "
                 "(resolve it from the source card)")
@@ -502,6 +535,7 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
                 f"(expected one of {sorted(accept_task_kinds)})")
         if is_terminal_status(req.get("status")):
             return {"ok": True, "noop": True, "reason": "request already terminal", "requestId": request_id}
+        _refuse_create_on_flagged_card(a.kind, request_id, req.get("linkedTo"))
         if not anchor:
             pids = req.get("paragraphIds") or []
             if not pids:
