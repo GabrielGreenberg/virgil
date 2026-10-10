@@ -1459,6 +1459,46 @@ def invalidate_bib_imported_if_added(library: Path, citekey: str) -> bool:
     return True
 
 
+# ── merge reports: where they live, and which ones count as state ──────
+#
+# A merge report is STATE, not just output: the merge-bibs worklist reads a
+# never-imported paper's report mtime as "already merged" (the legacy skip),
+# and a real report carries the subagent's `manual_review_decisions`. So a
+# `--dry-run` must not write where a real run reads (task 1037 — a dry run
+# used to stamp a fresh report on every never-imported paper, and the next
+# real run skipped them all as up to date). Dry-run reports go to their own
+# directory; this is the one place either location is spelled.
+
+MERGE_REPORTS_REL = Path(".virgil") / "merge-reports"
+DRY_RUN_REPORTS_SUBDIR = "_dry-run"
+
+
+def merge_report_dir(library: Path, *, dry_run: bool = False) -> Path:
+    """Directory merge reports for this kind of run live in. A dry run's
+    reports are quarantined under `_dry-run/` so no real run reads them."""
+    base = Path(library) / MERGE_REPORTS_REL
+    return base / DRY_RUN_REPORTS_SUBDIR if dry_run else base
+
+
+def real_merge_report_is_current(library: Path, citekey: str) -> bool:
+    """Legacy up-to-date test for a paper with no `bib.imported` flag: a REAL
+    merge report at least as new as `references.bib`. A report stamped
+    `"dry_run": true` (written to the real directory by a pre-1037 engine)
+    proves nothing was merged and never counts; an unreadable report doesn't
+    either — re-merging is the safe answer to "don't know"."""
+    refs = paper_folder(library, citekey) / "references.bib"
+    rpt = merge_report_dir(library) / f"{citekey}.json"
+    if not (refs.exists() and rpt.exists()):
+        return False
+    try:
+        report = json.loads(rpt.read_text())
+    except (OSError, ValueError):
+        return False
+    if not isinstance(report, dict) or report.get("dry_run"):
+        return False
+    return rpt.stat().st_mtime >= refs.stat().st_mtime
+
+
 def invalidate_changed_imports(library: Path) -> list[str]:
     """Sweep every imported catalog row and clear bib.imported on any paper
     whose references.bib has gained a citekey since import (additions-only).

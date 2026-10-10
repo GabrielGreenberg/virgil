@@ -246,8 +246,10 @@ def populate(
             seen_keys.add(citekey)
             new_entries.append(_emit_entry(entry_type, citekey, [], "", fields))
         # Emit a sidecar numeric→citekey map for rewrite_citations to
-        # consume (`<paper-dir>/.numeric-citekeys.txt`).
-        if new_entries:
+        # consume (`<paper-dir>/.numeric-citekeys.txt`). Not under
+        # --dry-run: the sidecar is state rewrite_citations reads, and a dry
+        # run writes nothing a real run reads (task 1037).
+        if new_entries and not dry_run:
             sidecar = paper_dir / ".numeric-citekeys.txt"
             sidecar.write_text(
                 "\n".join(

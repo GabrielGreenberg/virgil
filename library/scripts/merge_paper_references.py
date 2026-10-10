@@ -25,6 +25,8 @@ CLI:
 
 Output:
     .virgil/merge-reports/<citekey>.json  (default location)
+    .virgil/merge-reports/_dry-run/<citekey>.json  (under --dry-run — a dry
+        run writes nothing a real run reads; see `_tools.merge_report_dir`)
     One-line summary on stdout: "+A ~D ⇄U ⤬T ⚠F ?M"
 """
 
@@ -55,6 +57,7 @@ from _tools import (  # noqa: E402
     is_terminal_bib_state,
     mark_bib_imported,
     master_bib_state_map,
+    merge_report_dir,
     normalize_citekey,
     read_catalog,
     read_master_bib,
@@ -828,7 +831,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="Report what would happen without writing master.bib / catalog.")
     ap.add_argument("--report-dir", default=None,
-                    help="Override location of the JSON report directory.")
+                    help="Override location of the JSON report directory "
+                         "(default: .virgil/merge-reports, or its _dry-run/ "
+                         "subdirectory under --dry-run).")
     args = ap.parse_args(argv)
 
     library = _resolve_library(args.library)
@@ -837,7 +842,8 @@ def main(argv: list[str] | None = None) -> int:
     paper_dir = paper_folder(library, citekey)
     refs_path = paper_dir / "references.bib"
     report_dir = (Path(args.report_dir).expanduser().resolve()
-                  if args.report_dir else library / ".virgil" / "merge-reports")
+                  if args.report_dir
+                  else merge_report_dir(library, dry_run=args.dry_run))
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{citekey}.json"
 

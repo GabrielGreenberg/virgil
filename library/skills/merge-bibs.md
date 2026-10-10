@@ -107,7 +107,11 @@ The `$ARGUMENTS` string carries optional flags:
 - `--force` — re-merge papers even if their report exists and is
   newer than `references.bib`.
 - `--dry-run` — produce reports without writing `master.bib`,
-  `catalog.json`, or `inbox.json`.
+  `catalog.json`, or `inbox.json`. Its reports and worklist go to
+  `.virgil/merge-reports/_dry-run/`, never the real report directory: a
+  real run reads a paper's report as "already merged", so a dry run that
+  wrote there would make the next real run skip every never-imported
+  paper (task 1037).
 
 Do not parse them into shell variables (they would not survive to the
 next step). Pass them **straight through to the preflight in Step 0**, which
@@ -220,70 +224,14 @@ the legacy report-mtime check so they aren't needlessly re-scanned.
 
 ```bash
 . /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"
-python3 - <<'PY'
-import fnmatch, json, os, sys
-from pathlib import Path
-library = Path(os.environ["VIRGIL_LIBRARY_ROOT"])
-FILTER = os.environ.get("MERGE_FILTER") or ""
-FORCE  = os.environ.get("MERGE_FORCE") == "1"
-
-# The single additions-only predicate lives in _tools (shared with the
-# engine + the invalidation sweep). Fall back to mtime-only if unavailable.
-sys.path.insert(0, str(library / ".virgil" / "scripts" / "library"))
-try:
-    from _tools import references_bib_keys, normalize_citekey
-    HAVE_KEYS = True
-except Exception:
-    HAVE_KEYS = False
-
-cat = json.loads((library / ".virgil" / "catalog.json").read_text())
-# `richIndexed` is the legacy spelling kept on read; new writes use `deepIndexed`.
-DEEP_STATES = {"deepIndexed", "richIndexed"}
-report_dir = library / ".virgil" / "merge-reports"
-
-todo: list[str] = []
-skipped_uptodate = 0
-for e in cat.get("entries", []):
-    ck = e.get("citekey", "")
-    if not ck:
-        continue
-    if (e.get("indexed") or {}).get("state") not in DEEP_STATES:
-        continue
-    if FILTER and not fnmatch.fnmatch(ck, FILTER):
-        continue
-    refs = library / "papers" / ck / "references.bib"
-    if not refs.exists():
-        continue
-    if not FORCE:
-        bib = e.get("bib") or {}
-        if HAVE_KEYS and bib.get("imported"):
-            # Flag-bearing: decide SOLELY by content (additions-only). Skip when
-            # nothing was added; otherwise force-include. Never fall through to
-            # the weaker mtime proxy — a content-confirmed addition must win even
-            # if the report mtime happens to be newer (sync/restore mtime resets,
-            # or a dry-run that regenerated the report without re-stamping keys).
-            baseline = {normalize_citekey(k) for k in (bib.get("importedKeys") or [])}
-            added = set(references_bib_keys(library, ck)) - baseline
-            if not added:
-                skipped_uptodate += 1
-                continue
-        else:
-            # Legacy fallback — pre-flag libraries (or _tools unavailable): skip
-            # when the merge report is newer than references.bib.
-            rpt = report_dir / f"{ck}.json"
-            if rpt.exists() and rpt.stat().st_mtime >= refs.stat().st_mtime:
-                skipped_uptodate += 1
-                continue
-    todo.append(ck)
-
-(library / ".virgil" / "merge-reports").mkdir(parents=True, exist_ok=True)
-worklist = library / ".virgil" / "merge-reports" / "_worklist.txt"
-worklist.write_text("\n".join(todo) + ("\n" if todo else ""))
-
-print(f"worklist={len(todo)} skipped_uptodate={skipped_uptodate}")
-print(f"worklist_file={worklist}")
-PY
+python3 .virgil/scripts/library/merge_bibs_worklist.py --run-state "$MERGE_RUN_STATE"
 ```
+
+The rule lives in `merge_bibs_worklist.py` (pinned by
+`test_merge_dry_run_isolation.py`), not here — do not re-implement it inline.
+A legacy report stamped `"dry_run": true` never counts as "already merged".
+The worklist lands in `$MERGE_REPORT_DIR/_worklist.txt` (the run's own report
+directory — `_dry-run/` under a dry run).
 
 `MERGE_FILTER` / `MERGE_FORCE` arrive from the sourced run-state `.env` —
 never set them by hand in this block (a hand-set name that differs from the
@@ -298,10 +246,10 @@ Library-wide bib merge: nothing to do (0 papers in worklist).
 
 ## Step 2 — Spawn batched subagents
 
-Read `<library>/.virgil/merge-reports/_worklist.txt` into memory, and
-read the batch size and dry-run flag from the run state (`run.batch`,
-`run.dry_run` in `/tmp/merge-bibs-run.json`) — not from your memory of the
-args. Walk the worklist in chunks of `BATCH`. **For each chunk, emit `BATCH` `Agent` tool
+Read `$MERGE_REPORT_DIR/_worklist.txt` into memory, and read the batch
+size, dry-run flag and report directory from the run state (`run.batch`,
+`run.dry_run`, and `MERGE_REPORT_DIR` in `/tmp/merge-bibs-run.json.env`) —
+not from your memory of the args. Walk the worklist in chunks of `BATCH`. **For each chunk, emit `BATCH` `Agent` tool
 calls in a single message.** That's how the Claude Code harness
 runs them concurrently — sequential `Agent` calls run one at a time.
 
@@ -310,7 +258,7 @@ next chunk. Echo each subagent's one-line reply as it lands so the
 user sees progress.
 
 **Per-subagent prompt template** (paste verbatim, substituting
-`<library_root>`, `<citekey>`, and `<dry_run_flag>`):
+`<library_root>`, `<citekey>`, `<dry_run_flag>`, and `<report_dir>`):
 
 > You are merging one Virgil Library paper's `references.bib` into the
 > library's `master.bib`. Library root: `<library_root>`. Paper
@@ -320,14 +268,14 @@ user sees progress.
 > 1. `cd <library_root>`
 > 2. Confirm `papers/<citekey>/references.bib` exists. If it doesn't,
 >    write the stub `{"citekey":"<citekey>","status":"no-references"}`
->    to `.virgil/merge-reports/<citekey>.json` and reply
+>    to `<report_dir>/<citekey>.json` and reply
 >    `Done: <citekey> (no-references)`; do not continue.
 > 3. Run the merge:
 >    ```
 >    python3 .virgil/scripts/library/merge_paper_references.py <citekey> <dry_run_flag>
 >    ```
 >    The script does the dedup → authenticate → transient-skip work
->    and writes `.virgil/merge-reports/<citekey>.json`. It also writes
+>    and writes `<report_dir>/<citekey>.json`. It also writes
 >    a one-line summary to stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
 > 4. Read the report. If `manual_review[]` is non-empty, briefly look at
 >    each item — reading the relevant master.bib entries when useful —
@@ -352,7 +300,9 @@ user sees progress.
 >   The orchestrator is responsible for parallelism across papers.
 
 `<dry_run_flag>` is `--dry-run` if the run state's `run.dry_run` is
-`true`, otherwise the empty string.
+`true`, otherwise the empty string. `<report_dir>` is the run state's
+`MERGE_REPORT_DIR` — the engine picks the same directory from the flag, so
+the two always agree.
 
 After each chunk completes, optionally print a one-line progress
 indicator so the user knows how far the run has progressed:
@@ -381,7 +331,7 @@ import json, os, sys
 from collections import Counter
 from pathlib import Path
 library = Path(os.environ["VIRGIL_LIBRARY_ROOT"])
-report_dir = library / ".virgil" / "merge-reports"
+report_dir = Path(os.environ["MERGE_REPORT_DIR"])
 worklist_file = report_dir / "_worklist.txt"
 citekeys = [ck for ck in (worklist_file.read_text().splitlines() if worklist_file.exists() else []) if ck]
 
@@ -592,7 +542,7 @@ if [ "${MANUAL_REVIEW:-0}" -gt 0 ] && [ "$DRY_RUN" != "1" ]; then
 import json, os
 from pathlib import Path
 library = Path(os.environ["VIRGIL_LIBRARY_ROOT"])
-report_dir = library / ".virgil" / "merge-reports"
+report_dir = Path(os.environ["MERGE_REPORT_DIR"])
 print(f"# Library-wide bib merge — manual review")
 print()
 print(f"Generated {os.environ.get('RUN_AT','')}.")
