@@ -11,8 +11,13 @@ parses authors / year / title / journal / publisher / pages, and
 emits one BibTeX entry per `\\item`, with the citekey derived as
 `<firstauthor-surname-lowercase><year><firstsignificant-titleword>`.
 
-Skips entries that already exist in `references.bib` by citekey
-collision. Idempotent.
+Skips entries whose WORK is already in `references.bib` — matched by
+identity (first-author surname, year, first significant title word),
+under whatever key it carries — so a re-run adds nothing and a top-up
+adds only what is new (task 1039: the old key-collision check was dead,
+because the collision loop had already renamed every repeat to
+`<key>-2`). Two genuinely distinct works that share an identity still
+get `<key>-2`: identities are counted, not just looked up.
 
 Usage:
     python3 populate_references_bib_from_itemize.py <paper-dir> \\
@@ -24,7 +29,9 @@ import argparse
 import re
 import sys
 import unicodedata
+from collections import Counter
 from pathlib import Path
+from _bib_parse import parse_bib_text
 from _refs_section import references_span
 
 
@@ -73,6 +80,33 @@ def _first_significant_title_word(title: str) -> str:
             continue
         return lw[:10]
     return ""
+
+
+def _identity(surname: str, year: str, title: str) -> tuple[str, str, str]:
+    """What makes two bib rows the same WORK, independent of their keys."""
+    return (
+        _normalize_for_citekey(_strip_tex(surname)),
+        year[:4],
+        _first_significant_title_word(_strip_tex(title)),
+    )
+
+
+def _strip_tex(s: str) -> str:
+    return re.sub(r"\\[a-zA-Z]+\s*|[\\{}\"'`^~]", "", s)
+
+
+def _existing_identities(bib_text: str) -> Counter:
+    """Count the work identities already present in `references.bib`."""
+    out: Counter = Counter()
+    for entry in parse_bib_text(bib_text):
+        fields = entry.get("fields", {})
+        first = re.split(r"\s+and\s+", _strip_tex(fields.get("author", "")).strip())[0]
+        surname = first.split(",")[0] if "," in first else (first.split() or [""])[-1]
+        ym = re.search(r"\d{4}", fields.get("year", ""))
+        if not surname or not ym:
+            continue
+        out[_identity(surname, ym.group(0), fields.get("title", ""))] += 1
+    return out
 
 
 def _parse_author_year(bold: str) -> tuple[list[str], str]:
@@ -199,6 +233,9 @@ def populate(
     tex = tex_path.read_text(encoding="utf-8")
     bib_existing = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
     existing_keys = set(re.findall(r"^@\w+\{([^,\s]+),", bib_existing, re.M))
+    # Identity, not key, decides "already there" (task 1039). Counted, so
+    # N same-identity works in the bib absorb exactly N parsed repeats.
+    unclaimed = _existing_identities(bib_existing)
 
     # The door accepts the starred forms and `\subsection` too — per-chapter
     # References in edited volumes typically use `\section*{References}` /
@@ -212,6 +249,21 @@ def populate(
     skipped_dupes = 0
     skipped_unparsable = 0
     seen_keys: set[str] = set(existing_keys)
+
+    def _claim_key(surnames: list[str], year: str, fields: dict[str, str]) -> str | None:
+        """The key for a new work, or None when this work is already in
+        the bib (a dupe). Same-key distinct works get `-2`, `-3`, …."""
+        ident = _identity(surnames[0], year, fields.get("title", ""))
+        if unclaimed[ident] > 0:
+            unclaimed[ident] -= 1
+            return None
+        base = f"{ident[0]}{year}{ident[2]}"
+        citekey, suffix = base, 2
+        while citekey in seen_keys and suffix <= 99:
+            citekey = f"{base}-{suffix}"
+            suffix += 1
+        seen_keys.add(citekey)
+        return citekey
 
     # Style auto-detection: if the section is dominated by `\bibitem{N}`
     # entries (numeric/Vancouver) AND has no `\textbf{}` author carriers,
@@ -266,23 +318,13 @@ def populate(
                 continue
             entry_type = _detect_entry_type(rest)
             fields = _parse_fields(rest, entry_type)
-            first_surname = _normalize_for_citekey(surnames[0])
-            title_word = _first_significant_title_word(fields.get("title", ""))
-            citekey = f"{first_surname}{year}{title_word}"
-            if not first_surname:
+            if not _normalize_for_citekey(surnames[0]):
                 skipped_unparsable += 1
                 continue
-            base_citekey = citekey
-            suffix = 2
-            while citekey in seen_keys:
-                citekey = f"{base_citekey}-{suffix}"
-                suffix += 1
-                if suffix > 99:
-                    break
-            if citekey in existing_keys:
+            citekey = _claim_key(surnames, year, fields)
+            if citekey is None:
                 skipped_dupes += 1
                 continue
-            seen_keys.add(citekey)
             new_entries.append(
                 _emit_entry(entry_type, citekey, surnames, year, fields),
             )
@@ -296,26 +338,16 @@ def populate(
                 continue
             entry_type = _detect_entry_type(rest)
             fields = _parse_fields(rest, entry_type)
-            first_surname = _normalize_for_citekey(surnames[0])
-            title_word = _first_significant_title_word(fields.get("title", ""))
-            citekey = f"{first_surname}{year}{title_word}"
-            if not first_surname:
+            if not _normalize_for_citekey(surnames[0]):
                 skipped_unparsable += 1
                 continue
-            # Disambiguate citekey collisions with a numeric suffix.
-            base_citekey = citekey
-            suffix = 2
-            while citekey in seen_keys:
-                citekey = f"{base_citekey}-{suffix}"
-                suffix += 1
-                if suffix > 99:
-                    break
-            if citekey in existing_keys:
+            citekey = _claim_key(surnames, year, fields)
+            if citekey is None:
                 skipped_dupes += 1
                 continue
-            seen_keys.add(citekey)
-            bib_entry = _emit_entry(entry_type, citekey, surnames, year, fields)
-            new_entries.append(bib_entry)
+            new_entries.append(
+                _emit_entry(entry_type, citekey, surnames, year, fields),
+            )
 
     if not new_entries:
         return {
