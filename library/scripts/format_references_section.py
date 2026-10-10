@@ -20,12 +20,21 @@ deep-index passes. State-machine parser that handles:
 
 Usage:
     python3 format_references_section.py <paper-dir> [--style=apa|chicago|endnote|bracket-key] [--dry-run]
+    python3 format_references_section.py <paper-dir> --diagnostic   # stats only, writes nothing
+    python3 format_references_section.py <paper-dir> --restore      # undo the last itemization
+
+Re-runnable by construction (task 1039): `--diagnostic` is a preview and
+never writes; every write stashes the raw section it replaces
+(`_refs_preimage.py`), and `--restore` puts it back so a retry with a
+different `--style` starts from the original text, not from mis-split
+items.
 """
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+from _refs_preimage import has_preimage, restore_section, write_itemized_section
 from _refs_section import name_alternation, references_span
 
 
@@ -327,7 +336,13 @@ def format_references(paper_dir: Path, style: str | None = None,
     case (e.g. willats 4 entries / 25KB section) where the script
     otherwise overwrites the section with garbage. (willats, carey,
     peacocke memos.)
+
+    `diagnostic` is a PREVIEW: it prints the coverage stats and writes
+    nothing (task 1039 — it used to write, so the retry it invites was
+    refused as "already shaped").
     """
+    if diagnostic:
+        dry_run = True
     tex_path = paper_dir / "main.tex"
     if not tex_path.exists():
         return {"error": "main.tex not found"}
@@ -339,7 +354,10 @@ def format_references(paper_dir: Path, style: str | None = None,
     refs_text = text[refs_start:refs_end]
 
     if ALREADY_ITEMIZED_RE.search(refs_text):
-        return {"entries": 0, "style": "already-itemized", "reason": "already shaped"}
+        reason = "already shaped"
+        if has_preimage(paper_dir):
+            reason += " (run with --restore to recover the raw section, then retry)"
+        return {"entries": 0, "style": "already-itemized", "reason": reason}
 
     if not style:
         style = detect_style(refs_text)
@@ -382,10 +400,9 @@ def format_references(paper_dir: Path, style: str | None = None,
         items.append(shape_entry(e, style))
     items.append("\\end{itemize}")
     new_refs = "\n\n" + "\n".join(items) + "\n"
-    new_text = text[:refs_start] + new_refs + text[refs_end:]
 
     if not dry_run:
-        tex_path.write_text(new_text, encoding="utf-8")
+        write_itemized_section(paper_dir, text, refs_start, refs_end, new_refs)
 
     return {"entries": len(entries), "style": style}
 
@@ -395,7 +412,7 @@ def main(argv: list[str]) -> int:
         print(
             "usage: format_references_section.py <paper-dir> "
             "[--style=apa|chicago|bracket-key|bracket-numeric|siggraph|author-year-paren] "
-            "[--same-author-mode] [--diagnostic] [--dry-run]",
+            "[--same-author-mode] [--diagnostic] [--dry-run] | --restore",
             file=sys.stderr,
         )
         return 2
@@ -404,6 +421,13 @@ def main(argv: list[str]) -> int:
     dry_run = False
     same_author_mode = False
     diagnostic = False
+    if "--restore" in argv[2:]:
+        result = restore_section(paper_dir)
+        if "error" in result:
+            print(f"error: {result['error']}", file=sys.stderr)
+            return 1
+        print(f"Restored the raw References section in {paper_dir}.")
+        return 0
     for arg in argv[2:]:
         if arg.startswith("--style="):
             style = arg.split("=", 1)[1]
@@ -426,7 +450,7 @@ def main(argv: list[str]) -> int:
     if result.get("reason"):
         print(f"Skipped: {result['reason']}.")
         return 0
-    suffix = " (dry run)" if dry_run else ""
+    suffix = " (dry run)" if dry_run or diagnostic else ""
     print(
         f"Itemized {result['entries']} entries as style={result['style']} "
         f"in {paper_dir}{suffix}."

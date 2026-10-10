@@ -13,6 +13,11 @@ carey wall-of-text cases.)
 
 Usage:
     python3 itemize_jammed_references.py <paper-dir> [--dry-run]
+    python3 itemize_jammed_references.py <paper-dir> --restore
+
+Every write stashes the raw section it replaces (`_refs_preimage.py`,
+task 1039); `--restore` (here or on format_references_section.py — one
+stash) puts it back.
 """
 from __future__ import annotations
 
@@ -20,6 +25,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _refs_preimage import has_preimage, restore_section, write_itemized_section
 from _refs_section import references_span
 
 
@@ -110,7 +116,10 @@ def itemize_paper(paper_dir: Path, dry_run: bool = False) -> dict:
     refs_section = text[refs_start:refs_end]
 
     if ALREADY_ITEMIZED_RE.search(refs_section):
-        return {"entries": 0, "reason": "already itemized"}
+        reason = "already itemized"
+        if has_preimage(paper_dir):
+            reason += " (run with --restore to recover the raw section, then retry)"
+        return {"entries": 0, "reason": reason}
 
     entries = itemize_jammed(refs_section)
     if not entries:
@@ -121,10 +130,9 @@ def itemize_paper(paper_dir: Path, dry_run: bool = False) -> dict:
         items.append(_shape_item(e))
     items.append("\\end{itemize}")
     new_refs = "\n\n" + "\n".join(items) + "\n"
-    new_text = text[:refs_start] + new_refs + text[refs_end:]
 
     if not dry_run:
-        tex_path.write_text(new_text, encoding="utf-8")
+        write_itemized_section(paper_dir, text, refs_start, refs_end, new_refs)
 
     return {"entries": len(entries)}
 
@@ -135,8 +143,19 @@ def main() -> int:
     )
     parser.add_argument("paper_dir")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--restore", action="store_true",
+        help="put back the raw References section the last itemization replaced",
+    )
     args = parser.parse_args()
     paper_dir = Path(args.paper_dir).resolve()
+    if args.restore:
+        restored = restore_section(paper_dir)
+        if "error" in restored:
+            print(f"error: {restored['error']}", file=sys.stderr)
+            return 1
+        print(f"Restored the raw References section in {paper_dir}.")
+        return 0
     result = itemize_paper(paper_dir, dry_run=args.dry_run)
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)

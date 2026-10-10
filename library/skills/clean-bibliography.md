@@ -190,9 +190,12 @@ For books and review articles with hundreds of references, manual
 itemization is error-prone and slow. Run the auto-detector:
 
 ```bash
-python3 .virgil/scripts/library/format_references_section.py papers/$ARGUMENTS \
-    --diagnostic   # print regex-coverage stats
+python3 .virgil/scripts/library/format_references_section.py papers/$ARGUMENTS --diagnostic
 ```
+
+`--diagnostic` is a **preview** — it prints the detected style and
+regex-coverage stats and writes nothing. When the numbers look right,
+run it again without the flag (optionally with `--style=…`) to write.
 
 The script auto-detects style from `chicago` / `apa` / `bracket-key`
 / `bracket-numeric` / `siggraph` / `author-year-paren`. It uses a
@@ -216,9 +219,21 @@ the previous entry plus the head of the next) was fixed in Phase 1.3
 - `--same-author-mode` to merge year-only paragraph-starts (`^1998.
   Title…`) into the prior entry's author prefix.
 
-If the script produces output that looks wrong, fall through to
-manual itemization — but on a long bibliography, the script is
-almost always faster and more accurate than per-entry editing.
+**Every step here is safe to retry.** Each write stashes the raw
+section it replaced (`papers/$ARGUMENTS/virgil/pre-images/references.tex`).
+If the itemized output looks wrong, put the original back and try
+another style:
+
+```bash
+python3 .virgil/scripts/library/format_references_section.py papers/$ARGUMENTS --restore
+python3 .virgil/scripts/library/format_references_section.py papers/$ARGUMENTS --style=apa
+```
+
+A re-run over an already-itemized section is skipped ("already
+shaped") and names `--restore` — restore first rather than editing the
+mis-split items. If no style works, restore and fall through to manual
+itemization from the raw text — but on a long bibliography, the script
+is almost always faster and more accurate than per-entry editing.
 
 **Fallback to year-anchor splitter** when the primary parser yields
 implausibly few entries (the script's sanity-check aborts the write
@@ -227,6 +242,9 @@ in that case):
 ```bash
 python3 .virgil/scripts/library/itemize_jammed_references.py papers/$ARGUMENTS
 ```
+
+It shares the formatter's pre-image stash, so `--restore` on either
+script undoes whichever itemizer wrote last.
 
 **Index itemization** (for books with a `\section{Index}` of
 flattened-OCR entries):
@@ -395,21 +413,13 @@ paper itself (so every body `Author Year` mention fires
 python3 .virgil/scripts/library/populate_references_bib_from_itemize.py papers/$ARGUMENTS
 ```
 
-**Precondition (load-bearing).** This script blindly APPENDS — it does
-NOT dedupe against existing bib entries. Running it on an
-already-populated `references.bib` produces corrupt duplicate entries
-(mangled author fields, `-2`-suffixed citekey collisions). Before
-invoking, gate on entry count:
-
-```bash
-count=$(grep -c '^@' papers/$ARGUMENTS/references.bib)
-# Only run if the bib is at seed state (≤ 1 entry — the paper itself).
-[ "$count" -le 1 ] && python3 .virgil/scripts/library/populate_references_bib_from_itemize.py papers/$ARGUMENTS
-```
-
-Skip the populate step entirely when the bib is already populated
-(e.g., on re-runs against a deep-indexed paper, or when `index-paper`
-ingested a `.tex` source that came with its own `references.bib`).
+**Safe to re-run.** The script skips every item whose work is already
+in `references.bib` — matched by first-author surname + year + first
+significant title word, under whatever citekey it carries — and reports
+them as `dupes`. So a re-run adds nothing, and on a bib that came with
+the source (or was partly hand-built) it tops up only the missing works.
+Two genuinely distinct works that share surname/year/title-word still
+get `<key>-2`.
 
 ### Disambiguate colliding citekeys
 
