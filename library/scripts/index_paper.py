@@ -76,6 +76,7 @@ from extract import extract_to_json, _ocr_if_needed, _classify_pdf
 import extract_docx
 from tex_emit import emit
 from bib_auth import authenticate, assert_title_clean
+from _bib_types import apply_type_retirement  # task 1040
 from fuse_alternate import fuse_pgmarks_into, FuseResult, FUSION_FAILED_HEAD
 
 
@@ -403,17 +404,13 @@ def _authenticate_master_entry(library: Path, citekey: str, bib_entry: dict,
             # Honor type auto-conversion (only set when DOI-verified).
             effective_type = result.proposed_type or bib_entry["type"]
             if result.proposed_type:
-                # @article → @incollection: journal becomes booktitle.
-                if (bib_entry["type"] == "article"
-                        and result.proposed_type == "incollection"
-                        and "journal" in fields):
-                    if "booktitle" not in fields:
-                        fields["booktitle"] = fields["journal"]
-                    fields.pop("journal", None)
-                # any → @unpublished: drop publication-only fields.
-                if result.proposed_type == "unpublished":
-                    for k in ("journal", "booktitle", "volume", "number", "pages"):
-                        fields.pop(k, None)
+                # Retire what the new type cannot carry — the ONE rule
+                # (`_bib_types`, task 1040), shared with the merge path and
+                # the skill (via the helper's `proposed_drop_fields`).
+                retired = apply_type_retirement(
+                    bib_entry["type"], result.proposed_type, fields)
+                fields.clear()
+                fields.update(retired)
                 bib_entry["type"] = effective_type
                 log(f"  Bib type rewritten: {result.proposed_type}")
             # Merge field changes and write back to master.bib.

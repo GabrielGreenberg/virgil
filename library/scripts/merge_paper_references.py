@@ -45,6 +45,7 @@ THIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(THIS_DIR))
 
 from _bib_parse import read_bib_file  # noqa: E402
+from _bib_types import apply_type_retirement  # noqa: E402  (task 1040)
 from _tools import (  # noqa: E402
     paper_folder,
     TERMINAL_BIB_STATES,
@@ -352,6 +353,18 @@ def apply_field_changes(fields: dict, changes: list[dict]) -> dict:
     return out
 
 
+def landed_entry(entry_type: str, fields: dict, result) -> tuple[str, dict]:
+    """The `(type, fields)` an AuthResult lands as: the proposed type (if
+    any), its field retirement (`_bib_types`, task 1040 — the same rule
+    `index_paper.py` and the authenticate-bib skill apply), then the field
+    changes. Before task 1040 this path took the proposed type and kept every
+    field, so an `@article` → `@inproceedings` landed still carrying
+    `journal`."""
+    new_type = result.proposed_type or entry_type
+    retired = apply_type_retirement(entry_type, new_type, fields)
+    return new_type, apply_field_changes(retired, result.field_changes or [])
+
+
 def same_work(auth_record: dict, d_fields: dict, e_fields: dict) -> bool:
     """Decide whether the authenticated record represents the same work
     as BOTH `d` and `e`. If only one side matches, the other is distinct
@@ -594,8 +607,7 @@ def _process_no_dup(
         return
 
     # Apply field changes + persist.
-    proposed_type = result.proposed_type or e_type
-    final_fields = apply_field_changes(e_fields, result.field_changes or [])
+    proposed_type, final_fields = landed_entry(e_type, e_fields, result)
     _write_master(library, e_ck, proposed_type, final_fields, state=result.state)
 
     bib_status = {
@@ -681,8 +693,7 @@ def _process_dup_unauth(
 
     if same_work(result.matched_record or {}, d_fields, e_fields):
         # Same work — fold the authenticated fields back under master's citekey.
-        proposed_type = result.proposed_type or dup["type"]
-        final_fields = apply_field_changes(merged, result.field_changes or [])
+        proposed_type, final_fields = landed_entry(dup["type"], merged, result)
         _write_master(library, dup["citekey"], proposed_type, final_fields, state=result.state)
         bib_status = {
             "state": result.state,
@@ -725,8 +736,7 @@ def _process_dup_unauth(
         d_exc = None
 
     if d_result is not None and d_result.state not in ("manuscript",):
-        d_proposed = d_result.proposed_type or dup["type"]
-        d_final = apply_field_changes(d_fields, d_result.field_changes or [])
+        d_proposed, d_final = landed_entry(dup["type"], d_fields, d_result)
         _write_master(library, dup["citekey"], d_proposed, d_final, state=d_result.state)
         d_bib_status = {
             "state": d_result.state,
@@ -774,8 +784,7 @@ def _process_dup_unauth(
         })
         return
 
-    e_proposed = e_result.proposed_type or entry["type"]
-    e_final = apply_field_changes(entry["fields"], e_result.field_changes or [])
+    e_proposed, e_final = landed_entry(entry["type"], entry["fields"], e_result)
     _write_master(library, entry["citekey"], e_proposed, e_final, state=e_result.state)
     e_bib_status = {
         "state": e_result.state,
