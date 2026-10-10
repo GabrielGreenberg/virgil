@@ -3,7 +3,8 @@ description: |
   Mechanically create a card of a given kind at an anchor, through the
   apply_response writeback contract. Triggers as the mechanical insertion step
   behind a card-producing Task (footnote, citation, note, todo, report,
-  report-request) or an example block, or when you've composed a body/key and
+  report-request — not a Task flagged ON an existing footnote/citation, which
+  is a revise and is refused) or an example block, or when you've composed a body/key and
   need to land it (`create-card --kind=<kind> …`). This skill does NOT compose
   content — the body/key is supplied by you (chat) or the calling skill; per
   kind it builds the sidecar entry + any LaTeX atom marker and routes the write
@@ -247,3 +248,10 @@ just decides the inputs and invokes it.
   ([identity.md](../../docs/workspace/identity.md)).
 - If the anchor paragraph UUID isn't in the `.tex`, `create_card.py` refuses
   rather than guess — resolve the anchor first.
+- **A Task flagged ON an existing footnote/citation is a revise, not a create.**
+  `create_card.py` refuses `--kind=footnote` when the Task's `linkedTo.panel` is
+  `footnotes` (or the id is `virtual:footnotes:…`), and likewise `citation` on
+  `citations` (`REVISE_NOT_CREATE`) — a create there would splice a duplicate
+  atom. Route those through `/editor/draft-footnote` (branch E) /
+  `/editor/find-citation`. Notes, todos and reports are not excluded: a new card
+  answering a flagged one is their responders' legitimate output.

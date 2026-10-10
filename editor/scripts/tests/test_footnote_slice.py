@@ -233,5 +233,41 @@ check(not any(f["id"] == fid for f in load(sb, "footnotes.json")["footnotes"]), 
 req = next(r for r in load(sb, "ai-requests.json")["requests"] if r["id"] == rid)
 check(req["status"] == "pending" and "result" not in req and "resultId" not in req, "post-revert: Task reopened (pending, no result/resultId)")
 
+# ------------------------------------------------- act-on-existing refusal
+# Task 1048: a footnote Task flagged ON an existing footnote asks to REVISE it;
+# create_card.py --kind=footnote must refuse (no duplicate atom, Task open).
+print("\n=== act-on-existing: a flagged-footnote Task refuses a create ===")
+sb = sandbox(); rid = footnote_req_id(sb); set_safety(sb, rid, 1)
+p = sb / "virgil" / "ai-requests.json"
+ar = json.loads(p.read_text())
+for r in ar["requests"]:
+    if r["id"] == rid:
+        r["linkedTo"] = {"panel": "footnotes", "cardId": "f001"}
+p.write_text(json.dumps(ar, indent=2) + "\n")
+before = tex_of(sb)
+r = run(CREATE, str(sb), rid, "--kind=footnote", "--body", BODY)
+check(r.returncode != 0, "linkedTo.panel=footnotes → create refused (nonzero exit)")
+check("REVISE" in r.stderr and "draft-footnote" in r.stderr, f"refusal names the revise door (stderr={r.stderr.strip()[:160]})")
+check(tex_of(sb) == before, "linked: .tex byte-identical")
+req = next(x for x in load(sb, "ai-requests.json")["requests"] if x["id"] == rid)
+check(req["status"] not in ("complete", "failed") and "resultId" not in req, "linked: Task still open")
+
+sb = sandbox(); before = tex_of(sb)
+r = run(CREATE, str(sb), "virtual:footnotes:f001", "--kind=footnote", "--body", BODY, "--anchor", ANCHOR)
+check(r.returncode != 0 and "REVISE" in r.stderr, "virtual:footnotes:<id> → create refused")
+check(tex_of(sb) == before, "virtual: .tex byte-identical")
+
+# A footnote Task linked to a DIFFERENT panel (a todo handed off) still creates.
+sb = sandbox(); rid = footnote_req_id(sb); set_safety(sb, rid, 1)
+p = sb / "virgil" / "ai-requests.json"
+ar = json.loads(p.read_text())
+for r in ar["requests"]:
+    if r["id"] == rid:
+        r["linkedTo"] = {"panel": "todos", "cardId": "t-none"}
+p.write_text(json.dumps(ar, indent=2) + "\n")
+r = run(CREATE, str(sb), rid, "--kind=footnote", "--body", BODY)
+check(r.returncode == 0 and "\\vfid{" + json.loads(r.stdout)["footnoteId"] + "}" in tex_of(sb),
+      f"linkedTo.panel=todos → footnote still created (stderr={r.stderr.strip()[:160]})")
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

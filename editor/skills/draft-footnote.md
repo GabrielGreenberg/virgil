@@ -17,16 +17,12 @@ description: |
 
 # /editor/draft-footnote $ARGUMENTS
 
-> **Alias (migrating).** As of v1, `draft-footnote` is the *composition* front
-> end for **`/editor/create-card --kind=footnote`**. The mechanical insertion
-> — building the `FootnoteRef`, splicing `\vfid{}\footnote{}`, flipping the
-> Task, bumping the version — now flows through the
-> [`apply_response.py`](../scripts/apply_response.py) contract (atomic,
-> pen-protected) via [`create_card.py`](../scripts/create_card.py). This skill
-> stays for one release cycle so existing paper folders and muscle memory keep
-> working; new callers should prefer `create-card`. What `draft-footnote` still
-> owns is the footnote-specific **composition** (prose + the missing-bibkey todo)
-> below — that is chat's job, not the mechanical skill's.
+This skill owns the footnote-specific **composition** (prose + the
+missing-bibkey todo) and is `/editor/review`'s dispatch target for
+`kind: footnote`; the mechanical landing is
+[`create_card.py`](../scripts/create_card.py) (direct create) or the
+`update` op (act-on-existing), both through the
+[`apply_response.py`](../scripts/apply_response.py) contract.
 
 Resolve one AI request whose kind is `footnote`. **First ask whether the request
 wants a footnote at all** — the flagged-card shape below is a free-text comment
@@ -310,7 +306,8 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
 - **Act-on-existing must REWRITE, never re-create.** When the request carries
   `linkedTo.panel == "footnotes"` (or a `virtual:footnotes:` id), the user wants
   the *existing* footnote revised — direct-creating a new one would duplicate it.
-  Use the `update` op (branch E), not `create_card.py`.
+  Use the `update` op (branch E), not `create_card.py` — which REFUSES a
+  `--kind=footnote` create on such a Task (`REVISE_NOT_CREATE`, task 1048).
 - **Find-or-surface, never fabricate** ([_find-or-surface.md](_find-or-surface.md)):
   don't fabricate a `\citet{key}` for a bibkey not in `references.bib` — write
   the prose without it and file a missing-bibkey **todo card** instead
