@@ -54,10 +54,10 @@ card so the user can drag it into the document.
      completes a real todo Task and, for a virtual id, splits it into
      `{panel: "todos", cardId}` and clears that todo's `aiRequest` flag.
      Any other kind is not a hand-off this skill accepts — refuse.
-   - For a real row: the status is open (not the terminal `complete` /
-     `failed` — re-running a terminal Task is a no-op). A virtual id is open
-     by construction (`list_requests.py` only emits one while the card's flag
-     is still set).
+   - Whether it is still open is the drain's call, not a `status` test of
+     your own — see [Idempotency](#idempotency). That covers a virtual id
+     too: `list_requests.py` only emits one while the card's flag is still
+     set.
 
    `paragraphIds` is optional (the resulting card is `unanchored: true` —
    the user drags it to anchor), so no `--anchor` is needed here even for a
@@ -303,6 +303,13 @@ card so the user can drag it into the document.
    ```
    Done: added <citekey> to references.bib and citations.json for request <requestId>. Output: references.bib + citations.json (+ ai-requests.json, notifications, version) — one atomic commit.
    ```
+
+## Idempotency
+
+One rule for every responder: [_request-load.md](_request-load.md) →
+"Idempotency". The drain decides whether `<requestId>` is still open, and a
+writer's `noop: true` (or `apply_response.py`'s terminal refusal) is the belt
+— never a `status` test of your own.
 
 ## Failure mode
 

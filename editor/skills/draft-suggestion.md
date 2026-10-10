@@ -146,7 +146,8 @@ this skill.
    the card lands `pending`, the Task is left **awaiting review** (`status:
    in-progress`, `resultId` → the card), the `.tex` is untouched, and the
    source card's `aiRequest` flag (if any) is lowered. Re-running on a Task
-   whose proposal already exists returns a `noop` naming that card. The
+   whose proposal already exists returns a `noop` naming that card — reply
+   `Skipped … (already answered).` ([Idempotency](#idempotency)). The
    returned JSON's `cardId` is the `<newId>` for the reply.
 
 7. **Reply.** On success:
@@ -158,6 +159,13 @@ this skill.
      ```
      Done: drafted report <newId> for request <requestId> (a suggestion Task answered as a report). Output: reports.json (+ ai-requests.json status/result, notifications, version).
      ```
+
+## Idempotency
+
+One rule for every responder: [_request-load.md](_request-load.md) →
+"Idempotency". The drain decides whether `<requestId>` is still open, and a
+writer's `noop: true` (or `apply_response.py`'s terminal refusal) is the belt
+— never a `status` test of your own.
 
 ## Safety
 

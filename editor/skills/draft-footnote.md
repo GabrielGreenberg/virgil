@@ -60,9 +60,9 @@ card:
 
 ## Procedure
 
-0. **Validate.** Check the request: `kind == "footnote"` (otherwise refuse);
-   the status is open (not the terminal `complete` / `failed` — re-running a
-   terminal Task is a no-op).
+0. **Validate.** Check the request: `kind == "footnote"` (otherwise refuse).
+   Whether it is still open is the drain's call, not a `status` test of your
+   own — see [Idempotency](#idempotency).
 
 0a. **Ask-shape check — what does the ask actually want?** The shared rule,
    [_ask-shape.md](_ask-shape.md), governs, and it is answered *here*, before
@@ -184,7 +184,9 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    exit "$rc"
    ```
    The door refuses, writing nothing, if the request id is unknown or already
-   terminal (drained by an earlier landing) — report that instead of retrying.
+   terminal (drained by an earlier landing). A terminal refusal is the
+   [Idempotency](#idempotency) belt — reply `Skipped … (already answered).`;
+   an unknown id, report the refusal. Never retry.
    Reply with the act-on-existing template (step 4) and skip the direct-create
    steps below.
 
@@ -292,6 +294,13 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    If a missing-bibkey todo was filed: `Filed todo <todoId> for missing bibkey <bibkey> — flag it for AI to route it to /editor/find-citation.`
    On halt (direct create, no `paragraphIds`): `Halted: request <requestId> has no paragraphIds; needs anchor before drafting.`
    On halt (act-on-existing, footnote gone): `Halted: footnote <cardId> for request <requestId> no longer exists.`
+
+## Idempotency
+
+One rule for every responder: [_request-load.md](_request-load.md) →
+"Idempotency". The drain decides whether `<requestId>` is still open, and a
+writer's `noop: true` (or `apply_response.py`'s terminal refusal) is the belt
+— never a `status` test of your own.
 
 ## Safety
 
