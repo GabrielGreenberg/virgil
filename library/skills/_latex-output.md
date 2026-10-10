@@ -161,5 +161,25 @@ app's own save path injects the same no-op for every marker it knows, so
 the line keeps a paper compilable under stock LaTeX before it is ever
 opened in Virgil. `\providecommand` for the expex envelope commands
 themselves (`\ex`, `\pex`, `\xe`, etc.) is **not** added; those are not
-meant to typeset under stock LaTeX. Authors who want to compile the file
-with pdflatex should also `\usepackage{expex}` themselves.
+meant to typeset under stock LaTeX.
+
+**Compiling under stock pdflatex.** What a body needs beyond the minimal
+preamble is whatever the app's requirement table
+(`src/lib/latex-requirements.ts`) injects on save — so opening and saving
+the paper once in Virgil makes it stock-compilable, for this appendix's
+vocabulary and the shared one alike (`\sout`, `\textcolor`, the cite
+family). To compile without that round trip, add these lines before
+`\begin{document}` — exactly what the app injects for the example
+vocabulary above. Note the second line: expex does **not** define the
+`xlist` environment (gb4e did, and gb4e is stripped), so a paper with a
+nested tier fails on "Environment xlist undefined" without it.
+
+```latex-stock-compile
+\usepackage{expex}
+\newenvironment{xlist}{\pex}{\xe}
+```
+
+This block is CI-checked against the requirement table
+(`latex-output-stock-compile.test.ts`): it must name exactly the lines the
+app injects for a body spelling every command in the `latex-appendix`
+inventory and every environment this file documents.
