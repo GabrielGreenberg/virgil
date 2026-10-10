@@ -96,103 +96,55 @@ source request in place.
    conversational tone of any other revision cards anchored to the
    same paragraph. Keep it under ~200 words.
 
-4. **Build the result card** *(paths (a)/(c) only)*. Path (b) — the report —
-   is already landed by its own `create_card.py` call in step 2, which builds
-   the card, flips the Task and clears the source flag in one atomic write.
-   It needs nothing from steps 4 and 5; go straight to the path-(b) reply in
-   step 6.
+4. **Paths (a)/(c) need no hand-built card** *(path (b) — the report — is
+   already landed by step 2's own `create_card.py` call; go straight to its
+   reply in step 6)*. The door builds both remaining shapes (task 1044):
+   `create_card.py` reads the Task's `linkedTo.panel == "revisions"`, copies
+   the source request's first-link anchor **verbatim** (Mode A, or Mode B with
+   its `textRange`), mints the id / timestamps / self-link (spine kind
+   `revision-suggestion` / `revision-comment`), stamps `instructions` (the
+   drain row's `text`, [_request-load.md](_request-load.md)), and stamps
+   `aiOriginRequestId` for a real Task (never a `virtual:` one). Don't mutate
+   the source request's `text` / `content` — the door lowers its `aiRequest`
+   flag for you.
 
-   For path (c) — sibling RevisionRequestCard
-   (`RevisionRequestCard`, `src/lib/types.ts`):
-   ```json
-   { "kind": "comment",
-     "id": "<new-uuid>",
-     "createdAt": "<ISO now>",
-     "text": "<plain-text mirror of content>",
-     "content": {
-        "type": "doc",
-        "content": [{
-           "type": "paragraph",
-           "content": [{ "type": "text", "text": "<your reply>" }]
-        }]
-     },
-     "aiRequest": false,
-     "links": [{
-        "id": "<new-link-uuid>",
-        "kind": "anchor",
-        "anchor": { ...COPIED VERBATIM from the source request's first-link anchor... },
-        "target": {
-           "type": "card",
-           "ref": {"kind": "revision-comment", "id": "<new-uuid>"}
-        },
-        "createdAt": "<ISO now>"
-     }]
-   }
-   ```
-   **The link anchor (paths (a) and (c)):** copy the source request's first-link
-   `anchor` object **verbatim** — it is already in the canonical on-disk
-   `LinkAnchor` shape (`type: "textObject"` + `textObjectIds`,
-   plus `textRange` if the request is Mode B; SSOT
-   `src/links/_shared/types.ts`,
-   [anchoring.md](../../docs/workspace/anchoring.md)). Copying preserves the
-   mode and paragraph id(s) in one move; do **not** hand-rebuild it
-   into the retired `type: "anchor"`/`paragraphIds` form. Then mint a fresh
-   link `id`, and set `target.ref.id` to the new card's own id (self-target).
-   The self-link's `target.ref.kind` is the card's spine kind —
-   `revision-comment` / `revision-suggestion` — never the record's own
-   `kind` (`comment` / `suggestion`); `apply_response.py` stamps it from the
-   panel + record kind on every write (task 783).
-
-   For path (a) — RevisionSuggestionCard: see `/editor/draft-suggestion`
-   for the full schema. Required: `kind: "suggestion"`, `id`,
-   `createdAt`, `author: "ai"`, `original_text` (verbatim from .tex,
-   excluding the `%!v:<uuid>` marker — it is the accept-time stale-guard
-   key), `suggested_text`, `explanation`, `user_text: ""`,
-   `instructions: "<request.text>"` (the drain row's `text`,
-   [_request-load.md](_request-load.md)),
-   `status: "pending"`, `links[]` (the
-   verbatim-copy anchor rule above, `target.ref.kind: "revision-suggestion"`), and
-   `aiOriginRequestId: <requestId>` (load-bearing — the editor's Accept /
-   Reject and `accept-suggestion` / `reject-suggestion` all finalize the Task
-   through it) if the id doesn't start with `virtual:`.
-
-   Don't mutate the source request's top-level `text` / `content`
-   fields — those are the originating framing. The bridge clears
-   `aiRequest` via `clearSourceFlag: true`.
-
-5. **Land it via the contract** *(paths (a)/(c))*. Both paths take the same op
-   shape — only the subcommand differs — and both move off the legacy
-   default-apply path. The op carries FREE TEXT (the whole card, including
-   `original_text`, a span lifted verbatim from the user's `.tex`), so it goes
-   through an `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule
-   and why:
+5. **Land it — one call per path.** Free text goes through `@` scratch files
+   ([`_op-json.md`](_op-json.md)):
    ```bash
-   op=$(mktemp -t virgil-op)
-   cat > "$op" <<'JSON'
-   { "requestId": "<requestId>",
-     "panel": "revisions",
-     "card": { ...the new card... },
-     "summary": "Replied to revision request <cardId>",
-     "clearSourceFlag": true
-   }
-   JSON
+   t=$(mktemp -d -t virgil-txt)
 
-   # Path (a) — suggestion → L3 propose. A suggestion is a *proposal*:
-   # --propose lands the card and leaves the Task AWAITING REVIEW
-   # (status: in-progress), the .tex untouched until the user accepts via
-   # /editor/accept-suggestion.
-   python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
+   # Path (a) — suggestion → L3 propose: the card lands, the Task is left
+   # AWAITING REVIEW (status: in-progress), the .tex untouched until
+   # /editor/accept-suggestion. `original_text` must be verbatim from the
+   # anchored paragraph (never the %!v: marker) or NOTHING lands — the same
+   # question accept's stale guard asks; an empty replacement is refused too.
+   cat > "$t/original" <<'TXT'
+   <the span, verbatim from the .tex>
+   TXT
+   cat > "$t/suggested" <<'TXT'
+   <your replacement>
+   TXT
+   cat > "$t/explanation" <<'TXT'
+   <one or two sentences>
+   TXT
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> \
+       --original "@$t/original" --suggested "@$t/suggested" \
+       --explanation "@$t/explanation"; rc=$?
 
-   # Path (c) — sibling request → terminal create. A request is not a proposal
-   # (nothing to accept), so it lands as a DIRECT CREATE: complete-task
-   # completes the Task now (status: complete, result: direct-created).
-   python3 editor/scripts/apply_response.py <docPath> complete-task "@$op"; rc=$?
+   # Path (c) — sibling reply → terminal create (a reply is not a proposal:
+   # the Task completes now, result: direct-created).
+   cat > "$t/body" <<'TXT'
+   <your reply>
+   TXT
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=comment --anchor <uuid> \
+       --body "@$t/body"; rc=$?
 
-   rm -f "$op"
+   rm -rf "$t"
    exit "$rc"
    ```
-   Run **one** of the two calls, then the `rm`/`exit` pair.
-   `clearSourceFlag: true` flips the source request's `aiRequest` to `false`.
+   Run **one** of the two calls, then the `rm`/`exit` pair. The returned
+   `cardId` is the `<newId>` for the reply; a re-run on a Task whose proposal
+   already exists returns a `noop` naming it.
 
 6. **Reply.** On success:
    - Path (a) — suggestion (awaiting review):

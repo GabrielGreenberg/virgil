@@ -1295,16 +1295,81 @@ def _replace_span_in_tex(text: str, te: dict) -> str:
         die("texEdit.replacement is required for mode=replace-span (may be empty to delete the span)")
 
     marker = f"%!v:{anchor}"
-    region = _anchored_paragraph(text, anchor)
-    if region is None:
+    idx = _locate_proposal_span(text, anchor, match)
+    if idx == _NO_ANCHOR:
         die(f"replace-span: anchor marker {marker} not found in .tex — the anchored paragraph "
             f"was removed since the proposal was drafted (stale proposal); refusing to splice")
-    idx = _find_in_paragraph(text, match, *region, live_only=False)
-    if idx == -1:
+    if idx == _NO_MATCH:
         die(f"replace-span: the proposal's original_text no longer matches the .tex at anchor "
             f"{marker} — the paragraph changed since the proposal was drafted (stale proposal); "
             f"refusing to splice. Re-draft the suggestion against the current text.")
     return text[:idx] + replacement + text[idx + len(match):]
+
+
+# `_locate_proposal_span` miss codes (both negative, so a hit is any idx >= 0).
+_NO_ANCHOR, _NO_MATCH = -2, -1
+
+
+def _locate_proposal_span(text: str, anchor: str, match: str) -> int:
+    r"""The ONE answer to "is this proposal's `original_text` in its anchored
+    paragraph, and where?" (task 1044). Returns the span's index, `_NO_ANCHOR`
+    when the `%!v:<anchor>` paragraph is gone, `_NO_MATCH` when the span is not
+    in it.
+
+    Asked TWICE in a proposal's life, by construction with the same answer key:
+    at ACCEPT (replace-span, the stale guard) and at PROPOSE
+    (`_guard_proposal_landing`). Before task 1044 only accept asked, so a
+    paraphrased `original_text`, or one that swallowed the `%!v:` marker (the
+    region ends AT the marker, so a span including it can never match), landed
+    as a proposal the user could only ever watch go stale."""
+    region = _anchored_paragraph(text, anchor)
+    if region is None:
+        return _NO_ANCHOR
+    return _find_in_paragraph(text, match, *region, live_only=False)
+
+
+def _guard_proposal_landing(doc: Path, panel: str, card: dict) -> None:
+    """Refuse — before any byte lands — a suggestion proposal its own accept
+    would refuse (task 1044). The write door asks the accept-time questions at
+    propose time, so a dead proposal is unrepresentable rather than discovered
+    by the user:
+
+      - it has an anchor paragraph and a non-empty `original_text`;
+      - `original_text` is found in that paragraph (`_locate_proposal_span`, the
+        SAME locator replace-span splices through);
+      - its replacement is non-empty unless the family means deletion (a Cutter
+        cut may be empty; a revision draft may not — task 957, the same table
+        and sentence cmd_accept reads).
+
+    Non-suggestion cards pass untouched."""
+    from card_by_id import spine_card_kind
+
+    kind = spine_card_kind(panel, card)
+    if kind not in SUGGESTION_KINDS:
+        return
+    card_id = card.get("id") or "<new>"
+    anchor = _suggestion_anchor_uuid(card)
+    if not anchor:
+        die(f"refusing to propose {kind} {card_id}: it has no anchor paragraph "
+            f"(links[*].anchor.textObjectIds) — nothing was written")
+    original = card.get("original_text")
+    if not original:
+        die(f"refusing to propose {kind} {card_id}: it carries no original_text "
+            f"(the span accept would replace) — nothing was written")
+    replacement = card.get("user_text") or card.get("suggested_text") or ""
+    if not _SUGGESTION_LANDING["familyMeansDeletion"].get(kind, False) and not replacement.strip():
+        die(f"refusing to propose {kind} {card_id}: {_SUGGESTION_LANDING['noReplacementText']} "
+            f"(an empty replacement is a deletion only in Cutter) — nothing was written")
+    text = find_tex_file(doc).read_text(encoding="utf-8")
+    idx = _locate_proposal_span(text, anchor, original)
+    if idx == _NO_ANCHOR:
+        die(f"refusing to propose {kind} {card_id}: anchor paragraph %!v:{anchor} is not in "
+            f"the .tex — nothing was written")
+    if idx == _NO_MATCH:
+        die(f"refusing to propose {kind} {card_id}: its original_text is not found verbatim in "
+            f"the anchored paragraph %!v:{anchor} — copy the span byte-for-byte from the .tex "
+            f"(no paraphrase, and never the trailing %!v: marker); accept would refuse it as "
+            f"stale. Nothing was written.")
 
 
 def _strip_footnote_from_tex(text: str, fid: str) -> str | None:
@@ -1722,8 +1787,10 @@ def cmd_write(
     txn = _Txn(doc)
     reflect_kind: str | None = None  # the Task kind → names the dev-dream memo's skill
 
-    # 1. The card itself → its panel sidecar.
+    # 1. The card itself → its panel sidecar. A suggestion proposal is first
+    #    held to the questions its own accept will ask (task 1044).
     if panel and card is not None:
+        _guard_proposal_landing(doc, panel, card)
         txn.append_card(panel, card)
 
     # 2. The sibling comment (Level 2) → its panel sidecar.

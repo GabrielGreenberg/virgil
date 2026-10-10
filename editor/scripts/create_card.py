@@ -22,8 +22,10 @@ whether a `.tex` marker rides along:
   - sidecar-append, atom-bearing (.tex marker): footnote (\vfid) · citation (\vcid)
   - tex-only (sidecar is an app-derived shadow): example (\vexid + expex \ex…\xe)
 
-The responder kinds (comment, the cutter-/revision-suggestion family) are
-*responder-skill* outputs, not create-card; the system/derived kinds
+The responder outputs (a suggestion proposal, a Revisions sibling comment) are
+built here too — `--kind=suggestion|comment`, the proposal-family door (task
+1044, `_create_proposal` below) — but they are the responder skills' calls,
+outside the create-able ALL_KINDS set; the system/derived kinds
 (ai, error, archive, bib, highlight) are not create-card targets either — see
 docs/workspace/cards.md for the full reasoning and docs/architecture/
 check-coherence.SKETCH.md Check 5 for the absent-panel allowlist.
@@ -48,6 +50,7 @@ Workflow B (chat-initiated — no pre-existing Task):
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import secrets
@@ -455,6 +458,7 @@ class Ctx:
     selected_text: str | None
     synthesize: bool
     is_virtual: bool = False
+    request: dict | None = None  # the Workflow-A ai-requests.json row, when one was read
 
 
 def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set[str]) -> "Ctx | dict":
@@ -469,6 +473,7 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     safety = a.safety_level
     selected_text = None
     synthesize = bool(a.synthesize)
+    req = None
 
     # A virtual card-flag id (virtual:<panel>:<cardId>) — a pre-bridge flag with
     # no ai-requests.json Task to read (list_requests.py emits these for papers
@@ -511,7 +516,8 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
             die("--anchor <uuid> is required when there is no existing request")
 
     return Ctx(request_id=request_id, anchor=anchor, safety=safety,
-               selected_text=selected_text, synthesize=synthesize)
+               selected_text=selected_text, synthesize=synthesize,
+               request=req if (request_id and not synthesize) else None)
 
 
 def _require_anchor(doc: Path, anchor: str) -> None:
@@ -612,6 +618,211 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     if build.warnings:
         result["warnings"] = build.warnings
     return result
+
+
+# ---------------------------------------------------------------------------
+# The PROPOSAL family — a responder's suggestion card, and the revision thread's
+# sibling comment (task 1044).
+#
+# These are responder OUTPUTS, not create-able CardKinds (docs/workspace/
+# cards.md), so they sit OUTSIDE the coherence-checked ALL_KINDS literal: the
+# `--kind` tokens are the on-disk RECORD kinds (`suggestion`, `comment`), and the
+# spine kind (revision-/cutter-suggestion, revision-comment) is the PANEL's call,
+# which this door derives from the Task rather than taking from the caller.
+#
+# Before this door, five responder skills each made the model hand-assemble the
+# card JSON (ids, timestamps, the self-link, the anchor copy, original_text) and
+# pass it to `complete-task --propose` — a schema stated at five callers (task
+# 783 had to re-stamp the self-link kind four of them wrote wrong), the panel
+# chosen by prose ("unconditionally revisions"), and original_text first checked
+# at ACCEPT. Now the caller supplies only the three texts; everything else is
+# minted or derived here, and the write door (`_guard_proposal_landing`) refuses
+# a proposal its own accept would refuse before any byte lands.
+# ---------------------------------------------------------------------------
+
+RESPONDER_KINDS = {"suggestion", "comment"}
+assert not (RESPONDER_KINDS & ALL_KINDS), "a responder record kind is not a create-able CardKind"
+
+# The Task kinds a proposal may drain without --accept-task-kind. Both answer a
+# `suggestion` Task natively (unbridged, or bridged from a Cutter/Revisions
+# comment); a cross-kind answer (a suggestion answering a note/todo/report Task)
+# declares itself with --accept-task-kind, exactly like a carded create.
+RESPONDER_TASK_KINDS = {"suggestion": {"suggestion"}, "comment": {"suggestion"}}
+
+
+def _source_card(doc: Path, linked: dict | None) -> dict | None:
+    """The card the Task was bridged from (`linkedTo`, or a virtual id's
+    {panel, cardId}) — the user's own comment/note/todo — or None."""
+    if not isinstance(linked, dict) or not linked.get("cardId"):
+        return None
+    from card_by_id import find_card
+
+    hit = find_card(doc, linked["cardId"])
+    return hit.card if hit is not None else None
+
+
+def _first_anchor(card: dict | None) -> dict | None:
+    """A card's first-link textObject anchor (Mode A, or Mode B with its
+    `textRange`), or None."""
+    for link in (card or {}).get("links") or []:
+        anchor = link.get("anchor") if isinstance(link, dict) else None
+        if isinstance(anchor, dict) and anchor.get("textObjectIds"):
+            return anchor
+    return None
+
+
+def _plain_text(card: dict | None) -> str:
+    """A source card's plain text: its `text` mirror, else its rich content's
+    text nodes."""
+    if not card:
+        return ""
+    if isinstance(card.get("text"), str) and card["text"].strip():
+        return card["text"]
+    out: list[str] = []
+
+    def walk(n):
+        if isinstance(n, dict):
+            if n.get("type") == "text" and isinstance(n.get("text"), str):
+                out.append(n["text"])
+            for c in n.get("content") or []:
+                walk(c)
+
+    walk(card.get("content"))
+    return "".join(out)
+
+
+def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
+    kind = a.kind
+    if kind == "suggestion":
+        if a.original is None or a.suggested is None:
+            die("--kind=suggestion requires --original <verbatim span> and --suggested <replacement> "
+                "(both @<path>; --suggested may be empty only for a Cutter cut)")
+    elif not a.body:
+        die("--kind=comment requires --body <reply> (@<path>)")
+
+    explicit_anchor = a.anchor
+    linked = None
+    if is_virtual_request_id(a.request) and not a.synthesize:
+        linked = parse_virtual_request_id(a.request)
+        if not a.anchor:  # the virtual path needs an anchor; the source card has one
+            src_anchor = _first_anchor(_source_card(doc, linked))
+            if src_anchor:
+                a.anchor = src_anchor["textObjectIds"][0]
+
+    accept = set(RESPONDER_TASK_KINDS[kind]) | set(a.accept_task_kind or [])
+    ctx = _resolve_context(doc, a, accept_task_kinds=accept)
+    if isinstance(ctx, dict):  # already-terminal Task → idempotent no-op
+        return ctx
+    if ctx.request is not None:
+        linked = ctx.request.get("linkedTo") or linked
+    source = _source_card(doc, linked)
+    linked_panel = (linked or {}).get("panel")
+
+    # The panel is the Task's, not the caller's: a Cutter thread's answer goes
+    # to cutter.json, everything else to revisions.json.
+    if kind == "suggestion":
+        panel = "cutter" if linked_panel == "cutter" else "revisions"
+    else:
+        if linked_panel != "revisions":
+            die("--kind=comment is the Revisions thread's sibling reply; this Task is not "
+                f"bridged from a Revisions card (linkedTo.panel={linked_panel!r})")
+        panel = "revisions"
+
+    # The anchor: the source card's own (copied verbatim — Mode A/B and its
+    # paragraph id(s) in one move), unless the caller deliberately aimed
+    # elsewhere; otherwise the canonical Mode-A anchor at the resolved paragraph.
+    src_anchor = _first_anchor(source)
+    if src_anchor and (not explicit_anchor or explicit_anchor == src_anchor["textObjectIds"][0]):
+        anchor_obj = {k: v for k, v in copy.deepcopy(src_anchor).items() if k != "margin"}
+    else:
+        anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [ctx.anchor]}
+    anchor_uuid = anchor_obj["textObjectIds"][0]
+    _require_anchor(doc, anchor_uuid)
+
+    # Idempotency: a real Task's proposal already on disk is THE answer.
+    if ctx.request_id and not ctx.is_virtual and not ctx.synthesize:
+        prior = next((c for c in _panel_cards(doc, panel)
+                      if c.get("aiOriginRequestId") == ctx.request_id), None)
+        if prior is not None:
+            return {"ok": True, "noop": True, "reason": "request already answered",
+                    "requestId": ctx.request_id, "cardId": prior.get("id"), "panel": panel}
+
+    # A synthesized Task gets its id NOW, so the card can point back at it.
+    request_id = ctx.request_id
+    if ctx.synthesize and not request_id:
+        request_id = AR._gen_request_id()
+    if ctx.request is not None:
+        instructions = ctx.request.get("text") or ""
+    elif ctx.is_virtual:
+        instructions = _plain_text(source)
+    else:
+        instructions = a.task_text or ""
+    selected = ctx.selected_text or (source or {}).get("selectedText") or ""
+
+    cid = str(uuid.uuid4())
+    link = _anchor_link(kind, cid, anchor_uuid)  # ref.kind is re-stamped by the write door
+    link["anchor"] = anchor_obj
+    if kind == "suggestion":
+        card: dict = {
+            "kind": "suggestion",
+            "id": cid,
+            "createdAt": now_iso(),
+            "author": "ai",
+            "original_text": a.original,
+            "suggested_text": a.suggested,
+            "explanation": a.explanation or "",
+            "user_text": "",
+            "instructions": instructions,
+            "status": "pending",
+        }
+        if selected:
+            card["selectedText"] = selected
+        noun = "cut suggestion" if panel == "cutter" else "suggestion"
+        summary = f"Drafted a {noun}: {_snippet(a.explanation or a.suggested)}"
+    else:
+        card = {
+            "kind": "comment",
+            "id": cid,
+            "createdAt": now_iso(),
+            "text": a.body,
+            "content": _jsoncontent(a.body),
+            "aiRequest": False,
+        }
+        summary = f"Replied on the revision thread: {_snippet(a.body)}"
+    card["links"] = [link]
+    if request_id and not ctx.is_virtual:
+        card["aiOriginRequestId"] = request_id
+
+    op: dict = {"panel": panel, "card": card, "summary": summary, "clearSourceFlag": True}
+    if request_id:
+        op["requestId"] = request_id
+    if ctx.synthesize:
+        op["kind"] = "suggestion"
+        op["text"] = a.task_text or summary
+        op["paragraphIds"] = [anchor_uuid]
+        if ctx.selected_text:
+            op["selectedText"] = ctx.selected_text
+        op["safetyLevel"] = 3 if kind == "suggestion" else (ctx.safety or None)
+        if op["safetyLevel"] is None:
+            op.pop("safetyLevel")
+
+    # A suggestion is ALWAYS an L3 proposal (the .tex waits for accept); a
+    # sibling comment is a terminal direct create. The Task's safetyLevel picks
+    # nothing here.
+    propose = kind == "suggestion"
+    result = AR.run_write_subcommand(doc, "complete-task", op, propose=propose,
+                                     synthesize=ctx.synthesize)
+    result["cardId"] = cid
+    result["panel"] = panel
+    result["subcommand"] = "complete-task --propose" if propose else "complete-task"
+    return result
+
+
+def _panel_cards(doc: Path, panel: str) -> list[dict]:
+    filename, list_key = AR.ALL_CARD_SIDECARS[panel]
+    st = read_json(sidecar(doc, filename), default={list_key: []})
+    cards = st.get(list_key, []) if isinstance(st, dict) else []
+    return [c for c in cards if isinstance(c, dict)]
 
 
 # ---------------------------------------------------------------------------
@@ -732,14 +943,24 @@ def main(argv: list[str]) -> int:
     p.add_argument("--label", help="\\label{} for an example block")
     p.add_argument("--item", action="append", type=text_arg,
                    help="an example row (repeatable → \\pex/\\a list); @<path> reads a file")
+    # suggestion (the proposal family — task 1044)
+    p.add_argument("--original", type=text_arg,
+                   help="suggestion: the span to replace, VERBATIM from the anchored paragraph "
+                        "(never the %%!v: marker); @<path> reads a file")
+    p.add_argument("--suggested", type=text_arg,
+                   help="suggestion: the replacement (empty only for a Cutter cut); @<path> reads a file")
+    p.add_argument("--explanation", type=text_arg,
+                   help="suggestion: one or two sentences on what changed and why; @<path> reads a file")
     a = p.parse_args(argv[1:])
 
     doc = resolve_doc(a.doc)
-    if a.kind not in ALL_KINDS:
-        die(f"unknown --kind: {a.kind} (one of {sorted(ALL_KINDS)})")
+    if a.kind not in ALL_KINDS | RESPONDER_KINDS:
+        die(f"unknown --kind: {a.kind} (one of {sorted(ALL_KINDS | RESPONDER_KINDS)})")
 
     try:
-        if a.kind in TEX_ONLY_KINDS:
+        if a.kind in RESPONDER_KINDS:
+            result = _create_proposal(doc, a)
+        elif a.kind in TEX_ONLY_KINDS:
             result = _create_example(doc, a)
         else:
             result = _create_carded(doc, a)

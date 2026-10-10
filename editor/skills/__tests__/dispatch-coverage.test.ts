@@ -164,10 +164,19 @@ describe("the `suggestion` responders agree about clearSourceFlag", () => {
     expect(suggestionResponders.length).toBe(3);
   });
 
-  it.each(suggestionResponders)("%s passes clearSourceFlag: true", (file) => {
+  // Since task 1044 none of them builds an op: each lands its proposal through
+  // `create_card.py --kind=suggestion`, and the DOOR states the answer once.
+  it.each(suggestionResponders)("%s lands through the door, never opting out", (file) => {
     const doc = read(file);
-    expect(doc).toMatch(/"clearSourceFlag":\s*true/);
+    expect(doc).toMatch(/create_card\.py <docPath> <requestId> --kind=suggestion/);
     expect(doc).not.toMatch(/"clearSourceFlag":\s*false/);
+  });
+
+  it("the proposal door passes clearSourceFlag: true itself", () => {
+    const src = read("editor/scripts/create_card.py");
+    const door = src.slice(src.indexOf("def _create_proposal"), src.indexOf("def _panel_cards"));
+    expect(door).toMatch(/"clearSourceFlag":\s*True/);
+    expect(door).not.toMatch(/"clearSourceFlag":\s*False/);
   });
 
   it("no other skill states a bare `false` — the exact-set pin", () => {
@@ -217,10 +226,13 @@ describe("draft-suggestion owns the UNBRIDGED case only", () => {
   });
 
   it("says why proceeding on a cutter request is wrong, not just that it is", () => {
-    // The op writes `"panel": "revisions"` unconditionally, and `panel` selects
-    // the SIDECAR FILE — a different store, not a cosmetic label.
+    // Until task 1044 the op wrote `"panel": "revisions"` unconditionally (a
+    // different STORE). The builder now derives the panel from the Task, so
+    // the hazard left is the ANSWER SHAPE — the owners weigh a comment or a
+    // report against a rewrite and read the thread. The reason must say so.
     const flat = read(DS).replace(/\s+/g, " ");
-    expect(flat).toMatch(/SIDECAR FILE|different store/i);
+    expect(flat).toMatch(/answer shape/i);
+    expect(flat).toMatch(/derives it from the Task/i);
   });
 
   it("no longer claims to cover the cutter panel", () => {

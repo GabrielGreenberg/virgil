@@ -4,8 +4,8 @@ description: |
   "Virgil, suggest a rewrite here", "propose an edit to this passage",
   "draft a revision of this paragraph", "tighten this for me", or when
   there's a pending **unbridged** `kind: suggestion` request in the
-  paper's AI-request inbox (one with no `linkedTo` — no source card,
-  no panel thread). Creates a revision-suggestion card with author=ai
+  paper's AI-request inbox (no `linkedTo`, or one bridged from a
+  note / todo / report card — no comment thread). Creates a revision-suggestion card with author=ai
   for the user to accept or reject — does NOT edit the document
   directly. Does NOT trigger for a suggestion Task bridged from a
   panel comment: `linkedTo.panel == "cutter"` is answer-cutter-comment's
@@ -51,18 +51,16 @@ this skill.
    |---|---|---|
    | `"cutter"` | `/editor/answer-cutter-comment <docPath> <requestId>` | builds a `CutterSuggestionCard` into `"panel": "cutter"` |
    | `"revisions"` | `/editor/answer-revision-request <docPath> <requestId>` | three-way shape (suggestion / report / sibling comment) |
-   | absent | **this skill** | unbridged: no source card, no thread |
+   | absent, or a `notes` / `todos` / `reports` card | **this skill** | a one-shot rewrite: the door anchors it to the source card and files it in `revisions.json` |
 
    If `linkedTo.panel` names an owner, **stop and hand off** — say so and
-   invoke that skill instead. Do **not** proceed: this skill's op is
-   unconditionally `"panel": "revisions"` (step 6), so continuing would write
-   a Cutter comment's answer into `revisions.json` — a card in a panel the
-   user was not working in, the Cutter thread left empty, and the Task marked
-   answered. `panel` selects the SIDECAR FILE
-   (`txn.append_card(panel, card)`), so this is a different store, not a
-   cosmetic label. `/editor/review` routes on the pair, so a correctly
-   dispatched run never reaches this gate; it is here for a direct
-   invocation, which is the only route left that can get it wrong.
+   invoke that skill instead. The panel is no longer the hazard it was: the
+   builder derives it from the Task (task 1044), so even a direct invocation
+   on a Cutter Task files its card in `cutter.json`. What the hand-off still
+   protects is the *answer shape*: those owners weigh a sibling comment or a
+   report against a rewrite, and read the thread they answer, which this
+   skill does not. `/editor/review` routes on the pair, so a correctly
+   dispatched run never reaches this gate.
 
 2. **Load.** The request's drain row ([_request-load.md](_request-load.md) — never the raw
    `ai-requests.json` row). Paragraph context
@@ -112,92 +110,44 @@ this skill.
    - `explanation`: one or two sentences on what changed and why.
    - `user_text`: empty (the user fills this when refining).
 
-5. **Build the RevisionSuggestionCard** (`RevisionSuggestionCard`,
-   `src/lib/types.ts`):
-   ```json
-   { "kind": "suggestion",
-     "id": "<new-uuid>",
-     "createdAt": "<ISO now>",
-     "author": "ai",
-     "original_text": "<verbatim>",
-     "suggested_text": "<your draft>",
-     "explanation": "<rationale>",
-     "user_text": "",
-     "instructions": "<the request's `text` field>",
-     "status": "pending",
-     "selectedText": "<from request, if Mode B>",
-     "links": [{
-        "id": "<new-link-uuid>",
-        "kind": "anchor",
-        "anchor": {
-           "type": "textObject",
-           "targetKind": "paragraph",
-           "textObjectIds": ["<the anchored paragraph uuid>"]
-        },
-        "target": { "type": "card", "ref": { "kind": "revision-suggestion", "id": "<new-uuid>" } },
-        "createdAt": "<ISO now>"
-     }],
-     "aiOriginRequestId": "<requestId, if not virtual:-prefixed>"
-   }
-   ```
-   The anchor is the **canonical on-disk `LinkAnchor`** shape —
-   `type: "textObject"` + `textObjectIds` (SSOT
-   `src/links/_shared/types.ts`, [anchoring.md](../../docs/workspace/anchoring.md))
-   — *not* the retired `type: "anchor"`/`paragraphIds` form. Set
-   `textObjectIds` to the request's anchored paragraph uuid
-   (`paragraphIds[0]`) and `target.ref.id` to this card's own id (self-target,
-   how the editor matches the card to its anchor). `target.ref.kind` is the
-   card's spine kind `revision-suggestion` — never the record's own
-   `kind: "suggestion"`; `apply_response.py` stamps it from the panel + record
-   kind on every write (task 783). The anchor carries NO
-   `margin` — the side a card's chrome sits on follows its panel's dock and is
-   resolved live by the app (`src/lib/margin-side.ts`).
-
-   `aiOriginRequestId` is **load-bearing**: `/editor/accept-suggestion` reads
-   it to complete the originating Task when the user accepts. Emit it for a
-   real `ai-requests.json` id; omit it for a `virtual:`-prefixed one (there's
-   no Task to point back at).
-
-6. **Land the proposal** via the contract's **L3 propose** path. A suggestion
-   is a *proposal*, not an applied edit — `complete-task --propose` lands the
-   card and leaves the Task **awaiting review** (`status: in-progress`), the
-   `.tex` untouched until the user accepts. (Legacy default-apply marked the
-   Task `complete` at once and gave the proposal no L3 lifecycle; the propose
-   path is what makes it consumable by `/editor/accept-suggestion`.)
-   The op carries FREE TEXT (the whole card — `original_text` is a span lifted
-   verbatim from the user's `.tex`, and `suggested_text`/`explanation` are
-   prose you composed), so it goes through an `@` scratch file — see
-   [`_op-json.md`](_op-json.md) for the rule and why:
+5. **Land the proposal — one call.** The card is built by the door, not by
+   you: `create_card.py --kind=suggestion` mints the id, timestamps and
+   self-link, derives the panel from the Task (a Cutter thread → `cutter.json`,
+   anything else → `revisions.json`), copies the source card's anchor when the
+   Task has one (else anchors at `paragraphIds[0]` / `--anchor`), stamps
+   `instructions` (the drain row's `text`) and `aiOriginRequestId` (never for a
+   `virtual:` id), and lands it through the L3 **propose** path (task 1044).
+   You supply only the three texts, through `@` scratch files
+   ([`_op-json.md`](_op-json.md) — `original_text` is lifted from the user's
+   `.tex`, and bash eats `` ``quotes'' `` and `$math$` in a quoted argv):
    ```bash
-   op=$(mktemp -t virgil-op)
-   cat > "$op" <<'JSON'
-   { "requestId": "<requestId>",
-     "panel": "revisions",
-     "card": { ...the suggestion... },
-     "summary": "Drafted a suggestion: <first 60 chars of explanation>",
-     "clearSourceFlag": true
-   }
-   JSON
-   python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
-   rm -f "$op"
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/original" <<'TXT'
+   <the span, verbatim from the .tex>
+   TXT
+   cat > "$t/suggested" <<'TXT'
+   <your replacement>
+   TXT
+   cat > "$t/explanation" <<'TXT'
+   <one or two sentences>
+   TXT
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> \
+       --original "@$t/original" --suggested "@$t/suggested" \
+       --explanation "@$t/explanation"; rc=$?
+   rm -rf "$t"
    exit "$rc"
    ```
-   The op shape is identical to a direct create — only the subcommand differs.
-   The contract appends the card, points the Task's `resultId` at it, and
-   leaves the Task `in-progress`; it splices **nothing** into the `.tex`.
 
-   `clearSourceFlag: true` is the contract's **default**, and the three
-   responders that can answer a `suggestion` Task all pass it
-   (`answer-cutter-comment`, `answer-revision-request`, here). Lowering the
-   source card's `aiRequest` flag *is* what "the AI answered this card" means,
-   and every linked-completion path — L1/L2/direct **and** the L3 propose draft
-   — lowers it; that is what closes the unbridged-card-flag recycling leg
-   (`apply_response.py`, the `clearSourceFlag` block). The only sanctioned
-   opt-out is `create_card.py`'s examples block, a virtual id with no distinct
-   source card. On this skill's own scope (an *unbridged* Task, step 1) the
-   flag resolves to nothing and the write is a no-op — but a bare `false` here
-   read as a fourth answer to a question the contract had already settled, and
-   left a bridged source comment wearing a pending-AI flag it no longer had.
+6. **What the door guarantees** (so don't restate it). The write is refused —
+   nothing lands — when `original_text` is not found verbatim in the anchored
+   paragraph (a paraphrase, or a span that swallowed the `%!v:` marker: the
+   same locator accept's stale guard splices through), or when a revision's
+   replacement is empty (task 957; only a Cutter cut may be empty). On success
+   the card lands `pending`, the Task is left **awaiting review** (`status:
+   in-progress`, `resultId` → the card), the `.tex` is untouched, and the
+   source card's `aiRequest` flag (if any) is lowered. Re-running on a Task
+   whose proposal already exists returns a `noop` naming that card. The
+   returned JSON's `cardId` is the `<newId>` for the reply.
 
 7. **Reply.** On success:
    - Suggestion (awaiting review):

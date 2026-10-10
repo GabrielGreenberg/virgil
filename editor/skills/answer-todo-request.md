@@ -124,29 +124,29 @@ matters" (write a note). Read the todo and dispatch.
      returned JSON `status`** to finalize (step 4): `complete` is terminal;
      `in-progress` means the answer is a proposal, *not done yet*.
 
-   - **Text edit → suggestion card (L3 propose).** Build the
-     `RevisionSuggestionCard` (`kind`, `id`, `createdAt`, `author: "ai"`,
-     `original_text` — verbatim from the anchored paragraph, **excluding** its
-     trailing `%!v:<uuid>` marker (it is the accept-time stale-guard key) —
-     `suggested_text`, `explanation`, `user_text: ""`,
-     `instructions: "<request.text>"` (the drain row's `text`,
-     [_request-load.md](_request-load.md)), `status: "pending"`, the canonical
-     `links[]` anchor (`type: "textObject"` + `textObjectIds`), plus
-     `aiOriginRequestId: <requestId>` when not `virtual:`-prefixed; see
-     [`/editor/draft-suggestion`](draft-suggestion.md)), then land it via the
-     contract's **propose** path:
-     The op carries FREE TEXT (the whole card, including `original_text`, a
-     span lifted verbatim from the user's `.tex`), so it goes through an `@`
-     scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
+   - **Text edit → suggestion card (L3 propose).**
+     One `create_card.py --kind=suggestion` call builds and lands the
+     suggestion card (task 1044): the door anchors it to the source todo's own
+     anchor, files it in `revisions.json`, mints the id / self-link, stamps
+     `instructions` and `aiOriginRequestId` (not for a `virtual:` id), and
+     refuses before any write if `original_text` is not verbatim in the
+     anchored paragraph (exclude the `%!v:` marker) or the replacement is
+     empty. Texts go through `@` scratch files ([`_op-json.md`](_op-json.md)):
      ```bash
-     op=$(mktemp -t virgil-op)
-     cat > "$op" <<'JSON'
-     { "requestId": "<requestId>", "panel": "revisions",
-       "card": { ...the suggestion... },
-       "summary": "<first 60 chars>", "clearSourceFlag": true }
-     JSON
-     python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
-     rm -f "$op"
+     t=$(mktemp -d -t virgil-txt)
+     cat > "$t/original" <<'TXT'
+     <the span, verbatim from the .tex>
+     TXT
+     cat > "$t/suggested" <<'TXT'
+     <your replacement>
+     TXT
+     cat > "$t/explanation" <<'TXT'
+     <one or two sentences>
+     TXT
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> \
+         --accept-task-kind todo --original "@$t/original" \
+         --suggested "@$t/suggested" --explanation "@$t/explanation"; rc=$?
+     rm -rf "$t"
      exit "$rc"
      ```
      The card lands and the todo's Task is left **awaiting review** (`status:

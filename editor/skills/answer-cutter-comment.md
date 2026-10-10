@@ -80,84 +80,41 @@ once — see step 5).
    that's already the target span. Mode A: pick a coherent subspan
    from the paragraph to address the comment.
 
-4. **Build the CutterSuggestionCard** (`CutterSuggestionCard`,
-   `src/lib/types.ts`):
-   ```json
-   { "kind": "suggestion",
-     "id": "<new-uuid>",
-     "createdAt": "<ISO now>",
-     "author": "ai",
-     "original_text": "<verbatim slice from the .tex>",
-     "suggested_text": "<your replacement, or empty for a cut>",
-     "explanation": "<one or two sentences>",
-     "user_text": "",
-     "instructions": "<request.text>",
-     "status": "pending",
-     "selectedText": "<source comment's selectedText, if any>",
-     "links": [{
-        "id": "<new-link-uuid>",
-        "kind": "anchor",
-        "anchor": { ...COPIED VERBATIM from the source comment's first-link anchor... },
-        "target": {
-           "type": "card",
-           "ref": {"kind": "cutter-suggestion", "id": "<new-uuid>"}
-        },
-        "createdAt": "<ISO now>"
-     }],
-     "aiOriginRequestId": "<requestId, if not virtual:-prefixed>"
-   }
-   ```
-   `instructions` is the drain row's `text` ([_request-load.md](_request-load.md)).
-   For the link anchor: **copy the source comment's first-link
-   `anchor` object verbatim**. It is already in the canonical on-disk
-   `LinkAnchor` shape — `type: "textObject"` + `textObjectIds`
-   (plus `textRange` when the comment is Mode B; SSOT
-   `src/links/_shared/types.ts`,
-   [anchoring.md](../../docs/workspace/anchoring.md)). Copying carries the
-   mode and the paragraph id(s) in one move; do **not**
-   hand-rebuild it into the retired `type: "anchor"`/`paragraphIds` form.
-   Then generate a fresh link `id`, set `target.ref.kind` to
-   `"cutter-suggestion"`, and set `target.ref.id` to the new card's own id
-   (self-target — how the editor matches the card to its anchor at
-   render time). The self-link's `ref.kind` is the card's **spine kind**, not
-   the record's `kind: "suggestion"`; `apply_response.py` stamps it from the
-   panel + record kind on every write anyway (task 783), so a wrong token is
-   overwritten rather than shipped.
-
-   `aiOriginRequestId` is **load-bearing**: both finishers read it to complete
-   the originating Task — the editor's Accept / Keep / Reject / Dismiss and
-   `/editor/accept-suggestion` / `reject-suggestion` (task 1043). Emit it for a real
-   `ai-requests.json` id; omit it for a `virtual:`-prefixed one.
-
-   `instructions` carries the source comment's `text` (the prompt
-   that generated this AI draft) — gives the user a Redo-style replay
-   handle.
-
-5. **Land the proposal** via the contract's **L3 propose** path. A cut
-   suggestion is a *proposal* — `complete-task --propose` lands the card and
-   leaves the Task **awaiting review** (`status: in-progress`), the `.tex`
-   untouched until the user accepts via `/editor/accept-suggestion`. (Legacy
-   default-apply completed the Task at once and gave the proposal no L3
-   lifecycle; the propose path is what makes it accept-consumable.)
-   The op carries FREE TEXT (the card — including `original_text`, a span
-   lifted verbatim from the user's `.tex`), so it goes through an `@` scratch
-   file — see [`_op-json.md`](_op-json.md) for the rule and why:
+4. **Land the proposal — one call** (task 1044). The `CutterSuggestionCard`
+   is built by the door, not by you: `create_card.py --kind=suggestion` reads
+   the Task's `linkedTo.panel == "cutter"` and files the card in
+   `cutter.json`, copies the source comment's first-link anchor verbatim
+   (Mode A, or Mode B with its `textRange`), mints the id / timestamps /
+   self-link (`cutter-suggestion`), stamps `instructions` (the drain row's
+   `text`, [_request-load.md](_request-load.md)) and `aiOriginRequestId` (never for a `virtual:` id — both finishers
+   complete the Task through it), carries the comment's `selectedText`, and
+   lands it through the L3 **propose** path. Supply the three texts through
+   `@` scratch files ([`_op-json.md`](_op-json.md)); for a pure cut leave the
+   replacement empty:
    ```bash
-   op=$(mktemp -t virgil-op)
-   cat > "$op" <<'JSON'
-   { "requestId": "<requestId>",
-     "panel": "cutter",
-     "card": { ...the suggestion card... },
-     "summary": "Drafted a cut suggestion: <first 60 chars of suggested_text>",
-     "clearSourceFlag": true
-   }
-   JSON
-   python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
-   rm -f "$op"
+   t=$(mktemp -d -t virgil-txt)
+   cat > "$t/original" <<'TXT'
+   <the slice, verbatim from the .tex>
+   TXT
+   : > "$t/suggested"            # a cut; or a heredoc with the shortened text
+   cat > "$t/explanation" <<'TXT'
+   <one or two sentences>
+   TXT
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> \
+       --original "@$t/original" --suggested "@$t/suggested" \
+       --explanation "@$t/explanation"; rc=$?
+   rm -rf "$t"
    exit "$rc"
    ```
-   `clearSourceFlag: true` flips the source comment's `aiRequest` to `false`;
-   the textual replacement rides `/editor/accept-suggestion`, not this draft.
+
+5. **What the door guarantees.** Nothing lands when `original_text` is not
+   verbatim in the anchored paragraph (no paraphrase, never the `%!v:`
+   marker — accept's stale guard asks the same question through the same
+   locator). On success the card is `pending`, the Task **awaiting review**
+   (`status: in-progress`), the `.tex` untouched until
+   `/editor/accept-suggestion`, and the source comment's `aiRequest` lowered.
+   A re-run on a Task whose proposal exists is a `noop` naming that card. The
+   returned `cardId` is the `<newId>` for the reply.
 
 6. **Reply.** On success:
    - Cut — suggestion (awaiting review):

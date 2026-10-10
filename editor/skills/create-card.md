@@ -9,9 +9,10 @@ description: |
   kind it builds the sidecar entry + any LaTeX atom marker and routes the write
   through `apply_response.py` (atomic, pen-protected, status/result set per the
   Task's safety level). Does NOT trigger for composing prose (that's chat's job),
-  for the responder kinds (comment / the suggestion family — those are
-  responder-skill outputs), or for system/derived kinds (ai / error / archive /
-  bib / highlight). Args: <docPath> [<requestId>] --kind=<kind> [--body <text>]
+  or for system/derived kinds (ai / error / archive / bib / highlight). The
+  responder outputs (a suggestion proposal, a Revisions sibling comment) land
+  through the SAME script (`--kind=suggestion|comment`), but are invoked by
+  the answer-* / draft-suggestion skills that decide on them, not routed here. Args: <docPath> [<requestId>] --kind=<kind> [--body <text>]
   [--citekey <k>] [--anchor <uuid>] [--safety-level 1|2|3] [per-kind flags].
 ---
 
@@ -48,10 +49,19 @@ createable-kind taxonomy), grouped by linkage class:
 | `report-request` | anchored, sidecar-only (poly `kind:"report-request"`) | `reports.json` · `cards` | — | `--body` |
 | `example` | **tex-only** (no sidecar) | the `.tex` (`\vexid{}\ex…\xe`) | `\vexid` (+ `\vxid` rows) | `--body` or `--item` |
 
-**Not create-card kinds** (don't route them here): the responder kinds
-`comment` / `cutter-comment` / `cutter-suggestion` / `revision-suggestion`
-(responder-skill outputs — `answer-*` / `draft-suggestion`); and the
-system/derived kinds `ai` (the Task itself), `error` (lint-derived, unpersisted),
+**The proposal family — same script, responder-owned** (task 1044):
+`--kind=suggestion` builds a `revision-suggestion` / `cutter-suggestion` (the
+PANEL is derived from the Task: a Cutter thread → `cutter.json`, else
+`revisions.json`) and lands it as an L3 **proposal**; `--kind=comment` builds a
+Revisions thread's sibling reply (`revision-comment`, a direct create). The
+door copies the source card's anchor, mints ids / timestamps / the self-link,
+stamps `instructions` + `aiOriginRequestId`, and refuses before any write if
+`original_text` is not verbatim in the anchored paragraph or a revision's
+replacement is empty. These are the answer-* / `draft-suggestion` skills'
+outputs — they decide WHETHER to propose; this script only builds.
+
+**Not create-card kinds** (don't route them here): `cutter-comment` (the
+user's own Cutter thread); and the system/derived kinds `ai` (the Task itself), `error` (lint-derived, unpersisted),
 `archive` (user-cut text), `bib` (the `.bib` file), and `highlight` (a Mode-B
 range marker with no body). See [cards.md](../../docs/workspace/cards.md) for the
 full reasoning.
@@ -87,7 +97,7 @@ full reasoning.
   `virtual:<panel>:<cardId>` id rather than treating it as a card-flag reply,
   and it requires `--anchor` like any synthesized create.
 > **Free-text flags take `@<file>`.** `--task-text`, `--body`, `--title`,
-> `--notes` and `--item` carry prose, so each goes through a quoted-heredoc
+> `--notes`, `--item`, `--original`, `--suggested` and `--explanation` carry prose, so each goes through a quoted-heredoc
 > scratch file and is passed as `--body "@$t/body"` — never as a quoted argv,
 > where bash silently eats ``` ``quotes'' ``` and `$math$`. See
 > [`_op-json.md`](_op-json.md) ("Free-text FLAGS") for the rule and the block.
@@ -109,6 +119,11 @@ full reasoning.
   value still wins; one that is family-incompatible lands with a `warnings`
   entry on the result json rather than being rewritten (the app's locked
   "warn, never rewrite" decision for this question).
+- `--original "@<file>"` / `--suggested "@<file>"` / `--explanation "@<file>"` —
+  the three texts of a `--kind=suggestion` proposal: the span to replace,
+  VERBATIM from the anchored paragraph (never the `%!v:` marker); the
+  replacement (empty only for a Cutter cut); one or two sentences of why.
+  (`--kind=comment` takes its reply as `--body`.)
 - `--label <l>` / `--item "@<file>"` — `\label{}` / a `\pex` row for `example`
   (`--item` is repeatable → a `\pex`/`\a` list; otherwise `--body` → a single `\ex`).
 - `--margin left|right` — **deprecated, ignored** (accepted so a stale bundle
