@@ -155,9 +155,12 @@ A queue entry is an AI request when **any** of these is true:
      ```
 
 3. **Mark done.** Once the request is handled, delete its queue file.
-   For `authenticate` entries, also remove the matching record from
-   `.virgil/queue/pending-reviews.json` via the same logic
-   `/library/authenticate-bib` uses.
+   For `authenticate` entries, retire it through the queue door instead —
+   which also drops the matching row from `.virgil/queue/pending-reviews.json`
+   (never edit that manifest by hand):
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py retire --kind authenticate --citekey <citekey>
+   ```
 
 4. **Report.** Print a final summary of what you did per request:
 

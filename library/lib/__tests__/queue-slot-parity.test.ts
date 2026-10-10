@@ -16,9 +16,13 @@ import {
   QUEUE_DONE_JSON_SUFFIX,
   QUEUE_KINDS,
   QUEUE_NON_REQUEST_FILENAMES,
+  QUEUE_PENDING_REVIEWS_FILENAME,
   QUEUE_PENDING_STATUS,
   QUEUE_SLOT_SUFFIX,
+  withPendingReview,
+  withoutPendingReview,
 } from "../queue";
+import { readdirSync, readFileSync } from "node:fs";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SCRIPTS = path.join(REPO_ROOT, "library/scripts");
@@ -98,5 +102,83 @@ describe("queue population — TS ↔ Python parity (task 794)", () => {
   it("every Python-slotted kind is a TS QueueKind (triage has no citekey slot)", () => {
     const pyKinds = py("sorted(queue_slot.SLOT_SUFFIX)");
     expect([...pyKinds, "triage"].sort()).toEqual([...QUEUE_KINDS].sort());
+  });
+});
+
+describe("review manifest — one door per silo, same arithmetic (task 1041)", () => {
+  const py = (expr: string) =>
+    JSON.parse(
+      run([
+        "-c",
+        [
+          "import json, sys",
+          `sys.path.insert(0, ${JSON.stringify(SCRIPTS)})`,
+          "import queue_slot",
+          `print(json.dumps(${expr}))`,
+        ].join("\n"),
+      ]),
+    );
+
+  it("names the same file", () => {
+    expect(py("queue_slot.PENDING_REVIEWS_FILENAME")).toBe(QUEUE_PENDING_REVIEWS_FILENAME);
+    expect(py("queue_slot.REVIEW_KIND")).toBe("authenticate");
+  });
+
+  // Malformed rows, a duplicate, an apostrophe citekey, a non-list field.
+  const docs: unknown[] = [
+    null,
+    {},
+    { pendingReviews: "not-a-list" },
+    {
+      pendingReviews: [
+        null,
+        3,
+        "s",
+        { requestedAt: "no-citekey" },
+        { citekey: "o'neill2020", requestedAt: "a" },
+        { citekey: "smith2020", requestedAt: "b" },
+        { citekey: "o'neill2020", requestedAt: "c" },
+        { citekey: "Tichy\u0301" + "2001", requestedAt: "d" },
+      ],
+    },
+  ];
+  // NFC query against an NFD row: the two silos must agree it matches.
+  const keys = ["o'neill2020", "smith2020", "absent", "Tich\u00fd2001"];
+
+  it("withoutPendingReview ≡ without_pending_review", () => {
+    for (const doc of docs) {
+      for (const k of keys) {
+        const arg = JSON.stringify(JSON.stringify(doc));
+        expect(
+          py(`queue_slot.without_pending_review(json.loads(${arg}), ${JSON.stringify(k)})`),
+        ).toEqual(withoutPendingReview(doc, k));
+      }
+    }
+  });
+
+  it("withPendingReview ≡ with_pending_review", () => {
+    for (const doc of docs) {
+      for (const k of keys) {
+        const arg = JSON.stringify(JSON.stringify(doc));
+        expect(
+          py(`queue_slot.with_pending_review(json.loads(${arg}), ${JSON.stringify(k)}, "T")`),
+        ).toEqual(withPendingReview(doc, k, "T"));
+      }
+    }
+  });
+
+  it("no skill's code block touches the manifest — skills go through queue_slot.py", () => {
+    const offenders: string[] = [];
+    for (const dir of ["library/skills", "editor/skills"]) {
+      const abs = path.join(REPO_ROOT, dir);
+      for (const name of readdirSync(abs, { recursive: true }) as string[]) {
+        if (!name.endsWith(".md")) continue;
+        const text = readFileSync(path.join(abs, name), "utf8");
+        for (const block of text.match(/```[\s\S]*?```/g) ?? []) {
+          if (block.includes(QUEUE_PENDING_REVIEWS_FILENAME)) offenders.push(`${dir}/${name}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
