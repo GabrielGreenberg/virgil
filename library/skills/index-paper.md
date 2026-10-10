@@ -132,13 +132,14 @@ you to disambiguate something.
    If either is missing, append a `failed` notification via the locked
    CLI shim and stop:
    ```bash
-   cat > /tmp/<citekey>-setup-failed.json <<'EOF'
+   t=$(mktemp -d -t virgil-index-paper)
+   cat > "$t/setup-failed.json" <<'EOF'
    { "kind": "failed", "citekey": "<citekey>", "at": "<ISO>",
      "summary": "Setup check failed: <reason>" }
    EOF
    python3 .virgil/scripts/library/append_inbox_item.py \
-     --item-file /tmp/<citekey>-setup-failed.json
-   rm /tmp/<citekey>-setup-failed.json
+     --item-file "$t/setup-failed.json"
+   rm -rf "$t"
    ```
 
 2. **Confirm library setup has run.** Check for the setup manifest:
@@ -225,16 +226,17 @@ you to disambiguate something.
    the write rather than let them be destroyed.
 
    ```bash
-   cat > /tmp/<citekey>-doiback-fields.json <<'EOF'
+   t=$(mktemp -d -t virgil-index-paper)
+   cat > "$t/fields.json" <<'EOF'
    { "author": "...", "title": "...", "year": "...", "doi": "...", ... }
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
-     --fields-file /tmp/<citekey>-doiback-fields.json \
+     --fields-file "$t/fields.json" \
      --bib-state authenticated \
      --merge-existing
    rc=$?
-   rm /tmp/<citekey>-doiback-fields.json
+   rm -rf "$t"
    echo "exit=$rc"
    ```
 
@@ -251,12 +253,13 @@ you to disambiguate something.
    in `.virgil/catalog.json`:
 
    ```bash
-   cat > /tmp/<citekey>-doiback-catalog.json <<'EOF'
+   t=$(mktemp -d -t virgil-index-paper)
+   cat > "$t/catalog.json" <<'EOF'
    { "bib": { "state": "authenticated", "doiVerified": true } }
    EOF
    python3 .virgil/scripts/library/update_catalog_entry.py "<citekey>" \
-     --patch-file /tmp/<citekey>-doiback-catalog.json
-   rm /tmp/<citekey>-doiback-catalog.json
+     --patch-file "$t/catalog.json"
+   rm -rf "$t"
    ```
 
    Continue to step 4 with the enriched entry. This is a skill-level
@@ -437,15 +440,16 @@ you to disambiguate something.
    `--merge-existing` to keep the rest.
 
    ```bash
-   cat > /tmp/<citekey>-tier-fields.json <<'EOF'
+   t=$(mktemp -d -t virgil-index-paper)
+   cat > "$t/tier-fields.json" <<'EOF'
    { "author": "...", "title": "...", "year": "...", ... }
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
-     --fields-file /tmp/<citekey>-tier-fields.json \
+     --fields-file "$t/tier-fields.json" \
      --merge-existing
    rc=$?
-   rm /tmp/<citekey>-tier-fields.json
+   rm -rf "$t"
    echo "exit=$rc"
    ```
 

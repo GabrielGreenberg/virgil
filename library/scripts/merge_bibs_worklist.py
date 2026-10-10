@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 1 of `/library/merge-bibs` — build the worklist of papers to merge.
 
-    python3 merge_bibs_worklist.py --run-state /tmp/merge-bibs-run.json
+    python3 merge_bibs_worklist.py --run-state <runDir>/run.json
 
 Reads the run state the preflight wrote (library root + filter / force /
 dry-run), selects the deep-indexed papers whose `references.bib` still needs

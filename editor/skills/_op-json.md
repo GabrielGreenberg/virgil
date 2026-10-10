@@ -98,7 +98,9 @@ Five things about it are load-bearing:
 
 - **`mktemp`, never a fixed name.** Two concurrent runs on one paper would
   otherwise write the same path, and the loser's op is silently replaced
-  between its `cat` and its `apply_response.py`.
+  between its `cat` and its `apply_response.py`. This is one instance of
+  the cross-silo scratch rule in [_scratch.md](_scratch.md), which also
+  covers scratch that must outlive one call.
 - **`$TMPDIR`, never `<docPath>`.** The op file is **scratch** — it must
   **not** land in `<docPath>`, which is the user's (often sync-backed) paper
   folder where every write is sync traffic (tasks 363/415).

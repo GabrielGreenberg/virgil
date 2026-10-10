@@ -189,7 +189,7 @@ def test_batch_policy():
 _RUN_STATE_VARS = ("SNAPSHOT_DIR", "DRY_RUN", "MERGE_FILTER", "MERGE_FORCE",
                    "BATCH", "VIRGIL_LIBRARY_ROOT", "MERGE_REPORT_DIR",
                    "MERGE_RUN_STATE")
-_SOURCE_LINE = '. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"'
+_SOURCE_LINE = '. <runDir>/run.json.env && cd "$VIRGIL_LIBRARY_ROOT"'
 
 
 def _fenced_bash_blocks(text: str) -> list[tuple[int, str]]:
@@ -218,7 +218,8 @@ def test_step0_keeps_stderr_out_of_the_json():
     assert pre, "Step 0 must run the preflight"
     for b in pre:
         assert "2>&1" not in b
-        assert "--run-state /tmp/merge-bibs-run.json" in b
+        assert '--run-state "$run_dir/run.json"' in b
+        assert "mktemp -d" in b  # per-run scratch dir, never a fixed name (task 1050)
     # Nothing hands state forward through a bare export any more.
     assert "export SNAPSHOT_DIR" not in text
 

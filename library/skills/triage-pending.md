@@ -63,9 +63,17 @@ directory).
 
 ## Steps
 
-1. **Extract.** Run the batch script:
+1. **Extract.** The JSONL outlives this call (you review it in step 2 and
+   apply it in step 3), so first mint the run's scratch directory and carry
+   the printed path as `<runDir>` into every later block, per
+   [_scratch.md](_scratch.md) — never a fixed name, or two triage runs (two
+   windows, two libraries) apply each other's rows:
    ```bash
-   python3 .virgil/scripts/library/triage_batch.py --output /tmp/triage.jsonl
+   mktemp -d -t virgil-triage-pending
+   ```
+   Then run the batch script:
+   ```bash
+   python3 .virgil/scripts/library/triage_batch.py --output <runDir>/triage.jsonl
    ```
    This walks `unsorted/` and emits one JSON line per **document or bib
    entry**. Supported source kinds:
@@ -86,7 +94,7 @@ directory).
 
    ```bash
    python3 .virgil/scripts/library/triage_batch.py \
-       --marker-rescue --output /tmp/triage.jsonl
+       --marker-rescue --output <runDir>/triage.jsonl
    ```
 
    Each row carries:
@@ -128,7 +136,7 @@ directory).
    `proposedCitekey` during review, keep it path-safe — `triage_apply.py`
    refuses an unsafe one (`unsafe-citekey`) before writing anything.
 
-2. **Review.** Read `/tmp/triage.jsonl` and present a concise summary
+2. **Review.** Read `<runDir>/triage.jsonl` and present a concise summary
    to the user. Group by flag — flagged rows get a one-line note in
    the summary, clean rows are just counted:
    ```
@@ -155,7 +163,7 @@ directory).
 
 3. **Apply.** Pipe the (possibly edited) JSONL into the apply script:
    ```bash
-   python3 .virgil/scripts/library/triage_apply.py --input /tmp/triage.jsonl
+   python3 .virgil/scripts/library/triage_apply.py --input <runDir>/triage.jsonl
    ```
    For each row this:
    - **whole-handbook** → moves file to `unsorted/_pending/`,
@@ -210,7 +218,9 @@ directory).
      count of rows
    - bumps `.virgil/catalog-version.txt` once at the end
 
-   Capture the script's per-row output and final summary in your reply.
+   Capture the script's per-row output and final summary in your reply,
+   then remove the run's scratch: `rm -rf <runDir>` (keep it instead if
+   apply failed — the fix is to edit that JSONL and re-run, below).
 
 4. **Drain the queue.** After triage, the queue has N pending `index`
    entries. Run `/library/index-pending` (or `python3 .virgil/scripts/library/drain_queue.py`
@@ -227,22 +237,22 @@ final LLM-rescue pass:
 ```bash
 # 1. Stage prompts for rows that need LLM rescue.
 python3 .virgil/scripts/library/triage_llm_rescue.py emit-prompts \
-    /tmp/triage.jsonl --out-dir /tmp/llm-rescue/
+    <runDir>/triage.jsonl --out-dir <runDir>/llm-rescue/
 
-# 2. For each /tmp/llm-rescue/prompts/row-NNNN.txt, dispatch a
+# 2. For each <runDir>/llm-rescue/prompts/row-NNNN.txt, dispatch a
 #    Sonnet subagent via the Agent tool with that prompt as its
 #    input and write the JSON response to
-#    /tmp/llm-rescue/responses/row-NNNN.json.
+#    <runDir>/llm-rescue/responses/row-NNNN.json.
 
 # 3. Merge responses back into the JSONL.
 python3 .virgil/scripts/library/triage_llm_rescue.py merge-responses \
-    /tmp/triage.jsonl --responses-dir /tmp/llm-rescue/responses \
-    --output /tmp/triage.llm.jsonl
+    <runDir>/triage.jsonl --responses-dir <runDir>/llm-rescue/responses \
+    --output <runDir>/triage.llm.jsonl
 
 # 4. Backfill years via Crossref for rows where the LLM found
 #    title+author but no year.
 python3 .virgil/scripts/library/triage_llm_rescue.py crossref-year-backfill \
-    /tmp/triage.llm.jsonl --output /tmp/triage.final.jsonl
+    <runDir>/triage.llm.jsonl --output <runDir>/triage.final.jsonl
 ```
 
 Token cost: ~$0.01-0.05 per row with Sonnet. Only run when the

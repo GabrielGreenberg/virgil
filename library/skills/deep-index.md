@@ -535,7 +535,8 @@ lookup spec (load-bearing) — it's the canonical four-step
 normalize/extract/match/emit procedure; do not approximate.
 
 ```bash
-cat > /tmp/$ARGUMENTS-deepindex-patch.json <<'EOF'
+t=$(mktemp -d -t virgil-deep-index)
+cat > "$t/patch.json" <<'EOF'
 {
   "indexed": {
     "state": "deepIndexed",
@@ -546,13 +547,13 @@ cat > /tmp/$ARGUMENTS-deepindex-patch.json <<'EOF'
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-deepindex-patch.json \
+  --patch-file "$t/patch.json" \
   --recompute-warning-kind footnote-recovery-needed \
   --recompute-warning-kind examples-not-converted \
   --recompute-warning-kind pgmark-duplicate \
   --recompute-warning-kind pgmark-gap \
   --recompute-warning-kind pgmark-out-of-order
-rm /tmp/$ARGUMENTS-deepindex-patch.json
+rm -rf "$t"
 ```
 
 The script holds `lock_catalog`, deep-merges the patch into the
@@ -565,7 +566,8 @@ Use `append_inbox_item.py` rather than reading/writing
 `inbox.json` directly (same race-protection reason as catalog):
 
 ```bash
-cat > /tmp/$ARGUMENTS-deepindex-notify.json <<'EOF'
+t=$(mktemp -d -t virgil-deep-index)
+cat > "$t/notify.json" <<'EOF'
 {
   "kind": "indexed",
   "citekey": "$ARGUMENTS",
@@ -574,8 +576,8 @@ cat > /tmp/$ARGUMENTS-deepindex-notify.json <<'EOF'
 }
 EOF
 python3 .virgil/scripts/library/append_inbox_item.py \
-  --item-file /tmp/$ARGUMENTS-deepindex-notify.json
-rm /tmp/$ARGUMENTS-deepindex-notify.json
+  --item-file "$t/notify.json"
+rm -rf "$t"
 ```
 
 ### 7. Mark done

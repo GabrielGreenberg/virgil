@@ -117,11 +117,17 @@ top of step 1.
    re-run after setting it via library_path.py --set <abs-path>`. Don't
    fall back to guessing.
 
-2. **Match phase.** Classify every paper entry:
+2. **Match phase.** The match and triage JSONLs outlive this call, so this
+   block also mints the run's scratch directory; carry the printed path as
+   `<runDir>` into every later block, per [_scratch.md](_scratch.md) — never
+   a fixed name, or two syncs (two papers, two windows) read each other's
+   rows. Classify every paper entry:
    ```bash
+   run_dir=$(mktemp -d -t virgil-sync-bib) || exit 1
+   echo "runDir=$run_dir"
    python3 "$scripts_dir/bib_match_library.py" "<docPath>" \
        --library "$library_root" \
-       --output /tmp/sync-match.jsonl
+       --output "$run_dir/sync-match.jsonl"
    ```
    Each row has `status ∈ {matched, missing, ambiguous}` plus the
    library citekey on `matched`.
@@ -130,8 +136,8 @@ top of step 1.
    citekey · status · library citekey · match source. Include counts
    (N matched, K missing, P ambiguous) at the bottom.
 
-   **If `--dry-run` is set, stop here.** Tell the user to re-run
-   without the flag to apply.
+   **If `--dry-run` is set, stop here** (`rm -rf <runDir>` first). Tell the
+   user to re-run without the flag to apply.
 
 4. **Apply matches (pass 1).** For each `matched` row:
    - If `paper_citekey == library_citekey`, the entry may already be
@@ -164,7 +170,7 @@ top of step 1.
       mkdir -p "$library_root/unsorted"
       ```
       Concatenate the raw entry blocks for every `missing` row from
-      `/tmp/sync-match.jsonl` into `$bundle`. Use the `paper_fields`
+      `<runDir>/sync-match.jsonl` into `$bundle`. Use the `paper_fields`
       payload from the JSONL plus the paper's verbatim entry text
       (read with `_bib_parse.find_entry_span` against
       `<docPath>/references.bib`).
@@ -176,7 +182,7 @@ top of step 1.
       (cd "$library_root" && \
        python3 .virgil/scripts/library/triage_batch.py \
          --library . --only "$(basename "$bundle")" \
-         --output /tmp/sync-triage.jsonl)
+         --output <runDir>/sync-triage.jsonl)
       ```
       `--only` takes a bare filename relative to `unsorted/` and errors
       (exit 2) on a miss rather than falling back to the whole inbox, so
@@ -198,7 +204,7 @@ top of step 1.
       ```bash
       (cd "$library_root" && \
        python3 .virgil/scripts/library/triage_apply.py \
-         --input /tmp/sync-triage.jsonl \
+         --input <runDir>/sync-triage.jsonl \
          --library .)
       ```
       This upserts each entry into `master.bib`, creates
@@ -224,7 +230,7 @@ top of step 1.
    ```bash
    python3 "$scripts_dir/bib_match_library.py" "<docPath>" \
        --library "$library_root" \
-       --output /tmp/sync-match-2.jsonl
+       --output <runDir>/sync-match-2.jsonl
    ```
    For rows that flipped from `missing` to `matched`, run step 4 per
    entry. Anything still `missing` (e.g., triage rejected it as a
@@ -245,6 +251,7 @@ top of step 1.
                doc = resolve_doc('<docPath>'); \
                append_notification(doc, {'kind': 'ai-request-complete', 'at': now_iso(), 'summary': 'sync-bib-to-library: <N> matched, <K> added, <P> flagged'}); \
                bump_version(doc)"
+   rm -rf <runDir>
    ```
    Reply (single line):
    ```

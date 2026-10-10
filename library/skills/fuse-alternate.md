@@ -150,6 +150,7 @@ catalog update via the locked CLI shim — do **not** Read/Write
 `catalog.json` directly:
 
 ```bash
+t=$(mktemp -d -t virgil-fuse-alternate)
 set -e   # a failing shim must stop the fence, not be masked by the `rm`
 # An ARRAY, not a plain string: zsh does not word-split an unquoted
 # parameter expansion (bash does), so `$FLAGS` would arrive as ONE argv
@@ -158,7 +159,7 @@ RECOMPUTE_FLAGS=($(python3 .virgil/scripts/library/fuse_alternate.py --print-rec
 # Fail CLOSED: with no flags the patch's `warnings` array REPLACES the row's
 # — the whole-array clobber this fence was migrated off. Stop instead.
 [ ${#RECOMPUTE_FLAGS[@]} -gt 0 ] || { echo "recompute-flag emitter produced nothing — NOT patching warnings"; exit 1; }
-cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
+cat > "$t/patch.json" <<'EOF'
 {
   "indexed": {
     "pgmarkSource": "<pdf-filename>",
@@ -170,8 +171,8 @@ cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-fuse-patch.json "${RECOMPUTE_FLAGS[@]}"
-rm /tmp/$ARGUMENTS-fuse-patch.json
+  --patch-file "$t/patch.json" "${RECOMPUTE_FLAGS[@]}"
+rm -rf "$t"
 ```
 
 The patch deep-merges, so `indexed.state` (`deepIndexed` /
@@ -235,7 +236,8 @@ is written. `"indexed"` is the neutral member of the toast enum that fits a
 fuse; the specifics belong in `summary`.
 
 ```bash
-cat > /tmp/$ARGUMENTS-fuse-notify.json <<'EOF'
+t=$(mktemp -d -t virgil-fuse-alternate)
+cat > "$t/notify.json" <<'EOF'
 {
   "kind": "indexed",
   "citekey": "$ARGUMENTS",
@@ -244,8 +246,8 @@ cat > /tmp/$ARGUMENTS-fuse-notify.json <<'EOF'
 }
 EOF
 python3 .virgil/scripts/library/append_inbox_item.py \
-  --item-file /tmp/$ARGUMENTS-fuse-notify.json
-rm /tmp/$ARGUMENTS-fuse-notify.json
+  --item-file "$t/notify.json"
+rm -rf "$t"
 ```
 
 ### 7. Log

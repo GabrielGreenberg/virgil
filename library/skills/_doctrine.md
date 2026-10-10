@@ -98,13 +98,19 @@ catalog write path, never a direct `Write` — the shim takes the
 picks the row up:
 
 ```bash
-cat > /tmp/$ARGUMENTS-metadata-lock.json <<'EOF'
+f=$(mktemp -t virgil-metadata-lock)
+cat > "$f" <<'EOF'
 { "metadataLock": true }
 EOF
-python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-metadata-lock.json
-rm /tmp/$ARGUMENTS-metadata-lock.json
+python3 .virgil/scripts/library/update_catalog_entry.py "<citekey>" \
+  --patch-file "$f"; rc=$?
+rm -f "$f"
+exit "$rc"
 ```
+
+(Scratch per [_scratch.md](_scratch.md): `mktemp`, and `<citekey>` — this
+include is never invoked as a command, so a `$ARGUMENTS` here would never be
+substituted.)
 
 The patch is a deep merge, so the rest of the row survives. Clearing
 the pin is the same command with `false`. To confirm the lock is live,
