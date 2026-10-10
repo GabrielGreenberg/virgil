@@ -69,7 +69,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import rmtree_tolerant  # noqa: E402
+from _tools import merge_report_dir, rmtree_tolerant  # noqa: E402
 
 
 # Snapshot retention — keep the last N pre-merge snapshots.
@@ -367,6 +367,10 @@ def _write_run_state(path: Path, result: dict) -> Path:
         "MERGE_FILTER": run["filter"],
         "MERGE_FORCE": "1" if run["force"] else "0",
         "DRY_RUN": "1" if run["dry_run"] else "0",
+        # Where THIS run's reports + worklist live — `_dry-run/` under a dry
+        # run, so a dry run writes nothing a real run reads (task 1037).
+        "MERGE_REPORT_DIR": str(merge_report_dir(
+            Path(result["library_root"]), dry_run=run["dry_run"])),
         "BATCH": str(run["batch"]),
         "MERGE_RUN_STATE": str(path),
     }

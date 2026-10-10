@@ -187,7 +187,8 @@ def test_batch_policy():
 # ── skill-text census ──────────────────────────────────────────────────
 
 _RUN_STATE_VARS = ("SNAPSHOT_DIR", "DRY_RUN", "MERGE_FILTER", "MERGE_FORCE",
-                   "BATCH", "VIRGIL_LIBRARY_ROOT")
+                   "BATCH", "VIRGIL_LIBRARY_ROOT", "MERGE_REPORT_DIR",
+                   "MERGE_RUN_STATE")
 _SOURCE_LINE = '. /tmp/merge-bibs-run.json.env && cd "$VIRGIL_LIBRARY_ROOT"'
 
 
