@@ -39,7 +39,7 @@
  *     wired to it silently acts on state no pane writes (task 870; census
  *     `no-shell-shadowed-pane-providers.test.ts`).
  *   - The full panel infrastructure (strips on both sides, dock/float,
- *     marginalia, popouts, FloatingPanels, DockOutline).
+ *     marginalia, popouts, FloatingPanels).
  *   - Bubbles per-doc state to the Virgil bar via `onPaneStateChange`.
  *
  * Chrome wiring already in place (carries through the extraction):
@@ -198,8 +198,6 @@ import { useAutoApplyPendingChanges } from "@/hooks/useAutoApplyPendingChanges";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
 import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
-import { DockOutline } from "./editor-layout/DockOutline";
-import { CardLiftOutline } from "./CardLiftOutline";
 import { type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { FloatHost } from "@/floats/FloatHost";
 import { captureFloatToStack } from "@/floats/resolve-floatable";
@@ -6488,13 +6486,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           editorRef={editorInstanceRef}
           onCaptureToStack={captureKeyToStack}
         >
-          {/* Body-portaled outlines for dock-target / card-lift drag
-              affordances. Both read state from module-level singletons
-              (useDockDragTarget / useCardLiftTarget) — Reader has no
-              drag sources so they sit inert. Step 7.8 removes the
-              EditorLayout copies. */}
-          <DockOutline />
-          <CardLiftOutline />
+          {/* The dock-target / card-lift outlines are NOT rendered here: they
+              read window-global singletons and portal to <body>, so they
+              mount once, at app level (`DragOutlines`, task 1035). */}
           {/* Drop-mode controller — mounts the blue placement indicator
               (body-portaled) and the confirmation modal used when an
               already-anchored card is re-anchored. Registers a per-doc

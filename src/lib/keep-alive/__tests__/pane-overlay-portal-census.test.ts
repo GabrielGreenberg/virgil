@@ -90,16 +90,9 @@ const LEDGER: Record<string, Row> = {
   // (The drop bar + inline-atom ghost left the pane closure in task 1027: they
   // render from the one app-global session and mount once, in
   // `DropModeOverlays` at `src/app/page.tsx`.)
-  "components/CardLiftOutline.tsx": {
-    scope: "gesture",
-    count: 1,
-    why: "one-shot lift-off flash while a card is dragged",
-  },
-  "components/editor-layout/DockOutline.tsx": {
-    scope: "gesture",
-    count: 1,
-    why: "dock-target outline while a float is dragged",
-  },
+  // (The dock + card-lift outlines left the pane closure in task 1035: they
+  // render from window-global singletons and mount once, in `DragOutlines` at
+  // `src/app/page.tsx`.)
   "components/SlashCommandPopup.tsx": {
     scope: "open-state",
     count: 1,
