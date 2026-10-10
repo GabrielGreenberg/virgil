@@ -25,7 +25,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { Editor } from "@tiptap/core";
+import { Editor, type JSONContent } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
@@ -47,7 +47,7 @@ function para(uuid: string, text: string) {
   return { type: "paragraph", attrs: { uuid }, content: text ? [{ type: "text", text }] : [] };
 }
 
-function mount(content: unknown[]): Editor {
+function mount(content: JSONContent[]): Editor {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const editor = new Editor({
