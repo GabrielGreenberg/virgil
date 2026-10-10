@@ -47,6 +47,7 @@ import re
 import sys
 import uuid
 from pathlib import Path
+from _refs_section import body_end
 
 
 # Top-level numbered example: `(N) body...`
@@ -61,9 +62,6 @@ ENUM_BEGIN = re.compile(r"\\begin\{enumerate\}", re.M)
 ENUM_END = re.compile(r"\\end\{enumerate\}", re.M)
 QUOTE_BEGIN = re.compile(r"\\begin\{quote\}", re.M)
 QUOTE_END = re.compile(r"\\end\{quote\}", re.M)
-REFS_HEAD = re.compile(
-    r"\\section\{(References|Bibliography|Works Cited)\b", re.I,
-)
 
 
 def _disallowed_regions(text: str) -> list[tuple[int, int]]:
@@ -79,9 +77,9 @@ def _disallowed_regions(text: str) -> list[tuple[int, int]]:
     for s, e in zip(starts, ends):
         out.append((s, e))
     # After References section.
-    refs_m = REFS_HEAD.search(text)
-    if refs_m:
-        out.append((refs_m.start(), len(text)))
+    refs_at = body_end(text)
+    if refs_at < len(text):
+        out.append((refs_at, len(text)))
     return out
 
 

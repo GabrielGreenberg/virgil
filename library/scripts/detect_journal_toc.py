@@ -29,12 +29,9 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _refs_section import references_span
 
 
-REFS_HEAD_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited)\b",
-    re.M | re.I,
-)
 SUBSUB_RE = re.compile(r"^\\subsubsection\{([^}]+)\}", re.M)
 TOC_AUTHOR_LINE_RE = re.compile(
     r"^\s*[A-Z][a-zA-Z\-' ]+[,\s][A-Z][a-zA-Z\-' ]+.*?(\d{1,4})\s*$",
@@ -44,10 +41,10 @@ TOC_AUTHOR_LINE_RE = re.compile(
 
 def detect(text: str) -> tuple[int, int] | None:
     """Return (start, end) char range of the TOC block, or None."""
-    refs_m = REFS_HEAD_RE.search(text)
-    if not refs_m:
+    refs = references_span(text)
+    if not refs:
         return None
-    tail = text[refs_m.end():]
+    tail = text[refs.body_start:]
     # Find consecutive \subsubsection{} calls in the tail. We want a
     # run of at least 4 with associated TOC-author lines.
     subsubs = list(SUBSUB_RE.finditer(tail))
@@ -71,12 +68,12 @@ def detect(text: str) -> tuple[int, int] | None:
     if not runs:
         return None
     run = runs[0]
-    start = refs_m.end() + run[0].start()
-    end = refs_m.end() + run[-1].end()
+    start = refs.body_start + run[0].start()
+    end = refs.body_start + run[-1].end()
     # Extend `end` to next \section{} or end of text.
     next_section = re.search(r"\\section\{", tail[run[-1].end():])
     if next_section:
-        end = refs_m.end() + run[-1].end() + next_section.start()
+        end = refs.body_start + run[-1].end() + next_section.start()
     else:
         end = len(text)
     return start, end

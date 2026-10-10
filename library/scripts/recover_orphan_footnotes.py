@@ -26,13 +26,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from _refs_section import body_end as refs_body_end
 
 
 SECTION_RE = re.compile(r"^\\section\{[^}]+\}", re.M)
-REFS_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited|Notes|Endnotes|Index)\b",
-    re.M | re.I,
-)
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
 LEAKED_PARA_RE = re.compile(
     r"^(\d{1,3})[.\s]+([A-Z\"“‘][^\n]*(?:\n(?!\n)[^\n]*)*?)(?=\n\s*\n|\Z)",
@@ -158,8 +155,7 @@ def find_body_position(tex: str, context_word: str, around_offset: int,
 
 def collect_unplaced_orphans(tex: str) -> list[tuple[int, int, int, str]]:
     """Return list of (start, end, number, body) for remaining leaked notes."""
-    refs_match = REFS_RE.search(tex)
-    body_end = refs_match.start() if refs_match else len(tex)
+    body_end = refs_body_end(tex, back_matter=True)
     out = []
     for m in LEAKED_PARA_RE.finditer(tex[:body_end]):
         n = int(m.group(1))

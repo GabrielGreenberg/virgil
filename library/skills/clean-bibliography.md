@@ -125,7 +125,12 @@ steps. Never Read/Write `.virgil/catalog.json` directly; the CLI shim holds
 > been hand-edited and de-bolded). Skip the bulk itemization.
 
 The references section is typically the last `\section` of the paper
-(headings like "References", "Bibliography", "Works Cited"). After
+(headings like "References", "Bibliography", "Works Cited"). Every
+script in this skill finds it through ONE door,
+`scripts/_refs_section.py` (`references_span` / `body_end`), which owns
+the heading vocabulary — starred, `\chapter`/`\section`/`\subsection`,
+any case — so if you locate it by hand, accept every heading that door
+does. After
 extraction it usually arrives as one giant run-on paragraph with all
 entries concatenated. (Sometimes the preprocessor or the source
 already paragraph-separates entries; in that case the split is given
@@ -634,8 +639,10 @@ Constraints:
   surname+year becomes the chip; this only breaks when there are inner
   authors whose given names would disappear.
 - **Don't** rewrite the visible bibliography list itself — confine the
-  scan to the document text *before* the `\section{References}` (or
-  "Bibliography" / "Works Cited") heading.
+  scan to the document text *before* the References heading, as
+  `scripts/_refs_section.py`'s `body_end` locates it (`rewrite_citations.py`
+  already does; a hand pass must use the same cut, not just the literal
+  `\section{References}`).
 - **Do** rewrite citations inside `\footnote{…}` arguments — footnotes
   routinely contain citations and the renderer accepts `\cite{…}` there.
 - **Don't** introduce `\cite{…}` inside math (`\[...\]`, `$...$`,

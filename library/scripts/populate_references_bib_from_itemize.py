@@ -25,6 +25,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
+from _refs_section import references_span
 
 
 YEAR_RE = re.compile(r"\b(1[6-9]\d{2}|20\d{2})([a-c]?)\b")
@@ -199,19 +200,13 @@ def populate(
     bib_existing = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
     existing_keys = set(re.findall(r"^@\w+\{([^,\s]+),", bib_existing, re.M))
 
-    # Try the starred forms too — per-chapter References in edited
-    # volumes typically use `\section*{References}` /
+    # The door accepts the starred forms and `\subsection` too — per-chapter
+    # References in edited volumes typically use `\section*{References}` /
     # `\subsection*{References}` (cohenmscoherence, antony2009thinking).
-    refs_re = re.compile(
-        r"\\(?:section|subsection)\*?\{(References|Bibliography|Works Cited)\}"
-    )
-    refs_m = refs_re.search(tex)
-    if not refs_m:
+    span = references_span(tex)
+    if not span:
         return {"error": "no References section found"}
-    refs_start = refs_m.start()
-    next_section = re.search(r"\\(?:section|subsection)\*?\{", tex[refs_m.end():])
-    refs_end = refs_m.end() + next_section.start() if next_section else len(tex)
-    refs_section = tex[refs_start:refs_end]
+    refs_section = tex[span.head_start:span.end]
 
     new_entries: list[str] = []
     skipped_dupes = 0

@@ -32,6 +32,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _refs_section import body_end as refs_body_end
 
 
 SUPER_MAP = {
@@ -44,10 +45,6 @@ LEAKED_SUPER_PARA_RE = re.compile(
     re.M,
 )
 SECTION_RE = re.compile(r"^\\section\{([^}]+)\}", re.M)
-REFS_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited|Notes|Endnotes|Index)\b",
-    re.M | re.I,
-)
 PGMARK_LITERAL_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{\d+\}")
 PROTECTED_CMDS = frozenset({
     "cite", "citet", "citep", "citealp", "citealt", "citeauthor",
@@ -63,13 +60,12 @@ def _super_to_ascii(s: str) -> str:
 
 def _chapter_boundaries(text: str) -> list[tuple[int, int]]:
     sections = list(SECTION_RE.finditer(text))
-    refs_match = REFS_RE.search(text)
-    body_end = refs_match.start() if refs_match else len(text)
+    body_end = refs_body_end(text, back_matter=True)
     boundaries: list[tuple[int, int]] = []
     if not sections:
         return [(0, body_end)]
     for i, m in enumerate(sections):
-        if refs_match and m.start() >= refs_match.start():
+        if m.start() >= body_end:
             break
         start = m.start()
         end = sections[i + 1].start() if i + 1 < len(sections) else body_end

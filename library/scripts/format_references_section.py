@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from _refs_section import name_alternation, references_span
 
 
 YEAR_RE = re.compile(r"\b(1[6-9]\d{2}|20\d{2})([a-z]?(?:/\d{4}[a-z]?)?)\b")
@@ -41,15 +42,10 @@ PARTICLES = {
     "st", "sankt", "mc", "mcc", "ten", "ter",
 }
 
-# Section heading for references.
-REFS_HEAD_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited)\}", re.M | re.I,
-)
-NEXT_SECTION_RE = re.compile(r"^\\section\{", re.M)
 ALREADY_ITEMIZED_RE = re.compile(r"\\begin\{itemize\}[\s\S]*\\textbf\{")
 
 # Strip inline running headers like "REFERENCES 181" or "182 SIGNALS"
-INLINE_HEADER_RE = re.compile(r"\s+(?:REFERENCES|BIBLIOGRAPHY|WORKS CITED)\s+\d+\s+|\s+\d+\s+(?:[A-Z][A-Z]+(?:\s+[A-Z][A-Z]+){0,4})\s+")
+INLINE_HEADER_RE = re.compile(r"\s+(?:" + name_alternation(upper=True) + r")\s+\d+\s+|\s+\d+\s+(?:[A-Z][A-Z]+(?:\s+[A-Z][A-Z]+){0,4})\s+")
 
 
 def detect_style(refs_text: str) -> str:
@@ -336,13 +332,10 @@ def format_references(paper_dir: Path, style: str | None = None,
     if not tex_path.exists():
         return {"error": "main.tex not found"}
     text = tex_path.read_text(encoding="utf-8")
-    head_match = REFS_HEAD_RE.search(text)
-    if not head_match:
+    span = references_span(text)
+    if not span:
         return {"error": "no references section found", "entries": 0}
-    refs_start = head_match.end()
-    after = text[refs_start:]
-    next_m = NEXT_SECTION_RE.search(after)
-    refs_end = refs_start + (next_m.start() if next_m else len(after))
+    refs_start, refs_end = span.body_start, span.end
     refs_text = text[refs_start:refs_end]
 
     if ALREADY_ITEMIZED_RE.search(refs_text):

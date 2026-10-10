@@ -37,6 +37,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _refs_section import body_end as refs_body_end
 
 
 # Inline `(N)` preceded by non-paragraph-start, followed by capitalized
@@ -44,10 +45,6 @@ from pathlib import Path
 # inside a paragraph, not at the start of one.
 INLINE_EX_RE = re.compile(
     r"(?<=[A-Za-z,;:.\?\!])\s+\((\d{1,3})\)\s+(?=[A-Z\\])",
-)
-REFS_SECTION_RE = re.compile(
-    r"^\\section\*?\{(References|Bibliography|Works Cited)\b",
-    re.M | re.I,
 )
 PROTECTED_CMDS = ("cite", "citet", "citep", "section", "subsection",
                   "subsubsection", "title", "author", "textbf", "textit",
@@ -103,8 +100,7 @@ def _in_protected_arg(text: str, pos: int) -> bool:
 
 def split_inline_examples(text: str) -> tuple[str, int]:
     """Return (new-text, count-of-splits)."""
-    refs_match = REFS_SECTION_RE.search(text)
-    body_end = refs_match.start() if refs_match else len(text)
+    body_end = refs_body_end(text)
 
     # Collect split positions from end-to-start so insertions don't
     # shift earlier offsets.
