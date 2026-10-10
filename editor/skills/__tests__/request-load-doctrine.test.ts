@@ -25,7 +25,11 @@
 //
 //   4. no skill makes its own `status: "complete"` skip test;
 //   5. every `Skipped <requestId>` reply template is the SSOT's exact one;
-//   6. a skill's `## Idempotency` section links the SSOT.
+//   6. a skill's `## Idempotency` section links the SSOT;
+//   7. every per-request dispatch target carries that section — population
+//      DERIVED from the dispatch table (task 1047: a hand list of the five
+//      skills 1045 edited let draft-footnote / find-citation / draft-suggestion
+//      keep their own "status is open" tests).
 
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -126,9 +130,13 @@ describe("idempotency rule (SSOT + every responder, task 1045)", () => {
   it.each(SKILLS)("%s makes no `status: \"complete\"` skip test of its own", (file) => {
     const doc = flat(file);
     // The spellings the forked sections took: "If the request is already
-    // `status: "complete"`, skip" and "… or the request is already `status: …`".
+    // `status: "complete"`, skip" and "… or the request is already `status: …`",
+    // and the validate-step form "the status is open (not the terminal
+    // `complete` / `failed` …)" (task 1047).
     expect(doc).not.toMatch(/already `status: "complete"`/);
     expect(doc).not.toMatch(/if the request is already (?:`status|complete)/i);
+    expect(doc).not.toMatch(/\bstatus is open\b/i);
+    expect(doc).not.toMatch(/not the terminal `complete`/);
   });
 
   it.each(SKILLS)("%s: every `Skipped <requestId>` reply is the SSOT's", (file) => {
@@ -142,15 +150,31 @@ describe("idempotency rule (SSOT + every responder, task 1045)", () => {
     expect(m[1]).toContain(POINTER);
   });
 
-  it("the responders that carried a forked section (and todo, which had none) carry the linked one", () => {
-    for (const f of [
-      "answer-note-request.md",
-      "answer-report-request.md",
-      "answer-cutter-comment.md",
-      "answer-revision-request.md",
-      "answer-todo-request.md",
-    ]) {
-      expect(read(`editor/skills/${f}`)).toMatch(/^## Idempotency$/m);
+  /** Dispatch targets with no per-request reply, and why. Exact set; each
+   *  claim is checked below. */
+  const IDEMPOTENCY_EXCLUDED: Record<string, string> = {
+    "editor/skills/style-merge.md":
+      "a batch over the drain's open style-merge rows — its Args take no " +
+      "`<requestId>`, so a closed request is never in its input and there is " +
+      "no per-request reply to skip.",
+  };
+  const IDEMPOTENCY_POPULATION = POPULATION.filter((f) => !(f in IDEMPOTENCY_EXCLUDED));
+
+  it("the idempotency population is the dispatch table minus a checked exclusion", () => {
+    expect(IDEMPOTENCY_POPULATION.length).toBeGreaterThanOrEqual(8);
+    expect(IDEMPOTENCY_POPULATION).toContain("editor/skills/draft-footnote.md");
+    for (const file of Object.keys(IDEMPOTENCY_EXCLUDED)) {
+      expect(POPULATION).toContain(file);
+      // Its `## Args` take no request id (it reads ids off the drain rows).
+      const args = read(file).match(/^## Args\n([\s\S]*?)(?=^## )/m);
+      expect(args).not.toBeNull();
+      expect(args![1]).not.toContain("<requestId>");
     }
+  });
+
+  it.each(IDEMPOTENCY_POPULATION)("%s carries the linked Idempotency section", (file) => {
+    const m = read(file).match(/^## Idempotency\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+    expect(m).not.toBeNull();
+    expect(m![1]).toContain(POINTER);
   });
 });
