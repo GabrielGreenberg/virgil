@@ -152,8 +152,9 @@ source request in place.
    [_request-load.md](_request-load.md)),
    `status: "pending"`, `links[]` (the
    verbatim-copy anchor rule above, `target.ref.kind: "revision-suggestion"`), and
-   `aiOriginRequestId: <requestId>` (load-bearing — `accept-suggestion`
-   reads it) if the id doesn't start with `virtual:`.
+   `aiOriginRequestId: <requestId>` (load-bearing — the editor's Accept /
+   Reject and `accept-suggestion` / `reject-suggestion` all finalize the Task
+   through it) if the id doesn't start with `virtual:`.
 
    Don't mutate the source request's top-level `text` / `content`
    fields — those are the originating framing. The bridge clears

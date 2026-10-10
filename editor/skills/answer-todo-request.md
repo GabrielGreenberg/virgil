@@ -197,17 +197,19 @@ matters" (write a note). Read the todo and dispatch.
      user hasn't accepted. Know what that leaves behind: the contract stamps the
      card's id as the Task's `resultId`, and an `in-progress` Task WITH a
      `resultId` counts as **answered** (`is_request_open`), so `/editor/review`
-     does **not** re-list it, and no accept path (the editor's, or
-     `/editor/accept-suggestion`) marks the originating todo done today. The
-     user closes the todo themselves once they accept the proposal — say so in
-     the reply.
+     does **not** re-list it. A **suggestion** proposal closes the todo
+     automatically when the user ACCEPTS it — in the editor (Accept / Keep /
+     Insert below) or via `/editor/accept-suggestion` — and completes the Task
+     `accepted`; a reject completes it `rejected` and leaves the todo open (task
+     1043). An L3 **note** proposal has no accept step, so the user ticks that
+     todo themselves — say so in the reply only on the note path.
    - **Citation handoff:** nothing to finalize here — `/editor/find-citation`
      owns the Task from this point.
 
 5. **Reply.** Use the path-specific template:
    - Suggestion card path (awaiting review):
      ```
-     Done: drafted suggestion <newId> for todo <cardId>, request <requestId> — awaiting review (accept/reject in the editor; tick the todo done once you accept). Output: revisions.json (+ ai-requests.json status=in-progress, todos.json aiRequest cleared, notifications, version).
+     Done: drafted suggestion <newId> for todo <cardId>, request <requestId> — awaiting review (accept/reject in the editor; accepting closes the todo). Output: revisions.json (+ ai-requests.json status=in-progress, todos.json aiRequest cleared, notifications, version).
      ```
    - Sibling note path (`status: complete`):
      ```

@@ -127,6 +127,13 @@ export interface RevisionSuggestionCard {
    *  Both are reachable only via the flag-ON apply path (pending-changes-flag).
    */
   status: "pending" | "applied" | "stale" | "accepted" | "rejected";
+  /** The card→Task back-pointer an L3 responder stamps on a proposal
+   *  (`apply_response.py complete-task --propose`): the `ai-requests.json` row
+   *  this card answers. When `status` reaches a terminal `accepted`/`rejected`
+   *  the Task is finalized with that result — app side by
+   *  `src/links/proposal-finalize.ts`, script side by `cmd_accept`/`cmd_reject`
+   *  (task 1043). Absent on a human-authored suggestion. */
+  aiOriginRequestId?: string;
   /** Set when `status` becomes `applied`: describes the in-doc splice so it can
    *  be reverted (back to `original_text`) or kept. Absent until the apply path
    *  runs (flag-ON only). */
@@ -752,6 +759,13 @@ export interface CutterSuggestionCard {
    *  be resolved. Both are reachable only via the flag-ON apply path
    *  (pending-changes-flag). */
   status: "pending" | "applied" | "stale" | "accepted" | "rejected";
+  /** The card→Task back-pointer an L3 responder stamps on a proposal
+   *  (`apply_response.py complete-task --propose`): the `ai-requests.json` row
+   *  this card answers. When `status` reaches a terminal `accepted`/`rejected`
+   *  the Task is finalized with that result — app side by
+   *  `src/links/proposal-finalize.ts`, script side by `cmd_accept`/`cmd_reject`
+   *  (task 1043). Absent on a human-authored suggestion. */
+  aiOriginRequestId?: string;
   /** Set when `status` becomes `applied`: describes the in-doc splice so it can
    *  be reverted (back to `original_text`) or kept. Absent until the apply path
    *  runs (flag-ON only). */

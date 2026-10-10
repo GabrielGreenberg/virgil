@@ -209,6 +209,12 @@ PANEL_TO_SIDECAR: dict[str, tuple[str, str]] = {
     if row["writeback"]
 }
 
+# The todo panel's wire token — the one panel an ACCEPTED proposal closes the
+# source of (task 1043). Derived from the table's `tsPanel`, never spelled.
+TODO_PANEL: str = next(
+    panel for panel, row in _CARD_TABLES["cardSidecars"].items() if row.get("tsPanel") == "todo"
+)
+
 # --- Two-field status / result vocabulary (EDITOR_SKILLS_V1 §7) ------------
 # STATUS_* / TERMINAL_STATUSES / is_terminal_status are imported from _common
 # above (task 680) — ONE Python statement of the vocabulary, mirroring TS
@@ -926,6 +932,28 @@ class _Txn:
                 if c.get("aiRequest"):
                     c["aiRequest"] = False
                     self.mark(path)
+                return True
+        return False
+
+    def close_source_todo(self, linked: dict) -> bool:
+        # On ACCEPT of an AI proposal, close the todo the proposal answered
+        # (task 1043): the ask is done, so the todo is `done: true`. Mirrors the
+        # app's `todoClosedByFinalize` (src/links/proposal-finalize.ts). A REJECT
+        # never calls this — the ask is still unanswered. Idempotent: a todo
+        # already done (or absent) writes nothing. Returns whether it flipped.
+        if linked.get("panel") != TODO_PANEL or not linked.get("cardId"):
+            return False
+        filename, list_key = PANEL_TO_SIDECAR[TODO_PANEL]
+        path = sidecar(self.doc, filename)
+        state = self.jget(path, None)
+        if not isinstance(state, dict):
+            return False
+        for c in state.get(list_key, []) or []:
+            if isinstance(c, dict) and c.get("id") == linked["cardId"]:
+                if c.get("done"):
+                    return False
+                c["done"] = True
+                self.mark(path)
                 return True
         return False
 
@@ -1928,6 +1956,7 @@ def _mutation_commit(
     result: str | None = None,
     extra: dict | None = None,
     clear_source_flag: bool = True,
+    close_source_todo: bool = False,
 ) -> dict:
     """The shared atomic + pen + audit tail for every §10 mutation op.
 
@@ -1980,6 +2009,10 @@ def _mutation_commit(
             ar["requests"][idx] = req
             txn.mark(ar_path)
             linked = req.get("linkedTo")
+            # ACCEPT closes the todo the proposal answered, in this same commit
+            # (task 1043) — only for a real row that resolved here.
+            if close_source_todo and isinstance(linked, dict):
+                txn.close_source_todo(linked)
     if clear_source_flag and isinstance(linked, dict):
         # A MECHANICAL op on a virtual id whose source card is gone refuses
         # (task 942 — the same "would close nothing" rule as an unknown row
@@ -2533,6 +2566,8 @@ def cmd_accept(doc: Path, op: dict) -> dict:
         # The source flag was lowered when the proposal LANDED (cmd_write step 4);
         # a re-raised flag since then is a NEW ask, not this one's to lower.
         clear_source_flag=False,
+        # …but the TODO it answered is now done (task 1043; reject leaves it open).
+        close_source_todo=True,
         extra={"op": "accept", "cardId": card_id, "cardKind": kind,
                "anchorUuid": anchor, "result": RESULT_ACCEPTED},
     )

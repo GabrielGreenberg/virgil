@@ -21,10 +21,11 @@
  */
 
 import { generateEntityId } from "@/lib/uuid";
-import type { AiRequest, AiRequestLink } from "@/lib/types";
+import type { AiRequest, AiRequestLink, AiRequestResult } from "@/lib/types";
 import {
   isAiRequestsWriteRefused,
   mutateAiRequests,
+  type AiRequestsWriteResult,
 } from "@/lib/ai-requests-store";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import {
@@ -246,17 +247,70 @@ export async function bridgeCardAiRequestFlag(
   // reached the inbox is the same silent loss the inbox's own writer had
   // (task 630): the user ticks "ask Virgil" on a note, the tick sticks, and no
   // skill will ever serve it. One channel, one voice.
-  if (isAiRequestsWriteRefused(result)) {
-    recordSidecarRefusal({
-      docId,
-      what: "request for Virgil",
-      reason: result.kind === "failed" ? "failed" : result.kind,
-      detail:
-        result.kind === "failed" && result.error instanceof Error
-          ? result.error.message
-          : undefined,
-    });
-  }
+  reportBridgeRefusal(docId, result);
+}
+
+/**
+ * A bridged write that never reached the inbox is the same silent loss the
+ * inbox's own writer had (task 630) — published to the ONE refusal channel.
+ * Shared by every bridge door so the voice cannot fork.
+ */
+function reportBridgeRefusal(docId: string, result: AiRequestsWriteResult): void {
+  if (!isAiRequestsWriteRefused(result)) return;
+  recordSidecarRefusal({
+    docId,
+    what: "request for Virgil",
+    reason: result.kind === "failed" ? "failed" : result.kind,
+    detail:
+      result.kind === "failed" && result.error instanceof Error
+        ? result.error.message
+        : undefined,
+  });
+}
+
+/** The two terminal outcomes a user gives an AI proposal. */
+export type ProposalResult = Extract<AiRequestResult, "accepted" | "rejected">;
+
+/**
+ * FINALIZE the Task an AI proposal answers (task 1043) — the app twin of
+ * `apply_response.py` `cmd_accept` / `cmd_reject`'s `_mutation_commit` leg.
+ *
+ * An L3 responder lands a proposal through `complete-task --propose`: the card
+ * carries `aiOriginRequestId`, and the row is left `in-progress` + `resultId`
+ * ("answered-L3", closed to the drain, open to nobody else). The proposal then
+ * has two finishers — the accept/reject SKILLS (script side) and the user's
+ * own Accept / Keep / Reject / Dismiss in the editor (app side) — and both must
+ * end the row the same way: `status: complete`, `result: accepted|rejected`.
+ * Until 1043 only the script side did, so every proposal the user settled in
+ * the app left its row `in-progress` forever.
+ *
+ * Matches by row ID (the back-pointer), not by `linkedTo` — the proposal card
+ * is the ANSWER, never the card the row is linked to. Idempotent: an unknown or
+ * already-terminal row writes nothing and returns `null` (a second click, or a
+ * row the script side already closed). Does NOT lower the source card's flag —
+ * that happened when the proposal landed, and a flag raised since is a NEW ask
+ * (`clear_source_flag=False` on the Python side, same reason).
+ *
+ * Returns the finalized row's `linkedTo` so the caller can close the SOURCE the
+ * proposal answered (a todo, on accept) — the bridge owns `ai-requests.json`
+ * only; the source card belongs to its own panel hook.
+ */
+export async function finalizeProposalRequest(
+  docId: string | null,
+  requestId: string,
+  result: ProposalResult,
+): Promise<AiRequestLink | null> {
+  if (!docId || !requestId) return null;
+  let linked = null as AiRequestLink | null;
+  const write = await mutateAiRequests(docId, (requests) => {
+    linked = null;
+    const idx = requests.findIndex((r) => r.id === requestId);
+    if (idx < 0 || isTerminalStatus(requests[idx].status)) return null;
+    linked = requests[idx].linkedTo ?? null;
+    return requests.map((r, i) => (i === idx ? closeRequestRow(r, result) : r));
+  });
+  reportBridgeRefusal(docId, write);
+  return write.kind === "written" ? linked : null;
 }
 
 /**
@@ -317,17 +371,7 @@ export async function rederiveAiRequestForMorph(
     });
     return matched ? next : null;
   });
-  if (isAiRequestsWriteRefused(result)) {
-    recordSidecarRefusal({
-      docId,
-      what: "request for Virgil",
-      reason: result.kind === "failed" ? "failed" : result.kind,
-      detail:
-        result.kind === "failed" && result.error instanceof Error
-          ? result.error.message
-          : undefined,
-    });
-  }
+  reportBridgeRefusal(docId, result);
 }
 
 /**

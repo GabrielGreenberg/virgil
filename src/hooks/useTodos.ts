@@ -150,6 +150,18 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     }));
   }, [update, pristine]);
 
+  /** Set `done` to a stated value — the idempotent sibling of `toggleItem`,
+   *  for a writer that is CLOSING a todo rather than flipping it (task 1043:
+   *  accepting the AI proposal that answered it). A todo already in that state,
+   *  or absent, is left untouched (the updater returns `prev`). */
+  const setDone = useCallback((id: string, done: boolean) => {
+    pristine.markDirty(id);
+    update((prev) => {
+      if (!prev.items.some((i) => i.id === id && !!i.done !== done)) return prev;
+      return { items: prev.items.map((i) => (i.id === id ? { ...i, done } : i)) };
+    });
+  }, [update, pristine]);
+
   const updateItem = useCallback((id: string, text: string) => {
     pristine.markDirty(id);
     update((prev) => ({
@@ -440,6 +452,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       addItemFromSeed,
       appendItems,
       toggleItem,
+      setDone,
       updateItem,
       updateNotes,
       setAiRequest,
@@ -464,6 +477,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       addItemFromSeed,
       appendItems,
       toggleItem,
+      setDone,
       updateItem,
       updateNotes,
       setAiRequest,
