@@ -30,6 +30,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import paper_folder  # noqa: E402
+from _bib_types import propose_type, retirement_ops  # noqa: E402  (task 1040)
 
 try:
     from rapidfuzz import fuzz  # type: ignore
@@ -150,19 +151,10 @@ def _is_type_mismatch_strict(entry_type: str, record: dict, score: float) -> boo
 # ── Bib-type auto-conversion ───────────────────────────────────────────
 
 
-def _propose_type(entry_type: str, cr_type: str) -> str:
-    """If a Crossref-verified type disagrees with the input bib type, return
-    the proposed bib type. Returns '' when no conversion applies."""
-    if not entry_type or not cr_type:
-        return ""
-    cr_type = cr_type.lower()
-    if cr_type == "posted-content" and entry_type != "unpublished":
-        return "unpublished"
-    if entry_type == "article" and cr_type == "book-chapter":
-        return "incollection"
-    if entry_type == "article" and cr_type == "proceedings-article":
-        return "inproceedings"
-    return ""
+# The mapper and the retirement each type change performs live together in
+# `_bib_types` (task 1040), so the index path, the merge path and the skill
+# all read ONE rule. `_propose_type` stays as this module's local name.
+_propose_type = propose_type
 
 
 # ── Conference venue allowlist (Phase B) ──────────────────────────────
@@ -1292,6 +1284,19 @@ class AuthResult:
     score: float = 0.0
     note: str = ""
     proposed_type: str = ""  # set when Crossref type disagrees with input entry_type
+    # The retirement `proposed_type` implies (`_bib_types.retirement_ops`):
+    # carry each `{"from", "to"}` value across when `to` is absent, then drop
+    # `proposed_drop_fields`. A caller writing the entry under `proposed_type`
+    # applies these — the skill passes them as `--drop-field`; the in-process
+    # callers use `apply_type_retirement`. Empty when there is no type change.
+    proposed_copies: list[dict] = field(default_factory=list)
+    proposed_drop_fields: list[str] = field(default_factory=list)
+
+
+def _retirement_fields(entry_type: str, proposed_type: str) -> dict:
+    """`AuthResult` kwargs stating the retirement a proposed type implies."""
+    copies, drops = retirement_ops(entry_type, proposed_type)
+    return {"proposed_copies": copies, "proposed_drop_fields": drops}
 
 
 def _build_field_changes(rec: dict, current_fields: dict, effective_type: str,
@@ -1375,6 +1380,7 @@ def _authenticated_from_record(rec: dict, current_fields: dict, entry_type: str,
         score=score,
         note=note,
         proposed_type=proposed_type,
+        **_retirement_fields(entry_type, proposed_type),
     )
 
 
@@ -1563,6 +1569,7 @@ def _authenticate_core(seed_title: str, seed_authors: list[str],
         score=best.score,
         note=note,
         proposed_type=proposed_type,
+        **_retirement_fields(entry_type, proposed_type),
     )
 
 

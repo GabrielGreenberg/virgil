@@ -83,21 +83,9 @@ from _bib_parse import read_master_bib  # noqa: E402
 from _tools import SOURCE_FORMAT_PRIORITY, resolve_paper_source  # noqa: E402
 
 
-# Allowed fields per entry type. Fields outside this set produce a
-# coherence warning (not an outright error — many bibs have legitimate
-# extras like `month`, `note`, `keywords`, etc.).
-DISALLOWED_FIELDS = {
-    "phdthesis": {"journal", "publisher", "pages", "volume", "number", "booktitle"},
-    "mastersthesis": {"journal", "publisher", "pages", "volume", "number", "booktitle"},
-    "article": {"school", "booktitle"},
-    "book": {"journal", "volume", "number", "booktitle"},
-    "inbook": {"journal", "volume", "number"},
-    "incollection": {"journal", "school"},
-    "inproceedings": {"journal", "school"},
-    "manual": {"journal", "school", "booktitle"},
-    "techreport": {"journal", "booktitle"},
-    "unpublished": {"journal", "publisher", "booktitle", "volume"},
-}
+# Fields incoherent on each entry type — stated once in `_bib_types` (task
+# 1040), because a type change's field retirement is DERIVED from it.
+from _bib_types import DISALLOWED_FIELDS  # noqa: E402
 
 
 from _library_root import library_root_or_exit  # noqa: E402  (task 896)

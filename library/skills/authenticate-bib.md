@@ -144,7 +144,7 @@ directory).
    then. That split is deliberate and it is the whole reason the ordering is
    safe: steps 3–5 can *repair* the incoherence this step just found (the
    `--type` override above, or a `proposed_type` of `unpublished` and step
-   5's `--drop-field` retirement table, which removes the offending field
+   5's `proposed_drop_fields` retirement, which removes the offending field
    outright). A verdict persisted here would describe an entry that no longer
    exists by the end of the run — and `deep-index.md` reads
    `indexed.warnings` on resume as its outstanding-work agenda whose stated
@@ -411,16 +411,19 @@ directory).
    `publisher` — on an entry still marked `@article`. Write
    `r["proposed_type"] or "<entry_type>"`.
 
-   A type change usually also *retires* fields, and the helper only ever
-   proposes additions — so name the retirements yourself with
-   `--drop-field`, matching what `index_paper.py` does in-process for
-   this same flow:
+   A type change usually also *retires* fields. The helper states the
+   retirement in its JSON — don't work it out yourself:
 
-   | type change | also pass |
-   |---|---|
-   | `article` → `incollection` | copy `journal`'s value into `booktitle` if absent, then `--drop-field journal` |
-   | anything → `unpublished` | `--drop-field journal --drop-field booktitle --drop-field volume --drop-field number --drop-field pages` |
-   | `article` → `inproceedings` | copy `journal` → `booktitle` if absent, then `--drop-field journal` |
+   - `r["proposed_copies"]` — `[{"from": "journal", "to": "booktitle"}, …]`:
+     when the entry has a `from` value and no `to` value, put that value
+     under `to` in your fields file (the container survives the move).
+   - `r["proposed_drop_fields"]` — pass each as `--drop-field <name>`.
+
+   Both are empty when `proposed_type` is. They come from the ONE rule in
+   `_bib_types.py` (every field the new type disallows, per the same table
+   `validate_bib_coherence.py` checks), which `index_paper.py` and
+   `merge_paper_references.py` apply in-process for this same verdict — so
+   the entry you write matches theirs.
 
    ```bash
    cat > /tmp/<citekey>-auth-fields.json <<'EOF'
@@ -431,6 +434,7 @@ directory).
      --fields-file /tmp/<citekey>-auth-fields.json \
      --bib-state "<final_state from step 4b>" \
      --merge-existing \
+     --drop-field <each name in r["proposed_drop_fields"], one flag apiece> \
      --base-raw-file "/tmp/<citekey>-auth-base.bib" \
      --base-type "<entry_type as read in step 1>"
    rc=$?
