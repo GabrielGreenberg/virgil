@@ -55,6 +55,7 @@ import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 import {
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
+import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
 
 // Options accepted by the Footnote extension. `idGenerator` lets a host
 // (e.g. the Library Reader) substitute a different ID strategy for newly
@@ -98,34 +99,38 @@ export const Footnote = Node.create<FootnoteOptions>({
   },
 
   addAttributes() {
-    return {
+    // Every attr round-trips the HTML clipboard through the ONE codec (task
+    // 1068) — `data-attr-*`, JSON-valued — so a cut/paste carries the rich
+    // `content` (not "[object Object]"), `thanks`, `\footnote[3]` and the ids.
+    // The presentational `data-link-*` / `data-thanks` below are a separate
+    // lane (chrome + CSS read them); the clipboard never reads them back.
+    return withClipboardCodec({
       // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
       // Default null so every footnote node owns its own object (avoids the
       // single-shared-default-mutation footgun).
       content: { default: null },
       number: { default: 1 },
       title: { default: "" },
-      // footnoteId stays in JSON (persistence) but doesn't render to HTML —
-      // data-link-id carries the same value and is the canonical address.
-      footnoteId: { default: "", renderHTML: () => ({}) },
-      // Unified link attrs — rendered as data-link-* via explicit renderHTML
-      // below; suppress auto-render here to avoid camelCase HTML attrs.
-      linkId: { default: "", renderHTML: () => ({}) },
-      linkKind: { default: "footnote", renderHTML: () => ({}) },
-      linkCard: { default: "", renderHTML: () => ({}) },
+      // footnoteId persists in JSON; `data-link-id` carries the same value as
+      // the canonical presentational address.
+      footnoteId: { default: "" },
+      // Unified link attrs — also rendered as data-link-* via renderHTML below.
+      linkId: { default: "" },
+      linkKind: { default: "footnote" },
+      linkCard: { default: "" },
       // True when this footnote originated from a `\thanks{...}` (typically
       // inside `\author{...}`) rather than a `\footnote{...}`. Drives the
       // serializer to round-trip back to `\thanks{...}` and the panel/omni
       // card to overline as ACKNOWLEDGEMENT instead of FOOTNOTE.
-      thanks: { default: false, renderHTML: () => ({}) },
+      thanks: { default: false },
       // Raw `\footnote[3]{…}` mark override (task 376 M5) — LaTeX's "print
       // this mark instead of the counter". Carried OPAQUELY and deliberately
       // NOT fed to `numberFootnotes`: in LaTeX the optional form also does not
       // STEP the counter, so honouring it in Virgil's own chrome means
       // renegotiating every following footnote's number. Null on a plain
       // `\footnote`; never set on a `\thanks`, which has no optional argument.
-      numberOverride: { default: null, renderHTML: () => ({}) },
-    };
+      numberOverride: { default: null },
+    });
   },
 
   parseHTML() {

@@ -33,6 +33,13 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { renderBorrowedHtml, STATIC_MATH_SELECTORS } from "@/lib/borrowed-render";
+import { readClipboardAttr } from "@/lib/tiptap/attr-clipboard-codec";
+
+/** A rendered math atom's `latex`, read through the attr codec. */
+function staticLatex(el: Element): string {
+  const v = readClipboardAttr(el, "latex");
+  return typeof v === "string" ? v : "";
+}
 import { borrowedBodyInlineStyle } from "@/lib/borrowed-body-style";
 import { renderMath } from "@/lib/tiptap/math";
 import { richJsonToPlainText } from "@/lib/footnote-content";
@@ -73,16 +80,16 @@ export function StaticBorrowedText({
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   // One-shot KaTeX pass per rendered HTML: repaint each math atom from its
-  // `latex` attribute (TipTap's default attr rendering carries it through
-  // generateHTML). Keyed on `html` so a body edit re-runs it; never runs on
+  // `latex` attr, which `renderHTML` carries in the clipboard codec's lane
+  // (`data-attr-latex`, task 1068). Keyed on `html` so a body edit re-runs it; never runs on
   // any editor event — this surface has no editor.
   useEffect(() => {
     const root = rootRef.current;
     if (!root || !html) return;
     const inline = root.querySelectorAll<HTMLElement>(STATIC_MATH_SELECTORS.inline);
-    for (const el of inline) renderMath(el, el.getAttribute("latex") ?? "", false);
+    for (const el of inline) renderMath(el, staticLatex(el), false);
     const display = root.querySelectorAll<HTMLElement>(STATIC_MATH_SELECTORS.display);
-    for (const el of display) renderMath(el, el.getAttribute("latex") ?? "", true);
+    for (const el of display) renderMath(el, staticLatex(el), true);
   }, [html]);
 
   // Panel typography, inline — the ONE mapping the live twin also writes
