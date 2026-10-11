@@ -2143,9 +2143,9 @@ export const PANEL = {
    *  (see the `cardBody` exemption note above). */
   cardInner: "px-4 py-3 relative min-w-0",
   /** Expandable sub-pod with muted background (for fields, notes, etc.). */
-  subpod: "rounded-md border border-edge-subtle bg-surface-muted/70 p-3 overflow-hidden",
+  subpod: "rounded-lg border border-edge-subtle bg-surface-muted/70 p-3 overflow-hidden",
   /** Sub-pod with white background (for rich-text editors, etc.). */
-  subpodWhite: "rounded-md border border-edge-subtle bg-white overflow-hidden",
+  subpodWhite: "rounded-lg border border-edge-subtle bg-white overflow-hidden",
   /** Standard panel header bar — height set by --header-h so all headers align.
    *  Borderless: shares the body fill (--pod-panel), no divider — header and
    *  body read as one continuous warm sheet. */
