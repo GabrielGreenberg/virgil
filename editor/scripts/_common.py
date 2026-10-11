@@ -493,6 +493,26 @@ def is_terminal_status(status) -> bool:
     return status in TERMINAL_STATUSES
 
 
+#: The leave rule's provisional-close marker (task 1062) — twin of TS
+#: `CLOSED_BY_LEAVE` / `AiRequest.closedBy` (src/lib/ai-request-open.ts). A row
+#: the PROPOSAL LEAVE RULE closed `rejected` (its answering proposal was
+#: archived while unresolved — task 1046) carries `closedBy: "leave"`; any other
+#: close strips it.
+CLOSED_BY_LEAVE = "leave"
+
+
+def is_finalizable_by_proposal(req) -> bool:
+    """May an accept / reject of the proposal answering `req` write over it?
+    Yes while it is non-terminal, and also when the leave rule closed it only
+    PROVISIONALLY — the proposal came back (restore) and the user has now
+    settled it, which is the real outcome (task 1062). Twin of TS
+    `isFinalizableByProposal`."""
+    if not isinstance(req, dict):
+        return False
+    return (not is_terminal_status(req.get("status"))
+            or req.get("closedBy") == CLOSED_BY_LEAVE)
+
+
 #: The `ai-requests.json` KIND vocabulary — the eight wire tokens, stated ONCE
 #: for every Python reader (task 682) and the twin of TS `AI_REQUEST_KINDS`
 #: (src/lib/ai-request-kind.ts). Parity across the language line is pinned by

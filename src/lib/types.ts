@@ -434,7 +434,20 @@ export interface AiRequest {
   selectedText?: string;
   /** Origin card if this request was bridged from a card-level flag. */
   linkedTo?: AiRequestLink;
+  /** HOW a terminal row was closed, when that matters to a later writer.
+   *  `"leave"` — the PROPOSAL LEAVE RULE (task 1046) closed it `rejected`
+   *  because the answering proposal was archived / deleted / morphed away while
+   *  unresolved, not because the user rejected it. Such a close is PROVISIONAL:
+   *  if the proposal comes back (restore) and is then accepted or rejected, the
+   *  proposal finalize contract overwrites it (task 1062) — on either door,
+   *  `finalizeProposalRequest` and `apply_response.py` `_mutation_commit`.
+   *  Absent on every other row; any other close strips it. */
+  closedBy?: AiRequestClosedBy;
 }
+
+/** The one provisional close (see {@link AiRequest.closedBy}). Python twin:
+ *  `CLOSED_BY_LEAVE` in `editor/scripts/_common.py`. */
+export type AiRequestClosedBy = "leave";
 
 export interface AiRequestsState {
   requests: AiRequest[];

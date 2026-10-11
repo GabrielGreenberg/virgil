@@ -26,7 +26,12 @@
  * a change on either side trips a test instead of silently re-drifting.
  */
 
-import type { AiRequest, AiRequestResult, AiRequestStatus } from "@/lib/types";
+import type {
+  AiRequest,
+  AiRequestClosedBy,
+  AiRequestResult,
+  AiRequestStatus,
+} from "@/lib/types";
 
 /**
  * The terminal-status SSOT: `complete` / `failed` are the v1 terminal
@@ -110,8 +115,34 @@ export function isAiRequestStatus(s: unknown): s is AiRequestStatus {
 export function closeRequestRow(
   r: AiRequest,
   result: AiRequestResult,
+  closedBy?: AiRequestClosedBy,
 ): AiRequest {
-  return { ...r, status: "complete", result };
+  // Any close but the leave rule's own is DEFINITIVE, so it strips a stale
+  // `closedBy` rather than carrying a provisional marker past its overwrite.
+  const next: AiRequest = { ...r, status: "complete", result };
+  if (closedBy) next.closedBy = closedBy;
+  else delete next.closedBy;
+  return next;
+}
+
+/** The leave rule's marker (task 1062) — the Python twin is `CLOSED_BY_LEAVE`. */
+export const CLOSED_BY_LEAVE: AiRequestClosedBy = "leave";
+
+/**
+ * May the PROPOSAL FINALIZE contract (an accept / reject of the proposal that
+ * answers this row) write over `r`? Yes while the row is non-terminal, and also
+ * when it is terminal only PROVISIONALLY — closed by the leave rule because its
+ * proposal left unresolved (task 1046). That proposal can come back (an Archive
+ * restore keeps its `aiOriginRequestId`); the user's eventual accept/reject is
+ * then the real outcome, so it supersedes the provisional `rejected` — and on
+ * accept closes the source todo — exactly as it would have had the proposal
+ * never left (task 1062). Any other terminal row is final. Python twin:
+ * `is_finalizable_by_proposal` in `editor/scripts/_common.py`.
+ */
+export function isFinalizableByProposal(
+  r: Pick<AiRequest, "status" | "closedBy">,
+): boolean {
+  return !isTerminalStatus(r.status) || r.closedBy === CLOSED_BY_LEAVE;
 }
 
 /**

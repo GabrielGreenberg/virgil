@@ -219,7 +219,11 @@ import {
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag, ABSENT_CARD_CONTEXT } from "@/lib/ai-request-bridge";
 import { richFromPlainText } from "@/lib/footnote-content";
-import type { AiRequestSyncMode, ProposalResult } from "@/lib/ai-request-bridge";
+import type {
+  AiRequestSyncMode,
+  ProposalFinalizeCause,
+  ProposalResult,
+} from "@/lib/ai-request-bridge";
 import {
   finalizeLeavingProposal,
   finalizeProposal,
@@ -1458,9 +1462,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Fires on a status commit only, never per transaction (keystroke sanctity).
   const finalizeTodoSetDone = todosHookRaw.setDone;
   const onProposalFinalize = useCallback(
-    (requestId: string, result: ProposalResult) => {
-      void finalizeProposal(docId, requestId, result, (todoId) =>
-        finalizeTodoSetDone(todoId, true),
+    (requestId: string, result: ProposalResult, cause: ProposalFinalizeCause) => {
+      void finalizeProposal(
+        docId,
+        requestId,
+        result,
+        (todoId) => finalizeTodoSetDone(todoId, true),
+        cause,
       );
     },
     [docId, finalizeTodoSetDone],

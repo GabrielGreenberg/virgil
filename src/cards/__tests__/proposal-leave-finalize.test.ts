@@ -64,7 +64,7 @@ describe("(a) leavingProposalRequestId — the leave rule", () => {
     finalizeLeavingProposal(proposal(), onFinalize);
     finalizeLeavingProposal(proposal({ status: "accepted" }), onFinalize);
     expect(LEAVING_PROPOSAL_RESULT).toBe("rejected");
-    expect(onFinalize.mock.calls).toEqual([["req-1", "rejected"]]);
+    expect(onFinalize.mock.calls).toEqual([["req-1", "rejected", "left"]]);
   });
 });
 

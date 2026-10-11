@@ -231,7 +231,7 @@ describe("terminate-mode CLOSE arity ↔ close_linked_request parity", () => {
       join(repoRoot(), "src/lib/ai-request-open.ts"),
       "utf8",
     ).replace(/\s+/g, " ");
-    expect(openSrc).toContain('return { ...r, status: "complete", result };');
+    expect(openSrc).toContain('const next: AiRequest = { ...r, status: "complete", result };');
     const bridge = readFileSync(
       join(repoRoot(), "src/lib/ai-request-bridge.ts"),
       "utf8",
@@ -337,5 +337,37 @@ describe("isTerminalStatus terminal-set SSOT", () => {
       const pythonTerminal = status === "complete" || status === "failed";
       expect(isTerminalStatus(status)).toBe(pythonTerminal);
     }
+  });
+});
+
+/**
+ * The leave rule's PROVISIONAL close (task 1062). Both doors stamp the same
+ * marker on a leave close, both let ONLY that terminal be overwritten by a
+ * proposal accept / reject, and both strip it on the definitive close — so a
+ * proposal restored and then settled ends identically from the app and the
+ * script.
+ */
+describe("closedBy: \"leave\" — the provisional close, both doors", () => {
+  const ts = readFileSync(join(repoRoot(), "src/lib/ai-request-open.ts"), "utf8")
+    .replace(/\s+/g, " ");
+  const common = pySource("editor/scripts/_common.py").replace(/\s+/g, " ");
+  const apply = pySource("editor/scripts/apply_response.py").replace(/\s+/g, " ");
+
+  it("the marker token is the same string on both sides", () => {
+    expect(ts).toContain('CLOSED_BY_LEAVE: AiRequestClosedBy = "leave"');
+    expect(common).toContain('CLOSED_BY_LEAVE = "leave"');
+  });
+  it("the overwrite predicate has the same two clauses", () => {
+    expect(ts).toContain(
+      "return !isTerminalStatus(r.status) || r.closedBy === CLOSED_BY_LEAVE;",
+    );
+    expect(common).toContain(
+      'return (not is_terminal_status(req.get("status")) or req.get("closedBy") == CLOSED_BY_LEAVE)',
+    );
+  });
+  it("the script's leave door stamps it and its settle door strips it", () => {
+    expect(apply).toContain('req["closedBy"] = CLOSED_BY_LEAVE');
+    expect(apply).toContain("is_finalizable_by_proposal(req)");
+    expect(apply).toContain('req.pop("closedBy", None)');
   });
 });

@@ -387,8 +387,11 @@ task = req_by_id(sb, "rev-leave-task")
 check(task["status"] == "complete" and task.get("result") == "rejected",
       "the answered Task → complete / rejected (not stranded in-progress)")
 check(todo_done(sb) == done_before, "the source todo is untouched (the ask is still unanswered)")
-# Restore brings the proposal back pending over a completed Task; accepting it
-# must still work (the by-id completion tolerates a terminal row).
+check(task.get("closedBy") == "leave",
+      "the leave close is stamped PROVISIONAL (closedBy: leave — task 1062)")
+# Restore brings the proposal back pending over a provisionally-closed Task;
+# accepting it supersedes the leave close — the SAME final row the app's
+# finalizeProposalRequest writes (proposal-leave-finalize.test.ts, task 1062).
 r = run(APPLY, str(sb), "restore", json.dumps({"cardId": "rev-leave-1"}))
 check(r.returncode == 0, f"restore exited 0 (stderr={r.stderr.strip()[:160]})")
 check(card_by_id(sb, "revisions.json", "cards", "rev-leave-1")["status"] == "pending",
@@ -396,6 +399,49 @@ check(card_by_id(sb, "revisions.json", "cards", "rev-leave-1")["status"] == "pen
 r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "rev-leave-1"}))
 check(r.returncode == 0, f"accept of a restored proposal exited 0 (stderr={r.stderr.strip()[:160]})")
 check(REV_SUGGESTED in tex_of(sb), "…and its text landed")
+task = req_by_id(sb, "rev-leave-task")
+check(task["status"] == "complete" and task.get("result") == "accepted"
+      and "closedBy" not in task,
+      "restore → accept: the Task ends complete / accepted, provisional marker gone")
+check(todo_done(sb) is True, "restore → accept: the source todo is CLOSED (the ask was answered)")
+
+print("\n=== leave rule: a USER-rejected Task is final — a stray accept does not overwrite it ===")
+sb = sandbox()
+propose(sb, panel="revisions", card_id="rev-final-1", kind_label="revision-suggestion",
+        task_id="rev-final-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+link_task_to_todo(sb, "rev-final-task")
+p = sb / "virgil" / "ai-requests.json"
+ar = json.loads(p.read_text())
+for row in ar["requests"]:
+    if row.get("id") == "rev-final-task":
+        row["status"], row["result"] = "complete", "rejected"   # no closedBy: definitive
+p.write_text(json.dumps(ar, indent=2))
+done_before = todo_done(sb)
+r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "rev-final-1"}))
+check(r.returncode == 0, f"accept exited 0 (stderr={r.stderr.strip()[:160]})")
+task = req_by_id(sb, "rev-final-task")
+check(task.get("result") == "rejected", "a definitive terminal row is not overwritten (app parity)")
+check(todo_done(sb) == done_before, "…and no todo is closed off it")
+
+print("\n=== archive REFUSES an APPLIED proposal (its edit is live in the .tex — task 1062) ===")
+sb = sandbox()
+propose(sb, panel="revisions", card_id="rev-applied-1", kind_label="revision-suggestion",
+        task_id="rev-applied-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+p = sb / "virgil" / "revisions.json"
+rv = json.loads(p.read_text())
+for c in rv["cards"]:
+    if c.get("id") == "rev-applied-1":
+        c["status"] = "applied"
+p.write_text(json.dumps(rv, indent=2))
+before = files_snapshot(sb)
+arch_path = sb / "virgil" / "archive.json"
+arch_before = arch_path.read_bytes() if arch_path.exists() else None
+r = run(APPLY, str(sb), "archive", json.dumps({"cardId": "rev-applied-1"}))
+check(r.returncode != 0 and "APPLIED" in r.stderr, "archive of an applied proposal refuses, naming why")
+check("Keep or Revert" in r.stderr, "…and names the settle that unblocks it")
+check(files_snapshot(sb) == before
+      and (arch_path.read_bytes() if arch_path.exists() else None) == arch_before,
+      "…and writes nothing (Task, card, archive all untouched)")
 
 print("\n=== leave rule: archiving a SETTLED proposal writes no second completion ===")
 sb = sandbox()
