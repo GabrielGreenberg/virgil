@@ -18,7 +18,13 @@
  */
 import type { CardKind } from "./types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
-import { collabClaimScope, hasCollabClaims } from "./predicates";
+import {
+  STORED_KIND_BY_PANEL,
+  collabClaimScope,
+  hasCollabClaims,
+  storedKindForCardKind,
+} from "./predicates";
+import { MODE_B_COLLECTIONS, type ModeBBag, type ModeBCollection } from "./mode-b-collections";
 
 /** One presence claim on the collab wire. Byte-shape matches
  *  `useCollab.updateSelection` / `getCardSelections`. */
@@ -58,19 +64,68 @@ export const COLLAB_SELECTION_SLOT_KINDS = [
 export type CollabSlotKind = (typeof COLLAB_SELECTION_SLOT_KINDS)[number];
 
 /**
+ * A slot is named after ONE kind but holds the selected id of EVERY kind its
+ * panel stores (task 1063): the `note` slot also carries highlight ids, the
+ * `cutter-comment` / `revision-comment` slots their panel's suggestion ids, the
+ * `report` slot report-request ids. Which kinds share a slot is DERIVED from
+ * the stored-kind table (`STORED_KIND_BY_PANEL`, task 999) — the slot kind's
+ * panel row — and which bag collections can hold such an id from the Mode-B
+ * slot table (`MODE_B_COLLECTIONS`). A slot whose kind lives in no polymorphic
+ * panel (footnote, archive, …) resolves to no collections: its kind is exact.
+ */
+const SHARED_SLOT_COLLECTIONS: ReadonlyMap<CollabSlotKind, readonly ModeBCollection[]> =
+  (() => {
+    const m = new Map<CollabSlotKind, readonly ModeBCollection[]>();
+    for (const slot of COLLAB_SELECTION_SLOT_KINDS) {
+      const address = storedKindForCardKind(slot);
+      if (!address) continue;
+      const row: Readonly<Record<string, CardKind>> = STORED_KIND_BY_PANEL[address.panel];
+      const family = new Set<CardKind>(Object.values(row));
+      m.set(
+        slot,
+        MODE_B_COLLECTIONS.filter((c) => c.kinds.some((k) => family.has(k))),
+      );
+    }
+    return m;
+  })();
+
+/**
+ * The ACTUAL card kind of the id selected in `slot` — looked up in the pane's
+ * card bag for a shared slot, the slot's own kind otherwise. An id the bag does
+ * not (yet) hold falls back to the slot kind, the pre-1063 behaviour.
+ */
+export function selectedCardKind(
+  slot: CollabSlotKind,
+  cardId: string,
+  bag: ModeBBag,
+): CardKind {
+  for (const collection of SHARED_SLOT_COLLECTIONS.get(slot) ?? []) {
+    const record = bag[collection.slot]?.find((r) => r.id === cardId);
+    if (record) return collection.kindOf(record);
+  }
+  return slot;
+}
+
+/**
  * Build the collab claim broadcast from the current per-slot selections.
- * Emits a claim for a selected card IFF its kind participates in collab claims
- * (`hasCollabClaims`) — the same facet the reader gates on — so the writer set
- * can never drift from the reader gate. A null/absent selection contributes
- * nothing.
+ * Emits a claim for a selected card IFF its ACTUAL kind participates in collab
+ * claims (`hasCollabClaims`) — the same facet the reader gates on — so the
+ * writer set can never drift from the reader gate. The gate reads the selected
+ * CARD's kind (`selectedCardKind`), not the slot's: selecting a highlight, a
+ * suggestion or a report-request through a shared slot is judged as what it
+ * is (task 1063), and its claim carries that kind's scope. A null/absent
+ * selection contributes nothing.
  */
 export function collabClaimsFor(
   selectedByKind: Record<CollabSlotKind, string | null | undefined>,
+  bag: ModeBBag,
 ): CollabClaim[] {
   const claims: CollabClaim[] = [];
-  for (const kind of COLLAB_SELECTION_SLOT_KINDS) {
-    const cardId = selectedByKind[kind];
-    if (cardId && hasCollabClaims(kind)) {
+  for (const slot of COLLAB_SELECTION_SLOT_KINDS) {
+    const cardId = selectedByKind[slot];
+    if (!cardId) continue;
+    const kind = selectedCardKind(slot, cardId, bag);
+    if (hasCollabClaims(kind)) {
       claims.push({ panelKind: collabClaimScope(kind), cardId });
     }
   }
