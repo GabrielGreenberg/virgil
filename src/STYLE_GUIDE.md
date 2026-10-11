@@ -876,7 +876,10 @@ floor + gutters) is derived in code from its sources, never hand-added.
 Enforced by `npm run check:spacing` (`scripts/check-spacing-grid.mjs`, the
 radius guard's sibling; contract `spacing-grid.test.ts`): an arbitrary
 Tailwind spacing utility passes only as a `var(…)` or with the `aligns:` note
-(task 821). `--pod-gap: 10px` is the canonical pod-to-pod gap;
+(task 821). The same rule reaches every other spelling (task 1060): CSS
+declarations (stylesheets, `cssText`, `[padding:…]`) and inline style-object
+keys are judged on their px value — an odd px above 1 or a fractional px needs
+the note; `em`/`rem` prose rhythm is outside the pixel grid. `--pod-gap: 10px` is the canonical pod-to-pod gap;
 don't override.
 
 Four icon-button sizes: `iconbtn-xs` (16×16 — card/float header

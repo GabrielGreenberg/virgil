@@ -809,7 +809,7 @@ function OutlineNode({
             {showNumbers && node.heading.sectionNumber && (
               <span
                 className="shrink-0 text-ink-muted font-normal text-sm leading-snug tabular-nums"
-                style={{ paddingRight: 5 }}
+                style={{ paddingRight: 4 }}
               >
                 {node.heading.sectionNumber}
               </span>
@@ -1374,6 +1374,9 @@ function EditableOutline({
 
 /* ── Focus band overlay ──────────────────────────────────────────── */
 
+/** The band's drag-handle dot; it centres on the band edge by half itself. */
+const FOCUS_HANDLE = 10;
+
 function FocusBand({
   scrollRef,
   focusState,
@@ -1625,10 +1628,10 @@ function FocusBand({
           style={{
             position: "absolute",
             left: "50%",
-            top: band.top - 5,
-            width: 10,
-            height: 10,
-            marginLeft: -5,
+            top: band.top - FOCUS_HANDLE / 2,
+            width: FOCUS_HANDLE,
+            height: FOCUS_HANDLE,
+            marginLeft: -FOCUS_HANDLE / 2,
             borderRadius: "50%",
             background: "var(--accent)",
             border: "2px solid var(--pod-panel, #fffdfa)",
@@ -1646,10 +1649,10 @@ function FocusBand({
           style={{
             position: "absolute",
             left: "50%",
-            top: band.top + band.height - 5,
-            width: 10,
-            height: 10,
-            marginLeft: -5,
+            top: band.top + band.height - FOCUS_HANDLE / 2,
+            width: FOCUS_HANDLE,
+            height: FOCUS_HANDLE,
+            marginLeft: -FOCUS_HANDLE / 2,
             borderRadius: "50%",
             background: "var(--accent)",
             border: "2px solid var(--pod-panel, #fffdfa)",

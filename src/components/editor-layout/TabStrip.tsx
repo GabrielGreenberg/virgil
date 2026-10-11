@@ -21,7 +21,7 @@ import { ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE } from "@library/lib/dnd-
 import { addEntryToLibraryGlobal } from "@library/lib/library-store";
 import { IconLibrary, IconX } from "./panel-icons";
 import { DocumentFolderTab } from "./DocumentFolderTab";
-import { InlineTabLabel } from "./InlineTabLabel";
+import { InlineTabLabel, LIBRARY_FOLDER_LABEL_TRAIL } from "./InlineTabLabel";
 import { InlineRenameInput } from "@/components/InlineRenameInput";
 import { TabSeparator } from "./TabSeparator";
 import { TabPlusMenu } from "../TabPlusMenu";
@@ -237,7 +237,12 @@ function TabStripImpl(props: TabStripProps) {
               onClick={() => {}}
             >
               <IconLibrary />
-              <span className="text-[13px] leading-4 mr-2.5">Library</span>
+              <span
+                className="text-[13px] leading-4"
+                style={{ marginRight: LIBRARY_FOLDER_LABEL_TRAIL }}
+              >
+                Library
+              </span>
             </DocumentFolderTab>
           </div>,
         );
