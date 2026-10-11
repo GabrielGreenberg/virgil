@@ -74,6 +74,7 @@ import {
   dataOnlyAttrs,
 } from "@/lib/node-attr-sets";
 import Highlight from "@tiptap/extension-highlight";
+import { AtomClipboard } from "@/lib/tiptap/atom-clipboard";
 import {
   InlineMath,
   DisplayMath,
@@ -359,6 +360,11 @@ export function buildCardBodySchema(
   // Backspace lifts an item from its second block. Both scope configs turn
   // StarterKit's stock `listKeymap` off; `VirgilListKeymap` is its replacement,
   // exactly as in the main editor (task 418).
+  //
+  // And the atoms' clipboard (task 1068): paste identity + plain text, beside
+  // the atoms it serves rather than in the atom list (which names schema
+  // members only). A card body cannot see the main doc's live ids, so every
+  // pasted card-bearing id is re-minted — paste-as-new.
   if (scope !== "excerpt")
     return [
       ...buildBorrowedAtomSchema(opts),
@@ -367,6 +373,7 @@ export function buildCardBodySchema(
       CardBulletList,
       CardOrderedList,
       VirgilListKeymap,
+      AtomClipboard.configure({ scope: "fresh" }),
     ];
   return [
     ...buildBorrowedAtomSchema({ ...opts, includeLabelRefFootnote: true }),
@@ -376,6 +383,7 @@ export function buildCardBodySchema(
     CardBulletList,
     CardOrderedList,
     VirgilListKeymap,
+    AtomClipboard.configure({ scope: "fresh" }),
   ];
 }
 

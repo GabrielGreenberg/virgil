@@ -1,5 +1,5 @@
 import { Node, mergeAttributes } from "@tiptap/react";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin } from "@tiptap/pm/state";
 import { DOMSerializer } from "@tiptap/pm/model";
 import { citationDisplay } from "./citation-display";
 import { CITE_RE_BARE } from "@/lib/cite-commands";
@@ -41,6 +41,7 @@ import {
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import { createLeafNodeView } from "@/lib/tiptap/leaf-node-view";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
+import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
 
 const CITATION_ATOM = ATOM_REGISTRY.citation;
 
@@ -74,15 +75,17 @@ export const Citation = Node.create<CitationOptions>({
   },
 
   addAttributes() {
-    return {
+    // Every attr — the ids included — round-trips the HTML clipboard through
+    // the ONE codec (task 1068); the presentational `data-link-*` below is a
+    // separate lane the clipboard never reads back.
+    return withClipboardCodec({
       command: { default: "" },
       displayText: { default: "" },
-      // citationId stays in JSON but doesn't render to HTML.
-      citationId: { default: "", renderHTML: () => ({}) },
-      linkId: { default: "", renderHTML: () => ({}) },
-      linkKind: { default: "citation", renderHTML: () => ({}) },
-      linkCard: { default: "", renderHTML: () => ({}) },
-    };
+      citationId: { default: "" },
+      linkId: { default: "" },
+      linkKind: { default: "citation" },
+      linkCard: { default: "" },
+    });
   },
 
   parseHTML() {
@@ -125,38 +128,9 @@ export const Citation = Node.create<CitationOptions>({
     // Task 991: Backspace right after a typed `\cite` gives the literal back.
     const citationRevert = typedLatexRevertSpec("citation", "citationInput");
     return [
-      new Plugin({
-        key: new PluginKey("citationClipboardText"),
-        props: {
-          // Plain-text clipboard: substitute citation atoms with their
-          // displayText so copy-paste preserves the visible reference
-          // (e.g. "Smith 2020") instead of dropping the atom entirely.
-          // HTML clipboard already round-trips via renderHTML/parseHTML.
-          clipboardTextSerializer(slice) {
-            let out = "";
-            let firstBlock = true;
-            slice.content.descendants((node) => {
-              if (node.type.name === "citation") {
-                out +=
-                  (node.attrs.displayText as string) ||
-                  (node.attrs.command as string) ||
-                  "";
-                return false;
-              }
-              if (node.isText) {
-                out += node.text ?? "";
-                return false;
-              }
-              if (node.isBlock) {
-                if (!firstBlock && !out.endsWith("\n")) out += "\n";
-                firstBlock = false;
-              }
-              return true;
-            });
-            return out;
-          },
-        },
-      }),
+      // The plain-text clipboard flavour is `AtomClipboard`'s (task 1068) —
+      // one table for every atom kind, not a citation-only serializer that
+      // pre-empted the rest.
       new Plugin({
         key: citationRevert.key,
         state: citationRevert.state,

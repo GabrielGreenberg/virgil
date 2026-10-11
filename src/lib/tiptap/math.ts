@@ -22,6 +22,7 @@ import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // drift from ATOM_REGISTRY. displayMath is deliberately NOT an atom (a block, not
 // inline) and keeps its literals. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "./atom-registry";
+import { withClipboardCodec } from "./attr-clipboard-codec";
 import { createLeafNodeView } from "./leaf-node-view";
 import { ERROR_INK } from "@/lib/error-ink";
 
@@ -200,23 +201,25 @@ export const InlineMath = Node.create<MathOptions>({
   },
 
   addAttributes() {
-    return {
+    // Round-trips the HTML clipboard through the ONE codec (task 1068) —
+    // `$1.50$` is never number-coerced to `$1.5$`.
+    return withClipboardCodec({
       latex: { default: "" },
-    };
+    });
   },
 
   parseHTML() {
     return [{ tag: `span[data-type="${INLINE_MATH_ATOM.domType}"]` }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ HTMLAttributes, node }) {
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": INLINE_MATH_ATOM.domType,
         class: INLINE_MATH_ATOM.domClass,
       }),
-      `$${HTMLAttributes.latex || ""}$`,
+      `$${(node.attrs.latex as string) || ""}$`,
     ];
   },
 
@@ -321,24 +324,26 @@ export const DisplayMath = Node.create<MathOptions>({
   },
 
   addAttributes() {
-    return {
+    // `latex` rides the ONE clipboard codec (task 1068), like inline math's;
+    // `uuid` keeps its own stated policy (a paste never carries it).
+    return withClipboardCodec({
       latex: { default: "" },
       uuid: UUID_ATTR_SPEC.uuid,
-    };
+    });
   },
 
   parseHTML() {
     return [{ tag: 'div[data-type="display-math"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ HTMLAttributes, node }) {
     return [
       "div",
       mergeAttributes(HTMLAttributes, {
         "data-type": "display-math",
         class: "display-math",
       }),
-      `$$${HTMLAttributes.latex || ""}$$`,
+      `$$${(node.attrs.latex as string) || ""}$$`,
     ];
   },
 

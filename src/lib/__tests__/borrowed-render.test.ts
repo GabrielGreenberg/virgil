@@ -52,8 +52,9 @@ describe("renderBorrowedHtml — fidelity", () => {
     // The citation resolver rewrote the persisted empty displayText.
     expect(html!).toContain("Abusch 2014");
     expect(html!).toContain('data-type="inline-math"');
-    // The latex attr rides through (the StaticBorrowedText KaTeX pass reads it).
-    expect(html!).toContain('latex="x^2"');
+    // The latex attr rides through the clipboard codec's lane (the
+    // StaticBorrowedText KaTeX pass reads it there).
+    expect(html!).toContain('data-attr-latex="&quot;x^2&quot;"');
     expect(html!).toContain("See ");
   });
 

@@ -8,6 +8,7 @@ import { setDataIfChanged, setTextIfChanged } from "./idempotent-dom";
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "./atom-registry";
 import { createLeafNodeView } from "./leaf-node-view";
+import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
 
 const REF_ATOM = ATOM_REGISTRY.ref;
 
@@ -57,7 +58,9 @@ export const LabelRef = Node.create({
   selectable: false,
 
   addAttributes() {
-    return {
+    // Round-trips the HTML clipboard through the ONE codec (task 1068) — a
+    // `\ref{1.10}` is never number-coerced to `\ref{1.1}`.
+    return withClipboardCodec({
       label: { default: "" },
       displayText: { default: "" },
       // "ref" → \ref{…} (bare number, e.g. "3" / "2.1")
@@ -67,21 +70,21 @@ export const LabelRef = Node.create({
       // Advisory tag written beside `displayText` by the ref-display
       // resolver: "heading" | "example" | "figure" | null.
       targetKind: { default: null },
-    };
+    });
   },
 
   parseHTML() {
     return [{ tag: `span[data-type="${REF_ATOM.domType}"]` }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ HTMLAttributes, node }) {
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": REF_ATOM.domType,
         class: REF_ATOM.domClass,
       }),
-      HTMLAttributes.displayText || "??",
+      (node.attrs.displayText as string) || "??",
     ];
   },
 

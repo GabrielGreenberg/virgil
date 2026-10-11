@@ -44,6 +44,7 @@ import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { DocStructureObserver, diffTouchesNumberingInputs, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { rawCountersTouched } from "@/lib/tiptap/raw-counter-gate";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
+import { AtomClipboard } from "@/lib/tiptap/atom-clipboard";
 import { ensureAnchorUuid, mintDocUuid } from "@/lib/anchor-uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
@@ -1879,6 +1880,10 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     LatexComment.configure({ surface: isFloat ? "float" : "main" }),
     Citation,
     LabelRef,
+    // The atoms' paste identity + plain-text clipboard (task 1068). A float's
+    // doc is one node of MAIN's, so it cannot answer "is this id free?" —
+    // it re-mints every pasted card-bearing id rather than risk a duplicate.
+    AtomClipboard.configure({ scope: isFloat ? "fresh" : "collide" }),
     // cardContext gates the example's par-title strip (#47): on a card/float
     // surface its absolutely-positioned untitled "+T" overlays the card
     // header and collides with the card's own CardBodyTitle +T. Mirrors the
