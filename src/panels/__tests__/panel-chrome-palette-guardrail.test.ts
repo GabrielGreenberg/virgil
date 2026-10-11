@@ -112,7 +112,7 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
   // colours (blue-400 vs --status-* has no member at all; red-400 ≠
   // --status-danger). That is a visual decision, not a swap.
   "src/panels/_shared/suggestion-fields.tsx :: bg-blue-400": "status-dot vocabulary; --status-* convergence is a visual call",
-  "src/panels/_shared/suggestion-fields.tsx :: bg-sky-300": "status-dot vocabulary; --status-* convergence is a visual call",
+  "src/panels/_shared/suggestion-fields.tsx :: bg-sky-300": "status-dot vocabulary (`applied` = the pending-AI signal); candidate home is the --pending-ai-* family, a visual call",
   "src/panels/_shared/suggestion-fields.tsx :: bg-red-400": "status-dot vocabulary; --status-* convergence is a visual call",
 
   // The suggestion DIFF vocabulary: green = the proposed text, red = the text
@@ -151,8 +151,10 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
   // `<mark>` the `--amber-highlight-*` family — pinned by
   // `src/panels/Search/__tests__/search-token-convergence.test.ts`.)
 
-  // Singletons with no filed owner yet.
-  "src/panels/Omni/OmniViewPanel.tsx :: border-sky-200": "omni notice strip edge; wants an informational edge token",
+  // (The Omni `border-sky-200` singleton retired with task 1066: it was never
+  // an "omni notice strip" but the bulk PENDING-CHANGE navigator, and it now
+  // reads `--pending-ai-edge` with its per-change twin — pinned by
+  // `src/cards/__tests__/pending-ai-tint-family.test.ts`.)
 };
 
 /**

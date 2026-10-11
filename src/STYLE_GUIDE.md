@@ -274,6 +274,16 @@ Three rules the family carries:
   member for (a light border, a dark body ink, a placeholder ink). Same reasoning
   the destructive census already records for the red half.
 
+**The pending-AI blue is a family too** (task 1066). An applied-but-unkept AI
+change and an open AI request paint ONE light blue (Gabriel, 2026-07-03), and
+the chrome that frames that signal wears the same hue: `--pending-ai-tint`
+(`#bfdbfe`, the band + request wash; ≡ the TS `PENDING_AI_TINT`, which the band
+stamps into `data-tint-color`), `--pending-ai-edge` (the per-change and bulk
+pending-change navigators' border — derived from the tint), `--pending-ai-ink`
+(`#60a5fa`, the delete-mode strike). A new pending-AI surface reads this family,
+never a `sky-*`/`blue-*` utility — the navigators once wore `sky-200` (h≈231)
+beside a blue-200 band (h≈254). Guard: `src/cards/__tests__/pending-ai-tint-family.test.ts`.
+
 **And the control PAIR is spelled once.** Keep / Dismiss on a pending AI change
 is `src/components/CommitActions.tsx` — one component, mounted by the margin
 `PendingChangePill` and by the applied suggestion card, carrying the buttons,

@@ -725,6 +725,19 @@
   --status-collab-active: #15803d; /* darker green — partner is editing now */
   --status-collab-idle: #d4a843;   /* honeyed amber — partner stepped away */
 
+  /* Pending AI change (task 1066) — the ONE light blue every pending-AI signal
+     paints in (Gabriel, 2026-07-03: the applied band and the open-request wash
+     are two signals, deliberately the same colour). The TS source of the tint
+     is `PENDING_AI_TINT` (src/cards/legacy-token-crosswalk.ts) — the band
+     stamps that literal into `data-tint-color` — and
+     `pending-ai-tint-family.test.ts` pins this var equal to it. The chrome that
+     FRAMES the same signal (the per-change and bulk pending-change navigators,
+     the delete-mode strike) reads the family rather than restating a blue:
+     they used to wear `sky-200` (h≈231) beside a blue-200 band (h≈254). */
+  --pending-ai-tint: #bfdbfe;                  /* band + request wash (v3 blue-200) */
+  --pending-ai-edge: var(--pending-ai-tint);   /* navigator border — the band's own hue */
+  --pending-ai-ink: #60a5fa;                   /* delete-mode strike line (v3 blue-400, same hue) */
+
   /* Interaction */
   --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */
 
@@ -3939,7 +3952,7 @@ textarea {
  * highlight. The line colour matches the light-blue tint accent. */
 .linked-anchor[data-pending-delete="true"] {
   text-decoration: line-through;
-  text-decoration-color: #60a5fa;
+  text-decoration-color: var(--pending-ai-ink);
 }
 
 /* Per-kind --link-anchor-color on panel cards is NO LONGER a CSS map:
