@@ -112,9 +112,28 @@ namespaces.
 **The skills' own descriptions ARE the routing vocabulary.** Every `editor:*`
 and `library:*` skill declares, in its `description:` frontmatter, the phrases
 it triggers on (`Triggers on: …`) and the asks it explicitly does *not* take
-(`Does NOT trigger for …`). The harness surfaces all of them in the skill
-listing you can already read. So read the user's most recent message, match it
-against those declared triggers, and dispatch the best fit **as a subagent**.
+(`Does NOT trigger for …`). **Read them from disk, not from the skill
+listing.** The harness listing is a hint only: under its size budget it shows
+some skills as a bare name and cuts others off mid-sentence (`…`) — measured,
+it dropped the description of `/editor/review`, `/editor/reject-suggestion`
+and `/library/ai-requests` among fifteen others — and a skill whose
+description you cannot see is a skill you cannot route.
+
+So run the catalog helper **once** per front-door turn. It sits beside
+`library_path.py` (end-user flow `<folder>/.virgil/scripts/editor/skill_catalog.py`,
+dev flow `editor/scripts/skill_catalog.py`), finds the skills itself, and
+prints one JSON line per skill: `name`, `slash`, the whitespace-normalised
+`description`, and the declarations the rules below read — `heavy`, `light`,
+`developerOnly`, `requiredIds`:
+
+```
+python3 <skill_catalog.py>
+```
+
+Read the user's most recent message, match it against the triggers in
+**its** output, and dispatch the best fit **as a subagent**. If the helper
+fails, read the frontmatter of `<folder>/.claude/commands/{editor,library}/*.md`
+directly — never route from a listing entry that is blank or ends in `…`.
 
 That is the whole vocabulary, and it is deliberately not repeated here. A
 hand-typed copy of it can only fall behind the skill set — and did, for months,
@@ -126,12 +145,13 @@ Four rules shape the match, and each reads a declaration the skill makes about
 itself rather than a list kept here:
 
 1. **Developer-only skills are not user routes.** A description that opens
-   `Developer-only` is for a Virgil maintainer working on the skill set
+   `Developer-only` (the catalog's `developerOnly`) is for a Virgil maintainer working on the skill set
    itself. Do not offer one to an end user.
 2. **A heavy library op takes Step 4** when the mode is not `in-library` —
    see Step 4, which reads the skill's own weight declaration.
 3. **A specialist is Task-bound** when its own `Args:` line declares a
-   *required* — unbracketed — `<requestId>` or `<bibKey>`. Then the id
+   *required* — unbracketed — `<requestId>` or `<bibKey>` (the catalog's
+   `requiredIds`). Then the id
    contract immediately below applies. A **bracketed** `[<requestId>]` is the
    skill declaring the id optional: `/editor/create-card` is that door, and it
    is the answer to "there is no Task".
@@ -219,7 +239,7 @@ triggers and no row here says otherwise, dispatch that skill.
 | "introduce me" / "how does this work" / "what can you do" / "I'm new" / "Virgil?" with no other content | **Onboarding** (Step 3) — a front-door branch, with no skill behind it |
 | a pass over the *whole* inbox, **or** several open Tasks match one ask | Dispatch `/editor/review <docPath>`. The front door does not choose between Tasks — draining the inbox is review's job |
 | a bibliography sync the user has not confirmed they want written | Dispatch `/editor/sync-bib-to-library <docPath>` with `--dry-run` first |
-| an ask that matches no skill's declared triggers | Ask one short clarifying question, then re-classify. Do **not** invent a skill name — if nothing in the listing fits, nothing fits |
+| an ask that matches no skill's declared triggers | Ask one short clarifying question, then re-classify. Do **not** invent a skill name — if nothing in the catalog fits, nothing fits |
 
 For each dispatch, mirror the `/editor/review`
 pattern: dispatch the specialist as a **subagent** so the front-door's
@@ -250,8 +270,9 @@ If the user follows up with a concrete request, jump to Step 2.
 ### Step 4 — Heavy-library branch (mount-or-queue)
 
 Triggered when the matched library skill's **own description declares it a
-`Heavy operation`** — the phrase, in any capitalisation — AND the current mode
-is **not** `in-library`.
+`Heavy operation`** — the phrase, in any capitalisation; the catalog's `heavy`
+field from `skill_catalog.py` (Step 2), read off the normalised text, so a hard
+wrap cannot hide it — AND the current mode is **not** `in-library`.
 
 That declaration is the gate — the phrase, not its casing: the one skill this
 Step's Queue branch is written for spells it `HEAVY operation`, and a
@@ -382,7 +403,7 @@ Done: oriented user. Output: state-summary.
   the error and stop.
 - Does **not** keep its own list of what the skills do. Each skill's
   `description:` is the one place its triggers, its weight and its argument
-  contract are stated; the table in Step 2 records only what a description
+  contract are stated, and `skill_catalog.py` is the one reader of it; the table in Step 2 records only what a description
   structurally cannot. Adding a row that restates a skill's triggers puts the
   front door back one commit behind the skill set.
 
