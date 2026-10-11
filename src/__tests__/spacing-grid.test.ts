@@ -34,8 +34,8 @@ describe("spacing-grid guard reach", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "virgil-spacing-guard-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  function scan(source: string): { ok: boolean; report: string } {
-    const fixture = path.join(dir, "fixture.tsx");
+  function scan(source: string, ext = "tsx"): { ok: boolean; report: string } {
+    const fixture = path.join(dir, `fixture.${ext}`);
     writeFileSync(fixture, source, "utf8");
     try {
       execFileSync("node", ["scripts/check-spacing-grid.mjs", fixture], { cwd: ROOT, stdio: "pipe" });
@@ -62,6 +62,40 @@ describe("spacing-grid guard reach", () => {
     const { ok, report } = scan(source);
     expect(ok, `guard passed arbitrary spacing in: ${source}`).toBe(false);
     expect(report).toContain(expected);
+  });
+
+  // The other spellings of the same prohibition (task 2026-10-11-1060):
+  // literal px, judged on the value.
+  it.each([
+    ["a CSS padding", "css", `.chip {\n  padding: 0 3px;\n}`, "padding: 0 3px"],
+    ["a CSS gap", "css", `.row { gap: 5px; }`, "gap: 5px"],
+    ["a CSS negative offset", "css", `.halo::before {\n  left: -5px;\n}`, "left: -5px"],
+    ["a CSS fractional margin", "css", `.x { margin-top: 2.5px; }`, "margin-top: 2.5px"],
+    ["a var() fallback in CSS", "css", `.x { padding: var(--pad, 5px); }`, "var(--pad, 5px)"],
+    ["a numeric style key", "tsx", `<span style={{ paddingRight: 5 }} />`, "paddingRight: 5"],
+    ["a negative style margin", "tsx", `<i style={{ marginLeft: -7 }} />`, "marginLeft: -7"],
+    ["a px-string style key", "tsx", `const box = { padding: "5px 8px" };`, `padding: "5px 8px"`],
+    ["a px-string style offset", "tsx", `<i style={{ top: "-3px" }} />`, `top: "-3px"`],
+    ["a cssText string", "tsx", `el.style.cssText = "position:absolute;top:-7px;right:-7px;";`, "top:-7px"],
+    ["a Tailwind arbitrary property", "tsx", `<div className="[padding:5px]" />`, "padding:5px"],
+  ])("flags %s", (_label, ext, source, expected) => {
+    const { ok, report } = scan(source, ext);
+    expect(ok, `guard passed off-grid spacing in: ${source}`).toBe(false);
+    expect(report).toContain(expected);
+  });
+
+  it.each([
+    ["on-grid CSS", "css", `.x {\n  padding: 4px 6px;\n  gap: 2px;\n  margin: 0 1px;\n  left: -8px;\n}`],
+    ["typographic em rhythm in CSS", "css", `.x { margin: 0.75em 0; padding: 0.3rem; }`],
+    ["an annotated CSS value", "css", `/* aligns: + the 1px border = the base chip */\n.x { padding: 0 5px; }`],
+    ["a CSS comment quoting a value", "css", `/* was padding: 5px */\n.x { padding: 4px; }`],
+    ["on-grid style keys", "tsx", `<div style={{ gap: 4, paddingRight: 6, margin: "4px 8px" }} />`],
+    ["a numeric rect offset", "tsx", `const r = { top: 3, left: 5 };`],
+    ["a derived style binding", "tsx", `<i style={{ marginLeft: -SIZE / 2, top: y - 5 }} />`],
+    ["non-spacing style keys", "tsx", `<i style={{ fontSize: 13, lineHeight: 1.5, width: 5 }} />`],
+  ])("passes %s", (_label, ext, source) => {
+    const { ok, report } = scan(source, ext);
+    expect(ok, `guard flagged legitimate spacing: ${source}\n${report}`).toBe(true);
   });
 
   it.each([

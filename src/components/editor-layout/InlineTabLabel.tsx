@@ -4,7 +4,10 @@ import { memo, type ReactNode } from "react";
 import { activatableProps } from "@/lib/activatable-props";
 import { IconX } from "./panel-icons";
 import { FONT_MONO } from "@/lib/font-stacks";
-import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
+import {
+  FOLDER_TAB_VARIANTS,
+  TAB_LABEL_MAX_PX,
+} from "@/components/chrome/folder-tab-geometry";
 import {
   INACTIVE_TAB_LABEL_STYLE,
   TAB_LABEL_ATTRS,
@@ -19,7 +22,7 @@ import { iconHint } from "@/components/Hint";
  * `variant` defaults to "tight" (pl-2 pr-2): used by paper/library/doc
  * tabs whose active counterpart applies negative margins to keep text and
  * neighbors pixel-stable across activation. The Library root tab passes
- * "library-pinned" instead (pl-[26px] pr-[26px]) — Library can't shift
+ * "library-pinned" instead (LIBRARY_PINNED_PAD_*) — Library can't shift
  * its silhouette leftward (it's the leftmost item), so the inline label
  * pre-reserves the swoop+inner-padding space, matching the folder
  * geometry exactly.
@@ -56,6 +59,23 @@ export type InlineTabLabelProps = {
   onClose?: (id: string) => void;
 };
 
+/** The active Library folder's label trails its content row by this much
+ *  (TabStrip renders it; read here so the inline footprint matches). */
+export const LIBRARY_FOLDER_LABEL_TRAIL = 10;
+
+// The library-pinned label pre-reserves the ACTIVE Library folder's footprint
+// (topbar variant), computed from the geometry SSOT rather than annotated:
+// left = foot-flare inset + the row's left pad; right = the right inset + the
+// row's right pad + the label's trail. Both come to 26 today — symmetric by
+// arithmetic, not by assertion.
+const TOPBAR = FOLDER_TAB_VARIANTS.topbar;
+const LIBRARY_PINNED_PAD_LEFT = TOPBAR.contentInsetLeft + TOPBAR.contentPadLeft;
+const LIBRARY_PINNED_PAD_RIGHT =
+  TOPBAR.contentInsetRight + TOPBAR.contentPadRight + LIBRARY_FOLDER_LABEL_TRAIL;
+/** The hover lozenge's breathing room around the content — the tight
+ *  variant's own `pl-2 pr-2`. */
+const HOVER_BREATH = 8;
+
 function InlineTabLabelImpl({
   id,
   icon,
@@ -66,20 +86,13 @@ function InlineTabLabelImpl({
   onActivate,
   onClose,
 }: InlineTabLabelProps) {
-  const padding =
-    // aligns: the active Library folder silhouette — its content inset
-    // (FOLDER_TAB_SWOOP, 12) + the folder row's pl-3.5 (14) = 26; the right
-    // mirrors it. Off-grid by construction: it is the folder geometry's.
-    variant === "library-pinned" ? "pl-[26px] pr-[26px]" : "pl-2 pr-2";
-  // Hover lozenge hugs the content with ~8px breathing room on each
-  // side. The tight variant's wrapper already sits at content + 8px,
-  // so `inset-x-0` is correct. The library-pinned wrapper carries 26px
-  // of padding (to keep the inline footprint stable with the active
-  // Library folder silhouette), so the lozenge insets 18px to land at
-  // the same content + 8px feel.
-  const hoverBgInsetX =
-    // aligns: the 26px library-pinned padding above, less the lozenge's 8px.
-    variant === "library-pinned" ? "inset-x-[18px]" : "inset-x-0";
+  const pinned = variant === "library-pinned";
+  const padding = pinned ? "" : "pl-2 pr-2";
+  // Hover lozenge hugs the content with HOVER_BREATH on each side. The tight
+  // variant's wrapper already sits at content + 8px, so `inset-x-0` is
+  // correct. The library-pinned wrapper carries the folder footprint's
+  // padding, so the lozenge insets by that padding less the breath.
+  const hoverBgInsetX = pinned ? "" : "inset-x-0";
   return (
     <div
       // A tab is a CONTAINER (its close is a nested `<button>`, which the HTML
@@ -95,10 +108,23 @@ function InlineTabLabelImpl({
       aria-label={label}
       aria-description={title}
       className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default focus-ring`}
+      style={
+        pinned
+          ? { paddingLeft: LIBRARY_PINNED_PAD_LEFT, paddingRight: LIBRARY_PINNED_PAD_RIGHT }
+          : undefined
+      }
     >
       <div
         aria-hidden
         className={`absolute inset-y-0 rounded transition-colors group-hover:bg-black/5 ${hoverBgInsetX}`}
+        style={
+          pinned
+            ? {
+                left: LIBRARY_PINNED_PAD_LEFT - HOVER_BREATH,
+                right: LIBRARY_PINNED_PAD_RIGHT - HOVER_BREATH,
+              }
+            : undefined
+        }
       />
       {icon ? <span className="relative inline-flex">{icon}</span> : null}
       <span

@@ -219,6 +219,13 @@ export interface FolderTabVariantSpec {
    *  capRightOverhang) so the inline↔folder pixel-stability contract
    *  (ACTIVE_TAB_*_SHIFT_PX / InlineTabLabel padding) is untouched. */
   contentInsetRight: number;
+  /** The content row's own inner padding (px), inside the insets above: the
+   *  gap from the flat body's edge to the first / last content item. Read by
+   *  the tab renderers AND by every surface that pre-reserves a folder's
+   *  footprint (InlineTabLabel's library-pinned padding), so the two cannot
+   *  drift apart. */
+  contentPadLeft: number;
+  contentPadRight: number;
   /** How far the right cap's viewport extends PAST the wrapper's right edge
    *  (px). 0 when the +1 stroke cushion is part of the footprint (library);
    *  1 for the topbar variant, whose footprint historically excluded the
@@ -386,6 +393,8 @@ function makeVariant(args: {
   tabH: number;
   strokeVar: string;
   contentInsetRight: number;
+  contentPadLeft: number;
+  contentPadRight: number;
   capRightOverhang: number;
   bridgeSpan: "body" | "full";
   activeMinContent: number;
@@ -400,6 +409,8 @@ function makeVariant(args: {
     strokeVar: args.strokeVar,
     contentInsetLeft: S,
     contentInsetRight: args.contentInsetRight,
+    contentPadLeft: args.contentPadLeft,
+    contentPadRight: args.contentPadRight,
     capRightOverhang: args.capRightOverhang,
     bridgeSpan: args.bridgeSpan,
     caps: buildCapSet({
@@ -421,6 +432,8 @@ export const FOLDER_TAB_VARIANTS: Record<FolderTabVariant, FolderTabVariantSpec>
     tabH: 32,
     strokeVar: "var(--library-edge, #b3c0c4)",
     contentInsetRight: S + 1, // the F#8 +1 lives inside the footprint
+    contentPadLeft: 14,
+    contentPadRight: 8,
     capRightOverhang: 0,
     bridgeSpan: "body",
     activeMinContent: 116,
@@ -432,6 +445,8 @@ export const FOLDER_TAB_VARIANTS: Record<FolderTabVariant, FolderTabVariantSpec>
     tabH: 30,
     strokeVar: "var(--topbar-border, #d5d3ce)",
     contentInsetRight: S,
+    contentPadLeft: 14,
+    contentPadRight: 4,
     capRightOverhang: 1, // the F#8 cushion pokes out instead
     bridgeSpan: "full",
     activeMinContent: 80,

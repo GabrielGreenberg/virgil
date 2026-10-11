@@ -91,7 +91,7 @@ function triggerStyle(disabled: boolean, anyQueued: boolean): CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    padding: "3px 8px",
+    padding: "4px 8px",
     fontSize: 12,
     fontFamily: FONT_SANS,
     color: disabled ? "var(--muted)" : "var(--foreground)",

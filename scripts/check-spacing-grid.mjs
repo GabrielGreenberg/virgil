@@ -16,6 +16,23 @@
  * Tailwind spacing utility — `p`/`m` (+ side), `gap`, `space-x|y`, `inset`,
  * `top|right|bottom|left|start|end` with a `-[…]` value (negatives included).
  *
+ * And it judges the prohibition's OTHER spellings (task 2026-10-11-1060) —
+ * until then CSS files, inline styles and `cssText` strings shipped ~26
+ * off-grid values the guard could not see:
+ *   - a CSS declaration — `padding`/`margin` (+ side/logical), `gap`,
+ *     `row-|column-gap`, `inset*`, `top|right|bottom|left` — in `src/**.css`
+ *     + `library/**.css`, in a `cssText` string, or in a Tailwind arbitrary
+ *     property (`[padding:5px]`); and
+ *   - a React style-object key (`paddingRight: 5`, `padding: "5px 8px"`,
+ *     `gap`, `inset*`; `top|right|bottom|left` only as a px STRING, since a
+ *     bare number there is as often a rect as a style).
+ * These are literal px rather than an escape hatch, so they are judged on the
+ * VALUE: off-grid = an odd px above 1, or a fractional px (the half-steps
+ * 2/6/10/14 are Tailwind's own). A `var(--x, 5px)` fallback is judged too.
+ * `em`/`rem`/`%` are not judged — the `em` margins are typographic prose
+ * rhythm, outside the pixel grid. `translate-*` is a transform nudge, not
+ * box spacing, and is out of scope.
+ *
  * A site PASSES when:
  *   - its bracketed value is a `var(…)` reference — the token vouches for
  *     itself, exactly as in the radius guard (`mb-[var(--bar-seam-lift)]`); or
@@ -40,6 +57,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCAN_DIRS = ["src", "library"];
 const EXTS = new Set([".ts", ".tsx"]);
+const CSS_EXTS = new Set([".css"]);
 
 // Whole-file exceptions (path suffix match): the guard + its contract test,
 // which plants arbitrary spacing as fixture SOURCE STRINGS on purpose.
@@ -56,6 +74,45 @@ const UTILITY = new RegExp(
   "g",
 );
 
+// The other two spellings of the same prohibition (task 2026-10-11-1060).
+// A CSS declaration — in a stylesheet, a `cssText` string, or a Tailwind
+// arbitrary property `[padding:5px]` — and a React inline style-object key.
+// These are LITERAL px, so unlike a bracket utility (always a deliberate
+// escape from the scale) they are judged on the value: on-grid passes.
+const CSS_DECL = new RegExp(
+  String.raw`(?<![\w-])(padding(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?|margin(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?|gap|row-gap|column-gap|inset(?:-(?:inline|block)(?:-(?:start|end))?)?|top|right|bottom|left)\s*:\s*([^;}"'\`]+)`,
+  "g",
+);
+const STYLE_KEY = new RegExp(
+  String.raw`(?<![\w.$-])((?:padding|margin)(?:Top|Right|Bottom|Left|Inline|Block)?(?:Start|End)?|gap|rowGap|columnGap|inset(?:Inline|Block)?(?:Start|End)?)\s*:\s*(-?\d+(?:\.\d+)?(?![\w.])|"[^"]*"|'[^']*'|\`[^\`$]*\`)`,
+  "g",
+);
+// Physical offsets in a style object only as a px STRING — a bare number keyed
+// `top`/`left` is as often a rect or a coordinate as a style.
+const STYLE_OFFSET = new RegExp(
+  String.raw`(?<![\w.$-])(top|right|bottom|left)\s*:\s*("-?\d[^"]*px[^"]*"|'-?\d[^']*px[^']*')`,
+  "g",
+);
+
+/**
+ * Off the 4px grid: an odd integer px above 1, or a fractional px. The
+ * half-steps 2/6/10/14 are Tailwind's own `0.5`/`1.5`/`2.5`/`3.5` and pass;
+ * 0 and 1 (a hairline) pass. `em`/`rem`/`%` are not px and are not judged —
+ * the `em` margins are typographic prose rhythm, outside the pixel grid.
+ */
+function offGridPx(value) {
+  const bad = [];
+  for (const m of String(value).matchAll(/(-?\d*\.?\d+)px\b/g)) {
+    const n = Math.abs(Number(m[1]));
+    if (!Number.isInteger(n) || (n > 1 && n % 2 === 1)) bad.push(m[0]);
+  }
+  return bad;
+}
+const offGridNumber = (raw) => {
+  const n = Math.abs(Number(raw));
+  return !Number.isInteger(n) || (n > 1 && n % 2 === 1);
+};
+
 const isCommentLine = (l) => /^\s*(\/\/|\/\*|\*|\{\s*\/\*)/.test(l);
 const MARKER = /\baligns:/;
 
@@ -71,8 +128,38 @@ function hasAlignsNote(lines, i) {
 
 const violations = [];
 
+function scanCss(file) {
+  const rel = path.relative(ROOT, file);
+  const lines = fs.readFileSync(file, "utf8").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\/\*.*?\*\//g, (c) => (MARKER.test(c) ? c : ""));
+    if (isCommentLine(line)) continue;
+    for (const m of line.matchAll(CSS_DECL)) {
+      const bad = offGridPx(m[2]);
+      if (!bad.length || hasAlignsNote(lines, i)) continue;
+      violations.push([rel, i + 1, `${m[1]}: ${m[2].trim()}`]);
+    }
+  }
+}
+
+/** The CSS-declaration and style-object spellings, on one TS line. */
+function scanLineSpellings(lines, i, rel) {
+  const line = lines[i];
+  const hits = [];
+  for (const m of line.matchAll(CSS_DECL)) if (offGridPx(m[2]).length) hits.push(`${m[1]}:${m[2].trim()}`);
+  for (const m of line.matchAll(STYLE_KEY)) {
+    const v = m[2];
+    const bad = /^["'`]/.test(v) ? offGridPx(v).length > 0 : offGridNumber(v);
+    if (bad) hits.push(`${m[1]}: ${v}`);
+  }
+  for (const m of line.matchAll(STYLE_OFFSET)) if (offGridPx(m[2]).length) hits.push(`${m[1]}: ${m[2]}`);
+  if (!hits.length || hasAlignsNote(lines, i)) return;
+  for (const h of hits) violations.push([rel, i + 1, h]);
+}
+
 function scanFile(file) {
   if (ALLOWLIST_FILES.some((a) => file.endsWith(a))) return;
+  if (CSS_EXTS.has(path.extname(file))) return scanCss(file);
   // Test SOURCE is not rendered UI — its class strings are fixtures (a
   // guardrail test plants `mt-[3px]` to prove IT rejects it).
   if (/(^|\/)__tests__\//.test(file) || /\.test\.tsx?$/.test(file)) return;
@@ -86,6 +173,7 @@ function scanFile(file) {
       if (hasAlignsNote(lines, i)) continue;
       violations.push([rel, i + 1, m[0]]);
     }
+    scanLineSpellings(lines, i, rel);
   }
 }
 
@@ -95,7 +183,7 @@ function walk(dir) {
     if (entry.isDirectory()) {
       if (entry.name === "node_modules" || entry.name === ".next" || entry.name === "dist") continue;
       walk(full);
-    } else if (EXTS.has(path.extname(entry.name))) {
+    } else if (EXTS.has(path.extname(entry.name)) || CSS_EXTS.has(path.extname(entry.name))) {
       scanFile(full);
     }
   }
@@ -106,7 +194,7 @@ for (const t of targets.length ? targets : SCAN_DIRS) {
   const abs = path.resolve(ROOT, t);
   if (!fs.existsSync(abs)) continue;
   if (fs.statSync(abs).isDirectory()) walk(abs);
-  else if (EXTS.has(path.extname(abs))) scanFile(abs);
+  else if (EXTS.has(path.extname(abs)) || CSS_EXTS.has(path.extname(abs))) scanFile(abs);
 }
 
 if (violations.length) {

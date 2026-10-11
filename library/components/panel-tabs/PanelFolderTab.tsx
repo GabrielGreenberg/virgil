@@ -143,7 +143,8 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
             display: "flex",
             alignItems: "center",
             gap: 6,
-            padding: "0 8px 0 14px",
+            paddingLeft: V.contentPadLeft,
+            paddingRight: V.contentPadRight,
             // The content row sits over the tab body's flat span, inset by
             // the geometry SSOT (left: the foot flare S; right: S + the F#8
             // +1 cushion) — identical box to the old measured overlay, but

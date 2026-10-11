@@ -581,7 +581,7 @@ export default function PaperHeader({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 5,
+                  gap: 4,
                   background: "transparent",
                   border: "none",
                   color: "var(--muted)",

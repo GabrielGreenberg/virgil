@@ -277,7 +277,7 @@ export function StatusPills({
     );
   }
   return (
-    <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}>
+    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
       {FACETS.map((facet) => (
         <span key={facet} style={{ display: "contents" }}>
           {FACET_PILL[facet]()}

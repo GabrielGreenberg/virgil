@@ -616,7 +616,7 @@ export function PanelColumn({
           style={{
             // Pull the drag-gap close to the tail content. The line
             // inside the gap renders ~8.5px from its inboard edge;
-            // -7px marginRight lands the line ~1.5px past the tail's
+            // aligns: -7px marginRight lands the line ~1.5px past the tail's
             // right edge.
             marginRight: -7,
           }}

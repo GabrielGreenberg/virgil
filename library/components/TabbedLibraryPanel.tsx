@@ -761,7 +761,7 @@ function ProjectHeader({
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: 5,
+          gap: 4,
           cursor: hasDoc ? "pointer" : "not-allowed",
           color: hasDoc ? "var(--foreground)" : "var(--muted)",
           opacity: hasDoc ? 1 : 0.5,

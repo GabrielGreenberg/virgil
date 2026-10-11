@@ -78,7 +78,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
           letterSpacing: 0.4,
           color: "var(--muted, #8a8580)",
           textTransform: "uppercase",
-          marginBottom: 3,
+          marginBottom: 4,
           fontWeight: 600,
         }}
       >

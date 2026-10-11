@@ -70,11 +70,13 @@ function DocumentFolderTabImpl({ fill, onClick, title, children }: Props) {
           The S-wide swoop flare on each side is decorative; content is
           inset by the geometry SSOT and — being in-flow — SIZES the tab. */}
       <div
-        className="relative flex items-center gap-1.5 pl-3.5 pr-1 text-ink-strong"
+        className="relative flex items-center gap-1.5 text-ink-strong"
         style={{
           zIndex: 1,
           marginLeft: V.contentInsetLeft,
           marginRight: V.contentInsetRight,
+          paddingLeft: V.contentPadLeft,
+          paddingRight: V.contentPadRight,
           marginTop: TAB_TOP_GUTTER,
           height: V.tabH,
           // The active tab's reserved floor, read from the variant spec in

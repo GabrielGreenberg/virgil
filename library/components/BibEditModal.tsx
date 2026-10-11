@@ -679,7 +679,7 @@ function RawView({
  *  inline style beats the primitive's class and would silently re-blind it. */
 const fieldBox: React.CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
+  padding: "4px 8px",
   fontSize: 13,
   fontFamily: FONT_SANS,
 };
