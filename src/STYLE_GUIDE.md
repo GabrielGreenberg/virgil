@@ -1804,7 +1804,10 @@ The pill is centred along its gutter through a seam, `--band-grip-center`
 hosts its own control at the midpoint sets it to clear that control rather
 than letting the shared pill hide underneath — today only the code splitter,
 which places the grip just below its sync-arrows pill (task 813). Engine
-gutters in the editor render at `--pod-gap`; the code splitter's drag math
+gutters in the editor render at `--pod-gap` — except `BottomEdgeHandle` (the
+seam under the last docked band), which renders at `--pod-seam` because it IS
+that seam (see "One question per token" above; `pod-seam-contract.test.ts`
+pins its consumers). The code splitter's drag math
 needs the width as a number, so `GAP_WIDTH_PX` is pinned to the token by
 `split-with-code-gutter.test.ts`.
 The stacked-panel bands additionally carry `.band-grip-occlude` for an

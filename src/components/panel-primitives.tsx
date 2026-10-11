@@ -3587,8 +3587,8 @@ export function BandDivider({
       // dispatch, which bypasses hit-testing, could).
       style={{ height: 'var(--pod-gap)', pointerEvents: 'auto' }}
     >
-      {/* Drag gap — visible grip slider (band-grip): muted at rest,
-          accent on hover/drag. */}
+      {/* Drag gap — the shared grip pill (band-grip): hidden at rest,
+          `--drag-highlight` on hover/drag (STYLE_GUIDE "Resize gutters"). */}
       <div
         className="drag-gap drag-gap-h band-grip band-grip-occlude w-full h-full"
         {...handle}

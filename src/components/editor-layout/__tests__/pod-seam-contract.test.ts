@@ -181,4 +181,13 @@ describe("pod seam — the prose says what the code ships", () => {
     // `--header-h`-was-LOCKED-at-34px failure this suite's sibling exists for.
     expect(seam).toMatch(new RegExp(`rounded up to\\s+${tokenPx("--pod-seam")}\\b`));
   });
+
+  it("the Resize-gutters section names BottomEdgeHandle as the --pod-seam exception (task 1055)", () => {
+    const at = styleGuide.indexOf("## Resize gutters");
+    expect(at, "STYLE_GUIDE is missing the Resize gutters section").toBeGreaterThan(-1);
+    const gutters = styleGuide.slice(at, styleGuide.indexOf("\n## ", at + 1));
+    // A blanket "engine gutters render at --pod-gap" contradicts the seam
+    // rule above: the bottom-edge handle IS the seam and reads --pod-seam.
+    expect(gutters).toMatch(/BottomEdgeHandle[\s\S]{0,120}--pod-seam/);
+  });
 });
