@@ -123,4 +123,26 @@ describe("parkDuringLayoutGesture", () => {
     parkA.dispose();
     parkB.dispose();
   });
+
+  it("a throwing park runner cannot strand a later park on the end edge (task 1054)", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const bad = vi.fn(() => {
+      throw new Error("boom");
+    });
+    const good = vi.fn();
+    const parkBad = parkDuringLayoutGesture<[string]>(bad);
+    const parkGood = parkDuringLayoutGesture<[string]>(good);
+
+    beginLayoutGesture(INFO);
+    parkBad.fire("x");
+    parkGood.fire("y");
+    expect(() => endLayoutGesture(INFO)).not.toThrow();
+
+    expect(bad).toHaveBeenCalledOnce();
+    expect(good).toHaveBeenCalledExactlyOnceWith("y");
+    expect(err).toHaveBeenCalled();
+    parkBad.dispose();
+    parkGood.dispose();
+    err.mockRestore();
+  });
 });
