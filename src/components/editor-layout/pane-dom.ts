@@ -134,22 +134,6 @@ export function paneDockSlot(slotKey: string): HTMLElement | null {
 }
 
 /**
- * The panel/margin flex column on either side in the visible pane
- * (`[data-flex-col]`, stamped by BOTH `PanelColumn` and `ZenMargin` on the same
- * element that carries `[data-panel-column-side]`).
- *
- * Fail-open as a SET. The filter is load-bearing here rather than merely tidy:
- * `syncPanelPrefsToRendered` PERSISTS each column's rendered width on every
- * divider drag-start, iterating in keep-alive LRU order so the LAST write per
- * side wins — and a hidden pane's rect is all zeros, so a warm doc pane could
- * write `panelWidths[side] = 0` / `zenMargin = 0` into the user's prefs from a
- * drag they performed in a different pane.
- */
-export function paneFlexColumns(): HTMLElement[] {
-  return resolvePaneMarkers("[data-flex-col]");
-}
-
-/**
  * The tool strip on `side` in the visible pane (`[data-strip-side]`, stamped
  * once per `EditorPane`). Fail-open: a measurement. The strip-icon drag reads
  * it twice — once to position the drop indicator, once to compute the drop

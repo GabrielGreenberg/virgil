@@ -5659,6 +5659,16 @@ html {
   letter-spacing: 0.04em;
 }
 
+/* ── Flex-column pin (task 1052) — a side column (PanelColumn / ZenMargin)
+   holds `--flex-pin` for the life of a side-column gutter gesture, set and
+   removed by `flex-column-pin.ts`. `!important` because it must beat the
+   inline flex React renders from the STORED pref, which it overrides only
+   while the attribute is present — so unpinning restores the resting flex
+   without any store write. ── */
+[data-flex-pin] {
+  flex: 0 0 var(--flex-pin) !important;
+}
+
 /* ── Drag gap — invisible split handle; the sole visible affordance is the
    centered `.band-grip` pill (below), not a hairline. ── */
 .drag-gap {

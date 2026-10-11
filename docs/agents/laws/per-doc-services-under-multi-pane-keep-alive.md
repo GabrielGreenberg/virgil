@@ -109,6 +109,9 @@ Four members, and the first two are the ones the user meets:
   sat thirty lines from converted code, on the same DOM node, under a comment
   asserting the exact premise the task retires (*"`[data-flex-col]` is a unique
   attribute on the active EditorPane's panel columns"*).
+  *(Retired by task 1052: the sweep, its store writes and `paneFlexColumns`
+  are gone — each column pins itself, scoped to its own row; see
+  pane-drag-stability.md → "The begin-edge half".)*
 - **M6 — the strip-icon drag hit-tests a hidden pane's strip.**
   `[data-strip-side]` is stamped once per `EditorPane` and read find-first
   twice: to POSITION the drop indicator, and to compute the drop INDEX from

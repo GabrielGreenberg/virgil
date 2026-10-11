@@ -165,7 +165,6 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
       ["components/editor-layout/spawn-position.ts", "paneColumn("],
       ["components/FloatingPanel.tsx", "paneDockSlot("],
       ["components/editor-layout/layout-scroll.ts", "resolvePaneMarker("],
-      ["components/EditorLayout.tsx", "paneFlexColumns("],
       ["components/editor-layout/drag-drop.tsx", "paneStrip("],
       ["lib/print.ts", "panePrintPage("],
     ];

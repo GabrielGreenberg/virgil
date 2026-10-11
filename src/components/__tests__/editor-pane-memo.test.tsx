@@ -92,7 +92,6 @@ const HANDLERS = {
   onFocusSnapBoundary: stableFn,
   focusFloating: stableFn,
   setIsResizingPanels: stableFn,
-  syncPanelPrefsToRendered: stableFn,
   setZenLeftMargin: stableFn,
   setZenRightMargin: stableFn,
   setCardArchiveView: stableFn,

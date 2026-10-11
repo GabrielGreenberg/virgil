@@ -28,7 +28,6 @@ import {
   paneColumn,
   paneColumns,
   paneDockSlot,
-  paneFlexColumns,
   paneStrip,
   resolvePaneMarker,
 } from "../pane-dom";
@@ -547,18 +546,11 @@ describe("M1, end to end — the real FloatingPanel's docked portal", () => {
   });
 });
 
-describe("the two sweeps the first census pass missed", () => {
-  it("paneFlexColumns skips a hidden pane, so a divider drag cannot persist its zero width", () => {
-    // `syncPanelPrefsToRendered` PERSISTS each column's rendered width on every
-    // divider drag-start, in keep-alive LRU order, last-write-wins per side —
-    // so a hidden pane's zero rect could write `panelWidths[side] = 0` into the
-    // user's prefs from a drag performed in a pane they can see.
-    buildTwoPanes();
-    const cols = paneFlexColumns();
-    expect(cols).toHaveLength(1);
-    expect(cols[0].getBoundingClientRect().width).toBe(320);
-  });
-
+describe("the sweep the first census pass missed", () => {
+  // Its twin, `paneFlexColumns`, is gone (task 1052): the gutter drag-start
+  // sweep that PERSISTED every column's rendered width is now a gesture-scoped
+  // pin each column makes on itself, scoped to its own row — no document-wide
+  // sweep, and no store write a hidden pane's zero rect could reach.
   it("paneStrip answers the visible pane's strip", () => {
     const { hidden, visible } = buildTwoPanes();
     const strip = paneStrip("left");
@@ -567,9 +559,8 @@ describe("the two sweeps the first census pass missed", () => {
     expect(hidden.pane.contains(strip!)).toBe(false);
   });
 
-  it("both fail open when nothing is visible", () => {
+  it("fails open when nothing is visible", () => {
     buildPane({ id: "only-hidden", visible: false, colLeft: 7, bands: [] });
-    expect(paneFlexColumns()).toHaveLength(1);
     expect(paneStrip("left")).not.toBeNull();
   });
 });
