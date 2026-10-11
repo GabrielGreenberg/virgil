@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import { usePaneResizeHandle, onLayoutGestureSetChange } from "@/lib/pane-resize";
 import type { Side } from "@/hooks/useViewPrefs";
+import { flexColumnGestureId, pinFlexColumn, useFlexColumnPin } from "./flex-column-pin";
 
 /**
  * Empty page margin shown on each side of the editor in Zen mode, in
@@ -19,21 +20,19 @@ export function ZenMargin({
   onMarginPrefChange,
   isResizing,
   onResizingChange,
-  onSyncBeforeDrag,
 }: {
   side: Side;
   marginPref: number;
   onMarginPrefChange: (w: number) => void;
   isResizing?: boolean;
   onResizingChange?: (r: boolean) => void;
-  onSyncBeforeDrag?: () => void;
 }) {
   const colRef = useRef<HTMLDivElement>(null);
   // Instance-unique gesture id — keep-alive doc panes mount a ZenMargin per
   // side each, so a bare side-keyed id would fire every same-side instance's
   // bus-edge listener (below) on a foreign gesture.
   const reactId = useId();
-  const gestureId = `zen-margin-${side}-${reactId}`;
+  const gestureId = flexColumnGestureId("zen-margin", side, reactId);
 
   // Per-gesture pointer-UX clamp + start width, snapshotted once in
   // getValue() (the engine's single start-edge read point). The reserved
@@ -42,16 +41,6 @@ export function ZenMargin({
   // re-measure.
   const clampRef = useRef({ min: 0, max: Number.POSITIVE_INFINITY });
   const startRef = useRef(0);
-
-  // Cancel / zero-move re-sync from the source of truth (the marginPref
-  // prop): mid-drag React renders `flex: 0 0 ${marginPref}px` (isResizing is
-  // true for the whole gesture), so writing that exact value re-converges
-  // DOM and props; the end edge's isResizing→false render then swaps in the
-  // resting `1 100` flex itself (the prop string changes, so React rewrites).
-  const restoreFlex = () => {
-    const col = colRef.current;
-    if (col) col.style.flex = `0 0 ${marginPref}px`;
-  };
 
   const handle = usePaneResizeHandle({
     id: gestureId,
@@ -85,36 +74,39 @@ export function ZenMargin({
     },
     clamp: (px) =>
       Math.max(clampRef.current.min, Math.min(clampRef.current.max, px)),
-    // Live geometry is an imperative flex-basis write — one RAF-coalesced
-    // style write per frame. The old path ran onMarginPrefChange →
-    // useZenMode._persist → localStorage per mousemove.
+    // Live geometry is the flex-column PIN at the pointer's width — one
+    // RAF-coalesced style write per frame, never the store (the old path ran
+    // onMarginPrefChange → useZenMode._persist → localStorage per mousemove).
     apply: (px) => {
       const col = colRef.current;
-      if (col) col.style.flex = `0 0 ${px}px`;
+      if (col) pinFlexColumn(col, px);
     },
     // A zero-move end never reaches here — the engine calls restore()
-    // instead (task 470): no pref write, and the DOM re-syncs from the store
-    // in case applies happened.
+    // instead (task 470). Since task 1052 the begin edge writes no pref
+    // either, so a click or an Escape leaves the store byte-identical.
     commit: (px) => {
       onMarginPrefChange(px);
     },
-    restore: restoreFlex,
+    // Cancel / zero-move: nothing to re-sync. The end edge (same pointer
+    // task, before paint) unpins, and the column falls back to the flex
+    // React rendered from the unchanged pref.
+    restore: () => {},
   });
+  // Pins this margin for any side-column gutter gesture in its row — its own
+  // or the opposite side's — so a shrunk margin can't snap back mid-drag.
+  useFlexColumnPin(colRef);
 
-  // Gesture-edge side effects (sync prefs to rendered, lift the flex to the
-  // pinned `0 0` shape via isResizing) ride the pane-drag bus filtered to
-  // THIS instance's gesture — the end edge fires on every end variant incl.
+  // Gesture-edge side effect (lift the min-width via isResizing) rides the
+  // pane-drag bus filtered to THIS instance's gesture — the end edge fires on every end variant incl.
   // owner unmount, so isResizing can never wedge true. Declared AFTER
   // usePaneResizeHandle: unmount cleanups run in declaration order, so the
   // engine's detach end-edge fires while this listener is still subscribed.
   const onResizingChangeRef = useRef(onResizingChange);
-  const onSyncBeforeDragRef = useRef(onSyncBeforeDrag);
   useEffect(() => {
     // Latest-prop mirrors, refreshed post-commit (a render-time ref write
     // trips react-hooks/refs). The listener only fires from pointer events,
     // which can't interleave before this effect runs.
     onResizingChangeRef.current = onResizingChange;
-    onSyncBeforeDragRef.current = onSyncBeforeDrag;
   });
   useEffect(
     () =>
@@ -125,18 +117,13 @@ export function ZenMargin({
       // arrive, so the id filter is sound.
       onLayoutGestureSetChange((began, info) => {
         if (info.id !== gestureId) return;
-        if (began) {
-          onSyncBeforeDragRef.current?.();
-          onResizingChangeRef.current?.(true);
-        } else {
-          onResizingChangeRef.current?.(false);
-        }
+        onResizingChangeRef.current?.(began);
       }),
     [gestureId],
   );
 
   return (
-    <div ref={colRef} data-flex-col={side} className="relative flex" style={{ flex: isResizing ? `0 0 ${marginPref}px` : `1 100 ${marginPref}px`, minWidth: isResizing ? 0 : 'var(--zen-margin-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
+    <div ref={colRef} data-flex-col={side} className="relative flex" style={{ flex: `1 100 ${marginPref}px`, minWidth: isResizing ? 0 : 'var(--zen-margin-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
       <div
         className={`drag-gap drag-gap-v band-grip ${side === "left" ? "order-2 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}

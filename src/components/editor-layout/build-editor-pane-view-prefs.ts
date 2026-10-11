@@ -81,7 +81,6 @@ export interface EditorMutationHandlers {
 
   // Panel-resize chrome lifecycle.
   setIsResizingPanels: (r: boolean) => void;
-  syncPanelPrefsToRendered: () => void;
 
   // Zen-mode margins (EditorLayout owns the zen reducer).
   setZenLeftMargin: (px: number) => void;
@@ -192,7 +191,6 @@ export function buildEditorPaneViewPrefs(
 
     // ── Layout setters / mutators (verbatim from the engine) ────────
     setIsResizingPanels: editorHandlers.setIsResizingPanels,
-    syncPanelPrefsToRendered: editorHandlers.syncPanelPrefsToRendered,
     getPanelWidth: vp.getPanelWidth,
     setPanelWidth: vp.setPanelWidth,
     setPanelHeight: vp.setPanelHeight,

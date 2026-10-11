@@ -506,9 +506,6 @@ export interface EditorPaneViewPrefs {
 
   // ── Setters / mutators ──────────────────────────────────────────
   setIsResizingPanels: (r: boolean) => void;
-  /** Snap all panel/margin prefs to their currently-rendered widths
-   *  before drag start. */
-  syncPanelPrefsToRendered: () => void;
 
   getPanelWidth: (side: Side, panelId: PanelId) => number;
   setPanelWidth: (side: Side, panelId: PanelId, width: number) => void;
@@ -6870,7 +6867,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 onMarginPrefChange={viewPrefs.setZenLeftMargin}
                 isResizing={viewPrefs.isResizingPanels}
                 onResizingChange={viewPrefs.setIsResizingPanels}
-                onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
               />
             ) : visiblePanelsLeft.length > 0 && (
               <PaneRail
@@ -7984,7 +7980,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 onMarginPrefChange={viewPrefs.setZenRightMargin}
                 isResizing={viewPrefs.isResizingPanels}
                 onResizingChange={viewPrefs.setIsResizingPanels}
-                onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
               />
             ) : visiblePanelsRight.length > 0 && (
               <PaneRail
@@ -8589,7 +8584,6 @@ function PaneRail({
         onPanelPrefChange={(w) => viewPrefs.setPanelWidth(side, "omni", w)}
         isResizing={viewPrefs.isResizingPanels}
         onResizingChange={viewPrefs.setIsResizingPanels}
-        onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
         collapsed={isCollapsed}
         tail={tail}
         onBinSurfaceChange={(present) => onBinSurfaceChange?.(side, present)}

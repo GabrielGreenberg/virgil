@@ -9,6 +9,7 @@ import {
 } from "@/hooks/useViewPrefs";
 import { BandDivider } from "../panel-primitives";
 import { paneColumn } from "./pane-dom";
+import { flexColumnGestureId, pinFlexColumn, useFlexColumnPin } from "./flex-column-pin";
 import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 
 /** One docked band in a column's stack: a panel id plus an optional
@@ -242,7 +243,6 @@ export function PanelColumn({
   onPanelPrefChange,
   isResizing,
   onResizingChange,
-  onSyncBeforeDrag,
   omni,
   stack,
   omniHasCards,
@@ -258,7 +258,6 @@ export function PanelColumn({
   onPanelPrefChange: (w: number) => void;
   isResizing?: boolean;
   onResizingChange?: (r: boolean) => void;
-  onSyncBeforeDrag?: () => void;
   /** The always-mounted omni desktop for this side (Layer A background). */
   omni: React.ReactNode;
   /** Ordered docked bands, top→bottom (length ≤ MAX_STACK). */
@@ -315,10 +314,10 @@ export function PanelColumn({
   // Instance-unique gesture id: keep-alive doc panes AND the Library Reader
   // each mount a PanelColumn per side, so a bare `editor-panel-${side}` would
   // make every same-side instance's bus-edge listener (below) fire on a
-  // foreign gesture — running the MAIN app's sync/isResizing side effects on
-  // a Reader drag.
+  // foreign gesture — running the MAIN app's isResizing side effect on a
+  // Reader drag.
   const reactId = useId();
-  const gestureId = `editor-panel-${side}-${reactId}`;
+  const gestureId = flexColumnGestureId("editor-panel", side, reactId);
 
   // Per-gesture pointer-UX clamp + start width, snapshotted once in
   // getValue() (the engine's documented single start-edge read point). The
@@ -327,17 +326,6 @@ export function PanelColumn({
   // the row while `isResizing` lifts that minWidth to 0.
   const clampRef = useRef({ min: 0, max: Number.POSITIVE_INFINITY });
   const startRef = useRef(0);
-
-  // Cancel / zero-move re-sync: rewrite the flex from the SOURCE OF TRUTH
-  // (the panelPref prop) rather than the measured start px. In the Reader the
-  // rendered width can sit below the stored pref (no syncBeforeDrag there, so
-  // CSS min-width clamps the track) — pinning the measured px imperatively
-  // would diverge DOM from store until the next commit (React diffs style
-  // against previous props, not the DOM).
-  const restoreFlex = () => {
-    const col = colRef.current;
-    if (col) col.style.flex = collapsed ? "0 0 0px" : `0 0 ${panelPref}px`;
-  };
 
   const gutterHandle = usePaneResizeHandle({
     id: gestureId,
@@ -393,25 +381,32 @@ export function PanelColumn({
     },
     clamp: (px) =>
       Math.max(clampRef.current.min, Math.min(clampRef.current.max, px)),
-    // Live geometry is an imperative flex-basis write on the column root —
-    // one RAF-coalesced style write per frame. The old path routed every
+    // Live geometry is the flex-column PIN at the pointer's width — one
+    // RAF-coalesced style write per frame. The old path routed every
     // mousemove through onPanelPrefChange → viewPrefs.setPanelWidth →
     // localStorage ×2, re-rendering the EditorPane subtree per move.
     apply: (px) => {
       const col = colRef.current;
-      if (col) col.style.flex = `0 0 ${px}px`;
+      if (col) pinFlexColumn(col, px);
     },
     // A zero-move end never reaches here — the engine calls restore()
-    // instead (task 470), which keeps the old deadzone's no-write behavior
-    // and re-syncs the DOM from the store in case applies happened.
+    // instead (task 470). Since task 1052 the begin edge writes no pref
+    // either, so a click or an Escape leaves the store byte-identical.
     commit: (px) => {
       onPanelPrefChange(px);
     },
-    restore: restoreFlex,
+    // Cancel / zero-move: nothing to re-sync. The end edge unpins (same
+    // pointer task, before paint) and the column falls back to the flex
+    // React rendered from the unchanged pref — in the Reader too, where the
+    // rendered width can sit below that pref.
+    restore: () => {},
   });
+  // Pins this column for any side-column gutter gesture in its row — its own
+  // or the opposite side's — so the min-width lift below can't snap a
+  // floor-clamped column down to its pref mid-drag.
+  useFlexColumnPin(colRef);
 
-  // Gesture-edge side effects (sync prefs to rendered widths, then lift the
-  // CSS min-width via isResizing) ride the pane-drag bus filtered to THIS
+  // Gesture-edge side effect (lift the CSS min-width via isResizing) rides the pane-drag bus filtered to THIS
   // instance's gesture — the end edge fires on every end variant, including
   // an owner unmount mid-drag, so `isResizing` can never wedge true. Latest-
   // prop refs keep the one subscription stable across renders. Declared
@@ -419,13 +414,11 @@ export function PanelColumn({
   // the engine's detach end-edge fires while this listener is still
   // subscribed.
   const onResizingChangeRef = useRef(onResizingChange);
-  const onSyncBeforeDragRef = useRef(onSyncBeforeDrag);
   useEffect(() => {
     // Latest-prop mirrors, refreshed post-commit (a render-time ref write
     // trips react-hooks/refs). The listener only fires from pointer events,
     // which can't interleave before this effect runs.
     onResizingChangeRef.current = onResizingChange;
-    onSyncBeforeDragRef.current = onSyncBeforeDrag;
   });
   useEffect(
     () =>
@@ -433,16 +426,7 @@ export function PanelColumn({
       // `isResizing` under gesture overlap (see zen-margin's twin).
       onLayoutGestureSetChange((began, info) => {
         if (info.id !== gestureId) return;
-        if (began) {
-          // Engine ordering: getValue() has already measured the true
-          // pre-drag width; syncing prefs to rendered widths here (before
-          // the `1 100`→`0 0`-style min-width lift lands) keeps shrunk
-          // panels from snapping back at drag start.
-          onSyncBeforeDragRef.current?.();
-          onResizingChangeRef.current?.(true);
-        } else {
-          onResizingChangeRef.current?.(false);
-        }
+        onResizingChangeRef.current?.(began);
       }),
     [gestureId],
   );

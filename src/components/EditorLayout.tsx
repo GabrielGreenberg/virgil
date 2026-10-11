@@ -43,7 +43,6 @@ import {
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { DocPipeline } from "./editor-layout/DocPipeline";
-import { paneFlexColumns } from "./editor-layout/pane-dom";
 import {
   DocKeepAliveSlot,
   useDocKeepAliveLRU,
@@ -619,8 +618,6 @@ export default function EditorLayout() {
     prefs,
     togglePanel,
     movePanel,
-    setPanelWidth,
-    getPanelWidth,
     collapseLeft,
     collapseRight,
     expandLeft,
@@ -1077,46 +1074,6 @@ export default function EditorLayout() {
     setLeftMargin: setZenLeftMargin,
     setRightMargin: setZenRightMargin,
   } = useZenMode();
-
-  // Snap all panel/margin prefs to their current rendered widths. Called
-  // on drag start so that when the flex switches from "1 100 pref"
-  // (shrinkable) to "0 0 pref" (pinned), shrunk panels don't snap back
-  // to pref and jump the editor.
-  //
-  // Task 438 — `[data-flex-col]` is NOT "a unique attribute on the active
-  // EditorPane's panel columns", which is what this comment used to claim:
-  // multi-pane keep-alive mounts up to four panes and every one stamps it, so a
-  // document-global sweep visits the hidden ones too, in LRU order, and the
-  // LAST write per side wins. A hidden pane's rect is all zeros, so a divider
-  // drag in the VISIBLE pane could persist `panelWidths[side] = 0` (or a zen
-  // margin of 0) into the user's prefs on behalf of a pane they cannot see.
-  // `paneFlexColumns()` resolves the visible pane's columns.
-  const syncPanelPrefsToRendered = useCallback(() => {
-    paneFlexColumns().forEach((col) => {
-      const side = col.getAttribute('data-flex-col') as 'left' | 'right' | null;
-      if (side !== 'left' && side !== 'right') return;
-      const rendered = col.getBoundingClientRect().width;
-      if (zenModeOn) {
-        if (side === 'left') {
-          if (Math.abs(rendered - zenLeftMargin) > 0.5) setZenLeftMargin(rendered);
-        } else {
-          if (Math.abs(rendered - zenRightMargin) > 0.5) setZenRightMargin(rendered);
-        }
-      } else {
-        // Column width is keyed by side now (panelWidths[`${side}`]), not by
-        // the docked panel — so persist whenever the side isn't collapsed.
-        // The omni desktop always backs a non-collapsed side, so an empty
-        // stack still has a meaningful rendered width to capture. The id arg
-        // to get/setPanelWidth is ignored (side-keyed); pass a stable token.
-        const collapsed = side === 'left' ? prefs.collapsedLeft : prefs.collapsedRight;
-        if (collapsed) return;
-        const currentPref = getPanelWidth(side, "omni");
-        if (Math.abs(rendered - currentPref) > 0.5) {
-          setPanelWidth(side, "omni", rendered);
-        }
-      }
-    });
-  }, [zenModeOn, zenLeftMargin, zenRightMargin, setZenLeftMargin, setZenRightMargin, prefs.collapsedLeft, prefs.collapsedRight, setPanelWidth, getPanelWidth]);
 
   // The editor-basis recompute, panel-min-height observer, MenuBar
   // home-position style, and zen-margin-snapshot toggle that used
@@ -2521,7 +2478,6 @@ export default function EditorLayout() {
     onFocusSnapBoundary: handleFocusSnapBoundary,
     focusFloating,
     setIsResizingPanels,
-    syncPanelPrefsToRendered,
     setZenLeftMargin,
     setZenRightMargin,
     setCardArchiveView,
@@ -2540,7 +2496,6 @@ export default function EditorLayout() {
     handleFocusSnapBoundary,
     focusFloating,
     setIsResizingPanels,
-    syncPanelPrefsToRendered,
     setZenLeftMargin,
     setZenRightMargin,
     setCardArchiveView,

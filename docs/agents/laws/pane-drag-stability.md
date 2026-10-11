@@ -341,6 +341,39 @@ localStorage). Narrow the window until the Library list track visibly clamps,
 click the list divider once without moving, widen the window, and confirm the
 list returns to its stored width.
 
+### The begin-edge half: a PIN is geometry, never a store write
+
+Task 470 made the COMMIT edge the only door a gesture persists through — and
+the side columns walked straight back around it through the BEGIN edge (task
+1052). To keep shrunk columns from snapping back when a gutter press lifts
+their min-width, `syncPanelPrefsToRendered` WROTE every visible column's
+rendered width into the store on press: `panelWidths[side]` and both zen
+margins. A zen margin rests at `flex: 1 100 pref` and shrinks hard on a narrow
+window, so a plain click, an Escape, or a drag of the OPPOSITE side persisted
+the shrunk rendering over the stored pref, and the margin never re-expanded
+when the window grew. The engine's zero-move rule held — and was moot, because
+the loss had already landed on the begin edge.
+
+> **The begin edge may PIN; it may never PERSIST. A pin is gesture-scoped DOM
+> state the stylesheet applies and React never manages; only the moved
+> handle's own `commit()` writes, and only for a gesture that moved.**
+
+The door is [flex-column-pin.ts](../../../src/components/editor-layout/flex-column-pin.ts):
+`useFlexColumnPin` pins a column (`data-flex-pin` + `--flex-pin`; the
+`globals.css` rule `flex: 0 0 var(--flex-pin) !important`) for any side-column
+gutter gesture in its own `.editor-pane-root`, and unpins on that gesture's end
+edge. The dragged column's `apply()` is the same pin at the pointer's width, so
+`restore()` has nothing to re-sync — unpinning falls back to exactly the flex
+React rendered from the unchanged pref. `syncPanelPrefsToRendered`, the
+`onSyncBeforeDrag` prop, ZenMargin's `isResizing` flex fork and the
+`paneFlexColumns` door (whose only caller it was) are DELETED. CI:
+`pane-resize-adoption.test.tsx` → "task 1052 — the begin edge pins, it never
+persists".
+
+**Owed, not claimed:** the preview eyeball — narrow the window in zen mode,
+click a margin gutter without moving, widen the window, and confirm both
+margins re-expand.
+
 ### The key half: a live gesture CLAIMS the keys it answers
 
 Same engine, the KEYBOARD (task 471) — and the case where the rule was already

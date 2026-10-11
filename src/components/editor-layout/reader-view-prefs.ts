@@ -129,9 +129,6 @@ const READER_NOOP_HANDLERS: Omit<EditorMutationHandlers, "onScrollToHeading"> = 
   onFocusSnapBoundary: () => {},
   focusFloating: () => {},
   setIsResizingPanels: () => {},
-  // The real `vp` engine already holds the widths/margins — nothing to snap
-  // to a rendered width before a drag.
-  syncPanelPrefsToRendered: () => {},
   setZenLeftMargin: () => {},
   setZenRightMargin: () => {},
   // Reader writes are intentionally scoped to note annotations; the per-card
