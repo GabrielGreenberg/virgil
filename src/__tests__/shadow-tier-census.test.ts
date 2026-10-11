@@ -166,7 +166,7 @@ export function scanRawRingColours(src: string): number[] {
  * not listed: it takes the pod/card ambient rung.
  */
 export const FLOATING_SURFACES: ReadonlyArray<{ file: string; needle: string; what: string }> = [
-  { file: "src/components/PendingChangePill.tsx", needle: "rounded-md border border-sky-200 bg-surface", what: "pending-change pill" },
+  { file: "src/components/PendingChangePill.tsx", needle: "rounded-md border border-[var(--pending-ai-edge)] bg-surface", what: "pending-change pill" },
   { file: "src/app/globals.css", needle: ".hint-bubble {", what: "hint tooltip" },
   { file: "src/components/EditorPane.tsx", needle: "── Floating Save/Cancel chip", what: "drop-mode Save/Cancel chip" },
   { file: "src/components/CompilePaneStatus.tsx", needle: "bg-yellow-100 text-yellow-800", what: "stale-PDF badge" },
