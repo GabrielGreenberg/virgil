@@ -230,12 +230,44 @@ def test_every_skill_invocation_captures_and_branches_on_the_exit_code():
             assert re.search(r"\*\*3\*\*", tail), f"{where} — append with no branch for 3"
 
 
+def _scratch_path(token: str) -> str:
+    """One spelling per scratch path: a shell variable (`$run_dir`,
+    `${run_dir}`) and the `<runDir>` placeholder later blocks carry name the
+    same directory (`_scratch.md`), and quoting is not part of the path."""
+    token = token.strip("'\"")
+    return re.sub(r"^\$\{?run_dir\}?", "<runDir>", token)
+
+
+def _step_one_base_snapshot(text: str):
+    """The file step 1 redirects the base entry (`master_entry_for`'s raw
+    block) into — derived from the skill, never a pinned spelling, so a scratch
+    rename (task 1050) moves the guard with it."""
+    step_one = text.split("2. **Coherence pre-flight")[0]
+    for block, _ in _fenced_blocks(step_one):
+        if "master_entry_for" not in block:
+            continue
+        m = re.search(r"^\s*python3\b[^\n]*?\s>\s*(\"[^\"]+\"|'[^']+'|[^\s<]+)",
+                      block, re.M)
+        if m:
+            return _scratch_path(m.group(1))
+    return None
+
+
 def test_authenticate_bib_writes_against_its_step_one_base():
+    """The invariant, not a filename (task 1057): every write passes as
+    `--base-raw-file` the SAME file step 1 snapshotted the base into. A rename
+    of the scratch path keeps this green; a write against any other file
+    (a decoupled base, a stale re-read) fails it."""
     blocks = [b for n, b, _ in _invocations() if n == "authenticate-bib.md"]
     assert blocks and all("--base-raw-file" in b and "--merge-existing" in b
                           for b in blocks)
-    assert "-auth-base.bib" in (_SKILLS / "authenticate-bib.md").read_text().split(
-        "2. **Coherence pre-flight")[0], "step 1 does not snapshot the base"
+    base = _step_one_base_snapshot((_SKILLS / "authenticate-bib.md").read_text())
+    assert base, "step 1 does not snapshot the base"
+    for b in blocks:
+        operands = [_scratch_path(m) for m in
+                    re.findall(r"--base-raw-file\s+(\"[^\"]+\"|'[^']+'|\S+)", b)]
+        assert operands == [base], (
+            f"the write's --base-raw-file {operands} is not step 1's snapshot {base!r}")
 
 
 if __name__ == "__main__":
