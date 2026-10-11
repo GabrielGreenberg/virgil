@@ -88,6 +88,41 @@ export function isKeyOwner(token: DialogToken): boolean {
   return keyOwner() === token;
 }
 
+/**
+ * Does a pointer press at `target` belong to some dialog OTHER than `token`?
+ *
+ * The pointer twin of `keyOwner` (task 1064). A scrimless window closes on an
+ * outside mousedown, but "outside its own frame" is not "outside every dialog":
+ * a press on a modal raised above it — its buttons, its scrim — answers THAT
+ * modal, and must not also dismiss the window beneath (one gesture, two dialogs
+ * answered: the defect this stack retired for Escape/Enter). So:
+ *
+ *   - a MODAL entry above `token` owns the pointer outright, exactly as it owns
+ *     the keyboard (its scrim covers everything else, so every press is its);
+ *   - a press inside any other open dialog's frame is that dialog's input — two
+ *     coexisting scrimless windows (Preferences beside Bug Report) do not close
+ *     each other when the user moves between them.
+ *
+ * An unknown token (already popped) owns nothing, so it is never "elsewhere".
+ */
+export function pointerOwnedElsewhere(
+  token: DialogToken,
+  target: Node | null,
+): boolean {
+  const at = stack.findIndex((e) => e.token === token);
+  if (at === -1) return false;
+  for (let i = at + 1; i < stack.length; i++) {
+    if (stack[i].modal) return true;
+  }
+  if (!target) return false;
+  for (let i = 0; i < stack.length; i++) {
+    if (i === at) continue;
+    const frame = stack[i].getFrame();
+    if (frame && frame.contains(target)) return true;
+  }
+  return false;
+}
+
 /** Test-only: drop every entry (suites share this module's state). */
 export function __resetDialogStack(): void {
   stack.length = 0;

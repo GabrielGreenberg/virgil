@@ -112,6 +112,7 @@ import { MODAL_SCRIM_Z, DRAGGABLE_DIALOG_Z } from "@/floats/float-policy";
 import { useDragPosition } from "@/hooks/useDragPosition";
 import {
   isKeyOwner,
+  pointerOwnedElsewhere,
   popDialog,
   pushDialog,
   type DialogToken,
@@ -758,8 +759,8 @@ export default function SystemDialog({
 
   // Outside-click-to-close for scrimless variants (the modal variant closes via
   // its backdrop instead). rAF-armed so the opening mousedown on the trigger
-  // doesn't immediately re-close; skips drags, in-frame clicks, and the trigger
-  // selector.
+  // doesn't immediately re-close; skips drags, in-frame clicks, the trigger
+  // selector, and any press another open dialog owns (`pointerOwnedElsewhere`).
   useEffect(() => {
     if (!open || !mounted || !scrimless || !onClose) return;
     let armed = false;
@@ -771,6 +772,11 @@ export default function SystemDialog({
       const target = e.target as Element | null;
       if (panelRef.current && target && panelRef.current.contains(target)) return;
       if (ignoreOutsideSelector && target?.closest?.(ignoreOutsideSelector))
+        return;
+      // The press belongs to another dialog (a modal raised above this window,
+      // or a sibling window's own frame) — that dialog answers it, not us
+      // (task 1064; the pointer twin of the key path's `isKeyOwner`).
+      if (tokenRef.current && pointerOwnedElsewhere(tokenRef.current, target))
         return;
       requestDismiss();
     };
