@@ -128,8 +128,8 @@ export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
   const borderColor = illuminated ? "var(--accent-blue)" : ringColor;
   const borderWidth = illuminated ? 2 : 1;
   const boxShadow = illuminated
-    ? "0 0 0 4px rgba(37, 99, 235, 0.18), var(--card-shadow-ambient, 0 2px 6px rgba(0,0,0,0.10))"
-    : "var(--card-shadow-ambient, 0 2px 6px rgba(0,0,0,0.10))";
+    ? "0 0 0 4px color-mix(in srgb, var(--accent-blue) 18%, transparent), var(--menu-shadow)"
+    : "var(--menu-shadow)";
 
   return createPortal(
     <button

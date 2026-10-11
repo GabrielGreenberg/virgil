@@ -129,7 +129,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
         borderLeft: `3px solid ${accent}`,
         borderRadius: "var(--radius-md)",
         padding: "8px 12px 10px 14px",
-        boxShadow: "var(--pod-shadow)",
+        boxShadow: "var(--menu-shadow)",
         fontSize: 13,
         maxWidth: 360,
         minWidth: 220,

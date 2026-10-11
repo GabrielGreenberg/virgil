@@ -998,15 +998,23 @@ Five states. One implementation each.
   Library tab take the same reach — and a TS ghost gets it only through
   `stampDragGhostLayer`, never from its caller; see "Drag ghosts"), not a
   response to the cursor. A small FLOATING CHIP or popover over the editor
-  (the pending-change pill, the hint tooltip, the drag status pill, the
-  stale-PDF badge, the label-ref popover) takes the menu rung,
-  `--menu-shadow`; an IN-FLOW chip or sticky header (Omni's pending
-  navigator, `.omni-bin-pill`, outline pod chips) takes the pod/card
-  ambient rung. No site authors its own: `shadow-tier-census.test.ts`
-  fails any Tailwind `shadow`/`shadow-sm…2xl`, any non-`var()`
-  `shadow-[…]`, and any literal blurred layer outside a `:root` token
-  definition — rings (`0 0 0 Npx`) and `inset` seams are not elevation
-  and pass (task 818);
+  (the pending-change pill, the hint tooltip, the drop-mode Save/Cancel
+  chip, the stale-PDF badge and compile-running chip, the label-ref,
+  math and figure popovers, every menu, the toast, the floating zap
+  trigger, the portaled stack pill) takes the menu rung,
+  `--menu-shadow` — by NAME, even where it equals the pod's today
+  (the menu rung aliases `--pod-shadow`); an IN-FLOW chip
+  or sticky header (Omni's pending navigator, `.omni-bin-pill`, outline
+  pod chips) takes the pod/card ambient rung. No site authors its own:
+  `shadow-tier-census.test.ts` fails any Tailwind `shadow`/`shadow-sm…2xl`,
+  any non-`var()` `shadow-[…]`, and any literal blurred layer outside a
+  `:root` token definition — rings (`0 0 0 Npx`) and `inset` seams are
+  not elevation and pass (task 818). It also checks the RUNG (task
+  1059): the floating population above is a declared list that must
+  read `--menu-shadow`; a shadow token is read bare (`var(--tok, X)`
+  is a dead, driftable fallback — `:root` always defines it); and a
+  ring's colour is a token read (`--focus-ring-shadow`, or `color-mix`
+  over a colour token), never a hand-picked rgba/hex;
   there is not one hover-elevation rule in either silo. Border-color hover
   *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
   `edge-strong`) and the omni-bin pill's. The exception is icon buttons
@@ -1416,7 +1424,9 @@ repaints live, with no re-stamp pass and no doc walk on a color change.
 
 Selection: border flips to `theme.borderSelected`, header tint flips
 from `headerDefault` to `headerSelected`, separator flips to
-`theme.separatorSelected`, plus a soft `shadow-sm`. The body never
+`theme.separatorSelected`. Elevation does NOT change on selection —
+the card keeps its `--card-shadow-ambient` (`themedCardStyle`), since
+elevation is a property of the tier, never of a state. The body never
 tints. Every section rule on a card — PanelCard's header/body rule and any
 inner rule a card body draws — renders through ONE `CardSeparator`
 (`panel-primitives.tsx`), keyed on the same halo the card hands PanelCard as

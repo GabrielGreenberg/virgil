@@ -431,7 +431,7 @@ export function SplitWithCode({
                     borderRadius: "var(--radius-md)",
                     border: "var(--pod-border, 1px solid var(--border))",
                     background: "var(--pod-editor, var(--surface))",
-                    boxShadow: "var(--pod-shadow, 0 1px 2px rgba(0,0,0,0.08))",
+                    boxShadow: "var(--pod-shadow)",
                     overflow: "hidden",
                   }}
                   onMouseDown={(e) => e.stopPropagation()}

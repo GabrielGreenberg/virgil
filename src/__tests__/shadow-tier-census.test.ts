@@ -22,6 +22,18 @@
  * Not flagged (they are not elevation): `inset` layers (seams, pressed wells,
  * insertion bars), zero-blur spread RINGS (`0 0 0 2px …` — focus / selection /
  * drop halos), `shadow-inner`, `shadow-none`.
+ *
+ * Token-or-literal is half the rule; the guide's other half is WHICH RUNG
+ * (task 1059). Two more legs:
+ *   - a FALLBACK inside `var(--tok, X)` for a shadow token `:root` defines is
+ *     dead (the token always resolves) and drifts (three had: one layer vs the
+ *     token's two, or a different shadow entirely) — read the bare token;
+ *   - the floating chips/popovers the guide ENUMERATES (STYLE_GUIDE elevation
+ *     paragraph) are a declared population, each of which must read
+ *     `--menu-shadow` — not the pod/card ambient rung it happens to equal
+ *     today through the `--menu-shadow: var(--pod-shadow)` alias.
+ * And a ring's COLOUR is a token read, not a hand-picked rgba/hex (a ring is
+ * exempt from the elevation leg, which is how two raw ring colours escaped).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -109,6 +121,86 @@ export function scanShadowSource(src: string, file: string): ShadowViolation[] {
   return out;
 }
 
+/** Shadow tokens `:root` mints (name contains `shadow` / `glow`). */
+const GLOBALS_CSS = path.join(ROOT, "src", "app", "globals.css");
+export function definedShadowTokens(css: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of css.matchAll(/^\s*(--[\w-]*(?:shadow|glow)[\w-]*)\s*:/gm)) out.add(m[1]);
+  return out;
+}
+
+/** `var(--tok, …)` reads whose `--tok` is a defined shadow token. */
+export function scanDeadShadowFallbacks(src: string, tokens: Set<string>): Array<{ line: number; token: string }> {
+  const out: Array<{ line: number; token: string }> = [];
+  src.split("\n").forEach((line, i) => {
+    for (const m of line.matchAll(/var\(\s*(--[\w-]+)\s*,/g)) {
+      if (tokens.has(m[1])) out.push({ line: i + 1, token: m[1] });
+    }
+  });
+  return out;
+}
+
+/** A zero-blur ring whose colour is a raw literal (rgba/hsla/hex), not a token read. */
+const RAW_RING = new RegExp(
+  String.raw`(?<![\w.#-])0(?:px)?\s+0(?:px)?\s+0(?:px)?\s+${NUM}\s+(?:rgba?\(|hsla?\(|#[0-9a-fA-F]{3})`,
+  "g",
+);
+export function scanRawRingColours(src: string): number[] {
+  const text = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+  const out: number[] = [];
+  text.split("\n").forEach((raw, i) => {
+    if (isCommentLine(raw)) return;
+    if (/^\s*--[\w-]+\s*:/.test(raw)) return; // a token definition mints the colour
+    const line = raw.replace(/(^|[^:"'`])\/\/.*$/, "$1");
+    if (RAW_RING.test(line)) out.push(i + 1);
+    RAW_RING.lastIndex = 0;
+  });
+  return out;
+}
+
+/**
+ * The floating population the guide enumerates — each a small chip or popover
+ * over the editor that takes the MENU rung. `needle` names the surface (it must
+ * match exactly once); the first shadow declaration at or after it (within its
+ * CSS rule / the next 30 lines) must read `--menu-shadow`. An IN-FLOW chip is
+ * not listed: it takes the pod/card ambient rung.
+ */
+export const FLOATING_SURFACES: ReadonlyArray<{ file: string; needle: string; what: string }> = [
+  { file: "src/components/PendingChangePill.tsx", needle: "rounded-md border border-sky-200 bg-surface", what: "pending-change pill" },
+  { file: "src/app/globals.css", needle: ".hint-bubble {", what: "hint tooltip" },
+  { file: "src/components/EditorPane.tsx", needle: "── Floating Save/Cancel chip", what: "drop-mode Save/Cancel chip" },
+  { file: "src/components/CompilePaneStatus.tsx", needle: "bg-yellow-100 text-yellow-800", what: "stale-PDF badge" },
+  { file: "src/components/CompilePaneStatus.tsx", needle: "bg-neutral-900/85 text-white/90", what: "compile-running chip" },
+  { file: "src/app/globals.css", needle: ".label-ref-popover {", what: "label-ref popover" },
+  { file: "src/app/globals.css", needle: ".label-ref-popover-dropdown {", what: "label-ref dropdown" },
+  { file: "src/app/globals.css", needle: ".math-popover {", what: "math popover" },
+  { file: "src/app/globals.css", needle: ".figure-popover {", what: "figure popover" },
+  { file: "src/app/globals.css", needle: ".menu-surface {", what: "every MenuProvider menu" },
+  { file: "library/components/Toaster.tsx", needle: "borderLeft: `3px solid ${accent}`,", what: "toast" },
+  { file: "src/components/SelectionActionsMenu.tsx", needle: "zIndex: RESTING_MARGIN_TRIGGER_Z,", what: "floating zap trigger" },
+  { file: "src/components/stack/StackIcon.tsx", needle: "const boxShadow = illuminated", what: "portaled stack pill" },
+];
+
+const SHADOW_DECL = /boxShadow\s*[:=]|box-shadow\s*:|shadow-\[/;
+export function floatingSurfaceRung(src: string, needle: string): { count: number; decl: string | null } {
+  const lines = src.split("\n");
+  const at = lines.flatMap((l, i) => (l.includes(needle) ? [i] : []));
+  if (at.length !== 1) return { count: at.length, decl: null };
+  const isCssRule = needle.trimEnd().endsWith("{");
+  for (let i = at[0]; i < Math.min(lines.length, at[0] + 30); i++) {
+    const l = lines[i];
+    const hit = SHADOW_DECL.exec(l);
+    if (hit) {
+      // The declaration may wrap (CSS `box-shadow:\n  ring,\n  var(--menu-shadow);`).
+      let decl = l.slice(hit.index);
+      for (let j = i + 1; j < lines.length && !/;|"[^"]*"|\]/.test(decl) && j < i + 4; j++) decl += " " + lines[j].trim();
+      return { count: 1, decl };
+    }
+    if (isCssRule && i > at[0] && l.includes("}")) break;
+  }
+  return { count: 1, decl: null };
+}
+
 function walk(dir: string, acc: string[] = []): string[] {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     if (ent.name === "node_modules" || ent.name === "__tests__" || ent.name.startsWith(".")) continue;
@@ -144,6 +236,43 @@ describe("shadow-tier census (task 818)", () => {
     expect(stale, "remove allowlist entries that no longer match").toEqual([]);
   });
 
+  it("no shadow token is read with a fallback (dead — :root defines it — and driftable)", () => {
+    const tokens = definedShadowTokens(fs.readFileSync(GLOBALS_CSS, "utf8"));
+    expect(tokens.has("--menu-shadow") && tokens.has("--card-shadow-ambient")).toBe(true);
+    const offenders: string[] = [];
+    for (const dir of SCAN_DIRS) {
+      for (const abs of walk(path.join(ROOT, dir))) {
+        const rel = path.relative(ROOT, abs).split(path.sep).join("/");
+        for (const v of scanDeadShadowFallbacks(fs.readFileSync(abs, "utf8"), tokens)) {
+          offenders.push(`${rel}:${v.line} var(${v.token}, …)`);
+        }
+      }
+    }
+    expect(offenders, "read the bare token: var(--tok)").toEqual([]);
+  });
+
+  it("no ring wears a hand-picked colour (read a colour token or --focus-ring-shadow)", () => {
+    const offenders: string[] = [];
+    for (const dir of SCAN_DIRS) {
+      for (const abs of walk(path.join(ROOT, dir))) {
+        const rel = path.relative(ROOT, abs).split(path.sep).join("/");
+        for (const line of scanRawRingColours(fs.readFileSync(abs, "utf8"))) offenders.push(`${rel}:${line}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("every enumerated floating chip/popover reads the MENU rung", () => {
+    const problems: string[] = [];
+    for (const s of FLOATING_SURFACES) {
+      const { count, decl } = floatingSurfaceRung(fs.readFileSync(path.join(ROOT, s.file), "utf8"), s.needle);
+      if (count !== 1) problems.push(`${s.what} — ${s.file}: needle matched ${count}× (re-anchor it)`);
+      else if (!decl) problems.push(`${s.what} — ${s.file}: no shadow declaration near the needle`);
+      else if (!decl.includes("var(--menu-shadow)")) problems.push(`${s.what} — ${s.file}: ${decl.trim()}`);
+    }
+    expect(problems, "a floating chip takes --menu-shadow (STYLE_GUIDE elevation paragraph)").toEqual([]);
+  });
+
   describe("guard reach (planted fixtures)", () => {
     const hits = (src: string, file = "x.tsx") => scanShadowSource(src, file).map((v) => v.kind);
 
@@ -169,6 +298,28 @@ describe("shadow-tier census (task 818)", () => {
       expect(hits('const s = { boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)" };')).toEqual([]);
       expect(hits(":root {\n  --shadow-float: 0 6px 16px rgba(0,0,0,0.10),\n    0 1px 3px rgba(0,0,0,0.06);\n}", "x.css")).toEqual([]);
       expect(hits("// was `shadow-lg` and 0 4px 16px rgba(0,0,0,.1)\n/* shadow-md */")).toEqual([]);
+    });
+
+    it("fails a dead fallback on a defined shadow token, passes the bare read", () => {
+      const toks = definedShadowTokens(":root {\n  --card-shadow-ambient: 0 2px 6px rgba(0,0,0,.1);\n}");
+      expect(scanDeadShadowFallbacks('boxShadow: "var(--card-shadow-ambient, 0 2px 6px rgba(0,0,0,0.10))"', toks)).toHaveLength(1);
+      expect(scanDeadShadowFallbacks('boxShadow: "var(--card-shadow-ambient)"', toks)).toEqual([]);
+      expect(scanDeadShadowFallbacks('color: "var(--ink, #000)"', toks)).toEqual([]);
+    });
+
+    it("fails a raw ring colour, passes a token ring", () => {
+      expect(scanRawRingColours('const s = "0 0 0 4px rgba(37, 99, 235, 0.18), var(--menu-shadow)";')).toEqual([1]);
+      expect(scanRawRingColours(".x:focus {\n  box-shadow: 0 0 0 2px #7c5e3c;\n}")).toEqual([2]);
+      expect(scanRawRingColours('const s = "0 0 0 4px color-mix(in srgb, var(--accent-blue) 18%, transparent)";')).toEqual([]);
+      expect(scanRawRingColours(":root {\n  --ring: 0 0 0 2px rgba(0,0,0,.2);\n}")).toEqual([]);
+    });
+
+    it("the floating-rung leg reads the declaration nearest the needle", () => {
+      const tsx = 'style={{\n  zIndex: Z,\n  boxShadow: "var(--pod-shadow)",\n}}';
+      expect(floatingSurfaceRung(tsx, "zIndex: Z,").decl).toContain("--pod-shadow");
+      expect(floatingSurfaceRung(".pop {\n  color: red;\n  box-shadow:\n    var(--menu-shadow);\n}", ".pop {").decl).toContain("var(--menu-shadow)");
+      expect(floatingSurfaceRung(".pop {\n  color: red;\n}\n.next { box-shadow: var(--menu-shadow); }", ".pop {").decl).toBeNull();
+      expect(floatingSurfaceRung("a\na", "a").count).toBe(2);
     });
   });
 });
