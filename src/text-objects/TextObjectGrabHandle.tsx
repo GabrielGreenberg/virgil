@@ -37,9 +37,10 @@
  * Rendering: handles portal into `[data-grab-handle-portal]` mounted
  * inside `editor-pane-column` as a sibling of the editor pod. The
  * column placement (rather than inside `paper-render`) is required: the
- * pod has a `clipPath` that clips lateral descendants beyond ±20px,
- * which would silently swallow handles in the margin (handles sit ~22px
- * left of the content edge). Mounting at the column level: (a) lets
+ * pod is `overflow: clip` (0px lateral — it clips every descendant right
+ * at its box edge; see the pod's own note in `EditorPane.tsx`), which
+ * would silently swallow handles in the margin (handles sit ~22px left
+ * of the content edge). Mounting at the column level: (a) lets
  * handles scroll with the paper (the column is inside the row scroll
  * container); (b) clips them behind the sticky pod caps (top z:30,
  * bottom z:31) which are also column-level siblings sharing the root
@@ -704,7 +705,8 @@ function computePlacement(
 
   // Convert viewport coords → portal-relative coords. The portal mounts
   // inside `editor-pane-column` (column-level sibling of the pod — escapes
-  // the pod's clipPath that would otherwise clip handles in the margin) as
+  // the pod's `overflow: clip`, which clips at its box edge and would
+  // otherwise swallow handles in the margin) as
   // an absolute-positioned child. The sticky pod caps (z:30/31) cover
   // handles when they overlap on scroll.
   const portal = cache.toPortalCoords(left, dotsCenterY);
@@ -1350,7 +1352,7 @@ function GrabHandleRender({
   }, [placement.ref, onBeginGesture]);
   // `position: absolute` against the `[data-grab-handle-portal]` wrapper
   // (which is itself absolute inside the editor-pane-column — escapes the
-  // pod's clipPath that clips lateral descendants of the pod past ±20px). The
+  // pod's `overflow: clip`, which clips descendants at its box edge). The
   // wrapper has `pointer-events: none` to let prose clicks pass through; each
   // handle re-enables pointer events on itself.
   const style: CSSProperties = {
