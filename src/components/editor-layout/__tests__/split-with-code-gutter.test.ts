@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   GAP_WIDTH_PX,
   GRIP_CENTER_WITH_SYNC_PILL,
+  clampCodeSplitEditorPx,
+  codeSplitEditorBoundsPx,
 } from "../split-with-code";
 
 /**
@@ -55,5 +57,52 @@ describe("shared grip — centre-along-gutter seam", () => {
     const offset = Number(GRIP_CENTER_WITH_SYNC_PILL.match(/50% \+ (\d+)px/)?.[1]);
     expect(offset).toBeGreaterThanOrEqual(42);
     expect(splitter).toMatch(/"--band-grip-center":\s*GRIP_CENTER_WITH_SYNC_PILL/);
+  });
+});
+
+/**
+ * One owner of "what split is legal?" (task 1053). The drag clamp and the
+ * render-time width both read `codeSplitEditorBoundsPx`; the store keeps only
+ * a [0, 1] sanity clamp. Before, the store re-clamped to a fixed [0.05, 0.95]
+ * ratio range, so a drag released at the editor-min edge (ratio ≈ 0.029 in a
+ * 1000 px container) stored 0.05 and the divider jumped ~20 px.
+ */
+describe("code splitter — the split a drag ends on is the one stored", () => {
+  const viewPrefs = readFileSync(path.join(ROOT, "src/hooks/useViewPrefs.ts"), "utf8");
+  const storeClamp = (r: number) => Math.max(0, Math.min(1, r));
+  /** drag clamp → commit ratio → store → render width, as the component does. */
+  const releaseAt = (pointerPx: number, w: number) => {
+    const track = w - GAP_WIDTH_PX;
+    const applied = clampCodeSplitEditorPx(pointerPx, w);
+    const stored = storeClamp(applied / track);
+    const rendered = clampCodeSplitEditorPx(Math.round(stored * track), w);
+    return { applied, rendered };
+  };
+
+  it.each([
+    ["min edge, 1000 px", -500, 1000],
+    ["max edge, 1000 px", 5000, 1000],
+    ["min edge, 6000 px", -500, 6000],
+    ["max edge, 6000 px", 99999, 6000],
+    ["mid, 1400 px", 700, 1400],
+  ])("%s: rendered width equals the last applied width", (_l, px, w) => {
+    const { applied, rendered } = releaseAt(px, w);
+    expect(Math.abs(rendered - applied)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("bounds: editor keeps its sliver, code keeps its minimum", () => {
+    const { min, max } = codeSplitEditorBoundsPx(1000);
+    expect(min).toBe(24);
+    expect(max).toBe(1000 - GAP_WIDTH_PX - 240);
+    // Too narrow for both: collapses to the sliver, never inverts.
+    const narrow = codeSplitEditorBoundsPx(100);
+    expect(narrow.max).toBe(narrow.min);
+  });
+
+  it("setCodePaneRatio carries no fixed ratio range", () => {
+    const body = viewPrefs.match(/const setCodePaneRatio = useCallback\(([\s\S]*?)\}, \[update\]\);/)?.[1];
+    expect(body, "setCodePaneRatio not found").toBeTruthy();
+    expect(body).not.toMatch(/0\.05|0\.95/);
+    expect(body).toMatch(/Math\.max\(0, Math\.min\(1, ratio\)\)/);
   });
 });

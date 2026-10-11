@@ -76,6 +76,31 @@ export const GAP_WIDTH_PX = 10;
  *  the grip sits just BELOW the sync pill instead of hidden beneath it. */
 export const GRIP_CENTER_WITH_SYNC_PILL = "calc(50% + 48px)";
 
+/** THE legal range for the editor pane's width (px) inside a split container
+ *  `containerWidth` wide — the ONE owner of "what split is legal?" (task 1053).
+ *  The track (container minus the gap) is shared by editor + code; the editor
+ *  keeps at least `EDITOR_MIN_VISIBLE_PX` (a grabbable sliver) and leaves the
+ *  code pane at least `CODE_PANE_MIN_PX`. When the container is too narrow for
+ *  both, the editor sliver wins (min > max collapses to min). Both the drag
+ *  clamp and the render-time width read this, and the persisted ratio is NOT
+ *  re-clamped by a fixed ratio range — the legal ratio depends on the container
+ *  width, which the store cannot know — so the split a drag ends on is exactly
+ *  the one stored and rendered. */
+export function codeSplitEditorBoundsPx(containerWidth: number): {
+  min: number;
+  max: number;
+} {
+  const track = Math.max(containerWidth - GAP_WIDTH_PX, 0);
+  const min = EDITOR_MIN_VISIBLE_PX;
+  return { min, max: Math.max(min, track - CODE_PANE_MIN_PX) };
+}
+
+/** Clamp an editor-pane width (px) into `codeSplitEditorBoundsPx`. */
+export function clampCodeSplitEditorPx(px: number, containerWidth: number): number {
+  const { min, max } = codeSplitEditorBoundsPx(containerWidth);
+  return Math.max(min, Math.min(max, px));
+}
+
 export interface SplitWithCodeProps {
   /** Whether the code pane is open. When false, the editor takes the
    *  full container and the code pane / splitter aren't rendered.
@@ -179,18 +204,12 @@ export function SplitWithCode({
     Math.round(effectiveRatio * Math.max(containerWidth - GAP_WIDTH_PX, 0)),
   );
 
-  // Effective min that we clamp the *code pane* against — so the user
-  // can't shrink code below CODE_PANE_MIN_PX. Translates to a max
-  // editor width.
-  const editorMaxPx = Math.max(0, containerWidth - GAP_WIDTH_PX - CODE_PANE_MIN_PX);
-
-  // Editor wrapper actual width: clamp against [EDITOR_MIN_VISIBLE_PX,
-  // editorMaxPx]. We allow it to drop below the editor's natural width
-  // (overlay region) but never below the minimum visible sliver.
-  const clipPx = Math.max(
-    EDITOR_MIN_VISIBLE_PX,
-    Math.min(naturalEditorPx, editorMaxPx),
-  );
+  // Editor wrapper actual width: clamped into the ONE legal range
+  // (`codeSplitEditorBoundsPx` — never below the visible sliver, never
+  // squeezing code below CODE_PANE_MIN_PX). We allow it to drop below the
+  // editor's natural width (overlay region). The drag clamp reads the same
+  // owner, so a released drag renders exactly where it was let go.
+  const clipPx = clampCodeSplitEditorPx(naturalEditorPx, containerWidth);
 
   // Compression kicks in once the wrapper would be narrower than the
   // editor's measured natural width. (Naturally false until we've
@@ -219,14 +238,11 @@ export function SplitWithCode({
       dragRef.current = { w, startPx };
       return startPx;
     },
+    // The same legal range the render clamps to (task 1053) — one owner.
     clamp: (px) => {
       const w = dragRef.current.w;
       if (w <= 0) return px;
-      const track = Math.max(w - GAP_WIDTH_PX, 0);
-      // Clamp to [absolute min editor visible, container - code min].
-      const minR = (EDITOR_MIN_VISIBLE_PX + GAP_WIDTH_PX / 2) / w;
-      const maxR = (w - CODE_PANE_MIN_PX - GAP_WIDTH_PX / 2) / w;
-      return Math.max(minR * track, Math.min(maxR * track, px));
+      return clampCodeSplitEditorPx(px, w);
     },
     // Live path: the RAF-coalesced local liveRatio (see its declaration for
     // the load-bearing justification).
