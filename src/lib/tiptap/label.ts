@@ -139,8 +139,10 @@ export const LabelRef = Node.create({
 const LABEL_ONLY_PARAGRAPH = /^\\label\{([^}]*)\}$/;
 
 /**
- * Absorbs \label{...} paragraphs that immediately follow a heading into
- * the heading's label attribute, and removes the paragraph.
+ * Absorbs \label{...} paragraphs that immediately follow an UNLABELLED
+ * heading into the heading's label attribute, and removes the paragraph. It
+ * never replaces a heading's existing key (task 1069) — a second label stays
+ * a raw `\label{…}` line.
  *
  * Keystroke-sanctity (AGENTS.md): this never walks the whole doc. It consumes
  * the structural diff and inspects only the blocks the transaction touched
@@ -195,7 +197,15 @@ export const LabelHandler = Extension.create({
           >();
 
           // Record an absorption for the heading at `headingNode`/`headingPos`
-          // and the following label paragraph at `paraPos`, if the label differs.
+          // and the following label paragraph at `paraPos`. Absorption is only
+          // ever a MOVE of a declaration the heading LACKS (task 1069): a
+          // heading holds one key, so absorbing into a LABELLED heading would
+          // replace — and delete from the `.tex` — the key it already declares
+          // (`\section{X}\label{a}\label{b}` lost `\label{a}` on every
+          // setContent, and typing `\label{b}` under it skipped the rename
+          // door). A labelled heading leaves the paragraph as a raw `\label{b}`
+          // line, which round-trips byte-stable (LaTeX accepts both labels).
+          // An empty key (`\label{}`) declares nothing and is never absorbed.
           const consider = (
             headingNode: ReturnType<typeof doc.nodeAt>,
             headingPos: number,
@@ -207,7 +217,7 @@ export const LabelHandler = Extension.create({
             const match = paraNode.textContent.match(LABEL_ONLY_PARAGRAPH);
             if (!match) return;
             const label = match[1];
-            if (headingNode.attrs.label === label) return;
+            if (!label || headingNode.attrs.label) return;
             changes.set(paraPos, {
               headingPos,
               headingAttrs: headingNode.attrs,
@@ -242,10 +252,11 @@ export const LabelHandler = Extension.create({
           const ordered = [...changes.values()].sort((a, b) => b.headingPos - a.headingPos);
           const tr = newState.tr;
           for (const c of ordered) {
-            // label-write-exempt: ABSORBS a `\label` paragraph into the heading
-            // it follows — a declaration the paper ALREADY held, moving from a
-            // text node to an attr. No key changes, so there is no ref to carry
-            // and nothing for the rename door to ask (task 553 census).
+            // label-write-exempt: ABSORBS a `\label` paragraph into the
+            // UNLABELLED heading it follows (`consider` refuses a labelled one,
+            // task 1069) — a declaration the paper ALREADY held, moving from a
+            // text node to an attr. No key is ever replaced, so there is no ref
+            // to carry and nothing for the rename door to ask (task 553 census).
             tr.setNodeMarkup(c.headingPos, undefined, { ...c.headingAttrs, label: c.label });
             tr.delete(c.paraPos, c.paraPos + c.paraSize);
           }

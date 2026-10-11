@@ -39,6 +39,8 @@ import {
 } from "@/lib/tiptap/doc-structure";
 import { type StructureDiff } from "@/lib/tiptap/doc-structure";
 import { EMPTY_DIFF } from "@/lib/tiptap/doc-structure/types";
+import { parseLatex } from "@/lib/latex-parser";
+import { serializeBodyOnly } from "@/lib/latex-serializer";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -288,6 +290,76 @@ describe("LabelHandler — behaviour preserved", () => {
       expect(texts).toContain("\\label{sec:x}");
     } finally {
       cleanup();
+    }
+  });
+
+  // Task 1069 — absorption is only ever a MOVE into an UNLABELLED heading; no
+  // path through the handler may replace or wipe a heading's existing key.
+  function typeIntoP1(editor: Editor, text: string) {
+    let from = -1;
+    let to = -1;
+    editor.state.doc.forEach((node, pos) => {
+      if (node.attrs.uuid === "p1") {
+        from = pos + 1;
+        to = pos + node.nodeSize - 1;
+      }
+    });
+    editor.view.dispatch(editor.state.tr.insertText(text, from, to));
+  }
+
+  it("setContent of a two-label heading keeps BOTH labels (task 1069)", () => {
+    const { editor, cleanup } = mount({ type: "doc", content: [{ type: "paragraph" }] });
+    try {
+      editor.commands.setContent(
+        parseLatex("\\section{Intro}\\label{a}\\label{b}\n\nSome text \\ref{a}.\n"),
+      );
+      const out = serializeBodyOnly(editor.getJSON());
+      expect(out).toContain("\\label{a}");
+      expect(out).toContain("\\label{b}");
+      let headingLabel: unknown;
+      editor.state.doc.forEach((n) => {
+        if (n.type.name === "heading") headingLabel = n.attrs.label;
+      });
+      expect(headingLabel).toBe("a");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("typing a DIFFERENT \\label under a labelled heading leaves both (task 1069)", () => {
+    const { editor, cleanup } = mount({
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 2, uuid: "h1", label: "a" }, content: [{ type: "text", text: "Section" }] },
+        { type: "paragraph", attrs: { uuid: "p1" }, content: [{ type: "text", text: "y" }] },
+        { type: "paragraph", attrs: { uuid: "p2" }, content: [{ type: "text", text: "body" }] },
+      ],
+    });
+    try {
+      typeIntoP1(editor, "\\label{b}");
+      expect(headingByUuid(editor, "h1")?.attrs.label).toBe("a");
+      expect(paragraphs(editor).map((p) => p.text)).toContain("\\label{b}");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("an empty \\label{} is never absorbed — labelled or not (task 1069)", () => {
+    for (const label of ["a", null]) {
+      const { editor, cleanup } = mount({
+        type: "doc",
+        content: [
+          { type: "heading", attrs: { level: 2, uuid: "h1", label }, content: [{ type: "text", text: "Section" }] },
+          { type: "paragraph", attrs: { uuid: "p1" }, content: [{ type: "text", text: "y" }] },
+        ],
+      });
+      try {
+        typeIntoP1(editor, "\\label{}");
+        expect(headingByUuid(editor, "h1")?.attrs.label ?? null).toBe(label);
+        expect(paragraphs(editor).map((p) => p.text)).toContain("\\label{}");
+      } finally {
+        cleanup();
+      }
     }
   });
 });
