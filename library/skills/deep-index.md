@@ -535,7 +535,7 @@ lookup spec (load-bearing) — it's the canonical four-step
 normalize/extract/match/emit procedure; do not approximate.
 
 ```bash
-t=$(mktemp -d -t virgil-deep-index)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-deep-index.XXXXXX")
 cat > "$t/patch.json" <<'EOF'
 {
   "indexed": {
@@ -566,7 +566,7 @@ Use `append_inbox_item.py` rather than reading/writing
 `inbox.json` directly (same race-protection reason as catalog):
 
 ```bash
-t=$(mktemp -d -t virgil-deep-index)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-deep-index.XXXXXX")
 cat > "$t/notify.json" <<'EOF'
 {
   "kind": "indexed",

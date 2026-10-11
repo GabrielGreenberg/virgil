@@ -161,7 +161,7 @@ The split is idempotent; safe to re-run.
 examples):
 
 ```bash
-proposals=$(mktemp -t virgil-di-examples)
+proposals=$(mktemp "${TMPDIR:-/tmp}/virgil-di-examples.XXXXXX")
 python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex \
     --out "$proposals"
 echo "proposals: $proposals"

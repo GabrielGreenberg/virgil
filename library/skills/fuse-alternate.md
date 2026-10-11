@@ -150,7 +150,7 @@ catalog update via the locked CLI shim — do **not** Read/Write
 `catalog.json` directly:
 
 ```bash
-t=$(mktemp -d -t virgil-fuse-alternate)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-fuse-alternate.XXXXXX")
 set -e   # a failing shim must stop the fence, not be masked by the `rm`
 # An ARRAY, not a plain string: zsh does not word-split an unquoted
 # parameter expansion (bash does), so `$FLAGS` would arrive as ONE argv
@@ -236,7 +236,7 @@ is written. `"indexed"` is the neutral member of the toast enum that fits a
 fuse; the specifics belong in `summary`.
 
 ```bash
-t=$(mktemp -d -t virgil-fuse-alternate)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-fuse-alternate.XXXXXX")
 cat > "$t/notify.json" <<'EOF'
 {
   "kind": "indexed",

@@ -78,7 +78,7 @@ you write the JSON and nothing else re-interprets it.
 ### The canonical block
 
 ```bash
-op=$(mktemp -t virgil-op)
+op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
 cat > "$op" <<'JSON'
 { …the op… }
 JSON
@@ -166,7 +166,7 @@ trailing newline — the one a heredoc always adds — is dropped). Write each
 value through a **quoted** heredoc into one `mktemp -d` scratch directory:
 
 ```bash
-t=$(mktemp -d -t virgil-txt)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
 cat > "$t/title" <<'TXT'
 <short title>
 TXT

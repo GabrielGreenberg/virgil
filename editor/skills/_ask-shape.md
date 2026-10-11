@@ -70,7 +70,7 @@ documents a call that dies. Three tiers:
   holding. Declare the Task kind you are draining and let the contract do
   the write:
   ```bash
-  t=$(mktemp -d -t virgil-txt)
+  t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
   cat > "$t/title" <<'TXT'
   <short title>
   TXT
@@ -140,7 +140,7 @@ needs finding — file it as a **todo card** through Workflow B (no
 `requestId`; `--anchor` supplies the paragraph, the contract synthesizes
 and completes its own Task):
 ```bash
-t=$(mktemp -d -t virgil-txt)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
 cat > "$t/body" <<'TXT'
 <what still needs doing, and why>
 TXT

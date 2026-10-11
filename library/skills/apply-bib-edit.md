@@ -113,7 +113,7 @@ All paths below are relative to the library root.
    vice versa). Call the locked CLI shim instead:
 
    ```bash
-   t=$(mktemp -d -t virgil-apply-bib-edit)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-apply-bib-edit.XXXXXX")
    cat > "$t/set.json" <<'EOF'
    { "title": "...", "note": "..." }
    EOF
@@ -204,7 +204,7 @@ All paths below are relative to the library root.
    Construct a patch:
 
    ```bash
-   t=$(mktemp -d -t virgil-apply-bib-edit)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-apply-bib-edit.XXXXXX")
    cat > "$t/patch.json" <<'EOF'
    {
      "title": "<new title or omit>",
@@ -274,7 +274,7 @@ All paths below are relative to the library root.
 6. **Append a notification** via the locked CLI shim:
 
    ```bash
-   t=$(mktemp -d -t virgil-apply-bib-edit)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-apply-bib-edit.XXXXXX")
    cat > "$t/notify.json" <<'EOF'
    { "kind": "authenticated", "citekey": "<citekey>", "at": "<now ISO>",
      "summary": "Applied manual edit (<N> field changes)" }

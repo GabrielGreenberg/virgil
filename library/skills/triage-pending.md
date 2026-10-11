@@ -69,7 +69,7 @@ directory).
    [_scratch.md](_scratch.md) — never a fixed name, or two triage runs (two
    windows, two libraries) apply each other's rows:
    ```bash
-   mktemp -d -t virgil-triage-pending
+   mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pending.XXXXXX"
    ```
    Then run the batch script:
    ```bash

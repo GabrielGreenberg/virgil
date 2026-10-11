@@ -86,8 +86,8 @@ describe("op scratch file — the CENSUS (allowlist EMPTY)", () => {
       offenders,
       "a shell write aimed at <docPath>/ — the paper folder is the user's" +
         " (often sync-backed) working directory and every write there is sync" +
-        " traffic (tasks 363/415). Scratch belongs in $TMPDIR: `op=$(mktemp -t" +
-        " virgil-op)`, and `apply_response.py`'s `@` reader resolves any" +
+        " traffic (tasks 363/415). Scratch belongs in $TMPDIR: `op=$(mktemp" +
+        ' "${TMPDIR:-/tmp}/virgil-op.XXXXXX")`' + ", and `apply_response.py`'s `@` reader resolves any" +
         " absolute path. The only sanctioned in-folder channel is" +
         ` ${SANCTIONED_FRAGMENT} (the cowork memo stream).`,
     ).toEqual([]);
@@ -104,7 +104,7 @@ describe("op scratch file — the CENSUS (allowlist EMPTY)", () => {
     const spared = [
       "`<docPath>/.virgil/memos/<YYYY-MM-DD>-answer-note-<requestId>.md`",
       '   cat > "<docPath>/.virgil/memos/2026-01-01-note.md" <<\'MD\'',
-      '   op=$(mktemp -t virgil-op)',
+      '   op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")',
       '   cat > "$op" <<\'JSON\'',
     ];
     const hit = (line: string) =>
@@ -127,7 +127,7 @@ describe("op scratch file — the CENSUS (allowlist EMPTY)", () => {
 describe("op scratch file — both `@`-file sites take the scratch shape", () => {
   it.each(OP_FILE_SKILLS)("%s mints scratch with mktemp and removes it", (skill) => {
     const src = read(`${SKILLS}/${skill}`);
-    expect(src).toMatch(/op=\$\(mktemp -t virgil-op\)/);
+    expect(src).toMatch(/op=\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/virgil-op\.XXXXXX"\)/);
     expect(src).toContain('cat > "$op"');
     expect(src).toContain('"@$op"');
     expect(src).toMatch(/rm -f "\$op"/);
@@ -386,7 +386,7 @@ describe("op-json delivery — every free-text site points at the SSOT", () => {
 
   it("the doctrine holds the canonical block", () => {
     const src = read(SSOT);
-    expect(src).toMatch(/op=\$\(mktemp -t virgil-op\)/);
+    expect(src).toMatch(/op=\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/virgil-op\.XXXXXX"\)/);
     expect(src).toContain('cat > "$op" <<\'JSON\'');
     expect(src).toContain('"@$op"');
     expect(src).toMatch(/rc=\$\?[\s\S]{0,80}rm -f "\$op"[\s\S]{0,40}exit "\$rc"/);
@@ -410,7 +410,7 @@ describe("op-json delivery — every free-text site points at the SSOT", () => {
     // (each op's JSON differs), so it cannot be shared — only pinned.
     for (const f of freeTextSkills()) {
       const src = read(`${SKILLS}/${f}`);
-      expect(src, f).toMatch(/op=\$\(mktemp -t virgil-op\)/);
+      expect(src, f).toMatch(/op=\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/virgil-op\.XXXXXX"\)/);
       expect(src, f).toContain('cat > "$op"');
       expect(src, f).toContain('"@$op"');
       expect(src, f).toMatch(/rm -f "\$op"/);
@@ -491,7 +491,7 @@ describe("free-text scratch payloads — the CENSUS (allowlist EMPTY)", () => {
       "printf '%s' '<entry>' | python3 helper.py",
     ];
     const spared = [
-      "     fields=$(mktemp -t virgil-fields)",
+      '     fields=$(mktemp "${TMPDIR:-/tmp}/virgil-fields.XXXXXX")',
       "     python3 \"$scripts_editor/bib_resolve.py\" <docPath> <bibKey> \\",
       "echo \"No library set up. Pick a library in Virgil first.\"",
       "printf '%s\\n' \"$x\" > \"$f\"",
@@ -503,7 +503,7 @@ describe("free-text scratch payloads — the CENSUS (allowlist EMPTY)", () => {
 
   it("answer-bib-review pipes the fields object from bib_resolve into mktemp scratch", () => {
     const src = read(`${SKILLS}/answer-bib-review.md`);
-    expect(src).toMatch(/fields=\$\(mktemp -t virgil-fields\)/);
+    expect(src).toMatch(/fields=\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/virgil-fields\.XXXXXX"\)/);
     expect(src).toMatch(/bib_resolve\.py" <docPath> <bibKey> \\\n\s*\| python3 -c [^\n]*\["fields"\]/);
     expect(src).toContain('--fields-file "$fields"');
     expect(src).toMatch(/rm -f "\$fields"/);
@@ -648,7 +648,7 @@ describe("free-text FLAGS — the CENSUS (allowlist EMPTY)", () => {
       "a free-text flag passed inline. Inside double quotes bash eats" +
         " ``quotes'' and $math$ with exit 0, and a footnote body is spliced into" +
         " the .tex mangled. Write the value through a quoted heredoc into" +
-        ' `t=$(mktemp -d -t virgil-txt)` and pass `--body "@$t/body"` — see' +
+        ' `t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")` and pass `--body "@$t/body"` — see' +
         ' `editor/skills/_op-json.md`, "Free-text FLAGS".',
     ).toEqual([]);
   });
@@ -689,7 +689,7 @@ describe("free-text FLAGS — the CENSUS (allowlist EMPTY)", () => {
     for (const f of owners) {
       const src = read(`${SKILLS}/${f}`);
       expect(src, f).toContain(POINTER);
-      expect(src, f).toMatch(/t=\$\(mktemp -d -t virgil-txt\)/);
+      expect(src, f).toMatch(/t=\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/virgil-txt\.XXXXXX"\)/);
       expect(src, f).toMatch(/cat > "\$t\/[a-z0-9]+" <<'TXT'/);
       expect(src, f).toMatch(/rc=\$\?\s*\n\s*rm -rf "\$t"\s*\n\s*exit "\$rc"/);
     }

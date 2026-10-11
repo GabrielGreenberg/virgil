@@ -86,7 +86,7 @@ card:
      tell [_ask-shape.md](_ask-shape.md) §3 names, and it costs the user twice — the findings arrive truncated
      *and* their footnote comes back edited when they never asked for that.
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/title" <<'TXT'
      <short title>
      TXT
@@ -175,7 +175,7 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    The op carries FREE TEXT (the body and the summary), so it goes through an
    `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   op=$(mktemp -t virgil-op)
+   op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
    cat > "$op" <<'JSON'
    {"cardId":"<cardId>","body":"<revised footnote body>","requestId":"<requestId>","summary":"Revised footnote <cardId>"}
    JSON
@@ -232,7 +232,7 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    subcommand from the Task's `safetyLevel` (none → direct create; 1 → silent;
    2 → +comment; 3 → propose):
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/body" <<'TXT'
    <composed body>
    TXT
@@ -252,7 +252,7 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    Task). Carry the trail back to the footnote so whoever picks it up can
    splice the `\citet` deterministically:
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/body" <<'TXT'
    Add a bib entry for <author/year>; once in references.bib, splice \citet{<bibkey>} into footnote <footnoteId>.
    TXT

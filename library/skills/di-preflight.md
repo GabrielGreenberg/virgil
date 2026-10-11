@@ -212,7 +212,7 @@ a top-level `warnings` key is invisible to all of them. And a bare
 kind on it, so declare the kind you recomputed and let the shim merge:
 
 ```bash
-t=$(mktemp -d -t virgil-di-preflight)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-di-preflight.XXXXXX")
 cat > "$t/mismatch-warning.json" <<'EOF'
 { "indexed": { "warnings": ["metadata-mismatch: <kind>"] } }
 EOF

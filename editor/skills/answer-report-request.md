@@ -74,7 +74,7 @@ Report Request by appending a **Report card authored by AI** to
      the row's `paragraphIds[0]` as `--anchor` (a no-op for a real id — the
      same one call shape every re-route uses, [_ask-shape.md](_ask-shape.md)) —
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/title" <<'TXT'
      <short title>
      TXT
@@ -89,7 +89,7 @@ Report Request by appending a **Report card authored by AI** to
    - Virtual id (`virtual:reports:<cardId>`): pass the source Report Request's
      paragraph as `--anchor` —
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/title" <<'TXT'
      <short title>
      TXT
@@ -127,7 +127,7 @@ awaiting review, and refuses before any write if `original_text` is not
 verbatim in the anchored paragraph (exclude the `%!v:` marker) or the
 replacement is empty:
 ```bash
-t=$(mktemp -d -t virgil-txt)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
 cat > "$t/original" <<'TXT'
 <the span, verbatim from the .tex>
 TXT

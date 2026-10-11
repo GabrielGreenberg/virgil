@@ -23,6 +23,13 @@ rule covers every such file in every silo:
 
 > **Scratch is minted by `mktemp`, in `$TMPDIR`, never at a fixed name.**
 
+The ONE spelling is a full template, ending in `XXXXXX`:
+`mktemp "${TMPDIR:-/tmp}/virgil-<skill>.XXXXXX"` (add `-d` for a directory).
+Never the `-t <name>` flag: BSD/macOS reads `-t` as a prefix and appends
+the random part itself, but GNU (Linux, CI) reads it as a TEMPLATE, refuses a
+name with no trailing `XXX`, prints nothing — and the recipe then writes to
+`/patch.json` (task 1061). The template form means the same thing on both.
+
 ### Why a fixed name is a defect, not a style choice
 
 Two runs of one skill are routine: a queue drain and a user-typed command on
@@ -41,7 +48,7 @@ user's, often sync-backed, and every write there is sync traffic.
 When the whole life of the file fits in ONE shell call, mint it in that call:
 
 ```bash
-f=$(mktemp -t virgil-<skill>)
+f=$(mktemp "${TMPDIR:-/tmp}/virgil-<skill>.XXXXXX")
 cat > "$f" <<'JSON'
 { …payload… }
 JSON
@@ -50,8 +57,9 @@ rm -f "$f"
 exit "$rc"
 ```
 
-Several files in one call share one directory: `t=$(mktemp -d -t
-virgil-<skill>)`, write `"$t/fields.json"`, `"$t/base.bib"`, …, and finish
+Several files in one call share one directory:
+`t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-<skill>.XXXXXX")`, write
+`"$t/fields.json"`, `"$t/base.bib"`, …, and finish
 with `rm -rf "$t"`. Capture `rc` before the `rm` so a failing call still
 cleans up and still fails. Keep the heredoc quoted (`<<'JSON'`) and its
 terminator at column 0.
@@ -63,7 +71,7 @@ is gone by step 4. So a recipe whose files outlive one call mints ONE
 directory for the whole run, at its first step, and prints it:
 
 ```bash
-mktemp -d -t virgil-<skill>
+mktemp -d "${TMPDIR:-/tmp}/virgil-<skill>.XXXXXX"
 ```
 
 From then on every block in that run writes `<runDir>` where the directory

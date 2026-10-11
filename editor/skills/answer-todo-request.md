@@ -67,7 +67,7 @@ matters" (write a note). Read the todo and dispatch.
      "is this attribution right", "what does X actually say") → the answer
      is **findings**, so emit a **report**, not a note:
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/title" <<'TXT'
      <short title>
      TXT
@@ -105,7 +105,7 @@ matters" (write a note). Read the todo and dispatch.
      `status`/`result`, clears the todo's `aiRequest` flag, and bumps the version
      — atomically under the pen:
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/body" <<'TXT'
      <your note>
      TXT
@@ -133,7 +133,7 @@ matters" (write a note). Read the todo and dispatch.
      anchored paragraph (exclude the `%!v:` marker) or the replacement is
      empty. Texts go through `@` scratch files ([`_op-json.md`](_op-json.md)):
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/original" <<'TXT'
      <the span, verbatim from the .tex>
      TXT
@@ -157,7 +157,7 @@ matters" (write a note). Read the todo and dispatch.
    - **Footnote → one hop.** The tier-1 call from step 2, verbatim; it drains
      the todo Task itself, so there is nothing else to land:
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/body" <<'TXT'
      <composed footnote prose>
      TXT

@@ -98,7 +98,7 @@ catalog write path, never a direct `Write` — the shim takes the
 picks the row up:
 
 ```bash
-f=$(mktemp -t virgil-metadata-lock)
+f=$(mktemp "${TMPDIR:-/tmp}/virgil-metadata-lock.XXXXXX")
 cat > "$f" <<'EOF'
 { "metadataLock": true }
 EOF

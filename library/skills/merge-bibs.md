@@ -143,7 +143,7 @@ again), substituting the user's flags for `<user flags>`:
 # file — merged into stdout it corrupts the JSON and json.load crashes,
 # silently skipping the writer check and the batch policy (task 798).
 # This run's scratch dir — carry the printed path as <runDir> from here on.
-run_dir=$(mktemp -d -t virgil-merge-bibs) || exit 1
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/virgil-merge-bibs.XXXXXX") || exit 1
 echo "runDir=$run_dir"
 python3 .virgil/scripts/library/merge_bibs_preflight.py \
   --run-state "$run_dir/run.json" <user flags> \

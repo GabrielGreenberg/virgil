@@ -76,7 +76,7 @@ this skill.
    "is this attribution right", "find me the reference") wants **findings**,
    and its home is a report:
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/title" <<'TXT'
    <short title>
    TXT
@@ -121,7 +121,7 @@ this skill.
    ([`_op-json.md`](_op-json.md) — `original_text` is lifted from the user's
    `.tex`, and bash eats `` ``quotes'' `` and `$math$` in a quoted argv):
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/original" <<'TXT'
    <the span, verbatim from the .tex>
    TXT

@@ -72,7 +72,7 @@ source request in place.
      right", "what does the source actually say"? → emit a **report**,
      which is where findings belong:
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/title" <<'TXT'
      <short title>
      TXT
@@ -111,7 +111,7 @@ source request in place.
 5. **Land it — one call per path.** Free text goes through `@` scratch files
    ([`_op-json.md`](_op-json.md)):
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
 
    # Path (a) — suggestion → L3 propose: the card lands, the Task is left
    # AWAITING REVIEW (status: in-progress), the .tex untouched until

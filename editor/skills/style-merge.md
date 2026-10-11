@@ -153,7 +153,7 @@ Skip everything else.
    failure path through the contract (two-field: status `failed`, result
    `impossible`; no `.tex` / settings write happens):
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/note" <<'TXT'
    Style merge validation failed: <reason>; .tex left untouched.
    TXT
@@ -184,7 +184,7 @@ Skip everything else.
    backslashes), so it goes through an `@` scratch file — see
    [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   op=$(mktemp -t virgil-op)
+   op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
    cat > "$op" <<'JSON'
    { "requestId": "<requestId>",
      "texEdit": { "mode": "region-replace",
