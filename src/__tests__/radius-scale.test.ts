@@ -357,3 +357,76 @@ describe("emitted rounded-* CSS", () => {
     expect(at("rounded-full")).toContain("infinity");
   });
 });
+
+/**
+ * Role → tier leg (task 2026-10-11-1058).
+ *
+ * The legs above prove there are no stray LITERALS; they cannot see a site
+ * that is token-clean but on the WRONG tier. This table pins each role the
+ * STYLE_GUIDE radius table names by selector (or by exported constant) to the
+ * tier that table assigns it — so the next drift is a CI failure, not an
+ * audit finding. Keep it to roles the guide names; it is not a classifier for
+ * every `rounded-*` in the tree.
+ */
+describe("radius roles wear the tier the guide assigns them", () => {
+  const css = cssCommentsStripped(globals);
+
+  /** The `border-radius` of the ONE rule whose selector list is exactly `selector`. */
+  const cssRadius = (selector: string): string | null => {
+    const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rules = [...css.matchAll(new RegExp(`^${esc}\\s*\\{([^}]*)\\}`, "gm"))];
+    expect(rules, `expected exactly one \`${selector} {…}\` rule in globals.css`).toHaveLength(1);
+    return rules[0][1].match(/border-radius:\s*([^;]+);/)?.[1].trim() ?? null;
+  };
+
+  it.each([
+    // CARD + POD + MENU tier: "code / display-math blocks, figure images"
+    // (the code/display-math 6→8 join deferred by c4c09e3b, landed here).
+    [".tiptap pre", "var(--pod-radius)"],
+    [".display-math", "var(--pod-radius)"],
+    [".figure-block .figure-image", "var(--pod-radius)"],
+    // Menus reach the pod tier through --menu-radius, never by naming it.
+    [".menu-surface", "var(--menu-radius)"],
+    // The one stated exception: the surface="none" label-ref popover sits on
+    // the CONTROL tier as an inline editing affordance — the reason is on its
+    // PERMITTED_UNSURFACED_MENUS entry (menu-surface-guardrail.test.ts).
+    [".label-ref-popover", "var(--radius-md)"],
+  ])("%s → %s", (selector, token) => {
+    expect(cssRadius(selector)).toBe(token);
+  });
+
+  /** Tailwind `rounded-*` class → the tier token it resolves to. */
+  const TIER: Record<string, string> = {
+    rounded: "--radius-sm",
+    "rounded-sm": "--radius-sm",
+    "rounded-md": "--radius-md",
+    "rounded-lg": "--pod-radius",
+    "rounded-xl": "--panel-radius",
+    "rounded-pill": "--radius-pill",
+    "rounded-full": "--radius-pill",
+  };
+  const tierOf = (classes: string): string[] =>
+    classes
+      .split(/\s+/)
+      .filter((c) => c in TIER)
+      .map((c) => TIER[c]);
+
+  const src = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");
+
+  it.each([
+    // sub-pods sit on the pod tier, not the control tier.
+    ["src/components/panel-primitives.tsx", /\bsubpod:\s*"([^"]*)"/, "--pod-radius"],
+    ["src/components/panel-primitives.tsx", /\bsubpodWhite:\s*"([^"]*)"/, "--pod-radius"],
+    // status badges are pills — the same `--pill-<tone>-*` triple StatusPill
+    // paints, so the same capsule shape (task 500 unified colour; this, shape).
+    ["src/components/library/library-entry-status.tsx", /const CHIP_BASE =\s*"([^"]*)"/, "--radius-pill"],
+  ])("%s %s → %s", (file, re, token) => {
+    const m = src(file).match(re);
+    expect(m, `${re} not found in ${file}`).not.toBeNull();
+    expect(tierOf(m![1])).toEqual([token]);
+  });
+
+  it("StatusPill itself is on the pill tier (the shape the badges above match)", () => {
+    expect(src("library/components/StatusPill.tsx")).toMatch(/var\(--radius-pill\)|rounded-pill|rounded-full/);
+  });
+});

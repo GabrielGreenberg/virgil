@@ -35,7 +35,7 @@ import { OpenEntryLink } from "./open-library-entry";
 // membership chips on the layer above keep their denser 9px-uppercase
 // "location tag" look. See STYLE_GUIDE § In-card type scale.
 const CHIP_BASE =
-  "inline-flex items-center gap-0.5 text-[10px] tracking-wide px-1.5 py-0.5 rounded whitespace-nowrap border";
+  "inline-flex items-center gap-0.5 text-[10px] tracking-wide px-1.5 py-0.5 rounded-pill whitespace-nowrap border";
 
 /** Paint a chip from a resolved {@link Tone}. The runtime-built token name is
  *  the same shape `StatusPill`'s `Pill` uses, so the two surfaces read the

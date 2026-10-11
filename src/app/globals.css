@@ -3097,7 +3097,7 @@ textarea {
 .tiptap pre {
   background: var(--code-block-bg, #f5f3f0);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--pod-radius);
   padding: 0.75em 1em;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.875rem;
@@ -3165,7 +3165,7 @@ textarea {
   cursor: pointer;
   margin: 0.75em 0;
   padding: 0.5em 1em;
-  border-radius: var(--radius-md);
+  border-radius: var(--pod-radius);
   text-align: center;
   transition: background 120ms ease;
 }
@@ -3423,7 +3423,7 @@ textarea {
   max-width: 100%;
   height: auto;
   display: block;
-  border-radius: var(--radius-sm);
+  border-radius: var(--pod-radius);
 }
 
 .figure-block .figure-caption {

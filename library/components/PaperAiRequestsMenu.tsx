@@ -116,5 +116,5 @@ const countBadgeStyle: CSSProperties = {
   lineHeight: 1,
   color: "white",
   background: "var(--accent)",
-  borderRadius: "var(--pod-radius)",
+  borderRadius: "var(--radius-pill)",
 };
