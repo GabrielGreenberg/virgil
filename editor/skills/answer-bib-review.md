@@ -92,7 +92,7 @@ Three modes:
      hazard, and the same `$TMPDIR`-scratch rule, as
      [`_op-json.md`](_op-json.md):
      ```bash
-     fields=$(mktemp -t virgil-fields)
+     fields=$(mktemp "${TMPDIR:-/tmp}/virgil-fields.XXXXXX")
      python3 "$scripts_editor/bib_resolve.py" <docPath> <bibKey> \
        | python3 -c 'import json, sys; json.dump(json.load(sys.stdin)["fields"], sys.stdout, ensure_ascii=False)' \
        > "$fields"
@@ -130,7 +130,7 @@ Three modes:
        `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule and
        why:
        ```bash
-       op=$(mktemp -t virgil-op)
+       op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
        cat > "$op" <<'JSON'
        { "requestId": "<bibKey>", "bibReviewType": "fields",
          "bibEdit": { "mode": "set-fields", "citekey": "<bibKey>",
@@ -151,7 +151,7 @@ Three modes:
        op goes through an `@` scratch file — see [`_op-json.md`](_op-json.md)
        for the rule and why:
        ```bash
-       op=$(mktemp -t virgil-op)
+       op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
        cat > "$op" <<'JSON'
        { "requestId": "<bibKey>", "bibReviewType": "fields",
          "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
@@ -187,7 +187,7 @@ Three modes:
      The op carries FREE TEXT (your annotation), so it goes through an `@`
      scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
      ```bash
-     op=$(mktemp -t virgil-op)
+     op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
      cat > "$op" <<'JSON'
      { "requestId": "<bibKey>", "bibReviewType": "notes",
        "annotationEdit": { "bibKey": "<bibKey>", "text": "<your annotation>" },
@@ -251,7 +251,7 @@ Three modes:
      The `entry` is a BibTeX block full of braces, so this op goes through an
      `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
      ```bash
-     op=$(mktemp -t virgil-op)
+     op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
      cat > "$op" <<'JSON'
      { "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
                     "entry": "<library entry text>" },

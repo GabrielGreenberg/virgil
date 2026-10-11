@@ -132,7 +132,7 @@ you to disambiguate something.
    If either is missing, append a `failed` notification via the locked
    CLI shim and stop:
    ```bash
-   t=$(mktemp -d -t virgil-index-paper)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-index-paper.XXXXXX")
    cat > "$t/setup-failed.json" <<'EOF'
    { "kind": "failed", "citekey": "<citekey>", "at": "<ISO>",
      "summary": "Setup check failed: <reason>" }
@@ -226,7 +226,7 @@ you to disambiguate something.
    the write rather than let them be destroyed.
 
    ```bash
-   t=$(mktemp -d -t virgil-index-paper)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-index-paper.XXXXXX")
    cat > "$t/fields.json" <<'EOF'
    { "author": "...", "title": "...", "year": "...", "doi": "...", ... }
    EOF
@@ -253,7 +253,7 @@ you to disambiguate something.
    in `.virgil/catalog.json`:
 
    ```bash
-   t=$(mktemp -d -t virgil-index-paper)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-index-paper.XXXXXX")
    cat > "$t/catalog.json" <<'EOF'
    { "bib": { "state": "authenticated", "doiVerified": true } }
    EOF
@@ -440,7 +440,7 @@ you to disambiguate something.
    `--merge-existing` to keep the rest.
 
    ```bash
-   t=$(mktemp -d -t virgil-index-paper)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-index-paper.XXXXXX")
    cat > "$t/tier-fields.json" <<'EOF'
    { "author": "...", "title": "...", "year": "...", ... }
    EOF

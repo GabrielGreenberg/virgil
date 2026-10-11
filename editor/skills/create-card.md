@@ -158,7 +158,7 @@ just decides the inputs and invokes it.
 
    Workflow A — a Task already exists (anchor + level read from the request):
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/body" <<'TXT'
    <composed body>
    TXT
@@ -169,7 +169,7 @@ just decides the inputs and invokes it.
 
    Workflow B — chat-initiated, no pre-existing Task (synthesizes one):
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/body" <<'TXT'
    <composed body>
    TXT

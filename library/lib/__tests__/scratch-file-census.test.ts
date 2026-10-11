@@ -31,6 +31,12 @@
 //      metadata-lock recipe ran with an empty citekey. (Prose may NAME the
 //      variable — the doctrine has to, to forbid it; only a fence runs.)
 //   4. The twin is byte-identical, and `_op-json.md` points at it.
+//   5. MINTING IS PORTABLE (task 1061). `mktemp -t virgil-x` is a PREFIX on
+//      BSD/macOS but a TEMPLATE on GNU, which refuses a name with no trailing
+//      `XXX`, prints nothing, and leaves the recipe writing to `/patch.json` —
+//      green on every Mac, red in CI, blocked the v0.1.133 deploy. The one
+//      spelling is a full template, `mktemp [-d] "${TMPDIR:-/tmp}/virgil-x.XXXXXX"`,
+//      and that template is the only `$TMPDIR` path rule 1 lets through.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
@@ -43,14 +49,31 @@ const REPO_ROOT = path.resolve(__dirname, "../../..");
 const FIXED_SCRATCH =
   /(?<![\w.~$-])\/(?:private\/|var\/)?tmp\/|\$\{?TMPDIR(?::-[^}]*)?\}?\//g;
 
+/** The canonical minting call: a quoted full template under `$TMPDIR`. */
+const MKTEMP_TEMPLATE = /mktemp (?:-d )?"\$\{TMPDIR:-\/tmp\}\/virgil-[\w<>-]+\.XXXXXX"/g;
+
 /** Each fixed-scratch hit in `source`, as `line: text`. */
 function fixedScratchHits(source: string): string[] {
   const hits: string[] = [];
   source.split("\n").forEach((line, i) => {
-    if (FIXED_SCRATCH.test(line)) hits.push(`${i + 1}: ${line.trim()}`);
+    if (FIXED_SCRATCH.test(line.replace(MKTEMP_TEMPLATE, "mktemp")))
+      hits.push(`${i + 1}: ${line.trim()}`);
     FIXED_SCRATCH.lastIndex = 0;
   });
   return hits;
+}
+
+/**
+ * Each non-portable `mktemp` call in `source`, as `line: text`: the `-t` flag
+ * (prefix on BSD, template on GNU), or a quoted template with no `XXXXXX`.
+ */
+function unportableMktempHits(source: string): string[] {
+  return source.split("\n").flatMap((line, i) =>
+    /\bmktemp\s+(?:-d\s+)?-t\b/.test(line) ||
+    /\bmktemp\s+(?:-d\s+)?"(?![^"]*XXXXXX")[^"]*"/.test(line)
+      ? [`${i + 1}: ${line.trim()}`]
+      : [],
+  );
 }
 
 /** Each `$ARGUMENTS` / `${ARGUMENTS}` occurrence in `source`, as `line: text`. */
@@ -99,10 +122,17 @@ describe("scratch-file census (cross-silo, task 1050)", () => {
     expect(fixedScratchHits('cat > "$TMPDIR/foo.json"')).toHaveLength(1);
     expect(fixedScratchHits('d="${TMPDIR:-/tmp}/run"')).toHaveLength(1);
     expect(fixedScratchHits(". /private/tmp/run.env")).toHaveLength(1);
-    expect(fixedScratchHits("f=$(mktemp -t virgil-x)")).toEqual([]);
+    expect(fixedScratchHits('f=$(mktemp "${TMPDIR:-/tmp}/virgil-x.XXXXXX")')).toEqual([]);
+    expect(fixedScratchHits('t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-<skill>.XXXXXX")')).toEqual([]);
+    expect(fixedScratchHits('cat > "${TMPDIR:-/tmp}/virgil-x.XXXXXX"')).toHaveLength(1);
     expect(fixedScratchHits('cat > "$t/patch.json"')).toEqual([]);
     expect(fixedScratchHits(". <runDir>/run.json.env")).toEqual([]);
     expect(fixedScratchHits("Scratch lives in `$TMPDIR`, never a fixed name.")).toEqual([]);
+    expect(unportableMktempHits("f=$(mktemp -t virgil-x)")).toHaveLength(1);
+    expect(unportableMktempHits("t=$(mktemp -d -t virgil-x)")).toHaveLength(1);
+    expect(unportableMktempHits('t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-x")')).toHaveLength(1);
+    expect(unportableMktempHits('t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-x.XXXXXX")')).toEqual([]);
+    expect(unportableMktempHits("Scratch is minted by `mktemp`, in `$TMPDIR`.")).toEqual([]);
     expect(argumentsHits('update_catalog_entry.py "$ARGUMENTS"')).toHaveLength(1);
     expect(argumentsHits('update_catalog_entry.py "<citekey>"')).toEqual([]);
   });
@@ -115,6 +145,17 @@ describe("scratch-file census (cross-silo, task 1050)", () => {
       offenders,
       "mint scratch with `mktemp` (one call) or a carried `<runDir>` " +
         "(several calls) — see _scratch.md",
+    ).toEqual([]);
+  });
+
+  it("every mktemp in every silo is the portable full template (task 1061)", () => {
+    const offenders = files.flatMap((f) =>
+      unportableMktempHits(read(f)).map((h) => `${f}:${h}`),
+    );
+    expect(
+      offenders,
+      'spell it `mktemp [-d] "${TMPDIR:-/tmp}/virgil-<skill>.XXXXXX"` — GNU mktemp ' +
+        "refuses `-t <name>` with no XXX (see _scratch.md)",
     ).toEqual([]);
   });
 

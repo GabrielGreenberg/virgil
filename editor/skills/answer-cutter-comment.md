@@ -56,7 +56,7 @@ once — see step 5).
    actually sourced", "check this quote against the original") belongs in a
    report instead:
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/title" <<'TXT'
    <short title>
    TXT
@@ -92,7 +92,7 @@ once — see step 5).
    `@` scratch files ([`_op-json.md`](_op-json.md)); for a pure cut leave the
    replacement empty:
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/original" <<'TXT'
    <the slice, verbatim from the .tex>
    TXT

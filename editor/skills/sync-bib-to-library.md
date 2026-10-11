@@ -123,7 +123,7 @@ top of step 1.
    a fixed name, or two syncs (two papers, two windows) read each other's
    rows. Classify every paper entry:
    ```bash
-   run_dir=$(mktemp -d -t virgil-sync-bib) || exit 1
+   run_dir=$(mktemp -d "${TMPDIR:-/tmp}/virgil-sync-bib.XXXXXX") || exit 1
    echo "runDir=$run_dir"
    python3 "$scripts_dir/bib_match_library.py" "<docPath>" \
        --library "$library_root" \

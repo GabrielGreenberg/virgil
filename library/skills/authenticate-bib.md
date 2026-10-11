@@ -95,7 +95,7 @@ directory).
    printed path as `<runDir>` into every later block, per
    [_scratch.md](_scratch.md):
    ```bash
-   run_dir=$(mktemp -d -t virgil-authenticate-bib) || exit 1
+   run_dir=$(mktemp -d "${TMPDIR:-/tmp}/virgil-authenticate-bib.XXXXXX") || exit 1
    echo "runDir=$run_dir"
    python3 - "<citekey>" > "$run_dir/base.bib" <<'PY'
    import sys; from pathlib import Path

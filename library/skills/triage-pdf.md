@@ -219,7 +219,7 @@ directory).
       if needed). Skip steps 5–10 — no new bib entry, no queue write.
       Append a notification via the locked CLI shim:
       ```bash
-      t=$(mktemp -d -t virgil-triage-pdf)
+      t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX")
       cat > "$t/variant-notify.json" <<'EOF'
       {
         "kind": "triaged",
@@ -276,7 +276,7 @@ directory).
    locked CLI shim — do **not** Read/Write `master.bib` directly:
 
    ```bash
-   t=$(mktemp -d -t virgil-triage-pdf)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX")
    cat > "$t/fields.json" <<'EOF'
    { "author": "...", "title": "...", "year": "<YYYY>", ... }
    EOF
@@ -411,7 +411,7 @@ directory).
     via the locked CLI shims:
 
     ```bash
-    t=$(mktemp -d -t virgil-triage-pdf)
+    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX")
     cat > "$t/triaged.json" <<'EOF'
     { "kind": "triaged",
       "summary": "Triaged <filename> → <citekey> (<entry_type>)",
@@ -459,7 +459,7 @@ When `<filename>` ends with `.bib`, do NOT treat it as one document. Fan it out
 through the batch engine, SCOPED TO THIS FILE with `--only`:
 
 ```bash
-run_dir=$(mktemp -d -t virgil-triage-pdf) || exit 1
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX") || exit 1
 echo "runDir=$run_dir"
 python3 .virgil/scripts/library/triage_batch.py \
   --library . --only "<filename>" --output "$run_dir/bib-triage.jsonl"

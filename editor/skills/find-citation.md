@@ -273,7 +273,7 @@ card so the user can drag it into the document.
    backslashes), so it goes through an `@` scratch file — see
    [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   op=$(mktemp -t virgil-op)
+   op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
    cat > "$op" <<'JSON'
    { "requestId": "<requestId>",
      "panel": "citations",
@@ -319,7 +319,7 @@ skill are: if you can't confidently find a real source for the
 description, take the failure path (two-field: status `failed`,
 result `impossible` — no `.bib` / card write happens):
 ```bash
-t=$(mktemp -d -t virgil-txt)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
 cat > "$t/note" <<'TXT'
 Could not locate a paper matching <criteria>; user should refine the request.
 TXT

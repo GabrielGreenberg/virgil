@@ -338,7 +338,7 @@ python3 .virgil/scripts/library/recover_chapter_titles.py $ARGUMENTS
 For book TOC-driven heading insertion:
 
 ```bash
-t=$(mktemp -d -t virgil-di-clean-prose)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-di-clean-prose.XXXXXX")
 python3 .virgil/scripts/library/extract_book_toc.py $ARGUMENTS --out "$t/toc.json"
 python3 .virgil/scripts/library/book_chapter_locator.py $ARGUMENTS "$t/toc.json"
 rm -rf "$t"

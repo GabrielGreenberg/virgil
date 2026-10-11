@@ -73,7 +73,7 @@ two paths:
      a note's body is for commentary, not for a verification result with
      page cites:
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/title" <<'TXT'
      <short title>
      TXT
@@ -119,7 +119,7 @@ two paths:
      anchor is read from the Task. Title is a short descriptive subject phrase
      (no `Re:`), matching the convention of existing notes in `notes.json`:
      ```bash
-     t=$(mktemp -d -t virgil-txt)
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
      cat > "$t/body" <<'TXT'
      <your reply>
      TXT
@@ -136,7 +136,7 @@ two paths:
      - Real `requestId` (bridged flag, `linkedTo.panel == "notes"`): anchor read
        from the Task —
        ```bash
-       t=$(mktemp -d -t virgil-txt)
+       t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
        cat > "$t/body" <<'TXT'
        <your reply>
        TXT
@@ -153,7 +153,7 @@ two paths:
        pass the source note's paragraph as `--anchor` (from the request's
        `paragraphIds`, or the source note's anchor link) —
        ```bash
-       t=$(mktemp -d -t virgil-txt)
+       t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
        cat > "$t/body" <<'TXT'
        <your reply>
        TXT
@@ -184,7 +184,7 @@ two paths:
    anchored paragraph (exclude the `%!v:` marker) or the replacement is
    empty. Texts go through `@` scratch files ([`_op-json.md`](_op-json.md)):
    ```bash
-   t=$(mktemp -d -t virgil-txt)
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/original" <<'TXT'
    <the span, verbatim from the .tex>
    TXT

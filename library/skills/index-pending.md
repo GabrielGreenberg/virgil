@@ -154,7 +154,7 @@ Detach-and-poll instead. Two phases:
 **Phase A — kick off the drain detached, return immediately.**
 ```bash
 cd <library-root>
-log=$(mktemp -t virgil-drain-log)
+log=$(mktemp "${TMPDIR:-/tmp}/virgil-drain-log.XXXXXX")
 nohup python3 .virgil/scripts/library/drain_queue.py \
   > "$log" 2>&1 &
 disown

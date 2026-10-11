@@ -746,7 +746,7 @@ outstanding-work agenda, so the paper would report "inline rewrite skipped"
 forever on a pass where the rewrite ran.
 
 ```bash
-t=$(mktemp -d -t virgil-clean-bibliography)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-clean-bibliography.XXXXXX")
 cat > "$t/warnings.json" <<'EOF'
 {
   "indexed": {
@@ -771,7 +771,7 @@ rm -rf "$t"
 prior author-year pass's findings rather than recompute them:
 
 ```bash
-t=$(mktemp -d -t virgil-clean-bibliography)
+t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-clean-bibliography.XXXXXX")
 cat > "$t/warnings.json" <<'EOF'
 {
   "indexed": {

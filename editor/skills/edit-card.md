@@ -66,7 +66,7 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
    field value), so it goes through an `@` scratch file — see
    [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   op=$(mktemp -t virgil-op)
+   op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
    cat > "$op" <<'JSON'
    {"cardId":"<cardId>","body":"<new body>","set":{"title":"<t>"}}
    JSON
