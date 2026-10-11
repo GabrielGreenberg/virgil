@@ -117,8 +117,8 @@ export interface EditorViewportFrame {
   /** The `[data-editor-col="true"]` (editor-pane-column) element that
    *  serves as the grab-handle portal's positioning context. The portal
    *  div lives as a column-level sibling of the pod (NOT inside the
-   *  pod) so it escapes the pod's `clipPath` that would otherwise clip
-   *  handles in the margin. Handles render as absolute-positioned
+   *  pod) so it escapes the pod's `overflow: clip` (0px lateral), which
+   *  would otherwise clip handles in the margin. Handles render as absolute-positioned
    *  children of `[data-grab-handle-portal]` inside this column; the
    *  rect's top-left is the origin for converting viewport coords to
    *  portal-relative coords. Null when the column isn't mounted yet.
@@ -245,9 +245,9 @@ export function computeViewportFrame(
   const podBottomInScroll = (podRect?.bottom ?? scrollBottom) + measuredOffset;
   // `editor-pane-column` is the positioning context for the grab-
   // handle portal. The portal lives at column level (sibling of the
-  // pod) so it escapes the pod's `clipPath` that clips lateral
-  // descendants beyond ±20px (the handle sits ~22px left of the
-  // pod's content edge, in the margin). Walk from the editorEl up
+  // pod) so it escapes the pod's `overflow: clip`, which clips every
+  // descendant at its box edge — 0px lateral (the handle sits ~22px
+  // left of the pod's content edge, in the margin). Walk from the editorEl up
   // — same direction as the scroll resolve — to find it.
   const paperEl =
     (editorEl.closest('[data-editor-col="true"]') as HTMLElement | null) ??
