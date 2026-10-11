@@ -1944,7 +1944,12 @@ export function useViewPrefs(opts?: {
   );
 
   const setCodePaneRatio = useCallback((ratio: number) => {
-    update((p) => ({ ...p, codePaneRatio: Math.max(0.05, Math.min(0.95, ratio)) }));
+    // Sanity clamp only. The LEGAL split depends on container width, which
+    // the store cannot know — `codeSplitEditorBoundsPx` (split-with-code.tsx)
+    // owns it and applies it at drag AND render time. A fixed ratio range here
+    // re-clamped a released drag and jumped the divider (task 1053).
+    if (!Number.isFinite(ratio)) return;
+    update((p) => ({ ...p, codePaneRatio: Math.max(0, Math.min(1, ratio)) }));
   }, [update]);
 
   const setPageWidth = useCallback((w: number) => {
