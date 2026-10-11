@@ -217,4 +217,27 @@ describe("onLayoutGestureSetChange — every gesture's own edges, even under ove
       [false, "content:drag-1"],
     ]);
   });
+
+  it("a throwing listener on either channel never blocks another listener's edge (task 1054)", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const offSet = onLayoutGestureSetChange(() => {
+      throw new Error("set boom");
+    });
+    const offBad = onLayoutGestureChange(() => {
+      throw new Error("edge boom");
+    });
+    const edges: boolean[] = [];
+    const offGood = onLayoutGestureChange((active) => edges.push(active));
+
+    expect(() => beginLayoutGesture(INFO)).not.toThrow();
+    expect(() => endLayoutGesture(INFO)).not.toThrow();
+
+    expect(edges).toEqual([true, false]);
+    expect(isLayoutGestureActive()).toBe(false);
+    expect(err).toHaveBeenCalledTimes(4);
+    offSet();
+    offBad();
+    offGood();
+    err.mockRestore();
+  });
 });

@@ -79,6 +79,27 @@ const listeners = new Set<LayoutGestureListener>();
 
 const keyOf = (info: LayoutGestureInfo): string => `${info.kind}:${info.id}`;
 
+/** Deliver one edge to every listener in `set`, ISOLATED: a listener that
+ *  throws is logged and skipped, never allowed to strand the rest. The end
+ *  edge runs arbitrary consumer code (every `parkDuringLayoutGesture` runner
+ *  replays its parked geometry pass inside it), so a bare loop let one bad
+ *  park leave every later park holding stale args until the NEXT gesture —
+ *  and a throw on the set channel skipped the outermost edge entirely. Same
+ *  rule as the DocStructureBus's `emit`. */
+function dispatch<A extends unknown[]>(
+  set: ReadonlySet<(...args: A) => void>,
+  ...args: A
+): void {
+  for (const fn of set) {
+    try {
+      fn(...args);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[LayoutGestureBus] listener threw:", err);
+    }
+  }
+}
+
 /** True while ANY continuous layout gesture is in flight — a pane-divider
  *  drag in either silo, an OS window resize, or a content drag (a block /
  *  text-object / card-anchor drop-mode session). Read from an observer
@@ -151,10 +172,10 @@ export function beginLayoutGesture(info: LayoutGestureInfo): void {
   if (activeGestures.has(key)) return;
   const wasIdle = activeGestures.size === 0;
   activeGestures.set(key, info);
-  for (const l of setListeners) l(true, info);
+  dispatch(setListeners, true, info);
   if (!wasIdle) return;
   recordLayoutGestureEdge(true);
-  for (const l of listeners) l(true, info);
+  dispatch(listeners, true, info);
 }
 
 /** @internal Publisher-only. Ends one gesture; an absent gesture is a no-op so
@@ -163,10 +184,10 @@ export function beginLayoutGesture(info: LayoutGestureInfo): void {
 export function endLayoutGesture(info: LayoutGestureInfo): void {
   const key = keyOf(info);
   if (!activeGestures.delete(key)) return;
-  for (const l of setListeners) l(false, info);
+  dispatch(setListeners, false, info);
   if (activeGestures.size > 0) return;
   recordLayoutGestureEdge(false);
-  for (const l of listeners) l(false, info);
+  dispatch(listeners, false, info);
 }
 
 // ── Publisher 2: the OS window resize ───────────────────────────────────────
