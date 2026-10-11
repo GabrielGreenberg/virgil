@@ -578,7 +578,7 @@ export function SelectionActionsMenu({
         height: BUTTON_SIZE,
         zIndex: RESTING_MARGIN_TRIGGER_Z,
         border: "var(--pod-border)",
-        boxShadow: "var(--pod-shadow)",
+        boxShadow: "var(--menu-shadow)",
         borderRadius: "var(--pod-radius)",
         padding: 0,
         cursor: "pointer",

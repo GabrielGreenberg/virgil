@@ -63,7 +63,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
         background: "var(--surface, #ffffff)",
         border: "1px solid var(--border-light, #c9c5c5)",
         borderRadius: "var(--radius-md)",
-        boxShadow: "var(--card-shadow-ambient, 0 2px 6px rgba(0,0,0,0.10))",
+        boxShadow: "var(--card-shadow-ambient)",
         padding: "6px 8px 18px 8px",
         overflow: "hidden",
         cursor: "grab",

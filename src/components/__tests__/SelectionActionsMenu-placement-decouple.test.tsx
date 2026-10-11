@@ -235,7 +235,7 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
     expect(bolt!.style.backgroundColor).toBe("");
     // The pod chrome the bolt is meant to keep stays inline & unchanged.
     expect(bolt!.style.border).toBe("var(--pod-border)");
-    expect(bolt!.style.boxShadow).toBe("var(--pod-shadow)");
+    expect(bolt!.style.boxShadow).toBe("var(--menu-shadow)");
     expect(bolt!.style.borderRadius).toBe("var(--pod-radius)");
   });
 

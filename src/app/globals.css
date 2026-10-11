@@ -4873,7 +4873,7 @@ body.perf-contain .static-borrowed-text {
 
 .label-ref-popover-input:focus {
   border-color: var(--accent, #7c5e3c);
-  box-shadow: 0 0 0 2px rgba(124, 94, 60, 0.15);
+  box-shadow: var(--focus-ring-shadow);
 }
 
 /* Dropdown — the MENU tier (task 459).
