@@ -158,6 +158,68 @@ export type SystemDialogButtonVariant =
   | "danger"
   | "accent";
 
+/* ── Anchored placement (a MEASUREMENT, not a guess — task 1065) ────── */
+
+/** Gap between the anchor's edge and the frame, and the frame's margin from
+ *  every viewport edge. */
+const ANCHOR_GAP = 8;
+const VIEWPORT_MARGIN = 16;
+
+export interface AnchoredPlacementInput {
+  /** The anchor's viewport rect, read once on open. */
+  anchor: { top: number; bottom: number; left: number; right: number };
+  /** The frame's own rendered size, read once on open. */
+  frame: { width: number; height: number };
+  /** The window, and the top inset the OS title-bar overlay / notch occupies
+   *  (the scrim's resolved `padding-top: var(--window-inset-top)`). */
+  viewport: { width: number; height: number; insetTop: number };
+}
+
+/**
+ * Place a modal frame beside its anchor, clamped wholly into the visible band
+ * `[insetTop + 16, height − frame.height − 16] × [16, width − frame.width − 16]`.
+ * Prefers BELOW the anchor, flips ABOVE when below doesn't fit, else pins to the
+ * band's bottom. Returns `null` — "centre it" — when the anchor is wholly off
+ * screen: a confirm about an object the user cannot see must not pretend to
+ * point at it (task 1065: a keyboard Delete on a card scrolled above the fold).
+ * Pure; the shell feeds it measured sizes, never a per-size constant.
+ */
+export function placeAnchoredFrame({
+  anchor,
+  frame,
+  viewport,
+}: AnchoredPlacementInput): { top: number; left: number } | null {
+  if (
+    anchor.bottom <= viewport.insetTop ||
+    anchor.top >= viewport.height ||
+    anchor.right <= 0 ||
+    anchor.left >= viewport.width
+  ) {
+    return null;
+  }
+  const minTop = viewport.insetTop + VIEWPORT_MARGIN;
+  const maxTop = Math.max(
+    minTop,
+    viewport.height - frame.height - VIEWPORT_MARGIN,
+  );
+  let top = anchor.bottom + ANCHOR_GAP;
+  if (top > maxTop) {
+    const above = anchor.top - ANCHOR_GAP - frame.height;
+    top = above >= minTop ? above : maxTop;
+  }
+  top = Math.max(minTop, Math.min(top, maxTop));
+  const center = (anchor.left + anchor.right) / 2;
+  const maxLeft = Math.max(
+    VIEWPORT_MARGIN,
+    viewport.width - frame.width - VIEWPORT_MARGIN,
+  );
+  const left = Math.max(
+    VIEWPORT_MARGIN,
+    Math.min(center - frame.width / 2, maxLeft),
+  );
+  return { top, left };
+}
+
 /* ── Internal context for Enter-to-confirm + autofocus wiring ──────── */
 
 interface DialogCtxValue {
@@ -510,20 +572,39 @@ export default function SystemDialog({
   // anchorRef positioning — the MODAL variant's near-element placement (the
   // scrim stays; STYLE_GUIDE: a confirm acting on ONE visible object opens
   // against it). The scrimless variant is drag-positioned, never anchored.
-  useEffect(() => {
-    if (!open) return;
-    if (variant === "modal" && anchorRef?.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const dialogWidth = 340;
-      let left = rect.left + rect.width / 2 - dialogWidth / 2;
-      left = Math.max(16, Math.min(left, vw - dialogWidth - 16));
-      const top = Math.min(rect.bottom + 8, window.innerHeight - 180);
-      setAnchorPos({ top, left });
-    } else {
+  //
+  // A MEASUREMENT, once per open (task 1065): the frame first commits centred,
+  // and this layout effect — before paint — reads the anchor rect, the frame's
+  // OWN rendered size (so every `size`, a wrapped message, a suppress checkbox
+  // all count) and the scrim's resolved window inset, then clamps both axes
+  // through `placeAnchoredFrame`. The scrim blocks scroll, so a one-shot
+  // placement stays valid for the dialog's life — no listener, no per-frame
+  // re-solve (scroll-anchor law).
+  useLayoutEffect(() => {
+    if (!open || !mounted) return;
+    const anchorEl = variant === "modal" ? anchorRef?.current : null;
+    const frameEl = modalFrameRef.current;
+    if (!anchorEl || !frameEl) {
       setAnchorPos(null);
+      return;
     }
-  }, [open, anchorRef, variant]);
+    const scrimEl = frameEl.parentElement;
+    const insetTop = scrimEl
+      ? parseFloat(getComputedStyle(scrimEl).paddingTop) || 0
+      : 0;
+    setAnchorPos(
+      placeAnchoredFrame({
+        anchor: anchorEl.getBoundingClientRect(),
+        frame: { width: frameEl.offsetWidth, height: frameEl.offsetHeight },
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          insetTop,
+        },
+      }),
+    );
+    return () => setAnchorPos(null);
+  }, [open, mounted, anchorRef, variant]);
 
   // ── The dialog STACK ───────────────────────────────────────────────
   // One keyboard owner at a time. Dialogs genuinely stack (ManageStylesModal
@@ -855,8 +936,9 @@ export default function SystemDialog({
       <div
         className={`fixed inset-0 ${t.scrim} ${anchorPos ? "" : "flex items-center justify-center"}`}
         // Keep centered dialogs clear of the OS window-control strip under WCO
-        // (and the notch under safe-area); inert for an anchorRef-placed frame
-        // and when the inset is 0 (normal tab). zIndex reads MODAL_SCRIM_Z.
+        // (and the notch under safe-area); an anchorRef-placed frame is
+        // fixed-positioned, so the padding can't move it — its placement READS
+        // this resolved padding instead (task 1065). Inert when the inset is 0. zIndex reads MODAL_SCRIM_Z.
         style={{ zIndex: t.zIndex, paddingTop: "var(--window-inset-top, 0px)" }}
         role="dialog"
         aria-modal="true"
@@ -875,6 +957,9 @@ export default function SystemDialog({
                   top: anchorPos.top,
                   left: anchorPos.left,
                   margin: 0,
+                  // The size's max-w class still caps it; this keeps a narrow
+                  // window's frame inside the 16 px margins it was clamped to.
+                  width: "calc(100vw - 32px)",
                 }
               : undefined
           }
