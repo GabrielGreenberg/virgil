@@ -52,14 +52,22 @@ pen**, with the audit notification + version bump. Fully reversible by
      unflagged card this is a guarded no-op. See task 2026-07-05-049.
    - **Archiving an AI PROPOSAL ends the Task it ANSWERS** (task 1046): a
      revision-/cutter-suggestion carrying `aiOriginRequestId` that is still
-     non-terminal (`pending` / `applied` / `stale`) completes that Task with
+     non-terminal (`pending` / `stale`) completes that Task with
      `result: rejected` — set aside, not taken, so the source todo stays open.
      The bullet above reaches only rows LINKED to the card; the proposal is the
      answer, never the linked card, so this is a second leg. An already
      accepted/rejected proposal finalized its Task when it got there (no second
-     write). Restoring it brings it back `pending` over the completed Task;
-     accepting it then still works. The editor's delete / archive / morph-away
-     apply the same rule (`src/links/proposal-finalize.ts`).
+     write). That close is PROVISIONAL (`closedBy: "leave"`, task 1062):
+     restoring the proposal brings it back `pending`, and accepting it — here
+     via `/editor/accept-suggestion` or in the editor — ends the Task
+     `accepted` and closes the todo it answered, the same on both doors;
+     rejecting it ends it `rejected` for good. The editor's delete / archive /
+     morph-away apply the same rule (`src/links/proposal-finalize.ts`).
+   - **An APPLIED suggestion is REFUSED** (task 1062): its change is already
+     live in the `.tex` under a pending-change mark that only the editor can
+     settle. Archiving it here would leave the edit in the paper, unmarked,
+     while the Task said `rejected`. Tell the user to Keep or Revert it on the
+     card first; then it can be archived.
 
 ## Applicability (derived from the manifest)
 

@@ -27,6 +27,7 @@
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import {
   finalizeProposalRequest,
+  type ProposalFinalizeCause,
   type ProposalResult,
 } from "@/lib/ai-request-bridge";
 import type { AiRequestLink } from "@/lib/types";
@@ -69,6 +70,12 @@ export function proposalOriginRequestId(card: unknown): string | null {
  * open). A proposal already accepted/rejected finalized its Task when it got
  * there, so leaving writes nothing. Returns the Task id, or null.
  *
+ * The leave close is PROVISIONAL (task 1062): the row is stamped
+ * `closedBy: "leave"`, so if the proposal comes back (an Archive restore keeps
+ * its `aiOriginRequestId`) and is then accepted, the ordinary finalize
+ * overwrites it — `accepted`, todo closed — on either door, never a silent
+ * no-op on a row that "already ended".
+ *
  * Read by BOTH app doors — the lifecycle executor's delete/morph legs
  * (`finalizeLeavingProposal` dep, wired in EditorPane) and the archive toggle —
  * and mirrored script-side by `apply_response.py` `_leaving_proposal_origin`
@@ -89,11 +96,19 @@ export function leavingProposalRequestId(card: unknown): string | null {
  *  its Task to `onFinalize` with `LEAVING_PROPOSAL_RESULT`. */
 export function finalizeLeavingProposal(
   card: unknown,
-  onFinalize: (requestId: string, result: ProposalResult) => void,
+  onFinalize: ProposalFinalizeFn,
 ): void {
   const requestId = leavingProposalRequestId(card);
-  if (requestId) onFinalize(requestId, LEAVING_PROPOSAL_RESULT);
+  if (requestId) onFinalize(requestId, LEAVING_PROPOSAL_RESULT, "left");
 }
+
+/** The finalize callback both halves of the rule feed: `cause` is `"settled"`
+ *  for an accept/reject, `"left"` for the leave rule. */
+export type ProposalFinalizeFn = (
+  requestId: string,
+  result: ProposalResult,
+  cause: ProposalFinalizeCause,
+) => void;
 
 /**
  * The SOURCE closure: which todo (if any) does finalizing with `result` close?
@@ -120,8 +135,9 @@ export async function finalizeProposal(
   requestId: string,
   result: ProposalResult,
   closeTodo: (todoId: string) => void,
+  cause: ProposalFinalizeCause = "settled",
 ): Promise<void> {
-  const link = await finalizeProposalRequest(docId, requestId, result);
+  const link = await finalizeProposalRequest(docId, requestId, result, cause);
   const todoId = todoClosedByFinalize(link, result);
   if (todoId) closeTodo(todoId);
 }
@@ -144,7 +160,7 @@ export interface ProposalStatusHook {
  */
 export function withProposalFinalize<H extends ProposalStatusHook>(
   hook: H,
-  onFinalize: (requestId: string, result: ProposalResult) => void,
+  onFinalize: ProposalFinalizeFn,
 ): H {
   const inner = hook.setSuggestionStatus as (id: string, status: string) => void;
   const setSuggestionStatus = (id: string, status: string) => {
@@ -159,7 +175,7 @@ export function withProposalFinalize<H extends ProposalStatusHook>(
     if (!card) return;
     const result = proposalFinalizeResult(card.status, status);
     const requestId = result && proposalOriginRequestId(card);
-    if (result && requestId) onFinalize(requestId, result);
+    if (result && requestId) onFinalize(requestId, result, "settled");
   };
   return { ...hook, setSuggestionStatus: setSuggestionStatus as H["setSuggestionStatus"] };
 }

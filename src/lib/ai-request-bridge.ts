@@ -29,7 +29,9 @@ import {
 } from "@/lib/ai-requests-store";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import {
+  CLOSED_BY_LEAVE,
   closeRequestRow,
+  isFinalizableByProposal,
   isRequestOpen,
   isTerminalStatus,
 } from "@/lib/ai-request-open";
@@ -271,6 +273,12 @@ function reportBridgeRefusal(docId: string, result: AiRequestsWriteResult): void
 /** The two terminal outcomes a user gives an AI proposal. */
 export type ProposalResult = Extract<AiRequestResult, "accepted" | "rejected">;
 
+/** WHY a proposal's Task is being finalized: the user `"settled"` it
+ *  (accept / reject), or it `"left"` unresolved (the leave rule, task 1046).
+ *  A leave close is PROVISIONAL (`closedBy: "leave"`) — a later settle of the
+ *  same proposal, back from the Archive, overwrites it (task 1062). */
+export type ProposalFinalizeCause = "settled" | "left";
+
 /**
  * FINALIZE the Task an AI proposal answers (task 1043) — the app twin of
  * `apply_response.py` `cmd_accept` / `cmd_reject`'s `_mutation_commit` leg.
@@ -287,7 +295,10 @@ export type ProposalResult = Extract<AiRequestResult, "accepted" | "rejected">;
  * Matches by row ID (the back-pointer), not by `linkedTo` — the proposal card
  * is the ANSWER, never the card the row is linked to. Idempotent: an unknown or
  * already-terminal row writes nothing and returns `null` (a second click, or a
- * row the script side already closed). Does NOT lower the source card's flag —
+ * row the script side already closed) — with ONE exception, the leave rule's
+ * provisional close (`closedBy: "leave"`, see `isFinalizableByProposal`), which
+ * a `"settled"` finalize overwrites so a proposal restored from the Archive and
+ * then accepted ends its Task `accepted` and closes its todo (task 1062). Does NOT lower the source card's flag —
  * that happened when the proposal landed, and a flag raised since is a NEW ask
  * (`clear_source_flag=False` on the Python side, same reason).
  *
@@ -299,15 +310,23 @@ export async function finalizeProposalRequest(
   docId: string | null,
   requestId: string,
   result: ProposalResult,
+  cause: ProposalFinalizeCause = "settled",
 ): Promise<AiRequestLink | null> {
   if (!docId || !requestId) return null;
   let linked = null as AiRequestLink | null;
   const write = await mutateAiRequests(docId, (requests) => {
     linked = null;
     const idx = requests.findIndex((r) => r.id === requestId);
-    if (idx < 0 || isTerminalStatus(requests[idx].status)) return null;
-    linked = requests[idx].linkedTo ?? null;
-    return requests.map((r, i) => (i === idx ? closeRequestRow(r, result) : r));
+    if (idx < 0) return null;
+    // A LEAVE never overwrites anything terminal; a SETTLE may overwrite the
+    // leave rule's own provisional close (task 1062 — restore, then accept).
+    const row = requests[idx];
+    if (cause === "left" ? isTerminalStatus(row.status) : !isFinalizableByProposal(row)) {
+      return null;
+    }
+    linked = row.linkedTo ?? null;
+    const closedBy = cause === "left" ? CLOSED_BY_LEAVE : undefined;
+    return requests.map((r, i) => (i === idx ? closeRequestRow(r, result, closedBy) : r));
   });
   reportBridgeRefusal(docId, write);
   return write.kind === "written" ? linked : null;

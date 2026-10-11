@@ -48,6 +48,7 @@ vi.mock("@/lib/multi-window/doc-pipeline", () => ({
 }));
 
 import {
+  finalizeLeavingProposal,
   finalizeProposal,
   proposalFinalizeResult,
   withProposalFinalize,
@@ -112,8 +113,8 @@ describe("(b) withProposalFinalize — the status setter IS the seam", () => {
       expect(inner).toHaveBeenCalledWith("s1", "accepted");
       expect(inner).toHaveBeenCalledWith("s2", "rejected");
       expect(onFinalize.mock.calls).toEqual([
-        ["req-1", "accepted"],
-        ["req-2", "rejected"],
+        ["req-1", "accepted", "settled"],
+        ["req-2", "rejected", "settled"],
       ]);
     },
   );
@@ -194,6 +195,73 @@ describe("(d) finalizeProposal — the source todo closes on ACCEPT only", () =>
     await finalizeProposal("doc", "req-1", "accepted", closeTodo);
     await finalizeProposal("doc", "req-2", "accepted", closeTodo);
     expect(closeTodo).not.toHaveBeenCalled();
+  });
+});
+
+describe("(d2) the LEAVE close is provisional — restore → settle supersedes it (task 1062)", () => {
+  const todoLink = { panel: "todos" as const, cardId: "todo-1" };
+  const proposal = { kind: "suggestion", id: "s1", status: "pending", aiOriginRequestId: "req-1" };
+  /** Drive the leave rule exactly as EditorPane does: rule → finalizeProposal. */
+  const leave = async (closeTodo: (id: string) => void) => {
+    const calls: Promise<void>[] = [];
+    finalizeLeavingProposal(proposal, (rid, result, cause) => {
+      calls.push(finalizeProposal("doc", rid, result, closeTodo, cause));
+    });
+    await Promise.all(calls);
+  };
+
+  it("leave stamps the row closedBy:'leave' and leaves the todo open", async () => {
+    seeded.state = { requests: [answeredL3("req-1", todoLink)] };
+    const closeTodo = vi.fn();
+    await leave(closeTodo);
+    expect(seeded.state.requests[0]).toMatchObject({
+      status: "complete",
+      result: "rejected",
+      closedBy: "leave",
+    });
+    expect(closeTodo).not.toHaveBeenCalled();
+  });
+
+  it("leave → restore → app ACCEPT: complete/accepted, marker gone, todo CLOSED (cmd_accept's row)", async () => {
+    seeded.state = { requests: [answeredL3("req-1", todoLink)] };
+    const closeTodo = vi.fn();
+    await leave(closeTodo);
+    // Restore brings the card back `pending` (aiOriginRequestId intact); the
+    // user's Accept goes through the family hook's wrapped status setter.
+    const onFinalize = vi.fn((rid: string, result: "accepted" | "rejected", cause: "settled" | "left") =>
+      finalizeProposal("doc", rid, result, closeTodo, cause),
+    );
+    const hook = withProposalFinalize(
+      { cards: [{ ...proposal }], setSuggestionStatus: vi.fn() },
+      onFinalize,
+    );
+    hook.setSuggestionStatus("s1", "accepted" as never);
+    await onFinalize.mock.results[0].value;
+    const row = seeded.state.requests[0];
+    expect(row).toMatchObject({ status: "complete", result: "accepted" });
+    expect(row.closedBy).toBeUndefined();
+    expect(closeTodo).toHaveBeenCalledWith("todo-1");
+  });
+
+  it("leave → restore → app REJECT: definitive rejected, marker gone, todo open", async () => {
+    seeded.state = { requests: [answeredL3("req-1", todoLink)] };
+    const closeTodo = vi.fn();
+    await leave(closeTodo);
+    await finalizeProposal("doc", "req-1", "rejected", closeTodo, "settled");
+    expect(seeded.state.requests[0]).toMatchObject({ status: "complete", result: "rejected" });
+    expect(seeded.state.requests[0].closedBy).toBeUndefined();
+    expect(closeTodo).not.toHaveBeenCalled();
+    // …and now it is final: a later accept writes nothing.
+    await finalizeProposal("doc", "req-1", "accepted", closeTodo, "settled");
+    expect(seeded.state.requests[0].result).toBe("rejected");
+  });
+
+  it("a second LEAVE never overwrites anything terminal, provisional or not", async () => {
+    seeded.state = {
+      requests: [{ ...answeredL3("req-1"), status: "complete", result: "rejected", closedBy: "leave" }],
+    };
+    expect(await finalizeProposalRequest("doc", "req-1", "rejected", "left")).toBeNull();
+    expect(written).toHaveLength(0);
   });
 });
 

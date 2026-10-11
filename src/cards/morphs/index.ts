@@ -82,7 +82,18 @@ function suggestionCommentParts(s: {
  *  suggestion whose `original_text` may no longer be in the document. Refusing
  *  the morph makes that revival unrepresentable rather than confirmed.
  *  `applied` (a live in-document splice) stays morphable: the executor SETTLES
- *  it first (task 238). `stale` stays morphable: it is still open. */
+ *  it first (task 238). `stale` stays morphable: it is still open.
+ *
+ *  DECLARED (task 1062): the gate judges the record AS THE USER CHOSE IT, i.e.
+ *  pre-SETTLE. So an applied suggestion's morph does end with a SETTLED
+ *  suggestion (keep → accepted, revert → rejected) becoming a comment — the
+ *  exact shape refused above for an accepted/rejected card. That is allowed on
+ *  purpose: the hazard 898 closes is a revival nobody was asked about, and this
+ *  path asks — the SETTLE dialog makes the user pick the outcome before the
+ *  kind flips, and that outcome is written to the paper (and the Task finalized
+ *  through `withProposalFinalize`) before the comment exists. A later
+ *  comment → suggestion morph is then a new, deliberate proposal, guarded like
+ *  any other by `original_text`'s stale check. */
 export function canMorphSuggestion(s: { status?: string }): boolean {
   return s.status !== "accepted" && s.status !== "rejected";
 }

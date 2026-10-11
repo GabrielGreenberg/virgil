@@ -168,6 +168,8 @@ from _common import (
     find_tex_file,
     is_ai_request_kind,
     is_terminal_status,
+    CLOSED_BY_LEAVE,
+    is_finalizable_by_proposal,
     is_virtual_request_id,
     parse_virtual_request_id,
     DeferredVersionBump,
@@ -961,10 +963,12 @@ class _Txn:
         # Close ONE row by id, tolerantly: an unknown or already-terminal row
         # writes nothing (returns False). The leave-rule door (task 1046 —
         # cmd_archive's Leg C): the row a proposal ANSWERS is reachable only by
-        # the card's `aiOriginRequestId`, never by `linkedTo`. Unlike
-        # `_mutation_commit`'s by-id flip it never overwrites a terminal row's
-        # result, and it neither lowers a source flag nor closes a todo — the
-        # app twin is `finalizeProposalRequest` with "rejected".
+        # the card's `aiOriginRequestId`, never by `linkedTo`. It never
+        # overwrites a terminal row's result, and it neither lowers a source
+        # flag nor closes a todo — the app twin is `finalizeProposalRequest`
+        # with "rejected", cause "left". The close is stamped
+        # `closedBy: "leave"` (task 1062): PROVISIONAL, so a later accept /
+        # reject of the restored proposal overwrites it (`_mutation_commit`).
         ar_path = sidecar(self.doc, "ai-requests.json")
         ar = self.jget(ar_path, None)
         if not isinstance(ar, dict) or not isinstance(ar.get("requests"), list):
@@ -974,6 +978,7 @@ class _Txn:
             return False
         req["status"] = STATUS_COMPLETE
         req["result"] = result
+        req["closedBy"] = CLOSED_BY_LEAVE
         ar["requests"][idx] = req
         self.mark(ar_path)
         return True
@@ -2087,13 +2092,20 @@ def _mutation_commit(
         if req is None and result is None:
             die(f"request id not found: {rid} — nothing was written (the edit would "
                 "land and close no Task)")
-        if req is not None:
-            if result is None and is_terminal_status(req.get("status")):
-                die(f"request {rid} is already {req.get('status')} (a terminal state) — "
-                    "it was drained by an earlier landing; nothing was written. Do not "
-                    "land a second answer: report the first one.")
+        if req is not None and result is None and is_terminal_status(req.get("status")):
+            die(f"request {rid} is already {req.get('status')} (a terminal state) — "
+                "it was drained by an earlier landing; nothing was written. Do not "
+                "land a second answer: report the first one.")
+        # accept / reject (`result` set) flip the row only where the PROPOSAL
+        # FINALIZE contract may write — non-terminal, or the leave rule's
+        # provisional close (task 1062: a proposal archived unresolved, restored,
+        # then settled). Any other terminal row is final and stays as it is: the
+        # byte-twin of the app's `finalizeProposalRequest`, so the Task result and
+        # the todo outcome no longer depend on which door the user settled at.
+        if req is not None and (result is None or is_finalizable_by_proposal(req)):
             req["status"] = STATUS_COMPLETE
             req["result"] = result or RESULT_AUTO_APPLIED
+            req.pop("closedBy", None)   # a definitive close supersedes a provisional one
             ar["requests"][idx] = req
             txn.mark(ar_path)
             linked = req.get("linkedTo")
@@ -2259,6 +2271,18 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     _guard_panel("archive", hit, kind)
 
     original = hit.card  # a detached snapshot (read by card_by_id, not the txn)
+    # An APPLIED suggestion's change is LIVE in the .tex under a pending-change
+    # mark (task 1062). The app's lifecycle executor SETTLES it (keep → accepted,
+    # revert → splice back) before a card may leave; this door cannot — it has no
+    # range resolution for the mark — and archiving anyway leaves the edit in the
+    # paper, unmarked once the orphan reaper strips the mark, while the leave rule
+    # records the Task `rejected`. Refuse, naming the settle.
+    if kind in SUGGESTION_KINDS and isinstance(original, dict) \
+            and original.get("status") == "applied":
+        die(f"cannot archive {card_id}: it is an APPLIED suggestion — its change is live "
+            "in the paper under a pending-change mark, and archiving it here would leave "
+            "that edit in the .tex unmarked. Settle it in the editor first (Keep or Revert "
+            "on the card); nothing was written.")
     # Terminal-transition resolve, Leg B (restore): archiving a flagged card
     # resolves its AI request, just like answer (019) and delete. The LIVE card
     # is about to be removed (so its `aiRequest` flag stops surfacing on the
