@@ -2752,7 +2752,11 @@ export default function EditorLayout() {
   // claim-bearing kind" hole. Scope tokens stay registry-derived via
   // `collabClaimScope` (R28/D-2), matching `getCardSelections(scope, id)`. The
   // per-slot map keys are compile-tied to `COLLAB_SELECTION_SLOT_KINDS`, so a
-  // forgotten/extra slot is a type error, not a silent drift.
+  // forgotten/extra slot is a type error, not a silent drift. The gate judges
+  // each selected CARD's own kind, resolved against the pane's Mode-B bag
+  // (task 1063) — the note / cutter / revision / report slots also carry
+  // highlight / suggestion / report-request ids. `updateSelection` de-dupes
+  // by serialization, so a bag-identity change that alters no claim is free.
   useEffect(() => {
     if (!collab.enabled) return;
     collab.updateSelection(
@@ -2769,14 +2773,14 @@ export default function EditorLayout() {
         // claim (`collabClaims:false`), so the shell has nothing to send.
         bib: null,
         example: selectedExampleId,
-      }),
+      }, modeBCards),
     );
   }, [
     collab.enabled,
     collab.updateSelection,
     selectedNoteId, selectedFootnoteId, selectedCitationId, selectedTodoId,
     selectedArchiveId, selectedCutterCardId, selectedReportCardId,
-    selectedCommentId, selectedExampleId,
+    selectedCommentId, selectedExampleId, modeBCards,
   ]);
 
   // (Search-highlight clear-on-close moved to EditorPane — it OWNS the search
