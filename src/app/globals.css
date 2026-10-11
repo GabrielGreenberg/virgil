@@ -5731,7 +5731,7 @@ html {
    code splitter, and zen margins (vertical), AND the three library resizers.
    The gutter strip itself is the hover/hit zone; the centered pill is HIDDEN
    at rest (bug sweep #2: a persistent lozenge cluttered the quiet gutter) and
-   fades in on hover/drag (accent + widening on the SHORT axis).
+   fades in on hover/drag (`--drag-highlight` + growing on the LONG axis).
 
    The pill lives on `::before` for horizontal gutters and on `::after` for
    vertical ones — because `.drag-gap-v::before` is already claimed by the
