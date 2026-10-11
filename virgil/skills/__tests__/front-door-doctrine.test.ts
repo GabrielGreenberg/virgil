@@ -69,6 +69,13 @@
 //     phrase criterion non-obvious (`/library/setup` says "the heavy
 //     extraction tools" — an adjective on a noun, not a weight declaration).
 //
+// ONE READER (task 1056). 474's premise was that the harness skill listing
+// "surfaces all of them". It does not — under its budget it shows some skills
+// as a bare name and truncates others — so the router now reads the
+// descriptions through `editor/scripts/skill_catalog.py`, and this file derives
+// its heavy / Task-bound populations by RUNNING that helper rather than by its
+// own regexes. Guard and router can no longer disagree about the vocabulary.
+//
 // A COVERAGE leg — "every skill is routable from `start.md`" — is deliberately
 // absent, and its absence is the point of 474's fix rather than a gap: with
 // the descriptions as the vocabulary there is no route list to count against.
@@ -77,6 +84,7 @@
 // dispatches a Task-bound specialist without stating its id contract is
 // FIX-it, never list-it.
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -114,27 +122,51 @@ function frontDoorSkills(): string[] {
     .sort();
 }
 
-/** Editor skills whose frontmatter `Args:` declares a REQUIRED inbox id.
- *
- *  The `Args:` line lives in the `description:` block and is hard-wrapped, so
- *  it is read off a whitespace-collapsed copy. A BRACKETED `[<requestId>]` is
- *  the skill declaring the arg optional — that is `create-card`, whose whole
- *  Workflow B exists for the no-Task case — so brackets exclude it. `<bibKey>`
- *  joins `<requestId>`: it is a row of `bib-review-requests.json`, the same
- *  inbox `list_requests.py` lists, and the front door has no more of a cursor
- *  for one than for the other. */
+/** One row of `editor/scripts/skill_catalog.py` — the front door's runtime
+ *  reader of every skill's `description:` frontmatter (task 1056). */
+interface CatalogRow {
+  name: string;
+  slash: string;
+  description: string;
+  heavy: boolean;
+  light: boolean;
+  developerOnly: boolean;
+  requiredIds: string[];
+}
+
+const SKILL_CATALOG_PY = "editor/scripts/skill_catalog.py";
+
+/** The catalog, read by RUNNING the helper the front door runs. Task 1056:
+ *  this file used to re-derive the heavy and Task-bound populations with its
+ *  own regexes over the files on disk, while the router read the harness skill
+ *  listing — which drops or truncates descriptions under its budget. Two
+ *  readers that can disagree are not a guard; so the guard now asks the same
+ *  reader the router asks, and the legs below pin what it must answer. */
+let catalogCache: CatalogRow[] | null = null;
+function skillCatalog(): CatalogRow[] {
+  if (catalogCache) return catalogCache;
+  const out = execFileSync("python3", [join(repoRoot, SKILL_CATALOG_PY), "--root", repoRoot], {
+    encoding: "utf8",
+  });
+  catalogCache = out
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as CatalogRow);
+  return catalogCache;
+}
+
+/** Editor skills whose frontmatter `Args:` declares a REQUIRED inbox id —
+ *  the catalog's `requiredIds`. A BRACKETED `[<requestId>]` is the skill
+ *  declaring the arg optional — that is `create-card`, whose whole Workflow B
+ *  exists for the no-Task case — so brackets exclude it. `<bibKey>` joins
+ *  `<requestId>`: it is a row of `bib-review-requests.json`, the same inbox
+ *  `list_requests.py` lists, and the front door has no more of a cursor for
+ *  one than for the other. */
 function taskBoundEditorSkills(): string[] {
-  const out: string[] = [];
-  for (const f of readdirSync(join(repoRoot, EDITOR_SKILL_DIR))) {
-    if (!f.endsWith(".md") || f.startsWith("_")) continue;
-    const argsLine = flat(`${EDITOR_SKILL_DIR}/${f}`).match(/Args:(.*?)(?:\.\s|---)/);
-    if (!argsLine) continue;
-    const args = argsLine[1];
-    // Strip every bracketed (optional) group before looking for the id.
-    const required = args.replace(/\[[^\]]*\]/g, "");
-    if (/<requestId>|<bibKey>/.test(required)) out.push(f.replace(/\.md$/, ""));
-  }
-  return out.sort();
+  return skillCatalog()
+    .filter((r) => r.name.startsWith("editor:") && r.requiredIds.length > 0)
+    .map((r) => r.name.slice("editor:".length))
+    .sort();
 }
 
 /** The Task-bound specialists a given front-door skill names OUTRIGHT. Used
@@ -193,25 +225,18 @@ function slashRoutes(skillFile: string): { silo: string; name: string }[] {
   return out;
 }
 
-/** Library skills whose OWN description declares them a heavy operation.
- *
- *  This is the derivation Step 4's gate reads, restated here so the guard and
- *  the prompt cannot come to disagree about who is heavy. The phrase is
- *  `Heavy operation` (case-insensitive) and not a bare "heavy": `setup.md`
- *  says "the heavy extraction tools" and "the heavy indexing tools", which is
- *  an adjective on a noun and not a weight declaration — a looser needle
- *  would gate the one library skill that explicitly cd's into the library
- *  root from any managed folder. */
+/** Library skills whose OWN description declares them a heavy operation —
+ *  the catalog's `heavy`, i.e. exactly what Step 4's gate reads at runtime.
+ *  The phrase is `Heavy operation` (case-insensitive, on whitespace-collapsed
+ *  text) and not a bare "heavy": `setup.md` says "the heavy extraction tools"
+ *  and "the heavy indexing tools", which is an adjective on a noun and not a
+ *  weight declaration — a looser needle would gate the one library skill that
+ *  explicitly cd's into the library root from any managed folder. */
 function heavyLibrarySkills(): string[] {
-  const dir = join(repoRoot, "library", "skills");
-  const out: string[] = [];
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith(".md") || f.startsWith("_")) continue;
-    const desc = readFileSync(join(dir, f), "utf8").match(/^---\n([\s\S]*?)\n---/);
-    if (!desc) continue;
-    if (/heavy operation/i.test(desc[1].replace(/\s+/g, " "))) out.push(f.replace(/\.md$/, ""));
-  }
-  return out.sort();
+  return skillCatalog()
+    .filter((r) => r.name.startsWith("library:") && r.heavy)
+    .map((r) => r.name.slice("library:".length))
+    .sort();
 }
 
 /** Step 4's TRIGGER CONDITION — the first paragraph after its heading.
@@ -399,7 +424,7 @@ describe("front door — the descriptions are the vocabulary, not a hand list", 
         `${rel} dispatches specialists but states no derivable rule for which ` +
           `of them are Task-bound. The criterion is each skill's own \`Args:\` ` +
           `line (a required, unbracketed <requestId>/<bibKey>) — the same ` +
-          `derivation taskBoundEditorSkills() runs above.`,
+          `field skill_catalog.py reports (requiredIds).`,
       ).toBe(true);
     });
   }
@@ -449,6 +474,50 @@ describe("front door — the descriptions are the vocabulary, not a hand list", 
         `a paper session, which is how merge-bibs — a library-wide write — ` +
         `was reachable from one.\n\n${trigger}`,
     ).toEqual([]);
+  });
+
+  it("the catalog reads every skill, and parses what the listing hides (task 1056)", () => {
+    const rows = skillCatalog();
+    // Coverage: one row per non-include skill file in both silos — the
+    // listing's failure was a skill present on disk and absent to the router.
+    for (const silo of ["editor", "library"]) {
+      const onDisk = readdirSync(join(repoRoot, silo, "skills"))
+        .filter((f) => f.endsWith(".md") && !f.startsWith("_"))
+        .map((f) => `${silo}:${f.replace(/\.md$/, "")}`)
+        .sort();
+      expect(rows.filter((r) => r.name.startsWith(`${silo}:`)).map((r) => r.name)).toEqual(onDisk);
+    }
+    for (const r of rows) {
+      expect(r.description.length, `${r.name} has an empty description`).toBeGreaterThan(40);
+      expect(/\s{2,}|\n/.test(r.description), `${r.name} description is not normalised`).toBe(false);
+    }
+    const by = (n: string) => rows.find((r) => r.name === n)!;
+    // The skills the measured listing showed as a bare name.
+    for (const n of ["editor:review", "editor:reject-suggestion", "editor:find-citation", "library:ai-requests"]) {
+      expect(by(n).description, n).toMatch(/Triggers on:|Triggers ONLY|Triggers as/);
+    }
+    expect(by("library:ai-requests").heavy).toBe(true);
+    expect(by("library:deep-index").heavy).toBe(true); // spelled `HEAVY operation`
+    expect(by("library:index-paper").light).toBe(true);
+    expect(by("editor:create-card").requiredIds).toEqual([]);
+    expect(by("editor:draft-footnote").requiredIds).toEqual(["<requestId>"]);
+    expect(by("editor:answer-bib-review").requiredIds).toEqual(["<bibKey>"]);
+    expect(by("editor:dream").developerOnly).toBe(true);
+  });
+
+  it("start.md routes from the catalog, not from the harness listing (task 1056)", () => {
+    const start = flat("virgil/skills/start.md");
+    const step2 = start.slice(start.indexOf("### Step 2"), start.indexOf("### Step 3"));
+    expect(
+      step2.includes("skill_catalog.py"),
+      "start.md Step 2 must tell the model to run skill_catalog.py and match " +
+        "against its output — the harness listing drops/truncates descriptions",
+    ).toBe(true);
+    expect(stepFourTrigger().includes("skill_catalog.py")).toBe(true);
+    expect(
+      /surfaces all of them/i.test(start),
+      "start.md claims the harness listing carries every description; it does not",
+    ).toBe(false);
   });
 
   it("does not promise a /loop inbox re-check it has no step for (task 810)", () => {

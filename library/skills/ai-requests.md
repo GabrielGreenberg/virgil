@@ -7,8 +7,8 @@ description: |
   at the notes in my library queue". Pair with /loop for steady-state
   polling. Does NOT trigger for editor-side requests in a single paper
   folder (use /editor/review) or for general queue draining of
-  triage/index/authenticate work (use /library/index-pending). Heavy
-  operation — only run from inside the library folder.
+  triage/index/authenticate work (use /library/index-pending).
+  Heavy operation — only run from inside the library folder.
 ---
 
 # /library/ai-requests
