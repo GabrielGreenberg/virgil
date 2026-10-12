@@ -129,7 +129,7 @@ export interface DragHandleActionsDeps {
    * a bundle whose collections are empty, which is a no-op — an ANSWER, not an
    * omission.
    */
-  anchorRetarget: AnchorRetargetApi;
+  anchorRetarget: Pick<AnchorRetargetApi, "retarget">;
   /**
    * The SETTLE obligation's ops bag (task 238), for the RANGE legs (task 636).
    *
@@ -963,7 +963,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             settled.to,
             cardLifecycle,
             () => {
-              anchorRetarget.retarget({
+              const displaced = anchorRetarget.retarget({
                 removed: displacedUuids,
                 target: neighbour,
                 // Self-healing on reload, exactly as the drop-mode re-anchor
@@ -976,6 +976,8 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 paragraphId: snippetParagraphId,
                 targetKind: snippetTargetKind,
                 returnBefore: snippetReturnBefore,
+                // Task 1079: which cards moved, so Restore can hand them back.
+                displaced,
                 mode: "omni",
               }).id;
             },

@@ -19,14 +19,14 @@ import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 
 type Call = Omit<RetargetDisplacedAnchorsArgs, "handlers">;
 
-function recorder(): { api: AnchorRetargetApi; calls: Call[] } {
+function recorder(): { api: Pick<AnchorRetargetApi, "retarget">; calls: Call[] } {
   const calls: Call[] = [];
   return {
     calls,
     api: {
       retarget(args) {
         calls.push(args);
-        return 1;
+        return [{ kind: "note", id: "n", from: [...args.removed], to: args.target?.uuid ?? "", added: true }];
       },
     },
   };

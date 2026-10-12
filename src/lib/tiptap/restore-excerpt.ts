@@ -86,8 +86,13 @@ import { anchoredUuidsOf } from "@/lib/tiptap/linked-anchor";
  *      A blank line's title is not a shape the app keeps.
  *
  * On block IDENTITY: the excerpt still carries the `uuid`s the capture sliced
- * out of the document, so a restore RE-ESTABLISHES them — every card anchored
- * to the archived paragraph finds its anchor again. Where the id is still taken
+ * out of the document, so a restore RE-ESTABLISHES them. That alone returns no
+ * card: since task 491 the capture RE-HOMED every Mode-A card anchored there
+ * onto the neighbour, so nothing names the restored uuid any more. The capture
+ * records which cards it moved (`ArchivedSnippet.displaced`), and the pane's
+ * Restore hands them back to the uuids this landing returns
+ * (`landReturningDisplaced`, task 1079) — unless the user moved a card in the
+ * meantime, or the uuid was re-minted below. Where the id is still taken
  * (the user archived a copy, or restored twice) `BlockUuidBackfill` re-mints the
  * newcomer, keeping the pre-existing block's identity, which is the right
  * tie-break here: this is a paste-as-new, not a relocation, so the net's

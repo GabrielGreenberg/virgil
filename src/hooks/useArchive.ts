@@ -4,7 +4,7 @@ import { useAnchorOrphaned, useTextObjectOrphaned } from "@/lib/tiptap/orphan-ev
 import { useCallback, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { JSONContent } from "@tiptap/react";
-import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
+import type { ArchiveState, ArchivedSnippet, DisplacedAnchorRecord } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import {
   addTextObjectLink,
@@ -52,8 +52,24 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
     // free-vs-orphaned split is derived from it via resolveAnchorState.
     unanchored: s.unanchored,
     returnBefore: typeof s.returnBefore === "string" && s.returnBefore ? s.returnBefore : undefined,
+    displaced: migrateDisplaced(s.displaced),
     links: migrateCardLinks("archive", raw),
   }, ["text"]);
+}
+
+/** Task 1079: keep only well-formed displacement records (a hand- or
+ *  agent-edited archive.json is tolerated, not trusted); none ≡ absent. */
+function migrateDisplaced(raw: unknown): DisplacedAnchorRecord[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: DisplacedAnchorRecord[] = [];
+  for (const r of raw as Partial<DisplacedAnchorRecord>[]) {
+    if (!r || typeof r.kind !== "string" || typeof r.id !== "string" || !r.id) continue;
+    if (typeof r.to !== "string" || !r.to || !Array.isArray(r.from)) continue;
+    const from = r.from.filter((u): u is string => typeof u === "string" && u.length > 0);
+    if (from.length === 0) continue;
+    out.push({ kind: r.kind, id: r.id, from, to: r.to, added: r.added !== false });
+  }
+  return out.length ? out : undefined;
 }
 
 function migrateArchiveShape(raw: unknown): ArchiveState {
@@ -76,7 +92,7 @@ export function useArchive(docId: string | null) {
   const archiveContent = useCallback(
     (
       content: unknown,
-      opts?: { unanchored?: boolean; returnBefore?: string },
+      opts?: { unanchored?: boolean; returnBefore?: string; displaced?: DisplacedAnchorRecord[] },
     ): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
@@ -91,6 +107,8 @@ export function useArchive(docId: string | null) {
         ...(opts?.unanchored ? { unanchored: true } : {}),
         // Return side (task 965) — only the capture knows it. Absent ≡ after.
         ...(opts?.returnBefore ? { returnBefore: opts.returnBefore } : {}),
+        // Returning margin (task 1079) — likewise only the capture knows it.
+        ...(opts?.displaced?.length ? { displaced: opts.displaced } : {}),
         links: [],
       };
       update((prev) => ({ snippets: [...prev.snippets, snippet] }));
