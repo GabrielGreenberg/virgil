@@ -22,9 +22,13 @@ import type { Editor } from "@tiptap/core";
 import {
   extractFigureAttrs,
   extractFigureSources,
+  figureNodeAttrsFromSource,
   extractGraphicsAttrs,
 } from "@/lib/figures/parse-attrs";
-import { parseInlineContent } from "@/lib/latex-parser";
+import {
+  applyLinkedAnchorBoundaries,
+  parseInlineContent,
+} from "@/lib/latex-parser";
 
 /** Apply an edited `figureBlock` env body at `pos` in `editor`.
  *
@@ -47,12 +51,20 @@ export function applyFigureEnvBodyEdit(
   // Re-tokenize the caption body: the popover is one of two surfaces that can
   // edit captions, so inline marks / citations / `$math$` must come back as
   // structured nodes rather than literal text.
+  // The seed is the serializer's own bytes (task 1080), so a caption holding a
+  // `linkedAnchor` range comes back with its `\vlid…\vlidend` markers — which
+  // `parseInlineContent` yields as transient boundary sentinels the schema does
+  // not know. Resolve them the way the full parse does (the pass is
+  // fragment-safe), so the range survives rather than tripping the plain-text
+  // fallback below and flattening the whole caption.
+  const captionJson = {
+    type: "figureCaption",
+    content: parseInlineContent(attrs.caption),
+  };
+  applyLinkedAnchorBoundaries(captionJson);
   let captionNode;
   try {
-    captionNode = editor.state.schema.nodeFromJSON({
-      type: "figureCaption",
-      content: parseInlineContent(attrs.caption),
-    });
+    captionNode = editor.state.schema.nodeFromJSON(captionJson);
   } catch {
     // Schema rejection (an unknown inline node) — fall back to plain text so
     // the user's caption isn't lost on a malformed edit.
@@ -74,23 +86,16 @@ export function applyFigureEnvBodyEdit(
   // label-write-exempt: raw-source writeback, product decision routed (task 553)
   const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
     ...node.attrs,
-    extras: attrs.extras,
-    // The post-caption half of the body (task 379) — re-extracted here for the
-    // same reason `extras` is: whatever this writeback fails to thread is
-    // ERASED from the model on the next round-trip.
-    trailingExtras: attrs.trailingExtras,
-    source: attrs.source,
-    widthPercent: attrs.widthPercent,
-    sources: attrs.sources,
-    label: attrs.label,
-    // Whether the edited body still carries a `\caption` COMMAND (task 319) —
-    // the caption child is always rebuilt below, so it cannot answer this, and
-    // an un-threaded value would let a popover save silently re-caption (and
-    // thereby re-number) a figure the user just stripped one from.
-    hasCaption: attrs.hasCaption,
-    // The optional `\caption[<short>]` LoF arg (task 263 — the parse-then-drop
-    // class, on the popover edit path).
-    shortCaption: attrs.shortCaption,
+    // EVERY source-derived attr, through the ONE mapping the parser uses
+    // (task 1080). This was a hand-listed twin of the parser's — `extras`,
+    // `trailingExtras` (task 379), `source`/`widthPercent`/`sources`, `label`,
+    // `hasCaption` (task 319: the caption child is always rebuilt below, so it
+    // cannot say whether the body still carries a `\caption` COMMAND),
+    // `shortCaption` (task 263) — and the list had already missed one:
+    // `numbered`, from `\caption*`, so toggling the star here was reverted on
+    // the next save. Whatever this writeback fails to thread is ERASED from
+    // the model; the shared mapping threads by construction.
+    ...figureNodeAttrsFromSource(attrs),
   });
   // The caption child's start is `pos + 1`, inside the figureBlock node.
   const refreshed = tr.doc.nodeAt(pos);

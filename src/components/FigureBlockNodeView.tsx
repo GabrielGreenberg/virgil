@@ -1,14 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import {
+  NodeViewContent,
+  NodeViewWrapper,
+  type JSONContent,
+  type NodeViewProps,
+} from "@tiptap/react";
 import {
   canEditWidthInOptions,
   type FigureSource,
   withReplacedFigurePath,
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
-import { buildFigureEnvBody, figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { serializeFigureEnvBody } from "@/lib/latex-serializer";
 import {
   applyFigureExtrasEdit,
   applyGraphicsCommandEdit,
@@ -46,34 +52,26 @@ const DEFAULT_SCALE_PERCENT = 50;
 const noopRegisterRefresh = (): (() => void) => () => {};
 
 // The tex-mode popover seed for a figure/graphics node — the faithful env body
-// (figureBlock: `extras` + the live caption text + `\label`) or the verbatim
+// (figureBlock: exactly the bytes the serializer writes) or the verbatim
 // `\includegraphics` command (graphicsBlock). Shared by BOTH click surfaces
 // (the page `FigureFullView` and the float `FigureFloatView`) so they open the
 // popover on identical raw and can never drift (the Issue-4/9/10 lesson).
-function figurePopoverRaw(node: NodeViewProps["node"]): string {
+export function figurePopoverRaw(node: NodeViewProps["node"]): string {
   if (node.type.name !== "figureBlock") {
     return (node.attrs.command as string | undefined) || "";
   }
-  const captionChild = node.firstChild;
-  // Tasks 318/319: built by the SAME builder the serializer uses, so what the
-  // popover shows is what the file holds. Two consequences the retired local
-  // synthesizer got wrong: the `[short]` LoF bracket now appears (it emitted
-  // none, so the user was shown a body missing a byte their file had — and any
-  // save that changed something ELSE re-extracted from that body and DELETED
-  // task 263's bracket; a literally untouched save was safe, since
-  // `NodeEditPopover.commit` dispatches only when the text differs), and a
-  // caption-less figure shows no `\caption` line, which the user can now add or
-  // remove here as a first-class edit.
-  return buildFigureEnvBody({
-    extras: (node.attrs.extras as string | undefined) || "",
-    trailingExtras: (node.attrs.trailingExtras as string | undefined) || "",
-    captionTex:
-      captionChild?.type.name === "figureCaption" ? captionChild.textContent : "",
-    hasCaption: node.attrs.hasCaption !== false,
-    shortCaption: (node.attrs.shortCaption as string | null | undefined) ?? null,
-    numbered: node.attrs.numbered !== false,
-    label: (node.attrs.label as string | undefined) || "",
-  });
+  // Tasks 318/319/1080: the body is the SERIALIZER'S OWN — the same
+  // `serializeFigureEnvBody` the `figureBlock` emitter calls — so what the
+  // popover shows is byte-for-byte what the file holds. Each earlier,
+  // more-local seed lost something a save then deleted: a synthesizer that
+  // emitted no `[short]` LoF bracket (task 263's), and then a shared builder fed
+  // the caption's `textContent`, which is "" for every citation, math, footnote
+  // and ref atom and bare text for every mark — so a save that changed only
+  // the width re-parsed that flattened caption and erased them all (task 1080).
+  // `NodeEditPopover.commit` dispatches only when the text differs, so a
+  // literally untouched save was always safe; a caption-less figure shows no
+  // `\caption` line, which the user can add or remove here as a first-class edit.
+  return serializeFigureEnvBody(node.toJSON() as JSONContent);
 }
 
 // Shared node view for both `figureBlock` and `graphicsBlock`. The node
