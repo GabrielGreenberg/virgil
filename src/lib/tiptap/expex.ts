@@ -9,7 +9,12 @@ import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
 import { chromeOnly } from "@/lib/view-only-chrome";
-import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
+import { DEFAULT_EXAMPLE_DIALECT, exampleDialectOf } from "@/lib/example-dialect";
+import {
+  exampleKindOfContent,
+  freshExampleBlockAttrs,
+  reconcileExampleKind,
+} from "@/lib/example-block-attrs";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { diffExamplesRecomputable, readDiffFor, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
 import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
@@ -584,27 +589,9 @@ export function deleteEmptyExampleStructure(
       deleteFrom = itemStart;
     }
 
-    // If the block survived but no longer holds any item list, flip its kind
-    // back to "single" so serialization emits \ex (mirrors Shift-Tab).
-    if (!originalBlockGone) {
-      const survivor = tr.doc.nodeAt(blockStart);
-      if (
-        survivor &&
-        survivor.type.name === "exampleBlock" &&
-        survivor.attrs.kind === "multi"
-      ) {
-        let hasList = false;
-        survivor.forEach((c) => {
-          if (c.type.name === "exampleItemList") hasList = true;
-        });
-        if (!hasList) {
-          tr.setNodeMarkup(blockStart, undefined, {
-            ...survivor.attrs,
-            kind: "single",
-          });
-        }
-      }
-    }
+    // If the block survived, re-derive its kind from what it now holds (no
+    // item list left ⇒ "single", so serialization emits \ex — task 1076).
+    if (!originalBlockGone) reconcileExampleKind(tr, blockStart);
 
     // Land the cursor at the nearest selectable position to the deletion
     // point (end of the previous sibling, or start of what shifted up).
@@ -789,16 +776,14 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           deleteDepth === blockDepth + 1 &&
           blockNode.childCount === 1;
 
+        // The sibling inherits the escaped block's dialect (a linguex paper
+        // keeps minting linguex — task 1076) through the one attrs door.
         const newBlock = blockType.create(
-          {
+          freshExampleBlockAttrs({
             uuid: generateShortId(collectExampleIds(state.doc)),
+            dialect: exampleDialectOf(blockNode.attrs),
             kind: "single",
-            tag: "",
-            label: "",
-            exnoOverride: null,
-            suppressSpace: false,
-            number: 0,
-          },
+          }),
           paraType.create(),
         );
 
@@ -807,6 +792,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           const deleteFrom = $from.before(deleteDepth);
           const deleteTo = $from.after(deleteDepth);
           tr.delete(deleteFrom, deleteTo);
+          // The delete may have removed the block's last item list; its kind
+          // follows its content (else a `\pex` with no parts — task 1076).
+          reconcileExampleKind(tr, blockStart);
         }
         const insertPos = tr.mapping.map(blockEnd);
         tr.insert(insertPos, newBlock);
@@ -848,7 +836,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         const itemType = state.schema.nodes.exampleItem;
         if (!itemListType || !itemType) return false;
 
-        const blockNode = $from.node(blockDepth);
         const blockPos = $from.before(blockDepth);
         const paraNode = $from.parent;
         const paraStart = $from.before($from.depth);
@@ -865,13 +852,8 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         const tr = state.tr;
         tr.replaceWith(paraStart, paraEnd, newList);
 
-        // Flip the block's kind to "multi" if it was "single".
-        if (blockNode.attrs.kind !== "multi") {
-          tr.setNodeMarkup(blockPos, undefined, {
-            ...blockNode.attrs,
-            kind: "multi",
-          });
-        }
+        // The block now holds an item list ⇒ its kind derives to "multi".
+        reconcileExampleKind(tr, blockPos);
 
         // The wrapped paragraph now sits 2 tokens deeper (list-open,
         // item-open) than the original; restore the cursor at the same
@@ -1415,21 +1397,14 @@ export const ExampleItem = Node.create<ExampleItemOptions>({
         if (newBlockContent.length === 0) {
           newBlockContent.push(paraType.create());
         }
-        const newKind = newBlockContent.some(
-          (c) => c.type.name === "exampleItemList",
-        )
-          ? "multi"
-          : "single";
+        // Promoted block: dialect inherited from the block it leaves, kind
+        // derived from the content it carries (task 1076).
         const newBlock = blockType.create(
-          {
+          freshExampleBlockAttrs({
             uuid: generateShortId(collectExampleIds(state.doc)),
-            kind: newKind,
-            tag: "",
-            label: "",
-            exnoOverride: null,
-            suppressSpace: false,
-            number: 0,
-          },
+            dialect: exampleDialectOf(blockNode.attrs),
+            kind: exampleKindOfContent(newBlockContent),
+          }),
           newBlockContent,
         );
 
@@ -1477,28 +1452,9 @@ export const ExampleItem = Node.create<ExampleItemOptions>({
         }
         tr.setSelection(TextSelection.create(tr.doc, cursorPos));
 
-        // If the original block survived but no longer contains any
-        // item lists, flip its kind back to "single" so serialization
-        // emits \ex.
-        if (!originalBlockGone) {
-          const updatedBlock = tr.doc.nodeAt(blockStart);
-          if (
-            updatedBlock &&
-            updatedBlock.type.name === "exampleBlock" &&
-            updatedBlock.attrs.kind === "multi"
-          ) {
-            let hasList = false;
-            updatedBlock.forEach((c) => {
-              if (c.type.name === "exampleItemList") hasList = true;
-            });
-            if (!hasList) {
-              tr.setNodeMarkup(blockStart, undefined, {
-                ...updatedBlock.attrs,
-                kind: "single",
-              });
-            }
-          }
-        }
+        // If the original block survived, re-derive its kind from what it
+        // still holds (no item list left ⇒ "single", emits \ex).
+        if (!originalBlockGone) reconcileExampleKind(tr, blockStart);
 
         view.dispatch(tr.scrollIntoView());
         return true;

@@ -136,6 +136,7 @@ import {
   exampleDialectOf,
   type ExampleDialect,
 } from "@/lib/example-dialect";
+import { freshExampleBlockAttrs } from "@/lib/example-block-attrs";
 import type { AtomCreateKind, OpenAtomCreateOpts } from "./atom-create";
 // VALUE import: the ONE container-aware block-atom insert helper (CHIP 6a, DA-2).
 // `figureRun` / `graphicsRun` insert their block through `smartInsertBlock` so
@@ -2321,20 +2322,14 @@ function buildExampleNode(
   inlineContent?: Record<string, unknown>[],
 ): { uuid: string; node: Record<string, unknown> } {
   const uuid = generateShortId(existing);
-  const baseAttrs = {
-    uuid,
-    tag: "",
-    label: "",
-    exnoOverride: null,
-    suppressSpace: false,
-    // Which dialect a NEW example is written in (task 355). A REQUIRED
-    // argument, not a default: this is the ONE canonical example creator, so a
-    // default here would be a decision nobody made — and the wrong one would
-    // put an expex example into a linguex-only paper, whose preamble does not
-    // load expex until the requirements pass injects it.
-    dialect,
-    number: 0,
-  };
+  // Which dialect a NEW example is written in (task 355). A REQUIRED argument,
+  // not a default: a default here would be a decision nobody made — and the
+  // wrong one would put an expex example into a linguex-only paper, whose
+  // preamble does not load expex until the requirements pass injects it. The
+  // attr set itself comes from the ONE attrs door the keymaps also mint
+  // through (`freshExampleBlockAttrs`, task 1076).
+  const attrsFor = (k: "single" | "multi") =>
+    freshExampleBlockAttrs({ uuid, dialect, kind: k });
   if (kind === "single") {
     const firstParagraph: Record<string, unknown> =
       inlineContent && inlineContent.length
@@ -2344,7 +2339,7 @@ function buildExampleNode(
       uuid,
       node: {
         type: "exampleBlock",
-        attrs: { ...baseAttrs, kind: "single" },
+        attrs: attrsFor("single"),
         content: [firstParagraph],
       },
     };
@@ -2356,7 +2351,7 @@ function buildExampleNode(
     uuid,
     node: {
       type: "exampleBlock",
-      attrs: { ...baseAttrs, kind: "multi" },
+      attrs: attrsFor("multi"),
       content: [
         {
           type: "exampleItemList",
