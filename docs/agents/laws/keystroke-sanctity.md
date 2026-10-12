@@ -1,4 +1,4 @@
-<!-- last-verified: 5f5d9be2 2026-10-06 -->
+<!-- last-verified: 6d214d9f 2026-10-12 -->
 <!-- derives-from: AGENTS.md#laws -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -365,7 +365,8 @@ only its footnote-only diff. The same blindness sat under every appender that
 runs after one that can append (title, label, example numbering, latex-comment,
 the anchor guards). The slot is
 gone; `readDiffFor` is the one door. A removed footnote's entry now carries its
-body (`removedContent`), read in the inspector from the ONE doc its `pos`
+body and every other carried attr (`removedCarried`, the
+`pickFootnoteCarriedAttrs` pick — task 1073 widened task 1072's `removedContent`), read in the inspector from the ONE doc its `pos`
 addresses, because a consumer handed several transactions cannot know which
 one's before-doc a removed position belongs to.
 

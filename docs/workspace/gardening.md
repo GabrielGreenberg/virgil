@@ -1,4 +1,4 @@
-<!-- last-verified: e6bc688c 2026-10-11 -->
+<!-- last-verified: 6d214d9f 2026-10-12 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -79,7 +79,9 @@ A skill rarely emits CSS, but **content a skill pastes or authors must not colli
 with the structural hook namespace: `.tiptap` / `.ProseMirror` / `.react-renderer`
 / `.node-<name>`, the `.expex-*` family, `.linked-anchor`, `.dropmode-bar-*`,
 `.virgil-bar` / `.panel-*`, and the `data-card-*` / `data-link-*` / `data-print-*`
-families, plus the standalone `data-atoms-graspable` (task 524), and the chrome
+families, plus the standalone `data-atoms-graspable` (task 524), the `data-attr-<kebab>`
+clipboard lane atom attrs ride on copy/paste (task 1068,
+[attr-clipboard-codec.ts](../../src/lib/tiptap/attr-clipboard-codec.ts)), and the chrome
 classes `.iconbtn-*` (task 826), `.margin-fold-chevron` (task 830) and
 `.card-mono` (task 825). (The full namespace is the SSOT file itself,
 [src/app/globals.css](../../src/app/globals.css).)

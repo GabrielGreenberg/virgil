@@ -1,4 +1,4 @@
-<!-- last-verified: e6bc688c 2026-10-11 -->
+<!-- last-verified: 6d214d9f 2026-10-12 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -53,7 +53,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 
 | Source | → node / mark |
 |---|---|
-| `$ … $`, `$$ … $$`, `\( … \)`, `\[ … \]` (mid-paragraph) | `inlineMath` (KaTeX). ONE scanner — `matchInlineMathAt` (`src/lib/latex-lexer.ts`) — shared by the main parser and the card/footnote fork; all four spellings normalize to `$ … $` inline (task 341) |
+| `$ … $`, `$$ … $$`, `\( … \)`, `\[ … \]` (mid-paragraph) | `inlineMath` (KaTeX). ONE scanner — `matchInlineMathAt` (`src/lib/latex-lexer.ts`) — shared by the main parser and the card/footnote fork; the spelling is kept as the node's `delim` attr and re-emitted verbatim by ONE emitter, `emitInlineMath` — `$$…$$` is never saved as `$…$`; `$$`/`\[` paint in KaTeX display mode (task 1070, superseding task 341's normalize-to-`$`). A mid-line `\[…\]` does not end the paragraph |
 | `` `` `` / `''` | smart quotes “ / ” |
 | `\textbf{}` | bold mark |
 | `\emph{}` / `\textit{}` | italic mark (both; the `spelling` attr records `textit` so it round-trips, task 808) |
@@ -245,8 +245,9 @@ gb4e / linguex paper no longer gets an `xlist` shim it cannot compile. An expex
 The **on-disk** form of display math is `\[…\]` — the serializer emits it and the
 block parser recognizes only it. `$$…$$` is the **editor-side** register (the
 `displayMath` node's DOM form + its `$$` input rule); it is normalized to `\[…\]`
-on save. So: a `.tex` on disk uses `\[…\]`; `$$…$$` appears only live in the
-editor. Typed `$$x$$` reaches that rule because the inline `$` rule refuses an
+on save. So: a `.tex` on disk uses `\[…\]` for the BLOCK; a `$$…$$` that sits
+MID-paragraph is an `inlineMath` atom with `delim: "$$"` and stays `$$…$$` on disk
+(task 1070). Typed `$$x$$` reaches that rule because the inline `$` rule refuses an
 opener preceded by `$` (task 744); a typed block at a textblock's start leaves no
 empty paragraph above it.
 
