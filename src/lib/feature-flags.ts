@@ -49,18 +49,33 @@
  * that combination is now unrepresentable rather than merely undocumented, and
  * in dev it says so once on the console.
  *
- * ## Reading
+ * ## Reading — and WHEN (every row declares `readAt`)
  *
- * Flags are read at CALL TIME and nothing here is memoized, so a flip takes
- * effect on the next read (in practice: on reload, which is the contract every
- * `virgil:*` switch has always had). Because nothing caches a snapshot, no
- * `storage`-event subscription is required — the cross-window-storage law
- * governs stores that cache, and this is not one.
+ * Nothing here is memoized: {@link readFlag} consults the override table and
+ * `localStorage` afresh on every call. What differs between flags is when their
+ * READER calls it, and each row says which of two timings it has:
+ *
+ *  - `"call"` — the reader calls `readFlag` each time it needs the answer, so a
+ *    flip (or a {@link setFlagOverride}) takes effect on the next read.
+ *  - `"module-load"` — the reader freezes the answer into a top-level constant
+ *    when its module is first imported (`docProductsEnabled`,
+ *    `printGateEnabled`, `isDevStorage`). A flip takes effect only on reload,
+ *    and `setFlagOverride` is INERT for these rows once the reader's module is
+ *    loaded: a test must set the override (or the key) BEFORE importing it,
+ *    e.g. after `vi.resetModules()`.
+ *
+ * Either way the user-facing contract is the one every `virgil:*` switch has
+ * always had — flip, then reload. Because nothing caches a snapshot that could
+ * go stale against another window, no `storage`-event subscription is required:
+ * the cross-window-storage law governs stores that cache, and this is not one.
+ * (The pre-paint `<script>` twin, {@link flagBootstrapExpr}, runs before any
+ * module and reads `localStorage` directly; overrides never apply to it.)
  *
  * Census: `src/lib/__tests__/feature-flag-registry.test.ts` asserts that every
  * `virgil:` key read anywhere in `src/**` + `library/**` is either a row here
- * or a declared non-flag, and that no production file reads `localStorage` for
- * a flag outside this module.
+ * or a declared non-flag, that no production file reads `localStorage` for a
+ * flag outside this module, and that every `readFlag` call site's timing
+ * matches its row's `readAt`.
  */
 
 /** What a flag is FOR — the lifecycle stage that explains why it exists. */
@@ -74,6 +89,9 @@ export type FlagStatus =
   /** A developer/debug opt-in that never ships on. Default OFF. */
   | "dev";
 
+/** When a flag's reader evaluates it — see "Reading" in the header. */
+export type FlagReadAt = "call" | "module-load";
+
 export interface FlagSpec {
   /** Value when the key is unset, holds an unrecognised value, or
    *  `localStorage` is unreachable. */
@@ -83,6 +101,11 @@ export interface FlagSpec {
    *  the server render matches the client's first paint. */
   readonly ssr?: boolean;
   readonly status: FlagStatus;
+  /** WHEN the row's reader calls {@link readFlag} — see "Reading" above.
+   *  `"module-load"` means the answer is frozen into a top-level constant, so
+   *  {@link setFlagOverride} cannot reach it after import. The census derives
+   *  each call site's timing from source and fails a mismatch. */
+  readonly readAt: FlagReadAt;
   /** Flags that must ALSO be on for this one to read as on. Resolved
    *  transitively by {@link readFlag}. */
   readonly requires: readonly string[];
@@ -104,6 +127,7 @@ export const FLAG_REGISTRY = {
   "virgil:geom-hover": {
     default: true,
     status: "kill-switch",
+    readAt: "call",
     requires: [],
     legacy: "off",
     note: "Service-backed hover resolvers (grab handle + par-title band); OFF reverts to the legacy full-document scans.",
@@ -111,6 +135,7 @@ export const FLAG_REGISTRY = {
   "virgil:geom-active-block": {
     default: true,
     status: "kill-switch",
+    readAt: "call",
     requires: [],
     legacy: "off",
     note: "Snapshot binary-search active-paragraph resolver; OFF reverts to the legacy triple doc walk.",
@@ -118,6 +143,7 @@ export const FLAG_REGISTRY = {
   "virgil:geom-breadcrumb": {
     default: true,
     status: "kill-switch",
+    readAt: "call",
     requires: [],
     legacy: "off",
     note: "Snapshot-derived section-path breadcrumb; OFF reverts to the legacy per-block coordsAtPos scan.",
@@ -125,22 +151,25 @@ export const FLAG_REGISTRY = {
   "virgil:print-gate": {
     default: true,
     status: "kill-switch",
+    readAt: "module-load",
     requires: [],
     legacy: "off",
-    note: "Print-intent gate: the print appendix tree mounts only during an active print (in the visible pane); OFF keeps it always mounted (legacy), so a print is not deferred behind a mount. Read once at module load.",
+    note: "Print-intent gate: the print appendix tree mounts only during an active print (in the visible pane); OFF keeps it always mounted (legacy), so a print is not deferred behind a mount. Read once at module load (`printGateEnabled`).",
   },
   "virgil:doc-products": {
     default: true,
     // Client-only pipeline; report OFF server-side so first paint matches.
     ssr: false,
     status: "kill-switch",
+    readAt: "module-load",
     requires: [],
     legacy: "off",
-    note: "The shared doc-products pipeline (docJson/sourceText/wordCounts); OFF makes every consumer compute its own.",
+    note: "The shared doc-products pipeline (docJson/sourceText/wordCounts); OFF makes every consumer compute its own. Read once at module load (`docProductsEnabled`).",
   },
   "virgil:layout-gesture": {
     default: true,
     status: "kill-switch",
+    readAt: "call",
     requires: [],
     legacy: "off",
     note: "The WINDOW-resize publisher on the layout-gesture bus (pane parking is untouched); OFF stops publishing window gestures.",
@@ -150,6 +179,7 @@ export const FLAG_REGISTRY = {
   "virgil:card-tiers": {
     default: false,
     status: "soak",
+    readAt: "call",
     requires: [],
     legacy: "on",
     note: "Card presence tiers — a collapsed card body mounts machinery proportional to its usefulness instead of a live editor each.",
@@ -157,6 +187,7 @@ export const FLAG_REGISTRY = {
   "virgil:perf-contain": {
     default: false,
     status: "soak",
+    readAt: "call",
     requires: [],
     legacy: "on",
     note: "Wave-4 Stage A `contain: layout style` on card/omni/panel/float containers, via `body.perf-contain`.",
@@ -166,6 +197,7 @@ export const FLAG_REGISTRY = {
   "virgil:identity-cascade": {
     default: false,
     status: "rollout",
+    readAt: "call",
     requires: [],
     legacy: "1",
     note: "IdentityCascade: annotation/bib-review sidecars key on BibEntry.uid, and the identity-bus consumer mounts. The citekey-rename cascade is UNFLAGGED (task 689) — OFF does not revert it.",
@@ -173,6 +205,7 @@ export const FLAG_REGISTRY = {
   "virgil:inline-atom-lifecycle": {
     default: false,
     status: "rollout",
+    readAt: "call",
     // The reconciler registers as a POLICY on the identity-bus consumer, which
     // only exists when the cascade flag is on. Without this edge, ON+parent-OFF
     // silenced BOTH footnote-orphan writers and dropped the record entirely.
@@ -186,6 +219,7 @@ export const FLAG_REGISTRY = {
     // doc either way, so reporting OFF (capacity 1) server-side is safe.
     ssr: false,
     status: "rollout",
+    readAt: "call",
     requires: [],
     legacy: "0",
     note: "Keep-alive LRU capacity 3 (1 visible + 2 warm) for instant paper↔paper switching; OFF pins capacity 1 (legacy cold remount).",
@@ -196,6 +230,7 @@ export const FLAG_REGISTRY = {
     // surprise on the first client paint.
     ssr: false,
     status: "rollout",
+    readAt: "call",
     requires: [],
     legacy: "0",
     note: "Applied AI suggestions land as a blue revertable range awaiting an explicit Keep; OFF is the legacy accept-immediately path.",
@@ -205,13 +240,15 @@ export const FLAG_REGISTRY = {
   "virgil:force-dev-storage": {
     default: false,
     status: "dev",
+    readAt: "module-load",
     requires: [],
     legacy: "1",
-    note: "Force the dev storage backend (and disable the FSA file picker) when the host can't be detected as an iframe — how the Claude preview loads a doc.",
+    note: "Force the dev storage backend (and disable the FSA file picker) when the host can't be detected as an iframe — how the Claude preview loads a doc. Honoured only in a build with NEXT_PUBLIC_DEV_STORAGE; read once at module load (`isDevStorage`).",
   },
   "virgil:bug-report": {
     default: false,
     status: "dev",
+    readAt: "call",
     requires: [],
     legacy: "1",
     note: "Per-machine opt-in for the bug-report drop window in the top bar (also needs real FSA and not dev storage).",
@@ -219,6 +256,7 @@ export const FLAG_REGISTRY = {
   "virgil:wco-debug": {
     default: false,
     status: "dev",
+    readAt: "call",
     requires: [],
     legacy: "1",
     note: "Window-controls-overlay debug instrumentation; also enabled by a `wco-debug` query param.",
@@ -226,6 +264,7 @@ export const FLAG_REGISTRY = {
   "virgil:lib-perf": {
     default: false,
     status: "dev",
+    readAt: "call",
     requires: [],
     legacy: "1",
     note: "Library data-layer timing logs (`[lib-perf] <label> <ms>`); also forced by `globalThis.__VIRGIL_LIB_PERF`.",
