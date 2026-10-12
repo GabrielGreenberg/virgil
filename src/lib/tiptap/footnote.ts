@@ -4,7 +4,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
 import { writeFootnoteNumbers } from "@/lib/footnote-numbering";
-import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { readDocStructure, readDiffFor } from "@/lib/tiptap/doc-structure";
 import {
   setAttrIfChanged,
   setDataIfChanged,
@@ -288,9 +288,9 @@ export const Footnote = Node.create<FootnoteOptions>({
             },
           };
         },
-        appendTransaction(transactions, oldState, newState) {
+        appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
-          const diff = readPendingDiff(newState);
+          const diff = readDiffFor(transactions, newState);
           if (!diff) return null;
 
           // Orphan dispatch — only when footnote nodes vanished.
@@ -303,14 +303,13 @@ export const Footnote = Node.create<FootnoteOptions>({
           // sole orphan source, byte-identical to today. The renumber pass
           // below is flag-agnostic and always runs.
           if (diff.removedFootnotes.length > 0 && !isInlineAtomLifecycleOn()) {
-            // The diff entries don't carry rich-text content, but the
-            // event consumer needs it. Look up each removed id in
-            // oldState (we have its pos in the diff).
+            // A removed entry carries the body it left with (task 1072) —
+            // read from the one doc its `pos` addresses. Re-resolving that
+            // pos against `oldState` was right only when the deleting step
+            // opened the first transaction this appender was handed.
             for (const removed of diff.removedFootnotes) {
-              const oldNode = oldState.doc.nodeAt(removed.pos);
-              const isFootnote = oldNode?.type?.name === "footnote";
-              const content = isFootnote ? oldNode.attrs.content : null;
-              const title = isFootnote ? oldNode.attrs.title : undefined;
+              const content = removed.removedContent ?? null;
+              const title = removed.title;
               // FN-A1-02: orphan-worthiness counts the `\footnote` title
               // (`\thanks` acknowledgement label), not just the body — a
               // title-only footnote whose marker is deleted IS recoverable, so

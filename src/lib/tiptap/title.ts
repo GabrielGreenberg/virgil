@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { setTextIfChanged } from "./idempotent-dom";
 import { chromeOnly } from "@/lib/view-only-chrome";
-import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
+import { readDiffFor, touchedBlockPositions } from "./doc-structure";
 
 /**
  * Clears parTitle (and uuid) from empty paragraphs.
@@ -34,7 +34,7 @@ export const EmptyParagraphTitleCleaner = Extension.create({
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          const pending = readPendingDiff(newState);
+          const pending = readDiffFor(transactions, newState);
           if (!pending) return null;
           // Gate: parTitle-cleanup only matters when a paragraph's content
           // changed (typing/deleting) or a block was added (split/paste).

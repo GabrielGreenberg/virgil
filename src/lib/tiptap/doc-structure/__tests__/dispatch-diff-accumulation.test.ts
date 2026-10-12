@@ -28,7 +28,7 @@ vi.mock("@/lib/storage", async () =>
 import { Editor, Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
-import { getBus, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { getBus, readDiffFor } from "@/lib/tiptap/doc-structure";
 import type { BlockEntry, FootnoteEntry, StructureDiff } from "@/lib/tiptap/doc-structure/types";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -154,11 +154,11 @@ describe("a dispatch publishes every transaction's structural work (task 650)", 
 // ---------------------------------------------------------------------------
 
 /**
- * Records what `readPendingDiff` answers on EVERY transaction of a dispatch —
+ * Records what `readDiffFor` answers on EVERY transaction of a dispatch —
  * the shape a plugin `apply` reader has (`section-folding.ts`), deliberately
  * UNGATED so the doc-unchanged appended transaction is actually observed.
  *
- * Today's five `readPendingDiff` callers all open with
+ * Today's five `readDiffFor` callers all open with
  * `transactions.some((tr) => tr.docChanged)` (or `if (!tr.docChanged)` in an
  * `apply`), and ProseMirror re-invokes an appender with only the transactions
  * it has not yet seen — so a doc-unchanged appended transaction returns them
@@ -177,7 +177,7 @@ const ProbeEveryTx = Extension.create({
         state: {
           init: () => null,
           apply(_tr, value, _old, newState) {
-            seenPerTx.push(readPendingDiff(newState));
+            seenPerTx.push(readDiffFor([_tr], newState));
             return value;
           },
         },
@@ -260,7 +260,7 @@ describe("a structurally-silent appended transaction cannot erase the dispatch's
     }
   });
 
-  it("…and a same-dispatch `readPendingDiff` consumer is never handed `null`", () => {
+  it("…and a same-dispatch `readDiffFor` consumer is never handed `null`", () => {
     // Pre-fix the doc-unchanged appended tx nulled the slot, so a consumer
     // reading after it saw `null` and took its observer-absent full-doc-walk
     // fallback. The dispatch carries two transactions (the delete, then the

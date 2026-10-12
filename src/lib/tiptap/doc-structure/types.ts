@@ -70,6 +70,11 @@ export interface FootnoteEntry {
   /** The card title (`title` attr, "" when untitled — task 705). Carried so a
    *  rename is a structural footnote change: the card rows re-read it. */
   title?: string;
+  /** The footnote's body (`content` attr) AS IT LEFT the document — set on
+   *  `removedFootnotes` entries only, read from the one doc the removal's
+   *  `pos` addresses (task 1072). Index entries never carry it, so it can
+   *  never go stale; `undefined` elsewhere. */
+  removedContent?: unknown;
 }
 
 export interface CitationEntry {

@@ -31,7 +31,7 @@
  * position remap.
  *
  * Note on rebuild detection: this plugin is registered in the heading
- * extension, which runs BEFORE `DocStructureObserver`, so `readPendingDiff` is
+ * extension, which runs BEFORE `DocStructureObserver`, so `readDiffFor([tr])` is
  * not yet populated in this plugin's `apply` (same constraint section-folding
  * lives with). We therefore discriminate map-vs-rebuild from the transaction's
  * STEPS directly (O(edit-size)), not from the structure diff.
@@ -264,7 +264,7 @@ export function focusViewPlugin(): Plugin<FocusViewState> {
         // added/removed (childCount change) or a top-level node boundary is
         // replaced (ReplaceAroundStep, split/merge, cross-block replace) — all
         // of which DROP a node decoration under .map(), silently un-hiding an
-        // out-of-band block. Detected from the STEPS (readPendingDiff is not yet
+        // out-of-band block. Detected from the STEPS (readDiffFor is not yet
         // populated here — see the file header). Rebuild is O(top-level blocks)
         // but never fires on a plain keystroke.
         if (!txPreservesTopLevelNodeDecorations(tr, oldState.doc, newState.doc)) {

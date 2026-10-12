@@ -7,7 +7,7 @@ import {
   dispatchAnchorOrphaned,
   dispatchTextObjectOrphaned,
 } from "@/lib/tiptap/orphan-events";
-import { hasLiveAnchor, hasLiveBlock, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { hasLiveAnchor, hasLiveBlock, readDiffFor } from "@/lib/tiptap/doc-structure";
 import {
   classifyBlockDepartures,
   type DepartedBlock,
@@ -175,7 +175,7 @@ export const LinkedAnchorGuard = Extension.create<{
           // Read the diff already computed by DocStructureObserver
           // (which runs before us). No doc walks — just the typed
           // delta the observer published.
-          const diff = readPendingDiff(newState);
+          const diff = readDiffFor(transactions, newState);
           if (!diff || diff.removedAnchors.length === 0) return null;
           setTimeout(() => {
             // Liveness is the observer snapshot's answer, read off the SETTLED
@@ -337,7 +337,7 @@ export const TextObjectOrphanGuard = Extension.create<{
         // [cost: O(1)/tx — docChanged + observer-diff removedBlocks gate; then O(replace steps × depth) for the departure classification and O(removed blocks) O(1) snapshot lookups inside a setTimeout off the dispatch — both only on a block-removal transaction (a join keystroke included), and no doc walk on any path] (task 433 census; task 878)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
-          const diff = readPendingDiff(newState);
+          const diff = readDiffFor(transactions, newState);
           if (!diff || diff.removedBlocks.length === 0) return null;
           const removed = diff.removedBlocks;
           // Read HERE, not in the deferred callback: the classification is a
@@ -527,7 +527,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
 
           // Consume the typed diff already computed by
           // DocStructureObserver — no doc walks needed.
-          const diff = readPendingDiff(newState);
+          const diff = readDiffFor(transactions, newState);
           if (!diff) return null;
           if (diff.removedBlocks.length === 0) return null;
 

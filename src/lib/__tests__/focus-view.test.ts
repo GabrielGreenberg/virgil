@@ -117,7 +117,7 @@ describe("isPosInFocusBand / isUuidInFocusBand", () => {
 
 /**
  * Observer stand-in for the focus tests — the REAL plugin-state spec
- * (`docStructureStateSpec`), not a hand-copy, so `readPendingDiff` returns
+ * (`docStructureStateSpec`), not a hand-copy, so `readDiffFor` returns
  * exactly what production writes (task 650).
  */
 function minimalObserverPlugin() {
