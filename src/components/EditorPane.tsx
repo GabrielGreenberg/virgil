@@ -313,6 +313,7 @@ import {
 } from "@/cards/margin-markers";
 import {
   useAnchorRetargetApi,
+  landReturningDisplaced,
   rehomeAbsorbedAnchor,
 } from "@/cards/retarget-anchors";
 import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
@@ -5095,9 +5096,20 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     const address: ExcerptReturnAddress | null = anchorId
       ? { uuid: anchorId, side: snippet?.returnBefore === anchorId ? "before" : "after" }
       : null;
+    // RETURNING MARGIN (task 1079): the cards the capture re-homed onto the
+    // neighbour go back to the blocks this landing returns — the round trip
+    // for the margin, through the same door the capture moved them with.
     const restored = archiveHook.restoreSnippet(
       id,
-      (content) => innerRef.current?.restoreArchive(content, address) ?? false,
+      (content) =>
+        landReturningDisplaced({
+          doc: () => innerRef.current?.getEditor()?.state.doc ?? null,
+          land: () => innerRef.current?.restoreArchive(content, address) ?? false,
+          displaced: snippet?.displaced,
+          retarget: anchorRetarget,
+          snapshotOf: (uuid) =>
+            captureParagraphSnapshot(innerRef.current?.getEditor() ?? null, uuid),
+        }),
       (panel, card) => reinstateByPanel[panel](card),
     );
     if (!restored && origin && origin.kind !== "excerpt") {
@@ -5163,6 +5175,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     archiveHook.snippetOrigin,
     archiveHook.snippets,
     anchorPass,
+    anchorRetarget,
     reinstateByPanel,
     dragHandleNotify,
     cardLifecycleSignal,

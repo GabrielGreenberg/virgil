@@ -2032,6 +2032,28 @@ shared (`landExcerpt`). No live anchor → the caret door, unchanged. The agent'
 agree with. Pinned in `restore-excerpt.test.ts` ("the return address") and
 `archive-retarget-displaced-anchors.test.tsx`. A real-FSA eyeball is owed.
 
+#### The returning-margin half: Restore hands back the cards the archive displaced (task 1079)
+
+965 made Restore the inverse of Archive for the TEXT only. The restored passage
+carries its original uuids, but since 491 no card names them — the capture moved
+every Mode-A card onto the neighbour — so the user's notes stayed stacked on the
+wrong paragraph after "putting it back". Which cards moved, and from where, is
+again a fact only the CAPTURE can see: `retargetDisplacedAnchors` now RETURNS a
+`DisplacedAnchorRecord` per moved card (`from` uuids, `to` neighbour, whether it
+`added` the neighbour link), and the archive records them on the snippet
+(`ArchivedSnippet.displaced`, migrator-validated, absent ≡ none). Restore runs
+the inverse through ONE door, `landReturningDisplaced` (`src/cards/retarget-anchors.ts`):
+it measures the doc around the landing, and `returnDisplacedAnchors` re-anchors
+each card onto every `from` uuid the landing RETURNED (live after, not before —
+a uuid already live means `BlockUuidBackfill` re-minted the restored copy, so the
+card stays). A card the capture added to the neighbour but that is no longer
+there was moved by the user, and is left alone; the neighbour link is dropped
+only if the capture added it. Mode-B (`linkedAnchor`) cards stay out of scope —
+archive sends them down the delete path (393's equality leg). The agent door
+(`cmd_restore`) refuses excerpts, so there is no second inverse to agree with.
+Pinned in `archive-retarget-displaced-anchors.test.tsx` (task 1079 block). A
+real-FSA eyeball is owed.
+
 ### The schema half: a TYPE contract is blind to the ATTRS the type carries
 
 Same law, the SCHEMA the excerpt body mounts (task 402, DATA LOSS) — and the

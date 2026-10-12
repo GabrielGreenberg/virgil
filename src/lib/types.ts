@@ -276,6 +276,12 @@ export interface ArchivedSnippet {
    *  clip's live anchor IS that block — a clip the user re-anchored elsewhere
    *  lands after its new anchor. Absent ≡ after. */
   returnBefore?: string;
+  /** RETURNING MARGIN (task 1079). The Mode-A cards the capture RE-HOMED onto
+   *  the neighbour (task 491), and the uuids they were taken from — the half
+   *  of the round trip only the capture can see, recorded beside
+   *  `returnBefore` for the same reason. Restore hands them back to the
+   *  restored passage (`landReturningDisplaced`). Absent ≡ none. */
+  displaced?: DisplacedAnchorRecord[];
   /** All paragraphs this snippet is anchored to. See src/links/links.ts
    *  for helpers (getLinkedTextObjectIds, addTextObjectLink, …). */
   links: Link[];
@@ -933,4 +939,22 @@ export interface OrphanedFootnote extends FootnoteMarkupAttrs {
 export interface OrphanedFootnotesState {
   version: 1;
   orphans: OrphanedFootnote[];
+}
+
+/** One card an archive capture re-homed (task 1079 — see
+ *  `ArchivedSnippet.displaced`). `kind` is a `MarginItemKind`, typed as a
+ *  string here because it round-trips through `archive.json`; an unknown kind
+ *  is simply skipped on restore. */
+export interface DisplacedAnchorRecord {
+  kind: string;
+  /** The card's id within its kind's collection. */
+  id: string;
+  /** The uuids the capture consumed from this card (a multi-block capture can
+   *  take several). */
+  from: string[];
+  /** The neighbour the card was moved onto. */
+  to: string;
+  /** Whether the capture ADDED `to` — false when the card was already
+   *  anchored there, in which case Restore must not take it away. */
+  added: boolean;
 }

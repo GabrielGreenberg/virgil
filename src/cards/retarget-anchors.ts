@@ -53,6 +53,9 @@ import { useMemo, useRef } from "react";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { isAnchorableBlock } from "@/text-objects/anchor-resolution";
 import type { TextObjectKind } from "@/text-objects/types";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import type { DisplacedAnchorRecord } from "@/lib/types";
+import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 import type { MarginItemHandlers, MarginItemKind } from "./delete-margin-item";
 
@@ -81,8 +84,10 @@ export interface RetargetDisplacedAnchorsArgs {
 }
 
 /**
- * Move every displaced Mode-A anchor onto `target`. Returns how many cards
- * moved (diagnostics / tests; callers ignore it).
+ * Move every displaced Mode-A anchor onto `target`. Returns one
+ * {@link DisplacedAnchorRecord} per card moved — the archive capture records
+ * them on its snippet so Restore can hand the cards back (task 1079); the join
+ * re-home has no inverse and only counts them.
  *
  * Per card:
  *  - drop ONLY the consumed pids — a multi-anchor card keeps every anchor the
@@ -102,14 +107,14 @@ export function retargetDisplacedAnchors({
   removed,
   target,
   snapshot,
-}: RetargetDisplacedAnchorsArgs): number {
-  if (!target || removed.size === 0) return 0;
+}: RetargetDisplacedAnchorsArgs): DisplacedAnchorRecord[] {
+  if (!target || removed.size === 0) return [];
   // A target inside the removal would hand every card a uuid that is about to
   // vanish — a no-op at best and a fresh orphan at worst. The resolver already
   // refuses that; re-check here so the door is safe for any caller.
-  if (removed.has(target.uuid)) return 0;
+  if (removed.has(target.uuid)) return [];
 
-  let moved = 0;
+  const moved: DisplacedAnchorRecord[] = [];
   for (const kind of Object.keys(handlers) as MarginItemKind[]) {
     const bundle = handlers[kind];
     for (const card of bundle.cards) {
@@ -117,10 +122,11 @@ export function retargetDisplacedAnchors({
       const displaced = pids.filter((pid) => removed.has(pid));
       if (displaced.length === 0) continue;
       for (const pid of displaced) bundle.unanchor(card.id, pid);
-      if (!pids.includes(target.uuid)) {
+      const added = !pids.includes(target.uuid);
+      if (added) {
         bundle.reanchor(card.id, target.uuid, target.kind, snapshot);
       }
-      moved += 1;
+      moved.push({ kind, id: card.id, from: displaced, to: target.uuid, added });
     }
   }
   return moved;
@@ -136,7 +142,9 @@ export function retargetDisplacedAnchors({
  * change.
  */
 export interface AnchorRetargetApi {
-  retarget(args: Omit<RetargetDisplacedAnchorsArgs, "handlers">): number;
+  retarget(args: Omit<RetargetDisplacedAnchorsArgs, "handlers">): DisplacedAnchorRecord[];
+  /** The inverse, for Restore (task 1079) — see {@link returnDisplacedAnchors}. */
+  returnDisplaced(args: Omit<ReturnDisplacedAnchorsArgs, "handlers">): number;
 }
 
 /** Wrap a live (re-memoizing) handler bundle in an identity-stable
@@ -150,6 +158,8 @@ export function useAnchorRetargetApi(
     () => ({
       retarget: (args) =>
         retargetDisplacedAnchors({ ...args, handlers: ref.current }),
+      returnDisplaced: (args) =>
+        returnDisplacedAnchors({ ...args, handlers: ref.current }),
     }),
     [],
   );
@@ -182,7 +192,7 @@ export function rehomeAbsorbedAnchor({
   snapshotFor,
 }: {
   event: BlockAbsorbedEvent;
-  retarget: AnchorRetargetApi;
+  retarget: Pick<AnchorRetargetApi, "retarget">;
   /** Normalized text of the survivor, so the fresh Mode-A link is self-healing
    *  on reload exactly as the re-anchor gesture's is. */
   snapshotFor: (uuid: string) => string | null;
@@ -198,5 +208,121 @@ export function rehomeAbsorbedAnchor({
     removed: new Set([absorbed.uuid]),
     target: { uuid: survivor.uuid, kind: survivor.typeName },
     snapshot: snapshotFor(survivor.uuid),
+  }).length;
+}
+
+export interface ReturnDisplacedAnchorsArgs {
+  handlers: Record<MarginItemKind, MarginItemHandlers>;
+  displaced: ReadonlyArray<DisplacedAnchorRecord>;
+  /** The kind + snapshot of a uuid the restore brought back, or `null` when
+   *  the restore did not bring it back (see {@link returnedBlocks}). */
+  returned: (uuid: string) => { kind: TextObjectKind; snapshot: string | null } | null;
+}
+
+/**
+ * **Restore hands back the margin the archive displaced** (task 1079) — the
+ * inverse of {@link retargetDisplacedAnchors}, and what makes Archive → Restore
+ * a round trip for the cards as well as the text.
+ *
+ * Task 965 made Restore land the passage at its RETURN ADDRESS, carrying its
+ * original block uuids. But since task 491 nothing is anchored to those uuids
+ * any more — the capture moved every Mode-A card onto the neighbour — so the
+ * re-established identity had nothing pointing at it, and the user's notes
+ * stayed stacked on the wrong paragraph. Which cards moved, and from where, is
+ * a fact only the CAPTURE can see (the same argument as `returnBefore`), so it
+ * records them on the snippet (`ArchivedSnippet.displaced`) and this reads
+ * them back.
+ *
+ * Per record:
+ *  - a card that no longer exists is skipped;
+ *  - a card the capture ADDED to the neighbour but that is no longer there has
+ *    been moved by the user since — their choice wins, and it is left alone;
+ *  - only a `from` uuid the restore itself RETURNED (`returned(uuid)` non-null)
+ *    is re-anchored. A uuid that was already live before the landing means
+ *    `BlockUuidBackfill` re-minted the restored copy (id collision), so that
+ *    uuid names someone else's block — the card stays where it is;
+ *  - the neighbour link is dropped only if the capture added it.
+ *
+ * Re-anchor BEFORE unanchor, so the card never passes through zero anchors.
+ * Returns how many cards moved back.
+ */
+export function returnDisplacedAnchors({
+  handlers,
+  displaced,
+  returned,
+}: ReturnDisplacedAnchorsArgs): number {
+  let moved = 0;
+  for (const rec of displaced) {
+    const bundle = (handlers as Partial<Record<string, MarginItemHandlers>>)[rec.kind];
+    const card = bundle?.findCard(rec.id);
+    if (!bundle || !card) continue;
+    const pids = getLinkedTextObjectIds(card);
+    if (rec.added && !pids.includes(rec.to)) continue;
+    let back = false;
+    for (const uuid of rec.from) {
+      const block = returned(uuid);
+      if (!block) continue;
+      back = true;
+      if (!pids.includes(uuid)) bundle.reanchor(rec.id, uuid, block.kind, block.snapshot);
+    }
+    if (!back) continue;
+    if (rec.added && !rec.from.includes(rec.to)) bundle.unanchor(rec.id, rec.to);
+    moved += 1;
+  }
+  return moved;
+}
+
+/**
+ * The uuids a landing RETURNED to the document: live in `after`, absent from
+ * `before`, on an anchorable block. O(doc) twice — Restore is a click.
+ */
+export function returnedBlocks(
+  before: PMNode,
+  after: PMNode,
+  snapshotOf: (uuid: string) => string | null,
+): ReturnDisplacedAnchorsArgs["returned"] {
+  const wasLive = collectBlockUuids(before);
+  const kinds = new Map<string, string>();
+  after.descendants((node) => {
+    const u = node.attrs?.uuid;
+    if (typeof u === "string" && u && !wasLive.has(u)) kinds.set(u, node.type.name);
+    return true;
   });
+  return (uuid) => {
+    const kind = kinds.get(uuid);
+    if (kind === undefined || !isAnchorableBlock(kind, uuid)) return null;
+    return { kind, snapshot: snapshotOf(uuid) };
+  };
+}
+
+/**
+ * The ONE restore door for an excerpt that displaced cards: run `land`, and if
+ * it landed, hand the displaced cards back to the blocks it returned. Shared by
+ * the pane's Restore and its tests, so the "measure the doc around the
+ * landing" ordering is stated once.
+ */
+export function landReturningDisplaced({
+  doc,
+  land,
+  displaced,
+  retarget,
+  snapshotOf,
+}: {
+  /** Reads the LIVE document (called before and after `land`). */
+  doc: () => PMNode | null;
+  land: () => boolean;
+  displaced: ReadonlyArray<DisplacedAnchorRecord> | undefined;
+  retarget: Pick<AnchorRetargetApi, "returnDisplaced">;
+  snapshotOf: (uuid: string) => string | null;
+}): boolean {
+  const before = displaced?.length ? doc() : null;
+  if (!land()) return false;
+  const after = before ? doc() : null;
+  if (before && after && displaced) {
+    retarget.returnDisplaced({
+      displaced,
+      returned: returnedBlocks(before, after, snapshotOf),
+    });
+  }
+  return true;
 }

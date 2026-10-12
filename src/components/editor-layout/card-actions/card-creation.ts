@@ -12,6 +12,7 @@ import type {
   TodoItem,
   CitationRef,
   ArchivedSnippet,
+  DisplacedAnchorRecord,
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import { isPanelDocked } from "@/hooks/view-prefs-derived";
@@ -124,7 +125,10 @@ export interface CardCreationDeps {
   /** Archive — mints a snippet and (optionally) writes a Mode A
    *  paragraph link. The dispatcher owns the editor mutation (cleanup
    *  walker + tr.delete) before/around the call. */
-  archiveContent: (content: unknown, opts?: { unanchored?: boolean; returnBefore?: string }) => ArchivedSnippet;
+  archiveContent: (
+    content: unknown,
+    opts?: { unanchored?: boolean; returnBefore?: string; displaced?: DisplacedAnchorRecord[] },
+  ) => ArchivedSnippet;
   updateArchiveSnippet: (id: string, content: unknown) => void;
   addArchiveTextObjectId: (
     id: string,
@@ -313,6 +317,9 @@ export interface CardCreationApi {
     /** Task 965: the passage was cut from just BEFORE this block (the
      *  capture's neighbour fell forward) — see `ArchivedSnippet.returnBefore`. */
     returnBefore?: string;
+    /** Task 1079: the cards the capture re-homed — see
+     *  `ArchivedSnippet.displaced`. */
+    displaced?: DisplacedAnchorRecord[];
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   } & AutoFocusOpt) => ArchivedSnippet;
@@ -667,6 +674,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       const snippet = archiveContent(opts.text ?? "", {
         unanchored: !opts.paragraphId,
         returnBefore: opts.returnBefore,
+        displaced: opts.displaced,
       });
       if (opts.content !== undefined) {
         updateArchiveSnippet(snippet.id, opts.content);

@@ -151,7 +151,7 @@ function makeHarness(editor: Editor): Harness {
     editorRef: { current: { getEditor: () => editor } as never },
     cardCreation,
     cardLifecycle: { get: () => undefined } as unknown as DragHandleActionsDeps["cardLifecycle"],
-    anchorRetarget: { retarget: () => 0 },
+    anchorRetarget: { retarget: () => [] },
     appliedSplice: { get: () => null, ask: async () => null, settle: () => true },
     confirm: async () => true,
     notify: vi.fn(),

@@ -340,7 +340,7 @@ function makeHarness(editor: Editor): Harness {
     anchorRetarget: {
       retarget: () => {
         counts.retargets += 1;
-        return 0;
+        return [];
       },
     },
     appliedSplice: { get: () => null, ask: async () => null, settle: () => true },

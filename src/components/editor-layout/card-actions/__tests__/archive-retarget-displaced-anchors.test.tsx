@@ -56,7 +56,14 @@ import {
   type CardWithLinks,
 } from "@/links/links";
 import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
-import { retargetDisplacedAnchors } from "@/cards/retarget-anchors";
+import {
+  landReturningDisplaced,
+  retargetDisplacedAnchors,
+  returnDisplacedAnchors,
+} from "@/cards/retarget-anchors";
+import { restoreExcerptAtAnchor } from "@/lib/tiptap/restore-excerpt";
+import { captureParagraphSnapshot } from "@/links/links";
+import type { DisplacedAnchorRecord } from "@/lib/types";
 import {
   collectRemovedAnchorUuids,
   findNextAnchorableBlock,
@@ -163,7 +170,12 @@ function makeCardStore() {
 
 function makeHarness(editor: Editor, handlers: Record<MarginItemKind, MarginItemHandlers>) {
   const notify = vi.fn();
-  const archiveCalls: { paragraphId: unknown; returnBefore?: unknown }[] = [];
+  const archiveCalls: {
+    paragraphId: unknown;
+    returnBefore?: unknown;
+    content?: unknown;
+    displaced?: DisplacedAnchorRecord[];
+  }[] = [];
   let n = 0;
   const nextId = () => `card-${++n}`;
 
@@ -176,8 +188,18 @@ function makeHarness(editor: Editor, handlers: Record<MarginItemKind, MarginItem
     createCitation: () => ({ id: nextId() }),
     createCutterComment: () => ({ id: nextId() }),
     createReportRequest: () => ({ id: nextId() }),
-    createArchiveSnippet: (opts: { paragraphId?: unknown; returnBefore?: unknown }) => {
-      archiveCalls.push({ paragraphId: opts.paragraphId, returnBefore: opts.returnBefore });
+    createArchiveSnippet: (opts: {
+      paragraphId?: unknown;
+      returnBefore?: unknown;
+      content?: unknown;
+      displaced?: DisplacedAnchorRecord[];
+    }) => {
+      archiveCalls.push({
+        paragraphId: opts.paragraphId,
+        returnBefore: opts.returnBefore,
+        content: opts.content,
+        displaced: opts.displaced,
+      });
       return { id: nextId() };
     },
   } as unknown as DragHandleActionsDeps["cardCreation"];
@@ -408,5 +430,129 @@ describe("resolveDisplacedAnchorTarget", () => {
     const d = doc(threeParagraphDoc());
     const removed = new Set(["p-before", "p-target", "p-after"]);
     expect(resolveDisplacedAnchorTarget(d, 0, d.content.size, removed)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 1079 — Archive → Restore is a round trip for the MARGIN too. The
+// capture records which cards it re-homed; Restore hands them back to the
+// passage it returns, through the pane's ONE door (`landReturningDisplaced`).
+// ---------------------------------------------------------------------------
+
+describe("task 1079 — Restore returns the cards the archive displaced", () => {
+  /** The pane's Restore, minus React: land at the clip's return address
+   *  (task 965) through the same door `handleArchiveRestore` uses. */
+  function restore(
+    editor: Editor,
+    handlers: Record<MarginItemKind, MarginItemHandlers>,
+    call: { paragraphId: unknown; returnBefore?: unknown; content?: unknown; displaced?: DisplacedAnchorRecord[] },
+  ): boolean {
+    const anchor = call.paragraphId as string;
+    return landReturningDisplaced({
+      doc: () => editor.state.doc,
+      land: () =>
+        restoreExcerptAtAnchor(editor, call.content as JSONContent, {
+          uuid: anchor,
+          side: call.returnBefore === anchor ? "before" : "after",
+        }) === true,
+      displaced: call.displaced,
+      retarget: { returnDisplaced: (args) => returnDisplacedAnchors({ ...args, handlers }) },
+      snapshotOf: (uuid) => captureParagraphSnapshot(editor, uuid),
+    });
+  }
+
+  function uuidsInOrder(editor: Editor): string[] {
+    const out: string[] = [];
+    editor.state.doc.forEach((n) => out.push(n.attrs.uuid as string));
+    return out;
+  }
+
+  it("the note goes back to the restored paragraph, which keeps its uuid", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const store = makeCardStore();
+    store.seed("note", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers);
+
+    await h.dispatch("archive", TARGET_REF);
+    expect(store.pidsOf("note", "n")).toEqual(["p-before"]);
+    expect(h.archiveCalls[0].displaced).toEqual([
+      { kind: "note", id: "n", from: ["p-target"], to: "p-before", added: true },
+    ]);
+
+    expect(restore(editor, store.handlers, h.archiveCalls[0])).toBe(true);
+
+    // THE DEFECT LEG: pre-1079 the note stayed stacked on p-before.
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
+    expect(store.pidsOf("note", "n")).toEqual(["p-target"]);
+  });
+
+  it("every Mode-A kind round-trips, and a card already on the neighbour keeps that anchor", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const store = makeCardStore();
+    const kinds: MarginItemKind[] = ["note", "todo", "cut", "revision", "report", "archive"];
+    for (const kind of kinds) store.seed(kind, `${kind}-1`, ["p-target"]);
+    store.seed("note", "both", ["p-target", "p-before"]);
+    const h = makeHarness(editor, store.handlers);
+
+    await h.dispatch("archive", TARGET_REF);
+    restore(editor, store.handlers, h.archiveCalls[0]);
+
+    for (const kind of kinds) expect(store.pidsOf(kind, `${kind}-1`)).toEqual(["p-target"]);
+    // It was on p-before BEFORE the archive — the capture didn't put it there,
+    // so the restore doesn't take it away.
+    expect(new Set(store.pidsOf("note", "both"))).toEqual(new Set(["p-before", "p-target"]));
+  });
+
+  it("a card the user moved between archive and restore stays where they put it", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const store = makeCardStore();
+    store.seed("note", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers);
+
+    await h.dispatch("archive", TARGET_REF);
+    // The user re-anchors the note to p-after.
+    store.handlers.note.unanchor("n", "p-before");
+    store.handlers.note.reanchor("n", "p-after", "paragraph", null);
+
+    restore(editor, store.handlers, h.archiveCalls[0]);
+
+    expect(store.pidsOf("note", "n")).toEqual(["p-after"]);
+  });
+
+  it("a restore whose uuid was RE-MINTED (collision) leaves the displaced card on the neighbour", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const store = makeCardStore();
+    store.seed("note", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers);
+
+    await h.dispatch("archive", TARGET_REF);
+    // Something else now holds the archived uuid (e.g. the user restored a copy
+    // already), so the landing cannot return it — BlockUuidBackfill re-mints
+    // the newcomer, and `p-target` names a block the restore did NOT bring back.
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: "paragraph",
+      attrs: { uuid: "p-target" },
+      content: [{ type: "text", text: "Squatter." }],
+    });
+    expect(editor.state.doc.textContent).toContain("Squatter.");
+
+    restore(editor, store.handlers, h.archiveCalls[0]);
+
+    expect(editor.state.doc.textContent).toContain("Target passage.");
+    expect(store.pidsOf("note", "n")).toEqual(["p-before"]);
+  });
+
+  it("a REFUSED landing hands nothing back", () => {
+    const store = makeCardStore();
+    store.seed("note", "n", ["p-before"]);
+    const landed = landReturningDisplaced({
+      doc: () => null,
+      land: () => false,
+      displaced: [{ kind: "note", id: "n", from: ["p-target"], to: "p-before", added: true }],
+      retarget: { returnDisplaced: () => { throw new Error("must not run"); } },
+      snapshotOf: () => null,
+    });
+    expect(landed).toBe(false);
+    expect(store.pidsOf("note", "n")).toEqual(["p-before"]);
   });
 });
