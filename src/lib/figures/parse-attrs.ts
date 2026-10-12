@@ -590,6 +590,31 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
   };
 }
 
+/** The `figureBlock` node attrs a figure's SOURCE determines — the ONE mapping
+ *  from an `extractFigureAttrs` result to the model, shared by the parser and
+ *  the tex-mode popover's writeback (`applyFigureEnvBodyEdit`), task 1080.
+ *
+ *  Every extracted fact is threaded BY CONSTRUCTION: the rest-spread carries
+ *  each key through under its own name, so a fact added to `FigureAttrs`
+ *  reaches the node on both paths without anyone remembering to name it. The
+ *  two exceptions are destructured out by name, each with its carrier:
+ *  `caption` becomes the `figureCaption` CHILD (callers build it), and
+ *  `captionStarred` IS the `numbered` attr (task 376 M4 — one fact, one
+ *  carrier). That closes the parse-then-drop class on this door (tasks 263,
+ *  318, 319, 1080): the popover's copy had threaded everything but the star,
+ *  so un-starring `\caption*` there was silently reverted on the next save. */
+export function figureNodeAttrsFromSource(
+  attrs: FigureAttrs,
+): FigureSourceNodeAttrs {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { caption: _caption, captionStarred, ...threaded } = attrs;
+  return { ...threaded, numbered: !captionStarred };
+}
+
+export type FigureSourceNodeAttrs = Omit<FigureAttrs, "caption" | "captionStarred"> & {
+  numbered: boolean;
+};
+
 /** Extract structured attrs from a bare `\includegraphics[opts]{path}` string. */
 export function extractGraphicsAttrs(command: string): GraphicsAttrs | null {
   const m = matchIncludegraphics(command, 0);

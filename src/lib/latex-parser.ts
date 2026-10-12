@@ -24,6 +24,7 @@ import {
 } from "@/lib/latex-markers";
 import {
   extractFigureAttrs,
+  figureNodeAttrsFromSource,
   extractGraphicsAttrs,
   matchIncludegraphics,
 } from "@/lib/figures/parse-attrs";
@@ -2129,30 +2130,13 @@ function parseBody(
           const figNode: JSONContent = {
             type: "figureBlock",
             attrs: {
-              extras: figAttrs.extras,
-              // Bytes after the figure's own `\caption` — a second
-              // figure-depth `\label`, a stray second `\caption`, a trailing
-              // comment. Carried on the side they were written on, because a
-              // `\label` that crosses the caption changes which counter it
-              // names (task 379).
-              trailingExtras: figAttrs.trailingExtras,
+              // Every source-derived fact, through the ONE mapping the
+              // popover writeback shares (task 1080) — including `numbered`
+              // from `\caption*`, which IS "unnumbered float" in LaTeX (task
+              // 376 M4), and the post-caption `trailingExtras` (task 379).
+              ...figureNodeAttrsFromSource(figAttrs),
               placement: optArg,
               starred: env === "figure*",
-              source: figAttrs.source,
-              widthPercent: figAttrs.widthPercent,
-              sources: figAttrs.sources,
-              label: figAttrs.label,
-              // Did the source carry a `\caption` command? The child below is
-              // ALWAYS built (see its comment), so it cannot answer this and
-              // the emitter must not be left inferring it (task 319).
-              hasCaption: figAttrs.hasCaption,
-              shortCaption: figAttrs.shortCaption,
-              // `\caption*` IS "unnumbered float" in LaTeX, so it is read into
-              // the attr that already means that rather than a second, parallel
-              // fact (task 376 M4). Before this the star was deleted on the
-              // first save and `numbered` reached the `.tex` nowhere at all, so
-              // the toggle did not survive a reload.
-              numbered: !figAttrs.captionStarred,
               figureNumber: null,
               ...(envUuid ? { uuid: envUuid } : {}),
             },

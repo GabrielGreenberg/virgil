@@ -631,12 +631,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const placement = (node.attrs?.placement as string) ?? "";
       const starred = node.attrs?.starred === true;
       const uuid = node.attrs?.uuid as string | null;
-      const label = (node.attrs?.label as string) ?? "";
-      const extras = ((node.attrs?.extras as string) ?? "").replace(/\s+$/, "");
-      // Bytes the author wrote AFTER the caption — a second figure-depth
-      // `\label`, a stray second `\caption`, a trailing comment. Carried on
-      // the side they were written on so a `\label` cannot cross the caption,
-      // which in LaTeX changes which counter it names (task 379).
+      // The env BODY is `serializeFigureEnvBody` (task 1080) — the one function
+      // the tex-mode source popover seeds from too, so what the popover shows
+      // is, by construction, what this arm writes.
+      const extras = (node.attrs?.extras as string) ?? "";
       const trailingExtras = (node.attrs?.trailingExtras as string) ?? "";
       // Raw passthrough (\includegraphics, TikZ, pgfplots) — run the shared
       // vocabulary over it so its packages declare at the emit-site. Its
@@ -651,33 +649,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // calls would read the first half as unterminated (inert to EOF) and the
       // second as live. The newline is what keeps a trailing `%` in the first
       // half from swallowing the second half's first line.
-      declareFromRawLatex(`${extras}\n${trailingExtras}`);
-      const captionChild = (node.content || []).find(
-        (c) => c.type === "figureCaption",
-      );
-      const captionTex = captionChild
-        ? serializeInlineSequence(captionChild.content || [])
-        : "";
+      declareFromRawLatex(`${extras.replace(/\s+$/, "")}\n${trailingExtras}`);
       const anchor = uuidAnchorSuffix(uuid);
       const envName = starred ? "figure*" : "figure";
-      // Tasks 318 + 319: the env body is built by the ONE builder shared with
-      // the popover surface, off DECLARED facts — `hasCaption` (did the source
-      // carry a `\caption` command at all; the always-present caption child
-      // cannot answer that, and emitting on its presence gave every
-      // caption-less figure a number-consuming `\caption{}`) and the caption's
-      // own scanned bytes (which is what tells a `\label` DECLARATION inside
-      // the caption from one merely quoted in `\verb`, the distinction the
-      // reverted substring test of task 245 could not make).
-      const body = buildFigureEnvBody({
-        extras,
-        trailingExtras,
-        captionTex,
-        hasCaption: node.attrs?.hasCaption !== false,
-        shortCaption: (node.attrs?.shortCaption as string | null) ?? null,
-        // `\caption` vs `\caption*` — see `FigureEnvBodyParts.numbered`.
-        numbered: node.attrs?.numbered !== false,
-        label,
-      });
+      const body = serializeFigureEnvBody(node);
       return `\\begin{${envName}}${placement}${body}\\end{${envName}}${anchor}\n\n`;
     }
 
@@ -1945,6 +1920,55 @@ export function serializeBodyOnly(doc: JSONContent): string {
  */
 export function serializeParagraphInline(node: JSONContent): string {
   return serializeNode(node, /* suppressChildUuids */ true);
+}
+
+/**
+ * The env BODY of a `figureBlock` — everything between `\begin{figure}[…]` and
+ * `\end{figure}` — exactly as the serializer writes it (task 1080).
+ *
+ * ONE function for two readers: the `figureBlock` arm above, and the tex-mode
+ * source popover's seed (`FigureBlockNodeView.figurePopoverRaw`). The popover
+ * used to rebuild the body itself from the caption child's `textContent`,
+ * which is "" for every inline atom (citation, math, footnote, ref) and bare
+ * text for every mark — so a save that changed only the WIDTH re-parsed that
+ * flattened caption and deleted the citations, math and formatting from the
+ * model. Seeding from the emitter's own bytes makes the popover a true round
+ * trip: an untouched caption comes back exactly as the file holds it.
+ *
+ * Package declaration is the CALLER's business (the arm declares around this
+ * call); with no active collector, as on the popover path, `need` is inert.
+ */
+export function serializeFigureEnvBody(node: JSONContent): string {
+  const label = (node.attrs?.label as string) ?? "";
+  const extras = ((node.attrs?.extras as string) ?? "").replace(/\s+$/, "");
+  // Bytes the author wrote AFTER the caption — a second figure-depth
+  // `\label`, a stray second `\caption`, a trailing comment. Carried on the
+  // side they were written on so a `\label` cannot cross the caption, which
+  // in LaTeX changes which counter it names (task 379).
+  const trailingExtras = (node.attrs?.trailingExtras as string) ?? "";
+  const captionChild = (node.content || []).find(
+    (c) => c.type === "figureCaption",
+  );
+  const captionTex = captionChild
+    ? serializeInlineSequence(captionChild.content || [])
+    : "";
+  // Tasks 318 + 319: the env body is built off DECLARED facts — `hasCaption`
+  // (did the source carry a `\caption` command at all; the always-present
+  // caption child cannot answer that, and emitting on its presence gave every
+  // caption-less figure a number-consuming `\caption{}`) and the caption's own
+  // scanned bytes (which is what tells a `\label` DECLARATION inside the
+  // caption from one merely quoted in `\verb`, the distinction the reverted
+  // substring test of task 245 could not make).
+  return buildFigureEnvBody({
+    extras,
+    trailingExtras,
+    captionTex,
+    hasCaption: node.attrs?.hasCaption !== false,
+    shortCaption: (node.attrs?.shortCaption as string | null) ?? null,
+    // `\caption` vs `\caption*` — see `FigureEnvBodyParts.numbered`.
+    numbered: node.attrs?.numbered !== false,
+    label,
+  });
 }
 
 /**
