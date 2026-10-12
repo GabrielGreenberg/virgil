@@ -730,8 +730,10 @@ export interface ActionContext {
    * `virgil-figure-click` listener (edit).
    */
   openFigurePopover?: (figure: {
-    kind: string;
+    kind: "figureBlock" | "graphicsBlock";
     raw: string;
+    /** The block's uuid — the identity the save resolves (task 1082). */
+    uuid: string | null;
     pos: number;
     rect: DOMRect;
     editor: Editor;
@@ -2842,7 +2844,13 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
  *  listener is the same event and stays wired). */
 function openInsertPopover(
   ctx: ActionContext,
-  seed: { kind: string; raw: string; pos: number; rect: DOMRect },
+  seed: {
+    kind: "figureBlock" | "graphicsBlock";
+    raw: string;
+    uuid: string | null;
+    pos: number;
+    rect: DOMRect;
+  },
 ): void {
   // EX-F4-02: carry the OWNING editor — the one figureRun/graphicsRun just
   // inserted the block into (`ctx.editor`). The popover's save routes back to
@@ -2891,6 +2899,11 @@ export function figureRun(ctx: ActionContext): void {
         numbered: true,
         label: attrs.label,
       }),
+      // Task 1082: the save resolves the block by THIS uuid (always minted at
+      // insert), so the seed above never has to serve as the identity — which
+      // is why it may stay the light env-body builder rather than pull the
+      // serializer's `figurePopoverRaw` into this registry's import graph.
+      uuid,
       pos: found,
       rect: dom.getBoundingClientRect(),
     });
@@ -2917,6 +2930,7 @@ export function graphicsRun(ctx: ActionContext): void {
     openInsertPopover(ctx, {
       kind: "graphicsBlock",
       raw: attrs.command,
+      uuid,
       pos: found,
       rect: dom.getBoundingClientRect(),
     });

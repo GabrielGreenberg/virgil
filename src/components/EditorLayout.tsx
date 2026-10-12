@@ -180,15 +180,16 @@ import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover"
 import type { AtomCreateRequest } from "@/lib/actions/atom-create";
 import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
-import { applyMathEdit, atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
+import { applyMathEdit } from "@/lib/tiptap/atom-edit-target";
 import { CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registry";
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
 import NodeEditPopover from "./NodeEditPopover";
 import {
-  applyFigureEnvBodyEdit,
-  applyGraphicsCommandEdit,
-} from "@/lib/figures/apply-env-body";
+  applyFigurePopoverEdit,
+  type ClickedFigure,
+  type FigurePopoverKind,
+} from "@/lib/figures/popover-target";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useFocusMode } from "@/hooks/useFocusMode";
@@ -1280,8 +1281,11 @@ export default function EditorLayout() {
   } | null>(null);
   // ── Figure tex-mode popover state ──
   const [activeFigure, setActiveFigure] = useState<{
-    kind: string;
+    kind: FigurePopoverKind;
     raw: string;
+    // The clicked block's uuid — with `kind` (and `raw` when null), the
+    // identity `handleFigureSave` resolves against the LIVE doc (task 1082).
+    uuid: string | null;
     pos: number;
     rect: DOMRect;
     // The editor instance that owns the clicked figure/graphics node — the save
@@ -2401,7 +2405,12 @@ export default function EditorLayout() {
   // change to the main doc. Targeting MAIN with a float-space `pos` would
   // mis-target / corrupt the wrong node — the very corruption the dropped
   // `figureFloat` click-suppression prevented (by making float figures inert).
-  const handleFigureSave = useCallback((editor: Editor, pos: number, newText: string) => {
+  const handleFigureSave = useCallback((
+    editor: Editor,
+    pos: number,
+    clicked: ClickedFigure,
+    newText: string,
+  ) => {
     // Tasks 318/319: this is the SOLE env-body save path for both kinds (the
     // figure NodeView's chrome mutators patch `extras` / `command` directly and
     // never rebuild a whole env). The attr re-thread lives in the shared
@@ -2409,19 +2418,15 @@ export default function EditorLayout() {
     // re-implement side by side — and had already drifted, `shortCaption`
     // reaching only one of them.
     //
-    // Both doors carry the bounds + kind guard internally: the popover outlives
-    // the click, so by save time the owning editor may have re-seeded (the
-    // figure float re-syncs from MAIN) and shifted `pos` past the doc end,
-    // where `nodeAt` THROWS. A stale pos is a safe no-op. (Mirrors
-    // handleMathSave.)
-    //
-    // Task 1071: the editability half of the atom-popover door — on MAIN
-    // `isEditable` is constant, so a read-only / pen-held owner refuses here
-    // rather than dispatching a transaction the enforcer silently drops.
-    if (!atomPopoverMayOpen(editor)) return;
-    if (!applyFigureEnvBodyEdit(editor, pos, newText)) {
-      applyGraphicsCommandEdit(editor, pos, newText);
-    }
+    // Task 1082 (the figure leg of task 1071's door): the popover outlives the
+    // click, so by save time the owner may have re-seeded (the figure float
+    // re-syncs from MAIN) or an agent apply may have landed — `pos` can now
+    // hold a NEIGHBOUR, or the other kind. The commit names the CLICKED node
+    // (kind + uuid, else kind + seed), resolves it through the atom-edit door
+    // (editable now, `pos` in range, identity matches) and runs ONLY that
+    // kind's writeback — no fall-through, so a figure body can never become a
+    // graphic's `command`. Anything else is a refusal. (Mirrors handleMathSave.)
+    applyFigurePopoverEdit(editor, pos, clicked, newText);
   }, []);
 
   // The `\ref` CREATE popover folds onto the SHARED inline-atom create
@@ -3664,7 +3669,9 @@ export default function EditorLayout() {
           kind={activeFigure.kind}
           value={activeFigure.raw}
           anchorRect={activeFigure.rect}
-          onSave={(newText) => handleFigureSave(activeFigure.editor, activeFigure.pos, newText)}
+          onSave={(newText) =>
+            handleFigureSave(activeFigure.editor, activeFigure.pos, activeFigure, newText)
+          }
           onClose={() => setActiveFigure(null)}
         />
       )}

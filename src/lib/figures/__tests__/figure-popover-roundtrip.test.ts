@@ -34,7 +34,7 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import { applyFigureEnvBodyEdit } from "@/lib/figures/apply-env-body";
-import { figurePopoverRaw } from "@/components/FigureBlockNodeView";
+import { figurePopoverRaw } from "@/lib/figures/popover-target";
 import {
   extractFigureAttrs,
   figureNodeAttrsFromSource,

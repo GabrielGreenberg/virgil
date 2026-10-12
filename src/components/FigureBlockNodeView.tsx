@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NodeViewContent,
   NodeViewWrapper,
-  type JSONContent,
   type NodeViewProps,
 } from "@tiptap/react";
 import {
@@ -17,7 +16,7 @@ import {
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
-import { serializeFigureEnvBody } from "@/lib/latex-serializer";
+import { figurePopoverRaw } from "@/lib/figures/popover-target";
 import {
   applyFigureExtrasEdit,
   applyGraphicsCommandEdit,
@@ -56,28 +55,10 @@ const DEFAULT_SCALE_PERCENT = 50;
 // the identity is stable across renders (FigurePanel's effect depends on it).
 const noopRegisterRefresh = (): (() => void) => () => {};
 
-// The tex-mode popover seed for a figure/graphics node — the faithful env body
-// (figureBlock: exactly the bytes the serializer writes) or the verbatim
-// `\includegraphics` command (graphicsBlock). Shared by BOTH click surfaces
-// (the page `FigureFullView` and the float `FigureFloatView`) so they open the
-// popover on identical raw and can never drift (the Issue-4/9/10 lesson).
-export function figurePopoverRaw(node: NodeViewProps["node"]): string {
-  if (node.type.name !== "figureBlock") {
-    return (node.attrs.command as string | undefined) || "";
-  }
-  // Tasks 318/319/1080: the body is the SERIALIZER'S OWN — the same
-  // `serializeFigureEnvBody` the `figureBlock` emitter calls — so what the
-  // popover shows is byte-for-byte what the file holds. Each earlier,
-  // more-local seed lost something a save then deleted: a synthesizer that
-  // emitted no `[short]` LoF bracket (task 263's), and then a shared builder fed
-  // the caption's `textContent`, which is "" for every citation, math, footnote
-  // and ref atom and bare text for every mark — so a save that changed only
-  // the width re-parsed that flattened caption and erased them all (task 1080).
-  // `NodeEditPopover.commit` dispatches only when the text differs, so a
-  // literally untouched save was always safe; a caption-less figure shows no
-  // `\caption` line, which the user can add or remove here as a first-class edit.
-  return serializeFigureEnvBody(node.toJSON() as JSONContent);
-}
+// The tex-mode popover seed (`figurePopoverRaw`) lives with the popover's
+// identity + commit in `@/lib/figures/popover-target` (task 1082): it is ALSO
+// the identity fallback the commit compares against, so every opening path —
+// this view, the float view, the insert-time seed — must build it in one place.
 
 // Shared node view for both `figureBlock` and `graphicsBlock`. The node
 // type drives whether caption/label chrome is shown. For figureBlock the
@@ -310,6 +291,9 @@ function FigureFloatView({ node, getPos, editor, extension }: NodeViewProps) {
         detail: {
           kind: node.type.name,
           raw: figurePopoverRaw(node),
+          // Task 1082: the clicked identity — the save refuses unless the
+          // node at `pos` is still THIS block.
+          uuid: (node.attrs.uuid as string | null | undefined) ?? null,
           pos,
           rect,
           // The owning editor — the save MUST target this float, not MAIN.
@@ -611,7 +595,15 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         // (the page = main). The float surface (FigureFloatView) carries its
         // own editor the same way; handleFigureSave routes by it, never to
         // MAIN by absolute pos.
-        detail: { kind: node.type.name, raw: popoverRaw, pos, rect, editor },
+        // Task 1082: plus the clicked `uuid`, so the save names THIS block.
+        detail: {
+          kind: node.type.name,
+          raw: popoverRaw,
+          uuid: (node.attrs.uuid as string | null | undefined) ?? null,
+          pos,
+          rect,
+          editor,
+        },
       }),
     );
   };
