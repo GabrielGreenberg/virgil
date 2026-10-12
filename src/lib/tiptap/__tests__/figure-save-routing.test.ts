@@ -342,7 +342,10 @@ describe("figure writeback re-threads every declared fact", () => {
         applyFigureExtrasEdit(
           editor,
           pos,
-          "\\centering\n\\includegraphics[width=0.9\\textwidth]{a.png}",
+          {
+            extras: "\\centering\n\\includegraphics[width=0.9\\textwidth]{a.png}",
+            trailingExtras: "",
+          },
         ),
       ).toBe(true);
       const after = attrsAt(editor, pos);

@@ -93,17 +93,105 @@ function findBracedBody(src: string, openPos: number): { body: string; end: numb
   return braced ? { body: braced.content, end: braced.end } : null;
 }
 
-/** Parse a width=… directive into a CSS percentage. Returns null if the
- *  width is absolute (cm, in, pt) or absent. */
-export function parseWidthSpec(options: string): number | null {
-  if (!options) return null;
-  // Match width=<number>\textwidth / \linewidth / \columnwidth
-  const m = options.match(/width\s*=\s*([0-9.]+)\s*\\(textwidth|linewidth|columnwidth)/);
-  if (m) {
-    const frac = parseFloat(m[1]);
-    if (!isNaN(frac) && frac > 0) return Math.min(100, frac * 100);
+/** One `key=value` entry of a graphicx option list. `valueStart`/`valueEnd`
+ *  index the RAW options string, so a mutator can splice exactly that value. */
+export interface GraphicsOptionEntry {
+  key: string;
+  value: string;
+  valueStart: number;
+  valueEnd: number;
+}
+
+/**
+ * The ONE reading of a `\includegraphics[…]` option list (task 1084), shared by
+ * the renderer's width (`parseWidthSpec`), the chrome's enablement
+ * (`canEditWidthInOptions`) and its mutation (`setWidthInOptions`) — so the
+ * three can never disagree about which `width=` is live.
+ *
+ * It reads keyval the way graphicx does: split at top-level commas (a `{…}`
+ * group may hold commas), each entry `key=value`, both trimmed. It reads the
+ * lexer's offset-preserving LIVE projection, so a `% width=…` the author
+ * commented out is not an entry at all — the regexes it replaces matched raw
+ * text and could read (and rewrite) the commented one.
+ */
+export function parseGraphicsOptions(options: string): GraphicsOptionEntry[] {
+  const live = liveGraphicsView(options);
+  const entries: GraphicsOptionEntry[] = [];
+  let segStart = 0;
+  for (const segEnd of [...topLevelIndicesOf(live, ","), live.length]) {
+    const seg = live.slice(segStart, segEnd);
+    const eq = topLevelIndicesOf(seg, "=")[0];
+    if (eq !== undefined) {
+      const key = seg.slice(0, eq).trim();
+      const rawValue = seg.slice(eq + 1);
+      const lead = rawValue.length - rawValue.trimStart().length;
+      const value = rawValue.trim();
+      const valueStart = segStart + eq + 1 + lead;
+      if (key) entries.push({ key, value, valueStart, valueEnd: valueStart + value.length });
+    }
+    segStart = segEnd + 1;
   }
-  return null;
+  return entries;
+}
+
+/** Indices of `ch` in `text` outside every `{…}` group (a group is skipped
+ *  whole through the lexer's `extractBraced`) and not escaped. */
+function topLevelIndicesOf(text: string, ch: string): number[] {
+  const hits: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\") {
+      i++;
+    } else if (c === "{") {
+      const group = extractBraced(text, i);
+      if (group) i = group.end - 1;
+    } else if (c === ch) {
+      hits.push(i);
+    }
+  }
+  return hits;
+}
+
+/** What an option list says about the image's width. `relative` is a
+ *  (possibly factor-less) multiple of a text-width register — the only kind
+ *  the visual chrome owns; `fixed` is anything else (`3cm`, `\dimexpr…`,
+ *  `0.5\paperwidth`), which the chrome never overwrites. */
+export type GraphicsWidth =
+  | { kind: "none" }
+  | { kind: "relative"; factor: number; unit: string; valueStart: number; valueEnd: number }
+  | { kind: "fixed" };
+
+const RELATIVE_WIDTH_VALUE_RE =
+  /^([0-9]*\.?[0-9]*)\s*(\\(?:textwidth|linewidth|columnwidth))$/;
+
+/** Read the LIVE width of an option list. graphicx applies keys in order, so
+ *  the LAST `width=` is the one the PDF uses. A factor-less `\linewidth` is
+ *  factor 1 — not "no width", which is how the old regex (number required)
+ *  read it, so the stepper PREPENDED a second `width=` the later one overrode. */
+export function readGraphicsWidth(options: string): GraphicsWidth {
+  if (!options) return { kind: "none" };
+  const widths = parseGraphicsOptions(options).filter((e) => e.key === "width");
+  const last = widths[widths.length - 1];
+  if (!last) return { kind: "none" };
+  const m = last.value.match(RELATIVE_WIDTH_VALUE_RE);
+  if (!m) return { kind: "fixed" };
+  const factor = m[1] === "" ? 1 : parseFloat(m[1]);
+  if (isNaN(factor)) return { kind: "fixed" };
+  return {
+    kind: "relative",
+    factor,
+    unit: m[2],
+    valueStart: last.valueStart,
+    valueEnd: last.valueEnd,
+  };
+}
+
+/** Parse a width=… directive into a CSS percentage. Returns null if the
+ *  width is absolute (cm, in, pt), unmodeled, or absent. */
+export function parseWidthSpec(options: string): number | null {
+  const w = readGraphicsWidth(options);
+  if (w.kind !== "relative" || !(w.factor > 0)) return null;
+  return Math.min(100, w.factor * 100);
 }
 
 /** Extract a `\includegraphics[opts]{path}` match starting at `pos` in `src`.
@@ -634,15 +722,6 @@ export function extractGraphicsAttrs(command: string): GraphicsAttrs | null {
 // source of truth for LaTeX round-trip.
 // ---------------------------------------------------------------------------
 
-// Width units we won't touch from visual chrome. If `width=` uses any of
-// these the scale stepper disables itself; users edit absolute widths in
-// code via the popover.
-const ABSOLUTE_WIDTH_RE =
-  /width\s*=\s*[0-9.]+\s*(cm|mm|in|pt|pc|em|ex|bp|sp)\b/i;
-// `\textwidth` / `\linewidth` / `\columnwidth` widths — the ones we own.
-const RELATIVE_WIDTH_RE =
-  /width\s*=\s*[0-9.]+\s*\\(textwidth|linewidth|columnwidth)/;
-
 /** Format a percentage in [10, 100] as a LaTeX fraction string. */
 function formatWidthFraction(percent: number): string {
   if (percent === 100) return "1.0";
@@ -651,24 +730,22 @@ function formatWidthFraction(percent: number): string {
   return fixed.replace(/0$/, "").replace(/\.$/, "");
 }
 
-/** Update the `width=…` directive in an options string (no surrounding `[]`)
- *  to express `percent`% of `\textwidth` (or whichever relative unit was
- *  already in use). Returns `ok: false` if the existing width is in absolute
- *  units (cm/in/pt/…) — caller should leave it alone. */
+/** Update the LIVE `width=…` directive in an options string (no surrounding
+ *  `[]`) to express `percent`% of whichever relative unit it already uses —
+ *  REPLACING that one value in place, so the list never carries two widths.
+ *  With no width at all, one is prepended in `\textwidth`. Returns `ok: false`
+ *  when the live width is one the chrome doesn't own (`readGraphicsWidth` →
+ *  `fixed`) — caller should leave it alone. */
 export function setWidthInOptions(
   options: string,
   percent: number,
 ): { options: string; ok: boolean } {
-  if (ABSOLUTE_WIDTH_RE.test(options)) {
-    return { options, ok: false };
-  }
+  const w = readGraphicsWidth(options);
+  if (w.kind === "fixed") return { options, ok: false };
   const fracStr = formatWidthFraction(percent);
-  const rel = options.match(RELATIVE_WIDTH_RE);
-  if (rel) {
-    const unitMatch = rel[0].match(/\\(textwidth|linewidth|columnwidth)/);
-    const unit = unitMatch ? unitMatch[0] : "\\textwidth";
+  if (w.kind === "relative") {
     return {
-      options: options.replace(RELATIVE_WIDTH_RE, `width=${fracStr}${unit}`),
+      options: options.slice(0, w.valueStart) + `${fracStr}${w.unit}` + options.slice(w.valueEnd),
       ok: true,
     };
   }
@@ -681,10 +758,11 @@ export function setWidthInOptions(
   };
 }
 
-/** Determine whether the visual scale stepper can adjust this options string.
- *  False when width is in absolute units (cm/in/pt/…). */
+/** Determine whether the visual scale stepper can adjust this options string —
+ *  the SAME reading `setWidthInOptions` acts on, so an enabled stepper always
+ *  has a write behind it. */
 export function canEditWidthInOptions(options: string): boolean {
-  return !ABSOLUTE_WIDTH_RE.test(options);
+  return readGraphicsWidth(options).kind !== "fixed";
 }
 
 /** Rebuild a `\includegraphics` command from its parts, preserving the
@@ -747,4 +825,58 @@ export function withReplacedFigurePath(
   return withUpdatedFirstGraphics(text, (m) =>
     rebuildIncludegraphics(m.command, m.options, newPath),
   );
+}
+
+/** Whether `text` holds a LIVE `\includegraphics` the mutators can patch. */
+export function hasLiveIncludegraphics(text: string): boolean {
+  const idx = liveGraphicsView(text).indexOf("\\includegraphics");
+  return idx !== -1 && matchIncludegraphics(text, idx) !== null;
+}
+
+/** The two halves of a figure body the visual chrome may patch: `extras`
+ *  (before the caption) and `trailingExtras` (after it — where a
+ *  caption-FIRST figure keeps its image, task 379). */
+export interface FigureGraphicsParts {
+  extras: string;
+  trailingExtras: string;
+}
+
+/**
+ * Which half holds the `\includegraphics` the chrome owns — the FIRST live one
+ * in body order, which is `sources[0]`, the one the chrome displays (task 1084).
+ * Reading `extras` alone was a partial model: a caption-first figure showed its
+ * image and enabled its controls, and every click no-opped.
+ */
+export function figureGraphicsTarget(
+  parts: FigureGraphicsParts,
+): keyof FigureGraphicsParts | null {
+  if (hasLiveIncludegraphics(parts.extras)) return "extras";
+  if (hasLiveIncludegraphics(parts.trailingExtras)) return "trailingExtras";
+  return null;
+}
+
+/** Apply a text mutator (`withUpdatedFigureWidth` / `withReplacedFigurePath`)
+ *  to whichever half holds the owned `\includegraphics`, leaving the other
+ *  byte-identical. Null when there is no target or the mutator bails. */
+export function withFigureGraphicsEdit(
+  parts: FigureGraphicsParts,
+  edit: (text: string) => string | null,
+): FigureGraphicsParts | null {
+  const target = figureGraphicsTarget(parts);
+  if (!target) return null;
+  const next = edit(parts[target]);
+  return next == null ? null : { ...parts, [target]: next };
+}
+
+/** Give a figure that has NO `\includegraphics` one, pointing at `path` — a
+ *  stated place: its own line at the end of `extras`, i.e. above the caption
+ *  (the emitter writes `extras` first). Null when `path` is not TeX-safe. */
+export function withInsertedFigureGraphics(
+  parts: FigureGraphicsParts,
+  path: string,
+): FigureGraphicsParts | null {
+  if (!isTexSafeGraphicsPath(path)) return null;
+  const head = parts.extras.replace(/\s+$/, "");
+  const line = `\\includegraphics{${path}}`;
+  return { ...parts, extras: head ? `${head}\n  ${line}` : `  \\centering\n  ${line}` };
 }

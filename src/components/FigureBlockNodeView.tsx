@@ -10,6 +10,9 @@ import {
 import {
   canEditWidthInOptions,
   type FigureSource,
+  hasLiveIncludegraphics,
+  withFigureGraphicsEdit,
+  withInsertedFigureGraphics,
   withReplacedFigurePath,
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
@@ -383,15 +386,14 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   // can't offer a switch with nothing behind it (tasks 318/319).
   const canNumber = isFigure && figureNodeEmitsCaption(node);
 
-  // The source-of-truth string for width/path mutators. For figureBlock this
-  // is `extras` (env body minus \caption{} and \label{}, both of which we
-  // own structurally now); for graphicsBlock it's the verbatim `command`.
-  // The mutators (`withUpdatedFigureWidth`, `withReplacedFigurePath`) only
-  // edit the `\includegraphics` line, so they're indifferent to whether
-  // \caption is present.
-  const mutableSource = isFigure
-    ? extras
-    : (node.attrs.command as string | undefined) || "";
+  // The `\includegraphics` the chrome owns lives in ONE of the figure body's
+  // two unmodeled halves: `extras` (before the caption) or, on a caption-first
+  // figure, `trailingExtras` (task 379). Task 1084: the mutators used to read
+  // `extras` alone — a partial model, so a caption-first figure showed its
+  // image, enabled its controls, and every click no-opped. A graphicsBlock's
+  // whole source is the verbatim `command`.
+  const trailingExtras = (node.attrs.trailingExtras as string | undefined) || "";
+  const command = (node.attrs.command as string | undefined) || "";
 
   // The popover seed: a faithful view of the env body for the "edit raw"
   // surface. Routed through the shared `figurePopoverRaw` so the page and the
@@ -473,13 +475,19 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   // the popover's save path, despite the old name — a source-popover save for
   // EITHER kind routes `virgil-figure-click` → `EditorLayout.handleFigureSave`,
   // which shares the same writeback module (tasks 318/319).
-  const applyToGraphicsSource = (next: string) => {
+  // Run a text mutator over the owned `\includegraphics` and dispatch the
+  // result. For a figure, `withFigureGraphicsEdit` locates the half that holds
+  // it (the same first-in-body-order one `sources[0]` displays) and leaves the
+  // other byte-identical.
+  const applyGraphicsEdit = (edit: (text: string) => string | null) => {
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos == null) return;
     if (isFigure) {
-      applyFigureExtrasEdit(editor, pos, next);
+      const next = withFigureGraphicsEdit({ extras, trailingExtras }, edit);
+      if (next) applyFigureExtrasEdit(editor, pos, next);
     } else {
-      applyGraphicsCommandEdit(editor, pos, next);
+      const next = edit(command);
+      if (next != null) applyGraphicsCommandEdit(editor, pos, next);
     }
   };
 
@@ -490,15 +498,31 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     // autosave arm). A source with NO width is never "unchanged" — every
     // first commit lands, including the seed the steppers start from.
     if (currentPercent !== null && clamped === currentPercent) return;
-    const next = withUpdatedFigureWidth(mutableSource, clamped);
-    if (next == null) return;
-    applyToGraphicsSource(next);
+    applyGraphicsEdit((text) => withUpdatedFigureWidth(text, clamped));
   };
 
+  // Whether a picked path has somewhere to land — asked BEFORE the import, so
+  // a copy into `figures/` is never made for a write that cannot happen (task
+  // 1084: a captioned figure with no `\includegraphics` copied the file, then
+  // no-opped, orphaning it). A figure with no graphics gets one inserted
+  // (`withInsertedFigureGraphics`), so only a graphicsBlock can lack a target.
+  const canTakePath = isFigure || hasLiveIncludegraphics(command);
+
   const applyPath = (newPath: string) => {
-    const next = withReplacedFigurePath(mutableSource, newPath);
-    if (next == null) return;
-    applyToGraphicsSource(next);
+    const pos = typeof getPos === "function" ? getPos() : undefined;
+    if (pos == null) return;
+    if (isFigure) {
+      const parts = { extras, trailingExtras };
+      const next =
+        withFigureGraphicsEdit(parts, (text) => withReplacedFigurePath(text, newPath)) ??
+        (hasLiveIncludegraphics(extras) || hasLiveIncludegraphics(trailingExtras)
+          ? null
+          : withInsertedFigureGraphics(parts, newPath));
+      if (next) applyFigureExtrasEdit(editor, pos, next);
+    } else {
+      const next = withReplacedFigurePath(command, newPath);
+      if (next != null) applyGraphicsCommandEdit(editor, pos, next);
+    }
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -521,6 +545,10 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     const handle = getDocWriteHandle(docId);
     if (!handle) {
       console.warn("[figure] no active write pipeline — cannot import file");
+      return;
+    }
+    if (!canTakePath) {
+      console.warn("[figure] no \\includegraphics to point at the picked file — nothing imported");
       return;
     }
     let picked;
