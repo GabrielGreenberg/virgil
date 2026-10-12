@@ -36,6 +36,7 @@ class ResizeObserverStub {
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { CitationCard } from "@/panels/Citations/CitationCard";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
+import { expectFrameBesideAnchor, placeAnchorOnScreen } from "@/components/__tests__/_anchored-confirm-geometry";
 import type { BibEntry, CitationRef } from "@/lib/types";
 
 afterEach(cleanup);
@@ -97,10 +98,13 @@ describe("a selected citation answers the Delete key (task 976)", () => {
       id: "cit1", command: "\\citep{xenakis2020}", keys: ["xenakis2020"],
       createdAt: "2026-10-06T00:00:00.000Z",
     } as CitationRef);
+    // jsdom rects are all zeros, which a measured placement reads as
+    // off-screen (task 1065) — give the card a real box (task 1077).
+    placeAnchorOnScreen(shell);
     fireEvent.keyDown(shell, { key: "Delete" });
     expect(onDelete).not.toHaveBeenCalled();
     const message = screen.getByText(CONFIRM);
-    expect(message.closest<HTMLElement>("[tabindex='-1']")!.style.position).toBe("fixed");
+    expectFrameBesideAnchor(message.closest<HTMLElement>("[tabindex='-1']")!);
     fireEvent.click(screen.getByText("Delete", { selector: "button" }));
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith("cit1"));
   });
