@@ -67,7 +67,7 @@ import type {
 import type { StructureDiff } from "@/lib/tiptap/doc-structure";
 import type { OrphanedFootnote } from "@/lib/types";
 import {
-  pickFootnoteMarkupAttrs,
+  orphanRecordFor,
   type FootnoteMarkupAttrs,
 } from "@/lib/footnote-source-attrs";
 
@@ -216,13 +216,8 @@ export function makeInlineAtomLifecyclePolicy(
         !!dying &&
         cardHasContent("footnote", { content: dying.content, title: dying.title });
       if (recoverable && dying) {
-        deps.upsertOrphan({
-          footnoteId: id,
-          content: dying.content,
-          title: dying.title,
-          ...pickFootnoteMarkupAttrs(dying),
-          orphanedAt: new Date().toISOString(),
-        });
+        // The ONE record builder its flag-OFF twin also reads (task 1073).
+        deps.upsertOrphan(orphanRecordFor(id, dying));
       } else {
         // Archived OR empty footnote → no orphan; clear any stale record.
         deps.clearOrphan(id);

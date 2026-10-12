@@ -1,6 +1,7 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { OrphanedFootnote } from "@/lib/types";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
+import { orphanRecordFor } from "@/lib/footnote-source-attrs";
 
 /**
  * Footnote ↔ orphan + archive bookkeeping bridges.
@@ -49,7 +50,8 @@ export interface OrphanBridgeStore {
  *    pane, so they are inert.
  *
  * - `virgil-footnote-orphaned` — the detector fires this (deferred) when a
- *   footnote-with-content's marker is deleted; we upsert an orphan so it can be
+ *   footnote-with-content's marker is deleted, carrying every carried attr
+ *   (`detail.carried`, task 1073); we upsert an orphan so it can be
  *   recovered/re-dropped from the panel. A deliberate trash-delete pre-arms
  *   `suppressRef` (below) so this event is swallowed instead.
  * - `virgil-footnote-suppress-orphan` — `handleDeleteFootnote` /
@@ -81,13 +83,13 @@ export function useFootnoteOrphanBridges(deps: {
         suppressRef.current.delete(detail.footnoteId);
         return;
       }
+      // The detector ships every carried attr (task 1073); the record is
+      // built by the ONE builder the flag-ON reconciler also uses, so the
+      // title and the `\thanks` / `[n]` markup survive the orphaning.
+      const record = orphanRecordFor(detail.footnoteId, detail.carried ?? { content: null });
       setOrphanedFootnotes((prev) => {
         if (prev.some((o) => o.footnoteId === detail.footnoteId)) return prev;
-        return [...prev, {
-          footnoteId: detail.footnoteId,
-          content: detail.content,
-          orphanedAt: new Date().toISOString(),
-        }];
+        return [...prev, record];
       });
     };
     window.addEventListener("virgil-footnote-orphaned", handler);

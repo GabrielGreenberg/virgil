@@ -32,6 +32,7 @@ const FOOTNOTE_ATOM = ATOM_REGISTRY.footnote;
 // the delete-confirm (a title-only footnote counts), so the two never diverge.
 import { cardHasContent } from "@/cards/has-content";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
+import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 // The shared `\footnote{…}` trigger regex, read through the typed-LaTeX census
 // (task 639): the SAME object `footnote-commands` exports and the action
 // registry's footnote row records as its `inputRulePattern`, so the typed
@@ -308,19 +309,25 @@ export const Footnote = Node.create<FootnoteOptions>({
             // pos against `oldState` was right only when the deleting step
             // opened the first transaction this appender was handed.
             for (const removed of diff.removedFootnotes) {
-              const content = removed.removedContent ?? null;
-              const title = removed.title;
+              // EVERY carried attr rides the event (task 1073) — the body
+              // alone orphaned a title-only footnote as an empty card and a
+              // `\thanks` / `\footnote[3]` as a plain `\footnote`. The pick
+              // is the `footnote-source-attrs` SSOT's, the same one the
+              // flag-ON reconciler builds its record from.
+              const carried =
+                removed.removedCarried ??
+                pickFootnoteCarriedAttrs({ title: removed.title, thanks: removed.thanks });
               // FN-A1-02: orphan-worthiness counts the `\footnote` title
               // (`\thanks` acknowledgement label), not just the body — a
               // title-only footnote whose marker is deleted IS recoverable, so
               // it must orphan. Routed through the shared `cardHasContent` so
               // this gate and the delete-confirm read the SAME content model.
-              if (cardHasContent("footnote", { content, title })) {
+              if (cardHasContent("footnote", carried)) {
                 const originDocId = docIdRef?.current ?? null;
                 orphanLifetime?.setTimeout(() => {
                   window.dispatchEvent(
                     new CustomEvent("virgil-footnote-orphaned", {
-                      detail: { footnoteId: removed.id, content, docId: originDocId },
+                      detail: { footnoteId: removed.id, carried, docId: originDocId },
                     }),
                   );
                 }, 0);

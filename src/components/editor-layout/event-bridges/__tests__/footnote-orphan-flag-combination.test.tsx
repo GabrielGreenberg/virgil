@@ -45,7 +45,7 @@ function setup() {
 const fireOrphaned = (footnoteId: string) =>
   window.dispatchEvent(
     new CustomEvent("virgil-footnote-orphaned", {
-      detail: { footnoteId, content: { type: "doc", content: [] }, docId: DOC },
+      detail: { footnoteId, carried: { content: { type: "doc", content: [] } }, docId: DOC },
     }),
   );
 

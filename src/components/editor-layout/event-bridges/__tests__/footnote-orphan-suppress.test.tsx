@@ -43,7 +43,7 @@ function fireSuppress(footnoteId: string, docId = DOC) {
 
 function fireOrphaned(footnoteId: string, content: unknown, docId = DOC) {
   window.dispatchEvent(
-    new CustomEvent("virgil-footnote-orphaned", { detail: { footnoteId, content, docId } }),
+    new CustomEvent("virgil-footnote-orphaned", { detail: { footnoteId, carried: { content }, docId } }),
   );
 }
 

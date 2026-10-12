@@ -93,3 +93,42 @@ export function footnoteMarkupEqual(
     (a.numberOverride ?? null) === (b.numberOverride ?? null)
   );
 }
+
+/** EVERY carried attr in the record spelling — the body, the title, the
+ *  markup — as a footnote leaves the document (task 1073). Absent ≡ default
+ *  for `title` and the markup, exactly like {@link FootnoteMarkupAttrs}; the
+ *  body is always present (`null` for a node that never had one). */
+export interface FootnoteCarriedRecord extends FootnoteMarkupAttrs {
+  content: unknown;
+  title?: string;
+}
+
+/** Read every carried attr off a live atom's attrs (or any record of the same
+ *  shape) in the record spelling. The ONE pick every capture door — archive,
+ *  the flag-ON orphan reconciler, the flag-OFF orphan detector — reads, so a
+ *  door cannot carry the body and forget the title or the `\thanks` (task
+ *  1073: the legacy orphan event carried `{content}` alone). Keyed off
+ *  {@link FOOTNOTE_CARRIED_ATTRS}: the census pins that list against the
+ *  node, and this function's own test pins it against the list. */
+export function pickFootnoteCarriedAttrs(
+  raw: object | null | undefined,
+): FootnoteCarriedRecord {
+  const src = (raw ?? {}) as Readonly<Record<string, unknown>>;
+  const out: FootnoteCarriedRecord = { content: src.content ?? null };
+  if (typeof src.title === "string" && src.title !== "") out.title = src.title;
+  return { ...out, ...pickFootnoteMarkupAttrs(raw) };
+}
+
+/** The ONE orphan-record builder (task 1073). Both orphan writers — the
+ *  flag-ON bus reconciler and the flag-OFF detector's event bridge — build
+ *  their record here from a {@link pickFootnoteCarriedAttrs} pick, so the two
+ *  can never again carry different subsets of the footnote that left.
+ *  Structurally an `OrphanedFootnote` (`@/lib/types`; not imported, this
+ *  module stays a leaf). */
+export function orphanRecordFor(
+  footnoteId: string,
+  carried: FootnoteCarriedRecord,
+  orphanedAt: string = new Date().toISOString(),
+): FootnoteCarriedRecord & { footnoteId: string; orphanedAt: string } {
+  return { footnoteId, ...pickFootnoteCarriedAttrs(carried), orphanedAt };
+}
