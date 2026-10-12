@@ -10,6 +10,7 @@
  * backends (e.g. `doc-index.ts`) can import it without cycles.
  */
 import { readFlag } from "./feature-flags";
+import { hasFsaSupport } from "./fsa-support";
 
 const devStorageAllowed = !!process.env.NEXT_PUBLIC_DEV_STORAGE;
 
@@ -27,3 +28,22 @@ function detectDevStorage(): boolean {
 }
 
 export const isDevStorage = detectDevStorage();
+
+/**
+ * Can the FSA FILE picker (`showOpenFilePicker`) run from this user gesture,
+ * on this session's backend? The one answer to "which backend is this session
+ * on" is `isDevStorage` above, so the picker asks it rather than re-deriving it
+ * (task 1085 — the picker used to mirror the detection and read
+ * `virgil:force-dev-storage` unconditionally, so a production build with the
+ * flag left set ran FSA storage behind an `<input>` picker).
+ *
+ * Beyond the backend choice, one constraint belongs to the picker itself: the
+ * FSA picker either swallows the gesture or throws a `SecurityError` inside an
+ * iframe (Claude Preview's headless Chromium is the recurring offender), so an
+ * iframe is never usable even where FSA storage would be.
+ */
+export function fsaPickerUsable(): boolean {
+  if (!hasFsaSupport()) return false;
+  if (isDevStorage) return false;
+  return window.self === window.top;
+}

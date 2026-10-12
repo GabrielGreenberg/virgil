@@ -21,6 +21,7 @@ import {
   setFlagOverride,
   clearFlagOverrides,
   type FlagKey,
+  type FlagReadAt,
 } from "@/lib/feature-flags";
 
 /**
@@ -316,6 +317,98 @@ describe("feature-flag registry census", () => {
     it("the on and off vocabularies are disjoint", () => {
       for (const v of FLAG_ON_VALUES) expect(FLAG_OFF_VALUES).not.toContain(v);
     });
+  });
+});
+
+/**
+ * READ TIMING (task 1085). The header used to promise every flag was read at
+ * call time while three readers froze the answer into a top-level constant —
+ * so `setFlagOverride` was silently inert for them. Each row now DECLARES its
+ * `readAt`, and this leg derives every call site's timing from source:
+ *
+ *   module-load  the `readFlag` call sits in a top-level `const`/`let`
+ *                initializer (not inside an arrow/function expression), or
+ *                inside a top-level function that a top-level initializer
+ *                calls (`isDevStorage = detectDevStorage()`);
+ *   call         anything else.
+ *
+ * A row is consistent iff ALL its call sites have the declared timing.
+ */
+const TOP_DECL = /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\s*\*?\s*(\w+)|(?:const|let|var)\s+(\w+))/;
+
+function callSiteTiming(text: string, index: number): FlagReadAt {
+  const lines = text.slice(0, index).split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = TOP_DECL.exec(lines[i]);
+    if (!m) continue;
+    const [, fn, binding] = m;
+    if (binding !== undefined) {
+      // A top-level binding — but an arrow/function VALUE defers the read.
+      const initializer = lines.slice(i).join("\n");
+      return /=>|\bfunction\b/.test(initializer) ? "call" : "module-load";
+    }
+    const invoked = new RegExp(
+      `^(?:export\\s+)?(?:const|let|var)\\s+\\w+[^=\\n]*=\\s*${fn}\\(`,
+      "m",
+    );
+    return invoked.test(text) ? "module-load" : "call";
+  }
+  return "module-load"; // a bare top-level statement
+}
+
+describe("read timing — every row's readAt matches its call sites", () => {
+  it("the classifier tells the shapes apart (anti-vacuity)", () => {
+    const at = (src: string) => callSiteTiming(src, src.indexOf("readFlag("));
+    expect(at(`export const on: boolean = readFlag("virgil:doc-products");`)).toBe(
+      "module-load",
+    );
+    expect(
+      at(`function detect() {\n  return readFlag("virgil:force-dev-storage");\n}\nexport const isDev = detect();`),
+    ).toBe("module-load");
+    expect(
+      at(`export function isOn(): boolean {\n  return readFlag("virgil:card-tiers");\n}`),
+    ).toBe("call");
+    expect(at(`export const isOn = () =>\n  readFlag("virgil:card-tiers");`)).toBe("call");
+    expect(
+      at(`export default function Layout() {\n  const x = useMemo(() => readFlag("virgil:bug-report"), []);\n}`),
+    ).toBe("call");
+  });
+
+  it("every call site of every row has the row's declared timing", () => {
+    const sites = new Map<FlagKey, { rel: string; at: FlagReadAt }[]>();
+    for (const f of productionFiles()) {
+      if (f.rel === SSOT) continue;
+      const text = commentsStripped(f.text);
+      for (const m of text.matchAll(/readFlag\("(virgil:[A-Za-z0-9:_-]+)"\)/g)) {
+        const key = m[1];
+        if (!isFlagKey(key)) continue;
+        const list = sites.get(key) ?? [];
+        list.push({ rel: f.rel, at: callSiteTiming(text, m.index!) });
+        sites.set(key, list);
+      }
+    }
+    const mismatches: string[] = [];
+    for (const key of FLAG_KEYS) {
+      for (const site of sites.get(key) ?? []) {
+        if (site.at !== FLAG_REGISTRY[key].readAt) {
+          mismatches.push(
+            `${key}: row says readAt "${FLAG_REGISTRY[key].readAt}" but ${site.rel} reads it at "${site.at}"`,
+          );
+        }
+      }
+    }
+    expect(
+      mismatches,
+      "Declare the row's readAt to match its reader (and say so in its note), " +
+        "or move the read. setFlagOverride cannot reach a module-load read.",
+    ).toEqual([]);
+    // Non-vacuity: the three frozen readers are found AS frozen.
+    const frozen = FLAG_KEYS.filter((k) =>
+      (sites.get(k) ?? []).some((s) => s.at === "module-load"),
+    );
+    const declared = FLAG_KEYS.filter((k) => FLAG_REGISTRY[k].readAt === "module-load");
+    expect(frozen.length).toBeGreaterThan(0);
+    expect(frozen.sort()).toEqual([...declared].sort());
   });
 });
 

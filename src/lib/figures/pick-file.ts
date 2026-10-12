@@ -9,8 +9,9 @@
  *      `docHandle.resolve(handle)` (no copy, just record the relative path).
  *
  *   2. `<input type="file">` — fallback for environments that lack the FSA
- *      spec entirely (Safari, Firefox) or where it's been opted out of
- *      (Claude Preview iframe via `virgil:force-dev-storage`). Yields only
+ *      spec entirely (Safari, Firefox), inside an iframe, or on the dev
+ *      storage backend — `fsaPickerUsable()` in `storage-mode.ts` decides,
+ *      beside the backend choice it follows. Yields only
  *      a `File`; both backends then copy the bytes into `<paper>/figures/`.
  *
  * Both code paths converge on the unified `PickedFigureFile` contract
@@ -18,32 +19,8 @@
  * through the storage facade. Callers don't branch on backend or browser.
  */
 
-import { hasFsaSupport } from "@/lib/fsa-support";
-import { readFlag } from "@/lib/feature-flags";
+import { fsaPickerUsable } from "@/lib/storage-mode";
 import type { PickedFigureFile } from "@/lib/storage";
-
-/** Mirror of `isDevStorage`'s detection, but framed as "can the FSA file
- *  picker reliably run from this user gesture?". Two extra constraints
- *  beyond `hasFsaSupport()`:
- *
- *  - **Iframe**: the FSA picker either silently swallows the gesture or
- *    throws a `SecurityError` inside an iframe (Claude Preview's headless
- *    Chromium is the recurring offender). `window.self !== window.top`
- *    is the standard test.
- *  - **Manual opt-out**: the same `virgil:force-dev-storage` localStorage
- *    flag that `src/lib/storage-mode.ts` honors. Keeps the picker choice
- *    aligned with the backend choice end-to-end so a forced-dev session
- *    doesn't try FSA paths that would never reach the FSA backend.
- */
-function canUseFsaFilePicker(): boolean {
-  if (!hasFsaSupport()) return false;
-  if (typeof window === "undefined") return false;
-  // A throwing/blocked localStorage reads as the flag's default (OFF), so the
-  // iframe check below is still the fallback it always was.
-  if (readFlag("virgil:force-dev-storage")) return false;
-  if (window.self !== window.top) return false;
-  return true;
-}
 
 const FSA_PICKER_TYPES: FilePickerAcceptType[] = [
   {
@@ -69,7 +46,7 @@ const HTML_INPUT_ACCEPT = ".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image
  * user action, not an exceptional condition.
  */
 export async function pickFigureFile(): Promise<PickedFigureFile | null> {
-  if (canUseFsaFilePicker()) {
+  if (fsaPickerUsable()) {
     try {
       const [handle] = await window.showOpenFilePicker({
         multiple: false,
