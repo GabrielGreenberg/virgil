@@ -118,7 +118,7 @@ function makeEditor(extra: Extension[] = []) {
 describe("appenders see every transaction they were handed (task 1072)", () => {
   it("a footnote replaced away by an unminted block orphans WITH its body (carried in the diff) and renumbers in the same dispatch", async () => {
     const editor = makeEditor();
-    const orphaned: { footnoteId: string; content: unknown }[] = [];
+    const orphaned: { footnoteId: string; carried: { content: unknown } }[] = [];
     const onOrphan = (e: Event) => orphaned.push((e as CustomEvent).detail);
     window.addEventListener("virgil-footnote-orphaned", onOrphan);
     try {
@@ -131,7 +131,7 @@ describe("appenders see every transaction they were handed (task 1072)", () => {
 
       await new Promise((r) => setTimeout(r, 0));
       expect(orphaned.map((d) => d.footnoteId)).toEqual(["fn-a"]);
-      expect(orphaned[0].content).toEqual(BODY);
+      expect(orphaned[0].carried.content).toEqual(BODY);
     } finally {
       window.removeEventListener("virgil-footnote-orphaned", onOrphan);
       editor.destroy();
@@ -187,7 +187,7 @@ describe("appenders see every transaction they were handed (task 1072)", () => {
       expect(first.diff!.removedFootnotes.map((f) => f.id)).toEqual(["fn-a"]);
       expect(first.diff!.removedBlocks.map((b) => b.uuid)).toContain("p-one");
       // A removed footnote carries the body it left with.
-      expect(first.diff!.removedFootnotes[0].removedContent).toEqual(BODY);
+      expect(first.diff!.removedFootnotes[0].removedCarried?.content).toEqual(BODY);
       // Round 2+ is handed only the appends — never re-told round 1's removal
       // (task 650's no-re-append invariant).
       for (const later of handed.slice(1)) {

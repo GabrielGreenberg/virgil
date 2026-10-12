@@ -52,6 +52,7 @@ import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { footnoteMarkupNodeAttrs, pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import {
   walkJsonContentForCitations,
@@ -720,7 +721,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         if (fnData) {
           event.preventDefault();
           try {
-            const { footnoteId, content, isOrphan } = JSON.parse(fnData);
+            const payload = JSON.parse(fnData);
+            const { footnoteId, isOrphan } = payload;
+            // Rebuild from EVERY carried attr the payload holds (task 1073) —
+            // the body alone re-dropped a `\thanks` as a counted `\footnote`.
+            const carried = pickFootnoteCarriedAttrs(payload);
 
             // Capture the drop target position synchronously — once we
             // return from handleDrop, the native drop event is gone and
@@ -759,7 +764,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               if (!posHostsInlineAtom(tr.doc, mappedPos, fnType)) return;
               const newNode = fnType.create({
                 footnoteId,
-                content,
+                content: carried.content,
+                title: carried.title ?? "",
+                ...footnoteMarkupNodeAttrs(carried),
                 number: 0,
               });
               tr = tr.insert(mappedPos, newNode);

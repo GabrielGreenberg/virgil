@@ -12,6 +12,8 @@
  * Both are read-only from the consumer's perspective.
  */
 
+import type { FootnoteCarriedRecord } from "@/lib/footnote-source-attrs";
+
 // ---------------------------------------------------------------------------
 // Entry shapes — one per structural-entity kind we track.
 // ---------------------------------------------------------------------------
@@ -70,11 +72,13 @@ export interface FootnoteEntry {
   /** The card title (`title` attr, "" when untitled — task 705). Carried so a
    *  rename is a structural footnote change: the card rows re-read it. */
   title?: string;
-  /** The footnote's body (`content` attr) AS IT LEFT the document — set on
+  /** EVERY carried attr (body, title, `\thanks`, `[n]` — the
+   *  `footnote-source-attrs` SSOT) AS IT LEFT the document — set on
    *  `removedFootnotes` entries only, read from the one doc the removal's
-   *  `pos` addresses (task 1072). Index entries never carry it, so it can
-   *  never go stale; `undefined` elsewhere. */
-  removedContent?: unknown;
+   *  `pos` addresses (task 1072; the full carried set since task 1073, when
+   *  the body alone let the orphan capture drop the title and markup). Index
+   *  entries never carry it, so it can never go stale; `undefined` elsewhere. */
+  removedCarried?: FootnoteCarriedRecord;
 }
 
 export interface CitationEntry {

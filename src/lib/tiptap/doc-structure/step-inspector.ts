@@ -28,6 +28,7 @@ import {
   type Step,
 } from "@tiptap/pm/transform";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
+import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 import { type EntitySink, extractEntitiesAt, figureEntryAt } from "./entity-extractor";
 import {
   type AnchorEntry,
@@ -1043,14 +1044,15 @@ export function inspectSteps(
   }
   for (const [id, entry] of removed.footnotes) {
     if (added.footnotes.has(id)) continue;
-    // Carry the body OUT with the removal (task 1072): `oldDoc` is the one doc
+    // Carry the body — and every other carried attr (task 1073) — OUT with
+    // the removal (task 1072): `oldDoc` is the one doc
     // this entry's `pos` addresses, and it is in scope only HERE. A consumer
     // handed several transactions cannot know which one's before-doc a removed
     // pos belongs to, so it must never re-resolve it. O(depth), removals only.
     const node = oldDoc.nodeAt(entry.pos);
     removedFootnotes.push(
       node?.type.name === "footnote" && node.attrs.footnoteId === id
-        ? { ...entry, removedContent: node.attrs.content ?? null }
+        ? { ...entry, removedCarried: pickFootnoteCarriedAttrs(node.attrs) }
         : entry,
     );
   }
