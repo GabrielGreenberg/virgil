@@ -4,10 +4,12 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { readSidecar } from "@/lib/storage";
 import {
+  convergeOnWrite,
   newMergeBase,
   writeSidecarMerged,
   type MergeBase,
 } from "@/lib/sidecar-merged-write";
+import { useSidecarReread } from "./useSidecarReread";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import {
@@ -28,6 +30,21 @@ import type { PristineKindApi } from "./usePristineCardManager";
 import type { PullSeed } from "@/lib/stack/pull-seed";
 
 const EMPTY: FootnotesState = { footnotes: [] };
+
+/** A raw `footnotes.json` as memory holds it — the ONE normalization the load
+ *  and the external re-read share (task 1078): legacy HTML bodies to rich JSON,
+ *  markup attrs in their one record spelling (task 947 — a default or malformed
+ *  value reads as absent). A file with no `footnotes` array is an empty mirror. */
+function migrateFootnotes(raw: unknown): FootnotesState {
+  const data = raw as Partial<FootnotesState> | null;
+  if (!data || !Array.isArray(data.footnotes)) return EMPTY;
+  return {
+    footnotes: data.footnotes.map((f) => ({
+      ...withFootnoteMarkup(f, pickFootnoteMarkupAttrs(f)),
+      content: normalizeRichContent(f.content),
+    })),
+  };
+}
 
 /** `ref` with its markup attrs REPLACED by `markup` (record spelling: a default
  *  is an absent key, so a `\thanks` re-typed as `\footnote` drops the field). */
@@ -119,15 +136,7 @@ export function useFootnotes(
           setLoaded(true);
           return;
         }
-        // Migrate legacy footnotes that stored content as HTML strings.
-        const migrated: FootnotesState = {
-          footnotes: data.footnotes.map((f) => ({
-            // Markup attrs in their one record spelling (task 947): a default
-            // or malformed value reads as absent.
-            ...withFootnoteMarkup(f, pickFootnoteMarkupAttrs(f)),
-            content: normalizeRichContent(f.content),
-          })),
-        };
+        const migrated = migrateFootnotes(data);
         stateRef.current = migrated;
         baselineRef.current.value = migrated;
         setState(migrated);
@@ -140,25 +149,64 @@ export function useFootnotes(
     };
   }, [docId]);
 
+  // Writes handed to the door that have not SETTLED — this hook's half of the
+  // dirty predicate the external re-read guards on (it has no debounce, so
+  // nothing is ever ARMED).
+  const inFlightRef = useRef(0);
+  const hasPendingWrite = useCallback(() => inFlightRef.current > 0, []);
+  // Every apply keeps `stateRef` current synchronously: the setters below read
+  // it, not React state, and a re-read merged in between their reads must not
+  // be overwritten by a stale snapshot.
+  const apply = useCallback((fn: (prev: FootnotesState) => FootnotesState) => {
+    const next = fn(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+  }, []);
+  // THE EXTERNAL RE-READ (task 1078). Until it, this hook read `footnotes.json`
+  // once per doc and never again, so a skill's footnote write (draft-footnote's
+  // revise path, edit-card) was invisible until the paper was reopened.
+  const replayDeferredRead = useSidecarReread<FootnotesState>({
+    docId,
+    filename: "footnotes.json",
+    baselineRef,
+    defaultValue: EMPTY,
+    migrate: migrateFootnotes,
+    hasPendingWrite,
+    apply,
+  });
+
   const persist = useCallback(
     async (s: FootnotesState) => {
       if (!handle) return;
       // The ONE merged write door (task 719): a skill appending to
       // `footnotes.json` while the user has an unsaved body edit is no longer
       // overwritten by this whole snapshot. The base becomes the SUBMITTED
-      // payload, never the merged result — re-basing to the union would make
-      // the next write read the external record as "in base, absent from
-      // local" and delete it. The door advances the base inside the lock
-      // (task 849); the cell is captured here so it stays this doc's.
+      // payload; what the merge absorbed reaches memory (and the base)
+      // through the one convergence door (task 1078). The door advances the
+      // base inside the lock (task 849); the cell is captured here so it stays
+      // this doc's.
       const base = baselineRef.current;
+      inFlightRef.current += 1;
       try {
-        await writeSidecarMerged(handle, "footnotes.json", base, s);
+        const { wrote, ticket } = await writeSidecarMerged(
+          handle,
+          "footnotes.json",
+          base,
+          s,
+          migrateFootnotes,
+        );
+        if (baselineRef.current === base) {
+          convergeOnWrite("footnotes.json", base, ticket, s, wrote, apply);
+        }
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save footnotes:", err);
+      } finally {
+        inFlightRef.current -= 1;
+        replayDeferredRead();
       }
     },
-    [handle],
+    [handle, apply, replayDeferredRead],
   );
 
   /** THE mirror's upsert door (task 703). Returns the collection with a ref

@@ -222,8 +222,10 @@ export function DiskWatcherProvider({
   // open). It shares the DiskWatcher poll MECHANISM but emits a plain
   // `virgil-sidecar-changed` event rather than a badge store — see
   // sidecar-watcher.ts for the sibling-vs-extend rationale. Covers EVERY sidecar
-  // in ALL_SIDECAR_FILENAMES, so all panels (revisions/cutter/notes/todos/
-  // footnotes/citations/reports/archive/…) get the reactivity for free.
+  // in ALL_SIDECAR_FILENAMES; a hook is reactive only if it LISTENS, which
+  // every record-collection sidecar hook does through the one shared re-read,
+  // `useSidecarReread` (task 1078 — before it `useFootnotes` and
+  // `useBibReview` did not, though this note said they got it "for free").
   const sidecarWatchersByDoc = useRef(new Map<string, SidecarWatcher>());
   const startedSidecarWatchers = useRef(new WeakSet<SidecarWatcher>());
   const getOrCreateSidecarWatcher = (wDocId: string): SidecarWatcher => {
