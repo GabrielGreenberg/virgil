@@ -26,7 +26,8 @@ describe("bracket-math closer is escape-aware (task 242 — completes the 210 SS
     const math = nodes.filter((n) => n.type === "inlineMath");
     expect(math).toHaveLength(1);
     // FAILS on main: `indexOf` matches the `\]` inside `\\]` and truncates to `a \`.
-    expect(math[0].attrs?.latex).toBe("a \\\\]");
+    // (Payload verbatim since task 1070 — the backslash forms no longer trim.)
+    expect(math[0].attrs?.latex).toBe(" a \\\\] ");
     // The real closer terminated the math — nothing leaks out as a text node.
     expect(nodes.some((n) => n.type === "text" && /\\[\])]/.test(n.text ?? ""))).toBe(false);
   });
@@ -36,7 +37,7 @@ describe("bracket-math closer is escape-aware (task 242 — completes the 210 SS
     const nodes = parseInlineContent("\\( a \\\\) \\)");
     const math = nodes.filter((n) => n.type === "inlineMath");
     expect(math).toHaveLength(1);
-    expect(math[0].attrs?.latex).toBe("a \\\\)");
+    expect(math[0].attrs?.latex).toBe(" a \\\\) ");
     expect(nodes.some((n) => n.type === "text" && /\\[\])]/.test(n.text ?? ""))).toBe(false);
   });
 
@@ -52,11 +53,11 @@ describe("bracket-math closer is escape-aware (task 242 — completes the 210 SS
   it("plain inline \\[ x^2 \\] / \\( a+b \\) parse byte-identically (fallback matches indexOf)", () => {
     const disp = parseInlineContent("\\[ x^2 \\]").filter((n) => n.type === "inlineMath");
     expect(disp).toHaveLength(1);
-    expect(disp[0].attrs?.latex).toBe("x^2");
+    expect(disp[0].attrs?.latex).toBe(" x^2 ");
 
     const inl = parseInlineContent("\\( a+b \\)").filter((n) => n.type === "inlineMath");
     expect(inl).toHaveLength(1);
-    expect(inl[0].attrs?.latex).toBe("a+b");
+    expect(inl[0].attrs?.latex).toBe(" a+b ");
   });
 
   it("plain block \\[ x^2 \\] parses byte-identically", () => {

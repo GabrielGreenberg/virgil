@@ -48,13 +48,15 @@ import type { JSONContent } from "@tiptap/core";
 import { collectAtomIds } from "./node-identity";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 import { generateShortId } from "@/lib/uuid";
+import { emitInlineMath } from "@/lib/latex-lexer";
 
 /**
  * The plain-text projection of each Atom — what a reader sees, in reading
  * order:
  *   - citation → its visible display text ("Smith 2020"), else the command;
  *   - ref → its visible number, else the `\ref{label}` source;
- *   - inline math → `$latex$` (the source — no plain-text rendering of math
+ *   - inline math → its source, in its own delimiters (`$…$`, `$$…$$`, … —
+ *     task 1070's `emitInlineMath`; the source — no plain-text rendering of math
  *     exists, and the source is what a reader of the `.tex` sees);
  *   - footnote → "" — the marker is apparatus, not prose; the HTML flavour
  *     carries the whole footnote for an in-app paste.
@@ -64,7 +66,7 @@ export const ATOM_PLAIN_TEXT: Record<AtomKind, (node: PMNode) => string> = {
   ref: (n) =>
     (n.attrs.displayText as string) ||
     (n.attrs.label ? `\\${(n.attrs.refCommand as string) || "ref"}{${n.attrs.label as string}}` : ""),
-  "inline-math": (n) => `$${(n.attrs.latex as string) || ""}$`,
+  "inline-math": (n) => emitInlineMath(n.attrs.latex, n.attrs.delim),
   footnote: () => "",
 };
 

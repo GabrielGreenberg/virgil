@@ -1,4 +1,5 @@
 import { JSONContent } from "@tiptap/react";
+import { emitInlineMath } from "@/lib/latex-lexer";
 
 export function extractProse(doc: JSONContent): string {
   const parts: string[] = [];
@@ -61,7 +62,7 @@ function walkInline(node: JSONContent, parts: string[]): void {
     parts.push(node.text || "");
   } else if (node.type === "inlineMath") {
     // keep inline math as-is for context
-    parts.push(`$${node.attrs?.latex || ""}$`);
+    parts.push(emitInlineMath(node.attrs?.latex, node.attrs?.delim));
   } else if (node.type === "hardBreak") {
     parts.push("\n");
   }

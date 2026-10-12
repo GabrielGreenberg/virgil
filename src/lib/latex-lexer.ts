@@ -721,20 +721,76 @@ export function carrierRowFor(
  * The four inline math delimiter pairs, longest-opener-first. `$$` MUST precede
  * `$` or a display run opens an empty inline atom on its own second `$`.
  *
- * `trim` mirrors the main parser's long-standing per-form behaviour: the
- * backslash forms trim their payload, the dollar forms do not. It is data here
- * rather than a branch so the two inline scanners cannot disagree about it.
+ * No form trims its payload (task 1070). The backslash forms used to, which was
+ * harmless only while the delimiter itself was thrown away: now that the node
+ * re-emits `\[`/`\(`, a trimmed payload rewrote `\[\n…\n\]` as `\[…\]` on the
+ * first save. The payload is the user's bytes; KaTeX ignores the whitespace.
  */
-const INLINE_MATH_DELIMS: readonly { open: string; close: string; trim: boolean }[] = [
-  { open: "$$", close: "$$", trim: false },
-  { open: "$", close: "$", trim: false },
-  { open: "\\[", close: "\\]", trim: true },
-  { open: "\\(", close: "\\)", trim: true },
+const INLINE_MATH_DELIMS: readonly {
+  open: InlineMathDelim;
+  close: string;
+  display: boolean;
+}[] = [
+  { open: "$$", close: "$$", display: true },
+  { open: "$", close: "$", display: false },
+  { open: "\\[", close: "\\]", display: true },
+  { open: "\\(", close: "\\)", display: false },
 ];
 
+/**
+ * Which of the four pairs an inline math run was WRITTEN with (task 1070). The
+ * `inlineMath` node carries it as its `delim` attr so the save re-emits the
+ * user's own delimiter: before 1070 the serializer always wrote `$…$`, so a
+ * `$$x$$` display equation was saved as INLINE math on the first autosave and
+ * `\(y\)` lost its spelling — the `figureBlock.shortCaption` rule, "a fact with
+ * no surface is still the user's bytes". The opener IS the name.
+ */
+export type InlineMathDelim = "$" | "$$" | "\\(" | "\\[";
+
+/** The default — what a typed `$x$` and every pre-1070 node mean. */
+export const DEFAULT_INLINE_MATH_DELIM: InlineMathDelim = "$";
+
+function delimRow(delim: unknown) {
+  return (
+    INLINE_MATH_DELIMS.find((d) => d.open === delim) ??
+    INLINE_MATH_DELIMS.find((d) => d.open === DEFAULT_INLINE_MATH_DELIM)!
+  );
+}
+
+/** Normalize a stored `delim` attr: anything unknown reads as the default. */
+export function inlineMathDelim(delim: unknown): InlineMathDelim {
+  return delimRow(delim).open;
+}
+
+/** Does this delimiter typeset DISPLAY-style (`$$…$$`, `\[…\]`)? The editor
+ *  renders those in KaTeX display mode so it shows what the PDF shows. */
+export function isDisplayInlineMathDelim(delim: unknown): boolean {
+  return delimRow(delim).display;
+}
+
+/**
+ * **THE inline-math emitter** — the inverse of {@link matchInlineMathAt}, read by
+ * every surface that writes an `inlineMath` node back to LaTeX (the main
+ * serializer, the footnote/card fork, the plain-text projections, the node's
+ * own `renderHTML`). One table, so the parse and emit halves cannot disagree
+ * about a delimiter.
+ */
+export function emitInlineMath(latex: unknown, delim?: unknown): string {
+  const row = delimRow(delim);
+  return `${row.open}${(latex as string) || ""}${row.close}`;
+}
+
+/** The parse-side attr spread: a non-default `delim` only, so a `$…$` node's
+ *  JSON is unchanged from before task 1070. */
+export function inlineMathDelimAttr(delim: InlineMathDelim): { delim?: InlineMathDelim } {
+  return delim === DEFAULT_INLINE_MATH_DELIM ? {} : { delim };
+}
+
 export interface InlineMathMatch {
-  /** The payload between the delimiters (trimmed for the backslash forms). */
+  /** The payload between the delimiters, verbatim. */
   latex: string;
+  /** The delimiter pair the run was written with (task 1070). */
+  delim: InlineMathDelim;
   /** Index just past the closing delimiter. */
   end: number;
 }
@@ -779,7 +835,7 @@ export function matchInlineMathAt(
     const closeIdx = findUnescaped(text, d.close, payloadStart);
     if (closeIdx === -1) continue;
     const raw = text.slice(payloadStart, closeIdx);
-    return { latex: d.trim ? raw.trim() : raw, end: closeIdx + d.close.length };
+    return { latex: raw, delim: d.open, end: closeIdx + d.close.length };
   }
   return null;
 }
@@ -1027,7 +1083,18 @@ export function endsParagraphAt(src: string, pos: number): boolean {
   const atLineStart = p < 0 || src[p] === "\n";
   const rest = src.slice(pos);
   if (atLineStart) return startsBlockBoundary(rest);
-  return rest.startsWith("\\[") || BLOCK_BOUNDARY_COMMAND_RE.test(rest);
+  // Mid-line `\[` is NOT a boundary (task 1070): display math written inside a
+  // line of prose issues no `\par` in TeX — the text after `\]` continues the
+  // SAME paragraph, unindented. Splitting here saved `Let a \[x\] b.` with
+  // blank lines around the equation, so `b.` became a new, indented paragraph
+  // in the PDF. It stays in its paragraph as an `inlineMath` atom with
+  // `delim: "\["`, painted display-style. A LINE-START `\[` is still the
+  // `displayMath` block (`startsBlockBoundary`) — and so is a `\[` that ENDS its
+  // line (`Some text. \[⏎ y = 2⏎ \]`): an equation laid out on lines of its own
+  // is a display block in the source's own layout, which the expex item
+  // `paragraph + displayMath` shape depends on (Feature A1/A2).
+  if (rest.startsWith("\\[")) return /^\\\[[ \t]*(?:\n|$)/.test(rest);
+  return BLOCK_BOUNDARY_COMMAND_RE.test(rest);
 }
 
 /**

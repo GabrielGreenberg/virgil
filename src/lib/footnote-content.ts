@@ -50,6 +50,8 @@ import {
   matchCommandArgumentRun,
   matchControlSymbolAt,
   matchInlineMathAt,
+  emitInlineMath,
+  inlineMathDelimAttr,
   matchCommentTailAt,
   matchInlineVerbAt,
   matchLineBreakAt,
@@ -404,7 +406,7 @@ function serializeInlineNode(node: JSONContent): string {
   // Wrappers are NOT applied here: they compose over a RUN, in
   // `serializeInlineRun` below. See `mark-composition.ts` for why.
   if (node.type === "text") return inlineTextBytes(node.text || "", node.marks as MarkLike[] | undefined);
-  if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
+  if (node.type === "inlineMath") return emitInlineMath(node.attrs?.latex, node.attrs?.delim);
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
     const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
@@ -770,7 +772,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
       const math = matchInlineMathAt(text, i);
       if (math) {
         flush();
-        nodes.push({ type: "inlineMath", attrs: { latex: math.latex } });
+        nodes.push({ type: "inlineMath", attrs: { latex: math.latex, ...inlineMathDelimAttr(math.delim) } });
         i = math.end;
         continue;
       }
@@ -1064,7 +1066,7 @@ export function richJsonToPlainText(json: JSONContent | unknown): string {
   function walk(node: JSONContent): string {
     if (!node) return "";
     if (node.type === "text") return node.text || "";
-    if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
+    if (node.type === "inlineMath") return emitInlineMath(node.attrs?.latex, node.attrs?.delim);
     if (node.type === "citation") return (node.attrs?.displayText as string) || (node.attrs?.command as string) || "";
     // labelRef (\ref / \getref / \getfullref) — a footnote body can hold a
     // nested cross-reference (CHIP 5). Like citation, it's a leaf atom with no
