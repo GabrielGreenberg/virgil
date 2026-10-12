@@ -180,6 +180,7 @@ import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover"
 import type { AtomCreateRequest } from "@/lib/actions/atom-create";
 import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { applyMathEdit, atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registry";
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
@@ -2362,23 +2363,26 @@ export default function EditorLayout() {
   // the change to the main doc. Targeting MAIN with a float-space `pos` would
   // mis-target / corrupt the wrong node — the very corruption the old
   // `surface === "main"` gate prevented (by making embedded math inert).
-  const handleMathSave = useCallback((editor: Editor, pos: number, newLatex: string) => {
-    if (!editor || editor.isDestroyed) return;
-    // The popover outlives the click, so by save time the owning editor may have
-    // re-seeded (an embedded card/float re-syncs from MAIN) and shifted `pos`
-    // past the doc end — `nodeAt` THROWS on an out-of-range pos. Guard the
-    // bounds so a stale pos is a safe no-op, never a crash.
-    if (pos < 0 || pos >= editor.state.doc.content.size) return;
-    const node = editor.state.doc.nodeAt(pos);
-    if (!node) return;
-    if (node.type.name !== "inlineMath" && node.type.name !== "displayMath") return;
-    editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(pos, undefined, {
-        ...node.attrs,
-        latex: newLatex,
-      }),
-    );
-  }, []);
+  //
+  // Task 1071: the commit resolves its node through the ONE atom-popover door
+  // (`resolveAtomEditTarget`) — the owner must still be editable
+  // (`surfaceEditableNow`: on MAIN `isEditable` is a constant `true`; the pen
+  // can be taken while the popover is open), `pos` in range (the owner may
+  // have re-seeded and shifted it past the doc end, where `nodeAt` throws),
+  // and the node there must be the CLICKED one — same kind, same `latex`. An
+  // external write that removed the clicked formula slides its neighbour onto
+  // `pos`; writing "whatever math is there now" would overwrite the neighbour.
+  const handleMathSave = useCallback(
+    (
+      editor: Editor,
+      pos: number,
+      clicked: { kind: "inline" | "display"; latex: string },
+      newLatex: string,
+    ) => {
+      applyMathEdit(editor, pos, clicked, newLatex);
+    },
+    [],
+  );
 
   // ── Figure tex-mode popover save handler ──
   // For figureBlock: newText is the new `\begin{figure}…\end{figure}` body.
@@ -2410,6 +2414,11 @@ export default function EditorLayout() {
     // figure float re-syncs from MAIN) and shifted `pos` past the doc end,
     // where `nodeAt` THROWS. A stale pos is a safe no-op. (Mirrors
     // handleMathSave.)
+    //
+    // Task 1071: the editability half of the atom-popover door — on MAIN
+    // `isEditable` is constant, so a read-only / pen-held owner refuses here
+    // rather than dispatching a transaction the enforcer silently drops.
+    if (!atomPopoverMayOpen(editor)) return;
     if (!applyFigureEnvBodyEdit(editor, pos, newText)) {
       applyGraphicsCommandEdit(editor, pos, newText);
     }
@@ -3645,7 +3654,7 @@ export default function EditorLayout() {
           kind={activeMath.kind}
           value={activeMath.latex}
           anchorRect={activeMath.rect}
-          onSave={(newLatex) => handleMathSave(activeMath.editor, activeMath.pos, newLatex)}
+          onSave={(newLatex) => handleMathSave(activeMath.editor, activeMath.pos, activeMath, newLatex)}
           onClose={() => setActiveMath(null)}
         />
       )}

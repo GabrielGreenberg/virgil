@@ -24,6 +24,7 @@ import { rangeHoldsOnlyText } from "./typed-prose-gate";
 import { ATOM_REGISTRY } from "./atom-registry";
 import { withClipboardCodec } from "./attr-clipboard-codec";
 import { createLeafNodeView } from "./leaf-node-view";
+import { atomPopoverMayOpen } from "./atom-edit-target";
 import { ERROR_INK } from "@/lib/error-ink";
 import {
   DEFAULT_INLINE_MATH_DELIM,
@@ -144,11 +145,14 @@ function mathNodeView(opts: {
       // uniformly for every editable embedded surface that hosts math: the
       // example-card body, the example-block / paragraph / linked-range floats.
       //
-      // The `editor.isEditable` check is preserved (and is now the sole gate):
-      // a read-only surface stays inert. This covers the read-only MAIN doc AND
-      // the displayMath "view & move only" lift (decision D — its SingleBlockBody
-      // float mounts `editable:false`), which both correctly remain non-editable.
-      if (editor && !editor.isEditable) return;
+      // A read-only surface stays inert — asked through the atom-popover door
+      // (`atomPopoverMayOpen` → `surfaceEditableNow`), NOT `editor.isEditable`,
+      // which is a constant `true` on MAIN (task 1071: read-only and the pen
+      // hold live in `readOnlyEnforcer`, so the old gate opened a popover whose
+      // save was silently filtered). This covers the read-only MAIN doc, the
+      // pen hold, AND the displayMath "view & move only" lift (decision D — its
+      // SingleBlockBody float mounts `editable:false`). The bridge re-asks.
+      if (editor && !atomPopoverMayOpen(editor)) return;
       const pos = livePos();
       if (pos == null) return;
       window.dispatchEvent(

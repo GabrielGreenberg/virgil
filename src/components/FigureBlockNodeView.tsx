@@ -24,6 +24,7 @@ import { useFieldEditSession } from "@/lib/field-edit-session";
 import { watchChromeBeside } from "./figure-chrome-beside";
 import FigureAnnotation from "./FigureAnnotation";
 import { chromeOnly } from "@/lib/view-only-chrome";
+import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { iconHint } from "@/components/Hint";
 
 const MIN_PERCENT = 10;
@@ -292,8 +293,9 @@ function FigureFloatView({ node, getPos, editor, extension }: NodeViewProps) {
     )
       return;
     // The float editor is editable, but mirror the math gate: a read-only
-    // surface (none today, the displayMath-D analog) stays inert.
-    if (!editor.isEditable) return;
+    // surface (none today, the displayMath-D analog) stays inert — through the
+    // atom-popover door, never `isEditable` (task 1071).
+    if (!atomPopoverMayOpen(editor)) return;
     e.preventDefault();
     e.stopPropagation();
     const pos = typeof getPos === "function" ? getPos() : undefined;
@@ -549,10 +551,11 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     // Read-only bail: the popover's save would dispatch a doc-changing
     // transaction that the readOnlyEnforcer plugin silently rejects. Skip
     // the popover entirely rather than open it for a guaranteed-fail save.
-    // The CSS rules under `.ProseMirror[data-editable="false"]` also hide
-    // the chrome / empty-CTA so they can't even reach this branch.
-    const editorRoot = wrapperRef.current?.closest(".ProseMirror");
-    if (editorRoot?.getAttribute("data-editable") === "false") return;
+    // Asked through the atom-popover door (task 1071), which sees the host's
+    // read-only AND the cowork pen hold — the old `data-editable` DOM read saw
+    // only the former. The CSS rules under `.ProseMirror[data-editable="false"]`
+    // also hide the chrome / empty-CTA so they can't even reach this branch.
+    if (!atomPopoverMayOpen(editor)) return;
     e.preventDefault();
     e.stopPropagation();
     const pos = typeof getPos === "function" ? getPos() : undefined;

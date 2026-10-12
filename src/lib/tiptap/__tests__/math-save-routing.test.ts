@@ -21,26 +21,20 @@ import { describe, it, expect } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { InlineMath, DisplayMath } from "@/lib/tiptap/math";
+import { applyMathEdit } from "@/lib/tiptap/atom-edit-target";
 
-// The exact body of EditorLayout.handleMathSave, extracted so the test pins the
-// real save contract: resolve the node at `pos` IN THE OWNING editor, verify it
-// is a math node, and rewrite its latex. Targeting the wrong editor is exactly
-// the EX-F4-02 corruption this guards against.
+// The REAL commit `EditorLayout.handleMathSave` calls (task 1071 extracted it
+// from a copy this suite used to keep). `clicked` defaults to the identity of
+// whatever math sits at `pos` NOW — i.e. a click captured just before the save;
+// the identity-refusal legs live in `atom-popover-door.test.ts`.
 function saveMath(editor: Editor, pos: number, newLatex: string): boolean {
-  if (!editor || editor.isDestroyed) return false;
-  // Bounds guard mirrors handleMathSave: an out-of-range pos (the owning editor
-  // re-seeded after the click) must be a no-op — nodeAt() THROWS otherwise.
-  if (pos < 0 || pos >= editor.state.doc.content.size) return false;
-  const node = editor.state.doc.nodeAt(pos);
-  if (!node) return false;
-  if (node.type.name !== "inlineMath" && node.type.name !== "displayMath") return false;
-  editor.view.dispatch(
-    editor.state.tr.setNodeMarkup(pos, undefined, {
-      ...node.attrs,
-      latex: newLatex,
-    }),
-  );
-  return true;
+  let clicked = { kind: "inline" as "inline" | "display", latex: "" };
+  if (pos >= 0 && pos < editor.state.doc.content.size) {
+    const n = editor.state.doc.nodeAt(pos);
+    if (n?.type.name === "displayMath") clicked = { kind: "display", latex: n.attrs.latex || "" };
+    else if (n?.type.name === "inlineMath") clicked = { kind: "inline", latex: n.attrs.latex || "" };
+  }
+  return applyMathEdit(editor, pos, clicked, newLatex);
 }
 
 function mountInline(latex: string, surface: "main" | "float") {
