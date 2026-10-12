@@ -407,10 +407,22 @@ describe("census · the sidecar hook's dirty predicate is ONE thing", () => {
     expect(persist).toMatch(/finally\s*\{\s*inFlightRef\.current -= 1;\s*\}/);
   });
 
+  // The listener lives in the one re-read every sidecar hook shares (task
+  // 1078); it is handed THIS hook's predicate and may read nothing else.
+  const rereadSrc = fs.readFileSync(
+    path.join(REPO_ROOT, "src/hooks/useSidecarReread.ts"),
+    "utf8",
+  );
+  const rereadCode = codeOnlyLines(rereadSrc);
+
+  it("the hook hands its ONE predicate to the shared re-read", () => {
+    expect(code).toMatch(/useSidecarReread<S>\(\{[^}]*\bhasPendingWrite,/);
+  });
+
   it("both guard reads in the external-change listener ask the predicate, and neither touches the timer handle", () => {
-    const at = code.indexOf("window.addEventListener(SIDECAR_CHANGED_EVENT");
+    const at = rereadCode.indexOf("window.addEventListener(SIDECAR_CHANGED_EVENT");
     expect(at).toBeGreaterThan(0);
-    const effect = enclosingDeclaration(code, at);
+    const effect = enclosingDeclaration(rereadCode, at);
     const asks = effect.match(/hasPendingWrite\(\)/g) ?? [];
     expect(asks, "one ask before the read, one after").toHaveLength(2);
     expect(effect).not.toMatch(/pendingTimerRef|inFlightRef/);
@@ -422,7 +434,9 @@ describe("census · the sidecar hook's dirty predicate is ONE thing", () => {
     // bytes BEFORE it emits, and our landed write re-baselines again to OURS,
     // so nothing re-emits — a deferral is local-wins. Read RAW source: the
     // needle is prose.
-    expect(src).not.toMatch(/next poll re-(?:check|emit)s? once (?:clean|the write has flushed)/);
-    expect(src).toContain("WHAT A DEFERRAL MEANS");
+    for (const text of [src, rereadSrc]) {
+      expect(text).not.toMatch(/next poll re-(?:check|emit)s? once (?:clean|the write has flushed)/);
+    }
+    expect(rereadSrc).toContain("WHAT A DEFERRAL MEANS");
   });
 });

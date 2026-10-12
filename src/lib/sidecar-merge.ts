@@ -50,11 +50,15 @@
  * ## Where the base comes from, and why it is the SUBMITTED payload
  *
  * After a merged write, disk holds the UNION and memory still holds the local
- * snapshot. The base is set to what we SUBMITTED, never to the merged result —
- * otherwise the next write would read the external record as "in base, absent
- * from local" and delete it, and the fix would hold for exactly one write.
- * Memory converges separately, through the watcher re-read (which merges the
- * same way).
+ * snapshot. Inside the lock the base is set to what we SUBMITTED; it moves to
+ * the merged result only TOGETHER with memory, through `convergeOnWrite`
+ * ([sidecar-merged-write.ts](sidecar-merged-write.ts), task 1078) — re-basing
+ * alone would make the next write read the external record as "in base, absent
+ * from local" and delete it. Memory does NOT converge "through the watcher
+ * re-read", as this note used to say: our write stamps the disk ledger, so the
+ * watcher never reports what the merge absorbed. It converges at the write
+ * (`convergeOnWrite`) and, for later external writes, at the re-read every
+ * sidecar hook shares (`useSidecarReread`), which merges the same way.
  *
  * ## What is declared and what is derived
  *

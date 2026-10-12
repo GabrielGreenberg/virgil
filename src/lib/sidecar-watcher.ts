@@ -62,8 +62,8 @@ export interface SidecarChangedDetail {
 
 /**
  * Dispatch the change signal. Split out so both this watcher AND tests can
- * emit it, and so the (rare) no-`window` path (SSR) is a safe no-op. Callers in
- * `usePersistentState` listen via `addEventListener(SIDECAR_CHANGED_EVENT, …)`.
+ * emit it, and so the (rare) no-`window` path (SSR) is a safe no-op. The sidecar
+ * hooks listen through the one shared re-read, `useSidecarReread` (task 1078).
  */
 export function dispatchSidecarChanged(detail: SidecarChangedDetail): void {
   if (typeof window === "undefined") return;

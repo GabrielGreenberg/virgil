@@ -179,10 +179,10 @@ const LEDGER: Record<string, Row> = {
     events: ["window.TEX_DELIMITERS_CHANGED_EVENT"],
     why: "the delimiters event carries its docId",
   },
-  "hooks/usePersistentState.ts": {
+  "hooks/useSidecarReread.ts": {
     scope: "doc",
     events: ["window.SIDECAR_CHANGED_EVENT"],
-    why: "sidecar-changed carries its docId + filename",
+    why: "sidecar-changed carries its docId + filename (the one external re-read every sidecar hook shares, task 1078)",
   },
   "hooks/useWordCountConfig.ts": {
     scope: "shared-state",

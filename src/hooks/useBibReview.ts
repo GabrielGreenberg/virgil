@@ -3,10 +3,12 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar } from "@/lib/storage";
 import {
+  convergeOnWrite,
   newMergeBase,
   writeSidecarMerged,
   type MergeBase,
 } from "@/lib/sidecar-merged-write";
+import { useSidecarReread } from "./useSidecarReread";
 import { libraryPaperSidecarWritable } from "@/lib/host-writability";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import type { BibReviewState, BibReviewRequest, BibEntry } from "@/lib/types";
@@ -101,6 +103,25 @@ export function useBibReview(
     getBibEntryRef.current = getBibEntry;
   });
 
+  // The ONE normalization of a raw `bib-review-requests.json` — shared by the
+  // load and the external re-read (task 1078). Normalize the SHAPE, not just
+  // the absence: a file that exists but does not hold a `requests` array (an
+  // empty `{}`, a hand-edited or half-written sidecar) would otherwise make
+  // every later `state.requests.some` throw — on the flag-OFF path, which is
+  // every shipping build, and during render, so it takes the whole pane down.
+  // Then migrate: stamp `entryUid` onto rows whose citekey resolves
+  // (non-destructive — unresolvable rows keep their bare bibKey).
+  const normalize = useCallback((data: unknown): BibReviewState => {
+    const raw: BibReviewState = Array.isArray(
+      (data as Partial<BibReviewState> | null)?.requests,
+    )
+      ? (data as BibReviewState)
+      : EMPTY;
+    return cascadeRef.current
+      ? migrateBibReviewToUid(raw, keyToUidRef.current)
+      : raw;
+  }, []);
+
   const fetchState = useCallback(async (id: string) => {
     try {
       const data = await readSidecar<BibReviewState>(
@@ -109,28 +130,13 @@ export function useBibReview(
         EMPTY,
       );
       if (docIdRef.current !== id) return;
-      // Normalize the SHAPE, not just the absence. `readSidecar`'s fallback
-      // covers a missing file; a file that exists but does not hold a
-      // `requests` array (an empty `{}`, a hand-edited or half-written
-      // sidecar) sails past `?? EMPTY` and every later `state.requests.some`
-      // throws — on the flag-OFF path, which is every shipping build, and
-      // during render, so it takes the whole pane down. The flag-ON path
-      // happened to be safe only because `migrateBibReviewToUid` rebuilds the
-      // shape on its way through.
-      const raw: BibReviewState = Array.isArray(data?.requests)
-        ? (data as BibReviewState)
-        : EMPTY;
-      // Migrate-on-load: stamp `entryUid` onto rows whose citekey resolves
-      // (non-destructive — unresolvable rows keep their bare bibKey).
-      const loadedState = cascadeRef.current
-        ? migrateBibReviewToUid(raw, keyToUidRef.current)
-        : raw;
+      const loadedState = normalize(data);
       baselineRef.current.value = loadedState;
       setState(loadedState);
     } catch {
       // ignore
     }
-  }, []);
+  }, [normalize]);
 
   useEffect(() => {
     docIdRef.current = docId;
@@ -147,15 +153,22 @@ export function useBibReview(
     setState((prev) => migrateBibReviewToUid(prev, keyToUid));
   }, [cascadeOn, keyToUid]);
 
-  // Poll every 10s for status changes, but only when there are pending requests
-  const hasPending = state.requests.some((r) => r.status === "pending");
-  useEffect(() => {
-    if (!docId || !hasPending) return;
-    const interval = setInterval(() => {
-      if (docIdRef.current) fetchState(docIdRef.current);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [docId, hasPending, fetchState]);
+  // THE EXTERNAL RE-READ (task 1078) — the one every sidecar hook shares. It
+  // REPLACES a private 10 s poll that re-read this file wholesale while any row
+  // was pending: no dirty guard, no merge, so an in-flight request was
+  // overwritten in memory (and its base moved under the write), beside the
+  // SidecarWatcher that already polls this file every 3 s.
+  const inFlightRef = useRef(0);
+  const hasPendingWrite = useCallback(() => inFlightRef.current > 0, []);
+  const replayDeferredRead = useSidecarReread<BibReviewState>({
+    docId,
+    filename: "bib-review-requests.json",
+    baselineRef,
+    defaultValue: EMPTY,
+    migrate: normalize,
+    hasPendingWrite,
+    apply: setState,
+  });
 
   /**
    * Persist the queue — and SAY SO when it does not land (task 630).
@@ -202,16 +215,31 @@ export function useBibReview(
       // the records a whole-snapshot write from a stale panel would undo.
       // The door advances the base inside the lock (task 849); the cell is
       // captured here so it stays this doc's.
+      // What the merge absorbed — a skill's completion of another review —
+      // reaches memory through the one convergence door (task 1078).
       const base = baselineRef.current;
+      inFlightRef.current += 1;
       try {
-        await writeSidecarMerged(handle, "bib-review-requests.json", base, s);
+        const { wrote, ticket } = await writeSidecarMerged(
+          handle,
+          "bib-review-requests.json",
+          base,
+          s,
+          normalize,
+        );
+        if (baselineRef.current === base) {
+          convergeOnWrite("bib-review-requests.json", base, ticket, s, wrote, setState);
+        }
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save bib review requests:", err);
         refuse("failed", err instanceof Error ? err.message : undefined);
+      } finally {
+        inFlightRef.current -= 1;
+        replayDeferredRead();
       }
     },
-    [handle, fetchState],
+    [handle, fetchState, normalize, replayDeferredRead],
   );
 
   /** Does a row target the same entry as `bibKey`? Under the flag, prefer the

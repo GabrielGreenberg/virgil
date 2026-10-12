@@ -10,8 +10,9 @@ import {
   type MutableRefObject,
 } from "react";
 import { readSidecarIfExists, mutateSidecar } from "@/lib/storage";
-import { deepEqual, mergeSidecarState } from "@/lib/sidecar-merge";
+import { deepEqual } from "@/lib/sidecar-merge";
 import {
+  convergeOnWrite,
   newMergeBase,
   writeSidecarMerged,
   type MergeBase,
@@ -19,10 +20,7 @@ import {
 import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
 import { onTabHidden } from "@/lib/tab-hidden";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
-import {
-  SIDECAR_CHANGED_EVENT,
-  type SidecarChangedDetail,
-} from "@/lib/sidecar-watcher";
+import { useSidecarReread } from "./useSidecarReread";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -298,25 +296,22 @@ export function usePersistentState<S>(
   const migrateRef = useRef(migrate);
   migrateRef.current = migrate;
 
-  // ── THE DEFERRED EXTERNAL READ (task 719) ─────────────────────────────────
-  // The watcher emits ONCE per change: it re-baselines its ledger to the new
-  // on-disk bytes BEFORE dispatching, so its next poll takes the cheap
-  // mtime/size path and neither reads nor re-emits. A dirty guard that merely
-  // `return`s therefore DROPS the event — permanently, if no further external
-  // write comes. So a deferral is a DEBT: remember it, and replay the moment
-  // this instance's writes drain. (`useAiRequests` has carried exactly this
-  // since task 220; it is right there for the same reason it is right here —
-  // because the write below merges, so disk after the drain holds the union.)
-  const deferredExternalReadRef = useRef(false);
-  // The live re-read for the current docId, published by the watcher effect so
-  // the write drain can replay a deferred signal. Null while no doc is open.
-  const rehydrateRef = useRef<(() => void) | null>(null);
-  const maybeReplayDeferredRead = useCallback((): void => {
-    if (!deferredExternalReadRef.current) return;
-    if (hasPendingWrite()) return;
-    deferredExternalReadRef.current = false;
-    rehydrateRef.current?.();
-  }, [hasPendingWrite]);
+  // ── THE EXTERNAL RE-READ (task 719 → 1078) ────────────────────────────────
+  // Subscribe to the `SidecarWatcher`'s per-file change signal so a card an AI
+  // agent drafts straight onto disk surfaces in the LIVE app without a reload.
+  // The policy — dirty guard, deferral-as-debt, merge-not-adopt, stale-read
+  // guard — is the ONE every sidecar hook shares (`useSidecarReread`); what it
+  // returns pays a deferred read once this instance's writes drain, and
+  // `persist` calls it on every exit.
+  const maybeReplayDeferredRead = useSidecarReread<S>({
+    docId,
+    filename,
+    baselineRef,
+    defaultValue,
+    migrate,
+    hasPendingWrite,
+    apply: setState,
+  });
 
   // Tracks whether the user has mutated state via `update()` since the
   // mount-effect loader was last started. Prevents the loader's async
@@ -347,7 +342,6 @@ export function usePersistentState<S>(
     // A base belongs to ONE document. Cleared on every switch, and re-earned
     // only by a read that actually resolved (task 719).
     baselineRef.current = newMergeBase<S>();
-    deferredExternalReadRef.current = false;
     setLoaded(false);
     setLoadError(false);
     let cancelled = false;
@@ -395,8 +389,9 @@ export function usePersistentState<S>(
           // showing, and the card would change its age between two opens.
           if (h) {
             // The cell this load seeded — captured so a doc switch (a fresh
-            // cell) or a later write (which advances this one) is detectable.
+            // cell) or a later write (which moves its generation) is detectable.
             const cell = baselineRef.current;
+            const ticket = cell.submits;
             void mutateSidecar<S | null>(h, filename, null, (cur) =>
               cur === null
                 ? null
@@ -411,19 +406,11 @@ export function usePersistentState<S>(
                 // NOT the file we loaded — a skill's commit landed between the
                 // mount read and this write-back — disk now holds a value the
                 // panel has never seen, and both I/Os stamped the ledger, so
-                // the SidecarWatcher will never report it: the agent's card was
-                // on disk but invisible until reopen. Adopt it the way the
-                // watcher's rehydrate does — as the new base, MERGED into
-                // memory so a user edit made meanwhile survives. Only while the
-                // cell still holds this load's base: a later write (or a doc
-                // switch) owns the base from then on, and merged against disk
-                // itself.
-                if (cancelled || wrote === null) return;
-                if (cell.value !== migrated || deepEqual(wrote, migrated)) return;
-                cell.value = wrote;
-                setState((prev) =>
-                  mergeSidecarState<S>(filename, migrated, wrote, prev),
-                );
+                // the SidecarWatcher will never report it. The one convergence
+                // door (task 1078) adopts it — the same door every persist
+                // goes through — unless a write armed meanwhile will.
+                if (cancelled || pendingRef.current !== null) return;
+                convergeOnWrite<S>(filename, cell, ticket, migrated, wrote, setState);
               })
               .catch(() => {});
           }
@@ -537,11 +524,19 @@ export function usePersistentState<S>(
         // the base CELL it has been tracking, captured NOW so a write for this
         // doc can never advance the next doc's base. The door reads and
         // advances it inside the lock (task 849). Memory converges with the
-        // merged disk by the other door: the watcher re-read below, which
-        // merges the same way.
+        // merged disk through `convergeOnWrite` right after it lands (task
+        // 1078) — NOT through the watcher, which never sees a write we
+        // stamped — and with later external writes through the re-read.
         const base = baselineRef.current;
         try {
-          await writeSidecarMerged<S>(h, filename, base, s, migrateRef.current);
+          const written = await writeSidecarMerged<S>(h, filename, base, s, migrateRef.current);
+          // SHOW what the merge absorbed (task 1078) — the one convergence
+          // door. Not for a dead cell (doc switched), and not while a newer
+          // payload is ARMED: it predates the adoption, lacks the absorbed
+          // records, and converges itself once it is written.
+          if (baselineRef.current === base && pendingRef.current === null) {
+            convergeOnWrite<S>(filename, base, written.ticket, s, written.wrote, setState);
+          }
         } catch (err) {
           if (isStalePipelineError(err)) return;
           console.error(`Failed to save ${errorLabel ?? filename}:`, err);
@@ -703,127 +698,6 @@ export function usePersistentState<S>(
   // does nothing. This matters most for the VIEW tier's 2.5 s window, and costs
   // the 300 ms content tier nothing.
   useEffect(() => onTabHidden(flushPending), [flushPending]);
-
-  // ── LIVE external-sidecar reactivity ──────────────────────────────────────
-  // Subscribe to the `SidecarWatcher`'s per-file change signal so a card an AI
-  // agent drafts straight onto disk (into `virgil/<filename>`) surfaces in the
-  // LIVE app without a manual reload. The watcher only fires on a GENUINE
-  // external change (Virgil's own debounced writes stamp the disk ledger via
-  // `writeSidecar`, so they are filtered upstream — the own-write guard), and it
-  // has already `invalidateSidecarBundle`'d before dispatching, so the re-read
-  // below hits disk rather than the stale cached snapshot.
-  //
-  // DATA SAFETY — DIRTY GUARD (no clobber): re-read ONLY when THIS instance is
-  // clean, i.e. `hasPendingWrite()` is false — no debounced write ARMED and no
-  // write IN FLIGHT (task 569; the timer handle alone reads clean for the whole
-  // in-flight window, which is the window the defect lived in). If a local
-  // edit is pending we DEFER — skip this round — so an in-progress local edit is
-  // never overwritten by the on-disk value. The guard is per-instance
-  // (docId+filename), so a dirty notes.json never blocks a clean revisions.json
-  // re-read.
-  //
-  // WHAT A DEFERRAL MEANS (task 719 — it no longer means a discard). Until
-  // 719 this hook wrote WHOLE SNAPSHOTS, so a deferral meant LOCAL WINS for
-  // this file: the pending write landed the local state over the external
-  // bytes and `writeTrackedText` re-baselined the disk ledger to OURS, so the
-  // watcher's next poll emitted nothing and the external change was gone. That
-  // is how an agent's answered report was deleted while the user had one
-  // unsaved keystroke in the same panel — the 220/558 "two writers means ONE
-  // serialized read-modify-merge authority" class, with two one-file fixes and
-  // no general door.
-  //
-  // Both halves are now here. The write goes through `mutateSidecar` and MERGES
-  // against a base (see `persist`), so a landed write holds the union rather
-  // than the local snapshot; and a deferral is REMEMBERED and replayed the
-  // moment this instance's writes drain, so the event is not dropped. The old
-  // objections to a replay both rested on the rebuild: "a replay after a landed
-  // write reads back our own snapshot" is now a genuine no-op only because the
-  // write merged, and "a replay after a refused write adopts disk over unlanded
-  // memory" is answered by the re-read merging too.
-  //
-  // KEYSTROKE SANCTITY: this is an event listener on `window`, NOT an
-  // `editor.on(...)` subscriber. It fires only on an external sidecar change
-  // (wall-clock-driven), never per keystroke. Typing runs zero code here.
-  useEffect(() => {
-    if (!docId) return;
-    let cancelled = false;
-
-    // The re-read, published on a ref so the WRITE DRAIN can replay it. A
-    // deferral is a debt (see the `deferredExternalReadRef` note above), and
-    // this is the function that pays it.
-    const rehydrate = () => {
-      deferredExternalReadRef.current = false;
-      // Re-read from disk (the bundle was invalidated by the watcher, so this
-      // hits disk). Merge into state on success; on absence (file removed) fall
-      // back to the default so the panel empties. A read error leaves state
-      // as-is and RE-ARMS the debt.
-      readSidecarIfExists<S>(docId, filename)
-        .then((raw) => {
-          if (cancelled) return;
-          // Re-check the dirty guard AFTER the async read: the user may have
-          // started editing — or a `persist()` may have started writing — while
-          // the read was in flight. Never stomp either; re-arm so the drain
-          // replays (task 719 — before it, this branch dropped the event).
-          if (hasPendingWrite()) {
-            deferredExternalReadRef.current = true;
-            return;
-          }
-          if (raw === null) {
-            // External removal → reset to the empty default (matches the load
-            // path's "absent" handling, but here the sidecar existed then went
-            // away, so an explicit reset is correct).
-            baselineRef.current.value = null;
-            setState(defaultValue);
-            return;
-          }
-          const migrated = migrate ? migrate(raw) : (raw as S);
-          const base = baselineRef.current.value;
-          // Disk is now the base: this is what the file holds.
-          baselineRef.current.value = migrated;
-          // MERGE rather than adopt. The guard above only proves no write is
-          // ARMED or IN FLIGHT; it does not prove memory equals the base — a
-          // `setState` consumer, or a write the chrome refused, leaves an
-          // in-memory value disk has never seen, and adopting wholesale would
-          // discard it. Where memory IS the base (the common case) the merge
-          // yields exactly `migrated`, so the clean path is unchanged.
-          setState((prev) => mergeSidecarState<S>(filename, base, migrated, prev));
-        })
-        .catch(() => {
-          // Transient read failure — leave state untouched and re-arm, so the
-          // next drain retries. NOT a claim that the watcher will try again:
-          // it re-baselined before emitting and will not re-emit.
-          deferredExternalReadRef.current = true;
-        });
-    };
-    rehydrateRef.current = rehydrate;
-
-    const onSidecarChanged = (e: Event) => {
-      const detail = (e as CustomEvent<SidecarChangedDetail>).detail;
-      if (!detail) return;
-      if (detail.docId !== docId || detail.filename !== filename) return;
-      // DIRTY GUARD: an armed or in-flight write means local state has an
-      // unsaved edit — defer rather than clobber it. The deferral is now
-      // REMEMBERED and replayed when the write drains (task 719); before that
-      // it was a silent discard, and the whole-snapshot write that followed
-      // overwrote the change it had just declined to read.
-      if (hasPendingWrite()) {
-        deferredExternalReadRef.current = true;
-        return;
-      }
-      rehydrate();
-    };
-
-    window.addEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
-    return () => {
-      cancelled = true;
-      rehydrateRef.current = null;
-      deferredExternalReadRef.current = false;
-      window.removeEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
-    };
-    // Same rationale as the loader effect: `filename`/`defaultValue`/`migrate`
-    // are module-level constants; we track only `docId` so a switch re-subscribes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId]);
 
   return {
     state,
