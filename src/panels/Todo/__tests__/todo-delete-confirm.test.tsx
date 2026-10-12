@@ -23,6 +23,7 @@ class ResizeObserverStub {
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { TodoRow } from "@/panels/Todo/TodoRow";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
+import { expectFrameBesideAnchor, placeAnchorOnScreen } from "@/components/__tests__/_anchored-confirm-geometry";
 import type { TodoItem } from "@/lib/types";
 
 afterEach(cleanup);
@@ -199,12 +200,14 @@ describe("TodoRow on the shared card-delete door (task 976)", () => {
 
   it("Delete on a store-selected todo WITH text opens the confirm, beside the card", () => {
     const { onDelete, shell } = renderStoreSelected(makeTodo({ text: "buy milk" }));
+    // jsdom rects are all zeros, which a measured placement reads as
+    // off-screen (task 1065) — give the card a real box (task 1077).
+    placeAnchorOnScreen(shell);
     fireEvent.keyDown(shell, { key: "Delete" });
     expect(onDelete).not.toHaveBeenCalled();
     const message = screen.getByText("This item has text. Delete it?");
     // Anchored placement: the frame is positioned against the card, not
     // flex-centred in the scrim.
-    const frame = message.closest<HTMLElement>("[tabindex='-1']")!;
-    expect(frame.style.position).toBe("fixed");
+    expectFrameBesideAnchor(message.closest<HTMLElement>("[tabindex='-1']")!);
   });
 });
