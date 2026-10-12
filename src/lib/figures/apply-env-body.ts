@@ -24,6 +24,7 @@ import {
   extractFigureSources,
   figureNodeAttrsFromSource,
   extractGraphicsAttrs,
+  type FigureGraphicsParts,
 } from "@/lib/figures/parse-attrs";
 import {
   applyLinkedAnchorBoundaries,
@@ -140,7 +141,8 @@ export function applyGraphicsCommandEdit(
  *  body and the `\includegraphics` attrs derived from it.
  *
  *  The width stepper and file picker only ever rewrite the `\includegraphics`
- *  line, which lives entirely in `extras`. They used to reach that through a
+ *  line, which lives in `extras` — or, on a caption-first figure, in
+ *  `trailingExtras` (task 1084), so both halves are written. They used to reach that through a
  *  full env round-trip (synthesize a body from `extras` + the caption's PLAIN
  *  TEXT + label, then re-extract), and every trip through that funnel lost
  *  something the projection couldn't carry: the `[short]` LoF bracket (the
@@ -154,7 +156,7 @@ export function applyGraphicsCommandEdit(
 export function applyFigureExtrasEdit(
   editor: Editor,
   pos: number,
-  nextExtras: string,
+  next: FigureGraphicsParts,
 ): boolean {
   if (!editor || editor.isDestroyed) return false;
   if (pos < 0 || pos >= editor.state.doc.content.size) return false;
@@ -162,12 +164,15 @@ export function applyFigureExtrasEdit(
   if (!node || node.type.name !== "figureBlock") return false;
   // Only the graphics attrs are re-derived, straight off the new body — the
   // caption/label attrs are never named here, so they cannot be clobbered.
-  const sources = extractFigureSources(nextExtras);
+  // Both halves (task 1084): a caption-first figure's image lives in
+  // `trailingExtras`, and deriving from `extras` alone erased its `sources`.
+  const sources = extractFigureSources(`${next.extras}\n${next.trailingExtras}`);
   const first = sources[0] ?? null;
   editor.view.dispatch(
     editor.state.tr.setNodeMarkup(pos, undefined, {
       ...node.attrs,
-      extras: nextExtras,
+      extras: next.extras,
+      trailingExtras: next.trailingExtras,
       source: first?.path ?? null,
       widthPercent: first?.widthPercent ?? null,
       sources,

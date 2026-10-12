@@ -6,6 +6,9 @@ import {
   canEditWidthInOptions,
   extractFigureAttrs,
   setWidthInOptions,
+  parseWidthSpec,
+  withFigureGraphicsEdit,
+  withInsertedFigureGraphics,
   withReplacedFigurePath,
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
@@ -923,5 +926,89 @@ describe("withReplacedFigurePath", () => {
 
   it("returns null when no \\includegraphics is present", () => {
     expect(withReplacedFigurePath("\\caption{none}", "x")).toBeNull();
+  });
+});
+
+describe("the ONE option-list reading (task 1084)", () => {
+  it("a factor-less relative width is factor 1 and a step REPLACES it (single key)", () => {
+    expect(setWidthInOptions("width=\\linewidth", 50)).toEqual({
+      options: "width=0.5\\linewidth",
+      ok: true,
+    });
+    expect(setWidthInOptions("width=\\textwidth", 50).options).toBe("width=0.5\\textwidth");
+    expect(setWidthInOptions("clip, width = \\columnwidth", 30).options).toBe(
+      "clip, width = 0.3\\columnwidth",
+    );
+    expect(parseWidthSpec("width=\\linewidth")).toBe(100);
+    expect(canEditWidthInOptions("width=\\linewidth")).toBe(true);
+  });
+
+  it("a %-commented width is not read, and the live one is the one rewritten", () => {
+    const opts = "% width=0.3\\textwidth,\n width=0.8\\linewidth";
+    expect(parseWidthSpec(opts)).toBe(80);
+    expect(setWidthInOptions(opts, 50).options).toBe(
+      "% width=0.3\\textwidth,\n width=0.5\\linewidth",
+    );
+    // A commented-out width alone is NO width — prepend, and the comment stays.
+    expect(parseWidthSpec("%width=0.3\\textwidth\n")).toBeNull();
+  });
+
+  it("the LAST width wins, as graphicx applies keys in order", () => {
+    expect(parseWidthSpec("width=0.3\\textwidth,width=0.6\\textwidth")).toBe(60);
+    expect(canEditWidthInOptions("width=0.3\\textwidth,width=4cm")).toBe(false);
+  });
+
+  it("an unmodeled width expression is not the chrome's to overwrite", () => {
+    expect(canEditWidthInOptions("width=0.5\\paperwidth")).toBe(false);
+    expect(setWidthInOptions("width=\\dimexpr\\linewidth-2em\\relax", 50).ok).toBe(false);
+    // A comma inside a brace group is not an entry separator.
+    expect(parseWidthSpec("trim={1 2, 3 4},width=0.4\\linewidth")).toBe(40);
+  });
+});
+
+describe("figure graphics live in either half (task 1084)", () => {
+  it("edits the half that holds the first live \\includegraphics, leaving the other byte-identical", () => {
+    const parts = {
+      extras: "\\centering % \\includegraphics{old.png}\n",
+      trailingExtras: "\\includegraphics[width=0.5\\textwidth]{a.png}",
+    };
+    expect(withFigureGraphicsEdit(parts, (t) => withUpdatedFigureWidth(t, 70))).toEqual({
+      extras: parts.extras,
+      trailingExtras: "\\includegraphics[width=0.7\\textwidth]{a.png}",
+    });
+    expect(
+      withFigureGraphicsEdit(parts, (t) => withReplacedFigurePath(t, "figures/b.png")),
+    ).toEqual({
+      extras: parts.extras,
+      trailingExtras: "\\includegraphics[width=0.5\\textwidth]{figures/b.png}",
+    });
+  });
+
+  it("no target → null; insertion is deterministic and TeX-safe-gated", () => {
+    const parts = { extras: "\\centering\n", trailingExtras: "" };
+    expect(withFigureGraphicsEdit(parts, (t) => withUpdatedFigureWidth(t, 50))).toBeNull();
+    expect(withInsertedFigureGraphics(parts, "figures/a.png")).toEqual({
+      extras: "\\centering\n  \\includegraphics{figures/a.png}",
+      trailingExtras: "",
+    });
+    expect(withInsertedFigureGraphics({ extras: "", trailingExtras: "" }, "a.png")?.extras).toBe(
+      "  \\centering\n  \\includegraphics{a.png}",
+    );
+    expect(withInsertedFigureGraphics(parts, "a#b.png")).toBeNull();
+  });
+
+  it("a caption-first figure round-trips byte-stable after a width edit", () => {
+    const src =
+      "\\begin{figure}\n\\caption{X}\\label{fig:a}\n\\centering\n\\includegraphics[width=\\linewidth]{a.png}\n\\end{figure}\n";
+    const once = serializeBody(parseLatex(src));
+    const doc = parseLatex(src);
+    const fig = (doc.content ?? []).find((n: JSONContent) => n.type === "figureBlock")!;
+    const next = withFigureGraphicsEdit(
+      { extras: fig.attrs!.extras, trailingExtras: fig.attrs!.trailingExtras },
+      (t) => withUpdatedFigureWidth(t, 50),
+    )!;
+    fig.attrs = { ...fig.attrs, ...next };
+    const edited = serializeBody(doc);
+    expect(edited).toBe(once.replace("width=\\linewidth", "width=0.5\\linewidth"));
   });
 });
