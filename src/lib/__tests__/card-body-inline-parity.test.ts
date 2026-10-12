@@ -84,11 +84,14 @@ function blankIds(tex: string): string {
 /** Every delimiter form, and what the SHARED scanner canonicalizes it to. */
 const MATH_FIXTURES: readonly { src: string; canonical: string }[] = [
   { src: "Inline $x_i$ here.", canonical: "Inline $x_i$ here." },
-  { src: "See \\(x^2\\) here.", canonical: "See $x^2$ here." },
-  { src: "Display $$E=mc^2$$ here.", canonical: "Display $E=mc^2$ here." },
-  { src: "Display \\[x^2\\] here.", canonical: "Display $x^2$ here." },
+  // Task 1070: the canonical form IS the source — the node carries its
+  // delimiter. (These rows pinned `$…$` before it, which saved `$$…$$` display
+  // math as INLINE math.)
+  { src: "See \\(x^2\\) here.", canonical: "See \\(x^2\\) here." },
+  { src: "Display $$E=mc^2$$ here.", canonical: "Display $$E=mc^2$$ here." },
+  { src: "Display \\[x^2\\] here.", canonical: "Display \\[x^2\\] here." },
   // A `--` and an accent INSIDE math stay literal (memo §A) on both surfaces.
-  { src: "Math \\(a -- \\'e\\) here.", canonical: "Math $a -- \\'e$ here." },
+  { src: "Math \\(a -- \\'e\\) here.", canonical: "Math \\(a -- \\'e\\) here." },
 ];
 
 describe("341 · math delimiters are ONE vocabulary", () => {
@@ -114,8 +117,8 @@ describe("341 · math delimiters are ONE vocabulary", () => {
 
   it("math content never reaches the typography buffer", () => {
     // The whole reason an unknown delimiter is worse than a refused one.
-    expect(cardRt("A \\(x^2 \\& y_1\\) B")).toBe("A $x^2 \\& y_1$ B");
-    expect(cardRt("A $$x^2$$ B")).toBe("A $x^2$ B");
+    expect(cardRt("A \\(x^2 \\& y_1\\) B")).toBe("A \\(x^2 \\& y_1\\) B");
+    expect(cardRt("A $$x^2$$ B")).toBe("A $$x^2$$ B");
   });
 });
 
@@ -254,7 +257,7 @@ describe("341 · a footnote argument is not split by the block reader", () => {
     const inline = (doc.content?.[0].content ?? []) as JSONContent[];
     expect(inline.filter((n) => n.type === "footnote")).toHaveLength(1);
     expect(blankIds(docRt("Text.\\footnote{Display \\[x^2\\] here.} tail.")))
-      .toBe("Text.\\vfid{}\\footnote{Display $x^2$ here.} tail.");
+      .toBe("Text.\\vfid{}\\footnote{Display \\[x^2\\] here.} tail.");
   });
 
   it("the gate is general, not a \\[ special case", () => {

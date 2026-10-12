@@ -25,6 +25,11 @@ import { ATOM_REGISTRY } from "./atom-registry";
 import { withClipboardCodec } from "./attr-clipboard-codec";
 import { createLeafNodeView } from "./leaf-node-view";
 import { ERROR_INK } from "@/lib/error-ink";
+import {
+  DEFAULT_INLINE_MATH_DELIM,
+  emitInlineMath,
+  isDisplayInlineMathDelim,
+} from "@/lib/latex-lexer";
 
 const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
 
@@ -91,7 +96,8 @@ function mathNodeView(opts: {
   // drift from the SSOT; displayMath (not an atom) passes its literal.
   dataType: string;
   kind: "inline" | "display";
-  displayMode: boolean;
+  /** Read off the LIVE node, so a `delim` change repaints (task 1070). */
+  displayMode: (node: PMNode) => boolean;
 }) {
   const { node, getPos, editor, surface, tag, className, dataType, kind, displayMode } = opts;
   // Task 840: the view reads its LIVE node through the leaf factory. The old
@@ -105,10 +111,12 @@ function mathNodeView(opts: {
     className,
     dataType,
     paint(dom, next, prev) {
-      // KaTeX is a full `innerHTML` rebuild — run it only when the latex moved.
+      // KaTeX is a full `innerHTML` rebuild — run it only when the latex or
+      // the display mode moved.
       const latex = next.attrs.latex || "";
-      if (!prev || (prev.attrs.latex || "") !== latex) {
-        renderMath(dom, latex, displayMode);
+      const display = displayMode(next);
+      if (!prev || (prev.attrs.latex || "") !== latex || displayMode(prev) !== display) {
+        renderMath(dom, latex, display);
       }
       // 2d: NodeView-owned data-uuid/kind exposure (displayMath is anchorable;
       // MAIN surface only — parity with the deleted UuidAttrDecorator scope).
@@ -203,8 +211,11 @@ export const InlineMath = Node.create<MathOptions>({
   addAttributes() {
     // Round-trips the HTML clipboard through the ONE codec (task 1068) —
     // `$1.50$` is never number-coerced to `$1.5$`.
+    // `delim` is which of the four pairs the source used (task 1070): opaque
+    // to every UI, read only by the emitter and the display-mode paint.
     return withClipboardCodec({
       latex: { default: "" },
+      delim: { default: DEFAULT_INLINE_MATH_DELIM },
     });
   },
 
@@ -219,7 +230,7 @@ export const InlineMath = Node.create<MathOptions>({
         "data-type": INLINE_MATH_ATOM.domType,
         class: INLINE_MATH_ATOM.domClass,
       }),
-      `$${(node.attrs.latex as string) || ""}$`,
+      emitInlineMath(node.attrs.latex, node.attrs.delim),
     ];
   },
 
@@ -289,7 +300,9 @@ export const InlineMath = Node.create<MathOptions>({
         className: INLINE_MATH_ATOM.domClass,
         dataType: INLINE_MATH_ATOM.domType,
         kind: "inline",
-        displayMode: false,
+        // `$$…$$` / `\[…\]` written mid-paragraph typeset display-style in the
+        // PDF, so the editor paints them that way too (task 1070).
+        displayMode: (n) => isDisplayInlineMathDelim(n.attrs.delim),
       });
   },
 });
@@ -425,7 +438,7 @@ export const DisplayMath = Node.create<MathOptions>({
         // omits it, so this stays a literal (task 232).
         dataType: "display-math",
         kind: "display",
-        displayMode: true,
+        displayMode: () => true,
       });
   },
 });

@@ -52,6 +52,7 @@ import {
   isEscaped,
   projectDetectableLatex,
   startsBlockBoundary,
+  emitInlineMath,
   wrapVerbatimEnvBody,
   TEX_BLOCK_END_ESCAPE,
 } from "@/lib/latex-lexer";
@@ -929,7 +930,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       return "\\hrulefill\n\n";
 
     case "inlineMath":
-      return `$${node.attrs?.latex || ""}$`;
+      return emitInlineMath(node.attrs?.latex, node.attrs?.delim);
 
     case "displayMath": {
       const uuid = node.attrs?.uuid as string | null;
@@ -2335,7 +2336,7 @@ export function needsUuidWork(doc: JSONContent): boolean {
 /** Recursively extract plain text from a JSONContent subtree. */
 function extractPlainText(node: JSONContent): string {
   if (node.type === "text") return node.text || "";
-  if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
+  if (node.type === "inlineMath") return emitInlineMath(node.attrs?.latex, node.attrs?.delim);
   if (node.type === "citation") return node.attrs?.command || "";
   if (node.type === "footnote") return richJsonToPlainText(normalizeRichContent(node.attrs?.content));
   if (node.type === "hardBreak") return " ";

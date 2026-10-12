@@ -120,14 +120,17 @@ describe("bracket-in-prose round-trip (serializer↔parser escape symmetry)", ()
   it("genuine display math `\\[ … \\]` is untouched — still parses to a math atom, not a literal bracket", () => {
     const onDisk = "before \\[ x^2 + y^2 \\] after";
     const parsed = parseBody(onDisk);
-    // `\[…\]` at a block boundary becomes a top-level displayMath node; the
-    // point is that it is preserved as MATH (never collapsed to literal `[`/`]`
-    // by the new prose-bracket unwrap, which only ever sees the `{[}` triple).
-    const math: any = (parsed.content || []).find(
-      (n: any) => n.type === "displayMath" || n.type === "inlineMath",
+    // A mid-line `\[…\]` stays in its paragraph as an `inlineMath` atom with
+    // `delim: "\\["` (task 1070 — pre-1070 it split the paragraph into a
+    // top-level displayMath); the point is that it is preserved as MATH (never
+    // collapsed to literal `[`/`]` by the prose-bracket unwrap, which only ever
+    // sees the `{[}` triple). The payload is verbatim, spaces included.
+    const math: any = firstParagraphContent(parsed).find(
+      (n: any) => n.type === "inlineMath",
     );
     expect(math).toBeDefined();
-    expect(math.attrs.latex).toBe("x^2 + y^2");
+    expect(math.attrs.latex).toBe(" x^2 + y^2 ");
+    expect(math.attrs.delim).toBe("\\[");
   });
 
   it("mid-paragraph inline math `\\( … \\)` is untouched — stays an inlineMath atom", () => {
@@ -135,7 +138,7 @@ describe("bracket-in-prose round-trip (serializer↔parser escape symmetry)", ()
     const inline = firstParagraphContent(parsed);
     const math = inline.find((n: any) => n.type === "inlineMath");
     expect(math).toBeDefined();
-    expect(math.attrs.latex).toBe("x^2");
+    expect(math.attrs.latex).toBe(" x^2 "); // verbatim since task 1070
   });
 
   it("`[` inside a code (\\texttt) span is escaped too and round-trips to a literal `[` (correct for compilation)", () => {

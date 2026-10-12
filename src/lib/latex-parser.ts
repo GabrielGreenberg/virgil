@@ -65,6 +65,7 @@ import {
   matchStarOptBraceAt,
   matchControlSymbolAt,
   matchInlineMathAt,
+  inlineMathDelimAttr,
   matchInlineVerbAt,
   matchLineBreakAt,
   skipOpaqueConstructAt,
@@ -591,7 +592,7 @@ export function parseInlineContent(
       const math = matchInlineMathAt(text, i);
       if (math) {
         flush();
-        nodes.push({ type: "inlineMath", attrs: { latex: math.latex } });
+        nodes.push({ type: "inlineMath", attrs: { latex: math.latex, ...inlineMathDelimAttr(math.delim) } });
         i = math.end;
         continue;
       }
@@ -2733,6 +2734,29 @@ function readParagraph(ctx: ParseContext): string {
     ) {
       ctx.pos += 2;
       break;
+    }
+
+    // A MATH RUN is read whole (task 1070). Math is literal and cannot hold a
+    // paragraph break, so nothing inside it — a `\begin{aligned}` opening a
+    // line of a multi-line `$$…$$` or `\[…\]` — may end the paragraph, and the
+    // run is handed intact to the inline parser, which keeps it as ONE
+    // `inlineMath` atom carrying its delimiter. The same scanner
+    // (`matchInlineMathAt`) decides both, so the two layers cannot disagree
+    // about where the math ends. A run that would cross a blank line is not
+    // math (an unpaired `$`): the scan goes on character by character.
+    if (
+      !inCommentTail &&
+      (ctx.src[ctx.pos] === "$" || (ctx.src[ctx.pos] === "\\" && !isEscaped(ctx.src, ctx.pos))) &&
+      // …except where the run's opener is itself a paragraph boundary (a
+      // LINE-START `\[`): that is the `displayMath` block's, decided below.
+      !(result.trim() && endsParagraphAt(ctx.src, ctx.pos))
+    ) {
+      const math = matchInlineMathAt(ctx.src, ctx.pos);
+      if (math && !/\n[ \t]*\n/.test(ctx.src.slice(ctx.pos, math.end))) {
+        result += ctx.src.slice(ctx.pos, math.end);
+        ctx.pos = math.end;
+        continue;
+      }
     }
 
     // A comment line does NOT end a paragraph (task 347). In LaTeX a `%` line
