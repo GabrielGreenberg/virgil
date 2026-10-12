@@ -24,7 +24,8 @@
  *    `scope: "fresh"` (the borrowed card editors) re-mints EVERY card-bearing id
  *    unconditionally: a card body's editor cannot see the main document's live
  *    ids, so "is it free?" is unanswerable there and paste-as-new is the only
- *    safe reading (the Stack pull's rule).
+ *    safe reading (the Stack pull's rule). A float CAN see them — it names
+ *    MAIN through `hostDoc` and collides against both live sets (task 1074).
  *
  * 2. PLAIN TEXT. The plain-text flavour (what another app receives) projects
  *    every atom through ONE table, `ATOM_PLAIN_TEXT`, keyed by `AtomKind` — so a
@@ -102,6 +103,15 @@ export interface AtomClipboardOptions {
   /** `"collide"` (main editor): keep a pasted id that is free, re-mint one
    *  that is live. `"fresh"` (card editors): re-mint every card-bearing id. */
   scope: "collide" | "fresh";
+  /**
+   * A surface whose doc is a PART of another document (a float holds one node
+   * of MAIN's) names that document here (task 1074). When it resolves, the
+   * paste reads `"collide"` against the UNION of both live sets — so a cut →
+   * paste inside a float keeps its id (and its card) once the cut has reached
+   * MAIN, and re-mints while it has not. Unresolvable (no host, host torn
+   * down) → `scope` stands.
+   */
+  hostDoc?: (() => PMNode | null) | null;
 }
 
 /**
@@ -164,11 +174,11 @@ export const AtomClipboard = Extension.create<AtomClipboardOptions>({
   name: "atomClipboard",
 
   addOptions() {
-    return { scope: "collide" };
+    return { scope: "collide", hostDoc: null };
   },
 
   addProseMirrorPlugins() {
-    const scope = this.options.scope;
+    const { scope, hostDoc } = this.options;
     return [
       new Plugin({
         key: new PluginKey("atomClipboard"),
@@ -178,8 +188,12 @@ export const AtomClipboard = Extension.create<AtomClipboardOptions>({
             if (view.dragging?.move) return slice;
             if (!sliceHasAtomIds(slice)) return slice;
             // The live set is what the paste ENTERS — a cut has already
-            // removed its source, so its ids read as free.
-            return remintSlice(slice, collectAtomIds(view.state.doc), scope === "fresh");
+            // removed its source, so its ids read as free. A part-of-a-host
+            // surface also asks the host (a float's doc is one node of MAIN's).
+            const live = collectAtomIds(view.state.doc);
+            const host = hostDoc?.() ?? null;
+            if (host) for (const id of collectAtomIds(host)) live.add(id);
+            return remintSlice(slice, live, scope === "fresh" && !host);
           },
         },
       }),
