@@ -189,6 +189,10 @@ export interface InlineAtomHit {
   /** The id of the nearest enclosing descend-into atom (e.g. the host
    *  footnote), or null when the hit is top-level. */
   nestedInId: string | null;
+  /** The atom's own attrs (read-only view) — for a caller that needs an id
+   *  attr other than the folded `id`, e.g. "which atom ids are live?"
+   *  (`collectAtomIds`, task 1074). */
+  attrs: Readonly<Record<string, unknown>>;
 }
 
 function idOf(attrs: Record<string, unknown>): string {
@@ -255,6 +259,7 @@ function* walkAtoms(
         displayText: child.attrs.displayText as string | undefined,
         path: childPath,
         nestedInId,
+        attrs: child.attrs,
       };
     }
 

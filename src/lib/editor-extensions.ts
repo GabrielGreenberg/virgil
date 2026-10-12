@@ -1881,9 +1881,18 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     Citation,
     LabelRef,
     // The atoms' paste identity + plain-text clipboard (task 1068). A float's
-    // doc is one node of MAIN's, so it cannot answer "is this id free?" —
-    // it re-mints every pasted card-bearing id rather than risk a duplicate.
-    AtomClipboard.configure({ scope: isFloat ? "fresh" : "collide" }),
+    // doc is one node of MAIN's, so it asks MAIN "is this id free?" (task
+    // 1074) — and re-mints every pasted card-bearing id only while MAIN is
+    // unreachable, rather than risk a duplicate.
+    AtomClipboard.configure({
+      scope: isFloat ? "fresh" : "collide",
+      hostDoc: isFloat
+        ? () => {
+            const main = ctx.host?.getMainEditor() ?? null;
+            return main && !main.isDestroyed ? main.state.doc : null;
+          }
+        : null,
+    }),
     // cardContext gates the example's par-title strip (#47): on a card/float
     // surface its absolutely-positioned untitled "+T" overlays the card
     // header and collides with the card's own CardBodyTitle +T. Mirrors the

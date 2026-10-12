@@ -58,7 +58,7 @@
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
-import { remintNestedAtomIds } from "@/lib/inline-content";
+import { inlineAtoms, remintNestedAtomIds } from "@/lib/inline-content";
 import { generateShortId } from "@/lib/uuid";
 import { deferringParent } from "@/lib/node-attr-sets";
 
@@ -124,19 +124,24 @@ export function withFreshBlockUuids(
  * `citationId` (via the ATOM_REGISTRY `idAttr`) plus its unified `linkId`
  * mirror. Atom kinds that own no cloneable Card identity (inlineMath /
  * labelRef → `idAttr: null`) are skipped, exactly as the remint skips them.
+ *
+ * Walks `inlineAtoms`, NOT `doc.descendants` (task 1074): a `\cite` inside a
+ * footnote lives in the footnote's `attrs.content` blob, which `descendants`
+ * never enters — so a descendants-only collector answered "free" for a nested
+ * id that `remintNestedAtomIds` then KEPT on paste/move/pull, duplicating it.
+ * The collector and the remint walker now share ONE notion of where atoms hide
+ * (`BODY_BEARING_ATOMS`). O(doc) — call per gesture, never per keystroke.
  */
 export function collectAtomIds(doc: PMNode): Set<string> {
   const ids = new Set<string>();
-  doc.descendants((node) => {
-    const meta = atomMetaForNodeName(node.type.name);
-    if (meta?.idAttr) {
-      const own = node.attrs[meta.idAttr];
-      if (typeof own === "string" && own) ids.add(own);
-      const linkId = node.attrs.linkId;
-      if (typeof linkId === "string" && linkId) ids.add(linkId);
-    }
-    return true;
-  });
+  for (const hit of inlineAtoms(doc)) {
+    const meta = atomMetaForNodeName(hit.kind);
+    if (!meta?.idAttr) continue;
+    const own = hit.attrs[meta.idAttr];
+    if (typeof own === "string" && own) ids.add(own);
+    const linkId = hit.attrs.linkId;
+    if (typeof linkId === "string" && linkId) ids.add(linkId);
+  }
   return ids;
 }
 
