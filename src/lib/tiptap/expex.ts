@@ -2102,68 +2102,76 @@ export const ExpexNumbering = Extension.create({
   // Gloss-cell-only Tab / Shift-Tab navigation. List-style Enter / Tab /
   // Shift-Tab live on the ExampleItem node itself (same pattern as
   // listItem) and bail out when the cursor is inside a glossCell so this
-  // handler can take over.
+  // handler can take over. Both directions go through the ONE pure
+  // `glossCellTab` (task 1075), so they cannot disagree about where a cell
+  // starts.
   addKeyboardShortcuts() {
-    const glossCellDepth = (
-      $from: import("@tiptap/pm/model").ResolvedPos,
-    ): number => {
-      for (let d = $from.depth; d >= 0; d--) {
-        if ($from.node(d).type.name === "glossCell") return d;
-      }
-      return -1;
+    const run = (editor: Editor, dir: 1 | -1): boolean => {
+      const result = glossCellTab(editor.state, dir);
+      if (result === false) return false;
+      if (result) editor.view.dispatch(result);
+      return true;
     };
-
     return {
-      Tab: ({ editor }) => {
-        const { state } = editor;
-        const { $from } = state.selection;
-        const cellDepth = glossCellDepth($from);
-        if (cellDepth < 0) return false;
-        const rowDepth = cellDepth - 1;
-        const row = $from.node(rowDepth);
-        if (row.type.name !== "alignedGlossRow") return false;
-        const cellIndex = $from.index(rowDepth);
-        const rowStart = $from.before(rowDepth);
-        if (cellIndex < row.childCount - 1) {
-          const nextCellStart =
-            rowStart + 1 + row.child(cellIndex).nodeSize;
-          const pos = nextCellStart + 1;
-          editor.view.dispatch(
-            state.tr.setSelection(TextSelection.create(state.doc, pos)),
-          );
-          return true;
-        }
-        const endOfRow = rowStart + row.nodeSize - 1;
-        const cellType = state.schema.nodes.glossCell;
-        if (!cellType) return false;
-        const tr = state.tr.insert(endOfRow, cellType.create());
-        const pos = endOfRow + 2;
-        tr.setSelection(TextSelection.create(tr.doc, pos));
-        editor.view.dispatch(tr);
-        return true;
-      },
-      "Shift-Tab": ({ editor }) => {
-        const { state } = editor;
-        const { $from } = state.selection;
-        const cellDepth = glossCellDepth($from);
-        if (cellDepth < 0) return false;
-        const rowDepth = cellDepth - 1;
-        const row = $from.node(rowDepth);
-        if (row.type.name !== "alignedGlossRow") return false;
-        const cellIndex = $from.index(rowDepth);
-        if (cellIndex === 0) return true;
-        const rowStart = $from.before(rowDepth);
-        let prevStart = rowStart + 1;
-        for (let i = 0; i < cellIndex - 1; i++) {
-          prevStart += row.child(i).nodeSize;
-        }
-        const prevCell = row.child(cellIndex - 1);
-        const pos = prevStart + 1 + prevCell.content.size;
-        editor.view.dispatch(
-          state.tr.setSelection(TextSelection.create(state.doc, pos)),
-        );
-        return true;
-      },
+      Tab: ({ editor }) => run(editor, 1),
+      "Shift-Tab": ({ editor }) => run(editor, -1),
     };
   },
 });
+
+/**
+ * Tab (`dir = 1`) / Shift-Tab (`dir = -1`) inside an aligned gloss row's cell.
+ *
+ * Returns `false` when the selection is not in an `alignedGlossRow` cell (the
+ * key falls through), `null` when the key is consumed with nothing to do
+ * (Shift-Tab in the first cell), or the transaction to dispatch:
+ *   - Tab moves the caret to the START of the next cell, or — from the last
+ *     cell — appends a fresh empty cell and puts the caret inside it;
+ *   - Shift-Tab moves the caret to the END of the previous cell.
+ *
+ * Every cell boundary is read with `ResolvedPos.posAtIndex`, which sums the
+ * sizes of ALL preceding siblings. (Task 1075: Tab used to add only the
+ * CURRENT cell's size to the row start, which is the next cell only from cell
+ * 0 — from cell ≥ 1 Tab never advanced, or landed in an arbitrary cell.)
+ */
+export function glossCellTab(
+  state: EditorState,
+  dir: 1 | -1,
+): Transaction | null | false {
+  const { $from } = state.selection;
+  let cellDepth = -1;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === "glossCell") {
+      cellDepth = d;
+      break;
+    }
+  }
+  if (cellDepth < 1) return false;
+  const rowDepth = cellDepth - 1;
+  const row = $from.node(rowDepth);
+  if (row.type.name !== "alignedGlossRow") return false;
+  const cellIndex = $from.index(rowDepth);
+  // Position just inside cell `i` (its content start).
+  const cellContentStart = (i: number) => $from.posAtIndex(i, rowDepth) + 1;
+
+  if (dir === -1) {
+    if (cellIndex === 0) return null;
+    const pos =
+      cellContentStart(cellIndex - 1) + row.child(cellIndex - 1).content.size;
+    return state.tr.setSelection(TextSelection.create(state.doc, pos));
+  }
+
+  if (cellIndex < row.childCount - 1) {
+    return state.tr.setSelection(
+      TextSelection.create(state.doc, cellContentStart(cellIndex + 1)),
+    );
+  }
+  const cellType = state.schema.nodes.glossCell;
+  if (!cellType) return false;
+  // `posAtIndex(childCount)` is the row's content end — where a new last
+  // cell goes; the caret goes one inside it.
+  const endOfRow = $from.posAtIndex(row.childCount, rowDepth);
+  const tr = state.tr.insert(endOfRow, cellType.create());
+  tr.setSelection(TextSelection.create(tr.doc, endOfRow + 1));
+  return tr;
+}
