@@ -101,7 +101,13 @@ import {
   type DocumentTemplate,
 } from "@/lib/document-templates";
 import { getLibraryHandle } from "@library/lib/library-folder";
-import { resolveAssetImport } from "@/lib/figures/asset-import";
+import {
+  resolveAssetImport,
+  isTexSafeGraphicsPath,
+  texSafeAssetName,
+  TexUnsafeAssetPathError,
+  type AssetProbeHit,
+} from "@/lib/figures/asset-import";
 import {
   stampDiskFingerprint,
   fingerprintOf,
@@ -2057,7 +2063,12 @@ export async function importFigureFile(
   if (picked.handle) {
     const relative = await docHandle.resolve(picked.handle);
     if (relative && relative.length > 0) {
-      return relative.join("/");
+      // Task 1081: the file is already on disk under its real name and
+      // cannot be renamed, so a path TeX would misread is REFUSED rather
+      // than written broken into `\includegraphics{…}`.
+      const rel = relative.join("/");
+      if (!isTexSafeGraphicsPath(rel)) throw new TexUnsafeAssetPathError(rel);
+      return rel;
     }
   }
   // Outside the paper folder, or no handle (e.g. <input type="file">) — land
@@ -2068,14 +2079,16 @@ export async function importFigureFile(
   const landed = await enqueueDocWrite(h, `figures/import/${subdir}`, async () => {
     const dh = await requireDocHandle(h.docId);
     const subdirHandle = await dh.getDirectoryHandle(subdir, { create: true });
-    const probe = async (name: string): Promise<Uint8Array | null> => {
+    const probe = async (name: string): Promise<AssetProbeHit | null> => {
+      let bytes: Uint8Array;
       try {
         const fh = await subdirHandle.getFileHandle(name);
-        return new Uint8Array(await (await fh.getFile()).arrayBuffer());
+        bytes = new Uint8Array(await (await fh.getFile()).arrayBuffer());
       } catch (e) {
         if (isNotFound(e)) return null;
         throw e; // an unreadable entry is not a free name
       }
+      return { bytes, name: await onDiskEntryName(subdirHandle, name) };
     };
     const { name, action } = await resolveAssetImport(basename, bytes, probe);
     if (action === "write") {
@@ -2088,7 +2101,25 @@ export async function importFigureFile(
   });
   // A read-only library paper skips the funnel entirely (it resolves to
   // `undefined`); answer with the would-be path, as the dev twin does.
-  return landed ?? `${subdir}/${basename}`;
+  return landed ?? `${subdir}/${texSafeAssetName(basename)}`;
+}
+
+/** The name `dir` actually holds for a probe that HIT `name` — differing only
+ *  in case on a case-insensitive filesystem (task 1081). Only a probe hit pays
+ *  for the listing; a directory that cannot be listed answers `name`. */
+async function onDiskEntryName(
+  dir: FileSystemDirectoryHandle,
+  name: string,
+): Promise<string> {
+  const keys = (dir as unknown as { keys?: () => AsyncIterable<string> }).keys;
+  if (typeof keys !== "function") return name;
+  const folded = name.toLowerCase();
+  let caseMatch: string | null = null;
+  for await (const entry of keys.call(dir)) {
+    if (entry === name) return name;
+    if (caseMatch === null && entry.toLowerCase() === folded) caseMatch = entry;
+  }
+  return caseMatch ?? name;
 }
 
 /** Helper for callers outside the React tree that need a DocWriteHandle —
