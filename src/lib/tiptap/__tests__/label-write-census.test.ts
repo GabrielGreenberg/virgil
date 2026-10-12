@@ -33,6 +33,10 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT, strip, codeOnlyLines, trackedFiles } from "../../__tests__/_source-scan";
+import {
+  extractFigureAttrs,
+  figureNodeAttrsFromSource,
+} from "@/lib/figures/parse-attrs";
 
 /** Comments blanked, string literals KEPT, line-aligned: `setNodeAttribute(pos,
  *  "label", v)` names the attr as a STRING, which `codeOnly` would erase. */
@@ -44,6 +48,13 @@ const WRITE_VERB = /\b(setNodeMarkup|updateAttributes|setNodeAttribute)\s*\(/g;
 /** A `label` OBJECT KEY inside the call's arguments (`{ label: x }`,
  *  `{ …attrs, label }`), or the attr NAME as `setNodeAttribute`'s string. */
 const LABEL_KEY = /(?:[{,]\s*label\s*[:,}])|(?:\blabel\s*[,}])|(?:"label"\s*,)/;
+/** Helpers whose RESULT carries a `label` attr, spread into a write's attrs
+ *  (`{ …node.attrs, …figureNodeAttrsFromSource(attrs) }`). The key is not
+ *  spelled at the call site, so the scan names the producer instead — and the
+ *  test below pins that each one really does return `label`, so this list
+ *  cannot quietly hide a write (task 1080: the figure popover writeback
+ *  threads every source fact through the parser's own mapping). */
+const LABEL_PRODUCERS = /\bfigureNodeAttrsFromSource\s*\(/;
 const MARKER_WINDOW = 6;
 
 const isProduction = (p: string) => !/__tests__|\.test\.|\.spec\./.test(p);
@@ -80,7 +91,7 @@ export function labelWriteSites(rel: string, raw: string): LabelWriteSite[] {
   while ((m = WRITE_VERB.exec(code)) !== null) {
     const open = m.index + m[0].length - 1;
     const args = callArgs(code, open);
-    if (!LABEL_KEY.test(args)) continue;
+    if (!LABEL_KEY.test(args) && !LABEL_PRODUCERS.test(args)) continue;
     const line = code.slice(0, m.index).split("\n").length; // 1-based
     const above = rawLines.slice(Math.max(0, line - 1 - MARKER_WINDOW), line - 1).join("\n");
     out.push({ rel, line, verb: m[1], exempt: MARKER.test(above) });
@@ -122,6 +133,17 @@ describe("label write census (task 553)", () => {
       [6, "updateAttributes", false],
       [9, "setNodeMarkup", true],
     ]);
+  });
+
+  it("a label-carrying PRODUCER spread into a write is a label write (task 1080)", () => {
+    const fixture = [
+      "tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...figureNodeAttrsFromSource(a) });",
+    ].join("\n");
+    expect(labelWriteSites("fixture.ts", fixture).map((s) => s.line)).toEqual([1]);
+    // …and the producer really carries `label`, so naming it here hides nothing.
+    expect(
+      figureNodeAttrsFromSource(extractFigureAttrs("\\caption{c}\\label{fig:k}")).label,
+    ).toBe("fig:k");
   });
 
   it("every production label-attr write is the door or carries a stated exemption — allowlist EMPTY", () => {
