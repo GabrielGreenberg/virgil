@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { isLabelTaken, collectLabelKeys, isLabelTakenIn } from "@/lib/labels";
 import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { iconHint } from "@/components/Hint";
@@ -77,12 +78,21 @@ export default function FigureAnnotation({
     [label],
   );
 
+  // Task 1083: ONE write gate for every lozenge verb (`#`, label edit/add,
+  // ×) — the figure's twin of the heading chip's `chipMayWrite` (task 1017).
+  // The `readOnlyEnforcer` would drop the write anyway, but only AFTER the
+  // lozenge offered it (and, for ×, after a confirm the user answered for
+  // nothing). Asked at gesture time AND again after every `await` — the pen
+  // can be taken while a modal is up. O(1).
+  const mayWrite = useCallback(() => !!editor && surfaceEditableNow(editor), [editor]);
+
   const enterEdit = useCallback(() => {
+    if (!mayWrite()) return;
     keysRef.current = editor ? collectLabelKeys(editor) : null;
     setDraft(label);
     setConflict(false);
     setEditing(true);
-  }, [editor, label]);
+  }, [editor, label, mayWrite]);
 
   const cancel = useCallback(() => {
     setEditing(false);
@@ -144,14 +154,15 @@ export default function FigureAnnotation({
       newLabel,
       confirm: onConfirmRename ?? null,
     });
-    // Nothing written (cancelled, stale, conflict, unresolved): the field's
+    // Nothing written (cancelled, stale, conflict, unresolved, read-only —
+    // the door asks the write gate itself, task 1083): the field's
     // draft goes back to the committed label rather than holding a key the
     // document never took (task 876).
     if (outcome !== "renamed") setDraft(label);
   }, [draft, editor, label, getFigurePos, onConfirmRename]);
 
   const toggleNumbered = useCallback(() => {
-    if (!editor || !getFigurePos) return;
+    if (!editor || !getFigurePos || !mayWrite()) return;
     const pos = getFigurePos();
     if (pos == null) return;
     const figNode = editor.state.doc.nodeAt(pos);
@@ -161,18 +172,18 @@ export default function FigureAnnotation({
       numbered: !numbered,
     });
     editor.view.dispatch(tr);
-  }, [editor, numbered, getFigurePos]);
+  }, [editor, numbered, getFigurePos, mayWrite]);
 
   const requestDelete = useCallback(async () => {
-    if (!editor || !getFigurePos) return;
+    if (!editor || !getFigurePos || !mayWrite()) return;
     const ok = onConfirmDelete ? await onConfirmDelete() : true;
-    if (!ok) return;
+    if (!ok || !mayWrite()) return;
     const pos = getFigurePos();
     if (pos == null) return;
     const figNode = editor.state.doc.nodeAt(pos);
     if (!figNode || figNode.type.name !== "figureBlock") return;
     editor.view.dispatch(editor.state.tr.delete(pos, pos + figNode.nodeSize));
-  }, [editor, getFigurePos, onConfirmDelete]);
+  }, [editor, getFigurePos, onConfirmDelete, mayWrite]);
 
   // Suppress PM focus-steal: mousedown on the lozenge shouldn't plant a caret.
   // On a real `<button>` this ALSO stops a pointer press from moving DOM focus

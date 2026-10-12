@@ -35,6 +35,8 @@ import { watchChromeBeside } from "./figure-chrome-beside";
 import FigureAnnotation from "./FigureAnnotation";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { iconHint } from "@/components/Hint";
 
 const MIN_PERCENT = 10;
@@ -441,6 +443,13 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
 
   // ---- mutation helpers (close over editor + node + getPos) ----
 
+  // Task 1083: ONE write gate for every chrome verb (width, delete, pick
+  // image) — the figure's twin of the heading chip's `chipMayWrite` (task
+  // 1017). The read-only CSS hides the chrome row, but hiding is
+  // belt-and-braces: the gate is the contract, asked at gesture time and
+  // again after every `await`. O(1).
+  const figureMayWrite = (): boolean => surfaceEditableNow(editor);
+
   const getFigurePos = useCallback((): number | null => {
     const p = typeof getPos === "function" ? getPos() : null;
     return p ?? null;
@@ -463,14 +472,37 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   // result. For a figure, `withFigureGraphicsEdit` locates the half that holds
   // it (the same first-in-body-order one `sources[0]` displays) and leaves the
   // other byte-identical.
-  const applyGraphicsEdit = (edit: (text: string) => string | null) => {
+  //
+  // Task 1083: every writer reads the LIVE node at dispatch time, never the
+  // render's `extras` / `trailingExtras` / `command` — the picker awaits the
+  // OS dialog, and a rebuild from the pre-await closure would revert any
+  // edit that landed meanwhile. And every writer asks `figureMayWrite` first.
+  const liveTarget = (): { pos: number; node: PMNode } | null => {
     const pos = typeof getPos === "function" ? getPos() : undefined;
-    if (pos == null) return;
+    if (pos == null) return null;
+    const live = editor.state.doc.nodeAt(pos);
+    return live && live.type.name === node.type.name ? { pos, node: live } : null;
+  };
+  const liveParts = (n: PMNode) => ({
+    extras: (n.attrs.extras as string | undefined) || "",
+    trailingExtras: (n.attrs.trailingExtras as string | undefined) || "",
+    command: (n.attrs.command as string | undefined) || "",
+  });
+
+  const applyGraphicsEdit = (edit: (text: string) => string | null) => {
+    if (!figureMayWrite()) return;
+    const hit = liveTarget();
+    if (!hit) return;
+    const { pos } = hit;
+    const live = liveParts(hit.node);
     if (isFigure) {
-      const next = withFigureGraphicsEdit({ extras, trailingExtras }, edit);
+      const next = withFigureGraphicsEdit(
+        { extras: live.extras, trailingExtras: live.trailingExtras },
+        edit,
+      );
       if (next) applyFigureExtrasEdit(editor, pos, next);
     } else {
-      const next = edit(command);
+      const next = edit(live.command);
       if (next != null) applyGraphicsCommandEdit(editor, pos, next);
     }
   };
@@ -493,8 +525,11 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   const canTakePath = isFigure || hasLiveIncludegraphics(command);
 
   const applyPath = (newPath: string) => {
-    const pos = typeof getPos === "function" ? getPos() : undefined;
-    if (pos == null) return;
+    if (!figureMayWrite()) return;
+    const hit = liveTarget();
+    if (!hit) return;
+    const { pos } = hit;
+    const { extras, trailingExtras, command } = liveParts(hit.node);
     if (isFigure) {
       const parts = { extras, trailingExtras };
       const next =
@@ -512,9 +547,10 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const pos = typeof getPos === "function" ? getPos() : undefined;
-    if (pos == null) return;
-    editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize));
+    if (!figureMayWrite()) return;
+    const hit = liveTarget();
+    if (!hit) return;
+    editor.view.dispatch(editor.state.tr.delete(hit.pos, hit.pos + hit.node.nodeSize));
   };
 
   const handlePickFile = async (e?: React.MouseEvent) => {
@@ -522,6 +558,9 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       e.preventDefault();
       e.stopPropagation();
     }
+    // Task 1083: refuse BEFORE the OS picker opens — a read-only / pen-held
+    // doc offers no image swap the enforcer would then drop.
+    if (!figureMayWrite()) return;
     if (!docId) {
       console.warn("[figure] no docId — cannot resolve picked file against paper folder");
       return;
@@ -543,6 +582,11 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       return;
     }
     if (!picked) return;
+    // …and again AFTER it: the pen can be taken while the dialog is up, and
+    // `importFigureFile` WRITES the asset to disk — a copy made for a doc edit
+    // the enforcer then drops is an orphan in `figures/`. Likewise the node
+    // must still be there to take the path.
+    if (!figureMayWrite() || !liveTarget()) return;
     try {
       const relPath = await importFigureFile(handle, picked);
       applyPath(relPath);

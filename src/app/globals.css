@@ -3676,7 +3676,12 @@ textarea {
  * Leaves the rendered image itself untouched — viewers still see the
  * figure exactly as it would render in the doc. */
 .ProseMirror[data-editable="false"] .figure-block .figure-chrome,
-.ProseMirror[data-editable="false"] .figure-block .figure-empty-cta {
+.ProseMirror[data-editable="false"] .figure-block .figure-empty-cta,
+/* Task 1083: the lozenge's pure-write verbs (Label +, ×). Belt-and-braces —
+ * the contract is the write gate in FigureAnnotation; the `#` and the label
+ * text stay visible because they also STATE the figure's numbering/key. */
+.ProseMirror[data-editable="false"] .figure-block .figure-label-add,
+.ProseMirror[data-editable="false"] .figure-block .figure-annotation-delete {
   display: none;
 }
 .ProseMirror[data-editable="false"] .figure-block,
