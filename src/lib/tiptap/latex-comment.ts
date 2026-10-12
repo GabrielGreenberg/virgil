@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/react";
 import { NodeSelection, TextSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { chromeOnly } from "@/lib/view-only-chrome";
-import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
+import { readDiffFor, resolveTouchedBlock } from "./doc-structure";
 import { collabReadOnly } from "./collab-read-only-gate";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // Leaf-shared with the registry row (task 639): the ONE paragraph→comment
@@ -282,7 +282,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
           // Task 991: a Backspace-revert of the typed `%` deliberately leaves
           // a literal `%` paragraph — re-commenting it would undo the undo.
           if (transactions.some(isTypedLatexRevert)) return null;
-          const pending = readPendingDiff(newState);
+          const pending = readDiffFor(transactions, newState);
           if (!pending) return null;
 
           // Candidate UUIDs: blocks whose content changed OR brand-new blocks.

@@ -1,7 +1,7 @@
 import { Node, Extension, mergeAttributes, type Editor } from "@tiptap/react";
 import type { RefCommand } from "@/lib/ref-display";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
+import { readDiffFor, touchedBlockPositions } from "./doc-structure";
 import { setDataIfChanged, setTextIfChanged } from "./idempotent-dom";
 // Task 232: structural DOM facets (`data-type` / `class`) come from the atom
 // SSOT rather than hardcoded literals, so a NodeView rename can't drift from
@@ -169,7 +169,7 @@ export const LabelHandler = Extension.create({
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          const pending = readPendingDiff(newState);
+          const pending = readDiffFor(transactions, newState);
           if (!pending) return null;
           // Gate: this plugin's job is to absorb `\label{...}` paragraphs
           // that follow headings. It only matters when a paragraph's text

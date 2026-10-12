@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// P0 plugin-order regression guard: `readPendingDiff(newState)` must return
+// P0 plugin-order regression guard: `readDiffFor([tr], newState)` must return
 // the CURRENT transaction's diff when called from ANOTHER plugin's `apply` —
 // no matter where that plugin's extension sits in the extension array.
 //
@@ -30,7 +30,7 @@ vi.mock("@/lib/storage", async () =>
 import { Editor, Extension } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
-import { readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { readDiffFor } from "@/lib/tiptap/doc-structure";
 import { EMPTY_DIFF, type StructureDiff } from "@/lib/tiptap/doc-structure/types";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -45,8 +45,8 @@ function mainCtx(): EditorExtensionsCtx {
   };
 }
 
-describe("readPendingDiff from another plugin's apply (P0 plugin order)", () => {
-  // Records what readPendingDiff returned inside the probe plugin's `apply`
+describe("readDiffFor from another plugin's apply (P0 plugin order)", () => {
+  // Records what readDiffFor returned inside the probe plugin's `apply`
   // for each docChanged transaction.
   const seen: (StructureDiff | null)[] = [];
 
@@ -61,7 +61,7 @@ describe("readPendingDiff from another plugin's apply (P0 plugin order)", () => 
           state: {
             init: () => null,
             apply(tr, value, _old, newState) {
-              if (tr.docChanged) seen.push(readPendingDiff(newState));
+              if (tr.docChanged) seen.push(readDiffFor([tr], newState));
               return value;
             },
           },

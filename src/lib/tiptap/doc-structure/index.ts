@@ -29,7 +29,7 @@
  * From a ProseMirror plugin's `appendTransaction`:
  *
  *     appendTransaction(transactions, oldState, newState) {
- *       const diff = readPendingDiff(newState);
+ *       const diff = readDiffFor(transactions, newState);
  *       if (!diff) return null;
  *       // … react to diff …
  *     }
@@ -43,7 +43,7 @@
 export {
   DocStructureObserver,
   readDocStructure,
-  readPendingDiff,
+  readDiffFor,
   resolveTouchedBlock,
   resolveTouchedAnchor,
   hasLiveBlock,

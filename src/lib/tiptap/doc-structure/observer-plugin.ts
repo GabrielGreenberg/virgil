@@ -15,7 +15,7 @@
 import type { EditorView } from "@tiptap/pm/view";
 import { Extension } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
-import { Plugin, PluginKey, type StateField } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type StateField, type Transaction } from "@tiptap/pm/state";
 import { Mapping, type StepMap } from "@tiptap/pm/transform";
 import { asMutable, attachBus, detachBus, type DocStructureBus } from "./bus";
 import { inspectSteps } from "./step-inspector";
@@ -61,27 +61,22 @@ export interface PluginState {
    *  safe because every `apply` builds a NEW array, so materializing an
    *  old state can't corrupt a newer one. */
   pendingMaps: readonly StepMap[];
-  /** ONE dispatch, TWO questions — and they have different answers, which is
-   *  why they are two fields (task 650). ProseMirror runs the whole
-   *  `appendTransaction` loop inside a single `state.applyTransaction`, so
-   *  `apply` runs once per TRANSACTION while the view hook below runs once per
-   *  DISPATCH.
+  /** ONE dispatch, TWO questions — and they have different answers (task
+   *  650). ProseMirror runs the whole `appendTransaction` loop inside a single
+   *  `state.applyTransaction`, so `apply` runs once per TRANSACTION while the
+   *  view hook below runs once per DISPATCH.
    *
-   *  `txDiff` answers the SAME-TRANSACTION question: "what did the transaction
-   *  I am being applied alongside report?" That is what `readPendingDiff`
-   *  returns, and it must stay per-transaction: the appendTransaction loop
-   *  re-invokes each appender with only the transactions it has not seen, and
-   *  those appenders gate their own re-dispatch on the diff they read. Handing
-   *  round 2 the accumulated diff would re-report round 1's removals to the
-   *  footnote/orphan appenders and they would append again, forever.
+   *  The CONSUMER question — "what did the transactions I was HANDED do?" — is
+   *  not answered from plugin state at all: each transaction's own diff is
+   *  recorded against the transaction itself (`txDiffs`) and
+   *  {@link readDiffFor} folds exactly the ones a caller names (task 1072).
+   *  A single per-state slot answered "the LAST transaction's diff", which is
+   *  the wrong question for an appender: ProseMirror hands it EVERY
+   *  transaction it has not yet seen, so when an earlier appender
+   *  (BlockUuidBackfill) appended a uuid mint, every later appender read the
+   *  mint's EMPTY_DIFF and never saw the user's deletion.
    *
-   *  Null when no transaction in this dispatch has produced a diff yet. The
-   *  shared `EMPTY_DIFF` reference when the tx changed the doc but was
-   *  structurally AND content null (attr-only steps, e.g. a uuid mint or
-   *  footnote renumber) — that lets a same-tx consumer tell "observer present,
-   *  nothing changed" from "no observer" (null), so it takes its cheap
-   *  incremental path instead of the observer-absent full-doc-walk fallback. */
-  txDiff: StructureDiff | null;
+   *  `dispatchDiff` answers the EMIT question below. */
   /** `dispatchDiff` answers the EMIT question: "what did this whole dispatch
    *  do to the document?" It is the fold of every transaction's diff
    *  (`mergeStructureDiffs`), drained once by the view hook. A single slot here
@@ -110,19 +105,13 @@ function makeViewSpec(editor: Editor) {
         const state = docStructureKey.getState(view.state);
         if (!state) return;
         const diff = state.dispatchDiff;
-        // The dispatch is over: drain BOTH transient fields, unconditionally.
-        // Mutating plugin state outside an apply() is normally a no-no, but
-        // here we're only nulling transient fields; the next apply() will
-        // write a fresh PluginState anyway. `txDiff` must be cleared even when
-        // there is nothing to emit (a dispatch of nothing but EMPTY_DIFF
-        // transactions) — outliving its dispatch would hand the NEXT
-        // dispatch's appendTransaction consumers a diff describing work they
-        // have already done.
+        // The dispatch is over: drain the transient field. Mutating plugin
+        // state outside an apply() is normally a no-no, but here we're only
+        // nulling a transient field; the next apply() will write a fresh
+        // PluginState anyway.
         state.dispatchDiff = null;
-        state.txDiff = null;
-        // Null when nothing in the dispatch carried entries — EMPTY_DIFF is
-        // stored only so same-tx `apply` readers can see "observer present,
-        // nothing changed", and never accumulates.
+        // Null when nothing in the dispatch carried entries — EMPTY_DIFF
+        // never accumulates.
         if (!diff) return;
         if (diffHasStructuralEntries(diff)) {
           // Structural tx: apply() already materialized (applyDiff needs
@@ -210,9 +199,9 @@ function mapStructurePositions(
  * view is more than they can mount), and two of them had hand-copied this
  * `apply` body out of `buildInitial` / `inspectSteps` / `applyDiff`. A copy of
  * a state machine is a copy that drifts: each carried its own `pendingDiff`
- * field, so this task's split into `txDiff` / `dispatchDiff` would have left
- * them silently answering `readPendingDiff` with `null` — a fallback path,
- * green and vacuous. Mount THIS instead:
+ * field, so task 650's split of that slot would have left them silently
+ * answering every consumer read with `null` — a fallback path, green and
+ * vacuous. Mount THIS instead:
  *
  *     new Plugin<PluginState>({ key: docStructureKey, state: docStructureStateSpec() })
  */
@@ -222,7 +211,6 @@ export function docStructureStateSpec(): StateField<PluginState> {
       return {
         structure: buildInitial(state.doc),
         pendingMaps: [],
-        txDiff: null,
         dispatchDiff: null,
       };
     },
@@ -233,8 +221,8 @@ export function docStructureStateSpec(): StateField<PluginState> {
         // here was the latent half of task 650: an appended meta-only
         // transaction would wipe the structural diff of the doc-changing
         // transaction it followed, so the dispatch published nothing and
-        // every same-dispatch `readPendingDiff` consumer read `null` and
-        // took its observer-absent full-doc-walk fallback. Carrying the
+        // same-dispatch consumer read `null` and took its observer-absent
+        // full-doc-walk fallback. Carrying the
         // state through unchanged is also the cheapest possible answer:
         // zero allocation on the selection path.
         return prev;
@@ -245,6 +233,7 @@ export function docStructureStateSpec(): StateField<PluginState> {
       // only (mapping-invariant), so the un-materialized base is
       // correct to pass even with pendingMaps outstanding.
       const diff = inspectSteps(tr, oldDoc, newDoc, prev.structure);
+      txDiffs.set(tr, diff);
       if (diff === EMPTY_DIFF || !diffHasStructuralEntries(diff)) {
         // Structurally-null tx (plain typing, attr-only steps):
         // the O(entities) remap is DEFERRED — just accumulate the
@@ -271,7 +260,6 @@ export function docStructureStateSpec(): StateField<PluginState> {
         return {
           structure,
           pendingMaps: maps,
-          txDiff: diff,
           dispatchDiff: accumulate(prev.dispatchDiff, diff, tr.mapping),
         };
       }
@@ -286,7 +274,6 @@ export function docStructureStateSpec(): StateField<PluginState> {
       return {
         structure: next,
         pendingMaps: [],
-        txDiff: diff,
         dispatchDiff: accumulate(prev.dispatchDiff, diff, tr.mapping),
       };
     },
@@ -302,8 +289,8 @@ export function docStructureStateSpec(): StateField<PluginState> {
  * `priority` is LOAD-BEARING: TipTap collects PM plugins in REVERSE extension
  * order (`sortExtensions([...extensions].reverse())`), so without it the
  * observer's plugin `apply` would run nearly LAST per transaction — and every
- * plugin whose own `apply` calls `readPendingDiff(newState)` (uuid-attr,
- * section-folding) would read `null` and silently take its full-doc-walk
+ * plugin whose own `apply` calls `readDiffFor([tr], newState)`
+ * (section-folding) would read `null` and silently take its full-doc-walk
  * fallback ON EVERY KEYSTROKE. The high priority puts this plugin FIRST in
  * the plugin array so the diff is computed before any consumer's `apply`
  * reads it. The extension-ARRAY position (index 1, pinned by the Chip-A
@@ -321,12 +308,6 @@ export const DocStructureObserver = Extension.create({
         key: docStructureKey,
         state: docStructureStateSpec(),
         view: makeViewSpec(editor),
-        props: {
-          // Expose the diff via tr.meta for any appendTransaction
-          // consumers that need it synchronously (e.g. label-handler).
-          // We piggyback on plugin state since meta is per-transaction;
-          // consumers use `readPendingDiff(state)`.
-        },
       }),
     ];
   },
@@ -483,17 +464,54 @@ export function __resetMaterializeCountForTest(): void {
 }
 
 /**
- * Read the diff produced by the most recent transaction that produced one.
- * Only valid within the current dispatch — `view.update` clears it afterwards.
- *
- * This is deliberately NOT the dispatch-wide accumulation the bus emits: an
- * `appendTransaction` consumer asks this question to decide whether to append
- * a transaction of its own, and re-reporting an earlier transaction's work
- * would make it append again. See `PluginState.txDiff`.
+ * Each doc-changing transaction's own diff, keyed by the transaction (task
+ * 1072). A WeakMap keyed by its owner, never a slot: a transaction is a unique
+ * object, so N mounted panes can never read each other's entries, and an entry
+ * dies with its transaction. One O(1) `set` per doc-changing transaction —
+ * nothing else added to the keystroke path.
  */
-export function readPendingDiff(state: Parameters<typeof docStructureKey.getState>[0]): StructureDiff | null {
-  const s = docStructureKey.getState(state);
-  return s?.txDiff ?? null;
+const txDiffs = new WeakMap<Transaction, StructureDiff>();
+
+/**
+ * THE consumer door: the structural diff of EXACTLY the transactions the
+ * caller was handed — an `appendTransaction`'s `transactions`, or `[tr]` from a
+ * plugin `apply`.
+ *
+ * ProseMirror calls each appender with every transaction it has not yet SEEN
+ * (`trs.slice(n)`), so folding precisely those is both complete (an earlier
+ * appender's append cannot hide the user's transaction behind it) and
+ * non-repeating (round 2 of the append loop is handed only round 1's appends,
+ * so it is never re-told round 1's removals and cannot append forever — task
+ * 650's invariant, kept by construction rather than by a per-state slot).
+ *
+ *   - `null`        — no observer installed in `state`: the caller takes its
+ *                     observer-absent full-doc-walk fallback. Also returned if
+ *                     a doc-changing transaction carries no recorded diff (it
+ *                     was never applied through this observer), so a caller is
+ *                     never told "nothing changed" about work it cannot see.
+ *   - `EMPTY_DIFF`  — observer present, nothing structural or content-level
+ *                     changed (no doc change, or attr-only steps).
+ *   - otherwise     — the fold: added/changed positions in `state.doc`; each
+ *                     removed entry recorded in the doc before ITS transaction
+ *                     (a removed footnote carries its body, so no consumer has
+ *                     to re-resolve that position).
+ *
+ * The single-transaction case — every keystroke — returns that transaction's
+ * diff BY IDENTITY: no merge, no allocation.
+ */
+export function readDiffFor(
+  transactions: readonly Transaction[],
+  state: Parameters<typeof docStructureKey.getState>[0],
+): StructureDiff | null {
+  if (!docStructureKey.getState(state)) return null;
+  let acc: StructureDiff | null = null;
+  for (const tr of transactions) {
+    if (!tr.docChanged) continue;
+    const diff = txDiffs.get(tr);
+    if (diff === undefined) return null;
+    acc = accumulate(acc, diff, tr.mapping);
+  }
+  return acc ?? EMPTY_DIFF;
 }
 
 // Re-export the bus type so consumers can do `import { DocStructureBus } from "@/lib/tiptap/doc-structure"`.

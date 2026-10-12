@@ -41,7 +41,7 @@ import { withWrapperGate } from "@/lib/tiptap/wrapper-gate";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
-import { DocStructureObserver, diffTouchesNumberingInputs, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { DocStructureObserver, diffTouchesNumberingInputs, readDiffFor } from "@/lib/tiptap/doc-structure";
 import { rawCountersTouched } from "@/lib/tiptap/raw-counter-gate";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { AtomClipboard } from "@/lib/tiptap/atom-clipboard";
@@ -1566,7 +1566,7 @@ export function createHeadingWithLabel(
             // re-seats elsewhere lands in `changedHeadings`/`changedFigures`
             // by the step inspector's own definition, so this gate needs no
             // separate order term. A moved `\label` follows its owner.
-            const pending = readPendingDiff(newState);
+            const pending = readDiffFor(transactions, newState);
             if (pending) {
               // What a STRUCTURAL numbering input is belongs to the observer
               // (`diffTouchesNumberingInputs`, task 923) — one predicate, so a
@@ -1746,7 +1746,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     }),
     // Position 0 (after StarterKit). The observer must run first so
     // any appendTransaction plugin that wants to read the diff via
-    // `readPendingDiff(state)` can do so. See
+    // `readDiffFor(transactions, state)` can do so. See
     // `docs/perf/keystroke-sanctity-findings.md` and
     // `src/lib/tiptap/doc-structure/`.
     DocStructureObserver,

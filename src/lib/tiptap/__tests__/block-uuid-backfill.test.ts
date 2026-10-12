@@ -14,7 +14,7 @@ import { doc, paragraph, testSchema } from "../doc-structure/__tests__/fixtures"
 
 // The observer stand-in mounts the REAL plugin-state spec
 // (`docStructureStateSpec`, observer-plugin.ts) rather than a hand-copy of it,
-// so `readDocStructure` / `readPendingDiff` see exactly what production writes
+// so `readDocStructure` / `readDiffFor` see exactly what production writes
 // and this file cannot drift from the shape it is emulating (task 650).
 function observerPlugin(): Plugin<DocStructurePluginState> {
   return new Plugin<DocStructurePluginState>({

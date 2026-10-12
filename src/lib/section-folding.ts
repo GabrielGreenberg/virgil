@@ -1,7 +1,7 @@
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { readPendingDiff, diffHasStructuralEntries } from "@/lib/tiptap/doc-structure";
+import { readDiffFor, diffHasStructuralEntries } from "@/lib/tiptap/doc-structure";
 import { txPreservesTopLevelNodeDecorations } from "@/lib/pm-map-safety";
 import { paintFoldChevron, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 
@@ -226,7 +226,7 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
         //     shared focus-view discriminator) → rebuild
         //   - plain in-block keystroke → decoSet.map + SAME folded/hiddenIdx
         //     references (the chevron view's bail keys off `folded`).
-        const diff = readPendingDiff(newState);
+        const diff = readDiffFor([tr], newState);
         let folded = value.folded;
         if (diff) {
           if (diff.removedHeadings.length > 0) {

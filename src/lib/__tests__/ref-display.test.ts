@@ -269,12 +269,22 @@ See \ref{ex:main}, \ref{ex:a}, \getfullref{ex:main.ex:a}, \ref{ex:body}, \ref{fi
     const parsed = parseLatex(TEX);
     const written = refsOf(parsed);
     const ed = mount(parsed);
-    // A structural change wakes the numberer (an added heading).
+    // A structural change wakes the numberer (an added heading). Level 2 — a
+    // `\section`, so the earlier numbers are unchanged. (This leg used to append
+    // level 1, a `\chapter`, which DOES renumber every section before it to
+    // "0.x"; it passed only because the numberer never saw the heading — it was
+    // handed [uuid mint, trailing node] and read only the last diff. Task 1072.)
     ed.commands.insertContentAt(ed.state.doc.content.size, {
       type: "heading",
-      attrs: { level: 1 },
+      attrs: { level: 2 },
       content: [{ type: "text", text: "Appended" }],
     });
+    // The numberer really ran: the appended section was numbered.
+    let appended: string | null = null;
+    ed.state.doc.forEach((n) => {
+      if (n.type.name === "heading") appended = n.attrs.sectionNumber as string | null;
+    });
+    expect(appended).toBe("2");
     const after = refsOf(ed.getJSON());
     expect(after).toEqual(written);
     expect(after["ref:ex:a"]).toBe("1a");

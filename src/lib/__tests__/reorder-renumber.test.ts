@@ -11,7 +11,7 @@
  * change, by the inspector's own definition.
  *
  * These run on the FULL main stack (observer installed): without the observer,
- * `readPendingDiff` is null and the numberer runs unconditionally, which hides
+ * `readDiffFor` is null and the numberer runs unconditionally, which hides
  * the bug.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";

@@ -10,7 +10,7 @@ The diff is produced once per transaction by `DocStructureObserver` ([src/lib/ti
 
 **Consume the diff. Don't walk the doc.**
 
-- From a ProseMirror `appendTransaction`: `readPendingDiff(newState)` returns the current `StructureDiff`.
+- From a ProseMirror `appendTransaction`: `readDiffFor(transactions, newState)` returns the `StructureDiff` of exactly the transactions it was handed (from a plugin `apply`: `readDiffFor([tr], newState)`).
 - From a React component: `useStructuralRevisions(editor)` (per-category counters — the memo-dep door for panel/card data) / `useDocStructureBus(editor)` (the bus, to subscribe in an effect) / `useExampleContentRevision(editor, uuid)` (one example's content revision).
 - From a long-lived hook: `getBus(editor)` for direct subscription.
 
@@ -64,7 +64,7 @@ A transaction reaches app code by three doors, and each is a keystroke handler: 
 
 Anything new needs a `[cost: …]`-tagged entry in the matching allowlist of the guardrail test above AND a bullet in the matching `census:` list, or CI fails. **Cost-class tags (Wave-4 P6):** every allowlist justification must BEGIN with a `[cost: …]` tag naming the per-event cost AND the deferred body's class ("RAF-coalesced" alone no longer qualifies — a RAF-coalesced O(doc) walk is still an O(doc) walk one frame later); the guardrail's tag-format test enforces the prefix. **selectionUpdate census (Wave-4 P6):** `editor.on("selectionUpdate", …)` is governed by the SAME test under its own exact-set allowlists (`PERMITTED_SELECTION_SUBSCRIBERS`; the library twin is deliberately empty) — the caret moves on every keystroke, so a selection handler IS a keystroke handler; the 8 censused sites are tag-justified in the test, which is their SSOT. The lone `<VirgilEditor onUpdate=` JSX mount (EditorPane) is pinned by its own census in the same file.
 
-**A justification must cover the CALLBACK, not just the gate.** The grep guardrail sees the `editor.on(...)` call form and the surrounding conditionals; it cannot see the cost of what the handler *calls*. `float-sync.tsx` sat on this list for a year reading "docChanged-gated + own-write meta filter — O(1) per tx" — accurate about the subscriber, silent about the O(doc) `readSource` behind it, so CI was green while the law was broken once per open float per keystroke (task 140). When you write or review an entry, name what the handler ultimately runs and why *that* is bounded. If the callback is O(doc), the fix is a gate that answers "is this transaction relevant to me?" from the edit — the observer's `StructureDiff` for entity-shaped questions, or [src/lib/float-source-range.ts](../../../src/lib/float-source-range.ts) (`trackSourceRange`) for positional ones, which maps a tracked region through the transaction's steps and tests intersection in one O(steps) pass. Note that `readPendingDiff` is NOT available to an `editor.on('transaction')` handler — the observer's `view.update` clears it before TipTap emits the event — which is why the positional primitive exists.
+**A justification must cover the CALLBACK, not just the gate.** The grep guardrail sees the `editor.on(...)` call form and the surrounding conditionals; it cannot see the cost of what the handler *calls*. `float-sync.tsx` sat on this list for a year reading "docChanged-gated + own-write meta filter — O(1) per tx" — accurate about the subscriber, silent about the O(doc) `readSource` behind it, so CI was green while the law was broken once per open float per keystroke (task 140). When you write or review an entry, name what the handler ultimately runs and why *that* is bounded. If the callback is O(doc), the fix is a gate that answers "is this transaction relevant to me?" from the edit — the observer's `StructureDiff` for entity-shaped questions, or [src/lib/float-source-range.ts](../../../src/lib/float-source-range.ts) (`trackSourceRange`) for positional ones, which maps a tracked region through the transaction's steps and tests intersection in one O(steps) pass. Note that `readDiffFor` is NOT meant for an `editor.on('transaction')` handler — it answers for transactions handed to a plugin inside the dispatch — which is why the positional primitive exists.
 
 **Writing a positional gate: a step map is not a description of what changed.** It describes how positions MOVE, so a step that moves nothing returns `StepMap.empty` — `AddMarkStep`, `RemoveMarkStep`, `AddNodeMarkStep`, `RemoveNodeMarkStep`, `AttrStep`, `DocAttrStep`. Their transactions are still `docChanged`. A gate that reads `tr.mapping.maps` alone therefore concludes "nothing happened" when the user bolds a word, and for a mirroring consumer that is worse than a stale render: the float keeps its pre-bold copy and its next write-back rebuilds the source from it, **deleting the mark from the document** (with `addToHistory: false`, so not even undoable). Ask the STEP, not just its map, and fail safe on a shape you don't recognize — `stepTouches` in the primitive above. Two other things a positional gate must handle: TipTap emits one `transaction` event per dispatch carrying `appendedTransactions` alongside the root, and all of them land in the state, so all of them must be mapped; and an own-write filter must ignore only the *root* transaction it authored, because an appended transaction that reshaped that write (a renumber, a uuid re-mint, a normalizer replacing the block) is exactly the case that must re-read.
 
@@ -336,8 +336,8 @@ geometry entries, in-text positions and the omni mirror kept believing in a
 block that was gone until some later structural edit happened to re-wake them
 (task 650).
 
-The plugin now keeps **two** fields because a dispatch is asked two different
-questions, and giving them one name is what let the answers collide
+A dispatch is asked two different questions, and giving them one name is
+what let the answers collide
 ([observer-plugin.ts](../../../src/lib/tiptap/doc-structure/observer-plugin.ts)):
 
 - `dispatchDiff` — the EMIT question, "what did this whole gesture do?". Every
@@ -346,18 +346,35 @@ questions, and giving them one name is what let the answers collide
   drains it ONCE. Merge-and-emit-once, never emit-per-transaction: `emitCount`
   is defined per USER GESTURE by this law's probe, so fanning out N times would
   quietly redefine the measurement the law is stated in.
-- `txDiff` — the SAME-TRANSACTION question, what `readPendingDiff` returns. It
-  must stay per-transaction: PM re-invokes each appender with only the
-  transactions it has not yet seen, and appenders gate their own re-dispatch on
-  the diff they read, so handing round 2 the accumulation would make the
-  footnote appender append again, forever.
+- the CONSUMER question, "what did the transactions I was handed do?" —
+  `readDiffFor(transactions, state)`. PM invokes each appender with exactly
+  the transactions it has not yet seen (`trs.slice(n)`), so folding precisely
+  those is complete AND non-repeating: round 2 is handed only round 1's
+  appends, so it is never re-told round 1's removals and cannot append forever.
+  Each transaction's diff is recorded against the transaction itself (a
+  `WeakMap<Transaction, StructureDiff>`), never a per-state slot.
+
+**The unseen-transactions half (task 1072).** Task 650 answered the consumer
+question with a per-state `txDiff` slot — "the LAST transaction's diff". That is
+the wrong question for an appender: when an EARLIER appender appends (the
+footnote renumber, BlockUuidBackfill's uuid mint, …), every later appender is
+handed `[userTr, appendedTr]` and the slot holds the appended one's diff.
+Deleting a heading together with footnote #1 therefore left the next heading
+numbered "2": the section numberer runs after the footnote renumber and read
+only its footnote-only diff. The same blindness sat under every appender that
+runs after one that can append (title, label, example numbering, latex-comment,
+the anchor guards). The slot is
+gone; `readDiffFor` is the one door. A removed footnote's entry now carries its
+body (`removedContent`), read in the inspector from the ONE doc its `pos`
+addresses, because a consumer handed several transactions cannot know which
+one's before-doc a removed position belongs to.
 
 **A transaction that produced no diff does not ERASE one.** The `!tr.docChanged`
 branch used to null the slot; a doc-unchanged appended transaction therefore
 wiped the structural diff of the transaction it followed, and made a
-same-dispatch `readPendingDiff` consumer read `null` — the signal reserved for
+same-dispatch consumer read `null` — the signal reserved for
 "no observer installed", whose fallback is a full doc walk. That half stayed
-latent only by luck: all five `readPendingDiff` callers open with
+latent only by luck: every consumer opened with
 `transactions.some((tr) => tr.docChanged)` (or `if (!tr.docChanged)` in an
 `apply`), so a meta-only appended transaction returns them early before the
 read. It is pinned at the contract rather than at today's callers.
@@ -371,8 +388,8 @@ and labels, having no `changed` bucket, report silence there. An earlier
 transaction's `added`/`changed` entries are expressed in a document a later
 transaction may have shifted, so they are carried through its mapping first
 (`mapStructureDiffPositions`); `removed` entries deliberately are NOT — the
-inspector collects them against the doc BEFORE the deleting step, and
-`footnote.ts` resolves `removed.pos` against `oldState.doc`.
+inspector collects them against the doc BEFORE their transaction (and carries
+what a consumer needs from that doc — task 1072).
 
 **Cost:** the single-transaction dispatch — every keystroke, every edit with no
 appender behind it — returns the diff BY IDENTITY. No merge call, no
@@ -384,11 +401,11 @@ O(edit-size).
 `docStructureStateSpec()`, because two headless tests had hand-copied its
 `apply` body. A copy of a state machine is a copy that drifts: each carried its
 own `pendingDiff` field, so this split would have left them answering
-`readPendingDiff` with `null` — a fallback path, green and vacuous.
+every consumer read with `null` — a fallback path, green and vacuous.
 
 CI: [dispatch-diff-accumulation.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/dispatch-diff-accumulation.test.ts)
 drives the REAL `buildEditorExtensions("main")` stack; its footnote-deletion,
-doc-unchanged-appender, `EMPTY_DIFF`-appender and `readPendingDiff`-never-null
+doc-unchanged-appender, `EMPTY_DIFF`-appender and consumer-never-null
 legs all fail on the pre-fix single slot, while the no-footnote CONTROL passes
 on it, so the file cannot go green by the detector going silent.
 [merge-structure-diffs.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/merge-structure-diffs.test.ts)
