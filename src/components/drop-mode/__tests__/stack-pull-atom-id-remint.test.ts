@@ -60,7 +60,7 @@ const schema = new Schema({
       inline: true,
       atom: true,
       selectable: false,
-      attrs: { footnoteId: { default: "" }, linkId: { default: "" }, number: { default: 1 } },
+      attrs: { footnoteId: { default: "" }, linkId: { default: "" }, number: { default: 1 }, content: { default: null } },
       parseDOM: [{ tag: "span[data-type=footnote]" }],
       toDOM: () => ["span", { "data-type": "footnote" }, "1"],
     },
@@ -248,5 +248,47 @@ describe("stack-pull — inline-atom id remint (task 138)", () => {
     // atom has no Card identity to collide, so nothing is minted.
     expect(cits).toHaveLength(2);
     for (const c of cits) expect(c.id).toBe("");
+  });
+});
+
+describe("stack-pull — a fresh id never collides with a NESTED live id (task 1074)", () => {
+  it("text payload: the minted ids avoid a \\cite hidden in a footnote body", () => {
+    // The destination's only footnote hides citation "cccc" in its body —
+    // where `doc.descendants` never looks. Force the first mint to draw "cccc"
+    // ((0.8).toString(16) = "0.cccc…"): a blind live set would hand it out.
+    const NESTED_CITE = "cccc";
+    const body = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [
+        { type: "citation", attrs: { citationId: NESTED_CITE, linkId: NESTED_CITE, command: "\\cite{k}" } },
+      ] }],
+    };
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { uuid: "para-1" }, [
+        schema.text("see "),
+        schema.node("footnote", { footnoteId: SRC_FN, linkId: SRC_FN, number: 1, content: body }),
+        schema.text(" end"),
+      ]),
+    ]);
+    const harness = liveEditor(doc, { from: 1, to: 1 + doc.child(0).content.size });
+    const item = snapshotSelection(harness.editor, SRC);
+    readStackItemMock.mockReturnValue(item);
+    const rnd = vi.spyOn(Math, "random").mockReturnValueOnce(0.8);
+    try {
+      pull(harness.editor, betweenBlocks(harness.editor, harness.getState().doc.content.size));
+    } finally {
+      rnd.mockRestore();
+    }
+    const ids: string[] = [];
+    harness.getState().doc.descendants((n) => {
+      if (n.type.name === "footnote") {
+        ids.push(n.attrs.footnoteId as string);
+        const nested = n.attrs.content as { content?: { content?: { attrs: { citationId: string } }[] }[] } | null;
+        for (const p of nested?.content ?? []) for (const c of p.content ?? []) ids.push(c.attrs.citationId);
+      }
+      return true;
+    });
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
   });
 });
