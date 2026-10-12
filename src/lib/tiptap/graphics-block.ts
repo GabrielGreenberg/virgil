@@ -89,6 +89,8 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
 export interface GraphicsPopoverSeed {
   kind: "graphicsBlock";
   raw: string;
+  /** The inserted block's uuid — the identity the save resolves (task 1082). */
+  uuid: string | null;
   pos: number;
   rect: DOMRect;
 }

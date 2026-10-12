@@ -172,6 +172,8 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
 export interface FigurePopoverSeed {
   kind: "figureBlock";
   raw: string;
+  /** The inserted block's uuid — the identity the save resolves (task 1082). */
+  uuid: string | null;
   pos: number;
   rect: DOMRect;
 }

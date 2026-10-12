@@ -44,4 +44,30 @@ describe("atom-popover gate CENSUS (task 1071)", () => {
       expect(src).not.toMatch(/!\s*editor\??\.isEditable\)\s*return/);
     });
   }
+
+  // Task 1082: the figure popover's COMMIT goes through the identity door —
+  // `applyFigurePopoverEdit` (kind + uuid, else kind + seed, via
+  // `resolveAtomEditTarget`) — never the bare per-kind writebacks, whose
+  // kind fall-through stored a figure body as a graphic's `command`.
+  it("handleFigureSave commits through applyFigurePopoverEdit, with no kind fall-through", () => {
+    const layout = read("src/components/EditorLayout.tsx");
+    const at = layout.indexOf("const handleFigureSave = useCallback(");
+    expect(at, "handleFigureSave not found").toBeGreaterThan(-1);
+    const body = layout.slice(at, layout.indexOf("}, []);", at));
+    expect(body).toContain("applyFigurePopoverEdit(");
+    expect(body).not.toContain("applyFigureEnvBodyEdit(");
+    expect(body).not.toContain("applyGraphicsCommandEdit(");
+    const door = read("src/lib/figures/popover-target.ts");
+    expect(door).toContain("resolveAtomEditTarget(owner, pos, isClickedFigure(clicked))");
+  });
+
+  it("every virgil-figure-click detail carries the clicked uuid", () => {
+    const view = read("src/components/FigureBlockNodeView.tsx");
+    const sites = view.split('new CustomEvent("virgil-figure-click"').slice(1);
+    expect(sites.length).toBeGreaterThan(0);
+    for (const site of sites) expect(site.slice(0, 600)).toMatch(/\buuid\b/);
+    const registry = read("src/lib/actions/action-registry.ts");
+    expect(registry).toMatch(/kind: "figureBlock",[\s\S]{0,1200}?\buuid,/);
+    expect(registry).toMatch(/kind: "graphicsBlock",[\s\S]{0,200}?\buuid,/);
+  });
 });

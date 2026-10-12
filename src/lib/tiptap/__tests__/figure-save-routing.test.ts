@@ -37,8 +37,14 @@ import {
   applyGraphicsCommandEdit,
 } from "@/lib/figures/apply-env-body";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import {
+  applyFigurePopoverEdit,
+  figurePopoverRaw,
+  type ClickedFigure,
+} from "@/lib/figures/popover-target";
 import { inspectSteps } from "@/lib/tiptap/doc-structure/step-inspector";
 import type { Transaction } from "@tiptap/pm/state";
+import type { JSONContent } from "@tiptap/core";
 
 // The REAL save contract, not a transcription of it (tasks 318/319).
 //
@@ -53,12 +59,27 @@ import type { Transaction } from "@tiptap/pm/state";
 // helper still owns is the DISPATCH — which door a `pos` goes through — since
 // that is what `handleFigureSave` decides, and targeting the wrong editor is
 // the EX-F4-02 corruption these locks exist for.
+//
+// Since task 1082 the dispatch is production code too — `applyFigurePopoverEdit`,
+// the door `handleFigureSave` calls — so this helper only plays the CLICK: it
+// reads the clicked identity off the node at `pos` (what the click bridges put
+// on `virgil-figure-click`) and saves through the door at once.
+function clickedAt(editor: Editor, pos: number): ClickedFigure {
+  const node = editor.state.doc.nodeAt(pos)!;
+  return {
+    kind: node.type.name as ClickedFigure["kind"],
+    uuid: (node.attrs.uuid as string | null) ?? null,
+    raw: figurePopoverRaw(node),
+  };
+}
+
 function saveFigure(editor: Editor, pos: number, newText: string): boolean {
   if (!editor || editor.isDestroyed) return false;
-  return (
-    applyFigureEnvBodyEdit(editor, pos, newText) ||
-    applyGraphicsCommandEdit(editor, pos, newText)
-  );
+  const inRange = pos >= 0 && pos < editor.state.doc.content.size;
+  const clicked: ClickedFigure = inRange
+    ? clickedAt(editor, pos)
+    : { kind: "graphicsBlock", uuid: null, raw: "" };
+  return applyFigurePopoverEdit(editor, pos, clicked, newText);
 }
 
 // `figureFloat` is the figure node's only mode flag (there is no `surface`
@@ -494,6 +515,154 @@ describe("figure writeback re-threads every declared fact", () => {
       fig.element.remove();
       gfx.editor.destroy();
       gfx.element.remove();
+    }
+  });
+});
+
+// ── task 1082 ────────────────────────────────────────────────────────────────
+// The popover outlives the click. Its save names the CLICKED node (kind + uuid,
+// else kind + seed) and runs only that kind's door — "whatever figure now sits
+// at `pos`" is the async-gap position address the law forbids.
+describe("figure popover save names the clicked node (task 1082)", () => {
+  const EXTRAS = (src: string) => `\\centering\n\\includegraphics{${src}}`;
+  const figure = (uuid: string | null, src: string, caption: string, label: string) => ({
+    type: "figureBlock",
+    attrs: {
+      extras: EXTRAS(src),
+      source: src,
+      sources: [{ path: src, options: "", widthPercent: null }],
+      label,
+      numbered: true,
+      ...(uuid ? { uuid } : {}),
+    },
+    content: [{ type: "figureCaption", content: [{ type: "text", text: caption }] }],
+  });
+  const graphic = (uuid: string | null, src: string) => ({
+    type: "graphicsBlock",
+    attrs: {
+      command: `\\includegraphics{${src}}`,
+      source: src,
+      widthPercent: null,
+      ...(uuid ? { uuid } : {}),
+    },
+  });
+  function mount(content: JSONContent[]) {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      editable: true,
+      extensions: [StarterKit, FigureCaption, FigureBlock, GraphicsBlock],
+      content: { type: "doc", content },
+    });
+    return { editor, element };
+  }
+  /** Delete the top-level node at `pos` — the external write that lands while
+   *  the popover is open (an agent apply, a float re-sync). */
+  function deleteAt(editor: Editor, pos: number) {
+    const node = editor.state.doc.nodeAt(pos)!;
+    editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize));
+  }
+  const BODY = "\\includegraphics{edited.png}\n\\caption{Edited}\n\\label{fig:edited}";
+
+  it("positive control: a save on the still-present clicked figure lands", () => {
+    const { editor, element } = mount([figure("f1", "a.png", "Cap A", "fig:a")]);
+    try {
+      const clicked = clickedAt(editor, 0);
+      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(true);
+      expect(attrsAt(editor, 0).source).toBe("edited.png");
+      expect(attrsAt(editor, 0).label).toBe("fig:edited");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("two figures; click #1; #1 deleted externally; save → #2 unchanged", () => {
+    const { editor, element } = mount([
+      figure("f1", "a.png", "Cap A", "fig:a"),
+      figure("f2", "b.png", "Cap B", "fig:b"),
+    ]);
+    try {
+      const clicked = clickedAt(editor, 0);
+      deleteAt(editor, 0); // figure #2 slides onto pos 0
+      expect(editor.state.doc.nodeAt(0)!.attrs.uuid).toBe("f2");
+      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(false);
+      expect(attrsAt(editor, 0).source).toBe("b.png");
+      expect(attrsAt(editor, 0).label).toBe("fig:b");
+      expect(captionTextAt(editor, 0)).toBe("Cap B");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("uuid-less nodes fall back to the seed: a slid-in neighbour is refused", () => {
+    const { editor, element } = mount([
+      figure(null, "a.png", "Cap A", "fig:a"),
+      figure(null, "b.png", "Cap B", "fig:b"),
+    ]);
+    try {
+      const clicked = clickedAt(editor, 0);
+      expect(clicked.uuid).toBeNull();
+      deleteAt(editor, 0);
+      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(false);
+      expect(attrsAt(editor, 0).source).toBe("b.png");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("kind swap: clicked figure gone, a graphicsBlock at pos → its command unchanged", () => {
+    const { editor, element } = mount([
+      figure("f1", "a.png", "Cap A", "fig:a"),
+      graphic("g1", "g.png"),
+    ]);
+    try {
+      const clicked = clickedAt(editor, 0);
+      deleteAt(editor, 0);
+      expect(editor.state.doc.nodeAt(0)!.type.name).toBe("graphicsBlock");
+      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(false);
+      // The old fall-through stored the whole env body as the graphic's command.
+      expect(attrsAt(editor, 0).command).toBe("\\includegraphics{g.png}");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("reverse kind swap: a graphic's save onto a figure keeps its caption + label", () => {
+    const { editor, element } = mount([
+      graphic("g1", "g.png"),
+      figure("f1", "a.png", "Cap A", "fig:a"),
+    ]);
+    try {
+      const clicked = clickedAt(editor, 0);
+      deleteAt(editor, 0);
+      expect(
+        applyFigurePopoverEdit(editor, 0, clicked, "\\includegraphics{z.png}"),
+      ).toBe(false);
+      expect(attrsAt(editor, 0).label).toBe("fig:a");
+      expect(captionTextAt(editor, 0)).toBe("Cap A");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("a same-kind graphic slid onto pos is refused (uuid identity)", () => {
+    const { editor, element } = mount([graphic("g1", "one.png"), graphic("g2", "two.png")]);
+    try {
+      const clicked = clickedAt(editor, 0);
+      deleteAt(editor, 0);
+      expect(
+        applyFigurePopoverEdit(editor, 0, clicked, "\\includegraphics{z.png}"),
+      ).toBe(false);
+      expect(attrsAt(editor, 0).command).toBe("\\includegraphics{two.png}");
+    } finally {
+      editor.destroy();
+      element.remove();
     }
   });
 });

@@ -27,6 +27,7 @@ import {
 } from "@/lib/actions/atom-create";
 import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tiptap/label";
 import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
+import { isFigurePopoverKind, type FigurePopoverKind } from "@/lib/figures/popover-target";
 
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
@@ -240,8 +241,11 @@ export function useMarkerClickBridges(deps: {
   >;
   setActiveFigure: Dispatch<
     SetStateAction<{
-      kind: string;
+      kind: FigurePopoverKind;
       raw: string;
+      // The clicked block's uuid — with `kind` (and `raw` when null), the
+      // identity the save resolves against the LIVE doc (task 1082).
+      uuid: string | null;
       pos: number;
       rect: DOMRect;
       // The editor instance that OWNS the clicked figure/graphics node (main OR
@@ -472,7 +476,9 @@ export function useMarkerClickBridges(deps: {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail || typeof detail.pos !== "number") return;
-      if (typeof detail.kind !== "string") return;
+      // Task 1082: the kind is half the clicked identity — the save runs ONLY
+      // that kind's door — so an unknown kind is malformed.
+      if (!isFigurePopoverKind(detail.kind)) return;
       if (!(detail.rect instanceof DOMRect)) return;
       // The owning editor is required: the save dispatches into THIS instance,
       // so `pos` is read in the pos-space it was minted in (main OR the figure
@@ -486,6 +492,7 @@ export function useMarkerClickBridges(deps: {
       setActiveFigure({
         kind: detail.kind,
         raw: typeof detail.raw === "string" ? detail.raw : "",
+        uuid: typeof detail.uuid === "string" && detail.uuid ? detail.uuid : null,
         pos: detail.pos,
         rect: detail.rect,
         editor: owner,
