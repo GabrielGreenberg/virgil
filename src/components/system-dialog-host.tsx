@@ -90,6 +90,13 @@ export function useSystemDialog(): SystemDialogApi {
   return ctx;
 }
 
+/** The dialog API when a `<SystemDialogProvider>` is mounted above, else
+ *  `null` — for surfaces (an editor NodeView) that also render in harnesses
+ *  with no provider and fall back to a console line there. */
+export function useOptionalSystemDialog(): SystemDialogApi | null {
+  return useContext(SystemDialogCtx);
+}
+
 /* ── Pending dialog shape — tagged union ────────────────────────── */
 
 /** One ASK. `id` is its identity for the life of the queue (task 833): the

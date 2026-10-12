@@ -79,7 +79,7 @@ import {
   libraryPaperSidecarWritable,
   sidecarWriteSubkey,
 } from "@/lib/host-writability";
-import { resolveAssetImport } from "@/lib/figures/asset-import";
+import { resolveAssetImport, texSafeAssetName } from "@/lib/figures/asset-import";
 import {
   planSidecarCleanup,
   type SidecarCleanupReceipt,
@@ -1267,7 +1267,7 @@ export async function importFigureFile(
   // sidecar lands, task 556) — skip the copy-in PUT and just return the
   // would-be relative path (parity with storage-fsa, whose byte write funnels
   // through `enqueueDocWrite`, which refuses every non-sidecar library write).
-  if (isLibraryPaper(h.docId)) return `${subdir}/${basename}`;
+  if (isLibraryPaper(h.docId)) return `${subdir}/${texSafeAssetName(basename)}`;
   assertActive(h);
   assertNotSuperseded(h);
   // Reuse the figure-raster MIME conventions — the PUT route inspects

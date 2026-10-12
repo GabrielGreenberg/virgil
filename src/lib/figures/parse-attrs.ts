@@ -3,6 +3,7 @@
 // structured attrs that drive figure display, and by the tex-mode popover
 // to re-extract attrs when the user edits the source.
 
+import { isTexSafeGraphicsPath } from "@/lib/figures/asset-import";
 import {
   extractBraced,
   extractBracketed,
@@ -734,11 +735,15 @@ export function withUpdatedFigureWidth(
 }
 
 /** Swap the `{path}` argument of the first `\includegraphics` in `text`,
- *  preserving all options. Returns null when no `\includegraphics` is found. */
+ *  preserving all options. Returns null when no `\includegraphics` is found,
+ *  or when `newPath` holds a character TeX would read as syntax (task 1081 —
+ *  the backstop under the import door's own refusal: a broken brace group is
+ *  never written). */
 export function withReplacedFigurePath(
   text: string,
   newPath: string,
 ): string | null {
+  if (!isTexSafeGraphicsPath(newPath)) return null;
   return withUpdatedFirstGraphics(text, (m) =>
     rebuildIncludegraphics(m.command, m.options, newPath),
   );

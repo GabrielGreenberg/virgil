@@ -25,6 +25,8 @@ import { useResolvedFigureUrl } from "@/hooks/useResolvedFigureUrl";
 // `pickFigureFile` encapsulates the FSA-picker vs hidden-`<input>` dispatch.
 import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
 import { pickFigureFile } from "@/lib/figures/pick-file";
+import { TexUnsafeAssetPathError } from "@/lib/figures/asset-import";
+import { useOptionalSystemDialog } from "@/components/system-dialog-host";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { watchChromeBeside } from "./figure-chrome-beside";
@@ -351,6 +353,7 @@ function FigureFloatView({ node, getPos, editor, extension }: NodeViewProps) {
 
 function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   const opts = extension.options as FigureBlockOptions;
+  const dialog = useOptionalSystemDialog();
   const docId = opts.docIdRef?.current ?? null;
   const isFigure = node.type.name === "figureBlock";
 
@@ -532,6 +535,20 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       const relPath = await importFigureFile(handle, picked);
       applyPath(relPath);
     } catch (err) {
+      // Task 1081: a file inside the paper folder whose path LaTeX would
+      // misread is refused before anything is dispatched — say why.
+      if (err instanceof TexUnsafeAssetPathError) {
+        const message =
+          `“${err.path}” contains ${err.chars.map((c) => `“${c}”`).join(", ")}, ` +
+          "which LaTeX reads as part of the command, so the figure could not " +
+          "be written safely. Rename the file and pick it again.";
+        if (dialog) {
+          void dialog.alert({ title: "Can’t use this file name", message, tone: "danger" });
+        } else {
+          console.warn("[figure]", message);
+        }
+        return;
+      }
       console.error("[figure] failed to import picked file:", err);
     }
   };
