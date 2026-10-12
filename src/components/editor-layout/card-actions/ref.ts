@@ -4,6 +4,7 @@ import type { EditorHandle } from "../../Editor";
 import type { LabelInfo } from "../../LabelRefPopover";
 import { headingTypeName } from "@/lib/heading-types";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { resolveAtomEditTarget } from "@/lib/tiptap/atom-edit-target";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import {
   buildRefTargetIndexPM,
@@ -244,15 +245,19 @@ export function useRefActions(deps: {
    * holds a `labelRef` naming `label`, the answer is REFUSE (`null`) — never
    * "the first chip with that label", which is the mis-address task 550 closed.
    */
-  const locateRef = useCallback((target: RefNodeIdentity) => {
-    const { editor, pos, label } = target;
-    if (editor.isDestroyed) return null;
-    const doc = editor.state.doc;
-    if (pos < 0 || pos >= doc.content.size) return null;
-    const node = doc.nodeAt(pos);
-    if (!node || node.type.name !== "labelRef" || node.attrs.label !== label) return null;
-    return node;
-  }, []);
+  const locateRef = useCallback(
+    // Task 1071: through the ONE atom-popover door, which also refuses a
+    // non-editable owner (`surfaceEditableNow` — MAIN's read-only / pen hold,
+    // which `isEditable` cannot see; a read-only card body, whose
+    // `editable:false` does NOT stop a programmatic dispatch).
+    (target: RefNodeIdentity) =>
+      resolveAtomEditTarget(
+        target.editor,
+        target.pos,
+        (node) => node.type.name === "labelRef" && node.attrs.label === target.label,
+      ),
+    [],
+  );
 
   /** Re-point ONE chip (by identity) at `newLabel`. Returns whether it did. */
   const handleRefChangeLabel = useCallback(

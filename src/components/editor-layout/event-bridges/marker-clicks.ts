@@ -26,6 +26,7 @@ import {
   type AtomCreateRequest,
 } from "@/lib/actions/atom-create";
 import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tiptap/label";
+import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
@@ -385,6 +386,9 @@ export function useMarkerClickBridges(deps: {
       if (!(detail.rect instanceof DOMRect)) return;
       const owner = detail.editor as Editor | undefined;
       if (!owner || typeof owner.isEditable !== "boolean") return;
+      // Task 1071: the atom-popover door — a read-only / pen-held owner opens
+      // nothing (`isEditable` is a constant `true` on MAIN).
+      if (!atomPopoverMayOpen(owner)) return;
       const cmd = detail.refCommand;
       setActiveRef({
         label: detail.label,
@@ -449,6 +453,9 @@ export function useMarkerClickBridges(deps: {
       // fall back to MAIN, which would re-introduce the EX-F4-02 mis-target.
       const owner = detail.editor as Editor | undefined;
       if (!owner || typeof owner.isEditable !== "boolean") return;
+      // Task 1071: the atom-popover door — a read-only / pen-held owner opens
+      // nothing (`isEditable` is a constant `true` on MAIN).
+      if (!atomPopoverMayOpen(owner)) return;
       setActiveMath({
         kind: detail.kind,
         latex: typeof detail.latex === "string" ? detail.latex : "",
@@ -473,6 +480,9 @@ export function useMarkerClickBridges(deps: {
       // MAIN, which would re-introduce the EX-F4-02 mis-target (figure twin).
       const owner = detail.editor as Editor | undefined;
       if (!owner || typeof owner.isEditable !== "boolean") return;
+      // Task 1071: the atom-popover door — a read-only / pen-held owner opens
+      // nothing (`isEditable` is a constant `true` on MAIN).
+      if (!atomPopoverMayOpen(owner)) return;
       setActiveFigure({
         kind: detail.kind,
         raw: typeof detail.raw === "string" ? detail.raw : "",

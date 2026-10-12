@@ -196,7 +196,7 @@ describe("math click→edit bridge routes by the owning editor (EX-F4-02)", () =
     expect(ownerMatches).toBe(true);
   });
 
-  it("a read-only MAIN editor stays inert (editor.isEditable gate preserved)", () => {
+  it("a read-only MAIN editor stays inert (the atom-popover door, task 1071)", () => {
     expect(mountAndClick("inline", "main", { editable: false }).fired).toBe(0);
     expect(mountAndClick("display", "main", { editable: false }).fired).toBe(0);
   });

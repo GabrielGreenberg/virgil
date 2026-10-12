@@ -8,6 +8,7 @@ import { setDataIfChanged, setTextIfChanged } from "./idempotent-dom";
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "./atom-registry";
 import { createLeafNodeView } from "./leaf-node-view";
+import { atomPopoverMayOpen } from "./atom-edit-target";
 import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
 
 const REF_ATOM = ATOM_REGISTRY.ref;
@@ -115,6 +116,9 @@ export const LabelRef = Node.create({
           // by its label string opened the popover beside the FIRST match and
           // re-pointed the FIRST match (task 550). `pos` names the clicked one;
           // `editor` is the pos-space it was minted in (main OR a card body).
+          // A read-only / pen-held surface stays inert (task 1071 — the
+          // atom-popover door; the bridge re-asks).
+          if (editor && !atomPopoverMayOpen(editor)) return;
           const pos = livePos();
           if (pos == null) return;
           // Re-minted as a `DOMRect` so the detail always carries the ONE shape
