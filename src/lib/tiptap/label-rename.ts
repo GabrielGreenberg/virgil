@@ -4,6 +4,7 @@ import type { Transaction } from "@tiptap/pm/state";
 import { isLabelTaken } from "@/lib/labels";
 import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
 import type { ConfirmChoice } from "@/components/ConfirmDialog";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
 /**
  * LABEL RENAME — the ONE door every rename of a `\label{…}` declaration enters
@@ -45,6 +46,15 @@ import type { ConfirmChoice } from "@/components/ConfirmDialog";
  *     re-located, its label must still be the one the question named
  *     (`"stale"` otherwise), and the candidate is re-checked against every
  *     other declaration (`"conflict"` if one claimed it meanwhile);
+ *   • the door REFUSES a target the user may not edit right now
+ *     (`surfaceEditableNow` — MAIN's read-only host or a held pen) with
+ *     `"read-only"`, asked on entry AND again after the modal (the pen can
+ *     be taken while it is up). The `readOnlyEnforcer` would drop the
+ *     dispatch anyway, but pre-1083 the door then reported `"renamed"` for a
+ *     write that never landed, so a caller that reverts its draft on any
+ *     other outcome (the figure lozenge) kept showing a key the document
+ *     never took. Every caller — heading strip, figure lozenge, expex
+ *     popover, Outline — inherits the refusal from the door;
  *   • a rename with NO confirm handler in hand carries its refs. That is the
  *     fail-toward-not-orphaning default: the confirm exists to let a user
  *     deliberately KEEP refs on the old key (they mean to re-declare it), and
@@ -95,7 +105,10 @@ export type LabelRenameOutcome =
   | "cancelled"
   /** The declaration's label changed while the question was open, so the
    *  question no longer describes the document — nothing written. */
-  | "stale";
+  | "stale"
+  /** The target is not editable right now (read-only host, pen held) — on
+   *  entry or after the confirm — so nothing is written (task 1083). */
+  | "read-only";
 
 export interface LabelRenameOptions {
   /** Resolve the declaring node in `target` — by live position on the page,
@@ -144,6 +157,7 @@ export async function renameLabelWithRefs(
   target: Editor,
   opts: LabelRenameOptions,
 ): Promise<LabelRenameOutcome> {
+  if (!surfaceEditableNow(target)) return "read-only";
   const first = opts.locate();
   if (!first) return "unresolved";
   const oldLabel = currentLabelOf(first.node);
@@ -170,6 +184,8 @@ export async function renameLabelWithRefs(
   // fresh walk below. Nothing positional survives the modal: the doc may have
   // moved under it, and the second resolve is also what a uuid-addressed
   // caller (a float, the Outline) relies on.
+  // Nor does editability: the pen may have been taken while the modal was up.
+  if (!surfaceEditableNow(target)) return "read-only";
   const after = opts.locate();
   if (!after) return "unresolved";
   if (asked) {
