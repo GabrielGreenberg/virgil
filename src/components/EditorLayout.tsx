@@ -193,6 +193,7 @@ import {
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useFocusMode } from "@/hooks/useFocusMode";
+import { useCloseFloatChord } from "@/hooks/useCloseFloatChord";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
 
@@ -742,22 +743,18 @@ export default function EditorLayout() {
   }, [prefs.poppedOutPanels, prefs.poppedOutCards]);
 
   // Cmd-W closes the most-recently-focused floating window (the top of
-  // the MRU stack). When the stack is empty, preventDefault is skipped so
-  // the host (PWA window or browser tab) handles the keystroke as usual.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "w" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      const target = focusStack[focusStack.length - 1];
-      if (!target) return;
-      e.preventDefault();
+  // the MRU stack) — one per press, never per auto-repeat. When the stack is
+  // empty the host (PWA window or browser tab) handles the keystroke as usual.
+  // `toolbar` kind no longer originates here — EditorPane owns the detached
+  // toolbars and dismisses them via its own MRU.
+  const closeFloating = useCallback(
+    (target: FloatingRef) => {
       if (target.kind === "panel") closePopout(target.id);
-      else if (target.kind === "card") closeCardPopout(target.key);
-      // `toolbar` kind no longer originates here — EditorPane owns
-      // the detached toolbars and dismisses them via its own MRU.
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [focusStack, closePopout, closeCardPopout]);
+      else closeCardPopout(target.key);
+    },
+    [closePopout, closeCardPopout],
+  );
+  useCloseFloatChord(focusStack[focusStack.length - 1], closeFloating);
 
   // Raise-on-click: paint z-index for a card/text-object float, derived from the
   // MRU focus stack so clicking a buried float brings it forward (was insertion

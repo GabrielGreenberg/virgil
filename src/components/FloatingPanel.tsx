@@ -632,7 +632,7 @@ function FloatingPanelInner({
       // would be ghost movement the user never made. Without this the panel
       // stays glued to the cursor and commits on the next click.
       if (isMissedRelease(e)) {
-        endGesture(null);
+        endGesture({ kind: "release", cursor: null });
         return;
       }
       e.preventDefault();
@@ -809,11 +809,32 @@ function FloatingPanelInner({
       }
     };
     /**
+     * The gesture's app-wide chrome — body styles, the dock outline, the
+     * StackIcon ring, the live refs — released in ONE place, so every ending
+     * (release, missed release, unmount) leaves the app out of drag mode.
+     */
+    const clearGestureChrome = (s: NonNullable<typeof dragStateRef.current>) => {
+      if (getStackDropTarget()) setStackDropTarget(false);
+      if (s.mode === "move") setDockDragTarget(null);
+      dragStateRef.current = null;
+      liveMoveRef.current = null;
+      liveResizeRef.current = null;
+      moveGeomRef.current = null;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+    /**
      * THE end edge — one path for every ending, so no variant can skip the
      * chrome teardown or the single persistence commit (the engine's
      * finally-style discipline).
      *
-     * `cursor` is the release coordinate, or NULL when the release was never
+     * Two kinds of ending. A RELEASE commits; a CANCEL (the float unmounting
+     * mid-gesture — Cmd-W while dragging, any programmatic close) only tears
+     * the chrome down: no geometry write, no redock, no stack capture. A float
+     * that is going away has nothing to commit, and under the Escape/cancel
+     * doctrine an ending the user did not perform must not decide a move.
+     *
+     * A release's `cursor` is the release coordinate, or NULL when it was never
      * observed (the missed-release bail). A null cursor is not "the cursor is
      * at 0,0": the cursor-based hit-tests are skipped and the rect-based ones
      * still run, so the two forgiving conditions the user could SEE (the
@@ -822,7 +843,11 @@ function FloatingPanelInner({
      * failsafe this COMMITS the last live value rather than cancelling — the
      * user did move the float there.
      */
-    const endGesture = (cursor: { x: number; y: number } | null) => {
+    const endGesture = (
+      ending:
+        | { kind: "release"; cursor: { x: number; y: number } | null }
+        | { kind: "cancel" },
+    ) => {
       const s = dragStateRef.current;
       if (!s) return;
       // Flush nothing and cancel the pending frames: the commit below writes
@@ -834,6 +859,11 @@ function FloatingPanelInner({
       // never ran still persist where the user dragged to.
       cancelTranslate();
       cancelResize();
+      if (ending.kind === "cancel") {
+        clearGestureChrome(s);
+        return;
+      }
+      const cursor = ending.cursor;
       const finalRect = liveRect();
       const wasFloatingMove =
         s.mode === "move" && !s.pendingUndock && handlersRef.current.mode === "floating";
@@ -861,14 +891,7 @@ function FloatingPanelInner({
           })
         );
       if (stackDropHit) {
-        setStackDropTarget(false);
-        setDockDragTarget(null);
-        dragStateRef.current = null;
-        liveMoveRef.current = null;
-        liveResizeRef.current = null;
-        moveGeomRef.current = null;
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
+        clearGestureChrome(s);
         // Persist where the user actually left the float. This branch returns
         // before the shared commit below, which was harmless only while a
         // capture ALWAYS closed the float: since task 332 the host closes it
@@ -893,9 +916,8 @@ function FloatingPanelInner({
         }
         return;
       }
-      // Clear stack-target signal whenever we exit a drag (covers a
-      // miss after a hover).
-      if (getStackDropTarget()) setStackDropTarget(false);
+      // (The stack-target signal is cleared with the rest of the chrome
+      // below — it covers a miss after a hover.)
       // Fresh proximity test for the redock target — the displayed
       // outline may be the lift-off "source ghost" even when the panel
       // isn't actually near any dock, so we can't reuse it as the
@@ -923,15 +945,7 @@ function FloatingPanelInner({
           );
         }
       }
-      if (s.mode === "move") {
-        setDockDragTarget(null);
-      }
-      dragStateRef.current = null;
-      liveMoveRef.current = null;
-      liveResizeRef.current = null;
-      moveGeomRef.current = null;
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
+      clearGestureChrome(s);
       // ONE React commit and ONE persistence write per gesture, on the edge —
       // and for a resize this is the LAST of at most one-per-frame commits,
       // not the only one: React owns width/height, so there is no imperative
@@ -946,7 +960,7 @@ function FloatingPanelInner({
       }
     };
     const onUp = (e: MouseEvent) => {
-      endGesture({ x: e.clientX, y: e.clientY });
+      endGesture({ kind: "release", cursor: { x: e.clientX, y: e.clientY } });
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -973,6 +987,11 @@ function FloatingPanelInner({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       unsubscribeGestureBus();
+      // Unmount is the gesture's third ending: a float closed mid-drag or
+      // mid-resize must not strand the app with text selection disabled, a
+      // resize cursor, or a lit dock outline (task 1095). A cancel — it
+      // commits nothing; with no live gesture it is a no-op.
+      endGesture({ kind: "cancel" });
       cancelTranslate();
       cancelResize();
     };

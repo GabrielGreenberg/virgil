@@ -157,7 +157,7 @@ const INIT = { x: 800, y: 100, width: 320, height: 240 };
 function mountFloat() {
   const onChange = vi.fn();
   const onMaybeRedock = vi.fn();
-  render(
+  const { unmount } = render(
     <FloatingPanel
       panelId="notes"
       mode="floating"
@@ -178,6 +178,7 @@ function mountFloat() {
     header: document.querySelector<HTMLElement>('[data-testid="body"]')!,
     onChange,
     onMaybeRedock,
+    unmount,
   };
 }
 
@@ -326,6 +327,40 @@ describe("what the outline OFFERS is what the release ACCEPTS", () => {
     flushFrame();
     up(480, 600);
     expect(onMaybeRedock).not.toHaveBeenCalled();
+  });
+});
+
+describe("unmount is the gesture's third ending — a CANCEL (task 1095)", () => {
+  // Cmd-W while dragging (or any programmatic close) unmounts the float with
+  // the gesture live. The chrome it set app-wide must come down with it, and
+  // nothing may be committed: no geometry write, no redock.
+  it("closing a float mid-move clears the outline and the body chrome, and commits nothing", () => {
+    mountDockFixture();
+    const { header, onChange, onMaybeRedock, unmount } = mountFloat();
+    fireEvent.mouseDown(header, { clientX: 500, clientY: 500, ...HELD });
+    move(500 + (880 - INIT.x), 500 + (CORNER_Y - INIT.y));
+    flushFrame();
+    expect(getDockDragTarget(), "precondition: the outline is lit").not.toBeNull();
+    expect(document.body.style.userSelect).toBe("none");
+
+    unmount();
+
+    expect(getDockDragTarget(), "the outline is cleared").toBeNull();
+    expect(document.body.style.userSelect).toBe("");
+    expect(document.body.style.cursor).toBe("");
+    expect(onMaybeRedock).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    // A late mouseup after the close reaches no listener and decides nothing.
+    up(500, 500);
+    expect(onMaybeRedock).not.toHaveBeenCalled();
+  });
+
+  it("unmounting with no live gesture touches no chrome", () => {
+    const { unmount } = mountFloat();
+    document.body.style.cursor = "wait"; // someone else's chrome
+    unmount();
+    expect(document.body.style.cursor).toBe("wait");
+    document.body.style.cursor = "";
   });
 });
 
