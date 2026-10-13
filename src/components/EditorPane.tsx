@@ -326,7 +326,7 @@ import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
 import { PanelChromeProvider, useCycle } from "./panel-primitives";
-import { findEditorScrollFor } from "./editor-layout/layout-scroll";
+import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import FloatingPanel from "./FloatingPanel";
 import { OmniHost } from "./editor-layout/panels/omni-host";
@@ -3779,19 +3779,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       if (!target) return;
       const range = resolveLinkedAnchorRange(ed.state, target.anchorId);
       if (!range) return;
-      // Scroll the change into view + caret-select its start. Inlined from
-      // EditorHandle.scrollToPos (Editor.tsx) — this scope holds the raw editor
-      // (editorInstanceRef), not the EditorHandle, so we reuse its coordsAtPos
-      // scroll math directly rather than thread a second ref.
+      // Caret-select the change's start and land it on the reading line —
+      // the same door (and the same height) as every other land-at-a-position
+      // gesture (task 1099; was an inlined hand `- 100`).
       try {
         ed.commands.setTextSelection(range.from);
-        const coords = ed.view.coordsAtPos(range.from);
-        const scrollEl = findEditorScrollFor(ed.view.dom);
-        if (scrollEl && coords) {
-          const scrollRect = scrollEl.getBoundingClientRect();
-          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
-          scrollEl.scrollTop = Math.max(0, targetY);
-        }
+        scrollPosToReadingLine(ed.view, range.from);
       } catch {
         /* pos out of range — ignore */
       }
@@ -4780,21 +4773,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       rowScrollRef.current = null;
       return;
     }
-    // Walk up to the nearest ancestor whose computed `overflow-y` allows
-    // scrolling. EditorLayout wraps the EditorPane mount in a
-    // `flex-1 min-h-0 overflow-x-auto overflow-y-auto` div; the Reader
-    // does the same on its outer wrapper. Either way the scroll
-    // container is one ancestor up; iterate to be safe.
-    let el: HTMLElement | null = root.parentElement;
-    while (el) {
-      const cs = getComputedStyle(el);
-      if (cs.overflowY === "auto" || cs.overflowY === "scroll") {
-        rowScrollRef.current = el;
-        return;
-      }
-      el = el.parentElement;
-    }
-    rowScrollRef.current = null;
+    // This pane's OWN row scroll container (task 1099 — through the door, not
+    // a computed-overflow walk). EditorLayout and the Reader both mark theirs
+    // `[data-virgil-row-scroll]`. Own-ancestor only: a pane with none gets
+    // null rather than the visible pane's scroller, which would persist
+    // ANOTHER doc's scroll offset into this doc's memory.
+    rowScrollRef.current = root.closest("[data-virgil-row-scroll]") as HTMLElement | null;
   }, []);
 
   // Phase D — durable per-doc scroll memory. The warm mount preserves scroll for

@@ -53,6 +53,7 @@ import {
 } from "@/lib/latex-serializer";
 import { checkTexPreservation } from "@/lib/tex-preservation";
 import { canMountInSchema } from "@/lib/tiptap/schema-mount";
+import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { assembleLiveSource } from "@/lib/doc-products/pipeline";
 import {
   getRanges,
@@ -535,24 +536,11 @@ export function createCodePaneBridge(
     try {
       editor.commands.setTextSelection(pos);
       try {
-        const coords = editor.view.coordsAtPos(pos);
-        if (coords) {
-          // Find a scroll ancestor for the TipTap view and align it.
-          let scrollEl: HTMLElement | null = editor.view.dom.parentElement;
-          while (
-            scrollEl &&
-            scrollEl !== document.body &&
-            getComputedStyle(scrollEl).overflowY === "visible"
-          ) {
-            scrollEl = scrollEl.parentElement;
-          }
-          if (scrollEl && scrollEl !== document.body) {
-            const scrollRect = scrollEl.getBoundingClientRect();
-            const targetY =
-              coords.top - scrollRect.top + scrollEl.scrollTop - 100;
-            scrollEl.scrollTop = Math.max(0, targetY);
-          }
-        }
+        // Land on the reading line through the ONE editor-scroll door (task
+        // 1099). The old hand walk stopped at the first non-`visible`
+        // ancestor — the editor pod, which is `overflow: clip` and does not
+        // scroll — so the arrow moved the caret but never the page.
+        scrollPosToReadingLine(editor.view, pos);
       } catch {
         /* scroll best-effort */
       }

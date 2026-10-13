@@ -35,4 +35,5 @@ export {
   readingLineY,
   readingThresholdY,
   scrollBlockToReadingLine,
+  scrollPosToReadingLine,
 } from "./reading-line";
