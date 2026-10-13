@@ -255,7 +255,58 @@ function keydownHandlers(src: string): { body: string; index: number }[] {
       if (src[i] === "{") depth++;
       else if (src[i] === "}") depth--;
     }
-    out.push({ body: src.slice(m.index, i), index: m.index });
+    const attr = src.slice(m.index, i);
+    out.push({ body: attr + resolveNamedHandler(src, attr), index: m.index });
+  }
+  return out;
+}
+
+/* ── Named handlers are READ, not skipped (task 1094) ─────────────────────
+ *
+ * Every leg here reads the text of an `onKeyDown={…}` attribute. When that
+ * attribute is a NAME — `onKeyDown={onTextareaKeyDown}` — the text says
+ * nothing, and the field was invisible to all three censuses. That is how the
+ * todo card's notes box hid: its handler came from `useTabIndent()`, whose
+ * Escape BLURS, beside an `onBlur` commit — so Escape SAVED the draft, while
+ * the attribute this census read was one identifier long.
+ *
+ * So a bare identifier is resolved to its declaration in the same file
+ * (`const x = …;`, balanced), and a declaration that is a `useTabIndent(` call
+ * is resolved one level further, into the hook itself: its own source (the
+ * Escape branch that blurs when no `cancel` is given) plus the `cancel:` the
+ * call site hands it. The hook's `cancel` is the door; a call that omits it on
+ * a blur-commit field reads exactly like a bare `.blur()` in the handler. */
+const TAB_INDENT_HOOK = "src/hooks/useTabIndent.ts";
+
+function declarationOf(src: string, name: string): string {
+  const re = new RegExp(`\\bconst\\s+${name.replace(/\$/g, "\\$")}\\s*(?::[^=]+)?=`);
+  const m = re.exec(src);
+  if (!m) return "";
+  let depth = 0;
+  for (let i = m.index + m[0].length; i < src.length; i++) {
+    const c = src[i];
+    if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") depth--;
+    else if (c === ";" && depth <= 0) return src.slice(m.index, i + 1);
+  }
+  return src.slice(m.index);
+}
+
+function resolveNamedHandler(src: string, attr: string): string {
+  const inner = attr.replace(/^onKeyDown=\{/, "").replace(/\}$/, "");
+  // Only a handler that is a NAME (possibly behind a `cond ? undefined :`
+  // gate) — an inline arrow is already its own text.
+  if (/=>|\bfunction\b/.test(inner)) return "";
+  let out = "";
+  for (const [name] of inner.matchAll(/[A-Za-z_$][\w$]*/g)) {
+    const decl = declarationOf(src, name);
+    if (!decl) continue;
+    out += "\n" + decl;
+    if (/\buseTabIndent\s*(?:<[^>]*>)?\s*\(/.test(decl)) {
+      out += "\n" + strip(readFileSync(path.join(REPO, TAB_INDENT_HOOK), "utf8"), true);
+      const cancel = /\bcancel\s*:\s*([A-Za-z_$][\w$]*)/.exec(decl);
+      if (cancel) out += "\n" + declarationOf(src, cancel[1]);
+    }
   }
   return out;
 }
@@ -266,8 +317,8 @@ const HAS_BLUR_COMMIT = /onBlur=/;
  *  session?") rather than on the pre-fix MECHANISM (`.blur()`): keying it on
  *  the mechanism means every site DROPS OUT of the population the moment it is
  *  fixed, so the census would go green by emptying itself (task 404's rule). */
-const ENDS_SESSION = /\.blur\(\)|session\.(?:cancel|commitAndBlur)\(/;
-const TAKES_DOOR = /session\.(?:cancel|commitAndBlur)\(/;
+const ENDS_SESSION = /\.blur\(\)|session\.(?:cancel|commitAndBlur)\(/i;
+const TAKES_DOOR = /session\.(?:cancel|commitAndBlur)\(/i;
 
 /** Does this keydown treat Escape as its OWN branch?
  *
@@ -349,6 +400,14 @@ describe("CENSUS — a cancelling field takes the door", () => {
     // row now render. Its three hand-rolled predecessors cancelled by
     // UNMOUNTING (the editor tab strip sat in the family below; the two
     // Library copies hid from both scans behind a named `handleKeyDown`).
+    //
+    // WIDENED (task 1094): `TodoRow` — its notes box's keydown is a NAME
+    // (`useTabIndent`'s result), which no leg read until named handlers were
+    // resolved. Through the hook, Escape blurred beside an `onBlur` commit, so
+    // it SAVED the draft; it now hands the hook a `cancel` that takes the door.
+    // (`CardTitleInput`, the todo's title, was the other half of that bug — it
+    // shares `panel-primitives.tsx` with `CardBodyTitle`, so it is pinned by
+    // the per-handler `doored` check below, not by a new row.)
     const found = cancellingFields();
     const rels = [...new Set(found.map((h) => h.rel))].sort();
     expect(rels).toEqual([
@@ -359,6 +418,7 @@ describe("CENSUS — a cancelling field takes the door", () => {
       "src/components/SourcePodNodeView.tsx",
       "src/components/panel-primitives.tsx",
       "src/panels/Citations/CitationCard.tsx",
+      "src/panels/Todo/TodoRow.tsx",
     ]);
     expect(found.every((h) => h.doored)).toBe(true);
   });
@@ -383,6 +443,55 @@ describe("CENSUS — a cancelling field takes the door", () => {
     expect(ENDS_SESSION.test(hs[0].body)).toBe(true);
     expect(HAS_BLUR_COMMIT.test(tagAround(fixture, hs[0].index) ?? "")).toBe(true);
     expect(TAKES_DOOR.test(hs[0].body)).toBe(false); // ← would be flagged
+  });
+
+  // CAN-SEE canary for the shape task 1094 drained: the handler is a NAME
+  // bound to `useTabIndent`, whose Escape blurs inside the HOOK. Synthetic, for
+  // the same reason as the canary above.
+  it("the scan sees a blur-on-Escape delivered by a HOOK, and the hook's cancel as the door", () => {
+    const field = (decl: string) =>
+      [
+        "function Row() {",
+        decl,
+        "  return (",
+        "    <textarea",
+        "      value={notes}",
+        "      onBlur={commitNotes}",
+        "      onKeyDown={onTextareaKeyDown}",
+        "    />",
+        "  );",
+        "}",
+      ].join("\n");
+    const classify = (src: string) => {
+      const hs = keydownHandlers(src);
+      expect(hs).toHaveLength(1);
+      const h = hs[0];
+      expect(hasDistinctCancel(h.body)).toBe(true);
+      expect(ENDS_SESSION.test(h.body)).toBe(true);
+      expect(HAS_BLUR_COMMIT.test(tagAround(src, h.index) ?? "")).toBe(true);
+      return TAKES_DOOR.test(h.body);
+    };
+    // The pre-1094 todo notes box — would be flagged.
+    expect(classify(field("  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();"))).toBe(false);
+    // The fixed shape — the hook's `cancel` resolves to the door.
+    expect(
+      classify(
+        field(
+          [
+            "  const cancelNotes = useCallback((el) => notesSession.cancel(el, () => draft.revert()), []);",
+            "  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>(undefined, { cancel: cancelNotes });",
+          ].join("\n"),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("MECHANISM — the hook's Escape ends through the field's cancel when it has one", () => {
+    const hook = strip(readFileSync(path.join(REPO, TAB_INDENT_HOOK), "utf8"), true);
+    const esc = hook.slice(hook.indexOf('e.key === "Escape"'));
+    expect(esc).toMatch(/if\s*\(cancel\)\s*cancel\(el\)/);
+    // The bare blur is the FALLBACK, never unconditional.
+    expect(esc).toMatch(/else\s*\(el as HTMLElement\)\.blur\(\)/);
   });
 
   // The NON-MEMBERS, pinned with their reasons so a later sweep does not
@@ -459,8 +568,16 @@ function unmountingCancelFields(): string[] {
 
 describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
   it("is exactly the declared set, and none of them blurs", () => {
-    // CitationCard appears in BOTH censuses and that is correct: its Code box
-    // takes the door (task 555) while its citekey field still unmounts.
+    // CitationCard LEFT (task 1094). It sat here only because the door regexes
+    // were case-sensitive: its Code box cancels through `codeSession.cancel(`,
+    // which `session\.` did not match, so a DOORED field read as one that never
+    // ends its session. Both its keydowns take the door; the census now reads
+    // any `…Session.cancel(` binding as the door.
+    //
+    // PreferencesModal JOINED (task 1094): its preset-name box's keydown is a
+    // NAMED `handleKeyDown`, invisible until named handlers were resolved.
+    // Escape unmounts the box (`setSaving(false)`) and its `onBlur` commits
+    // nothing (it only closes an EMPTY box) — a member, not a convert.
     //
     // bib-review-request (task 981, declared by task 987): its compose note
     // has NO blur commit — Return mints the request and Escape drops the
@@ -472,9 +589,9 @@ describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
     expect(unmountingCancelFields()).toEqual([
       "library/components/BibCard.tsx",
       "src/components/ManageStylesModal.tsx",
+      "src/components/PreferencesModal.tsx",
       "src/components/bib-review-request.tsx",
       "src/panels/Bibliography/BibliographyPanel.tsx",
-      "src/panels/Citations/CitationCard.tsx",
       "src/panels/Outline/OutlinePanel.tsx",
       "src/panels/_shared/PanelGoalStrip.tsx",
       "src/text-objects/floats/float-title-field.tsx",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useCallback } from "react";
 import type { TodoItem } from "@/lib/types";
 import {
   PANEL,
@@ -12,6 +12,7 @@ import {
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useFieldDraft } from "@/components/field-draft";
+import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -84,7 +85,6 @@ export function TodoRow({
   // a one-time fold over the SHIPPED defaults and is override-blind forever.
   const theme = useCardKindTheme("todo");
   const todoBodyStyle = usePanelBodyStyle("todo");
-  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
 
   // The notes textarea is a local `useState` draft of a value `todos.json`
   // owns, committed to disk only on blur. Task 102 built the reconcile rule
@@ -102,8 +102,24 @@ export function TodoRow({
     writeDraft: setNotes,
   });
 
+  // Escape CANCELS (task 1094). The notes commit on blur, and `useTabIndent`'s
+  // Escape blurs — so before this the key the user pressed to abandon the
+  // draft was the key that wrote it to `todos.json`. The session marks the
+  // blur as an ending, so `commitNotes` skips; the revert restores the stored
+  // notes.
+  const notesSession = useFieldEditSession();
+  const cancelNotes = useCallback(
+    (el: HTMLTextAreaElement) => notesSession.cancel(el, () => notesDraft.revert()),
+    [notesSession, notesDraft],
+  );
+  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>(undefined, {
+    cancel: cancelNotes,
+  });
+
   const commitNotes = () => {
-    notesDraft.commit(notes, (v) => onUpdateNotes(item.id, v));
+    notesSession.commit(() => {
+      notesDraft.commit(notes, (v) => onUpdateNotes(item.id, v));
+    });
   };
 
   // Delete-with-confirm — THE card-delete door (task 976), like every sibling.

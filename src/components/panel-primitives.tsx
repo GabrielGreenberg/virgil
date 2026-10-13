@@ -1334,6 +1334,7 @@ export function CardTitleInput({
   // Same live-title publication as `CardBodyTitle` — this input is uncontrolled
   // too, so the enclosing card's content gate must read the ELEMENT (task 386).
   const registerTitle = useCardTitleRegistration();
+  const session = useFieldEditSession();
   const setInputRef = useCallback(
     (el: HTMLInputElement | null) => {
       inputRef.current = el;
@@ -1379,7 +1380,19 @@ export function CardTitleInput({
           // No `onChange` ⇒ nothing owns this value ⇒ there is no commit to
           // make, and marking the draft synced against a source nobody writes
           // would make the next reconcile revert the user's typing.
-          if (onChange) draft.commit(e.target.value, onChange);
+          const el = e.currentTarget;
+          if (onChange) session.commit(() => draft.commit(el.value, onChange));
+        }}
+        onKeyDown={(e) => {
+          // Escape CANCELS (task 1094) — the same door as `CardBodyTitle`.
+          // This input commits on blur and used to have no Escape at all, so
+          // the draft the user meant to drop was written by the next
+          // click-away. The claim is still released: the cancel's blur runs
+          // `onBlur`, which releases before the (skipped) commit.
+          if (e.key === "Escape" && onChange) {
+            e.preventDefault();
+            session.cancel(e.currentTarget, () => draft.revert());
+          }
         }}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
