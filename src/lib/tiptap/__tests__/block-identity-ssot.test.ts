@@ -165,6 +165,7 @@ describe("878 — one eligibility rule: a deferred inner paragraph carries no li
     const out = withFreshBlockUuids(
       LIST("L", ITEM("I1", P("X1", "a")), ITEM("I2", P(null, "b"))) as never,
       live,
+      mount([P("Z", "x")]).schema,
     ) as JSONContent;
     const list = out.attrs!.uuid as string;
     const items = out.content!.map((i) => i.attrs!.uuid as string);
@@ -182,7 +183,7 @@ describe("878 — one eligibility rule: a deferred inner paragraph carries no li
   it("a top-level paragraph is minted fresh against the destination's live ids", () => {
     const ed = mount([P("A", "x")]);
     const live = collectBlockUuids(ed.state.doc);
-    const out = withFreshBlockUuids(P("A", "copy") as never, live) as JSONContent;
+    const out = withFreshBlockUuids(P("A", "copy") as never, live, ed.schema) as JSONContent;
     expect(out.attrs!.uuid).toBeTruthy();
     expect(out.attrs!.uuid).not.toBe("A");
   });
