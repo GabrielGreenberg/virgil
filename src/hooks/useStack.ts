@@ -24,6 +24,7 @@ import {
   STACK_STORAGE_KEY,
   type StackEnvelope,
   type StackItem,
+  type StackPayload,
 } from "@/lib/stack/types";
 import { fitStackItems, serializeStackEnvelope } from "@/lib/stack/budget";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
@@ -33,30 +34,92 @@ import {
   type StackBibCtx,
 } from "@/lib/stack/bib-carry";
 
-const EMPTY_ENVELOPE: StackEnvelope = { version: 1, items: [] };
+/** Key the add door moves a stored blob to when NOBODY can read it (it does
+ *  not parse), before starting fresh — so real corruption costs one key's
+ *  worth of storage, not the Stack, and a human can still recover it
+ *  (task 1100). */
+export const STACK_QUARANTINE_KEY = `${STACK_STORAGE_KEY}:quarantine`;
 
-function readEnvelope(): StackEnvelope {
-  if (typeof window === "undefined") return EMPTY_ENVELOPE;
+/** Every payload family, typed so a new `StackPayload` kind cannot ship
+ *  without the read door recognising it. */
+const STACK_PAYLOAD_KINDS: Record<StackPayload["kind"], true> = {
+  text: true,
+  paragraph: true,
+  heading: true,
+  card: true,
+};
+
+/**
+ * What the ONE read door saw (task 1100). "Unreadable" is a separate answer
+ * from "empty", because the add door must not treat "I could not read it" as
+ * "there is nothing there" — its next write would replace every stored item
+ * with the one new capture.
+ *
+ * - `ok` — absent (truly empty) or a v1 envelope; malformed ITEMS are dropped
+ *   one by one, so one bad item costs only itself.
+ * - `foreign` — parses, but is not a v1 envelope (another build's version, or
+ *   no `items` array). Some build may own it: never overwrite.
+ * - `corrupt` — does not parse. No build can ever read it.
+ */
+type EnvelopeRead =
+  | { state: "ok"; items: StackItem[] }
+  | { state: "foreign" }
+  | { state: "corrupt"; raw: string };
+
+function isStackItem(v: unknown): v is StackItem {
+  if (!v || typeof v !== "object") return false;
+  const it = v as { id?: unknown; payload?: unknown };
+  if (typeof it.id !== "string") return false;
+  const payload = it.payload as { kind?: unknown } | null | undefined;
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    typeof payload.kind === "string" &&
+    Object.prototype.hasOwnProperty.call(STACK_PAYLOAD_KINDS, payload.kind)
+  );
+}
+
+function readEnvelope(): EnvelopeRead {
+  if (typeof window === "undefined") return { state: "ok", items: [] };
+  let raw: string | null;
   try {
-    const raw = localStorage.getItem(STACK_STORAGE_KEY);
-    if (!raw) return EMPTY_ENVELOPE;
-    const parsed = JSON.parse(raw) as Partial<StackEnvelope>;
-    if (!parsed || typeof parsed !== "object") return EMPTY_ENVELOPE;
-    if (parsed.version !== 1 || !Array.isArray(parsed.items)) {
-      return EMPTY_ENVELOPE;
-    }
-    // Normalize the pre-235 per-card bib sidecars onto the unified
-    // `item.bib` carrier (task 235). This is the ONE read door — the hook's
-    // state, its cross-window re-read, and the non-React `readStackItem` the
-    // pull spec uses all come through here — so no consumer downstream ever
-    // sees the old shape and the pull side needs no legacy branch.
-    return {
-      version: 1,
-      items: (parsed.items as StackItem[]).map(normalizeStackItemBib),
-    };
+    raw = localStorage.getItem(STACK_STORAGE_KEY);
   } catch {
-    return EMPTY_ENVELOPE;
+    // Storage itself is unavailable: nothing was read, and nothing will be
+    // written either (the write door reports the same failure).
+    return { state: "foreign" };
   }
+  if (!raw) return { state: "ok", items: [] };
+  let parsed: Partial<StackEnvelope> | null;
+  try {
+    parsed = JSON.parse(raw) as Partial<StackEnvelope> | null;
+  } catch {
+    return { state: "corrupt", raw };
+  }
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    parsed.version !== 1 ||
+    !Array.isArray(parsed.items)
+  ) {
+    return { state: "foreign" };
+  }
+  // Validate ITEM BY ITEM, then normalize the pre-235 per-card bib sidecars
+  // onto the unified `item.bib` carrier (task 235). This is the ONE read door
+  // — the hook's state, its cross-window re-read, and the non-React
+  // `readStackItem` the pull spec uses all come through here — so no consumer
+  // downstream ever sees the old shape (or a payload-less item: the thumbnail
+  // reads `item.payload.kind` unguarded) and needs no legacy branch.
+  return {
+    state: "ok",
+    items: (parsed.items as unknown[]).filter(isStackItem).map(normalizeStackItemBib),
+  };
+}
+
+/** The items to DISPLAY / look up — an unreadable envelope shows as empty. */
+function readItems(): StackItem[] {
+  const env = readEnvelope();
+  return env.state === "ok" ? env.items : [];
 }
 
 /**
@@ -108,7 +171,7 @@ export interface UseStackValue {
 }
 
 export function useStack(): UseStackValue {
-  const [items, setItems] = useState<StackItem[]>(() => readEnvelope().items);
+  const [items, setItems] = useState<StackItem[]>(readItems);
 
   // Cross-tab sync — `storage` event fires in OTHER tabs when one tab
   // writes localStorage; routed through the ONE storage-event contract
@@ -117,7 +180,7 @@ export function useStack(): UseStackValue {
   // consumers in this tab.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const reread = () => setItems(readEnvelope().items);
+    const reread = () => setItems(readItems());
     const offStorage = subscribeToStorageKey(STACK_STORAGE_KEY, reread);
     sameWindowListeners.add(reread);
     return () => {
@@ -138,7 +201,9 @@ export function useStack(): UseStackValue {
 
   const remove = useCallback(
     (id: string) => {
-      const cur = readEnvelope().items;
+      // An unreadable envelope reads as no items, so nothing matches and
+      // nothing is written — the stored blob is left exactly as it was.
+      const cur = readItems();
       const next = cur.filter((it) => it.id !== id);
       if (next.length === cur.length) return false;
       return persist(next);
@@ -155,8 +220,7 @@ export function useStack(): UseStackValue {
  * context). Always reads the latest persisted envelope.
  */
 export function readStackItem(id: string): StackItem | null {
-  const env = readEnvelope();
-  return env.items.find((it) => it.id === id) ?? null;
+  return readItems().find((it) => it.id === id) ?? null;
 }
 
 /**
@@ -176,9 +240,19 @@ export function readStackItem(id: string): StackItem | null {
  * `lib/stack/snapshot.ts` and would therefore have been missed by a per-helper
  * ctx parameter. A doc with no bibliography answers with resolvers that return
  * undefined, which is an answer; there is no default to omit.
+ *
+ * **It never overwrites what it could not read** (task 1100) — the write-path
+ * law's question, "is this write measured against what was READ?", asked of
+ * the Stack. A `foreign` envelope (another build's version) REFUSES: the
+ * newer build owns it. A `corrupt` one (does not parse — nobody can ever read
+ * it) is moved to {@link STACK_QUARANTINE_KEY} first, and the add proceeds
+ * only if that move landed; refusing forever would wedge the Stack.
  */
 export function addStackItem(item: StackItem, bib: StackBibCtx): boolean {
-  const cur = readEnvelope().items;
+  const env = readEnvelope();
+  if (env.state === "foreign") return false;
+  if (env.state === "corrupt" && !quarantine(env.raw)) return false;
+  const cur = env.state === "ok" ? env.items : [];
   let candidate = [withBibCarry(item, bib), ...cur];
   // The cap is applied here, once, in BOTH its halves — count then the real
   // localStorage budget, FIFO, never at the expense of the item being added
@@ -197,5 +271,15 @@ export function addStackItem(item: StackItem, bib: StackBibCtx): boolean {
     // report is what closes the float and tears down the lift.
     if (fitted.items.length <= 1) return false;
     candidate = fitted.items.slice(0, fitted.items.length - 1);
+  }
+}
+
+function quarantine(raw: string): boolean {
+  try {
+    localStorage.setItem(STACK_QUARANTINE_KEY, raw);
+    return true;
+  } catch (err) {
+    console.error("[stack] quarantine failed", err);
+    return false;
   }
 }

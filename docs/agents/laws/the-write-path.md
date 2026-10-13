@@ -2558,6 +2558,16 @@ writer refusing with the file byte-identical, the twins delegating, and a census
 forbidding `json.loads` + `except` near a state-file name in any script that
 writes library state.
 
+**The Stack (task 1100)** is the same half in the browser. `readEnvelope` in
+[src/hooks/useStack.ts](../../../src/hooks/useStack.ts) answers a TAGGED read —
+`ok` (absent, or a v1 envelope with malformed items dropped ONE BY ONE, so a bad
+item costs only itself), `foreign` (parses, but another build's version: the add
+door REFUSES and leaves it byte-identical), `corrupt` (does not parse: moved to
+`virgil-stack-v1:quarantine`, then the Stack starts fresh — refusing forever
+would wedge capture). Display reads all three as items-or-nothing; only
+`addStackItem` acts on the distinction. CI:
+`src/hooks/__tests__/stack-envelope-read-door.test.tsx`.
+
 ### The path half: a citekey is ONE folder name (task 894)
 
 A citekey is also a path segment — `papers/<ck>/`, `queue/<ck>.json`,
