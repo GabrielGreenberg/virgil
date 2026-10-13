@@ -123,8 +123,12 @@ export interface PersistentStateApi<S> {
    * the heal. A READ-ONLY consumer gates on the flag; a reconcile that
    * WRITES this sidecar (the editor-derived `syncFromEditor` family) enters
    * `updateWhenLoaded` instead, which holds the gate for it (task 570 — the
-   * one writer that most needed this rule never asked it). Reset to false on
-   * every `docId` change. Additive — existing consumers can ignore it.
+   * one writer that most needed this rule never asked it). False from the
+   * very RENDER in which `docId` changes — it is keyed on the document whose
+   * read resolved, not reset by an effect a commit later (task 1092) — so a
+   * consumer whose `docId` switches under it never sees the previous
+   * document's `true` beside the previous document's `state`. Additive —
+   * existing consumers can ignore it.
    */
   loaded: boolean;
   /**
@@ -141,6 +145,9 @@ export interface PersistentStateApi<S> {
    */
   loadError: boolean;
 }
+
+/** `loadedFor` key for the `docId === null` state (no real docId collides). */
+const NULL_DOC_KEY = "\u0000no-doc";
 
 /**
  * Factory for `docId`-scoped state persisted to a sidecar JSON file.
@@ -193,8 +200,18 @@ export function usePersistentState<S>(
 
   // True after the initial read for the current docId resolves (loaded,
   // absent, or errored). The Mode-A reconcile gate depends on this so it
-  // never fires over the pre-load default. Reset on docId change below.
-  const [loaded, setLoaded] = useState(false);
+  // never fires over the pre-load default.
+  //
+  // DERIVED from WHICH document's read resolved, never a bare boolean (task
+  // 1092). A boolean is reset by the switch EFFECT — one commit too late: in
+  // the render where `docId` turns A→B it still reads A's `true`, so a consumer
+  // whose docId SWITCHES under it (the layout-level `useFocusMode`) ran its
+  // load-gated, editor-derived writer over A's `state` against B's warm editor,
+  // stamped `hasMutatedRef`, and B's own read was discarded and overwritten.
+  // Keyed on the document, `loaded` is false from the switch render itself.
+  const docKey = docId ?? NULL_DOC_KEY;
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const loaded = loadedFor === docKey;
 
   // True when the initial read THREW (corrupt/truncated sidecar JSON, or a
   // transient FSA read error — `readSidecarIfExists` returns null only for a
@@ -321,6 +338,13 @@ export function usePersistentState<S>(
   // state on switch.
   const hasMutatedRef = useRef(false);
 
+  // The document whose read last RESOLVED into this instance (null after a
+  // `docId → null` reset). A non-null value other than the incoming `docId`
+  // means `state` still holds ANOTHER document's data — the read terminal
+  // branches that do not set state from disk (absent sidecar, failed read)
+  // must then drop it rather than let it pass as this document's (task 1092).
+  const resolvedDocRef = useRef<string | null>(null);
+
   // The write handle is pinned to the docId's currently-active
   // pipeline. We resolve it live on every write rather than via
   // `useMemo` — at hook-construction time the parent component runs
@@ -342,13 +366,14 @@ export function usePersistentState<S>(
     // A base belongs to ONE document. Cleared on every switch, and re-earned
     // only by a read that actually resolved (task 719).
     baselineRef.current = newMergeBase<S>();
-    setLoaded(false);
+    setLoadedFor(null);
     setLoadError(false);
     let cancelled = false;
     if (!docId) {
       setState(defaultValue);
+      resolvedDocRef.current = null;
       loadedRef.current = true;
-      setLoaded(true);
+      setLoadedFor(NULL_DOC_KEY);
       return;
     }
     // `readSidecarIfExists` returns null when the file doesn't exist on
@@ -358,6 +383,13 @@ export function usePersistentState<S>(
     // note annotations is never written (task 556), so this branch is the
     // steady state for those. Persisted-EMPTY values still overwrite — disk
     // remains the source of truth whenever a sidecar exists.
+    // State inherited from the previous document (a consumer whose docId
+    // switches under it, rather than remounting per document).
+    const inherited =
+      resolvedDocRef.current !== null && resolvedDocRef.current !== docId;
+    const dropInherited = () => {
+      if (inherited && !hasMutatedRef.current) setState(defaultValue);
+    };
     readSidecarIfExists<S>(docId, filename)
       .then((raw) => {
         if (cancelled) return;
@@ -366,8 +398,12 @@ export function usePersistentState<S>(
         // skip the state overwrite. Set BEFORE the early returns so the
         // reconcile gate releases.
         loadedRef.current = true;
-        setLoaded(true);
-        if (raw === null) return;
+        resolvedDocRef.current = docId;
+        setLoadedFor(docId);
+        if (raw === null) {
+          dropInherited();
+          return;
+        }
         if (hasMutatedRef.current) return;
         const migrated = migrate ? migrate(raw) : (raw as S);
         baselineRef.current.value = migrated;
@@ -423,8 +459,10 @@ export function usePersistentState<S>(
         // reaper stands down for this kind (no mass-reap of live marks).
         loadErrorRef.current = true;
         loadedRef.current = true;
+        resolvedDocRef.current = docId;
+        dropInherited();
         setLoadError(true);
-        setLoaded(true);
+        setLoadedFor(docId);
         // … and SAY so (task 679), on the same one channel the WRITE side of
         // this hook already speaks from. `loadError` tells the app's own gates
         // to stand down; it tells the USER nothing, and the surface they are

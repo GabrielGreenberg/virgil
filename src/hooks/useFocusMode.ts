@@ -270,7 +270,7 @@ export function regionForAddress(
 }
 
 export function useFocusMode(docId: string | null, editor: Editor | null) {
-  const { state: stored, update } = usePersistentState<StoredBand>(
+  const { state: persisted, update, loaded } = usePersistentState<StoredBand>(
     docId,
     "focus.json",
     INITIAL_STORED,
@@ -293,6 +293,18 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   const rev = useStructuralRevisions(editor);
   const editorRef = useRef<Editor | null>(editor);
   editorRef.current = editor;
+
+  // THIS document's band, or none while its `focus.json` read is pending (task
+  // 1092). This hook is mounted ONCE at layout level and its `docId` switches
+  // under it; under multi-doc keep-alive the incoming paper's editor is warm in
+  // the very render the switch lands, while `persisted` still holds the
+  // OUTGOING paper's band until the new read resolves. Everything below —
+  // the projection, the Phase-B migration, the re-anchor writer — reads THIS,
+  // so no editor-derived derivation ever runs one paper's band against another
+  // paper's doc (which deactivated the band and wrote that over the new
+  // paper's file, discarding its read). `loaded` is keyed on the document, so
+  // it is false from the switch render itself.
+  const stored = loaded ? persisted : INITIAL_STORED;
 
   const isLegacy = stored._legacyStart !== undefined || stored._legacyEnd !== undefined;
 
@@ -336,6 +348,13 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   // block into the band (task 709). Captured only when the resolved range
   // changes (a structural rev), O(band) — never per keystroke.
   const lastMembersRef = useRef<(string | null)[] | null>(null);
+  // Members belong to ONE paper: a re-anchor in this paper after visiting
+  // another must behave as a cold start (members null → doc-end fallback), not
+  // search for the previous paper's uuids. Declared BEFORE the capture effect
+  // so, in a commit where both run, the capture wins.
+  useEffect(() => {
+    lastMembersRef.current = null;
+  }, [docId]);
   useEffect(() => {
     if (!state.active) return;
     const doc = editor?.state?.doc;
