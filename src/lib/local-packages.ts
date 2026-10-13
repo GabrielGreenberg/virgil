@@ -140,15 +140,77 @@ export function withLocalLoads(
  */
 const manifestByDoc = new Map<string, LocalPackageManifest | null>();
 
-/** Record the manifest storage just read for `docId` (`null` = no local files). */
+/** Per-doc listeners: the editor-side projections that must RE-DERIVE when a
+ *  doc's manifest lands or changes (task 1103 — DocProducts' Tier B, the legacy
+ *  live-source hook). The manifest fires no transaction, so without this a
+ *  projection serialized before the first folder read keeps the injection the
+ *  saved file does not have. */
+const listenersByDoc = new Map<string, Set<() => void>>();
+
+function loadMapsEqual(
+  a: ReadonlyMap<string, readonly string[]>,
+  b: ReadonlyMap<string, readonly string[]>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [name, loads] of a) {
+    const other = b.get(name);
+    if (!other || other.length !== loads.length) return false;
+    for (let i = 0; i < loads.length; i++) if (other[i] !== loads[i]) return false;
+  }
+  return true;
+}
+
+/** Structural equality of two manifests (`null` = no local files). */
+function localManifestsEqual(
+  a: LocalPackageManifest | null,
+  b: LocalPackageManifest | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return loadMapsEqual(a.packages, b.packages) && loadMapsEqual(a.classes, b.classes);
+}
+
+/**
+ * Record the manifest storage just read for `docId` (`null` = no local files).
+ *
+ * IDENTITY-STABLE (task 1103): every save door rebuilds the manifest from the
+ * folder, so a structurally equal re-publish keeps the STORED object and
+ * notifies nobody — otherwise every autosave would re-arm each subscriber's
+ * idle re-serialize for nothing. Only a first read or a real change notifies.
+ */
 export function publishLocalPackages(
   docId: string,
   manifest: LocalPackageManifest | null,
 ): void {
+  const known = manifestByDoc.has(docId);
+  const prev = manifestByDoc.get(docId) ?? null;
+  if (known && localManifestsEqual(prev, manifest)) return;
   manifestByDoc.set(docId, manifest);
+  // A first read of "no local files" changes nothing a reader saw (null before
+  // the first read reads the same as null after it), so it notifies nobody.
+  if (!known && manifest === null) return;
+  const fns = listenersByDoc.get(docId);
+  if (fns) for (const fn of [...fns]) fn();
 }
 
 /** The manifest last read for `docId`, or `null` before the first read. */
 export function localPackagesFor(docId: string): LocalPackageManifest | null {
   return manifestByDoc.get(docId) ?? null;
+}
+
+/** Be told when `docId`'s manifest lands or changes. Keyed by the owner's own
+ *  doc — a pane hears only its own paper (per-doc-services law). */
+export function subscribeLocalPackages(docId: string, fn: () => void): () => void {
+  let fns = listenersByDoc.get(docId);
+  if (!fns) {
+    fns = new Set();
+    listenersByDoc.set(docId, fns);
+  }
+  fns.add(fn);
+  return () => {
+    const set = listenersByDoc.get(docId);
+    if (!set) return;
+    set.delete(fn);
+    if (set.size === 0) listenersByDoc.delete(docId);
+  };
 }

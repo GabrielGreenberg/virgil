@@ -9,6 +9,7 @@ import {
   buildLocalPackageManifest,
   localPackagesFor,
   publishLocalPackages,
+  subscribeLocalPackages,
   withLocalLoads,
 } from "@/lib/local-packages";
 import { ensurePreambleRequirements } from "@/lib/latex-requirements";
@@ -63,6 +64,29 @@ describe("buildLocalPackageManifest / withLocalLoads", () => {
     publishLocalPackages("doc-a", m);
     expect(localPackagesFor("doc-a")).toBe(m);
     expect(localPackagesFor("doc-b")).toBeNull();
+  });
+
+  it("notifies a doc's own subscribers on land/change only; an equal re-publish keeps identity (1103)", () => {
+    let a = 0;
+    let b = 0;
+    const offA = subscribeLocalPackages("doc-1103-a", () => a++);
+    const offB = subscribeLocalPackages("doc-1103-b", () => b++);
+    // A first read of "no local files" is what readers already saw: silent.
+    publishLocalPackages("doc-1103-a", null);
+    expect(a).toBe(0);
+    const m1 = local(STY_BIBLATEX);
+    publishLocalPackages("doc-1103-a", m1);
+    expect(a).toBe(1);
+    publishLocalPackages("doc-1103-a", local(STY_BIBLATEX));
+    expect(a).toBe(1);
+    expect(localPackagesFor("doc-1103-a")).toBe(m1);
+    publishLocalPackages("doc-1103-a", null);
+    expect(a).toBe(2);
+    expect(b).toBe(0);
+    offA();
+    publishLocalPackages("doc-1103-a", m1);
+    expect(a).toBe(2);
+    offB();
   });
 });
 
