@@ -76,7 +76,7 @@ const INIT = { x: 200, y: 150, width: 400, height: 300 };
 function renderFloat(overrides: Partial<typeof INIT> = {}) {
   const onChange = vi.fn();
   const rect = { ...INIT, ...overrides };
-  render(
+  const { unmount } = render(
     <FloatingPanel
       cardKey="note:n1"
       mode="floating"
@@ -96,7 +96,7 @@ function renderFloat(overrides: Partial<typeof INIT> = {}) {
   const shell = document.querySelector<HTMLDivElement>(
     '[data-floating-panel="true"]',
   )!;
-  return { shell, onChange };
+  return { shell, onChange, unmount };
 }
 
 /** Same mount, wrapped in a `<Profiler>` so React COMMITS are countable — the
@@ -434,5 +434,22 @@ describe("FloatingPanel corner grip styling is removed", () => {
       expect(z, `zone ${edge} should render`).not.toBeNull();
       expect(z.style.background).toBe(""); // no visible styling
     }
+  });
+});
+
+describe("unmount mid-resize (task 1095)", () => {
+  // Closing a float while an edge resize is live is the gesture's third
+  // ending — a CANCEL: the app leaves resize mode, nothing is persisted.
+  it("restores body user-select and cursor, and commits no geometry", () => {
+    const { shell, onChange, unmount } = renderFloat();
+    dragEdge(shell, "right", 600, 300, 650, 300);
+    expect(document.body.style.userSelect).toBe("none");
+    onChange.mockClear();
+
+    unmount();
+
+    expect(document.body.style.userSelect).toBe("");
+    expect(document.body.style.cursor).toBe("");
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
