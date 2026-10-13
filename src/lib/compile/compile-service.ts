@@ -68,6 +68,7 @@ import {
   noteAssetFetch,
   notePass,
   notePhase,
+  noteQueued,
 } from "@/lib/compile/compile-progress";
 import type {
   BibtexStatus,
@@ -207,6 +208,14 @@ class CompileService {
   /** Single in-flight compile, so concurrent triggers serialize. */
   private inFlight: Promise<CompileResult> | null = null;
   /**
+   * Compiles admitted to the chain and not yet settled (the running one plus
+   * any queued behind it). `inFlight` cannot answer "is the engine busy?" — it
+   * stays a settled promise after the last run ends. Task 1091.
+   */
+  private pending = 0;
+  /** The doc whose run currently holds the engine; null between runs. */
+  private runningDocId: string | null = null;
+  /**
    * Packages the worker downloaded during the CURRENT attempt. Bumped by the
    * engine's streaming progress channel; read by the continuation loop to tell
    * a productive timeout (keep going — every byte is cached now) from a real
@@ -221,10 +230,24 @@ class CompileService {
     // Serialize: chain onto any in-flight compile so a reboot during recovery
     // can't collide with a live worker. We chain (not reject) so a second
     // Compile click queues behind the first.
+    //
+    // Task 1091: a run queued behind ANOTHER paper's says so NOW, synchronously
+    // — its own record is otherwise only written once the run is admitted
+    // (`beginCompile` in `continueUntilSettled`), and the paper ahead may hold
+    // the engine for minutes. A doc queued behind its own run keeps the live
+    // record of that run rather than replacing it with "waiting".
+    if (this.pending > 0 && this.runningDocId !== input.docId) {
+      noteQueued(input.docId);
+    }
+    this.pending += 1;
     const run = (this.inFlight ?? Promise.resolve()).then(
       () => this.runWithContinuation(input),
       () => this.runWithContinuation(input),
     );
+    const settle = () => {
+      this.pending -= 1;
+    };
+    run.then(settle, settle);
     // Track only the settle, never expose the internal chain.
     this.inFlight = run.catch(() => undefined) as Promise<CompileResult>;
     return run;
@@ -236,9 +259,11 @@ class CompileService {
    * returned as-is. See `MAX_COLD_ATTEMPTS` above for why this is bounded twice.
    */
   private async runWithContinuation(input: CompileInput): Promise<CompileResult> {
+    this.runningDocId = input.docId;
     try {
       return await this.continueUntilSettled(input);
     } finally {
+      this.runningDocId = null;
       // Task 576: a productive timeout left its worker DRAINING (still
       // downloading, bytes streaming to the persistent cache). Once the loop
       // is over — success, stop or budget — those bytes have been written

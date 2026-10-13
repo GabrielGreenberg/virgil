@@ -368,3 +368,67 @@ describe("task 576 — the teardown mode follows the attempt", () => {
     expect(getCompileProgress(DOC).outcome).toBe("cancelled");
   });
 });
+
+/**
+ * TASK 1091 — a compile queued behind ANOTHER paper's has a voice.
+ *
+ * The service serializes runs, and a queued run's record was only written once
+ * it was ADMITTED — so for the minutes a cold compile of paper A held the
+ * engine, paper B's pane kept painting B's previous outcome ("Compile didn't
+ * produce a PDF … Press Compile to try again") over a button already spinning.
+ */
+describe("task 1091 — a queued compile says it is waiting", () => {
+  it("marks B `waiting` while A holds the engine, then runs B once A settles", async () => {
+    passQueue = [{ kind: "hang", fetches: 0 }, { kind: "ok" }];
+    const svc = new CompileService();
+    const a = svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: "doc-A" });
+    await vi.advanceTimersByTimeAsync(10);
+    const b = svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: "doc-B" });
+    // Synchronously — before A has settled or B has been admitted.
+    expect(getCompileProgress("doc-B").phase).toBe("waiting");
+    expect(getCompileProgress("doc-A").phase).not.toBe("waiting");
+
+    const seen: string[] = [];
+    const unsub = subscribeCompileProgress(() => {
+      seen.push(getCompileProgress("doc-B").phase);
+    });
+    await runToSettle(a);
+    await runToSettle(b);
+    unsub();
+    expect(seen).toContain("preparing");
+    expect(getCompileProgress("doc-B").phase).toBe("done");
+    expect(getCompileProgress("doc-B").outcome).toBe("ok");
+  });
+
+  it("an idle engine admits a compile without a `waiting` record", async () => {
+    passQueue = [{ kind: "ok" }, { kind: "ok" }];
+    const svc = new CompileService();
+    // A prior run that has fully settled leaves `inFlight` a resolved promise —
+    // that is not "busy", and must not read as a queue.
+    await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: "doc-A" }),
+    );
+    const seen: string[] = [];
+    const unsub = subscribeCompileProgress(() => {
+      seen.push(getCompileProgress("doc-B").phase);
+    });
+    await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: "doc-B" }),
+    );
+    unsub();
+    expect(seen).not.toContain("waiting");
+  });
+
+  it("a doc queued behind its OWN run keeps that run's live record", async () => {
+    passQueue = [{ kind: "hang", fetches: 2 }];
+    const svc = new CompileService();
+    const first = svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC });
+    await vi.advanceTimersByTimeAsync(10);
+    const before = getCompileProgress(DOC).phase;
+    const second = svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC });
+    expect(getCompileProgress(DOC).phase).toBe(before);
+    expect(before).not.toBe("waiting");
+    await runToSettle(first);
+    await runToSettle(second);
+  });
+});
