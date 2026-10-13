@@ -64,6 +64,7 @@
  * `src/lib/__tests__/keystroke-subscriber-guardrail.test.ts` + AGENTS.md.
  */
 
+import { localPackagesFor } from "@/lib/local-packages";
 import type { Editor, JSONContent } from "@tiptap/react";
 import {
   assembleLatex,
@@ -279,7 +280,13 @@ export function createDocProducts(
     if (!preambleReady) return { state: "not-ready" };
     let text: string;
     try {
-      text = assembleCurrent({ preamble, postamble, bibFamily });
+      // The folder's own style-file loads (task 1090), as the save path sees them.
+      text = assembleCurrent({
+        preamble,
+        postamble,
+        bibFamily,
+        localPackages: localPackagesFor(config.docId),
+      });
     } catch {
       // FAIL OPEN (task 357). The serializer now REFUSES a node it cannot
       // express rather than emitting the document without it. This tier is a

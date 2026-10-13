@@ -1,5 +1,6 @@
 "use client";
 
+import { localPackagesFor } from "@/lib/local-packages";
 import { useState, useEffect, useMemo, useRef } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
@@ -184,6 +185,8 @@ export default function CodeEditor({
       preamble,
       postamble,
       bibFamily: bibFamilyRef.current ?? null,
+      // The folder's own style-file loads (task 1090), as the save path sees them.
+      localPackages: localPackagesFor(docId),
     });
     readTex(docId)
       .then((diskText) => {
@@ -316,6 +319,7 @@ export default function CodeEditor({
         persistDelimitersRef.current?.(d);
       },
       getBibFamily: () => bibFamilyRef.current ?? null,
+      getLocalPackages: () => localPackagesFor(docId),
       onRequirementConflict: (c) => onRequirementConflictRef.current?.(c),
     });
     bridgeRef.current = bridge;

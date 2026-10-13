@@ -34,6 +34,13 @@ import {
   sidecarWriteSubkey,
 } from "@/lib/host-writability";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
+import { decodeTexBytes } from "@/lib/compile/decode-source";
+import {
+  buildLocalPackageManifest,
+  isLocalPackagePath,
+  publishLocalPackages,
+  type LocalPackageManifest,
+} from "@/lib/local-packages";
 import {
   isLocalSidecar,
   mutateLocalSidecar,
@@ -970,6 +977,34 @@ interface SerializeOpts {
   preamble?: string;
   postamble?: string;
   bibFamily?: BibFamily | null;
+  localPackages?: LocalPackageManifest | null;
+}
+
+/**
+ * Read the paper folder's own `.sty` / `.cls` files into the local-package
+ * manifest (task 1090) and publish it for the doc's editor-side serializers.
+ * Top level only — `\usepackage{mystyle}` resolves beside the `.tex`. Reads
+ * only the matching files' bytes (a directory listing + a few small files),
+ * so it is cheap on the save clock; a file that is not UTF-8 is skipped.
+ */
+async function readLocalPackages(
+  docId: string,
+  docHandle: FileSystemDirectoryHandle,
+): Promise<LocalPackageManifest | null> {
+  const files: { path: string; text: string }[] = [];
+  try {
+    for await (const entry of docHandle.values()) {
+      if (entry.kind !== "file" || !isLocalPackagePath(entry.name)) continue;
+      const file = await (entry as FileSystemFileHandle).getFile();
+      const decoded = decodeTexBytes(new Uint8Array(await file.arrayBuffer()));
+      if ("text" in decoded) files.push({ path: entry.name, text: decoded.text });
+    }
+  } catch {
+    // An unreadable folder answers "no local files" — today's behaviour.
+  }
+  const manifest = buildLocalPackageManifest(files);
+  publishLocalPackages(docId, manifest);
+  return manifest;
 }
 
 /**
@@ -989,11 +1024,14 @@ interface SerializeOpts {
  * to differ from the bytes that side would actually write.
  */
 async function buildSerializeOpts(
+  docId: string,
+  docHandle: FileSystemDirectoryHandle,
   virgil: FileSystemDirectoryHandle,
   delimiters: { preamble: string; postamble: string } | null | undefined,
 ): Promise<SerializeOpts> {
   const bibFamily = await readDocBibFamily(virgil);
-  const opts: SerializeOpts = { ...(delimiters ?? {}), bibFamily };
+  const localPackages = await readLocalPackages(docId, docHandle);
+  const opts: SerializeOpts = { ...(delimiters ?? {}), bibFamily, localPackages };
   if (!delimiters) {
     const rawSettings = await safeReadJson<unknown>(
       virgil,
@@ -1032,7 +1070,7 @@ async function writeReStampedTexOnLoad(
     // existing user-settable SSOT, seeded from detection on load). A missing
     // sidecar → null → the serializer falls back to the body-derived family
     // (today's behavior). Never overrides the user's stored choice.
-    const serializeOpts = await buildSerializeOpts(virgil, delimiters);
+    const serializeOpts = await buildSerializeOpts(h.docId, docHandle, virgil, delimiters);
     // THE SERIALIZER GATE (task 357). A model holding a node this build cannot
     // express in LaTeX no longer serializes to a SHORTER document — the
     // serializer refuses (`UnserializableNodeError`), and the refusal is
@@ -1207,7 +1245,7 @@ export async function writeDocBundle(
     // Authoritative per-doc bib family from the citations sidecar (the
     // user-settable SSOT). Missing → null → body-derived fallback. Never
     // overrides the user's stored choice.
-    const serializeOpts = await buildSerializeOpts(virgil, delimiters);
+    const serializeOpts = await buildSerializeOpts(h.docId, docHandle, virgil, delimiters);
     // THE SERIALIZER GATE (task 357) — see `writeReStampedTexOnLoad` above.
     // Refusing here leaves the `.tex` AND `virgil.json` untouched, which is the
     // half a `.tex`-only gate could never cover: this path replaces the sidecar
@@ -1428,7 +1466,7 @@ export async function snapshotConflictSides(
       try {
         body = serializeToLatex(
           mine,
-          await buildSerializeOpts(virgil, delimiters),
+          await buildSerializeOpts(h.docId, docHandle, virgil, delimiters),
         );
         name = `unsaved-${texName}`;
       } catch {
@@ -1501,8 +1539,11 @@ export type BibPackage = "natbib" | "biblatex";
  * lives in the family SSOT, where the inertness projection and the
  * preamble/body split are stated (task 344).
  */
-export function detectBibPackage(tex: string): BibPackage {
-  return detectBibFamily(tex);
+export function detectBibPackage(
+  tex: string,
+  localPackages?: LocalPackageManifest | null,
+): BibPackage {
+  return detectBibFamily(tex, localPackages);
 }
 
 /**
@@ -1556,7 +1597,10 @@ export async function readBib(docId: string): Promise<BibReadResult> {
   // confirm-read re-baseline the very external edit it is trying to surface
   // (the flicker bug). See docs/memos/external-change-badge/DESIGN.md §3.
   const tex = await safeReadText(docHandle, meta.texFilename, "");
-  const detectedPackage = detectBibPackage(tex);
+  const detectedPackage = detectBibPackage(
+    tex,
+    await readLocalPackages(docId, docHandle),
+  );
   return { bibText, bibFilename, detectedPackage };
 }
 

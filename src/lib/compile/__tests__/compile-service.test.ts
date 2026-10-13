@@ -208,6 +208,43 @@ describe("CompileService — self-sufficiency (in-memory requirement injection)"
   });
 });
 
+describe("CompileService — the paper's own .sty is a load carrier (task 1090)", () => {
+  const files = (): PaperFile[] => [
+    {
+      path: "main.tex",
+      bytes: enc(
+        "\\documentclass{article}\n\\usepackage{mystyle}\n\\begin{document}\n\\cite{x}\n\\printbibliography\n\\end{document}\n",
+      ),
+    },
+    { path: "mystyle.sty", bytes: enc("\\RequirePackage[style=apa]{biblatex}\n") },
+  ];
+  const textOf = (path: string) => {
+    const f = writtenFiles.find((w) => w.path === path);
+    expect(f).toBeDefined();
+    return typeof f!.data === "string" ? f!.data : new TextDecoder().decode(f!.data);
+  };
+
+  it("rewrites the style file's biblatex to backend=bibtex", async () => {
+    passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
+    await new CompileService().compile({
+      files: files(),
+      mainTexFilename: "main.tex",
+      docId: "doc-test",
+    });
+    expect(textOf("mystyle.sty")).toContain("backend=bibtex");
+  });
+
+  it("never injects natbib into the main copy over the style file's biblatex", async () => {
+    passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
+    await new CompileService().compile({
+      files: files(),
+      mainTexFilename: "main.tex",
+      docId: "doc-test",
+    });
+    expect(textOf("main.tex")).not.toContain("\\usepackage{natbib}");
+  });
+});
+
 describe("CompileService — degraded (last-good retention)", () => {
   it("returns degraded with the earlier good PDF when a later pass fails", async () => {
     passQueue = [

@@ -175,7 +175,7 @@ describe("useLatexSource", () => {
     expect(extractPreambleAndPostamble).toHaveBeenCalledWith("DISK-TEX");
     expect(serializeToLatex).toHaveBeenCalledWith(
       { doc: 1 },
-      { preamble: "PRE", postamble: "POST", bibFamily: null },
+      { preamble: "PRE", postamble: "POST", bibFamily: null, localPackages: null },
     );
     expect(result.current.sourceText).toBe(`SER:${JSON.stringify({ doc: 1 })}:PRE:POST`);
   });
@@ -195,7 +195,7 @@ describe("useLatexSource", () => {
     // Serialized with undefined preamble/postamble (the marker collapses to "").
     expect(serializeToLatex).toHaveBeenCalledWith(
       { doc: 1 },
-      { preamble: undefined, postamble: undefined, bibFamily: null },
+      { preamble: undefined, postamble: undefined, bibFamily: null, localPackages: null },
     );
     expect(result.current.sourceText).toBe(`SER:${JSON.stringify({ doc: 1 })}::`);
   });
@@ -301,7 +301,7 @@ describe("useLatexSource", () => {
     });
     expect(serializeToLatex).toHaveBeenCalledWith(
       { doc: 1 },
-      { preamble: "PRE", postamble: "POST", bibFamily: "natbib" },
+      { preamble: "PRE", postamble: "POST", bibFamily: "natbib", localPackages: null },
     );
     expect(result.current.sourceText).toBe(`SER:${JSON.stringify({ doc: 1 })}:PRE:POST`);
   });

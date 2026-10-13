@@ -54,6 +54,13 @@ import {
   detectBibPackage,
   type BibReadResult,
 } from "@/lib/storage-fsa";
+import { decodeTexBytes } from "@/lib/compile/decode-source";
+import {
+  buildLocalPackageManifest,
+  isLocalPackagePath,
+  publishLocalPackages,
+  type LocalPackageManifest,
+} from "@/lib/local-packages";
 import {
   DOCUMENT_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -319,6 +326,29 @@ async function readDevDocBibFamily(docId: string): Promise<BibFamily | null> {
  * `delimiters` comes from `resolveWriteDelimiters`, so `null` means the file is
  * EMPTY — never merely "no `\begin{document}` was found".
  */
+/**
+ * The dev twin of storage-fsa's `readLocalPackages` (task 1090): the paper
+ * folder's own top-level `.sty` / `.cls` loads, published for the doc's
+ * editor-side serializers. Dev-only, so it rides the whole-folder endpoint.
+ */
+async function readDevLocalPackages(
+  docId: string,
+): Promise<LocalPackageManifest | null> {
+  const files: { path: string; text: string }[] = [];
+  try {
+    for (const f of await readPaperFolder(docId)) {
+      if (f.path.includes("/") || !isLocalPackagePath(f.path)) continue;
+      const decoded = decodeTexBytes(f.bytes);
+      if ("text" in decoded) files.push({ path: f.path, text: decoded.text });
+    }
+  } catch {
+    // An unreadable folder answers "no local files" — today's behaviour.
+  }
+  const manifest = buildLocalPackageManifest(files);
+  publishLocalPackages(docId, manifest);
+  return manifest;
+}
+
 async function buildDevSerializeOpts(
   docId: string,
   delimiters: { preamble: string; postamble: string } | null | undefined,
@@ -326,13 +356,16 @@ async function buildDevSerializeOpts(
   preamble?: string;
   postamble?: string;
   bibFamily?: BibFamily | null;
+  localPackages?: LocalPackageManifest | null;
 }> {
   const bibFamily = await readDevDocBibFamily(docId);
+  const localPackages = await readDevLocalPackages(docId);
   const opts: {
     preamble?: string;
     postamble?: string;
     bibFamily?: BibFamily | null;
-  } = { ...(delimiters ?? {}), bibFamily };
+    localPackages?: LocalPackageManifest | null;
+  } = { ...(delimiters ?? {}), bibFamily, localPackages };
   if (!delimiters) {
     const rawSettings = await fetchJson<unknown>(
       `${API}/doc/${docId}/virgil/document-settings.json`,
@@ -933,7 +966,10 @@ export async function readBib(docId: string): Promise<BibReadResult> {
   // half of `mutateBib`. Baselining here would let the watcher's own
   // confirm-read re-baseline the very external edit it is trying to surface
   // (the flicker bug). See docs/memos/external-change-badge/DESIGN.md §3.
-  const detectedPackage = detectBibPackage(tex);
+  const detectedPackage = detectBibPackage(
+    tex,
+    await readDevLocalPackages(docId),
+  );
   return { bibText, bibFilename, detectedPackage };
 }
 

@@ -45,6 +45,7 @@ import {
   type BibFamilyConflict,
 } from "@/lib/bib-family";
 import { preambleProvidesPackage } from "@/lib/document-class";
+import { withLocalLoads, type LocalPackageManifest } from "@/lib/local-packages";
 import { PACKAGE_DETECTORS } from "@/lib/latex-requirement-collector";
 import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
 
@@ -373,6 +374,10 @@ export function ensurePreambleRequirements(
   opts?: {
     declaredBibFamily?: BibFamily | null;
     onRequirementConflict?: (conflict: RequirementConflict) => void;
+    /** The paper folder's own `.sty` / `.cls` loads (task 1090): a package
+     *  a local style file loads is IN FORCE, so it satisfies its requirement,
+     *  pins the bib family and is never stacked a second time. */
+    localPackages?: LocalPackageManifest | null;
   },
 ): string {
   const effective = new Set<string>(ALWAYS_REQUIRED_IDS);
@@ -386,7 +391,15 @@ export function ensurePreambleRequirements(
   // but a commented `% \usepackage{tikz}` would suppress the injection, saving
   // a `.tex` that fails to compile. The raw `preamble` is still what we slice +
   // inject into below, so byte positions of the live text are untouched.
-  const scannable = projectDetectableBody(preamble);
+  //
+  // The preamble's LOCAL loads (`\usepackage{mystyle}` → `mystyle.sty`'s own
+  // `\RequirePackage{biblatex}`) are expanded into the SCANNED text only, as
+  // TeX inlines them (task 1090) — so every check below (satisfaction, bib
+  // family, example family, foreign cites) sees them at once.
+  const scannable = withLocalLoads(
+    projectDetectableBody(preamble),
+    opts?.localPackages,
+  );
 
   // Resolve which bib family the body/authoritative choice needs. Prefer the
   // explicit declared family; else derive from what `required` already carries

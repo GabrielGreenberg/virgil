@@ -139,6 +139,9 @@ export interface CreateCodePaneBridgeOptions {
    * body-derived family (today's behavior).
    */
   getBibFamily?: () => import("@/lib/bib-family").BibFamily | null;
+  /** The paper folder's own `.sty`/`.cls` loads (task 1090), read at flush
+   *  time so the code pane's preamble matches what the save path writes. */
+  getLocalPackages?: () => import("@/lib/local-packages").LocalPackageManifest | null;
   /**
    * Called when a package family the body needs (bib, or the example family —
    * task 543) conflicts with the member the code-view preamble hard-loads.
@@ -375,6 +378,8 @@ export function createCodePaneBridge(
         postamble,
         bibFamily: opts.getBibFamily?.() ?? null,
         onRequirementConflict: opts.onRequirementConflict,
+        // The folder's own style-file loads (task 1090), as the save path sees them.
+        localPackages: opts.getLocalPackages?.() ?? null,
       };
       latex = assembleLiveSource(editor, assembleOpts);
     } catch (err) {

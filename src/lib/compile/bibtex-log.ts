@@ -37,6 +37,11 @@ const BIBTEX_FAILURE_SIGNATURES: readonly string[] = [
   // biber (biblatex backend=biber): data source not found
   "Cannot find 'biber'",
   "Could not open file",
+  // biblatex left on backend=biber (task 1090): biber does not exist in the
+  // browser, so biblatex's own request for it on the FINAL pass's log means
+  // the bibliography was never built. The caller reads the last pass only —
+  // a mid-run "rerun" request is normal; one that survives to the end is not.
+  "Please (re)run Biber",
 ];
 
 /**

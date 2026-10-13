@@ -34,6 +34,7 @@ import {
   projectDetectableLatex,
 } from "@/lib/latex-lexer";
 import { preambleProvidesPackage } from "@/lib/document-class";
+import { withLocalLoads, type LocalPackageManifest } from "@/lib/local-packages";
 
 export type BibFamily = "natbib" | "biblatex";
 
@@ -221,10 +222,18 @@ export function detectPreambleBibFamily(preamble: string): BibFamily | null {
  * `DEFAULT_BIB_FAMILY`. That is why this must be treated as a SEED and never
  * as an override — a caller cannot distinguish "detected natbib" from "found
  * nothing". `useCitations` writes it to no sidecar for exactly that reason.
+ *
+ * `localPackages` (task 1090) is the paper folder's own `.sty`/`.cls` loads:
+ * a biblatex that `mystyle.sty` loads pins biblatex exactly as a preamble
+ * load would.
  */
-export function detectBibFamily(tex: string): BibFamily {
+export function detectBibFamily(
+  tex: string,
+  localPackages?: LocalPackageManifest | null,
+): BibFamily {
   const live = projectDetectableLatex(tex);
-  const preamble = preambleSliceOfProjected(live);
+  // A family a LOCAL style/class file loads is the preamble's own (task 1090).
+  const preamble = withLocalLoads(preambleSliceOfProjected(live), localPackages);
   const loaded = detectPreambleBibFamily(preamble);
   if (loaded) return loaded;
   const byCommand = detectCommandBibFamily(live);
