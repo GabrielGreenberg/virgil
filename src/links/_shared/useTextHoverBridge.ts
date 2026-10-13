@@ -13,7 +13,10 @@
  *      generically; we read identity straight off the DOM.
  *
  *   2. **click** on `.linked-anchor[data-link-id]` — dispatch a single
- *      `virgil-linked-anchor-click` event with `{ entityId, kind, clickY }`.
+ *      `virgil-linked-anchor-click` event with `{ docId, entityId, kind,
+ *      clickY }` through the typed door (`@/lib/pane-click-origin`) — the
+ *      `docId` names the ORIGIN pane, so a Reader click routes into the
+ *      Reader's own pane rather than the editor's paper (task 1093).
  *      A bridge in EditorLayout consumes it and routes through `openForCard`
  *      so the click behaves identically to clicking the corresponding
  *      margin icon.
@@ -43,6 +46,7 @@ import {
   parseLinkCardKey,
 } from "../link-dom-contract";
 import type { EntityKind } from "./entity-hover";
+import { dispatchLinkedAnchorClick } from "@/lib/pane-click-origin";
 
 interface AnchorIdEntry {
   entityId: string;
@@ -51,6 +55,9 @@ interface AnchorIdEntry {
 
 export interface UseTextHoverBridgeArgs {
   editor: Editor | null;
+  /** The pane's own document — stamped on the click so the shell's bridge
+   *  routes it by origin (task 1093). */
+  docId: string;
   /** Every Mode-B-bearing collection, as the total `ModeBBag`. Pass a MEMOIZED
    *  bag (EditorPane builds one and shares it with the orphan reaper and the
    *  load re-apply): the anchor map memoizes on this object's identity, so a
@@ -61,6 +68,7 @@ export interface UseTextHoverBridgeArgs {
 
 export function useTextHoverBridge({
   editor,
+  docId,
   cards,
   setHoveredEntity,
 }: UseTextHoverBridgeArgs): void {
@@ -186,15 +194,12 @@ export function useTextHoverBridge({
       e.preventDefault();
       e.stopPropagation();
       const rect = anchorEl.getBoundingClientRect();
-      window.dispatchEvent(
-        new CustomEvent("virgil-linked-anchor-click", {
-          detail: {
-            entityId: entry.entityId,
-            kind: entry.kind,
-            clickY: rect.top,
-          },
-        }),
-      );
+      dispatchLinkedAnchorClick({
+        docId,
+        entityId: entry.entityId,
+        kind: entry.kind,
+        clickY: rect.top,
+      });
     };
 
     root.addEventListener("mouseover", onMouseOver);
@@ -205,5 +210,5 @@ export function useTextHoverBridge({
       root.removeEventListener("mouseout", onMouseOut);
       root.removeEventListener("click", onClick, true);
     };
-  }, [editor, setHoveredEntity]);
+  }, [editor, setHoveredEntity, docId]);
 }

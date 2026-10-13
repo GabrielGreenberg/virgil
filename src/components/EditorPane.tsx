@@ -126,6 +126,11 @@ import {
   aliveLinkedAnchorIds,
 } from "@/links/_shared/useLinkedAnchorReconciler";
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
+import {
+  dispatchErrorMarkerClick,
+  dispatchLinkedAnchorClick,
+  registerPaneClickHost,
+} from "@/lib/pane-click-origin";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
@@ -3191,8 +3196,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // omni-first + pins the card at the click Y — no document jump). The
   // select happens locally FIRST so the halo is synchronous with the click;
   // the dispatch is then handled by the window-level bridge, which
-  // EditorLayout mounts unconditionally (the Library Reader renders inside
-  // EditorLayout too, so reader clicks ride the same bridge). Stable callback:
+  // EditorLayout mounts unconditionally. The dispatch names THIS pane's doc
+  // (task 1093): the bridge takes its own shell path only for the editor's
+  // current doc, and routes any other origin — the Library Reader, on its own
+  // ephemeral prefs — into the pane's registered click host below, never into
+  // the editor's store and persisted prefs. Stable callback:
   // reads the cardStore at click time, so the marker memo below doesn't
   // depend on selection state (a selection change re-renders no markers).
   const handleMarginMarkerClick = useCallback(
@@ -3214,13 +3222,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // row instead of always the first. `undefined` for single-anchor cards
       // (their omni row has no suffix — `buildOmniAnchorRows` only suffixes
       // when the card has more than one resolved row).
-      window.dispatchEvent(
-        new CustomEvent("virgil-linked-anchor-click", {
-          detail: { entityId: ref.id, kind: ref.kind, clickY, anchorPid },
-        }),
-      );
+      dispatchLinkedAnchorClick({ docId, entityId: ref.id, kind: ref.kind, clickY, anchorPid });
     },
-    [cardStoreInst],
+    [cardStoreInst, docId],
   );
 
   // Ref mirror so the error marker's toggle reads the live selection without
@@ -3238,17 +3242,38 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // routes the new selection back to the bubbled `paneState.setSelectedErrorId`
       // (which is this pane's own setter). EditorLayout also syncs the vbar
       // popover and opens the errors panel on its docked side. The bridge is
-      // window-level and mounted unconditionally by EditorLayout (the Reader
-      // renders inside it too); in the Reader this event is currently
+      // window-level and mounted unconditionally by EditorLayout; the event
+      // names THIS pane's doc, so a non-current pane's click routes through
+      // its own click host (task 1093). In the Reader it is currently
       // unreachable — compileErrors is never populated there.
-      window.dispatchEvent(
-        new CustomEvent("virgil-error-marker-click", {
-          detail: { errorId, selected: next != null, clickY },
-        }),
-      );
+      dispatchErrorMarkerClick({ docId, errorId, selected: next != null, clickY });
     },
-    [],
+    [docId],
   );
+
+  // This pane's click HOST (task 1093): what the shell's marker-click bridge
+  // routes a click from THIS doc into when this doc is not the editor's current
+  // one — the Library Reader's pane, on its own ephemeral prefs. Registered by
+  // docId (a registry keyed by owner; the unregister removes only this pane's
+  // own entry), and read through a ref so the registration never re-runs per
+  // render nor hands the bridge a stale prefs snapshot. A pane mounted with no
+  // view-prefs bundle registers nothing: its clicks are dropped after the local
+  // select, which is the honest answer when there is nowhere to open a card.
+  const clickHostDepsRef = useRef({ viewPrefs, setSelectedErrorId });
+  clickHostDepsRef.current = { viewPrefs, setSelectedErrorId };
+  const hasViewPrefs = viewPrefs != null;
+  useEffect(() => {
+    if (!hasViewPrefs) return;
+    const live = () => clickHostDepsRef.current.viewPrefs!;
+    return registerPaneClickHost(docId, {
+      cardStore: cardStoreInst,
+      getPrefs: () => live().prefs,
+      setActiveLeft: (id) => live().setActiveLeft(id),
+      setActiveRight: (id) => live().setActiveRight(id),
+      getOmniEnabled: (side) => live().getOmniEnabled(side),
+      setSelectedErrorId: (id) => clickHostDepsRef.current.setSelectedErrorId(id),
+    });
+  }, [docId, cardStoreInst, hasViewPrefs]);
 
   // ── Marginalia markers — THE live margin-marker builder ───────────
   // Walks every card hook (notes, reports, archive, todos, cutter,
@@ -6079,6 +6104,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
   useTextHoverBridge({
     editor,
+    docId,
     // The ONE Mode-B bag — all six collections, not the four this hook used to
     // list for itself (task 666). Highlights and selection-created todos are
     // the two spans that were painted but inert before it read the SSOT.
