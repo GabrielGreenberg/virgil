@@ -79,6 +79,7 @@
 
 import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
 import { isRawLatexMarkName } from "@/lib/latex-lexer";
+import { forEachBareCommand } from "@/lib/tiptap/cmd-only-paragraph";
 
 /**
  * One contiguous run of PROSE characters inside a single block.
@@ -177,18 +178,125 @@ export function collectProseRuns(
 ): { runs: ProseRun[]; text: string } {
   const runs: ProseRun[] = [];
   let text = "";
+  for (const piece of prosePiecesOf(block, contentStart)) {
+    runs.push({ charStart: charBase + text.length, pmStart: piece.pmStart, len: piece.text.length });
+    text += piece.text;
+  }
+  return { runs, text };
+}
+
+/**
+ * One maximal stretch of prose characters inside ONE text node, with what
+ * lies immediately on each side of it when that is NOT prose.
+ *
+ * `textBefore` / `textAfter` say whether the withheld neighbour is TEXT the
+ * index declined to read (a carrier run, an in-flight command) rather than an
+ * atom, a hard break or the block's edge. That distinction is the tokenizer's
+ * word-fragment rule (`prose-words.ts`): a word touching withheld TEXT is half
+ * a word. A prose neighbour (a mark split) reports `false` — it is not a cut.
+ */
+export interface ProsePiece {
+  text: string;
+  /** Document position of `text[0]`. */
+  pmStart: number;
+  textBefore: boolean;
+  textAfter: boolean;
+}
+
+/**
+ * THE IN-FLIGHT RULE (task 1097): a construct is raw LaTeX BEFORE it is
+ * finished.
+ *
+ * Typing `\textsf{teh` leaves `["\textsf" latexCommand] ["{teh" unmarked]`,
+ * because `scanRawLatexSpans` fails CLOSED on an unbalanced group and claims
+ * the command NAME only. The mark alone would call `{teh` prose — and one
+ * keystroke later, when the brace closes, raw LaTeX: a verdict that depends on
+ * typing order. So characters a bare-text command run COVERS — as
+ * `matchCommandLength` reads it, unclosed braces included — are withheld too.
+ * The scan is over the block's WHOLE text, marked runs included, because the
+ * backslash that opens the run lives in the marked node.
+ *
+ * Returned per child index: the withheld `[start, end)` character ranges of
+ * that text child. Inline atoms contribute no characters, so an atom between a
+ * command and later text can only join them — the withholding direction.
+ * `null` when the block holds no backslash at all (the ordinary case, O(text)).
+ */
+function inFlightCommandCover(block: PMNode): Map<number, Array<[number, number]>> | null {
+  let text = "";
+  const starts: Array<{ index: number; charStart: number; len: number }> = [];
+  let hasBackslash = false;
+  block.forEach((child, _offset, index) => {
+    if (!child.isText) return;
+    const t = child.text ?? "";
+    if (!hasBackslash && t.includes("\\")) hasBackslash = true;
+    starts.push({ index, charStart: text.length, len: t.length });
+    text += t;
+  });
+  if (!hasBackslash) return null;
+  const cover = new Map<number, Array<[number, number]>>();
+  forEachBareCommand(text, (offset, len) => {
+    const end = offset + len;
+    for (const s of starts) {
+      const from = Math.max(offset, s.charStart);
+      const to = Math.min(end, s.charStart + s.len);
+      if (from >= to) continue;
+      const list = cover.get(s.index) ?? [];
+      list.push([from - s.charStart, to - s.charStart]);
+      cover.set(s.index, list);
+    }
+  });
+  return cover.size > 0 ? cover : null;
+}
+
+/**
+ * The prose pieces of ONE block, in document order — THE walk every prose
+ * consumer is built on (`collectProseRuns` for search, `proseSegmentsOf` for
+ * the spellchecker and, through it, autocorrect). A rule about which
+ * characters are prose is stated here, once.
+ *
+ * Cost: O(the block's inline children + its characters). Returns `[]` for a
+ * block that is not a prose container.
+ */
+export function prosePiecesOf(block: PMNode, contentStart: number): ProsePiece[] {
+  if (!blockCarriesProse(block)) return [];
+  const cover = inFlightCommandCover(block);
+  const pieces: ProsePiece[] = [];
   let pmCursor = contentStart;
-  block.forEach((child) => {
+  // Whether the non-prose stuff immediately before the next piece is TEXT.
+  let pendingTextCut = false;
+  /** Mark the piece ending exactly at `pos` (if any) as abutting `isText`. */
+  const cutAfter = (pos: number, isText: boolean) => {
+    const last = pieces[pieces.length - 1];
+    if (last && last.pmStart + last.text.length === pos) last.textAfter = isText;
+  };
+  block.forEach((child, _offset, index) => {
+    const t = child.text ?? "";
     if (inlineIsProse(child)) {
-      const t = child.text ?? "";
-      if (t.length > 0) {
-        runs.push({ charStart: charBase + text.length, pmStart: pmCursor, len: t.length });
-        text += t;
+      let at = 0;
+      const emit = (to: number) => {
+        if (at >= to) return;
+        pieces.push({
+          text: t.slice(at, to),
+          pmStart: pmCursor + at,
+          textBefore: pendingTextCut,
+          textAfter: false,
+        });
+        pendingTextCut = false;
+      };
+      for (const [from, to] of cover?.get(index) ?? []) {
+        emit(from);
+        cutAfter(pmCursor + from, true);
+        pendingTextCut = true;
+        at = Math.max(at, to);
       }
+      emit(t.length);
+    } else {
+      cutAfter(pmCursor, child.isText);
+      pendingTextCut = child.isText;
     }
     pmCursor += child.nodeSize;
   });
-  return { runs, text };
+  return pieces;
 }
 
 /**

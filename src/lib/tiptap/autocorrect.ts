@@ -40,10 +40,15 @@
  *
  * - Every byte-literal container and `code` mark — TipTap's own input-rule
  *   gate, inherited by riding the same plugin (see `smart-quotes.ts`).
- * - Every raw-LaTeX run, settled or in flight — `typedTextIsProse`, which is
- *   this feature's own gate and the reason it exists: a word swap inside
+ * - Anywhere the CHECKER would not look (task 1097). Before rewriting, the
+ *   rule asks the spellchecker's own tokenizer for the word that just ended
+ *   (`typedWordEndingAt`), and acts only when that token is exactly the
+ *   matched typo. So every rule of "what is a word of prose" binds the rewrite
+ *   with no second copy: raw LaTeX settled or in flight (a word swap inside
  *   `\label{…}` is a broken cross-reference, where a smart quote there is
- *   cosmetic.
+ *   cosmetic), half a word beside withheld raw LaTeX (`\textit{x}teh`), a
+ *   URL or email address — including one the trigger itself is completing
+ *   (`www.recieve.`, `seperate@`) — and the ALL-CAPS / gloss rules.
  * - Any word the user has ACCEPTED — the paper dictionary, the global list, or
  *   a name out of `references.bib`. There is ONE authority for "this word is
  *   fine here" (`accepted-words.ts`) and a typo table that overrode it would be
@@ -57,7 +62,8 @@
 
 import { Extension, InputRule } from "@tiptap/core";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
-import { rangeHoldsOnlyText, typedTextIsProse } from "./typed-prose-gate";
+import { typedWordEndingAt } from "@/lib/spell/prose-words";
+import { rangeHoldsOnlyText } from "./typed-prose-gate";
 
 /** One curated correction: a word that is never a word, and what it is. */
 export interface AutocorrectRow {
@@ -165,9 +171,11 @@ const BY_WRONG: ReadonlyMap<string, string> = new Map(
 
 /**
  * A character that is NOT part of a word — the same alphabet
- * `prose-words.ts`'s `WORD_RE` builds its tokens out of, so "where does a word
- * end" has one answer across the checker and the corrector. Apostrophes are
- * word-interior, so `teh's` is deliberately left alone.
+ * `prose-words.ts`'s `WORD_RE` builds its tokens out of. This is only the
+ * cheap TRIGGER pre-filter ("did a table typo just end?"); whether that typo
+ * is a word of prose at all is decided by the checker's tokenizer in the
+ * handler (task 1097). Apostrophes are word-interior, so `teh's` is
+ * deliberately left alone.
  */
 const BOUNDARY = "[^\\p{L}\\p{M}\\p{Nd}'’]";
 
@@ -184,7 +192,9 @@ const FIND = new RegExp(
 
 /**
  * The replacement for a matched spelling, or `null` when this casing is one we
- * decline to touch (ALL-CAPS, or mixed like `tEh`).
+ * decline to touch (mixed like `tEh`, whose intent we cannot read; ALL-CAPS
+ * falls out here too, though the tokenizer has already dropped it upstream as
+ * `isCheckableWord`'s acronym rule — the handler asks that first).
  *
  * Exported for the suite: the case rule is a decision, not an implementation
  * detail, and it is asserted directly rather than only through the editor.
@@ -231,15 +241,17 @@ export const Autocorrect = Extension.create<AutocorrectOptions>({
           // A word the user has told us is fine is not a typo — one authority
           // for that, shared with the checker.
           if (port.isAccepted(typed)) return null;
-          // The bytes about to be overwritten must be PROSE. `range.to` is the
-          // trigger position: everything the rule replaces lies before it.
-          if (!typedTextIsProse(state.doc.resolve(range.to))) return null;
           // Replace the TYPO only (task 578). The lead is a boundary the rule
           // matched, never something it rewrites: it may be a character, or the
           // placeholder slot of an inline atom (a footnote marker, inline math),
           // and re-inserting it as text deleted that atom. The trail is the
           // typed trigger — not in the document yet — so it rides the insert.
           const typoFrom = range.from + lead.length;
+          // The checker's tokenizer decides (task 1097): act only where it
+          // yields a checkable token that IS the matched typo, once the trigger
+          // lands. `range.to` is the trigger position.
+          const word = typedWordEndingAt(state.doc.resolve(range.to), trail);
+          if (!word || word.from !== typoFrom || word.word !== typed) return null;
           if (!rangeHoldsOnlyText(state.doc, typoFrom, range.to)) return null;
           state.tr.insertText(`${fixed}${trail}`, typoFrom, range.to);
           return undefined;

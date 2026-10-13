@@ -119,6 +119,7 @@ const PRODUCTION = [
 const rel = (p: string) => path.relative(REPO_ROOT, p);
 const AUTOCORRECT_FILE = "src/lib/tiptap/autocorrect.ts";
 const GATE_FILE = "src/lib/tiptap/typed-prose-gate.ts";
+const PROSE_INDEX_FILE = "src/lib/prose-index.ts";
 
 describe("census — the table is the SSOT and the gate is the door", () => {
   it("the rule's pattern is BUILT from the table, never hand-written", () => {
@@ -150,24 +151,29 @@ describe("census — the table is the SSOT and the gate is the door", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the gate reads the SSOTs — it spells no mark name and no node list", () => {
-    const src = commentsStripped(read(GATE_FILE));
+  it("the in-flight rule lives in the prose index's ONE walk, read off the SSOTs", () => {
+    // Task 1097: "is this prose?" had two owners (the corrector's gate and the
+    // prose index) and they drifted. The in-flight command rung now lives in
+    // the prose index, so search, the checker and the corrector all read it.
+    const src = commentsStripped(read(PROSE_INDEX_FILE));
     expect(src).toContain("isRawLatexMarkName");
-    expect(src).toContain("blockCarriesProse");
     expect(src).toContain("forEachBareCommand");
-    // A hand-spelled carrier name here would silently stop covering a fourth
-    // one the family gains by declaration.
     expect(src).not.toMatch(/["']latexCommand["']/);
     expect(src).not.toMatch(/["']latexVerbatim["']/);
+    // And the retired second door stays retired.
+    expect(commentsStripped(read(GATE_FILE))).not.toContain("typedTextIsProse");
+    expect(commentsStripped(read(GATE_FILE))).not.toContain("forEachBareCommand");
   });
 
-  it("nothing re-derives the gate — one door, one caller", () => {
-    const callers = PRODUCTION.filter((f) => rel(f) !== GATE_FILE).filter((f) =>
-      commentsStripped(read(rel(f))).includes("typedTextIsProse"),
+  it("the corrector asks the CHECKER's tokenizer — and nothing else re-derives it", () => {
+    const src = commentsStripped(read(AUTOCORRECT_FILE));
+    expect(src).toContain("typedWordEndingAt");
+    const callers = PRODUCTION.filter((f) => rel(f) !== "src/lib/spell/prose-words.ts").filter(
+      (f) =>
+        commentsStripped(read(rel(f))).includes("typedWordEndingAt") ||
+        commentsStripped(read(rel(f))).includes("typedTextIsProse"),
     );
-    // The barrel re-export plus the rule itself. A THIRD site would be a
-    // consumer that should be asking the door rather than a second gate.
-    expect(callers.map(rel).sort()).toEqual([AUTOCORRECT_FILE, "src/lib/tiptap/index.ts"]);
+    expect(callers.map(rel).sort()).toEqual([AUTOCORRECT_FILE]);
   });
 
   it("the extension is mounted ONCE, and handed the document's port", () => {

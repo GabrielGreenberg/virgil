@@ -396,21 +396,41 @@ Seven rules it earned:
   derived Title-case spelling. `dependant` is deliberately absent: it is the
   standard British noun, and the failure direction of a wrong row is a rewrite
   of the user's prose.
-- **The gate asks TWO rungs, because a construct is raw LaTeX BEFORE it is
-  finished** ([typed-prose-gate.ts](../../../src/lib/tiptap/typed-prose-gate.ts)).
+- **The corrector asks the CHECKER's tokenizer — "is this prose?" has ONE
+  owner (task 1097).** The rule first shipped with its own gate
+  (`typedTextIsProse`) and its own boundary regex, and the two owners drifted
+  both ways: autocorrect rewrote inside bare URLs/emails the tokenizer masks
+  (`www.recieve.org`, `seperate@uni.edu`) and half-words beside withheld LaTeX
+  (`\textit{x}teh`), while the checker squiggled an in-flight `\textsf{teh` the
+  corrector refused. Now the input rule's `FIND` is only the cheap trigger
+  pre-filter, and the handler asks `typedWordEndingAt($pos, trigger)`
+  ([prose-words.ts](../../../src/lib/spell/prose-words.ts)) — the token of the
+  caret's block that ends at the trigger, with the trigger spliced into the
+  segment TEXT (it can complete a mask: `www.x` + `.`, `name` + `@`) — and acts
+  only when that token IS the matched typo. The email mask was widened to any
+  `@`-bearing run for exactly that reason: at the `@` keystroke the domain does
+  not exist yet. `typedTextIsProse` is RETIRED; `typed-prose-gate.ts` keeps only
+  the structural `rangeHoldsOnlyText`.
+- **A construct is raw LaTeX BEFORE it is finished — and that rule now lives in
+  the prose index's ONE walk** (`prosePiecesOf`,
+  [prose-index.ts](../../../src/lib/prose-index.ts)), which `collectProseRuns`
+  (search) and `proseSegmentsOf` (checker → corrector) are both built on.
   MEASURED on the real stack: a SETTLED `\label{teh}` is ONE text node wearing
-  `latexCommand`, which rung 1 (`isRawLatexMarkName`, the task-517 SSOT) sees;
-  an IN-FLIGHT `\textsf{teh` is `["\textsf" latexCommand] ["{teh" NO MARKS]`,
-  because `scanRawLatexSpans` fails CLOSED on an unbalanced group and claims
-  the command NAME only. One keystroke later the brace closes and the same
-  bytes ARE raw LaTeX — so **a verdict that depends on how far through a
-  construct the user has typed is not a verdict**. Rung 2 is therefore the
-  LOOSE scanner the grey `.latex-cmd` decoration and the `p-cmd-only` stamp
-  already share (`matchCommandLength`, whose own comment says it "include[s]
-  unclosed braces (user still typing)"): what the user is being SHOWN as a
-  command is not prose.
-- **Neither rung is redundant, and the divergence is a shipped fact rather than
-  caution.** `matchCommandLength` caps a command at TWO braced arguments where
+  `latexCommand` (`isRawLatexMarkName`, the task-517 SSOT); an IN-FLIGHT
+  `\textsf{teh` is `["\textsf" latexCommand] ["{teh" NO MARKS]`, because
+  `scanRawLatexSpans` fails CLOSED on an unbalanced group and claims the command
+  NAME only. One keystroke later the brace closes and the same bytes ARE raw
+  LaTeX — so **a verdict that depends on how far through a construct the user
+  has typed is not a verdict**. The walk therefore also withholds what the LOOSE
+  scanner the grey `.latex-cmd` span and the `p-cmd-only` stamp share
+  (`forEachBareCommand` / `matchCommandLength`, unclosed braces included) covers,
+  scanned over the block's WHOLE text (the opening backslash lives in the marked
+  node). Withheld characters are TEXT, so a word touching them is a fragment.
+  Cost: one `includes("\\")` per text node in the ordinary case. Accepted
+  residual: a literal backslash in prose (`C:\Users`) withholds the letters after
+  it from search and the checker — the same call the corrector already made.
+- **Neither the mark nor the loose scan is redundant, and the divergence is a
+  shipped fact rather than caution.** `matchCommandLength` caps a command at TWO braced arguments where
   the lexer's `scanRawLatexSpans` consumes the whole run — a cap task 349
   removed there and not here. Measured on
   `Alpha \addcontentsline{toc}{section}{teh} beta.`, the loose scan claims
@@ -441,9 +461,9 @@ Seven rules it earned:
   the replacement is otherwise an ordinary history entry, never
   `addToHistory: false`.
 
-Keystroke sanctity: the gate runs inside an `InputRule` HANDLER, i.e. only
-after its `find` has already matched, so it never touches the ordinary typing
-path; it is O(the block's text) and walks no document.
+Keystroke sanctity: the tokenizer question runs inside an `InputRule` HANDLER,
+i.e. only after its `find` has already matched, so it never touches the
+ordinary typing path; it is O(the caret's block) and walks no document.
 
 CI: [autocorrect-typing.test.ts](../../../src/lib/tiptap/__tests__/autocorrect-typing.test.ts)
 drives the REAL `buildEditorExtensions("main")` stack one character at a time
