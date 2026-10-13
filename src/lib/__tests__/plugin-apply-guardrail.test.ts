@@ -116,6 +116,9 @@ const PLUGIN_SITE_VERDICTS: Record<string, "door" | "tagged" | "clean"> = {
   "src/lib/tiptap/spellcheck-decorator.ts#apply": "door",
   "src/lib/tiptap/title.ts#appendTransaction": "clean",
   "src/lib/tiptap/transient-highlight.ts#apply": "tagged",
+  // Task 1098: reads one meta key off the transactions; returns null unless an
+  // input rule just asked for a rewrite.
+  "src/lib/tiptap/type-time-rewrite.ts#appendTransaction": "clean",
 };
 
 // ---------------------------------------------------------------------------
