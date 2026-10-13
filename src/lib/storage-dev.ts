@@ -1442,6 +1442,15 @@ export async function deleteDocFromIndex(id: string): Promise<void> {
   await putText(`${API}/index.json`, JSON.stringify(index, null, 2));
 }
 
+/** Parity with storage-fsa.relocateDoc (task 1102). The dev backend's papers
+ *  live in the repo's dev data folder and have no folder handle to re-point. */
+export async function relocateDoc(
+  _id: string,
+  _handle: FileSystemDirectoryHandle,
+): Promise<never> {
+  throw new Error("Locating a paper's folder needs real file-system storage.");
+}
+
 // ---------------------------------------------------------------------------
 // Paper folder enumeration (for the compile pipeline)
 // ---------------------------------------------------------------------------

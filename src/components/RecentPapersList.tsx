@@ -8,12 +8,19 @@
  * `RecentPaperRow` is the ONE painter of a recent-paper row: the tab-strip
  * "+" dropdown (`TabPlusMenu`) renders it too, passing its menu primitive's
  * item props through (task 866 — the menu had hand-copied the row).
+ *
+ * Task 1102: a row can be FORGOTTEN. Given `onRemove`, the row grows a
+ * hover-revealed "Remove from Recents" X — so a paper whose folder is gone can
+ * be cleaned up without opening it. The X calls `useFiles.deleteFile`, which
+ * drops the index row and never touches the disk. One painter, so both
+ * consumers (start screen, "+" menu) get the same affordance.
  */
 
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { MenuItemProps } from "./menu/types";
 import { menuRowRovingStyle } from "./menu/row-tone";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { iconHint } from "@/components/Hint";
 import {
   RECENT_PAPERS_START_SCREEN_LIMIT,
   selectRecentDocs,
@@ -30,6 +37,8 @@ interface Props {
    * beside the rule that orders the rows, rather than spelled here.
    */
   limit?: number;
+  /** Forget a paper (never deletes files). Omitted = no remove affordance. */
+  onRemove?: (id: string) => void;
 }
 
 export function RecentPapersList({
@@ -37,6 +46,7 @@ export function RecentPapersList({
   onOpen,
   excludeIds,
   limit = RECENT_PAPERS_START_SCREEN_LIMIT,
+  onRemove,
 }: Props) {
   const rows = selectRecentDocs(docs, { excludeIds, limit });
 
@@ -50,7 +60,7 @@ export function RecentPapersList({
       <ul className="flex flex-col gap-0.5">
         {rows.map((doc) => (
           <li key={doc.id}>
-            <RecentPaperRow doc={doc} onOpen={onOpen} />
+            <RecentPaperRow doc={doc} onOpen={onOpen} onRemove={onRemove} />
           </li>
         ))}
       </ul>
@@ -68,13 +78,55 @@ export function RecentPapersList({
 export function RecentPaperRow({
   doc,
   onOpen,
+  onRemove,
   itemProps,
   active = false,
 }: {
   doc: FsaDocMeta;
   onOpen?: (id: string) => void;
+  onRemove?: (id: string) => void;
   itemProps?: MenuItemProps;
   active?: boolean;
+}) {
+  const row = <RecentPaperOpenButton doc={doc} onOpen={onOpen} itemProps={itemProps} active={active} />;
+  if (!onRemove) return row;
+  // The X is a SIBLING of the open button, never nested in it (a button in a
+  // button is invalid and would also fire the open).
+  return (
+    <div className="group relative flex items-center">
+      {row}
+      <button
+        type="button"
+        className="iconbtn-xs absolute right-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-[var(--background)]"
+        data-testid="recent-paper-remove"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(doc.id);
+        }}
+        {...iconHint({
+          label: `Remove ${doc.name} from Recents`,
+          hint: "Forgets the paper in Virgil. No files are deleted.",
+        })}
+      >
+        <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <path d="M3 3 L11 11" />
+          <path d="M11 3 L3 11" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function RecentPaperOpenButton({
+  doc,
+  onOpen,
+  itemProps,
+  active,
+}: {
+  doc: FsaDocMeta;
+  onOpen?: (id: string) => void;
+  itemProps?: MenuItemProps;
+  active: boolean;
 }) {
   const subtitle =
     doc.folderName && doc.folderName !== doc.name ? doc.folderName : null;

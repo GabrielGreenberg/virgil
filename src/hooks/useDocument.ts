@@ -14,6 +14,10 @@ import {
   writeDocBundle,
 } from "@/lib/storage";
 import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
+import {
+  classifyDocLoadFailure,
+  publishDocLoadFailure,
+} from "@/lib/doc-load-failure";
 import { useDocWriteHandle } from "@/components/editor-layout/DocPipeline";
 import {
   registerPendingFlusher,
@@ -446,6 +450,7 @@ export function useDocument() {
         setContent(bundle.content);
         lastSavedRef.current = bundle.content;
         setLoading(false);
+        publishDocLoadFailure(docId, null);
         // TASK 391 — a mirror is cleared by nothing but a landed write, so one
         // that survived to this open is work that never reached disk. Compare
         // it against what we just loaded and raise the offer if they differ.
@@ -469,7 +474,12 @@ export function useDocument() {
       })
       .catch((err) => {
         console.error("Failed to load document:", err);
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setLoading(false);
+        // Task 1102: a failed load is a STATE, not a log line. Published per
+        // doc; the layout reads it for the active doc and replaces this
+        // (contentless, so blank) pane with the unreachable-paper gate.
+        publishDocLoadFailure(docId, classifyDocLoadFailure(err));
       });
     return () => {
       cancelled = true;

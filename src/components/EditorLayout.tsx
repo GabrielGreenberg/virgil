@@ -238,6 +238,15 @@ import { asBibFamily } from "@/lib/bib-family";
 import type { RequirementConflict } from "@/lib/latex-requirements";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
+import { DocUnreachableGate } from "./DocUnreachableGate";
+import {
+  hasDocLoadFailure,
+  probeDocFolder,
+  publishDocLoadFailure,
+  useDocLoadFailure,
+  useDocLoadFailureRevision,
+} from "@/lib/doc-load-failure";
+import { relocateDoc } from "@/lib/storage";
 import { RecentPapersList } from "./RecentPapersList";
 import { InstallPwaPrompt } from "./InstallPwaPrompt";
 import { LibraryTabView } from "./library/LibraryTabView";
@@ -452,8 +461,13 @@ export default function EditorLayout() {
   // permission for this session, every hook sees `null` and stays in
   // its empty state instead of crashing on NotAllowedError. The UI
   // (tab strip, path bar) keeps using the un-gated currentDocId.
+  // Task 1102: an UNREACHABLE paper (folder moved/deleted, `.tex` gone, read
+  // failed) is not granted for this purpose either — its hooks would read a
+  // folder that is not there. One per-doc registry carries the outcome, fed by
+  // the access check below (before mount) and by `useDocument`'s load (after).
+  const activeLoadFailure = useDocLoadFailure(currentDocId);
   const docIdForHooks: string | null =
-    docPermState === "granted" ? currentDocId : null;
+    docPermState === "granted" && !activeLoadFailure ? currentDocId : null;
 
   // Per-doc write pipeline lifecycle is now owned by the `<DocPipeline
   // key={currentDocId}>` boundary that wraps the EditorPane mount below
@@ -885,7 +899,9 @@ export default function EditorLayout() {
   // permission test in here is what lets `docPermState` stay a single
   // active-doc state — no per-doc permission effects needed.
   const grantedActiveDocId =
-    activePane === "doc" && docPermState === "granted" ? currentDocId : null;
+    activePane === "doc" && docPermState === "granted" && !activeLoadFailure
+      ? currentDocId
+      : null;
   // Flag-gated capacity. Default ON → keep the last N papers warm so a
   // paper↔paper switch is an instant visibility flip. The localStorage opt-out
   // (`virgil:multi-doc-keepalive` = "0") clamps to 1 = the legacy behavior: one
@@ -903,8 +919,17 @@ export default function EditorLayout() {
   // The actually-rendered keep-alive slots = LRU order ∩ open tabs (a just-closed
   // id can linger in the LRU order; filter it out). Derived once so the render
   // block and the DiskWatcher's live-set reconciliation agree on the set.
-  const renderedKeepAliveEntries = docKeepAliveEntries.filter((e) =>
-    openTabs.some((t) => t.id === e.id),
+  // A slot whose paper failed to load YIELDS (task 1102): it unmounts, so the
+  // gate shows instead of a contentless pane, and a successful Locate/Try again
+  // (which clears the failure) remounts it fresh — a fresh load.
+  const loadFailureRevision = useDocLoadFailureRevision();
+  const renderedKeepAliveEntries = useMemo(
+    () =>
+      docKeepAliveEntries.filter(
+        (e) => openTabs.some((t) => t.id === e.id) && !hasDocLoadFailure(e.id),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFailureRevision is the registry's change signal
+    [docKeepAliveEntries, openTabs, loadFailureRevision],
   );
   const keepAliveDocIds = renderedKeepAliveEntries.map((e) => e.id);
 
@@ -1986,6 +2011,8 @@ export default function EditorLayout() {
   // query (don't request) readwrite permission. The result drives the
   // gate vs editor render decision below.
   // In dev-storage mode we skip the FSA permission dance entirely.
+  const activeTexFilename = currentDoc?.texFilename ?? null;
+  const [docAccessCheck, setDocAccessCheck] = useState(0);
   useEffect(() => {
     if (!currentDocId) {
       setDocPermState("no-handle");
@@ -1993,6 +2020,9 @@ export default function EditorLayout() {
       return;
     }
     if (isDevStorage) {
+      // No folder to probe: a check (incl. "Try again") clears any standing
+      // load failure and lets the pane remount and load afresh.
+      publishDocLoadFailure(currentDocId, null);
       setDocPermState("granted");
       return;
     }
@@ -2010,6 +2040,18 @@ export default function EditorLayout() {
         setActiveDocHandle(handle);
         const state = await queryRW(handle);
         if (cancelled) return;
+        if (state === "granted" && activeTexFilename) {
+          // Task 1102: a stale handle can still answer `granted` for a folder
+          // that is gone. Ask whether the paper is still THERE before the
+          // pane mounts; an answer either way overwrites any standing
+          // failure, so "Try again" after a Finder fix clears the gate.
+          const unreachable = await probeDocFolder(handle, activeTexFilename);
+          if (cancelled) return;
+          publishDocLoadFailure(
+            currentDocId,
+            unreachable ? { kind: unreachable, detail: "" } : null,
+          );
+        }
         setDocPermState(state === "granted" ? "granted" : "needs-grant");
       } catch (err) {
         console.error("Failed to query doc permission:", err);
@@ -2019,7 +2061,26 @@ export default function EditorLayout() {
     return () => {
       cancelled = true;
     };
+  }, [currentDocId, activeTexFilename, docAccessCheck]);
+
+  // The unreachable-paper gate's three doors (task 1102).
+  const retryDocAccess = useCallback(() => {
+    setDocAccessCheck((n) => n + 1);
+  }, []);
+  const locateActiveDoc = useCallback(async () => {
+    if (!currentDocId) return;
+    const id = currentDocId;
+    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    await relocateDoc(id, handle);
+    publishDocLoadFailure(id, null);
+    setDocAccessCheck((n) => n + 1);
   }, [currentDocId]);
+  const removeActiveDoc = useCallback(async () => {
+    if (!currentDocId) return;
+    const id = currentDocId;
+    await deleteFile(id);
+    publishDocLoadFailure(id, null);
+  }, [currentDocId, deleteFile]);
 
   const {
     handleUpdate,
@@ -3031,6 +3092,7 @@ export default function EditorLayout() {
       openPaperTab,
       openLibraryOuterTab,
       onOpenRecent: openFile,
+      onRemoveRecent: deleteFile,
       onOpenFolder: handleNativeOpen,
       onCreateNew: onCreateNewTab,
       onOpenExample: openExample,
@@ -3064,6 +3126,7 @@ export default function EditorLayout() {
       openPaperTab,
       openLibraryOuterTab,
       openFile,
+      deleteFile,
       handleNativeOpen,
       onCreateNewTab,
       openExample,
@@ -3248,6 +3311,23 @@ export default function EditorLayout() {
           docName={currentDoc.name}
           handle={activeDocHandle}
           onGranted={handleDocPermissionGranted}
+        />
+      )}
+
+      {/* Per-doc unreachable gate (task 1102) — the permission gate's
+          sibling, same slot. The paper's folder or `.tex` is gone, or its load
+          failed: say so, and offer Locate / Try again / Remove instead of the
+          blank pane a contentless editor used to leave. */}
+      {currentDoc && docPermState === "granted" && activeLoadFailure && (
+        <DocUnreachableGate
+          docName={currentDoc.name}
+          folderName={currentDoc.folderName}
+          texFilename={currentDoc.texFilename}
+          kind={activeLoadFailure.kind}
+          detail={activeLoadFailure.detail || undefined}
+          onLocate={devStorage ? undefined : locateActiveDoc}
+          onRetry={retryDocAccess}
+          onRemove={removeActiveDoc}
         />
       )}
 
@@ -3453,7 +3533,7 @@ export default function EditorLayout() {
             focusDoc={focusDoc}
           />
         </div>
-      ) : currentDoc && docPermState !== "granted" ? null : pdfView && currentDocId ? (
+      ) : currentDoc && (docPermState !== "granted" || activeLoadFailure) ? null : pdfView && currentDocId ? (
         <FramedViewerSurface
           backdrop="dark"
           paddingBottom={zenModeOn ? 4 : 'var(--pod-gap)'}
@@ -3488,7 +3568,7 @@ export default function EditorLayout() {
         <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
           <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-xl">
             {docs.length > 0 ? (
-              <RecentPapersList docs={docs} onOpen={openFile} />
+              <RecentPapersList docs={docs} onOpen={openFile} onRemove={deleteFile} />
             ) : (
               <div className="text-ink-subtle text-sm">No document open</div>
             )}

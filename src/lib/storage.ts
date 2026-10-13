@@ -68,6 +68,7 @@ export const openExistingDocFromPicker = backend.openExistingDocFromPicker;
 export const listDocs = backend.listDocs;
 export const renameDoc = backend.renameDoc;
 export const deleteDocFromIndex = backend.deleteDocFromIndex;
+export const relocateDoc = backend.relocateDoc;
 export const flushDoc = backend.flushDoc;
 
 /**

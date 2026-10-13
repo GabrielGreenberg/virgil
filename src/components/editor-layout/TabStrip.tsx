@@ -102,6 +102,8 @@ export type TabStripProps = {
 
   // TabPlusMenu actions.
   onOpenRecent: (id: string) => void;
+  /** Forget a recent paper from the "+" menu (task 1102). */
+  onRemoveRecent?: (id: string) => void;
   onOpenFolder: () => void;
   onCreateNew: () => void;
   onOpenExample: () => void;
@@ -153,6 +155,7 @@ function TabStripImpl(props: TabStripProps) {
     openPaperTab,
     openLibraryOuterTab,
     onOpenRecent,
+    onRemoveRecent,
     onOpenFolder,
     onCreateNew,
     onOpenExample,
@@ -658,6 +661,7 @@ function TabStripImpl(props: TabStripProps) {
         openTabIds={openTabIds}
         currentDocId={currentDocId}
         onOpenRecent={onOpenRecent}
+        onRemoveRecent={onRemoveRecent}
         onOpenFolder={onOpenFolder}
         onCreateNew={onCreateNew}
         onOpenExample={onOpenExample}
