@@ -158,6 +158,13 @@ interface SpellResultMeta {
    * yet. They stay dirty, so the next pass asks about it (task 582).
    */
   owed?: readonly number[];
+  /**
+   * Every dirty position the pass VISITED, handled or not (task 1096). The
+   * pass settles each one — a position that no longer names a textblock is
+   * answered by being dropped — so no entry it was given can outlive it and
+   * re-arm the debounce with nobody typing. Defaults to `blocks`.
+   */
+  settled?: readonly number[];
 }
 
 /**
@@ -191,6 +198,52 @@ function caretBlockPos(state: EditorState): number | null {
     if ($from.node(d).isTextblock) return $from.before(d);
   }
   return null;
+}
+
+/**
+ * The textblock a MAPPED dirty position now names, or null (task 1096).
+ *
+ * The dirty list's invariant — every entry names a textblock the plugin can
+ * answer for — is held here, by construction, because mapping alone breaks
+ * it: a dirty paragraph that is DELETED while its next sibling is a list,
+ * quote or figure maps onto that wrapper's opening; a paragraph WRAPPED into
+ * a list or quote has the wrapper open at its old position; a cross-block
+ * selection-delete maps it to mid-text. A wrapper position is re-resolved to
+ * the first textblock it opens (a wrapped paragraph is still re-checked at its
+ * new inner position), a mid-text one to its enclosing textblock, and a
+ * position that leads to no textblock is dropped. O(depth).
+ */
+function textblockAt(doc: PMNode, pos: number): number | null {
+  if (pos < 0 || pos >= doc.content.size) return null;
+  let $p;
+  try {
+    $p = doc.resolve(pos);
+  } catch {
+    return null;
+  }
+  for (let d = $p.depth; d > 0; d--) {
+    if ($p.node(d).isTextblock) return $p.before(d);
+  }
+  let node = $p.nodeAfter;
+  let at = pos;
+  while (node && !node.isTextblock) {
+    if (node.isAtom || !node.firstChild) return null;
+    node = node.firstChild;
+    at += 1;
+  }
+  return node ? at : null;
+}
+
+/** `positions` re-resolved through {@link textblockAt}, unresolvable ones
+ *  dropped. [cost: O(dirty × depth) — dirty is the handful of blocks touched
+ *  inside one debounce window.] */
+function resolveDirty(doc: PMNode, positions: Iterable<number>): number[] {
+  const out: number[] = [];
+  for (const p of positions) {
+    const at = textblockAt(doc, p);
+    if (at !== null) out.push(at);
+  }
+  return out;
 }
 
 /** Ascending, deduped. */
@@ -332,9 +385,12 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
           apply(tr: Transaction, prev, _oldState, newState) {
             const meta = tr.getMeta(spellcheckPluginKey) as SpellResultMeta | undefined;
             let decos = prev.decos.map(tr.mapping, tr.doc);
-            let dirty = prev.dirty
-              .map((p) => tr.mapping.map(p, -1))
-              .filter((p) => p >= 0);
+            // Mapping can leave an entry naming a wrapper or mid-text, so a
+            // doc change re-resolves the list (task 1096); a selection-only
+            // transaction maps nothing.
+            let dirty = tr.docChanged
+              ? mergeDirty([], resolveDirty(tr.doc, prev.dirty.map((p) => tr.mapping.map(p, -1))))
+              : prev.dirty;
             let active = prev.active;
 
             if (meta) {
@@ -353,19 +409,26 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
                 dirty = mergeDirty([], meta.owed ?? []);
               } else if (meta.blocks) {
                 decos = replaceBlockDecos(decos, tr.doc, meta.blocks, meta.decos ?? []);
-                const done = new Set(meta.blocks);
+                const done = new Set(meta.settled ?? meta.blocks);
                 dirty = mergeDirty(dirty.filter((p) => !done.has(p)), meta.owed ?? []);
               }
             }
 
-            if (tr.docChanged) {
+            // An INACTIVE plugin keeps no dirty list (task 1096): nothing would
+            // ever drain it, and every transaction would map and re-sort a list
+            // that grows by each block the caret visits. Becoming active again
+            // is always a whole-document request (`fullGen`), so nothing owed
+            // is lost by not recording it.
+            if (!active) dirty = [];
+
+            if (active && tr.docChanged) {
               dirty = mergeDirty(dirty, touchedTextblocks(tr.doc, touchedRanges([tr])).keys());
             }
 
             let caretBlock = prev.caretBlock;
             if (tr.selectionSet || tr.docChanged) {
               caretBlock = caretBlockPos(newState);
-              if (tr.selectionSet) {
+              if (active && tr.selectionSet) {
                 // The caret MOVING is what finishes a word: the token it was
                 // inside was exempt, and now it is not. So both the block being
                 // left and the one being entered owe a re-check — two O(depth)
@@ -375,8 +438,8 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
                 // block's re-tokenize per 300 ms debounce window.)
                 const both: number[] = [];
                 if (prev.caretBlock !== null) {
-                  const mapped = tr.mapping.map(prev.caretBlock, -1);
-                  if (mapped >= 0) both.push(mapped);
+                  const mapped = textblockAt(tr.doc, tr.mapping.map(prev.caretBlock, -1));
+                  if (mapped !== null) both.push(mapped);
                 }
                 if (caretBlock !== null) both.push(caretBlock);
                 dirty = mergeDirty(dirty, both);
@@ -537,14 +600,17 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             if (!state) return;
 
             if (!port) {
-              // Going inactive: whatever comes back must re-check everything.
-              fullGen++;
               // A menu left open over a surface this plugin no longer owns
               // would still offer its rows (task 579).
               closeSpellMenu(view);
-              if (state.active || state.decos !== DecorationSet.empty) {
-                dispatchMeta({ active: false, clear: true });
-              }
+              // Already inactive and empty: nothing to give up, and the
+              // whole-document request the going-inactive edge made is still
+              // unsatisfied (task 1096) — bumping again would only keep
+              // `needFull()` arming a no-op pass per transaction.
+              if (!state.active && state.decos === DecorationSet.empty) return;
+              // Going inactive: whatever comes back must re-check everything.
+              fullGen++;
+              dispatchMeta({ active: false, clear: true });
               return;
             }
 
@@ -628,7 +694,7 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
               if (gen === fullGen) doneGen = gen;
               dispatchMeta({ active: true, replaceAll: true, decos, owed });
             } else {
-              dispatchMeta({ active: true, blocks: handled, decos, owed });
+              dispatchMeta({ active: true, blocks: handled, decos, owed, settled: blocks });
             }
           }
 
@@ -642,7 +708,12 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             const state = spellcheckPluginKey.getState(view.state);
             const wantActive = currentPort() !== null;
             if (wantActive) claimIfOwned();
-            if (needFull() || (state && state.dirty.length > 0) || wantActive !== !!state?.active) {
+            // An inactive surface owes no pass (task 1096): its whole-document
+            // request waits, unsatisfied, for the edge that re-activates it.
+            if (
+              wantActive !== !!state?.active ||
+              (wantActive && (needFull() || (state !== undefined && state.dirty.length > 0)))
+            ) {
               schedule();
             }
           };
