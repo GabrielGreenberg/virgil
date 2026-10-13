@@ -73,3 +73,19 @@ export function scrollBlockToReadingLine(
   scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop + (blockTopY - lineY));
   return true;
 }
+
+/**
+ * Scroll the editor so the line holding doc position `pos` lands ON the
+ * reading line — the land-at-a-POSITION form of `scrollBlockToReadingLine`
+ * (task 1099). Every "take me to this position" door (the code view's
+ * text-to-code arrow, the pending-change navigator) lands here, so it sits
+ * at the same height as a Back/Forward landing instead of a hand `- 100`
+ * below the raw scroll top, and moves the ONE container
+ * `findEditorScrollFor` names. Returns false when `pos` has no coords or
+ * there is no scroll container to move.
+ */
+export function scrollPosToReadingLine(view: EditorView, pos: number): boolean {
+  const coords = view.coordsAtPos(pos);
+  if (!coords) return false;
+  return scrollBlockToReadingLine(view, coords.top);
+}

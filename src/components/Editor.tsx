@@ -354,8 +354,6 @@ export interface EditorHandle {
   ensureParagraphUuidAtCoords: (x: number, y: number) => string | null;
   /** Returns paragraph UUIDs and their top offset (px) within the editor scroll container. */
   getParagraphPositions: () => Array<{ id: string; top: number }>;
-  /** Scroll to a raw doc position (used by panel prev/next navigation). */
-  scrollToPos: (pos: number) => void;
   /**
    * Re-apply / reconcile linked-anchor marks from sidecar records. Called once
    * per doc-open from the EditorPane load reconcile pass. Reconcile-not-skip:
@@ -873,13 +871,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   useEffect(() => {
     const dom = editor?.view?.dom as HTMLElement | undefined;
     if (!dom) return;
-    let scroller: HTMLElement | null = dom;
-    while (scroller && scroller !== document.body) {
-      const cs = window.getComputedStyle(scroller);
-      if (cs.overflowY === "auto" || cs.overflowY === "scroll") break;
-      scroller = scroller.parentElement;
-    }
-    if (!scroller || scroller === document.body) scroller = dom;
+    // The editor's scroll container through the ONE door (task 1099) — the
+    // mirror's own scroller, else the row that contains this view.
+    const scroller: HTMLElement = findEditorScrollFor(dom) ?? dom;
     let prev: Element | null = null;
     const setHovered = (next: Element | null) => {
       if (next === prev) return;
@@ -1526,20 +1520,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         return true;
       });
       return result;
-    },
-    scrollToPos(pos: number): void {
-      if (!editor) return;
-      const clamped = Math.max(0, Math.min(pos, editor.state.doc.content.size));
-      try {
-        editor.commands.setTextSelection(clamped);
-        const coords = editor.view.coordsAtPos(clamped);
-        const scrollEl = findEditorScrollFor(editor.view.dom);
-        if (scrollEl && coords) {
-          const scrollRect = scrollEl.getBoundingClientRect();
-          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
-          scrollEl.scrollTop = Math.max(0, targetY);
-        }
-      } catch { /* pos out of range */ }
     },
     applyLinkedAnchors(records): void {
       if (!editor) return;
