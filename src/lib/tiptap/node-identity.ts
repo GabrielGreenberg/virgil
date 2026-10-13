@@ -75,15 +75,34 @@ export function collectBlockUuids(doc: PMNode): Set<string> {
 }
 
 /**
+ * Does `json`'s node type DECLARE a block `uuid`? Asked of the DESTINATION
+ * schema — `isAnchorableNode`'s test (`spec.attrs.uuid` declared), read by
+ * type name — never of whether the blob happens to carry the key (task 1101).
+ * A payload's shape is the capture's business: the Stack's capture empties the
+ * key (and stored envelopes written before task 1101 deleted it outright), so
+ * a key-presence test answered "not eligible" for every pulled block and the
+ * mint below never ran — the backfill net minted every id instead. A type this
+ * schema does not know falls back to the key (it will not rehydrate anyway).
+ */
+function declaresBlockUuid(json: JSONContent, schema: Schema): boolean {
+  const type = json.type ? schema.nodes[json.type] : undefined;
+  if (type) return type.spec.attrs?.uuid !== undefined;
+  const attrs = json.attrs as Record<string, unknown> | undefined;
+  return !!attrs && "uuid" in attrs;
+}
+
+/**
  * The JSON reading of `mayCarryBlockUuid` (`@/lib/marginalia`, task 878): a
  * serialized node may carry a block uuid iff its type declares the attr
- * (`toJSON` writes every declared attr, so `"uuid" in attrs` IS
- * `isAnchorableNode`) and it is not a `paragraph` directly under a deferring
- * container. Same rule, the shape a payload blob arrives in.
+ * ({@link declaresBlockUuid}) and it is not a `paragraph` directly under a
+ * deferring container. Same rule, the shape a payload blob arrives in.
  */
-function jsonMayCarryBlockUuid(json: JSONContent, parentType: string | null): boolean {
-  const attrs = json.attrs as Record<string, unknown> | undefined;
-  if (!attrs || !("uuid" in attrs)) return false;
+function jsonMayCarryBlockUuid(
+  json: JSONContent,
+  schema: Schema,
+  parentType: string | null,
+): boolean {
+  if (!declaresBlockUuid(json, schema)) return false;
   return !(json.type === "paragraph" && deferringParent(parentType));
 }
 
@@ -93,20 +112,24 @@ function jsonMayCarryBlockUuid(json: JSONContent, parentType: string | null): bo
  * calls in one gesture can't collide either), and clear any uuid riding a
  * deferred inner paragraph — an id nothing can reach and the serializer
  * strips. The dual of `remintCollidingIdentity` (a move keeps what is free);
- * the Stack pull's minting door. Seed `live` with `collectBlockUuids(doc)`:
- * the generator's short ids are 4 hex chars, so an unseeded mint can collide.
+ * the Stack pull's minting door, for ALL three content payloads (text slice,
+ * paragraph, heading section — task 1101). Eligibility is read off `schema`
+ * (the destination's), so a node whose blob carries no `uuid` key at all is
+ * still minted. Seed `live` with `collectBlockUuids(doc)`: the generator's
+ * short ids are 4 hex chars, so an unseeded mint can collide.
  */
 export function withFreshBlockUuids(
   json: JSONContent,
   live: Set<string>,
+  schema: Schema,
   parentType: string | null = null,
 ): JSONContent {
   if (!json || typeof json !== "object") return json;
   let out = json;
-  const attrs = json.attrs as Record<string, unknown> | undefined;
-  if (attrs && "uuid" in attrs) {
+  const attrs = (json.attrs ?? {}) as Record<string, unknown>;
+  if (declaresBlockUuid(json, schema)) {
     let uuid: string | null = null;
-    if (jsonMayCarryBlockUuid(json, parentType)) {
+    if (jsonMayCarryBlockUuid(json, schema, parentType)) {
       uuid = generateShortId(live);
       live.add(uuid);
     }
@@ -114,7 +137,10 @@ export function withFreshBlockUuids(
   }
   if (Array.isArray(json.content)) {
     const type = json.type ?? null;
-    out = { ...out, content: json.content.map((c) => withFreshBlockUuids(c, live, type)) };
+    out = {
+      ...out,
+      content: json.content.map((c) => withFreshBlockUuids(c, live, schema, type)),
+    };
   }
   return out;
 }

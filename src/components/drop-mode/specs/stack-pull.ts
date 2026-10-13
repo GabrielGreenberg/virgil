@@ -16,13 +16,18 @@
  * hit-test's affordance and this spec's commit-time validity check both read
  * (task 258).
  *
- * Stack pulls are paste-as-new — every id/uuid is regenerated. Block
- * uuids are reminted by node-identity's `withFreshBlockUuids` (eligible nodes
- * only, drawn against the destination's live ids); Card-bearing inline-atom ids
- * (footnoteId / citationId, + the unified linkId mirror) by
- * `withFreshAtomIds`. Both run on the pull side so the snapshot stays a
- * faithful copy — the fresh identity is minted exactly where a fresh
- * presence is created. The source stack item is NOT removed (pulls are
+ * Stack pulls are paste-as-new — every id/uuid is regenerated, and the pull
+ * STATES that identity itself for every content payload (text slice,
+ * paragraph, heading section); `BlockUuidBackfill` is only the net behind it.
+ * Block uuids are minted by node-identity's `withFreshBlockUuids` (eligibility
+ * read off the destination SCHEMA, drawn against the destination's live ids);
+ * Card-bearing inline-atom ids (footnoteId / citationId, + the unified linkId
+ * mirror) by `withFreshAtomIds`. The snapshot carries no block identity at all
+ * (`snapshot.ts` empties every uuid at capture), so the fresh identity is
+ * minted exactly where a fresh presence is created. Until task 1101 this was
+ * only claimed: the capture DELETED the key, the mint keyed on the key's
+ * presence and so never fired, and a text slice was not minted at all — it
+ * landed carrying the source doc's uuids. The source stack item is NOT removed (pulls are
  * copy, not pop); the X button on the thumbnail is the only deletion path.
  */
 
@@ -419,17 +424,29 @@ function planInsertText(
   if (placement.kind !== "inline-cursor" && placement.kind !== "between-blocks") {
     return null;
   }
-  // Remint any Card-bearing inline atoms in the slice content so a pulled
+  // State the slice's identity, exactly as its two siblings do: fresh block
+  // uuids for every eligible node it carries (task 1101 — it used to remint
+  // atoms only, so a multi-block slice landed wearing whatever uuids it was
+  // captured with), and fresh Card-bearing atom ids so a pulled
   // footnote/citation can't share the source atom's id (the text path is the
   // headline case — select text spanning a footnote → add to Stack → pull).
+  // A slice's top level sits under no node the blob names, so its parent type
+  // is unknown (`null`) — the same answer the paragraph/heading payloads give.
   const seen = collectAtomIds(editor.state.doc);
+  const liveUuids = collectBlockUuids(editor.state.doc);
+  const schema = editor.state.schema;
   const rawSlice = payload.slice as
     | ({ content?: JSONContent[] } & Record<string, unknown>)
     | null
     | undefined;
   const sliceJson =
     rawSlice && Array.isArray(rawSlice.content)
-      ? { ...rawSlice, content: rawSlice.content.map((n) => withFreshAtomIds(n, seen)) }
+      ? {
+          ...rawSlice,
+          content: rawSlice.content.map((n) =>
+            withFreshAtomIds(withFreshBlockUuids(n, liveUuids, schema), seen),
+          ),
+        }
       : rawSlice;
   let slice: Slice;
   try {
@@ -520,7 +537,11 @@ function planInsertParagraph(
   if (placement.kind !== "between-blocks") return null;
   const seen = collectAtomIds(editor.state.doc);
   const json = withFreshAtomIds(
-    withFreshBlockUuids(payload.node, collectBlockUuids(editor.state.doc)),
+    withFreshBlockUuids(
+      payload.node,
+      collectBlockUuids(editor.state.doc),
+      editor.state.schema,
+    ),
     seen,
   );
   let node: PMNode | null = null;
@@ -559,7 +580,10 @@ function planInsertHeading(
   for (const j of payload.nodes) {
     try {
       const n = editor.state.schema.nodeFromJSON(
-        withFreshAtomIds(withFreshBlockUuids(j, liveUuids), seen) as Parameters<
+        withFreshAtomIds(
+          withFreshBlockUuids(j, liveUuids, editor.state.schema),
+          seen,
+        ) as Parameters<
           typeof editor.state.schema.nodeFromJSON
         >[0],
       );

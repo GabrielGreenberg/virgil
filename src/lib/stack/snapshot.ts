@@ -62,21 +62,46 @@ function stripCrossDocMarks(json: JSONContent): JSONContent {
   return cleaned;
 }
 
-/** Drop the `uuid` attr (and any other anchor-only attrs) from a node
- *  recursively. Pull regenerates a fresh uuid so the new copy doesn't
- *  collide with the source. */
+/** Empty every block `uuid` in a node, recursively — the key stays, its value
+ *  becomes `null` (the shape `toJSON` writes for an unminted block). A
+ *  snapshot carries NO identity: the pull states it (`withFreshBlockUuids`,
+ *  drawn against the destination's live ids — task 1101), so the copy can
+ *  neither collide with its source nor land in another doc wearing the
+ *  source doc's ids. */
 function stripUuids(json: JSONContent): JSONContent {
   if (!json || typeof json !== "object") return json;
   const next: JSONContent = { ...json };
   if (next.attrs && typeof next.attrs === "object") {
     const attrs = { ...(next.attrs as Record<string, unknown>) };
-    if ("uuid" in attrs) delete attrs.uuid;
+    if ("uuid" in attrs) attrs.uuid = null;
     next.attrs = attrs;
   }
   if (Array.isArray(next.content)) {
     next.content = next.content.map(stripUuids);
   }
   return next;
+}
+
+/** THE one capture rule for every content node a snapshot keeps: no block
+ *  identity, no cross-doc marks. Every content snapshot below — the three
+ *  slice snapshots and the two block snapshots — runs its nodes through this,
+ *  so they cannot disagree about what a Stack item carries (task 1101: the
+ *  selection and linked-range slices used to keep the source's uuids). */
+function cleanNode(json: JSONContent): JSONContent {
+  return stripCrossDocMarks(stripUuids(json));
+}
+
+/** {@link cleanNode} over a serialized `Slice` (`{ content, openStart,
+ *  openEnd }`), open depths untouched. */
+function cleanSliceJson(sliceJson: unknown): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {
+    ...(sliceJson as Record<string, unknown>),
+  };
+  const content = (cleaned as { content?: unknown }).content;
+  if (Array.isArray(content)) {
+    cleaned.content = (content as JSONContent[]).map(cleanNode);
+  }
+  return cleaned;
 }
 
 function deepClone<T>(v: T): T {
@@ -111,16 +136,7 @@ export function snapshotSelection(
   const sliceJson = slice.toJSON();
   // sliceJson can be undefined for an empty slice; guard belt-and-suspenders.
   if (!sliceJson) return null;
-  // Strip cross-doc marks recursively. Slice JSON shape is
-  // { content: [...], openStart, openEnd } — content nodes are JSON.
-  const cleanedSlice: Record<string, unknown> = {
-    ...(sliceJson as Record<string, unknown>),
-  };
-  if (Array.isArray((cleanedSlice as { content?: JSONContent[] }).content)) {
-    cleanedSlice.content = (
-      (cleanedSlice as { content: JSONContent[] }).content
-    ).map(stripCrossDocMarks);
-  }
+  const cleanedSlice = cleanSliceJson(sliceJson);
   // `plain` is a DISPLAY LABEL only. An atom-only selection (a citation pill /
   // `$\lambda$` / `\ref` captured alone) has no `textContent` → `plain === ""`,
   // but it carries real content (the slice already passed the authoritative
@@ -154,7 +170,7 @@ export function snapshotParagraph(
     return true;
   });
   if (!nodeJson) return null;
-  const cleaned = stripCrossDocMarks(stripUuids(nodeJson));
+  const cleaned = cleanNode(nodeJson);
   return {
     id: makeStackId(),
     capturedAt: nowIso(),
@@ -174,9 +190,7 @@ export function snapshotHeadingSection(
 ): StackItem | null {
   const range = getSectionRangeByUuid(editor.state.doc, uuid);
   if (!range) return null;
-  const nodes = range.nodes.map(
-    (n) => stripCrossDocMarks(stripUuids(n.toJSON() as JSONContent)),
-  );
+  const nodes = range.nodes.map((n) => cleanNode(n.toJSON() as JSONContent));
   if (nodes.length === 0) return null;
   return {
     id: makeStackId(),
@@ -206,14 +220,7 @@ export function snapshotLinkedRange(
   if (slice.size === 0) return null;
   const sliceJson = slice.toJSON();
   if (!sliceJson) return null;
-  const cleanedSlice: Record<string, unknown> = {
-    ...(sliceJson as Record<string, unknown>),
-  };
-  if (Array.isArray((cleanedSlice as { content?: JSONContent[] }).content)) {
-    cleanedSlice.content = (
-      (cleanedSlice as { content: JSONContent[] }).content
-    ).map(stripCrossDocMarks);
-  }
+  const cleanedSlice = cleanSliceJson(sliceJson);
   const plain = editor.state.doc
     .textBetween(range.from, range.to, " ", " ")
     .trim();
@@ -249,14 +256,7 @@ export function snapshotSubObjectContent(
   if (slice.size === 0) return null;
   const sliceJson = slice.toJSON();
   if (!sliceJson) return null;
-  const cleanedSlice: Record<string, unknown> = {
-    ...(sliceJson as Record<string, unknown>),
-  };
-  if (Array.isArray((cleanedSlice as { content?: JSONContent[] }).content)) {
-    cleanedSlice.content = (
-      (cleanedSlice as { content: JSONContent[] }).content
-    ).map((n) => stripCrossDocMarks(stripUuids(n)));
-  }
+  const cleanedSlice = cleanSliceJson(sliceJson);
   const plain = editor.state.doc.textBetween(innerFrom, innerTo, " ", " ").trim();
   return {
     id: makeStackId(),

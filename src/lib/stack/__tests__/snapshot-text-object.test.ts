@@ -89,8 +89,9 @@ describe("snapshotTextObject — capture (BUG #48 parity with cards)", () => {
     expect(item!.payload.kind).toBe("paragraph");
     if (item!.payload.kind !== "paragraph") throw new Error("narrow");
     expect(item!.payload.node.type).toBe("paragraph");
-    // uuid must be stripped so a pull regenerates a fresh one (no collision).
-    expect((item!.payload.node.attrs as { uuid?: unknown } | undefined)?.uuid).toBeUndefined();
+    // uuid must be emptied so the pull mints a fresh one (no collision). The
+    // key stays (value null) — the pull's mint reads eligibility off the schema.
+    expect((item!.payload.node.attrs as { uuid?: unknown } | undefined)?.uuid).toBeNull();
   });
 
   it("blockquote (a non-paragraph top-level node) → a `paragraph` payload of that block", () => {
