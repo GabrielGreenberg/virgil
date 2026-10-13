@@ -619,3 +619,20 @@ half (ctx registration + its confirm dialog). The ghost's node slot also
 releases owner-guarded (`detachGhostNode(node)` clears only if `node` still
 owns it). Pinned by `drop-overlays-single-mount.test.tsx` (one render site, one
 mount site; the ghost survives the first-mounted pane unmounting mid-drag).
+
+### The EVENT half: a pane-originated window event names its origin (task 1093)
+
+A window `CustomEvent` sent from inside an `EditorPane` to a SHELL-mounted
+listener may not assume "the current doc". `EditorPane` is also the Library
+Reader (ephemeral reader prefs, its own omni), so the shell's marker-click
+bridge used to select a Reader click in the EDITOR's card store and dock panels
+through the editor's persisted prefs. Now `virgil-linked-anchor-click` and
+`virgil-error-marker-click` go only through the typed dispatchers in
+[src/lib/pane-click-origin.ts](../../../src/lib/pane-click-origin.ts), whose
+detail REQUIRES the origin `docId`; each pane registers a `PaneClickHost` (its
+store + prefs + setters) in a docId-keyed registry with an owner-guarded
+unregister; and the bridge routes by origin — the editor's current doc takes the
+shell path, any other origin its own pane's host, an origin with no host is
+dropped. Pinned by `marker-clicks-bridge-behavior.test.tsx` ("origin routing")
+and `pane-click-origin-census.test.ts` (no hand-spelled event name outside the
+door).

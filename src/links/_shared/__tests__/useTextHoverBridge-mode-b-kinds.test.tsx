@@ -168,7 +168,7 @@ describe("useTextHoverBridge — every Mode-B kind is hoverable AND clickable", 
     ]);
     const setHoveredEntity = vi.fn();
     renderHook(() =>
-      useTextHoverBridge({ editor, cards: args.bag, setHoveredEntity }),
+      useTextHoverBridge({ editor, docId: "doc-A", cards: args.bag, setHoveredEntity }),
     );
     const span = spanFor(editor, args.anchorId);
     span.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
@@ -255,7 +255,7 @@ describe("useTextHoverBridge — every Mode-B kind is hoverable AND clickable", 
     ]);
     const setHoveredEntity = vi.fn();
     renderHook(() =>
-      useTextHoverBridge({ editor, cards: emptyBag(), setHoveredEntity }),
+      useTextHoverBridge({ editor, docId: "doc-A", cards: emptyBag(), setHoveredEntity }),
     );
     const span = spanFor(editor, "anc-orphan");
     span.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));

@@ -514,6 +514,9 @@ export default function EditorLayout() {
     () => (currentDocIdRef.current ? getCardStore(currentDocIdRef.current) : defaultCardStore),
     [],
   );
+  // Same ref, the id itself: the marker-click bridge routes a pane-originated
+  // click by its ORIGIN doc and takes the shell path only for this one (task 1093).
+  const getActiveDocId = useCallback(() => currentDocIdRef.current ?? null, []);
 
   // Anchored selection slots (note, footnote, citation, example,
   // todo, archive, comment, cutter-comment) are now derived from the global
@@ -2246,6 +2249,7 @@ export default function EditorLayout() {
     // same active instance. Stable identity (useCallback) so the listener
     // effect isn't re-attached every render.
     getActiveCardStore,
+    getActiveDocId,
   });
 
   // Shell-level archive bridge only. The orphan/suppress/panel-dropped web moved

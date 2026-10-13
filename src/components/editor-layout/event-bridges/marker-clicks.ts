@@ -14,7 +14,6 @@ import { panelEntrySelector } from "../panel-selection";
 import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { OmniCategory } from "@/panels/Omni";
 import type { CardKind } from "@/panels/_shared/types";
-import type { EntityKind } from "@/links/_shared/entity-hover";
 import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
@@ -28,6 +27,13 @@ import {
 import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tiptap/label";
 import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { isFigurePopoverKind, type FigurePopoverKind } from "@/lib/figures/popover-target";
+import {
+  ERROR_MARKER_CLICK_EVENT,
+  LINKED_ANCHOR_CLICK_EVENT,
+  resolveClickOrigin,
+  type ErrorMarkerClickDetail,
+  type LinkedAnchorClickDetail,
+} from "@/lib/pane-click-origin";
 
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
@@ -98,16 +104,18 @@ export const ANCHOR_CLICK_ROUTES: Record<
   }),
 ) as Record<AnchorClickKind, { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }>;
 
-/** Everything `routeAnchorClick` needs from the shell: the `openForCard`
- *  routing env (prefs read live via ref) plus the omni click-pin publisher. */
+/** Everything `routeAnchorClick` needs: the `openForCard` routing env (prefs
+ *  read live at click time) plus the omni click-pin publisher. Built from the
+ *  shell's own deps for a click from the editor's current doc, or from the
+ *  ORIGIN pane's registered `PaneClickHost` otherwise (task 1093). */
 interface AnchorClickEnv {
-  prefsRef: MutableRefObject<ViewPrefs>;
+  getPrefs: () => ViewPrefs;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   alignOmniCardWithClick: (cardId: string, clickY: number) => void;
-  /** Resolve the ACTIVE doc's interaction store at CLICK time. A getter (not a
+  /** Resolve the routed doc's interaction store at CLICK time. A getter (not a
    *  captured instance) because this bridge is shell-mounted above the per-doc
    *  CardStoreProvider and its listener effect doesn't re-subscribe on doc
    *  switch — resolving lazily keeps the select targeting the active doc. */
@@ -125,7 +133,7 @@ interface AnchorClickEnv {
  * pulling the CARD to the click instead.
  */
 function routeAnchorClick(
-  detail: { entityId: string; kind: EntityKind; clickY?: number; anchorPid?: string },
+  detail: Omit<LinkedAnchorClickDetail, "docId">,
   env: AnchorClickEnv,
 ): void {
   const route = ANCHOR_CLICK_ROUTES[detail.kind as AnchorClickKind];
@@ -172,7 +180,7 @@ function routeAnchorClick(
       skipScroll: true,
     },
     {
-      prefs: env.prefsRef.current,
+      prefs: env.getPrefs(),
       setActiveLeft: env.setActiveLeft,
       setActiveRight: env.setActiveRight,
       tryScrollOmniEntry: env.tryScrollOmniEntry,
@@ -267,6 +275,11 @@ export function useMarkerClickBridges(deps: {
   /** Resolve the ACTIVE doc's interaction store at click time (see
    *  `AnchorClickEnv.getActiveCardStore`). */
   getActiveCardStore: () => CardStore;
+  /** The editor's current doc id, read at click time. A pane-originated click
+   *  (`virgil-linked-anchor-click` / `virgil-error-marker-click`) names its
+   *  origin doc; only the current doc's clicks take the shell path — any other
+   *  origin (the Library Reader) routes into its OWN pane's host (task 1093). */
+  getActiveDocId: () => string | null;
 }) {
   const {
     prefsRef,
@@ -283,6 +296,7 @@ export function useMarkerClickBridges(deps: {
     setActiveFigure,
     alignOmniCardWithClick,
     getActiveCardStore,
+    getActiveDocId,
   } = deps;
 
   useEffect(() => {
@@ -510,22 +524,42 @@ export function useMarkerClickBridges(deps: {
   // at the click Y — one shared route for in-text AND margin clicks.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as
-        | { entityId: string; kind: EntityKind; clickY?: number; anchorPid?: string }
-        | undefined;
+      const detail = (e as CustomEvent).detail as LinkedAnchorClickDetail | undefined;
       if (!detail?.entityId || !detail.kind) return;
-      routeAnchorClick(detail, {
-        prefsRef,
-        setActiveLeft,
-        setActiveRight,
-        tryScrollOmniEntry,
-        getOmniEnabled,
-        alignOmniCardWithClick,
-        getActiveCardStore,
-      });
+      // Route by ORIGIN (task 1093): the editor's current doc takes the shell's
+      // store + persisted prefs; a click from another pane (the Library
+      // Reader, on its own ephemeral prefs) routes into THAT pane's host; an
+      // origin with no host is dropped — its pane already selected locally,
+      // and the shell's store/prefs are not its to touch.
+      const origin = resolveClickOrigin(detail.docId, getActiveDocId());
+      if (origin.route === "drop") return;
+      const env: AnchorClickEnv =
+        origin.route === "shell"
+          ? {
+              getPrefs: () => prefsRef.current,
+              setActiveLeft,
+              setActiveRight,
+              tryScrollOmniEntry,
+              getOmniEnabled,
+              alignOmniCardWithClick,
+              getActiveCardStore,
+            }
+          : {
+              getPrefs: origin.host.getPrefs,
+              setActiveLeft: origin.host.setActiveLeft,
+              setActiveRight: origin.host.setActiveRight,
+              // The omni DOM helpers are pane-agnostic: they resolve the
+              // VISIBLE pane's entry first (task 873), which is the pane the
+              // user just clicked in.
+              tryScrollOmniEntry,
+              getOmniEnabled: origin.host.getOmniEnabled,
+              alignOmniCardWithClick,
+              getActiveCardStore: () => origin.host.cardStore,
+            };
+      routeAnchorClick(detail, env);
     };
-    window.addEventListener("virgil-linked-anchor-click", handler);
-    return () => window.removeEventListener("virgil-linked-anchor-click", handler);
+    window.addEventListener(LINKED_ANCHOR_CLICK_EVENT, handler);
+    return () => window.removeEventListener(LINKED_ANCHOR_CLICK_EVENT, handler);
   }, [
     prefsRef,
     setActiveLeft,
@@ -534,6 +568,7 @@ export function useMarkerClickBridges(deps: {
     getOmniEnabled,
     alignOmniCardWithClick,
     getActiveCardStore,
+    getActiveDocId,
   ]);
 
   // Error margin-marker bridge — errors aren't anchored cards (no cardStore
@@ -545,23 +580,33 @@ export function useMarkerClickBridges(deps: {
   // open the retired EditorLayout marker builder performed.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as
-        | { errorId: string; selected: boolean; clickY?: number }
-        | undefined;
+      const detail = (e as CustomEvent).detail as ErrorMarkerClickDetail | undefined;
       if (!detail?.errorId) return;
-      setSelectedErrorId(detail.selected ? detail.errorId : null);
+      // Same origin routing as the anchor-click bridge above (task 1093).
+      const origin = resolveClickOrigin(detail.docId, getActiveDocId());
+      if (origin.route === "drop") return;
+      const route =
+        origin.route === "shell"
+          ? { setSelected: setSelectedErrorId, prefs: prefsRef.current, setActiveLeft, setActiveRight }
+          : {
+              setSelected: origin.host.setSelectedErrorId,
+              prefs: origin.host.getPrefs(),
+              setActiveLeft: origin.host.setActiveLeft,
+              setActiveRight: origin.host.setActiveRight,
+            };
+      route.setSelected(detail.selected ? detail.errorId : null);
       if (!detail.selected) return;
-      const p = prefsRef.current;
+      const p = route.prefs;
       // Idempotence guard: only call the opener when the errors panel isn't
       // already docked on its side. The opener is internally idempotent, but
       // calling it unconditionally still churns the dock MRU + fires a spurious
       // openPanel — skip it when there's nothing to open.
       if (isPanelDocked(p, "errors")) return;
       const placement = p.placements.find((pl) => pl.id === "errors");
-      if (placement?.side === "left") setActiveLeft("errors");
-      else setActiveRight("errors");
+      if (placement?.side === "left") route.setActiveLeft("errors");
+      else route.setActiveRight("errors");
     };
-    window.addEventListener("virgil-error-marker-click", handler);
-    return () => window.removeEventListener("virgil-error-marker-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setSelectedErrorId]);
+    window.addEventListener(ERROR_MARKER_CLICK_EVENT, handler);
+    return () => window.removeEventListener(ERROR_MARKER_CLICK_EVENT, handler);
+  }, [prefsRef, setActiveLeft, setActiveRight, setSelectedErrorId, getActiveDocId]);
 }

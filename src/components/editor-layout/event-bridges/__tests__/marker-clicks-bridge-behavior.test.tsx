@@ -39,6 +39,14 @@ import { openForCard } from "@/components/editor-layout/event-bridges/open-for-c
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { ViewPrefs } from "@/hooks/useViewPrefs";
+import type { CardStore } from "@/links/_shared/anchored-card-store";
+import type { OmniCategory } from "@/panels/Omni";
+import {
+  dispatchErrorMarkerClick,
+  dispatchLinkedAnchorClick,
+  getPaneClickHost,
+  registerPaneClickHost,
+} from "@/lib/pane-click-origin";
 
 const openForCardMock = vi.mocked(openForCard);
 const suppressMock = vi.mocked(suppressNextPlacement);
@@ -68,6 +76,8 @@ function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
     // The bridge resolves the active store via this getter at click time; point
     // it at the same instance the `selectSpy` below spies on.
     getActiveCardStore: () => cardStore,
+    // The editor's current doc — a click naming it takes the shell path.
+    getActiveDocId: () => "doc-A",
   };
 }
 
@@ -284,5 +294,101 @@ describe("error bridge (virgil-error-marker-click)", () => {
     expect(deps.setSelectedErrorId).not.toHaveBeenCalled();
     expect(deps.setActiveLeft).not.toHaveBeenCalled();
     expect(deps.setActiveRight).not.toHaveBeenCalled();
+  });
+});
+
+// Task 1093: pane-originated clicks NAME THEIR ORIGIN. Two panes — the editor
+// on doc A (the shell's current doc) and a Library Reader pane on doc R with
+// its own ephemeral prefs. A click from R must route into R's own host: never
+// select in A's store, never open/dock through the editor's persisted prefs.
+describe("origin routing (task 1093)", () => {
+  function makeReaderHost() {
+    const readerPrefs = {
+      placements: [{ id: "errors", side: "left" }],
+      activeLeft: null,
+      activeRight: null,
+    } as unknown as ViewPrefs;
+    const readerStore = { select: vi.fn() } as unknown as CardStore;
+    const host = {
+      cardStore: readerStore,
+      getPrefs: () => readerPrefs,
+      setActiveLeft: vi.fn(),
+      setActiveRight: vi.fn(),
+      getOmniEnabled: vi.fn(() => new Set<OmniCategory>()),
+      setSelectedErrorId: vi.fn(),
+    };
+    return { host, readerPrefs, readerStore };
+  }
+
+  let unregister: (() => void) | null = null;
+  afterEach(() => {
+    unregister?.();
+    unregister = null;
+  });
+
+  it("a marker click from the Reader's doc selects in the READER's store and routes through the Reader's prefs", () => {
+    const deps = makeDeps();
+    const editorPrefsBefore = deps.prefsRef.current;
+    const { host, readerPrefs, readerStore } = makeReaderHost();
+    unregister = registerPaneClickHost("reader-R", host);
+    mountBridges(deps);
+    dispatchLinkedAnchorClick({ docId: "reader-R", entityId: "n1", kind: "note", clickY: 40 });
+
+    expect(readerStore.select).toHaveBeenCalledWith({ kind: "note", id: "n1" });
+    expect(selectSpy).not.toHaveBeenCalled();
+    expect(openForCardMock).toHaveBeenCalledTimes(1);
+    const routeDeps = openForCardMock.mock.calls[0][1];
+    expect(routeDeps.prefs).toBe(readerPrefs);
+    expect(routeDeps.setActiveLeft).toBe(host.setActiveLeft);
+    expect(routeDeps.setActiveRight).toBe(host.setActiveRight);
+    expect(routeDeps.getOmniEnabled).toBe(host.getOmniEnabled);
+    // The editor's layout is untouched: same prefs object, no setter fired.
+    expect(deps.prefsRef.current).toBe(editorPrefsBefore);
+    expect(deps.setActiveLeft).not.toHaveBeenCalled();
+    expect(deps.setActiveRight).not.toHaveBeenCalled();
+  });
+
+  it("a click from the editor's current doc keeps the shell path", () => {
+    const deps = makeDeps();
+    const { host, readerStore } = makeReaderHost();
+    unregister = registerPaneClickHost("reader-R", host);
+    mountBridges(deps);
+    dispatchLinkedAnchorClick({ docId: "doc-A", entityId: "n1", kind: "note" });
+
+    expect(selectSpy).toHaveBeenCalledWith({ kind: "note", id: "n1" });
+    expect(readerStore.select).not.toHaveBeenCalled();
+    expect(openForCardMock.mock.calls[0][1].prefs).toBe(deps.prefsRef.current);
+  });
+
+  it("a click from a foreign doc with NO registered host is dropped — the editor is not touched", () => {
+    const deps = makeDeps();
+    mountBridges(deps);
+    dispatchLinkedAnchorClick({ docId: "reader-X", entityId: "n1", kind: "note", clickY: 10 });
+
+    expect(selectSpy).not.toHaveBeenCalled();
+    expect(openForCardMock).not.toHaveBeenCalled();
+    expect(deps.alignOmniCardWithClick).not.toHaveBeenCalled();
+  });
+
+  it("an error-marker click from the Reader's doc selects + opens through the Reader's host", () => {
+    const deps = makeDeps();
+    const { host } = makeReaderHost();
+    unregister = registerPaneClickHost("reader-R", host);
+    mountBridges(deps);
+    dispatchErrorMarkerClick({ docId: "reader-R", errorId: "e1", selected: true });
+
+    expect(host.setSelectedErrorId).toHaveBeenCalledWith("e1");
+    expect(host.setActiveLeft).toHaveBeenCalledWith("errors");
+    expect(deps.setSelectedErrorId).not.toHaveBeenCalled();
+    expect(deps.setActiveRight).not.toHaveBeenCalled();
+  });
+
+  it("a departing pane's unregister removes only its OWN entry", () => {
+    const a = makeReaderHost().host;
+    const b = makeReaderHost().host;
+    const offA = registerPaneClickHost("reader-R", a);
+    unregister = registerPaneClickHost("reader-R", b);
+    offA();
+    expect(getPaneClickHost("reader-R")).toBe(b);
   });
 });
