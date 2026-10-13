@@ -31,7 +31,8 @@
  * transaction yet can shift every body line, re-derived nothing at all.
  *
  * Now each tier records what it last ran against — `tierADoc`, `countsDoc`,
- * and `sourceFresh` (doc + preamble + postamble + bibFamily) — and staleness
+ * and `sourceFresh` (doc + preamble + postamble + bibFamily + the folder's
+ * style-file manifest, task 1103) — and staleness
  * is the comparison. `ensureFresh()` refreshes TIER A ONLY (the one product
  * its callers read) and merely RE-ARMS a stale Tier B; every input that
  * changes without an edit re-arms through the ONE `revalidate()` door.
@@ -64,7 +65,8 @@
  * `src/lib/__tests__/keystroke-subscriber-guardrail.test.ts` + AGENTS.md.
  */
 
-import { localPackagesFor } from "@/lib/local-packages";
+import { localPackagesFor, subscribeLocalPackages } from "@/lib/local-packages";
+import type { LocalPackageManifest } from "@/lib/local-packages";
 import type { Editor, JSONContent } from "@tiptap/react";
 import {
   assembleLatex,
@@ -219,6 +221,10 @@ export function createDocProducts(
     preamble: string | undefined;
     postamble: string | undefined;
     bibFamily: BibFamily | null;
+    /** The folder's own `.sty`/`.cls` loads (task 1090), as read by storage.
+     *  Like `bibFamily` it fires no transaction, yet it decides an injected
+     *  `\usepackage` line — so it is a STATED input (task 1103). */
+    localPackages: LocalPackageManifest | null;
   } | null = null;
 
   let preamble: string | undefined;
@@ -276,7 +282,10 @@ export function createDocProducts(
     | { state: "refused" }
     | { state: "not-ready" };
 
-  function buildSourceText(bibFamily: BibFamily | null): SourceBuild {
+  function buildSourceText(
+    bibFamily: BibFamily | null,
+    localPackages: LocalPackageManifest | null,
+  ): SourceBuild {
     if (!preambleReady) return { state: "not-ready" };
     let text: string;
     try {
@@ -285,7 +294,7 @@ export function createDocProducts(
         preamble,
         postamble,
         bibFamily,
-        localPackages: localPackagesFor(config.docId),
+        localPackages,
       });
     } catch {
       // FAIL OPEN (task 357). The serializer now REFUSES a node it cannot
@@ -322,7 +331,8 @@ export function createDocProducts(
       sourceFresh.doc !== doc ||
       sourceFresh.preamble !== preamble ||
       sourceFresh.postamble !== postamble ||
-      sourceFresh.bibFamily !== (config.getBibFamily() ?? null)
+      sourceFresh.bibFamily !== (config.getBibFamily() ?? null) ||
+      sourceFresh.localPackages !== localPackagesFor(config.docId)
     );
   }
 
@@ -350,9 +360,10 @@ export function createDocProducts(
       // and it gated a schedule the seed now owns).
       if (!config.isSuppressed()) {
         const bibFamily = config.getBibFamily() ?? null;
-        const built = buildSourceText(bibFamily);
+        const localPackages = localPackagesFor(config.docId);
+        const built = buildSourceText(bibFamily, localPackages);
         if (built.state !== "not-ready") {
-          sourceFresh = { doc, preamble, postamble, bibFamily };
+          sourceFresh = { doc, preamble, postamble, bibFamily, localPackages };
         }
         if (built.state === "built" && built.text !== snapshot.sourceText) {
           next.sourceText = built.text;
@@ -499,6 +510,12 @@ export function createDocProducts(
 
   readPreamble(true);
 
+  // The folder's style-file manifest lands as a side effect of a storage read
+  // (the load writeback, every save) on its own schedule, so it can arrive
+  // AFTER Tier B ran — re-arm through the ONE door (task 1103). The registry is
+  // identity-stable, so an equal re-publish on autosave notifies nothing.
+  const unsubscribeLocalPackages = subscribeLocalPackages(config.docId, revalidate);
+
   const onDelimitersChanged = (e: Event) => {
     const detail = (e as CustomEvent<TexDelimitersChangedDetail>).detail;
     if (!detail || detail.docId !== config.docId) return;
@@ -542,6 +559,7 @@ export function createDocProducts(
     destroy() {
       destroyed = true;
       editor.off("update", onUpdate);
+      unsubscribeLocalPackages();
       if (typeof window !== "undefined") {
         window.removeEventListener(
           TEX_DELIMITERS_CHANGED_EVENT,

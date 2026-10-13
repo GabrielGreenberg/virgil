@@ -10,6 +10,8 @@
  *   - ensureFresh refreshes TIER A ONLY and re-arms a stale Tier B (592)
  *   - freshness is per-tier and per-input: a bibFamily switch re-derives
  *     sourceText with no edit; a hidden pane converges on the visible edge
+ *   - the folder's style-file manifest is a STATED input too (1103): it
+ *     re-derives sourceText when it lands, and an equal re-publish is free
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -64,6 +66,10 @@ import { blockCacheStats } from "../block-caches";
 import type { BibFamily } from "@/lib/bib-family";
 import { TEX_DELIMITERS_CHANGED_EVENT } from "@/lib/tex-delimiters-event";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import {
+  buildLocalPackageManifest,
+  publishLocalPackages,
+} from "@/lib/local-packages";
 
 let editor: Editor | null = null;
 let products: DocProducts | null = null;
@@ -275,6 +281,73 @@ describe("doc-products pipeline", () => {
     const after = p.snapshot().sourceText!;
     expect(after).toContain("biblatex");
     expect(after).not.toBe(before);
+  });
+
+  it("the style-file manifest landing AFTER Tier B re-derives sourceText with no edit (1103)", async () => {
+    // A paper whose own mystyle.sty loads biblatex, and whose body cites.
+    readTexImpl = () =>
+      Promise.resolve(
+        DISK_TEX.replace("\\begin{document}", "\\usepackage{mystyle}\n\\begin{document}"),
+      );
+    const docId = "doc-1103-landing";
+    const ed = makeEditor('<p>alpha <cite-stub data-command="\\citeauthor{k}"></cite-stub></p>');
+    products = createDocProducts(ed, {
+      docId,
+      getBibFamily: () => null,
+      isSuppressed: () => false,
+      isVisible: () => true,
+      interactiveMs: 300,
+    });
+    const p = products;
+    await settle();
+    // Tier B ran before storage read the folder: natbib injected over the
+    // style file's biblatex — one preamble line the saved file does not have.
+    expect(p.snapshot().sourceText!).toContain("\\usepackage{natbib}");
+
+    const docBefore = ed.state.doc;
+    publishLocalPackages(
+      docId,
+      buildLocalPackageManifest([
+        { path: "mystyle.sty", text: "\\RequirePackage[style=apa]{biblatex}\n" },
+      ]),
+    );
+    await settle();
+    expect(ed.state.doc).toBe(docBefore); // no editor transaction
+    expect(p.snapshot().sourceText!).not.toContain("\\usepackage{natbib}");
+
+    // Every save rebuilds the manifest: an EQUAL re-publish re-arms nothing.
+    const gen = p.snapshot().generation;
+    const runs = pipelineStats.tierBRuns;
+    publishLocalPackages(
+      docId,
+      buildLocalPackageManifest([
+        { path: "mystyle.sty", text: "\\RequirePackage[style=apa]{biblatex}\n" },
+      ]),
+    );
+    await settle();
+    expect(p.snapshot().generation).toBe(gen);
+    expect(pipelineStats.tierBRuns).toBe(runs);
+  });
+
+  it("a destroyed pipeline no longer hears its doc's manifest (1103)", async () => {
+    const docId = "doc-1103-destroy";
+    const ed = makeEditor("<p>alpha</p>");
+    const p = createDocProducts(ed, {
+      docId,
+      getBibFamily: () => null,
+      isSuppressed: () => false,
+      isVisible: () => true,
+      interactiveMs: 300,
+    });
+    await settle();
+    p.destroy();
+    const runs = pipelineStats.tierBRuns;
+    publishLocalPackages(
+      docId,
+      buildLocalPackageManifest([{ path: "x.sty", text: "\\RequirePackage{amsmath}\n" }]),
+    );
+    await settle();
+    expect(pipelineStats.tierBRuns).toBe(runs);
   });
 
   it("a Tier B refusal can no longer take the save with it (592)", async () => {

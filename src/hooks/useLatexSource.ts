@@ -27,7 +27,7 @@
  * `src/lib/__tests__/keystroke-subscriber-guardrail.test.ts` + AGENTS.md.
  */
 
-import { localPackagesFor } from "@/lib/local-packages";
+import { localPackagesFor, subscribeLocalPackages } from "@/lib/local-packages";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { readTex } from "@/lib/storage";
@@ -197,6 +197,19 @@ export function useLatexSource({
     return () =>
       window.removeEventListener(TEX_DELIMITERS_CHANGED_EVENT, onDelimitersChanged);
   }, [docId, serializeNow]);
+
+  // The folder's style-file manifest (task 1090) is a serialize input that
+  // fires no transaction and lands on storage's schedule, possibly after the
+  // seed above — re-serialize when it lands or changes (task 1103). Same gates
+  // as the delimiter re-read: parity first, and the code view owns its feed.
+  useEffect(
+    () =>
+      subscribeLocalPackages(docId, () => {
+        if (!preambleReadyRef.current || codeViewActiveRef.current) return;
+        serializeNow();
+      }),
+    [docId, serializeNow],
+  );
 
   // Debounced serialize-on-update. KEYSTROKE SANCTITY: the handler only resets a
   // timer (O(1)); the O(doc) serialize fires after the lull, off the keystroke
