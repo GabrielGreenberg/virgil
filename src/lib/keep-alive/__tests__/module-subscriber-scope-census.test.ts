@@ -83,6 +83,7 @@ const LEDGER: Record<string, Row> = {
   "lib/unsaved-work.ts#listeners": { scope: "doc-keyed", why: "unsaved-work state is per docId" },
   "lib/preservation-notice.ts#listeners": { scope: "doc-keyed", why: "refusals are published per docId" },
   "lib/sidecar-refusal.ts#listeners": { scope: "doc-keyed", why: "sidecar refusals are per docId" },
+  "lib/doc-load-failure.ts#listeners": { scope: "doc-keyed", why: "load failures are a registry keyed by docId (task 1102)" },
   "lib/cowork-pen.ts#listeners": { scope: "doc-keyed", why: "the pen is held per docId" },
   "lib/save-request.ts#listeners": { scope: "doc-keyed", why: "save requests are addressed by docId" },
   "panels/Outline/outline-prefs-store.ts#listeners": { scope: "doc-keyed", why: "outline prefs are stored per docId" },

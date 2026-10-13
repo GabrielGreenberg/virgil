@@ -126,6 +126,7 @@ import {
   asBibFamily,
   type BibFamily,
 } from "@/lib/bib-family";
+import { DocUnreachableError, probeDocFolder } from "@/lib/doc-load-failure";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -909,6 +910,21 @@ export interface DocBundle {
 export async function readDocBundle(docId: string): Promise<DocBundle> {
   const docHandle = await requireDocHandle(docId);
   const meta = await getDocMetaOrThrow(docId);
+
+  // Task 1102: a paper whose folder or `.tex` has gone must FAIL its load,
+  // named — never fall through `safeReadText`'s fallback to a blank default
+  // document (which the load-writeback below would then write into the folder
+  // as if it were the paper). Library-paper docs keep the tolerant read: their
+  // folder may legitimately be mid-index.
+  if (!isLibraryPaperDoc(docId)) {
+    const unreachable = await probeDocFolder(docHandle, meta.texFilename);
+    if (unreachable) {
+      throw new DocUnreachableError(
+        unreachable,
+        `Paper ${docId} is unreachable (${unreachable}): ${meta.folderName}/${meta.texFilename}`,
+      );
+    }
+  }
 
   const latex = await safeReadText(docHandle, meta.texFilename, DEFAULT_LATEX);
   // Baseline the disk ledger from what we just read. If the load-writeback
@@ -2484,6 +2500,35 @@ export async function deleteDocFromIndex(id: string): Promise<void> {
     idx.docs = idx.docs.filter((d) => d.id !== id);
   });
   await purgeDoc(id);
+}
+
+/**
+ * Re-point a known paper at a folder the user picked (task 1102, the
+ * unreachable-paper gate's "Locate folder…"). The id is KEPT, so its sidecars
+ * in IndexedDB, its My Papers / Recents membership and its open tab all
+ * survive the move. Refuses — before storing anything — a folder that does not
+ * contain the paper's `.tex`, so a wrong pick can never re-point a paper at an
+ * unrelated directory.
+ */
+export async function relocateDoc(
+  id: string,
+  handle: FileSystemDirectoryHandle,
+): Promise<FsaDocMeta> {
+  const meta = await getDocMetaOrThrow(id);
+  const unreachable = await probeDocFolder(handle, meta.texFilename);
+  if (unreachable) {
+    throw new DocUnreachableError(
+      unreachable,
+      `"${handle.name}" does not contain ${meta.texFilename}.`,
+    );
+  }
+  await setDocHandle(id, handle);
+  return mutateIndex((idx) => {
+    const doc = idx.docs.find((d) => d.id === id);
+    if (!doc) return meta;
+    doc.folderName = handle.name;
+    return { ...doc };
+  });
 }
 
 async function touchDocTimestamp(id: string): Promise<void> {

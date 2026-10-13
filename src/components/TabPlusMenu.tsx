@@ -53,6 +53,8 @@ interface Props {
   openTabIds: string[];
   currentDocId: string | null;
   onOpenRecent: (id: string) => void;
+  /** Forget a recent paper (task 1102). Never deletes files. */
+  onRemoveRecent?: (id: string) => void;
   onOpenFolder: () => void;
   onCreateNew: () => void;
   onOpenExample: () => void;
@@ -74,6 +76,7 @@ export function TabPlusMenu({
   openTabIds,
   currentDocId,
   onOpenRecent,
+  onRemoveRecent,
   onOpenFolder,
   onCreateNew,
   onOpenExample,
@@ -175,6 +178,7 @@ export function TabPlusMenu({
                 key={doc.id}
                 doc={doc}
                 onOpen={handleRecentClick}
+                onRemove={onRemoveRecent}
               />
             ))}
           </div>
@@ -282,16 +286,25 @@ export function TabPlusMenu({
 function RecentRowItem({
   doc,
   onOpen,
+  onRemove,
 }: {
   doc: FsaDocMeta;
   onOpen: (id: string) => void;
+  onRemove?: (id: string) => void;
 }) {
   const { active, getItemProps } = useMenuItem({
     id: `recent-${doc.id}`,
     region: "list",
     run: () => onOpen(doc.id),
   });
-  return <RecentPaperRow doc={doc} itemProps={getItemProps()} active={active} />;
+  return (
+    <RecentPaperRow
+      doc={doc}
+      itemProps={getItemProps()}
+      active={active}
+      onRemove={onRemove}
+    />
+  );
 }
 
 function WindowIcon() {
