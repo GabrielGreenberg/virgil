@@ -603,3 +603,115 @@ describe("a whole-document request survives an overlapping pass (task 582)", () 
     expect(flagged(ed)).toEqual(["blorp", "snarf"]);
   });
 });
+
+describe("the dirty list names only textblocks it can answer for (task 1096)", () => {
+  /** Spellcheck-meta transactions dispatched from now on. */
+  function countPasses(ed: Editor): () => number {
+    let n = 0;
+    ed.on("transaction", ({ transaction }) => {
+      if (transaction.getMeta(spellcheckPluginKey)) n++;
+    });
+    return () => n;
+  }
+
+  function blockWith(ed: Editor, word: string): { pos: number; size: number } {
+    let hit: { pos: number; size: number } | null = null;
+    ed.state.doc.descendants((n, pos) => {
+      if (!hit && n.isTextblock && n.textContent.includes(word)) hit = { pos, size: n.nodeSize };
+      return !hit;
+    });
+    expect(hit).not.toBeNull();
+    return hit!;
+  }
+
+  const LIST = "\\begin{itemize}\n\\item Some quick text.\n\\end{itemize}";
+
+  /**
+   * Make the paragraph holding `word` dirty (a keystroke into it), then — inside
+   * the same debounce window — run `edit`, and let many windows pass.
+   */
+  async function dirtyThen(
+    body: string,
+    word: string,
+    edit: (ed: Editor, at: { pos: number; size: number }) => void,
+  ) {
+    const { ref } = makePort();
+    const ed = mount(body, ref);
+    await settle();
+    const at = blockWith(ed, word);
+    // Typed at the block's END, so the word that names it stays whole.
+    ed.chain().setTextSelection(at.pos + at.size - 1).insertContent(" z").run();
+    edit(ed, blockWith(ed, word));
+    const passes = countPasses(ed);
+    await settle();
+    const settled = passes();
+    // Idle: nobody types for ten more debounce windows.
+    for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(SPELL_DEBOUNCE_MS + 10);
+    return { ed, settled, idle: passes() - settled };
+  }
+
+  it("a dirty paragraph DELETED onto a following list leaves no entry behind — no idle pass loop", async () => {
+    const { ed, settled, idle } = await dirtyThen(`Some prose here.\n\nMore prose.\n\n${LIST}`, "More", (e, at) => {
+      e.view.dispatch(e.state.tr.delete(at.pos, at.pos + at.size));
+      expect(e.state.doc.nodeAt(at.pos)?.type.name).toBe("bulletList");
+    });
+    expect(settled).toBeLessThanOrEqual(1);
+    expect(idle).toBe(0);
+    expect(spellcheckPluginKey.getState(ed.state)!.dirty).toEqual([]);
+  });
+
+  it("a dirty paragraph WRAPPED in a blockquote is re-checked at its inner position, then settles", async () => {
+    const { ed, settled, idle } = await dirtyThen("Some prose here.\n\nMore teh prose.", "teh", (e, at) => {
+      e.chain().setTextSelection(at.pos + 3).wrapIn("blockquote").run();
+      expect(e.state.doc.nodeAt(at.pos)?.type.name).toBe("blockquote");
+    });
+    expect(settled).toBeLessThanOrEqual(2);
+    expect(idle).toBe(0);
+    expect(spellcheckPluginKey.getState(ed.state)!.dirty).toEqual([]);
+    // Still checked where it went.
+    expect(flagged(ed)).toEqual(["teh"]);
+  });
+
+  it("a cross-block selection-delete settles the same way", async () => {
+    const { ed, idle } = await dirtyThen("Some prose here.\n\nMore prose.\n\nThe quick fox.", "More", (e) => {
+      const a = blockWith(e, "Some");
+      const b = blockWith(e, "quick");
+      e.view.dispatch(e.state.tr.delete(a.pos + 3, b.pos + 4));
+    });
+    expect(idle).toBe(0);
+    expect(spellcheckPluginKey.getState(ed.state)!.dirty).toEqual([]);
+  });
+
+  it("with the checker OFF, moving the caret through N blocks records nothing and arms no pass", async () => {
+    const { ref, port } = makePort();
+    const n = 12;
+    const ed = mount(
+      Array.from({ length: n }, (_, i) => `Paragraph ${i} of quick brown prose.`).join("\n\n"),
+      ref,
+    );
+    await settle();
+    port.setEnabled(false);
+    port.invalidate();
+    await settle();
+    expect(spellcheckPluginKey.getState(ed.state)!.active).toBe(false);
+    const passes = countPasses(ed);
+    // The plugin's debounce is the only SPELL_DEBOUNCE_MS timer a keystroke
+    // arms here; measured A/B against the checker ON below would be noisier.
+    const armed = vi.spyOn(globalThis, "setTimeout");
+    const starts: number[] = [];
+    ed.state.doc.descendants((node, pos) => {
+      if (node.isTextblock) starts.push(pos);
+      return !node.isTextblock;
+    });
+    for (const pos of starts) {
+      ed.chain().setTextSelection(pos + 2).run();
+      ed.chain().insertContent("x").run();
+      expect(spellcheckPluginKey.getState(ed.state)!.dirty.length).toBe(0);
+    }
+    const debounces = armed.mock.calls.filter((c) => c[1] === SPELL_DEBOUNCE_MS).length;
+    armed.mockRestore();
+    await settle();
+    expect(passes()).toBe(0);
+    expect(debounces).toBe(0);
+  });
+});
