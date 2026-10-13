@@ -447,13 +447,36 @@ describe("the correction is an ordinary, reversible edit", () => {
     expect(textOf(ed, "paragraph")).toBe("teh ");
   });
 
-  it("undo reaches it — it is in the history, never `addToHistory: false`", () => {
+  it("undo reverts ONLY the correction — the typed bytes come back exactly (task 1098)", () => {
+    // The correction is its own history event: it never merges into the
+    // typing group, so one undo gives back `abc teh ` (not an emptied
+    // paragraph), and a second undo removes the typing.
+    const { ref } = makePort();
+    const ed = mount(emptyPara(), ref);
+    caretAtEndOf(ed, "paragraph");
+    typeText(ed, "abc teh ");
+    expect(textOf(ed, "paragraph")).toBe("abc the ");
+    ed.commands.undo();
+    expect(textOf(ed, "paragraph")).toBe("abc teh ");
+    expect(ed.state.selection.from).toBe(1 + "abc teh ".length);
+    ed.commands.undo();
+    expect(textOf(ed, "paragraph")).toBe("");
+    ed.commands.redo();
+    ed.commands.redo();
+    expect(textOf(ed, "paragraph")).toBe("abc the ");
+  });
+
+  it("typing on after the correction keeps it — undo walks back one step at a time", () => {
     const { ref } = makePort();
     const ed = mount(emptyPara(), ref);
     caretAtEndOf(ed, "paragraph");
     typeText(ed, "teh ");
+    typeText(ed, "x");
+    expect(textOf(ed, "paragraph")).toBe("the x");
     ed.commands.undo();
-    expect(textOf(ed, "paragraph")).not.toBe("the ");
+    expect(textOf(ed, "paragraph")).toBe("the ");
+    ed.commands.undo();
+    expect(textOf(ed, "paragraph")).toBe("teh ");
   });
 
   it("corrected prose round-trips byte-clean over two cycles", () => {

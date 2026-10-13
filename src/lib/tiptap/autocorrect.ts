@@ -64,6 +64,10 @@ import { Extension, InputRule } from "@tiptap/core";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { typedWordEndingAt } from "@/lib/spell/prose-words";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
+import { createTypeTimeRewriter } from "./type-time-rewrite";
+
+/** The correction lands as its own undo step (task 1098). */
+const rewriter = createTypeTimeRewriter("autocorrect");
 
 /** One curated correction: a word that is never a word, and what it is. */
 export interface AutocorrectRow {
@@ -253,10 +257,14 @@ export const Autocorrect = Extension.create<AutocorrectOptions>({
           const word = typedWordEndingAt(state.doc.resolve(range.to), trail);
           if (!word || word.from !== typoFrom || word.word !== typed) return null;
           if (!rangeHoldsOnlyText(state.doc, typoFrom, range.to)) return null;
-          state.tr.insertText(`${fixed}${trail}`, typoFrom, range.to);
+          rewriter.land(state, range, match, trail, typoFrom, `${fixed}${trail}`);
           return undefined;
         },
       }),
     ];
+  },
+
+  addProseMirrorPlugins() {
+    return [rewriter.plugin()];
   },
 });

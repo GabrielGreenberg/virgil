@@ -1,5 +1,6 @@
 import { Extension, InputRule } from "@tiptap/core";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
+import { createTypeTimeRewriter } from "./type-time-rewrite";
 
 /**
  * Type-time typographic input rules: smart curly quotes and en/em dashes.
@@ -52,6 +53,12 @@ import { rangeHoldsOnlyText } from "./typed-prose-gate";
  * the only sane representation for contractions like "don't", and LaTeX
  * accepts them verbatim.
  */
+/**
+ * Each rewrite lands as its own undo step (task 1098): Cmd+Z after `“` gives
+ * back the straight `"` that was typed, and after `–` the `--`.
+ */
+const rewriter = createTypeTimeRewriter("smartQuotes");
+
 const EN_DASH = "–"; // –
 const EM_DASH = "—"; // —
 
@@ -66,33 +73,37 @@ export const SmartQuotes = Extension.create({
           const lead = match[1] ?? "";
           // Task 578: replace only what the rule rewrites, and only over text.
           if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
-          state.tr.insertText(`${lead}“`, range.from, range.to);
+          rewriter.land(state, range, match, '"', range.from + lead.length, "“");
         },
       }),
       new InputRule({
         find: /"$/,
-        handler: ({ state, range }) => {
+        handler: ({ state, range, match }) => {
           if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
-          state.tr.insertText("”", range.from, range.to);
+          rewriter.land(state, range, match, '"', range.from, "”");
         },
       }),
       // Em dash — must precede the en-dash rule so `–-` (the incremental
       // third-hyphen case) and any intact `---` win over a bare `--` match.
       new InputRule({
         find: /(?:---|–-)$/,
-        handler: ({ state, range }) => {
+        handler: ({ state, range, match }) => {
           if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
-          state.tr.insertText(EM_DASH, range.from, range.to);
+          rewriter.land(state, range, match, "-", range.from, EM_DASH);
         },
       }),
       // En dash — fires on the second hyphen.
       new InputRule({
         find: /--$/,
-        handler: ({ state, range }) => {
+        handler: ({ state, range, match }) => {
           if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
-          state.tr.insertText(EN_DASH, range.from, range.to);
+          rewriter.land(state, range, match, "-", range.from, EN_DASH);
         },
       }),
     ];
+  },
+
+  addProseMirrorPlugins() {
+    return [rewriter.plugin()];
   },
 });

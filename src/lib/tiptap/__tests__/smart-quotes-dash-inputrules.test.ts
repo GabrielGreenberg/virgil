@@ -18,6 +18,7 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Code from "@tiptap/extension-code";
 import CodeBlock from "@tiptap/extension-code-block";
+import { UndoRedo } from "@tiptap/extensions";
 import { SmartQuotes } from "../smart-quotes";
 import { LatexCommandMark, LatexVerbatimMark } from "../latex-command";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -30,7 +31,7 @@ function makeEditor() {
   document.body.appendChild(el);
   return new Editor({
     element: el,
-    extensions: [Document, Paragraph, Text, Code, CodeBlock, SmartQuotes],
+    extensions: [Document, Paragraph, Text, Code, CodeBlock, SmartQuotes, UndoRedo],
     content: "<p></p>",
   });
 }
@@ -161,5 +162,39 @@ describe("SmartQuotes dash input rules", () => {
     expect(tex).toContain("foo -- bar --- baz");
     expect(tex).not.toContain(EN_DASH);
     expect(tex).not.toContain(EM_DASH);
+  });
+});
+
+describe("a type-time rewrite is its own undo step (task 1098)", () => {
+  let editor: Editor;
+  beforeEach(() => {
+    editor = makeEditor();
+  });
+  afterEach(() => {
+    editor.destroy();
+  });
+
+  const cases: Array<[string, string, string]> = [
+    ['say "', "say “", 'say "'],
+    ['say "hi"', "say “hi”", 'say “hi"'],
+    ["a--", `a${EN_DASH}`, "a--"],
+    ["a---", `a${EM_DASH}`, `a${EN_DASH}-`],
+  ];
+  for (const [typed, shown, afterUndo] of cases) {
+    it(`\`${typed}\` → undo gives back \`${afterUndo}\`, not an empty paragraph`, () => {
+      typeText(editor, typed);
+      expect(editor.getText()).toBe(shown);
+      editor.commands.undo();
+      expect(editor.getText()).toBe(afterUndo);
+    });
+  }
+
+  it("Backspace right after still reverts the rewrite to the typed bytes", () => {
+    typeText(editor, "a--");
+    const handled = editor.view.someProp("handleKeyDown", (f) =>
+      f(editor.view, new KeyboardEvent("keydown", { key: "Backspace" })),
+    );
+    expect(handled).toBe(true);
+    expect(editor.getText()).toBe("a--");
   });
 });

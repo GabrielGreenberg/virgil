@@ -38,7 +38,9 @@ import {
 } from "@/lib/__tests__/_source-scan";
 
 const ANCHORS = /\bhandler\s*:\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{|\bhandleTextInput\s*\([^)]*\)\s*\{/g;
-const REPLACE_VERB = /\.(?:replaceWith|replaceRangeWith|insertText|delete|replace)\(/;
+// `rewriter.land(` is the type-time rewrite door (task 1098): it replaces the
+// matched run in an appended transaction, so a handler calling it replaces.
+const REPLACE_VERB = /\.(?:replaceWith|replaceRangeWith|insertText|delete|replace)\(|\brewriter\.land\(/;
 const DOOR = /\brangeHoldsOnlyText\(/;
 
 interface Site { file: string; line: number; body: string }
