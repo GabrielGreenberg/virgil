@@ -58,6 +58,7 @@ import { captureNewAssets } from "@/lib/tex-assets";
 import { parseTexLog } from "@/lib/parse-tex-log";
 import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-file";
 import { decodeTexBytes } from "@/lib/compile/decode-source";
+import { buildLocalPackageManifest } from "@/lib/local-packages";
 import { detectBibtexFailure } from "@/lib/compile/bibtex-log";
 import { detectPassPlan } from "@/lib/compile/reference-resolution";
 import { describeCompileOutcome } from "@/lib/compile/compile-outcome";
@@ -122,6 +123,18 @@ const TEXT_EXTS = new Set([
   "def",
   "ltx",
 ]);
+
+// The text files that can CARRY a package load — the one predicate the
+// biblatex gate, the backend rewrite and the pass-plan scan all ask (task
+// 1090). The gate used to scan every TEXT_EXTS file while the rewrite touched
+// `.tex` only, so a `\RequirePackage{biblatex}` inside the paper's own
+// `mystyle.sty` passed the gate, was never rewritten, and the backend stayed
+// biber (no bibliography).
+const LOAD_CARRYING_EXTS = new Set(["tex", "sty", "cls"]);
+
+function extOf(path: string): string {
+  return path.split(".").pop()?.toLowerCase() ?? "";
+}
 
 // SwiftLaTeX bundles bibtex but not biber, so biblatex users get rewritten to
 // backend=bibtex. This loses some biblatex features (Unicode sorting, a few
@@ -583,8 +596,15 @@ class CompileService {
 
     // The lexer's ONE load reader (task 781) — spaced spellings, comma lists,
     // `\RequirePackage` and wrappers all count.
-    const hasBiblatex = [...decoded.values()].some((t) =>
-      preambleListLoadsPackage(t, "biblatex"),
+    const hasBiblatex = [...decoded].some(
+      ([path, t]) =>
+        LOAD_CARRYING_EXTS.has(extOf(path)) &&
+        preambleListLoadsPackage(t, "biblatex"),
+    );
+    // The folder's own `.sty`/`.cls` loads (task 1090), so the main file's
+    // requirement pass sees a style file's biblatex as in force.
+    const localPackages = buildLocalPackageManifest(
+      [...decoded].map(([path, text]) => ({ path, text })),
     );
 
     for (const f of files) {
@@ -602,14 +622,14 @@ class CompileService {
       // memory only (byte-stable on disk). Only the entry-point .tex carries a
       // \begin{document}; applyRequirementsToFile no-ops on anything else.
       if (f.path === mainTexFilename) {
-        prepared = applyRequirementsToFile(prepared);
+        prepared = applyRequirementsToFile(prepared, localPackages);
       }
       // Rewrite biblatex → backend=bibtex (biber is unavailable in-browser).
-      if (hasBiblatex && ext === "tex") {
+      if (hasBiblatex && LOAD_CARRYING_EXTS.has(ext)) {
         const rewritten = rewriteBiblatexBackend(prepared);
         if (rewritten !== prepared) {
           console.warn(
-            `[compile] biber is not available in the browser; rewrote \\usepackage{biblatex} in ${f.path} to use backend=bibtex`,
+            `[compile] biber is not available in the browser; rewrote the biblatex load in ${f.path} to use backend=bibtex`,
           );
           prepared = rewritten;
         }
@@ -624,8 +644,7 @@ class CompileService {
   private joinScannableSources(prepared: PreparedFile[]): string {
     const parts: string[] = [];
     for (const f of prepared) {
-      const ext = f.path.split(".").pop()?.toLowerCase() ?? "";
-      if (ext !== "tex" && ext !== "sty" && ext !== "cls") continue;
+      if (!LOAD_CARRYING_EXTS.has(extOf(f.path))) continue;
       if (typeof f.data === "string") parts.push(f.data);
     }
     return parts.join("\n");

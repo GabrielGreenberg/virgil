@@ -75,3 +75,11 @@ describe("detectBibtexFailure — pass/fail/absent", () => {
     expect(detectBibtexFailure(BIBTEX_MISSING_DB)).toBe("failed");
   });
 });
+
+describe("biblatex left on biber (task 1090)", () => {
+  it("a final log asking to rerun Biber reads as failed", () => {
+    const log =
+      "Package biblatex Warning: Please (re)run Biber on the file:\n(biblatex) main\n";
+    expect(detectBibtexFailure(log)).toBe("failed");
+  });
+});

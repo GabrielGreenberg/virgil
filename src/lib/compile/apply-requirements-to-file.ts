@@ -29,6 +29,7 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { findDocumentBoundary } from "@/lib/latex-lexer";
+import type { LocalPackageManifest } from "@/lib/local-packages";
 
 /**
  * Inject any missing package/shim requirements into `.tex` source so it can
@@ -36,7 +37,10 @@ import { findDocumentBoundary } from "@/lib/latex-lexer";
  * `\begin{document}` (a fragment / bib-only file we shouldn't guess at) or when
  * the preamble already satisfies every requirement.
  */
-export function applyRequirementsToFile(tex: string): string {
+export function applyRequirementsToFile(
+  tex: string,
+  localPackages?: LocalPackageManifest | null,
+): string {
   // The LIVE boundary, through the one door (task 375) — a commented-out or
   // verbatim-quoted `\begin{document}` used to take this split, so the compile
   // copy injected its packages into the middle of a comment.
@@ -53,6 +57,9 @@ export function applyRequirementsToFile(tex: string): string {
   const injected = ensurePreambleRequirements(
     preamble,
     detectBodyRequirements(body),
+    // The folder's own `.sty`/`.cls` loads are in force (task 1090) — never
+    // inject natbib over the biblatex a local style file loads.
+    { localPackages },
   );
   // No-op fast path: identical preamble → identical whole file.
   if (injected === preamble) return tex;

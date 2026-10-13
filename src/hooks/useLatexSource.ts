@@ -27,6 +27,7 @@
  * `src/lib/__tests__/keystroke-subscriber-guardrail.test.ts` + AGENTS.md.
  */
 
+import { localPackagesFor } from "@/lib/local-packages";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { readTex } from "@/lib/storage";
@@ -128,12 +129,14 @@ export function useLatexSource({
         preamble: preambleRef.current,
         postamble: postambleRef.current,
         bibFamily: getBibFamilyRef.current?.() ?? null,
+        // The folder's own style-file loads (task 1090), as the save path sees them.
+        localPackages: localPackagesFor(docId),
       });
       commitSourceText(latex);
     } catch {
       /* serializeToLatex should never throw in normal use; skip this tick */
     }
-  }, [editor, commitSourceText]);
+  }, [editor, commitSourceText, docId]);
 
   // Read preamble/postamble from disk on load, then seed `sourceText` once
   // resolved. Mirrors CodeEditor.tsx:168-193 — the body comes from live TipTap,

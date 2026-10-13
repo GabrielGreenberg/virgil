@@ -37,6 +37,7 @@ import {
   ensurePreambleRequirements,
   type RequirementConflict,
 } from "@/lib/latex-requirements";
+import type { LocalPackageManifest } from "@/lib/local-packages";
 import {
   typographyToLatex,
   smartenStraightQuotes,
@@ -1791,6 +1792,9 @@ export interface AssembleLatexOptions {
   postamble?: string;
   bibFamily?: BibFamily | null;
   onRequirementConflict?: (conflict: RequirementConflict) => void;
+  /** The paper folder's own `.sty`/`.cls` loads (task 1090) — packages in
+   *  force through a local style file are never injected over. */
+  localPackages?: LocalPackageManifest | null;
 }
 
 /**
@@ -1845,6 +1849,7 @@ export function assembleLatex(
     {
       declaredBibFamily: declaredFamily,
       onRequirementConflict: options?.onRequirementConflict,
+      localPackages: options?.localPackages,
     },
   );
   // Re-inject preamble-sourced \title/\author/\date right before
@@ -1880,6 +1885,8 @@ export function serializeToLatex(
      * soft notice. Fires at most once per family per serialize.
      */
     onRequirementConflict?: (conflict: RequirementConflict) => void;
+    /** The paper folder's own `.sty`/`.cls` loads (task 1090). */
+    localPackages?: LocalPackageManifest | null;
   },
 ): string {
   // ONE code path (perf Wave 0, plan P2-S1): the whole-doc serialize is the
