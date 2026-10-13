@@ -1,4 +1,4 @@
-<!-- last-verified: 6d214d9f 2026-10-12 -->
+<!-- last-verified: bbc9ee32 2026-10-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -231,6 +231,10 @@ gb4e / linguex paper no longer gets an `xlist` shim it cannot compile. An expex
   biblatex/pass-plan detectors. A cite package that owns its own machinery
   (`FOREIGN_CITE_PACKAGES`: apacite / harvard / chicago / jurabib,
   `src/lib/bib-family.ts`) gets no natbib injected.
+  The paper folder's own `.sty`/`.cls` loads count too (task 1090): a
+  transitive local-package manifest (`src/lib/local-packages.ts`, read through
+  the same load reader) is expanded at the preamble-projecting doors, so a
+  local style file's biblatex suppresses the natbib injection.
 - **Paragraph boundaries are POSITIONAL** (task 778): `BLOCK_BOUNDARY_TIERS` in
   the lexer — `anywhere`, `lineBlock` (`\includegraphics`, `\hrulefill`: a block
   only alone on its line), `horizontal` (`\hspace`, `\noindent`, `\vspace`: never)

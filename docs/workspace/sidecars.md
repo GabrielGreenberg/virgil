@@ -1,4 +1,4 @@
-<!-- last-verified: 6d214d9f 2026-10-12 -->
+<!-- last-verified: bbc9ee32 2026-10-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -13,7 +13,7 @@
 > shape is owned by [anchoring.md](anchoring.md) and only referenced here.
 
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
-The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **58** exported
+The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **59** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
 if they ever disagree, the code wins). The full type index — every exported type,
 grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
@@ -250,8 +250,11 @@ writes it, and skills must not either.
 
 ```ts
 ArchivedSnippet { id; title; titleAuto?; content; createdAt; links: Link[];
-                  archived?; unanchored?;
+                  archived?; unanchored?; returnBefore?; displaced?;
                   originalPanel?; originalCard?; archivedAt? }  // links may pin many
+// RETURNING MARGIN (task 1079) — `displaced?: DisplacedAnchorRecord[]`
+// ({ kind; id; from: string[]; to; added }) records the Mode-A cards the capture
+// re-homed onto the neighbour; Restore hands them back (`landReturningDisplaced`).
 // ORIGIN RECORD (task 712) — the last three are present iff the snippet is a whole
 // CARD set aside by `/editor/archive-card`, not a slice of the document:
 // `originalPanel` names the panel it left, `originalCard` is that card VERBATIM.
@@ -481,7 +484,7 @@ the type exists, and check 2 now holds it to that.
 
 This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
 field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
-forward-points to. All **58** exported types are named below (schema above, or
+forward-points to. All **59** exported types are named below (schema above, or
 doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
@@ -493,7 +496,7 @@ doc-of-record noted), grouped by family:
   `CutItemLegacy`. Revisions: `RevisionRequestCard`, `RevisionSuggestionCard`,
   `RevisionCard`, `RevisionsTracker`, `RevisionsState`. Reports: `ReportCard`,
   `ReportRequestCard`, `ReportItem`, `ReportsState`. Archive: `ArchivedSnippet`,
-  `ArchiveState`. (Examples have no type — the sidecar shadow was retired, task 726.)
+  `ArchiveState`, `DisplacedAnchorRecord`. (Examples have no type — the sidecar shadow was retired, task 726.)
 - **The Task surface** — `AiRequest`, `AiRequestKind`, `AiRequestKindOnDisk`,
   `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`,
   `AiRequestClosedBy`, `AiRequestsState`.

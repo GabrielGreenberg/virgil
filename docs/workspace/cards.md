@@ -1,4 +1,4 @@
-<!-- last-verified: 6d214d9f 2026-10-12 -->
+<!-- last-verified: bbc9ee32 2026-10-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -223,6 +223,10 @@ and Restore puts the card back in its panel ("Restore to Notes"); it never lands
 the body in the prose. A text-object clip (no origin) Restores INTO the prose at
 its return address — beside its live anchor, on the `returnBefore` side when
 recorded (`restoreExcerptAtAnchor`, task 965) — with the caret only as fallback.
+Since task 1079 the capture also records the Mode-A cards it RE-HOMED onto the
+neighbour (`ArchivedSnippet.displaced`, `DisplacedAnchorRecord`), and Restore
+hands them back to the restored passage through one door
+(`landReturningDisplaced`, [src/cards/retarget-anchors.ts](../../src/cards/retarget-anchors.ts)).
 
 - **`isArchivable(kind)`** ([predicates.ts](../../src/cards/predicates.ts)) —
   derived from provenance: `origin === "user"`, MINUS one exception.

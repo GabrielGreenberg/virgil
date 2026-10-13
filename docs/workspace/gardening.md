@@ -1,4 +1,4 @@
-<!-- last-verified: 6d214d9f 2026-10-12 -->
+<!-- last-verified: bbc9ee32 2026-10-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -92,7 +92,8 @@ classes `.iconbtn-*` (task 826), `.margin-fold-chevron` (task 830) and
 - `figures/` — binary assets the figure picker copies in. A skill must not
   overwrite one: since task 533 the app itself never does either, resolving a
   free name through [asset-import.ts](../../src/lib/figures/asset-import.ts)
-  (absent ⇒ write, same bytes ⇒ reuse, different bytes ⇒ `<stem>-2`, …). The
+  (absent ⇒ write, same bytes ⇒ reuse, different bytes ⇒ `<stem>-2`, …; since
+  task 1081 the copied name is minted TeX-safe by `texSafeAssetName`). The
   folder has no `.history/` slot and FSA has no trash, so a truncating write
   there is unrecoverable.
 - the sibling **`.virgil/`** (agent/library plumbing — distinct from `virgil/`),
