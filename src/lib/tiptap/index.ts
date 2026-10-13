@@ -35,7 +35,6 @@ export type {
 export { PgMarkChip } from "./pgmark";
 export { SmartQuotes } from "./smart-quotes";
 export { Autocorrect, AUTOCORRECT_TABLE, correctionFor } from "./autocorrect";
-export { typedTextIsProse } from "./typed-prose-gate";
 export { TabIndent } from "./tab-indent";
 // Only the extension is re-exported: the barrel carries what the APP consumes,
 // and a re-export is not a caller (task 202). The item-boundary predicates are

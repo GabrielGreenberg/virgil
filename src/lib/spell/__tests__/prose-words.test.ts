@@ -256,3 +256,34 @@ describe("nothing inside a carrier or an atom is ever a word", () => {
     expect(seen).toBeGreaterThan(0);
   });
 });
+
+// ── E. one owner for "is this prose" (task 1097) ─────────────────────────────
+
+describe("the in-flight command rule is the prose index's, so the checker obeys it too", () => {
+  /** A block shaped exactly as typing `\textsf{teh beta` leaves it: the
+   *  command NAME wears the carrier, the unclosed argument wears nothing. */
+  function inFlight(after: string) {
+    const ed = mount("Alpha");
+    const { schema } = ed.state;
+    const para = schema.nodes.paragraph.create(null, [
+      schema.text("Alpha "),
+      schema.text("\\textsf", [schema.marks.latexCommand.create()]),
+      schema.text(after),
+    ]);
+    return tokenizeBlock(para, 1).map((t) => t.word);
+  }
+
+  it("an unclosed `\\textsf{teh` argument is not squiggled — the corrector already refused it", () => {
+    expect(inFlight("{teh beta")).toEqual(["Alpha"]);
+  });
+
+  it("text after a CLOSED in-flight brace is prose again, and its edge word is a fragment", () => {
+    // `\textsf` + `{x}teh more`: the run ends at `}`; `teh` touches withheld
+    // text, so it is half a word; `more` is checked.
+    expect(inFlight("{x}teh more")).toEqual(["Alpha", "more"]);
+  });
+
+  it("an address still being typed is masked — `name@` is no word", () => {
+    expect(wordsOf("Write to seperate@ soon.")).toEqual(["Write", "to", "soon"]);
+  });
+});

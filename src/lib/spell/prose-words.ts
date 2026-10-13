@@ -53,9 +53,14 @@
  *   - all-uppercase — `NP`, `DP`, `LF`, `PDF`. Academic prose is dense with
  *     acronyms and a stock dictionary knows almost none of them. The cost is
  *     that a shouted typo is not caught, which is the right side of the trade;
- *   - inside a URL or an email address. Those are masked out of the segment
- *     text SPACE-FOR-SPACE before tokenizing, so every surviving token keeps
- *     its exact offset.
+ *   - inside a URL or an email address (any `@`-bearing run, so an address
+ *     still being typed counts). Those are masked out of the segment text
+ *     SPACE-FOR-SPACE before tokenizing, so every surviving token keeps its
+ *     exact offset.
+ *
+ * AUTOCORRECT asks this same tokenizer (`typedWordEndingAt`, task 1097) before
+ * it rewrites a word, so the corrector can never act where the checker would
+ * not even look.
  *
  * Nothing here is language-specific: the dictionary decides what is a word OF
  * ENGLISH; this decides what is a word AT ALL.
@@ -69,8 +74,8 @@
  * debounce.
  */
 
-import type { Node as PMNode } from "@tiptap/pm/model";
-import { blockCarriesProse, inlineIsProse } from "@/lib/prose-index";
+import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
+import { prosePiecesOf } from "@/lib/prose-index";
 import { SMALL_CAPS_MARK } from "@/lib/mark-composition";
 
 /**
@@ -101,39 +106,29 @@ export interface SpellToken {
 /**
  * The prose segments of ONE block, in document order.
  *
- * Reads 517's exported vocabulary (`inlineIsProse`) rather than restating it,
- * so a new carrier mark or atom kind is covered by declaration. Returns `[]`
- * for a block that is not a prose container at all.
+ * Built on 517's ONE walk (`prosePiecesOf`) rather than restating it, so a new
+ * carrier mark, atom kind or withholding rule (the in-flight command, task
+ * 1097) is covered by declaration. Returns `[]` for a block that is not a
+ * prose container at all.
  */
 export function proseSegmentsOf(block: PMNode, contentStart: number): ProseSegment[] {
-  if (!blockCarriesProse(block)) return [];
   const segments: ProseSegment[] = [];
-  let pmCursor = contentStart;
   let open: ProseSegment | null = null;
-  // Whether the child immediately before the NEXT prose child was a text node.
-  let pendingCutIsText = false;
-
-  block.forEach((child) => {
-    if (inlineIsProse(child)) {
-      const t = child.text ?? "";
-      if (t.length > 0) {
-        if (open) open.text += t;
-        else {
-          open = { text: t, pmStart: pmCursor, cutLeft: pendingCutIsText, cutRight: false };
-          segments.push(open);
-        }
-        pendingCutIsText = false;
-      }
-    } else {
-      if (open) {
-        open.cutRight = child.isText;
-        open = null;
-      }
-      pendingCutIsText = child.isText;
+  for (const piece of prosePiecesOf(block, contentStart)) {
+    if (open && open.pmStart + open.text.length === piece.pmStart) {
+      // PM-contiguous: a mark split, not a cut.
+      open.text += piece.text;
+      open.cutRight = piece.textAfter;
+      continue;
     }
-    pmCursor += child.nodeSize;
-  });
-
+    open = {
+      text: piece.text,
+      pmStart: piece.pmStart,
+      cutLeft: piece.textBefore,
+      cutRight: piece.textAfter,
+    };
+    segments.push(open);
+  }
   return segments;
 }
 
@@ -145,7 +140,14 @@ export function proseSegmentsOf(block: PMNode, contentStart: number): ProseSegme
  * anywhere downstream.
  */
 const URL_RE = /\b(?:[a-z][\w+.-]*:\/\/|www\.)\S+/gi;
-const EMAIL_RE = /\S+@\S+\.\S+/g;
+/**
+ * Any `@`-bearing run — a finished address, or one being TYPED (task 1097). At
+ * the `@` keystroke the domain does not exist yet, so a stricter
+ * `local@domain.tld` shape would read `seperate@` as a word and autocorrect
+ * would rewrite the mailbox name before the address could be recognised. A
+ * handle (`@smith`) or a stray `foo@bar` is no word of prose either.
+ */
+const EMAIL_RE = /\S*@\S*/g;
 
 function maskUnwordly(text: string): string {
   let out = text;
@@ -219,16 +221,63 @@ export function tokenizeBlock(block: PMNode, contentStart: number): SpellToken[]
   for (const seg of proseSegmentsOf(block, contentStart)) {
     out.push(...tokenizeSegment(seg));
   }
-  if (out.length === 0) return out;
+  return withoutGlossAbbreviations(out, block, contentStart);
+}
+
+/** Drop the small-caps gloss labels (task 808) from a block's tokens. */
+function withoutGlossAbbreviations(
+  tokens: SpellToken[],
+  block: PMNode,
+  contentStart: number,
+): SpellToken[] {
+  if (tokens.length === 0) return tokens;
   const smallCaps = smallCapsRangesOf(block, contentStart);
-  if (smallCaps.length === 0) return out;
-  return out.filter(
+  if (smallCaps.length === 0) return tokens;
+  return tokens.filter(
     (t) =>
       !(
         isGlossAbbreviation(t.word) &&
         smallCaps.some(([from, to]) => t.from >= from && t.to <= to)
       ),
   );
+}
+
+/**
+ * "Which checkable word did the user just FINISH?" — the corrector's question,
+ * answered by the checker's own tokenizer (task 1097).
+ *
+ * `$pos` is where `trigger` (the boundary character just typed — not in the
+ * document yet) is about to land. The answer is the token of the caret's
+ * textblock that ends exactly at `$pos` once `trigger` is in place, or `null`.
+ * So every rule the squiggle obeys binds the rewrite too, with no second copy:
+ * raw LaTeX settled or in flight, the word-fragment rule beside withheld
+ * text, URL/email masking (which the trigger itself may complete — `www.x` +
+ * `.`, `name` + `@`), `isCheckableWord`, and the gloss-abbreviation rule.
+ *
+ * The trigger is spliced into the segment's TEXT rather than the document:
+ * it changes which characters are masked, never which are prose. Characters
+ * before `$pos` keep their offsets, so a token ending at `$pos` is reported at
+ * its real document range.
+ *
+ * Cost: O(the caret's block), and only when a caller has already matched a
+ * candidate — never on the ordinary keystroke path.
+ */
+export function typedWordEndingAt($pos: ResolvedPos, trigger: string): SpellToken | null {
+  const block = $pos.parent;
+  if (!block.isTextblock) return null;
+  const contentStart = $pos.start();
+  const pos = $pos.pos;
+  for (const seg of proseSegmentsOf(block, contentStart)) {
+    const off = pos - seg.pmStart;
+    if (off <= 0 || off > seg.text.length) continue;
+    const projected: ProseSegment = {
+      ...seg,
+      text: seg.text.slice(0, off) + trigger + seg.text.slice(off),
+    };
+    const ending = tokenizeSegment(projected).filter((t) => t.to === pos);
+    return withoutGlossAbbreviations(ending, block, contentStart)[0] ?? null;
+  }
+  return null;
 }
 
 /** The block's small-caps text as merged `[from, to)` document ranges (adjacent

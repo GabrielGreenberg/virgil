@@ -332,6 +332,75 @@ describe("the gate: a word swap never reaches raw LaTeX", () => {
 
 // ── 3. the two authorities it asks ──────────────────────────────────────────
 
+describe("it asks the CHECKER's tokenizer — no second word rule (task 1097)", () => {
+  // The corrector used to decide "which word just ended" with its own regex,
+  // blind to the tokenizer's URL/email mask and word-fragment rule. Each of
+  // these bytes stays exactly as typed, because the checker would not look.
+  for (const typed of ["www.recieve.org ", "http://x.org/teh/ ", "seperate@uni.edu "]) {
+    it(`a bare address \`${typed.trim()}\` is left exactly as typed`, () => {
+      const { ref } = makePort();
+      const ed = mount(emptyPara(), ref);
+      caretAtEndOf(ed, "paragraph");
+      typeText(ed, typed);
+      expect(textOf(ed, "paragraph")).toBe(typed);
+    });
+  }
+
+  it("half a word beside withheld raw LaTeX — `\\textit{x}teh ` — is not rewritten", () => {
+    const { ref } = makePort();
+    const ed = mount(emptyPara(), ref);
+    caretAtEndOf(ed, "paragraph");
+    typeText(ed, "\\textit{x}teh ");
+    expect(textOf(ed, "paragraph")).toBe("\\textit{x}teh ");
+  });
+
+  it("a gloss abbreviation the checker excuses is not corrected either", () => {
+    // `\textsc{teh}` is a small-caps lowercase ≤4-letter token: task 808's
+    // gloss rule drops it from the checker, so the corrector must not act.
+    const { ref } = makePort();
+    const ed = mount(docFromTex("Alpha \\textsc{teh} beta."), ref);
+    caretAfter(ed, "teh");
+    typeChar(ed, " ");
+    expect(textOf(ed, "paragraph")).toBe("Alpha teh  beta.");
+  });
+
+  it("PARITY — the corrector fires exactly where the tokenizer yields the typo", async () => {
+    const { tokenizeBlock } = await import("@/lib/spell/prose-words");
+    const cases = [
+      "teh ",
+      "one teh.",
+      "www.teh.org ",
+      "a seperate@x.edu ",
+      "\\textsf{teh ",
+      "\\textit{x}teh ",
+      "TEH ",
+      "Teh, ",
+      "x teh's ",
+      "(teh) ",
+    ];
+    for (const typed of cases) {
+      // What the checker sees in the bytes as typed, with no corrector.
+      const { ref, port } = makePort();
+      port.on = false;
+      const plain = mount(emptyPara(), ref);
+      caretAtEndOf(plain, "paragraph");
+      typeText(plain, typed);
+      const block = plain.state.doc.firstChild!;
+      const checkerSeesTypo = tokenizeBlock(block, 1).some(
+        (t) => t.word.toLowerCase() === "teh" || t.word.toLowerCase() === "seperate",
+      );
+      // What the corrector does.
+      const on = makePort();
+      const ed = mount(emptyPara(), on.ref);
+      caretAtEndOf(ed, "paragraph");
+      typeText(ed, typed);
+      const corrected = textOf(ed, "paragraph") !== typed;
+      // `tEh`-style mixed case is the corrector's own extra refusal; none here.
+      expect({ typed, corrected }).toEqual({ typed, corrected: checkerSeesTypo });
+    }
+  });
+});
+
 describe("it asks the document's own answers about words", () => {
   it("a word the user ACCEPTED is not a typo", () => {
     const { ref, port } = makePort();
