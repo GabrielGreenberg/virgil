@@ -15,7 +15,7 @@ import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import { makeErrorId, type LatexError } from "@/lib/latex-errors";
 import { LATEX_RULE } from "@/lib/latex-rules";
 import { compileService } from "@/lib/compile/compile-service";
-import { finishCompile } from "@/lib/compile/compile-progress";
+import { beginCompile, finishCompile } from "@/lib/compile/compile-progress";
 import type { CompileResult } from "@/lib/compile/compile-types";
 import {
   compilePackageName,
@@ -98,6 +98,12 @@ export function useLatexCompile(
     setIsCompiling(true);
     // Bump the per-run salt once at the top of each compile.
     const salt = `r${++runSaltRef.current}:`;
+    // Task 1091: the record speaks from the CLICK, not from when the service
+    // admits the run — the drain + folder read (+ a documentclass prompt) come
+    // first, and the previous outcome must not keep telling the user to press a
+    // button that is already working. Every path out below writes a terminal
+    // state (the service's own finish, the prompt's cancel, the throw path).
+    beginCompile(docId);
     try {
       // Flush any pending React debounce + queued writes so the engine
       // sees the user's latest edits, even if they hit Compile mid-edit.

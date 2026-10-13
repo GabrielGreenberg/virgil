@@ -39,6 +39,13 @@
 export type CompilePhase =
   /** No compile has run for this doc in this session. */
   | "idle"
+  /**
+   * Queued behind ANOTHER paper's compile (task 1091). The compile service is a
+   * module singleton that serializes runs, and a cold compile of the paper ahead
+   * can hold the engine for minutes — this phase is what keeps the queued
+   * paper's pane from repeating its previous outcome for all that time.
+   */
+  | "waiting"
   /** Booting the WASM engine (first compile of the session). */
   | "booting"
   /** Reading + preparing the paper's files. */
@@ -157,6 +164,16 @@ export function beginCompile(
     // attempts, which is the whole point of the continuation.
     assetsFetched: opts?.assetsFetched ?? (attempt > 1 ? (prev?.assetsFetched ?? 0) : 0),
   });
+  emit();
+}
+
+/**
+ * This doc's compile is queued behind another paper's (task 1091). Starts a
+ * fresh record, like `beginCompile`, so the previous outcome stops speaking;
+ * `beginCompile` overwrites it when the run is admitted.
+ */
+export function noteQueued(docId: string): void {
+  byDoc.set(docId, { ...IDLE_PROGRESS, phase: "waiting", startedAt: Date.now() });
   emit();
 }
 

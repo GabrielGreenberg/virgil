@@ -20,6 +20,7 @@ import {
   finishCompile,
   noteAssetFetch,
   notePass,
+  noteQueued,
 } from "@/lib/compile/compile-progress";
 
 const DOC = "doc-pane";
@@ -146,5 +147,31 @@ describe("task 855 — the record says what the user is waiting on NOW", () => {
     expect(screen.queryByText(/didn.t produce a PDF/)).toBeNull();
     expect(screen.getByText("No compiled PDF")).toBeTruthy();
     expect(screen.getByText("Compile cancelled.")).toBeTruthy();
+  });
+});
+
+/**
+ * TASK 1091 — a compile queued behind another paper's speaks, in the status
+ * register, over BOTH renderers. Pre-fix the queued paper's pane kept showing
+ * its previous failure as an alert telling the user to press Compile.
+ */
+describe("task 1091 — a queued compile says it is waiting", () => {
+  it("replaces a previous failure with the waiting line (empty pane)", () => {
+    beginCompile(DOC);
+    finishCompile(DOC, "failed", "Undefined control sequence.");
+    noteQueued(DOC);
+    render(<CompilePaneStatus docId={DOC} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(
+      /Waiting for another paper.s compile to finish/,
+    );
+  });
+
+  it("speaks over a showing PDF too", () => {
+    noteQueued(DOC);
+    render(<PdfPaneOverlay docId={DOC} stale={true} />);
+    expect(screen.getByRole("status").textContent).toMatch(
+      /Waiting for another paper.s compile to finish/,
+    );
   });
 });

@@ -307,3 +307,19 @@ over a showing PDF), and a continuation's attempt line rides alongside it. An
 abort is `status: "cancelled"` (was `failed` → "Compile failed"), the
 documentclass dialog's Cancel records outcome `cancelled` (was `error` → a
 `role="alert"`), and `describeCompileOutcome` returns `null` for it.
+
+### The queue half (task 1091)
+
+The record speaks from the CLICK, not from when the engine admits the run. The
+service is a module singleton that serializes compiles, and under multi-doc
+keep-alive paper B's Compile can sit behind paper A's cold compile for minutes;
+B's record was only written by `beginCompile` once B was admitted, so B's pane
+kept painting B's PREVIOUS outcome (a `role="alert"` telling the user to press
+the button already spinning). Two writes close it: `useLatexCompile` calls
+`beginCompile(docId)` at the click (before the drain, folder read and
+documentclass prompt — every path out already writes a terminal state), and
+`compileService.compile()` calls `noteQueued(docId)` synchronously when another
+DOC's run holds the engine (its own `pending` count — `inFlight` stays a settled
+promise after the last run, so it cannot answer "busy?"). The `waiting` phase
+renders "Waiting for another paper's compile to finish…" in both renderers'
+status register; a doc queued behind its own run keeps that run's live record.

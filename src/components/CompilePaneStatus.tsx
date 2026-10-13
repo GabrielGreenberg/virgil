@@ -123,6 +123,8 @@ function typesettingLine(p: CompileProgress): string {
 
 function phaseLine({ progress: p, fetchQuiet }: CompileView): string {
   switch (p.phase) {
+    case "waiting":
+      return "Waiting for another paper’s compile to finish…";
     case "booting":
       return "Starting the LaTeX engine…";
     case "preparing":
