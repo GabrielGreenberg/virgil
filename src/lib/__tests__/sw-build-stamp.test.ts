@@ -215,6 +215,9 @@ class FakeResponse {
   async json() {
     return JSON.parse(this.body);
   }
+  async arrayBuffer() {
+    return new TextEncoder().encode(this.body).buffer;
+  }
   static error() {
     return new FakeResponse("", 0, "error");
   }
@@ -301,6 +304,8 @@ function loadWorker(
     Map,
     encodeURIComponent,
     decodeURIComponent,
+    crypto: globalThis.crypto,
+    Uint8Array,
   });
   const run = async (type: string, extra: Record<string, unknown> = {}) => {
     let responded: Promise<unknown> | undefined;
@@ -353,14 +358,14 @@ describe("leg 3 — the stamped worker", () => {
   it("install precaches the shell and the chunks under its own scope", async () => {
     const { source, cacheName } = stampedWorker();
     const world = makeWorld({
-      [SCOPE]: new FakeResponse("shell"),
-      [CHUNK]: new FakeResponse("chunk"),
-      [`${SCOPE}_next/static/css/main-def456.css`]: new FakeResponse("css"),
+      [SCOPE]: new FakeResponse("<html>shell</html>"),
+      [CHUNK]: new FakeResponse("console.log('app')"),
+      [`${SCOPE}_next/static/css/main-def456.css`]: new FakeResponse("body{}"),
     });
     await loadWorker(source, world).install();
     const cache = world.stores.get(cacheName)!;
-    expect(cache.get(SCOPE)?.body).toBe("shell");
-    expect(cache.get(CHUNK)?.body).toBe("chunk");
+    expect(cache.get(SCOPE)?.body).toBe("<html>shell</html>");
+    expect(cache.get(CHUNK)?.body).toBe("console.log('app')");
     expect(world.fetched.every((u) => u.startsWith(SCOPE))).toBe(true);
   });
 
@@ -410,11 +415,20 @@ describe("leg 3 — the stamped worker", () => {
 
   it("other same-origin requests stay network-first and refresh the cache", async () => {
     const { source, cacheName } = stampedWorker();
-    const world = makeWorld({ [SCOPE]: new FakeResponse("fresh") });
+    const world = makeWorld({ [SCOPE]: new FakeResponse("<html>shell</html>") });
     (await world.caches.open(cacheName)).put(SCOPE, new FakeResponse("stale"));
     const resp = await loadWorker(source, world).request(SCOPE, "navigate");
-    expect(resp?.body).toBe("fresh");
-    expect(world.stores.get(cacheName)!.get(SCOPE)?.body).toBe("fresh");
+    expect(resp?.body).toBe("<html>shell</html>");
+    expect(world.stores.get(cacheName)!.get(SCOPE)?.body).toBe("<html>shell</html>");
+  });
+
+  it("task 1104 — a LATER deploy's shell is shown but never stored under this build", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({ [SCOPE]: new FakeResponse("<html>shell v2</html>") });
+    (await world.caches.open(cacheName)).put(SCOPE, new FakeResponse("<html>shell</html>"));
+    const resp = await loadWorker(source, world).request(SCOPE, "navigate");
+    expect(resp?.body).toBe("<html>shell v2</html>");
+    expect(world.stores.get(cacheName)!.get(SCOPE)?.body).toBe("<html>shell</html>");
   });
 
   it("offline navigation falls back to the shell", async () => {
@@ -663,6 +677,82 @@ describe("task 888 — content-addressed precache", () => {
     expect(world.stores.get(cacheName)!.get(FMT)?.headers.get("x-virgil-sha")).toBe(
       contentSha("FMT-v1"),
     );
+  });
+
+  it("task 1104 — an install-time miss healed at runtime is stored WITH the sha: cache-first, then copied by the next install", async () => {
+    const { source, cacheName } = texWorker();
+    // The .fmt is unreachable at install.
+    const network = texNetwork();
+    const fmt = network[FMT];
+    delete (network as Record<string, FakeResponse>)[FMT];
+    const world = makeWorld(network);
+    const worker = loadWorker(source, world);
+    await worker.install();
+    expect(world.stores.get(cacheName)!.has(FMT)).toBe(false);
+    // The engine asks for it later; the server now answers.
+    (network as Record<string, FakeResponse>)[FMT] = fmt;
+    expect((await worker.request(FMT))?.body).toBe("FMT-v1");
+    expect(world.stores.get(cacheName)!.get(FMT)?.headers.get("x-virgil-sha")).toBe(
+      contentSha("FMT-v1"),
+    );
+    // Served cache-first from now on.
+    world.fetched.length = 0;
+    expect((await worker.request(FMT))?.body).toBe("FMT-v1");
+    expect(world.fetched).not.toContain(FMT);
+    // And the next deploy (same .fmt bytes, a changed chunk) copies it.
+    await worker.activate();
+    const root = fixture({
+      "_next/static/chunks/app-abc123.js": "console.log('app v2')",
+      "swiftlatex/swiftlatexpdftex.fmt": "FMT-v1",
+      "swiftlatex/texbundle/amsmath.sty": "AMS-v1",
+      "swiftlatex/texbundle/manifest.json": JSON.stringify({
+        paths: ["swiftlatex/swiftlatexpdftex.fmt", "swiftlatex/texbundle/amsmath.sty"],
+      }),
+      "dictionaries/en/index.aff": "AFF",
+    });
+    const { stamp } = stampServiceWorker(root);
+    await loadWorker(fs.readFileSync(path.join(root, "sw.js"), "utf8"), world).install();
+    expect(world.fetched).not.toContain(FMT);
+    expect(world.stores.get(`virgil-${stamp}`)!.get(FMT)?.body).toBe("FMT-v1");
+  });
+
+  it("task 1104 — a runtime answer with ANOTHER build's bytes is returned but never stored under this build", async () => {
+    const { source, cacheName } = texWorker("FMT-v1");
+    const network = texNetwork();
+    delete (network as Record<string, FakeResponse>)[FMT];
+    const world = makeWorld(network);
+    const worker = loadWorker(source, world);
+    await worker.install();
+    // A later deploy replaced the .fmt on the server.
+    (network as Record<string, FakeResponse>)[FMT] = new FakeResponse("FMT-v2");
+    expect((await worker.request(FMT))?.body).toBe("FMT-v2");
+    expect(world.stores.get(cacheName)!.has(FMT)).toBe(false);
+  });
+
+  it("task 1104 — an install fetch with another build's bytes is not stored under this build's sha", async () => {
+    const { source, cacheName } = texWorker("FMT-v1");
+    const world = makeWorld(texNetwork("FMT-v2"));
+    await loadWorker(source, world).install();
+    expect(world.stores.get(cacheName)!.has(FMT)).toBe(false);
+    expect(world.stores.get(cacheName)!.get(STY)?.body).toBe("AMS-v1");
+  });
+
+  it("task 1104 — the worker's hash of a response equals the stamper's contentSha", async () => {
+    // A response whose bytes match the stamped sha is stored; that is the
+    // worker computing contentSha. Pinned over non-ASCII bytes too.
+    for (const body of ["FMT-v1", "", "ünïcödé — ∀x\n"]) {
+      const { source, cacheName } = texWorker(body);
+      const network = texNetwork(body);
+      delete (network as Record<string, FakeResponse>)[FMT];
+      const world = makeWorld(network);
+      const worker = loadWorker(source, world);
+      await worker.install();
+      (network as Record<string, FakeResponse>)[FMT] = new FakeResponse(body);
+      await worker.request(FMT);
+      expect(world.stores.get(cacheName)!.get(FMT)?.headers.get("x-virgil-sha"), body).toBe(
+        contentSha(body),
+      );
+    }
   });
 
   it("a 206 Partial Content is passed through and never put", async () => {

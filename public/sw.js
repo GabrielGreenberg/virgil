@@ -158,8 +158,8 @@ async function precacheBuild() {
           const url = scopeUrl(p);
           if (shaOf(await cache.match(url)) === sha) continue;
           const copy = await heldCopyOf(held, url, sha);
-          const resp = copy || (await fetch(url, { cache: "no-store" }));
-          await putCached(cache, url, resp, sha);
+          if (copy) await putCached(cache, url, copy, sha);
+          else await putPinned(cache, url, await fetch(url, { cache: "no-store" }), sha);
         } catch {
           // Unreachable at install — runtime caching picks it up later.
         }
@@ -208,6 +208,36 @@ async function putCached(cache, key, resp, sha) {
   } catch {
     return false;
   }
+}
+
+// The door for a path this build pins by content (task 1104): a FETCHED answer
+// is stored — carrying `sha` — only when its bytes hash to `sha`. The server
+// answers with whatever it holds NOW, which after a later deploy is another
+// build's bytes; stored here they would sit under this build's name, and the
+// offline fallback would hand them to a window running this build (a newer
+// .fmt against this build's engine). An unstamped store would also never be
+// served cache-first nor copied by the next install, so a precache miss healed
+// at runtime stayed network-first and was re-downloaded every deploy. Both
+// install fetches and runtime fetches come through here; a held copy that
+// already carries `sha` (heldCopyOf) needs no re-hash.
+async function putPinned(cache, key, resp, sha) {
+  if (!resp || resp.status !== 200) return false;
+  try {
+    if ((await contentShaOf(resp.clone())) !== sha) return false;
+  } catch {
+    return false;
+  }
+  return putCached(cache, key, resp, sha);
+}
+
+// A response's content hash, computed as the stamper's `contentSha`
+// (scripts/stamp-service-worker.mjs): SHA-256, hex, first 16 characters.
+// Parity is pinned by sw-build-stamp.test.ts.
+async function contentShaOf(resp) {
+  const digest = await crypto.subtle.digest("SHA-256", await resp.arrayBuffer());
+  let hex = "";
+  for (const b of new Uint8Array(digest, 0, 8)) hex += b.toString(16).padStart(2, "0");
+  return hex;
 }
 
 function withSha(resp, sha) {
@@ -390,9 +420,9 @@ async function handle(event) {
   // output never changes under one name, and a precached asset whose copy
   // carries this build's sha is exactly what the build shipped. Navigations
   // stay network-first (the shell is precached too, for the offline fallback).
+  const sha = isAllowedCrossOrigin ? undefined : BUILD_SHAS.get(request.url);
   if (!isAllowedCrossOrigin && request.mode !== "navigate") {
     const immutable = url.pathname.startsWith(IMMUTABLE_PREFIX);
-    const sha = BUILD_SHAS.get(request.url);
     if (immutable || sha) {
       const held = await cache.match(request);
       if (held && (immutable || shaOf(held) === sha)) return held;
@@ -418,8 +448,13 @@ async function handle(event) {
     ? response.type === "opaque" || response.ok
     : response.ok && response.type === "basic";
   if (cacheable) {
-    // Waited on, so the worker is not stopped before the copy lands.
-    event.waitUntil(putCached(cache, request, response.clone()));
+    // Waited on, so the worker is not stopped before the copy lands. A path
+    // this build pins by content is stored only as this build's bytes.
+    event.waitUntil(
+      sha
+        ? putPinned(cache, request, response.clone(), sha)
+        : putCached(cache, request, response.clone()),
+    );
   } else if (!isAllowedCrossOrigin && !response.ok) {
     // The server no longer has it (a deploy replaced the build this tab is
     // running) or is failing: a copy we hold beats the error.
