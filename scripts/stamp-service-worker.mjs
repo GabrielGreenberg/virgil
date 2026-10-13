@@ -58,7 +58,12 @@ export const ASSET_PRECACHE = [
 /** The curated TeX core bundle's path list (scripts/lib/tex-bundle-manifest.mjs). */
 export const TEX_BUNDLE_MANIFEST = "swiftlatex/texbundle/manifest.json";
 
-/** A file's content hash, as the worker compares it. */
+/**
+ * A file's content hash, as the worker compares it: SHA-256, hex, first 16
+ * characters. The worker computes the same hash over a fetched response
+ * (`contentShaOf` in public/sw.js, task 1104); sw-build-stamp.test.ts pins the
+ * two to agree.
+ */
 export function contentSha(bytes) {
   return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
