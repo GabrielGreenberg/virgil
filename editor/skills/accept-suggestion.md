@@ -62,7 +62,10 @@ transaction — never hand-assemble a `texEdit` here.
      kind → stop (not a proposal — `accept` is for the suggestion family).
    - `card.status` must be `pending`. If it's already `accepted`, skip (the
      op is idempotent — re-accepting is a no-op). If it's `rejected`, stop: a
-     dismissed proposal can't be accepted.
+     dismissed proposal can't be accepted. If it's `applied`, stop: its change
+     is ALREADY live in the paper under the blue pending-change mark — the op
+     refuses (a second splice would double it); the user settles it with
+     **Keep** or **Revert** on the card in the editor.
    - `card.author` should be `ai` (the proposal the user is reviewing). A
      human-authored suggestion can still be accepted, but confirm intent first.
    - The card must carry `original_text`, `suggested_text`, and an anchor

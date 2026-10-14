@@ -47,8 +47,10 @@ proposal is purely a card-lifecycle transition.
      kind → stop (`reject` is for the suggestion family — to set aside a
      different card, use [`archive-card`](archive-card.md)).
    - If `card.status` is already `rejected`, skip (the op is idempotent). If it's
-     already `accepted`, stop: an applied proposal can't be rejected (undo the
-     `.tex` edit in the editor instead).
+     already `accepted`, stop: an accepted proposal can't be rejected (undo the
+     `.tex` edit in the editor instead). If it's `applied` (its change is live in
+     the paper under the blue pending-change mark), stop: the op refuses — tell
+     the user to settle it with **Keep** or **Revert** on the card in the editor.
 
 2. **Run the `reject` op:**
    ```bash
@@ -64,7 +66,8 @@ proposal is purely a card-lifecycle transition.
 - **Rejectable** — `revision-suggestion` (in `revisions.json`) and
   `cutter-suggestion` (in `cutter.json`), `status: pending`.
 - **Refused** — any non-suggestion kind; a proposal already `accepted` (already
-  spliced — undo in the editor). Re-rejecting a `rejected` card is a no-op.
+  spliced — undo in the editor); an `applied` proposal (live under a
+  pending-change mark — Keep or Revert it in the editor; task 1109). Re-rejecting a `rejected` card is a no-op.
 
 > **This skill OWNS the `status` transition** (with
 > [`accept-suggestion`](accept-suggestion.md)). `edit-card` refuses

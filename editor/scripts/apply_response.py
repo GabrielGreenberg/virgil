@@ -2281,6 +2281,19 @@ def cmd_update(doc: Path, op: dict) -> dict:
         card[k] = v
     if body is not None:
         _apply_body(doc, txn, card, kind, hit.panel, body)
+    # An edit of a suggestion's proposal text RE-POSES the proposal, so it
+    # passes the same doors a new one does (task 1109): an APPLIED one refuses
+    # (the shared door predicate), and a still-open one must survive the
+    # landing guard on its MERGED shape (task 1044) — a paraphrased
+    # original_text or an emptied revision draft is as dead edited as proposed.
+    # A settled (accepted/rejected) proposal is history, not a proposal: its
+    # original_text is legitimately gone from the .tex once accepted.
+    if kind in SUGGESTION_KINDS and any(f in sets for f in _PROPOSAL_TEXT_FIELDS):
+        refusal = _proposal_door_refusal(kind, hit.card, "update")
+        if refusal:
+            die(refusal)
+        if (card.get("status") or "pending") not in ("accepted", "rejected"):
+            _guard_proposal_landing(doc, hit.panel, card)
     txn.mark(sidecar(doc, hit.filename))
 
     return _mutation_commit(
@@ -2327,6 +2340,44 @@ def _leaving_proposal_origin(kind: str, card) -> str | None:
     return rid if isinstance(rid, str) and rid else None
 
 
+#: The proposal text fields whose edit re-poses the proposal — the ones
+#: `_guard_proposal_landing` reads (anchor links are op-owned, never `set`).
+_PROPOSAL_TEXT_FIELDS = ("original_text", "suggested_text", "user_text")
+
+#: What each door would do to an APPLIED proposal, said in its refusal.
+_APPLIED_DOOR_HARM = {
+    "accept": "accepting it here would splice the change a second time",
+    "reject": "rejecting it here would leave that edit in the .tex while the card "
+              "and its Task read rejected",
+    "archive": "archiving it here would leave that edit in the .tex unmarked",
+    "update": "editing its text here would describe a change other than the one "
+              "that is live",
+}
+
+
+def _proposal_door_refusal(kind: str, card, verb: str) -> str | None:
+    """THE proposal-state predicate every script door consults (task 1109) —
+    one answer to "may <verb> touch this suggestion as it stands?", instead of
+    a check per door (task 1062 taught only archive).
+
+    An APPLIED suggestion's change is LIVE in the .tex under a pending-change
+    mark. The app's lifecycle executor SETTLES it (Keep → accepted with no
+    splice, Revert → splice back) before anything else may happen to it; no
+    script door can — none has range resolution for the mark. So every door
+    refuses it, naming the settle: accept (its replace-span would find the
+    original inside the applied text and splice twice), reject (the edit
+    stays, unmarked once the reaper strips the mark), archive (same), and an
+    update of its proposal text. Returns the refusal sentence, or None to
+    proceed. Non-suggestions and other states pass."""
+    if kind not in SUGGESTION_KINDS or not isinstance(card, dict):
+        return None
+    if card.get("status") != "applied":
+        return None
+    return (f"cannot {verb} {card.get('id')}: it is an APPLIED suggestion — its change is "
+            f"live in the paper under a pending-change mark, and {_APPLIED_DOOR_HARM[verb]}. "
+            "Settle it in the editor first (Keep or Revert on the card); nothing was written.")
+
+
 def cmd_archive(doc: Path, op: dict) -> dict:
     """Move a panel card to archive.json, preserving its origin so restore is
     lossless. `archive.json`'s documented `ArchivedSnippet { id, title,
@@ -2345,18 +2396,11 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     _guard_panel("archive", hit, kind)
 
     original = hit.card  # a detached snapshot (read by card_by_id, not the txn)
-    # An APPLIED suggestion's change is LIVE in the .tex under a pending-change
-    # mark (task 1062). The app's lifecycle executor SETTLES it (keep → accepted,
-    # revert → splice back) before a card may leave; this door cannot — it has no
-    # range resolution for the mark — and archiving anyway leaves the edit in the
-    # paper, unmarked once the orphan reaper strips the mark, while the leave rule
-    # records the Task `rejected`. Refuse, naming the settle.
-    if kind in SUGGESTION_KINDS and isinstance(original, dict) \
-            and original.get("status") == "applied":
-        die(f"cannot archive {card_id}: it is an APPLIED suggestion — its change is live "
-            "in the paper under a pending-change mark, and archiving it here would leave "
-            "that edit in the .tex unmarked. Settle it in the editor first (Keep or Revert "
-            "on the card); nothing was written.")
+    # An APPLIED suggestion cannot leave from here (task 1062; the shared door
+    # predicate since task 1109).
+    refusal = _proposal_door_refusal(kind, original, "archive")
+    if refusal:
+        die(refusal)
     # Terminal-transition resolve, Leg B (restore): archiving a flagged card
     # resolves its AI request, just like answer (019) and delete. The LIVE card
     # is about to be removed (so its `aiRequest` flag stops surfacing on the
@@ -2382,12 +2426,19 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     # Terminal-transition resolve, Leg C (the ANSWER card — task 1046): an AI
     # proposal is not the card its Task is linked to, so Leg A can't reach the
     # row it answers. Archiving it while still non-terminal ends that Task
-    # `rejected` (set aside, not taken — the source todo stays open). Skipped
-    # when the caller's own requestId names that same row (`_mutation_commit`
-    # closes it then).
+    # `rejected` (set aside, not taken — the source todo stays open), stamped
+    # PROVISIONAL so a restore → accept/reject can still settle it (task 1062).
+    # ALWAYS through this door — also when the caller's own requestId names that
+    # same row (task 1109): `_mutation_commit`'s generic close would write it
+    # `auto-applied` with no provisional marker, so the Task read "applied" and a
+    # later restore → accept could never finalize it. That id is therefore passed
+    # OUT of the generic close below.
     origin = _leaving_proposal_origin(kind, original)
-    if origin and origin != op.get("requestId"):
+    if origin:
         txn.finalize_request(origin, result=RESULT_REJECTED)
+    commit_request_id = op.get("requestId")
+    if origin and commit_request_id == origin:
+        commit_request_id = None
     snippet = {
         "id": card_id,
         **_archive_title(original),
@@ -2404,7 +2455,7 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     return _mutation_commit(
         doc, txn,
         summary=op.get("summary") or f"Archived {kind} {card_id}",
-        request_id=op.get("requestId"),
+        request_id=commit_request_id,
         extra={"op": "archive", "cardId": card_id, "originalPanel": panel},
     )
 
@@ -2707,6 +2758,9 @@ def _resolve_proposal(doc: Path, op: dict, verb: str):
                 "op": verb, "cardId": card_id, "cardKind": kind, "status": status}
     if status == opposite:
         die(f"cannot {verb} {card_id}: it is already {opposite} (a terminal state)")
+    refusal = _proposal_door_refusal(kind, hit.card, verb)
+    if refusal:
+        die(refusal)
     return hit, kind
 
 
