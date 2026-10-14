@@ -19,7 +19,10 @@ import OmniViewPanel, {
   type OmniCategory,
   type OmniBulkPendingChanges,
 } from "@/panels/Omni";
-import { appliedPendingSide } from "@/panels/Omni/omni-categories";
+import {
+  appliedPendingSide,
+  type OmniCategorySides,
+} from "@/panels/Omni/omni-categories";
 import { filterArchivedOmniItems } from "@/panels/Omni/omni-archived";
 import { buildCitationOmniItems } from "@/panels/Citations";
 import { buildFootnoteOmniItems } from "@/panels/Footnotes";
@@ -185,7 +188,7 @@ export interface OmniHostProps {
    *  forwarded to `OmniViewPanel`, by the no-anchor bin's side scope (task
    *  654) — the two surfaces that must survive the filter menu and so cannot
    *  read `getOmniEnabled`, which fuses placement with visibility. */
-  categorySides: Partial<Record<OmniCategory, Side>>;
+  categorySides: OmniCategorySides;
   /** When true, omni cards rest dimmed and brighten on hover (the
    *  `omniDimResting` view-pref). Forwarded to OmniViewPanel as `dimResting`. */
   omniDimResting?: boolean;

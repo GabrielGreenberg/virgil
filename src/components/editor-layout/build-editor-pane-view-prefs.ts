@@ -143,7 +143,7 @@ export interface EditorPaneViewDerivations {
   zenRightMargin: number;
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   setOmniSideToDefault: (side: Side) => void;
-  categorySides: Record<OmniCategory, Side>;
+  categorySides: Record<OmniCategory, Side | null>;
   /** Lockstep-remap a card popout key. EditorLayout supplies its own (the
    *  Reader supplies a session-only equivalent), so it rides the view bag
    *  rather than `vp` to keep both producers explicit. */

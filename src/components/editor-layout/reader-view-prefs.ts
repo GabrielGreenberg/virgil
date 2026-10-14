@@ -97,6 +97,7 @@ import {
   deriveCategorySides,
   omniCategoriesForSide,
 } from "@/panels/Omni/omni-categories";
+import { READER_CHROME } from "./chrome-config";
 
 /**
  * The Reader's no-op editor handlers (everything EXCEPT `onScrollToHeading`,
@@ -604,8 +605,13 @@ export function useReaderView(
   // The Reader used to key its filter chips off a hand-built map of registry
   // DEFAULTS while its cards read the stored lists — two answers to one
   // question, in a surface that shares the prefs blob with the editor.
+  //
+  // Projected through the Reader's chrome whitelist (task 1117): a category
+  // whose panel the Reader never mounts derives to `null`, so the filter
+  // menu's rows, the enabled sets below and the cascade all drop it from ONE
+  // answer — the same whitelist the strip icons and search scopes already read.
   const categorySides = useMemo(
-    () => deriveCategorySides(vp.prefs.placements),
+    () => deriveCategorySides(vp.prefs.placements, READER_CHROME.visiblePanelKinds),
     [vp.prefs.placements],
   );
   const hiddenCats = vp.prefs.omniHiddenCategories;
