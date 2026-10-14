@@ -65,6 +65,10 @@ import {
   verdictOf,
 } from "@/lib/actions/action-registry";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import {
+  wrapperSafeInState,
+  type WrapperNodeName,
+} from "@/lib/tiptap/wrapper-gate";
 
 // ---------------------------------------------------------------------------
 // Real editor stack
@@ -198,22 +202,54 @@ function registryDisabled(ed: Editor): string[] {
   );
 }
 
+/**
+ * The structural-wrapper rows, keyed by the schema node each wraps with. The
+ * three are a closed set (`WrapperNodeName`); every slash name that fans into
+ * one is found through `SLASH_NAME_TO_ACTION_ID`, never listed by hand.
+ */
+const WRAPPER_OF_ACTION: Record<string, WrapperNodeName> = {
+  "bullet-list": "bulletList",
+  "ordered-list": "orderedList",
+  blockquote: "blockquote",
+};
+
+/**
+ * The rows a markless verbatim block may still offer LIVE: exactly the wrapper
+ * rows whose wrap the ONE wrapper gate (`wrapperSafeInState`) admits here —
+ * task 1107's lossless quote around a code block / comment. Every other row is
+ * refused (task 989). Derived from the gate, so a future gate change moves the
+ * expectation with it.
+ */
+function liveInVerbatim(ed: Editor): string[] {
+  return VIRGIL_COMMAND_NAMES.filter((n) => {
+    const w = WRAPPER_OF_ACTION[SLASH_NAME_TO_ACTION_ID[n] ?? ""];
+    return w !== undefined && wrapperSafeInState(ed.state, w);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // 1. A refusal is FREE — the typed text survives
 // ---------------------------------------------------------------------------
 
 describe("a refused slash command consumes nothing", () => {
-  // `\forest` is the reported case; `\ex` (bridge-routed) and `\quote` (a
-  // wrapper, whose refusal task 397 widened) cover the other two dispatch
-  // shapes, so the fix is proven at the DOOR rather than for one command.
+  // `\forest` is the reported case; `\ex` (bridge-routed) and the wrappers
+  // (`\quote`, `\list` — whose refusal task 397 widened) cover the other two
+  // dispatch shapes, so the fix is proven at the DOOR rather than for one
+  // command. Since task 1107 a quote wraps a code block LOSSLESSLY, so the
+  // refused quote lives in the titleField (a wrap would coerce the field into a
+  // paragraph); the code block keeps a refused wrapper through `\list`, whose
+  // listItem must START with a paragraph. Each row's premise is re-checked
+  // against the registry below (`disabled` must contain it), so a gate change
+  // fails here loudly rather than passing vacuously.
   const REFUSED: Array<[Container, string]> = [
     ["latexComment", "forest"],
     ["latexComment", "tex"],
     ["latexComment", "ex"],
     ["codeBlock", "forest"],
     ["codeBlock", "footnote"],
-    ["codeBlock", "quote"],
+    ["codeBlock", "list"],
     ["titleField", "section"],
+    ["titleField", "quote"],
     ["titleField", "cite"],
     ["titleField", "enumerate"],
   ];
@@ -259,8 +295,8 @@ describe("a refused slash command consumes nothing", () => {
     // The popup CLOSES, so the user's next Enter is an ordinary one; what must
     // never happen is the document changing under a refusal.
     const ed = mount();
-    caretIn(ed, "codeBlock");
-    typeSlash(ed, "quot"); // \quote + \quotation, both refused in a codeBlock
+    caretIn(ed, "titleField");
+    typeSlash(ed, "quot"); // \quote + \quotation, both refused in a titleField
     const st = popup(ed)!;
     expect(st.filtered.length).toBeGreaterThan(0);
     expect(st.disabled).toEqual(st.filtered);
@@ -316,6 +352,31 @@ describe("a refused slash command consumes nothing", () => {
     expect(executeSlashSelectionAt(ed.view, i)).toBe(false);
     expect(serializeToLatex(ed.state.doc.toJSON() as never)).toBe(typed);
   });
+});
+
+// ---------------------------------------------------------------------------
+// 1a. Task 1107 — a quote AROUND a verbatim block is offered live
+// ---------------------------------------------------------------------------
+
+describe("the slash door offers what the wrapper gate admits (task 1107)", () => {
+  // The OFFER half only. `\quote` / `\quotation` are BRIDGE rows
+  // (`runBridgeAction` → the pane's `runAction`), and this harness mounts no
+  // `EditorPane`, so Enter cannot reach the wrap here — in prose either. The
+  // wrap itself, and its byte-exact round trip around every block kind the
+  // quote admits, is pinned in `wrapper-gate-derived-identity.test.ts`.
+  it.each(["codeBlock", "latexComment"] as const)(
+    "%s — \\quote and \\quotation are live, every other row is refused",
+    (container) => {
+      const ed = mount();
+      caretIn(ed, container);
+      const live = liveInVerbatim(ed);
+      expect(live).toEqual(expect.arrayContaining(["quote", "quotation"]));
+      typeSlash(ed, "quot");
+      const st = popup(ed)!;
+      expect(st.filtered).toEqual(["quote", "quotation"]);
+      expect(st.disabled).toEqual([]);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -431,13 +492,20 @@ describe("the popup renders the registry's verdict", () => {
 
     // Task 989: the `> 3` count this leg used to assert is what let the three
     // title rows sit LIVE in a code block. A markless verbatim block is not a
-    // place ANY command runs from, so assert the whole list.
+    // place any command runs FROM, so assert the whole list — less exactly the
+    // wrapper rows the gate admits AROUND it (task 1107's lossless quote).
     for (const c of ["codeBlock", "latexComment"] as const) {
       const edN = mount();
       caretIn(edN, c);
+      const live = liveInVerbatim(edN);
+      // Never vacuous in either direction: something stays refused, and the
+      // wrapper carve-out is the ONLY carve-out.
+      expect(live.length, c).toBeLessThan(VIRGIL_COMMAND_NAMES.length);
       typeSlash(edN, "");
       const st = popup(edN)!;
-      expect(st.disabled, c).toEqual([...VIRGIL_COMMAND_NAMES]);
+      expect(st.disabled, c).toEqual(
+        VIRGIL_COMMAND_NAMES.filter((n) => !live.includes(n)),
+      );
     }
   });
 
@@ -516,9 +584,13 @@ describe("navigation skips greyed rows", () => {
 
   it("arrows are inert (never loop) when every row is greyed", () => {
     const ed = mount();
-    caretIn(ed, "codeBlock");
+    caretIn(ed, "titleField");
     typeSlash(ed, "quot");
-    const before = popup(ed)!.selectedIndex;
+    const st = popup(ed)!;
+    // The premise, asserted: a multi-row list with EVERY row greyed.
+    expect(st.filtered.length).toBeGreaterThan(1);
+    expect(st.disabled).toEqual(st.filtered);
+    const before = st.selectedIndex;
     expect(press(ed, "ArrowDown")).toBe(true);
     expect(popup(ed)!.selectedIndex).toBe(before);
   });
