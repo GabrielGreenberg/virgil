@@ -293,7 +293,10 @@ import { useInlineAtomLifecycle } from "@/links/_shared/useInlineAtomLifecycle";
 import { useCardLifecycleReconciler } from "@/cards/lifecycle/useCardLifecycleReconciler";
 import { useCitationResync } from "@/links/_shared/useCitationResync";
 import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
-import { useFootnoteOrphanBridges } from "./editor-layout/event-bridges/footnote-sync";
+import {
+  armFootnoteOrphanSuppress,
+  useFootnoteOrphanBridges,
+} from "./editor-layout/event-bridges/footnote-sync";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
@@ -2119,9 +2122,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `makeUnbridgingDelete` (it's an inline atom: no D6 signal, and its removal
   // mechanism varies — editor-handle splice vs sidecar ref delete — see the
   // helper's header). Each caller supplies only its own `remove`. (task 252)
+  // The door also arms the orphan-suppress latch for every entry point
+  // (task 1116) — a deliberate delete is never resurrected as an orphan card.
   const deleteFootnoteUnbridged = useMemo(
-    () => makeUnbridgingFootnoteDelete({ unbridge: unbridgeAiRequestRow }),
-    [unbridgeAiRequestRow],
+    () =>
+      makeUnbridgingFootnoteDelete({
+        unbridge: unbridgeAiRequestRow,
+        suppressOrphan: (id) => armFootnoteOrphanSuppress(id, docId),
+      }),
+    [unbridgeAiRequestRow, docId],
   );
   // Permanently trashing an UNANCHORED footnote ref (the atom is already gone —
   // e.g. an in-editor marker deletion left a flagged orphan ref that KEPT its
@@ -4256,10 +4265,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         clone: footnotesHook.cloneFootnote,
         // The atom-range delete walker's sidecar cleanup — a second footnote
         // delete entry point beside `handleDeleteFootnote` (which splices via
-        // the editor handle). Unbridge here too so deleting a flagged footnote
-        // through a wide-scope range delete can't strand its inbox row either
-        // (task 219). No D6 signal — the atom's removal already drives the W2b
-        // bus prune.
+        // the editor handle). The door unbridges (task 219) AND arms the
+        // flag-OFF orphan-suppress latch (task 1116 — this site used to skip
+        // it, so a drag-handle Delete / range Archive resurrected the passage's
+        // footnotes as orphans). No D6 signal — the atom's removal already
+        // drives the W2b bus prune.
         delete: (id: string) =>
           deleteFootnoteUnbridged(id, footnotesHook.deleteFootnote),
       },
@@ -5243,45 +5253,27 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [footnotesHook.setFootnoteTitle],
   );
   const handleDeleteFootnote = useCallback((id: string) => {
-    // Close the linked ai-requests.json row (task 219) via the shared
-    // `deleteFootnoteUnbridged` door (below): a flagged footnote deleted from the
-    // panel / margin marker / float otherwise strands its open inbox row forever
-    // — a deleted footnote can never toggle its flag again, so the bridge's
-    // "self-heals on the next toggle" escape hatch never fires. The door runs the
-    // bridge in terminate mode (a delete is terminal like archive, task 093) and,
-    // being footnote-specific, does NOT publish a D6 card-deleted signal — a
-    // footnote IS an inline atom, so its cardStore prune is already owned by the
-    // W2b bus reconciler off the splice's structural diff.
+    // Close the linked ai-requests.json row (task 219) and arm the orphan-
+    // suppress latch (task 1116) via the shared `deleteFootnoteUnbridged` door:
+    // a flagged footnote deleted from the panel / margin marker / float
+    // otherwise strands its open inbox row forever — a deleted footnote can
+    // never toggle its flag again, so the bridge's "self-heals on the next
+    // toggle" escape hatch never fires. The door runs the bridge in terminate
+    // mode (a delete is terminal like archive, task 093) and, being
+    // footnote-specific, does NOT publish a D6 card-deleted signal — a footnote
+    // IS an inline atom, so its cardStore prune is already owned by the W2b bus
+    // reconciler off the splice's structural diff.
     //
-    // Arm the orphan-suppression latch BEFORE the atom is removed: the
-    // footnote orphan-detector (src/lib/tiptap/footnote.ts) dispatches a
-    // deferred `virgil-footnote-orphaned` on any non-empty footnote node
-    // that vanishes, and `useFootnoteSyncBridges` would otherwise
-    // resurrect this deliberate trash-delete as an orphan card. The
-    // suppress event is consumed by the same bridge hook (in EditorLayout)
-    // where `suppressOrphanRef` lives. See footnote-sync.ts.
-    //
-    // W2 cutover: flag-ON the legacy orphan event web is RETIRED — the bus
-    // reconciler (`useInlineAtomLifecycle`) owns orphan upsert/clear off the
-    // structural diff, gated on the body-content test, so a deliberate delete
-    // needs no latch (the detector emission is itself short-circuited in
-    // footnote.ts on the flag path). Only dispatch the latch on the legacy
-    // (flag-OFF) path so the suppress producer/consumer stay in lockstep.
-    if (!isInlineAtomLifecycleOn()) {
-      window.dispatchEvent(
-        new CustomEvent("virgil-footnote-suppress-orphan", {
-          // `docId` scopes the suppress latch to THIS doc's per-pane bridge so
-          // a deliberate delete in doc A can't swallow a coincidental same-id
-          // orphan event in doc B under multi-doc keep-alive (FN-A2-03).
-          detail: { footnoteId: id, docId },
-        }),
-      );
-    }
-    // Unbridge-then-splice through the one door (the latch is already armed).
+    // The latch is armed BEFORE the splice: the footnote orphan-detector
+    // (src/lib/tiptap/footnote.ts) dispatches a deferred
+    // `virgil-footnote-orphaned` on any non-empty footnote node that vanishes,
+    // and `useFootnoteOrphanBridges` would otherwise resurrect this deliberate
+    // trash-delete as an orphan card. Flag-ON the bus reconciler owns orphans
+    // and the latch is a no-op (see `armFootnoteOrphanSuppress`).
     deleteFootnoteUnbridged(id, (fid) => {
       innerRef.current?.deleteFootnote(fid);
     });
-  }, [docId, deleteFootnoteUnbridged]);
+  }, [deleteFootnoteUnbridged]);
 
   // Citation order — left-to-right ids of `\cite{}` commands in the
   // doc. Recomputes only when citations actually change (`rev.citations`),
@@ -6355,11 +6347,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         if (isInlineAtomLifecycleOn()) {
           archivedSuppressRef.current.add(id);
         } else {
-          window.dispatchEvent(
-            new CustomEvent("virgil-footnote-suppress-orphan", {
-              detail: { footnoteId: id, docId },
-            }),
-          );
+          armFootnoteOrphanSuppress(id, docId);
         }
         innerRef.current?.deleteFootnote(id);
         footnotesHook.setArchived(id, true);

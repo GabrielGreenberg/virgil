@@ -27,7 +27,7 @@ describe("makeUnbridgingFootnoteDelete", () => {
       calls.push(`remove:${id}`);
     });
 
-    const del = makeUnbridgingFootnoteDelete({ unbridge });
+    const del = makeUnbridgingFootnoteDelete({ unbridge, suppressOrphan: vi.fn() });
     del("fn-1", remove);
 
     // Unbridge fires with the footnote kind + the exact id, then remove runs.
@@ -44,7 +44,7 @@ describe("makeUnbridgingFootnoteDelete", () => {
     const unbridge = vi.fn();
     const splice = vi.fn();
     const refDelete = vi.fn();
-    const del = makeUnbridgingFootnoteDelete({ unbridge });
+    const del = makeUnbridgingFootnoteDelete({ unbridge, suppressOrphan: vi.fn() });
 
     del("fn-splice", splice);
     del("fn-ref", refDelete);
@@ -68,12 +68,25 @@ describe("makeUnbridgingFootnoteDelete", () => {
         ),
     );
     const remove = vi.fn();
-    const del = makeUnbridgingFootnoteDelete({ unbridge });
+    const del = makeUnbridgingFootnoteDelete({ unbridge, suppressOrphan: vi.fn() });
 
     del("fn-1", remove);
 
     // remove ran immediately, without waiting for the bridge write to settle.
     expect(remove).toHaveBeenCalledWith("fn-1");
     expect(resolved).toBe(false);
+  });
+
+  it("arms the orphan-suppress latch FIRST, for every delete (task 1116)", () => {
+    // The latch is a property of "deliberately delete a footnote", not of a
+    // call site: the atom-range walker used to skip it and resurrect the
+    // passage's footnotes as orphans. The door arms it before anything else.
+    const calls: string[] = [];
+    const del = makeUnbridgingFootnoteDelete({
+      unbridge: (_k, id) => void calls.push(`unbridge:${id}`),
+      suppressOrphan: (id) => void calls.push(`suppress:${id}`),
+    });
+    del("fn-1", (id) => void calls.push(`remove:${id}`));
+    expect(calls).toEqual(["suppress:fn-1", "unbridge:fn-1", "remove:fn-1"]);
   });
 });

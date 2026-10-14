@@ -46,6 +46,18 @@
  * literal: skipping the executor's OTHER obligations is a deliberate choice
  * about signals, not a licence to re-answer this one.
  *
+ * AND A DELIBERATE DELETE NEVER COMES BACK AS AN ORPHAN (task 1116). Flag-OFF,
+ * the footnote detector turns every vanished non-empty footnote into a deferred
+ * `virgil-footnote-orphaned`, and the orphan bridge resurrects it as a card
+ * unless the suppress latch holds the id. That latch used to be armed at the
+ * CALL SITE — the panel trash did, the atom-range walker's lifecycle delete
+ * (drag-handle Delete / range Archive) did not, so a passage's footnotes were
+ * deleted from footnotes.json and reappeared as orphans. Like the unbridge, it
+ * is a property of "deliberately delete a footnote", not of any one site, so
+ * the door arms it (`suppressOrphan`) FIRST, for every entry point — before the
+ * splice for the editor-handle sites, synchronously after the landed tr for the
+ * range walker; both precede the detector's `setTimeout(…, 0)`.
+ *
  * FIRE-AND-FORGET ORDERING. `unbridge` is dispatched (not awaited) and `remove`
  * runs synchronously right after — matching every pre-252 site, where the bridge
  * write (async sidecar I/O) and the removal are independent.
@@ -68,17 +80,23 @@ export interface UnbridgingFootnoteDeleteDeps {
     id: string,
     mode: AiRequestSyncMode,
   ) => void | Promise<void>;
+  /** Arm the orphan-suppress latch for this id (`armFootnoteOrphanSuppress`,
+   *  scoped to the pane's doc) — a deliberate delete must not be resurrected
+   *  as an orphan card (task 1116). A no-op flag-ON. */
+  suppressOrphan: (id: string) => void;
 }
 
 /**
  * Build the footnote unbridging-delete door. The returned fn takes the footnote
  * id and the site-specific `remove` (editor-handle splice or sidecar ref
- * delete); it discharges the linked row first, then removes.
+ * delete); it arms the orphan-suppress latch, discharges the linked row, then
+ * removes.
  */
 export function makeUnbridgingFootnoteDelete(
   deps: UnbridgingFootnoteDeleteDeps,
 ): (id: string, remove: (id: string) => void) => void {
   return (id, remove) => {
+    deps.suppressOrphan(id);
     void deps.unbridge("footnote", id, unbridgeModeFor("delete"));
     remove(id);
   };
