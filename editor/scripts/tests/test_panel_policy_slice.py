@@ -103,6 +103,7 @@ CIT = "cc01"                                       # citations.json — \citet{b
 FN = "f001"                                        # footnotes.json — a real \footnote
 NOTE = "ea4d5253-406d-499e-85b6-8055956c9f95"      # notes.json
 NOTE2 = "bbf4cb59-c473-4fdc-870b-98a16a0868d5"     # notes.json
+HIGHLIGHT = "2a382717-c99c-4c86-9a61-51c3388c117d" # notes.json kind=highlight
 TODO = "ab7e7930-78cb-4d4c-b400-9ac04906a8fd"      # todos.json
 REPORT = "7b3e9a14-2c5d-4f80-9a16-3d8e1f0a2b01"    # reports.json
 CUTTER = "582f061d-311f-4ef0-adcd-bff13a86d71b"    # cutter.json comment
@@ -197,6 +198,25 @@ check("atom-bearing" in op(sb, "archive", {"cardId": CIT}).stderr,
       "archive still refuses a citation with the atom-bearing reason")
 check("already archived" in op(sb, "archive", {"cardId": NATIVE_ARCH}).stderr,
       "archive still refuses an already-archived snippet")
+
+# task 1118: archive is gated by KIND as well as panel — a highlight lives in an
+# admitted panel (notes) but the app's isArchivable makes it delete-only.
+print("\n=== archive / highlight — refused by kind, note beside it still archives ===")
+sb = sandbox()
+before_notes, before_arch = digest(sb, "notes.json"), digest(sb, "archive.json")
+r = op(sb, "archive", {"cardId": HIGHLIGHT})
+check(r.returncode != 0 and "delete-only" in r.stderr,
+      f"archive refuses a highlight with the delete-only reason (stderr={r.stderr.strip()[:90]})")
+check(digest(sb, "notes.json") == before_notes and digest(sb, "archive.json") == before_arch,
+      "a refused highlight archive leaves notes.json + archive.json byte-identical")
+r = op(sb, "archive", {"cardId": NOTE})
+check(r.returncode == 0, f"archive still archives a note (stderr={r.stderr.strip()[:90]})")
+check(by_id(sb, "notes.json", "cards", NOTE) is None
+      and by_id(sb, "notes.json", "cards", HIGHLIGHT) is not None,
+      "the note left notes.json; the highlight stayed")
+check("highlight" not in AR._ARCHIVABLE_KINDS and "note" in AR._ARCHIVABLE_KINDS,
+      "_ARCHIVABLE_KINDS (from card_tables.json) excludes highlight, admits note")
+sb = sandbox()
 check("atom-bearing" in op(sb, "move", {"cardId": FN, "newAnchor": "2201"}).stderr,
       "move still defers a footnote with the atom-bearing reason")
 r = op(sb, "restore", {"cardId": NOTE})

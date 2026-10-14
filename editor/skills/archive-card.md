@@ -6,8 +6,9 @@ description: |
   the archive", "set this aside", or as the mechanical step behind clearing a
   panel. Resolves the card via card_by_id.py, then routes an `archive` op (a
   cross-sidecar move, atomic + pen-protected). Applies to anchored panel cards
-  (note/highlight/todo/report/report-request/comment/cutter-/revision-cards);
-  refuses atom-bearing cards (footnote/citation) and system kinds. Does NOT delete
+  (note/todo/report/report-request/comment/cutter-/revision-cards);
+  refuses highlights (delete-only), atom-bearing cards (footnote/citation) and
+  system kinds. Does NOT delete
   the card (it's reversible via /editor/restore-card) and does NOT remove the
   underlying .tex text. Args: <docPath> <cardId>.
 ---
@@ -72,17 +73,21 @@ pen**, with the audit notification + version bump. Fully reversible by
 
 ## Applicability (derived from the manifest)
 
-- **Archivable** — the anchored panel cards: `note`, `highlight`, `todo`,
+- **Archivable** — the anchored panel cards: `note`, `todo`,
   `report`, `report-request`, `comment`, `cutter-comment`, `cutter-suggestion`,
   `revision-suggestion`.
-- **Refused** — `footnote`/`citation` (atom-bearing: the id *is* a `.tex \v*id`
+- **Refused** — `highlight` (delete-only: a body-less tint, so archiving it
+  would leave an orphaned tint in the prose — the app's `isArchivable` excludes
+  it; delete the highlight instead); `footnote`/`citation` (atom-bearing: the id *is* a `.tex \v*id`
   marker, so archiving would orphan the atom — delete the atom in-document
   instead); `example` (lives in the `.tex`); an already-archived snippet;
   `bib`/`ai`/`error` (system/derived). The op refuses these with a clear reason.
 
 > **Enforcement (task 156).** The panel side of that list lives in
 > `apply_response.MUTATION_PANEL_POLICY` — one allow-list table per op, exhaustive
-> over the card-store universe, asked by every mutation op. Read it there rather
+> over the card-store universe, asked by every mutation op. The kind side
+> (task 1118) is `archivableKinds` in `editor/scripts/card_tables.json`, pinned
+> to the app's `isArchivable`. Read it there rather
 > than trusting this prose; it is where a refusal is actually enforced.
 
 > **Note (origin record).** To make restore lossless this op adds

@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { CARD_REGISTRY } from "@/cards/card-registry";
-import { CARD_KINDS, cardKindFromRecord } from "@/cards/predicates";
+import { CARD_KINDS, cardKindFromRecord, isArchivable } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
 import type { PanelKind } from "@/panels/_shared/types";
 import { ARCHIVE_ORIGIN_PANELS } from "@/lib/archive-origin";
@@ -46,6 +46,7 @@ const tables = JSON.parse(
 ) as {
   cardSidecars: Record<string, SidecarRow>;
   archiveOriginPanels: string[];
+  archivableKinds: string[];
   bodyFields: { plain: string[]; richOnly: string[]; richMirror: string[] };
   sidecarCollections: Record<string, { key: string; idFields: string[] }[]>;
 };
@@ -116,6 +117,14 @@ describe("card_tables.json sidecarCollections ↔ SIDECAR_COLLECTIONS", () => {
 describe("card_tables.json archiveOriginPanels ↔ ARCHIVE_ORIGIN_PANELS", () => {
   it("archive-card admits exactly the panels the app can restore into", () => {
     expect([...tables.archiveOriginPanels].sort()).toEqual([...ARCHIVE_ORIGIN_PANELS].sort());
+  });
+
+  // task 1118: the panel gate is coarser than the app's rule — a highlight lives
+  // in notes yet isArchivable excludes it — so archive-card also gates by kind.
+  it("archive-card's kind gate is exactly the app's isArchivable", () => {
+    expect([...tables.archivableKinds].sort()).toEqual(
+      CARD_KINDS.filter(isArchivable).map(pyKind).sort(),
+    );
   });
 
   it("every admitted panel is a writeback sidecar", () => {

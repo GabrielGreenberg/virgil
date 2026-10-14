@@ -10,6 +10,8 @@
     "  archiveOriginPanels the panels /editor/archive-card admits (apply_response._ANCHORED_PANEL_CARDS) — equal to",
     "                      ARCHIVE_ORIGIN_PANELS (src/lib/archive-origin.ts), so every archived card's `originalPanel`",
     "                      is one the app can restore.",
+    "  archivableKinds     the KINDS archive-card may archive (task 1118) — CARD_KINDS.filter(isArchivable) (src/cards/predicates.ts),",
+    "                      in Python kind tokens. The panel gate above is coarser: a highlight lives in notes yet is delete-only.",
     "  bodyFields          which record field(s) edit-card's --body writes, per kind — derived from CARD_REGISTRY[kind]",
     "                      .content: plain = no bodyField, body is `text`; richOnly = bodyField `content`, no `text`",
     "                      mirror; richMirror = bodyField `content` + a `text` mirror kept in sync.",
@@ -32,6 +34,7 @@
     "examples": { "file": "examples.json", "listKey": "examples", "writeback": false, "tsPanel": "examples" }
   },
   "archiveOriginPanels": ["notes", "todos", "cutter", "revisions", "reports"],
+  "archivableKinds": ["archive", "citation", "comment", "cutter-comment", "cutter-suggestion", "footnote", "note", "report", "report-request", "revision-suggestion", "todo"],
   "bodyFields": {
     "plain": ["todo"],
     "richOnly": ["note", "footnote"],
