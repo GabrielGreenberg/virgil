@@ -1543,7 +1543,7 @@ function citationRun(ctx: ActionContext): void {
   // kind against the curated set here too — so an inline citation atom can
   // never be created in a `titleField` / non-prose block even via a future
   // surface that forgets to consult `applies()`. Same discipline as the
-  // wrapper toggles' `selectionIsListable` self-guard.
+  // wrapper toggles' `wrapperSafeInState` self-guard.
   if (!posBlockAllowsAction(ctx.view.state.doc, ctx.ref.pos, "citation")) return;
   // Surfaces 3 & 4 (slash / typed / popover) — a `CursorRef`. TWO sub-cases,
   // discriminated by the payload:
@@ -3206,8 +3206,8 @@ function wrapperApplies(
 }
 
 /**
- * The WHOLE wrapper safety question — identity (`selectionIsListable`) then
- * container (`selectionHostsWrapper`) — read off the ONE door every surface
+ * The WHOLE wrapper safety question — identity + container, one derivation
+ * since task 1107 (`selectionHostsWrapper`) — read off the ONE door every surface
  * reads, `wrapperSafeInState` (`@/lib/tiptap/wrapper-gate`, task 427). The
  * affordance (`applies`) and the commit (`run`) both enter here, and so do the
  * three `.extend()`ed StarterKit factories' chords / input rules and the

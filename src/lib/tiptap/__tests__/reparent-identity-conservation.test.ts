@@ -784,6 +784,11 @@ const SWEPT_COMMANDS: Partial<
   sinkListItem: "Tab (controls)",
   toggleBulletList: "M3, M3b, M4, M4c",
   toggleOrderedList: "M7",
+  // Task 1107: `wrapper-gate.ts` calls `wrapInList(type)(state)` with NO
+  // dispatch — the affordance asks the very predicate `toggleList` asks before
+  // its `clearNodes()` fallback. It produces no step; the step shape it would
+  // stand for is `toggleList`'s, driven by the `toggleBulletList` legs.
+  wrapInList: "dry run only (wrapper-gate.ts); its steps are toggleList's — M3, M3b, M4, M4c",
   toggleBlockquote: "M4b, M5, and the split-lift + heading controls",
   setBlockType: "M8 (the Heading action) and M8b (the demote chip)",
   // `setParagraph` retired (task 1003): both demote surfaces now go through

@@ -16,16 +16,32 @@
  * and `node-attr-sets.ts` each earned: a facet the layer that needs it cannot
  * import will be re-copied (or, here, simply skipped).
  *
- * Two halves, and they are genuinely different questions:
+ * Two halves of the question, ONE derivation (task 1107):
  *
- *   • **identity** — `selectionIsListable`: would the wrap DESTROY the block's
- *     own identity? A `titleField` / `heading` / atom block coerced into a
- *     paragraph loses its `\title{}` / `\section{}` / opaque bytes.
- *   • **container** — `selectionHostsWrapper`: can the wrapper be placed AROUND
- *     those blocks at all, or would ProseMirror lift them out of a container
- *     that cannot host it (an expex `exampleItem`)? The third member of the
- *     container family beside `posHostsBlockInsert` / `posHostsInlineAtom`
- *     (`text-object-registry`, which re-exports it from here).
+ *   • **identity** — would the wrap DESTROY a block's own identity? The only
+ *     path that does is TipTap's `toggleList` falling back to `clearNodes()`
+ *     (a `heading` / `titleField` coerced into a paragraph loses its
+ *     `\section{}` / `\title{}`), and that fallback runs EXACTLY when PM's
+ *     `wrapInList` cannot place the list and the toggle is not subtractive.
+ *     `toggleBlockquote` is `wrapIn`, which never coerces — it wraps or fails.
+ *   • **container** — can the wrapper be placed AROUND those blocks at all, or
+ *     would ProseMirror lift them out of a container that cannot host it (an
+ *     expex `exampleItem`)? The third member of the container family beside
+ *     `posHostsBlockInsert` / `posHostsInlineAtom` (`text-object-registry`,
+ *     which re-exports it from here).
+ *
+ * Both are answered by `selectionHostsWrapper`, which asks the COMMIT's own
+ * predicate (`wrapInList` for a list, `findWrapping` for the quote) and then
+ * the subtractive exemption — after one round-trip refusal the schema cannot
+ * state: a PREAMBLE-RESIDENT block (`titleField`; `PREAMBLE_RESIDENT_NODE_TYPES`
+ * in `node-attr-sets.ts`) has no body position, so a wrapper around it would
+ * serialize empty. Until 1107 the identity half was a hand list of
+ * node names (`paragraph`, `listItem`) that the schema outgrew in both
+ * directions: it greyed "make this image a list item" after task 563 let a
+ * `listItem` open with a `graphicsBlock`, and it applied the LIST coercion rule
+ * to the QUOTE, greying `\begin{quote}` around display math, code, a comment —
+ * every one of which wraps and round-trips losslessly
+ * (`wrapper-gate-derived-identity.test.ts` proves the round trip per kind).
  *
  * `wrapperSafeInState` is the WHOLE question. Every surface asks it and nothing
  * else: the registry rows (affordance + commit), the three `.extend()`ed
@@ -43,6 +59,10 @@ import type { NodeType, NodeRange, ResolvedPos } from "@tiptap/pm/model";
 // `wrapInList` consult, so the wrapper AFFORDANCE and the wrapper COMMIT ask
 // one question rather than two implementations of one rule (task 397).
 import { findWrapping } from "@tiptap/pm/transform";
+// …and `wrapInList` is the predicate TipTap's `toggleList` consults before it
+// falls back to the identity-destroying `clearNodes()` (task 1107).
+import { wrapInList } from "@tiptap/pm/schema-list";
+import { PREAMBLE_RESIDENT_NODE_TYPES } from "@/lib/node-attr-sets";
 import type { EditorState } from "@tiptap/pm/state";
 import { InputRule } from "@tiptap/core";
 import type { KeyboardShortcutCommand, Node as TiptapNode } from "@tiptap/core";
@@ -55,57 +75,15 @@ export type WrapperNodeName = "bulletList" | "orderedList" | "blockquote";
 export type WrapperGateStorage = { wrapperGated: true };
 
 /**
- * The schema node-type names a list/quote wrapper can safely wrap WITHOUT
- * destroying structural identity. Centralized (not inlined) so the rule has one
- * home + this comment. `paragraph` is the generic prose container both wrapper
- * content models (`listItem` = "paragraph block*", `blockquote` = "block+")
- * accept and KEEP as a paragraph; `listItem` is already a list item (a list
- * toggle re-lists it losslessly). Every other block — titleField, heading,
- * codeBlock, displayMath, texBlock, figureBlock, graphicsBlock, latexComment,
- * maketitleMarker, exampleBlock, and the list/quote containers themselves — is
- * NON-listable: wrapping it loses or corrupts its identity. These are SCHEMA
- * node names (PM `node.type.name`), not `TextObjectKind`s — the caret may sit in
- * a node (maketitleMarker) that has no TextObject twin.
- */
-export const LISTABLE_BLOCK_TYPES: ReadonlySet<string> = new Set(["paragraph", "listItem"]);
-
-/**
- * True iff EVERY block a list/quote wrapper would act on for the current
- * selection is listable — i.e. wrapping preserves each block's identity. We take
- * the SAME block range ProseMirror's `wrapInList` / `wrapIn` take (`$from.
- * blockRange($to)`): the contiguous run of sibling blocks at the shared depth
- * that the wrapper would lift into the new container. Each of those siblings
- * must be a listable node (`paragraph` / `listItem`); a single non-listable
- * block (titleField / heading / atom block) refuses.
+ * The wrapper question (tasks 397, 1107): can a WRAPPER (`bulletList` /
+ * `orderedList` / `blockquote`) be placed AROUND the blocks the selection spans
+ * — without coercing them and without lifting them out of their container?
  *
- * A collapsed caret resolves to the single containing block. If no block range
- * resolves (a degenerate selection — e.g. a NodeSelection on an opaque atom),
- * we refuse: there is nothing safely listable to wrap.
- */
-export function selectionIsListable(state: EditorState): boolean {
-  const { $from, $to } = state.selection;
-  const range = $from.blockRange($to);
-  if (!range) return false; // no wrappable block range → not listable, grey it
-  const parent = range.parent;
-  for (let i = range.startIndex; i < range.endIndex; i += 1) {
-    if (!LISTABLE_BLOCK_TYPES.has(parent.child(i).type.name)) return false;
-  }
-  // A zero-width range (startIndex === endIndex) means the resolved block isn't
-  // a direct child of `parent` at this depth — the caret's own textblock IS the
-  // affected block; check it directly.
-  if (range.startIndex === range.endIndex) {
-    return LISTABLE_BLOCK_TYPES.has($from.parent.type.name);
-  }
-  return true;
-}
-
-/**
- * The CONTAINER half (task 397): can a WRAPPER (`bulletList` / `orderedList` /
- * `blockquote`) be placed AROUND the blocks the selection spans?
- *
- * The wrapper rows had a `LISTABLE_BLOCK_TYPES` gate that asks only about the
+ * Before 397 the wrapper rows had a node-name gate that asked only about the
  * BLOCK ("is it a paragraph?") and never about the CONTAINER ("can a list live
- * where that paragraph lives?"). The two questions come apart the moment a
+ * where that paragraph lives?"); 1107 deleted that gate, because this
+ * function's layer 1 already answers the block question too (see the module
+ * header). The two questions come apart the moment a
  * container's content model is narrower than `block+`: an expex `exampleItem`
  * holds `(paragraph | graphicsBlock | displayMath)+` and no list, so a bullet
  * toggle at a caret inside an item does not wrap it — ProseMirror LIFTS the
@@ -114,14 +92,20 @@ export function selectionIsListable(state: EditorState): boolean {
  * every `\ref` into that example points at different text. Nothing throws; the
  * document stays schema-valid.
  *
- * Two layers, both read from the schema, never from a list of node names:
+ * Two layers, both read from the schema, never from a list of node names
+ * (after layer 0, the preamble-resident refusal — a round-trip fact the
+ * schema cannot state, read from `PREAMBLE_RESIDENT_NODE_TYPES`):
  *
- *   1. **Can the wrapper be placed here at all?** `findWrapping` is the question
- *      ProseMirror's own `wrapIn` / `wrapInList` ask (it searches for the whole
- *      wrapper CHAIN — `bulletList > listItem` — and answers null when the
- *      container refuses the wrapper OR the wrapper refuses the content).
- *      Asking PM's own predicate rather than restating it means the affordance
- *      and the commit can never disagree about what "wrappable" means.
+ *   1. **Can the wrapper be placed here at all?** Asked with the COMMIT's own
+ *      predicate: `wrapInList` (dry run, no dispatch) for a list — the exact
+ *      call `toggleList` makes before deciding to `clearNodes()` — and
+ *      `findWrapping` (what `wrapIn` asks) for the quote. Both search for the
+ *      whole wrapper CHAIN (`bulletList > listItem`) and answer no when the
+ *      container refuses the wrapper OR the wrapper refuses the content, so a
+ *      `heading` (which no `listItem` may open with) refuses here and a
+ *      `graphicsBlock` (which one may, task 563) does not. Asking PM's own
+ *      predicate rather than restating it means the affordance and the commit
+ *      can never disagree about what "wrappable" means.
  *
  *   2. **…unless the toggle is SUBTRACTIVE**, in which case layer 1 does not
  *      apply, because nothing new is being placed. A wrapper toggle removes or
@@ -155,8 +139,34 @@ export function selectionHostsWrapper(
   const { $from, $to } = state.selection;
   const range = $from.blockRange($to);
   if (!range) return false;
-  if (findWrapping(range, wrapperType) !== null) return true;
+  if (rangeEnclosesPreambleResident(range)) return false;
+  if (wrapperPlaceable(state, range, wrapperType)) return true;
   return hasSameFamilyAncestor($from, range, wrapperType);
+}
+
+/**
+ * Layer 0 of `selectionHostsWrapper` (task 1107): would the wrapper enclose a
+ * block whose LaTeX home is the preamble? The schema admits a `titleField`
+ * wherever `block` goes, but its body serialization is empty — a quote around a
+ * title saves as an empty `\begin{quote}\end{quote}` and the title is re-hoisted
+ * to the doc top on reload. Refused for every wrapper: a list could otherwise
+ * take a title as a non-first item child in a mixed selection.
+ */
+function rangeEnclosesPreambleResident(range: NodeRange): boolean {
+  for (let i = range.startIndex; i < range.endIndex; i += 1) {
+    if (PREAMBLE_RESIDENT_NODE_TYPES.has(range.parent.child(i).type.name)) return true;
+  }
+  return false;
+}
+
+/**
+ * Layer 1 of `selectionHostsWrapper`, asked with the predicate the wrapper's
+ * own COMMIT asks. A list is recognised by its schema group (`"list"`), the same
+ * derivation TipTap's `isList` makes when `toggleList` picks its branch.
+ */
+function wrapperPlaceable(state: EditorState, range: NodeRange, wrapperType: NodeType): boolean {
+  if (wrapperType.isInGroup("list")) return wrapInList(wrapperType)(state);
+  return findWrapping(range, wrapperType) !== null;
 }
 
 /**
@@ -165,6 +175,12 @@ export function selectionHostsWrapper(
  * accepts the SAME child type the wrapper accepts (`range.parent.type`)? Such an
  * ancestor is the container this toggle removes or replaces, so the toggle is
  * subtractive and needs no home for a new wrapper.
+ *
+ * Why this exemption cannot let `toggleList` reach `clearNodes()` (task 1107):
+ * for a LIST wrapper it passes only when `range.parent` is a `listItem` (the one
+ * child a list hosts), so the range's depth is one below a list — exactly the
+ * `range.depth - parentList.depth <= 1` condition under which `toggleList` takes
+ * its lift / change-type branch and never its wrap-or-clear branch.
  */
 function hasSameFamilyAncestor(
   $from: ResolvedPos,
@@ -184,7 +200,8 @@ function hasSameFamilyAncestor(
 /**
  * **THE WHOLE wrapper safety question**, in one place, so no two surfaces can
  * answer it from two tables — the shape task 258 states for placements and
- * task 321 for drop decisions. Identity first, then container.
+ * task 321 for drop decisions. Identity and container are one derivation since
+ * task 1107 (`selectionHostsWrapper`).
  *
  * A state with no selection, or a stubbed state (the minimal menu-decoration
  * ctx, a unit-test double — no real schema, no resolvable doc) answers `true`
@@ -197,7 +214,6 @@ export function wrapperSafeInState(
   wrapperNodeName: WrapperNodeName | string,
 ): boolean {
   if (!state?.selection) return true; // no live state → allow (historic)
-  if (!selectionIsListable(state)) return false;
   if (!state.schema || typeof state.doc?.resolve !== "function") return true;
   return selectionHostsWrapper(state, state.schema.nodes[wrapperNodeName]);
 }
@@ -235,7 +251,7 @@ export function guardWrapperShortcuts(
  * Measured (task 427): upstream's `wrappingInputRule` already declines where
  * `findWrapping` fails, so on the CONTAINER half this is a no-op today. It is
  * wired anyway because the surface must answer from the ONE table — the
- * identity half (a heading, a title field) and any future rung land here
+ * list-coercion refusal (a heading, a title field) and any future rung land here
  * without anyone remembering the input rules exist.
  */
 export function guardWrapperInputRules(

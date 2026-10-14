@@ -166,7 +166,7 @@ describe("list/quote slash commands (via the bridge)", () => {
     const editor = mountEditor("a heading");
     publishHandle(editor);
     // Convert the paragraph to a heading via the real \section command, then try
-    // to enumerate it: the wrapper's selectionIsListable guard must refuse.
+    // to enumerate it: the wrapper gate (wrapInList → toggleList's clearNodes path) must refuse.
     COMMAND_MAP.get("section")!.action(editor.view, "\\section");
     expect(hasNode(editor, "heading")).toBe(true);
 
