@@ -1,4 +1,4 @@
-<!-- last-verified: bbc9ee32 2026-10-13 -->
+<!-- last-verified: f8c0dd66 2026-10-14 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
