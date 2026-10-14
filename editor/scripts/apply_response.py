@@ -333,6 +333,21 @@ _ALL_PANELS = frozenset(ALL_CARD_SIDECARS)
 # The panels archive-card admits — ARCHIVE_ORIGIN_PANELS on the app side, so an
 # archived card's `originalPanel` is always one the app can restore.
 _ANCHORED_PANEL_CARDS = frozenset(_CARD_TABLES["archiveOriginPanels"])
+# The KINDS archive admits — the app's `isArchivable` (src/cards/predicates.ts),
+# projected into card_tables.json (task 1118). The panel gate is coarser than the
+# app's rule: a highlight lives in `notes`, an admitted panel, yet the app makes
+# highlights delete-only. So archive asks BOTH questions — the store, then the kind.
+_ARCHIVABLE_KINDS = frozenset(_CARD_TABLES["archivableKinds"])
+# Why a kind is outside `isArchivable` — the reason its docstring records. A kind
+# without a row gets the generic refusal.
+_NOT_ARCHIVABLE_REASON = {
+    "highlight": (
+        "archive-card refuses a highlight ($cardId): highlights are delete-only — a "
+        "highlight is a body-less tint on the prose, so archiving it would leave an "
+        "orphaned persistent tint (the app's isArchivable excludes it). Delete the "
+        "highlight instead."
+    ),
+}
 
 _NOT_ARCHIVED = "card $cardId is not archived (it's in $panel) — nothing to restore"
 
@@ -2417,6 +2432,12 @@ def cmd_archive(doc: Path, op: dict) -> dict:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)
     _guard_panel("archive", hit, kind)
+    if kind not in _ARCHIVABLE_KINDS:
+        msg = _NOT_ARCHIVABLE_REASON.get(kind) or (
+            f"archive-card refuses a {kind} ($cardId): the kind is not archivable "
+            "(the app's isArchivable excludes it)"
+        )
+        die(msg.replace("$cardId", str(card_id)))
 
     original = hit.card  # a detached snapshot (read by card_by_id, not the txn)
     # An APPLIED suggestion cannot leave from here (task 1062; the shared door
