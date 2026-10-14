@@ -19,6 +19,7 @@ All helpers here are stdlib-only (Python 3.10+) — no third-party deps.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -620,15 +621,26 @@ def is_request_open(r: dict) -> bool:
 # version, and the current disk; a change both sides made to the SAME value
 # differently is refused (`SidecarConflict` → die, nothing written) rather
 # than guessed at.
+#
+# The paper's own TEXT files ride the same mechanism (task 1108): a `.tex` /
+# `.bib` content is a `text_rebased` deferred that, inside the pen, writes the
+# precomputed result only if the file is byte-identical to the T0 read, and
+# otherwise RE-RUNS the writer's own transform on the current text — so the
+# app's 1500 ms autosave of another paragraph, or a bib-panel edit of another
+# entry, that landed in the window survives the skill's splice.
 # ---------------------------------------------------------------------------
 
 Deferred = Callable[[], "str | None"]
 
 _MISSING: Any = object()
 
+# A deferred may resolve to UNCHANGED: "the file needs no write after all" —
+# `resolve_writes` drops the entry instead of rewriting (or creating) it.
+UNCHANGED: Any = object()
+
 
 class SidecarConflict(Exception):
-    """Both the writer and a concurrent writer changed the same JSON value."""
+    """Both the writer and a concurrent writer changed the same value."""
 
 
 # Which top-level arrays are RECORD collections, and what identifies a record —
@@ -757,26 +769,78 @@ def json_merge3(base: Any, ours: Any, theirs: Any, where: str = "$",
     raise SidecarConflict(f"{where}: changed here and concurrently")
 
 
-def json_rebased(path: Path, base: Any, ours: Any) -> Deferred:
+def json_rebased(path: Path, base: Any, ours: Any, *, post: tuple = (),
+                 dirty: bool = True) -> Deferred:
     """Deferred content for a JSON sidecar the writer loaded as `base` and
     changed to `ours`: resolved inside the pen against the file as it is THEN.
-    An untouched file (the common case) writes `ours` byte-for-byte as before."""
-    def resolve() -> str:
+    An untouched file (the common case) writes `ours` byte-for-byte as before.
+
+    `post` (task 1108) are in-place transforms re-applied to the RESOLVED value
+    — a writer whose change is a RULE over the file's records, not a fixed
+    value (a citekey re-key), so a record the app added in the window is
+    caught by the rule too. `dirty=False` registers a sidecar the writer did
+    not change at T0 but whose rule must still run in the pen: it resolves to
+    UNCHANGED unless the rule now changes something."""
+    def resolve():
         theirs = read_json(Path(path), default=_MISSING)
+        if not dirty:
+            if theirs is _MISSING:
+                return UNCHANGED
+            out = copy.deepcopy(theirs)
+            for fn in post:
+                fn(out)
+            return UNCHANGED if out == theirs else json_dumps(out)
         if theirs is _MISSING or theirs == base:
-            return json_dumps(ours)
-        try:
-            merged = json_merge3(base, ours, theirs,
-                                 collections=sidecar_collections(Path(path).name))
-        except SidecarConflict as e:
-            raise SidecarConflict(f"{Path(path).name} {e}") from None
+            merged = copy.deepcopy(ours) if post else ours
+        else:
+            try:
+                merged = json_merge3(base, ours, theirs,
+                                     collections=sidecar_collections(Path(path).name))
+            except SidecarConflict as e:
+                raise SidecarConflict(f"{Path(path).name} {e}") from None
+        for fn in post:
+            fn(merged)
         return json_dumps(merged)
     return resolve
 
 
+def read_text_or_empty(path: Path) -> str:
+    """A text file's contents, or "" when it does not exist yet (a first .bib)."""
+    p = Path(path)
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
+def text_rebased(path: Path, base: str, ours: str,
+                 recompute: Callable[[str], str]) -> Deferred:
+    """Deferred content for a paper TEXT file (the .tex / .bib) the writer read
+    as `base` and transformed to `ours` (task 1108): resolved inside the pen.
+    Unchanged since T0 → `ours`, byte-for-byte. Changed → `recompute` (the
+    writer's own transform) runs on the CURRENT text, so the concurrent edit
+    and the writer's both land. If the transform's own guard refuses on the
+    current text (it dies — the target span was itself edited), that is a
+    collision: SidecarConflict, nothing written."""
+    def resolve() -> str:
+        now = read_text_or_empty(Path(path))
+        if now == base:
+            return ours
+        try:
+            return recompute(now)
+        except SystemExit:
+            raise SidecarConflict(
+                f"{Path(path).name} was edited since it was read and this "
+                f"edit no longer applies to it (see the error above)") from None
+    return resolve
+
+
 def resolve_writes(writes: list) -> list[tuple[Path, str | None]]:
-    """Materialize a write-set: call every deferred content, in order."""
-    return [(p, c() if callable(c) else c) for p, c in writes]
+    """Materialize a write-set: call every deferred content, in order. An
+    entry that resolves to UNCHANGED is dropped (no write)."""
+    out = []
+    for p, c in writes:
+        v = c() if callable(c) else c
+        if v is not UNCHANGED:
+            out.append((p, v))
+    return out
 
 
 # Each writer comes in two forms: a `*_planned`/`*_appended` form that READS
@@ -1801,14 +1865,14 @@ def commit_under_pen(doc: Path, writes: list[tuple[Path, "str | None | Deferred"
     """
     acquire_pen(doc)
     try:
-        # Deferred contents (task 941) resolve HERE, after the pen is taken, so
-        # every JSON sidecar is written as a function of the file as it is now.
-        # A conflict dies before anything is written; the finally still frees
-        # the pen.
+        # Deferred contents (tasks 941, 1108) resolve HERE, after the pen is
+        # taken, so every JSON sidecar AND the .tex / .bib are written as a
+        # function of the file as it is now. A conflict dies before anything
+        # is written; the finally still frees the pen.
         try:
             resolved = resolve_writes(writes)
         except SidecarConflict as e:
-            die(f"a sidecar changed underneath this writeback and the two edits "
+            die(f"a paper file changed underneath this writeback and the two edits "
                 f"collide ({e}); nothing was written — re-run to apply against "
                 f"the current state")
         atomic_write(resolved)

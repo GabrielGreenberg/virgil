@@ -175,6 +175,9 @@ from _common import (
     DeferredVersionBump,
     json_rebased,
     notification_deferred,
+    read_text_or_empty,
+    text_rebased,
+    UNCHANGED,
     now_iso,
     read_json,
     resolve_doc,
@@ -857,6 +860,11 @@ class _Txn:
         self._base: dict[Path, object] = {}
         self._dirty: set[Path] = set()
         self._raw: list[tuple[Path, object]] = []
+        # task 1108: per text file, its T0 read, the transforms queued on it
+        # (composed in order), and their result on the T0 read.
+        self._text: dict[Path, tuple[str, list, str]] = {}
+        # task 1108: per JSON sidecar, rules re-applied to the in-pen value.
+        self._post: dict[Path, list] = {}
 
     def jget(self, path: Path, default):
         if path not in self._loaded:
@@ -869,6 +877,44 @@ class _Txn:
 
     def add_raw(self, path: Path, content):
         self._raw.append((path, content))
+
+    def add_text(self, path: Path, transform) -> str:
+        """Queue an edit to a paper TEXT file (.tex / .bib) as a TRANSFORM of
+        its text, never a string built from a read (task 1108). It runs now on
+        the T0 read — so a refusal dies before anything is queued — and its
+        result is what lands if the file is untouched at commit; if the app
+        wrote the file in the window, the transforms RE-RUN on the text inside
+        the pen (`text_rebased`). Several transforms on one path compose in
+        order into one write. Returns the T0 result."""
+        path = Path(path)
+        if path not in self._text:
+            base = read_text_or_empty(path)
+            self._text[path] = (base, [transform], transform(base))
+            self._raw.append((path, lambda p=path: self._resolve_text(p)))
+        else:
+            base, fns, ours = self._text[path]
+            self._text[path] = (base, fns + [transform], transform(ours))
+        return self._text[path][2]
+
+    def _resolve_text(self, path: Path):
+        base, fns, ours = self._text[path]
+
+        def recompute(text: str) -> str:
+            for fn in fns:
+                text = fn(text)
+            return text
+        out = text_rebased(path, base, ours, recompute)()
+        # Every transform a no-op on the file as it is now → no write at all.
+        if out == read_text_or_empty(path):
+            return UNCHANGED
+        return out
+
+    def add_json_rule(self, path: Path, rule):
+        """Re-apply `rule` (an in-place transform of the sidecar's value) inside
+        the pen, on top of the three-way merge (task 1108). For a change that
+        is a RULE over records (a citekey re-key), so a record the app added in
+        the window is caught by it too."""
+        self._post.setdefault(Path(path), []).append(rule)
 
     def append_card(self, panel: str, card: dict):
         if panel not in PANEL_TO_SIDECAR:
@@ -1095,8 +1141,10 @@ class _Txn:
 
     def writes(self) -> list[tuple[Path, object]]:
         out: list[tuple[Path, object]] = [
-            (p, json_rebased(p, self._base[p], self._loaded[p]))
-            for p in self._loaded if p in self._dirty
+            (p, json_rebased(p, self._base[p], self._loaded[p],
+                             post=tuple(self._post.get(p, ())),
+                             dirty=p in self._dirty))
+            for p in self._loaded if p in self._dirty or p in self._post
         ]
         out.extend(self._raw)
         return out
@@ -1186,7 +1234,15 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
         dies and nothing is spliced (see _replace_span_in_tex).
     """
     tex_path = find_tex_file(doc)
-    text = tex_path.read_text(encoding="utf-8")
+    return tex_path, _tex_splice_text(tex_path.read_text(encoding="utf-8"), te)
+
+
+def _tex_splice_text(text: str, te: dict) -> str:
+    """`_tex_splice` as a pure function of the .tex TEXT (task 1108) — so the
+    transaction can re-run the very same splice inside the pen against the file
+    as it is then (`_Txn.add_text`). Every mode is identity-addressed (anchor
+    uuid / marker), so a re-run on a file the app has since edited elsewhere is
+    well-defined; one whose guard no longer passes dies, writing nothing."""
     mode = te.get("mode") or "end-of-paragraph"
 
     if mode == "region-replace":
@@ -1207,10 +1263,10 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
             end += 1
         spliced = replacement + text[end:]
         _guard_region_replace(text, spliced)
-        return tex_path, spliced
+        return spliced
 
     if mode == "replace-span":
-        return tex_path, _replace_span_in_tex(text, te)
+        return _replace_span_in_tex(text, te)
 
     insert = te.get("insert")
     if not insert:
@@ -1233,14 +1289,14 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
         hit = _find_in_paragraph(text, sel, region_start, i, live_only=True)
         if hit != -1:
             pos = hit + len(sel)
-            return tex_path, text[:pos] + insert + text[pos:]
+            return text[:pos] + insert + text[pos:]
         # Selected text not found verbatim in the paragraph → end-of-paragraph.
 
     if mode == "after-paragraph":
         # A block that belongs AFTER the paragraph (an example): just past the
         # marker token, so the paragraph and its anchor stay whole.
         pos = i + len(f"%!v:{anchor}")
-        return tex_path, text[:pos] + insert + text[pos:]
+        return text[:pos] + insert + text[pos:]
 
     if mode not in ("end-of-paragraph", "after-selected"):
         die(f"unknown texEdit.mode: {mode}")
@@ -1254,7 +1310,7 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
     j = i
     while j > region_start and live[j - 1] in " \t":
         j -= 1
-    return tex_path, text[:j] + insert + text[j:]
+    return text[:j] + insert + text[j:]
 
 
 def _anchored_paragraph(text: str, anchor: str) -> tuple[int, int] | None:
@@ -1490,43 +1546,64 @@ def _bib_apply(doc: Path, be: dict) -> tuple[Path, str]:
     capability; the serialization lives in bib_resolve (imported lazily so the
     contract stays import-light). Every mode is MEASURED before it returns: an
     edit that would drop any other entry from the file dies unwritten."""
-    import bib_resolve as BR
+    bib_path = _bib_target(doc, be)
+    old = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
+    return bib_path, _bib_apply_text(old, be)
 
+
+def _bib_mode(be: dict) -> str:
     mode = be.get("mode")
     if not mode:
         mode = "append" if (be.get("entry") and not be.get("citekey")) else "set-fields"
+    return mode
+
+
+def _bib_target(doc: Path, be: dict) -> Path:
+    """The .bib a `bibEdit` writes: append may create the paper's first one;
+    the keyed modes need an existing file."""
+    mode = _bib_mode(be)
+    if mode == "append":
+        return _bib_path_for_write(doc)
+    bib_path = find_bib_file(doc)
+    if bib_path is None:
+        die(f"bibEdit {mode}: no references.bib found in the paper")
+    return bib_path
+
+
+def _bib_apply_text(old: str, be: dict) -> str:
+    """`_bib_apply` as a pure function of the .bib TEXT (task 1108): the
+    transaction re-runs it inside the pen against the file as it is then. Every
+    mode is addressed by entry key, and the preservation measure re-runs with
+    it, so an entry the app added or edited meanwhile survives."""
+    import bib_resolve as BR
+
+    mode = _bib_mode(be)
     if mode == "append":
         entry = be.get("entry")
         if not entry:
             die("bibEdit append requires op.bibEdit.entry")
-        bib_path = _bib_path_for_write(doc)
-        old = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
         new = BR.append_entry(old, entry)
         BR.assert_entries_preserved(old, new)
-        return bib_path, new
-    bib_path = find_bib_file(doc)
-    if bib_path is None:
-        die(f"bibEdit {mode}: no references.bib found in the paper")
+        return new
     citekey = be.get("citekey")
     if not citekey:
         die(f"bibEdit {mode} requires op.bibEdit.citekey")
-    old = bib_path.read_text(encoding="utf-8")
     if mode == "set-fields":
         fields = be.get("fields")
         if not isinstance(fields, dict) or not fields:
             die("bibEdit set-fields requires a non-empty op.bibEdit.fields object")
         new = BR.set_fields(old, citekey, fields)
         BR.assert_entries_preserved(old, new)
-        return bib_path, new
+        return new
     if mode == "replace":
         entry = be.get("entry")
         if not entry:
             die("bibEdit replace requires op.bibEdit.entry")
         new = BR.replace_entry(old, citekey, entry)
         BR.assert_entries_preserved(old, new, replaced=citekey)
-        return bib_path, new
+        return new
     die(f"unknown bibEdit mode: {mode!r} (append | set-fields | replace)")
-    return bib_path, old  # unreachable
+    return old  # unreachable
 
 
 def _settings_apply(doc: Path, txn: "_Txn", se: dict) -> None:
@@ -1595,12 +1672,12 @@ def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
         summary["noop"] = True
         return summary
 
-    # 1) the .tex \cite*{} commands (a raw write — not JSON).
+    # 1) the .tex \cite*{} commands — a TRANSFORM, re-run in the pen on the
+    #    text as it is then (task 1108), so a \cite{old} the user typed in the
+    #    window is retargeted too and their other edits survive.
     tex_path = find_tex_file(doc)
-    tex_text = tex_path.read_text(encoding="utf-8")
-    new_tex, n_tex = RC.rewrite_tex(tex_text, old, new)
-    if n_tex:
-        txn.add_raw(tex_path, new_tex)
+    n_tex = RC.rewrite_tex(read_text_or_empty(tex_path), old, new)[1]
+    txn.add_text(tex_path, lambda t: RC.rewrite_tex(t, old, new)[0])
     summary["texCommandsChanged"] = n_tex
 
     # 2) EVERY citekey-keyed sidecar (task 615) — the list is the shared
@@ -1614,9 +1691,14 @@ def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
     for name, rule in CS.rekey_plan():
         path = sidecar(doc, name)
         data = txn.jget(path, CS.EMPTY_STATE[rule]())
-        n = CS.REKEYERS[rule](data, old, new)
+        rekey = (lambda d, r=rule: CS.REKEYERS[r](d, old, new))
+        n = rekey(data)
         if n:
             txn.mark(path)
+        # The re-key is a RULE, so it re-runs on the in-pen value (task 1108):
+        # a card the app added under the old key in the window follows the
+        # .bib to the new one instead of dangling.
+        txn.add_json_rule(path, rekey)
         changed[name] = n
     summary["citationCardsChanged"] = changed.get("citations.json", 0)
     summary["sidecarsChanged"] = changed
@@ -1629,23 +1711,17 @@ def _apply_paper_writes(doc: Path, txn: "_Txn", op: dict) -> None:
     `apply_writes` at the call site (held back on a Level-3 proposal). The headline
     of chip 12 (and 16): every paper-file write rides one atomic, pen-wrapped
     commit, no parallel path."""
-    # texEdit and renameCitekey both rewrite the .tex from an independent read;
-    # the atomic writer crashes on two queued writes to the same path (the second
-    # os.replace finds its temp already consumed). They never co-occur in v1
-    # (renameCitekey rides with bibEdit for the library-sync swap; texEdit with the
-    # L3 accept splice), so refuse the combination loudly rather than silently lose
-    # one edit. A future need to compose them is a contract extension, not a quiet
-    # last-write-wins.
-    if op.get("texEdit") and op.get("renameCitekey"):
-        die("an op cannot carry both texEdit and renameCitekey — both rewrite the "
-            ".tex via independent reads and can't be queued as two writes to the "
-            "same file. Split them into two ops.")
+    # Every text-file edit is a TRANSFORM queued through `txn.add_text`
+    # (task 1108): the .tex / .bib bytes are computed inside the pen from the
+    # file as it is then. Transforms on the same file compose in order into one
+    # write, so texEdit and renameCitekey no longer race two independent reads
+    # of the .tex (the old refusal of that pair is retired by construction).
     if op.get("texEdit"):
-        tex_path, new_tex = _tex_splice(doc, op["texEdit"])
-        txn.add_raw(tex_path, new_tex)
+        te = op["texEdit"]
+        txn.add_text(find_tex_file(doc), lambda t: _tex_splice_text(t, te))
     if op.get("bibEdit"):
-        bib_path, new_bib = _bib_apply(doc, op["bibEdit"])
-        txn.add_raw(bib_path, new_bib)
+        be = op["bibEdit"]
+        txn.add_text(_bib_target(doc, be), lambda t: _bib_apply_text(t, be))
     if op.get("renameCitekey"):
         _rename_citekey_apply(doc, txn, op["renameCitekey"])
     if op.get("settingsEdit"):
@@ -2000,11 +2076,10 @@ def cmd_revert(doc: Path, request_id: str) -> dict:
         panel = txn.remove_card(result_id)
         # If it was a footnote, also strip its \vfid{}\footnote{} from the .tex.
         if panel == "footnotes":
-            tex_path = find_tex_file(doc)
-            text = tex_path.read_text(encoding="utf-8")
-            new_text = _strip_footnote_from_tex(text, result_id)
-            if new_text is not None and new_text != text:
-                txn.add_raw(tex_path, new_text)
+            def strip(t: str, rid=result_id) -> str:
+                out = _strip_footnote_from_tex(t, rid)
+                return t if out is None else out
+            txn.add_text(find_tex_file(doc), strip)
 
     req["status"] = STATUS_PENDING
     req.pop("result", None)
@@ -2168,13 +2243,12 @@ def _apply_body(doc: Path, txn: "_Txn", card: dict, kind: str, panel: str, body:
         if kind in _BODY_RICH_MIRROR:
             card["text"] = body  # keep the plain mirror in sync (sidecars.md rule 2)
         if panel == "footnotes":
-            tex_path = find_tex_file(doc)
-            text = tex_path.read_text(encoding="utf-8")
-            new_text = _replace_footnote_body_in_tex(text, card["id"], body)
-            if new_text is None:
-                die(f"could not find \\vfid{{{card['id']}}}\\footnote{{…}} in the .tex to edit")
-            if new_text != text:
-                txn.add_raw(tex_path, new_text)
+            def edit(t: str, fid=card["id"]) -> str:
+                out = _replace_footnote_body_in_tex(t, fid, body)
+                if out is None:
+                    die(f"could not find \\vfid{{{fid}}}\\footnote{{…}} in the .tex to edit")
+                return out
+            txn.add_text(find_tex_file(doc), edit)
         return
     die(f"--body is not editable for kind={kind}; edit its named fields with --field "
         f"(e.g. highlightColor, status, suggested_text)")
