@@ -108,6 +108,27 @@ describe("renameParticipant (task 1014)", () => {
     expect(out.presence["Ada Lovelace"].lastHeartbeat).toBe(T1);
     expect(out.participants.filter((p) => p.name === "Ada Lovelace")).toHaveLength(1);
   });
+
+  // Task 1106: a colour-only change used to hit an early `from === to.name`
+  // return and never reach the roster, so the partner kept the old colour.
+  it("a colour-only change rewrites the roster colour and re-keys nothing", () => {
+    const s = adaHolds();
+    const out = renameParticipant(s, "Ada", { name: "Ada", color: "#abcdef" });
+    expect(out).not.toBe(s);
+    expect(out.participants).toEqual([
+      { name: "Ada", color: "#abcdef", firstSeen: T0 },
+      { name: "Bob", color: "#445566", firstSeen: T0 },
+    ]);
+    expect(out.pen).toBe(s.pen);
+    expect(out.presence).toBe(s.presence);
+    // Idempotent: a second application is a no-op.
+    expect(renameParticipant(out, "Ada", { name: "Ada", color: "#abcdef" })).toBe(out);
+  });
+
+  it("an unchanged colour with an unchanged name returns prev", () => {
+    const s = adaHolds();
+    expect(renameParticipant(s, "Ada", { name: "Ada", color: "#112233" })).toBe(s);
+  });
 });
 
 describe("useCollab — identity change is a door (task 1014)", () => {
@@ -172,5 +193,21 @@ describe("useCollab — identity change is a door (task 1014)", () => {
     const before = disk.docs.get("doc-1");
     act(() => result.current.setIdentity({ name: "Ada", color: "#112233" }));
     expect(disk.docs.get("doc-1")).toBe(before);
+  });
+
+  it("a colour-only change reaches the sidecar roster (task 1106)", async () => {
+    disk.docs.set("doc-1", adaHolds());
+    const { result } = renderHook(() => useCollab("doc-1"));
+    await waitFor(() => expect(result.current.iHavePen).toBe(true));
+    act(() => result.current.setIdentity({ name: "Ada", color: "#abcdef" }));
+    await waitFor(() =>
+      expect(
+        (disk.docs.get("doc-1") as CollabSidecar).participants.find((p) => p.name === "Ada")
+          ?.color,
+      ).toBe("#abcdef"),
+    );
+    const onDisk = disk.docs.get("doc-1") as CollabSidecar;
+    expect(onDisk.pen.holder).toBe("Ada");
+    expect(result.current.iHavePen).toBe(true);
   });
 });

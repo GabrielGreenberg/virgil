@@ -183,6 +183,10 @@ export function passPenMutator(me: string): CollabMutator {
  * `to`'s colour), so a second application is a no-op — N panes on one paper
  * and N windows racing through {@link mutateCollab} converge.
  *
+ * A COLOUR-ONLY change (`from === to.name`, task 1106) is the same door with
+ * nothing to re-key: the pen and presence stay put and only the roster's
+ * colour is rewritten — `prev` when it already carries `to.color`.
+ *
  * Where `to` already has a slot (a stale entry from an earlier rename back),
  * the fresher presence heartbeat wins and the request queue keeps one entry.
  */
@@ -191,12 +195,12 @@ export function renameParticipant(
   from: string,
   to: CollabIdentity,
 ): CollabSidecar {
-  if (from === to.name) return prev;
+  const renamed = from !== to.name;
   let next = prev;
 
   const pen = prev.pen;
   const requests = pen.requestedBy ?? [];
-  if (pen.holder === from || requests.some((r) => r.name === from)) {
+  if (renamed && (pen.holder === from || requests.some((r) => r.name === from))) {
     const seen = new Set<string>();
     const requestedBy = requests
       .map((r) => (r.name === from ? { ...r, name: to.name } : r))
@@ -211,7 +215,7 @@ export function renameParticipant(
     };
   }
 
-  const mine = prev.presence[from];
+  const mine = renamed ? prev.presence[from] : undefined;
   if (mine) {
     const { [from]: _old, ...rest } = prev.presence;
     const theirs = rest[to.name];
@@ -222,7 +226,7 @@ export function renameParticipant(
     next = { ...next, presence: { ...rest, [to.name]: keep } };
   }
 
-  const old = prev.participants.find((p) => p.name === from);
+  const old = renamed ? prev.participants.find((p) => p.name === from) : undefined;
   const existing = prev.participants.find((p) => p.name === to.name);
   if (old || (existing && existing.color !== to.color)) {
     // In place, keeping the roster's order: the old slot becomes the new
