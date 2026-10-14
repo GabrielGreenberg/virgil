@@ -673,8 +673,9 @@ export interface EditorPaneViewPrefs {
   /** OmniFilterMenu mutators for per-side category enablement. */
   toggleOmniCategory: (cat: OmniCategory) => void;
   setOmniSideToDefault: (side: Side) => void;
-  /** Map from each OmniCategory → which side its native panel lives on. */
-  categorySides: Record<OmniCategory, Side>;
+  /** Map from each OmniCategory → which side its native panel lives on, or
+   *  `null` when this host's chrome does not offer the panel (task 1117). */
+  categorySides: Record<OmniCategory, Side | null>;
 }
 
 /**

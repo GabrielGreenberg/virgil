@@ -24,6 +24,7 @@ import {
   omniCategoriesOnSide,
   appliedPendingSide,
   type OmniCategory,
+  type OmniCategorySides,
 } from "./omni-categories";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { parseAnyKey } from "@/floats/float-key";
@@ -156,7 +157,7 @@ interface OmniViewPanelProps {
    *  gutter: the no-anchor bin (task 654). Partial, like `appliedPendingSide`'s
    *  argument — an absent category falls back to its registry default side, so
    *  an omitted prop means "registry defaults", never "placed nowhere". */
-  categorySides?: Partial<Record<OmniCategory, "left" | "right">>;
+  categorySides?: OmniCategorySides;
   /** When true, omni cards rest in a recessed/dimmed surface and brighten
    *  to full on hover (the inverse of the default bright-rest / dim-hover).
    *  Stamps `data-omni-dim="true"` on the cascade root; the inversion is
@@ -188,7 +189,7 @@ interface OmniViewPanelProps {
 /** A stable empty placement map, so an `OmniViewPanel` mounted without
  *  `categorySides` (every category on its registry default side) does not mint
  *  a fresh object per render and break the derived Set's memo. */
-const EMPTY_CATEGORY_SIDES: Partial<Record<OmniCategory, "left" | "right">> = {};
+const EMPTY_CATEGORY_SIDES: OmniCategorySides = {};
 
 /** Resolve the owning panel (filter category) from an OmniItem. Item ids are
  *  the canonical `float:card:<kind>:<id>` grammar (AF). Parse the kind, then map
@@ -250,7 +251,7 @@ export function OmniFilterMenu({
   enabled: Set<OmniCategory>;
   onToggle: (cat: OmniCategory) => void;
   onSelectDefault: () => void;
-  categorySides: Record<OmniCategory, "left" | "right">;
+  categorySides: OmniCategorySides;
 }) {
   // Each strip's filter menu lists only the panels currently placed on
   // that strip's side. When the user drags a panel between strips, the

@@ -94,19 +94,51 @@ export function migrateOmniCategories(list: unknown): OmniCategory[] {
 }
 
 /**
+ * A category's column on this host: a side, or `null` — "this host does not
+ * OFFER the category" (task 1117). The value a chrome whitelist projects to.
+ *
+ * A PARTIAL map keeps its registry-default meaning for an ABSENT key (`{}` is
+ * "every category on its registry default side"); only an explicit `null`
+ * removes a category. So the main editor, which offers everything, never
+ * writes a `null` and reads exactly as before.
+ */
+export type OmniCategorySides = Partial<Record<OmniCategory, Side | null>>;
+
+/** The ONE reading of an `OmniCategorySides` entry: absent → registry default,
+ *  `null` → not offered here, a side → that side. */
+function placedSide(categorySides: OmniCategorySides, c: OmniCategory): Side | null {
+  const s = categorySides[c];
+  return s === undefined ? defaultPanelSide(c) : s;
+}
+
+/**
  * Derive each omni-eligible panel's current strip side from
  * `useViewPrefs.placements` — the ONE ladder (`@/lib/panel-side`), so the omni
  * column, the strip icon and the margin marker cannot disagree about where a
  * panel is. A category with no placement falls back to the panel's registry
  * `defaultStripSide`.
+ *
+ * ## The host's whitelist projects here, once (task 1117)
+ *
+ * `offered` is a host's `EditorChromeConfig.visiblePanelKinds`. A category
+ * outside it derives to `null`, and every Omni reader of this map — the filter
+ * menu's rows and its "Default view" check (`omniCategoriesOnSide`), the
+ * cascade's enabled sets (`omniCategoriesForSide`), the no-anchor bin's side
+ * scope — drops it from the same answer. Before, the whitelist reached the
+ * strip icons and the search scopes but not Omni, so the Library Reader's
+ * filter menu listed Reports / Todos / Archive / Revisions / Cutter / Errors,
+ * panels it never mounts. `undefined` (the main editor) ⇒ everything offered.
  */
 export function deriveCategorySides(
   placements: readonly SidedPlacement[],
-): Record<OmniCategory, Side> {
+  offered?: readonly PanelKind[],
+): Record<OmniCategory, Side | null> {
   const sides = panelSidesFromPlacements(placements);
-  const result = {} as Record<OmniCategory, Side>;
+  const offeredSet = offered ? new Set<PanelKind>(offered) : null;
+  const result = {} as Record<OmniCategory, Side | null>;
   for (const p of OMNI_PANELS) {
-    result[p.kind] = resolvePanelSide(p.kind, sides);
+    result[p.kind] =
+      offeredSet && !offeredSet.has(p.kind) ? null : resolvePanelSide(p.kind, sides);
   }
   return result;
 }
@@ -142,11 +174,14 @@ export function deriveCategorySides(
  * is the larger producer of applied changes. A decision, not an accident of
  * `||` order; a panel with no omni column falls back to its registry default.
  */
-export function appliedPendingSide(categorySides: Partial<Record<OmniCategory, Side>>): Side {
+export function appliedPendingSide(categorySides: OmniCategorySides): Side {
   for (const kind of APPLIED_SPLICE_KIND_LIST) {
     const panel = getPanelByCardKind(kind);
     if (!panel) continue;
-    return categorySides[panel.kind] ?? defaultPanelSide(panel.kind);
+    // A host that does not offer the panel (`null`, task 1117) still owes the
+    // navigator ONE side — the count is a document fact, not a panel's — so it
+    // takes the registry default rather than vanishing.
+    return placedSide(categorySides, panel.kind) ?? defaultPanelSide(panel.kind);
   }
   // Unreachable while the family is non-empty (pinned by applied-splice's
   // own coverage suite); the registry default keeps the type total.
@@ -175,7 +210,7 @@ export function appliedPendingSide(categorySides: Partial<Record<OmniCategory, S
  * to render in BOTH gutters with identical counts (task 654).
  */
 export function omniCategoriesForSide(
-  categorySides: Record<OmniCategory, Side>,
+  categorySides: OmniCategorySides,
   hidden: readonly OmniCategory[],
   side: Side,
 ): Set<OmniCategory> {
@@ -183,7 +218,7 @@ export function omniCategoriesForSide(
   const out = new Set<OmniCategory>();
   for (const c of OMNI_CATEGORIES) {
     if (hiddenSet.has(c)) continue;
-    if ((categorySides[c] ?? defaultPanelSide(c)) === side) out.add(c);
+    if (placedSide(categorySides, c) === side) out.add(c);
   }
   return out;
 }
@@ -196,10 +231,10 @@ export function omniCategoriesForSide(
  *  back to its registry `defaultStripSide`, so `{}` means "registry defaults"
  *  rather than "placed nowhere". */
 export function omniCategoriesOnSide(
-  categorySides: Partial<Record<OmniCategory, Side>>,
+  categorySides: OmniCategorySides,
   side: Side,
 ): OmniCategory[] {
-  return OMNI_CATEGORIES.filter((c) => (categorySides[c] ?? defaultPanelSide(c)) === side);
+  return OMNI_CATEGORIES.filter((c) => placedSide(categorySides, c) === side);
 }
 
 /**
