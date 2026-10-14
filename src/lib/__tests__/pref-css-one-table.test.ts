@@ -140,14 +140,25 @@ describe("promoter bakes colour transforms into the shipped palette", () => {
   });
   afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
-  const promote = (snapshot: object) => {
+  /** Run the promoter; returns its exit status and the --changed-out list. */
+  const runPromoter = (snapshot: object, dryRun = false) => {
     const snap = path.join(tmp, "snapshot.json");
+    const changedOut = path.join(tmp, "changed.txt");
     writeFileSync(snap, JSON.stringify(snapshot));
     const r = spawnSync(
       process.execPath,
-      [path.join(ROOT, "tools/promote-defaults.mjs"), "--root", tmp, "--snapshot", snap],
+      [
+        path.join(ROOT, "tools/promote-defaults.mjs"),
+        "--root", tmp, "--snapshot", snap, "--changed-out", changedOut,
+        ...(dryRun ? ["--dry-run"] : []),
+      ],
       { encoding: "utf-8" },
     );
+    const changed = readFileSync(changedOut, "utf-8").split("\n").filter(Boolean);
+    return { status: r.status, stderr: r.stderr, changed };
+  };
+  const promote = (snapshot: object) => {
+    const r = runPromoter(snapshot);
     expect(r.status, r.stderr).toBe(0);
     return JSON.parse(readFileSync(path.join(tmp, "src/hooks/usePreferences.defaults.json"), "utf-8"));
   };
@@ -168,5 +179,28 @@ describe("promoter bakes colour transforms into the shipped palette", () => {
     // …and the first-paint seed is rendered from the baked value.
     const css = readFileSync(path.join(tmp, "src/app/globals.css"), "utf-8");
     expect(css).toContain(`--background: ${applyTransforms("#a0b0c0", transforms)};`);
+  });
+
+  // Task 1120: two registry entries fold into usePreferences.defaults.json
+  // (replace-all, then bake-transforms). "Changed" is a property of the FINAL
+  // bytes — a re-run after a promotion with non-identity transforms is a
+  // no-op in BOTH modes: exit 0 and an empty --changed-out (sync-defaults'
+  // --check and its commit leg read exactly those two signals).
+  it("a re-run after a baked promotion reports no drift — dry or commit", () => {
+    const snapshot = {
+      "virgil-editor-prefs": { ...DEFAULT_PREFS, backgroundColor: "#a0b0c0" },
+      "virgil-editor-transforms": { contrast: 0, hue: 30, brightness: 0 },
+    };
+    const first = runPromoter(snapshot);
+    expect(first.status, first.stderr).toBe(0);
+    expect(first.changed).toContain("src/hooks/usePreferences.defaults.json");
+
+    const dry = runPromoter(snapshot, true);
+    expect(dry.status, dry.stderr).toBe(0);
+    expect(dry.changed).toEqual([]);
+
+    const again = runPromoter(snapshot);
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.changed).toEqual([]);
   });
 });
