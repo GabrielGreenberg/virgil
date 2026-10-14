@@ -44,6 +44,7 @@ import {
 } from "@/lib/multi-window/doc-ownership";
 import {
   claimDocWithHandoff,
+  retireDocUnlessOpenElsewhere,
   type HandoffTarget,
 } from "@/lib/multi-window/handoff";
 import { subscribe, type BusEvent } from "@/lib/multi-window/bus";
@@ -238,6 +239,13 @@ export function useFiles() {
   useEffect(() => {
     currentDocIdRef.current = currentDocId;
   }, [currentDocId]);
+
+  // Mirror docs so `deleteFile` can name the paper in a refusal without
+  // re-binding (its identity feeds the top bar's memo).
+  const docsRef = useRef(docs);
+  useEffect(() => {
+    docsRef.current = docs;
+  }, [docs]);
 
   const bumpAccessed = useCallback((id: string) => {
     const now = new Date().toISOString();
@@ -746,9 +754,22 @@ export function useFiles() {
       tone: "danger",
     });
     if (!ok) return;
-    closeTab(EXAMPLE_DOC_ID);
     try {
-      const meta = await resetExample();
+      // The reset purges the example's identity — never under a peer
+      // window's live editor (task 1105). Drain first: a write still
+      // waiting on the doc's lock would read as "held elsewhere". The
+      // tab closes INSIDE the gate, so a refused reset leaves it open.
+      await drainDoc(EXAMPLE_DOC_ID);
+      let meta: FsaDocMeta | null = null;
+      const retired = await retireDocUnlessOpenElsewhere(
+        { id: EXAMPLE_DOC_ID, name: "The example document" },
+        dialog,
+        async () => {
+          closeTab(EXAMPLE_DOC_ID);
+          meta = await resetExample();
+        },
+      );
+      if (!retired || !meta) return;
       // The per-session skill-sync dedup (syncedDocIdsRef) still has this id,
       // so the bundle won't re-sync after a same-session reset — safe,
       // since the bundle is idempotent + version-gated (and re-syncs on reload).
@@ -837,14 +858,22 @@ export function useFiles() {
         // the index — otherwise an autosave could land after the
         // index entry is gone.
         await drainDoc(id);
-        await deleteDocFromIndex(id);
+        // Never under a peer window's live editor (task 1105): the
+        // purge takes its folder handle and its emergency mirror.
+        const meta = docsRef.current.find((d) => d.id === id);
+        const retired = await retireDocUnlessOpenElsewhere(
+          { id, name: meta?.name, folderName: meta?.folderName },
+          dialog,
+          () => deleteDocFromIndex(id),
+        );
+        if (!retired) return;
         setDocs((prev) => prev.filter((d) => d.id !== id));
         retireOpenDoc(id);
       } catch (err) {
         console.error("Failed to remove file from workspace:", err);
       }
     },
-    [retireOpenDoc],
+    [retireOpenDoc, dialog],
   );
 
   const renameFile = useCallback(async (id: string, name: string) => {

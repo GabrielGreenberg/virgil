@@ -103,6 +103,13 @@ vi.mock("@/lib/multi-window/handoff", () => ({
     if (h.claimOk) h.owned.add(t.id);
     return h.claimOk;
   }),
+  // Single-window harness: no peer ever holds a doc, so the retire runs.
+  retireDocUnlessOpenElsewhere: vi.fn(
+    async (_t: unknown, _d: unknown, retire: () => Promise<void>) => {
+      await retire();
+      return true;
+    },
+  ),
 }));
 vi.mock("@/lib/multi-window/bus", () => ({
   subscribe: (fn: (e: unknown) => void) => {
