@@ -39,7 +39,10 @@ import StarterKit from "@tiptap/starter-kit";
 import type { OrphanedFootnote } from "@/lib/types";
 import { Footnote } from "@/lib/tiptap/footnote";
 import { DocStructureObserver } from "@/lib/tiptap/doc-structure";
-import { useFootnoteOrphanBridges } from "../footnote-sync";
+import { armFootnoteOrphanSuppress, useFootnoteOrphanBridges } from "../footnote-sync";
+import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
+import { commitRangeDelete } from "@/text-objects/delete-range";
+import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -108,14 +111,22 @@ function mountEditorWithFootnote(footnoteId: string, docId: string): Editor {
   });
 }
 
-/** Faithful copy of EditorPane.handleDeleteFootnote: dispatch the suppress
- *  event SYNCHRONOUSLY (docId-tagged), then remove the atom (which schedules the
- *  deferred orphan event via the real orphan-detector). */
+/** EditorPane's footnote delete door, wired as EditorPane wires it: the REAL
+ *  `makeUnbridgingFootnoteDelete` with the REAL `armFootnoteOrphanSuppress`
+ *  scoped to the pane's doc (task 1116 — the latch lives in the door, so every
+ *  entry point gets it). */
+function footnoteDeleteDoor(docId: string) {
+  return makeUnbridgingFootnoteDelete({
+    unbridge: () => {},
+    suppressOrphan: (id) => armFootnoteOrphanSuppress(id, docId),
+  });
+}
+
+/** EditorPane.handleDeleteFootnote: the door, with the editor-handle splice as
+ *  its `remove` (the splice schedules the deferred orphan event via the real
+ *  orphan-detector). */
 function handleDeleteFootnote(editor: Editor, id: string, docId: string) {
-  window.dispatchEvent(
-    new CustomEvent("virgil-footnote-suppress-orphan", { detail: { footnoteId: id, docId } }),
-  );
-  deleteFootnoteAtom(editor);
+  footnoteDeleteDoor(docId)(id, () => deleteFootnoteAtom(editor));
 }
 
 /** Remove the (first) footnote atom from the doc — the user-backspace path. */
@@ -169,6 +180,49 @@ describe("footnote suppress-orphan seam — INTEGRATION (#38 W-C nit 2)", () => 
     const orphans = getOrphans();
     expect(orphans).toHaveLength(1);
     expect(orphans[0].footnoteId).toBe("fn-organic");
+
+    editor.destroy();
+  });
+});
+
+describe("range Delete / Archive — the lifecycle registry's footnote delete (task 1116)", () => {
+  /** A lifecycle API whose footnote `delete` is EditorPane's registry entry:
+   *  the door with the sidecar ref delete as its `remove`. */
+  function lifecycleFor(docId: string, refDelete: (id: string) => void): CardLifecycleApi {
+    const door = footnoteDeleteDoor(docId);
+    return {
+      get: (kind) =>
+        kind === "footnote"
+          ? ({ clone: () => null, delete: (id: string) => door(id, refDelete) } as never)
+          : null,
+    };
+  }
+
+  it("a passage range-delete removes the ref and does NOT resurrect it as an orphan", () => {
+    const { getOrphans } = mountBridge("docA");
+    const editor = mountEditorWithFootnote("fn-range", "docA");
+    const refDelete = vi.fn();
+
+    act(() => {
+      // The drag-handle Delete / range Archive commit: the range's tr lands
+      // FIRST (scheduling the detector's deferred orphan event), then the
+      // walker fires each card's lifecycle delete synchronously.
+      const landed = commitRangeDelete(
+        editor,
+        0,
+        editor.state.doc.content.size,
+        lifecycleFor("docA", refDelete),
+      );
+      expect(landed).toBe(true);
+    });
+    expect(refDelete).toHaveBeenCalledWith("fn-range");
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    // Pre-fix: the registry entry never armed the latch, so the ref was gone
+    // from footnotes.json AND an orphan card for the same id reappeared.
+    expect(getOrphans()).toEqual([]);
 
     editor.destroy();
   });

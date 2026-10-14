@@ -34,6 +34,36 @@ export interface OrphanBridgeStore {
 }
 
 /**
+ * The ONE producer of `virgil-footnote-suppress-orphan` — "this footnote's
+ * removal is deliberate; don't resurrect it as an orphan card". Flag-gated here,
+ * beside its consumer, so producer and consumer stay in lockstep: flag-ON the
+ * legacy event web is retired and this is a no-op.
+ *
+ * Callers do not reach for this directly to DELETE a footnote — the footnote
+ * delete door (`makeUnbridgingFootnoteDelete`, wired in `EditorPane`) arms it
+ * for every hard-delete entry point, so no delete site can forget the latch
+ * (task 1116: the range walker's lifecycle delete did, and the passage's
+ * footnotes came back as orphans). The archive splice arms it itself because
+ * archive is not a delete (flag-ON it uses a different latch).
+ *
+ * Must run synchronously no later than the macrotask that removed the atom —
+ * the detector's orphan event is deferred by `setTimeout(…, 0)`, so arming
+ * before the splice or synchronously right after the splice's tr both win.
+ * `docId` scopes the latch to the originating pane (FN-A2-03).
+ */
+export function armFootnoteOrphanSuppress(
+  footnoteId: string,
+  docId: string | null,
+): void {
+  if (isInlineAtomLifecycleOn()) return;
+  window.dispatchEvent(
+    new CustomEvent("virgil-footnote-suppress-orphan", {
+      detail: { footnoteId, docId },
+    }),
+  );
+}
+
+/**
  * Per-pane orphan event web (legacy / flag-OFF path). Mounted in `EditorPane`
  * beside `useOrphanedFootnotes(docId)`.
  *
@@ -54,9 +84,10 @@ export interface OrphanBridgeStore {
  *   (`detail.carried`, task 1073); we upsert an orphan so it can be
  *   recovered/re-dropped from the panel. A deliberate trash-delete pre-arms
  *   `suppressRef` (below) so this event is swallowed instead.
- * - `virgil-footnote-suppress-orphan` — `handleDeleteFootnote` /
- *   `spliceAndArchiveAtom` (EditorPane, same pane) dispatch this synchronously
- *   BEFORE removing the atom, arming the latch so the immediately-following
+ * - `virgil-footnote-suppress-orphan` — produced only by
+ *   {@link armFootnoteOrphanSuppress}: the footnote delete door (every
+ *   hard-delete entry point) and `spliceAndArchiveAtom` (EditorPane, same pane)
+ *   arm it synchronously around removing the atom, arming the latch so the immediately-following
  *   `virgil-footnote-orphaned` doesn't resurrect the footnote as an orphan card.
  *   The latch is per-pane (one `suppressRef` per doc), so two docs that happen
  *   to share a short footnoteId don't cross-suppress.
