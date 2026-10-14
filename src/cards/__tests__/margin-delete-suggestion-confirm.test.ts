@@ -59,7 +59,7 @@ function handlers(card: CardWithLinks, del: MarginItemHandlers["delete"]): Margi
 
 async function runMarginDelete(author: "human" | "ai", confirmAnswer: boolean) {
   const confirm = vi.fn(async () => confirmAnswer);
-  const del = vi.fn(async () => undefined);
+  const del = vi.fn(async () => true);
   await deleteMarginItem({
     kind: "revision",
     cardId: "c1",

@@ -24,7 +24,11 @@ vi.mock("@/links/links", async (importOriginal) => ({
   removeLinkedAnchor: (...a: unknown[]) => removeLinkedAnchor(a[0], a[1]),
 }));
 
-import { deleteMarginItem, type MarginItemHandlers } from "@/cards/delete-margin-item";
+import {
+  deleteMarginItem,
+  type BuildMarginItemHandlersDeps,
+  type MarginItemHandlers,
+} from "@/cards/delete-margin-item";
 import type { CardWithLinks } from "@/links/links";
 import type { Editor } from "@tiptap/react";
 
@@ -106,24 +110,20 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
     expect(removeLinkedAnchor).toHaveBeenCalledWith(editor, "anc-b");
   });
 
-  it("still strips for a plain void delete (a handler that cannot decline)", async () => {
-    removeLinkedAnchor.mockClear();
-    const del = vi.fn(() => {});
-
-    await deleteMarginItem({
-      kind: "revision",
-      cardId: "c1",
-      paragraphId: "P1",
-      // The marker's own row cohort (task 669): a single-anchor card.
-      anchorPids: ["P1"],
-      editor,
-      handlers: handlers(del),
-      confirm: async () => true,
-    });
-
-    // `undefined` is not a refusal — only an explicit `false` is. Every
-    // non-lifecycle handler keeps its pre-238 behaviour.
-    expect(removeLinkedAnchor).toHaveBeenCalledWith(editor, "anc-b");
+  it("a delete that cannot answer is a TYPE error, not a silent commit (task 1119)", () => {
+    // This leg used to RUN a void delete and pin that it still stripped. That
+    // was the hole: `committed === false` honours a refusal only while the
+    // runtime value happens to be the promise, so a void-returning delete wired
+    // into the table would read a declined delete as a commit and tear a
+    // surviving card's mark out of the document. The table's type now demands
+    // the answer (`DeclinableCardDelete`) — the guard is the compiler.
+    const voidDelete = (_id: string): void => {};
+    // @ts-expect-error — a void delete may not stand in a margin handler.
+    const handlerDelete: MarginItemHandlers["delete"] = voidDelete;
+    // @ts-expect-error — nor in a per-kind dep the builder reads.
+    const dep: BuildMarginItemHandlersDeps["todos"]["deleteItem"] = voidDelete;
+    const declinable: MarginItemHandlers["delete"] = async () => false;
+    expect([handlerDelete, dep, declinable]).toHaveLength(3);
   });
 
   it("cancelling the content confirm deletes nothing and strips nothing", async () => {
