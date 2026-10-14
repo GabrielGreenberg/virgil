@@ -287,9 +287,19 @@ function main() {
         throw new Error(`Unknown promotion strategy: ${entry.strategy}`);
     }
     finalByPath[entry.defaultsFile] = next;
-    if (writeJson(target, next)) {
-      if (!changed.includes(entry.defaultsFile)) changed.push(entry.defaultsFile);
-      console.log(verb, entry.defaultsFile);
+  }
+
+  // Write each defaults file ONCE, from its FINAL value (task 1120). Several
+  // entries may fold into one file (`replace-all` then `bake-transforms` on
+  // the editor defaults), so "changed" must be measured on the result against
+  // the untouched on-disk bytes — never per step, where an intermediate (raw
+  // colours) differs from the baked file it is about to be replaced by. That
+  // per-step write made --check report drift forever and listed a file in
+  // --changed-out that ended byte-identical, aborting sync-defaults' commit.
+  for (const [rel, next] of Object.entries(finalByPath)) {
+    if (writeJson(path.join(REPO_ROOT, rel), next)) {
+      changed.push(rel);
+      console.log(verb, rel);
     }
   }
 
