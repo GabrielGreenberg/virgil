@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from queue_slot import ALREADY_QUEUED, REFUSED_RESULTS, WRITTEN, write_request  # noqa: E402
 from _tools import (
+    _atomic_write_text,
     TERMINAL_BIB_STATES,
     admit_catalog_row,
     settle_catalog_bib,
@@ -202,7 +203,7 @@ def _virgil_sidecars(paper_dir: Path) -> None:
     for name, content in files.items():
         p = virgil_dir / name
         if not p.exists():
-            p.write_text(json.dumps(content, indent=2) + "\n")
+            _atomic_write_text(p, json.dumps(content, indent=2) + "\n")
 
 
 # `_write_references_bib` used to `write_text` a single emitted entry over the

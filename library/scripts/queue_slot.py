@@ -376,7 +376,7 @@ def write_request(
     }
     if extra:
         entry.update(extra)
-    path.write_text(json.dumps(entry, indent=2) + "\n")
+    _atomic_write_text(path, json.dumps(entry, indent=2) + "\n")
     if normalize_kind(kind) == REVIEW_KIND:
         add_pending_review(library, citekey, entry["requestedAt"])
     return WRITTEN, path
@@ -551,7 +551,7 @@ def retire(library: Path, kind: str, citekey: str) -> int:
         qdir = path.parent
         retire_done(qdir, path.stem)
         done = path.with_suffix(".done")
-        done.write_text(path.read_text())
+        _atomic_write_text(done, path.read_text())
         unlink_tolerant(path, what="retired queue entry")
         out = {"result": "retired", "file": done.name}
     if normalize_kind(kind) == REVIEW_KIND:

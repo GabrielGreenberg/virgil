@@ -37,6 +37,8 @@ import sys
 from pathlib import Path
 from _refs_section import body_end as refs_body_end
 
+from _tools import _atomic_write_text
+
 
 LEADING_DIGIT_NO_SEP_RE = re.compile(
     r"^(\d{1,3})([A-Z\"'“‘])",
@@ -169,7 +171,7 @@ def main() -> int:
         print(f"No leaked-fn splits/separators needed in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(
         f"Split {splits} glued-fn paragraphs; inserted {seps} missing "

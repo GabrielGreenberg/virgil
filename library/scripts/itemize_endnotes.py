@@ -29,6 +29,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 NOTES_SECTION_RE = re.compile(
     r"^\\section\{(Notes|Endnotes|Chapter Notes)\}", re.M | re.I,
@@ -167,7 +169,7 @@ def main(argv: list[str]) -> int:
         f"across {stats['chapters']} chapters in {path}{suffix}."
     )
     if not dry_run and stats["placed"] > 0:
-        path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(path, new_text)
     return 0
 
 

@@ -28,6 +28,8 @@ import unicodedata
 from pathlib import Path
 from _refs_section import body_end, references_span
 
+from _tools import _atomic_write_text
+
 
 def normalize_surname(s: str) -> str:
     s = unicodedata.normalize("NFKD", s)
@@ -865,7 +867,7 @@ def main() -> int:
     if ocr_fixes:
         print(f"OCR year fixes: {ocr_fixes}")
     if count or ocr_fixes:
-        tex_path.write_text(new_tex, encoding="utf-8")
+        _atomic_write_text(tex_path, new_tex)
     if count:
         print(
             f"Rewrote {count} {style}-style mentions to "

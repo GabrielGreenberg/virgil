@@ -31,6 +31,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 NOTES_HEAD_RE = re.compile(
     r"^\\section\{(Notes|Endnotes)\b", re.M | re.I,
@@ -238,7 +240,7 @@ def main() -> int:
         print(f"No page-hint notes reattached in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(result["new_text"], encoding="utf-8")
+        _atomic_write_text(p, result["new_text"])
     suffix = " (dry run)" if args.dry_run else ""
     print(
         f"Reattached {result['placed']} page-hint notes "

@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tools import paper_folder  # noqa: E402
+from _tools import _atomic_write_text, paper_folder  # noqa: E402
 
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
@@ -176,7 +176,7 @@ def recover(citekey: str, apply_fix: bool, dry_run: bool) -> dict:
         for b_start, b_end, new_body in reversed(edits):
             new_text = new_text[:b_start] + new_body + new_text[b_end:]
         if not dry_run:
-            tex_path.write_text(new_text, encoding="utf-8")
+            _atomic_write_text(tex_path, new_text)
 
     # Report.
     for open_pos, b_start, b_end, body, nearest in candidates:

@@ -34,6 +34,8 @@ from pathlib import Path
 from _bib_parse import parse_bib_text
 from _refs_section import references_span
 
+from _tools import _atomic_write_text
+
 
 YEAR_RE = re.compile(r"\b(1[6-9]\d{2}|20\d{2})([a-c]?)\b")
 ITEM_RE = re.compile(
@@ -298,12 +300,12 @@ def populate(
         # run writes nothing a real run reads (task 1037).
         if new_entries and not dry_run:
             sidecar = paper_dir / ".numeric-citekeys.txt"
-            sidecar.write_text(
+            _atomic_write_text(
+                sidecar,
                 "\n".join(
                     f"{m.group(1)}\tvancouver{m.group(1)}"
                     for m in numeric_items
                 ) + "\n",
-                encoding="utf-8",
             )
     elif is_chicago_parens:
         for m in parens_items:
@@ -362,7 +364,7 @@ def populate(
     )
 
     if not dry_run:
-        bib_path.write_text(bib_existing + addition, encoding="utf-8")
+        _atomic_write_text(bib_path, bib_existing + addition)
 
     return {
         "added": len(new_entries),

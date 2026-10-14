@@ -49,6 +49,8 @@ import uuid
 from pathlib import Path
 from _refs_section import body_end
 
+from _tools import _atomic_write_text
+
 
 # Top-level numbered example: `(N) body...`
 EX_LINE_RE = re.compile(r"^\((\d+)\)\s+([^\n]+)", re.M)
@@ -261,7 +263,7 @@ def main() -> int:
             print(f"  ... and {len(proposals) - 5} more")
     if args.apply and proposals:
         new_text = _apply(text, examples)
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
         print(f"Applied {len(examples)} example conversions to {p}.")
     return 0
 

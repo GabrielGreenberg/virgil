@@ -34,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import citekey_matches  # noqa: E402
+from _tools import _atomic_write_text, citekey_matches  # noqa: E402
 
 
 YEAR_RE = re.compile(r"\b(1[6-9]\d{2}|20\d{2})([a-c]?)\b")
@@ -201,9 +201,9 @@ def disambiguate(paper_dir: Path, dry_run: bool = False) -> dict:
         new_tex, _ = rewrite_cite_keys_many(tex_text, renames)
 
     if not dry_run:
-        bib_path.write_text(new_bib, encoding="utf-8")
+        _atomic_write_text(bib_path, new_bib)
         if tex_text:
-            tex_path.write_text(new_tex, encoding="utf-8")
+            _atomic_write_text(tex_path, new_tex)
 
     return {
         "renamed": len(renames),

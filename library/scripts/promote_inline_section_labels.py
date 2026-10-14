@@ -33,6 +33,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 # Numbered label: `1.` / `2.1.` / `3.1.2.` followed by an all-caps
 # (or title-case) title, terminated by a period and the next sentence.
@@ -135,7 +137,7 @@ def main() -> int:
         print(f"No inline section labels promoted in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Promoted {count} inline section labels (style={args.style}){suffix}.")
     return 0

@@ -20,6 +20,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 PGMARK_RE = re.compile(r"^\\pgmark\{([^}]+)\}$")
 
@@ -750,7 +752,7 @@ def main() -> int:
         if total == 0:
             print(f"No changes needed for {path}.")
         else:
-            path.write_text(cleaned, encoding="utf-8")
+            _atomic_write_text(path, cleaned)
             print(f"Preprocessed {path}: {summary}.")
 
     return 0

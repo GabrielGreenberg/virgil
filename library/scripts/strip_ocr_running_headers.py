@@ -32,6 +32,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 SECTION_RE = re.compile(r"\\section\{([^}]+)\}", re.M)
 MASTER_BIB_TITLE_RE = re.compile(r"title\s*=\s*\{([^}]+)\}", re.I)
@@ -132,7 +134,7 @@ def main() -> int:
         print(f"No OCR running-header instances stripped from {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Stripped {total} OCR running-header instances{suffix}:")
     for phrase, n in sorted(counts.items(), key=lambda x: -x[1])[:10]:

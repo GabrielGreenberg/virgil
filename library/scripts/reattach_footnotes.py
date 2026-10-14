@@ -34,6 +34,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 NON_BODY_SECTION_PATTERNS = [
     r"^contents$", r"^preface$", r"^introduction$",
@@ -211,7 +213,7 @@ def main() -> int:
     tex = "\n".join(lines)
     spans = find_chapter_spans(tex)
     tex, removed = remove_leaked_paragraphs(tex, placed_per_chapter, spans)
-    tex_path.write_text(tex, encoding="utf-8")
+    _atomic_write_text(tex_path, tex)
 
     total_placed = sum(len(v) for v in placed_per_chapter.values())
     total_unplaced = sum(len(v) for v in unplaced_per_chapter.values())

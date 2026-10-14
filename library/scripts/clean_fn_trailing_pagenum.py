@@ -18,6 +18,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 def clean(tex: str) -> tuple[str, int]:
     pattern = re.compile(
@@ -42,7 +44,7 @@ def main() -> int:
     tex = path.read_text(encoding="utf-8")
     new, count = clean(tex)
     if count:
-        path.write_text(new, encoding="utf-8")
+        _atomic_write_text(path, new)
     print(f"Stripped {count} trailing page numbers from \\footnote{{}} bodies.")
     return 0
 

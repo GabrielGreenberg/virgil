@@ -23,7 +23,6 @@ the auto-step in index_paper.py.
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 import traceback
@@ -36,6 +35,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    _atomic_write_text,
     paper_folder,
     append_inbox_item,
     citekey_matches,
@@ -732,11 +732,9 @@ def fuse_pgmarks_into(
             diagnostics=diagnostics,
         )
 
-    # Step 9: atomic write
+    # Step 9: atomic write — through the ONE door (task 1122).
     if not dry_run:
-        tmp = main_tex_path.with_suffix(".tex.tmp")
-        tmp.write_text(new_tex)
-        os.replace(tmp, main_tex_path)
+        _atomic_write_text(main_tex_path, new_tex)
 
     return FuseResult(
         success=True, pgmarks_inserted=pgmarks_inserted,

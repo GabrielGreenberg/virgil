@@ -31,6 +31,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 NOTES_SECTION_RE = re.compile(
     r"^\\section\*?\{Notes\b[^}]*\}\s*$", re.M | re.I,
@@ -268,7 +270,7 @@ def main() -> int:
         f"{stats['chapters']} chapter(s), {stats['unplaced']} unplaced{suffix}."
     )
     if not args.dry_run and stats["placed"] > 0:
-        path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(path, new_text)
     return 0
 
 

@@ -33,6 +33,8 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+from _tools import _atomic_write_text
+
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[([a-z]+)\])?\{([^}]*)\}")
 
@@ -231,8 +233,7 @@ def repair(
     ]
     new_content = _apply_removals(content, pgmarks, removals) if removals else content
     if not dry_run and removals:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(new_content)
+        _atomic_write_text(path, new_content)
     return {
         "path": path,
         "total_pgmarks": len(pgmarks),

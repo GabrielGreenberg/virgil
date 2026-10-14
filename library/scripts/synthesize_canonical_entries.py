@@ -113,10 +113,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import work_identity as wi  # noqa: E402
 from _tools import (  # noqa: E402
+    _atomic_write_text,
     paper_folder,
     citekey_matches,
     iter_master_bib_states,
+    read_catalog,
     read_master_bib,
+    StateFileUnreadable,
 )
 
 CROSSREF_URL = "https://api.crossref.org/works"
@@ -132,12 +135,12 @@ def _resolve_library_root() -> Path:
 
 
 def _read_catalog_warnings(library: Path, citekey: str) -> list[str]:
-    cat = library / ".virgil" / "catalog.json"
-    if not cat.exists():
-        return []
+    # Through the catalog's ONE read door: a missing catalog is empty, and an
+    # unreadable one is preserved aside — this reporter then just finds no
+    # warnings (it never writes the catalog back).
     try:
-        data = json.loads(cat.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        data = read_catalog(library)
+    except StateFileUnreadable:
         return []
     for entry in data.get("entries", []):
         # NFC-insensitive: the writer normalizes the citekey, so a raw `!=`
@@ -710,7 +713,7 @@ def synthesize(
             "\n\n".join(e[1] for e in new_entries)
         ) + "\n"
         existing_bib = bib_path.read_text(encoding="utf-8")
-        bib_path.write_text(existing_bib + addition, encoding="utf-8")
+        _atomic_write_text(bib_path, existing_bib + addition)
 
     return {"synthesized": len(new_entries),
             "refusals": refusals,

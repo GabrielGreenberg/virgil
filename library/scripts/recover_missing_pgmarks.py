@@ -38,6 +38,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 def get_page_text(pdf_path: Path, pdf_page: int) -> str:
     res = subprocess.run(
@@ -255,7 +257,7 @@ def main() -> int:
         placed.append(int(re.search(r"\\pgmark\{(\d+)\}", text).group(1)))
 
     if insertions:
-        tex_path.write_text(new_tex, encoding="utf-8")
+        _atomic_write_text(tex_path, new_tex)
     print(f"Restored {len(insertions)} pgmarks (printed pages {sorted(placed)}).")
     if missing:
         print(f"Couldn't auto-place: {sorted(missing)}")

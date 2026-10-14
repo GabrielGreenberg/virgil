@@ -26,6 +26,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 FOOTNOTE_OPEN_RE = re.compile(r"\\footnote\{")
 
@@ -99,7 +101,7 @@ def main() -> int:
         print(f"No footnote-body over-escapes in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Unescaped {count} footnote bodies{suffix}.")
     return 0

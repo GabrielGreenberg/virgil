@@ -54,7 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import CANONICAL_BIB_STATES, citekey_matches, paper_folder, unlink_tolerant  # noqa: E402
+from _tools import _atomic_write_text, CANONICAL_BIB_STATES, citekey_matches, paper_folder, unlink_tolerant  # noqa: E402
 
 # The auth state this policy moves an entry into once it rewrites the bib
 # fields from the on-disk file. Validated against the canonical set
@@ -457,7 +457,7 @@ def _apply(
         r"\\title\{[^}]+\}", f"\\\\title{{{title}}}", tex, count=1,
     )
     if n > 0:
-        tex_path.write_text(new_tex, encoding="utf-8")
+        _atomic_write_text(tex_path, new_tex)
 
     result: dict = {"applied": True, "fields": fields}
     if notes_override:

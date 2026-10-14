@@ -29,7 +29,7 @@ from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import unlink_tolerant  # noqa: E402
+from _tools import _atomic_write_text, unlink_tolerant  # noqa: E402
 from queue_slot import (  # noqa: E402
     DRAIN_NATIVE_KINDS,
     PENDING_STATUS,
@@ -170,7 +170,7 @@ def _bump_attempts(entry_path: Path, error: str) -> int:
     data["status"] = "failed" if attempts < 3 else "poisoned"
     data["lastError"] = error[:1000]
     data["lastAttemptAt"] = _now()
-    entry_path.write_text(json.dumps(data, indent=2) + "\n")
+    _atomic_write_text(entry_path, json.dumps(data, indent=2) + "\n")
     return attempts
 
 
@@ -187,9 +187,9 @@ def _mark_done(entry_path: Path) -> None:
     done = entry_path.with_suffix(".done")
     retire_done(entry_path.parent, entry_path.stem)
     try:
-        done.write_text(entry_path.read_text())
+        _atomic_write_text(done, entry_path.read_text())
     except Exception:
-        done.write_text("")
+        _atomic_write_text(done, "")
     unlink_tolerant(entry_path, what="retired queue entry")
 
 

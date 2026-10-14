@@ -31,6 +31,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
 
@@ -138,7 +140,7 @@ def main() -> int:
               f"(threshold {int(pdf_pages * args.ratio)}).")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     sample = ", ".join(str(v) for v in stripped[:5])
     extra = f", ... ({len(stripped) - 5} more)" if len(stripped) > 5 else ""

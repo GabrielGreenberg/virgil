@@ -24,6 +24,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 def clean_index_line(line: str) -> str:
     s = line
@@ -87,7 +89,7 @@ def main() -> int:
             out.append(line)
 
     if count:
-        tex_path.write_text("\n".join(out), encoding="utf-8")
+        _atomic_write_text(tex_path, "\n".join(out))
     print(f"Cleaned {count} index lines.")
     return 0
 

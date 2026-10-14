@@ -22,21 +22,10 @@ on a citekey rename and is never read as LaTeX by anything else.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from _refs_section import references_span
-from _tools import unlink_tolerant
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+from _tools import _atomic_write_text, unlink_tolerant
 
 
 def preimage_path(paper_dir: Path) -> Path:

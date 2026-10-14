@@ -69,7 +69,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import merge_report_dir, rmtree_tolerant  # noqa: E402
+from _tools import _atomic_write_text, merge_report_dir, rmtree_tolerant  # noqa: E402
 
 
 # Snapshot retention — keep the last N pre-merge snapshots.
@@ -235,8 +235,8 @@ def _take_snapshot(library: Path) -> Path:
             for _, dst_name in files
         ],
     }
-    (snap_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n"
+    _atomic_write_text(
+        snap_dir / "manifest.json", json.dumps(manifest, indent=2) + "\n"
     )
     return snap_dir
 
@@ -359,7 +359,7 @@ def _write_run_state(path: Path, result: dict) -> Path:
     """Persist the run state: PATH (JSON) + PATH.env (sourceable exports)."""
     path = path.expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, indent=2) + "\n")
+    _atomic_write_text(path, json.dumps(result, indent=2) + "\n")
     run = result["run"]
     env = {
         "VIRGIL_LIBRARY_ROOT": result["library_root"],
@@ -375,7 +375,8 @@ def _write_run_state(path: Path, result: dict) -> Path:
         "MERGE_RUN_STATE": str(path),
     }
     env_path = path.with_name(path.name + ".env")
-    env_path.write_text(
+    _atomic_write_text(
+        env_path,
         "".join(f"export {k}={_shell_quote(v)}\n" for k, v in env.items())
     )
     return path

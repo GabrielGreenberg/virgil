@@ -32,6 +32,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 SOFT_HYPHEN = "­"
 ZERO_WIDTH = ("​", "‌", "‍")
@@ -232,7 +234,7 @@ def main(argv: list[str]) -> int:
     suffix = " (dry run)" if dry_run else ""
     print(f"Cleaned invisibles in {path}: " + ", ".join(summary_parts) + f"{suffix}.")
     if not dry_run:
-        path.write_text(fixed, encoding="utf-8")
+        _atomic_write_text(path, fixed)
     return 0
 
 

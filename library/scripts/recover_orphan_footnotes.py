@@ -28,6 +28,8 @@ import sys
 from pathlib import Path
 from _refs_section import body_end as refs_body_end
 
+from _tools import _atomic_write_text
+
 
 SECTION_RE = re.compile(r"^\\section\{[^}]+\}", re.M)
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
@@ -228,7 +230,7 @@ def recover(paper_dir: Path, dry_run: bool = False) -> dict:
             new_tex = new_tex[:pos] + new_tex[pos + length:]
 
     if not dry_run:
-        tex_path.write_text(new_tex, encoding="utf-8")
+        _atomic_write_text(tex_path, new_tex)
 
     return {"placed": placed, "unplaced": unplaced}
 

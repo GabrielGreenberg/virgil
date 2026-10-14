@@ -496,20 +496,41 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Write `text` to `path` via temp-file + fsync + rename.
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """THE write door for every library content and state file (task 1122).
 
-    Crash-safe and atomic from a reader's perspective: the file at
-    `path` is either the old contents or the new contents, never a
-    half-written truncation.
+    Temp-file + fsync + rename: crash-safe and atomic from a reader's
+    perspective — the file at `path` is either the old contents or the new
+    contents, never a half-written truncation (a kill or a full disk mid-write
+    used to truncate a deep-indexed paper's whole references.bib / main.tex,
+    and a sync client then shipped the stump). If anything fails before the
+    rename, `path` is untouched and the temp file is removed.
+
+    Every `main.tex`, `references.bib`, catalog / inbox / queue JSON and
+    sidecar a library script writes goes through here (or its text sibling
+    below); `tests/test_atomic_write_door.py` is the census that keeps it so.
+    Atomicity is orthogonal to locking: per-paper files stay lock-free.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        unlink_tolerant(tmp, what="atomic-write temp file")
+        raise
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` through the ONE door, always as UTF-8.
+
+    The encoding is explicit (not the locale default), so every caller —
+    and every copy that used to exist — writes the same bytes.
+    """
+    _atomic_write_bytes(path, text.encode("utf-8"))
 
 
 # ── JSON state files: the ONE read door ──────────────────────────────
@@ -551,9 +572,7 @@ def _preserve_unreadable(path: Path, raw: bytes) -> Path | None:
     dest = path.with_name(f"{path.name}.unreadable-{hashlib.sha256(raw).hexdigest()[:12]}")
     try:
         if not dest.exists():
-            tmp = dest.with_name(dest.name + ".tmp")
-            tmp.write_bytes(raw)
-            os.replace(tmp, dest)
+            _atomic_write_bytes(dest, raw)
         return dest
     except OSError:
         return None
@@ -1378,7 +1397,7 @@ def write_paper_bib_entry(
     paper_dir.mkdir(parents=True, exist_ok=True)
     refs = paper_dir / "references.bib"
     existing = refs.read_text() if refs.exists() else ""
-    refs.write_text(upsert_entry_text(existing, citekey, entry_type, fields))
+    _atomic_write_text(refs, upsert_entry_text(existing, citekey, entry_type, fields))
 
 
 # ── bib-import flag (per-paper references.bib → master.bib) ───────────
@@ -2105,7 +2124,7 @@ def update_master_bib_entry(
     citekey = unicodedata.normalize("NFC", citekey)
     with lock_master_bib(library):
         if not master_path.exists():
-            master_path.write_text("")
+            _atomic_write_text(master_path, "")
         text = master_path.read_text()
         original_text = text
         # ONE locator, shared with every reader (task 620): the LAST

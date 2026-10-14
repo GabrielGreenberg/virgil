@@ -37,6 +37,8 @@ import sys
 import unicodedata
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 # Common English-prose letter frequency check: a printable letter is
 # in the ASCII range and matches `[A-Za-z]`. We measure the *fraction*
@@ -151,7 +153,7 @@ def main() -> int:
         print(f"No Caesar-shift-encoded paragraphs detected in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(
         f"Decoded {stats['paragraphs_decoded']} paragraph(s){suffix}. "

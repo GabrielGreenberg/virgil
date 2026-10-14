@@ -1,0 +1,209 @@
+"""Task 1122 — every library content/state write walks through ONE atomic door.
+
+`_tools._atomic_write_bytes` (and its UTF-8 text sibling `_atomic_write_text`)
+is temp-file + fsync + `os.replace`: the target is either its old bytes or its
+new bytes, never a truncation. Before this task only the shared-state files
+(catalog / inbox / aliases / master.bib) used it. The per-paper doors —
+`write_paper_bib_entry` (THE references.bib writer), `index_paper`'s main.tex,
+~45 deep-index fixers, the queue entries — wrote IN PLACE, so a kill or a full
+disk mid-write truncated a deep-indexed paper's bibliography or text, and a
+synced library shipped the stump. The door itself was also forked three ways
+(`_refs_preimage`'s copy, `fuse_alternate`'s no-fsync hand roll, and the
+canonical one writing in the LOCALE encoding while the copy wrote UTF-8).
+
+Legs:
+  * the door leaves the prior file byte-identical when the rename fails, and
+    removes its temp file;
+  * `write_paper_bib_entry` inherits that (the task's named contract);
+  * the door writes UTF-8 whatever the locale says;
+  * CENSUS: no `.write_text(` / `.write_bytes(` / `open(…, "w"|"a"|"x"|"+")`
+    / `os.replace(` in a library script outside the door, except the rows in
+    `ALLOW` (reports, logs, scratch, self-test fixtures, locks) — and an
+    `ALLOW` row nothing matches is itself a failure, so the list cannot rot;
+  * no second definition of the door anywhere in the tree.
+
+Run: python3 library/scripts/tests/test_atomic_write_door.py
+"""
+from __future__ import annotations
+
+import ast
+import os
+import sys
+from pathlib import Path
+
+SCRIPTS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import _tools  # noqa: E402
+
+DOOR_NAMES = {"_atomic_write_bytes", "_atomic_write_text"}
+
+# (script path relative to library/scripts, source of the write's target) →
+# why a raw write is fine there. Every row names a file that is a REPORT, a LOG,
+# SCRATCH, a self-test FIXTURE or a LOCK — never a paper's content or a library
+# state file a later step reads back.
+ALLOW: dict[tuple[str, str], str] = {
+    ("_tools.py", "tmp"): "the door's own temp file",
+    ("_tools.py", "lock_path"): "flock lock file (never holds content)",
+    ("drain_queue.py", "lock"): "lock file: a timestamp, recreated per drain",
+    ("bulk_convert_numbered_examples.py", "Path(args.out)"): "report",
+    ("extract_book_toc.py", "Path(args.out)"): "report",
+    ("extract_pdf_footnotes.py", "out_path"): "derived report the caller re-runs",
+    ("repair_etal_citekeys.py", "args.report"): "report",
+    ("dedup.py", "Path(args.out)"): "plan report",
+    ("dedup.py", "Path(args.report)"): "report",
+    ("dedup.py", "manifest"): "append-only move log",
+    ("index_paper.py", "log_dir / f'{slug}-index.log'"): "log",
+    ("index_paper.py", "log_dir / f'{slug}-index.summary.md'"): "log",
+    ("index_paper.py", "log_dir / f'{slug}-pgmark-continuity.md'"): "log",
+    ("fuse_alternate.py", "log_path"): "log",
+    ("triage_batch.py", "cache_path"): "re-derivable extraction cache",
+    ("triage_batch.py", "Path(args.output).expanduser()"): "report",
+    ("triage_llm_rescue.py", "prompts_dir / f'row-{idx:04d}.txt'"): "scratch",
+    ("triage_llm_rescue.py", "out_dir / 'manifest.json'"): "scratch",
+    ("triage_llm_rescue.py", "path"): "scratch JSONL (`_write_jsonl`)",
+    ("rename_citekeys.py", "tmp / 'papers' / 'woods2002shape' / 'woods2002shape.pdf'"): "self-test fixture",
+    ("rename_citekeys.py", "tmp / 'papers' / 'woods2002shape' / 'main.tex'"): "self-test fixture",
+    ("rename_citekeys.py", "tmp / 'master.bib'"): "self-test fixture",
+    ("rename_citekeys.py", "tmp / '.virgil' / 'catalog.json'"): "self-test fixture",
+    ("rename_citekeys.py", "tmp / '.virgil' / 'aliases.json'"): "self-test fixture",
+    ("dedup-run-2026-07-03/finalize_plan.py", "SCR / 'final_plan.json'"): "archived one-off run's report",
+}
+
+
+def _script_files() -> list[Path]:
+    out = []
+    for p in sorted(SCRIPTS.rglob("*.py")):
+        rel = p.relative_to(SCRIPTS)
+        if rel.parts[0] in ("tests", "__pycache__") or "__pycache__" in rel.parts:
+            continue
+        if rel.name.startswith("test_") or rel.name == "_standalone.py":
+            continue
+        out.append(p)
+    return out
+
+
+def _is_write_mode(call: ast.Call) -> bool:
+    mode = None
+    if len(call.args) >= 2:
+        mode = call.args[1]
+    for kw in call.keywords:
+        if kw.arg == "mode":
+            mode = kw.value
+    return (isinstance(mode, ast.Constant) and isinstance(mode.value, str)
+            and any(c in mode.value for c in "wax+"))
+
+
+def _raw_writes(path: Path) -> list[tuple[int, str, str]]:
+    """(line, kind, target source) for every raw write in `path`."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        if isinstance(f, ast.Attribute) and f.attr in ("write_text", "write_bytes"):
+            found.append((node.lineno, f.attr, ast.unparse(f.value)))
+        elif isinstance(f, ast.Name) and f.id == "open" and node.args and _is_write_mode(node):
+            found.append((node.lineno, "open", ast.unparse(node.args[0])))
+        elif (isinstance(f, ast.Attribute) and f.attr == "replace"
+              and isinstance(f.value, ast.Name) and f.value.id == "os"):
+            found.append((node.lineno, "os.replace", ast.unparse(node.args[0]) if node.args else ""))
+    return found
+
+
+def test_census_every_content_write_goes_through_the_door():
+    violations, seen = [], set()
+    for path in _script_files():
+        rel = path.relative_to(SCRIPTS).as_posix()
+        for line, kind, target in _raw_writes(path):
+            key = (rel, target)
+            if rel == "_tools.py" and kind == "os.replace" and target == "tmp":
+                seen.add(key)
+                continue
+            if key in ALLOW and kind != "os.replace":
+                seen.add(key)
+                continue
+            violations.append(f"{rel}:{line}: raw {kind}({target})")
+    assert not violations, (
+        "A library script writes a file outside the atomic door. Route it through "
+        "`_tools._atomic_write_text` / `_atomic_write_bytes` (crash-safe, UTF-8); only "
+        "a report / log / scratch / fixture / lock may be added to ALLOW, with its reason:\n  "
+        + "\n  ".join(violations)
+    )
+    stale = sorted(set(ALLOW) - seen)
+    assert not stale, f"ALLOW rows that match no write any more — delete them: {stale}"
+
+
+def test_the_door_is_defined_once():
+    homes = []
+    for path in _script_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in DOOR_NAMES:
+                homes.append(f"{path.relative_to(SCRIPTS).as_posix()}:{node.name}")
+    assert sorted(homes) == ["_tools.py:_atomic_write_bytes", "_tools.py:_atomic_write_text"], homes
+
+
+def test_failed_rename_leaves_prior_bytes_and_no_temp(tmp_path):
+    target = tmp_path / "main.tex"
+    target.write_bytes(b"\\pgmark{1} original body\n")
+    real = os.replace
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    os.replace = boom
+    try:
+        try:
+            _tools._atomic_write_text(target, "TRUNCATED")
+            raise AssertionError("the door swallowed a failed rename")
+        except OSError:
+            pass
+    finally:
+        os.replace = real
+    assert target.read_bytes() == b"\\pgmark{1} original body\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["main.tex"]
+
+
+def test_write_paper_bib_entry_failure_leaves_references_bib_byte_identical(tmp_path):
+    paper = tmp_path / "papers" / "smith2001x"
+    paper.mkdir(parents=True)
+    refs = paper / "references.bib"
+    prior = (b"@article{jones1999a,\n  title = {Kept},\n  year = {1999},\n}\n\n"
+             b"@book{lee2005b,\n  title = {Also kept},\n  year = {2005},\n}\n")
+    refs.write_bytes(prior)
+    real = os.replace
+
+    def boom(*a, **k):
+        raise OSError("killed mid-write")
+
+    os.replace = boom
+    try:
+        try:
+            _tools.write_paper_bib_entry(paper, "smith2001x", "article",
+                                         {"title": "New", "year": "2001"})
+            raise AssertionError("write_paper_bib_entry swallowed a failed write")
+        except OSError:
+            pass
+    finally:
+        os.replace = real
+    assert refs.read_bytes() == prior
+    assert sorted(p.name for p in paper.iterdir()) == ["references.bib"]
+    # …and the success path still lands, with the other entries intact.
+    _tools.write_paper_bib_entry(paper, "smith2001x", "article", {"title": "New", "year": "2001"})
+    text = refs.read_text(encoding="utf-8")
+    assert "jones1999a" in text and "lee2005b" in text and "smith2001x" in text
+
+
+def test_door_writes_utf8_whatever_the_locale(tmp_path):
+    target = tmp_path / "references.bib"
+    _tools._atomic_write_text(target, "Gödel — Ἀριστοτέλης\n")
+    assert target.read_bytes() == "Gödel — Ἀριστοτέλης\n".encode("utf-8")
+
+
+if __name__ == "__main__":
+    from _standalone import main
+
+    sys.exit(main(globals()))
