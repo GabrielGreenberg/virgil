@@ -280,7 +280,7 @@ def test_a_failing_release_cannot_poison_a_landed_commit():
     try:
         target = d / "virgil" / "notes.json"
 
-        def boom(doc):
+        def boom(doc, *_a, **_k):
             raise OSError(28, "No space left on device")
 
         C.release_pen = boom

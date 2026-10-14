@@ -23,6 +23,39 @@ def _leg(name: str) -> None:
     print(f"{name} OK")
 
 
+
+def _crash_holding_pen(doc: Path, *, ttl: int = C.PEN_TTL_SECONDS, stamp: bool = True) -> None:
+    """A REAL crash: a separate skill process acquires the pen and is killed
+    before it releases (task 1111 — an in-process "crash" is a live hold, by
+    construction). `stamp=False` kills it between the record write and the
+    collab.json stamp."""
+    import subprocess
+    code = f"""
+import os, sys
+sys.path.insert(0, {str(Path(C.__file__).parent)!r})
+import _common as C
+if not {stamp!r}:
+    real = C.atomic_write
+    def die_on_stamp(writes, **k):
+        if any(p.name == "collab.json" for p, _ in writes):
+            os._exit(9)
+        return real(writes, **k)
+    C.atomic_write = die_on_stamp
+C.acquire_pen(__import__("pathlib").Path({str(doc)!r}), ttl={ttl!r})
+os._exit(9)
+"""
+    r = subprocess.run([sys.executable, "-c", code])
+    assert r.returncode == 9, r
+
+
+def _collab(doc: Path) -> dict:
+    return json.loads((doc / "virgil" / "collab.json").read_text())
+
+
+def _ctx(doc: Path) -> dict:
+    return json.loads(C.pen_context_path(doc).read_text())
+
+
 d = Path(tempfile.mkdtemp())
 (d / "virgil").mkdir()
 collab0 = {
@@ -137,7 +170,7 @@ d3 = Path(tempfile.mkdtemp())
 user_pen = {"holder": "Gabriel", "since": "t0", "lastHeartbeat": "t0", "lastActivity": "t0", "requestedBy": []}
 collab3 = dict(collab0, enabled=False, pen=user_pen)
 (d3 / "virgil" / "collab.json").write_text(json.dumps(collab3, indent=2) + "\n")
-C.acquire_pen(d3)  # ... and the process dies here: no release
+_crash_holding_pen(d3)  # a skill run acquires ... and dies: no release
 crashed = json.loads((d3 / "virgil" / "collab.json").read_text())
 assert crashed["enabled"] is True and crashed["pen"]["holder"] == "Claude"
 C.acquire_pen(d3)
@@ -162,6 +195,97 @@ after = json.loads((d3 / "virgil" / "collab.json").read_text())
 assert after["pen"] == C.FREE_PEN, "a Claude-held prior pen normalises to free"
 _leg("claude pen never restored")
 shutil.rmtree(d3)
+
+# --- task 1111: the pen is a LEASE ------------------------------------------
+
+def _fresh(enabled=False, pen=None) -> Path:
+    p = Path(tempfile.mkdtemp())
+    (p / "virgil").mkdir()
+    c = dict(collab0, enabled=enabled, pen=pen or dict(C.FREE_PEN))
+    (p / "virgil" / "collab.json").write_text(json.dumps(c, indent=2) + "\n")
+    return p
+
+# (a) a kill BETWEEN the record write and the collab stamp: collab never
+# changed, so the next acquire snapshots the user's real state.
+d4 = _fresh(enabled=False)
+_crash_holding_pen(d4, stamp=False)
+assert _collab(d4)["enabled"] is False, "the stamp never landed"
+assert _ctx(d4)["holder"] == "claude", "…but the record did (written FIRST)"
+C.release_pen(d4, C.acquire_pen(d4, wait=0))
+assert _collab(d4)["enabled"] is False and _collab(d4)["pen"] == C.FREE_PEN
+_leg("crash between writes is inert")
+
+# (a') the PRE-1111 crash shape — collab stamped, record lost: collab
+# enabled:true + Claude pen with nothing stamping it. Release must restore
+# enabled:false (task 886 normalised only the pen).
+(d4 / "virgil" / "collab.json").write_text(json.dumps(dict(
+    collab0, enabled=True,
+    pen={"holder": "Claude", "since": "t9", "lastHeartbeat": "t9", "lastActivity": "t9", "requestedBy": []},
+)))
+C.pen_context_path(d4).unlink()
+C.release_pen(d4, C.acquire_pen(d4, wait=0))
+assert _collab(d4)["enabled"] is False, "unstamped Claude-held collab never restores enabled:true"
+assert _collab(d4)["pen"] == C.FREE_PEN
+_leg("unstamped claude hold restores collab off")
+shutil.rmtree(d4)
+
+# (b) a stale crashed hold, then the USER acts (takes the pen, collab on):
+# a later acquire must snapshot the user's state, not the pre-crash one.
+d5 = _fresh(enabled=False)
+_crash_holding_pen(d5, ttl=-1)
+user_on = {"holder": "Gabriel", "since": "t5", "lastHeartbeat": "t5", "lastActivity": "t5", "requestedBy": []}
+(d5 / "virgil" / "collab.json").write_text(json.dumps(dict(collab0, enabled=True, pen=user_on)))
+ctx5 = C.acquire_pen(d5, wait=0)
+assert ctx5["prior_collab_enabled"] is True and ctx5["prior_pen"] == user_on, ctx5
+C.release_pen(d5, ctx5)
+assert _collab(d5)["enabled"] is True and _collab(d5)["pen"] == user_on, "the user's toggle survives"
+_leg("stale hold + user action: user's state survives")
+
+# (b') the user takes over MID-hold: release leaves collab as the user set it.
+ctx5 = C.acquire_pen(d5, wait=0)
+(d5 / "virgil" / "collab.json").write_text(json.dumps(dict(collab0, enabled=False, pen=user_on)))
+C.release_pen(d5, ctx5)
+assert _collab(d5)["enabled"] is False and _collab(d5)["pen"] == user_on
+assert pen_released(d5)
+_leg("take-over mid-hold survives release")
+shutil.rmtree(d5)
+
+# (c) exclusivity: a live hold owned by another run refuses a second acquire.
+d6 = _fresh(enabled=False)
+first = C.acquire_pen(d6, wait=0)
+live = dict(_ctx(d6), pid=os.getppid() or 1)  # a live process that isn't us
+C.pen_context_path(d6).write_text(json.dumps(live))
+try:
+    C.acquire_pen(d6, wait=0.3)
+    assert False, "a second concurrent acquire must refuse"
+except C.PenBusy:
+    pass
+assert _ctx(d6)["lease_id"] == first["lease_id"], "the refusal wrote nothing"
+# …and a run whose lease is no longer on disk releases NOTHING.
+stranger = dict(first, lease_id="not-ours")
+C.release_pen(d6, stranger)
+assert _ctx(d6)["holder"] == "claude" and _collab(d6)["enabled"] is True, "a foreign release is a no-op"
+C.release_pen(d6, first)
+assert pen_released(d6) and _collab(d6)["enabled"] is False
+_leg("second concurrent acquire refuses")
+
+# (c') commit_under_pen turns a refusal into a clean die — nothing written.
+C.pen_context_path(d6).write_text(json.dumps(live))
+g = d6 / "virgil" / "g.json"
+C.PEN_WAIT_SECONDS, _w = 0.0, C.PEN_WAIT_SECONDS
+import io, contextlib
+try:
+    with contextlib.redirect_stderr(io.StringIO()) as err:
+        C.commit_under_pen(d6, [(g, C.json_dumps({"g": 1}))])
+    assert False, "commit_under_pen must die on a busy pen"
+except SystemExit:
+    pass
+finally:
+    C.PEN_WAIT_SECONDS = _w
+assert not g.exists(), "nothing written under someone else's pen"
+assert "held by another skill run" in err.getvalue(), err.getvalue()
+_leg("commit_under_pen refuses a busy pen")
+shutil.rmtree(d6)
 
 shutil.rmtree(d)
 shutil.rmtree(d2)
