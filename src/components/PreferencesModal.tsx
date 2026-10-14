@@ -4,6 +4,9 @@ import { useCallback, useState, useRef } from "react";
 import type { EditorPreferences, PreferencePreset, SettingsSnapshot } from "@/hooks/usePreferences";
 import { isReservedPresetName } from "@/hooks/usePreferences";
 import type { GlobalTransforms } from "@/lib/color-transforms";
+import { DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
+import { DEFAULT_PREFS } from "@/hooks/preferences-defaults";
+import { deepEqual } from "@/lib/sidecar-merge";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
 import PreferenceTree from "./PreferenceTree";
 import { Field, Input, Select } from "./field-primitives";
@@ -33,13 +36,34 @@ interface PreferencesModalProps {
   onRestorePreset: (preset: PreferencePreset) => void;
 }
 
+/** What an undo offer is checked against: the LIVE settings and presets. */
+interface UndoLiveState {
+  prefs: EditorPreferences;
+  transforms: GlobalTransforms;
+  presets: PreferencePreset[];
+}
+
 /** The one pending undo the dialog offers: what just happened, and how to take
- *  it back. ONE slot, not a stack — the next undoable action replaces it, and
- *  any other change through the dialog clears it (an undo that silently also
- *  reverted the edits made since would be a second destructive action). */
+ *  it back. ONE slot, not a stack — the next undoable action replaces it.
+ *
+ *  An offer is actionable only while the live state is still EXACTLY what its
+ *  action produced (`stillCurrent`, derived in render — task 1121). It used to
+ *  be retired by the dialog's own edit wrappers, a proxy for "nothing changed
+ *  since" that two live writers bypassed (FontsDialog, open beside this
+ *  dialog, and a peer window's storage sync): an Undo pressed after either
+ *  silently reverted their edits too — a second destructive action. Asking the
+ *  state, not the route, retires the offer for every writer, present or
+ *  future. */
 interface PendingUndo {
   message: string;
   undo: () => void;
+  stillCurrent: (live: UndoLiveState) => boolean;
+}
+
+/** The live user preset of that name, if any (built-ins are derived, never
+ *  the target of a preset undo). */
+function userPreset(presets: PreferencePreset[], name: string): PreferencePreset | undefined {
+  return presets.find((p) => p.name === name && !p.builtIn);
 }
 
 // ─── Global Transform Slider ──────────────────────────────────────────────────
@@ -100,6 +124,7 @@ function PresetBar({
   onDelete,
   onUndoable,
   onRestore,
+  settings,
 }: {
   presets: PreferencePreset[];
   onLoad: (name: string) => void;
@@ -107,6 +132,8 @@ function PresetBar({
   onDelete: (name: string) => void;
   onUndoable: (pending: PendingUndo) => void;
   onRestore: (preset: PreferencePreset) => void;
+  /** The live settings pair — what a save writes into the preset. */
+  settings: SettingsSnapshot;
 }) {
   const [saving, setSaving] = useState(false);
   const [newName, setNewName] = useState("");
@@ -129,9 +156,15 @@ function PresetBar({
         const replaced = presets.find((p) => p.name === name && !p.builtIn);
         onSave(name);
         if (replaced) {
+          const saved = settings;
           onUndoable({
             message: `Preset \u201c${name}\u201d replaced`,
             undo: () => onRestore(replaced),
+            // Current while the preset still holds what THIS save wrote.
+            stillCurrent: ({ presets: live }) => {
+              const p = userPreset(live, name);
+              return !!p && deepEqual(p.prefs, saved.prefs) && deepEqual(p.transforms, saved.transforms);
+            },
           });
         }
         setNewName("");
@@ -141,7 +174,7 @@ function PresetBar({
       setSaving(true);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [saving, newName, onSave, presets, onUndoable, onRestore]);
+  }, [saving, newName, onSave, presets, onUndoable, onRestore, settings]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSave();
@@ -219,6 +252,9 @@ function PresetBar({
               onUndoable({
                 message: `Preset \u201c${deleted.name}\u201d deleted`,
                 undo: () => onRestore(deleted),
+                // Current while nothing (a re-save, a peer window) has put a
+                // preset of that name back.
+                stillCurrent: ({ presets: live }) => !userPreset(live, deleted.name),
               });
             }
           }}
@@ -304,22 +340,11 @@ export default function PreferencesModal({
   onRestoreSettings,
   onRestorePreset,
 }: PreferencesModalProps) {
-  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
-
-  // Any other change routed through the dialog retires the pending undo: an
-  // Undo pressed after further edits would silently revert those too.
-  const update = useCallback<PreferencesModalProps["onUpdate"]>((key, value) => {
-    setPendingUndo(null);
-    onUpdate(key, value);
-  }, [onUpdate]);
-  const updateTransform = useCallback<PreferencesModalProps["onUpdateTransform"]>((key, value) => {
-    setPendingUndo(null);
-    onUpdateTransform(key, value);
-  }, [onUpdateTransform]);
-  const loadPreset = useCallback((name: string) => {
-    setPendingUndo(null);
-    onLoadPreset(name);
-  }, [onLoadPreset]);
+  const [offeredUndo, setPendingUndo] = useState<PendingUndo | null>(null);
+  // DERIVED (task 1121): the offer shows only while the live state is still
+  // what its action produced — any writer's change retires it by construction.
+  const pendingUndo = offeredUndo?.stillCurrent({ prefs, transforms, presets }) ? offeredUndo : null;
+  const settings: SettingsSnapshot = { prefs, transforms };
 
   // "Reset to defaults" wipes every preference and transform in one click. It
   // stays one click — a confirm in front of an UNDOABLE action is friction with
@@ -331,6 +356,9 @@ export default function PreferencesModal({
     setPendingUndo({
       message: "Preferences reset",
       undo: () => onRestoreSettings(snapshot),
+      // `onReset` makes the settings exactly the shipped defaults.
+      stillCurrent: (live) =>
+        deepEqual(live.prefs, DEFAULT_PREFS) && deepEqual(live.transforms, DEFAULT_TRANSFORMS),
     });
   }, [prefs, transforms, onReset, onRestoreSettings]);
 
@@ -369,11 +397,12 @@ export default function PreferencesModal({
       <div className="px-5 py-3 border-b border-[var(--border)] space-y-3 bg-[var(--surface)]">
         <PresetBar
           presets={presets}
-          onLoad={loadPreset}
+          onLoad={onLoadPreset}
           onSave={onSavePreset}
           onDelete={onDeletePreset}
           onUndoable={setPendingUndo}
           onRestore={onRestorePreset}
+          settings={settings}
         />
 
         <div className="flex items-start gap-4">
@@ -383,7 +412,7 @@ export default function PreferencesModal({
             min={-100}
             max={100}
             step={5}
-            onChange={(v) => updateTransform("contrast", v)}
+            onChange={(v) => onUpdateTransform("contrast", v)}
           />
           <TransformSlider
             label="Hue"
@@ -391,7 +420,7 @@ export default function PreferencesModal({
             min={-180}
             max={180}
             step={5}
-            onChange={(v) => updateTransform("hue", v)}
+            onChange={(v) => onUpdateTransform("hue", v)}
           />
           <TransformSlider
             label="Brightness"
@@ -399,14 +428,14 @@ export default function PreferencesModal({
             min={-50}
             max={50}
             step={2}
-            onChange={(v) => updateTransform("brightness", v)}
+            onChange={(v) => onUpdateTransform("brightness", v)}
           />
         </div>
       </div>
 
       {/* Body: smart preferences on top, then the full tree */}
       <div className="flex-1 overflow-y-auto px-5 py-3 space-y-4">
-        <SmartPreferences prefs={prefs} onUpdate={update} />
+        <SmartPreferences prefs={prefs} onUpdate={onUpdate} />
         <div className="flex items-center gap-2 pt-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-muted">
             All preferences
@@ -416,7 +445,7 @@ export default function PreferencesModal({
         <PreferenceTree
           tree={PREFERENCES_TREE}
           prefs={prefs}
-          onUpdate={update}
+          onUpdate={onUpdate}
         />
       </div>
 
