@@ -453,7 +453,8 @@ describe("parity · editor/scripts/_common.py", () => {
   it("commit_under_pen guards its release", () => {
     const body = py.slice(py.indexOf("def commit_under_pen"));
     const finallyBlock = body.slice(body.indexOf("finally:"), body.indexOf("finally:") + 400);
-    expect(finallyBlock).toMatch(/try:\s*\n\s*release_pen\(doc\)/);
+    // Task 1111: the release names the lease it frees (`release_pen(doc, held)`).
+    expect(finallyBlock).toMatch(/try:\s*\n\s*release_pen\(doc, held\)/);
     expect(finallyBlock).toContain("except Exception");
   });
 });

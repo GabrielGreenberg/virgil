@@ -1735,10 +1735,110 @@ def _restorable_pen(pen) -> dict:
     return pen
 
 
-def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
-    """Take the pen. Writes .virgil/pen-context.json (always) and flips
+# ---------------------------------------------------------------------------
+# The pen is a LEASE (task 1111).
+#
+# A hold has an OWNER and an AGE, and every decision about it asks both:
+#
+#   * The record is written FIRST, carrying a fresh `lease_id`, the owning
+#     process (`pid` + `host`), `expires_at` and the prior state; only then is
+#     collab.json STAMPED — `pen.holder = "Claude"`, `pen.since =` the record's
+#     `acquired_at`. A kill between the two leaves a record whose stamp collab
+#     does not carry, which the next acquire reads as "never took effect".
+#   * Acquire refuses a LIVE hold owned by another run (unexpired, and — when
+#     it names a process on this host — that process is alive): it waits up to
+#     PEN_WAIT_SECONDS for the release, then raises PenBusy. Two skill runs on
+#     one paper (the dream + the worker) no longer share one hold.
+#   * A DEAD hold (expired, or its process is gone) is inherited ONLY while
+#     collab.json still carries its stamp. Once the user has acted (taken the
+#     pen, toggled collab — anything that moved the stamp), the state on disk
+#     IS the user's, and it is what this acquire snapshots.
+#   * Release restores collab.json only while it still carries OUR stamp, and
+#     only if the record on disk is still OUR lease. A run whose lease was
+#     inherited by a later run releases nothing — the later run restores.
+#   * A Claude-held pen with no record stamping it (the record was lost, or a
+#     pre-1111 acquire died between its two writes) is never a restore target:
+#     prior normalises to collab OFF + a free pen.
+# ---------------------------------------------------------------------------
+
+# How long acquire waits for another run's live hold to release before it
+# refuses. A commit holds the pen for milliseconds; a hold that outlives this
+# is either a long write or a crash on another machine, and the TTL bounds it.
+PEN_WAIT_SECONDS = 10.0
+_PEN_POLL_SECONDS = 0.1
+
+
+class PenBusy(RuntimeError):
+    """Another skill run holds this paper's pen (task 1111)."""
+
+
+def _parse_iso_s(v) -> float | None:
+    from datetime import datetime
+
+    if not isinstance(v, str):
+        return None
+    try:
+        return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _this_host() -> str:
+    import socket
+
+    try:
+        return socket.gethostname()
+    except OSError:
+        return ""
+
+
+def _pid_alive(pid) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return True  # cannot say → assume alive; the TTL still bounds it
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # EPERM: it exists, it just isn't ours
+    return True
+
+
+def _hold_is_live(rec, now: float) -> bool:
+    """Does this pen-context record name a hold some run still OWNS?"""
+    if not isinstance(rec, dict) or rec.get("holder") != PEN_CONTEXT_HOLDER:
+        return False
+    expires = _parse_iso_s(rec.get("expires_at"))
+    if expires is None or now >= expires:
+        return False
+    if rec.get("host") and rec.get("host") == _this_host():
+        return _pid_alive(rec.get("pid"))
+    return True
+
+
+def _carries_stamp(collab, rec) -> bool:
+    """Is collab.json still in the state this record's acquire put it in?"""
+    if not isinstance(collab, dict) or not isinstance(rec, dict):
+        return False
+    pen = collab.get("pen")
+    return (
+        isinstance(pen, dict)
+        and pen.get("holder") == COLLAB_PEN_HOLDER
+        and rec.get("acquired_at") is not None
+        and pen.get("since") == rec.get("acquired_at")
+    )
+
+
+def acquire_pen(
+    doc: Path, *, ttl: int = PEN_TTL_SECONDS, wait: float | None = None
+) -> dict:
+    """Take the pen. Writes .virgil/pen-context.json (always) and then stamps
     collab.json's pen to Claude-held + collab enabled (only if collab.json
-    exists). Returns the pen-context record.
+    exists). Returns the pen-context record — pass it to `release_pen`.
+
+    A lease, not a flag (task 1111 — see the block comment above): a live
+    hold owned by another run is waited on, then refused with PenBusy; a dead
+    one is inherited only while collab.json still carries its stamp.
 
     **An unreleased prior hold is INHERITED, not re-snapshotted (task 886).**
     A hold that never released (SIGKILL, sleep/power loss, a harness timeout
@@ -1747,6 +1847,25 @@ def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
     every later successful release restore the crashed hold: collab stuck on,
     the paper read-only until the stale take-over. The crashed record's own
     `prior_*` is the true pre-Claude state, so it carries forward."""
+    import time
+    import uuid
+
+    ctx_file = pen_context_path(doc)
+    if wait is None:
+        wait = PEN_WAIT_SECONDS
+    deadline = time.monotonic() + max(0.0, wait)
+    while True:
+        stale = read_json(ctx_file, default=None)
+        if not _hold_is_live(stale, time.time()):
+            break
+        if time.monotonic() >= deadline:
+            raise PenBusy(
+                f"the pen is held by another skill run "
+                f"(acquired {stale.get('acquired_at')}, pid {stale.get('pid')}, "
+                f"expires {stale.get('expires_at')})"
+            )
+        time.sleep(_PEN_POLL_SECONDS)
+
     now_s = _iso_at(0)
     expires_s = _iso_at(ttl)
 
@@ -1754,23 +1873,35 @@ def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
     collab = read_json(collab_file, default=None)
     collab_existed = isinstance(collab, dict)
 
-    # Only a crashed hold that TOUCHED collab.json poisoned it; one that found
-    # no collab.json left any collab.json there now genuine.
-    stale = read_json(pen_context_path(doc), default=None)
+    # Only a dead hold that TOUCHED collab.json — and whose stamp collab.json
+    # still carries — poisoned it. Anything else on disk is the user's.
     if (
         collab_existed
         and isinstance(stale, dict)
         and stale.get("holder") == PEN_CONTEXT_HOLDER
         and stale.get("collab_existed")
+        and _carries_stamp(collab, stale)
     ):
         prior_enabled = bool(stale.get("prior_collab_enabled", False))
         prior_pen = _restorable_pen(stale.get("prior_pen"))
+    elif collab_existed:
+        observed = collab.get("pen")
+        if isinstance(observed, dict) and observed.get("holder") == COLLAB_PEN_HOLDER:
+            # Claude-held with no record stamping it: our own residue. The
+            # `enabled: true` beside it is ours too, never the user's.
+            prior_enabled = False
+        else:
+            prior_enabled = bool(collab.get("enabled", False))
+        prior_pen = _restorable_pen(observed)
     else:
-        prior_enabled = bool(collab.get("enabled", False)) if collab_existed else False
-        prior_pen = _restorable_pen(collab.get("pen") if collab_existed else None)
+        prior_enabled = False
+        prior_pen = dict(FREE_PEN)
 
     pen_ctx = {
         "holder": PEN_CONTEXT_HOLDER,
+        "lease_id": uuid.uuid4().hex,
+        "pid": os.getpid(),
+        "host": _this_host(),
         "acquired_at": now_s,
         "expires_at": expires_s,
         "prior_collab_enabled": prior_enabled,
@@ -1778,7 +1909,16 @@ def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
         "prior_pen": prior_pen,
     }
 
-    writes: list[tuple[Path, str | None]] = []
+    # The record FIRST: a kill before the stamp below leaves a record collab
+    # does not carry — inert to the next acquire.
+    atomic_write([(ctx_file, json_dumps(pen_ctx))], fault_injectable=False)
+    landed = read_json(ctx_file, default=None)
+    if not isinstance(landed, dict) or landed.get("lease_id") != pen_ctx["lease_id"]:
+        # Another run wrote its record between our read and our write. Its
+        # hold is live by construction; take the normal wait path from here.
+        remaining = max(0.0, deadline - time.monotonic())
+        return acquire_pen(doc, ttl=ttl, wait=remaining)
+
     if collab_existed:
         new_collab = dict(collab)
         new_collab["enabled"] = True
@@ -1789,18 +1929,30 @@ def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
             "lastActivity": now_s,
             "requestedBy": prior_pen.get("requestedBy", []) if isinstance(prior_pen, dict) else [],
         }
-        writes.append((collab_file, json_dumps(new_collab)))
-    writes.append((pen_context_path(doc), json_dumps(pen_ctx)))
-
-    atomic_write(writes, fault_injectable=False)
+        try:
+            atomic_write([(collab_file, json_dumps(new_collab))], fault_injectable=False)
+        except BaseException:
+            # The stamp never landed; free the record rather than leave a live
+            # hold over a paper we never locked.
+            release_pen(doc, pen_ctx)
+            raise
     return pen_ctx
 
 
-def release_pen(doc: Path) -> None:
+def release_pen(
+    doc: Path,
+    ctx: dict | None = None,
+) -> None:
     """Release the pen. Restores collab.json's prior enabled/pen state (if we
-    touched it) and REWRITES .virgil/pen-context.json as a released record.
-    Idempotent: a no-op if no pen-context.json is present, and a no-op on a
-    record that already says released.
+    touched it and it still carries our stamp) and REWRITES
+    .virgil/pen-context.json as a released record. Idempotent: a no-op if no
+    pen-context.json is present, and a no-op on a record that already says
+    released.
+
+    `ctx` is the record `acquire_pen` returned. Given one, release touches
+    nothing unless the record on disk is still THAT lease (task 1111) — a run
+    whose expired hold another run inherited must not free that run's pen.
+    Without one (a bare CLI release) the on-disk record is released as found.
 
     **Release by REWRITE, not by delete (task 496).** The obvious release is
     to remove the lock file, and that is what shipped — a bare `os.remove`
@@ -1819,23 +1971,28 @@ def release_pen(doc: Path) -> None:
     nothing extra — a delete is already one filesystem event, an ~80-byte
     rewrite of a `.virgil/` file is one too (write-traffic doctrine, 363/415).
     """
-    ctx = read_json(pen_context_path(doc), default=None)
-    if not isinstance(ctx, dict):
+    ctx_on_disk = read_json(pen_context_path(doc), default=None)
+    if not isinstance(ctx_on_disk, dict):
         return
-    if ctx.get("holder") is None:
+    if ctx_on_disk.get("holder") is None:
         # Already released: the restore below has run, and re-writing the
         # released record would be a filesystem event that says nothing.
+        return
+    if isinstance(ctx, dict) and ctx_on_disk.get("lease_id") != ctx.get("lease_id"):
+        # Not our lease any more: a later run inherited it and owns the restore.
         return
 
     writes: list[tuple[Path, str | None]] = []
 
     collab_file = collab_path(doc)
-    if ctx.get("collab_existed") and collab_file.exists():
+    if ctx_on_disk.get("collab_existed") and collab_file.exists():
         collab = read_json(collab_file, default=None)
-        if isinstance(collab, dict):
+        # Restore only what we stamped: once the user has acted on collab.json
+        # mid-hold, the state there is theirs and the snapshot is stale.
+        if isinstance(collab, dict) and _carries_stamp(collab, ctx_on_disk):
             restored = dict(collab)
-            restored["enabled"] = bool(ctx.get("prior_collab_enabled", False))
-            prior_pen = ctx.get("prior_pen")
+            restored["enabled"] = bool(ctx_on_disk.get("prior_collab_enabled", False))
+            prior_pen = ctx_on_disk.get("prior_pen")
             restored["pen"] = prior_pen if isinstance(prior_pen, dict) else dict(FREE_PEN)
             writes.append((collab_file, json_dumps(restored)))
 
@@ -1863,7 +2020,10 @@ def commit_under_pen(doc: Path, writes: list[tuple[Path, "str | None | Deferred"
     A failure of the WRITE itself still propagates: the guard is around the
     release only, so `atomic_write`'s exception leaves the finally normally.
     """
-    acquire_pen(doc)
+    try:
+        held = acquire_pen(doc)
+    except PenBusy as e:
+        die(f"{e}; nothing was written — re-run once it releases")
     try:
         # Deferred contents (tasks 941, 1108) resolve HERE, after the pen is
         # taken, so every JSON sidecar AND the .tex / .bib are written as a
@@ -1878,7 +2038,7 @@ def commit_under_pen(doc: Path, writes: list[tuple[Path, "str | None | Deferred"
         atomic_write(resolved)
     finally:
         try:
-            release_pen(doc)
+            release_pen(doc, held)
         except Exception as e:  # noqa: BLE001 — never poison a landed commit
             print(
                 f"warning: pen release failed for {doc}: "
