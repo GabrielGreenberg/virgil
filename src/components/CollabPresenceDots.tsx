@@ -1,6 +1,7 @@
 "use client";
 
 import { iconHint } from "@/components/Hint";
+import { chromeOnly } from "@/lib/view-only-chrome";
 
 /**
  * Small stacked color dots used to show partner presence (selection /
@@ -25,7 +26,7 @@ export default function CollabPresenceDots({ presences, withTooltip = true }: Pr
       : `${presences.map((p) => p.name).join(", ")} are here`;
   return (
     <span
-      className="inline-flex items-center gap-px shrink-0"
+      className={chromeOnly("inline-flex items-center gap-px shrink-0")}
       role="img"
       {...(withTooltip ? iconHint({ label: name }) : { "aria-label": name })}
     >
