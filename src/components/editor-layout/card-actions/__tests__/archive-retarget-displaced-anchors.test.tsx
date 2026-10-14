@@ -158,7 +158,7 @@ function makeCardStore() {
         const i = arr.findIndex((c) => c.id === id);
         if (i >= 0) arr[i] = addTextObjectLink(arr[i], "archive", pid, targetKind, snapshot);
       },
-      delete: () => {},
+      delete: async () => true,
     } as MarginItemHandlers;
   }
   const pidsOf = (kind: MarginItemKind, id: string) => {

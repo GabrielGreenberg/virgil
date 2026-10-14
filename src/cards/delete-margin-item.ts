@@ -46,6 +46,7 @@ import {
 } from "@/cards/has-content";
 import type { MarkerType } from "@/cards/types";
 import type { TextObjectKind } from "@/text-objects/types";
+import type { DeclinableCardDelete } from "@/panels/card-lifecycle-registry";
 
 /** Margin marker kinds that map to deletable cards — `MarkerType` minus the
  *  non-card `"error"` marker (errors aren't cards; their marker dismisses the
@@ -90,11 +91,13 @@ export interface MarginItemHandlers<TCard extends CardWithLinks = CardWithLinks>
     targetKind?: TextObjectKind,
     paragraphSnapshot?: string | null,
   ) => void;
-  /** Hard-delete the card from its hook's state. Returns `false` when the
+  /** Hard-delete the card from its hook's state. Resolves `false` when the
    *  delete DECLINED — the lifecycle executor's SETTLE prompt can be cancelled
    *  for a card that owns a live in-document splice (task 238), and a cancel
-   *  means the card survives. A handler that can't decline may return `void`. */
-  delete: (cardId: string) => void | boolean | Promise<void | boolean>;
+   *  means the card survives. The caller strips the inline mark only on a
+   *  commit, so the answer is REQUIRED: a `void` delete here is a type error
+   *  (task 1119), never a refusal silently read as success. */
+  delete: DeclinableCardDelete;
 }
 
 export interface DeleteMarginItemArgs {
@@ -219,37 +222,37 @@ interface NotesDep {
   notes: ReadonlyArray<CardWithLinks>;
   addNoteTextObjectId: AddParagraphLink;
   removeNoteTextObjectId: (id: string, paragraphId: string) => void;
-  deleteNote: (id: string) => void;
+  deleteNote: DeclinableCardDelete;
 }
 interface ArchiveDep {
   snippets: ReadonlyArray<CardWithLinks>;
   addParagraphId: AddParagraphLink;
   removeParagraphId: (id: string, paragraphId: string) => void;
-  deleteSnippet: (id: string) => void;
+  deleteSnippet: DeclinableCardDelete;
 }
 interface CutterDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "comment" | "suggestion" }>;
   addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
-  deleteCard: (id: string) => void;
+  deleteCard: DeclinableCardDelete;
 }
 interface TodosDep {
   items: ReadonlyArray<CardWithLinks>;
   addParagraphId: AddParagraphLink;
   removeParagraphId: (id: string, paragraphId: string) => void;
-  deleteItem: (id: string) => void;
+  deleteItem: DeclinableCardDelete;
 }
 interface RevisionsDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "comment" | "suggestion" }>;
   addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
-  deleteCard: (id: string) => void;
+  deleteCard: DeclinableCardDelete;
 }
 interface ReportsDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "report" | "report-request" }>;
   addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
-  deleteCard: (id: string) => void;
+  deleteCard: DeclinableCardDelete;
 }
 
 export interface BuildMarginItemHandlersDeps {

@@ -454,6 +454,7 @@ import {
   useCardLifecycleApi,
   assertLifecycleCoverage,
   type CardLifecycleRegistry,
+  type DeclinableCardDelete,
 } from "@/panels/card-lifecycle-registry";
 import { iconHint } from "@/components/Hint";
 
@@ -4276,7 +4277,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       },
       citation: {
         clone: citationsHook.cloneCitation,
-        delete: handleDeleteCitation,
+        // SIDECAR-ONLY (task 1119), mirroring footnote's entry above. Both
+        // walkers that reach this op run AFTER the atom is already gone — the
+        // range walker's card half fires once the range's own tr has landed
+        // (`commitRangeDelete`), and the duplicate rollback deletes a clone
+        // whose slice never landed — so the editor splice `handleDeleteCitation`
+        // leads with would be a second, no-op editor transaction inside a half
+        // documented as sidecar writes. The panel trash keeps
+        // `handleDeleteCitation` (it has an atom to remove).
+        delete: citationsHook.deleteCitation,
       },
       note: {
         clone: notesHook.cloneNote,
@@ -4333,7 +4342,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         bindAnchor: reportsHook.bindAnchor,
       },
     }),
-    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, todosHook, reportsHook, handleDeleteCitation, deleteFootnoteUnbridged],
+    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, todosHook, reportsHook, deleteFootnoteUnbridged],
   );
   // The pristine manager rides in so a clone of a still-blank card is itself
   // blank-and-discardable (task 960) — decided at the API door, not per hook.
@@ -8198,7 +8207,12 @@ type WithMorphDoor<T> = Omit<T, "convertCard"> & {
   convertCard: CardMorphHandler;
 };
 
-type WiredTodosHook = ReturnType<typeof useTodos> & {
+type WiredTodosHook = Omit<ReturnType<typeof useTodos>, "deleteItem"> & {
+  /** The unbridging composition, which can DECLINE (task 238) — so its
+   *  answer reaches the margin delete table that acts on it (task 1119). The
+   *  raw hook's `void` delete used to be the declared type here, widening the
+   *  promise away. */
+  deleteItem: DeclinableCardDelete;
   /** Delete every DONE todo (restricted to `ids` when supplied), each through
    *  the same unbridging executor as the single delete. */
   clearDone: (ids?: readonly string[]) => Promise<void>;

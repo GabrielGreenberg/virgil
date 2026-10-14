@@ -361,3 +361,26 @@ describe("the REAL lifecycle registry EditorPane builds conforms to CARD_REGISTR
     ).toContain("assertLifecycleCoverage(cardLifecycleRegistry)");
   });
 });
+
+describe("the lifecycle registry's delete is SIDECAR-ONLY (task 1119)", () => {
+  // Both walkers that call `cardLifecycle.get(kind).delete` reach it with the
+  // card's atom ALREADY gone: `commitRangeDelete`'s card half runs after the
+  // range's own transaction landed, and the duplicate rollback deletes a clone
+  // whose slice never landed. So an entry that splices the document — through
+  // the editor handle, or a `handleDelete*` door that leads with one — runs a
+  // second editor transaction inside a half documented as sidecar writes.
+  // Citation's entry used to be `handleDeleteCitation`; footnote's has always
+  // gone through `deleteFootnoteUnbridged`. Pin the class, not the instance.
+  it("no entry reaches the editor handle or a splicing handleDelete* door", () => {
+    const src = strip(readFileSync(EDITOR_PANE, "utf8"), true, true);
+    const start = src.indexOf(ANCHOR);
+    expect(start, `\`${ANCHOR}\` not found — re-point this leg`).toBeGreaterThan(-1);
+    const end = src.indexOf("useCardLifecycleApi(cardLifecycleRegistry", start);
+    expect(end, "the registry is no longer handed to useCardLifecycleApi — re-point").toBeGreaterThan(start);
+    const literal = src.slice(start, end);
+    expect(literal).not.toMatch(/innerRef/);
+    expect(literal).not.toMatch(/\bhandleDelete[A-Z]\w*/);
+    // And citation's entry is the bare sidecar delete.
+    expect(literal).toMatch(/citation:\s*\{[^}]*delete:\s*citationsHook\.deleteCitation\b/);
+  });
+});
