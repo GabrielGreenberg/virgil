@@ -134,23 +134,47 @@ def _sidecar_ids(doc: Path, panel: str) -> set[str]:
     return out
 
 
-def _gen_marker_id(doc: Path, macro: str, used: set[str]) -> str:
-    r"""A fresh 4-hex id in the `\<macro>{<4hex>}` namespace, colliding with
-    neither `used` (existing sidecar ids + any ids allocated earlier this run)
-    nor a `\<macro>{}` marker already in the .tex."""
+def _gen_marker_id(doc: Path, macro: str | tuple[str, ...], used: set[str]) -> str:
+    r"""A fresh 4-hex id colliding with neither `used` (existing sidecar ids +
+    any ids allocated earlier this run) nor a `\<macro>{}` marker already in
+    the .tex — for every macro named when `macro` is a tuple (a shared
+    namespace, `_card_marker_namespace`)."""
+    macros = (macro,) if isinstance(macro, str) else macro
     seen = set(used)
     try:
         tex = find_tex_file(doc).read_text(encoding="utf-8")
-        for m in re.finditer(r"\\" + macro + r"\{([0-9a-fA-F]{2,8})\}", tex):
+        for m in re.finditer(r"\\(?:" + "|".join(macros) + r")\{([0-9a-fA-F]{2,8})\}", tex):
             seen.add(m.group(1))
     except SystemExit:
         pass
-    for _ in range(100000):
+    for _ in range(1000):
         cand = secrets.token_hex(2)  # 4 hex chars, matching the doc's f0ac/cc01 style
         if cand not in seen:
             return cand
-    die(f"could not allocate a free {macro} id")
+    # A crowded namespace can defeat random draws while ids remain free; sweep
+    # it before refusing, so "no free id" is a fact, not a bad run of luck.
+    for i in range(0x10000):
+        cand = f"{i:04x}"
+        if cand not in seen:
+            return cand
+    die(f"could not allocate a free {'/'.join(macros)} id")
     return ""  # unreachable
+
+
+def _card_marker_namespace(doc: Path) -> tuple[tuple[str, ...], set[str]]:
+    r"""The ONE id namespace every marker-anchored CARD shares (task 1112):
+    `\vfid` / `\vcid` / `\vexid` ids are card ids, and `card_by_id` resolves a
+    card by id across every sidecar — so a footnote minted `ab12` while a
+    citation already holds `ab12` makes that id name two cards. Returns
+    (every card-marker macro, every id already held in their sidecars), for
+    `_gen_marker_id`. Derived from `card_by_id.MARKER_ANCHORED_PANELS`, so a new
+    marker-anchored panel joins the namespace with no edit here."""
+    from card_by_id import MARKER_ANCHORED_PANELS
+
+    used: set[str] = set()
+    for panel in MARKER_ANCHORED_PANELS:
+        used |= _sidecar_ids(doc, panel)
+    return tuple(MARKER_ANCHORED_PANELS.values()), used
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +255,7 @@ def _build_footnote(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     r"""footnote — atom-bearing. id == \vfid marker (footnotes.json · footnotes,
     FootnoteRef {id, content, createdAt}; no links — the tie is id equality)."""
     body = _require_body(a, "footnote")
-    fid = _gen_marker_id(doc, "vfid", _sidecar_ids(doc, "footnotes"))
+    fid = _gen_marker_id(doc, *_card_marker_namespace(doc))
     return KindBuild(
         panel="footnotes",
         card={"id": fid, "content": _jsoncontent(body), "createdAt": now_iso()},
@@ -278,7 +302,7 @@ def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     else:
         cmd = cite_command_for(family, "textual")
     command = "\\" + cmd + "{" + ",".join(keys) + "}"
-    cid = _gen_marker_id(doc, "vcid", _sidecar_ids(doc, "citations"))
+    cid = _gen_marker_id(doc, *_card_marker_namespace(doc))
     return KindBuild(
         panel="citations",
         card={"id": cid, "command": command, "keys": keys, "createdAt": now_iso()},
@@ -725,7 +749,10 @@ def _source_card(doc: Path, linked: dict | None) -> dict | None:
         return None
     from card_by_id import find_card
 
-    hit = find_card(doc, linked["cardId"])
+    # The bridge names the source card's panel — the qualifier that keeps a
+    # footnote and a citation sharing a 4-hex id apart (task 1112).
+    panel = linked.get("panel")
+    hit = find_card(doc, linked["cardId"], panel if panel in AR.ALL_CARD_SIDECARS else None)
     return hit.card if hit is not None else None
 
 
@@ -929,7 +956,7 @@ def _create_example(doc: Path, a: argparse.Namespace) -> dict:
         die("--anchor <uuid> is required for --kind=example")
     _require_anchor(doc, anchor)
 
-    exid = _gen_marker_id(doc, "vexid", _sidecar_ids(doc, "examples"))
+    exid = _gen_marker_id(doc, *_card_marker_namespace(doc))
     label = ("\\label{" + a.label + "}") if a.label else ""
     if items:
         allocated: set[str] = set()
