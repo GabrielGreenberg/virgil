@@ -94,7 +94,9 @@ Schema (v1 superset — every field optional unless noted):
     "summary":   "<one-line description for the toast>",
     "clearSourceFlag": true,   // clear aiRequest on the linkedTo/virtual source
     // --synthesize-task only (build the Task on the fly):
-    "kind": "footnote", "text": "…", "paragraphIds": ["3301"], "safetyLevel": 1 }
+    "kind": "footnote", "text": "…", "paragraphIds": ["3301"], "safetyLevel": 1,
+    "linkedTo": { "panel": "notes", "cardId": "…" } }  // the source card it answers
+    // (a synthesized row's id must be NEW — an existing id is refused)
 
 The paper-file edits are kind-agnostic capabilities, all spliced under the pen in
 the SAME atomic commit (gated by `apply_writes` — applied on a real write, held
@@ -1911,6 +1913,20 @@ def cmd_write(
             ar = {"requests": []}
             txn._loaded[ar_path] = ar
         new_id = request_id if (request_id and not is_virtual) else _gen_request_id()
+        # A synthesized row is NEW: an id already in the file is a caller error
+        # (a real Task id passed with --synthesize-task), and appending would
+        # leave two rows answering to one id (task 1110). Refuse before any byte.
+        if any(isinstance(r, dict) and r.get("id") == new_id for r in ar["requests"]):
+            die(f"request {new_id} already exists — --synthesize-task appends a NEW Task; "
+                "drop it to answer the existing one.")
+        # The source card the synthesized Task answers: the op's `linkedTo`
+        # (create_card.py, synthesizing over a card flag), else the virtual id's
+        # own {panel, cardId}. Recorded on the row and lowered in step 4, exactly
+        # as for a bridged Task.
+        if isinstance(op.get("linkedTo"), dict):
+            linked = op["linkedTo"]
+        elif is_virtual:
+            linked = parse_virtual_request_id(request_id)
         req: dict = {
             "id": new_id,
             "kind": _validated_request_kind(op),
@@ -1928,6 +1944,8 @@ def cmd_write(
             req["result"] = result
         if card is not None and card.get("id"):
             req["resultId"] = card["id"]
+        if linked is not None:
+            req["linkedTo"] = linked
         ar["requests"].append(req)
         txn.mark(ar_path)
         request_id = new_id

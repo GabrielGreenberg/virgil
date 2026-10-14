@@ -96,7 +96,14 @@ full reasoning.
   request ⇒ synthesize), which is why the Workflow-B command below carries no
   such flag. It is the one way to synthesize a fresh Task over a
   `virtual:<panel>:<cardId>` id rather than treating it as a card-flag reply,
-  and it requires `--anchor` like any synthesized create.
+  and it requires `--anchor` like any synthesized create. The fresh Task is
+  LINKED to that card (its flag is lowered, the card points back at the new
+  row), and the revise-not-create refusal still applies — a footnote/citation
+  flag is revised, never answered with a second atom. `--synthesize` with a
+  REAL Task id is refused (that Task already has a row).
+- **Re-running is safe.** A Task that is already terminal, or an L3 proposal
+  whose card already landed (`in-progress` + `resultId`), returns
+  `{"noop": true, "cardId": …}` naming the existing answer — never a second card.
 > **Free-text flags take `@<file>`.** `--task-text`, `--body`, `--title`,
 > `--notes`, `--item`, `--original`, `--suggested` and `--explanation` carry prose, so each goes through a quoted-heredoc
 > scratch file and is passed as `--body "@$t/body"` — never as a quoted argv,

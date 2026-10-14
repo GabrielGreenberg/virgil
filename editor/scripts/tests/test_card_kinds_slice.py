@@ -410,5 +410,73 @@ l3 = next(r for r in load(sb, "ai-requests.json")["requests"] if r["id"] == "tod
 check(l3["status"] == "in-progress", "L3 todo Task left in-progress — answer-todo must NOT flip done here")
 
 
+# ---------------------------------------------------------------- one resolver: re-run + --synthesize (task 1110)
+print("\n=== task 1110: an L3 carded create re-run is a no-op naming the first card ===")
+sb = sandbox()
+set_safety(sb, NOTE_REQ, 3)
+o1 = out_of(run(CREATE, str(sb), NOTE_REQ, "--kind=note", "--body", "First.", "--title", "T1"))
+check(o1.get("status") == "in-progress" and o1.get("cardId"), f"L3 first create lands a proposal (out={o1})")
+r2 = run(CREATE, str(sb), NOTE_REQ, "--kind=note", "--body", "Second.", "--title", "T2")
+o2 = out_of(r2)
+check(r2.returncode == 0 and o2.get("noop") and o2.get("cardId") == o1.get("cardId"),
+      f"second create is a no-op naming the first card (out={o2})")
+check(len(load(sb, "notes.json")["cards"]) == ORIG_NOTES + 1, "still exactly one answer card")
+req = next(r for r in load(sb, "ai-requests.json")["requests"] if r["id"] == NOTE_REQ)
+check(req.get("resultId") == o1.get("cardId"), "resultId still names the first card (not orphaned)")
+
+print("\n=== task 1110: --synthesize over a flagged footnote is refused (revise, not create) ===")
+sb = sandbox()
+fns = load(sb, "footnotes.json")["footnotes"]
+fid0 = fns[0]["id"]
+tex_before = tex_of(sb)
+r = run(CREATE, str(sb), f"virtual:footnotes:{fid0}", "--kind=footnote", "--synthesize",
+        "--body", "A second footnote.", "--anchor", "4402")
+check(r.returncode != 0 and "REVISE" in r.stderr, f"refused naming the revise door (stderr={r.stderr.strip()[:140]})")
+check(tex_of(sb) == tex_before, ".tex untouched (no second \\footnote spliced)")
+check(len(load(sb, "footnotes.json")["footnotes"]) == len(fns), "no footnote card added")
+
+print("\n=== task 1110: --synthesize over virtual:notes:N — one row, back-pointer == row id, flag lowered ===")
+sb = sandbox()
+notes_path = sb / "virgil" / "notes.json"
+ns = json.loads(notes_path.read_text())
+src_id = ns["cards"][0]["id"]
+ns["cards"][0]["aiRequest"] = True
+notes_path.write_text(json.dumps(ns, indent=2) + "\n")
+reqs_before = load(sb, "ai-requests.json")["requests"]
+r = run(CREATE, str(sb), f"virtual:notes:{src_id}", "--kind=note", "--synthesize",
+        "--body", "Answer.", "--title", "A", "--anchor", "4402")
+check(r.returncode == 0, f"synthesize over a virtual id exited 0 (stderr={r.stderr.strip()[:140]})")
+o = out_of(r)
+reqs = load(sb, "ai-requests.json")["requests"]
+check(len(reqs) == len(reqs_before) + 1, "exactly one Task row appended")
+new_row = reqs[-1]
+cards = load(sb, "notes.json")["cards"]
+card = next((c for c in cards if c["id"] == o.get("cardId")), {})
+check(card.get("aiOriginRequestId") == new_row["id"] == o.get("requestId"),
+      "card's aiOriginRequestId == the minted row id (no dead back-pointer)")
+check(not str(new_row["id"]).startswith("virtual:"), "the row id is a real id, not the virtual one")
+check(new_row.get("linkedTo") == {"panel": "notes", "cardId": src_id}, "synthesized row is linked to the source card")
+check(next(c for c in cards if c["id"] == src_id).get("aiRequest") is False, "source card's aiRequest flag lowered")
+check(len({r["id"] for r in reqs}) == len(reqs), "no duplicate row ids")
+
+print("\n=== task 1110: --synthesize with a REAL request id is refused (no duplicate row id) ===")
+sb = sandbox()
+n_before = len(load(sb, "ai-requests.json")["requests"])
+r = run(CREATE, str(sb), NOTE_REQ, "--kind=note", "--synthesize", "--body", "x", "--anchor", "4402")
+check(r.returncode != 0 and "synthesize" in r.stderr, f"refused (stderr={r.stderr.strip()[:140]})")
+check(len(load(sb, "ai-requests.json")["requests"]) == n_before, "no row appended")
+op = {"panel": "notes", "card": {"kind": "note", "id": "dup-x", "aiRequest": False, "links": []},
+      "summary": "s", "requestId": NOTE_REQ, "kind": "note", "text": "t"}
+r = run(APPLY, str(sb), "complete-task", json.dumps(op), "--synthesize-task")
+check(r.returncode != 0 and "already exists" in r.stderr, "apply_response --synthesize-task refuses an existing id")
+check(len(load(sb, "ai-requests.json")["requests"]) == n_before, "still no row appended")
+
+print("\n=== task 1110: a chat-synthesized note points back at its synthesized Task ===")
+sb = sandbox()
+o = out_of(run(CREATE, str(sb), "--kind=note", "--body", "Chat.", "--title", "C", "--anchor", "4402"))
+card = next((c for c in load(sb, "notes.json")["cards"] if c["id"] == o.get("cardId")), {})
+row = next((r for r in load(sb, "ai-requests.json")["requests"] if r["id"] == o.get("requestId")), None)
+check(row is not None and card.get("aiOriginRequestId") == row["id"], "synthesized note's back-pointer names its row")
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)
