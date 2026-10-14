@@ -275,7 +275,7 @@ interface PdfDoc {
  * alternate), shows a friendly message instead of an empty frame.
  *
  * **Viewer lifetime (task 612).** The `<iframe>` stays mounted for as long as
- * this instance has a citekey; "Loading PDF…" and "No PDF on disk" are OVERLAYS
+ * this instance has a citekey; "Loading PDF…", "No PDF on disk" and "Couldn't read" are OVERLAYS
  * over a hidden viewer, never a swap of the element. So an instance whose
  * `citekey` changes in place switches papers in ONE warm viewer — pdf.js boots
  * once per instance, not once per paper. The two real mounts:
@@ -292,11 +292,16 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
   // everything that drives the viewer reads `liveDoc`, the source only while it
   // belongs to the current citekey.
   const [doc, setDoc] = useState<PdfDoc | null>(null);
-  // The citekey whose read found no PDF (derived against the prop, so a switch
-  // away clears it without a reset write).
-  const [missingFor, setMissingFor] = useState<string | null>(null);
+  // The citekey whose read produced no source, and why (derived against the
+  // prop, so a switch away clears it without a reset write). "missing" = no
+  // PDF on disk; "failed" = the read itself failed (permission, IO) — task
+  // 1115: a failure is neither "Loading…" forever nor a false "No PDF".
+  const [unreadable, setUnreadable] = useState<
+    { citekey: string; kind: "missing" | "failed" } | null
+  >(null);
   const liveDoc = doc && doc.citekey === citekey ? doc : null;
-  const missing = citekey !== null && missingFor === citekey;
+  const unreadableKind =
+    citekey !== null && unreadable?.citekey === citekey ? unreadable.kind : null;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Keep the latest callback in a ref so the page-state effect (which depends
   // on the live source, not the callback identity) doesn't re-subscribe
@@ -328,17 +333,25 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
     if (!handle || !citekey) return;
     let cancelled = false;
     (async () => {
-      const file = await readFile(handle, `papers/${citekey}/${citekey}.pdf`);
+      let file: File | undefined;
+      let kind: "missing" | "failed" = "missing";
+      try {
+        file = await readFile(handle, `papers/${citekey}/${citekey}.pdf`);
+      } catch (e) {
+        // The read door rejects only on a real failure; absence is `undefined`.
+        console.warn(`[PdfView] couldn't read the PDF for ${citekey}:`, e);
+        kind = "failed";
+      }
       if (cancelled) return;
       if (!file) {
         // Drop the previous source too: nothing should keep driving (or
         // reporting page state for) a paper that is no longer the one shown.
         setDoc(null);
-        setMissingFor(citekey);
+        setUnreadable({ citekey, kind });
         return;
       }
       setDoc({ citekey, url: URL.createObjectURL(file) });
-      setMissingFor(null);
+      setUnreadable(null);
     })();
     return () => {
       cancelled = true;
@@ -499,9 +512,13 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
 
   // Nothing to show yet (still reading) or nothing on disk: an OVERLAY over the
   // hidden viewer, so the iframe — and the booted pdf.js inside it — survives.
-  const notice = missing ? (
+  const notice = unreadableKind === "missing" ? (
     <span style={{ fontStyle: "italic" }}>
       No PDF on disk for <code style={{ marginLeft: 4 }}>{citekey}</code>.
+    </span>
+  ) : unreadableKind === "failed" ? (
+    <span style={{ fontStyle: "italic" }}>
+      Couldn&rsquo;t read the PDF for <code style={{ marginLeft: 4 }}>{citekey}</code>.
     </span>
   ) : !liveDoc ? (
     "Loading PDF…"

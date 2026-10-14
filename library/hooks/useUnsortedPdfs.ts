@@ -48,8 +48,15 @@ export function useUnsortedPdfs(handle: FileSystemDirectoryHandle | null) {
     // of the list — matches the user's intuition that "new = top".
     const withMtime = await Promise.all(
       sourceNames.map(async (name) => {
-        const f = await readFile(handle, `${UNSORTED_PATH}/${name}`);
-        return { name, mtime: f?.lastModified ?? 0 };
+        // Per-entry catch (task 1115): the read door rejects on a real IO /
+        // permission failure, and one unreadable file must not abort the
+        // whole list — it is still listed, just unsorted (mtime 0).
+        try {
+          const f = await readFile(handle, `${UNSORTED_PATH}/${name}`);
+          return { name, mtime: f?.lastModified ?? 0 };
+        } catch {
+          return { name, mtime: 0 };
+        }
       }),
     );
     withMtime.sort((a, b) => b.mtime - a.mtime);
