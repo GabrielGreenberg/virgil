@@ -34,6 +34,8 @@ import sys
 from pathlib import Path
 from _refs_section import body_end as refs_body_end
 
+from _tools import _atomic_write_text
+
 
 SUPER_MAP = {
     "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
@@ -200,7 +202,7 @@ def main() -> int:
         print(f"No superscript-prefixed leaked paragraphs in {p}.")
         return 0
     if not args.dry_run and stats["placed"] > 0:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(
         f"Reattached {stats['placed']} superscript leaked footnotes "

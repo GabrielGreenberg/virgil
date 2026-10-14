@@ -27,6 +27,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 NBSP = " "
 NBSP_BULK_THRESHOLD = 0.5
@@ -78,7 +80,7 @@ def main() -> int:
     suffix = " (dry run)" if args.dry_run else ""
     print(f"{path}: " + ", ".join(parts) + suffix + ".")
     if not args.dry_run:
-        path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(path, new_text)
     return 0
 
 

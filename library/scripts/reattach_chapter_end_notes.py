@@ -30,6 +30,8 @@ import sys
 from pathlib import Path
 from _refs_section import body_end as refs_body_end
 
+from _tools import _atomic_write_text
+
 
 SECTION_RE = re.compile(r"^\\section\{([^}]+)\}", re.M)
 
@@ -176,7 +178,7 @@ def main(argv: list[str]) -> int:
         f"across {stats['chapters']} chapters{suffix}."
     )
     if not dry_run and stats["placed"] > 0:
-        path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(path, new_text)
     return 0
 
 

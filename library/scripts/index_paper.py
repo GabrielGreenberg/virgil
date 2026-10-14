@@ -48,6 +48,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    _atomic_write_text,
     paper_folder,
     SOURCE_FORMAT_PRIORITY,
     admit_catalog_row,
@@ -603,7 +604,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             year=year,
             page_map=page_map,
         )
-        (paper_dir / "main.tex").write_text(tex)
+        _atomic_write_text(paper_dir / "main.tex", tex)
 
         # 5b. Validate pgmark placement & continuity (non-gating).
         log("Step 5b: validate pgmark placement & continuity")
@@ -642,11 +643,11 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     virgil_dir = paper_dir / "virgil"
     virgil_dir.mkdir(parents=True, exist_ok=True)
     if not (virgil_dir / "virgil.json").exists():
-        (virgil_dir / "virgil.json").write_text('{"paragraphs": {}}\n')
+        _atomic_write_text(virgil_dir / "virgil.json", '{"paragraphs": {}}\n')
     if not (virgil_dir / "notes.json").exists():
-        (virgil_dir / "notes.json").write_text('{"notes": []}\n')
+        _atomic_write_text(virgil_dir / "notes.json", '{"notes": []}\n')
     if not (virgil_dir / "footnotes.json").exists():
-        (virgil_dir / "footnotes.json").write_text('{"footnotes": []}\n')
+        _atomic_write_text(virgil_dir / "footnotes.json", '{"footnotes": []}\n')
 
     log(f"  Wrote {paper_dir}")
 

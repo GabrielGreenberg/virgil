@@ -23,6 +23,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 FOOTNOTE_OPEN_RE = re.compile(r"\\footnote\{")
 PGMARK_LITERAL_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{\d+\}")
@@ -101,7 +103,7 @@ def main() -> int:
         print(f"No pgmarks inside footnotes in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Moved {moved} pgmark(s) out of footnote bodies{suffix}.")
     return 0

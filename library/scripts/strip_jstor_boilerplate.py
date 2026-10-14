@@ -31,6 +31,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 JSTOR_SIGNATURES = (
     "Author(s):",
@@ -95,7 +97,7 @@ def main() -> int:
         print(f"No JSTOR boilerplate detected in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Stripped {n} chars of JSTOR cover-page boilerplate{suffix}.")
     return 0

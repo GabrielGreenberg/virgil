@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 from _refs_section import references_span
 
+from _tools import _atomic_write_text
+
 
 SUBSUB_RE = re.compile(r"^\\subsubsection\{([^}]+)\}", re.M)
 TOC_AUTHOR_LINE_RE = re.compile(
@@ -106,7 +108,7 @@ def main() -> int:
     if args.strip:
         new_text = text[:start] + text[end:]
         if not args.dry_run:
-            p.write_text(new_text, encoding="utf-8")
+            _atomic_write_text(p, new_text)
         suffix = " (dry run)" if args.dry_run else ""
         print(f"Stripped TOC block{suffix}.")
     return 0

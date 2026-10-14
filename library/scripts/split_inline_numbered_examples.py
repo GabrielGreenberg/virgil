@@ -39,6 +39,8 @@ import sys
 from pathlib import Path
 from _refs_section import body_end as refs_body_end
 
+from _tools import _atomic_write_text
+
 
 # Inline `(N)` preceded by non-paragraph-start, followed by capitalized
 # word (the start of the example body). The lookbehind ensures we're
@@ -140,7 +142,7 @@ def main() -> int:
     else:
         print(f"{path}: hoisted {n} inline numbered example(s){suffix}.")
     if not args.dry_run and n > 0:
-        path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(path, new_text)
     return 0
 
 

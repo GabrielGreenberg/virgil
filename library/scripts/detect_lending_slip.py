@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tools import paper_folder  # noqa: E402
+from _tools import _atomic_write_text, paper_folder  # noqa: E402
 
 
 SIGNATURES = (
@@ -115,7 +115,7 @@ def strip_from_tex(citekey: str, lending_pages: int, dry_run: bool) -> int:
             # Strip [body_start, m.start()).
             new_text = text[:body_start] + "\n\n" + text[m.start():]
             if not dry_run:
-                tex_path.write_text(new_text, encoding="utf-8")
+                _atomic_write_text(tex_path, new_text)
             return m.start() - body_start
     return 0
 

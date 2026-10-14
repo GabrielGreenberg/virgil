@@ -29,6 +29,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 SUBSTITUTIONS: list[tuple[re.Pattern, str]] = [
     # 4-digit year starting with `I`/`l`: e.g. `I960` → `1960`.
@@ -72,7 +74,7 @@ def main() -> int:
         print(f"No italic-numeral substitutions in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Made {n} italic-numeral substitutions{suffix}.")
     return 0

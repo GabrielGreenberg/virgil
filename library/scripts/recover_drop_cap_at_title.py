@@ -35,6 +35,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 # Section heading ending with a non-letter then a single capital.
 SECTION_TRAILING_CAP_RE = re.compile(
@@ -109,7 +111,7 @@ def main() -> int:
         print(f"No drop-cap-at-title artifacts in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Recovered {n} drop-cap initial(s) into body{suffix}.")
     return 0

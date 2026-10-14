@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tools import paper_folder  # noqa: E402
+from _tools import _atomic_write_text, paper_folder  # noqa: E402
 
 
 PGMARK_LOW_RE = re.compile(r"\\pgmark\[low\]\{(\d+)\}")
@@ -245,7 +245,7 @@ def recover(
                 break
 
     if not dry_run and cumulative_promoted > 0:
-        tex_path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(tex_path, new_text)
 
     return {
         "promoted": cumulative_promoted,

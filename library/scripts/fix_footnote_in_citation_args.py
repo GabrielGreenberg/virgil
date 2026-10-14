@@ -28,6 +28,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 CITE_FAMILY = (
     "cite", "citet", "citep", "citealp", "citealt", "citeauthor",
@@ -131,7 +133,7 @@ def main() -> int:
         print(f"No nested \\footnote{{}}-in-\\cite{{}} in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Lifted {count} \\footnote{{}} out of cite args{suffix}.")
     return 0

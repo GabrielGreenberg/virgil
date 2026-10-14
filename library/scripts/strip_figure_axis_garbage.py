@@ -33,6 +33,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 FIGURE_CAPTION_RE = re.compile(
     r"\\begin\{quote\}\s*\\textit\{Figure\s+\d+(?:\.\d+)?[^}]*\}"
@@ -137,7 +139,7 @@ def main() -> int:
         print(f"No figure-axis garbage paragraphs in {p}.")
         return 0
     if not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
     suffix = " (dry run)" if args.dry_run else ""
     print(f"Stripped {n} figure-axis garbage paragraph(s){suffix}.")
     return 0

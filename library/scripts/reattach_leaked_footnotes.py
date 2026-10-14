@@ -47,6 +47,8 @@ from pathlib import Path
 from typing import NamedTuple
 from _refs_section import body_end as refs_body_end
 
+from _tools import _atomic_write_text
+
 
 # Paragraph-start leaked-footnote pattern. Matches either:
 #   "1 body..." or "1. body..."
@@ -482,7 +484,7 @@ def main(argv: list[str]) -> int:
         if count > 0:
             print(f"  Ch {ch_idx}: {count} placed")
     if not dry_run and stats["placed"] > 0:
-        path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(path, new_text)
     return 0
 
 

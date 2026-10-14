@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tools import paper_folder  # noqa: E402
+from _tools import _atomic_write_text, paper_folder  # noqa: E402
 
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
@@ -101,7 +101,7 @@ def locate(
     for pos, ins in edits:
         new_text = new_text[:pos] + ins + new_text[pos:]
     if not dry_run:
-        tex_path.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(tex_path, new_text)
     return {"inserted": inserted, "missed": missed}
 
 

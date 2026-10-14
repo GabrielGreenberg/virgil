@@ -29,6 +29,8 @@ import re
 import sys
 from pathlib import Path
 
+from _tools import _atomic_write_text
+
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{(\d+)\}")
 
@@ -102,7 +104,7 @@ def main() -> int:
         print(f"  value {v}: {len(posns)} occurrences (positions: "
               f"{posns[:5]}{'...' if len(posns) > 5 else ''})")
     if args.strip_collisions and not args.dry_run:
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write_text(p, new_text)
         print(f"Stripped {sum(len(p) for _, p in collisions)} pgmarks.")
     return 0
 
