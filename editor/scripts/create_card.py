@@ -72,6 +72,7 @@ from _common import (
     find_bib_file,
     find_paragraph_uuids,
     find_tex_file,
+    is_request_open,
     is_terminal_status,
     now_iso,
     read_json,
@@ -491,67 +492,96 @@ class Ctx:
     synthesize: bool
     is_virtual: bool = False
     request: dict | None = None  # the Workflow-A ai-requests.json row, when one was read
+    linked: dict | None = None   # the source card {panel, cardId} the Task answers, if any
 
 
 def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set[str]) -> "Ctx | dict":
-    """Resolve the anchor / safety level / selection for a carded create.
+    """Resolve the anchor / safety level / selection / Task identity for a create.
 
-    Workflow A (a requestId, no --synthesize): read them off the existing Task.
-    Workflow B (no requestId, or --synthesize): synthesize the Task; --anchor
-    is required. Returns a Ctx, or — for an already-terminal Task — the
-    idempotent no-op result dict (re-running a completed create is a no-op)."""
+    The ONE resolver both create paths (carded and proposal) run, so the three
+    questions every create must answer are asked once, whatever the flags
+    (task 1110):
+
+      1. Is this Task flagged ON an atom card it must REVISE, not duplicate?
+         (`_refuse_create_on_flagged_card`, task 1048) — asked of the Task's
+         `linkedTo` or the virtual id's {panel, cardId}, with or without
+         --synthesize.
+      2. Is the Task already answered? A terminal row, OR an L3 proposal that
+         already landed its card (`in-progress` + `resultId` — the ONE
+         `is_request_open` predicate the drain uses) returns the idempotent
+         no-op naming that card; a re-run never lands a second answer.
+      3. Which Task id does the card point back at? A synthesized Task's id is
+         minted HERE, so the card's `aiOriginRequestId` and the row
+         apply_response appends are the same id (never a virtual id on the
+         card and a fresh one on the row).
+
+    Workflow A (a real requestId): read anchor / safety / selection off the
+    Task. A virtual card-flag id (`virtual:<panel>:<cardId>`): a direct reply to
+    that card, or — with --synthesize — a fresh Task linked to it. Workflow B
+    (no requestId): synthesize; --anchor is required. --synthesize with a REAL
+    id is refused: that Task already has a row, and synthesizing would append a
+    second row with the same id."""
     request_id = a.request
     anchor = a.anchor
     safety = a.safety_level
-    selected_text = None
     synthesize = bool(a.synthesize)
-    req = None
 
     # A virtual card-flag id (virtual:<panel>:<cardId>) — a pre-bridge flag with
     # no ai-requests.json Task to read (list_requests.py emits these for papers
-    # created before the bridge landed). It's a direct create against the source
-    # card's own paragraph: the anchor comes from --anchor (the responder
-    # resolves it from the source card), and the virtual id still flows to
+    # created before the bridge landed). It's a create against the source card's
+    # own paragraph: the anchor comes from --anchor (the responder resolves it
+    # from the source card). Without --synthesize the virtual id flows to
     # apply_response, which splits it into {panel, cardId} to clear the source
-    # card's aiRequest flag (no Task row is mutated, so a safety level / result
-    # isn't persisted — a card-flag reply lands directly).
-    if is_virtual_request_id(request_id) and not synthesize:
+    # card's aiRequest flag (no Task row is mutated). With --synthesize a fresh
+    # Task is minted and LINKED to the source card, which lowers the same flag.
+    if is_virtual_request_id(request_id):
         linked = parse_virtual_request_id(request_id)  # dies on a malformed / unknown-panel id
         _refuse_create_on_flagged_card(a.kind, request_id, linked)
         if not anchor:
             die("--anchor <uuid> is required for a virtual (card-flag) request id "
                 "(resolve it from the source card)")
-        return Ctx(request_id=request_id, anchor=anchor, safety=safety,
-                   selected_text=None, synthesize=False, is_virtual=True)
+        if not synthesize:
+            return Ctx(request_id=request_id, anchor=anchor, safety=safety,
+                       selected_text=None, synthesize=False, is_virtual=True, linked=linked)
+        return Ctx(request_id=AR._gen_request_id(), anchor=anchor, safety=safety,
+                   selected_text=None, synthesize=True, linked=linked)
 
-    if request_id and not synthesize:
-        ar = read_json(sidecar(doc, "ai-requests.json"), default={"requests": []})
-        reqs = ar.get("requests", []) if isinstance(ar, dict) else []
-        req = next((r for r in reqs if r.get("id") == request_id), None)
-        if req is None:
-            die(f"request id not found: {request_id}")
-        if accept_task_kinds and req.get("kind") not in accept_task_kinds:
-            die(f"request {request_id} is kind={req.get('kind')!r}, not {a.kind} "
-                f"(expected one of {sorted(accept_task_kinds)})")
-        if is_terminal_status(req.get("status")):
-            return {"ok": True, "noop": True, "reason": "request already terminal", "requestId": request_id}
-        _refuse_create_on_flagged_card(a.kind, request_id, req.get("linkedTo"))
-        if not anchor:
-            pids = req.get("paragraphIds") or []
-            if not pids:
-                die("request has no paragraphIds; cannot anchor the card (pass --anchor)")
-            anchor = pids[0]
-        if safety is None and req.get("safetyLevel") is not None:
-            safety = req.get("safetyLevel")
-        selected_text = req.get("selectedText")
-    else:
-        synthesize = True
+    if request_id and synthesize:
+        die(f"--synthesize with an existing request id ({request_id}) — that Task already has "
+            "a row; synthesizing would append a second row with the same id. Drop --synthesize "
+            "to answer it, or drop the id to synthesize a fresh Task.")
+
+    if not request_id:
         if not anchor:
             die("--anchor <uuid> is required when there is no existing request")
+        return Ctx(request_id=AR._gen_request_id(), anchor=anchor, safety=safety,
+                   selected_text=None, synthesize=True)
 
+    ar = read_json(sidecar(doc, "ai-requests.json"), default={"requests": []})
+    reqs = ar.get("requests", []) if isinstance(ar, dict) else []
+    req = next((r for r in reqs if r.get("id") == request_id), None)
+    if req is None:
+        die(f"request id not found: {request_id}")
+    if accept_task_kinds and req.get("kind") not in accept_task_kinds:
+        die(f"request {request_id} is kind={req.get('kind')!r}, not {a.kind} "
+            f"(expected one of {sorted(accept_task_kinds)})")
+    if is_terminal_status(req.get("status")):
+        return {"ok": True, "noop": True, "reason": "request already terminal", "requestId": request_id}
+    if not is_request_open(req):  # an L3 proposal whose card already landed
+        return {"ok": True, "noop": True, "reason": "request already answered",
+                "requestId": request_id, "cardId": req.get("resultId")}
+    linked = req.get("linkedTo") if isinstance(req.get("linkedTo"), dict) else None
+    _refuse_create_on_flagged_card(a.kind, request_id, linked)
+    if not anchor:
+        pids = req.get("paragraphIds") or []
+        if not pids:
+            die("request has no paragraphIds; cannot anchor the card (pass --anchor)")
+        anchor = pids[0]
+    if safety is None and req.get("safetyLevel") is not None:
+        safety = req.get("safetyLevel")
     return Ctx(request_id=request_id, anchor=anchor, safety=safety,
-               selected_text=selected_text, synthesize=synthesize,
-               request=req if (request_id and not synthesize) else None)
+               selected_text=req.get("selectedText"), synthesize=False,
+               request=req, linked=linked)
 
 
 def _require_anchor(doc: Path, anchor: str) -> None:
@@ -592,7 +622,7 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     accept = set(WORKFLOW_A_KINDS.get(a.kind, set()))
     accept |= {k for k in (a.accept_task_kind or [])}
     ctx = _resolve_context(doc, a, accept_task_kinds=accept)
-    if isinstance(ctx, dict):  # already-terminal Task → idempotent no-op
+    if isinstance(ctx, dict):  # already-terminal / already-answered Task → idempotent no-op
         return ctx
     _require_anchor(doc, ctx.anchor)
 
@@ -602,7 +632,9 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     # Accept / Reject / Redo (the aiOriginRequestId affordance — editor/AGENTS.md
     # "Future work"). Stamped uniformly here rather than per-skill: every
     # sidecar-only carded kind (note / todo / report / report-request —
-    # build.insert is None) created from a *real* Task carries the back-pointer.
+    # build.insert is None) created from a *real* Task — an existing one, or one
+    # synthesized here (its id was minted by _resolve_context, so the row
+    # apply_response appends carries the SAME id) — carries the back-pointer.
     # Atom-bearing kinds (footnote / citation) are id-equality atoms whose refs
     # carry no such field, so they're excluded; a virtual card-flag id has no
     # ai-requests.json Task to point back at, so it's excluded too.
@@ -625,6 +657,8 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     if ctx.request_id:
         op["requestId"] = ctx.request_id
     if ctx.synthesize:
+        if ctx.linked:  # a Task synthesized over a card flag answers THAT card
+            op["linkedTo"] = ctx.linked
         op["kind"] = TASK_KIND[a.kind]
         op["text"] = a.task_text or build.summary
         op["paragraphIds"] = [ctx.anchor]
@@ -735,8 +769,7 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
         die("--kind=comment requires --body <reply> (@<path>)")
 
     explicit_anchor = a.anchor
-    linked = None
-    if is_virtual_request_id(a.request) and not a.synthesize:
+    if is_virtual_request_id(a.request):
         linked = parse_virtual_request_id(a.request)
         if not a.anchor:  # the virtual path needs an anchor; the source card has one
             src_anchor = _first_anchor(_source_card(doc, linked))
@@ -745,10 +778,9 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
 
     accept = set(RESPONDER_TASK_KINDS[kind]) | set(a.accept_task_kind or [])
     ctx = _resolve_context(doc, a, accept_task_kinds=accept)
-    if isinstance(ctx, dict):  # already-terminal Task → idempotent no-op
+    if isinstance(ctx, dict):  # already-terminal / already-answered Task → idempotent no-op
         return ctx
-    if ctx.request is not None:
-        linked = ctx.request.get("linkedTo") or linked
+    linked = ctx.linked
     source = _source_card(doc, linked)
     linked_panel = (linked or {}).get("panel")
 
@@ -773,24 +805,24 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
     anchor_uuid = anchor_obj["textObjectIds"][0]
     _require_anchor(doc, anchor_uuid)
 
-    # Idempotency: a real Task's proposal already on disk is THE answer.
-    if ctx.request_id and not ctx.is_virtual and not ctx.synthesize:
+    # Idempotency: a real Task's proposal already on disk is THE answer. The
+    # resolver already no-ops a Task whose resultId landed; this catches a
+    # proposal whose back-pointer names the Task but whose row lost resultId.
+    if ctx.request is not None:
         prior = next((c for c in _panel_cards(doc, panel)
                       if c.get("aiOriginRequestId") == ctx.request_id), None)
         if prior is not None:
             return {"ok": True, "noop": True, "reason": "request already answered",
                     "requestId": ctx.request_id, "cardId": prior.get("id"), "panel": panel}
 
-    # A synthesized Task gets its id NOW, so the card can point back at it.
+    # A synthesized Task's id was minted by the resolver, so the card points back at it.
     request_id = ctx.request_id
-    if ctx.synthesize and not request_id:
-        request_id = AR._gen_request_id()
     if ctx.request is not None:
         instructions = ctx.request.get("text") or ""
     elif ctx.is_virtual:
         instructions = _plain_text(source)
     else:
-        instructions = a.task_text or ""
+        instructions = a.task_text or _plain_text(source)
     selected = ctx.selected_text or (source or {}).get("selectedText") or ""
 
     cid = str(uuid.uuid4())
@@ -831,6 +863,8 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
     if request_id:
         op["requestId"] = request_id
     if ctx.synthesize:
+        if ctx.linked:
+            op["linkedTo"] = ctx.linked
         op["kind"] = "suggestion"
         op["text"] = a.task_text or summary
         op["paragraphIds"] = [anchor_uuid]
