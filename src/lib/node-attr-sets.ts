@@ -66,6 +66,19 @@ export const UUID_BEARING_NODE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Block node types whose LaTeX home is the PREAMBLE, not the body (task 1107).
+ * `\title` / `\author` / `\date` are preamble commands: the serializer emits a
+ * `titleField` as the EMPTY string in body position and re-homes it through
+ * `collectPreambleTitleFields`, and the parser hoists it back to the doc top.
+ * So such a block has no position INSIDE anything — a list or quote wrapped
+ * around it serializes empty and does not survive a reload. The wrapper gate
+ * (`wrapper-gate.ts`) reads this set; `wrapper-gate-derived-identity.test.ts`
+ * pins its premise against the serializer (every member's body bytes are empty
+ * inside a quote).
+ */
+export const PREAMBLE_RESIDENT_NODE_TYPES: ReadonlySet<string> = new Set(["titleField"]);
+
+/**
  * The BLOCK-ATOM node types a CARD BODY's schema registers — the vocabulary
  * both card scopes (`"card"` and `"excerpt"`) mount, and therefore the
  * vocabulary every PROJECTION of a card body must be total over.

@@ -334,9 +334,9 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // `editor.chain().toggleBulletList()` / … — which the view-only path's
   // SYNTHESIZED `{ view, state }` stub lacks (`.chain()` is undefined there). So
   // they MUST route through the BRIDGE, which builds the ctx from the LIVE
-  // TipTap editor. Data-loss is impossible on a non-listable block (titleField /
-  // heading / atom): the registry rows grey via `wrapperApplies` AND no-op in
-  // `run()` via `selectionIsListable` (action-registry.ts).
+  // TipTap editor. Data-loss is impossible on a block a wrap would coerce (titleField /
+  // heading): the registry rows grey via `wrapperApplies` AND no-op in `run()`
+  // via `wrapperSafeInState` (wrapper-gate.ts).
   bridgeRow("list"),
   bridgeRow("itemize"),
   bridgeRow("enumerate"),

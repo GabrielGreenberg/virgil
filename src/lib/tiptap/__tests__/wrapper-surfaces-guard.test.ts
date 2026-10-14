@@ -162,6 +162,7 @@ describe("StarterKit chords ask the wrapper gate (task 427)", () => {
       ed.destroy();
     });
 
+    if (which === "blockquote") continue; // quoting a heading is lossless — below
     it(`Mod-Shift chord for ${which} on a HEADING leaves the section intact`, () => {
       const ed = mount();
       caret(ed, "h");
@@ -172,6 +173,17 @@ describe("StarterKit chords ask the wrapper gate (task 427)", () => {
       ed.destroy();
     });
   }
+
+  it("Mod-Shift chord for blockquote on a HEADING quotes it with the section intact (task 1107)", () => {
+    // `toggleBlockquote` is `wrapIn`, which never coerces — the heading rides
+    // inside `\begin{quote}` and round-trips (wrapper-gate-derived-identity).
+    const ed = mount();
+    caret(ed, "h");
+    expect(chord(ed, "blockquote")).toBe(true);
+    const out = tex(ed);
+    expect(out).toMatch(/\\begin\{quote\}\n\\section\{A section\}/);
+    ed.destroy();
+  });
 
   it("CONTROL: the bullet chord in a plain paragraph still makes a list", () => {
     const ed = mount();
@@ -308,7 +320,7 @@ function blockTypes(ed: Editor): string[] {
 }
 
 describe("a CARD BODY's wrapper chords ask the same door its toolbar asks (task 731)", () => {
-  for (const which of ["bullet-list", "ordered-list", "blockquote"] as const) {
+  for (const which of ["bullet-list", "ordered-list"] as const) {
     it(`${which}: the chord at a caret in an excerpt-body codeBlock leaves it a codeBlock`, () => {
       const ed = mountCard("excerpt", EXCERPT_FIXTURE);
       caret(ed, "c-code");
@@ -337,6 +349,25 @@ describe("a CARD BODY's wrapper chords ask the same door its toolbar asks (task 
       ed.destroy();
     });
   }
+
+  // Task 1107: the QUOTE never coerces (`wrapIn` wraps or fails), so in a card
+  // body it wraps a codeBlock / heading with the block intact — as it does in
+  // the main doc. (A card body persists as JSON, so any schema-valid quote
+  // survives.)
+  it("blockquote: the chord on an excerpt-body codeBlock / HEADING quotes it intact", () => {
+    const ed = mountCard("excerpt", EXCERPT_FIXTURE);
+    caret(ed, "c-code");
+    expect(chord(ed, "blockquote")).toBe(true);
+    expect(blockTypes(ed)).toEqual(["heading", "blockquote", "paragraph", "paragraph"]);
+    expect(ed.state.doc.child(1).child(0).type.name).toBe("codeBlock");
+    expect(ed.state.doc.child(1).textContent).toBe("verbatim");
+    caret(ed, "c-h");
+    expect(chord(ed, "blockquote")).toBe(true);
+    expect(ed.state.doc.child(0).type.name).toBe("blockquote");
+    expect(ed.state.doc.child(0).child(0).type.name).toBe("heading");
+    expect(ed.state.doc.child(0).child(0).attrs.level).toBe(2);
+    ed.destroy();
+  });
 
   it("CONTROL: the bullet chord in an excerpt-body PARAGRAPH still makes a list", () => {
     const ed = mountCard("excerpt", EXCERPT_FIXTURE);

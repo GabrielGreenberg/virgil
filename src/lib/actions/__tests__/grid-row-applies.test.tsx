@@ -358,11 +358,17 @@ describe("member 2 — a wrapper cell asks whether the container can host it", (
     editor.destroy();
   });
 
-  it("the markless verbatim blocks still grey all three (Bug #1 non-regression)", () => {
+  it("the markless verbatim blocks still grey the LISTS (Bug #1 non-regression); the quote holds them", () => {
+    // RENEGOTIATED (task 1107): a list toggle on a codeBlock / latexComment would
+    // `clearNodes()` it (no `listItem` may open with one), so the list cells
+    // stay grey; `toggleBlockquote` is `wrapIn`, which never coerces, and both
+    // round-trip inside `\begin{quote}` (wrapper-gate-derived-identity.test.ts).
     for (const uuid of ["code", "cmt"]) {
       const editor = mount();
       caretIn(editor, uuid);
-      for (const id of WRAPPERS) expect(verdict(editor, id), `${id} in ${uuid}`).toBe("disabled");
+      for (const id of WRAPPERS) {
+        expect(verdict(editor, id), `${id} in ${uuid}`).toBe(id === "blockquote" ? "ok" : "disabled");
+      }
       editor.destroy();
     }
   });

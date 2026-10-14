@@ -57,11 +57,11 @@ const RECT = { left: 100, top: 100, right: 120, bottom: 140, width: 20, height: 
 /**
  * A minimal editor stub the panel + the registry `applies()`/`run()` read. The
  * one non-trivial part: `wrappersDisabled` (a render-time probe) calls the
- * `bullet-list` row's `applies()` → `selectionIsListable(view)`, which reads
- * `view.state.selection.$from.blockRange($to)` + `$from.parent.type.name`. We
- * stub a PM-like selection whose block range parents to a single `paragraph`
- * (a LISTABLE_BLOCK_TYPE), so the wrapper cells render ENABLED — matching the
- * real lightning panel over prose (so arrow nav visits Blockquote etc.).
+ * `bullet-list` row's `applies()` → `wrapperSafeInState(view.state)`. We stub a
+ * PM-like selection whose block range parents to a single `paragraph`; the stub
+ * has no schema, so the gate takes its historic "allow" answer (task 1107) and
+ * the wrapper cells render ENABLED — matching the real lightning panel over
+ * prose (so arrow nav visits Blockquote etc.).
  */
 function makeEditor(editable = true) {
   const chain = (): Record<string, unknown> => {

@@ -895,12 +895,17 @@ describe("(F) wrapper toggle on heading/titleField — DATA-LOSS guard (Bug #1)"
     );
   }
 
-  it("the wrapper cells are applies():'disabled' on heading AND titleField", () => {
+  it("the LIST cells are applies():'disabled' on a heading; all wrapper cells on a titleField", () => {
     const editor = mountEditor(kindDoc());
-    // caret in the heading
+    // caret in the heading. RENEGOTIATED (task 1107): the quote cell is "ok" —
+    // `toggleBlockquote` is `wrapIn`, which never coerces, and
+    // `\begin{quote}\section{…}` round-trips (wrapper-gate-derived-identity
+    // .test.ts). Only the LIST toggles would coerce (toggleList → clearNodes).
     selectFirstText(editor, (n) => n.type.name === "heading");
     let ctx = lightningCtx(editor);
-    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("disabled");
+    for (const { row, wrap } of WRAPPER_ROWS) {
+      expect(row.applies(ctx)).toBe(wrap === "blockquote" ? "ok" : "disabled");
+    }
     // caret in the titleField
     selectFirstText(editor, (n) => n.type.name === "titleField");
     ctx = lightningCtx(editor);
@@ -983,14 +988,18 @@ describe("(F) wrapper toggle on heading/titleField — DATA-LOSS guard (Bug #1)"
     for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
   });
 
-  it("wrapper cells are 'disabled' on a codeBlock (atom/opaque block guard)", () => {
+  it("list cells are 'disabled' on a codeBlock; the quote cell is 'ok' (task 1107)", () => {
     const editor = mountEditor(kindDoc());
     const [from] = rangeOfText(editor, (n) => n.type.name === "codeBlock");
     editor.view.dispatch(
       editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from)),
     );
     const ctx = lightningCtx(editor);
-    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("disabled");
+    // A `listItem` cannot open with a codeBlock, so `wrapInList` refuses and the
+    // list toggle would `clearNodes()` it; a quote holds it verbatim.
+    for (const { row, wrap } of WRAPPER_ROWS) {
+      expect(row.applies(ctx)).toBe(wrap === "blockquote" ? "ok" : "disabled");
+    }
   });
 });
 
