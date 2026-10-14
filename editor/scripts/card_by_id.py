@@ -18,12 +18,14 @@ card-hosting sidecars that are intentionally writeback-exempt (so they have no
     rather than "not found"; every mutation op refuses it.
 
 CLI:
-  card_by_id.py <docPath> <cardId>
+  card_by_id.py <docPath> <cardId> [--panel <panel>]
     → prints {"found": bool, "cardId", "panel", "filename", "listKey",
               "archived", "cardKind", "card"} as JSON (exit 0 if found, 1 if not).
+    An id that names cards in more than one sidecar (a footnote and a citation
+    minted the same 4-hex id) REFUSES, naming the panels; `--panel` picks one.
 
 As a module:
-  from card_by_id import find_card, card_kind   # find_card → CardHit | None
+  from card_by_id import find_card, card_kind   # find_card → CardHit | None (dies if ambiguous)
 
 `find_card` reads each sidecar fresh (detached from any open write transaction),
 so a caller can safely use `hit.card` as a snapshot and mutate through a `_Txn`
@@ -113,12 +115,38 @@ def iter_cards(doc: Path) -> Iterator[CardHit]:
                 yield CardHit(card=c, panel=panel, filename=filename, list_key=list_key, index=i)
 
 
-def find_card(doc: Path, card_id: str) -> CardHit | None:
-    """Return the CardHit for `card_id`, or None if no sidecar holds it."""
-    for hit in iter_cards(doc):
-        if hit.card.get("id") == card_id:
-            return hit
-    return None
+def find_cards(doc: Path, card_id: str, panel: str | None = None) -> list[CardHit]:
+    """EVERY card whose id is `card_id`, in ALL_CARD_SIDECARS order — optionally
+    narrowed to one `panel`. The id alone is NOT a global key (task 1112): the
+    4-hex marker ids of `\\vfid` / `\\vcid` / `\\vexid` were minted in separate
+    per-kind namespaces (the app's serializer dedups per kind, and folders made
+    before the shared namespace still hold such pairs), so a footnote and a
+    citation can share `ab12`. A caller that needs ONE card goes through
+    `find_card`, which refuses rather than guess."""
+    if panel is not None and panel not in ALL_CARD_SIDECARS:
+        die(f"unknown panel {panel!r} (one of: {', '.join(ALL_CARD_SIDECARS)})")
+    return [
+        hit for hit in iter_cards(doc)
+        if hit.card.get("id") == card_id and (panel is None or hit.panel == panel)
+    ]
+
+
+def find_card(doc: Path, card_id: str, panel: str | None = None) -> CardHit | None:
+    """Return the ONE CardHit for `card_id` (narrowed to `panel` when given), or
+    None if no sidecar holds it. More than one match is a REFUSAL, never a
+    first-match guess (task 1112): an op aimed at a citation that silently
+    resolved to the footnote sharing its id would mutate the wrong card. The
+    refusal names the panels so the caller can re-run with the qualifier
+    (`op.panel` / `--panel`)."""
+    hits = find_cards(doc, card_id, panel)
+    if len(hits) > 1:
+        where = ", ".join(f"{h.panel} ({h.filename})" for h in hits)
+        if panel is None:
+            die(f"card id {card_id} is ambiguous — it names {len(hits)} cards: {where}. "
+                f"Re-run naming the panel (op.panel / --panel <panel>).")
+        die(f"card id {card_id} names {len(hits)} cards inside {panel}: {where} — "
+            f"the sidecar holds a duplicate id; repair it before mutating.")
+    return hits[0] if hits else None
 
 
 def card_kind(hit: CardHit) -> str:
@@ -159,10 +187,12 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="card_by_id.py")
     p.add_argument("doc")
     p.add_argument("card_id", help="the card id (v4 entity id, or a 4-hex \\v*id marker id)")
+    p.add_argument("--panel", default=None,
+                   help="the card's panel (e.g. footnotes / citations) — required when the id is ambiguous")
     a = p.parse_args(argv[1:])
 
     doc = resolve_doc(a.doc)
-    hit = find_card(doc, a.card_id)
+    hit = find_card(doc, a.card_id, a.panel)
     if hit is None:
         print(json.dumps({"found": False, "cardId": a.card_id}, ensure_ascii=False))
         return 1

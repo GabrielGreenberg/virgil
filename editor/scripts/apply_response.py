@@ -32,6 +32,11 @@ bump, committed all-or-nothing under the pen):
   apply_response.py <doc> accept   <op-json>   # { cardId } L3: splice proposal + status→accepted + Task done
   apply_response.py <doc> reject   <op-json>   # { cardId } L3: status→rejected + Task done (.tex untouched)
 
+Every card id above is resolved by `card_by_id.find_card`, which REFUSES an id
+that names cards in two sidecars (a footnote and a citation can share a 4-hex
+marker id — task 1112) instead of guessing; the op then names the panel:
+`op.panel` (or `panelA` / `panelB` on link) — e.g. `{ cardId, panel:"citations" }`.
+
 accept/reject (chip 13) consummate a Level-3 *proposal* — a suggestion card
 (revision- or cutter-) that draft-suggestion drafted with the .tex untouched and
 the Task left awaiting review. accept splices original_text → (user_text ||
@@ -2284,7 +2289,7 @@ def cmd_update(doc: Path, op: dict) -> dict:
     if not sets and body is None:
         die("update is a no-op: pass op.body and/or op.set {field: value}")
 
-    hit = find_card(doc, card_id)
+    hit = find_card(doc, card_id, op.get("panel"))
     if hit is None:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)
@@ -2407,7 +2412,7 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     card_id = op.get("cardId")
     if not card_id:
         die("archive requires op.cardId")
-    hit = find_card(doc, card_id)
+    hit = find_card(doc, card_id, op.get("panel"))
     if hit is None:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)
@@ -2485,7 +2490,7 @@ def cmd_restore(doc: Path, op: dict) -> dict:
     card_id = op.get("cardId")
     if not card_id:
         die("restore requires op.cardId")
-    hit = find_card(doc, card_id)
+    hit = find_card(doc, card_id, op.get("panel"))
     if hit is None:
         die(f"card not found: {card_id}")
     _guard_panel("restore", hit, card_kind(hit))
@@ -2526,7 +2531,7 @@ def cmd_move(doc: Path, op: dict) -> dict:
     new_anchor = op.get("newAnchor")
     if not card_id or not new_anchor:
         die("move requires op.cardId and op.newAnchor")
-    hit = find_card(doc, card_id)
+    hit = find_card(doc, card_id, op.get("panel"))
     if hit is None:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)
@@ -2632,7 +2637,8 @@ def _unlink(doc: Path, op: dict, a_id: str, b_id: str) -> dict:
     from card_by_id import find_card, card_kind
 
     rel = op.get("kind")  # None ⇒ every relationship kind between the pair
-    hits = [(cid, other, find_card(doc, cid)) for cid, other in ((a_id, b_id), (b_id, a_id))]
+    hits = [(cid, other, find_card(doc, cid, pnl)) for cid, other, pnl in
+            ((a_id, b_id, op.get("panelA")), (b_id, a_id, op.get("panelB")))]
     present = [(cid, other, h) for cid, other, h in hits if h is not None]
     if not present:
         die(f"card not found: {a_id} (nor {b_id})")
@@ -2680,10 +2686,10 @@ def cmd_link(doc: Path, op: dict) -> dict:
         return _unlink(doc, op, a_id, b_id)
     rel = op.get("kind") or "related"
 
-    hit_a = find_card(doc, a_id)
+    hit_a = find_card(doc, a_id, op.get("panelA"))
     if hit_a is None:
         die(f"card not found: {a_id}")
-    hit_b = find_card(doc, b_id)
+    hit_b = find_card(doc, b_id, op.get("panelB"))
     if hit_b is None:
         die(f"card not found: {b_id}")
     kind_a, kind_b = card_kind(hit_a), card_kind(hit_b)
@@ -2761,7 +2767,7 @@ def _resolve_proposal(doc: Path, op: dict, verb: str):
     card_id = op.get("cardId")
     if not card_id:
         die(f"{verb} requires op.cardId")
-    hit = find_card(doc, card_id)
+    hit = find_card(doc, card_id, op.get("panel"))
     if hit is None:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)

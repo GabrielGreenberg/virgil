@@ -42,6 +42,7 @@ import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
+import { collectAtomIds } from "@/lib/tiptap/node-identity";
 import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
 import {
   restoreExcerptAtAnchor,
@@ -315,7 +316,11 @@ export interface EditorHandle {
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string, sourceEl?: HTMLElement | null) => void;
   updateCitationDisplay: (citationId: string, displayText: string, command?: string) => void;
-  getCitationIds: () => Set<string>;
+  /** Every Card-bearing atom id live in the MAIN doc — footnote AND citation,
+   *  footnote-nested cites included (`collectAtomIds`). Card ids are ONE
+   *  namespace (task 1112): a new footnote or cite is minted against this
+   *  union, never its own kind alone. */
+  getCardAtomIds: () => Set<string>;
   getCitationOrder: () => string[];
   insertCitation: (command: string, citationId: string, displayText: string) => void;
   /** Remove a `\cite` atom from the doc by its citationId. Mirrors
@@ -1150,14 +1155,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     createEmptyFootnote(opts): { footnoteId: string } | null {
       if (!editor) return null;
-      const existing = new Set<string>();
-      editor.state.doc.descendants((n) => {
-        if (n.type.name === "footnote" && n.attrs.footnoteId) {
-          existing.add(n.attrs.footnoteId as string);
-        }
-        return true;
-      });
-      const footnoteId = generateShortId(existing);
+      // ONE id namespace across every Card-bearing atom (task 1112): a footnote
+      // minted the id a citation already holds makes that id name two cards
+      // to every id-only lookup (the skill executors' `card_by_id`).
+      const footnoteId = generateShortId(collectAtomIds(editor.state.doc));
       const content: TipJSON = { type: "doc", content: [{ type: "paragraph" }] };
       // A range selection is never REPLACED (task 971): `at` collapses the
       // selection to its end before inserting, so an empty footnote cannot
@@ -1361,20 +1362,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       });
     },
 
-    getCitationIds(): Set<string> {
+    getCardAtomIds(): Set<string> {
       if (!editor) return new Set();
-      const ids = new Set<string>();
-      editor.state.doc.descendants((node) => {
-        if (node.type.name === "citation") ids.add(node.attrs.citationId);
-        if (node.type.name === "footnote" && node.attrs.content) {
-          walkJsonContentForCitations(
-            node.attrs.content as JSONContent,
-            (cit) => ids.add(cit.citationId),
-          );
-        }
-        return true;
-      });
-      return ids;
+      return collectAtomIds(editor.state.doc);
     },
 
     getCitationOrder(): string[] {

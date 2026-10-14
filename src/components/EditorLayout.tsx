@@ -2362,9 +2362,10 @@ export default function EditorLayout() {
       // Insert into the editor that OWNS the create — the footnote/card editor
       // whose pos-space the popover captured `pos` in, falling back to MAIN
       // (CHIP 5; mirrors `handleMathSave(activeMath.editor, …)`). The citation
-      // id stays globally unique because `getCitationIds()` already walks the
-      // MAIN doc INCLUDING footnote-nested cites (Editor.tsx), so a cite created
-      // inside a footnote can't collide with one in the body.
+      // id stays globally unique because `getCardAtomIds()` walks the MAIN doc
+      // INCLUDING footnote-nested cites, so a cite created inside a footnote
+      // can't collide with one in the body — and it spans footnote ids too
+      // (task 1112: card ids are ONE namespace across kinds).
       // An explicitly-threaded owner that has since been DESTROYED (the footnote
       // card closed / scrolled away while the deferred-commit popover stayed
       // open) leaves `pos` stranded in that editor's pos-space — silently
@@ -2386,7 +2387,7 @@ export default function EditorLayout() {
         },
         "natbib",
       );
-      const citationId = generateShortId(handle.getCitationIds());
+      const citationId = generateShortId(handle.getCardAtomIds());
       const landed = insertInlineAtom({
         editor: targetEd,
         type: "citation",

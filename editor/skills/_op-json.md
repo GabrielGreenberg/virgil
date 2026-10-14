@@ -49,7 +49,7 @@ from the paper:
 | `text` under `annotationEdit` | an annotation you drafted |
 
 **Ids** = `cardId`, `cardAId` / `cardBId`, `newAnchor`, `requestId`,
-`bibReviewType`, `kind`, `panel`, `clearSourceFlag`.
+`bibReviewType`, `kind`, `panel`, `panelA` / `panelB`, `clearSourceFlag`.
 
 An op-json written as a `'<op-json>'` **placeholder** is free text by
 construction: a payload you compose rather than spell out is one whose bytes
