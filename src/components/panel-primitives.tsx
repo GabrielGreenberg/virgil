@@ -34,6 +34,7 @@ import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
 import { useFieldDraft } from "./field-draft";
 import { FOCUS_OUTLINE_CLASS, withFocusIndicator } from "./focus-indicator";
+import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { CARD_DELETE_CONFIRM_MESSAGE, cardHasContent } from "@/cards/has-content";
@@ -1003,7 +1004,7 @@ function CardKindDropdown({
       trigger={() => (
         <>
           {labelOverride ?? cardTypeLabel(kind)}
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg className={chromeOnly("")} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </>
@@ -1055,7 +1056,7 @@ export function CardJumpChevron({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-xs"
+      className={chromeOnly("iconbtn-xs")}
       {...iconHint({ label: title })}
     >
       <JumpChevron />
@@ -1143,7 +1144,7 @@ export function CardDropButton({
       // disabled hint ("Add a citation key to anchor") is the only place the
       // user learns WHY it is off, and HintLayer finds it by `pointerover`.
       // (A disabled iconbtn paints no hover fill — globals.css.)
-      className="iconbtn-xs"
+      className={chromeOnly("iconbtn-xs")}
       style={disabled ? { cursor: "not-allowed", pointerEvents: "auto" } : { cursor: "grab" }}
       {...iconHint({ label: title, hint: disabled ? "Add a citation key to anchor" : title })}
     >
@@ -1273,7 +1274,7 @@ export function CardBodyTitle({
         onMouseDown={(e) => e.stopPropagation()}
         draggable={false}
         onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        className="card-title-add"
+        className={chromeOnly("card-title-add")}
         style={theme ? { color: theme.titleColor } : undefined}
         data-hint="Add title"
         data-hint-pos="above"
@@ -2428,7 +2429,7 @@ export function PanelClose() {
 export function CardDragHandle() {
   return (
     <div
-      className="card-drag-handle cursor-grab p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
+      className={chromeOnly("card-drag-handle cursor-grab p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0")}
       data-hint="Drag to pop out"
       data-hint-pos="above"
       aria-hidden="true"
@@ -2464,6 +2465,7 @@ export function CardPopoutButton({
       onClick={onClick}
       variant="x"
       labelNoun="card"
+      className={chromeOnly(POPOUT_BUTTON_CLASS)}
     />
   );
 }
@@ -2500,7 +2502,7 @@ export function CardTrashButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm iconbtn-danger absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      className={chromeOnly("iconbtn-sm iconbtn-danger absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100")}
       style={cornerSlotStyle(0)}
       {...iconHint({ label: title, hint: "Delete", pos: "above" })}
     >
@@ -2537,7 +2539,7 @@ export function CardArchiveButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      className={chromeOnly("iconbtn-sm absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100")}
       style={cornerSlotStyle(1)}
       {...iconHint({ label: isArchived ? "Unarchive" : "Archive", pos: "above" })}
     >
@@ -2585,7 +2587,7 @@ export function CardRestoreButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
+      className={chromeOnly("iconbtn-sm absolute bottom-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100")}
       style={cornerSlotStyle(2)}
       {...iconHint({ label, pos: "above" })}
     >

@@ -6091,9 +6091,11 @@ html {
      paper (task 554 — the same law one channel over). Only the OUTLINE member
      is print-reachable: `.focus-ring` is a `box-shadow`, which Chrome drops
      unless "Background graphics" is on, and every `iconbtn-*` wearer is chrome
-     the rules above already `display: none`. An `outline` is painted like a
-     border and prints unconditionally — the same property that made the
-     spelling squiggle the one member to print with DEFAULT settings.
+     that is already `display: none` on paper — app chrome by the rules above,
+     an appendix card's controls by the `.virgil-chrome-only` stamp (task 1114).
+     An `outline` is painted like a border and prints unconditionally — the
+     same property that made the spelling squiggle the one member to print
+     with DEFAULT settings.
      Covered by the attention rule above ONLY by coincidence (a focused card is
      a selected card), which is exactly the coincidence `data-link-highlight`
      was relying on before task 523 named it. */
@@ -6240,15 +6242,12 @@ html {
      too, and take the same chrome-only stamp (task 535) rather than a rule
      here. */
 
-  /* Strip non-content card chrome (grip, collab pills, popout/close, jump)
-     inside appendices via ONE marker. The former selectors
-     ([data-pop-button] / [data-close-button] / .panel-header-controls) were
-     DEAD — no such DOM hooks exist post-AF — so appendix cards currently print
-     WITH their chrome. The real fix is a single `data-card-chrome` marker on the
-     shared header controls; that marker lands with A9 (it owns the card header)
-     per the A8↔A9↔AF seam (WAVE2 E-3). This rule is in place now so the strip
-     works the moment A9 stamps the marker (no-op until then). */
-  [data-print-appendix] [data-card-chrome] { display: none; }
+  /* Appendix card chrome (grip, drop/jump/popout buttons, the corner
+     trash/archive/restore cluster, collab pills, the kind caret) is NOT
+     stripped here: each control stamps `chromeOnly()` at its own definition
+     (panel-primitives.tsx, task 1114), so the ONE `.virgil-chrome-only` rule
+     hides it on paper. `print-card-chrome-posture.test.ts` asks the question
+     of every card primitive, so a new header control cannot print. */
 }
 
 /* ── Cowork pen — the "Virgil is editing this paper…" badge (task 489) ──

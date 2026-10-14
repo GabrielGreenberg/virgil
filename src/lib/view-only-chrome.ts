@@ -139,12 +139,6 @@ export const VIEW_ONLY_ATTENTION_ATTRS = [
 export const ATTENTION_COLOR_VAR = "--link-anchor-color";
 
 /**
- * The properties the print block zeroes for view-only paint. Declared so the
- * marker rule and the census cannot come to disagree about the list — `outline`
- * is the one a reader would omit, and it is the one a SELECTED card carries
- * into the print appendix.
- */
-/**
  * The custom property every persistent TINT band paints from
  * (`.linked-anchor[data-tint-color]` → `color-mix(… var(--tint-color) …)`).
  *
@@ -165,6 +159,12 @@ export const ATTENTION_COLOR_VAR = "--link-anchor-color";
  */
 export const TINT_COLOR_VAR = "--tint-color";
 
+/**
+ * The properties the print block zeroes for view-only paint. Declared so the
+ * marker rule and the census cannot come to disagree about the list — `outline`
+ * is the one a reader would omit, and it is the one a SELECTED card carries
+ * into the print appendix.
+ */
 export const VIEW_ONLY_ZEROED_PROPERTIES = [
   "text-decoration",
   "background",
