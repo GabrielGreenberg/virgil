@@ -94,14 +94,67 @@ async function ensureDir(
   return root.getDirectoryHandle(name, { create: true });
 }
 
+/** The read door's ONE "is this just absence?" test (task 1115). A lookup that
+ *  finds nothing (`NotFoundError`) or finds the wrong kind of entry
+ *  (`TypeMismatchError`) means "not there" — the reads answer `undefined`.
+ *  Anything else (a permission lapse, an unreadable file, an IO fault) is a
+ *  FAILURE and propagates, so a caller can tell "no PDF on disk" from
+ *  "couldn't read it". Same split as the editor's `storage-fsa` `isNotFound`.
+ *  Checked by `name`, not `instanceof DOMException`, so a cross-realm or
+ *  test-fake exception classifies the same way. */
+export function isMissingEntryError(e: unknown): boolean {
+  const name = (e as { name?: unknown } | null)?.name;
+  return name === "NotFoundError" || name === "TypeMismatchError";
+}
+
+/** Walk `parts` as directories from `root`. `undefined` = some segment is
+ *  absent; any other lookup failure rejects (see `isMissingEntryError`). */
+async function walkDirs(
+  root: FileSystemDirectoryHandle,
+  parts: readonly string[],
+): Promise<FileSystemDirectoryHandle | undefined> {
+  let cur = root;
+  for (const p of parts) {
+    try {
+      cur = await getDir(cur, p);
+    } catch (e) {
+      if (isMissingEntryError(e)) return undefined;
+      throw e;
+    }
+  }
+  return cur;
+}
+
 async function tryGetFile(
   dir: FileSystemDirectoryHandle,
   name: string,
 ): Promise<FileSystemFileHandle | undefined> {
   try {
     return await dir.getFileHandle(name);
-  } catch {
-    return undefined;
+  } catch (e) {
+    if (isMissingEntryError(e)) return undefined;
+    throw e;
+  }
+}
+
+/** Resolve `path` to its file and read it. `undefined` ONLY when the file (or a
+ *  parent directory) is absent — including a file that vanished between the
+ *  handle lookup and the read (a sync client or a triage move). Every other
+ *  failure rejects. */
+async function readFileAt(
+  root: FileSystemDirectoryHandle,
+  path: string,
+): Promise<File | undefined> {
+  const parts = path.split("/").filter(Boolean);
+  const dir = await walkDirs(root, parts.slice(0, -1));
+  if (!dir) return undefined;
+  const fh = await tryGetFile(dir, parts[parts.length - 1]);
+  if (!fh) return undefined;
+  try {
+    return await fh.getFile();
+  } catch (e) {
+    if (isMissingEntryError(e)) return undefined;
+    throw e;
   }
 }
 
@@ -109,23 +162,14 @@ async function tryGetFile(
 // Reads
 // ---------------------------------------------------------------------------
 
+/** Read a file as text. `undefined` = absent; any other failure rejects
+ *  (`readFileAt`). */
 export async function readTextFile(
   root: FileSystemDirectoryHandle,
   path: string,
 ): Promise<string | undefined> {
-  const parts = path.split("/").filter(Boolean);
-  let cur: FileSystemDirectoryHandle = root;
-  for (let i = 0; i < parts.length - 1; i++) {
-    try {
-      cur = await getDir(cur, parts[i]);
-    } catch {
-      return undefined;
-    }
-  }
-  const fh = await tryGetFile(cur, parts[parts.length - 1]);
-  if (!fh) return undefined;
-  const file = await fh.getFile();
-  return file.text();
+  const file = await readFileAt(root, path);
+  return file === undefined ? undefined : file.text();
 }
 
 export async function readJsonFile<T>(
@@ -143,23 +187,14 @@ export async function readJsonFile<T>(
 
 /** Read a file as a `File` (Blob) — needed for binary content like PDFs
  *  where consumers want `URL.createObjectURL(file)`. Returns undefined if
- *  the file or any parent directory is missing. */
+ *  the file or any parent directory is missing; REJECTS on any other failure
+ *  (permission, IO), so the caller can say "couldn't read" rather than "not
+ *  there". */
 export async function readFile(
   root: FileSystemDirectoryHandle,
   path: string,
 ): Promise<File | undefined> {
-  const parts = path.split("/").filter(Boolean);
-  let cur: FileSystemDirectoryHandle = root;
-  for (let i = 0; i < parts.length - 1; i++) {
-    try {
-      cur = await getDir(cur, parts[i]);
-    } catch {
-      return undefined;
-    }
-  }
-  const fh = await tryGetFile(cur, parts[parts.length - 1]);
-  if (!fh) return undefined;
-  return fh.getFile();
+  return readFileAt(root, path);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,15 +301,8 @@ export async function listDir(
   root: FileSystemDirectoryHandle,
   path: string,
 ): Promise<{ name: string; kind: "file" | "directory" }[] | undefined> {
-  const parts = path.split("/").filter(Boolean);
-  let cur: FileSystemDirectoryHandle = root;
-  for (const p of parts) {
-    try {
-      cur = await getDir(cur, p);
-    } catch {
-      return undefined;
-    }
-  }
+  const cur = await walkDirs(root, path.split("/").filter(Boolean));
+  if (!cur) return undefined;
   const out: { name: string; kind: "file" | "directory" }[] = [];
   for await (const [name, handle] of cur.entries()) {
     out.push({ name, kind: handle.kind });
@@ -310,15 +338,9 @@ export async function fileExists(
   path: string,
 ): Promise<boolean> {
   const parts = path.split("/").filter(Boolean);
-  let cur: FileSystemDirectoryHandle = root;
-  for (let i = 0; i < parts.length - 1; i++) {
-    try {
-      cur = await getDir(cur, parts[i]);
-    } catch {
-      return false;
-    }
-  }
-  return !!(await tryGetFile(cur, parts[parts.length - 1]));
+  const dir = await walkDirs(root, parts.slice(0, -1));
+  if (!dir) return false;
+  return !!(await tryGetFile(dir, parts[parts.length - 1]));
 }
 
 // ---------------------------------------------------------------------------

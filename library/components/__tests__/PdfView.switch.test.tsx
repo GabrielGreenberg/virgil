@@ -17,10 +17,14 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const reads = new Map<string, (file: Blob | null) => void>();
+const failures = new Map<string, (err: unknown) => void>();
 vi.mock("@library/lib/library-storage", () => ({
   readFile: vi.fn(
     (_handle: unknown, path: string) =>
-      new Promise<Blob | null>((resolve) => reads.set(path, resolve)),
+      new Promise<Blob | null>((resolve, reject) => {
+        reads.set(path, resolve);
+        failures.set(path, reject);
+      }),
   ),
 }));
 
@@ -38,6 +42,7 @@ beforeEach(() => {
   revoked.clear();
   opens.length = 0;
   reads.clear();
+  failures.clear();
   URL.createObjectURL = vi.fn(() => `blob:fake/${++minted}`);
   URL.revokeObjectURL = vi.fn((u: string) => void revoked.add(u));
 });
@@ -70,6 +75,13 @@ function installViewer(iframe: HTMLIFrameElement) {
     PDFViewerApplicationOptions: { set: vi.fn() },
   });
   return { app, handlers };
+}
+
+async function rejectRead(citekey: string, err: unknown) {
+  await act(async () => {
+    failures.get(pathOf(citekey))!(err);
+    await new Promise((r) => setTimeout(r, 0));
+  });
 }
 
 async function resolveRead(citekey: string, file: Blob | null) {
@@ -188,6 +200,36 @@ describe("PdfView — an in-place paper switch (task 612)", () => {
 
     unmount();
     expect(revoked.has("blob:fake/2")).toBe(true);
+  });
+
+  it("task 1115: a FAILED read says so — never 'Loading PDF…' forever, never 'No PDF on disk' — and the next paper opens", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { container, rerender, unmount } = render(<PdfView handle={handle} citekey="A" />);
+    const iframe = container.querySelector("iframe")!;
+    installViewer(iframe);
+    await resolveRead("A", new Blob(["a"]));
+
+    await act(async () => {
+      rerender(<PdfView handle={handle} citekey="E" />);
+    });
+    expect(container.textContent).toContain("Loading PDF…");
+    await rejectRead("E", new DOMException("denied", "NotAllowedError"));
+    expect(container.textContent).not.toContain("Loading PDF…");
+    expect(container.textContent).not.toContain("No PDF on disk");
+    expect(container.textContent).toContain("read the PDF for");
+    expect(container.querySelector("iframe")).toBe(iframe);
+    // The previous paper's source is released, as on the missing branch.
+    expect(revoked.has("blob:fake/1")).toBe(true);
+    expect(opens.filter((o) => o.originalUrl === "E.pdf")).toEqual([]);
+
+    await act(async () => {
+      rerender(<PdfView handle={handle} citekey="D" />);
+    });
+    await resolveRead("D", new Blob(["d"]));
+    expect(container.textContent).not.toContain("read the PDF for");
+    expect(opens.at(-1)).toEqual({ url: "blob:fake/2", originalUrl: "D.pdf", revokedAtCall: false });
+    unmount();
+    warn.mockRestore();
   });
 
   it("opens once even when the eager attempt and the load event both clear init (cold mount)", async () => {

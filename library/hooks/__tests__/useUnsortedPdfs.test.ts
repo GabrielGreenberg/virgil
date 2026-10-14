@@ -86,4 +86,19 @@ describe("useUnsortedPdfs — change-guard (A2)", () => {
     expect(after).not.toBe(before); // changed → fresh identity
     expect(after).toEqual(["c.pdf", "b.pdf", "a.pdf"]);
   });
+
+  it("task 1115: one unreadable entry does not abort the list — it is still listed, sorted last", async () => {
+    listDir.mockResolvedValue([
+      { kind: "file", name: "a.pdf" },
+      { kind: "file", name: "bad.pdf" },
+      { kind: "file", name: "b.pdf" },
+    ]);
+    readFile.mockImplementation(async (_h: unknown, path: string) => {
+      if (path.endsWith("bad.pdf")) throw new DOMException("io", "NotReadableError");
+      return { lastModified: path.endsWith("a.pdf") ? 100 : 200 };
+    });
+    const { result } = renderHook(() => useUnsortedPdfs(handle));
+    await waitFor(() => expect(result.current.files).toHaveLength(3));
+    expect(result.current.files).toEqual(["b.pdf", "a.pdf", "bad.pdf"]);
+  });
 });
