@@ -54,9 +54,11 @@ async function mountDialog() {
   const { default: PreferencesModal } = await import("@/components/PreferencesModal");
 
   let live: EditorPreferences | null = null;
+  let hook: ReturnType<typeof prefsMod.usePreferences> | null = null;
   function Host() {
     const p = prefsMod.usePreferences();
     live = p.prefs;
+    hook = p;
     return (
       <PreferencesModal
         prefs={p.prefs}
@@ -75,7 +77,7 @@ async function mountDialog() {
     );
   }
   const { unmount } = render(<Host />);
-  return { prefsMod, linksMod, unmount, read: () => live! };
+  return { prefsMod, linksMod, unmount, read: () => live!, store: () => hook! };
 }
 
 /**
@@ -211,7 +213,9 @@ describe("the cascade's shape inside the one writer", () => {
  * Task 903 — "Reset to defaults" wiped every preference and transform in one
  * click with no way back, from the primary's corner of the footer. It now sits
  * in the destructive slot and offers Undo, which restores the snapshot it
- * replaced; and any further change through the dialog retires the offer.
+ * replaced; and any further change retires the offer — from ANY writer, not
+ * just the dialog's own controls (task 1121: the offer is derived from the live
+ * state, so FontsDialog and a peer window retire it too).
  */
 describe("Reset to defaults is undoable (task 903)", () => {
   it("the global transform sliders resolve by their label", async () => {
@@ -240,6 +244,31 @@ describe("Reset to defaults is undoable (task 903)", () => {
     act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("an edit from OUTSIDE the dialog (FontsDialog's raw updatePref) retires the offer", async () => {
+    const { read, store } = await mountDialog();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    // FontsDialog is wired straight to the store's door, not the dialog's.
+    act(() => store().updatePref("editorFontSize", 1.37));
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(read().editorFontSize).toBe(1.37);
+  });
+
+  it("an edit from a PEER window (storage event) retires the offer", async () => {
+    const { read, prefsMod } = await mountDialog();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    act(() => {
+      localStorage.setItem(
+        "virgil-editor-prefs",
+        JSON.stringify({ ...prefsMod.DEFAULT_PREFS, editorFontSize: 1.37 }),
+      );
+      window.dispatchEvent(new StorageEvent("storage", { key: "virgil-editor-prefs" }));
+    });
+    expect(read().editorFontSize).toBe(1.37);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
