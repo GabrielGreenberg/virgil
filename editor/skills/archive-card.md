@@ -57,7 +57,8 @@ pen**, with the audit notification + version bump. Fully reversible by
      The bullet above reaches only rows LINKED to the card; the proposal is the
      answer, never the linked card, so this is a second leg. An already
      accepted/rejected proposal finalized its Task when it got there (no second
-     write). That close is PROVISIONAL (`closedBy: "leave"`, task 1062):
+     write). The close goes through this leg even when you pass the proposal's
+     OWN Task as `requestId` (task 1109). That close is PROVISIONAL (`closedBy: "leave"`, task 1062):
      restoring the proposal brings it back `pending`, and accepting it — here
      via `/editor/accept-suggestion` or in the editor — ends the Task
      `accepted` and closes the todo it answered, the same on both doors;

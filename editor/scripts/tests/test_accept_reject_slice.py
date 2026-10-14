@@ -461,5 +461,97 @@ check(r.returncode == 0, f"archive exited 0 (stderr={r.stderr.strip()[:160]})")
 check(load(sb, "ai-requests.json") == ar_before or ar_before is None,
       "ai-requests.json unchanged by archiving a suggestion with no aiOriginRequestId")
 
+# ===================================================== one door predicate (task 1109)
+
+
+def make_applied(doc, cid):
+    """Simulate the app having APPLIED a proposal: its suggested text is live in
+    the .tex (in the app it sits under a pending-change mark) and the card reads
+    `applied`."""
+    p = doc / "virgil" / "revisions.json"
+    rv = json.loads(p.read_text())
+    for c in rv["cards"]:
+        if c.get("id") == cid:
+            c["status"] = "applied"
+    p.write_text(json.dumps(rv, indent=2))
+    tex = next(doc.glob("*.tex"))
+    t = tex.read_text(encoding="utf-8")
+    assert REV_ORIGINAL in t
+    tex.write_text(t.replace(REV_ORIGINAL, REV_SUGGESTED, 1), encoding="utf-8")
+
+
+for verb in ("accept", "reject"):
+    print(f"\n=== {verb} REFUSES an APPLIED proposal — .tex, card, Task byte-identical (task 1109) ===")
+    sb = sandbox()
+    cid = f"rev-applied-{verb}"
+    propose(sb, panel="revisions", card_id=cid, kind_label="revision-suggestion",
+            task_id=f"{cid}-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+    make_applied(sb, cid)
+    before = files_snapshot(sb)
+    r = run(APPLY, str(sb), verb, json.dumps({"cardId": cid}))
+    check(r.returncode != 0 and "APPLIED" in r.stderr and "Keep or Revert" in r.stderr,
+          f"{verb} of an applied proposal refuses, naming the settle (stderr={r.stderr.strip()[:160]})")
+    check(files_snapshot(sb) == before, f"…and {verb} wrote nothing (no double splice, no stranded edit)")
+    check(card_by_id(sb, "revisions.json", "cards", cid)["status"] == "applied", "…card still applied")
+
+print("\n=== update of an APPLIED proposal's text refuses; a non-text field still edits ===")
+sb = sandbox()
+propose(sb, panel="revisions", card_id="rev-applied-upd", kind_label="revision-suggestion",
+        task_id="rev-applied-upd-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+make_applied(sb, "rev-applied-upd")
+before = files_snapshot(sb)
+r = run(APPLY, str(sb), "update", json.dumps({"cardId": "rev-applied-upd",
+                                              "set": {"suggested_text": "something else"}}))
+check(r.returncode != 0 and "APPLIED" in r.stderr, "update of applied proposal text refuses")
+check(files_snapshot(sb) == before, "…and writes nothing")
+r = run(APPLY, str(sb), "update", json.dumps({"cardId": "rev-applied-upd",
+                                              "set": {"explanation": "why"}}))
+check(r.returncode == 0, f"update of a non-proposal field still lands (stderr={r.stderr.strip()[:160]})")
+
+print("\n=== update passes 1044's landing guard on the MERGED proposal (task 1109) ===")
+for label, sets, needle in [
+    ("empty suggested_text", {"suggested_text": ""}, "No replacement text yet"),
+    ("paraphrased original_text", {"original_text": "a paraphrase that is nowhere in the paper"},
+     "not found verbatim"),
+]:
+    sb = sandbox()
+    cid = "rev-upd-guard"
+    propose(sb, panel="revisions", card_id=cid, kind_label="revision-suggestion",
+            task_id=f"{cid}-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+    before = files_snapshot(sb)
+    r = run(APPLY, str(sb), "update", json.dumps({"cardId": cid, "set": sets}))
+    check(r.returncode != 0 and needle in r.stderr,
+          f"[{label}] update refuses the dead proposal (stderr={r.stderr.strip()[:160]})")
+    check(files_snapshot(sb) == before, f"[{label}] …and writes nothing")
+sb = sandbox()
+propose(sb, panel="revisions", card_id="rev-upd-ok", kind_label="revision-suggestion",
+        task_id="rev-upd-ok-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+r = run(APPLY, str(sb), "update", json.dumps({"cardId": "rev-upd-ok",
+                                              "set": {"suggested_text": "a better draft"}}))
+check(r.returncode == 0, f"a live update of suggested_text still lands (stderr={r.stderr.strip()[:160]})")
+check(card_by_id(sb, "revisions.json", "cards", "rev-upd-ok")["suggested_text"] == "a better draft",
+      "…with the new text")
+
+print("\n=== archive with requestId == the proposal's own Task: rejected PROVISIONAL, restore→accept settles it ===")
+sb = sandbox()
+propose(sb, panel="revisions", card_id="rev-own-1", kind_label="revision-suggestion",
+        task_id="rev-own-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+link_task_to_todo(sb, "rev-own-task")
+done_before = todo_done(sb)
+r = run(APPLY, str(sb), "archive", json.dumps({"cardId": "rev-own-1", "requestId": "rev-own-task"}))
+check(r.returncode == 0, f"archive exited 0 (stderr={r.stderr.strip()[:160]})")
+task = req_by_id(sb, "rev-own-task")
+check(task["status"] == "complete" and task.get("result") == "rejected"
+      and task.get("closedBy") == "leave",
+      "the Task → complete / rejected / closedBy: leave (NOT auto-applied)")
+check(todo_done(sb) == done_before, "…the source todo is untouched")
+run(APPLY, str(sb), "restore", json.dumps({"cardId": "rev-own-1"}))
+r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "rev-own-1"}))
+check(r.returncode == 0, f"restore → accept exited 0 (stderr={r.stderr.strip()[:160]})")
+task = req_by_id(sb, "rev-own-task")
+check(task.get("result") == "accepted" and "closedBy" not in task,
+      "restore → accept: the Task ends accepted")
+check(todo_done(sb) is True, "restore → accept: the source todo is CLOSED")
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)
