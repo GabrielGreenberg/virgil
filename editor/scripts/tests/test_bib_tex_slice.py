@@ -431,17 +431,23 @@ check(hashlib.sha256((sb / "references.bib").read_bytes()).hexdigest() == bib_h0
 check(hashlib.sha256((sb / "virgil/citations.json").read_bytes()).hexdigest() == cit_h0, "citations.json byte-identical (no-op)")
 check((sb / "virgil/version.txt").read_text().strip() == "1", "writes-only op still ran (version bumped), it just changed no paper text")
 
-# ----- GUARD: texEdit + renameCitekey in one op is refused (can't queue two .tex writes)
-print("\n=== guard: texEdit + renameCitekey in one op is refused (same-path write) ===")
+# ----- COMPOSE: texEdit + renameCitekey in one op land as ONE .tex write
+# (task 1108). Both are TRANSFORMS queued on the txn's one text entry for the
+# .tex, applied in order, so the old "two independent reads → refuse" guard is
+# retired by construction.
+print("\n=== compose: texEdit + renameCitekey in one op both land in one .tex write ===")
 sb = sandbox()
 op = {
-    "texEdit": {"mode": "replace-span", "anchorUuid": "0c01", "match": "x", "replacement": "y"},
+    "texEdit": {"mode": "replace-span", "anchorUuid": "1102",
+                "match": "This essay sketches", "replacement": "This essay outlines"},
     "renameCitekey": {"oldKey": "grafton1997", "newKey": "graftonAnthony1997"},
+    "summary": "compose", "clearSourceFlag": False,
 }
 r = run(APPLY, str(sb), "complete-only", json.dumps(op))
-check(r.returncode != 0, "an op carrying BOTH texEdit and renameCitekey is rejected, not silently last-write-wins")
-check("graftonAnthony1997" not in tex_of(sb) and tex_of(sb).count("grafton1997") == 2,
-      ".tex untouched by the refused op")
+check(r.returncode == 0, f"the composed op exits 0 (stderr={r.stderr.strip()[:160]})")
+check("This essay outlines" in tex_of(sb), ".tex: the replace-span landed")
+check(tex_of(sb).count("grafton1997") == 0 and "graftonAnthony1997" in tex_of(sb),
+      ".tex: the rename landed in the same write")
 
 # ===================================================== guard: malformed op
 # An op with neither a requestId nor any paper write is still rejected (the

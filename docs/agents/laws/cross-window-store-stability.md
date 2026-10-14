@@ -721,6 +721,26 @@ edit) was reverted with no error.
   app's read→write is already in-critical-section and short. A write the app
   lands between the in-pen re-read and `os.replace` (microseconds, no `.tex`
   work in between) is the residual.
+- **The paper's TEXT files ride the same door (task 1108).** Until then the
+  `.tex` / `.bib` were still queued as whole-file strings built from a read
+  taken BEFORE the pen, so an app autosave of ANOTHER paragraph (or a bib-panel
+  edit of ANOTHER entry) in the window was overwritten. Now every text edit is
+  a TRANSFORM queued through `_Txn.add_text` — the `texEdit` splice
+  (`_tex_splice_text`), the `bibEdit` (`_bib_apply_text`), `renameCitekey`'s
+  `\cite*{}` rewrite, and the footnote strip / body edit. It runs once on the
+  T0 read (so a refusal still dies before anything is queued); inside the pen
+  `_common.text_rebased` writes that result if the file is byte-identical, and
+  otherwise RE-RUNS the transform on the current text. The transforms are
+  identity-addressed (anchor uuid, entry key, `\vfid`), and their own guards
+  — the replace-span stale check, the bib preservation measure — re-run with
+  them, so an edit to the TARGET itself refuses as a `SidecarConflict`.
+  Transforms on one file compose into one write, which retires the old
+  "texEdit + renameCitekey" refusal by construction. A change that is a RULE
+  over records rather than a value — `renameCitekey`'s sidecar re-key — is
+  registered with `add_json_rule` and re-applied to the in-pen merge, so a card
+  the app added under the old key in the window follows the rename (a
+  sidecar the rule leaves untouched resolves to `UNCHANGED` and is not
+  rewritten).
 - `create_card.py`'s pre-read of `ai-requests.json` is routing only (anchor,
   safety level, kind check); it writes nothing, and the authoritative state is
   the in-pen merge — a row that went terminal meanwhile collides on `status`
@@ -731,7 +751,11 @@ wrapping `acquire_pen` (after every `_Txn` read, before the commit) and drives
 the real `archive` op: the app's row, a concurrent edit of ANOTHER note, the
 notification and the version all survive; editing the card being archived
 refuses with every file untouched. Four legs fail on the reinstated snapshot
-write.
+write. `editor/scripts/tests/test_txn_text_in_pen_rebase.py` is the text-file
+twin: an app edit to another paragraph / another .bib entry survives a
+`texEdit` / `bibEdit`; an edit to the target span refuses with nothing written;
+a `\cite{old}` and a citation card the app added in the window are re-keyed by
+`renameCitekey`.
 
 ### The app's half of that window: `mutateSidecar` is a COMPARE-AND-SWAP (task 979)
 
