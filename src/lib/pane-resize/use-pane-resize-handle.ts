@@ -88,9 +88,12 @@ export interface PaneResizeSpec {
   /** Stable, unique gesture id — carried on the bus info + probe data attrs. */
   id: string;
   axis: "x" | "y";
-  /** Current value in px. Called EXACTLY once per gesture, on the start
-   *  edge — the safe place for per-gesture snapshots (consumers park clamp
-   *  bounds / start-width records here; unit-pinned). */
+  /** Current value in px — where the divider is DRAWN, not a stored value
+   *  the render clamps (a raw stored start outside the clamp is a dead zone:
+   *  every move clamps back until the pointer crosses the gap, task 1134).
+   *  Called EXACTLY once per gesture, on the start edge — the safe place for
+   *  per-gesture snapshots (consumers park clamp bounds / start-width records
+   *  here; unit-pinned). */
   getValue(): number;
   /** UX clamp for the pointer math only — HARD constraints belong in the CSS
    *  grid template (`minmax()`/`clamp()`), so layout owns them (R8). */
