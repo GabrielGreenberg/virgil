@@ -4,8 +4,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   FACETS,
   isStatusFacet,
-  loadSort,
-  saveSort,
+  readLegacyColSort,
   sortEntries,
   type SortState,
   type StatusFacet,
@@ -207,52 +206,40 @@ describe("sortEntries — composite status (no facet)", () => {
   });
 });
 
-describe("loadSort / saveSort — facet round-trip (F#14)", () => {
+describe("readLegacyColSort — legacy-key seed read (F#14 facet)", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it("round-trips a status+facet sort", () => {
-    const s: SortState = { col: "status", dir: "asc", facet: "idx" };
-    saveSort(s);
-    expect(loadSort()).toEqual(s);
-  });
+  const seed = (v: unknown) =>
+    localStorage.setItem("virgil-library-col-sort", JSON.stringify(v));
 
-  it("round-trips every facet", () => {
+  it("reads a status+facet sort, for every facet", () => {
     for (const facet of FACETS) {
       const s: SortState = { col: "status", dir: "desc", facet };
-      saveSort(s);
-      expect(loadSort()).toEqual(s);
+      seed(s);
+      expect(readLegacyColSort()).toEqual(s);
     }
   });
 
-  it("drops a stray facet on a non-status column (canonicalizes on save)", () => {
-    // A facet only means something on status — saving it on `year` must not
-    // persist it, so the loaded value has no facet.
-    saveSort({ col: "year", dir: "desc", facet: "bib" } as SortState);
-    expect(loadSort()).toEqual({ col: "year", dir: "desc" });
-  });
-
-  it("ignores a persisted facet on a non-status column when loading", () => {
-    localStorage.setItem(
-      "virgil-library-col-sort",
-      JSON.stringify({ col: "author", dir: "asc", facet: "pdf" }),
-    );
-    expect(loadSort()).toEqual({ col: "author", dir: "asc" });
+  it("ignores a persisted facet on a non-status column", () => {
+    seed({ col: "author", dir: "asc", facet: "pdf" });
+    expect(readLegacyColSort()).toEqual({ col: "author", dir: "asc" });
   });
 
   it("ignores an unknown facet value", () => {
-    localStorage.setItem(
-      "virgil-library-col-sort",
-      JSON.stringify({ col: "status", dir: "asc", facet: "bogus" }),
-    );
-    expect(loadSort()).toEqual({ col: "status", dir: "asc" });
+    seed({ col: "status", dir: "asc", facet: "bogus" });
+    expect(readLegacyColSort()).toEqual({ col: "status", dir: "asc" });
   });
 
-  it("a plain status sort (no facet) round-trips without a facet key", () => {
-    saveSort({ col: "status", dir: "asc" });
-    const loaded = loadSort();
+  it("a plain status sort (no facet) reads without a facet key", () => {
+    seed({ col: "status", dir: "asc" });
+    const loaded = readLegacyColSort();
     expect(loaded).toEqual({ col: "status", dir: "asc" });
     expect((loaded as { facet?: StatusFacet }).facet).toBeUndefined();
+  });
+
+  it("falls back to year/desc when the key is absent", () => {
+    expect(readLegacyColSort()).toEqual({ col: "year", dir: "desc" });
   });
 });

@@ -29,8 +29,8 @@ import {
   writeStorageIfChanged,
 } from "@/lib/cross-window-storage";
 import {
-  loadSort,
-  loadWidths,
+  readLegacyColSort,
+  readLegacyColWidths,
   isReorderableColId,
   isStatusFacet,
   DEFAULT_COL_ORDER,
@@ -71,13 +71,6 @@ const PAPERS_HEIGHT_MIN = 100;
 
 export type PanelKey = "left" | "right";
 
-export interface PanelTabsState {
-  // mirrors library-store.ts PanelTabsState. Tier B only — absent/ignored
-  // in Tier A; nothing reads it yet.
-  openIds: string[];
-  activeId: string;
-}
-
 export interface ListView {
   // sort is per-(panel,libId) — the coherence fix. Optional so an
   // un-touched list inherits the default {col:'year',dir:'desc'}. The
@@ -101,7 +94,6 @@ export interface ListView {
 }
 
 export interface PanelState {
-  tabs?: PanelTabsState; // Tier B only
   leftPinnedActiveId?: string | null; // left panel only
   selectedKeys: string[]; // per-PANEL row highlight
   anchorKey: string | null; // shift-click pivot; travels with selectedKeys
@@ -355,7 +347,6 @@ function normalizePanel(raw: PanelState | undefined): PanelState {
   if (typeof raw.leftPinnedActiveId === "string" || raw.leftPinnedActiveId === null) {
     p.leftPinnedActiveId = raw.leftPinnedActiveId;
   }
-  if (raw.tabs && typeof raw.tabs === "object") p.tabs = raw.tabs;
   if (raw.lists && typeof raw.lists === "object") {
     for (const [libId, lv] of Object.entries(raw.lists)) {
       if (lv && typeof lv === "object") p.lists[libId] = normalizeListView(lv);
@@ -399,7 +390,7 @@ function seedFromLegacy(): LibraryViewSession {
   }
   // Widths: reuse the validated loader (clamps + fills defaults).
   try {
-    s.layout.colWidths = { ...loadWidths() };
+    s.layout.colWidths = { ...readLegacyColWidths() };
   } catch {
     /* leave undefined */
   }
@@ -414,7 +405,7 @@ function seedFromLegacy(): LibraryViewSession {
   // other (panel,libId) inherits {col:'year',dir:'desc'} until the user
   // sorts it (the coherence fix).
   try {
-    const sort = loadSort();
+    const sort = readLegacyColSort();
     const scope = ensureScope(s, "");
     scope.left.lists["central"] = { sort };
   } catch {
@@ -523,7 +514,7 @@ function commit(next: LibraryViewSession): void {
  * the setters: a path list is only ever as fine-grained as the bookkeeping
  * remembers to be, and everything here lives under ONE map (`scopes[""]` is
  * the singleton scope every non-tear-out consumer uses — both panels'
- * selection, tabs, and every per-library sort/query/scroll). A `scopes.<id>`
+ * selection, pinned tab, and every per-library sort/query/scroll). A `scopes.<id>`
  * granularity would swap that whole subtree and silently drop a peer's edit to
  * a different panel inside it — the same clobber, just narrower. The base diff
  * gets leaf granularity for free and needs nothing from the setters, including
@@ -639,15 +630,6 @@ export function subscribe(fn: () => void): () => void {
 }
 
 // ── granular mutators ───────────────────────────────────────────────────
-
-export function setPanelTabs(
-  scope: string,
-  panel: PanelKey,
-  tabs: PanelTabsState,
-): void {
-  const s = ensureInit();
-  commit(withScopePanel(s, scope, panel, (p) => ({ ...p, tabs })));
-}
 
 export function setSelection(
   scope: string,
