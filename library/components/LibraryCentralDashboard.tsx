@@ -5,7 +5,7 @@ import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { computeCatalogStats, type CatalogStats } from "@library/lib/catalog-stats";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
-import { bibFieldDisplay } from "@library/lib/bib-parser";
+import { bibFieldDisplay } from "@/lib/bib-parser";
 import { IndexedPill, BibPill } from "./StatusPill";
 import LibrarySearchInput from "./LibrarySearchInput";
 

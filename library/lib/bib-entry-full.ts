@@ -17,7 +17,7 @@
 // once on selection/mount and hold the result, not call per render.
 
 import { readTextFile, ROOT_FILES } from "./library-storage";
-import { parseBibFile } from "./bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 import { locateMasterEntryBlock } from "./bib-raw-entry";
 import type { BibEntry } from "./types";
 

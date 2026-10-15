@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listDir, readTextFile, SUBDIRS } from "@library/lib/library-storage";
-import { parseBibFile } from "@library/lib/bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 import type { BibEntry } from "@library/lib/types";
 
 const POLL_MS = 6000;

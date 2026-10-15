@@ -6,7 +6,7 @@
  * dropped `baseRaw` (the apply side's concurrent-edit guard).
  */
 import { describe, expect, it } from "vitest";
-import { parseBibFile } from "../bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 import { buildBibEditDiff } from "../bib-edit";
 
 const SMITH = `@article{smith2020,\n  author = {Smith, Jane},\n  title = {On Things},\n  journal = jphil,\n  year = {2020}\n}`;
@@ -43,5 +43,23 @@ describe("library parseBibFile raw blocks (task 895)", () => {
     const b = `@misc{dup,\n  title = {Second}\n}`;
     const raws = parseBibFile(`${a}\n\n${b}\n`).filter((e) => e.key === "dup").map((e) => e.raw);
     expect(raws).toEqual([a, b]);
+  });
+});
+
+describe("the Library parses master.bib through THE parser (task 1123)", () => {
+  // The Library used to parse through a drifted whole-file copy that returned
+  // a different BibEntry shape for the same bytes: no durable `uid`, no
+  // `source` splice anchor, and no positional raw fallback. It now imports
+  // `@/lib/bib-parser` itself, so the shape is the editor's.
+  it("each entry carries a uid and its source span, and raw is the exact block", () => {
+    const text = `${SMITH}\n\n${DOE}\n`;
+    const entries = parseBibFile(text);
+    expect(entries.map((e) => e.key)).toEqual(["smith2020", "doe2019"]);
+    for (const e of entries) {
+      expect(e.uid).toBeTruthy();
+      expect(e.source).toBeDefined();
+      expect(text.slice(e.source!.start, e.source!.end)).toBe(e.raw);
+    }
+    expect(new Set(entries.map((e) => e.uid)).size).toBe(2);
   });
 });

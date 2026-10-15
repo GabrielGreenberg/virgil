@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { readTextFile, ROOT_FILES } from "@library/lib/library-storage";
-import { parseBibFile } from "@library/lib/bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 import { readBibIndex, readBibIndexStamp } from "@library/lib/bib-index";
 import { libPerf, libPerfAsync } from "@library/lib/perf";
 import type { BibEntry } from "@library/lib/types";

@@ -331,12 +331,11 @@ const PERMITTED_MUTATE_BIB_SPELLERS = new Set([
   "src/lib/project-bib.ts",
 ]);
 
-/** The files entitled to serialize a WHOLE `.bib`: the two parsers that
- *  define the serializer, and the authority. A writer that serializes the
+/** The files entitled to serialize a WHOLE `.bib`: the parser that defines
+ *  the serializer, and the authority. A writer that serializes the
  *  whole file itself is holding a snapshot — the shape this suite retires. */
 const PERMITTED_WHOLE_BIB_SERIALIZERS = new Set([
   "src/lib/bib-parser.ts",
-  "library/lib/bib-parser.ts",
   "src/lib/project-bib.ts",
 ]);
 
@@ -382,6 +381,34 @@ describe("census · references.bib has ONE write authority", () => {
     // rather than separate writes that raced in the queue.
     expect((code.match(/\brunBibMutation\(/g) ?? []).length).toBe(3);
     expect(code).not.toMatch(/\bsetBibRaw\(\s*serialize/);
+  });
+
+  it("ONE .bib parser: no other production file parses with citation-js or rebuilds BibTeX (task 1123)", () => {
+    // `library/lib/bib-parser.ts` was a whole-file copy of the parser that
+    // drifted three ways (no positional raw fallback, no uid/source binding, a
+    // second `reconstructBibtex` with its own empty-field rule) while every
+    // test of either file stayed green. It is deleted; the Library imports
+    // `@/lib/bib-parser`. These needles are what a re-grown copy must spell.
+    // Read RAW (not `codeOnly`): the citation-js needle lives in a string
+    // literal, which `codeOnly` blanks. Each needle is a declaration or a
+    // load call, which prose comments do not spell.
+    const NEEDLES: Array<[string, RegExp]> = [
+      ["parseBibFile definition", /\bfunction parseBibFile\b/],
+      ["reconstructBibtex definition", /\bfunction reconstructBibtex\b/],
+      ["citation-js load", /require\(\s*["']citation-js["']\s*\)|from\s+["']citation-js["']/],
+      ["CSL item → BibEntry adapter", /\bfunction cslItemToEntry\b/],
+    ];
+    const raw = (f: string) => fs.readFileSync(f, "utf8");
+    const offenders: string[] = [];
+    for (const f of PROD_FILES) {
+      if (rel(f) === "src/lib/bib-parser.ts") continue;
+      const code = raw(f);
+      for (const [what, re] of NEEDLES) if (re.test(code)) offenders.push(`${rel(f)}: ${what}`);
+    }
+    expect(offenders).toEqual([]);
+    // Not vacuous: the one parser spells every needle.
+    const own = raw(path.join(REPO, "src/lib/bib-parser.ts"));
+    for (const [what, re] of NEEDLES) expect(re.test(own), what).toBe(true);
   });
 
   it("the census can SEE a rogue speller (canary)", () => {

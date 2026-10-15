@@ -295,11 +295,11 @@ describe("census — the model has ONE home", () => {
     expect(files.length).toBeGreaterThan(400);
     expect(files).toContain(SSOT);
     expect(files).toContain(join("src", "lib", "bib-parser.ts"));
-    expect(files).toContain(join("library", "lib", "bib-parser.ts"));
   });
 
   it("no file outside the SSOT re-declares the parse/serialize model", () => {
-    // `library/lib/bib-parser.ts` WAS a fourth copy of this answer — a
+    // `library/lib/bib-parser.ts` WAS a fourth copy (deleted outright by task
+    // 1123 — the Library now imports `@/lib/bib-parser` itself) of this answer — a
     // self-declared whole-file clone whose parse half had already silently
     // diverged from `src/` (the empty-key filter and the `matchedGroup` guard
     // never landed there). A copy is not caught by any behavioural test of
@@ -337,9 +337,10 @@ describe("census — the model has ONE home", () => {
       population++;
       if (!code.includes("resolveCiteNoteRows(")) offenders.push(rel);
     }
-    // The three that must be in the population: both bib-parsers and the panel
-    // card whose rows ARE the per-key view.
-    expect(population).toBeGreaterThanOrEqual(3);
+    // The two that must be in the population: the bib-parser and the panel
+    // card whose rows ARE the per-key view. (Three until task 1123 deleted the
+    // Library's whole-file copy of the parser.)
+    expect(population).toBeGreaterThanOrEqual(2);
     expect(offenders).toEqual([]);
   });
 

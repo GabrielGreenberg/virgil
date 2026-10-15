@@ -28,7 +28,7 @@ import { __resetDialogStack } from "@/components/dialog-stack";
 import type { BibEntry } from "@library/lib/types";
 import BibEditModal from "@library/components/BibEditModal";
 import { buildBibEditDiff, isEmptyBibEditDiff } from "@library/lib/bib-edit";
-import { parseBibFile } from "@library/lib/bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 
 afterEach(() => {
   cleanup();
