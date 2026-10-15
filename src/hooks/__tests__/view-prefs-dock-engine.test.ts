@@ -174,8 +174,45 @@ describe("placeInStack — THE insertion SSOT", () => {
       "left",
       { index: 2 },
     );
-    expect(p.dockStack.left).toEqual([B, C, A]);
+    // Index 2 is the on-screen gap between B and C; A leaving its own slot
+    // before the gap must not push it one slot late (task 1136).
+    expect(p.dockStack.left).toEqual([B, A, C]);
     expect(p.dockStack.left.filter((x) => x === A)).toHaveLength(1);
+  });
+
+  describe("an explicit index is a SCREEN gap, translated past removals (task 1136)", () => {
+    const fullRight = prefs({
+      dockStack: { left: [], right: [A, B, C] },
+      panelMRU: { left: [], right: [C, B, A] }, // A is the LRU victim
+    });
+
+    it("victim BEFORE the drop gap: lands between the bands it was dropped between", () => {
+      // Dropped between B and C (gap 2); A is evicted → [B, D, C], not [B, C, D].
+      expect(placeInStack(fullRight, D, "right", { index: 2 }).dockStack.right).toEqual([B, D, C]);
+      expect(placeInStack(fullRight, D, "right", { index: 1 }).dockStack.right).toEqual([D, B, C]);
+      expect(placeInStack(fullRight, D, "right", { index: 3 }).dockStack.right).toEqual([B, C, D]);
+    });
+
+    it("victim AFTER the drop gap: unchanged behaviour", () => {
+      const lruLast = prefs({
+        dockStack: { left: [], right: [A, B, C] },
+        panelMRU: { left: [], right: [A, B, C] }, // C is the LRU victim
+      });
+      expect(placeInStack(lruLast, D, "right", { index: 0 }).dockStack.right).toEqual([D, A, B]);
+      expect(placeInStack(lruLast, D, "right", { index: 1 }).dockStack.right).toEqual([A, D, B]);
+      expect(placeInStack(lruLast, D, "right", { index: 2 }).dockStack.right).toEqual([A, B, D]);
+    });
+
+    it("same-side re-place: lands at the gap it was dropped on, earlier or later", () => {
+      const roomy = prefs({
+        dockStack: { left: [A, B, C], right: [] },
+        panelMRU: { left: [C, B, A], right: [] },
+      });
+      // Not full once A leaves its slot, so nothing is evicted.
+      expect(placeInStack(roomy, A, "left", { index: 3 }).dockStack.left).toEqual([B, C, A]);
+      expect(placeInStack(roomy, C, "left", { index: 0 }).dockStack.left).toEqual([C, A, B]);
+      expect(placeInStack(roomy, C, "left", { index: 1 }).dockStack.left).toEqual([A, C, B]);
+    });
   });
 });
 
