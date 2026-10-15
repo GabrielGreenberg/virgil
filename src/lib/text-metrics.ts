@@ -256,13 +256,12 @@ export function opticalCenterY(
  * (`editor.view.nodeDOM(blockPos)` returns this), descend to the
  * inline-context element that actually carries the first line's font +
  * line-height. Covers `par-title-wrapper` / `heading-wrapper` /
- * `title-field-wrapper` / `list-title-wrapper` / `expex-item` / `blockquote` /
- * `pre` / bare `<li>`, and falls back to `anchorDom` itself for unrecognized
- * wrappers — safe for raw `<p>`, `<blockquote>`, etc., whose own style IS the
+ * `title-field-wrapper` / `list-title-wrapper` / `expex-item` / `pre` /
+ * bare `<li>`, and falls back to `anchorDom` itself for unrecognized wrappers — safe for raw `<p>`, `<blockquote>`, etc., whose own style IS the
  * right reading.
  *
  * **It is a STEP, not the door.** It knows nothing about CONTAINERS, so on a
- * `bulletList` / `orderedList` / `exampleBlock` it returns the container
+ * `bulletList` / `orderedList` / `exampleBlock` / `<blockquote>` it returns the container
  * itself, whose font metrics are the root's rather than the prose's. Ask
  * {@link resolveFirstLineTarget} — which composes this — from production code;
  * `first-line-target-census.test.ts` fails if anything else does.
@@ -285,8 +284,12 @@ function descendListItem(li: HTMLElement): HTMLElement {
 
 export function resolveInlineContextElement(anchorDom: HTMLElement): HTMLElement {
   if (anchorDom.classList.contains("par-title-wrapper")) {
+    // Two-pass, for the same reason as the `expex-item` branch below: a
+    // selector UNION resolves in DOCUMENT order across its alternatives, so
+    // any `<p>` ahead of the body container would win over the body's own.
     return (
-      (anchorDom.querySelector(".par-body-container p, p") as HTMLElement | null) ??
+      (anchorDom.querySelector(".par-body-container p") as HTMLElement | null) ??
+      (anchorDom.querySelector("p") as HTMLElement | null) ??
       anchorDom
     );
   }
@@ -316,13 +319,6 @@ export function resolveInlineContextElement(anchorDom: HTMLElement): HTMLElement
     if (inner) return inner;
     const body = anchorDom.querySelector(".expex-item-body") as HTMLElement | null;
     return body ?? anchorDom;
-  }
-  if (anchorDom.tagName === "BLOCKQUOTE") {
-    return (
-      (anchorDom.querySelector(
-        ".par-body-container p, :scope > p, :scope > h1, :scope > h2, :scope > h3",
-      ) as HTMLElement | null) ?? anchorDom
-    );
   }
   if (anchorDom.tagName === "PRE") {
     // `<pre>` carries padding-top from the code-block style; the inner
@@ -448,7 +444,30 @@ export function resolveFirstLineTarget(
     const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
     if (child) return resolveFirstLineTarget(child, guard + 1);
   }
+  if (guard < MAX_CONTAINER_DESCENT && el.tagName === "BLOCKQUOTE") {
+    const first = firstContentChild(el);
+    if (first) return resolveFirstLineTarget(first, guard + 1);
+  }
   return resolveInlineContextElement(el);
+}
+
+/**
+ * A `<blockquote>` is a container too (`content: "block+"`), but its children
+ * DEFER their identity to it and carry no uuid, so
+ * {@link GRABBABLE_CHILD_SELECTOR} cannot find them. Its first line is its
+ * first ELEMENT child's, taken STRUCTURALLY — never by a selector union, which
+ * answers the first DOCUMENT-ORDER match of any alternative and so skipped a
+ * leading list (whose paragraphs are `li > p`) to seat the quote's chrome on
+ * the paragraph after it (task 1138). A leading list descends `ul → li → p`, a
+ * leading paragraph answers itself, a leading textless pod answers the pod (its
+ * border box, as every textless block does). ProseMirror widget decorations
+ * are not content and are skipped.
+ */
+function firstContentChild(el: HTMLElement): HTMLElement | null {
+  for (let c = el.firstElementChild; c; c = c.nextElementSibling) {
+    if (!c.classList.contains("ProseMirror-widget")) return c as HTMLElement;
+  }
+  return null;
 }
 
 const fontReadyCallbacks = new Set<() => void>();
