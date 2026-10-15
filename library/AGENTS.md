@@ -34,7 +34,7 @@ library/
 │   ├── queue-state-store.ts (the queue's poll channel), paper-ai-requests.ts
 │   ├── library-store.ts, library-folder.ts, library-storage.ts
 │   ├── queue.ts, bib-edit.ts, skill-sync.ts
-│   ├── bib-parser.ts, latex-parser.ts, latex-serializer.ts
+│   ├── bib-index.ts, bib-raw-entry.ts, reconstruct-bibtex.ts (.bib parsing goes through THE app parser @/lib/bib-parser — task 1123)
 │   ├── cite-commands.ts, footnote-content.ts, types.ts, uuid.ts
 │   ├── dnd-types.ts, list-columns.ts, row-viewed-store.ts
 ├── tiptap/              17 LaTeX-specific TipTap extensions
