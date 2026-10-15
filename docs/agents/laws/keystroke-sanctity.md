@@ -816,6 +816,10 @@ uuid MULTIPLICITY (a split clone transiently shares one id) that the
 uuid-keyed index cannot answer. CI: `block-identity-ssot.test.ts`,
 `plugin-apply-guardrail.test.ts`.
 
+### The attribution half: "which block was touched" is not "what changed" (task 1127)
+
+`contentChangedUuids` names the NEAREST uuid-carrying block of an edit, and for a deferring container that is the container itself — every keystroke in a plain `\ex` body or a gloss cell names the `exampleBlock`. A gate that asks "was a block of kind K touched?" therefore wakes on TYPING inside K, which is exactly the case it meant to exclude: the expex renumberer did two whole-doc walks per keystroke inside any example this way, while missing the inverse (a cell added inside a `\pex` item named the ITEM, so `colCount` never updated). Ask the observer for the fact the body's OUTPUTS depend on — `diffExamplesRecomputable` for example numbers, `exampleShapeChanged` (an item / list / gloss / row / cell entered or left a step's range, O(step)) for letters, `colCount` and widths — never touch-attribution. Census: `expex-renumber-keystroke-gate.test.ts` counts whole-doc `descendants` calls during typing, which is how it also caught TipTap's stock `Placeholder` walking every top-level block on every view update; the main editor mounts the O(1) `CaretPlaceholder` ([caret-placeholder.ts](../../../src/lib/tiptap/caret-placeholder.ts)) instead.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).

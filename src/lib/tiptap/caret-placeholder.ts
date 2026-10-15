@@ -20,6 +20,7 @@ import { isNodeEmpty } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { viewOnly } from "@/lib/view-only-chrome";
 
 export const CaretPlaceholder = Placeholder.extend({
   addProseMirrorPlugins() {
@@ -47,7 +48,8 @@ export const CaretPlaceholder = Placeholder.extend({
               if (editor.isEmpty) classes.push(options.emptyEditorClass);
               decorations.push(
                 Decoration.node(pos, pos + node.nodeSize, {
-                  class: classes.join(" "),
+                  // Editor chrome, not document content: never prints.
+                  class: viewOnly(classes.join(" ")),
                   [dataAttribute]:
                     typeof options.placeholder === "function"
                       ? options.placeholder({ editor, node, pos, hasAnchor: true })

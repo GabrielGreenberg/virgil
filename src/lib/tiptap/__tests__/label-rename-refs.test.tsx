@@ -114,17 +114,20 @@ function content(): Content {
         content: [{ type: "text", text: "Unlabelled" }],
       },
       // Task 553: an example and one of its items, each labelled and each
-      // referenced once — the two declaring kinds 534 never drove.
+      // referenced once — the two declaring kinds 534 never drove. Numbered
+      // and lettered as the parser loads them (task 1127: the renumberer no
+      // longer wakes on an item's label write, so an un-numbered fixture would
+      // stay `??`).
       {
         type: "exampleBlock",
-        attrs: { uuid: EX, kind: "multi", label: "ex:one" },
+        attrs: { uuid: EX, kind: "multi", label: "ex:one", number: 1 },
         content: [
           {
             type: "exampleItemList",
             content: [
               {
                 type: "exampleItem",
-                attrs: { uuid: EXI, label: "ex:one-a" },
+                attrs: { uuid: EXI, label: "ex:one-a", subLabel: "a" },
                 content: [{ type: "paragraph", content: [{ type: "text", text: "gloss" }] }],
               },
             ],

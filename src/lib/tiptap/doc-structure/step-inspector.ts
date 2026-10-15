@@ -594,31 +594,39 @@ function shapeNodesInSlice(content: PMNode["content"], out: string[]): void {
 /**
  * Did this step change an example's SHAPE — add, remove, split, join, wrap or
  * lift an item / list / gloss / row / cell? Asked of the step's own ranges, so
- * it is O(step), never O(example) or O(doc).
+ * it is O(step), never O(doc).
  *
  * A `ReplaceStep` reshapes iff a shape node starts in the deleted range or
  * rides the inserted slice (an OPEN slice's boundary node may be one that
  * already existed — over-reporting there only wakes the renumberer, which is
- * safe). A `ReplaceAroundStep` keeps its gap, so it reshapes iff the wrapper
- * kinds it removes differ from the ones it inserts: `setNodeMarkup` on an item
- * or a gloss (the renumberer's own `subLabel` / `colCount` writes, a uuid
- * backfill) swaps a wrapper for one of the same kind and is NOT a reshape —
- * else the renumberer would re-wake on its own output.
+ * safe). A `ReplaceAroundStep` keeps its gap's content, so it reshapes iff the
+ * shape kinds in its range differ before vs after: `setNodeMarkup` on an item
+ * or a gloss (the renumberer's own `subLabel` / `colCount` writes, a label
+ * edit, a uuid backfill) swaps a node for one of the same kind and is NOT a
+ * reshape — else the renumberer would re-wake on its own output. (Compared
+ * over the whole range rather than by reading the step's gap: the gap is the
+ * re-parenting door's question, `reparent-identity-conservation`.)
  */
-function stepReshapesExample(step: ReplaceStep | ReplaceAroundStep, c: StepCoords): boolean {
-  const removed: string[] = [];
-  const inserted: string[] = [];
-  shapeNodesInSlice(step.slice.content, inserted);
+function stepReshapesExample(
+  step: ReplaceStep | ReplaceAroundStep,
+  c: StepCoords,
+  fromInNew: number,
+  toInNew: number,
+): boolean {
+  const before: string[] = [];
   if (step instanceof ReplaceAroundStep) {
-    shapeNodesStartingIn(c.stepDoc, step.from, step.gapFrom, removed);
-    shapeNodesStartingIn(c.stepDoc, step.gapTo, step.to, removed);
-    if (removed.length !== inserted.length) return true;
-    removed.sort();
-    inserted.sort();
-    return removed.some((name, i) => name !== inserted[i]);
+    const after: string[] = [];
+    shapeNodesStartingIn(c.stepDoc, step.from, step.to, before);
+    shapeNodesStartingIn(c.newDoc, fromInNew, toInNew, after);
+    if (before.length !== after.length) return true;
+    before.sort();
+    after.sort();
+    return before.some((name, i) => name !== after[i]);
   }
-  shapeNodesStartingIn(c.stepDoc, step.from, step.to, removed);
-  return removed.length > 0 || inserted.length > 0;
+  shapeNodesStartingIn(c.stepDoc, step.from, step.to, before);
+  if (before.length > 0) return true;
+  shapeNodesInSlice(step.slice.content, before);
+  return before.length > 0;
 }
 
 function inspectReplaceStep(
@@ -652,7 +660,7 @@ function inspectReplaceStep(
   const exUuid = nearestExampleBlockUuid(c.newDoc, fromInNew);
   if (exUuid) sink.exampleContentChangedUuids.add(exUuid);
 
-  if (!sink.exampleShapeChanged && stepReshapesExample(step, c)) {
+  if (!sink.exampleShapeChanged && stepReshapesExample(step, c, fromInNew, toInNew)) {
     sink.exampleShapeChanged = true;
   }
 
