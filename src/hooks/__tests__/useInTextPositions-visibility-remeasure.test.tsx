@@ -218,6 +218,80 @@ describe("useInTextPositions — keep-alive re-show is a republish, not a re-mea
     editor.destroy();
   });
 
+  it("a DIRTY verdict survives a re-show whose deferred converge is cancelled by a quick re-hide (task 1125)", async () => {
+    // The dirty flag is a "needs re-measure" fact: it may be cleared only by the
+    // pass that honours it, never by the SCHEDULING of that pass. Pre-1125 the
+    // re-show effect cleared it at flip time and deferred the converge; a re-hide
+    // before the deferral ran cancelled the converge (effect cleanup) and the
+    // verdict was gone — the next re-show took the CLEAN branch and republished
+    // stale anchor Ys.
+    const editor = mountDoc();
+    const items: PositionItem[] = [
+      { id: "a", pos: 1 },
+      { id: "b", pos: 5 },
+    ];
+    const coordsSpy = vi
+      .spyOn(editor.view, "coordsAtPos")
+      .mockImplementation((pos: number) => ({
+        top: 10 + pos,
+        bottom: 22 + pos,
+        left: 0,
+        right: 0,
+      }));
+    const sink: { current: HookOut | null } = { current: null };
+
+    let visible = true;
+    const Tree = () => (
+      <KeepAliveVisibilityProvider isVisible={visible}>
+        <Harness editor={editor} items={items} bump={0} sink={sink} />
+      </KeepAliveVisibilityProvider>
+    );
+    const r = render(<Tree />);
+    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0); // cache populated
+    await flushDeferred();
+
+    // Hide, then a structural change while hidden → dirty.
+    act(() => {
+      visible = false;
+      r.rerender(<Tree />);
+    });
+    act(() => {
+      editor
+        .chain()
+        .insertContentAt(editor.state.doc.content.size, {
+          type: "paragraph",
+          attrs: { uuid: "P0" },
+          content: [{ type: "text", text: "Inserted while hidden." }],
+        })
+        .run();
+    });
+
+    // Flick: show, then hide again BEFORE the low-priority converge flushes.
+    coordsSpy.mockClear();
+    act(() => {
+      visible = true;
+      r.rerender(<Tree />);
+    });
+    act(() => {
+      visible = false;
+      r.rerender(<Tree />);
+    });
+    await flushDeferred();
+    expect(coordsSpy.mock.calls.length).toBe(0); // the converge was cancelled
+
+    // Return with NO further edits and the same width: the verdict must still
+    // stand, so the re-show converges and re-measures.
+    act(() => {
+      visible = true;
+      r.rerender(<Tree />);
+    });
+    await flushDeferred();
+    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0);
+
+    r.unmount();
+    editor.destroy();
+  });
+
   it("genuinely-disabled (enabledProp=false) clears + re-enable re-measures (distinct from hidden retention)", () => {
     const editor = mountDoc();
     const items: PositionItem[] = [

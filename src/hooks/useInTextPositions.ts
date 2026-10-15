@@ -489,8 +489,9 @@ export function useInTextPositions(
   const isVisibleRef = useRef(isVisible);
   // Set only when a real invalidation occurs WHILE HIDDEN: a DocStructureBus
   // structural event (the existing onBlocksAdded/Removed subscription, gated on
-  // !isVisible) or — detected on re-show — a container-width change. Consumed
-  // (and reset) once per hidden→visible transition by the re-show effect.
+  // !isVisible) or — detected on re-show — a container-width change. Read on
+  // each hidden→visible transition by the re-show effect, and reset only by the
+  // deferred converge that honours it (a cancelled converge leaves it standing).
   const dirtyWhileHiddenRef = useRef(false);
   // Editor content width at the last VISIBLE measure. A width change invalidates
   // pod-relative tops (wrap reflows anchors); height/scroll changes do not.
@@ -1345,8 +1346,14 @@ export function useInTextPositions(
       !!editorDom &&
       lastWidthRef.current !== 0 &&
       editorDom.clientWidth !== lastWidthRef.current;
+    // The verdict is READ here but not CLEARED: a "needs re-measure" fact is
+    // cleared only by the pass that honours it, never by the scheduling of that
+    // pass (task 1125). The converge below is deferred, and this effect's
+    // cleanup cancels it — so a pane hidden again before the callback runs
+    // would otherwise lose the verdict and take the CLEAN branch on the next
+    // re-show, republishing stale anchor Ys. `widthChanged` already has that
+    // shape: its baseline (`lastWidthRef`) moves only inside a completed measure.
     const dirty = dirtyWhileHiddenRef.current || widthChanged;
-    dirtyWhileHiddenRef.current = false;
 
     // CLEAN: the cached deck is still correct (the doc took zero transactions
     // and pod-relative tops are scroll-invariant), so we do NOT re-enter
@@ -1376,6 +1383,7 @@ export function useInTextPositions(
     //    not at flip time, so the storm is still swallowed for the duration of
     //    the deferral and only the deliberate convergence runs.
     return requestLowPriority(() => {
+      dirtyWhileHiddenRef.current = false;
       suppressMeasureUntilRef.current = 0;
       convergeRef.current?.request();
     });
