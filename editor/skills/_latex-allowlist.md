@@ -117,6 +117,10 @@ python3 .virgil/scripts/editor/bib_family.py <docPath>
 # → {"family":"natbib","source":"stored","textual":"citet","parenthetical":"citep"}
 ```
 
+The output also carries `citeCommand`, the command for ONE voice — `--voice
+textual` (the default) or `--voice parenthetical`; `textual` / `parenthetical`
+always give both, so read whichever your sentence needs.
+
 That door is the silo's ONE authority. Its ladder is the app's, in the app's
 order: the **stored per-doc choice** (`virgil/citations.json` → `bibPackage`,
 set by the user in the Citations panel) outranks everything; below it, the LIVE

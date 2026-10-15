@@ -300,6 +300,9 @@ not opened since a migration keeps writing to the old place indefinitely.
 so nothing is invisible and the flags above are honest — but a NON-ZERO
 `extraSinkNonDreamMemos` is a live divergent writer and the night's top finding:
 name the folders and recommend `python3 editor/scripts/sync_skills.py <paper>`.
+(Its `--from-local <dir>` / `--base-url <url>` only choose WHERE the bundle is
+read from — a local build dir or another served URL; the default served bundle
+is the right one to recommend.)
 Residue-only (`extraSinkMemos > 0`, `extraSinkNonDreamMemos: 0`) is a stale
 sink worth deleting, not a finding. **"In the corpus" is not "read tonight"** —
 those are LIFETIME counts and the window is marker-filtered, so quote

@@ -39,9 +39,11 @@ is all-or-nothing), with the audit notification + version bump.
 
 1. **Resolve both cards** (confirm they exist; note their kinds):
    ```bash
-   python3 editor/scripts/card_by_id.py <docPath> <cardAId>
-   python3 editor/scripts/card_by_id.py <docPath> <cardBId>
+   python3 editor/scripts/card_by_id.py <docPath> <cardAId> [--panel <panel>]
+   python3 editor/scripts/card_by_id.py <docPath> <cardBId> [--panel <panel>]
    ```
+   An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
+   and carry `"panelA"` / `"panelB"` in the op ([_card-resolve.md](_card-resolve.md)).
 2. **Run the `link` op:**
    ```bash
    python3 editor/scripts/apply_response.py <docPath> link \
