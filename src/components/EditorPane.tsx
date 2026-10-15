@@ -69,10 +69,11 @@ import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SCROLL_PERSIST } from "@/lib/layout-gesture-probe";
 import AIWindow, {
   aiRequestDotStatus,
-  LINKED_CARD_ABSENT,
-  LINKED_CARD_UNKNOWN,
+  linkedCardSource,
+  resolveLinkedCardFrom,
   type AiDotTone,
   type LinkedCardResolution,
+  type LinkedCardSource,
 } from "./AIWindow";
 import {
   EditorChromeProvider,
@@ -6265,64 +6266,39 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // fired). The text comes from the SAME per-kind context function the bridge
   // files with, so the window and the inbox cannot describe one card two ways.
   //
-  // `unknown` IS THE SAFE ANSWER, and it is what an UNKNOWABLE card gets: a
-  // panel still loading, or one whose sidecar read ERRORED (`loadError` leaves
-  // the hook at its empty default while `ai-requests.json` reads fine — one of
-  // the ways Cancel went inert), knows of no cards at all, and treating that
-  // as "absent" would take the raw-delete branch and strand the card's flag
-  // lit over a row that no longer exists. Only a RESOLVED, error-free panel
-  // that genuinely holds no such card answers `absent`. `footnotes` has no
-  // `loaded` gate by design (it is driven from the doc's atoms), so it answers
-  // on presence alone.
-  const resolveLinkedCard = useCallback(
-    (kind: CardKind, cardId: string): LinkedCardResolution => {
-      const lookup = <C extends { id: string }>(
-        loaded: boolean,
-        loadError: boolean,
-        cards: readonly C[],
-        text: (card: C) => string | null,
-      ): LinkedCardResolution => {
-        const card = cards.find((c) => c.id === cardId);
-        if (card) return { state: "present", text: text(card) };
-        return loaded && !loadError ? LINKED_CARD_ABSENT : LINKED_CARD_UNKNOWN;
-      };
-      switch (kind) {
-        case "note":
-          return lookup(notesHook.loaded, notesHook.loadError, notesHook.notes,
-            (n) => noteContext(n).text);
-        case "highlight":
-          return lookup(notesHook.loaded, notesHook.loadError, notesHook.highlights,
-            (h) => highlightContext(h).text);
-        case "todo":
-          return lookup(todosHook.loaded, todosHook.loadError, todosHook.items,
-            (t) => todoContext(t).text);
-        case "report-request":
-          return lookup(reportsHook.loaded, reportsHook.loadError, reportsHook.cards,
-            (c) => (c.kind === "report-request" ? reportRequestContext(c).text : null));
-        case "revision-comment":
-          return lookup(revisionsHook.loaded, revisionsHook.loadError, revisionsHook.cards,
-            (c) => (c.kind === "comment" ? revisionCommentContext(c).text : null));
-        case "cutter-comment":
-          return lookup(cutterHook.loaded, cutterHook.loadError, cutterHook.cards,
-            (c) => (c.kind === "comment" ? cutterCommentContext(c).text : null));
-        case "footnote": {
-          const ref = footnotesHook.footnoteRefs.find((f) => f.id === cardId);
-          return ref ? { state: "present", text: footnoteRequestText(ref) } : LINKED_CARD_ABSENT;
-        }
-        default:
-          // No owning collection to ask — treat as absent so cancel takes the
-          // raw delete rather than a dispatch that no-ops.
-          return LINKED_CARD_ABSENT;
-      }
-    },
+  // Every kind answers through the ONE gate `resolveLinkedCardFrom` (task
+  // 1137): `present` / `absent` only from a resolved, error-free panel, else
+  // `unknown` — the safe answer (see its doc comment).
+  const linkedCardSources = useMemo(
+    (): Partial<Record<CardKind, LinkedCardSource>> => ({
+      note: linkedCardSource(notesHook.loaded, notesHook.loadError, notesHook.notes,
+        (n) => noteContext(n).text),
+      highlight: linkedCardSource(notesHook.loaded, notesHook.loadError, notesHook.highlights,
+        (h) => highlightContext(h).text),
+      todo: linkedCardSource(todosHook.loaded, todosHook.loadError, todosHook.items,
+        (t) => todoContext(t).text),
+      "report-request": linkedCardSource(reportsHook.loaded, reportsHook.loadError, reportsHook.cards,
+        (c) => (c.kind === "report-request" ? reportRequestContext(c).text : null)),
+      "revision-comment": linkedCardSource(revisionsHook.loaded, revisionsHook.loadError, revisionsHook.cards,
+        (c) => (c.kind === "comment" ? revisionCommentContext(c).text : null)),
+      "cutter-comment": linkedCardSource(cutterHook.loaded, cutterHook.loadError, cutterHook.cards,
+        (c) => (c.kind === "comment" ? cutterCommentContext(c).text : null)),
+      footnote: linkedCardSource(footnotesHook.loaded, footnotesHook.loadError, footnotesHook.footnoteRefs,
+        (f) => footnoteRequestText(f)),
+    }),
     [
       notesHook.loaded, notesHook.loadError, notesHook.notes, notesHook.highlights,
       todosHook.loaded, todosHook.loadError, todosHook.items,
       reportsHook.loaded, reportsHook.loadError, reportsHook.cards,
       revisionsHook.loaded, revisionsHook.loadError, revisionsHook.cards,
       cutterHook.loaded, cutterHook.loadError, cutterHook.cards,
-      footnotesHook.footnoteRefs,
+      footnotesHook.loaded, footnotesHook.loadError, footnotesHook.footnoteRefs,
     ],
+  );
+  const resolveLinkedCard = useCallback(
+    (kind: CardKind, cardId: string): LinkedCardResolution =>
+      resolveLinkedCardFrom(linkedCardSources, kind, cardId),
+    [linkedCardSources],
   );
 
   // Archiving an atom-bearing card: splice its `\footnote`/`\cite` marker out of

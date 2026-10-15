@@ -316,6 +316,57 @@ export type LinkedCardResolution =
 export const LINKED_CARD_ABSENT: LinkedCardResolution = { state: "absent" };
 export const LINKED_CARD_UNKNOWN: LinkedCardResolution = { state: "unknown" };
 
+/** One flag-bearing kind's answer source: its owning panel's read state plus a
+ *  lookup into its collection (built by `linkedCardSource`). */
+export interface LinkedCardSource {
+  loaded: boolean;
+  loadError: boolean;
+  find: (cardId: string) => { text: string | null } | null;
+}
+
+/** Erase a typed collection into a `LinkedCardSource`. */
+export function linkedCardSource<C extends { id: string }>(
+  loaded: boolean,
+  loadError: boolean,
+  cards: readonly C[],
+  text: (card: C) => string | null,
+): LinkedCardSource {
+  return {
+    loaded,
+    loadError,
+    find: (cardId) => {
+      const card = cards.find((c) => c.id === cardId);
+      return card ? { text: text(card) } : null;
+    },
+  };
+}
+
+/**
+ * THE linked-card answer (task 1137): every flag-bearing kind answers through
+ * ONE gate, so no kind can special-case it again (footnotes once did, and its
+ * Cancel took the raw delete before `footnotes.json` had loaded — stranding the
+ * footnote's AI flag lit over a row that no longer existed).
+ *
+ * `unknown` IS THE SAFE ANSWER, and it is what an UNKNOWABLE card gets: a panel
+ * still loading, or one whose sidecar read ERRORED, knows of no cards at all,
+ * and treating that as "absent" would take the raw-delete branch and strand the
+ * card's flag. Only a RESOLVED, error-free panel that genuinely holds no such
+ * card answers `absent`. A kind with no source at all has no owning collection
+ * to ask — it answers `absent`, so Cancel takes the raw delete rather than a
+ * dispatch that no-ops.
+ */
+export function resolveLinkedCardFrom(
+  sources: Partial<Record<CardKind, LinkedCardSource>>,
+  kind: CardKind,
+  cardId: string,
+): LinkedCardResolution {
+  const source = sources[kind];
+  if (!source) return LINKED_CARD_ABSENT;
+  const hit = source.find(cardId);
+  if (hit) return { state: "present", text: hit.text };
+  return source.loaded && !source.loadError ? LINKED_CARD_ABSENT : LINKED_CARD_UNKNOWN;
+}
+
 export interface BuildArgs {
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
