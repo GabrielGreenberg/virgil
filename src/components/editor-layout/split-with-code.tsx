@@ -101,6 +101,22 @@ export function clampCodeSplitEditorPx(px: number, containerWidth: number): numb
   return Math.max(min, Math.min(max, px));
 }
 
+/** Where the divider is DRAWN for `ratio` in a container `containerWidth`
+ *  wide: the ratio's share of the track, clamped into the legal range. The
+ *  ONE answer to "where is the divider" — the render places the editor
+ *  wrapper here AND the drag starts here (task 1134). A stored ratio can sit
+ *  outside what a narrower window allows (the store keeps only a [0,1]
+ *  sanity clamp, task 1053); a drag that started from the raw stored px
+ *  would clamp every move back to the drawn edge until the pointer had
+ *  crossed the difference — a dead zone. */
+export function codeSplitEditorPxForRatio(ratio: number, containerWidth: number): number {
+  const natural = Math.max(
+    0,
+    Math.round(ratio * Math.max(containerWidth - GAP_WIDTH_PX, 0)),
+  );
+  return clampCodeSplitEditorPx(natural, containerWidth);
+}
+
 export interface SplitWithCodeProps {
   /** Whether the code pane is open. When false, the editor takes the
    *  full container and the code pane / splitter aren't rendered.
@@ -198,18 +214,14 @@ export function SplitWithCode({
     return () => ro.disconnect();
   }, []);
 
-  // The "natural" target width given the requested ratio (live mid-drag).
-  const naturalEditorPx = Math.max(
-    0,
-    Math.round(effectiveRatio * Math.max(containerWidth - GAP_WIDTH_PX, 0)),
-  );
-
-  // Editor wrapper actual width: clamped into the ONE legal range
-  // (`codeSplitEditorBoundsPx` — never below the visible sliver, never
-  // squeezing code below CODE_PANE_MIN_PX). We allow it to drop below the
-  // editor's natural width (overlay region). The drag clamp reads the same
-  // owner, so a released drag renders exactly where it was let go.
-  const clipPx = clampCodeSplitEditorPx(naturalEditorPx, containerWidth);
+  // Editor wrapper actual width: the requested ratio's share (live mid-drag)
+  // clamped into the ONE legal range (`codeSplitEditorBoundsPx` — never below
+  // the visible sliver, never squeezing code below CODE_PANE_MIN_PX). We allow
+  // it to drop below the editor's natural width (overlay region). The drag's
+  // start (`codeSplitEditorPxForRatio`) and clamp read the same owner, so a
+  // drag starts where the divider is drawn and a released drag renders exactly
+  // where it was let go.
+  const clipPx = codeSplitEditorPxForRatio(effectiveRatio, containerWidth);
 
   // Compression kicks in once the wrapper would be narrower than the
   // editor's measured natural width. (Naturally false until we've
@@ -225,8 +237,11 @@ export function SplitWithCode({
 
   // Per-gesture snapshot (container width + start px), taken in
   // getValue() — the engine's single start-edge read point. The gesture's
-  // value is the editor track's px share (`ratio * (width - gap)`), so the
-  // divider tracks the pointer delta 1:1.
+  // value is the editor track's px share, and it STARTS where the divider is
+  // drawn (`codeSplitEditorPxForRatio` — the render's own answer, not the raw
+  // stored `ratio * track`, task 1134), so the divider tracks the pointer
+  // delta 1:1 from the first pixel even when the window has narrowed below
+  // what the stored ratio allows.
   const dragRef = useRef({ w: 0, startPx: 0 });
 
   const handle = usePaneResizeHandle({
@@ -234,7 +249,7 @@ export function SplitWithCode({
     axis: "x",
     getValue: () => {
       const w = containerRef.current?.getBoundingClientRect().width ?? 0;
-      const startPx = ratio * Math.max(w - GAP_WIDTH_PX, 0);
+      const startPx = codeSplitEditorPxForRatio(ratio, w);
       dragRef.current = { w, startPx };
       return startPx;
     },

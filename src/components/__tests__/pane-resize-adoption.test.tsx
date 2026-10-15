@@ -87,6 +87,7 @@ import { BandDivider } from "@/components/panel-primitives";
 import {
   GAP_WIDTH_PX,
   SplitWithCode,
+  codeSplitEditorBoundsPx,
 } from "@/components/editor-layout/split-with-code";
 import { SplitEditorPanes } from "@/components/editor-layout/split-editor-panes";
 import { ZenMargin } from "@/components/editor-layout/zen-margin";
@@ -439,6 +440,31 @@ describe("SplitWithCode on the pane-resize engine", () => {
     down(h.handle, 404);
     up(h.handle);
     expect(h.onRatioChange).not.toHaveBeenCalled();
+  });
+
+  it("a drag starts where the divider is DRAWN, not at a stored ratio the narrowed window clamps (no dead zone, task 1134)", () => {
+    const { min, max } = codeSplitEditorBoundsPx(800 + GAP_WIDTH_PX);
+    // Stored ratio wider than this container allows (set in a wider window):
+    // the divider renders at the clamped max…
+    const wide = renderSplit(0.99);
+    expect(wide.wrapper.style.width).toBe(`${max}px`);
+    // …and the first 10 px leftward move moves it 10 px — the old raw start
+    // (0.99 × 800 = 792) clamped every move back to `max` until the pointer
+    // had crossed the gap.
+    down(wide.handle, 404);
+    move(wide.handle, 394);
+    expect(wide.wrapper.style.width).toBe(`${max - 10}px`);
+    up(wide.handle);
+    expect(wide.onRatioChange).toHaveBeenCalledExactlyOnceWith((max - 10) / 800);
+    cleanup();
+    roInstances.length = 0;
+
+    // Same at the other edge: a ratio below the editor's sliver minimum.
+    const narrow = renderSplit(0.001);
+    expect(narrow.wrapper.style.width).toBe(`${min}px`);
+    down(narrow.handle, 404);
+    move(narrow.handle, 414);
+    expect(narrow.wrapper.style.width).toBe(`${min + 10}px`);
   });
 
   it("closing the code pane mid-drag (the handle's conditional branch unmounts) never wedges the shield or bus", () => {
