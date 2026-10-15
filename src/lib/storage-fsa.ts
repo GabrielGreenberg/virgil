@@ -119,6 +119,7 @@ import {
   stampDiskFingerprint,
   fingerprintOf,
   getDiskFingerprint,
+  beginOwnWrite,
   hashContent,
 } from "@/lib/disk-ledger";
 import {
@@ -298,7 +299,15 @@ async function diskAlreadyHas(
   if (fp.hash !== hashContent(content)) return false;
   try {
     const file = await fileHandle.getFile();
-    return file.lastModified === fp.mtimeMs && file.size === fp.size;
+    // Compare against the stamp as it stands NOW, not the one read before the
+    // await — a watcher re-baseline can move it meanwhile (task 1130's class).
+    const cur = getDiskFingerprint(docId, relPath);
+    return (
+      !!cur &&
+      cur.hash === fp.hash &&
+      file.lastModified === cur.mtimeMs &&
+      file.size === cur.size
+    );
   } catch {
     return false; // cannot confirm → write
   }
@@ -343,8 +352,16 @@ async function writeTrackedText(
   // caller inherit one blanket answer.
   // write-gate-exempt: this IS the byte-equality gate — `diskAlreadyHas` ran
   // four lines up. A site cannot be asked to enter the door it is (task 415).
-  await writeTextToHandle(fileHandle, content);
-  await stampLedger(docId, relPath, content);
+  // Register the bytes as an own write BEFORE they move and release only
+  // AFTER the stamp lands, so a watcher poll that confirm-reads in between
+  // recognises them as Virgil's (task 1130) instead of a false "conflict".
+  const releaseOwnWrite = beginOwnWrite(docId, relPath, content);
+  try {
+    await writeTextToHandle(fileHandle, content);
+    await stampLedger(docId, relPath, content);
+  } finally {
+    releaseOwnWrite();
+  }
   return true;
 }
 
