@@ -22,6 +22,7 @@ import { getTextAnchor } from "../links";
 import { buildFloatKey } from "@/floats/float-key";
 import { CARD_KINDS, cardKindFromRecord, isAnchoredCardKind } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
+import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 
 /** The anchored card kinds — derived from the registry's `anchored` flag (the
@@ -35,12 +36,13 @@ export const ANCHORED_CARD_KINDS: readonly CardKind[] =
  *  — not a narrow union (which would re-introduce the drift A0 killed). */
 export type EntityKind = CardKind;
 
-// Dev canary: the in-text hover system structurally depends on footnote +
-// citation being anchored (their inline atoms drive three-surface hover). If a
-// registry `anchored` flag is ever flipped off for them — or the set comes back
-// empty from a mis-load — make that loud in dev rather than silently breaking.
+// Dev canary: the in-text hover system structurally depends on every
+// Card-bearing inline atom's kind being anchored (the atoms drive three-surface
+// hover). If a registry `anchored` flag is ever flipped off for one — or the set
+// comes back empty from a mis-load — make that loud in dev rather than silently
+// breaking. The set is the atom registry's (`CARD_ATOMS`), not a re-spelling.
 if (process.env.NODE_ENV !== "production") {
-  for (const k of ["footnote", "citation"] as const) {
+  for (const { kind: k } of CARD_ATOMS) {
     if (!isAnchoredCardKind(k)) {
       console.error(
         `[entity-hover] "${k}" must be anchored (the three-surface hover system ` +

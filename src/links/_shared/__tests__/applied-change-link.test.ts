@@ -12,7 +12,7 @@
 //     back to the persisted links → resolveLink's normal behavior).
 
 import { describe, it, expect } from "vitest";
-import { appliedChangeLink } from "../useAnchorHighlightReconciler";
+import { appliedChangeLink } from "../card-anchor-links";
 import type { AnchoredCardRef } from "../anchored-card-store";
 
 const APPLIED = {

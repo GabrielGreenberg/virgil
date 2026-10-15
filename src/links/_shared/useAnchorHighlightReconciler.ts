@@ -88,8 +88,8 @@ import {
   findEntity,
 } from "./entity-hover";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
-import type { Link } from "./types";
 import { resolveLink } from "../links";
+import { linksForCardRef } from "./card-anchor-links";
 import {
   selectedAttrs,
   hoveredAttrs,
@@ -113,22 +113,6 @@ const DATA_MARGIN_SIDE = "data-margin-side";
  *  paint in the same color. */
 const paragraphKindFor = cssTokenForCardKind;
 
-/** Synthesized Link for an inline-atom card (footnote / citation) — those
- *  aren't kept in collections, so we fabricate one for `resolveLink` to
- *  follow. */
-function linkForInlineAtom(
-  nodeName: "footnote" | "citation",
-  id: string,
-): Link {
-  return {
-    id,
-    kind: nodeName,
-    anchor: { type: "inline-atom", nodeName, pos: null },
-    target: { type: "card", ref: { kind: nodeName, id } },
-    createdAt: "",
-  };
-}
-
 function entityExists(
   ref: AnchoredCardRef,
   c: EntityCollectionSlots,
@@ -148,79 +132,6 @@ function entityExists(
     return liveAtomIds.has(ref.id);
   }
   return findEntity(ref, c) !== undefined;
-}
-
-/** Narrow view of a suggestion card for the applied-change synthesis. The
- *  reconciler's `findEntity` returns the widened `{id,kind?,links?}` shape, but
- *  a suggestion entity IS the full card at runtime, so we read `status` /
- *  `appliedChange` through this cast. */
-type AppliedSuggestionEntity = {
-  kind?: string;
-  status?: string;
-  appliedChange?: {
-    anchorId: string;
-    anchorUuid: string;
-    replacement: string;
-    originalText: string;
-  };
-};
-
-/** Synthesized Mode-B link for an APPLIED pending-AI-change. Its persisted card
- *  links still point at the ORIGINAL span, whose text the splice replaced — so
- *  `resolveLink` can't find that mark and degrades to a whole-paragraph vertical
- *  bar. The live blue `linkedAnchor` mark is under `appliedChange.anchorId`
- *  instead; this link points the reconciler at it, so it paints the AI-written
- *  span as an inline text highlight (never the paragraph rail). Returns null
- *  unless `ref` is an applied suggestion — pending/stale/kept cards fall back to
- *  their persisted links, and a lost mark degrades to the paragraph as before. */
-export function appliedChangeLink(
-  ref: AnchoredCardRef,
-  entity: { id: string; kind?: string; links?: Link[] },
-): Link | null {
-  if (ref.kind !== "revision-suggestion" && ref.kind !== "cutter-suggestion") {
-    return null;
-  }
-  const sugg = entity as AppliedSuggestionEntity;
-  if (
-    sugg.kind !== "suggestion" ||
-    sugg.status !== "applied" ||
-    !sugg.appliedChange
-  ) {
-    return null;
-  }
-  const ac = sugg.appliedChange;
-  return {
-    id: ac.anchorId,
-    kind: "anchor",
-    anchor: {
-      type: "textObject",
-      targetKind: "linkedRange",
-      textObjectIds: [ac.anchorUuid],
-      textRange: {
-        anchorId: ac.anchorId,
-        textSnapshot: ac.replacement || ac.originalText,
-      },
-    },
-    target: { type: "card", ref: { kind: ref.kind, id: ref.id } },
-    createdAt: "",
-  };
-}
-
-function linksForRef(ref: AnchoredCardRef, c: EntityCollectionSlots): Link[] {
-  if (ref.kind === "footnote" || ref.kind === "citation") {
-    return [linkForInlineAtom(ref.kind, ref.id)];
-  }
-  const entity = findEntity(ref, c);
-  if (!entity) return [];
-  const applied = appliedChangeLink(ref, entity);
-  if (applied) return [applied];
-  // (No open-AI-request branch. A second synthesis used to sit here, pointing
-  // at the `pending-ai-request` MARK's anchorId so hovering a request card lit
-  // the wash — and SUPPRESSING the card's real links to do it. Task 667 made
-  // the wash a decoration, so there is no mark to point at and no reason to
-  // suppress: a request card now lights exactly the way its own anchor does,
-  // like every other card.)
-  return entity.links ? [...entity.links] : [];
 }
 
 export interface UseAnchorHighlightReconcilerArgs {
@@ -418,7 +329,7 @@ export function useAnchorHighlightReconciler({
       // Mode-B washes in one place — and deliberately NOT in `collectCardKey`,
       // because the card's own row in the Archives list must still highlight.
       if (archivedCardIds.has(ref.id)) return;
-      const links = linksForRef(ref, stableCollections);
+      const links = linksForCardRef(ref, stableCollections);
       for (const link of links) {
         const resolved = resolveLink(editor, link);
         if (!resolved) continue;
