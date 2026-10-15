@@ -171,6 +171,8 @@ function makeList<T>(): { add(fn: T): Unsub; emit(call: (fn: T) => void): void }
  * `blockOrderChanged` / `footnoteOrderChanged` / `exampleStructureChanged` are
  * co-set on those transactions, so a same-uuid change already reaches
  * position-keyed consumers without waking every structural watcher — and it
+ * omits `changedAnchors` (task 1128 — an anchor that moved neither entered
+ * nor left, and every anchor reader resolves the snapshot lazily), and it
  * omits the two content-only sets (`contentChangedUuids` /
  * `exampleContentChangedUuids`), the plain-keystroke case that must leave
  * `emitCount` flat.
@@ -203,7 +205,8 @@ export function diffWakesStructuralWatchers(diff: StructureDiff): boolean {
     diff.removedFigures.length > 0 ||
     diff.changedFigures.length > 0 ||
     diff.addedLabels.length > 0 ||
-    diff.removedLabels.length > 0
+    diff.removedLabels.length > 0 ||
+    diff.changedLabels.length > 0
   );
 }
 

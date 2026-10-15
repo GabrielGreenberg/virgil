@@ -496,15 +496,16 @@ describe("inspectSteps — footnote-nested citation (T3 / C10): per-tx path stay
     expect(d.contentChangedUuids.has("p1")).toBe(true);
   });
 
-  it("rewriting the footnote body (setNodeMarkup) does NOT surface the nested cite as a citation add/change", () => {
+  it("rewriting the footnote body (setNodeMarkup) re-extracts its nested cites on both sides (task 1128)", () => {
     const s = stateOf(doc(paraWithNestedCiteFootnote()));
     let fnPos = -1;
     s.doc.descendants((n, p) => {
       if (n.type.name === "footnote") fnPos = p;
     });
     // Swap the footnote's body literal (as the footnote editor / cite-strip
-    // does). The cite lives in `attrs.content`, opaque to step inspection — so
-    // even this real attr edit must not produce a citation diff entry.
+    // does). The shared extractor reads the body on both sides, so the same
+    // cite id with a new display text is a CHANGE — tagged with its host —
+    // never an add or a remove.
     const newBody = {
       type: "doc",
       content: [
@@ -520,8 +521,11 @@ describe("inspectSteps — footnote-nested citation (T3 / C10): per-tx path stay
     });
     const d = inspectSteps(tr, s.doc, tr.doc);
     expect(d.addedCitations.filter((c) => c.id === "nested-c")).toHaveLength(0);
-    expect(d.changedCitations.filter((c) => c.id === "nested-c")).toHaveLength(0);
     expect(d.removedCitations.filter((c) => c.id === "nested-c")).toHaveLength(0);
+    const changed = d.changedCitations.filter((c) => c.id === "nested-c");
+    expect(changed).toHaveLength(1);
+    expect(changed[0].displayText).toBe("Nested 2");
+    expect(changed[0].nestedInContainerId?.kind).toBe("footnote");
   });
 });
 

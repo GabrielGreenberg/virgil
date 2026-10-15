@@ -14,14 +14,11 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
-import type { JSONContent } from "@tiptap/react";
-import { inlineAtoms } from "@/lib/inline-content";
 import { extractEntitiesAt, type ExtractContext } from "./entity-extractor";
 import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
-  citationEntryAt,
   type DocStructure,
   EMPTY_STRUCTURE,
   type ExampleEntry,
@@ -111,49 +108,6 @@ export function buildInitial(doc: PMNode): DocStructure {
 
     visitingEnd = pos + node.nodeSize;
     extractEntitiesAt(node, pos, parent, ctx);
-
-    if (node.type.name === "footnote") {
-      const attrs = node.attrs as {
-        footnoteId?: string;
-        content?: JSONContent | null;
-      };
-      // T3 / C10 — LOAD-ONLY descend into the footnote body literal so a
-      // footnote-NESTED citation surfaces in `structure.citations` for
-      // omni/search (`BIB-F3-01` / `CI-F3-01`). `descendants()` cannot enter
-      // an atom's `attrs.content` (the footnote is `inline:true, atom:true`),
-      // so we hand the JSONContent literal to the shared atom-aware reader.
-      // This runs ONCE per footnote during the initial O(doc) walk; the
-      // per-transaction `applyDiff` path never re-walks a footnote body, so
-      // keystroke sanctity is preserved. The nested cite has no own PM node —
-      // its address is the HOST footnote's `pos` plus `nestedInFootnoteId`.
-      //
-      // `hostId` MUST be the RAW `footnoteId` — the same id `FootnoteEntry.id`
-      // carries (via `extractEntitiesAt`) and the footnote omni item is keyed by
-      // (`popKey("footnotes", fn.footnoteId)` / `cardPopKey("footnote", …)`).
-      // Do NOT prefer `linkId`: when a footnote has a non-empty `linkId` that
-      // differs from `footnoteId`, a `linkId`-derived host would never match
-      // the footnote item's key, so `nest-footnote-children.ts` would silently
-      // degrade the nested cite to a flat card instead of nesting it.
-      const hostId = attrs.footnoteId || "";
-      const body = attrs.content;
-      if (body && typeof body === "object") {
-        for (const hit of inlineAtoms(body)) {
-          if (hit.kind !== "citation" || !hit.id) continue;
-          // The legacy `nestedInFootnoteId` (every existing consumer reads it)
-          // is mirrored from the container by `citationEntryAt`, so the
-          // render-side nesting covers footnote + example uniformly.
-          citations.push(
-            citationEntryAt({
-              id: hit.id,
-              pos,
-              command: hit.command,
-              displayText: hit.displayText,
-              container: { kind: "footnote", id: hostId },
-            }),
-          );
-        }
-      }
-    }
 
     return true;
   });
@@ -259,45 +213,12 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
     const next: CitationEntry[] = [];
     for (const c of prev.citations) {
       if (removedIds.has(c.id)) continue;
-      const changed = changedById.get(c.id);
-      if (changed) {
-        // The two container KINDS reach this point differently, so they are
-        // reconciled differently.
-        //
-        //  - `"example"` is now derived on BOTH paths: the step-inspector
-        //    resolves the cite's ancestors and stamps the tag through the same
-        //    `citationEntryAt` the load walk uses. The rebuilt entry is
-        //    therefore AUTHORITATIVE about example nesting — carrying the prior
-        //    tag forward would resurrect it for a cite that genuinely moved OUT
-        //    of its example (the "accepted edge" this comment used to record;
-        //    it no longer needs accepting).
-        //  - `"footnote"` stays load-only: such a cite has no PM node of its
-        //    own (it is a JSONContent literal inside the host footnote's
-        //    `attrs.content`), so no step ever reaches it and the rebuilt entry
-        //    cannot know. Carry it forward, or a footnote-nested cite would
-        //    visibly un-nest to a flat card on every edit until the next
-        //    reload. Its stale-on-exit edge remains accepted and self-heals on
-        //    the next load.
-        const keepsFootnoteTag =
-          (c.nestedInFootnoteId || c.nestedInContainerId?.kind === "footnote") &&
-          !changed.nestedInFootnoteId &&
-          !changed.nestedInContainerId;
-        next.push(
-          keepsFootnoteTag
-            ? {
-                ...changed,
-                ...(c.nestedInFootnoteId
-                  ? { nestedInFootnoteId: c.nestedInFootnoteId }
-                  : {}),
-                ...(c.nestedInContainerId
-                  ? { nestedInContainerId: c.nestedInContainerId }
-                  : {}),
-              }
-            : changed,
-        );
-      } else {
-        next.push(c);
-      }
+      // The changed entry is AUTHORITATIVE about its container: both kinds
+      // are derived on BOTH paths now — `"example"` from the cite's ancestors,
+      // `"footnote"` by the shared extractor reading the host's body (task
+      // 1128). The old carry-forward of a footnote tag (when the step path
+      // could not see inside a footnote) would resurrect a stale nesting.
+      next.push(changedById.get(c.id) ?? c);
     }
     for (const added of diff.addedCitations) next.push(added);
     next.sort((a, b) => a.pos - b.pos);
@@ -306,7 +227,11 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
 
   // Anchors — keyed Map.
   let anchors: ReadonlyMap<string, AnchorEntry> = prev.anchors;
-  if (diff.addedAnchors.length > 0 || diff.removedAnchors.length > 0) {
+  if (
+    diff.addedAnchors.length > 0 ||
+    diff.removedAnchors.length > 0 ||
+    diff.changedAnchors.length > 0
+  ) {
     const next = new Map(prev.anchors);
     for (const removed of diff.removedAnchors) next.delete(removed.id);
     for (const added of diff.addedAnchors) {
@@ -326,6 +251,10 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
           : added,
       );
     }
+    // A CHANGED anchor carries its exact live extent (task 1128 — a moved
+    // run, a dropped boundary run): REPLACE, never widen, or the collapsed
+    // residue of the old span would survive the union.
+    for (const changed of diff.changedAnchors) next.set(changed.id, changed);
     anchors = next;
   }
 
@@ -373,10 +302,15 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
 
   // Labels — keyed Map.
   let labels: ReadonlyMap<string, LabelEntry> = prev.labels;
-  if (diff.addedLabels.length > 0 || diff.removedLabels.length > 0) {
+  if (
+    diff.addedLabels.length > 0 ||
+    diff.removedLabels.length > 0 ||
+    diff.changedLabels.length > 0
+  ) {
     const next = new Map(prev.labels);
     for (const removed of diff.removedLabels) next.delete(removed.id);
     for (const added of diff.addedLabels) next.set(added.id, added);
+    for (const changed of diff.changedLabels) next.set(changed.id, changed);
     labels = next;
   }
 
