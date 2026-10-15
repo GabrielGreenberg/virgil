@@ -732,11 +732,19 @@ function readTimePopoutKeyToFloat(key: string): string | null {
  * member, falling back to the shipped default where the blob has nothing
  * usable — so the two doors agree on absent keys as well as present ones.
  *
+ * `placements` and `appliedPrefMigrations` leave this door CONSISTENT (task
+ * 1135): the one-shot `applyPanelSideMigrations` runs here, keyed on the
+ * BLOB'S OWN migration record. A migration the blob recorded is skipped, so a
+ * peer whose user dragged a migrated panel back keeps that drag (task 677's
+ * reason for keeping migrations off the peer door). A migration the blob
+ * never recorded — an older still-open build's blob is simply PRE-migration —
+ * is applied to the blob's placements and recorded together. Before this the
+ * peer door adopted such a peer's un-flipped placements wholesale while
+ * UNIONING the migration id it had already applied in memory, so the next
+ * `persist` wrote "applied" over an un-flipped panel and the flip was lost for
+ * good. One door, so the load, Reader-seed and peer doors cannot diverge.
+ *
  * What deliberately stays OUT, in `loadPrefs` only:
- *  - `applyPanelSideMigrations` — ONE-SHOT, and it records itself in
- *    `appliedPrefMigrations`. Re-running it on every peer sync would re-apply
- *    a flip over a deliberate drag, which is the precise thing its id-record
- *    exists to prevent.
  *  - every WINDOW-scoped repair (dock-stack coercion, popout validation, the
  *    float-key grammar migration, the retired-key scrub). They have no second
  *    caller: per-window blobs are never broadcast.
@@ -774,7 +782,20 @@ export function normalizeGlobalSlice(raw: unknown): Pick<ViewPrefs, GlobalPrefKe
   for (const dp of DEFAULT_PREFS.placements) {
     if (!existingIds.has(dp.id)) merged.push(dp);
   }
-  out.placements = filterPlacements<PanelPlacement>(merged);
+  const scrubbed = filterPlacements<PanelPlacement>(merged);
+
+  /* ── placements × migration record ───────────────────────────────────
+   * The one-shot side migrations, over the NORMALIZED placements (a flip
+   * preserves ids, so the scrub/merge before it would see the same set either
+   * way; a panel the merge supplied already sits at its current shipped side)
+   * and keyed on THIS blob's own record — see the docstring. */
+  const sideMigration = applyPanelSideMigrations(
+    scrubbed,
+    Array.isArray(blob.appliedPrefMigrations) ? blob.appliedPrefMigrations : [],
+    PANEL_SIDE_MIGRATIONS,
+  );
+  out.placements = sideMigration.placements as PanelPlacement[];
+  out.appliedPrefMigrations = sideMigration.applied;
 
   /* ── printOptions ────────────────────────────────────────────────────
    * Deep-merged against the shipped schema so a toggle added since the blob
@@ -809,11 +830,6 @@ export function normalizeGlobalSlice(raw: unknown): Pick<ViewPrefs, GlobalPrefKe
         ? hiddenFromLegacySides(blob.omniCategories)
         : DEFAULT_PREFS.omniHiddenCategories),
   );
-
-  /* Migration ids: a list of strings, nothing else. */
-  out.appliedPrefMigrations = Array.isArray(blob.appliedPrefMigrations)
-    ? blob.appliedPrefMigrations.filter((x): x is string => typeof x === "string")
-    : [];
 
   /* ── the remaining structural globals ────────────────────────────────
    * Page width, the four margins, the code-pane ratio: adopt a stored value
@@ -1076,21 +1092,11 @@ export function loadPrefs(): ViewPrefs {
     // value-domain coercion. `parsed` is the UNION of both blobs, which is
     // what it is handed — the global keys are exactly the ones it reads, and
     // the legacy `omniCategories` key may sit in either half.
+    // The one-shot SIDE migrations (task 381) run inside it too, keyed on the
+    // blob's own record, so `placements` + `appliedPrefMigrations` arrive
+    // consistent (task 1135).
     const globalSlice = normalizeGlobalSlice(parsed);
-
-    // One-shot SIDE migrations (task 381) stay HERE, and only here: they record
-    // themselves in `appliedPrefMigrations`, so re-running them on every peer
-    // sync would re-apply a flip over a deliberate drag. Run over the NORMALIZED
-    // placements — a flip preserves ids, so the scrub/merge before it and the
-    // scrub after it would see the same set either way; a panel absent from the
-    // blob is supplied by the merge at its already-current shipped side, which
-    // is exactly what the migration would have set.
-    const sideMigration = applyPanelSideMigrations(
-      globalSlice.placements,
-      globalSlice.appliedPrefMigrations,
-      PANEL_SIDE_MIGRATIONS,
-    );
-    const cleanedPlacements = sideMigration.placements as PanelPlacement[];
+    const cleanedPlacements = globalSlice.placements;
     // The legacy per-side omni key has been folded by `normalizeGlobalSlice`;
     // drop it so it can never round-trip back and be re-folded over a later
     // hide/show.
@@ -1189,11 +1195,8 @@ export function loadPrefs(): ViewPrefs {
       ...(pickKnown(parsed) as Partial<ViewPrefs>),
       ...windowRegistry,
       // The normalized global values override `parsed`'s raw ones — the whole
-      // point of the door. `placements` + `appliedPrefMigrations` then take the
-      // one-shot side migration's result on top.
+      // point of the door (side migrations included).
       ...globalSlice,
-      placements: cleanedPlacements,
-      appliedPrefMigrations: sideMigration.applied,
       dockStack,
       panelMRU: { left: [], right: [] },
       panelHeights:
@@ -1253,17 +1256,12 @@ function seedEphemeralPrefs(): ViewPrefs {
     }
     // Placements read the SAME repaired map the editor's `loadPrefs` builds
     // (task 899): renames, the strip-less scrub and the new-panel merge via
-    // `normalizeGlobalSlice`, then the one-shot side migrations — applied here
+    // `normalizeGlobalSlice`, side migrations included (task 1135) — applied here
     // read-only (the seed never writes), so a raw blob `loadPrefs` has not yet
     // written back cannot hand the Reader a dropped legacy id or a
     // pre-migration side. Narrow pick: only `placements` is taken.
     if (Array.isArray(globalSlice.placements)) {
-      const normalized = normalizeGlobalSlice(globalSlice);
-      seed.placements = applyPanelSideMigrations(
-        normalized.placements,
-        normalized.appliedPrefMigrations,
-        PANEL_SIDE_MIGRATIONS,
-      ).placements as PanelPlacement[];
+      seed.placements = normalizeGlobalSlice(globalSlice).placements;
     }
     return seed;
   } catch {
@@ -1370,6 +1368,10 @@ export function useViewPrefs(opts?: {
         // → shipped defaults) the scrub exists to make impossible.
         // A peer's drag can move a panel this window has DOCKED to the other
         // side; this window's per-window `dockStack` must follow (task 899).
+        // The peer's migration ids UNION into ours (task 929) — safe only
+        // because the door has already applied, to the peer's placements,
+        // every migration the peer had not recorded (task 1135), so the ids we
+        // keep never outrun the placements we adopt.
         setPrefs((prev) => {
           const normalized = normalizeGlobalSlice(globalSlice);
           return reconcileDockStackToPlacements({

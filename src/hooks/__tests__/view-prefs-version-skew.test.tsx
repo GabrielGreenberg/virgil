@@ -57,6 +57,7 @@ function Probe() {
     <button
       data-testid="probe"
       data-migrations={vp.prefs.appliedPrefMigrations.join(",")}
+      data-reports-side={vp.prefs.placements.find((p) => p.id === "reports")?.side ?? ""}
       data-bib-filter={vp.prefs.bibFilter}
       onClick={() => vp.toggleViewPref("showCardTitles")}
     >
@@ -143,6 +144,52 @@ describe("appliedPrefMigrations merges as a set union on peer sync", () => {
       window.dispatchEvent(new StorageEvent("storage", { key: GLOBAL_KEY }));
     });
     expect(getByTestId("probe").dataset.migrations).toBe(all);
+  });
+});
+
+describe("a peer's placements and its migration record arrive consistent (task 1135)", () => {
+  const reportsMig = PANEL_SIDE_MIGRATIONS.find((m) => m.panel === "reports")!;
+  const fire = () =>
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: GLOBAL_KEY }));
+    });
+
+  it("an older peer that never saw the migration cannot un-flip the panel while the id survives", () => {
+    expect(reportsMig).toBeDefined();
+    // This window loads a pre-migration blob: the flip runs in memory only.
+    write(GLOBAL_KEY, { placements: [{ id: "reports", side: reportsMig.from }] });
+    const { getByTestId } = render(<Probe />);
+    const probe = getByTestId("probe");
+    expect(probe.dataset.reportsSide).toBe(reportsMig.to);
+    expect(probe.dataset.migrations).toContain(reportsMig.id);
+
+    // An older build in another window writes its pre-migration placements,
+    // with no record of the migration, before this window has persisted.
+    write(GLOBAL_KEY, {
+      placements: [{ id: "reports", side: reportsMig.from }],
+      appliedPrefMigrations: [],
+    });
+    fire();
+    expect(probe.dataset.reportsSide).toBe(reportsMig.to);
+    expect(probe.dataset.migrations).toContain(reportsMig.id);
+
+    // …and this window's next write records the id WITH the flipped side.
+    fireEvent.click(probe);
+    const g = read(GLOBAL_KEY);
+    expect(g.appliedPrefMigrations).toContain(reportsMig.id);
+    expect(g.placements.find((p: { id: string }) => p.id === "reports").side).toBe(reportsMig.to);
+  });
+
+  it("a peer that RECORDED the migration and dragged the panel back keeps its drag", () => {
+    const { getByTestId } = render(<Probe />);
+    const probe = getByTestId("probe");
+    write(GLOBAL_KEY, {
+      placements: [{ id: "reports", side: reportsMig.from }],
+      appliedPrefMigrations: [reportsMig.id],
+    });
+    fire();
+    expect(probe.dataset.reportsSide).toBe(reportsMig.from);
+    expect(probe.dataset.migrations).toContain(reportsMig.id);
   });
 });
 
