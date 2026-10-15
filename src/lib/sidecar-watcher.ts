@@ -39,6 +39,7 @@
 
 import {
   getDiskFingerprint,
+  isOwnContent,
   stampDiskFingerprint,
   clearDiskFingerprint,
   hashContent,
@@ -263,10 +264,11 @@ export function createSidecarWatcher(deps: SidecarWatcherDeps): SidecarWatcher {
       const content = await readContentFor(relPath);
       if (stopped) return;
       if (content === null) continue; // couldn't read — treat as no-op this poll
-      const h = hashContent(content);
-      if (h === fp.hash) {
-        // False positive (touch / identical bytes). RE-BASELINE so we don't
-        // re-read every poll.
+      // Asked AFTER the read's await: the current stamp or an in-flight own
+      // write vouches for these bytes (task 1130 — never the pre-await `fp`).
+      if (isOwnContent(docId, relPath, hashContent(content))) {
+        // False positive (touch / identical bytes / Virgil's own in-flight
+        // write). RE-BASELINE so we don't re-read every poll.
         stampDiskFingerprint(docId, relPath, fingerprintOf(live, content));
         continue;
       }

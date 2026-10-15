@@ -76,6 +76,7 @@ import {
   stampDiskFingerprint,
   fingerprintOf,
   getDiskFingerprint,
+  beginOwnWrite,
   hashContent,
 } from "@/lib/disk-ledger";
 import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
@@ -216,7 +217,15 @@ async function diskAlreadyHas(
   if (!fp) return false;
   if (fp.hash !== hashContent(content)) return false;
   const live = await statOneFile(docId, relPath);
-  return !!live && live.mtimeMs === fp.mtimeMs && live.size === fp.size;
+  // The stamp as it stands NOW, not as read before the await (task 1130).
+  const cur = getDiskFingerprint(docId, relPath);
+  return (
+    !!live &&
+    !!cur &&
+    cur.hash === fp.hash &&
+    live.mtimeMs === cur.mtimeMs &&
+    live.size === cur.size
+  );
 }
 
 /**
@@ -236,8 +245,16 @@ async function putTrackedText(
   // tex-write-exempt: this IS the door — see the FSA twin `writeTrackedText`.
   // Accountability is asked of the CALLERS, not of the funnel they enter.
   // write-gate-exempt: this IS the byte-equality gate — see the FSA twin.
-  await putText(docFileUrl(docId, relPath), content);
-  await stampLedger(docId, relPath, content);
+  // Register the bytes as an own write BEFORE they move and release only
+  // AFTER the stamp lands, so a watcher poll that confirm-reads in between
+  // recognises them as Virgil's (task 1130) instead of a false "conflict".
+  const releaseOwnWrite = beginOwnWrite(docId, relPath, content);
+  try {
+    await putText(docFileUrl(docId, relPath), content);
+    await stampLedger(docId, relPath, content);
+  } finally {
+    releaseOwnWrite();
+  }
   return true;
 }
 

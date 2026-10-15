@@ -895,6 +895,21 @@ files are still computed together and committed inside ONE serialized critical
 section making ONE coherent decision. Declining to rewrite a file with the bytes
 it already has is not letting it drift out of the bundle.
 
+**An own write is vouched for from BEFORE its bytes move until AFTER its stamp
+lands (task 1130).** The door's `write → re-stat → stamp` spans several async FSA
+calls (slow on a cloud-synced folder); a watcher poll that confirm-read in that
+window compared Virgil's own bytes against the pre-write stamp and raised a false
+"Keep mine / Use disk" CONFLICT (severity reads `hasWorkToWrite`, true mid-save).
+So the door registers the hash first (`beginOwnWrite`, released in a `finally`
+after `stampLedger`), and both watchers ask `isOwnContent` — current stamp OR an
+in-flight own write — AFTER the read's await, never against a fingerprint captured
+before it (the class: a comparand read, an await, a compare, while the value's
+owner moved it; `diskAlreadyHas` re-reads its stamp after its `getFile` for the
+same reason). `hashContent` hashes the UTF-8 read-back form (leading BOM stripped,
+lone surrogates → U+FFFD) so a stamp and a confirm read of the same bytes always
+agree. What is NOT covered: an out-of-process skill write is genuinely external,
+and still flags. Pinned by `disk-watcher-own-write-race.test.ts`.
+
 **Both backends move together** (the twin rule): the fork risk is a daemon
 watching the paper folder, which the dev backend's local `virgil-data/` has
 none of, but a write count that differs between backends is a difference someone
