@@ -304,3 +304,60 @@ describe("keystroke sanctity is unchanged by the accumulation", () => {
     }
   });
 });
+
+// Task 1129 — the merge-level twin of 650: the fold kept every transaction's
+// TABLE entries but OR'd only the flags each one set alone. Deleting a whole
+// block that a margin card anchors provokes MarginaliaAnchorGuard's stand-in
+// appender (an empty paragraph re-minted with the same uuid), so the dispatch
+// is delete-then-resurrect: tx A saw a death, tx B a birth, and neither set
+// `blockOrderChanged` / `blockParTitleChanged`. The merged `changedBlocks`
+// entry woke no structural watcher, and a lost paragraph title stayed in the
+// breadcrumb.
+describe("a delete-then-resurrect dispatch wakes the bus (task 1129)", () => {
+  it("the merged diff carries the order + par-title flags and the index drops the lost title", () => {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      extensions: buildEditorExtensions({
+        ...mainCtx(),
+        anchoredUuidsRef: { current: new Set(["r-titled"]) },
+      }),
+      content: {
+        type: "doc",
+        content: [
+          { ...para("r-titled", "anchored and titled"), attrs: { uuid: "r-titled", parTitle: "A title" } },
+          para("r-tail", "tail."),
+        ],
+      },
+    });
+    try {
+      const bus = getBus(editor)!;
+      expect(bus.structure.blocks.get("r-titled")?.parTitled).toBe(true);
+      const anyChange: StructureDiff[] = [];
+      const orderChanged: StructureDiff[] = [];
+      const titlesChanged: StructureDiff[] = [];
+      bus.onAnyChange((d) => anyChange.push(d));
+      bus.onBlockOrderChanged((d) => orderChanged.push(d));
+      bus.onBlockParTitlesChanged((d) => titlesChanged.push(d));
+      const before = bus.emitCount;
+
+      deleteFirstBlock(editor);
+
+      // The guard resurrected the uuid as an empty, untitled stand-in.
+      const first = editor.state.doc.firstChild!;
+      expect(first.attrs.uuid).toBe("r-titled");
+      expect(first.content.size).toBe(0);
+
+      expect(bus.emitCount).toBe(before + 1);
+      expect(anyChange).toHaveLength(1);
+      expect(orderChanged).toHaveLength(1);
+      expect(titlesChanged).toHaveLength(1);
+      expect(anyChange[0].changedBlocks.map((b) => b.uuid)).toEqual(["r-titled"]);
+      expect(bus.structure.blocks.get("r-titled")?.parTitled).toBe(false);
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+});

@@ -50,6 +50,47 @@ export function deriveParTitled(attrs: { parTitle?: unknown } | Record<string, u
   return typeof t === "string" && t.length > 0;
 }
 
+/** What a block that LEFT and CAME BACK under the same uuid says to the diff. */
+export interface BlockReturnVerdict {
+  /** The index must fold the returned entry (`changedBlocks`). */
+  changed: boolean;
+  blockOrderChanged: boolean;
+  blockParTitleChanged: boolean;
+}
+
+/**
+ * The ONE comparator for a same-uuid block that was removed and re-added —
+ * read by `inspectSteps` (a delete+insert inside one transaction) and by
+ * `mergeStructureDiffs` (a delete by one transaction, the re-add by a later
+ * one in the same dispatch — the resurrection appender, task 1129). Two
+ * copies of this rule drifted: the merge folded the pair into `changedBlocks`
+ * but OR'd only the flags each transaction had set alone, and neither had set
+ * one, so the merged emit woke nothing and a lost par-title stayed in the
+ * breadcrumb.
+ *
+ * `moved` is the caller's: the inspector can cross both positions into one
+ * space through its own mapping; the merge cannot (a removal's position stays
+ * historical — see `mapStructureDiffPositions`), and a block re-created by a
+ * later transaction has a NEW DOM node regardless, so it passes `true`.
+ *
+ *   moved                → changed + order (+ par-title if the flag flipped)
+ *   same pos, title flip → changed + par-title (nothing moved)
+ *   same pos, type change→ changed only (the kind-keyed sub-views report it)
+ *   otherwise            → nothing (a round trip)
+ */
+export function compareReturnedBlock(
+  before: BlockEntry,
+  after: BlockEntry,
+  moved: boolean,
+): BlockReturnVerdict {
+  const titleFlipped = before.parTitled !== after.parTitled;
+  return {
+    changed: moved || titleFlipped || before.typeName !== after.typeName,
+    blockOrderChanged: moved,
+    blockParTitleChanged: titleFlipped,
+  };
+}
+
 export interface HeadingEntry {
   uuid: string;
   pos: number;
@@ -710,12 +751,31 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
     examples.removed.map((e) => e.uuid ?? ""),
   );
 
+  // The block flags are NOT a plain OR. A block removed by `a` and re-added by
+  // `b` folds to `changedBlocks`, but neither transaction compared the two
+  // sides — `a` saw a death, `b` a birth — so neither set the flag that a
+  // single transaction doing both would have (task 1129). Derive it here with
+  // the inspector's own comparator. (The footnote / citation / example flags
+  // need no such pass: their removal alone already sets the kind's flag in `a`.)
+  let blockOrderChanged = a.blockOrderChanged || b.blockOrderChanged;
+  let blockParTitleChanged = a.blockParTitleChanged || b.blockParTitleChanged;
+  if (a.removedBlocks.length > 0 && b.addedBlocks.length > 0) {
+    const leftInA = new Map(a.removedBlocks.map((e) => [byUuid(e), e]));
+    for (const back of b.addedBlocks) {
+      const before = leftInA.get(byUuid(back));
+      if (!before) continue;
+      const verdict = compareReturnedBlock(before, back, true);
+      blockOrderChanged ||= verdict.blockOrderChanged;
+      blockParTitleChanged ||= verdict.blockParTitleChanged;
+    }
+  }
+
   const merged: StructureDiff = {
     addedBlocks: blocks.added,
     removedBlocks: blocks.removed,
     changedBlocks: blocks.changed,
-    blockOrderChanged: a.blockOrderChanged || b.blockOrderChanged,
-    blockParTitleChanged: a.blockParTitleChanged || b.blockParTitleChanged,
+    blockOrderChanged,
+    blockParTitleChanged,
     addedHeadings: headings.added,
     removedHeadings: headings.removed,
     changedHeadings: headings.changed,

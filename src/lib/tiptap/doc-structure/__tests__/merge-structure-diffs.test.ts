@@ -12,6 +12,7 @@ import {
   type FootnoteEntry,
   type StructureDiff,
 } from "../types";
+import { diffWakesStructuralWatchers } from "../bus";
 
 function block(uuid: string, pos: number): BlockEntry {
   return { uuid, pos, typeName: "paragraph", parTitled: false };
@@ -48,6 +49,38 @@ describe("mergeStructureDiffs — the composition table", () => {
     expect(merged.removedBlocks).toEqual([]);
     expect(merged.addedBlocks).toEqual([]);
     expect(merged.changedBlocks.map((b) => [b.uuid, b.pos])).toEqual([["m", 40]]);
+  });
+
+  // Task 1129: neither transaction compared the two sides (A saw a death, B a
+  // birth), so a plain OR of their flags left a `changedBlocks` entry that woke
+  // no structural watcher. The merge derives the flags with the inspector's own
+  // comparator (`compareReturnedBlock`).
+  it("removed ∘ added sets blockOrderChanged — the block came back as a new node, and the bus must wake", () => {
+    const merged = mergeStructureDiffs(
+      diff({ removedBlocks: [block("m", 0)] }),
+      diff({ addedBlocks: [block("m", 0)] }),
+    );
+    expect(merged.blockOrderChanged).toBe(true);
+    expect(merged.blockParTitleChanged).toBe(false);
+    expect(diffWakesStructuralWatchers(merged)).toBe(true);
+  });
+
+  it("removed ∘ added with a differing parTitled sets blockParTitleChanged — the breadcrumb drops the lost title", () => {
+    const merged = mergeStructureDiffs(
+      diff({ removedBlocks: [{ ...block("t", 0), parTitled: true }] }),
+      diff({ addedBlocks: [block("t", 0)] }),
+    );
+    expect(merged.blockParTitleChanged).toBe(true);
+    expect(merged.changedBlocks.map((b) => b.parTitled)).toEqual([false]);
+  });
+
+  it("a removal and an UNRELATED add set no block flag — only a returning uuid is compared", () => {
+    const merged = mergeStructureDiffs(
+      diff({ removedBlocks: [{ ...block("gone", 0), parTitled: true }] }),
+      diff({ addedBlocks: [block("new", 0)] }),
+    );
+    expect(merged.blockOrderChanged).toBe(false);
+    expect(merged.blockParTitleChanged).toBe(false);
   });
 
   it("added ∘ changed → added, carrying the fresher entry", () => {

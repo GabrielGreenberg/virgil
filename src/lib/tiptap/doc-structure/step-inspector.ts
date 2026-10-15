@@ -37,6 +37,7 @@ import {
   type CitationEntry,
   type DocStructure,
   type CitationContainer,
+  compareReturnedBlock,
   deriveExampleIdentity,
   EMPTY_DIFF,
   type ExampleEntry,
@@ -1115,16 +1116,16 @@ export function inspectSteps(
       // the uuid — task 921) rides `changedBlocks` as well so the index's
       // `typeName` is refreshed, and wakes neither flag: nothing moved and no
       // title flipped. The kind-keyed sub-views report the change themselves.
-      if (removedPosInNewDoc(wasRemoved.pos) !== entry.pos) {
-        changedBlocks.push(entry);
-        blockOrderChanged = true;
-        if (wasRemoved.parTitled !== entry.parTitled) blockParTitleChanged = true;
-      } else if (wasRemoved.parTitled !== entry.parTitled) {
-        changedBlocks.push(entry);
-        blockParTitleChanged = true;
-      } else if (wasRemoved.typeName !== entry.typeName) {
-        changedBlocks.push(entry);
-      }
+      // The rule is `compareReturnedBlock` — shared with `mergeStructureDiffs`
+      // so the cross-transaction twin cannot drift (task 1129).
+      const verdict = compareReturnedBlock(
+        wasRemoved,
+        entry,
+        removedPosInNewDoc(wasRemoved.pos) !== entry.pos,
+      );
+      if (verdict.changed) changedBlocks.push(entry);
+      blockOrderChanged ||= verdict.blockOrderChanged;
+      blockParTitleChanged ||= verdict.blockParTitleChanged;
       continue;
     }
     if (prevBlocks?.has(uuid)) {
