@@ -252,3 +252,123 @@ describe("the plugin view's destroy()", () => {
     expect(getDropSession()).toBeNull();
   });
 });
+
+// ── 3. the click guard is clocked from the RELEASE (task 1132) ───────────────
+//
+// The click the guard swallows follows the physical mouseup. Its 500 ms inner
+// bound used to start at the drag THRESHOLD, so any drag held longer than half
+// a second had retired the guard before the click came — and releasing back
+// over the atom opened its Card as if it had been clicked.
+
+describe("the post-drag click guard", () => {
+  /** Count the clicks that reach the atom itself (bubble phase, as the
+   *  atom's own Card-opening handler sees them). */
+  function watchAtomClicks(ed: Editor): {
+    el: HTMLElement;
+    count: () => number;
+  } {
+    const el = ed.view.dom.querySelector<HTMLElement>(
+      '[data-type="footnote"]',
+    )!;
+    let n = 0;
+    el.addEventListener("click", () => n++);
+    return { el, count: () => n };
+  }
+  const click = (el: HTMLElement) =>
+    el.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+  const mouseup = (el: HTMLElement) =>
+    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, buttons: 0 }));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("a SLOW drag released over the atom still swallows the click; a later click is real", () => {
+    const ed = mount();
+    const atom = watchAtomClicks(ed);
+    expect(press(ed)).toBe(true);
+    dragPastThreshold();
+    vi.advanceTimersByTime(1000); // held well past the old threshold-clock
+    mouseup(atom.el);
+    click(atom.el);
+    expect(atom.count(), "the post-drag click opened the Card").toBe(0);
+
+    vi.advanceTimersByTime(600);
+    click(atom.el);
+    expect(atom.count(), "a later real click was swallowed").toBe(1);
+  });
+
+  it("the guard retires 500 ms after the release when no click follows", () => {
+    const ed = mount();
+    const atom = watchAtomClicks(ed);
+    expect(press(ed)).toBe(true);
+    dragPastThreshold();
+    mouseup(atom.el);
+    vi.advanceTimersByTime(499);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    vi.advanceTimersByTime(2);
+    click(atom.el);
+    expect(atom.count()).toBe(1);
+  });
+
+  it("Escape mid-drag, a long hold, then release over the atom: still swallowed", () => {
+    const ed = mount();
+    const atom = watchAtomClicks(ed);
+    expect(press(ed)).toBe(true);
+    dragPastThreshold();
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    expect(getDropSession()).toBeNull();
+    vi.advanceTimersByTime(1000); // button still down — no clock yet
+    mouseup(atom.el);
+    click(atom.el);
+    expect(atom.count()).toBe(0);
+  });
+
+  it("an unseen release (button-up move) starts the clock — no stale guard lingers", () => {
+    const ed = mount();
+    const atom = watchAtomClicks(ed);
+    expect(press(ed)).toBe(true);
+    dragPastThreshold();
+    window.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: 240,
+        clientY: 240,
+        buttons: 0,
+      }),
+    );
+    vi.advanceTimersByTime(501);
+    click(atom.el);
+    expect(atom.count()).toBe(1);
+  });
+
+  it("a fresh press retires the guard at once — its click is a real one", () => {
+    const ed = mount();
+    const atom = watchAtomClicks(ed);
+    expect(press(ed)).toBe(true);
+    dragPastThreshold();
+    // Released where nobody saw it, no move since; the next thing is a new press.
+    cancelDropSession();
+    atom.el.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, button: 0, buttons: 1 }),
+    );
+    click(atom.el);
+    expect(atom.count()).toBe(1);
+  });
+
+  it("a no-drag press arms no guard", () => {
+    const ed = mount();
+    const atom = watchAtomClicks(ed);
+    expect(press(ed)).toBe(true);
+    mouseup(atom.el);
+    click(atom.el);
+    expect(atom.count()).toBe(1);
+  });
+});
