@@ -81,6 +81,9 @@ const MANIFEST: FieldSpec[] = [
   { name: "citationOrderChanged", kind: "boolean", structural: true, busEmit: true },
   { name: "addedAnchors", kind: "array", structural: true, busEmit: true },
   { name: "removedAnchors", kind: "array", structural: true, busEmit: true },
+  // changedAnchors (task 1128): applyDiff REPLACES the entry, but the id
+  // neither entered nor left and every anchor reader resolves lazily — no wake.
+  { name: "changedAnchors", kind: "array", structural: true, busEmit: false },
   { name: "addedExamples", kind: "array", structural: true, busEmit: true },
   { name: "removedExamples", kind: "array", structural: true, busEmit: true },
   // changedExamples: structural but NOT a bus wake — exampleStructureChanged is
@@ -92,6 +95,9 @@ const MANIFEST: FieldSpec[] = [
   { name: "changedFigures", kind: "array", structural: true, busEmit: true },
   { name: "addedLabels", kind: "array", structural: true, busEmit: true },
   { name: "removedLabels", kind: "array", structural: true, busEmit: true },
+  // changedLabels (task 1128): a moved / re-won definition — a numbering
+  // input, like changedHeadings.
+  { name: "changedLabels", kind: "array", structural: true, busEmit: true },
   // The two content-only sets: never structural, never a bus wake (the
   // plain-keystroke case that must leave emitCount flat).
   { name: "contentChangedUuids", kind: "set", structural: false, busEmit: false },
@@ -177,9 +183,9 @@ describe("predicate breadth relationships hold across the manifest", () => {
     }
   });
 
-  it("the bus predicate omits exactly the three co-set changed-sets", () => {
+  it("the bus predicate omits exactly the three co-set changed-sets and changedAnchors", () => {
     const omitted = MANIFEST.filter((f) => f.structural && !f.busEmit).map((f) => f.name).sort();
-    expect(omitted).toEqual(["changedBlocks", "changedExamples", "changedFootnotes"]);
+    expect(omitted).toEqual(["changedAnchors", "changedBlocks", "changedExamples", "changedFootnotes"]);
   });
 });
 
@@ -210,7 +216,7 @@ const RECOMPUTABLE: Record<
   },
   Labels: {
     predicate: diffLabelsRecomputable,
-    fields: ["addedLabels", "removedLabels"],
+    fields: ["addedLabels", "removedLabels", "changedLabels"],
   },
 };
 

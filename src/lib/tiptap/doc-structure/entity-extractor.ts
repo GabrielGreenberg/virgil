@@ -24,6 +24,8 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { JSONContent } from "@tiptap/react";
+import { inlineAtoms } from "@/lib/inline-content";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import {
@@ -156,6 +158,37 @@ export function extractEntitiesAt(
         number: (attrs.number as number | undefined) ?? 0,
         title: str(attrs.title),
       });
+    }
+    // The footnote's BODY citations (task 1128). A footnote is an atom whose
+    // body is a JSONContent literal in `attrs.content`, so no walk can enter
+    // it — but the cites inside are entities this node CONTRIBUTES, exactly
+    // like its own entry. Answering them here (not in a load-only descent)
+    // is what makes the step path agree with a rebuild: delete the footnote
+    // and its cites leave with it, paste it and they arrive, rewrite its body
+    // (`setNodeMarkup` on the atom — both sides re-extracted) and the
+    // difference is the cites that changed. O(body) per footnote the range
+    // touches; a keystroke touches none.
+    //
+    // A nested cite has no PM node of its own: its address is the HOST's
+    // `pos`, its container the host's RAW `footnoteId` — the id
+    // `FootnoteEntry.id` carries and the footnote omni item is keyed by. Do
+    // NOT prefer `linkId`: a `linkId`-derived host would never match the
+    // footnote item's key, and `nest-footnote-children.ts` would degrade the
+    // cite to a flat card.
+    const body = attrs.content as JSONContent | null | undefined;
+    if (body && typeof body === "object") {
+      for (const hit of inlineAtoms(body)) {
+        if (hit.kind !== "citation" || !hit.id) continue;
+        sink.citation(
+          citationEntryAt({
+            id: hit.id,
+            pos: at,
+            command: hit.command,
+            displayText: hit.displayText,
+            container: { kind: "footnote", id },
+          }),
+        );
+      }
     }
   }
 

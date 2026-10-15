@@ -445,12 +445,11 @@ describe("applyDiff", () => {
     expect(cit?.nestedInContainerId).toBeUndefined();
   });
 
-  it("changedCitations carries a footnote-nested cite's owner tag forward too (defensive)", () => {
-    // Footnote-nested cites are stamped from a JSONContent literal the diff
-    // can't enter, so they typically never appear in `changedCitations` (no own
-    // PM node to edit). We still defensively carry `nestedInFootnoteId` +
-    // `nestedInContainerId` forward if such an entry ever surfaces, so a
-    // hypothetical change can't strip the tag. This synthesizes that prev shape.
+  it("a changedCitations entry is AUTHORITATIVE about footnote nesting (task 1128)", () => {
+    // The step path now derives a footnote-nested cite's tag itself (the shared
+    // extractor reads the host's body), so an untagged changed entry means the
+    // cite is no longer inside the footnote — the old defensive carry-forward
+    // would have resurrected a stale nesting.
     const fnBody = {
       type: "doc",
       content: [
@@ -476,8 +475,8 @@ describe("applyDiff", () => {
     const after = applyDiff(prev, change);
     const cit = after.citations.find((c) => c.id === "c-in-fn");
     expect(cit?.command).toBe("\\cite{f2}");
-    expect(cit?.nestedInFootnoteId).toBe("fn1");
-    expect(cit?.nestedInContainerId).toEqual({ kind: "footnote", id: "fn1" });
+    expect(cit?.nestedInFootnoteId).toBeUndefined();
+    expect(cit?.nestedInContainerId).toBeUndefined();
   });
 
   it("addedCitations with NO nestedInContainerId folds in as a FLAT top-level cite (graceful-degradation contract)", () => {

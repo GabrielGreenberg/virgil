@@ -123,8 +123,10 @@ export interface CitationEntry {
    *  and the per-transaction `inspectNodeAt` range walk (which resolves the
    *  ancestors of the one collected node) — through the single constructor
    *  `citationEntryAt` below, so the two cannot disagree about it. The
-   *  `"footnote"` kind stays load-only: a footnote-nested cite is a
-   *  JSONContent literal, not a PM node, so no step ever reaches it. */
+   *  `"footnote"` kind is derived on both paths too (task 1128): a
+   *  footnote-nested cite is a JSONContent literal, not a PM node, so the
+   *  shared extractor reads it out of the host footnote's body wherever that
+   *  footnote is collected. */
   nestedInContainerId?: CitationContainer;
 }
 
@@ -135,8 +137,8 @@ export type CitationContainer = { kind: "footnote" | "example"; id: string };
 
 /**
  * The ONE construction of a `CitationEntry`. Read by the shared entity
- * extractor (`extractEntitiesAt`, the real-PM-node site on BOTH walks) and by
- * `buildInitial`'s load-only footnote-body-literal descend, so an ancestor-derived field cannot be present
+ * extractor (`extractEntitiesAt`) on BOTH walks — for a real PM-node cite and
+ * for a footnote body's literal cites alike — so an ancestor-derived field cannot be present
  * on one path and absent on the other — the asymmetry that un-nested an
  * example-nested cite's card on the CHANGED path once and on the ADDED path
  * again. A container of kind `"footnote"` also mirrors itself into the legacy
@@ -280,10 +282,11 @@ export interface DocStructure {
    *  `nestedInFootnoteId`; citations NESTED inside a footnote's `attrs.content`
    *  literal (opaque to step inspection / `descendants()`) carry their host
    *  footnote id in `nestedInFootnoteId` and the host footnote's `pos` (T3 /
-   *  C10). The footnote-nested entries are populated ONLY by the load-only
-   *  `buildInitial` descend pass — the per-transaction `applyDiff` path stays
-   *  O(edit) and never re-walks a footnote body, so a nested cite's liveness is
-   *  refreshed out-of-band (`footnoteOrderChanged` re-walk), not per-keystroke. */
+   *  C10). The footnote-nested entries come from the shared entity extractor
+   *  reading the footnote's body, on BOTH paths (task 1128): the load walk
+   *  and the step path's range walk — so deleting, pasting, moving or
+   *  rewriting a footnote carries its cites with it, at O(body) per footnote
+   *  a transaction actually touches. */
   citations: readonly CitationEntry[];
   /** Every distinct `anchorId` from linkedAnchor marks. Maps id → entry. */
   anchors: ReadonlyMap<string, AnchorEntry>;
@@ -417,6 +420,14 @@ export interface StructureDiff {
 
   addedAnchors: readonly AnchorEntry[];
   removedAnchors: readonly AnchorEntry[];
+  /** Same anchorId, still in the document, whose EXACT live extent differs
+   *  from what mapping the old entry gives — a moved run (drag-drop, Outline
+   *  reorder, their undo), a dropped boundary run of a multi-run anchor
+   *  (task 1128). Carries the extent a rebuild would compute; the index
+   *  REPLACES the entry (an `added` run only widens it). The id neither
+   *  entered nor left, so it wakes no structural watcher — anchor readers
+   *  resolve the snapshot lazily. */
+  changedAnchors: readonly AnchorEntry[];
 
   addedExamples: readonly ExampleEntry[];
   removedExamples: readonly ExampleEntry[];
@@ -442,6 +453,12 @@ export interface StructureDiff {
 
   addedLabels: readonly LabelEntry[];
   removedLabels: readonly LabelEntry[];
+  /** Same label id, still defined, whose defining entry moved or changed
+   *  owner — a moved labelled heading/figure, or a duplicate definition
+   *  pasted or deleted (the rebuild's winner is the LAST definition in
+   *  document order). Carries that winner; the index replaces the entry
+   *  (task 1128). */
+  changedLabels: readonly LabelEntry[];
 
   /** Blocks whose interior content changed (text, marks, inline atoms)
    *  but whose UUID stayed the same. Drives float-mirror. */
@@ -490,6 +507,7 @@ export const EMPTY_DIFF: StructureDiff = {
   citationOrderChanged: false,
   addedAnchors: [],
   removedAnchors: [],
+  changedAnchors: [],
   addedExamples: [],
   removedExamples: [],
   changedExamples: [],
@@ -499,6 +517,7 @@ export const EMPTY_DIFF: StructureDiff = {
   changedFigures: [],
   addedLabels: [],
   removedLabels: [],
+  changedLabels: [],
   contentChangedUuids: new Set(),
   exampleContentChangedUuids: new Set(),
   exampleShapeChanged: false,
@@ -552,6 +571,7 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
     !diff.citationOrderChanged &&
     diff.addedAnchors.length === 0 &&
     diff.removedAnchors.length === 0 &&
+    diff.changedAnchors.length === 0 &&
     diff.addedExamples.length === 0 &&
     diff.removedExamples.length === 0 &&
     diff.changedExamples.length === 0 &&
@@ -560,7 +580,8 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
     diff.removedFigures.length === 0 &&
     diff.changedFigures.length === 0 &&
     diff.addedLabels.length === 0 &&
-    diff.removedLabels.length === 0
+    diff.removedLabels.length === 0 &&
+    diff.changedLabels.length === 0
   );
 }
 
@@ -608,9 +629,14 @@ export function diffFiguresRecomputable(diff: StructureDiff): boolean {
   );
 }
 
-/** A `\label` entered or left the document. */
+/** A `\label` entered, left, or changed its defining entry (moved with its
+ *  owner, or a duplicate definition changed which one wins — task 1128). */
 export function diffLabelsRecomputable(diff: StructureDiff): boolean {
-  return diff.addedLabels.length > 0 || diff.removedLabels.length > 0;
+  return (
+    diff.addedLabels.length > 0 ||
+    diff.removedLabels.length > 0 ||
+    diff.changedLabels.length > 0
+  );
 }
 
 /**
@@ -662,12 +688,13 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
   const citations = foldKeyed(byId, a.addedCitations, a.removedCitations, a.changedCitations, b.addedCitations, b.removedCitations, b.changedCitations);
   const examples = foldKeyed(byId, a.addedExamples, a.removedExamples, a.changedExamples, b.addedExamples, b.removedExamples, b.changedExamples);
   const figures = foldKeyed(byUuid, a.addedFigures, a.removedFigures, a.changedFigures, b.addedFigures, b.removedFigures, b.changedFigures);
-  // Anchors and labels have no `changed` bucket: their add/remove means "this
-  // id ENTERED / LEFT the document". A `changed` verdict (removed by one tx,
-  // re-added by a later one) therefore reports nothing — the id was present
-  // before the dispatch and is present after, so nothing entered or left.
-  const anchors = foldKeyed(byId, a.addedAnchors, a.removedAnchors, EMPTY_LIST, b.addedAnchors, b.removedAnchors, EMPTY_LIST);
-  const labels = foldKeyed(byId, a.addedLabels, a.removedLabels, EMPTY_LIST, b.addedLabels, b.removedLabels, EMPTY_LIST);
+  // Anchors and labels: add/remove means "this id ENTERED / LEFT the
+  // document"; `changed` (task 1128) means it stayed but its extent / defining
+  // entry moved. A removal by one tx re-added by a later one composes to
+  // `changed` — present before and after the dispatch, so nothing entered or
+  // left — carrying the later entry.
+  const anchors = foldKeyed(byId, a.addedAnchors, a.removedAnchors, a.changedAnchors, b.addedAnchors, b.removedAnchors, b.changedAnchors);
+  const labels = foldKeyed(byId, a.addedLabels, a.removedLabels, a.changedLabels, b.addedLabels, b.removedLabels, b.changedLabels);
 
   // A block deleted later in the dispatch must not also be reported as having
   // had its content edited — a single transaction attributes content changes to
@@ -702,6 +729,7 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
     citationOrderChanged: a.citationOrderChanged || b.citationOrderChanged,
     addedAnchors: anchors.added,
     removedAnchors: anchors.removed,
+    changedAnchors: anchors.changed,
     addedExamples: examples.added,
     removedExamples: examples.removed,
     changedExamples: examples.changed,
@@ -711,6 +739,7 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
     changedFigures: figures.changed,
     addedLabels: labels.added,
     removedLabels: labels.removed,
+    changedLabels: labels.changed,
     contentChangedUuids,
     exampleContentChangedUuids,
     exampleShapeChanged: a.exampleShapeChanged || b.exampleShapeChanged,
@@ -873,7 +902,9 @@ export function mapStructureDiffPositions(
     addedFigures: remap(diff.addedFigures),
     changedFigures: remap(diff.changedFigures),
     addedLabels: remap(diff.addedLabels),
+    changedLabels: remap(diff.changedLabels),
     addedAnchors: remapAnchors(diff.addedAnchors),
+    changedAnchors: remapAnchors(diff.changedAnchors),
   };
   return moved ? next : diff;
 }

@@ -230,9 +230,12 @@ export function docStructureStateSpec(): StateField<PluginState> {
       const oldDoc = tr.before;
       const newDoc = tr.doc;
       // `inspectSteps` consults prev.structure for uuid MEMBERSHIP
-      // only (mapping-invariant), so the un-materialized base is
-      // correct to pass even with pendingMaps outstanding.
-      const diff = inspectSteps(tr, oldDoc, newDoc, prev.structure);
+      // (mapping-invariant), so the un-materialized base is correct to
+      // pass even with pendingMaps outstanding. The anchor/label
+      // reconcilers also read prior POSITIONS (task 1128) — handed the
+      // deferred maps so they can carry them to `oldDoc` themselves,
+      // O(maps) per touched entry, without materializing here.
+      const diff = inspectSteps(tr, oldDoc, newDoc, prev.structure, prev.pendingMaps);
       txDiffs.set(tr, diff);
       if (diff === EMPTY_DIFF || !diffHasStructuralEntries(diff)) {
         // Structurally-null tx (plain typing, attr-only steps):

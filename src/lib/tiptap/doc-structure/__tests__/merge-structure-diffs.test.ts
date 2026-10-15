@@ -79,15 +79,18 @@ describe("mergeStructureDiffs — the composition table", () => {
     expect(merged.footnoteOrderChanged).toBe(true);
   });
 
-  it("an anchor removed then re-added reports NEITHER — the id never left the document", () => {
-    // Anchors and labels have no `changed` bucket: their buckets mean "this id
-    // entered / left". A `changed` verdict there is silence, not an event.
+  it("an anchor removed then re-added composes to CHANGED — the id never left the document", () => {
+    // Add/remove mean "this id entered / left". Removed by one transaction and
+    // re-added by a later one, it did neither: the composed diff reports it as
+    // `changed` (task 1128), carrying the later extent, and no add/remove.
     const anchor = { id: "an-1", from: 1, to: 5, kind: "note" };
     const merged = mergeStructureDiffs(
       diff({ removedAnchors: [anchor] }),
       diff({ addedAnchors: [{ ...anchor, from: 9, to: 13 }] }),
     );
-    expect(merged).toBe(EMPTY_DIFF);
+    expect(merged.addedAnchors).toEqual([]);
+    expect(merged.removedAnchors).toEqual([]);
+    expect(merged.changedAnchors).toEqual([{ ...anchor, from: 9, to: 13 }]);
   });
 
   it("a block deleted later in the dispatch drops out of contentChangedUuids", () => {
