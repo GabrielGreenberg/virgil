@@ -26,7 +26,6 @@ import {
   resetPaperViewModeOnOpen,
   usePaperViewMode,
   migrateLegacyLayoutSizes,
-  setPanelTabs,
   setProjectHidden,
   setProjectPinned,
   setSelection,
@@ -73,12 +72,11 @@ afterEach(() => {
 });
 
 describe("view-session-store — round-trip", () => {
-  it("writes and reads back selection / sort / scroll / query / tabs", () => {
+  it("writes and reads back selection / sort / scroll / query", () => {
     setSelection("", "left", { selectedKeys: ["a", "b"], anchorKey: "a" });
     setListSort("", "left", "central", { col: "author", dir: "asc" });
     setListScroll("", "left", "central", 420);
     setListQuery("", "left", "central", "kant");
-    setPanelTabs("", "left", { openIds: ["central"], activeId: "central" });
     flushNow();
 
     const s = getSession();
@@ -90,10 +88,6 @@ describe("view-session-store — round-trip", () => {
     });
     expect(s.scopes[""].left.lists["central"].scrollTop).toBe(420);
     expect(s.scopes[""].left.lists["central"].query).toBe("kant");
-    expect(s.scopes[""].left.tabs).toEqual({
-      openIds: ["central"],
-      activeId: "central",
-    });
   });
 
   it("reconstructs the identical session from localStorage after a simulated reload", () => {
@@ -381,19 +375,6 @@ describe("view-session-store — restore-race tolerance", () => {
     );
   });
 
-  it("a restored custom-lib openId stays in the blob even when it doesn't resolve yet", () => {
-    setPanelTabs("", "left", {
-      openIds: ["central", "lib-unknown"],
-      activeId: "central",
-    });
-    flushNow();
-    __resetViewSessionForTests();
-    // The store never prunes ids; only an explicit close() would.
-    expect(getSession().scopes[""].left.tabs?.openIds).toEqual([
-      "central",
-      "lib-unknown",
-    ]);
-  });
 });
 
 describe("view-session-store — scroll key isolation", () => {

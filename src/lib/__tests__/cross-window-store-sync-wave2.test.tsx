@@ -293,28 +293,28 @@ describe("view-session-store cross-window sync", () => {
   it("keeps a peer's edit to a DIFFERENT scope while preserving ours", async () => {
     vi.useFakeTimers();
     const s = await import("@library/lib/view-session-store");
-    s.setPanelTabs("mine", "left", { openIds: ["central"], activeId: "central" });
+    s.setLeftPinnedActiveId("mine", "central");
     s.flushNow();
 
-    s.setPanelTabs("mine", "left", { openIds: ["central", "x"], activeId: "x" });
+    s.setLeftPinnedActiveId("mine", "x");
     const peerBlob = {
       ...s.getSession(),
       scopes: {
         ...s.getSession().scopes,
-        mine: { left: { tabs: { openIds: ["central"], activeId: "central" }, lists: {} }, right: { lists: {} } },
-        theirs: { left: { tabs: { openIds: ["central"], activeId: "central" }, lists: {} }, right: { lists: {} } },
+        mine: { left: { leftPinnedActiveId: "central", lists: {} }, right: { lists: {} } },
+        theirs: { left: { leftPinnedActiveId: "central", lists: {} }, right: { lists: {} } },
       },
     };
     peerWrite(KEY, peerBlob);
 
     expect(Object.keys(s.getSession().scopes)).toContain("theirs");
-    expect(s.getSession().scopes["mine"]?.left?.tabs?.activeId).toBe("x");
+    expect(s.getSession().scopes["mine"]?.left?.leftPinnedActiveId).toBe("x");
     vi.advanceTimersByTime(500);
   });
 
   it("merges at LEAF granularity inside the SAME scope (both windows use scope '')", async () => {
     // The singleton scope holds both panels, every list's sort/query/scroll,
-    // and the tab state — so a scope-level swap would still clobber. Window A
+    // and the pinned-tab id — so a scope-level swap would still clobber. Window A
     // edits the left list's query; window B, from the same base, selects a row
     // in the RIGHT panel. Both must survive.
     vi.useFakeTimers();

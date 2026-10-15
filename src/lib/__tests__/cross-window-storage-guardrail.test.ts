@@ -50,8 +50,7 @@ const PERMITTED_RAW_STORAGE_LISTENERS: Record<string, string> = {
 };
 
 // Deliberately EMPTY: the Library silo has no cross-window store of its own
-// today. Its localStorage helpers (`list-columns`, `row-viewed-store`,
-// `library-store`) re-read per call rather than caching a module snapshot. A
+// today. Its localStorage helpers (`row-viewed-store`, `library-store`) re-read per call rather than caching a module snapshot. A
 // first entry here should consume the primitive, not hand-roll a listener.
 const PERMITTED_LIBRARY_RAW_STORAGE_LISTENERS: Record<string, string> = {};
 
@@ -177,10 +176,6 @@ const STORE_LEDGER: Record<string, StoreLedgerEntry> = {
     by: "src/hooks/useCollab.ts",
     reason:
       "Read-fresh lib; useCollab caches the identity in state + identityRef (heartbeat, claims, unload release) and re-reads it on the storage event (task 768).",
-  },
-  "library/lib/list-columns.ts": {
-    kind: "read-fresh",
-    reason: "Load/save helpers only; the cached copy lives in view-session-store, which subscribes to these keys.",
   },
   "library/lib/row-viewed-store.ts": {
     kind: "subscribed-by",

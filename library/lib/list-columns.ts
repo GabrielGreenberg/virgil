@@ -384,15 +384,19 @@ function firstAuthorSurname(
   return words[words.length - 1].toLowerCase();
 }
 
-// ── localStorage hydration / persistence ────────────────────────────────
+// ── legacy-key migration reads ──────────────────────────────────────────
+// The column widths and sort used to live in two standalone localStorage keys.
+// Their ONE live home is now the view-session blob (`view-session-store.ts`):
+// nothing writes these keys any more, and these two readers survive only as
+// that store's one-shot seed when the blob is absent. Not a persistence API.
 
-export const COL_WIDTHS_KEY = "virgil-library-col-widths";
-export const COL_SORT_KEY = "virgil-library-col-sort";
+const LEGACY_COL_WIDTHS_KEY = "virgil-library-col-widths";
+const LEGACY_COL_SORT_KEY = "virgil-library-col-sort";
 
-export function loadWidths(): Record<ResizableColId, number> {
+export function readLegacyColWidths(): Record<ResizableColId, number> {
   if (typeof window === "undefined") return { ...DEFAULT_WIDTHS };
   try {
-    const raw = localStorage.getItem(COL_WIDTHS_KEY);
+    const raw = localStorage.getItem(LEGACY_COL_WIDTHS_KEY);
     if (!raw) return { ...DEFAULT_WIDTHS };
     const parsed = JSON.parse(raw) as Partial<Record<ResizableColId, number>>;
     const out = { ...DEFAULT_WIDTHS };
@@ -406,19 +410,11 @@ export function loadWidths(): Record<ResizableColId, number> {
   }
 }
 
-export function saveWidths(w: Record<ResizableColId, number>): void {
-  try {
-    localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(w));
-  } catch {
-    // ignore
-  }
-}
-
-export function loadSort(): SortState {
+export function readLegacyColSort(): SortState {
   const fallback: SortState = { col: "year", dir: "desc" };
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = localStorage.getItem(COL_SORT_KEY);
+    const raw = localStorage.getItem(LEGACY_COL_SORT_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as { col?: string; dir?: string; facet?: string };
     if (
@@ -435,18 +431,5 @@ export function loadSort(): SortState {
     return fallback;
   } catch {
     return fallback;
-  }
-}
-
-export function saveSort(s: SortState): void {
-  try {
-    // Drop a stray facet on a non-status column so the blob stays canonical.
-    const canonical: SortState =
-      s.col === "status" && s.facet
-        ? { col: s.col, dir: s.dir, facet: s.facet }
-        : { col: s.col, dir: s.dir };
-    localStorage.setItem(COL_SORT_KEY, JSON.stringify(canonical));
-  } catch {
-    // ignore
   }
 }
