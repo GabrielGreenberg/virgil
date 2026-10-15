@@ -9,8 +9,7 @@ import {
   PUBLICATION_FIELDS_BY_TYPE,
   knownFieldsForType,
 } from "@library/lib/bib-edit";
-import { reconstructBibtex } from "@library/lib/reconstruct-bibtex";
-import { bibFieldDisplay } from "@library/lib/bib-parser";
+import { bibFieldDisplay, reconstructBibtex } from "@/lib/bib-parser";
 import { Button } from "@/components/Button";
 import { Textarea } from "@/components/field-primitives";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";

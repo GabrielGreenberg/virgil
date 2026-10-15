@@ -17,7 +17,7 @@ const { parseBibFile } = vi.hoisted(() => ({ parseBibFile: vi.fn() }));
 const { readTextFile } = vi.hoisted(() => ({ readTextFile: vi.fn() }));
 
 vi.mock("@library/lib/bib-index", () => ({ readBibIndexStamp, readBibIndex }));
-vi.mock("@library/lib/bib-parser", () => ({ parseBibFile }));
+vi.mock("@/lib/bib-parser", () => ({ parseBibFile }));
 vi.mock("@library/lib/library-storage", () => ({
   readTextFile,
   ROOT_FILES: { masterBib: "master.bib" },

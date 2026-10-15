@@ -1084,7 +1084,7 @@ function formatInlineCitationRaw(
  * Returns HTML string.
  */
 export function formatBibliography(
-  entry: BibEntry,
+  entry: Pick<BibEntry, "key" | "type" | "fields" | "raw">,
   style: string = "apa"
 ): string {
   try {
@@ -1137,8 +1137,20 @@ function cslTypeToBib(cslType: string): string {
   return map[cslType] || "misc";
 }
 
-function reconstructBibtex(entry: BibEntry): string {
+/**
+ * THE one BibTeX reconstruction from parsed parts — for an entry whose `raw`
+ * is empty (assembled in memory, or a Library slim browse record). Both silos
+ * use this one (task 1123: the Library kept a second, private copy that
+ * disagreed about empty fields).
+ *
+ * The empty-field rule: an empty or whitespace-only value is DROPPED, never
+ * emitted as `field = {}` — the two spell the same thing to BibTeX, and the
+ * sparse records this rebuilds from would otherwise fill with noise. No
+ * trailing newline: callers join blocks with their own separators.
+ */
+export function reconstructBibtex(entry: Pick<BibEntry, "key" | "type" | "fields">): string {
   const lines = Object.entries(entry.fields)
+    .filter(([, v]) => v && v.trim().length > 0)
     .map(([k, v]) => `  ${k} = {${v}}`)
     .join(",\n");
   return `@${entry.type}{${entry.key},\n${lines}\n}`;

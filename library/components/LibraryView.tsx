@@ -32,7 +32,7 @@ import {
   SUBDIRS,
   writeTextFile,
 } from "@library/lib/library-storage";
-import { parseBibFile } from "@library/lib/bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { SyncResult } from "@library/lib/skill-sync";

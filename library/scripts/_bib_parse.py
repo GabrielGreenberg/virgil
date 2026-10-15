@@ -6,7 +6,7 @@ incoming `.bib` file dropped into `unsorted/`. Promoted out of
 the same way.
 
 This is intentionally minimal — citation-js-grade parsing lives in the
-JS side (`library/lib/bib-parser.ts`); here we just need enough to
+JS side (`src/lib/bib-parser.ts`, which the Library imports); here we just need enough to
 recover {citekey, type, fields, raw} blocks from a well-formed file.
 """
 

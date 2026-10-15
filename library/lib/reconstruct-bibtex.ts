@@ -1,6 +1,8 @@
-// Shared BibTeX reconstruction from a parsed `BibEntry`.
+// Synthesized-raw fallback for Library entries whose `raw` is empty.
 //
-// Used wherever a non-empty `raw` block is needed but the resolved entry may
+// The reconstruction itself is `reconstructBibtex` in `@/lib/bib-parser` — the
+// ONE copy, shared with the editor (task 1123). This module owns only the
+// Library's use of it: the synthesize-and-tag fallback below. Used wherever a non-empty `raw` block is needed but the resolved entry may
 // only carry parsed fields. The canonical case is the slim browse projection
 // (bib-index.json records carry `raw=""` and browse-only fields): the detail
 // surface — PaperHeader's formatted entry, the BibEdit modal, copy-BibTeX —
@@ -10,18 +12,11 @@
 // preferred source; this is the fallback that keeps edit from ever being
 // blocked by an empty `raw`.
 //
-// Empty/whitespace-only field values are dropped so a sparse slim record
-// doesn't emit `field = {}` noise.
+// Empty/whitespace-only field values are dropped (the shared rule), so a
+// sparse slim record doesn't emit `field = {}` noise.
 
 import type { BibEntry } from "./types";
-
-export function reconstructBibtex(entry: BibEntry): string {
-  const lines = Object.entries(entry.fields)
-    .filter(([, v]) => v && v.trim().length > 0)
-    .map(([k, v]) => `  ${k} = {${v}}`)
-    .join(",\n");
-  return `@${entry.type}{${entry.key},\n${lines}\n}\n`;
-}
+import { reconstructBibtex } from "@/lib/bib-parser";
 
 /** Internal, non-enumerable marker stamped on entries whose `raw` was
  *  SYNTHESIZED from a slim browse record (vs. a real full master.bib block).

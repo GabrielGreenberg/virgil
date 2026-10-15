@@ -13,7 +13,7 @@ import {
   refreshQueueState,
   useQueueState,
 } from "@library/lib/queue-state-store";
-import { bibFieldDisplay, formatBibliography } from "@library/lib/bib-parser";
+import { bibFieldDisplay, formatBibliography } from "@/lib/bib-parser";
 import { ExpandedFields } from "./BibCard";
 import { IndexedPill, BibPill, BibImportedPill } from "./StatusPill";
 import PaperAiRequestsMenu, {

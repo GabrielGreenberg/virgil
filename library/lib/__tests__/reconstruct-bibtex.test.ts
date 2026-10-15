@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  reconstructBibtex,
-  withSynthesizedRaw,
-} from "../reconstruct-bibtex";
+import { reconstructBibtex } from "@/lib/bib-parser";
+import { withSynthesizedRaw } from "../reconstruct-bibtex";
 import type { BibEntry } from "../types";
 
 const slim: BibEntry = {
@@ -27,7 +25,6 @@ describe("reconstructBibtex", () => {
       key: "k",
       type: "misc",
       fields: { title: "T", note: "", doi: "   " },
-      raw: "",
     });
     expect(out).toContain("title = {T}");
     expect(out).not.toContain("note =");

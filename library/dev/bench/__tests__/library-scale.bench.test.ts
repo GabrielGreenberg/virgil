@@ -15,7 +15,7 @@ import { describe, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parseBibFile } from "@library/lib/bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 

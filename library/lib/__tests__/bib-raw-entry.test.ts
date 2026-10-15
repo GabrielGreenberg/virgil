@@ -4,7 +4,7 @@
 // entry (from `parseBibFile`, i.e. what `getFullLibraryBibEntry` returns).
 
 import { describe, expect, it } from "vitest";
-import { parseBibFile } from "../bib-parser";
+import { parseBibFile } from "@/lib/bib-parser";
 import { buildBibEditDiff, isEmptyBibEditDiff } from "../bib-edit";
 import {
   bibEditBase,

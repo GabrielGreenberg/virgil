@@ -256,10 +256,10 @@ describe("matchTextMacroAt replaces the hand-written alternation", () => {
 // ── the leg with teeth: nobody displays raw bytes ────────────────────────────
 
 const REPO_ROOT = join(__dirname, "..", "..", "..");
-const BIB_PARSERS = [
-  join("src", "lib", "bib-parser.ts"),
-  join("library", "lib", "bib-parser.ts"),
-];
+// ONE since task 1123: `library/lib/bib-parser.ts` was a whole-file copy and
+// is deleted — the Library imports this parser. `bib-authority.test.tsx`
+// fails if the Library grows its own again.
+const BIB_PARSERS = [join("src", "lib", "bib-parser.ts")];
 
 /**
  * A formatter that legitimately does NOT project, keyed by NAME with its
@@ -303,12 +303,13 @@ describe("census — every exported display formatter asks the door", () => {
         if (!region.includes("latexToDisplayText(")) offenders.push(`${rel}: ${name}`);
       }
     }
-    // Not vacuous: both copies of the formatter family must have been seen.
-    expect(discovered).toBeGreaterThanOrEqual(6);
+    // Not vacuous: the formatter family must have been seen (format* ×4 +
+    // bibFieldDisplay; was ≥6 while a Library copy doubled the census).
+    expect(discovered).toBeGreaterThanOrEqual(5);
     expect(offenders).toEqual([]);
   });
 
-  it("the raw dispatch is module-PRIVATE in both copies", () => {
+  it("the raw dispatch is module-PRIVATE in the parser", () => {
     // An exported raw formatter is a SECOND display door, and the one a caller
     // reaches for is the one that skips the projection.
     for (const rel of BIB_PARSERS) {

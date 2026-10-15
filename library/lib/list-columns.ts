@@ -5,7 +5,7 @@
 
 import type { CatalogEntry, IndexedState, BibAuthState } from "./catalog";
 import type { BibEntry } from "./types";
-import { bibFieldDisplay } from "./bib-parser";
+import { bibFieldDisplay } from "@/lib/bib-parser";
 import colOrderDefaults from "./list-columns.defaults.json";
 
 /** Columns the user can sort by. */

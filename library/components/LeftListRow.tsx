@@ -5,7 +5,7 @@ import { activatableProps } from "@/lib/activatable-props";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { COL_TEMPLATE_VAR, type ReorderableColId } from "@library/lib/list-columns";
-import { bibFieldDisplay } from "@library/lib/bib-parser";
+import { bibFieldDisplay } from "@/lib/bib-parser";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { Dot, StatusPills } from "./StatusPill";
