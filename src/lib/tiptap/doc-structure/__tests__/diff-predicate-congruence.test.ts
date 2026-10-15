@@ -96,6 +96,9 @@ const MANIFEST: FieldSpec[] = [
   // plain-keystroke case that must leave emitCount flat).
   { name: "contentChangedUuids", kind: "set", structural: false, busEmit: false },
   { name: "exampleContentChangedUuids", kind: "set", structural: false, busEmit: false },
+  // Task 1127: the expex renumberer's shape wake — content-only like the two
+  // sets (applyDiff folds nothing for it), never a bus wake.
+  { name: "exampleShapeChanged", kind: "boolean", structural: false, busEmit: false },
 ];
 
 /** A diff equal to EMPTY_DIFF except `name` is made non-empty. */

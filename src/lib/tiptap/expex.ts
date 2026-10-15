@@ -16,7 +16,7 @@ import {
   reconcileExampleKind,
 } from "@/lib/example-block-attrs";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
-import { diffExamplesRecomputable, readDiffFor, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
+import { diffExamplesRecomputable, readDiffFor } from "@/lib/tiptap/doc-structure";
 import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
 import { createParTitleSession } from "@/lib/tiptap/title-edit-session";
 import {
@@ -1874,54 +1874,30 @@ export const ExpexNumbering = Extension.create({
             },
           };
         },
-        // [cost: O(1)/tx — docChanged + observer-diff example gate, plus O(touched uuids) resolveTouchedBlock lookups on a content edit; deferred body O(doc) (two descendants walks + setNodeMarkup) only when an example was added / removed / restructured / edited inside] (task 433 census)
+        // [cost: O(1)/tx — docChanged + observer-diff example gate (diffExamplesRecomputable || exampleShapeChanged); deferred body O(doc) (two descendants walks + setNodeMarkup) only when an example was added / removed / moved / renumbered, or an item / list / gloss / row / cell was added / removed / wrapped / lifted — never on typing inside an example (task 1127)] (task 433 census)
         // With no observer diff (pending === null: observer not installed) the renumberer runs whole — a stated, tagged exemption.
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          // Gate: only run when the observer says the example set or
-          // its nesting actually changed (or some content inside an
-          // example block was touched — covers gloss-cell column
-          // adjustments). Typing in a paragraph outside any example
-          // bails immediately.
+          // Gate: the observer states exactly the two facts this body's
+          // outputs depend on. Example `number`s change only when the example
+          // set or its order changed (`diffExamplesRecomputable`); sub-item
+          // letters, gloss `colCount` and the doc-adaptive widths change only
+          // when an example's SHAPE changed (`exampleShapeChanged`). Typing —
+          // in prose, in an example body, in a gloss cell — changes neither,
+          // so it bails here. (Before task 1127 the gate keyed off
+          // `contentChangedUuids`, whose nearest-uuid attribution names the
+          // exampleBlock for every keystroke in a plain `\ex` body or a gloss
+          // cell, so each such keystroke walked the doc twice; and an added
+          // cell inside a `\pex` item named the ITEM, so colCount upkeep never
+          // woke.)
           const pending = readDiffFor(transactions, newState);
-          if (pending) {
-            const exampleAffected = diffExamplesRecomputable(pending);
-            // Content-change inside an example block (gloss cells, items)
-            // may shift the column count or item ordering.
-            let exampleContentTouched = false;
-            if (!exampleAffected && pending.contentChangedUuids.size > 0) {
-              for (const uuid of pending.contentChangedUuids) {
-                const block = pending.addedBlocks.find((b) => b.uuid === uuid);
-                if (block?.typeName === "exampleBlock") {
-                  exampleContentTouched = true;
-                  break;
-                }
-                // Also check the existing structure for the typeName.
-                // We don't have prev here; rely on `readDocStructure`
-                // when needed — but that requires importing it. For
-                // now, conservatively run if any contentChange could
-                // be in an example. A second-pass optimization would
-                // check the index.
-              }
-              // Conservative: if there are content changes and no
-              // structural diff says it's NOT an example, fall through
-              // to run the numberer. The cost is a doc walk in those
-              // cases, but those are still rarer than pure-text edits.
-              if (!exampleContentTouched && pending.contentChangedUuids.size > 0) {
-                // Re-check by resolving each touched uuid against the
-                // structure index — per-uuid, no whole-snapshot
-                // materialization on the keystroke path.
-                for (const uuid of pending.contentChangedUuids) {
-                  const block = resolveTouchedBlock(newState, uuid);
-                  if (block?.typeName === "exampleBlock") {
-                    exampleContentTouched = true;
-                    break;
-                  }
-                }
-              }
-            }
-            if (!exampleAffected && !exampleContentTouched) return null;
+          if (
+            pending &&
+            !diffExamplesRecomputable(pending) &&
+            !pending.exampleShapeChanged
+          ) {
+            return null;
           }
 
           const tr = newState.tr;

@@ -59,7 +59,7 @@ import { headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "@/components/HeadingTypeMenu";
 import { paintMenuTriggerAria } from "@/components/menu/menu-trigger";
 import StarterKit from "@tiptap/starter-kit";
-import Placeholder from "@tiptap/extension-placeholder";
+import { CaretPlaceholder } from "@/lib/tiptap/caret-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import type { Editor } from "@tiptap/react";
 import {
@@ -1840,7 +1840,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     }),
     ...(isMain
       ? [
-          Placeholder.configure({
+          CaretPlaceholder.configure({
             placeholder: "Start writing...",
           }),
         ]
