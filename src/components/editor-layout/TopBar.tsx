@@ -94,7 +94,6 @@ function TopBarImpl({ zenModeOn, tabStrip, statusCluster }: TopBarProps) {
       <StatusCluster
         {...statusCluster}
         topbarRightCollapsed={occupancy.toolsCollapsed}
-        collapsePreference={statusCluster.topbarRightCollapsed}
         onToggleTools={occupancy.toggleTools}
         toolsMeasureRef={occupancy.toolsMeasureRef}
       />

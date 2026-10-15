@@ -85,6 +85,7 @@ import {
   interruptionPillLabel,
   type DocumentInterruption,
 } from "@/lib/document-interruption";
+import { barStatusVisible } from "@/lib/bar-status-policy";
 
 /** RefreshCw — a 16px stroke-only circular-arrows glyph (the "reload" affordance). */
 function ReloadIcon() {
@@ -300,7 +301,12 @@ function ExternalChangeBadge() {
   // Clean — OR no provider at all (no doc open) → render nothing. The no-doc
   // case arrives here as the clean snapshot (severity null) from
   // useExternalChangesOrNull, so this single check covers both.
-  if (state.severity == null) return null;
+  if (
+    !barStatusVisible("external-change", { standing: state.severity != null }) ||
+    state.severity == null
+  ) {
+    return null;
+  }
 
   // Paused (permission lost mid-session): a MUTED pill — no Reload, since
   // nothing can be read until the folder is re-granted. Its kebab carries that

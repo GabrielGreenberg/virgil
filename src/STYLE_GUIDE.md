@@ -3849,6 +3849,23 @@ Icons in the Virgil bar are **16px tall**. Buttons are 24px
 (`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
 author 14px or 20px topbar icons.
 
+### Bar status: must-see only
+
+Gabriel (2026-10-15, task 1131): *"unless I absolutely have to see it, no."*
+Tier 1 below is never auto-hidden, so what ENTERS it is decided by ONE table,
+[bar-status-policy.ts](lib/bar-status-policy.ts): each status item reports its
+state and `barStatusVisible(id, state)` says whether it is **must-see** — it
+needs an action, something is at risk, or the user turned it on. Informational
+states (a clean "Saved · 13:28", "Saving…", "Skills updated to v…") render
+nothing on the bar; where the information is still useful it moves to a menu
+(the skills version + restart hint ride the Help menu's "Refresh skills" row).
+The update chip is the one standing exception Gabriel asked for, and it says
+exactly **"⟳ Virgil update"** — state detail goes in the hover hint, never in
+the label. Every item renders through `BarStatusPill` (an actionable chip uses
+its `onActivate` variant). A new bar status item adds a row to the table first;
+the census (`bar-status-policy.test.tsx`) fails on an item the table does not
+name.
+
 ### Occupancy priority — who yields when the bar is narrow
 
 The bar has more occupants than a narrow window has room for, so it has ONE

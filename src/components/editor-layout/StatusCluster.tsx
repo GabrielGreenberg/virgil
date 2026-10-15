@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  Fragment,
   memo,
   useLayoutEffect,
   useRef,
   type Dispatch,
+  type ReactNode,
   type RefObject,
   type SetStateAction,
 } from "react";
@@ -24,6 +26,7 @@ import SyncConflictBadge from "../SyncConflictBadge";
 import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
+import { BAR_STATUS_ORDER, type BarStatusItemId } from "@/lib/bar-status-policy";
 import type { AiDotTone } from "@/components/AIWindow";
 
 /** The subset of the (memoized) Virgil-bar `vbar` value this cluster reads. */
@@ -50,23 +53,6 @@ export type StatusClusterProps = {
    * auto rule in bar-occupancy.ts); a bare mount gets the pref alone.
    */
   topbarRightCollapsed: boolean;
-  /**
-   * The user's OWN persisted choice, BEFORE the bar's occupancy rule — the
-   * value `topbarRightCollapsed` used to carry. Tier-1 chrome that honours a
-   * collapse preference reads THIS, never the effective verdict: an auto
-   * collapse is a geometry decision the user did not make, and it must not
-   * carry a data-integrity surface away with it (the tier rule in
-   * `isSaveTierProtected`, and this bar's own ladder — the save pill is TIER 1).
-   *
-   * It is also what keeps the occupancy predicate SOUND. That predicate is
-   * state-independent only because the protected width `R` does not depend on
-   * the verdict; feeding the verdict into a tier-1 element's width makes `R`
-   * a function of the rule's own output and re-opens the flip-flop the
-   * predicate exists to close (bar-occupancy.ts).
-   *
-   * Defaults to `topbarRightCollapsed` for a bare mount (no occupancy rule).
-   */
-  collapsePreference?: boolean;
   /**
    * The user's persisted pref setter. Written ONLY by an explicit toggle —
    * the auto rule never touches it. Kept in the bundle because `TopBar`'s
@@ -149,7 +135,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
     collabEnabled,
     zenModeOn,
     topbarRightCollapsed,
-    collapsePreference,
     setTopbarRightCollapsed,
     onToggleTools,
     toolsMeasureRef,
@@ -224,6 +209,55 @@ function StatusClusterImpl(props: StatusClusterProps) {
     collapseChipRef.current?.focus();
   }, [topbarRightCollapsed]);
 
+  // ── TIER 1: the protected status items (task 1131) ─────────────────────
+  // Mounted in the ONE policy's order (`BAR_STATUS_ORDER`), keyed by its ids —
+  // a `Record` over `BarStatusItemId`, so an item the policy table does not
+  // name cannot be mounted here. Every item renders only while its state is
+  // MUST-SEE: each one's single visibility return reads `barStatusVisible`
+  // (bar-status-policy.ts). None of them reads `topbarRightCollapsed` or
+  // `zenModeOn` — a layout preference does not decide what the user must see,
+  // and keeping the verdict out of tier 1 is what keeps the occupancy
+  // predicate state-independent (bar-occupancy.ts). Census:
+  // `bar-status-policy.test.tsx`.
+  const statusItems: Record<BarStatusItemId, ReactNode> = {
+    // Service-worker update chip — "⟳ Virgil update", nothing more. Since
+    // task 391 its click refuses to reload while any open paper's work is
+    // still in memory (this button triggered the 2026-08-19 data loss).
+    "software-update": <SoftwareUpdateBanner />,
+    // Cowork pen (task 489): an `/editor/*` skill holds this paper's pen, so
+    // the main text is read-only and autosave is paused — the notice explains
+    // why typing stopped.
+    "cowork-pen": <CoworkPenBadge docId={currentDocId} />,
+    // Preservation notice (task 357 hole 4): a gate refused a write that would
+    // have dropped content, so Virgil is not saving this paper.
+    preservation: <PreservationNoticeBadge docId={currentDocId} />,
+    // Emergency-mirror recovery (task 391): a mirrored model never reached disk.
+    "mirror-recovery": <MirrorRecoveryBadge docId={currentDocId} />,
+    // Sync-conflict notice (task 363): conflicted copies may hold unseen writing.
+    "sync-conflict": <SyncConflictBadge docId={currentDocId} />,
+    // External-change notice (task 364): the file changed on disk and the
+    // clobber guard may have paused autosave. Tier 1 since task 392, so the
+    // pause the save badge's "Resolve…" routes to is never unreachable.
+    "external-change": <ExternalChangeBadge />,
+    // SAVE STATE (task 392): shown only once work has not landed (unsaved) or
+    // a gate holds it (blocked), naming the gate with a button into its flow.
+    "save-state": <SaveStateBadge docId={currentDocId} />,
+    // Skill-bundle sync FAILURE pill. A success is informational and lives on
+    // the Help menu's "Refresh skills" row below.
+    "skill-sync": (
+      <SkillSyncControls
+        error={skillSyncError}
+        onResync={onResyncSkills}
+        onDismissError={onDismissSkillSyncError}
+      />
+    ),
+    // The bar timer's WIDGET (task 354) — shown while the user has it open,
+    // through collapse and zen alike (a timed sitting is when zen is on).
+    // PROP-LESS: it reads the session store directly, so a tick cannot
+    // re-render this memoized cluster. Its ICON is an ordinary tool below.
+    pomodoro: <PomodoroTimer />,
+  };
+
   const collabIconBtn = (
     <CollabStatusPill
       onEnableRequest={onEnableCollab}
@@ -251,87 +285,9 @@ function StatusClusterImpl(props: StatusClusterProps) {
       // (task 289).
       className="shrink-0 flex items-center self-end mb-[var(--bar-seam-lift)] px-2"
     >
-      {/* Service-worker update banner. Visible whenever a new SW has
-          installed and is waiting. Sits before the topbarRightCollapsed gate
-          so an update prompt isn't hidden by the user's collapsed-right
-          setting. Self-gates on the waiting-SW signal, and since task 391 also
-          on the unsaved-work channel: this button was the literal trigger of
-          the 2026-08-19 data loss, so it no longer reloads while any open
-          paper's work is still in memory. */}
-      <SoftwareUpdateBanner />
-      {/* Cowork pen (task 489). An `/editor/*` skill holds this paper's pen —
-          it is committing to the same folder — so the main text is read-only
-          and the autosave is paused. Self-gates (renders null with no hold)
-          and sits BEFORE the topbarRightCollapsed gate with the four
-          data-integrity badges: a notice that explains why the editor has
-          stopped accepting your typing must not be hideable by a layout
-          preference. Amber rather than red — nothing here is destructive or
-          even wrong, and it clears itself (STYLE_GUIDE → the alarm family). */}
-      <CoworkPenBadge docId={currentDocId} />
-      {/* Preservation notice (task 357 hole 4). A gate refused a write because
-          it would have dropped content this document was loaded with, so Virgil
-          is not saving this paper. Self-gates (renders null with no standing
-          refusal) and sits BEFORE the topbarRightCollapsed gate — a
-          data-integrity notice must not be hideable by a layout preference. */}
-      <PreservationNoticeBadge docId={currentDocId} />
-      {/* Emergency-mirror recovery (task 391). This paper opened holding a
-          mirrored model that never reached disk — a reload through a paused
-          conflict, a standing refusal, a crash. Self-gates (renders null with
-          no standing offer) and sits BEFORE the topbarRightCollapsed gate for
-          the same reason its two neighbours do. */}
-      <MirrorRecoveryBadge docId={currentDocId} />
-      {/* Sync-conflict notice (task 363). A cloud-sync daemon left conflicted
-          copies in this paper's virgil/ folder, and some of them may hold
-          writing Virgil has never shown. Self-gates (renders null with no
-          report / after a session dismiss) and sits BEFORE the
-          topbarRightCollapsed gate for the same reason the preservation notice
-          does — a data-integrity notice must not be hideable by a layout
-          preference. */}
-      <SyncConflictBadge docId={currentDocId} />
-      {/* External-change notice (task 364). Another app or a sync service
-          changed this paper's file, so the 364 clobber guard has PAUSED
-          autosave. Self-gates (renders null when severity == null) and — since
-          task 392 — sits BEFORE the topbarRightCollapsed gate, with its three
-          siblings, for the reason their comments already state: a
-          data-integrity notice must not be hideable by a layout preference.
-          It was inside BOTH gates until then, which made the very pause the
-          save badge routes its "Resolve…" button to unreachable in a
-          collapsed or zen toolbar. */}
-      <ExternalChangeBadge />
-      {/* SAVE STATE (task 392). The one answer to "is my work on disk?" — a
-          quiet timestamp when clean, an aging amber pill once writing has not
-          landed, and a red pill NAMING the gate that is holding the write with
-          a button that opens that gate's own flow. Self-gating and
-          tier-gated: the two reassurance tiers honour the collapse/zen
-          preference, the two data-integrity tiers never do. */}
-      <SaveStateBadge
-        docId={currentDocId}
-        // The USER's own choice, not the bar's occupancy verdict — see
-        // `collapsePreference` above. Narrowing a window must not take a
-        // tier-1 save surface with it.
-        collapsed={(collapsePreference ?? topbarRightCollapsed) || zenModeOn}
-      />
-      {/* Skill-bundle sync surface. Sits before the topbarRightCollapsed gate
-          (like the Virgil-update banner) so a sync failure can't be hidden by
-          a collapsed right toolbar. Pure UI: no per-keystroke work. */}
-      <SkillSyncControls
-        error={skillSyncError}
-        notice={skillSyncNotice}
-        onResync={onResyncSkills}
-        onDismissError={onDismissSkillSyncError}
-        onDismissNotice={onDismissSkillSyncNotice}
-      />
-      {/* The bar timer's WIDGET (task 354). Sits OUTSIDE the
-          topbarRightCollapsed group — a running timer must stay legible when
-          the user collapses the toolbar, which is the whole point of the
-          request. Self-gating (renders null while closed), and PROP-LESS: it
-          reads the session store directly, so a timer tick cannot re-render
-          this memoized cluster. Rendered before BOTH gates: a timer already
-          running must stay legible when the toolbar is collapsed (the point of
-          the request) and in zen mode (a timed writing sitting is exactly when
-          zen is on). Its ICON takes the ordinary tool rules below — see
-          there. */}
-      <PomodoroTimer />
+      {BAR_STATUS_ORDER.map((id) => (
+        <Fragment key={id}>{statusItems[id]}</Fragment>
+      ))}
       {/* ── TIER 3: the collapsible tool group (task 395) ──────────────────
           Everything above this point is TIER 1 (PROTECTED) and everything in
           here is the bar's lowest-priority occupant: under compression it
@@ -566,14 +522,30 @@ function StatusClusterImpl(props: StatusClusterProps) {
                 after a revoked grant. A menu click is still a user gesture, so
                 the permission re-grant path is preserved. Only meaningful with
                 a paper open. Sync failures still surface loudly via the
-                SkillSyncControls banner above, independent of this item. */}
+                SkillSyncControls pill above, independent of this item.
+                Task 1131: a SUCCESSFUL sync is informational, so it is not on
+                the bar — its version and the restart hint live on this row. */}
             {hasDoc && (
               <button
-                onClick={() => { onResyncSkills(); setHelperMenuOpen(false); }}
+                onClick={() => {
+                  // The new sync supersedes the last one's note.
+                  onDismissSkillSyncNotice();
+                  onResyncSkills();
+                  setHelperMenuOpen(false);
+                }}
                 className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"
                 data-hint="Re-sync the skill bundle to this paper"
+                data-skill-sync-notice={skillSyncNotice ? skillSyncNotice.version : undefined}
               >
-                <span>Refresh skills</span>
+                <span className="flex flex-col items-start gap-0.5">
+                  <span>Refresh skills</span>
+                  {skillSyncNotice && (
+                    <span className="text-[10px] text-ink-subtle leading-snug">
+                      Updated to v{skillSyncNotice.version} — restart your Claude
+                      Code cowork session to pick up the new commands.
+                    </span>
+                  )}
+                </span>
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
                   <path d="M2 5.2V12a1.2 1.2 0 0 0 1.2 1.2h9.6A1.2 1.2 0 0 0 14 12V6.2A1.2 1.2 0 0 0 12.8 5H7.4L6 3.2H3.2A1.2 1.2 0 0 0 2 4.4Z" />
                   <path d="M8 7.2v3.4M6.4 9.2 8 10.8l1.6-1.6" />

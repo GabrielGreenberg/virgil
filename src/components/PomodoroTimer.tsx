@@ -72,6 +72,7 @@ import {
   togglePomodoroOpen,
   type PomodoroState,
 } from "@/lib/pomodoro-timer";
+import { barStatusVisible } from "@/lib/bar-status-policy";
 
 /** Tomato-clock: the house 16px stroke glyph — a round face with a leaf. */
 function TimerIcon() {
@@ -176,7 +177,7 @@ const GHOST =
  */
 function PomodoroTimerImpl() {
   const state = usePomodoro();
-  if (!state.open) return null;
+  if (!barStatusVisible("pomodoro", { open: state.open })) return null;
   return <PomodoroWidget state={state} />;
 }
 

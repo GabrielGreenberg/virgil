@@ -41,6 +41,7 @@ import {
   BarStatusPill,
   useBarStatusMenu,
 } from "./status/BarStatusPill";
+import { barStatusVisible } from "@/lib/bar-status-policy";
 
 /** The refusal's register — `danger`, from the one kind → tone table
  *  (`interruption-tone.ts`, task 571): the user's work is on no disk and
@@ -136,7 +137,12 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
 
   // ── render gate ────────────────────────────────────────────────────
   // No doc, no refusal, or the user has already answered → nothing to say.
-  if (!notice || notice.acknowledged) return null;
+  if (
+    !barStatusVisible("preservation", { standing: !!notice && !notice.acknowledged }) ||
+    !notice
+  ) {
+    return null;
+  }
 
   const detail = isSerialize
     ? `Virgil read this file and can display it, but cannot write it back to ` +
