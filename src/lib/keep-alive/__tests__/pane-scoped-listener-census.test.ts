@@ -302,8 +302,15 @@ const LEDGER: Record<string, Row> = {
   },
   "lib/tiptap/inline-atom-grab.ts": {
     scope: "gesture",
-    events: ["window.click", "window.mousemove", "window.mouseup"],
-    why: "atom drag + its one-shot click swallow",
+    events: [
+      "window.click",
+      "window.mousedown",
+      "window.mousemove",
+      "window.mousemove",
+      "window.mouseup",
+      "window.mouseup",
+    ],
+    why: "atom drag pair + its one-shot click swallow, clocked from the release (mouseup / button-up move) and retired by a fresh press",
   },
   "panels/Outline/focus-band-drag.ts": {
     scope: "gesture",
