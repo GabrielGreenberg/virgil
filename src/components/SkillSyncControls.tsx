@@ -1,107 +1,72 @@
 "use client";
 
 import { memo } from "react";
-import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
-import { iconHint } from "@/components/Hint";
-import { ERROR_INK } from "@/lib/error-ink";
+import type { SkillSyncError } from "@/hooks/useFiles";
+import { barStatusVisible } from "@/lib/bar-status-policy";
+import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
 
 interface Props {
   error: SkillSyncError | null;
-  notice: SkillSyncNotice | null;
-  /** Retry the sync from the failure banner (also the target of the
+  /** Retry the sync from the failure pill (also the target of the
    *  "Refresh skills" help-menu item, wired at the StatusCluster call site). */
   onResync: () => void;
   onDismissError: () => void;
-  onDismissNotice: () => void;
 }
 
-const PILL: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  height: 24,
-  padding: "0 4px 0 10px",
-  borderRadius: "var(--radius-sm)",
-  fontSize: 12,
-  fontWeight: 500,
-};
+function WarnIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8 1.5 1 14h14L8 1.5Z" />
+      <path d="M8 6.5v3.2" />
+      <circle cx="8" cy="11.8" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 /**
- * Top-bar surface for the per-paper skill-bundle sync. Mirrors the
- * "Virgil update — click to refresh" banner idiom (EditorLayout): a loud,
- * dismissible failure banner with Retry (+ "Grant & retry" on a revoked
- * permission), and a "skills updated — restart your cowork session" notice.
+ * Bar surface for the per-paper skill-bundle sync: a loud, dismissible
+ * FAILURE pill with Retry (+ "Grant & retry" on a revoked permission).
  *
- * Both pieces are CONDITIONAL — they render only when a sync fails or
- * succeeds, so the happy path (silent, auto-synced on doc-open) carries no
- * permanent top-bar chrome. The always-available MANUAL re-sync action does
- * NOT live here: it's a "Refresh skills" item in the Virgil-bar help ("?")
- * menu (StatusCluster), which reuses this component's `onResync`.
+ * Task 1131: only the failure is must-see (`bar-status-policy.ts`). A
+ * successful sync no longer puts a "Skills updated" notice on the bar — the
+ * version and the restart-your-cowork-session hint live on the Help menu's
+ * "Refresh skills" row (StatusCluster), which also hosts the manual re-sync.
  *
  * Pure presentational — no editor subscription, so it adds zero
  * per-keystroke work (keystroke-sanctity, AGENTS.md).
  */
-function SkillSyncControls({
-  error,
-  notice,
-  onResync,
-  onDismissError,
-  onDismissNotice,
-}: Props) {
+function SkillSyncControls({ error, onResync, onDismissError }: Props) {
+  if (!barStatusVisible("skill-sync", { failed: error !== null }) || !error) {
+    return null;
+  }
+  const label = error.permission ? "Skill sync needs permission" : "Skill sync failed";
   return (
-    <>
-      {error && (
-        <div
-          role="alert"
-          style={{
-            ...PILL,
-            maxWidth: 320,
-            background: "var(--danger-soft)",
-            color: ERROR_INK,
-            boxShadow:
-              "inset 0 0 0 1px color-mix(in oklab, var(--danger) 30%, transparent)",
-          }}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ flexShrink: 0 }}
-          >
-            <path d="M8 1.5 1 14h14L8 1.5Z" />
-            <path d="M8 6.5v3.2" />
-            <circle cx="8" cy="11.8" r="0.4" fill="currentColor" stroke="none" />
-          </svg>
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={error.message}
-          >
-            {error.permission
-              ? "Skill sync needs permission"
-              : "Skill sync failed"}
-          </span>
-          <button
-            onClick={onResync}
-            className="topbarbtn"
-            style={{ height: 20, color: ERROR_INK }}
-            data-hint={error.message}
-          >
+    <BarStatusPill
+      tone="danger"
+      glyph={<WarnIcon />}
+      label={label}
+      ariaLabel={label}
+      hint={error.message}
+      data={{ "data-skill-sync": error.permission ? "permission" : "failed" }}
+      actions={
+        <>
+          <BarStatusAction onClick={onResync} hint={error.message}>
             {error.permission ? "Grant & retry" : "Retry"}
-          </button>
-          <button
+          </BarStatusAction>
+          <BarStatusAction
             onClick={onDismissError}
-            className="topbarbtn topbarbtn-icon"
-            style={{ height: 20, color: "var(--danger)" }}
-            {...iconHint({ label: "Dismiss skill-sync error", hint: "Dismiss" })}
+            hint="Dismiss"
+            ariaLabel="Dismiss skill-sync error"
           >
             <svg
               width="12"
@@ -111,66 +76,14 @@ function SkillSyncControls({
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
+              aria-hidden
             >
               <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
-          </button>
-        </div>
-      )}
-      {notice && (
-        <div
-          role="status"
-          style={{
-            ...PILL,
-            maxWidth: 480,
-            background: "var(--accent-light)",
-            color: "var(--accent)",
-          }}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ flexShrink: 0 }}
-          >
-            <path d="M13.5 4.5 6.5 11.5 2.5 7.5" />
-          </svg>
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Skills updated to v{notice.version} — restart your Claude Code
-            cowork session to pick up the new commands.
-          </span>
-          <button
-            onClick={onDismissNotice}
-            className="topbarbtn topbarbtn-icon"
-            style={{ height: 20, color: "var(--accent)" }}
-            {...iconHint({ label: "Dismiss skills-updated notice", hint: "Dismiss" })}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            >
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
-        </div>
-      )}
-    </>
+          </BarStatusAction>
+        </>
+      }
+    />
   );
 }
 

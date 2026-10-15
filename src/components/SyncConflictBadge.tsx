@@ -78,6 +78,7 @@ import {
   BarStatusPill,
   useBarStatusMenu,
 } from "./status/BarStatusPill";
+import { barStatusVisible } from "@/lib/bar-status-policy";
 
 /** Copy — a 16px stroke-only two-sheets glyph (the "there are two of these" idea). */
 function ForkIcon() {
@@ -235,7 +236,12 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
   // offers no cleanup either, because there is no surface to offer it from. That
   // is the right trade — raising a pill for files the user was never told to
   // care about would make a warning out of housekeeping.
-  if (!notice || notice.total === 0) return null;
+  if (
+    !barStatusVisible("sync-conflict", { standing: !!notice && notice.total > 0 }) ||
+    !notice
+  ) {
+    return null;
+  }
 
   const { total, contentTotal, groups, swapFiles, origin } = notice;
   // Name the service when every fork agrees on one — "Dropbox could not merge

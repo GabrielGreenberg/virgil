@@ -5,8 +5,9 @@
 // pieces:
 //   Fix 1 — a loud, dismissible FAILURE banner with Retry; permission
 //           wording (+ "Grant & retry") when the failure is a revoked grant.
-//   Fix 3 — a reworded SUCCESS notice that leads with the action: restart
-//           the cowork session to pick up the new commands.
+//   Task 1131 — a SUCCESS is informational, so it is not on the bar at all;
+//           its version + restart hint live on the Help menu's "Refresh
+//           skills" row (pinned in bar-status-policy.test.tsx).
 //
 // The manual "Refresh skills" re-sync action is NOT hosted here anymore — it
 // moved into the Virgil-bar help ("?") menu (StatusCluster), reusing this
@@ -25,14 +26,12 @@ afterEach(cleanup);
 function noop() {}
 
 describe("SkillSyncControls", () => {
-  it("idle (no error, no notice) renders nothing — no always-on button", () => {
+  it("idle (no error) renders nothing — no always-on button", () => {
     const { container } = render(
       <SkillSyncControls
         error={null}
-        notice={null}
         onResync={noop}
         onDismissError={noop}
-        onDismissNotice={noop}
       />,
     );
     // The manual re-sync now lives in the help menu, so this component is
@@ -48,10 +47,8 @@ describe("SkillSyncControls", () => {
     render(
       <SkillSyncControls
         error={{ permission: false, message: "network blew up" }}
-        notice={null}
         onResync={onResync}
         onDismissError={onDismissError}
-        onDismissNotice={noop}
       />,
     );
     const alert = screen.getByRole("alert");
@@ -71,10 +68,8 @@ describe("SkillSyncControls", () => {
     render(
       <SkillSyncControls
         error={{ permission: true, message: "lost permission" }}
-        notice={null}
         onResync={onResync}
         onDismissError={noop}
-        onDismissNotice={noop}
       />,
     );
     expect(screen.getByRole("alert").textContent).toMatch(/needs permission/i);
@@ -82,26 +77,4 @@ describe("SkillSyncControls", () => {
     expect(onResync).toHaveBeenCalledTimes(1);
   });
 
-  it("Fix 3: the success notice leads with the restart-cowork action", () => {
-    const onDismissNotice = vi.fn();
-    render(
-      <SkillSyncControls
-        error={null}
-        notice={{ version: "0.1.49", filesWritten: 12 }}
-        onResync={noop}
-        onDismissError={noop}
-        onDismissNotice={onDismissNotice}
-      />,
-    );
-    const status = screen.getByRole("status");
-    expect(status.textContent).toMatch(/skills updated to v0\.1\.49/i);
-    expect(status.textContent).toMatch(
-      /restart your claude code cowork session/i,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /dismiss skills-updated notice/i }),
-    );
-    expect(onDismissNotice).toHaveBeenCalledTimes(1);
-  });
 });

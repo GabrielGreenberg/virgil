@@ -42,6 +42,7 @@ import {
   useCallback,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import {
@@ -298,6 +299,12 @@ export interface BarStatusPillProps {
   data?: Record<`data-${string}`, string | undefined>;
   /** Content rendered after everything (a confirm dialog portal). */
   children?: ReactNode;
+  /**
+   * Makes the pill ITSELF the control (task 1131 — the update chip, whose
+   * one action is the pill). The labelled element becomes a typed button: it
+   * keeps the tone's `aria-live` but not its `role`, so it stays a button.
+   */
+  onActivate?: () => void;
 }
 
 export function BarStatusPill({
@@ -312,6 +319,7 @@ export function BarStatusPill({
   menu,
   data,
   children,
+  onActivate,
 }: BarStatusPillProps) {
   const palette = barStatusPalette(tone);
   // Destructured into plain locals: the two element setters are callback
@@ -328,6 +336,26 @@ export function BarStatusPill({
     toggleMenu,
     trackAnchor,
   } = menu?.controller ?? {};
+  const announcement = barStatusAnnouncement(tone);
+  const labelStyle: CSSProperties = {
+    background: palette.bg,
+    borderColor: palette.edge,
+    color: palette.ink,
+    maxWidth: BAR_STATUS_PILL_MAX_WIDTH,
+  };
+  const labelBody = (
+    <>
+      <span
+        aria-hidden
+        className={glyphClassName}
+        style={{ color: palette.edge, display: "inline-flex" }}
+        data-bar-status-glyph
+      >
+        {glyph}
+      </span>
+      <span className="truncate">{label}</span>
+    </>
+  );
 
   return (
     <div
@@ -336,29 +364,31 @@ export function BarStatusPill({
       data-bar-status-pill={tone}
       {...data}
     >
-      <span
-        className={BAR_STATUS_PILL_CLASS}
-        style={{
-          background: palette.bg,
-          borderColor: palette.edge,
-          color: palette.ink,
-          maxWidth: BAR_STATUS_PILL_MAX_WIDTH,
-        }}
-        {...barStatusAnnouncement(tone)}
-        aria-label={ariaLabel}
-        data-hint={hint}
-        data-bar-status-label
-      >
-        <span
-          aria-hidden
-          className={glyphClassName}
-          style={{ color: palette.edge, display: "inline-flex" }}
-          data-bar-status-glyph
+      {onActivate ? (
+        <button
+          type="button"
+          onClick={onActivate}
+          className={`${BAR_STATUS_PILL_CLASS} cursor-pointer`}
+          style={labelStyle}
+          aria-live={announcement["aria-live"]}
+          aria-label={ariaLabel}
+          data-hint={hint}
+          data-bar-status-label
         >
-          {glyph}
+          {labelBody}
+        </button>
+      ) : (
+        <span
+          className={BAR_STATUS_PILL_CLASS}
+          style={labelStyle}
+          {...announcement}
+          aria-label={ariaLabel}
+          data-hint={hint}
+          data-bar-status-label
+        >
+          {labelBody}
         </span>
-        <span className="truncate">{label}</span>
-      </span>
+      )}
 
       {aside}
       {actions}

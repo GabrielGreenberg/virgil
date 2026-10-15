@@ -153,9 +153,28 @@ describe("BarStatusPill · the census", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("every bar button is a typed button (a bare <button> submits a form)", () => {
-    expect(read("src/components/SoftwareUpdateBanner.tsx")).toMatch(
-      /<button\s+type="button"\s+onClick=\{\(\) => void handleClick\(\)\}/,
+  it.each(["SoftwareUpdateBanner", "SkillSyncControls"])(
+    "%s (a non-Badge status item) renders through BarStatusPill too (task 1131)",
+    (name) => {
+      expect(read(`src/components/${name}.tsx`)).toContain("<BarStatusPill");
+    },
+  );
+
+  it("an ACTIVATABLE pill is a typed button that keeps the button role (task 1131)", () => {
+    const { container } = render(
+      <BarStatusPill
+        tone="quiet"
+        glyph={<svg />}
+        label="Virgil update"
+        ariaLabel="Virgil update"
+        onActivate={() => {}}
+      />,
     );
+    const btn = container.querySelector("[data-bar-status-label]")!;
+    expect(btn.tagName).toBe("BUTTON");
+    expect(btn.getAttribute("type")).toBe("button");
+    // A `role="status"` would rename the button for assistive tech.
+    expect(btn.getAttribute("role")).toBeNull();
+    expect(btn.getAttribute("aria-live")).toBe("polite");
   });
 });

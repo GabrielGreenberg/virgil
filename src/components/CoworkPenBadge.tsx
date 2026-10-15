@@ -48,6 +48,7 @@ import { deriveDocumentInterruption, interruptionPillLabel } from "@/lib/documen
 import { toneForInterruptionKind } from "@/lib/interruption-tone";
 import { BarStatusPill } from "./status/BarStatusPill";
 import { deriveSaveState } from "@/lib/save-state";
+import { barStatusVisible } from "@/lib/bar-status-policy";
 
 /** The clean external snapshot: this pill is about the PEN alone, and the
  *  vocabulary's cowork branch reads nothing else. */
@@ -95,7 +96,7 @@ export function useCoworkPen(docId: string | null | undefined): CoworkPenState |
 function CoworkPenBadge({ docId }: { docId: string | null }) {
   const pen = useCoworkPen(docId);
   // Self-gating: nothing holds the pen, nothing to say.
-  if (!pen) return null;
+  if (!barStatusVisible("cowork-pen", { held: !!pen }) || !pen) return null;
   // TASK 545 — the words are the vocabulary's (`document-interruption.ts`),
   // so this pill and the in-document band name one event with one phrase.
   const view = deriveDocumentInterruption({
