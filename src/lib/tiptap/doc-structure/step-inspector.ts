@@ -132,6 +132,7 @@ interface DiffSink {
   readonly added: EntityBundle;
   readonly contentChangedUuids: Set<string>;
   readonly exampleContentChangedUuids: Set<string>;
+  exampleShapeChanged: boolean;
   footnoteOrderChanged: boolean;
   citationOrderChanged: boolean;
 }
@@ -551,6 +552,75 @@ function noteOrderFlags(sink: DiffSink): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Example shape (task 1127).
+// ---------------------------------------------------------------------------
+
+/**
+ * The node kinds whose count, order or nesting inside an `exampleBlock` are
+ * inputs to the expex renumberer: the item tree (sub-item letters) and the
+ * aligned gloss grid (`exampleGloss.colCount`). Text typed inside any of them
+ * changes none of those outputs.
+ */
+const EXAMPLE_SHAPE_TYPES: ReadonlySet<string> = new Set([
+  "exampleItem",
+  "exampleItemList",
+  "exampleGloss",
+  "alignedGlossRow",
+  "glossCell",
+]);
+
+/** Shape-kind nodes whose OPENING token lies in `[from, to)` of `doc`. Never
+ *  descends into a textblock (no shape kind lives in inline content), so a
+ *  keystroke's range costs O(1). */
+function shapeNodesStartingIn(doc: PMNode, from: number, to: number, out: string[]): void {
+  const lo = Math.max(from, 0);
+  const hi = Math.min(to, doc.content.size);
+  if (hi <= lo) return;
+  doc.nodesBetween(lo, hi, (n, pos) => {
+    if (pos >= lo && EXAMPLE_SHAPE_TYPES.has(n.type.name)) out.push(n.type.name);
+    return !n.isTextblock;
+  });
+}
+
+/** Shape-kind nodes anywhere in an inserted slice's content. */
+function shapeNodesInSlice(content: PMNode["content"], out: string[]): void {
+  content.forEach((n) => {
+    if (EXAMPLE_SHAPE_TYPES.has(n.type.name)) out.push(n.type.name);
+    if (!n.isTextblock && !n.isLeaf) shapeNodesInSlice(n.content, out);
+  });
+}
+
+/**
+ * Did this step change an example's SHAPE — add, remove, split, join, wrap or
+ * lift an item / list / gloss / row / cell? Asked of the step's own ranges, so
+ * it is O(step), never O(example) or O(doc).
+ *
+ * A `ReplaceStep` reshapes iff a shape node starts in the deleted range or
+ * rides the inserted slice (an OPEN slice's boundary node may be one that
+ * already existed — over-reporting there only wakes the renumberer, which is
+ * safe). A `ReplaceAroundStep` keeps its gap, so it reshapes iff the wrapper
+ * kinds it removes differ from the ones it inserts: `setNodeMarkup` on an item
+ * or a gloss (the renumberer's own `subLabel` / `colCount` writes, a uuid
+ * backfill) swaps a wrapper for one of the same kind and is NOT a reshape —
+ * else the renumberer would re-wake on its own output.
+ */
+function stepReshapesExample(step: ReplaceStep | ReplaceAroundStep, c: StepCoords): boolean {
+  const removed: string[] = [];
+  const inserted: string[] = [];
+  shapeNodesInSlice(step.slice.content, inserted);
+  if (step instanceof ReplaceAroundStep) {
+    shapeNodesStartingIn(c.stepDoc, step.from, step.gapFrom, removed);
+    shapeNodesStartingIn(c.stepDoc, step.gapTo, step.to, removed);
+    if (removed.length !== inserted.length) return true;
+    removed.sort();
+    inserted.sort();
+    return removed.some((name, i) => name !== inserted[i]);
+  }
+  shapeNodesStartingIn(c.stepDoc, step.from, step.to, removed);
+  return removed.length > 0 || inserted.length > 0;
+}
+
 function inspectReplaceStep(
   step: ReplaceStep | ReplaceAroundStep,
   c: StepCoords,
@@ -581,6 +651,10 @@ function inspectReplaceStep(
   // ancestor walk; no extra doc scan.
   const exUuid = nearestExampleBlockUuid(c.newDoc, fromInNew);
   if (exUuid) sink.exampleContentChangedUuids.add(exUuid);
+
+  if (!sink.exampleShapeChanged && stepReshapesExample(step, c)) {
+    sink.exampleShapeChanged = true;
+  }
 
   // Facts derived from a node's BODY change without its opening token
   // ever entering the step range, so `collectRange` cannot see them.
@@ -703,6 +777,7 @@ function inspectUnrecognisedStep(oldDoc: PMNode, newDoc: PMNode, sink: DiffSink)
   for (const e of sink.added.examples.values()) {
     if (e.uuid) sink.exampleContentChangedUuids.add(e.uuid);
   }
+  sink.exampleShapeChanged = true;
   noteOrderFlags(sink);
 }
 
@@ -858,6 +933,7 @@ export function inspectSteps(
     added,
     contentChangedUuids,
     exampleContentChangedUuids,
+    exampleShapeChanged: false,
     footnoteOrderChanged: false,
     citationOrderChanged: false,
   };
@@ -1195,6 +1271,7 @@ export function inspectSteps(
     removedLabels,
     contentChangedUuids,
     exampleContentChangedUuids,
+    exampleShapeChanged: sink.exampleShapeChanged,
   };
 
   // Fast-path: if all categories are empty, return the shared EMPTY_DIFF

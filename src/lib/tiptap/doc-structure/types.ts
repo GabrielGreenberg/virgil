@@ -458,6 +458,17 @@ export interface StructureDiff {
    *  `contentChangedUuids` (no extra doc walk); content-only, so it never
    *  bumps the bus `emitCount`. */
   exampleContentChangedUuids: ReadonlySet<string>;
+
+  /** True iff a node that SHAPES an example — an `exampleItem` /
+   *  `exampleItemList` (sub-item lettering), an `exampleGloss` /
+   *  `alignedGlossRow` / `glossCell` (the gloss `colCount`) — entered or left
+   *  a step's range, or a wrap/lift changed which of them enclose content.
+   *  This is the ONE question the expex renumberer asks beyond
+   *  `diffExamplesRecomputable` (task 1127): typing inside an example body or a
+   *  gloss cell changes no number, letter or column count, so it leaves this
+   *  false and the renumberer's two doc walks asleep. Derived from the step's
+   *  own ranges (O(step)); content-only — never structural, never a bus wake. */
+  exampleShapeChanged: boolean;
 }
 
 export const EMPTY_DIFF: StructureDiff = {
@@ -490,24 +501,27 @@ export const EMPTY_DIFF: StructureDiff = {
   removedLabels: [],
   contentChangedUuids: new Set(),
   exampleContentChangedUuids: new Set(),
+  exampleShapeChanged: false,
 };
 
 /**
  * True when the diff carries nothing at all. Defined as "no structural entry
  * AND no content-only touch" so the field list lives in ONE place
- * (`diffHasStructuralEntries`) — the two content-only sets are the only fields
- * that predicate leaves out (task 923).
+ * (`diffHasStructuralEntries`) — the content-only fields (the two uuid sets
+ * and `exampleShapeChanged`) are the only ones that predicate leaves out
+ * (task 923).
  */
 export function isEmptyDiff(diff: StructureDiff): boolean {
   return (
     !diffHasStructuralEntries(diff) &&
     diff.contentChangedUuids.size === 0 &&
-    diff.exampleContentChangedUuids.size === 0
+    diff.exampleContentChangedUuids.size === 0 &&
+    !diff.exampleShapeChanged
   );
 }
 
 /**
- * True when the diff carries anything BEYOND the two content-only sets —
+ * True when the diff carries anything BEYOND the content-only fields —
  * i.e. `applyDiff` would fold at least one entry. The observer plugin uses
  * this to decide defer-vs-materialize per transaction: a content-only diff
  * (every plain keystroke) accumulates StepMaps lazily; anything structural
@@ -699,6 +713,7 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
     removedLabels: labels.removed,
     contentChangedUuids,
     exampleContentChangedUuids,
+    exampleShapeChanged: a.exampleShapeChanged || b.exampleShapeChanged,
   };
   // Two non-empty diffs can still compose to nothing (a block born by one
   // transaction and deleted by the next). Route through the SSOT predicate so
