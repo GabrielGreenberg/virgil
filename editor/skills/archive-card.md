@@ -33,8 +33,10 @@ pen**, with the audit notification + version bump. Fully reversible by
 1. **Resolve the card** (confirm it's archivable — an anchored panel card, not
    atom-bearing):
    ```bash
-   python3 editor/scripts/card_by_id.py <docPath> <cardId>
+   python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
    ```
+   An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
+   and carry `"panel"` in the op ([_card-resolve.md](_card-resolve.md)).
 2. **Run the `archive` op:**
    ```bash
    python3 editor/scripts/apply_response.py <docPath> archive '{"cardId":"<cardId>"}'
