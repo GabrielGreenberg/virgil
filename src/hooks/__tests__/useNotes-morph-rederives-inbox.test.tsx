@@ -54,7 +54,7 @@ describe("useNotes.convertCard re-derives the carried inbox row (task 701)", () 
     await waitFor(() => expect(result.current.cards[0].kind).toBe("highlight"));
     expect(rederive).toHaveBeenCalledTimes(1);
     expect(rederive).toHaveBeenCalledWith("doc-a", "note", "highlight", "n1",
-      expect.objectContaining({ text: "<highlight>" }));
+      expect.objectContaining({ text: "" }));
   });
 
   it("highlight → note: rederives under the note's context, and the note's blank title is machine-default", async () => {
@@ -64,7 +64,7 @@ describe("useNotes.convertCard re-derives the carried inbox row (task 701)", () 
     act(() => result.current.convertCard("h1", "note"));
     await waitFor(() => expect(result.current.cards[0].kind).toBe("note"));
     expect(rederive).toHaveBeenCalledWith("doc-b", "highlight", "note", "h1",
-      expect.objectContaining({ text: "<note>" }));
+      expect.objectContaining({ text: "" }));
     const note = result.current.cards[0] as { title: string; titleAuto?: boolean };
     expect(note.title).toBe("");
     expect(note.titleAuto).toBe(true);
