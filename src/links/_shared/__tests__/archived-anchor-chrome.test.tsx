@@ -199,8 +199,6 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
       ({ archived }: { archived: ReadonlySet<string> }) =>
         useLinkHighlight({
           editor,
-          activeLinkId: null,
-          hoveredLinkId: null,
           visibleHighlightKinds: NO_KINDS,
           archivedAnchorIds: archived,
         }),
@@ -234,8 +232,6 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
       const hook = renderHook(() =>
         useLinkHighlight({
           editor,
-          activeLinkId: null,
-          hoveredLinkId: null,
           visibleHighlightKinds: NO_KINDS,
           archivedAnchorIds: archived,
         }),
@@ -269,8 +265,6 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
     const hook = renderHook(() =>
       useLinkHighlight({
         editor,
-        activeLinkId: null,
-        hoveredLinkId: null,
         visibleHighlightKinds: NO_KINDS,
         archivedAnchorIds: new Set([ARCHIVED_ANCHOR]),
       }),
@@ -291,8 +285,6 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
     const hook = renderHook(() =>
       useLinkHighlight({
         editor,
-        activeLinkId: null,
-        hoveredLinkId: null,
         visibleHighlightKinds: NO_KINDS,
         archivedAnchorIds: new Set([ARCHIVED_ANCHOR]),
       }),
@@ -312,8 +304,6 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
     const hook = renderHook(() =>
       useLinkHighlight({
         editor,
-        activeLinkId: null,
-        hoveredLinkId: null,
         visibleHighlightKinds: NO_KINDS,
         archivedAnchorIds: new Set([ARCHIVED_ANCHOR]),
       }),
@@ -358,8 +348,6 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
     const hook = renderHook(() =>
       useLinkHighlight({
         editor,
-        activeLinkId: null,
-        hoveredLinkId: null,
         visibleHighlightKinds: NO_KINDS,
         archivedAnchorIds: new Set([ARCHIVED_ANCHOR]),
       }),

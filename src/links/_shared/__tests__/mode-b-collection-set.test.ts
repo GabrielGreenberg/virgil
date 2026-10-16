@@ -6,6 +6,7 @@
 //   useLinkedAnchorReconciler   notes highlights cutterCards comments reportCards todos   (6)
 //   reapply-mode-b-anchors      notes todoItems comments cutterCards reports highlights   (6)
 //   EditorLayout (hoveredAnchorId literal)  notes cutter comments todoItems               (4 + archive)
+//     (since task 1148 the shell resolves no anchor at all — one painter)
 //   useTextHoverBridge          notes cutterCards comments reportCards                    (4)
 //
 // so a highlight's anchored text, and a selection-created todo's, was painted
@@ -221,10 +222,12 @@ describe("Mode-B collection set — (B) every consumer READS it", () => {
     expect(hook).toMatch(/useMemo\(\(\) => aliveLinkedAnchorIds\(cards\)/);
   });
 
-  it("the shell resolves a hovered card's anchor from the PANE's bag, not its own literal", () => {
+  it("the shell reads the PANE's bag, and resolves no hover anchor of its own", () => {
     const shell = read("src/components/EditorLayout.tsx");
-    // The bag handed to `entityToAnchorId` spreads the pane's Mode-B bag.
-    expect(shell).toMatch(/\{ \.\.\.modeBCards, archiveSnippets, examples: \[\] \}/);
     expect(shell).toMatch(/paneState\?\.modeBCards/);
+    // Task 1148: the shell's hover→anchor lookup (the fourth row above) is
+    // gone, not merely de-literalised — the pane's anchor reconciler is the ONE
+    // Mode-B painter (`mode-b-one-painter-census.test.ts`).
+    expect(shell).not.toMatch(/entityToAnchorId/);
   });
 });

@@ -33,9 +33,9 @@
  * STATED LIMITS, two, neither papered over. The discovered population is
  * ProseMirror decorations. View-only paint can also arrive IMPERATIVELY on live
  * editor DOM — by `classList.add` (the bib cross-highlight) or by
- * `setAttribute` (`useLinkHighlight`'s `data-link-highlight`, the reconciler's
- * Mode-B `data-card-*` path) — and THAT population is unbounded. Those three
- * are covered because each writes a name the vocabulary DECLARES, which is why
+ * `setAttribute` (the reconciler's Mode-B `data-card-*` path; the retired
+ * `data-link-highlight` was a third until task 1148) — and THAT population is
+ * unbounded. Those are covered because each writes a name the vocabulary DECLARES, which is why
  * the attention half is keyed on names rather than on a marker; a fourth
  * imperative painter inventing a fresh hook would be invisible here, the same
  * limit the subscriber census states about its callbacks. And the discovery
@@ -452,10 +452,10 @@ describe("the print block carries ONE rule for the marker", () => {
     // zeroing the colour var. `!important` because the per-kind rules set the
     // same var at higher specificity; `.tiptap`-scoped so a card in the print
     // appendix keeps its inline kind accent. Built from the declaration, so a
-    // fourth channel joins by declaring itself — which is the whole reason
-    // `data-link-highlight` is a member: it painted a HEAVIER wash than the
-    // selection one and was covered only by the coincidence that the anchor
-    // reconciler stamps `data-card-selected` on the same element.
+    // new channel joins by declaring itself — which is the whole reason the
+    // (since-retired, task 1148) `data-link-highlight` was made a member: it
+    // was covered only by the coincidence that the anchor reconciler stamps
+    // `data-card-selected` on the same element.
     const selectors = VIEW_ONLY_ATTENTION_ATTRS.map((a) => `\\.tiptap\\s*\\[${a}\\]`).join(
       "[^{]*",
     );

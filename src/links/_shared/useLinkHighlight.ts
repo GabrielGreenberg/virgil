@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * DOM-attribute sync for the coupled margin-icon / text-range highlight
- * on `anchor`-kind links. Given the current active/hovered link id, the
- * per-kind visibility set and the archived-anchor set, this hook:
+ * DOM-attribute sync for the STANDING (non-attention) chrome of `anchor`-kind
+ * links — Mode-B `.linked-anchor` spans. Given the per-kind visibility set
+ * and the archived-anchor set, this hook:
  *
- *   - Sets `data-link-highlight="active" | "hover"` on the matching
- *     `.linked-anchor[data-link-id=<id>]` span(s) in the editor.
  *   - Sets `data-show-hl-<kind>="true"` on the editor scroll root for
  *     each kind whose persistent highlight is enabled — CSS scopes the
  *     subtle background per-kind by matching `data-link-card^="<kind>:"`.
@@ -15,19 +13,19 @@
  *     497 — see `archived-anchor-chrome.ts` for the rule and why the key
  *     is the anchorId rather than the card id).
  *
- * The margin-icon side of the coupling reads the same state via its
- * own `selected` prop; no DOM plumbing is needed there.
+ * HOVER / SELECTION are NOT here (task 1148). They are attention state, and
+ * their one painter is the pane's `useAnchorHighlightReconciler`, which stamps
+ * `data-card-hovered` / `data-card-selected` on the span from the pane's own
+ * card store. This hook used to paint a second channel (`data-link-highlight`)
+ * from a shell-level copy of the same state; the reconciler's later CSS rule
+ * always won the background, so the second channel was dead paint plus a
+ * second DOM sweep per hover.
  */
 
 import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
-import { DATA_LINK_ID, linkIdSelector } from "../link-dom-contract";
+import { DATA_LINK_ID } from "../link-dom-contract";
 import { useDocStructureBus } from "@/lib/tiptap/doc-structure";
-// Name from the view-only vocabulary (task 523). This attribute paints a
-// 45%/60% wash plus a ring from `--link-anchor-color`, which the print block
-// zeroes BY this name — until 523 it was neutralised only because the anchor
-// reconciler happens to stamp `data-card-selected` on the same element.
-import { DATA_LINK_HIGHLIGHT as DATA_HIGHLIGHT } from "@/lib/view-only-chrome";
 
 /** Cross-layer DOM contract with `globals.css`'s archived-chrome rule. */
 export const DATA_ANCHOR_ARCHIVED = "data-anchor-archived";
@@ -46,11 +44,6 @@ const dataAttrFor = (kind: LinkAnchorKind) => `data-show-hl-${kind}`;
 
 export interface UseLinkHighlightArgs {
   editor: Editor | null;
-  /** Link id of the currently-selected link, or null. */
-  activeLinkId: string | null;
-  /** Link id of the currently-hovered link, or null. Hover takes
-   *  precedence over active for visuals. */
-  hoveredLinkId: string | null;
   /** Card kinds whose persistent linked-anchor highlight is currently
    *  enabled. Empty set hides all. */
   visibleHighlightKinds: ReadonlySet<LinkAnchorKind>;
@@ -69,31 +62,9 @@ export interface UseLinkHighlightArgs {
 
 export function useLinkHighlight({
   editor,
-  activeLinkId,
-  hoveredLinkId,
   visibleHighlightKinds,
   archivedAnchorIds,
 }: UseLinkHighlightArgs): void {
-  // Highlight sync — the span for the effective link id gets the
-  // data-link-highlight attr; everyone else gets it cleared.
-  useEffect(() => {
-    if (!editor) return;
-    const root = editor.view.dom;
-    const effectiveId = hoveredLinkId ?? activeLinkId;
-    const state = hoveredLinkId ? "hover" : activeLinkId ? "active" : null;
-
-    const stale = root.querySelectorAll(
-      `.linked-anchor[${DATA_HIGHLIGHT}]`,
-    );
-    for (const el of stale) el.removeAttribute(DATA_HIGHLIGHT);
-
-    if (!effectiveId || !state) return;
-    const fresh = root.querySelectorAll(
-      `.linked-anchor${linkIdSelector(effectiveId)}`,
-    );
-    for (const el of fresh) el.setAttribute(DATA_HIGHLIGHT, state);
-  }, [editor, activeLinkId, hoveredLinkId]);
-
   // Preference sync — set/clear a per-kind attr on the editor scroll
   // root. CSS scopes the persistent tint per kind by combining the
   // root attr with `data-link-card^="<kind>:"` on the span.
@@ -119,15 +90,16 @@ export function useLinkHighlight({
   // hover / selection washes — are all keyed on attributes the MARK emits from
   // `renderHTML`, which knows nothing about card state; so the state arrives as
   // one extra attribute here and one CSS rule turns it off.
+  // (The hover/selection wash is now stamped by the reconciler — task 1148 —
+  // and the same CSS rule zeroes it.)
   //
   // Keyed on the ANCHOR id, never the card id: a reload-restored span carries
   // `data-link-card="note:"` with the card id deliberately empty
   // (`applyLinkedAnchors`), so a card-keyed sweep would work in-session and die
   // on every reload. See `archived-anchor-chrome.ts`.
   //
-  // The attribute is PERSISTENT state, unlike its two siblings above (hover is
-  // transient; the per-kind attrs live on the editor ROOT, which ProseMirror
-  // never recreates). So it must survive a redraw, and MEASURED against this
+  // The attribute is PERSISTENT state, unlike its sibling above (the per-kind
+  // attrs live on the editor ROOT, which ProseMirror never recreates). So it must survive a redraw, and MEASURED against this
   // tree the two redraw shapes fall out cleanly:
   //
   //  - a structure-PRESERVING whole-doc replace (`setContent` with the same
