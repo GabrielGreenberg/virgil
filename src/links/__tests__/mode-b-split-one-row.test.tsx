@@ -139,6 +139,7 @@ describe("Mode-B card after an Enter split (task 934)", () => {
       cards: [card],
       contentKind: "note",
       unanchor,
+      detach: vi.fn(),
       reanchor: vi.fn(),
       delete: del,
     };
@@ -147,6 +148,7 @@ describe("Mode-B card after an Enter split (task 934)", () => {
       cardId: "c1",
       paragraphId: rows[0].pid,
       anchorPids: rows[0].cardPids,
+      sources: rows[0].sources,
       handlers,
       confirm: async () => true,
       editor,

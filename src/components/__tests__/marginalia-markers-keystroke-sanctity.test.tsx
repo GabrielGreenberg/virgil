@@ -242,7 +242,7 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     // (a) Live-uuid card → bound to its live paragraph, NOT orphan.
     const live = modeACard("c1", "P1");
     expect(resolveMarkerPids(live)).toEqual([
-      { pid: "P1", unanchored: false, cardPids: ["P1"] },
+      { pid: "P1", unanchored: false, cardPids: ["P1"], sources: expect.any(Array) },
     ]);
 
     // (b) All-dead card: uuid not in the doc, no mark, no snapshot match →
@@ -250,7 +250,7 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     // first stored (now-dead) pid rather than being culled (the RC2 vanish).
     const dead = modeACard("c2", "P-dead-uuid");
     expect(resolveMarkerPids(dead)).toEqual([
-      { pid: "P-dead-uuid", unanchored: true, cardPids: ["P-dead-uuid"] },
+      { pid: "P-dead-uuid", unanchored: true, cardPids: ["P-dead-uuid"], sources: expect.any(Array) },
     ]);
 
     editor.destroy();
@@ -275,8 +275,8 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     // Delete can ask "is this the last anchor?" of the SAME authority the
     // marker came from instead of the card's stored pids.
     expect(entries).toEqual([
-      { pid: "P1", unanchored: false, cardPids: ["P1", "P3"] },
-      { pid: "P3", unanchored: false, cardPids: ["P1", "P3"] },
+      { pid: "P1", unanchored: false, cardPids: ["P1", "P3"], sources: expect.any(Array) },
+      { pid: "P3", unanchored: false, cardPids: ["P1", "P3"], sources: expect.any(Array) },
     ]);
 
     // Marker-id derivation is `<kind>:<pid>` (EditorPane keys markers that

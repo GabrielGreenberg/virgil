@@ -26,6 +26,7 @@ import {
   buildMarginMarkerRows,
   marginAnchorRowPid,
   type CardAnchorResolver,
+  type MarginMarkerRow,
 } from "@/links/card-anchor-rows";
 import { CARD_REGISTRY } from "./card-registry";
 import { cardKindFromRecord } from "./predicates";
@@ -57,12 +58,10 @@ export interface MarginMarkerSource<T extends CardWithLinks = CardWithLinks> {
 export interface CardMarkerCtx {
   resolve: CardAnchorResolver;
   onClick: (ref: AnchoredCardRef, clickY: number | undefined, anchorPid: string | undefined) => void;
-  onDelete: (
-    kind: MarginItemKind,
-    cardId: string,
-    paragraphId: string,
-    anchorPids: readonly string[],
-  ) => void;
+  /** Delete on one marker. Handed the marker's whole ROW — its pid, its
+   *  cohort and the links it is drawn from travel together, so the door can
+   *  never be given one without the others (tasks 669, 1149). */
+  onDelete: (kind: MarginItemKind, cardId: string, row: MarginMarkerRow) => void;
 }
 
 const label = (kind: CardKind) => CARD_REGISTRY[kind].label;
@@ -147,21 +146,24 @@ export function buildCardMarkers<T extends CardWithLinks>(
   if (type == null) return [];
   const title = source.title(card, kind);
   const muted = source.muted?.(card);
-  return buildMarginMarkerRows(card, ctx.resolve).map(({ pid, unanchored, cardPids }) => ({
-    id: `${card.id}:${pid}`,
-    entityId: card.id,
-    entityKind: kind,
-    type,
-    textObjectId: pid,
-    title,
-    ...(muted !== undefined ? { muted } : {}),
-    unanchored,
-    // T5 Pillar E-2 / task 916: the anchor pid names the omni row by IDENTITY
-    // (`undefined` for a single-row card, whose row carries no suffix).
-    onClick: (clickY?: number) =>
-      ctx.onClick({ kind, id: card.id }, clickY, marginAnchorRowPid(card, pid, ctx.resolve)),
-    onDelete: () => ctx.onDelete(type, card.id, pid, cardPids),
-  }));
+  return buildMarginMarkerRows(card, ctx.resolve).map((row) => {
+    const { pid, unanchored } = row;
+    return {
+      id: `${card.id}:${pid}`,
+      entityId: card.id,
+      entityKind: kind,
+      type,
+      textObjectId: pid,
+      title,
+      ...(muted !== undefined ? { muted } : {}),
+      unanchored,
+      // T5 Pillar E-2 / task 916: the anchor pid names the omni row by IDENTITY
+      // (`undefined` for a single-row card, whose row carries no suffix).
+      onClick: (clickY?: number) =>
+        ctx.onClick({ kind, id: card.id }, clickY, marginAnchorRowPid(card, pid, ctx.resolve)),
+      onDelete: () => ctx.onDelete(type, card.id, row),
+    };
+  });
 }
 
 /** Build the markers for a whole collection, appended to `out`. */

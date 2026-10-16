@@ -64,6 +64,7 @@ function handlers(
     cards: [card()],
     contentKind: "revision-suggestion",
     unanchor: vi.fn(),
+    detach: vi.fn(),
     reanchor: vi.fn(),
     delete: del,
   };
@@ -80,6 +81,7 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
+      sources: [],
       editor,
       handlers: handlers(del),
       confirm: async () => true, // the user confirmed the DELETE...
@@ -102,6 +104,7 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
+      sources: [],
       editor,
       handlers: handlers(del),
       confirm: async () => true,
@@ -136,6 +139,7 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
+      sources: [],
       editor,
       handlers: handlers(del),
       confirm: async () => false,

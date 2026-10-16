@@ -53,6 +53,7 @@ function handlers(card: CardWithLinks, del: MarginItemHandlers["delete"]): Margi
         ? "revision-suggestion"
         : "revision-comment",
     unanchor: vi.fn(),
+    detach: vi.fn(),
     delete: del,
   };
 }
@@ -66,6 +67,7 @@ async function runMarginDelete(author: "human" | "ai", confirmAnswer: boolean) {
     paragraphId: "P1",
     // The marker's own row cohort (task 669): a single-anchor card.
     anchorPids: ["P1"],
+    sources: [],
     editor,
     handlers: handlers(suggestion(author), del),
     confirm,

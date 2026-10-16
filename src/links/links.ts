@@ -1659,6 +1659,66 @@ export function removeTextObjectLink<T extends CardWithLinks>(
   return changed ? { ...card, links: next } : card;
 }
 
+/**
+ * One LINK that draws a given anchor row, and what detaching the row from it
+ * means (task 1149). Carried on the row by the anchor authority
+ * (`card-anchor-rows`), so a per-row gesture names the link it acts on by
+ * IDENTITY instead of re-deriving it by matching a resolved pid against the
+ * card's stored pids — the two lists disagree for exactly the rows that
+ * matter (a Mode-B mark's paragraph, a mark-/snapshot-recovered paragraph).
+ *
+ *   - `pid` set   → a Mode-A link that STORES the row's paragraph: drop that
+ *                   one pid (the whole link when it was its last);
+ *   - `pid: null` → the row is the link's whole binding (a Mode-B link, or a
+ *                   link whose stored pids are dead and that the ladder
+ *                   RECOVERED onto this paragraph): drop the whole link.
+ *
+ * `anchorId` is the link's `linkedAnchor` mark, when it carries one — the mark
+ * a whole-link detach must strip, once the write has landed.
+ */
+export interface AnchorRowSource {
+  linkId: string;
+  pid: string | null;
+  anchorId: string | null;
+}
+
+/**
+ * Detach a card from the links that draw ONE anchor row — the inverse of the
+ * row, read off its own provenance (`AnchorRowSource`). A source whose link is
+ * gone (or no longer stores its pid) is inert, never re-bound: the card
+ * changed since the row was drawn, and the row no longer names anything.
+ */
+export function detachAnchorSources<T extends CardWithLinks>(
+  card: T,
+  sources: readonly AnchorRowSource[],
+): T {
+  let links = card.links ?? [];
+  let changed = false;
+  for (const source of sources) {
+    const i = links.findIndex(
+      (link) =>
+        link.id === source.linkId &&
+        link.anchor.type === "textObject" &&
+        (source.pid == null || link.anchor.textObjectIds.includes(source.pid)),
+    );
+    if (i === -1) continue;
+    const link = links[i];
+    if (link.anchor.type !== "textObject") continue;
+    const remaining =
+      source.pid == null
+        ? []
+        : link.anchor.textObjectIds.filter((p) => p !== source.pid);
+    links =
+      remaining.length === 0
+        ? links.filter((_, j) => j !== i)
+        : links.map((l, j) =>
+            j === i ? { ...link, anchor: { ...link.anchor, textObjectIds: remaining } } : l,
+          );
+    changed = true;
+  }
+  return changed ? { ...card, links } : card;
+}
+
 /** Set a Mode B text-range anchor on the card. Preserves existing
  *  paragraph anchors.
  *

@@ -315,6 +315,7 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
       cards: [card],
       contentKind: "note",
       unanchor: vi.fn(),
+      detach: vi.fn(),
       reanchor: vi.fn(),
       delete: del,
     };
@@ -329,6 +330,7 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
+      sources: [],
       handlers,
       confirm,
       editor: null,
@@ -345,6 +347,7 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
       paragraphId: "P1",
       // The marker's own row cohort (task 669): a single-anchor card.
       anchorPids: ["P1"],
+      sources: [],
       handlers,
       confirm,
       editor: null,

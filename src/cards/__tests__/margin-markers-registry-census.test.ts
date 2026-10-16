@@ -101,7 +101,11 @@ describe("margin markers derive from CARD_REGISTRY.markerType (task 939)", () =>
         expect(m.title, "a marker always names its item").toBeTruthy();
         expect("anchorId" in m, "the dead marker field stays gone").toBe(false);
         m.onDelete?.();
-        expect(c.onDelete).toHaveBeenCalledWith(m.type, "c1", "P1", ["P1"]);
+        expect(c.onDelete).toHaveBeenCalledWith(
+          m.type,
+          "c1",
+          expect.objectContaining({ pid: "P1", cardPids: ["P1"] }),
+        );
       }
     }
   });
@@ -141,6 +145,7 @@ describe("margin markers derive from CARD_REGISTRY.markerType (task 939)", () =>
       cards: [todo],
       contentKind: "todo",
       unanchor: vi.fn(),
+      detach: vi.fn(),
       reanchor: vi.fn(),
       delete: del,
     };
@@ -149,6 +154,7 @@ describe("margin markers derive from CARD_REGISTRY.markerType (task 939)", () =>
       cardId: "t1",
       paragraphId: "P1",
       anchorPids: ["P1"],
+      sources: [],
       handlers,
       confirm: async () => true,
       editor,
