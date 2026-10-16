@@ -58,6 +58,12 @@
  * cross-store obligations around them. It is PURE (no React, no editor) and
  * unit-testable with plain stubs.
  *
+ * THREE EVENTS (task 1154). Delete and morph, plus per-card ARCHIVE — which
+ * ends a record's live role without removing it, so it runs SETTLE, UNBRIDGE
+ * and FINALIZE but neither CONFIRM nor SIGNAL. Before 1154 the archive button
+ * was a bare flag toggle beside this executor, and the one record-ending door
+ * that never asked Keep/Revert.
+ *
  * KEYSTROKE SANCTITY: runs only on an explicit user lifecycle action (trash /
  * kind-chevron click), never per transaction.
  */
@@ -146,6 +152,22 @@ export type LifecycleEvent =
        *  name only what THIS card holds (task 755). Omitted → the confirm fails
        *  safe to the full declared `drops` (never a silent loss). */
       card?: unknown;
+    }
+  | {
+      /** Per-card ARCHIVE — the INTO-archived transition only (task 1154).
+       *  Unarchive ends nothing and stays a plain flag toggle at the caller. It
+       *  is a lifecycle event because it ENDS the record's live role exactly as
+       *  delete and morph do: an archived card leaves the margins and OmniView,
+       *  so a live splice it manages would be left with no visible manager, and
+       *  an archived AI proposal ends the Task it answers. No CONFIRM (archive
+       *  is reversible) and no SIGNAL (the record survives — nothing in
+       *  `cardStore` is pruned or re-keyed); SETTLE, UNBRIDGE and FINALIZE run
+       *  as they do for a delete. */
+      type: "archive";
+      kind: CardKind;
+      id: string;
+      /** The record as it stands before the archive, for FINALIZE. */
+      card?: unknown;
     };
 
 /**
@@ -212,6 +234,10 @@ export function unbridgeModeFor(
     // there is no next toggle that could ever clear the row).
     case "morph":
       return "terminate";
+    // The card is set aside: it leaves every surface where its flag could be
+    // re-ticked, and unarchive deliberately does not re-open the ask (task 093).
+    case "archive":
+      return "terminate";
   }
 }
 
@@ -267,7 +293,7 @@ export function morphConfirmMessage(fromKind: CardKind, card?: unknown): {
  * copy doesn't re-spell it).
  */
 export function appliedSpliceSettleMessage(
-  event: "morph" | "delete",
+  event: LifecycleEvent["type"],
   fromKind: PendingChangeFamily,
   splice: AppliedSpliceSummary,
 ): AppliedSpliceSettlePrompt {
@@ -296,6 +322,15 @@ export function appliedSpliceSettleMessage(
     };
   }
   const label = CARD_REGISTRY[fromKind].label;
+  if (event === "archive") {
+    return {
+      title: `Archive this ${label.toLowerCase()}?`,
+      message: `Its change is still live in your document — ${state}. An archived card leaves the margins, so nothing visible would manage it — settle it first.`,
+      keepLabel,
+      revertLabel: "Revert to original",
+      cancelLabel: "Cancel",
+    };
+  }
   return {
     title: `Delete this ${label.toLowerCase()}?`,
     message: `Its change is still live in your document — ${state}. Deleting the card leaves nothing to manage it, so settle it first.`,
@@ -448,6 +483,25 @@ export async function runCardLifecycleEvent(
 
     // 6. FINALIZE — a pending proposal morphed out of the suggestion kind has
     //    stopped being a proposal; its Task ends (task 1046).
+    finalizeEndedRecord(ev, settled, deps);
+    return true;
+  }
+
+  if (ev.type === "archive") {
+    // 1. SETTLE — an archived card vanishes from every surface that could
+    //    still Keep/Revert its splice, so the blue range would outlive its
+    //    visible manager, and the leave rule below would close the Task
+    //    `rejected` over an edit still in the paper (task 1154).
+    const settled = await settleAppliedSplice(ev, deps);
+    if (settled === "declined") return false;
+    // 2. UNBRIDGE — same gate and event-derived mode as the delete leg.
+    if (CARD_REGISTRY[ev.kind].aiRequest != null) {
+      await deps.unbridgeAiRequest(ev.kind, ev.id, unbridgeModeFor(ev.type));
+    }
+    // 3. MUTATE (flip the archived flag).
+    await deps.mutate();
+    // 4. FINALIZE — an archived AI proposal ends the Task it answers (1046),
+    //    unless SETTLE already finalized it.
     finalizeEndedRecord(ev, settled, deps);
     return true;
   }

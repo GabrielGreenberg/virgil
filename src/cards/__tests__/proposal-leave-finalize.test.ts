@@ -181,12 +181,15 @@ describe("(d) EditorPane wires every app door to the one rule", () => {
     "utf8",
   );
   it("both suggestion-family delete doors pass resolveCard + the leave rule", () => {
-    expect(src.match(/finalizeLeavingProposal: onProposalLeave/g)?.length).toBe(3);
+    // morph + the two suggestion-family deletes + per-card archive (task 1154).
+    expect(src.match(/finalizeLeavingProposal: onProposalLeave/g)?.length).toBe(4);
     expect(src.match(/resolveCard: \(id\) =>/g)?.length).toBe(2);
   });
-  it("the archive toggle applies the leave rule on the INTO-archived transition", () => {
+  it("the archive door hands the leave rule to the executor's archive event", () => {
+    // Since task 1154 the INTO-archived transition rides `runCardLifecycleEvent`
+    // (SETTLE first, then FINALIZE) rather than calling the rule itself.
     const body = src.slice(src.indexOf("const archiveCard = useCallback("));
-    const block = body.slice(0, body.indexOf("setArchivedForKind(kind, id, !currentlyArchived)"));
-    expect(block).toMatch(/if \(!currentlyArchived\) \{[\s\S]*onProposalLeave\(/);
+    const block = body.slice(0, body.indexOf("const cardArchiveActions"));
+    expect(block).toMatch(/type: "archive"[\s\S]*finalizeLeavingProposal: onProposalLeave/);
   });
 });
