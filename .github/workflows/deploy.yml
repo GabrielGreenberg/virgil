@@ -95,6 +95,13 @@ jobs:
         # not create this file itself.
         run: touch out/.nojekyll
 
+      - name: Publish version.json
+        # The live version, read by the Virgil page on Gabriel's website
+        # (gabrielgreenberg.github.io/tools/virgil/virgil.html) so a release
+        # never has to edit the website. Written after the service-worker stamp
+        # on purpose: the worker never precaches or serves it.
+        run: node -e 'console.log(JSON.stringify({version:require("./package.json").version}))' > out/version.json
+
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
