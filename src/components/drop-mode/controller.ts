@@ -25,6 +25,7 @@
  * Cancellation is idempotent and routes through `endDropSession()`.
  */
 
+import { attrSelector } from "@/lib/attr-selector";
 import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { pickActiveByEditor } from "@/lib/active-editor-probe";
@@ -812,7 +813,7 @@ function markSourceFloat(cardKey: string, active: boolean) {
   // attr. The selector targets the pristine card wrapper inside FloatWindow;
   // from there, ascend to the floating panel root.
   const wrappers = document.querySelectorAll<HTMLElement>(
-    `[data-pristine-card-id="${cssEscapeAttr(id)}"]`,
+    attrSelector("data-pristine-card-id", id),
   );
   wrappers.forEach((w) => {
     const panel = w.closest<HTMLElement>('[data-floating-panel="true"]');
@@ -820,8 +821,4 @@ function markSourceFloat(cardKey: string, active: boolean) {
     if (active) panel.setAttribute("data-drop-mode-source", "true");
     else panel.removeAttribute("data-drop-mode-source");
   });
-}
-
-function cssEscapeAttr(s: string): string {
-  return s.replace(/["\\]/g, "\\$&");
 }

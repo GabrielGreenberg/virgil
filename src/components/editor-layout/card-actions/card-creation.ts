@@ -24,6 +24,7 @@ import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard, cardKindHasEditableBody } from "@/lib/focus-new-card";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -326,6 +327,8 @@ export interface CardCreationApi {
 }
 
 export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
+  // Owns the new-card focus retry (task 1146): unmount cancels it.
+  const focusLifetime = useViewLifetime();
   const {
     editorRef,
     addNote,
@@ -449,7 +452,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         // single store writes — no per-keystroke work.
         store.expand({ kind, id });
         store.select({ kind, id });
-        focusNewCard(cardPopKey(kind, id));
+        focusNewCard(cardPopKey(kind, id), focusLifetime);
       }
       if (opts.mode === "omni") return;
       if (fromToolbar(opts)) popCardAtAnchor(kind, id, opts.anchorRect!);
@@ -457,7 +460,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // all 13 factories); the assertion documents that invariant.
       else ensurePanelActive(panelForCardKind(kind)!);
     },
-    [store, pin, ensurePanelActive, popCardAtAnchor],
+    [store, pin, ensurePanelActive, popCardAtAnchor, focusLifetime],
   );
 
   const createNote = useCallback<CardCreationApi["createNote"]>(

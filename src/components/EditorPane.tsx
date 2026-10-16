@@ -100,6 +100,7 @@ import {
 import { ExamplesHost } from "./editor-layout/panels/examples-host";
 import { PANEL_REGISTRY, cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard } from "@/lib/focus-new-card";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { useCodePaneSplit } from "./editor-layout/CodePaneSplitContext";
 import { EditorScrollbar } from "./editor-layout/editor-scrollbar";
@@ -4460,6 +4461,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the Reader has nothing to reveal).
   const bridgeExpandLeft = viewPrefs?.expandLeft ?? stubSetActive;
   const bridgeExpandRight = viewPrefs?.expandRight ?? stubSetActive;
+  // Owns the `\cite ` bridge's new-card focus retry (task 1146): the pane's
+  // unmount cancels it, so no frame outlives the pane that asked.
+  const cardFocusLifetime = useViewLifetime();
   const bridgeDepsRef = useRef<{
     cardCreation: typeof cardCreation;
     dispatch: typeof dragHandleActions.dispatch;
@@ -4469,6 +4473,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     expandLeft: () => void;
     expandRight: () => void;
     setSelectedExampleId: typeof setSelectedExampleId;
+    focusLifetime: typeof cardFocusLifetime;
   }>({
     cardCreation,
     dispatch: dragHandleActions.dispatch,
@@ -4478,6 +4483,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     expandLeft: bridgeExpandLeft,
     expandRight: bridgeExpandRight,
     setSelectedExampleId,
+    focusLifetime: cardFocusLifetime,
   });
   bridgeDepsRef.current = {
     cardCreation,
@@ -4488,6 +4494,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     expandLeft: bridgeExpandLeft,
     expandRight: bridgeExpandRight,
     setSelectedExampleId,
+    focusLifetime: cardFocusLifetime,
   };
   // Publish on editor-mount; clear on unmount (or when the editor instance
   // swaps). Gated on the reactive `editor` so the handle's `runAction` reads a
@@ -4614,7 +4621,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             prefs: deps.routingPrefs,
             setActiveLeft: deps.setActiveLeft,
             setActiveRight: deps.setActiveRight,
-            focusCard: focusNewCard,
+            focusCard: (cardKey: string) => focusNewCard(cardKey, deps.focusLifetime),
             // Backlog #2 soft-route reveal: un-collapse the panel's
             // docked side so the new card is visible in the always-on omni
             // background (`setActiveX("omni")` is a no-op in the band-stack

@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import { attrSelector } from "@/lib/attr-selector";
 import { isAnchorableNode, isAnchorableAtom } from "./marginalia";
 
 export interface AnchorableBlock {
@@ -49,16 +50,10 @@ export function resolveDomForUuid(
   if (!editor) return null;
   try {
     return editor.view.dom.querySelector(
-      `[data-uuid="${cssEscape(uuid)}"]`,
+      attrSelector("data-uuid", uuid),
     ) as HTMLElement | null;
   } catch {
     return null;
   }
 }
 
-function cssEscape(s: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(s);
-  }
-  return s.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-}

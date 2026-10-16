@@ -1,5 +1,6 @@
 "use client";
 
+import { attrSelector } from "@/lib/attr-selector";
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import type { BibEntrySave } from "@/hooks/useCitations";
@@ -388,7 +389,7 @@ function BibliographyPanel({
       handleSelectBibKey(key);
       requestAnimationFrame(() => {
         const card = listRef.current?.querySelector(
-          `[data-bib-entry="${CSS.escape(key)}"]`,
+          attrSelector("data-bib-entry", key),
         );
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });

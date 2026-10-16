@@ -1,5 +1,6 @@
 "use client";
 
+import { attrSelector } from "@/lib/attr-selector";
 import { useRef, useCallback, useMemo } from "react";
 import { usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import type { PanelKind } from "@/panels/_shared/types";
@@ -76,7 +77,7 @@ export function usePristineCardManager(): PristineCardManager {
       const pending: Array<{ kind: PristineBucket; id: string }> = [];
       for (const [kind, ids] of setsRef.current) {
         for (const id of ids) {
-          const selector = `[data-pristine-card-id="${CSS.escape(id)}"]`;
+          const selector = attrSelector("data-pristine-card-id", id);
           const nodes = document.querySelectorAll(selector);
           if (nodes.length === 0) continue;
           let inside = false;
