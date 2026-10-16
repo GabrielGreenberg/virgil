@@ -5,6 +5,7 @@ import { generateShortId } from "@/lib/uuid";
 import { readBib } from "@/lib/storage";
 import {
   DOC_BIB_CHANGED_EVENT,
+  didBibWriteLand,
   mutateProjectBib,
   type BibMutator,
   type BibWriteResult,
@@ -329,21 +330,21 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         return Array.isArray(next) ? next : prev;
       });
       return mutateProjectBib(docId, mutate).then((result) => {
-        // A write that THREW left the file exactly as it was, while the
-        // preview above still shows the edit — and nothing else would ever
-        // correct it, because only a LANDED write publishes. That phantom is
-        // the whole of task 685: the card reads saved, `references.bib` does
-        // not hold the entry, and every later read in this session agrees with
-        // the screen. The authority has already told the user (the refusal
-        // channel); this re-reads the file so the view stops standing as
-        // truth. Only on `failed` — the other refusal kinds mean no write was
-        // attempted for this pane's doc at all (see `refusedWrite`), and a
-        // `declined` one means the disk is already what it should be.
-        // `not-found` joins it (task 691): the mutator addressed an entry the
-        // FILE does not hold, so the preview above is showing an edit that
-        // landed nowhere — the same phantom, reached by a different road.
+        // A write that did not LAND left the file without the edit, while the
+        // preview above still shows it — and nothing else would ever correct
+        // it, because only a landed write publishes. That phantom is the whole
+        // of task 685 (a write that threw), reached again by task 691 (the
+        // address named no entry in the file) and by task 1142 (a library
+        // paper's read-only `.bib`, a pane with no handle, a pipeline
+        // superseded mid-write): the card reads saved, `references.bib` does
+        // not hold the entry. So the question is the positive one — did it
+        // land (`didBibWriteLand`) — not a list of the refusals known today.
+        // `declined` counts as landed: the disk already says what the mutator
+        // wanted. Re-reading the file makes the view stop standing as truth;
+        // the doc guard keeps a write that outlived its pane from clobbering
+        // the next doc's view.
         if (
-          (result.kind === "failed" || result.kind === "not-found") &&
+          !didBibWriteLand(result) &&
           docRef.current === docId &&
           docId
         ) {
@@ -553,8 +554,9 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    *
    * The head is validated ONCE (task 690's door, now measuring what the write
    * CHANGES — see `validateBibEntryHeadChange`), and the rename's FAN-OUT runs
-   * after that single write SETTLES, and only if the `.bib` half was not
-   * refused: rewriting every `\cite{oldKey}` in the paper for a rename that
+   * after that single write SETTLES, and only if the `.bib` half LANDED
+   * (`written`, task 1142 — not merely "was not one of the refusals we knew
+   * of"): rewriting every `\cite{oldKey}` in the paper for a rename that
    * did not reach disk is precisely the dangling reference task 689 exists to
    * prevent, arrived at from the other side.
    */
@@ -616,20 +618,16 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         }),
       ).then((result) => {
         if (oldKey === newKey) return; // a pure retype/field save moves no identity
-        // A rename only follows an entry this bibliography HAS. Where the
-        // address named none, the write answered `not-found` and said so —
-        // but a door that could not attempt the write at all (no handle, a
-        // library paper's read-only `.bib`) answers something else, and
-        // fanning out then would rewrite every `\cite{oldKey}` in the paper
-        // for a rename that exists nowhere. So the fan-out asks its own
-        // precondition rather than reading it off the write's verdict.
-        if (!resolved) return;
-        // The two outcomes that mean the user's content did NOT reach disk and
-        // never will (both voiced on the refusal channel). Fanning out over
-        // them would leave the paper citing a key `references.bib` does not
-        // hold. The others mean no write was attempted for this pane's doc at
-        // all, so nothing was persisted on either side of the rename.
-        if (result.kind === "failed" || result.kind === "not-found") return;
+        // A rename fans out ONLY over a write that LANDED (task 1142). Every
+        // other verdict — `not-found` (the address named no entry in the
+        // file), `failed`, a library paper's `read-only` `.bib`, a pane with
+        // `no-handle`, a `stale` pipeline — leaves `references.bib` saying
+        // `oldKey`, and the fan-out below PERSISTS the other side: rewriting
+        // every `\cite{oldKey}` then is precisely the dangling reference task
+        // 689 exists to prevent. A rename cannot be `declined` (the key
+        // changed, so the mutator always produces a list), so the one verdict
+        // that permits it is `written`.
+        if (result.kind !== "written") return;
         // citation-refs sidecar rewrite (boundary-safe, whole-token).
         rewriteCitationRefs(oldKey, newKey);
         // …then every registered migrator: the editor `\cite{}` doc-rewrite

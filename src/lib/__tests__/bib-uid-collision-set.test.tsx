@@ -30,16 +30,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-vi.mock("@/lib/storage", () => ({
-  readSidecar: vi.fn(async () => ({})),
-  readSidecarIfExists: vi.fn(async () => ({})),
-  writeSidecar: vi.fn(async () => undefined),
-  readBib: vi.fn(async () => ({
-    bibText: "@article{foo,\n  title = {Orig}\n}\n",
-    detectedPackage: undefined,
-  })),
-  mutateBib: vi.fn(async () => null),
-}));
+vi.mock("@/lib/storage", async () => {
+  // A bib whose writes LAND (task 1142): a refused add is now reconciled
+  // against the file, so the add door's answer is only visible on a `written`.
+  const { bibDisk } = await import("@/lib/__tests__/_bib-disk");
+  return {
+    readSidecar: vi.fn(async () => ({})),
+    readSidecarIfExists: vi.fn(async () => ({})),
+    writeSidecar: vi.fn(async () => undefined),
+    ...bibDisk("@article{foo,\n  title = {Orig}\n}\n"),
+  };
+});
 
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { bibUidsOf, mintBibUid, NO_BIB_UID } from "@/lib/bib-uid";
@@ -164,6 +165,8 @@ describe("task 693 — addBibEntry re-mints a colliding uid regardless of proven
   beforeEach(async () => {
     const { __resetForTests } = await import("@/lib/multi-window/doc-pipeline");
     __resetForTests();
+    const { resetBibDisk } = await import("@/lib/__tests__/_bib-disk");
+    resetBibDisk();
   });
 
   async function mount(docId: string) {

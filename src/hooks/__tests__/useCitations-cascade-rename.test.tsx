@@ -25,29 +25,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
-vi.mock("@/lib/storage", () => ({
-  readSidecar: vi.fn(async () => ({})),
-  readSidecarIfExists: vi.fn(async () => ({})),
-  writeSidecar: vi.fn(async () => undefined),
-  readBib: vi.fn(async () => ({
+vi.mock("@/lib/storage", async () => {
+  // A bib whose writes LAND (task 1142): the fan-out follows only a `written`
+  // rename, and the default `mutateBib: null` stub is a refused one.
+  const { bibDisk } = await import("@/lib/__tests__/_bib-disk");
+  return {
+    readSidecar: vi.fn(async () => ({})),
+    readSidecarIfExists: vi.fn(async () => ({})),
+    writeSidecar: vi.fn(async () => undefined),
     // `foo` and `foobar` so we can prove the boundary matcher; `smith:2020`
     // so we can prove the punctuation citekey.
-    bibText:
+    ...bibDisk(
       "@article{foo,\n  title = {A}\n}\n@article{foobar,\n  title = {B}\n}\n" +
-      "@article{smith:2020,\n  title = {C}\n}\n",
-    detectedPackage: undefined,
-  })),
-  mutateBib: vi.fn(async () => null),
-}));
+        "@article{smith:2020,\n  title = {C}\n}\n",
+    ),
+  };
+});
 
 import { useCitations } from "../useCitations";
 import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
 import { namedBibEntry } from "@/lib/bib-test-entry";
+import { resetBibDisk } from "@/lib/__tests__/_bib-disk";
 
 beforeEach(() => {
   __resetForTests();
+  resetBibDisk();
 });
 afterEach(() => {
   setIdentityCascadeFlag(undefined);
