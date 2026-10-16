@@ -25,6 +25,9 @@ vi.mock("@/links/links", async (importOriginal) => ({
 
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
+import { isSuggestionKind } from "@/cards/predicates";
+import { isResolvedSuggestion, isResolvedSuggestionStatus } from "@/cards/suggestion-status";
+import { canMorphSuggestion } from "@/cards/morphs";
 import {
   MARGIN_MARKER_SOURCES,
   buildCardMarkers,
@@ -110,15 +113,32 @@ describe("margin markers derive from CARD_REGISTRY.markerType (task 939)", () =>
     }
   });
 
-  it("B — a resolved suggestion paints no marker; a pending/applied one does", () => {
-    const s = MARGIN_MARKER_SOURCES.revisions as MarginMarkerSource;
-    for (const status of ["accepted", "rejected"]) {
-      const card = { ...fakeCard("suggestion"), status } as CardWithLinks;
-      expect(buildCardMarkers(card, s, ctx())).toEqual([]);
+  it("B — a resolved suggestion paints no marker in EVERY family; a pending/applied/stale one does (task 1151)", () => {
+    // Every source whose records can resolve to a suggestion-family kind —
+    // derived, so a new family (or a source dropping its suggestion) is
+    // covered without editing this list.
+    const families = SOURCES.filter(([, s]) => s.kinds.some(isSuggestionKind));
+    expect(families.map(([n]) => n).sort()).toEqual(["cutter", "revisions"]);
+    for (const [name, s] of families) {
+      for (const status of ["accepted", "rejected"]) {
+        const card = { ...fakeCard("suggestion"), status } as CardWithLinks;
+        expect(isResolvedSuggestion(card)).toBe(true);
+        expect(buildCardMarkers(card, s, ctx()), `${name}/${status}`).toEqual([]);
+      }
+      for (const status of ["pending", "applied", "stale"]) {
+        const card = { ...fakeCard("suggestion"), status } as CardWithLinks;
+        expect(isResolvedSuggestion(card)).toBe(false);
+        expect(buildCardMarkers(card, s, ctx()), `${name}/${status}`).toHaveLength(1);
+      }
+      // A comment has no outcome to hold — never skipped, whatever it carries.
+      const comment = { ...fakeCard("comment"), status: "accepted" } as CardWithLinks;
+      expect(buildCardMarkers(comment, s, ctx()), `${name}/comment`).toHaveLength(1);
     }
-    for (const status of ["pending", "applied", "stale"]) {
-      const card = { ...fakeCard("suggestion"), status } as CardWithLinks;
-      expect(buildCardMarkers(card, s, ctx())).toHaveLength(1);
+  });
+
+  it("B — \"resolved\" has one spelling: the morph gate is its negation", () => {
+    for (const status of ["pending", "applied", "stale", "accepted", "rejected", undefined]) {
+      expect(canMorphSuggestion({ status }), String(status)).toBe(!isResolvedSuggestionStatus(status));
     }
   });
 

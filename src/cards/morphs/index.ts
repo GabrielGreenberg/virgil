@@ -38,6 +38,7 @@ import {
 } from "../card-registry";
 import { assertMarkerCoverage } from "../marker-meta";
 import { getTextAnchor } from "@/links/links";
+import { isResolvedSuggestionStatus } from "../suggestion-status";
 
 /** Build a rich doc with one paragraph per non-empty part (or empty doc). Used
  *  by the suggestion → comment salvage so a suggestion's user_text AND its
@@ -95,7 +96,7 @@ function suggestionCommentParts(s: {
  *  comment → suggestion morph is then a new, deliberate proposal, guarded like
  *  any other by `original_text`'s stale check. */
 export function canMorphSuggestion(s: { status?: string }): boolean {
-  return s.status !== "accepted" && s.status !== "rejected";
+  return !isResolvedSuggestionStatus(s.status);
 }
 
 /* ── Revisions: comment ⇄ suggestion ──────────────────────────────────
