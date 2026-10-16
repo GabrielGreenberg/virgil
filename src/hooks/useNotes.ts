@@ -10,7 +10,11 @@ import type {
   NotesState,
   UserNote,
 } from "@/lib/types";
-import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
+import {
+  normalizeRichContent,
+  emptyRichContent,
+  richJsonToPlainText,
+} from "@/lib/footnote-content";
 import {
   addTextObjectLink,
   clearTextAnchorLink,
@@ -113,10 +117,17 @@ function migrateNotesShape(raw: unknown): NotesState {
 export const migrateNotes = withSidecarEnvelope(migrateNotesShape, ["notes"]);
 
 /** The `ai-requests.json` payload a note contributes — named so both bridge
- *  doors (present card / absent card) read one shape (task 697). */
+ *  doors (present card / absent card) read one shape (task 697).
+ *
+ *  Its request text is the title, else the flattened BODY (task 1140): a
+ *  note's title is optional and blank by default (T6/C12), so the body is
+ *  where the user's ask lives. A genuinely empty note files `""`, so the AI
+ *  window shows "(empty draft)" and counts no user text — never a literal
+ *  placeholder that reads as one. Python twin: `_STORAGE_ROWS["note"]`
+ *  in editor/scripts/list_requests.py. */
 export function noteContext(note: UserNote): BridgeContext {
   return {
-    text: note.title || "<note>",
+    text: (note.title || "").trim() || richJsonToPlainText(note.content).trim(),
     paragraphIds: getLinkedTextObjectIds(note),
     selectedText: getTextAnchor(note)?.anchorText,
   };
@@ -125,11 +136,12 @@ export function noteContext(note: UserNote): BridgeContext {
 /** The `ai-requests.json` payload a highlight contributes. A highlight is
  *  intrinsically Mode-B, so its anchor text is BOTH the body and the
  *  selection — including the `""` when there is no anchor, which is the
- *  shape already on disk. */
+ *  shape already on disk. No placeholder for that `""` (task 1140, the
+ *  `noteContext` twin): a literal `<highlight>` read as user text. */
 export function highlightContext(card: HighlightCard): BridgeContext {
   const anchorText = getTextAnchor(card)?.anchorText || "";
   return {
-    text: anchorText || "<highlight>",
+    text: anchorText,
     paragraphIds: getLinkedTextObjectIds(card),
     selectedText: anchorText,
   };
