@@ -360,6 +360,16 @@ const STORED_ADDRESS_BY_KIND: Map<CardKind, StoredKindAddress> = (() => {
   return m;
 })();
 
+/** The SUGGESTION-family card kinds — every kind some polymorphic panel
+ *  stores as `kind: "suggestion"` (revision- and cutter-suggestion today).
+ *  DERIVED from `STORED_KIND_BY_PANEL`, so a third family that stores a
+ *  suggestion joins every family-level rule (e.g. "a resolved suggestion
+ *  paints no margin marker", task 1151) without a hand-kept list. */
+export const SUGGESTION_KINDS: ReadonlySet<CardKind> = new Set<CardKind>(
+  [...STORED_ADDRESS_BY_KIND].filter(([, a]) => a.stored === "suggestion").map(([k]) => k),
+);
+export const isSuggestionKind = (k: CardKind): boolean => SUGGESTION_KINDS.has(k);
+
 /**
  * The read-side classifier: an on-disk record's stored `kind` → its spine
  * `CardKind`, disambiguated by the owning panel (cutter and revisions both

@@ -25,6 +25,7 @@
  */
 
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { isResolvedSuggestion, isResolvedSuggestionStatus } from "@/cards/suggestion-status";
 import {
   finalizeProposalRequest,
   type ProposalFinalizeCause,
@@ -44,8 +45,8 @@ export function proposalFinalizeResult(
   prev: string | undefined,
   next: string,
 ): ProposalResult | null {
-  if (next !== "accepted" && next !== "rejected") return null;
-  if (prev === "accepted" || prev === "rejected") return null;
+  if (!isResolvedSuggestionStatus(next)) return null;
+  if (isResolvedSuggestionStatus(prev)) return null;
   return next;
 }
 
@@ -88,7 +89,7 @@ export function leavingProposalRequestId(card: unknown): string | null {
   if (!card || typeof card !== "object") return null;
   const c = card as { kind?: unknown; status?: unknown };
   if (c.kind !== "suggestion") return null;
-  if (c.status === "accepted" || c.status === "rejected") return null;
+  if (isResolvedSuggestion(c)) return null;
   return proposalOriginRequestId(card);
 }
 

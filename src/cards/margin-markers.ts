@@ -10,8 +10,12 @@
  * AND the delete door's kind are READ from the registry, `entityKind` /
  * `entityId` are set for every card marker by construction, and the only
  * per-collection facts left are the ones the registry cannot know — which
- * card kind a record resolves to, its tooltip, its muted state, and whether
- * it is skipped (a resolved suggestion).
+ * card kind a record resolves to, its tooltip and its muted state. Whether a
+ * card is SKIPPED is not a per-source fact: "a resolved suggestion paints no
+ * marker" is a FAMILY rule the builder applies to every suggestion-family kind
+ * (`isSuggestionKind`) through the one predicate (`isResolvedSuggestion`,
+ * task 1151) — the per-source `skip` it replaces existed only on revisions,
+ * so an accepted or rejected CUT kept its marker forever.
  *
  * The census (`margin-markers-registry-census.test.ts`) pins the table
  * against the registry: every card kind whose `markerType` puts it in the
@@ -29,7 +33,8 @@ import {
   type MarginMarkerRow,
 } from "@/links/card-anchor-rows";
 import { CARD_REGISTRY } from "./card-registry";
-import { cardKindFromRecord } from "./predicates";
+import { cardKindFromRecord, isSuggestionKind } from "./predicates";
+import { isResolvedSuggestion } from "./suggestion-status";
 import type { MarginItemKind } from "./delete-margin-item";
 import type { CardKind } from "./types";
 
@@ -50,8 +55,6 @@ export interface MarginMarkerSource<T extends CardWithLinks = CardWithLinks> {
   kindOf: (card: T) => CardKind;
   title: (card: T, kind: CardKind) => string;
   muted?: (card: T) => boolean;
-  /** True ⇒ the card paints no marker (e.g. a RESOLVED suggestion). */
-  skip?: (card: T) => boolean;
 }
 
 /** Bound callbacks the builder wires into each marker. */
@@ -83,24 +86,15 @@ const archive: MarginMarkerSource = {
   title: (_c, k) => label(k),
 };
 
-const revisions: MarginMarkerSource<SuggestionLike & { status?: string; selectedText?: string }> = {
+const revisions: MarginMarkerSource<SuggestionLike & { selectedText?: string }> = {
   kinds: ["revision-comment", "revision-suggestion"],
   kindOf: (r) => cardKindFromRecord(r, "revisions"),
   title: (r, k) => r.selectedText || label(k),
-  // Skip only *resolved* suggestions (accepted/rejected). A `pending` card is
-  // awaiting review and an `applied` card is spliced into the doc but still
-  // awaiting an explicit "Keep" — both are live and keep their margin marker
-  // (a plain `revision` marker: no re-skin, no hover Keep/Revert chips — those
-  // reach the change through the card and the in-context left-margin pill);
-  // `stale` (the paragraph drifted) likewise stays visible so the user can
-  // resolve it.
-  skip: (r) => r.kind === "suggestion" && (r.status === "accepted" || r.status === "rejected"),
 };
 
 const cutter: MarginMarkerSource<SuggestionLike & { explanation?: string; text?: string }> = {
   kinds: ["cutter-comment", "cutter-suggestion"],
   kindOf: (c) => cardKindFromRecord(c, "cutter"),
-  // An APPLIED cutter suggestion keeps its ordinary `cut` marker (see above).
   title: (c, k) => (c.kind === "suggestion" ? c.explanation : c.text) || label(k),
 };
 
@@ -140,8 +134,14 @@ export function buildCardMarkers<T extends CardWithLinks>(
   source: MarginMarkerSource<T>,
   ctx: CardMarkerCtx,
 ): MarginaliaMarker[] {
-  if (source.skip?.(card)) return [];
   const kind = source.kindOf(card);
+  // The family rule (task 1151): a RESOLVED suggestion (accepted/rejected) of
+  // either family paints no marker. A `pending` card awaits review, an
+  // `applied` one is spliced in but awaits an explicit "Keep", and a `stale`
+  // one drifted and still needs resolving — all live, all keep their ordinary
+  // marker (no re-skin, no hover Keep/Revert chips: those reach the change
+  // through the card and the in-context left-margin pill).
+  if (isSuggestionKind(kind) && isResolvedSuggestion(card)) return [];
   const type = marginMarkerTypeForKind(kind);
   if (type == null) return [];
   const title = source.title(card, kind);
