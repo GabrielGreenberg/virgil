@@ -6,8 +6,9 @@
  * result cuts down the number of incidental ways an unanchored card can
  * come into being:
  *
- *   1. **Multi-anchor card** (anchored to >1 paragraph): just remove THIS
- *      paragraph link, leave the card alive with its other anchors. No
+ *   1. **Multi-anchor card** (anchored to >1 paragraph): detach the card
+ *      from exactly the link(s) THIS marker is drawn from — the row's own
+ *      `sources` (task 1149) — and leave it alive with its other anchors. No
  *      confirm, no card deletion.
  *
  *   2. **Last-anchor card with content**: ask the user via the shared
@@ -22,9 +23,11 @@
  *
  * When a card carries an inline `linkedAnchor` mark (a Mode-B text-range
  * anchor — ANY kind made from a selection: notes, cuts, revisions, reports,
- * todos, …), we strip the mark only on the card-delete path. In the
- * multi-anchor unanchor branch the mark stays bound to the surviving
- * paragraphs. The door reads the mark off the CARD itself
+ * todos, …), the card-delete path strips it. The multi-anchor branch strips
+ * a mark only when the deleted marker IS that Mode-B link (its row's source
+ * names it): a Mode-B link is anchored where its mark is, so detaching the
+ * row and leaving the mark would paint the marker straight back (task 1149).
+ * The card-delete path reads the mark off the CARD itself
  * (`getTextAnchor`), never off a caller argument: it used to be passed by
  * four of the six marker kinds, so a todo's tint outlived its card until the
  * `useLinkedAnchorReconciler` sweep reaped it (task 939).
@@ -37,7 +40,12 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import { getTextAnchor, removeLinkedAnchor, type CardWithLinks } from "@/links/links";
+import {
+  getTextAnchor,
+  removeLinkedAnchor,
+  type AnchorRowSource,
+  type CardWithLinks,
+} from "@/links/links";
 import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   CARD_DELETE_CONFIRM_MESSAGE,
@@ -77,8 +85,16 @@ export interface MarginItemHandlers<TCard extends CardWithLinks = CardWithLinks>
    *  marker covers multiple card kinds (e.g. cut → comment + suggestion),
    *  pass a resolver that picks the right CardContentKind given the card. */
   contentKind: CardContentKind | ((card: TCard) => CardContentKind);
-  /** Remove one paragraph link from the card (the "unanchor" path). */
+  /** Remove one STORED paragraph pid from the card — the capture-retarget's
+   *  door, which asks by stored pid. NOT the margin Delete's door: a marker is
+   *  drawn from a RESOLVED row, and its pid need not be stored (see
+   *  {@link detach}). */
   unanchor: (cardId: string, paragraphId: string) => void;
+  /** Detach the card from the links one margin row is drawn from — the
+   *  multi-anchor Delete's door (task 1149). The sources are the row's own
+   *  provenance (`MarginMarkerRow.sources`), so the door removes the link
+   *  behind the marker by identity rather than by a pid match. */
+  detach: (cardId: string, sources: readonly AnchorRowSource[]) => void;
   /**
    * Anchor the card to `paragraphId` — the inverse of {@link unanchor}, and
    * the half a capture-retarget needs. `paragraphSnapshot` is the target's
@@ -126,6 +142,15 @@ export interface DeleteMarginItemArgs {
    * old list where the old list was right.
    */
   anchorPids: readonly string[];
+  /**
+   * The links the deleted marker is drawn from — the `sources` of the SAME
+   * row as `anchorPids` (task 1149). The multi-anchor branch detaches exactly
+   * these. It used to `unanchor(cardId, paragraphId)`, a match on the card's
+   * STORED pids: for a Mode-B link (stored pid kept, link kept by design) the
+   * marker came straight back on the next pass, and for a recovered paragraph
+   * the card stores no such pid at all — a silent no-op either way.
+   */
+  sources: readonly AnchorRowSource[];
   // NOTE (task 939): no `anchorId` argument. The `linkedAnchor` mark to strip
   // is read off the card (`getTextAnchor`) at commit time, so no caller can
   // forget it — four of the six marker kinds used to pass it, todo and
@@ -142,7 +167,7 @@ export interface DeleteMarginItemArgs {
 /** See file header for the behavior contract. Pure async function — no
  *  React coupling, easy to unit-test. */
 export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void> {
-  const { cardId, paragraphId, anchorPids, handlers, confirm, editor } = args;
+  const { cardId, paragraphId, anchorPids, sources, handlers, confirm, editor } = args;
   const card = handlers.findCard(cardId);
   if (!card) return;
 
@@ -156,14 +181,21 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
   const remaining = anchorPids.filter((p) => p !== paragraphId);
 
   if (remaining.length > 0) {
-    // Multi-anchor: just remove this paragraph link. Do NOT strip the
-    // text-range mark — it's still bound to the other paragraph(s), which is
-    // now a TRUE statement of this branch: `remaining` is the authority's
-    // cohort, so reaching here means other markers really are painted for
-    // this card. Read off the stored pids it was merely a hope, and for a
-    // recovered card a false one — the branch fired with nothing else
-    // anchored, so the mark was never cleaned up either (task 669 M3).
-    handlers.unanchor(cardId, paragraphId);
+    // Multi-anchor: detach exactly the link(s) this marker is drawn from.
+    // `remaining` is the authority's cohort, so other markers really are
+    // painted for this card (task 669 M3) — and `sources` is the same row's
+    // answer to "which link?", so the detach can neither miss (a recovered
+    // pid the card does not store) nor leave the binding standing (a Mode-B
+    // link, anchored where its mark is — task 1149).
+    handlers.detach(cardId, sources);
+    // A whole-link detach of a link that carries a mark strips the mark too,
+    // AFTER the write (same order as the card-delete path below). Any other
+    // mark of the card stays: it belongs to a surviving link.
+    if (editor) {
+      for (const s of sources) {
+        if (s.pid == null && s.anchorId) removeLinkedAnchor(editor, s.anchorId);
+      }
+    }
     return;
   }
 
@@ -218,40 +250,50 @@ type AddParagraphLink = (
   paragraphSnapshot?: string | null,
 ) => void;
 
+/** Every hook's row-detach door (task 1149) — `detachAnchorSources` over its
+ *  own collection. */
+type DetachAnchorSources = (id: string, sources: readonly AnchorRowSource[]) => void;
+
 interface NotesDep {
   notes: ReadonlyArray<CardWithLinks>;
   addNoteTextObjectId: AddParagraphLink;
   removeNoteTextObjectId: (id: string, paragraphId: string) => void;
+  detachNoteAnchorSources: DetachAnchorSources;
   deleteNote: DeclinableCardDelete;
 }
 interface ArchiveDep {
   snippets: ReadonlyArray<CardWithLinks>;
   addParagraphId: AddParagraphLink;
   removeParagraphId: (id: string, paragraphId: string) => void;
+  detachAnchorSources: DetachAnchorSources;
   deleteSnippet: DeclinableCardDelete;
 }
 interface CutterDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "comment" | "suggestion" }>;
   addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
+  detachAnchorSources: DetachAnchorSources;
   deleteCard: DeclinableCardDelete;
 }
 interface TodosDep {
   items: ReadonlyArray<CardWithLinks>;
   addParagraphId: AddParagraphLink;
   removeParagraphId: (id: string, paragraphId: string) => void;
+  detachAnchorSources: DetachAnchorSources;
   deleteItem: DeclinableCardDelete;
 }
 interface RevisionsDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "comment" | "suggestion" }>;
   addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
+  detachAnchorSources: DetachAnchorSources;
   deleteCard: DeclinableCardDelete;
 }
 interface ReportsDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "report" | "report-request" }>;
   addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
+  detachAnchorSources: DetachAnchorSources;
   deleteCard: DeclinableCardDelete;
 }
 
@@ -273,6 +315,7 @@ export function buildMarginItemHandlers(
       cards: deps.notes.notes,
       contentKind: "note",
       unanchor: deps.notes.removeNoteTextObjectId,
+      detach: deps.notes.detachNoteAnchorSources,
       reanchor: deps.notes.addNoteTextObjectId,
       delete: deps.notes.deleteNote,
     },
@@ -281,6 +324,7 @@ export function buildMarginItemHandlers(
       cards: deps.archive.snippets,
       contentKind: "archive",
       unanchor: deps.archive.removeParagraphId,
+      detach: deps.archive.detachAnchorSources,
       reanchor: deps.archive.addParagraphId,
       delete: deps.archive.deleteSnippet,
     },
@@ -292,6 +336,7 @@ export function buildMarginItemHandlers(
           ? "cutter-suggestion"
           : "cutter-comment",
       unanchor: deps.cutter.removeCardParagraphId,
+      detach: deps.cutter.detachAnchorSources,
       reanchor: deps.cutter.addCardParagraphId,
       delete: deps.cutter.deleteCard,
     },
@@ -300,6 +345,7 @@ export function buildMarginItemHandlers(
       cards: deps.todos.items,
       contentKind: "todo",
       unanchor: deps.todos.removeParagraphId,
+      detach: deps.todos.detachAnchorSources,
       reanchor: deps.todos.addParagraphId,
       delete: deps.todos.deleteItem,
     },
@@ -311,6 +357,7 @@ export function buildMarginItemHandlers(
           ? "revision-suggestion"
           : "revision-comment",
       unanchor: deps.revisions.removeCardParagraphId,
+      detach: deps.revisions.detachAnchorSources,
       reanchor: deps.revisions.addCardParagraphId,
       delete: deps.revisions.deleteCard,
     },
@@ -322,6 +369,7 @@ export function buildMarginItemHandlers(
           ? "report-request"
           : "report",
       unanchor: deps.reports.removeCardParagraphId,
+      detach: deps.reports.detachAnchorSources,
       reanchor: deps.reports.addCardParagraphId,
       delete: deps.reports.deleteCard,
     },

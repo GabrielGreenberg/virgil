@@ -53,6 +53,7 @@ import {
   addTextObjectLink,
   getLinkedTextObjectIds,
   removeTextObjectLink,
+  detachAnchorSources,
   type CardWithLinks,
 } from "@/links/links";
 import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
@@ -152,6 +153,11 @@ function makeCardStore() {
         const arr = list();
         const i = arr.findIndex((c) => c.id === id);
         if (i >= 0) arr[i] = removeTextObjectLink(arr[i], pid);
+      },
+      detach: (id, sources) => {
+        const arr = list();
+        const i = arr.findIndex((c) => c.id === id);
+        if (i >= 0) arr[i] = detachAnchorSources(arr[i], sources);
       },
       reanchor: (id, pid, targetKind, snapshot) => {
         const arr = list();

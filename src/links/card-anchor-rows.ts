@@ -39,7 +39,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import type { CardWithLinks } from "./links";
+import type { AnchorRowSource, CardWithLinks } from "./links";
 import { getLinkedTextObjectIds } from "./links";
 import {
   buildResolveIndex,
@@ -58,6 +58,14 @@ export interface CardAnchorRow {
    *  re-resolved from `pid` (see `OmniItem.pos`'s contract) — this is the
    *  seed, refreshed on every structural change, not a live value. */
   pos: number | null;
+  /**
+   * The links that DRAW this row, each with what detaching the row from it
+   * means (task 1149). A per-row gesture — the margin's Delete — acts on these
+   * by identity; it must never re-derive "which link is this?" by matching
+   * `pid` against the card's stored pids, which for a Mode-B mark's paragraph
+   * or a recovered paragraph name something else entirely.
+   */
+  sources: AnchorRowSource[];
 }
 
 export interface CardAnchorRows {
@@ -219,7 +227,10 @@ export function resolveCardAnchorRows(
     // (there is no index to read them from) and the render surfaces fall back
     // to the live resolver, so `null` here is the honest answer.
     if (pids.length === 0) return NO_ROWS;
-    return { rows: pids.map((pid) => ({ pid, pos: null })), anchored: true };
+    return {
+      rows: pids.map((pid) => ({ pid, pos: null, sources: storedSourcesOf(card, pid) })),
+      anchored: true,
+    };
   }
 
   const res = resolveCardAnchor(card, editor, index);
@@ -235,7 +246,10 @@ export function resolveCardAnchorRows(
     // uuid + mark + snapshot all dead → SURFACE, don't vanish. Key on the
     // first stored pid (a stable id for the marker + the re-pin gesture).
     return pids.length > 0
-      ? { rows: [{ pid: pids[0], pos: null }], anchored: false }
+      ? {
+          rows: [{ pid: pids[0], pos: null, sources: storedSourcesOf(card, pids[0]) }],
+          anchored: false,
+        }
       : NO_ROWS;
   }
 
@@ -253,18 +267,53 @@ export function resolveCardAnchorRows(
   // the stored pid P stays live — appending the flat stored-pid list painted
   // a SECOND marker on P for the one highlight, and Delete on the real one
   // took the multi-anchor branch and `unanchor`ed a pid the card never stored.
-  const seen = new Set<string>();
+  //
+  // Each row also records WHICH links draw it (task 1149) — the winner link
+  // for the seed, each link for its own live paragraphs — so the per-row
+  // Delete removes exactly the link(s) behind its marker.
+  const links = card.links ?? [];
+  const byPid = new Map<string, CardAnchorRow>();
   const rows: CardAnchorRow[] = [];
-  const candidates = [res.paragraphId];
-  for (const link of card.links ?? []) {
-    candidates.push(...liveParagraphsOfLink(link, index));
-  }
-  for (const pid of candidates) {
-    if (seen.has(pid)) continue;
-    seen.add(pid);
-    rows.push({ pid, pos: index.uuidToPos.get(pid) ?? null });
+  const draw = (pid: string, link: Link | undefined) => {
+    let row = byPid.get(pid);
+    if (!row) {
+      row = { pid, pos: index.uuidToPos.get(pid) ?? null, sources: [] };
+      byPid.set(pid, row);
+      rows.push(row);
+    }
+    if (link && !row.sources.some((s) => s.linkId === link.id)) {
+      row.sources.push(sourceOf(link, pid));
+    }
+  };
+  draw(res.paragraphId, res.linkIndex == null ? undefined : links[res.linkIndex]);
+  for (const link of links) {
+    for (const pid of liveParagraphsOfLink(link, index)) draw(pid, link);
   }
   return { rows, anchored: true };
+}
+
+/**
+ * What detaching `pid`'s row from `link` means: a Mode-A link that STORES the
+ * pid loses that pid; anything else — a Mode-B link (live mark or not: its
+ * range IS the binding), or a link the ladder recovered onto a paragraph it
+ * does not store — loses the whole link.
+ */
+function sourceOf(link: Link, pid: string): AnchorRowSource {
+  const anchor = link.anchor.type === "textObject" ? link.anchor : null;
+  const anchorId = anchor?.textRange?.anchorId ?? null;
+  const storesPid = !!anchor && anchor.textObjectIds.includes(pid);
+  return {
+    linkId: link.id,
+    pid: !isModeB(link) && storesPid ? pid : null,
+    anchorId,
+  };
+}
+
+/** The sources of a row keyed on a STORED pid (mount gap / unresolved). */
+function storedSourcesOf(card: CardWithLinks, pid: string): AnchorRowSource[] {
+  return (card.links ?? [])
+    .filter((l) => l.anchor.type === "textObject" && l.anchor.textObjectIds.includes(pid))
+    .map((l) => sourceOf(l, pid));
 }
 
 /**
@@ -326,6 +375,13 @@ export interface MarginMarkerRow {
    * and the new one agree there by construction rather than by coincidence.
    */
   cardPids: readonly string[];
+  /**
+   * The links this marker is drawn from (`CardAnchorRow.sources`) — what the
+   * multi-anchor Delete removes (task 1149). The cohort answers "is this the
+   * last anchor?"; the sources answer "then detach WHAT?". Both come off the
+   * same row, so neither can be re-derived from the stored pids.
+   */
+  sources: readonly AnchorRowSource[];
 }
 
 /** The margin's rows for a card — one marker per resolved row. */
@@ -335,7 +391,12 @@ export function buildMarginMarkerRows(
 ): MarginMarkerRow[] {
   const { rows, anchored } = resolve(card);
   const cardPids = rows.map((r) => r.pid);
-  return rows.map((r) => ({ pid: r.pid, unanchored: !anchored, cardPids }));
+  return rows.map((r) => ({
+    pid: r.pid,
+    unanchored: !anchored,
+    cardPids,
+    sources: r.sources,
+  }));
 }
 
 // ---------------------------------------------------------------------------

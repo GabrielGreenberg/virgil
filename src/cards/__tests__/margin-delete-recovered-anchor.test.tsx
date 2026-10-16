@@ -104,16 +104,18 @@ function clip(id: string, links: Link[]): ArchivedSnippet {
 
 function handlers(card: CardWithLinks) {
   const unanchor = vi.fn();
+  const detach = vi.fn();
   const del = vi.fn();
   const bundle: MarginItemHandlers = {
     findCard: (id) => (id === card.id ? card : undefined),
     cards: [card],
     contentKind: "archive",
     unanchor,
+    detach,
     reanchor: vi.fn(),
     delete: del,
   };
-  return { bundle, unanchor, del };
+  return { bundle, unanchor, detach, del };
 }
 
 /** The RETIRED rule, restated locally: `remaining` off the card's STORED pids.
@@ -146,6 +148,7 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
       cardId: "c1",
       paragraphId: rows[0].pid,
       anchorPids: rows[0].cardPids,
+      sources: rows[0].sources,
       handlers: bundle,
       confirm,
       editor,
@@ -169,6 +172,7 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
       cardId: "c1",
       paragraphId: rows[0].pid,
       anchorPids: rows[0].cardPids,
+      sources: rows[0].sources,
       handlers: bundle,
       confirm: async () => false,
       editor,
@@ -187,19 +191,25 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
     const rows = buildMarginMarkerRows(card, pass.resolve);
     expect(rows.map((r) => r.pid)).toEqual(["P1", "P2"]);
 
-    const { bundle, unanchor, del } = handlers(card);
+    const { bundle, unanchor, detach, del } = handlers(card);
     const confirm = vi.fn(async () => true);
     await deleteMarginItem({
       kind: "archive",
       cardId: "c1",
       paragraphId: "P1",
       anchorPids: rows[0].cardPids,
+      sources: rows[0].sources,
       handlers: bundle,
       confirm,
       editor,
     });
 
-    expect(unanchor).toHaveBeenCalledWith("c1", "P1");
+    // Task 1149: the multi-anchor branch detaches the row's OWN link by
+    // identity, dropping just the one stored pid it draws.
+    expect(detach).toHaveBeenCalledWith("c1", [
+      { linkId: "link-P1+P2", pid: "P1", anchorId: null },
+    ]);
+    expect(unanchor).not.toHaveBeenCalled();
     expect(del).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
     editor.destroy();
@@ -218,6 +228,7 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
       cardId: "c1",
       paragraphId: rows[0].pid,
       anchorPids: rows[0].cardPids,
+      sources: rows[0].sources,
       handlers: bundle,
       confirm: async () => true,
       editor,

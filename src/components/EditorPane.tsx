@@ -385,6 +385,7 @@ import {
 import {
   buildCardAnchorPass,
   sortCardsByResolvedAnchor,
+  type MarginMarkerRow,
 } from "@/links/card-anchor-rows";
 import { marginSideForMarkerType, type PanelSideMap } from "@/lib/margin-side";
 import { panelSidesFromPlacements, resolvePanelSide } from "@/lib/panel-side";
@@ -3115,12 +3116,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         reports: reportsHook,
       }),
     [
-      notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.deleteNote,
-      archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId, archiveHook.deleteSnippet,
-      cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId, cutterHook.deleteCard,
-      todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId, todosHook.deleteItem,
-      revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId, revisionsHook.deleteCard,
-      reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId, reportsHook.deleteCard,
+      notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.detachNoteAnchorSources, notesHook.deleteNote,
+      archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId, archiveHook.detachAnchorSources, archiveHook.deleteSnippet,
+      cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId, cutterHook.detachAnchorSources, cutterHook.deleteCard,
+      todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId, todosHook.detachAnchorSources, todosHook.deleteItem,
+      revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId, revisionsHook.detachAnchorSources, revisionsHook.deleteCard,
+      reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId, reportsHook.detachAnchorSources, reportsHook.deleteCard,
       // The hook objects themselves change identity on every render; using
       // their individual fields above keeps this memo stable across renders
       // that don't actually change card state.
@@ -3170,20 +3171,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
    * so a new marker kind cannot quietly fall back to the card's STORED pids:
    * for a mark-/snapshot-recovered card those name a paragraph the marker is
    * not on, which routed a one-anchor card into the unanchor branch and made
-   * it undeletable from the margin (task 669).
+   * it undeletable from the margin (task 669). `sources` — the same row's
+   * links — is what a multi-anchor Delete detaches (task 1149).
    */
   const handleMarginItemDelete = useCallback(
-    (
-      kind: MarginItemKind,
-      cardId: string,
-      paragraphId: string,
-      anchorPids: readonly string[],
-    ) =>
+    (kind: MarginItemKind, cardId: string, row: MarginMarkerRow) =>
       deleteMarginItem({
         kind,
         cardId,
-        paragraphId,
-        anchorPids,
+        paragraphId: row.pid,
+        anchorPids: row.cardPids,
+        sources: row.sources,
         handlers: marginItemHandlers[kind],
         confirm: confirmMarginItemDelete,
         editor: innerRef.current?.getEditor() ?? null,
@@ -3889,8 +3887,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     const markerCtx: CardMarkerCtx = {
       resolve: anchorPass.resolve,
       onClick: handleMarginMarkerClick,
-      onDelete: (kind, cardId, pid, cardPids) => {
-        void handleMarginItemDelete(kind, cardId, pid, cardPids);
+      onDelete: (kind, cardId, row) => {
+        void handleMarginItemDelete(kind, cardId, row);
       },
     };
     const src = MARGIN_MARKER_SOURCES;

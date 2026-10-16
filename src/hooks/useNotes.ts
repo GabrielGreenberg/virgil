@@ -22,6 +22,8 @@ import {
   getTextAnchor,
   hasTextAnchor,
   removeTextObjectLink,
+  detachAnchorSources as detachCardAnchorSources,
+  type AnchorRowSource,
   setTextAnchorLink,
 } from "@/links/links";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -482,6 +484,21 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
+  // Task 1149 — the margin Delete's multi-anchor door: detach the links ONE
+  // margin row is drawn from, by identity (see `detachAnchorSources`).
+  const detachNoteAnchorSources = useCallback(
+    (id: string, sources: readonly AnchorRowSource[]) => {
+      update((prev) => ({
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "note"
+            ? detachCardAnchorSources(c, sources)
+            : c,
+        ),
+      }));
+    },
+    [update],
+  );
+
   const addHighlightTextObjectId = useCallback(
     (
       id: string,
@@ -760,6 +777,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       setHighlightAiRequest,
       addNoteTextObjectId,
       removeNoteTextObjectId,
+      detachNoteAnchorSources,
       addHighlightTextObjectId,
       removeHighlightTextObjectId,
       reconcileAnchors,
@@ -793,6 +811,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       setHighlightAiRequest,
       addNoteTextObjectId,
       removeNoteTextObjectId,
+      detachNoteAnchorSources,
       addHighlightTextObjectId,
       removeHighlightTextObjectId,
       reconcileAnchors,

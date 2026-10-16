@@ -10,6 +10,8 @@ import {
   getLinkedTextObjectIds,
   getTextAnchor,
   removeTextObjectLink,
+  detachAnchorSources as detachCardAnchorSources,
+  type AnchorRowSource,
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -255,6 +257,16 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     }));
   }, [update]);
 
+  // Task 1149 — the margin Delete's multi-anchor door: detach the links ONE
+  // margin row is drawn from, by identity (see `detachAnchorSources`).
+  const detachAnchorSources = useCallback((todoId: string, sources: readonly AnchorRowSource[]) => {
+    update((prev) => ({
+      items: prev.items.map((i) =>
+        i.id === todoId ? detachCardAnchorSources(i, sources) : i,
+      ),
+    }));
+  }, [update]);
+
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<TodoState, TodoItem>(
     update,
@@ -461,6 +473,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       reorder,
       addParagraphId,
       removeParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       reinstate,
       loaded,
@@ -486,6 +499,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       reorder,
       addParagraphId,
       removeParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       reinstate,
       loaded,

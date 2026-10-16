@@ -12,6 +12,8 @@ import {
   getLinkedTextObjectIds,
   getTextAnchor,
   removeTextObjectLink,
+  detachAnchorSources as detachCardAnchorSources,
+  type AnchorRowSource,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
@@ -204,6 +206,19 @@ export function useArchive(docId: string | null) {
     [update],
   );
 
+  // Task 1149 — the margin Delete's multi-anchor door: detach the links ONE
+  // margin row is drawn from, by identity (see `detachAnchorSources`).
+  const detachAnchorSources = useCallback(
+    (id: string, sources: readonly AnchorRowSource[]) => {
+      update((prev) => ({
+        snippets: prev.snippets.map((s) =>
+          s.id === id ? detachCardAnchorSources(s, sources) : s,
+        ),
+      }));
+    },
+    [update],
+  );
+
   // Mode A orphan sweep — when a paragraph / heading / list / etc.
   // vanishes from the doc, drop the dead uuid from any archive
   // snippet's Mode A links. For paragraph × Archive this is the
@@ -390,6 +405,7 @@ export function useArchive(docId: string | null) {
       updateSnippetTitle,
       addParagraphId,
       removeParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       loaded,
       loadError,
@@ -407,6 +423,7 @@ export function useArchive(docId: string | null) {
       updateSnippetTitle,
       addParagraphId,
       removeParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       loaded,
       loadError,

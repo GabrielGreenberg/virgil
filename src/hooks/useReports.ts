@@ -22,6 +22,8 @@ import {
   getTextAnchor,
   getTextAnchorFromLinks,
   removeTextObjectLink,
+  detachAnchorSources as detachCardAnchorSources,
+  type AnchorRowSource,
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -383,6 +385,20 @@ export function useReports(
     [update],
   );
 
+  // Task 1149 — the margin Delete's multi-anchor door: detach the links ONE
+  // margin row is drawn from, by identity (see `detachAnchorSources`).
+  const detachAnchorSources = useCallback(
+    (id: string, sources: readonly AnchorRowSource[]) => {
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id ? detachCardAnchorSources(c, sources) : c,
+        ),
+      }));
+    },
+    [update],
+  );
+
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<ReportsState, ReportItem>(
     update,
@@ -561,6 +577,7 @@ export function useReports(
       setRequestAiRequest,
       addCardParagraphId,
       removeCardParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       reinstate,
       loaded,
@@ -584,6 +601,7 @@ export function useReports(
       setRequestAiRequest,
       addCardParagraphId,
       removeCardParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       reinstate,
       loaded,
