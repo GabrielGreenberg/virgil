@@ -70,6 +70,7 @@ function renderCard(overrides: Partial<CitationCardProps> = {}) {
     onSelect: vi.fn(),
     onJump: vi.fn(),
     onUpdateCitation: vi.fn(),
+    onAddBibEntry: null,
     ...overrides,
   };
   const utils = render(<CitationCard {...props} />);

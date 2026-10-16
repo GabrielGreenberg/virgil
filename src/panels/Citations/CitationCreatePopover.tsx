@@ -45,8 +45,9 @@ export interface CitationCreatePopoverProps {
   /** Paper's local references.bib entries (merged with the library inside). */
   paperBibEntries: BibEntry[];
   /** Add a library-only entry to the paper's bib (fires when such an entry is
-   *  staged, mirroring the in-card picker). */
-  onAddBibEntry?: (entry: BibEntry) => void;
+   *  staged, mirroring the in-card picker). Required; `null` = cannot add
+   *  (the picker then offers only paper entries — task 1143). */
+  onAddBibEntry: ((entry: BibEntry) => void) | null;
   /** Materialize the citation from the staged citekeys (≥1). Inserts the
    *  no-scroll atom at the captured pos + registers the gutter card. */
   onCommit: (keys: string[]) => void;

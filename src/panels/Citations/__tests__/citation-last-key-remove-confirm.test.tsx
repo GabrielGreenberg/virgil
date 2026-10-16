@@ -106,6 +106,7 @@ function Harness({
   const [liveKeys, setKeys] = useState(keys);
   return (
     <CitationCard
+      onAddBibEntry={null}
       citation={makeCitation(command, liveKeys)}
       isSelected={false}
       bibEntries={ENTRIES}

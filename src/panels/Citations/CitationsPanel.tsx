@@ -22,6 +22,7 @@ import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import type { NestedContainerInfo } from "@/components/editor-layout/panels/nest-footnote-children";
 import { partitionDockedCitations } from "@/components/editor-layout/panels/nest-footnote-children";
 import { CitationCard } from "./CitationCard";
+import type { CitationCardDoors } from "./citation-card-doors";
 
 interface CitationsPanelProps {
   citations: CitationRef[];
@@ -205,7 +206,9 @@ function CitationsPanel({
   // citation (M1).
   const getCitArchived = useCallback((c: CitationRef) => !!c.archived, []);
 
-  const sharedCardProps = {
+  // The card's bib doors, all required (task 1143) — the same set the
+  // floating and Omni surfaces build through `citationCardDoors`.
+  const sharedCardProps: CitationCardDoors = {
     bibEntries,
     bibPackage,
     getDisplayText,

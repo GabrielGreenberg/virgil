@@ -94,6 +94,7 @@ function Harness({
   external?.(setCommand);
   return (
     <CitationCard
+      onAddBibEntry={null}
       citation={{ ...CIT, command, keys: CIT.keys }}
       isSelected={false}
       bibEntries={entries}

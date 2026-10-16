@@ -104,6 +104,9 @@ export interface OmniHostProps {
   deleteCitation: CitationsHook["deleteCitation"];
   getFormattedBib: CitationsHook["getFormattedBib"];
   saveBibEntry: CitationsHook["saveBibEntry"];
+  /** The add-a-library-entry door (task 1143) — without it an Omni citation
+   *  card's picker cited library-only keys the bib never gained. */
+  addBibEntry: CitationsHook["addBibEntry"];
   getAnnotation: AnnotationsHook["getAnnotation"];
   setAnnotation: AnnotationsHook["setAnnotation"];
   requestBibReview: BibReviewHook["requestReview"];
@@ -513,6 +516,7 @@ export function OmniHost(p: OmniHostProps) {
       getBibReviewStatus: p.getBibReviewStatus,
       getBibReviewNotes: p.getBibReviewNotes,
       saveBibEntry: p.saveBibEntry,
+      addBibEntry: p.addBibEntry,
     }),
     ...buildNoteOmniItems({
       cards: p.notesCards,
@@ -657,7 +661,7 @@ export function OmniHost(p: OmniHostProps) {
     // not per-keystroke recomputation, so no keystroke-sanctity cost.
     p.footnoteAiRequests, p.setFootnoteAiRequest,
     // Citation/bib handlers
-    p.updateCitation, p.getFormattedBib, p.saveBibEntry,
+    p.updateCitation, p.getFormattedBib, p.saveBibEntry, p.addBibEntry,
     p.getAnnotation, p.setAnnotation,
     p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus, p.getBibReviewNotes,
     // Note handlers
