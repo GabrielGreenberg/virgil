@@ -169,7 +169,7 @@ import {
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useToolbarOverrideEditor } from "@/hooks/useToolbarOverrideEditor";
 import { useDocument } from "@/hooks/useDocument";
-import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import { useIsVisible, usePaneHideReset } from "@/lib/keep-alive/visibility-context";
 import {
   getPrintIntent,
   subscribePrintIntent,
@@ -6015,6 +6015,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       cardStoreInst.setHover(id && kind ? { id, kind } : null),
     [cardStoreInst],
   );
+  // The hover AUTHORITY ends when the pane is hidden or unmounted: no pointer
+  // leave can reach a display:none subtree, so a card hovered at the moment of
+  // a paper switch would otherwise stay lit (with its text) on return (task
+  // 1147). The authority door, not the card door — "nothing is hovered here".
+  usePaneHideReset(() => _setHoveredEntity(null, null));
 
   useAnchorHighlightReconciler({
     editor,

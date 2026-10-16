@@ -109,3 +109,29 @@ export function usePaneScopedListener<
     return () => node.removeEventListener(type, onEvent, { capture });
   }, [target, type, capture, passive, enabled, visibleRef]);
 }
+
+/**
+ * End a pane's POINTER-DERIVED state when the pane stops being shown.
+ *
+ * Hover-like state is cleared by a pointer LEAVE — and a pane that goes
+ * `display:none` (or unmounts) under a resting pointer gets none: React
+ * dispatches no `mouseleave` into a hidden subtree, and every
+ * `usePaneScopedListener` bails while the pane is hidden. So without this, a
+ * paper switched away from mid-hover keeps that hover until the user happens
+ * to hover something else after switching back (task 1147). `reset` runs on
+ * the visible→hidden EDGE and on unmount — never per render, never on show
+ * (clearing on show would leave stale chrome in the hidden DOM and race the
+ * first real hover after return). The callback is held through a ref so an
+ * inline closure does not re-arm the effect.
+ */
+export function usePaneHideReset(reset: () => void): void {
+  const isVisible = useIsVisible();
+  const resetRef = useRef(reset);
+  useLayoutEffect(() => {
+    resetRef.current = reset;
+  });
+  useEffect(() => {
+    if (!isVisible) resetRef.current();
+  }, [isVisible]);
+  useEffect(() => () => resetRef.current(), []);
+}
