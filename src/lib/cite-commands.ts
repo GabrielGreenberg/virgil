@@ -14,7 +14,12 @@
  * - The optional starred suffix is matched outside this list as `(\*?)`.
  */
 
-import { extractBraced, extractBracketed } from "@/lib/latex-lexer";
+import {
+  extractBraced,
+  extractBracketed,
+  matchCommentTailAt,
+  skipCommentContinuationAt,
+} from "@/lib/latex-lexer";
 
 // Canonical (lowercase) base command names that accept the multi-cite
 // `\cmds[pre1][post1]{key1}[pre2][post2]{key2}…` syntax.
@@ -216,44 +221,96 @@ export function matchCiteCommandAt(
   if (!head) return null;
 
   const name = head[1].toLowerCase();
-  const multi = MULTI_CITE_NAMES.has(name);
-  let command = head[0];
-  let pos = start + head[0].length;
-  let keyed = false;
+  const read = readCiteUnitsAt(text, start + head[0].length, MULTI_CITE_NAMES.has(name));
+  // On no unit nothing was consumed and `end` sits just past the head: the
+  // caller gets back exactly the bytes that are well-formed and keeps the rest
+  // as prose.
+  return {
+    name,
+    command: text.slice(start, read.end),
+    end: read.end,
+    keyed: read.units.length > 0,
+  };
+}
 
-  // One iteration per `[pre][post]{key}` unit. A singular command takes exactly
-  // one; a plural takes as many as follow. Anything the unit does not match
-  // ends the command and is left for the caller.
+// ---------------------------------------------------------------------------
+// THE argument reader — shared by the scanner above and the citation MODEL.
+// ---------------------------------------------------------------------------
+
+/** One `[opt][opt]{body}` unit of a cite command, contents unwrapped. */
+export interface CiteArgUnit {
+  /** The 0–2 optional arguments, in source order, contents only. */
+  opts: string[];
+  /** The mandatory `{…}` group's raw contents (keys, or `\citetext`'s text). */
+  body: string;
+}
+
+/**
+ * Read the `[pre][post]{key}` units of a cite command starting at `pos` (just
+ * past `\name*`). A singular command takes exactly one; with `repeat` as many
+ * as follow. Anything a unit does not match ends the read and is left for the
+ * caller — optional arguments with no `{…}` after them are given back.
+ *
+ * THE reader of cite-argument syntax (task 1141). The scanner that FINDS a
+ * citation and the model that READS one ({@link parseCiteCommand} in
+ * `cite-command-model.ts`) both come through here, so a source the scanner
+ * accepts is a source the model can read. Before 1141 the model carried its own
+ * `\[([^\]]*)\]` / `\{([^}]+)\}` regexes: a `]` inside a braced note
+ * (`\citep[p.~3 {[}n.~2{]}]{k}`) made the scanner build an atom the model
+ * answered `null` for. Groups are read by the lexer's one comment- and
+ * brace-aware scanner (`extractBracketed` / `extractBraced`, task 1021).
+ */
+export function readCiteUnitsAt(
+  text: string,
+  pos: number,
+  repeat: boolean,
+): { units: CiteArgUnit[]; end: number } {
+  const units: CiteArgUnit[] = [];
   for (;;) {
     const unitStart = pos;
-    let brackets = "";
+    const opts: string[] = [];
     for (let n = 0; n < 2 && text[pos] === "["; n++) {
-      // THE optional-argument reader (task 1021): `[see {a]b}]` closes at the
-      // LAST bracket, and a `]` in a `%` comment is not a delimiter.
+      // `[see {a]b}]` closes at the LAST bracket, and a `]` in a `%` comment
+      // is not a delimiter.
       const opt = extractBracketed(text, pos);
       if (!opt) break;
-      brackets += text.slice(pos, opt.end);
+      opts.push(opt.content);
       pos = opt.end;
     }
-    if (text[pos] !== "{") {
-      // Optional args with no key after them are not ours — give them back so
-      // the caller sees the command exactly as far as it is well-formed.
+    const inner = text[pos] === "{" ? extractBraced(text, pos) : null;
+    if (!inner) {
       pos = unitStart;
       break;
     }
-    const inner = extractBraced(text, pos);
-    if (inner === null) {
-      pos = unitStart;
-      break;
-    }
-    command += brackets + "{" + inner.content + "}";
+    units.push({ opts, body: inner.content });
     pos = inner.end;
-    keyed = true;
-    if (!multi) break;
+    if (!repeat) break;
   }
+  return { units, end: pos };
+}
 
-  // On `!keyed` nothing was appended and `pos` was restored, so `command` is
-  // the bare head and `end` sits just past it: the caller gets back exactly the
-  // bytes that are well-formed and keeps the rest as prose.
-  return { name, command, end: pos, keyed };
+/**
+ * Split a cite key group into its keys — THE key splitter (task 1141).
+ *
+ * A `%` comment is TeX's, not a key's: it is dropped with the newline and the
+ * continuation line's leading blanks TeX discards (`matchCommentTailAt` +
+ * `skipCommentContinuationAt`, the lexer's READING pair), so the common
+ * multi-line `\citep{a,%\n  b}` reads `["a", "b"]` rather than a key
+ * `"%\n  b"`. Then comma-split, trim, and drop empties — an empty body
+ * (`\cite{ }`) yields `[]`, the signal a pristine key-less citation relies on.
+ */
+export function splitCiteKeys(body: string): string[] {
+  let live = "";
+  for (let i = 0; i < body.length; i++) {
+    const tail = body[i] === "%" ? matchCommentTailAt(body, i) : null;
+    if (tail) {
+      i = skipCommentContinuationAt(body, tail.end) - 1;
+      continue;
+    }
+    live += body[i];
+  }
+  return live
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
 }
