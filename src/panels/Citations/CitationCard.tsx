@@ -155,6 +155,9 @@ interface UiRow {
   key: string;
   prenote?: string;
   postnote?: string;
+  /** The `[…]{…}` group the key was READ from (`ParsedCiteKey.group`), so a
+   *  persist re-joins a plural comma list rather than splitting it (task 1141). */
+  group?: number;
 }
 
 function inferTypeFromBare(command: string): {
@@ -200,6 +203,7 @@ function rowsFromCommand(command: string): UiRow[] {
     key: r.key,
     prenote: r.prenote,
     postnote: r.postnote,
+    group: r.group,
   }));
 }
 
@@ -550,6 +554,7 @@ export function CitationCard({
         key: r.key.trim(),
         prenote: r.prenote || undefined,
         postnote: r.postnote || undefined,
+        group: r.group,
       }));
       const command = serializeCiteCommand(
         {
