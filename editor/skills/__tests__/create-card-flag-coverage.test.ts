@@ -26,7 +26,9 @@
 // STATED SCOPE, so this is not over-built. Measured across `editor/scripts/`,
 // `create_card.py` is the ONLY script with a meaningful flag set —
 // `rename_citekey.py` and `list_requests.py` declare none, and
-// `get_para_context.py` has one (`--neighbors`) with no single owning skill. So
+// `get_para_context.py` has one (`--neighbors`) with no single owning skill.
+// `card_by_id.py` joined that last group in task 1112: one flag (`--panel`,
+// the cross-sidecar disambiguator), shared by move-card and restore-card. So
 // this is deliberately ONE pair, not a generalized script↔skill census; a
 // census over a population of one is a table pretending to be a rule. If a
 // second flag-bearing script ever gains an owning skill, widen the pair into a
@@ -104,10 +106,15 @@ describe("create-card.md Args ⊇ create_card.py flags (population DERIVED)", ()
   it("the scope claim is CHECKED — create_card.py is the only flag-bearing editor script", () => {
     // The stated reason this is one pair and not a census. If a sibling grows a
     // real flag set, this fails and the pair should become a table.
-    const siblings = ["rename_citekey.py", "list_requests.py", "card_by_id.py"];
-    for (const f of siblings) {
+    // Each sibling's flag count as measured; growth past it fails.
+    const siblings: Record<string, number> = {
+      "rename_citekey.py": 0,
+      "list_requests.py": 0,
+      "card_by_id.py": 1, // --panel (task 1112), no single owning skill
+    };
+    for (const [f, max] of Object.entries(siblings)) {
       const n = [...read(`editor/scripts/${f}`).matchAll(/add_argument\(\s*\n?\s*"--/g)].length;
-      expect(n, `${f} has grown optional flags — widen this pair into a table`).toBe(0);
+      expect(n, `${f} has grown optional flags — widen this pair into a table`).toBeLessThanOrEqual(max);
     }
   });
 });
