@@ -194,6 +194,11 @@ const LEDGER: Record<string, Row> = {
     events: ["window.TEX_DELIMITERS_CHANGED_EVENT"],
     why: "the delimiters event carries its docId",
   },
+  "hooks/useTrailingClickGuard.ts": {
+    scope: "gesture",
+    events: ["window.mouseup"],
+    why: "a drag's trailing-click suppression observes its own end edge, armed on the drag threshold (task 1152)",
+  },
   "hooks/useDragPosition.ts": {
     scope: "gesture",
     events: ["window.mousemove", "window.mouseup"],

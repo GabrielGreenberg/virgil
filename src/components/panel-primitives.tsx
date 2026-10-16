@@ -61,6 +61,7 @@ import { MenuRadioGroup } from "./menu/MenuRadioGroup";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { useTrailingClickGuard } from "@/hooks/useTrailingClickGuard";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { liftSpawnRect } from "@/floats/float-policy";
 import { pressFromInteractiveControl, isEditableEventTarget } from "@/lib/drag-blocklist";
@@ -2891,12 +2892,13 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // misaligns on some cards. The measured height is published as a CSS
   // variable on the card root; the popout uses `calc()` to self-center.
   const innerRef = useRef<HTMLDivElement>(null);
-  // Set when the lift gesture crosses its threshold so the browser's trailing
+  // Armed when the lift gesture crosses its threshold so the browser's trailing
   // click (mousedown→drag→mouseup still synthesizes one) is swallowed instead
-  // of firing the header toggle or the root onClick. Reset on the next
-  // mousedown — mirrors StripButton's `handledByPointer` pattern
-  // (src/components/editor-layout/drag-drop.tsx).
-  const suppressClickRef = useRef(false);
+  // of firing the header toggle or the root onClick. The guard disarms itself
+  // on the gesture's end edge — the lift usually releases over the popped-out
+  // float, not this card, and the flag used to survive until the next press,
+  // eating a keyboard / programmatic activation in between (task 1152).
+  const trailingClick = useTrailingClickGuard();
   useLayoutEffect(() => {
     const el = innerRef.current;
     if (!el) return;
@@ -3043,7 +3045,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       triggered = true;
       // The lift consumed this press — swallow the trailing click so it
       // can't toggle/select/jump the card that's about to pop out.
-      suppressClickRef.current = true;
+      trailingClick.arm();
       // Snapshot the source card's rect before any DOM churn (the card
       // may unmount on the next render once it flips to popped).
       const r = cardEl.getBoundingClientRect();
@@ -3191,13 +3193,13 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       } as React.CSSProperties}
       onClick={onClick ? (e) => {
         e.stopPropagation();
-        if (suppressClickRef.current) return;
+        if (trailingClick.consume()) return;
         onClick(e);
       } : undefined}
       onMouseDown={(e) => {
         // A fresh press re-arms the click path (the suppress flag only ever
         // swallows the single trailing click of a completed lift gesture).
-        suppressClickRef.current = false;
+        trailingClick.reset();
         callerMouseDown?.(e);
         if (e.defaultPrevented) return;
         onWrapperMouseDown(e);
@@ -3259,7 +3261,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
                   onClick: (e: React.MouseEvent) => {
                     e.stopPropagation();
                     // Swallow the trailing click of a completed lift gesture.
-                    if (suppressClickRef.current) return;
+                    if (trailingClick.consume()) return;
                     headerActivate();
                   },
                   onKeyDown: (e: React.KeyboardEvent) => {
