@@ -151,7 +151,9 @@ describe("leg 1 — the stamper", () => {
 describe("leg 2 — the wiring", () => {
   it("npm run build stamps the export", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8"));
-    expect(pkg.scripts.postbuild).toBe("node scripts/stamp-service-worker.mjs");
+    // The stamp runs FIRST; anything emitted after it (task 1153's
+    // version.json) is outside the stamp and the precache by construction.
+    expect(pkg.scripts.postbuild.split(" && ")[0]).toBe("node scripts/stamp-service-worker.mjs");
     // A build that bypasses npm's pre/post hooks ships an unstamped worker.
     for (const [name, cmd] of Object.entries<string>(pkg.scripts)) {
       if (name === "build") continue;
