@@ -28,7 +28,7 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard, type UseAnchoredCardResult } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useHoverClaim } from "@/links/_shared/anchored-card-store";
 import type { CardKind } from "@/cards/types";
 
 export interface AnchoredCardShellOptions {
@@ -84,7 +84,6 @@ function cardElementOf(e: MouseEvent | undefined): HTMLElement | null {
 export function useAnchoredCardShell(opts: AnchoredCardShellOptions): AnchoredCardShell {
   const { kind, id, isPoppedOut, onSelect, onJump } = opts;
   const ac = useAnchoredCard({ kind, id });
-  const cardStore = useCardStore();
   const popped = usePoppedCards();
   const compressedLines = useCompressedLines();
   const cardKey = cardPopKey(kind, id);
@@ -94,7 +93,9 @@ export function useAnchoredCardShell(opts: AnchoredCardShellOptions): AnchoredCa
       ? makeCompressedSummary(opts.summaryContent, compressedLines) || ""
       : undefined;
 
-  const onHoverChange = (hovering: boolean) => cardStore.setHoverFor(ac.ref, hovering);
+  // Through the claim door, so a card that unmounts while hovered (collapse
+  // into a group, panel switch, morph) releases its hover — task 1150.
+  const onHoverChange = useHoverClaim(ac.ref).setHovering;
   const onTogglePopout = popped
     ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
     : undefined;
