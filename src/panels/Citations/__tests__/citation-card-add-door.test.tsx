@@ -116,28 +116,28 @@ describe("citation card add-to-bib door (task 1143)", () => {
   });
 
   function pick(onAddBibEntry: ((e: BibEntry) => void) | null) {
-    const onSelectKey = vi.fn();
+    const onSelectKeys = vi.fn();
     render(
       <CitekeyPicker
         open
         anchorRect={ANCHOR}
         onClose={vi.fn()}
         paperBibEntries={PAPER}
-        onSelectKey={onSelectKey}
+        onSelectKeys={onSelectKeys}
         onAddBibEntry={onAddBibEntry}
       />,
     );
     const input = screen.getByPlaceholderText("Search references or library…");
     fireEvent.change(input, { target: { value: "quine" } });
-    return { onSelectKey, input };
+    return { onSelectKeys, input };
   }
 
   it("picking a library-only entry adds it to the bib, then cites it", () => {
     const add = vi.fn();
-    const { onSelectKey, input } = pick(add);
+    const { onSelectKeys, input } = pick(add);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(add).toHaveBeenCalledWith(LIBRARY_ONLY);
-    expect(onSelectKey).toHaveBeenCalledWith("quine1960");
+    expect(onSelectKeys).toHaveBeenCalledWith(["quine1960"]);
   });
 
   it("a surface that cannot add (null) is not offered library-only rows", () => {

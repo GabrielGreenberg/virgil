@@ -47,7 +47,6 @@ describe("parseRawCitekeys", () => {
     expect(parseRawCitekeys(" kripke1980 ")).toEqual({
       ok: true,
       keys: ["kripke1980"],
-      text: "kripke1980",
     });
   });
 
@@ -55,7 +54,6 @@ describe("parseRawCitekeys", () => {
     expect(parseRawCitekeys("kripke1980, lewis1986,")).toEqual({
       ok: true,
       keys: ["kripke1980", "lewis1986"],
-      text: "kripke1980,lewis1986",
     });
   });
 

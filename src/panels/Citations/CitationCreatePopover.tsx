@@ -56,6 +56,20 @@ export interface CitationCreatePopoverProps {
   onClose: () => void;
 }
 
+/** Append each trimmed, non-empty key not already present — the ONE dedup the
+ *  stage and the Return-commit share. Returns `prev` itself when nothing is
+ *  new, so a re-stage of a staged key costs no render. */
+function mergeKeys(prev: string[], keys: string[]): string[] {
+  let out = prev;
+  for (const raw of keys) {
+    const k = raw.trim();
+    if (!k || out.includes(k)) continue;
+    if (out === prev) out = [...prev];
+    out.push(k);
+  }
+  return out;
+}
+
 export function CitationCreatePopover({
   anchorRect,
   paperBibEntries,
@@ -74,10 +88,10 @@ export function CitationCreatePopover({
     stagedRef.current = staged;
   }, [staged]);
 
-  const stageKey = useCallback((key: string) => {
-    const trimmed = key.trim();
-    if (!trimmed) return;
-    setStaged((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+  // The picker hands over KEYS (a typed comma list arrives split — task 1144),
+  // so the dedup compares key against key, never against a joined list.
+  const stageKeys = useCallback((keys: string[]) => {
+    setStaged((prev) => mergeKeys(prev, keys));
   }, []);
 
   const removeKey = useCallback((key: string) => {
@@ -87,15 +101,12 @@ export function CitationCreatePopover({
   // The single commit-or-close chokepoint, shared by OK, dismiss (click-away /
   // Escape), AND Return-commit. Commits iff ≥1 key would result, then tears
   // down. Reads the staged set from the ref so a stale closure can never lose
-  // it; `extraKey` folds in a key staged in the SAME tick (the Return path
+  // it; `extraKeys` folds in keys staged in the SAME tick (the Return path
   // stages + commits before the `staged` state has re-rendered, so the ref
-  // doesn't yet see it) — deduped against the ref exactly like `stageKey`.
+  // doesn't yet see it) — deduped against the ref exactly like `stageKeys`.
   const commitWith = useCallback(
-    (extraKey?: string) => {
-      const base = stagedRef.current;
-      const trimmed = extraKey?.trim();
-      const keys =
-        trimmed && !base.includes(trimmed) ? [...base, trimmed] : base;
+    (extraKeys: string[] = []) => {
+      const keys = mergeKeys(stagedRef.current, extraKeys);
       if (keys.length > 0) onCommit(keys);
       onClose();
     },
@@ -103,7 +114,7 @@ export function CitationCreatePopover({
   );
 
   // Zero-arg wrapper for the OK / click-away paths — those call sites pass a
-  // DOM event (the OK button's `onClick`), which must never reach `extraKey`.
+  // DOM event (the OK button's `onClick`), which must never reach `extraKeys`.
   const commitAndClose = useCallback(() => commitWith(), [commitWith]);
 
   // The CANCEL door: drop every staged key and tear down. Distinct from
@@ -118,7 +129,7 @@ export function CitationCreatePopover({
       open
       anchorRect={anchorRect}
       paperBibEntries={paperBibEntries}
-      onSelectKey={stageKey}
+      onSelectKeys={stageKeys}
       onAddBibEntry={onAddBibEntry}
       onClose={commitAndClose}
       onCancel={discardAndClose}

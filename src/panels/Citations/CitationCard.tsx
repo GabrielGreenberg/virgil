@@ -601,15 +601,43 @@ export function CitationCard({
   // `setRows` updater would invoke `onUpdateCitation` (a parent setState) during
   // React's reducer phase, which React 18+ warns about as "Cannot update a
   // component while rendering a different component".
-  const setRowKey = useCallback(
-    (rowId: string, key: string) => {
+  /**
+   * Put KEYS on the row `rowId` stands in — one row per key (task 1144). The
+   * first key the card does not already carry takes over the row (its id and
+   * notes stay, so the user's place survives); each further key becomes a new
+   * row right after it. A key some OTHER row already carries is skipped: the
+   * card cites a source once, the same rule the drop-merge keeps. Before this
+   * a typed `a,b` was stored as ONE row key — a phantom "not in your
+   * bibliography" row, the wrong singular/plural shape, and a drop of `a`
+   * that duplicated it.
+   */
+  const setRowKeys = useCallback(
+    (rowId: string, keys: string[]) => {
       // The backstop of the cite-side key rule (task 945): a key MOVING into
-      // `\cite{…}` must be one (or a comma list of them). The picker already
-      // refuses with a reason; this keeps any other door from serializing a
-      // `}` / `%` / space verbatim into the user's `.tex`. Keys the row
+      // `\cite{…}` must be one. The picker already refuses with a reason (and
+      // splits a comma list); this keeps any other door from serializing a
+      // `}` / `%` / space — or a joined list — into a row. Keys the card
       // already carries are not re-judged — they are the user's own bytes.
-      if (!parseRawCitekeys(key).ok) return;
-      const next = rows.map((r) => (r.id === rowId ? { ...r, key } : r));
+      const parsed = parseRawCitekeys(keys.join(","));
+      if (!parsed.ok) return;
+      const target = rows.find((r) => r.id === rowId);
+      if (!target) return;
+      const elsewhere = new Set(
+        rows.filter((r) => r.id !== rowId).map((r) => r.key.trim()),
+      );
+      const fresh = parsed.keys.filter(
+        (k, i) => !elsewhere.has(k) && parsed.keys.indexOf(k) === i,
+      );
+      if (fresh.length === 0) return;
+      const [first, ...rest] = fresh;
+      const next = rows.flatMap((r) =>
+        r.id === rowId
+          ? [
+              { ...r, key: first },
+              ...rest.map((key) => ({ id: nextRowId(), key })),
+            ]
+          : [r],
+      );
       // Re-derive: changing the keyed-row count crosses the ≥2-keys threshold
       // either way, so the command shape follows (T6-C16, two-way).
       const nextType = derivePlural(type, next, bibPackage);
@@ -785,7 +813,7 @@ export function CitationCard({
       // Compute `next` from the closure `rows` and call `setRows`/`setType`/
       // `persist` at EVENT time — never a parent setState (`persist` →
       // `onUpdateCitation`) from inside the `setRows` updater. Matches the
-      // sibling mutators' discipline (`setRowKey`/`setRowPostnote`/`removeRow`).
+      // sibling mutators' discipline (`setRowKeys`/`setRowPostnote`/`removeRow`).
       if (rows.some((r) => r.key === bibKey)) return; // already present — no-op
       // If the only row is empty, fill it instead of adding a new row.
       const allEmpty = rows.every((r) => !r.key.trim());
@@ -1395,8 +1423,8 @@ export function CitationCard({
             ? rows.find((r) => r.id === pickerRowId)?.key || ""
             : ""
         }
-        onSelectKey={(k) => {
-          if (pickerRowId) setRowKey(pickerRowId, k);
+        onSelectKeys={(keys) => {
+          if (pickerRowId) setRowKeys(pickerRowId, keys);
         }}
         onAddBibEntry={onAddBibEntry}
         externalQuery={pickerExternalQuery ?? undefined}

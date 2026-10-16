@@ -17,7 +17,7 @@
 //
 // The underlying `CitekeyPicker` (search + library merge + floating menu) is
 // covered by its own tests; here it is mocked to a thin stub that surfaces the
-// `onSelectKey` / `onClose` callbacks + the `footer` so this test drives the
+// `onSelectKeys` / `onClose` callbacks + the `footer` so this test drives the
 // STAGING + COMMIT logic in isolation.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
@@ -33,17 +33,17 @@ vi.mock("@/lib/storage", async () =>
 
 vi.mock("@/panels/Citations/CitekeyPicker", () => ({
   CitekeyPicker: (props: {
-    onSelectKey: (k: string) => void;
+    onSelectKeys: (keys: string[]) => void;
     onClose: () => void;
     onCancel?: () => void;
-    onEnterCommit?: (pickedKey?: string) => void;
+    onEnterCommit?: (pickedKeys: string[]) => void;
     footer?: React.ReactNode;
   }) => (
     <div data-testid="picker">
-      <button data-testid="pick-smith" onClick={() => props.onSelectKey("smith")}>
+      <button data-testid="pick-smith" onClick={() => props.onSelectKeys(["smith"])}>
         pick smith
       </button>
-      <button data-testid="pick-jones" onClick={() => props.onSelectKey("jones")}>
+      <button data-testid="pick-jones" onClick={() => props.onSelectKeys(["jones"])}>
         pick jones
       </button>
       {/* Return in the real picker STAGES the active key then fires
@@ -51,8 +51,8 @@ vi.mock("@/panels/Citations/CitekeyPicker", () => ({
       <button
         data-testid="enter-smith"
         onClick={() => {
-          props.onSelectKey("smith");
-          props.onEnterCommit?.("smith");
+          props.onSelectKeys(["smith"]);
+          props.onEnterCommit?.(["smith"]);
         }}
       >
         enter smith
@@ -60,14 +60,25 @@ vi.mock("@/panels/Citations/CitekeyPicker", () => ({
       <button
         data-testid="enter-jones"
         onClick={() => {
-          props.onSelectKey("jones");
-          props.onEnterCommit?.("jones");
+          props.onSelectKeys(["jones"]);
+          props.onEnterCommit?.(["jones"]);
         }}
       >
         enter jones
       </button>
+      {/* Return on a raw comma list: the real picker hands over its KEYS
+          (task 1144), staged and folded in the same tick. */}
+      <button
+        data-testid="enter-smith-jones-raw"
+        onClick={() => {
+          props.onSelectKeys(["smith", "jones"]);
+          props.onEnterCommit?.(["smith", "jones"]);
+        }}
+      >
+        enter smith,jones
+      </button>
       {/* Return with nothing new to stage (empty list / empty query). */}
-      <button data-testid="enter-empty" onClick={() => props.onEnterCommit?.(undefined)}>
+      <button data-testid="enter-empty" onClick={() => props.onEnterCommit?.([])}>
         enter empty
       </button>
       {/* The picker's onClose — the DISMISS door (click-away). */}
@@ -179,6 +190,13 @@ describe("CitationCreatePopover — Return commits (single keystroke)", () => {
     fireEvent.click(screen.getByTestId("pick-smith"));
     fireEvent.click(screen.getByTestId("enter-smith"));
     expect(onCommit).toHaveBeenCalledWith(["smith"]);
+  });
+
+  it("a raw comma list over an already-staged key dedups key by key (task 1144)", () => {
+    const { onCommit } = setup();
+    fireEvent.click(screen.getByTestId("pick-smith"));
+    fireEvent.click(screen.getByTestId("enter-smith-jones-raw"));
+    expect(onCommit).toHaveBeenCalledWith(["smith", "jones"]);
   });
 
   it("Return with nothing staged and no active key commits nothing, just closes", () => {
