@@ -133,6 +133,7 @@ describe("an add that did not land leaves no phantom", () => {
     answer.kind = "read-only";
     act(() => {
       result.current.addBibEntry({
+        uid: "",
         key: "bar",
         type: "article",
         fields: { title: "Never written" },
