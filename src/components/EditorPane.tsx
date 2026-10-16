@@ -6380,27 +6380,50 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         if (ok) spliceAndArchiveAtom(kind, id);
         return;
       }
-      // Non-atom kinds: a pure flag toggle (no doc mutation, no confirm).
-      // Archiving (the INTO-archived transition) also resolves any pending AI
-      // request on the card; unarchiving does NOT re-open it (restore stays
-      // resolved — archiving is a deliberate set-aside).
-      // An archived AI PROPOSAL also ends the Task it ANSWERS (task 1046) — a
-      // row `clearAiRequestForKind` can't reach (it matches by `linkedTo`, and
-      // the proposal is the answer, never the linked card). Only the suggestion
-      // families hold proposals; the leave rule ignores everything else.
-      if (!currentlyArchived) {
-        clearAiRequestForKind(kind, id);
-        const bag = modeBCardsRef.current;
-        onProposalLeave(
-          bag.comments.find((c) => c.id === id) ??
-            bag.cutterCards.find((c) => c.id === id),
-        );
+      // Non-atom kinds. Unarchive ends nothing: a plain flag toggle, and it
+      // does NOT re-open a resolved AI request (archiving is a deliberate
+      // set-aside).
+      if (currentlyArchived) {
+        setArchivedForKind(kind, id, false);
+        return;
       }
-      setArchivedForKind(kind, id, !currentlyArchived);
+      // Archive ends the record's live role, so it rides the SAME lifecycle
+      // executor as delete and morph (task 1154): SETTLE an applied
+      // suggestion's live splice first (Keep / Revert / Cancel — before 1154
+      // this door alone skipped it, closing the Task "rejected" over an edit
+      // still in the paper under a now-hidden card), UNBRIDGE the card's own
+      // flag + row, flip the flag, then FINALIZE an archived AI proposal's
+      // Task through the leave rule (task 1046).
+      const bag = modeBCardsRef.current;
+      await runCardLifecycleEvent(
+        {
+          type: "archive",
+          kind,
+          id,
+          card:
+            bag.comments.find((c) => c.id === id) ??
+            bag.cutterCards.find((c) => c.id === id),
+        },
+        {
+          // Archive raises no content confirm (it is reversible).
+          confirm: async () => true,
+          // The panel-setter fan-out, not the row-only forwarder: the card
+          // SURVIVES an archive, so its own flag must come down with the row.
+          // Mode forwarded from the executor (`unbridgeModeFor`).
+          unbridgeAiRequest: (k, cid, mode) => setAiRequestForKind(k, cid, false, mode),
+          appliedSplice: appliedSpliceOps,
+          // Unused by archive (the record survives); required by the deps bag.
+          signal: cardLifecycleSignal,
+          finalizeLeavingProposal: onProposalLeave,
+          mutate: () => setArchivedForKind(kind, id, true),
+        },
+      );
     },
     [
       setArchivedForKind,
-      clearAiRequestForKind,
+      setAiRequestForKind,
+      appliedSpliceOps,
+      cardLifecycleSignal,
       onProposalLeave,
       spliceAndArchiveAtom,
       confirmArchiveAtom,

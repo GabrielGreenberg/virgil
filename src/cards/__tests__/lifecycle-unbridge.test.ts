@@ -172,6 +172,9 @@ describe("unbridgeModeFor — every lifecycle transition is TERMINAL", () => {
     // The card's aiRequest identity is gone; the TO kind has no routing, so no
     // later toggle could ever clear the row.
     morph: "terminate",
+    // The card is set aside; unarchive deliberately doesn't re-open the ask
+    // (task 1154 made archive an executor event).
+    archive: "terminate",
   };
 
   for (const [type, expected] of Object.entries(MODE_BY_EVENT) as Array<
