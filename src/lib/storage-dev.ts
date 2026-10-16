@@ -75,6 +75,7 @@ import {
 import {
   stampDiskFingerprint,
   fingerprintOf,
+  ownWriteFingerprint,
   getDiskFingerprint,
   beginOwnWrite,
   hashContent,
@@ -251,7 +252,7 @@ async function putTrackedText(
   const releaseOwnWrite = beginOwnWrite(docId, relPath, content);
   try {
     await putText(docFileUrl(docId, relPath), content);
-    await stampLedger(docId, relPath, content);
+    await stampOwnWrite(docId, relPath, content);
   } finally {
     releaseOwnWrite();
   }
@@ -395,16 +396,16 @@ async function buildDevSerializeOpts(
 }
 
 /**
- * Best-effort disk-ledger stamp (dev mirror of storage-fsa's `stampLedger`).
- * Re-stats `relPath` via the HEAD-backed `statFiles` AFTER the write/read so
- * the recorded `mtimeMs` is the dev server's real post-write value, combines
- * it with the known `content` bytes' hash, and stamps the ledger — so the
- * external-change watcher never misreads Virgil's own write as an external
- * change (design: docs/memos/external-change-badge/DESIGN.md §3).
+ * Best-effort post-write ledger stamp (dev mirror of storage-fsa's
+ * `stampOwnWrite`). Re-stats `relPath` via the HEAD-backed `statFiles` AFTER
+ * the write for the dev server's real post-write mtime, and stamps
+ * `ownWriteFingerprint` — hash AND size from the bytes Virgil wrote, never the
+ * stat's size (task 1155: a foreign write landing between the PUT and the stat
+ * must not be stamped as Virgil's).
  *
- * NEVER throws: a stat failure during stamping must not break a save or load.
+ * NEVER throws: a stat failure during stamping must not break a save.
  */
-async function stampLedger(
+async function stampOwnWrite(
   docId: string,
   relPath: string,
   content: string,
@@ -413,7 +414,7 @@ async function stampLedger(
     const stats = await statFiles(docId, [relPath]);
     const stat = stats[relPath];
     if (!stat) return; // absent on re-stat — nothing authoritative to record
-    stampDiskFingerprint(docId, relPath, fingerprintOf(stat, content));
+    stampDiskFingerprint(docId, relPath, ownWriteFingerprint(stat, content));
   } catch (e) {
     console.warn(`[storage-dev] disk-ledger stamp failed for ${relPath}:`, e);
   }
@@ -655,14 +656,16 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   const texFilename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
 
   const [latex, sidecar] = await Promise.all([
-    fetchText(`${API}/doc/${docId}/${texFilename}`).then((t) => t ?? DEFAULT_LATEX),
+    // Through the tracked read: ONE response serves the bytes AND the stamp
+    // (task 1155 — never a read plus a separate re-stat). Absent → default,
+    // stamping nothing.
+    fetchTextTracked(docId, texFilename).then((t) => t ?? DEFAULT_LATEX),
     fetchJson<VirgilSidecar>(`${API}/doc/${docId}/virgil/virgil.json`, DEFAULT_SIDECAR),
   ]);
 
-  // Baseline the disk ledger from what we just read. Superseded below by the
+  // The tracked read above baselined the disk ledger. Superseded below by the
   // load-writeback stamp if the writeback fires — that's correct, the
   // writeback is the newer authoritative on-disk state.
-  await stampLedger(docId, texFilename, latex);
   // Task 357 (parity with storage-fsa): retain the loaded bytes' word counts so
   // an automatic write landing before the user's first real edit is measured
   // against them.

@@ -854,7 +854,7 @@ Seven rules it earned:
   is the pre-415 behaviour; a wrongly-skipped write leaves the user's state
   unpersisted, which is the direction that costs.
 - **The stat makes a skip CHEAPER, not dearer.** One metadata read replaces an
-  entire `createWritable` + rename + the post-write stat `stampLedger` would
+  entire `createWritable` + rename + the post-write stat `stampOwnWrite` would
   have done anyway.
 - **The funnel owns the STAMP as well as the write**, because "what is on disk"
   and "who may skip writing it" are one fact. A writer that could stamp without
@@ -901,7 +901,7 @@ calls (slow on a cloud-synced folder); a watcher poll that confirm-read in that
 window compared Virgil's own bytes against the pre-write stamp and raised a false
 "Keep mine / Use disk" CONFLICT (severity reads `hasWorkToWrite`, true mid-save).
 So the door registers the hash first (`beginOwnWrite`, released in a `finally`
-after `stampLedger`), and both watchers ask `isOwnContent` — current stamp OR an
+after `stampOwnWrite`), and both watchers ask `isOwnContent` — current stamp OR an
 in-flight own write — AFTER the read's await, never against a fingerprint captured
 before it (the class: a comparand read, an await, a compare, while the value's
 owner moved it; `diskAlreadyHas` re-reads its stamp after its `getFile` for the
