@@ -183,6 +183,42 @@ export function fingerprintOf(
   };
 }
 
+/**
+ * The fingerprint of a write Virgil just made: `{hash, size}` describe the
+ * bytes Virgil WROTE, and only `mtimeMs` comes from the post-write stat.
+ *
+ * Task 1155 — a stamp's hash and its `{mtime,size}` must describe the SAME file
+ * revision. A post-write stat cannot know which revision it saw: a foreign
+ * writer (Dropbox, a cowork agent, another editor) landing between Virgil's
+ * write and the stat would hand back the FOREIGN revision's `{mtime,size}`,
+ * and `fingerprintOf(stat, content)` would then pair it with Virgil's hash —
+ * after which the watcher's cheap path (`live == stamp` → no read) never looks
+ * at that file again, and the next autosave silently overwrites the edit.
+ * Taking `size` from the written bytes themselves means a foreign revision of
+ * a different size can never match the stamp: the watcher's next poll sees the
+ * drift, confirm-reads, finds bytes that are not Virgil's, and flags them.
+ *
+ * Residual (stated, not closed): a foreign write of the SAME byte length
+ * inside that window still matches on size, and its mtime is stamped.
+ */
+export function ownWriteFingerprint(
+  stat: { mtimeMs: number },
+  content: string,
+): DiskFingerprint {
+  return {
+    mtimeMs: stat.mtimeMs,
+    size: utf8ByteLength(content),
+    hash: hashContent(content),
+  };
+}
+
+const utf8Encoder = new TextEncoder();
+
+/** The byte length `content` occupies on disk (writes are UTF-8). */
+export function utf8ByteLength(content: string): number {
+  return utf8Encoder.encode(content).length;
+}
+
 // ---------------------------------------------------------------------------
 // Content hash — cyrb53
 //

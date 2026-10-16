@@ -209,7 +209,7 @@ describe("census · both backends ask the gate before writing a bundle", () => {
       // refusal). Requiring it after the refusal would indict the forensic net
       // the refusal exists to arm. That it happens on exactly the armed edge is
       // pinned in `preservation-refusal-posture.test.ts`.
-      for (const needle of ["putText(", "writeTextToHandle(", "stampLedger("]) {
+      for (const needle of ["putText(", "writeTextToHandle(", "stampOwnWrite("]) {
         const at = src.indexOf(needle, fnAt);
         if (at === -1 || at > src.indexOf("\n}\n", refuseAt) + 100000) continue;
         expect(

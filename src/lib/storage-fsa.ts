@@ -118,6 +118,7 @@ import {
 import {
   stampDiskFingerprint,
   fingerprintOf,
+  ownWriteFingerprint,
   getDiskFingerprint,
   beginOwnWrite,
   hashContent,
@@ -358,7 +359,7 @@ async function writeTrackedText(
   const releaseOwnWrite = beginOwnWrite(docId, relPath, content);
   try {
     await writeTextToHandle(fileHandle, content);
-    await stampLedger(docId, relPath, content);
+    await stampOwnWrite(docId, relPath, fileHandle, content);
   } finally {
     releaseOwnWrite();
   }
@@ -943,12 +944,19 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
     }
   }
 
-  const latex = await safeReadText(docHandle, meta.texFilename, DEFAULT_LATEX);
-  // Baseline the disk ledger from what we just read. If the load-writeback
-  // fires below it supersedes this stamp with the re-stamped bytes — correct,
-  // since the writeback is the newer authoritative on-disk state. `stampLedger`
-  // re-stats, so a missing .tex (latex === DEFAULT_LATEX fallback) is skipped.
-  await stampLedger(docId, meta.texFilename, latex);
+  // Baseline the disk ledger from what we just read, through the tracked read:
+  // ONE `getFile()` serves the bytes AND the stamp, so the hash and the
+  // `{mtime,size}` describe the same revision (task 1155 — the old read-then-
+  // re-stat let a foreign write landing in between stamp ITS stat under these
+  // bytes' hash, blinding the watcher to it). If the load-writeback fires below
+  // it supersedes this stamp — correct, the writeback is the newer on-disk
+  // state. A missing .tex falls back to DEFAULT_LATEX and stamps nothing.
+  const latex = await safeReadTrackedText(
+    docId,
+    docHandle,
+    meta.texFilename,
+    DEFAULT_LATEX,
+  );
   // Task 357: retain what this document was LOADED with, so an automatic write
   // that lands before the user has genuinely edited can be measured against the
   // bytes rather than against Virgil's own re-stamped output.
@@ -1945,27 +1953,32 @@ export async function statFiles(
 }
 
 /**
- * Best-effort ledger stamp: re-stat `relPath` AFTER a write/read settles so
- * the recorded `mtimeMs` is the OS's real post-write value, combine it with
- * the known `content` bytes' hash, and stamp the disk ledger. This is the
- * false-positive killer — it records "this is exactly what Virgil put on (or
- * read from) disk" so the watcher never misreads Virgil's own write as an
- * external change (design: docs/memos/external-change-badge/DESIGN.md §3).
+ * Best-effort post-write ledger stamp: read the written handle's `lastModified`
+ * AFTER the write settles (the OS's real post-write mtime) and stamp
+ * `ownWriteFingerprint` — hash AND size from the bytes Virgil wrote, never the
+ * stat's size. This is the false-positive killer — it records "this is exactly
+ * what Virgil put on disk" so the watcher never misreads Virgil's own write as
+ * an external change (design: docs/memos/external-change-badge/DESIGN.md §3) —
+ * and, since task 1155, it cannot pair Virgil's hash with a FOREIGN revision's
+ * stat: a different-size foreign write landing between the write and this
+ * stat leaves a size mismatch the watcher's next poll confirm-reads and flags.
  *
- * NEVER throws: a stat failure during stamping must not break a save or load.
- * On a stat miss (file vanished between write and re-stat — should not happen
- * but is harmless) we simply skip the stamp.
+ * Stats the SAME handle that was written (no name re-resolution). NEVER throws:
+ * a stat failure must not break a save; on a miss we simply skip the stamp.
  */
-async function stampLedger(
+async function stampOwnWrite(
   docId: string,
   relPath: string,
+  fileHandle: FileSystemFileHandle,
   content: string,
 ): Promise<void> {
   try {
-    const docHandle = await requireDocHandleForRead(docId);
-    const stat = await statOneFile(docHandle, relPath);
-    if (!stat) return; // absent on re-stat — nothing authoritative to record
-    stampDiskFingerprint(docId, relPath, fingerprintOf(stat, content));
+    const file = await fileHandle.getFile();
+    stampDiskFingerprint(
+      docId,
+      relPath,
+      ownWriteFingerprint({ mtimeMs: file.lastModified }, content),
+    );
   } catch (e) {
     console.warn(`[storage] disk-ledger stamp failed for ${relPath}:`, e);
   }
@@ -2745,6 +2758,29 @@ async function safeReadText(
   try {
     const fh = await dir.getFileHandle(filename);
     return await readTextFromHandle(fh);
+  } catch (e) {
+    if (isNotFound(e)) return fallback;
+    throw e;
+  }
+}
+
+/** `safeReadText` through the ledger (`readTrackedText`): one `getFile()`
+ *  serves bytes + stamp. Not-found → `fallback`, stamping nothing. */
+async function safeReadTrackedText(
+  docId: string,
+  dir: FileSystemDirectoryHandle,
+  filename: string,
+  fallback: string,
+): Promise<string> {
+  let fh: FileSystemFileHandle;
+  try {
+    fh = await dir.getFileHandle(filename);
+  } catch (e) {
+    if (isNotFound(e)) return fallback;
+    throw e;
+  }
+  try {
+    return await readTrackedText(docId, filename, fh);
   } catch (e) {
     if (isNotFound(e)) return fallback;
     throw e;

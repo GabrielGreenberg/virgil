@@ -67,7 +67,7 @@ vi.mock("@/lib/storage", () => ({
   /**
    * Virgil's OWN write, shaped like the real funnel (`writeTrackedText`): the
    * bytes land with a fresh mtime AND the disk ledger is re-baselined to them
-   * (`stampLedger`) — which is exactly what makes a deferred external change
+   * (`stampOwnWrite`) — which is exactly what makes a deferred external change
    * unrecoverable: the watcher's next poll compares disk against OUR
    * fingerprint and takes the cheap path. A fake that skipped the stamp would
    * re-emit on the next poll and pass the task-569 legs for the wrong reason.

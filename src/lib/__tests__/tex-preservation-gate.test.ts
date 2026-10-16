@@ -274,7 +274,7 @@ describe("census · every non-user-edit write consults the gate", () => {
       );
       const refuseAt = src.indexOf("describePreservationRefusal(", gateAt);
       expect(refuseAt, `${rel}: no refusal after the gate`).toBeGreaterThan(-1);
-      for (const needle of ["stampLedger(", "writeTextToHandle(", "putText("]) {
+      for (const needle of ["stampOwnWrite(", "writeTextToHandle(", "putText("]) {
         const at = src.indexOf(needle, regionAt);
         if (at === -1) continue;
         expect(
