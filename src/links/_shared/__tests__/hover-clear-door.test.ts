@@ -202,6 +202,37 @@ describe("census — the null leg of setHover is unspellable outside its owners"
     expect(offenders).toEqual([]);
   });
 
+  it("a hover CLAIM is spelled only through useHoverClaim — every other setHoverFor is a literal release (task 1150)", () => {
+    // A claim made by a bare `setHoverFor(ref, true)` (or `setHoverFor(ref,
+    // hovering)`) has no unmount release: browsers fire no mouseleave on a
+    // REMOVED element, so the slot outlives the surface that took it. The
+    // store file hosts both the door and `useHoverClaim`, its only claimant;
+    // anywhere else the second argument must be the literal `false` (the
+    // reconciler's deleted-entity clear, the morph re-key's release).
+    const offenders: string[] = [];
+    for (const rel of PROD) {
+      if (rel === STORE_FILE) continue;
+      const src = codeOnlyLines(fs.readFileSync(path.join(REPO, rel), "utf8"));
+      const re = /\.setHoverFor\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src))) {
+        if (/,\s*false\s*$/.test(m[1])) continue;
+        offenders.push(`${rel}:${src.slice(0, m.index).split("\n").length}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("the claim census is not vacuous — it sees the literal releases", () => {
+    let releases = 0;
+    for (const rel of PROD) {
+      if (rel === STORE_FILE) continue;
+      const src = codeOnlyLines(fs.readFileSync(path.join(REPO, rel), "utf8"));
+      releases += (src.match(/\.setHoverFor\s*\([^()]*,\s*false\s*\)/g) ?? []).length;
+    }
+    expect(releases).toBeGreaterThanOrEqual(2);
+  });
+
   it("no file re-derives the identity guard inline (the retired dialect A)", () => {
     // `getState().hover` read, then compared field-by-field against a local ref
     // — the exact chained form all six dialect-A sites used. The store reads its

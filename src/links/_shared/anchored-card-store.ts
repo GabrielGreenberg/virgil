@@ -56,8 +56,10 @@
 import {
   createContext,
   createElement,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -406,4 +408,66 @@ export function useIsHovered(ref: AnchoredCardRef | null | undefined): boolean {
   const h = useHover();
   if (!ref || !h) return false;
   return h.kind === ref.kind && h.id === ref.id;
+}
+
+// HOVER CLAIM — the one door for a pointer surface's own hover (task 1150) ──
+
+/** What {@link useHoverClaim} hands a pointer surface. */
+export interface HoverClaim {
+  /** Publish this surface's own pointer state (the shell's `onHoverChange`). */
+  setHovering: (hovering: boolean) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}
+
+/**
+ * The ONE door through which a pointer surface (a margin marker, a card root)
+ * claims the doc's hover slot for `ref` — and the reason it is a hook rather
+ * than a bare `setHoverFor(ref, true)`: a claim must not OUTLIVE the element
+ * that made it.
+ *
+ * Browsers fire no `mouseleave` when the hovered element is REMOVED. Before
+ * task 1150 both claimants released only on `mouseleave`, so a marker clicked
+ * inside the "+K" crowd popover (the popover closes, unmounting the button
+ * under the pointer), a hovered marker folded into a pill, or a hovered card
+ * that collapsed into a group / switched panel / morphed left `hover` naming
+ * it — card, rail and text anchor stuck lit until something else took the slot.
+ *
+ * So the hook remembers whether THIS instance currently holds a claim and, on
+ * unmount (or when `ref`'s identity changes), releases it through the card
+ * door's "clear only if still mine" leg. It releases only its OWN claim: a
+ * surface that never claimed (the text bridge lit its card from the editor)
+ * unmounts silently, and a sibling surface for the same ref that claimed the
+ * slot since is not this instance's to clear. Pinned by `hover-claim.test.tsx`;
+ * the census in `hover-clear-door.test.ts` refuses a `setHoverFor(…, true)`
+ * spelled anywhere but here.
+ */
+export function useHoverClaim(ref: AnchoredCardRef | null | undefined): HoverClaim {
+  const store = useCardStore();
+  const kind = ref?.kind;
+  const id = ref?.id;
+  const claim = useRef<{ store: CardStore; ref: AnchoredCardRef } | null>(null);
+
+  const setHovering = useCallback(
+    (hovering: boolean) => {
+      if (kind === undefined || id === undefined) return;
+      const mine: AnchoredCardRef = { kind, id };
+      store.setHoverFor(mine, hovering);
+      claim.current = hovering ? { store, ref: mine } : null;
+    },
+    [store, kind, id],
+  );
+
+  useEffect(
+    () => () => {
+      const held = claim.current;
+      claim.current = null;
+      if (held) held.store.setHoverFor(held.ref, false);
+    },
+    [store, kind, id],
+  );
+
+  const onMouseEnter = useCallback(() => setHovering(true), [setHovering]);
+  const onMouseLeave = useCallback(() => setHovering(false), [setHovering]);
+  return { setHovering, onMouseEnter, onMouseLeave };
 }

@@ -47,7 +47,7 @@ import {
   NON_REGISTRY_MARKER_TYPES,
 } from "@/cards/marker-meta";
 import {
-  useCardStore,
+  useHoverClaim,
   useIsHovered,
   useIsSelected,
   type AnchoredCardRef,
@@ -287,9 +287,11 @@ export function MarkerButton({
   const ref: AnchoredCardRef | null = m.entityKind
     ? { kind: m.entityKind, id: m.entityId }
     : null;
-  const cardStore = useCardStore();
   const selected = useIsSelected(ref);
   const hovered = useIsHovered(ref);
+  // The hover claim releases itself if this button unmounts under the pointer
+  // (the crowd popover closing on activation; a fold into a pill) — task 1150.
+  const hoverClaim = useHoverClaim(ref);
   // Set true once a re-anchor grab crosses a small movement threshold, so the
   // browser's trailing click (mousedown→drag→mouseup synthesizes one) is
   // swallowed instead of opening the panel. A plain click (no drag) leaves it
@@ -421,8 +423,8 @@ export function MarkerButton({
         m.onClick?.(rect.top);
         onActivated?.();
       }}
-      onMouseEnter={ref ? () => cardStore.setHoverFor(ref, true) : undefined}
-      onMouseLeave={ref ? () => cardStore.setHoverFor(ref, false) : undefined}
+      onMouseEnter={ref ? hoverClaim.onMouseEnter : undefined}
+      onMouseLeave={ref ? hoverClaim.onMouseLeave : undefined}
       onKeyDown={(e) => {
         if ((e.key === "Delete" || e.key === "Backspace") && m.onDelete) {
           e.preventDefault();
