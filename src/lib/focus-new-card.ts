@@ -5,15 +5,42 @@
  * underlying React state update, so we retry across a few frames
  * before giving up.
  *
+ * ## The caller OWNS the retry (task 1146)
+ *
+ * Every frame of the retry is scheduled through the CALLER's `ViewLifetime`
+ * (`useViewLifetime` in the requesting hook/component), so the chain can never
+ * outlive the surface that asked for the focus — the React half of
+ * docs/agents/laws/a-nodeview-owns-its-timers-lifetime.md. MAX_ATTEMPTS is
+ * still the wall-clock bound; the owner's disposal is the OUTER bound. The
+ * unowned chain this replaces (up to 14 free-running RAFs) kept firing after
+ * an unmount — under a loaded full vitest run, after jsdom's teardown, where
+ * `CSS.escape` threw six unhandled errors and turned the gate red.
+ *
+ * Focus is one per window, so a NEWER request supersedes a pending one (the
+ * user created a second card before the first's body mounted): at most one
+ * chain is ever armed, and it is cancelled by whichever comes first — success,
+ * exhaustion, supersession, or the owner's disposal.
+ *
  * Shared between the drag-handle action dispatcher and the editor's
  * command-input bridge (so typing `\cite ` / invoking the slash-popup
  * `\cite` lands the caret on the new card's merged search input, just
  * like the drag-handle path does).
  */
+import { attrSelector } from "@/lib/attr-selector";
 import { parseAnyKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
+import type { ViewLifetime, ViewTimer } from "@/lib/tiptap/view-lifetime";
 
-export function focusNewCard(cardKey: string): void {
+/** The one pending request (focus is window-global — see the header). */
+let pendingRequest: { cancel: () => void } | null = null;
+
+/** Test/diagnostic probe: is a focus retry currently armed? */
+export function hasPendingCardFocus(): boolean {
+  return pendingRequest !== null;
+}
+
+export function focusNewCard(cardKey: string, owner: ViewLifetime): void {
+  pendingRequest?.cancel();
   // Normalize to the canonical `float:card:<kind>:<id>` grammar the card stamps
   // on `data-card-key`, so a caller that still passes a legacy `<prefix>:<id>`
   // key (or already-canonical key — idempotent) resolves the DOM either way.
@@ -25,7 +52,26 @@ export function focusNewCard(cardKey: string): void {
   const kind = parseAnyKey(domKey)?.kind ?? "";
   let attempts = 0;
   const MAX_ATTEMPTS = 12;
+  let frame: ViewTimer | null = null;
+  let settled = false;
+  let unregister: () => void = () => {};
+  const request = { cancel };
+  function cancel() {
+    if (settled) return;
+    settled = true;
+    owner.clear(frame);
+    unregister();
+    if (pendingRequest === request) pendingRequest = null;
+  }
+  const schedule = (fn: () => void) => {
+    if (!settled) frame = owner.requestAnimationFrame(fn);
+  };
+  const retry = () => {
+    if (++attempts < MAX_ATTEMPTS) schedule(tryFocus);
+    else cancel();
+  };
   const tryFocus = () => {
+    if (settled) return;
     // A card can render in MULTIPLE places at once — the docked panel AND the
     // omni margin. `querySelector` returns the first in DOM order, which may be
     // a HIDDEN (compressed / `display:none` keep-alive) instance whose body
@@ -34,19 +80,20 @@ export function focusNewCard(cardKey: string): void {
     // Fall back to the first match (jsdom lays nothing out, and tests mount a
     // single instance anyway).
     const candidates = Array.from(
-      document.querySelectorAll<HTMLElement>(`[data-card-key="${CSS.escape(domKey)}"]`),
+      document.querySelectorAll<HTMLElement>(attrSelector("data-card-key", domKey)),
     );
     const card =
       candidates.find(isPaneElementVisible) ?? candidates[0] ?? null;
     if (!card) {
-      if (++attempts < MAX_ATTEMPTS) requestAnimationFrame(tryFocus);
+      retry();
       return;
     }
     const target = pickFocusTarget(card, kind);
     if (!target) {
-      if (++attempts < MAX_ATTEMPTS) requestAnimationFrame(tryFocus);
+      retry();
       return;
     }
+    cancel();
     try {
       target.focus({ preventScroll: true });
     } catch {
@@ -76,9 +123,11 @@ export function focusNewCard(cardKey: string): void {
       }
     }
   };
+  pendingRequest = request;
+  unregister = owner.onDispose(cancel);
   // Two RAFs to let React commit + the panel re-render before we hunt
   // for the card.
-  requestAnimationFrame(() => requestAnimationFrame(tryFocus));
+  schedule(() => schedule(tryFocus));
 }
 
 /** Pick the most-likely "main editing field" inside a card's DOM,

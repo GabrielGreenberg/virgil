@@ -24,6 +24,7 @@
  * persisted state and this runs on every throttled pointermove.
  */
 
+import { attrSelector } from "@/lib/attr-selector";
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
@@ -926,12 +927,7 @@ function targetIsSourceCardBody(
   if (!sourceId) return false;
   const dom = targetEditor.view.dom;
   const wrapper = (dom as HTMLElement).closest?.(
-    `[data-pristine-card-id="${cssEscape(sourceId)}"]`,
+    attrSelector("data-pristine-card-id", sourceId),
   );
   return !!wrapper;
-}
-
-/** Minimal CSS attribute-value escape — enough for UUIDs / kebab ids. */
-function cssEscape(s: string): string {
-  return s.replace(/["\\]/g, "\\$&");
 }

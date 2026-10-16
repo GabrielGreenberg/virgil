@@ -103,7 +103,7 @@ describe("finishCreate caret-into-body (CHIP B)", () => {
     expect(cardStore.isExpanded(ref)).toBe(true);
     expect(cardStore.isSelected(ref)).toBe(true);
     expect(focusMock).toHaveBeenCalledTimes(1);
-    expect(focusMock).toHaveBeenCalledWith(cardPopKey("note", "note-1"));
+    expect(focusMock).toHaveBeenCalledWith(cardPopKey("note", "note-1"), expect.anything());
   });
 
   it("autoFocus:false skips expand, store-select, and focus", () => {
