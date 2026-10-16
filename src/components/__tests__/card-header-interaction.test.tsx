@@ -10,7 +10,8 @@
 //   3. Keyboard a11y: Enter / Space on the focused header activate it;
 //      `aria-expanded` + the stateful aria-label track `isCollapsed`.
 //   4. A completed lift gesture swallows the browser's trailing click
-//      (suppress-click ref), re-armed by the next mousedown.
+//      (`useTrailingClickGuard`) — and only it: the guard disarms on the
+//      gesture's end edge (task 1152).
 //   5. No docked pop-out button — drag-lift is the only pop-out path; the
 //      popped-state re-dock X remains.
 //   6. EditableCard: a collapsed card renders its bodyTitle (static title
@@ -148,6 +149,24 @@ describe("suppress-click guard after a lift gesture", () => {
     // The next plain press re-arms the click path.
     fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+    fireEvent.click(header);
+    expect(props.onHeaderActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it("task 1152: the suppression ends with the gesture — a later activation with no press is NOT swallowed", async () => {
+    const onTogglePopout = vi.fn();
+    const { props } = renderPanelCard({ cardKey: "note:n1", onTogglePopout });
+    const header = screen.getByLabelText("Expand card");
+
+    fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40, buttons: 1 }));
+    expect(onTogglePopout).toHaveBeenCalledTimes(1);
+    // The lift releases over the popped-out float, not this card: the
+    // browser dispatches NO click here.
+    fireEvent.mouseUp(document.body);
+    await new Promise((r) => setTimeout(r, 0));
+
+    // A programmatic / keyboard-synthesized click — no mousedown first.
     fireEvent.click(header);
     expect(props.onHeaderActivate).toHaveBeenCalledTimes(1);
   });

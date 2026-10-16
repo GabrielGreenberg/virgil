@@ -196,4 +196,57 @@ describe("margin-pin gesture guards", () => {
     // The click is NOT suppressed — the gate skipped the watcher entirely.
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  // Task 1152: the drag's click suppression never outlives the drag.
+  it("a drag released OFF the marker does not swallow the next keyboard/menu activation", async () => {
+    const onClick = vi.fn();
+    render(
+      <MarkerButton
+        m={marker({ type: "note", entityKind: "note", entityId: "n1", onClick })}
+        dragEnabled
+      />,
+    );
+    fireEvent.mouseDown(screen.getByRole("button"), { button: 0, clientX: 40, clientY: 50 });
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 50, clientY: 50, buttons: 1 }));
+    // Released over the destination paragraph — no click on the marker.
+    fireEvent.mouseUp(document.body);
+    await new Promise((r) => setTimeout(r, 0));
+    // Enter/Space or the overflow row's programmatic `.click()`: no mousedown.
+    fireEvent.click(screen.getByRole("button"));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("a drag released ON the marker still swallows its trailing click", () => {
+    const onClick = vi.fn();
+    render(
+      <MarkerButton
+        m={marker({ type: "note", entityKind: "note", entityId: "n1", onClick })}
+        dragEnabled
+      />,
+    );
+    const btn = screen.getByRole("button");
+    fireEvent.mouseDown(btn, { button: 0, clientX: 40, clientY: 50 });
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 50, clientY: 50, buttons: 1 }));
+    // mouseup + the synthesized click are one task in the browser.
+    fireEvent.mouseUp(btn);
+    fireEvent.click(btn);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("a missed release (button already up) disarms the guard too", async () => {
+    const onClick = vi.fn();
+    render(
+      <MarkerButton
+        m={marker({ type: "note", entityKind: "note", entityId: "n1", onClick })}
+        dragEnabled
+      />,
+    );
+    fireEvent.mouseDown(screen.getByRole("button"), { button: 0, clientX: 40, clientY: 50 });
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 50, clientY: 50, buttons: 1 }));
+    // The mouseup was swallowed somewhere; the next move reports buttons=0.
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 60, clientY: 60, buttons: 0 }));
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.click(screen.getByRole("button"));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });

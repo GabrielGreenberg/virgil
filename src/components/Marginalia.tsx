@@ -29,6 +29,7 @@ import { getOrCreateGeometry } from "@/lib/editor-geometry";
 import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
+import { useTrailingClickGuard } from "@/hooks/useTrailingClickGuard";
 import {
   isMissedRelease,
   isPrimaryDragStart,
@@ -292,12 +293,14 @@ export function MarkerButton({
   // The hover claim releases itself if this button unmounts under the pointer
   // (the crowd popover closing on activation; a fold into a pill) — task 1150.
   const hoverClaim = useHoverClaim(ref);
-  // Set true once a re-anchor grab crosses a small movement threshold, so the
+  // Armed once a re-anchor grab crosses a small movement threshold, so the
   // browser's trailing click (mousedown→drag→mouseup synthesizes one) is
   // swallowed instead of opening the panel. A plain click (no drag) leaves it
-  // false → onClick opens the panel as before. Mirrors PanelCard's
-  // `suppressClickRef`.
-  const suppressClickRef = useRef(false);
+  // disarmed → onClick opens the panel as before. The guard disarms itself on
+  // the gesture's end edge, so a drag released OFF the marker (no trailing
+  // click here) cannot eat the next keyboard / menu-row activation (task 1152).
+  // Shared with PanelCard's header lift.
+  const trailingClick = useTrailingClickGuard();
 
   const meta = MARKER_META[m.type];
   // Registry-derived color slot (R17). Report markers honor a user report
@@ -374,7 +377,7 @@ export function MarkerButton({
         e.preventDefault();
         // Start the session FIRST and gate everything else on its return. If a
         // session is already live, begin returns false — installing the
-        // suppress-click watcher / arming suppressClickRef anyway would let a
+        // suppress-click watcher / arming the trailing-click guard anyway would let a
         // >3px move+release swallow the trailing panel-open click (a dead
         // press). On a false return, do nothing: no listeners, no suppression.
         const started = beginCardDropGesture({
@@ -383,7 +386,7 @@ export function MarkerButton({
         });
         if (!started) return;
         // Re-arm the click path; a movement watcher flips it only on a real drag.
-        suppressClickRef.current = false;
+        trailingClick.reset();
         const startX = e.clientX;
         const startY = e.clientY;
         const onUp = () => {
@@ -394,17 +397,19 @@ export function MarkerButton({
           // Missed-release failsafe (task 185/333). Two costs without it, and
           // the second is the one that bites: a swallowed mouseup leaves these
           // listeners installed forever, so every later mouse movement re-arms
-          // `suppressClickRef` and the marker's click stops opening its panel.
-          // Do NOT read this event's coordinate — it is not part of the drag.
+          // the trailing-click guard and the marker's click stops opening its
+          // panel. Do NOT read this event's coordinate — it is not part of the
+          // drag. The release was never observed, so disarm the guard here.
           if (isMissedRelease(ev)) {
             onUp();
+            trailingClick.release();
             return;
           }
           if (
             Math.abs(ev.clientX - startX) > 3 ||
             Math.abs(ev.clientY - startY) > 3
           ) {
-            suppressClickRef.current = true;
+            trailingClick.arm();
           }
         };
         window.addEventListener("mousemove", onMove);
@@ -415,10 +420,7 @@ export function MarkerButton({
         e.stopPropagation();
         // A re-anchor drag just completed — swallow the synthetic trailing
         // click so it doesn't also open the panel.
-        if (suppressClickRef.current) {
-          suppressClickRef.current = false;
-          return;
-        }
+        if (trailingClick.consume()) return;
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         m.onClick?.(rect.top);
         onActivated?.();
