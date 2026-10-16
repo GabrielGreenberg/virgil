@@ -49,7 +49,6 @@ import {
   DOC_KEEP_ALIVE_CAPACITY,
 } from "./editor-layout/DocKeepAliveLRU";
 import { isMultiDocKeepAliveOn } from "@/lib/multi-doc-keepalive-flag";
-import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import { collabClaimsFor } from "@/cards/collab-broadcast";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
@@ -104,7 +103,6 @@ function usePanelColorSubscription(): number {
 import {
   getLinkedTextObjectIds,
 } from "@/links/links";
-import type { LinkedAnchorKind } from "@/links/links";
 import type { ModeBBag } from "@/cards/mode-b-collections";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
@@ -116,7 +114,6 @@ import {
 } from "@/panels/Omni";
 import { useViewPrefs, PanelId, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
-import { entityToAnchorId } from "@/links/_shared/entity-hover";
 import { Button } from "./Button";
 import {
   FLOATING_PANEL_WIDTH,
@@ -207,11 +204,6 @@ const noop = () => {};
 // brief pre-bubble window — same as citationsHook/collab). Stable module-level
 // identities so they don't churn the anchor-sync/hover consumers. Typed via
 // PaneState indexed access so no element-type imports are needed.
-const EMPTY_REVISIONS: PaneState["revisions"] = [];
-const EMPTY_NOTES: PaneState["notes"] = [];
-const EMPTY_CUTTER: PaneState["cutterCards"] = [];
-const EMPTY_TODOS: PaneState["todoItems"] = [];
-const EMPTY_ARCHIVE: PaneState["archiveSnippets"] = [];
 const EMPTY_MODE_B_CARDS: ModeBBag = {
   notes: [],
   todoItems: [],
@@ -503,16 +495,14 @@ export default function EditorLayout() {
   // the layout reads the current pending suggestion off the active pane's bubble
   // (the other fields were dead in the layout). Mirrors citationsHook/collab.
   const currentSuggestion = paneState?.currentSuggestion ?? null;
-  const comments = paneState?.revisions ?? EMPTY_REVISIONS;
   // Pane-owns-all (Phase C, completing the R21 consolidation): the sidecar hooks
   // (suggestions/revisions/notes/cutter/todos/aiRequests/archive) are mounted
   // ONLY in EditorPane now. This shell no longer mounts its own parity copies on
-  // docIdForHooks; it reads the card arrays it still consumes (anchor re-apply,
-  // hover→anchor derivation, selected-anchor sync, the archive/footnote drop
-  // bridges) off the active pane's bubbled PaneState slices, with stable INERT
-  // fallbacks for the brief pre-bubble window — exactly like citationsHook/collab.
-  const notes = paneState?.notes ?? EMPTY_NOTES;
-  const cutterCards = paneState?.cutterCards ?? EMPTY_CUTTER;
+  // docIdForHooks; it reads what it still consumes (the Mode-B bag for collab
+  // selection, the archive/footnote drop bridges) off the active pane's bubbled
+  // PaneState, with stable INERT fallbacks for the brief pre-bubble window —
+  // exactly like citationsHook/collab. (Task 1148 retired the per-kind card
+  // arrays the shell read for its hover→anchor / selected-anchor highlight.)
   // The ACTIVE doc's interaction store. EditorLayout is the SHELL, above the
   // per-doc <CardStoreProvider> each EditorPane mounts, so it resolves the
   // active store by id from the registry (the same instance the active pane
@@ -549,7 +539,6 @@ export default function EditorLayout() {
     selectedCommentId,
     selectedExampleId,
   } = useAnchoredSelectionSlots(activeCardStore);
-  const todoItems = paneState?.todoItems ?? EMPTY_TODOS;
 
   // AI requests reach the Virgil bar through `vbar.aiRequests` (the memoized
   // slice below), not through a context: the `ai-requests` context silo was
@@ -558,9 +547,8 @@ export default function EditorLayout() {
   // call went with them. A provider nothing consumes is a dead seam, not a
   // public one (`editor-layout-export-honesty`).
 
-  // Archive: only `snippets` (panel/hover/anchor-sync) + `deleteSnippet` (the two
-  // data-desync bridges: footnote-consumes-archive + drop-restore) are live.
-  const archiveSnippets = paneState?.archiveSnippets ?? EMPTY_ARCHIVE;
+  // Archive: only `deleteSnippet` (the two data-desync bridges:
+  // footnote-consumes-archive + drop-restore) is live in the shell.
   // The active pane's Mode-B card bag — the ONE registry-derived set (task
   // 666), read whole rather than re-listed here. Inert empty bag until a pane
   // bubbles, which is correct: with no pane there is no card to hover.
@@ -1187,39 +1175,14 @@ export default function EditorLayout() {
   // depended on the EditorLayout-side mainAreaRef. Removed with the
   // 7.8 mount swap; reintroduce inside EditorPane if needed.)
 
-  // Linked-entity hover/activation. One pair drives all three linked
-  // surfaces (text passages, margin icons, panel cards). Per-kind
-  // selected*Id slots remain for backwards compatibility, but hover is
-  // entirely centralized — no per-kind hover handlers anywhere.
-  //   activeAnchorId / activeAnchorKind — sticky, set on click of icon
-  //     or card (for Mode B kinds: note / revision / cutter)
-  //   hoveredEntityId / hoveredEntityKind — transient, set on hover
-  //     of any of the three surfaces, generic across all card kinds
-  // Effective anchor for the in-text highlight = hover ?? active.
-  const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
-  // Typed off the SSOT `LinkedAnchorKind` union (not a hand-maintained
-  // duplicate) so adding a new anchor-bearing kind (e.g. "todo") stays in
-  // sync with `useSelectedAnchorSync`'s setter signature.
-  const [activeAnchorKind, setActiveAnchorKind] = useState<LinkedAnchorKind | null>(null);
-  // Hover state read from the ACTIVE doc's store via a useSyncExternalStore
-  // subscription. The only EditorLayout-side consumer is the `hoveredAnchorId`
-  // derivation below (hover → Mode B anchor id for the linked-anchor highlight).
-  // When `currentDocId` flips, `activeCardStore` changes → this re-subscribes to
-  // the new doc's store (a once-per-switch event, never per-keystroke). New code
-  // inside the pane should read its store via useHover().
-  const _paneHoverState = useSyncExternalStore(
-    activeCardStore.subscribe,
-    activeCardStore.getHoverSnapshot,
-    () => null,
-  );
-  const hoveredEntityId = _paneHoverState?.id ?? null;
-  const hoveredEntityKind = _paneHoverState?.kind ?? null;
-
-  // CSS-based coupled highlight: the `.linked-anchor` span for the
-  // active/hovered link gets `data-link-highlight`, and the editor root
-  // gets `data-show-hl-<kind>` for each visible highlight kind. Margin
-  // icons read the same `activeAnchorId`/`hoveredAnchorId` state via
-  // their own `selected` prop. Bidirectional by construction.
+  // Standing linked-anchor chrome: the editor root gets `data-show-hl-<kind>`
+  // for each visible highlight kind, and archived cards' spans get
+  // `data-anchor-archived`. HOVER / SELECTION of a `.linked-anchor` span is
+  // NOT painted here (task 1148): its one painter is the pane's
+  // `useAnchorHighlightReconciler`, reading the pane's own card store. The
+  // shell used to keep a second copy of that state (`activeAnchorId` synced
+  // from the selected note/cut/comment, `hoveredAnchorId` re-derived from the
+  // store's hover) and paint a second channel whose wash never won the cascade.
   const hiddenHighlightTypes = useMemo(
     () => new Set<HighlightType>(prefs.hiddenHighlightTypes),
     [prefs.hiddenHighlightTypes],
@@ -1235,29 +1198,8 @@ export default function EditorLayout() {
     out.add("archive");
     return out;
   }, [prefs.showHighlights, hiddenHighlightTypes]);
-  // Derive Mode B text-range anchor id from the central hovered-entity state.
-  // Genuinely generic since task 666: the Mode-B half of this bag is the ACTIVE
-  // PANE's own `modeBCards` (the one registry-derived set), not a literal
-  // assembled here from whichever slices the shell happened to bubble. The old
-  // literal listed four Mode-B collections and silently omitted `highlights`
-  // and `reportCards` — so hovering a highlight's or a report's card resolved
-  // no anchor and lit no text, the panel→text mirror of the dead hover the same
-  // task fixed in the other direction. `archiveSnippets` is NOT a fifth Mode-B
-  // member: archive is Mode-A (`legacyDataKind: null`), so it resolves no text
-  // anchor — it rides along because `findEntity` is generic over ALL anchored
-  // kinds, not because the anchor lookup needs it.
-  const hoveredAnchorId = useMemo(() => {
-    if (!hoveredEntityId || !hoveredEntityKind) return null;
-    return entityToAnchorId(
-      { id: hoveredEntityId, kind: hoveredEntityKind },
-      { ...modeBCards, archiveSnippets, examples: [] },
-    );
-  }, [hoveredEntityId, hoveredEntityKind, modeBCards, archiveSnippets]);
-
   useLinkHighlight({
     editor: editorInstance,
-    activeLinkId: activeAnchorId,
-    hoveredLinkId: hoveredAnchorId,
     visibleHighlightKinds,
     // An archived card draws no anchor chrome (task 497). Read from the ACTIVE
     // pane's bubbled PaneState — the ONE authority's DOM-keyed projection,
@@ -1684,8 +1626,7 @@ export default function EditorLayout() {
   // mounted inside EditorPane (U3). EditorPane is always rendered
   // by EditorLayout in editor mode and standalone by the Library
   // Reader, so both surfaces inherit identical plumbing without
-  // duplication. EditorLayout's local hoveredEntityId/Kind stays
-  // in sync via the cardStore.subscribe effect declared above.
+  // duplication.
 
   // ── Focus mode ──────────────────────────────────────────────────
   // Focus view confines the visible band of the editor ONLY when LOCKED:
@@ -2172,44 +2113,6 @@ export default function EditorLayout() {
     // three are top-level block indices in the same space as outlineFocusHeadings.
     currentSeedBlockIndex: currentSectionPath.at(-1)?.index ?? currentParTitleIndex,
   });
-
-  // Selection ↔ linked-anchor highlight binding for each panel-anchored entity
-  // (notes, text revisions, cuts). Each hook:
-  //   • syncs `activeAnchorId`/`activeAnchorKind` to the selected entity, so
-  //     every setter (toolbar buttons, chip drops, marginalia clicks, kbd nav)
-  //     automatically drives the highlight,
-  //   • registers a document-level mousedown click-away that clears the
-  //     selection when the click lands outside the entity's card and its
-  //     anchor span.
-  // Text revisions don't carry a `data-revision-entry` card attribute the
-  // same way notes/cuts do, but the hook resolves the anchor span and the
-  // selection clears via a sibling `data-revision-entry` we add below.
-  useSelectedAnchorSync({
-    selectedId: selectedNoteId,
-    entities: notes,
-    kind: "note",
-    setActiveAnchorId,
-    setActiveAnchorKind,
-  });
-  // Cutter shares one selection across both card kinds. Anchor sync
-  // happens for both — for selection-driven sync, both kinds resolve to
-  // "cutter-comment" since the only currently auto-anchored kind is the
-  // comment.
-  useSelectedAnchorSync({
-    selectedId: selectedCutterCardId,
-    entities: cutterCards,
-    kind: "cutter-comment",
-    setActiveAnchorId,
-    setActiveAnchorKind,
-  });
-  useSelectedAnchorSync({
-    selectedId: selectedCommentId,
-    entities: comments,
-    kind: "revision",
-    setActiveAnchorId,
-    setActiveAnchorKind,
-  });
-
 
   // When the user clicks a linking element in the editor, route the
   // scroll target based on whether OmniView is currently visible. If a

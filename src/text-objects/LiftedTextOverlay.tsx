@@ -69,6 +69,7 @@ import {
 import { FloatChromeContent } from "@/floats/FloatChrome";
 import { buildFloatKey } from "@/floats/float-key";
 import type { TextObjectRef } from "./types";
+import { VIEW_ONLY_ATTENTION_ATTRS } from "@/lib/view-only-chrome";
 
 /** Popout chrome dimensions. The real popout's chrome, so the overlay's
  *  outer rect in popout mode and the `popOutAtRect` spawn rect produce a
@@ -238,11 +239,11 @@ export function LiftedTextOverlay({
     // meaningful in the LIVE editor but the cloned ghost should be a clean
     // visual snapshot — the overlay's own chrome (ghost/popout) is the only
     // chrome the user should see during the gesture.
+    // The attention halos come from the view-only vocabulary, so a channel
+    // declared there is stripped here without a second list to remember.
     const STATE_ATTRS_TO_STRIP = [
-      "data-link-highlight",
       "data-tint-color",
-      "data-card-hovered",
-      "data-card-selected",
+      ...VIEW_ONLY_ATTENTION_ATTRS,
       "data-paragraph-kind",
     ];
     for (const attr of STATE_ATTRS_TO_STRIP) {

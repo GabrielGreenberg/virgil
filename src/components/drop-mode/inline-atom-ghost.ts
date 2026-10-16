@@ -42,6 +42,7 @@ import {
   DATA_LINK_KIND,
 } from "@/links/link-dom-contract";
 import { CARD_ATOM_DOM_ID_ATTRS } from "@/lib/tiptap/atom-registry";
+import { VIEW_ONLY_ATTENTION_ATTRS } from "@/lib/view-only-chrome";
 
 export interface InlineAtomGhostState {
   /** Sanitized, detached clone of the grabbed atom's NodeView DOM. */
@@ -137,20 +138,18 @@ function emit(): void {
  *  `pointer-events:none`, so its clone never satisfies a hit-test anyway).
  *
  *  Half constant, half literal, on purpose. The first three are the parser-facing
- *  link DOM CONTRACT and come from its one speller. The rest — including
- *  `data-link-highlight`, which despite the prefix is transient view state
- *  written by `useLinkHighlight` and read only by CSS — are private view attrs
- *  with no cross-repo consumer, so they are not contract members and the
- *  contract module deliberately does not declare them. If one of them ever gains
- *  a second producer, single-source it where it is produced, not here. */
+ *  link DOM CONTRACT and come from its one speller. The attention halos come
+ *  from the view-only vocabulary (`VIEW_ONLY_ATTENTION_ATTRS`), so a channel
+ *  that declares itself there is stripped here for free. The rest are private
+ *  view attrs with no cross-repo consumer, so they are not contract members and
+ *  the contract module deliberately does not declare them. If one of them ever
+ *  gains a second producer, single-source it where it is produced, not here. */
 const STRIP_ATTRS = [
   DATA_LINK_ID,
   DATA_LINK_KIND,
   DATA_LINK_CARD,
-  "data-link-highlight",
   "data-tint-color",
-  "data-card-hovered",
-  "data-card-selected",
+  ...VIEW_ONLY_ATTENTION_ATTRS,
   // The Card-bearing atoms' id attrs, READ from `ATOM_REGISTRY` (task 645) —
   // a fifth Card-bearing kind is stripped from the ghost for free instead of
   // silently riding into the clone with a live id.

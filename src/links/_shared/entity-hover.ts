@@ -18,7 +18,6 @@
  */
 
 import type { Link } from "./types";
-import { getTextAnchor } from "../links";
 import { buildFloatKey } from "@/floats/float-key";
 import { CARD_KINDS, cardKindFromRecord, isAnchoredCardKind } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
@@ -117,16 +116,9 @@ export function cardKeyForEntity(ref: EntityRef): string | null {
   return buildFloatKey({ domain: "card", kind: ref.kind, id: ref.id });
 }
 
-/** Resolve a hovered/selected entity to its Mode B text-range anchor id, or null. */
-export function entityToAnchorId(
-  ref: EntityRef | null,
-  c: EntityCollectionSlots,
-): string | null {
-  if (!ref) return null;
-  const entity = findEntity(ref, c);
-  return entity ? getTextAnchor(entity)?.anchorId ?? null : null;
-}
-
+// (`entityToAnchorId` — hovered/selected entity → Mode-B anchor id — lived
+// here until task 1148: its one caller was the shell's second Mode-B painter.
+// The anchor reconciler resolves its targets through `collectTargets`.)
 // (The entity-kind → anchor-kind mapper lived here until A10 Commit G: it had
 // no remaining consumers — anchor-tint theming reads panelThemeKeyForMarkerType
 // / MARKER_META directly.)

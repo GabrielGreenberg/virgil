@@ -151,9 +151,9 @@ interface EditorProps {
    * and drove a third branch of `applyHighlight`. They were a migration orphan
    * — NOTHING ever passed them (the sole `<VirgilEditor>` mount is in
    * `EditorPane`, with no spread), so the branch was unreachable. The
-   * linked-anchor hover/selection highlight is owned by `useLinkHighlight`
-   * (the `data-link-highlight` CSS coupling on the `.linked-anchor` span) and
-   * the transient-highlight engine's `anchor` channel (the node/atom attrs). Both props and the branch
+   * linked-anchor hover/selection highlight is owned by the pane's
+   * `useAnchorHighlightReconciler` (`data-card-*` on the `.linked-anchor` span;
+   * task 1148) and the transient-highlight engine's `anchor` channel (the node/atom attrs). Both props and the branch
    * are gone; a future consumer paints through `setTransientHighlights`, which
    * takes a per-band color for exactly this shape. */
   /** Doc id, passed into the FigureBlock / GraphicsBlock extensions so

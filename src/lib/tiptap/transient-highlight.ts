@@ -21,8 +21,8 @@ import {
  * `shape: "node"` and become `Decoration.node`s (`anchor-highlight-deco.ts`
  * keeps that channel's attr vocabulary and its one node builder). That channel
  * used to be a second, drifted copy of this engine.
- * (The linked-anchor hover/click band is NOT here — it is painted on the anchor mark itself by `useLinkHighlight`'s
- * `data-link-highlight` coupling plus the `anchor` channel. A fourth
+ * (The linked-anchor hover/click band is NOT here — it is painted on the anchor mark itself by the anchor
+ * reconciler's `data-card-*` stamps plus the `anchor` channel. A fourth
  * branch of `applyHighlight` claimed it via an `activeAnchorId` prop that no
  * caller ever passed; task 120 deleted that orphan.)
  *

@@ -3861,7 +3861,8 @@ textarea {
 
 /* Linked-anchor spans (Mode B anchor links).
  * Default: invisible — the mark is semantic-only, activated by hover
- * or selection via `data-link-highlight`, or made subtly-visible
+ * or selection via `data-card-hovered` / `data-card-selected` (stamped by
+ * the pane's anchor reconciler), or made subtly-visible
  * per kind via `data-show-hl-<kind>` on the editor root.
  *
  * The highlight color is per-target-card-kind, read via attribute-prefix
@@ -3874,7 +3875,8 @@ textarea {
  * (`IN_TEXT_ANCHOR_ACCENTS` in src/cards/predicates.ts), so cutter anchors
  * (cutter-comment/-suggestion → the `cut` accent) now paint too — the old
  * hand-table omitted them and they fell back to amber.
- * See src/links/_shared/useLinkHighlight.ts for the highlight-state sync. */
+ * See src/links/_shared/useAnchorHighlightReconciler.ts for hover/selection
+ * and src/links/_shared/useLinkHighlight.ts for the per-kind root toggles. */
 .linked-anchor {
   --link-anchor-color: #fbbf24; /* amber fallback for unrecognised kinds */
   background: transparent;
@@ -4015,13 +4017,6 @@ textarea {
 [data-show-hl-archive="true"]   .linked-anchor[data-link-card^="archive:"] {
   background: color-mix(in oklab, var(--link-anchor-color) 18%, transparent);
 }
-.linked-anchor[data-link-highlight="hover"] {
-  background: color-mix(in oklab, var(--link-anchor-color) 45%, transparent);
-}
-.linked-anchor[data-link-highlight="active"] {
-  background: color-mix(in oklab, var(--link-anchor-color) 60%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
-}
 
 /* Footnote markers */
 .footnote-marker {
@@ -4115,10 +4110,18 @@ textarea {
   color: var(--amber-highlight-ink);
 }
 
-/* Mode B text-range spans — soft wash, no ring. */
+/* Mode B text-range spans — soft wash; the SELECTED span adds a 1px ring.
+ * ONE painter (task 1148): the pane's `useAnchorHighlightReconciler` stamps
+ * these from the pane's own card store. A second, shell-level channel
+ * (`data-link-highlight`, 45%/60% washes + ring) used to paint the same span
+ * from a second copy of the same state; this later rule always won the
+ * background, so only its ring ever showed — the ring now lives here. */
 .linked-anchor[data-card-hovered="true"],
 .linked-anchor[data-card-selected="true"] {
   background: color-mix(in oklab, var(--link-anchor-color) 22%, transparent);
+}
+.linked-anchor[data-card-selected="true"] {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
 }
 
 /* ARCHIVED anchor chrome — an archived card draws none (task 497). Stamped by
@@ -4130,8 +4133,8 @@ textarea {
  *
  * Same shape as the transient-handle rule far above: zero the colour var and
  * every `color-mix(… var(--link-anchor-color) …)` background collapses to
- * transparent, which covers the per-kind 18% wash, the hover/active washes and
- * the Mode-B hover/selection wash in one line.
+ * transparent, which covers the per-kind 18% wash and the Mode-B
+ * hover/selection wash + selection ring in one line.
  *
  * `background: none !important` is REQUIRED, not stylistic: the persistent tint
  * band (`.linked-anchor[data-tint-color]`) carries an `!important` of its own
@@ -6040,13 +6043,11 @@ html {
      `text-decoration: none`. A pending proposal never prints, under any
      toggle.
 
-     THREE attributes, not the two anyone would think of. `data-link-highlight`
-     paints a 45%/60% wash plus a 1px ring — HEAVIER than the 22% selection
-     wash — and before task 523 it was neutralised only by COINCIDENCE, because
-     the anchor reconciler happens to stamp `data-card-selected` on the same
-     element for the same card. The vocabulary is declared in
-     `src/lib/view-only-chrome.ts` and censused, so a third channel cannot be
-     forgotten again. NOT members: `data-paragraph-kind` / `data-margin-side`
+     The attributes are a DECLARED vocabulary (`src/lib/view-only-chrome.ts`,
+     censused), because before task 523 a third channel, `data-link-highlight`,
+     was neutralised here only by COINCIDENCE. Task 1148 retired that channel
+     outright — the anchor reconciler is the one Mode-B painter — but a new
+     channel still joins by declaring itself, never by luck. NOT members: `data-paragraph-kind` / `data-margin-side`
      (they only pick the colour this rule zeroes) and the `data-show-hl-*` root
      toggles (a user choice with its own print toggle).
 
@@ -6077,13 +6078,11 @@ html {
     outline: none !important;
   }
   .tiptap [data-card-hovered],
-  .tiptap [data-card-selected],
-  .tiptap [data-link-highlight] {
+  .tiptap [data-card-selected] {
     --link-anchor-color: transparent !important;
   }
   [data-card-hovered],
-  [data-card-selected],
-  [data-link-highlight] {
+  [data-card-selected] {
     outline: none !important;
   }
 
@@ -6097,8 +6096,8 @@ html {
      same property that made the spelling squiggle the one member to print
      with DEFAULT settings.
      Covered by the attention rule above ONLY by coincidence (a focused card is
-     a selected card), which is exactly the coincidence `data-link-highlight`
-     was relying on before task 523 named it. */
+     a selected card), which is exactly the kind of coincidence the retired
+     `data-link-highlight` channel relied on before task 523 named it. */
   .focus-outline:focus-visible {
     outline: none !important;
   }

@@ -3618,19 +3618,20 @@ rules:
   the transient search/diagnostics/revision band and the bib cross-highlight
   ring with nothing to enumerate. The marker has NO screen rule, so adopting it
   restyles nothing.
-- **Attention chrome is neutralised by ATTRIBUTE, on the colour var — and there
-  are THREE attributes, not the two anyone would think of.** They land on the
+- **Attention chrome is neutralised by ATTRIBUTE, on the colour var — and
+  the attributes are a DECLARED vocabulary.** They land on the
   anchored paragraph, footnote marker or `.linked-anchor` ITSELF, so a blanket
   `background: none` there would also erase the user's persistent highlight tint
   — a user choice with its own print toggle, i.e. document content by this same
   posture. Instead the print block zeroes `--link-anchor-color`, which retires
-  the footnote ring, both sides of the Mode-A accent rail, the Mode-B selection
-  wash and the Mode-B hover/active wash + ring in one declaration (the idiom
-  `.linked-anchor[data-anchor-archived]` already uses). `data-link-highlight` is
-  the member that proves this has to be a DECLARED vocabulary: it paints a
-  heavier wash than the selection one and was neutralised only by the
-  coincidence that the reconciler stamps `data-card-selected` on the same
-  element. The exception is stated too: the CITATION variant paints from the
+  the footnote ring, both sides of the Mode-A accent rail and the Mode-B
+  hover/selection wash + selection ring in one declaration (the idiom
+  `.linked-anchor[data-anchor-archived]` already uses). A retired third channel,
+  `data-link-highlight`, is what proved this has to be a DECLARED vocabulary: it
+  was neutralised only by the coincidence that the reconciler stamped
+  `data-card-selected` on the same element. Task 1148 deleted it — ONE painter
+  per Mode-B span (the anchor reconciler) — and the vocabulary stays declared so
+  a future channel joins by naming itself. The exception is stated too: the CITATION variant paints from the
   amber vars and is flattened by the older `.citation-node` print rule instead.
   Scoped to `.tiptap` so a card in the print appendix keeps its inline kind
   accent — except `outline`, whose rule is deliberately unscoped, because a

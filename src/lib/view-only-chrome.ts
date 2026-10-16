@@ -90,27 +90,21 @@ export function viewOnly(cls: string): string {
 
 /* The ATTENTION attributes — view-only paint that lands on a DOCUMENT element,
  * so it is neutralised by attribute rather than by marker. Declared here as
- * NAMES so the three writers (`anchor-highlight-deco`, the reconciler's Mode-B
- * raw path, `useLinkHighlight`) and the print block read one vocabulary. */
+ * NAMES so the two writers (`anchor-highlight-deco`, the reconciler's Mode-B
+ * raw path) and the print block read one vocabulary. */
 
 /** Card SELECTION halo — `"paragraph"` for a Mode-A block, `"true"` otherwise. */
 export const DATA_CARD_SELECTED = "data-card-selected";
 /** Card HOVER halo — same value vocabulary. */
 export const DATA_CARD_HOVERED = "data-card-hovered";
 /**
- * The Mode-B anchor's own hover/active state — `"hover"` | `"active"`, removed
- * otherwise. A THIRD channel, and the one that proves this list has to be a
- * declared vocabulary rather than the two attributes anyone would think of: it
- * paints a 45%/60% wash plus a 1px ring — HEAVIER than the 22% selection wash —
- * and until it was named here it was neutralised only by COINCIDENCE, because
- * the reconciler happens to stamp `data-card-selected` on the same element for
- * the same card. Both read one store, so they co-occur; nothing pinned that,
- * and a future colour of its own (exactly what `.citation-highlight-bib` has)
- * would have printed a 60% wash.
- */
-export const DATA_LINK_HIGHLIGHT = "data-link-highlight";
-
-/**
+ * A THIRD channel used to be declared here — `data-link-highlight`, the
+ * shell's Mode-B hover/active wash, which until task 523 named it was
+ * neutralised in print only by COINCIDENCE (the reconciler stamped
+ * `data-card-selected` on the same element). Task 1148 retired it: the anchor
+ * reconciler is the ONE Mode-B painter. The list stays a declared vocabulary
+ * so any future channel joins by declaring itself.
+ *
  * `data-paragraph-kind` and `data-margin-side` are deliberately NOT members:
  * they only select a colour for the rules keyed on the attributes above, so
  * zeroing the colour retires them with nothing to enumerate. Neither are the
@@ -120,14 +114,13 @@ export const DATA_LINK_HIGHLIGHT = "data-link-highlight";
 export const VIEW_ONLY_ATTENTION_ATTRS = [
   DATA_CARD_HOVERED,
   DATA_CARD_SELECTED,
-  DATA_LINK_HIGHLIGHT,
 ] as const;
 
 /**
  * The custom property the `--link-anchor-color` family of attention rules
  * paints from. Zeroing it in print collapses the footnote ring, BOTH sides of
- * the Mode-A accent rail, the Mode-B selection wash and the Mode-B hover/active
- * wash + ring in one declaration.
+ * the Mode-A accent rail and the Mode-B hover/selection wash + selection ring in
+ * one declaration.
  *
  * NOT every attention rule, and the exception is stated rather than glossed:
  * the CITATION variant (`.citation-node[data-card-hovered]`) paints from the

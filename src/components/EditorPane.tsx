@@ -790,21 +790,12 @@ export interface PaneState {
   // whose return object isn't memoized, to keep the bubble effect's deps stable.
   // useSuggestions: EditorLayout reads only the current pending suggestion.
   currentSuggestion: Suggestion | null;
-  // The remaining Phase-C slices (typed via indexed access so no extra type
-  // imports). EditorLayout reads these off `paneState?.X ?? INERT` and no longer
-  // mounts its own singleton copy of these hooks on docIdForHooks.
-  revisions: ReturnType<typeof useRevisions>["cards"];
-  notes: ReturnType<typeof useNotes>["notes"];
-  cutterCards: ReturnType<typeof useCutter>["cards"];
-  todoItems: ReturnType<typeof useTodos>["items"];
-  /** The pane's ONE Mode-B card bag (task 666). The shell resolves a hovered
-   *  card's text anchor through `entityToAnchorId`, which needs EVERY Mode-B
-   *  collection; before this it assembled its own literal from the four slices
-   *  bubbled above, so hovering a highlight's or a report's card lit no text.
-   *  Bubbling the bag (rather than two more parallel slices) is what keeps the
-   *  shell's set equal to the pane's by construction. */
+  /** The pane's ONE Mode-B card bag (task 666) — read by the shell for the
+   *  collab selection's anchor resolution. The per-kind card arrays that used
+   *  to bubble beside it (revisions / notes / cutter / todos / archive) fed
+   *  only the shell's hover→anchor and selected-anchor highlight, retired by
+   *  task 1148 (the pane's anchor reconciler is the ONE Mode-B painter). */
   modeBCards: ModeBBag;
-  archiveSnippets: ReturnType<typeof useArchive>["snippets"];
   deleteArchiveSnippet: ReturnType<typeof useArchive>["deleteSnippet"];
   addRequest: ReturnType<typeof useAiRequests>["addRequest"];
   updateRequestText: ReturnType<typeof useAiRequests>["updateRequestText"];
@@ -5930,12 +5921,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       citationsHook,
       searchHighlightRange,
       currentSuggestion: suggestionsHook.currentSuggestion,
-      revisions: revisionsHook.cards,
-      notes: notesHook.notes,
-      cutterCards: cutterHook.cards,
-      todoItems: todosHook.items,
       modeBCards,
-      archiveSnippets: archiveHook.snippets,
       deleteArchiveSnippet: archiveHook.deleteSnippet,
       addRequest: aiRequestsHook.addRequest,
       updateRequestText: aiRequestsHook.updateRequestText,
@@ -5981,11 +5967,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     collab,
     citationsHook,
     suggestionsHook.currentSuggestion,
-    notesHook.notes,
-    cutterHook.cards,
-    todosHook.items,
     modeBCards,
-    archiveHook.snippets,
     archiveHook.deleteSnippet,
     aiRequestsHook.addRequest,
     aiRequestsHook.updateRequestText,
