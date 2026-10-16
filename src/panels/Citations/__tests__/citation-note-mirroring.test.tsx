@@ -65,6 +65,7 @@ function renderCard(command: string, bibPackage: string) {
   cardStore.clearSelection();
   const onUpdateCitation = vi.fn();
   const props: CitationCardProps = {
+    onAddBibEntry: null,
     citation,
     isSelected: false,
     bibEntries: ENTRIES,

@@ -69,6 +69,7 @@ function renderCard(command: string, bibPackage: string) {
   cardStore.clearSelection();
   render(
     <CitationCard
+      onAddBibEntry={null}
       citation={citation}
       isSelected={false}
       isAnchored

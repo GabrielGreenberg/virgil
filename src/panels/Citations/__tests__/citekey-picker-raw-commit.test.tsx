@@ -60,6 +60,7 @@ function setup(extra: Partial<React.ComponentProps<typeof CitekeyPicker>> = {}) 
   const onEnterCommit = vi.fn();
   render(
     <CitekeyPicker
+      onAddBibEntry={null}
       open
       anchorRect={ANCHOR}
       onClose={onClose}

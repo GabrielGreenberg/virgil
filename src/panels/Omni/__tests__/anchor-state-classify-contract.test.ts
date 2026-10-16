@@ -532,6 +532,7 @@ describe("omni builder anchorState classification", () => {
       cancelBibReview: noop,
       getBibReviewStatus: () => "none",
       saveBibEntry: noop,
+      addBibEntry: null,
     });
     const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
     expect(states.get("float:card:citation:ci-anchored")).toEqual(["anchored", 7]);

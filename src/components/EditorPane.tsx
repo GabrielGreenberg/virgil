@@ -8510,6 +8510,7 @@ function PaneRail({
           deleteCitation={onDeleteCitation}
           getFormattedBib={citationsHook.getFormattedBib}
           saveBibEntry={citationsHook.saveBibEntry}
+          addBibEntry={citationsHook.addBibEntry}
           getAnnotation={annotationsHook.getAnnotation}
           setAnnotation={annotationsHook.setAnnotation}
           requestBibReview={bibReviewHook.requestReview}

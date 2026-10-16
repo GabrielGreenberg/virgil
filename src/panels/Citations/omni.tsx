@@ -1,42 +1,25 @@
 "use client";
 
-import type { BibEntry, CitationRef } from "@/lib/types";
-import type { BibEntrySave } from "@/hooks/useCitations";
+import type { CitationRef } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { resolveAnchorState } from "@/links/anchor-state";
 import { CitationCard } from "./CitationCard";
+import { citationCardDoors, type CitationDoorSource } from "./citation-card-doors";
 
-interface BuildArgs {
+interface BuildArgs extends CitationDoorSource {
   citations: CitationRef[];
   citationPositionMap: Map<string, number>;
   selectedCitationId: string | null;
   setSelectedCitationId: (id: string | null) => void;
   scrollToCitation: (id: string, sourceEl?: HTMLElement | null) => void;
-  bibEntries: BibEntry[];
-  bibPackage: string;
-  getCitationDisplayText: (command: string) => string;
-  updateCitation: (id: string, command: string) => void;
   deleteCitation: (id: string) => void;
-  getFormattedBib: (entry: BibEntry) => string;
-  getAnnotation: (key: string) => string;
-  setAnnotation: (key: string, text: string) => void;
-  requestBibReview: (
-    bibKey: string,
-    type: "fields" | "notes",
-    requestNotes?: string,
-  ) => void;
-  cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
-  getBibReviewStatus: (
-    bibKey: string,
-    type: "fields" | "notes",
-  ) => "none" | "pending" | "complete";
-  getBibReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
-  saveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
 }
 
 export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
+  // ONE door list, shared with the floating card (task 1143).
+  const doors = citationCardDoors(a);
 
   for (const cit of a.citations) {
     const pos = a.citationPositionMap.get(cit.id) ?? null;
@@ -57,24 +40,13 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
           citation={cit}
           isSelected={isSelected}
           isAnchored={pos !== null}
-          bibEntries={a.bibEntries}
-          bibPackage={a.bibPackage}
-          getDisplayText={a.getCitationDisplayText}
+          {...doors}
           onSelect={() => a.setSelectedCitationId(cit.id)}
           onJump={(sourceEl) => {
             a.setSelectedCitationId(cit.id);
             a.scrollToCitation(cit.id, sourceEl);
           }}
-          onUpdateCitation={a.updateCitation}
           onDelete={a.deleteCitation}
-          getFormattedBib={a.getFormattedBib}
-          getAnnotation={a.getAnnotation}
-          setAnnotation={a.setAnnotation}
-          onRequestReview={a.requestBibReview}
-          onCancelReview={a.cancelBibReview}
-          getReviewStatus={a.getBibReviewStatus}
-          getReviewNotes={a.getBibReviewNotes}
-          onSaveBibEntry={a.saveBibEntry}
           extraDataAttrs={{ "data-omni-entry": id }}
         />
       ),

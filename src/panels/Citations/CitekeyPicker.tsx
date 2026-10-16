@@ -50,8 +50,10 @@ export interface CitekeyPickerProps {
   onSelectKey: (citekey: string) => void;
   /** Add a library-only entry to the paper's bib. The picker calls this
    *  right before reporting the citekey — once the bib mutation lands,
-   *  the entry will turn into a paper-bib row on next render. */
-  onAddBibEntry?: (entry: BibEntry) => void;
+   *  the entry will turn into a paper-bib row on next render. REQUIRED
+   *  (task 1143); `null` = this surface cannot add, so the picker lists only
+   *  the paper's own entries rather than promising an add it cannot make. */
+  onAddBibEntry: ((entry: BibEntry) => void) | null;
   /** Initial query — set to the current row's citekey when re-opening the
    *  picker on a filled citation row. */
   initialQuery?: string;
@@ -110,9 +112,13 @@ export function CitekeyPicker({
     return out;
   }, [libraryItems]);
 
-  /** Merge paper bib + library; paper wins on citekey collisions. */
+  /** Merge paper bib + library; paper wins on citekey collisions. Without an
+   *  add door no library-only row is offered: picking one would cite a key
+   *  the paper's bib never gains (task 1143). */
+  const canAdd = onAddBibEntry !== null;
   const mergedEntries = useMemo(() => {
     const out: BibEntry[] = [...paperBibEntries];
+    if (!canAdd) return out;
     const seen = new Set(paperBibEntries.map((e) => e.key));
     for (const e of libraryBibEntries) {
       if (!seen.has(e.key)) {
@@ -121,7 +127,7 @@ export function CitekeyPicker({
       }
     }
     return out;
-  }, [paperBibEntries, libraryBibEntries]);
+  }, [paperBibEntries, libraryBibEntries, canAdd]);
 
   const getRowState = useCallback(
     (entry: BibEntry): RowState =>
@@ -146,7 +152,7 @@ export function CitekeyPicker({
 
   const onPick = useCallback(
     async (entry: BibEntry): Promise<RowState> => {
-      if (!paperByCitekey.has(entry.key) && onAddBibEntry) {
+      if (!paperByCitekey.has(entry.key) && onAddBibEntry !== null) {
         onAddBibEntry(entry);
       }
       onSelectKey(entry.key);

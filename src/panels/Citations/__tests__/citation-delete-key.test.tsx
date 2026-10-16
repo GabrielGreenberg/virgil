@@ -68,6 +68,7 @@ function renderSelected(citation: CitationRef) {
   cardStore.select(REF);
   render(
     <CitationCard
+      onAddBibEntry={null}
       citation={citation}
       isSelected={false}
       bibEntries={ENTRIES}

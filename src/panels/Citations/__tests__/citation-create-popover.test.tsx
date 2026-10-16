@@ -90,6 +90,7 @@ function setup() {
   const onClose = vi.fn();
   render(
     <CitationCreatePopover
+      onAddBibEntry={null}
       anchorRect={new DOMRect(0, 0, 0, 0)}
       paperBibEntries={[]}
       onCommit={onCommit}

@@ -85,6 +85,7 @@ function Harness({ onWrite }: { onWrite: (cmd: string) => void }) {
   const [command, setCommand] = useState(ORIGINAL);
   return (
     <CitationCard
+      onAddBibEntry={null}
       citation={{ ...CIT, command }}
       isSelected={false}
       bibEntries={[ENTRY]}
