@@ -254,10 +254,31 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   // and the identity-bus consumer (`useIdentityBusConsumer`).
   const [identityCascade] = useState(() => new IdentityCascade());
 
+  // ORDERING between the two ways the bib view is adopted (task 1145): a
+  // `readBib` and a published post-write list. `readBib` is not queued behind
+  // `mutateBib`, so a read that STARTED before a write landed can RESOLVE after
+  // that write's publish — and adopting it would put the pre-write list back
+  // (the open-time library auto-add's entry vanished from the panel while the
+  // file held it). Every read start and every publish takes the next ticket;
+  // `adoptedBibTicket` is the ticket of the state now shown. A read adopts only
+  // if nothing newer has been adopted since it started — so a publish beats an
+  // older read, and of two reads the later-started one wins whatever order
+  // they resolve in.
+  const bibTicket = useRef(0);
+  const adoptedBibTicket = useRef(0);
+
   const refreshBib = useCallback((id: string) => {
+    const ticket = ++bibTicket.current;
     readBib(id)
       .then((data) => {
         if (docRef.current !== id) return;
+        // SEED the detected family into the view even from a superseded read:
+        // detection reads the `.tex`, which no bib write changes. It does NOT
+        // touch the persisted state: a stored family is the user's choice and
+        // detection is never entitled to overwrite it (task 344).
+        setDetected({ docId: id, family: asBibFamily(data.detectedPackage) });
+        if (adoptedBibTicket.current > ticket) return;
+        adoptedBibTicket.current = ticket;
         setBibRaw(data.bibText || "");
         if (data.bibText) {
           try {
@@ -268,10 +289,6 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         } else {
           setBibEntries([]);
         }
-        // SEED the detected family into the view. It does NOT touch the
-        // persisted state: a stored family is the user's choice and detection
-        // is never entitled to overwrite it (task 344).
-        setDetected({ docId: id, family: asBibFamily(data.detectedPackage) });
       })
       .catch((e) => {
         console.warn(`readBib failed for ${id}:`, e);
@@ -302,6 +319,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       if (!id) return;
       if (detail?.docId && detail.docId !== id) return;
       if (detail?.bibText !== undefined && detail.entries) {
+        adoptedBibTicket.current = ++bibTicket.current;
         setBibRaw(detail.bibText);
         setBibEntries(detail.entries);
         return;
