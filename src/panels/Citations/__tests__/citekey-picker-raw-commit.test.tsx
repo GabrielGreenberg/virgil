@@ -55,7 +55,7 @@ const ANCHOR = {
 } as DOMRect;
 
 function setup(extra: Partial<React.ComponentProps<typeof CitekeyPicker>> = {}) {
-  const onSelectKey = vi.fn();
+  const onSelectKeys = vi.fn();
   const onClose = vi.fn();
   const onEnterCommit = vi.fn();
   render(
@@ -65,7 +65,7 @@ function setup(extra: Partial<React.ComponentProps<typeof CitekeyPicker>> = {}) 
       anchorRect={ANCHOR}
       onClose={onClose}
       paperBibEntries={ENTRIES}
-      onSelectKey={onSelectKey}
+      onSelectKeys={onSelectKeys}
       {...extra}
     />,
   );
@@ -74,46 +74,54 @@ function setup(extra: Partial<React.ComponentProps<typeof CitekeyPicker>> = {}) 
     fireEvent.change(input, { target: { value: text } });
     fireEvent.keyDown(input, { key: "Enter" });
   };
-  return { onSelectKey, onClose, onEnterCommit, input, typeAndEnter };
+  return { onSelectKeys, onClose, onEnterCommit, input, typeAndEnter };
 }
 
 describe("citation picker — raw citekey commit", () => {
   it("commits a legal unknown key as before", () => {
-    const { onSelectKey, onClose, typeAndEnter } = setup();
+    const { onSelectKeys, onClose, typeAndEnter } = setup();
     typeAndEnter("kripke1980");
-    expect(onSelectKey).toHaveBeenCalledWith("kripke1980");
+    expect(onSelectKeys).toHaveBeenCalledWith(["kripke1980"]);
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("commits a typed comma list, normalized", () => {
-    const { onSelectKey, typeAndEnter } = setup();
+  it("commits a typed comma list as its KEYS, never the joined text (task 1144)", () => {
+    const { onSelectKeys, typeAndEnter } = setup();
     typeAndEnter("kripke1980, quine1960");
-    expect(onSelectKey).toHaveBeenCalledWith("kripke1980,quine1960");
+    expect(onSelectKeys).toHaveBeenCalledWith(["kripke1980", "quine1960"]);
+  });
+
+  it("in the deferred create popover, Return hands the same split keys to the commit", () => {
+    const onEnterCommit = vi.fn();
+    const { onSelectKeys, typeAndEnter } = setup({ keepOpenOnPick: true, onEnterCommit });
+    typeAndEnter("kripke1980,quine1960");
+    expect(onSelectKeys).toHaveBeenCalledWith(["kripke1980", "quine1960"]);
+    expect(onEnterCommit).toHaveBeenCalledWith(["kripke1980", "quine1960"]);
   });
 
   it("refuses a search phrase, says why, and stays open", () => {
-    const { onSelectKey, onClose, typeAndEnter } = setup();
+    const { onSelectKeys, onClose, typeAndEnter } = setup();
     typeAndEnter("Kripke naming");
-    expect(onSelectKey).not.toHaveBeenCalled();
+    expect(onSelectKeys).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByText(/cannot contain a space/)).toBeTruthy();
     expect(screen.queryByText(/as a raw/)).toBeNull();
   });
 
   it.each([["a}b"], ["a%b"]])("refuses %s — bytes that would corrupt the .tex", (q) => {
-    const { onSelectKey, typeAndEnter } = setup();
+    const { onSelectKeys, typeAndEnter } = setup();
     typeAndEnter(q);
-    expect(onSelectKey).not.toHaveBeenCalled();
+    expect(onSelectKeys).not.toHaveBeenCalled();
   });
 
   it("in the deferred create popover, a refused key neither stages nor commits", () => {
-    const { onSelectKey, onEnterCommit, onClose, typeAndEnter } = (() => {
+    const { onSelectKeys, onEnterCommit, onClose, typeAndEnter } = (() => {
       const onEnterCommit = vi.fn();
       const s = setup({ keepOpenOnPick: true, onEnterCommit });
       return { ...s, onEnterCommit };
     })();
     typeAndEnter("a}b");
-    expect(onSelectKey).not.toHaveBeenCalled();
+    expect(onSelectKeys).not.toHaveBeenCalled();
     expect(onEnterCommit).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });

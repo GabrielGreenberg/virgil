@@ -11,7 +11,10 @@
  * unknown sources can still be referenced from the card — but only text that
  * IS a citekey (or a comma list of them): the commit goes through
  * `parseRawCitekeys`, the cite-side door of the one key rule (task 945), so a
- * search phrase or a stray `}` / `%` never reaches the `.tex`.
+ * search phrase or a stray `}` / `%` never reaches the `.tex`. A comma list
+ * reaches the caller as its KEYS (task 1144) — every report out of this picker
+ * is an array of single citekeys, so a card row or a staged chip can never
+ * hold `a,b` as one key.
  *
  * Thin wrapper around `BibEntryPickerMenu`.
  */
@@ -44,10 +47,10 @@ export interface CitekeyPickerProps {
   onCancel?: () => void;
   /** Paper's local references.bib entries. */
   paperBibEntries: BibEntry[];
-  /** Commit a citekey onto the citation row. Called with the picked
-   *  entry's key (existing or just-added) or the raw text from free-text
-   *  commit. */
-  onSelectKey: (citekey: string) => void;
+  /** Commit citekeys onto the citation. Called with the picked entry's key
+   *  (existing or just-added) or with the KEYS of a free-text commit — a
+   *  typed comma list arrives split, one citekey per element (task 1144). */
+  onSelectKeys: (citekeys: string[]) => void;
   /** Add a library-only entry to the paper's bib. The picker calls this
    *  right before reporting the citekey — once the bib mutation lands,
    *  the entry will turn into a paper-bib row on next render. REQUIRED
@@ -70,9 +73,10 @@ export interface CitekeyPickerProps {
   /** Enter-commits-the-whole-pick hook, forwarded to `BibEntryPickerMenu`. In
    *  `keepOpenOnPick` mode the deferred create popover passes this so Return
    *  stages the active key then commits + closes in one keystroke. The
-   *  just-staged key rides through so the caller can fold it into the commit
+   *  just-staged keys ride through (split like `onSelectKeys`; empty when
+   *  nothing was staged) so the caller can fold them into the commit
    *  synchronously. Absent for the in-card / panel picker. */
-  onEnterCommit?: (pickedKey?: string) => void;
+  onEnterCommit?: (pickedKeys: string[]) => void;
   /** Sticky strip rendered inside the popover below the list (staged chips +
    *  OK), forwarded to `BibEntryPickerMenu`. */
   footer?: React.ReactNode;
@@ -85,7 +89,7 @@ export function CitekeyPicker({
   onClose,
   onCancel,
   paperBibEntries,
-  onSelectKey,
+  onSelectKeys,
   onAddBibEntry,
   initialQuery,
   externalQuery,
@@ -155,18 +159,18 @@ export function CitekeyPicker({
       if (!paperByCitekey.has(entry.key) && onAddBibEntry !== null) {
         onAddBibEntry(entry);
       }
-      onSelectKey(entry.key);
+      onSelectKeys([entry.key]);
       // Deferred create popover stays open to stage more keys (the caller
       // commits on OK / click-away); the in-card / panel picker closes on pick.
       if (!keepOpenOnPick) onClose();
       return "added";
     },
-    [paperByCitekey, onAddBibEntry, onSelectKey, onClose, keepOpenOnPick],
+    [paperByCitekey, onAddBibEntry, onSelectKeys, onClose, keepOpenOnPick],
   );
 
   const checkRaw = useCallback((raw: string): RawCheck => {
     const parsed = parseRawCitekeys(raw);
-    return parsed.ok ? { ok: true, text: parsed.text } : parsed;
+    return parsed.ok ? { ok: true, text: parsed.keys.join(",") } : parsed;
   }, []);
 
   const onCommitRaw = useCallback(
@@ -175,11 +179,25 @@ export function CitekeyPicker({
       // this door holds for any caller.
       const parsed = parseRawCitekeys(raw);
       if (!parsed.ok) return;
-      onSelectKey(parsed.text);
+      onSelectKeys(parsed.keys);
       if (!keepOpenOnPick) onClose();
     },
-    [onSelectKey, onClose, keepOpenOnPick],
+    [onSelectKeys, onClose, keepOpenOnPick],
   );
+
+  // The menu reports the just-staged key as ONE string — the active entry's
+  // key or the raw text it vetted. Split it here exactly as `onCommitRaw` did,
+  // so the Return-commit folds in the same keys the stage did. Text the key
+  // rule refuses (only reachable as an existing entry's own key) passes whole:
+  // it is the bib's own bytes, already the paper's to cite.
+  const handleEnterCommit = useMemo(() => {
+    if (!onEnterCommit) return undefined;
+    return (pickedKey?: string) => {
+      if (pickedKey === undefined) return onEnterCommit([]);
+      const parsed = parseRawCitekeys(pickedKey);
+      onEnterCommit(parsed.ok ? parsed.keys : [pickedKey]);
+    };
+  }, [onEnterCommit]);
 
   return (
     <BibEntryPickerMenu
@@ -195,7 +213,7 @@ export function CitekeyPicker({
       getMembershipChips={getMembershipChips}
       onCommitRaw={onCommitRaw}
       checkRaw={checkRaw}
-      onEnterCommit={onEnterCommit}
+      onEnterCommit={handleEnterCommit}
       initialQuery={initialQuery}
       placeholder="Search references or library…"
       ariaLabel="Pick a citation key"

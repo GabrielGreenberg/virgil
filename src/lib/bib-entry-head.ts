@@ -102,10 +102,16 @@ export function validateCitekey(key: string): BibHeadCheck {
  * first piece's reason, in the user's words. Without this a `}` or `%` typed
  * into the picker landed verbatim in the user's `.tex`, and a search phrase
  * that matched nothing (`Kripke naming`) became an undefined citation.
+ *
+ * The answer is the KEYS, never a joined string (task 1144): a citation card
+ * holds one row per key, so a caller handed `a,b` stored it as ONE row key — a
+ * phantom "not in your bibliography" row, the wrong singular/plural shape, and
+ * a dedup that compared against the whole list. With no joined form on offer,
+ * no caller can take it by accident.
  */
 export function parseRawCitekeys(
   text: string,
-): { ok: true; keys: string[]; text: string } | { ok: false; reason: string } {
+): { ok: true; keys: string[] } | { ok: false; reason: string } {
   const keys = text
     .split(",")
     .map((k) => k.trim())
@@ -115,7 +121,7 @@ export function parseRawCitekeys(
     const check = validateCitekey(k);
     if (!check.ok) return check;
   }
-  return { ok: true, keys, text: keys.join(",") };
+  return { ok: true, keys };
 }
 
 /**
