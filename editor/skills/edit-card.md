@@ -57,8 +57,10 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
 
 1. **Resolve + sanity-check the card.** Confirm it exists and see its kind:
    ```bash
-   python3 editor/scripts/card_by_id.py <docPath> <cardId>
+   python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
    ```
+   An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
+   and carry `"panel"` in the op ([_card-resolve.md](_card-resolve.md)).
    `{found:false}` → stop (wrong id). Note the `panel`/`cardKind`.
 
 2. **Build the `update` op-json and run it.** Translate `--body`/`--field` into

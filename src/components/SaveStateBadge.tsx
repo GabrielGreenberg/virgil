@@ -12,15 +12,14 @@
  * (`save-state.ts`), so it cannot come to disagree with the conflict pill or
  * the preservation banner beside it.
  *
- * Four tiers, and the two quiet ones matter as much as the loud ones:
+ * Four tiers, and since task 1131 the two quiet ones render NOTHING — the bar
+ * shows must-see state only (`bar-status-policy.ts`), and the absence of a
+ * save pill is the all-clear:
  *
- * - **clean** — "Saved · 13:28". A REASSURANCE, so a layout preference may
- *   collapse it away.
- * - **pending** — "Saving…". The ordinary gap between a keystroke and the
- *   1500 ms debounce. No button: an affordance whose only effect is to do what
- *   is already happening is dead chrome, and a control that blinks in and out
- *   on every typing pause is the fastest way to teach someone to stop seeing
- *   it. Cmd+S still works here — the KEYBOARD door is always open.
+ * - **clean** — nothing on the bar (pre-1131: "Saved · 13:28").
+ * - **pending** — nothing on the bar (pre-1131: "Saving…"). The ordinary gap
+ *   between a keystroke and the 1500 ms debounce; Cmd+S still works here —
+ *   the KEYBOARD door is always open.
  * - **unsaved** — the warm WARNING family, aged, with **Save now**. Twenty
  *   seconds of writing has not landed and nothing has declined it.
  * - **blocked** — the REASON in the user's words, painted in the register that
@@ -48,14 +47,10 @@
 import { memo, useCallback, useState } from "react";
 
 import { useSaveState } from "@/hooks/useSaveState";
-import {
-  describeAge,
-  describeBlockReason,
-  describeLandedAt,
-  isSaveTierProtected,
-} from "@/lib/save-state";
+import { describeAge, describeBlockReason } from "@/lib/save-state";
+import { barStatusVisible } from "@/lib/bar-status-policy";
 import { type InterruptionTone } from "@/lib/interruption-tone";
-import { BarStatusAction, BarStatusPill, barStatusAnnouncement } from "./status/BarStatusPill";
+import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 
 function SaveIcon() {
@@ -78,16 +73,7 @@ function SaveIcon() {
   );
 }
 
-function SaveStateBadgeImpl({
-  docId,
-  /** The user's collapsed-toolbar / zen preference. Hides the REASSURANCE
-   *  tiers only — a data-integrity state is never hideable by a layout
-   *  preference (the task-357 rule, stated once in `isSaveTierProtected`). */
-  collapsed = false,
-}: {
-  docId: string | null;
-  collapsed?: boolean;
-}) {
+function SaveStateBadgeImpl({ docId }: { docId: string | null }) {
   const view = useSaveState(docId);
   const [busy, setBusy] = useState(false);
 
@@ -107,38 +93,10 @@ function SaveStateBadgeImpl({
   }, [docId, busy]);
 
   if (!docId) return null;
-  if (!isSaveTierProtected(view.tier) && collapsed) return null;
-
-  // ── the two quiet tiers ────────────────────────────────────────────────
-  if (view.tier === "clean") {
-    if (view.lastLandedAt === null) return null; // nothing saved, nothing dirty
-    return (
-      <span
-        className="inline-flex items-center px-2 text-[11px] text-ink-subtle whitespace-nowrap"
-        data-save-state="clean"
-        // Task 769: the quiet tiers are statements too — announced politely,
-        // through the pill's one role table, rather than left role-less.
-        {...barStatusAnnouncement("quiet")}
-        aria-label={describeLandedAt(view.lastLandedAt)}
-      >
-        {describeLandedAt(view.lastLandedAt)}
-      </span>
-    );
-  }
-  if (view.tier === "pending") {
-    return (
-      <span
-        className="inline-flex items-center px-2 text-[11px] text-ink-subtle whitespace-nowrap"
-        data-save-state="pending"
-        // Task 769: the quiet tiers are statements too — announced politely,
-        // through the pill's one role table, rather than left role-less.
-        {...barStatusAnnouncement("quiet")}
-        aria-label="Saving"
-      >
-        Saving…
-      </span>
-    );
-  }
+  // Task 1131: the bar shows must-see state only (`bar-status-policy.ts`).
+  // The two quiet tiers — "Saved · 13:28" and "Saving…" — are reassurance,
+  // so they render nothing; the absence of a save pill IS the all-clear.
+  if (!barStatusVisible("save-state", { tier: view.tier })) return null;
 
   // ── the two loud tiers ─────────────────────────────────────────────────
   const blocked = view.tier === "blocked" && view.reason !== null;

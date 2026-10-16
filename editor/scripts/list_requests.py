@@ -188,10 +188,12 @@ _ROUTING: dict[str, dict[str, str]] = json.loads(
 #               from a shared file (notes.json holds note+highlight; cutter/
 #               revisions hold comment+suggestion; reports hold report+
 #               report-request) — or None to take every row (single-kind files).
-#   summary     the field to summarize from (footnote flattens rich JSON instead;
-#               None → the card's Mode-B anchor text, the highlight's body)
-#   rich        True → `summary` is a rich JSONContent body to flatten, not a
-#               plain field.
+#   summary     the fields to summarize from, as `(field, rich)` pairs tried IN
+#               ORDER — the first non-blank wins (`rich` True → a JSONContent
+#               body to flatten, not a plain field). A note is "title, else its
+#               body": the title is optional and blank by default (T6/C12), so a
+#               title-only summary filed every untitled note as "<note>" (task
+#               1140). None → the card's Mode-B anchor text (the highlight's body).
 # The `_ROUTING`-vs-adapter key parity is pinned by test_unbridged_flag_fallback.py.
 _STORAGE_ROWS: dict[str, dict] = {
     # notes.json holds BOTH note and highlight cards under `cards`, discriminated
@@ -200,30 +202,30 @@ _STORAGE_ROWS: dict[str, dict] = {
     # highlights never surfaced with their own wire kind.)
     "note": {
         "panel": "notes",
-        "match": ("kind", ("note",), True), "summary": "title", "rich": False,
+        "match": ("kind", ("note",), True), "summary": (("title", False), ("content", True)),
     },
     # A highlight is intrinsically Mode-B: its request text is its captured
     # anchor text (TS `highlightContext`), not a title it does not carry —
     # `summary: None` reads the Mode-B snapshot instead of a field.
     "highlight": {
         "panel": "notes",
-        "match": ("kind", ("highlight",), False), "summary": None, "rich": False,
+        "match": ("kind", ("highlight",), False), "summary": None,
     },
     "todo": {
         "panel": "todos",
-        "match": None, "summary": "text", "rich": False,
+        "match": None, "summary": (("text", False),),
     },
     "cutter-comment": {
         "panel": "cutter",
-        "match": ("kind", ("comment",), False), "summary": "text", "rich": False,
+        "match": ("kind", ("comment",), False), "summary": (("text", False),),
     },
     "revision-comment": {
         "panel": "revisions",
-        "match": ("kind", ("comment",), False), "summary": "text", "rich": False,
+        "match": ("kind", ("comment",), False), "summary": (("text", False),),
     },
     "report-request": {
         "panel": "reports",
-        "match": ("kind", ("report-request",), False), "summary": "text", "rich": False,
+        "match": ("kind", ("report-request",), False), "summary": (("text", False),),
     },
     # #55b: footnotes' flag lives in footnotes.json (FootnoteRef.aiRequest); the
     # body is rich JSONContent and they carry no `links` array, so the anchor
@@ -234,7 +236,7 @@ _STORAGE_ROWS: dict[str, dict] = {
     # case — the skill then re-derives an anchor rather than losing the request).
     "footnote": {
         "panel": "footnotes",
-        "match": None, "summary": "content", "rich": True,
+        "match": None, "summary": (("content", True),),
     },
 }
 
@@ -268,11 +270,16 @@ def card_request_text(card: dict, adapter: dict) -> str | None:
     context functions the bridge files with (`cutterCommentContext`,
     `noteContext`, …). ONE derivation for both drain legs: the unbridged
     fallback's virtual row and a bridged row's live text (task 955)."""
-    field = adapter["summary"]
-    if field is None:
+    fields = adapter["summary"]
+    if fields is None:
         return card_text_anchor(card)
-    raw = card.get(field)
-    return rich_json_to_text(raw) if adapter["rich"] else raw
+    text = None
+    for field, rich in fields:
+        raw = card.get(field)
+        text = rich_json_to_text(raw) if rich else raw
+        if isinstance(text, str) and text.strip():
+            return text
+    return text
 
 
 # (wire kind, link panel) → card kind: the inverse of the routing manifest, so

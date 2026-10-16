@@ -116,6 +116,9 @@ top of step 1.
    `error: library path not set — pick a library in Virgil first, or
    re-run after setting it via library_path.py --set <abs-path>`. Don't
    fall back to guessing.
+   (`library_path.py --mode` prints the session mode — `no-library` /
+   `in-library` / `paper-session` — then the resolved path; this skill needs
+   only the path, so `--get` is its door.)
 
 2. **Match phase.** The match and triage JSONLs outlive this call, so this
    block also mints the run's scratch directory; carry the printed path as

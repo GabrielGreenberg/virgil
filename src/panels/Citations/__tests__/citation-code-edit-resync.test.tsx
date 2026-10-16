@@ -76,6 +76,7 @@ function Harness({ emitted }: { emitted: string[] }) {
   });
   return (
     <CitationCard
+      onAddBibEntry={null}
       citation={cit}
       isSelected={false}
       isAnchored

@@ -35,8 +35,11 @@
  * window) left the ghost glued to the cursor and `pending` armed forever, and
  * the `if (pending) return false` latch then turned that into a permanently
  * dead grab for the whole surface. Everything that outlives a single call — the
- * click suppressor's listener and its 500 ms clock — hangs off the view's ONE
+ * click suppressor's listeners and its 500 ms clock — hangs off the view's ONE
  * `ViewLifetime`, per `docs/agents/laws/a-nodeview-owns-its-timers-lifetime.md`.
+ * That clock is measured from the physical RELEASE, not the threshold (task
+ * 1132): the click it guards follows the mouseup, which can come long after the
+ * drag started — or, after Escape, long after the session ended.
  */
 
 import { Extension } from "@tiptap/react";
@@ -60,7 +63,11 @@ import {
   commitDropSession,
   onDropSessionEnd,
 } from "@/components/drop-mode/controller";
-import { createViewLifetime, type ViewLifetime } from "./view-lifetime";
+import {
+  createViewLifetime,
+  type ViewLifetime,
+  type ViewTimer,
+} from "./view-lifetime";
 import {
   stashInlineAtomSource,
   clearInlineAtomSource,
@@ -161,24 +168,22 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
     const isEditable = (view: EditorView): boolean =>
       atomsAreGraspable(view, editableRef);
 
-    let pending:
-      | {
-          meta: AtomMeta;
-          pos: number;
-          /** The grabbed atom's entity id, or null for the id-less kinds. */
-          atomId: string | null;
-          atomEl: HTMLElement;
-          startX: number;
-          startY: number;
-          token: string;
-          triggered: boolean;
-        }
-      | null = null;
+    let pending: {
+      meta: AtomMeta;
+      pos: number;
+      /** The grabbed atom's entity id, or null for the id-less kinds. */
+      atomId: string | null;
+      atomEl: HTMLElement;
+      startX: number;
+      startY: number;
+      token: string;
+      triggered: boolean;
+    } | null = null;
 
     /**
      * The VIEW's lifetime (task 644), one per editor surface. Everything this
      * gesture arms that outlives a single call — the click suppressor's
-     * capture-phase listener and its 500 ms wall clock — is registered here,
+     * capture-phase listeners and its 500 ms post-release clock — is registered here,
      * so the plugin view's `destroy()` is a single `dispose()` and nothing
      * the gesture armed can outlive the view that armed it
      * (`docs/agents/laws/a-nodeview-owns-its-timers-lifetime.md`). A
@@ -216,29 +221,65 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
     // atom's own click handler runs in the bubble phase and itself calls
     // stopPropagation; a no-drag press never arms this, so the click
     // reaches that handler and opens the Card.
+    //
+    // ARMED at the threshold, CLOCKED from the release (task 1132). The click
+    // it exists to swallow follows the physical MOUSEUP, so its 500 ms inner
+    // bound is measured from that edge — a clock started at the threshold had
+    // already expired for any drag held longer than half a second, which is
+    // nearly every real drag. Neither `onUp` nor the session's end marks the
+    // release: after Escape (or the controller's missed-release bail) the
+    // session ends — and `cleanup()` removes `onUp` — while the button may
+    // still be down for seconds. So the guard watches the release itself:
+    //   • a `mouseup` starts the clock;
+    //   • a `mousemove` reporting the primary button up (`isMissedRelease`)
+    //     starts it too — the release happened where nobody saw it, and no
+    //     click will follow;
+    //   • a fresh `mousedown` retires the guard at once — the click that
+    //     follows a new press is a real one.
+    // So it ends exactly one of four ways: it swallows its click, a new press
+    // retires it, 500 ms pass after the release, or the view is torn down.
     const armClickSuppressor = () => {
       // A previous swallow still waiting on a click that never came is retired
       // here rather than left to its own clock: two live guards would eat two
       // clicks, and the second is a real one.
       disposeSuppressor?.();
+      let timer: ViewTimer | null = null;
       const swallow = (e: MouseEvent) => {
         e.stopImmediatePropagation();
         e.preventDefault();
         disposeSuppressor?.();
       };
+      const retire = () => disposeSuppressor?.();
+      const unwatchRelease = () => {
+        window.removeEventListener("mouseup", startClock, true);
+        window.removeEventListener("mousemove", onReleaseMove, true);
+      };
+      const startClock = () => {
+        if (timer) return;
+        unwatchRelease();
+        // Some platforms emit no click after a drag — drop the guard 500 ms
+        // after the RELEASE so it can never swallow an unrelated later click
+        // (idempotent with the one-shot removal above). That 500 ms stays the
+        // INNER bound; the OUTER one is the view's teardown, which
+        // `lifetime.dispose()` enforces through the handles below.
+        timer = lifetime.setTimeout(retire, 500);
+      };
+      const onReleaseMove = (e: MouseEvent) => {
+        if (isMissedRelease(e)) startClock();
+      };
+      const removeAll = () => {
+        window.removeEventListener("click", swallow, true);
+        window.removeEventListener("mousedown", retire, true);
+        unwatchRelease();
+      };
       window.addEventListener("click", swallow, true);
-      // Some platforms emit no click after a drag — drop the guard after a
-      // tick so it can never swallow an unrelated later click (idempotent
-      // with the one-shot removal above). That 500 ms stays the INNER bound;
-      // the OUTER one is the view's teardown, which `lifetime.dispose()`
-      // enforces through both handles below.
-      const timer = lifetime.setTimeout(() => disposeSuppressor?.(), 500);
-      const offDispose = lifetime.onDispose(() =>
-        window.removeEventListener("click", swallow, true),
-      );
+      window.addEventListener("mousedown", retire, true);
+      window.addEventListener("mouseup", startClock, true);
+      window.addEventListener("mousemove", onReleaseMove, true);
+      const offDispose = lifetime.onDispose(removeAll);
       disposeSuppressor = () => {
         disposeSuppressor = null;
-        window.removeEventListener("click", swallow, true);
+        removeAll();
         lifetime.clear(timer);
         offDispose();
       };
@@ -504,7 +545,11 @@ export function resolveAtomPos(
 }
 
 /** The entity id of the atom at `pos`, or null for the id-less kinds. */
-function atomIdOf(view: EditorView, pos: number, meta: AtomMeta): string | null {
+function atomIdOf(
+  view: EditorView,
+  pos: number,
+  meta: AtomMeta,
+): string | null {
   if (!meta.idAttr) return null;
   const id = view.state.doc.nodeAt(pos)?.attrs?.[meta.idAttr];
   return typeof id === "string" && id ? id : null;

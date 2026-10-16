@@ -184,3 +184,12 @@ The same five load-bearing points as the op block apply: terminator at column
 never `<docPath>`, `rm` on both paths with `rc` captured first, and the
 heredoc quoted (`<<'TXT'`). A literal value that starts with `@` must also go
 through a file. Id flags stay inline, as id-only ops do.
+
+### The legacy flag surface (`--revert` / `--complete-only`)
+
+`apply_response.py <docPath> --revert <requestId>` and `--complete-only
+<requestId>` (with `--note`) are the pre-subcommand spellings of the `revert`
+and `complete-only` subcommands, kept so older callers still route. They run
+the same functions; write new invocations as subcommands. `revert` undoes a
+landed response — removes the result card, strips its footnote span, and
+reopens the Task — and is a maintainer recovery, not a step any skill takes.

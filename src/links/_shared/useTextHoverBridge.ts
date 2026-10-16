@@ -40,6 +40,7 @@ import type { Editor } from "@tiptap/react";
 import { getTextAnchor } from "../links";
 import { forEachModeBCard, type ModeBBag } from "@/cards/mode-b-collections";
 import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
+import { isInlineAtomCardKind } from "@/cards/predicates";
 import {
   DATA_LINK_CARD,
   DATA_LINK_ID,
@@ -149,7 +150,7 @@ export function useTextHoverBridge({
       const atomEl = el.closest<HTMLElement>(`[${DATA_LINK_CARD}]`);
       if (atomEl) {
         const parsed = parseLinkCardKey(atomEl.getAttribute(DATA_LINK_CARD) || "");
-        if (parsed && (parsed.kind === "footnote" || parsed.kind === "citation")) {
+        if (parsed && isInlineAtomCardKind(parsed.kind)) {
           return { entityId: parsed.id, kind: parsed.kind };
         }
       }

@@ -1,10 +1,10 @@
-<!-- last-verified: 6cabf995 2026-10-15 -->
+<!-- last-verified: 1ab7baff 2026-10-16 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/cards, src/floats, src/panels, src/text-objects, src/types, library, editor, virgil, package.json -->
 
 # Virgil Overview
 
-**Current version:** 0.1.135 (mirrors `package.json`; bumped by `/cleanup-virgil`)
+**Current version:** 0.1.136 (mirrors `package.json`; bumped by `/cleanup-virgil`)
 
 
 ## What it is

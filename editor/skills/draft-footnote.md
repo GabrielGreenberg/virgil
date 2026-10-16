@@ -138,8 +138,10 @@ card:
 E1. **Resolve the footnote.** The `cardId` is `linkedTo.cardId` (real request) or
    the `<cardId>` embedded in the `virtual:footnotes:<cardId>` id:
    ```bash
-   python3 editor/scripts/card_by_id.py <docPath> <cardId>
+   python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
    ```
+   An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
+   and carry `"panel"` in the op ([_card-resolve.md](_card-resolve.md)).
    `{found:false}` → halt (the flagged footnote no longer exists; reply with the
    halt template). Note its current `content` and the paragraph it sits in.
 

@@ -29,8 +29,10 @@ under the pen**, with the audit notification + version bump.
 
 1. **Resolve the snippet** (confirm it's archived and has a recorded origin):
    ```bash
-   python3 editor/scripts/card_by_id.py <docPath> <cardId>
+   python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
    ```
+   An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
+   and carry `"panel"` in the op ([_card-resolve.md](_card-resolve.md)).
    Expect `archived:true`. (The snippet must carry `originalPanel` +
    `originalCard` — present only on snippets that `archive-card` wrote.)
 2. **Run the `restore` op:**

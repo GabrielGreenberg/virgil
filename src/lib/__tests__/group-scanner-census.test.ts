@@ -151,3 +151,46 @@ describe("task 1021 — group-scanner CENSUS", () => {
     expect(countIn('// never a local indexOf("]")')).toEqual({ depth: 0, bracket: 0 });
   });
 });
+
+/**
+ * Task 1141 — the CITE-ARGUMENT files read `[…]`/`{…}` groups through THE
+ * reader (`readCiteUnitsAt` in `cite-commands.ts`, over `extractBracketed` /
+ * `extractBraced`), never a regex character class. The model's private
+ * `\[([^\]]*)\]` predated the census above (which counts depth matchers and
+ * raw `indexOf("]")`, not regexes) and drifted from the scanner: a braced `]`
+ * in a note made a citation the scanner built unreadable to the model.
+ * Counted per file in comment-stripped source; counts are EXACT.
+ */
+const REGEX_GROUP_READ = /\[\^\\{1,2}\]\]|\[\^\}\]/g;
+
+const CITE_ARGUMENT_FILES: Record<string, { count: number; reason: string }> = {
+  "src/lib/cite-command-model.ts": { count: 0, reason: "THE model — reads through readCiteUnitsAt" },
+  "src/lib/cite-commands.ts": {
+    count: 4,
+    reason:
+      "`CITE_RE_FULL`: the input rule's END-anchored trigger over typed text — the " +
+      "InputRule API takes a RegExp; what it builds is re-read by the scanner",
+  },
+};
+
+describe("task 1141 — cite-argument regex CENSUS", () => {
+  it("cite-argument files hold no private regex group reader beyond the listed count", () => {
+    const problems: string[] = [];
+    for (const [rel, allowed] of Object.entries(CITE_ARGUMENT_FILES)) {
+      const src = commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+      const got = src.match(REGEX_GROUP_READ)?.length ?? 0;
+      if (got !== allowed.count) {
+        problems.push(
+          `${rel}: expected ${allowed.count} regex group read(s), found ${got} — read ` +
+            "`[…]`/`{…}` through readCiteUnitsAt (cite-commands.ts)",
+        );
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it("the detector sees the shape it forbids", () => {
+    expect("const R = /\\[([^\\]]*)\\]\\{([^}]+)\\}/;".match(REGEX_GROUP_READ)?.length).toBe(2);
+    expect("`(?:\\\\[[^\\\\]]*\\\\]){0,2}`".match(REGEX_GROUP_READ)?.length).toBe(1);
+  });
+});

@@ -10,6 +10,7 @@ import {
   type MergeBase,
 } from "@/lib/sidecar-merged-write";
 import { useSidecarReread } from "./useSidecarReread";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import {
@@ -112,6 +113,14 @@ export function useFootnotes(
   // live-atom intent reconcile in EditorPane, task 704: a stale `archived` flag
   // persisted by an earlier session is only healable once the mirror is here).
   const [loaded, setLoaded] = useState(false);
+  // The read THREW (task 1137). Distinct from "still loading" and from "the
+  // file is empty": until it, the read's `.catch` swallowed the error, so a
+  // consumer asking "does this doc have footnote X?" could not tell an
+  // unreadable mirror from a resolved one that lacks X. `loaded` stays false
+  // on a failure (the collection is not authoritative — the write gates above
+  // depend on that); `loadError` says WHY it is not, the same pair every
+  // `usePersistentState` sidecar exposes.
+  const [loadError, setLoadError] = useState(false);
 
   // Pin the write handle to docId's active pipeline. Stale handles
   // are rejected by the storage layer (see doc-pipeline.ts).
@@ -126,6 +135,7 @@ export function useFootnotes(
     // A base belongs to ONE document — re-earned only by this doc's read.
     baselineRef.current = newMergeBase();
     setLoaded(false);
+    setLoadError(false);
     if (!docId) { setState(EMPTY); return; }
     readSidecar<FootnotesState>(docId, "footnotes.json", EMPTY)
       .then((data) => {
@@ -143,7 +153,19 @@ export function useFootnotes(
         loadedRef.current = true;
         setLoaded(true);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(true);
+        // … and SAY so, on the one channel the sibling sidecar hooks' failed
+        // reads already speak from (task 679) — the footnote panel otherwise
+        // renders the empty mirror as "nothing here".
+        recordSidecarRefusal({
+          docId,
+          what: "footnotes",
+          reason: "unreadable",
+          detail: err instanceof Error ? err.message : undefined,
+        });
+      });
     return () => {
       cancelled = true;
     };
@@ -540,6 +562,7 @@ export function useFootnotes(
     () => ({
       footnoteRefs: state.footnotes,
       loaded,
+      loadError,
       addFootnote,
       addFootnoteFromSeed,
       ensureRef,
@@ -556,6 +579,7 @@ export function useFootnotes(
     [
       state.footnotes,
       loaded,
+      loadError,
       addFootnote,
       addFootnoteFromSeed,
       ensureRef,

@@ -170,6 +170,21 @@ describe("normalizeGlobalSlice — the pure door", () => {
     });
     expect(normalizeGlobalSlice(once)).toEqual(once);
   });
+
+  it("returns placements and the migration record CONSISTENT, keyed on the blob's own record (task 1135)", () => {
+    const side = (out: ReturnType<typeof normalizeGlobalSlice>) =>
+      out.placements.find((p) => p.id === "reports")?.side;
+    // Never recorded → applied AND recorded, together.
+    const fresh = normalizeGlobalSlice({ placements: [{ id: "reports", side: "left" }] });
+    expect(side(fresh)).toBe("right");
+    expect(fresh.appliedPrefMigrations).toContain("2026-08-19-reports-right");
+    // Recorded → a later drag back is honoured, never re-flipped.
+    const dragged = normalizeGlobalSlice({
+      placements: [{ id: "reports", side: "left" }],
+      appliedPrefMigrations: ["2026-08-19-reports-right"],
+    });
+    expect(side(dragged)).toBe("left");
+  });
 });
 
 describe("the peer-sync door runs the same repairs as the load door", () => {

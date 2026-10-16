@@ -62,22 +62,22 @@ describe("SaveStateBadge · the tiers", () => {
     expect(pill()).toBeNull();
   });
 
-  it("CLEAN — states the time of the landed write, with no button", () => {
+  it("CLEAN — says nothing: the bar shows must-see state only (task 1131)", () => {
+    // Pre-1131 this was "Saved · 13:28". A reassurance is not must-see; the
+    // absence of a save pill is the all-clear.
     act(() => noteSaveLanded(DOC, new Date(2026, 7, 19, 13, 28).getTime()));
     render(<SaveStateBadge docId={DOC} />);
-    expect(pill()?.getAttribute("data-save-state")).toBe("clean");
-    expect(screen.getByText("Saved · 13:28")).toBeTruthy();
-    expect(saveBtn()).toBeNull();
+    expect(pill()).toBeNull();
+    expect(screen.queryByText(/Saved ·/)).toBeNull();
   });
 
-  it("PENDING — quiet, and still no button", () => {
-    // A write is armed and will land in 1500 ms; an affordance whose only
-    // effect is to do what is already happening is dead chrome, and one that
-    // blinks in and out on every typing pause teaches the user to stop looking.
+  it("PENDING — says nothing either (task 1131)", () => {
+    // A write is armed and will land in 1500 ms; a pill that blinks in and out
+    // on every typing pause teaches the user to stop looking.
     act(() => noteUnsavedEdit(DOC));
     render(<SaveStateBadge docId={DOC} />);
-    expect(pill()?.getAttribute("data-save-state")).toBe("pending");
-    expect(saveBtn()).toBeNull();
+    expect(pill()).toBeNull();
+    expect(screen.queryByText(/Saving/)).toBeNull();
   });
 
   it("UNSAVED — amber, AGED, and offers Save now", () => {
@@ -189,16 +189,10 @@ describe("SaveStateBadge · the REGISTER (task 571)", () => {
   });
 });
 
-describe("SaveStateBadge · the collapse rule", () => {
-  it("a REASSURANCE may be collapsed away", () => {
-    act(() => noteSaveLanded(DOC));
-    render(<SaveStateBadge docId={DOC} collapsed />);
-    expect(pill()).toBeNull();
-  });
-
-  it("a DATA-INTEGRITY state may NOT be — the task-357 rule", () => {
+describe("SaveStateBadge · the must-see rule (task 357, folded into bar-status-policy by 1131)", () => {
+  it("a DATA-INTEGRITY state is always shown", () => {
     act(() => noteSaveBlocked(DOC, "preservation"));
-    render(<SaveStateBadge docId={DOC} collapsed />);
+    render(<SaveStateBadge docId={DOC} />);
     expect(pill()?.getAttribute("data-save-state")).toBe("blocked");
     act(() => {
       clearUnsavedWork();
@@ -220,9 +214,8 @@ describe("SaveStateBadge · what the button DOES", () => {
     await act(async () => {
       fireEvent.click(saveBtn() as Element);
     });
-    await waitFor(() =>
-      expect(pill()?.getAttribute("data-save-state")).toBe("clean"),
-    );
+    // Landed: the pill leaves the bar (clean is not must-see, task 1131).
+    await waitFor(() => expect(pill()).toBeNull());
     expect(saveBtn()).toBeNull();
   });
 

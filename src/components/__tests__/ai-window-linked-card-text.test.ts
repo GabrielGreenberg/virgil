@@ -113,6 +113,33 @@ describe("AIWindow: a bridged row shows the linked card's CURRENT text (task 955
     expect(snippet).toBe("Check the dating of the Glossa Ordinaria");
   });
 
+  it("UNTITLED note (the default) → the window reads its body, not a placeholder (task 1140)", () => {
+    const body = (text: string) => ({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    });
+    const untitled = { id: "n2", title: "", content: body("Please check this"), links: [] } as unknown as UserNote;
+    expect(noteContext(untitled).text).toBe("Please check this");
+    const titled = { id: "n3", title: "A title", content: body("the body"), links: [] } as unknown as UserNote;
+    expect(noteContext(titled).text).toBe("A title");
+
+    const { snippet } = snippetFor(
+      row({ kind: "note", text: "<note>", linkedTo: { panel: "notes", cardId: "n2" } }),
+      () => ({ state: "present", text: noteContext(untitled).text }),
+    );
+    expect(snippet).toBe("Please check this");
+
+    // A genuinely empty note files "" — the window says so and counts no user text.
+    const empty = { id: "n4", title: "  ", content: { type: "doc", content: [{ type: "paragraph" }] }, links: [] } as unknown as UserNote;
+    expect(noteContext(empty).text).toBe("");
+    const r = snippetFor(
+      row({ kind: "note", text: "", linkedTo: { panel: "notes", cardId: "n4" } }),
+      () => ({ state: "present", text: noteContext(empty).text }),
+    );
+    expect(r.snippet).toBe("(empty draft)");
+    expect(r.hasUserText).toBe(false);
+  });
+
   it("card ABSENT (deleted) → falls back to the stored row text, no crash", () => {
     const { snippet, hasUserText } = snippetFor(
       row({ linkedTo: { panel: "cutter", cardId: "gone" } }),

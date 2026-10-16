@@ -200,6 +200,7 @@ describe("archive button — the kinds the audit found (todo, citation)", () => 
       withProvider(
         api,
         <CitationCard
+          onAddBibEntry={null}
           citation={CIT}
           isSelected={false}
           isDraft={isDraft}

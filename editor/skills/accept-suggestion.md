@@ -55,8 +55,10 @@ transaction — never hand-assemble a `texEdit` here.
 1. **Resolve + validate the proposal.** Confirm it's a reviewable, pending AI
    suggestion:
    ```bash
-   python3 editor/scripts/card_by_id.py <docPath> <cardId>
+   python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
    ```
+   An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
+   and carry `"panel"` in the op ([_card-resolve.md](_card-resolve.md)).
    - `{found:false}` → stop (wrong id).
    - `cardKind` must be `revision-suggestion` or `cutter-suggestion`. Any other
      kind → stop (not a proposal — `accept` is for the suggestion family).

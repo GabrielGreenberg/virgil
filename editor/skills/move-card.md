@@ -35,8 +35,10 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
 
 1. **Resolve the card** (confirm it's a movable Mode-A card):
    ```bash
-   python3 editor/scripts/card_by_id.py <docPath> <cardId>
+   python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
    ```
+   An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
+   and carry `"panel"` in the op ([_card-resolve.md](_card-resolve.md)).
 2. **Run the `move` op:**
    ```bash
    python3 editor/scripts/apply_response.py <docPath> move \

@@ -51,12 +51,17 @@ import {
 import { describeAge, describeBlockReason } from "@/lib/save-state";
 import { useAnyUnlandedWork } from "@/hooks/useUnsavedWork";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { BarStatusPill } from "./status/BarStatusPill";
+import { barStatusVisible } from "@/lib/bar-status-policy";
+
+/** The chip's whole label (task 1131). */
+export const VIRGIL_UPDATE_LABEL = "Virgil update";
 
 function UpdateIcon() {
   return (
     <svg
-      width="16"
-      height="16"
+      width="14"
+      height="14"
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
@@ -125,7 +130,6 @@ export function describeMirrorVerdict(r: AppReloadReadiness): string {
 
 function SoftwareUpdateBannerImpl() {
   const updateState = useUpdateState();
-  const updateAvailable = updateState !== "none";
   const elsewhere = updateState === "activated-elsewhere";
   const anyUnlanded = useAnyUnlandedWork();
   const { confirm, dialog } = useConfirmDialog();
@@ -176,40 +180,38 @@ function SoftwareUpdateBannerImpl() {
     applyUpdate();
   }, [checking, confirm, elsewhere]);
 
-  if (!updateAvailable) return null;
+  if (!barStatusVisible("software-update", { update: updateState })) return null;
 
+  // Task 1131: the label is exactly "Virgil update" in every state — Gabriel
+  // asked for the chip and nothing more. The four state distinctions (ready /
+  // blocked by unsaved work / updated elsewhere / elsewhere + blocked) live in
+  // the hover hint, and the click flow above still refuses a lossy reload.
   const blocked = anyUnlanded && !checking;
-  const label = elsewhere
-    ? blocked
-      ? "Virgil updated in another window — reload once your work is saved"
-      : "Virgil updated — click to reload"
-    : blocked
-      ? "Virgil update — unsaved work first"
-      : "Virgil update — click to refresh";
   const hint = elsewhere
-    ? "Virgil was updated in another window — this window keeps the old version until it reloads"
+    ? blocked
+      ? "Virgil was updated in another window — reload this one once your work is saved"
+      : "Virgil was updated in another window — click to reload this one"
     : blocked
       ? "A Virgil update is ready — it will restart the app, and you have unsaved work"
-      : "Virgil update";
+      : "A Virgil update is ready — click to refresh";
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => void handleClick()}
-        className="topbarbtn"
-        data-hint={hint}
-        aria-description={hint}
-        data-update-banner={blocked ? "blocked" : "ready"}
-        data-update-state={updateState}
-      >
-        <span aria-hidden style={{ display: "inline-flex" }}>
-          <UpdateIcon />
-        </span>
-        {label}
-      </button>
+    <BarStatusPill
+      // Quiet when the click is safe; the warm family when unsaved work means
+      // the click will stop and ask first.
+      tone={blocked ? "warning" : "quiet"}
+      glyph={<UpdateIcon />}
+      label={VIRGIL_UPDATE_LABEL}
+      ariaLabel={`${VIRGIL_UPDATE_LABEL} — ${hint}`}
+      hint={hint}
+      onActivate={() => void handleClick()}
+      data={{
+        "data-update-banner": blocked ? "blocked" : "ready",
+        "data-update-state": updateState,
+      }}
+    >
       {dialog}
-    </>
+    </BarStatusPill>
   );
 }
 

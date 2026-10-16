@@ -352,9 +352,11 @@ describe("census · the bib's failure report has ONE publisher", () => {
       true,
     );
     // The optimistic apply is still there (the UI must not wait on the disk),
-    // but it is no longer the last word: a `failed` result re-reads the file.
+    // but it is no longer the last word: a result that did not LAND re-reads
+    // the file. Asked positively (task 1142) — `failed` alone left the
+    // read-only / no-handle / stale previews standing as phantoms.
     expect(hook).toMatch(/mutateProjectBib\(docId, mutate\)/);
-    expect(hook).toMatch(/result\.kind === "failed"/);
+    expect(hook).toMatch(/!didBibWriteLand\(result\)/);
     expect(hook).toMatch(/refreshBib\(docId\)/);
   });
 });

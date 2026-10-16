@@ -53,6 +53,8 @@
  */
 
 import { cardHasContent } from "@/cards/has-content";
+import { isInlineAtomCardKind } from "@/cards/predicates";
+import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import type { CardStore } from "./anchored-card-store";
 import { cardKeyForEntity } from "./entity-hover";
 import {
@@ -292,16 +294,16 @@ export function makeInlineAtomRegenMigrator(
       const next = remap.get(ref.id);
       return next ? { ...ref, id: next } : null;
     };
-    if (s.selected && (s.selected.kind === "footnote" || s.selected.kind === "citation")) {
+    if (s.selected && isInlineAtomCardKind(s.selected.kind)) {
       const moved = repoint(s.selected);
       if (moved) store.select(moved as typeof s.selected);
     }
-    if (s.hover && (s.hover.kind === "footnote" || s.hover.kind === "citation")) {
+    if (s.hover && isInlineAtomCardKind(s.hover.kind)) {
       const moved = repoint(s.hover);
       if (moved) store.setHover(moved as typeof s.hover);
     }
     for (const ref of s.expandedSet) {
-      if (ref.kind !== "footnote" && ref.kind !== "citation") continue;
+      if (!isInlineAtomCardKind(ref.kind)) continue;
       const moved = repoint(ref);
       if (moved) {
         store.collapse(ref);
@@ -314,7 +316,7 @@ export function makeInlineAtomRegenMigrator(
     // cheap and the id is unique across kinds so at most one matches.
     if (remapFloatKey) {
       for (const [oldId, newId] of remap) {
-        for (const kind of ["footnote", "citation"] as const) {
+        for (const { kind } of CARD_ATOMS) {
           const oldKey = cardKeyForEntity({ kind, id: oldId });
           const newKey = cardKeyForEntity({ kind, id: newId });
           if (oldKey && newKey) remapFloatKey(oldKey, newKey);

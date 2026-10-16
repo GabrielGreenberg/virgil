@@ -25,6 +25,7 @@
 
 import {
   getDiskFingerprint,
+  isOwnContent,
   stampDiskFingerprint,
   clearDiskFingerprint,
   hashContent,
@@ -348,10 +349,15 @@ export function createDiskWatcher(deps: DiskWatcherDeps): DiskWatcher {
       const content = await readContentFor(relPath);
       if (stopped) return;
       if (content === null) continue; // couldn't read — treat as no-op this poll
-      const h = hashContent(content);
-      if (h === fp.hash) {
-        // False positive (touch / load-writeback / identical bytes).
-        // RE-BASELINE so we don't re-read every poll.
+      // Ask the ledger NOW — after the read's await — whether these are bytes
+      // Virgil itself put there: its CURRENT stamp, or an own write still in
+      // flight (bytes landed, stamp not yet). Never compare against `fp`, which
+      // was captured before the await while Virgil's own save may have moved
+      // the stamp (task 1130: the false "Keep mine / Use disk" mid-save).
+      if (isOwnContent(docId, relPath, hashContent(content))) {
+        // False positive (touch / load-writeback / identical bytes / Virgil's
+        // own in-flight save). RE-BASELINE so we don't re-read every poll — an
+        // in-flight writer's own stamp lands after this one and supersedes it.
         stampDiskFingerprint(docId, relPath, fingerprintOf(live, content));
         continue;
       }
@@ -361,6 +367,10 @@ export function createDiskWatcher(deps: DiskWatcherDeps): DiskWatcher {
     }
 
     // 5. Severity (re-evaluated EVERY poll — unsaved-state flips change↔conflict).
+    //    `hasUnsavedEdits` is also true while a save is IN FLIGHT. That is not a
+    //    false escalation: Virgil's own in-flight bytes never reach `changes`
+    //    (isOwnContent above), so anything flagged here is FOREIGN bytes, and a
+    //    landing save is about to overwrite them — exactly a conflict.
     const severity: ExternalChangeSeverity | null =
       changes.length > 0 ? (hasUnsavedEdits() ? "conflict" : "change") : null;
 

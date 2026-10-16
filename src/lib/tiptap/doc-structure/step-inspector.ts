@@ -26,6 +26,7 @@ import {
   ReplaceAroundStep,
   ReplaceStep,
   type Step,
+  type StepMap,
 } from "@tiptap/pm/transform";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
 import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
@@ -36,6 +37,7 @@ import {
   type CitationEntry,
   type DocStructure,
   type CitationContainer,
+  compareReturnedBlock,
   deriveExampleIdentity,
   EMPTY_DIFF,
   type ExampleEntry,
@@ -818,6 +820,12 @@ export function inspectSteps(
   oldDoc: PMNode,
   newDoc: PMNode,
   prevStructure?: DocStructure,
+  /** The StepMaps the observer has deferred on `prevStructure` (its
+   *  positions are valid as of the last materialization; these carry them to
+   *  `oldDoc`). Only the anchor/label reconcilers read positions from
+   *  `prevStructure` — to ask whether mapping the index entry already lands
+   *  on the live answer (task 1128). */
+  prevPendingMaps: readonly StepMap[] = [],
 ): StructureDiff {
   if (!tr.docChanged) return EMPTY_DIFF;
 
@@ -854,16 +862,33 @@ export function inspectSteps(
   // answered the block question for every table and left a ghost heading in
   // `structure.headings`. A set per uuid, because a split clone transiently
   // puts one uuid on two nodes.
-  let newDocUuidKindsCache: Map<string, Set<string>> | null = null;
-  const survivingKindsOf = (uuid: string): Set<string> | undefined => {
+  //
+  // And identity is the BLOCK table's question asked with the block table's
+  // own eligibility rule (task 1128): `mayCarryBlockUuid(node, parent)`, the
+  // predicate the extractor gates `BlockEntry` on. Wrapping a paragraph in a
+  // list leaves its uuid on the now-INELIGIBLE inner paragraph; counting that
+  // as "survives" kept a ghost `paragraph` block a rebuild does not have. The
+  // kind sub-views are not gated on eligibility (the extractor emits a
+  // heading/figure/example entry whatever its parent), so their kinds are
+  // recorded for every carrier and only `blockLive` asks eligibility.
+  let newDocUuidKindsCache: Map<string, { kinds: Set<string>; blockLive: boolean }> | null =
+    null;
+  const survivingKindsOf = (
+    uuid: string,
+  ): { kinds: Set<string>; blockLive: boolean } | undefined => {
     if (!newDocUuidKindsCache) {
-      const map = new Map<string, Set<string>>();
-      newDoc.descendants((node) => {
+      const map = new Map<string, { kinds: Set<string>; blockLive: boolean }>();
+      newDoc.descendants((node, _pos, parent) => {
         const u = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
         if (u) {
-          const kinds = map.get(u);
-          if (kinds) kinds.add(node.type.name);
-          else map.set(u, new Set([node.type.name]));
+          const eligible = mayCarryBlockUuid(node, parent);
+          const rec = map.get(u);
+          if (rec) {
+            rec.kinds.add(node.type.name);
+            rec.blockLive ||= eligible;
+          } else {
+            map.set(u, { kinds: new Set([node.type.name]), blockLive: eligible });
+          }
         }
         return true;
       });
@@ -898,9 +923,9 @@ export function inspectSteps(
   // through this one door, so the next kind cannot regress it.
   const survivesAs = (uuid: string | null | undefined, kind?: string): boolean => {
     if (!uuid) return false;
-    const kinds = survivingKindsOf(uuid);
-    if (!kinds) return false;
-    return kind === undefined || kinds.has(kind);
+    const rec = survivingKindsOf(uuid);
+    if (!rec) return false;
+    return kind === undefined ? rec.blockLive : rec.kinds.has(kind);
   };
 
   // Anchor-id survivor guard — the mark-level twin of `survivingKindsOf`.
@@ -917,24 +942,83 @@ export function inspectSteps(
   // removal still fires. Built at most once per tx, and ONLY when some anchor
   // entered `removed.anchors` (never on plain typing — no anchor removal, no walk),
   // so keystroke sanctity holds (the O(doc) walk is off the typing path).
-  let newDocAnchorIdsCache: Set<string> | null = null;
-  const anchorSurvivesInNewDoc = (anchorId: string): boolean => {
-    if (!newDocAnchorIdsCache) {
-      const set = new Set<string>();
-      newDoc.descendants((node) => {
+  //
+  // The walk records each id's EXACT extent (first run's start → last run's
+  // end, what `buildInitial` computes), not just its presence (task 1128): a
+  // surviving anchor whose run was touched is reconciled against it below.
+  let newDocAnchorCache: Map<string, AnchorEntry> | null = null;
+  const liveAnchorIn = (anchorId: string): AnchorEntry | undefined => {
+    if (!newDocAnchorCache) {
+      const map = new Map<string, AnchorEntry>();
+      newDoc.descendants((node, pos) => {
         if (node.isText && node.marks.length > 0) {
           for (const mark of node.marks) {
             if (mark.type.name !== "linkedAnchor") continue;
-            const aid = (mark.attrs as { anchorId?: string }).anchorId ?? "";
-            if (aid) set.add(aid);
+            const attrs = mark.attrs as { anchorId?: string; kind?: string };
+            const aid = attrs.anchorId ?? "";
+            if (!aid) continue;
+            const end = pos + node.nodeSize;
+            const prev = map.get(aid);
+            if (prev) prev.to = end;
+            else map.set(aid, { id: aid, from: pos, to: end, kind: attrs.kind ?? "note" });
           }
         }
         return true;
       });
-      newDocAnchorIdsCache = set;
+      newDocAnchorCache = map;
     }
-    return newDocAnchorIdsCache.has(anchorId);
+    return newDocAnchorCache.get(anchorId);
   };
+
+  // Label twin (task 1128): the live DEFINING entry per label id in `newDoc` —
+  // the LAST definition in document order, `buildInitial`'s `labels.set`
+  // winner — through the ONE extractor so the two paths cannot disagree about
+  // what a label entry is. Built at most once per tx, and only when a label
+  // was touched in a way the per-step entries cannot settle alone (a label in
+  // both bundles, a removal, a duplicate definition) — never on typing, which
+  // touches no labelled node's opening token.
+  let newDocLabelCache: Map<string, LabelEntry> | null = null;
+  const liveLabelIn = (id: string): LabelEntry | undefined => {
+    if (!newDocLabelCache) {
+      const map = new Map<string, LabelEntry>();
+      const noop = () => {};
+      const ctx = {
+        sink: {
+          block: noop,
+          heading: noop,
+          figure: noop,
+          example: noop,
+          footnote: noop,
+          citation: noop,
+          anchor: noop,
+          label: (e: LabelEntry) => void map.set(e.id, e),
+        },
+        citationContainer: () => null,
+      };
+      newDoc.descendants((node, pos, parent) => {
+        extractEntitiesAt(node, pos, parent, ctx);
+        return true;
+      });
+      newDocLabelCache = map;
+    }
+    return newDocLabelCache.get(id);
+  };
+
+  // Where the index entry for a keyed table would land if this transaction
+  // were only MAPPED over it — the plugin's `mapStructurePositions` (default
+  // assoc) over the deferred maps, then this tx. A live answer equal to it
+  // needs no diff entry; a different one is a `changed*` entry. Without a
+  // `prevStructure` there is nothing to compare, so the live answer is
+  // always reported.
+  const mapPrior = (pos: number): number => {
+    let p = pos;
+    for (const m of prevPendingMaps) p = m.map(p);
+    return tr.mapping.map(p);
+  };
+  const labelDiffersFromPrior = (prior: LabelEntry, live: LabelEntry): boolean =>
+    mapPrior(prior.pos) !== live.pos ||
+    prior.owner !== live.owner ||
+    prior.ownerUuid !== live.ownerUuid;
 
   const sink: DiffSink = {
     removed,
@@ -1032,16 +1116,16 @@ export function inspectSteps(
       // the uuid — task 921) rides `changedBlocks` as well so the index's
       // `typeName` is refreshed, and wakes neither flag: nothing moved and no
       // title flipped. The kind-keyed sub-views report the change themselves.
-      if (removedPosInNewDoc(wasRemoved.pos) !== entry.pos) {
-        changedBlocks.push(entry);
-        blockOrderChanged = true;
-        if (wasRemoved.parTitled !== entry.parTitled) blockParTitleChanged = true;
-      } else if (wasRemoved.parTitled !== entry.parTitled) {
-        changedBlocks.push(entry);
-        blockParTitleChanged = true;
-      } else if (wasRemoved.typeName !== entry.typeName) {
-        changedBlocks.push(entry);
-      }
+      // The rule is `compareReturnedBlock` — shared with `mergeStructureDiffs`
+      // so the cross-transaction twin cannot drift (task 1129).
+      const verdict = compareReturnedBlock(
+        wasRemoved,
+        entry,
+        removedPosInNewDoc(wasRemoved.pos) !== entry.pos,
+      );
+      if (verdict.changed) changedBlocks.push(entry);
+      blockOrderChanged ||= verdict.blockOrderChanged;
+      blockParTitleChanged ||= verdict.blockParTitleChanged;
       continue;
     }
     if (prevBlocks?.has(uuid)) {
@@ -1055,7 +1139,7 @@ export function inspectSteps(
   for (const [uuid, entry] of removed.blocks) {
     if (added.blocks.has(uuid)) continue;
     // Block-survivor guard (task 247) — the block twin of the anchor-survivor
-    // check `anchorSurvivesInNewDoc`. The REAL post-split re-mint lands HERE,
+    // check `liveAnchorIn`. The REAL post-split re-mint lands HERE,
     // not in the AttrStep branch: `setNodeMarkup` on a non-leaf paragraph emits
     // a ReplaceAroundStep, whose `collectRange` sweeps the CLONE's old
     // (duplicate) uuid into `removed.blocks` even though the KEPT half still
@@ -1169,16 +1253,41 @@ export function inspectSteps(
   // Anchors.
   const addedAnchors: AnchorEntry[] = [];
   const removedAnchors: AnchorEntry[] = [];
+  const changedAnchors: AnchorEntry[] = [];
   for (const [id, entry] of added.anchors) {
+    // A new run of an id the touched range did not also remove: the index
+    // WIDENS the entry to the union (`applyDiff`), which is the rebuild's
+    // first-run → last-run extent.
     if (!removed.anchors.has(id)) addedAnchors.push(entry);
   }
   for (const [id, entry] of removed.anchors) {
-    // Survivor guard: an interior char-delete inside a marked run reports the
-    // whole run removed while the mark still survives in `newDoc`. Only report
-    // the anchor removed if it's absent from `added` AND truly gone from newDoc.
-    // The `!added.anchors.has(id)` short-circuit keeps the O(doc) walk off the
-    // hot path when the anchor was re-collected on the added side.
-    if (!added.anchors.has(id) && !anchorSurvivesInNewDoc(id)) removedAnchors.push(entry);
+    // A run of this anchor was touched on the removed side. Three outcomes,
+    // all decided against the LIVE extent (task 1128):
+    //  - gone from `newDoc` → removed;
+    //  - still there, and mapping the index entry already lands on the live
+    //    extent (an interior Backspace, a replace inside the run) → nothing;
+    //  - still there but mapping does NOT land on it → `changed`, carrying the
+    //    live extent. A MOVED run is this case: the id is in both bundles, the
+    //    two used to cancel, and the entry kept its mapped — collapsed — old
+    //    span, so the card's text snapshot read nothing (or a truncated
+    //    passage for one moved run of several).
+    // The survivor walk is the one this guard always paid when a removal
+    // could be false (an interior char-delete reports the whole run), now
+    // also paid for a run in both bundles — a structural edit, never typing.
+    const live = liveAnchorIn(id);
+    if (!live) {
+      removedAnchors.push(entry);
+      continue;
+    }
+    const prior = prevStructure?.anchors.get(id);
+    if (
+      !prior ||
+      prior.kind !== live.kind ||
+      mapPrior(prior.from) !== live.from ||
+      mapPrior(prior.to) !== live.to
+    ) {
+      changedAnchors.push(live);
+    }
   }
 
   // Examples: separate added / removed / changed, mirroring footnotes &
@@ -1239,14 +1348,40 @@ export function inspectSteps(
     if (!added.figures.has(uuid) && !survivesAs(uuid, "figureBlock")) removedFigures.push(entry);
   }
 
-  // Labels.
+  // Labels. A fresh id on the added side only is an addition. Everything else
+  // — an id in both bundles (a MOVED labelled heading/figure, whose two
+  // entries used to cancel and leave the mapped, stale pos), a removal (which
+  // another definition of the same id may outlive), a definition added for an
+  // id the index already holds (a pasted duplicate) — is settled against the
+  // live winner, the LAST definition in document order (task 1128).
   const addedLabels: LabelEntry[] = [];
   const removedLabels: LabelEntry[] = [];
+  const changedLabels: LabelEntry[] = [];
+  const prevLabels = prevStructure?.labels;
   for (const [id, entry] of added.labels) {
-    if (!removed.labels.has(id)) addedLabels.push(entry);
+    if (removed.labels.has(id)) continue; // settled below
+    if (!prevLabels?.has(id)) {
+      addedLabels.push(entry);
+      continue;
+    }
+    const live = liveLabelIn(id);
+    if (live && labelDiffersFromPrior(prevLabels.get(id)!, live)) changedLabels.push(live);
   }
   for (const [id, entry] of removed.labels) {
-    if (!added.labels.has(id)) removedLabels.push(entry);
+    const live = liveLabelIn(id);
+    if (!live) {
+      removedLabels.push(entry);
+      continue;
+    }
+    const prior = prevLabels?.get(id);
+    if (!prior) {
+      // Not indexed before (a partial-slice artifact, or no prior snapshot
+      // handed in): report the live definition as what it is to the caller.
+      if (prevLabels) addedLabels.push(live);
+      else changedLabels.push(live);
+    } else if (labelDiffersFromPrior(prior, live)) {
+      changedLabels.push(live);
+    }
   }
 
   const diff: StructureDiff = {
@@ -1268,6 +1403,7 @@ export function inspectSteps(
     citationOrderChanged,
     addedAnchors,
     removedAnchors,
+    changedAnchors,
     addedExamples,
     removedExamples,
     changedExamples,
@@ -1277,6 +1413,7 @@ export function inspectSteps(
     changedFigures,
     addedLabels,
     removedLabels,
+    changedLabels,
     contentChangedUuids,
     exampleContentChangedUuids,
     exampleShapeChanged: sink.exampleShapeChanged,

@@ -45,12 +45,12 @@
  * whole-citation note where LaTeX itself renders it — prenote before the FIRST
  * key, postnote after the LAST — and nowhere else.
  *
- * This module is a LEAF (its only import is the command vocabulary), so the
- * layers that need the answer can reach it: `src/lib/bib-parser.ts` and the
+ * This module is a LEAF (its only import is the command vocabulary and THE
+ * argument reader beside it), so the layers that need the answer can reach it: `src/lib/bib-parser.ts` and the
  * Library silo's whole-file copy both consume it rather than re-deriving it.
  */
 
-import { MULTI_CITE_NAMES } from "./cite-commands";
+import { readCiteUnitsAt, splitCiteKeys } from "./cite-commands";
 
 // ---------------------------------------------------------------------------
 // The model
@@ -61,6 +61,14 @@ export interface ParsedCiteKey {
   key: string;
   prenote?: string;
   postnote?: string;
+  /**
+   * PER-KEY arm only: the index of the `[…]{…}` group this key was READ from.
+   * A biblatex plural group may hold a comma list (`\cites[p. 1]{a,b}[p. 2]{c}`);
+   * its notes sit on the group's first (prenote) and last (postnote) key, and
+   * the serializer re-joins consecutive same-group keys so the bytes survive a
+   * round trip. Rows built by hand carry none and serialize one group per key.
+   */
+  group?: number;
 }
 
 /** Where a command's `[prenote][postnote]` annotations live. */
@@ -114,7 +122,12 @@ export type CiteSerializeInput =
 // Natbib commands: \cite, \citet, \citep, \citealt, \citealp, \citeauthor,
 // \citeyear, \citeyearpar, \citetext, \citenum, plus capitalized variants.
 // Longest names listed first to avoid partial-match shadowing.
-const NATBIB_HEAD_RE = /^\\(citeyearpar|citeauthor|citeyear|citealp|citealt|citetext|citenum|citep|citet|cite|Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citetext|Citenum|Citep|Citet|Cite)(\*?)(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]+)\}$/;
+//
+// Only the HEAD is a regex. The ARGUMENTS are read by `readCiteUnitsAt`, the
+// one reader the scanner (`matchCiteCommandAt`) also reads them with (task
+// 1141) — a private `\[([^\]]*)\]` here once made a braced `]` in a note
+// unparseable for the model while the scanner happily built the atom.
+const NATBIB_HEAD_RE = /^\\(citeyearpar|citeauthor|citeyear|citealp|citealt|citetext|citenum|citep|citet|cite|Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citetext|Citenum|Citep|Citet|Cite)(\*?)/;
 
 // Biblatex command head: matches the leading `\cmd*` (no arguments).
 // Longer names listed first so e.g. `\footfullcite` is preferred over
@@ -137,6 +150,11 @@ export function parseCiteCommand(command: string): ParsedCiteCommand | null {
 export function parseNatbibCommand(command: string): WholeNoteCiteCommand | null {
   const m = command.match(NATBIB_HEAD_RE);
   if (!m) return null;
+  const { units, end } = readCiteUnitsAt(command, m[0].length, false);
+  // Exactly one unit, and nothing after it. A raw-empty key group (`\citep{}`)
+  // is not natbib's (the biblatex reader below owns the key-less `\cite{}`).
+  if (units.length !== 1 || end !== command.length || units[0].body === "") return null;
+  const { opts, body } = units[0];
 
   let cmdName = m[1];
   const starred = m[2] === "*";
@@ -145,21 +163,20 @@ export function parseNatbibCommand(command: string): WholeNoteCiteCommand | null
 
   let prenote: string | undefined;
   let postnote: string | undefined;
-  if (m[4] !== undefined) {
-    prenote = m[3];
-    postnote = m[4];
-  } else if (m[3] !== undefined) {
-    postnote = m[3];
+  if (opts.length === 2) {
+    prenote = opts[0];
+    postnote = opts[1];
+  } else if (opts.length === 1) {
+    postnote = opts[0];
   }
 
-  // Split on comma, trim, and drop empty fragments so that an empty body
-  // (`\cite{ }`) yields `[]` rather than `[""]`, and stray commas
-  // (`\citep{a,,b}`) collapse to the real keys. An empty `keys` array is the
-  // signal a pristine, key-less citation relies on (see useCitations.addCitation).
-  const keys = m[5]
-    .split(",")
-    .map((k) => k.trim())
-    .filter((k) => k.length > 0);
+  // `\citetext{…}` takes free TEXT, not keys: its body is ONE opaque entry,
+  // kept byte-for-byte, so a save never re-spells `see also, e.g.` as
+  // `see also,e.g.` (task 1141). Every other command splits through THE key
+  // splitter — comments dropped, empty fragments too, so an empty body
+  // (`\cite{ }`) yields `[]`, the signal a pristine, key-less citation relies
+  // on (see useCitations.addCitation).
+  const keys = cmdName === "citetext" ? (body.trim() ? [body] : []) : splitCiteKeys(body);
   return {
     type: cmdName,
     starred,
@@ -192,50 +209,41 @@ export function parseBiblatexCommand(command: string): ParsedCiteCommand | null 
   const capitalized = cmdName[0] >= "A" && cmdName[0] <= "Z";
   if (capitalized) cmdName = cmdName[0].toLowerCase() + cmdName.slice(1);
 
-  const isMultiCite = MULTI_CITE_NAMES.has(cmdName);
-
-  // Walk the rest of the string consuming `[pre][post]{key}` groups.
-  let rest = command.slice(head[0].length);
-  const entries: ParsedCiteKey[] = [];
-  // Whether we consumed at least one `{...}` brace group. This distinguishes a
-  // syntactically-complete but key-less command (`\cite{}` → empty keys, a
-  // valid pristine citation) from an unparseable bare head (`\cite` → null).
-  let matchedGroup = false;
-  let groupCount = 0;
-  let firstPre: string | undefined;
-  let firstPost: string | undefined;
-  const groupRe = /^(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]*)\}/;
-  while (rest.length > 0) {
-    const m = rest.match(groupRe);
-    if (!m) break;
-    matchedGroup = true;
-    let kPre: string | undefined;
-    let kPost: string | undefined;
-    if (m[2] !== undefined) { kPre = m[1]; kPost = m[2]; }
-    else if (m[1] !== undefined) { kPost = m[1]; }
-    if (groupCount === 0) { firstPre = kPre; firstPost = kPost; }
-    groupCount++;
-
-    const keyContent = m[3].trim();
-    if (!isMultiCite && keyContent.includes(",")) {
-      // Singular biblatex command with comma-separated keys: one bracket group
-      // governs the whole brace group.
-      for (const k of keyContent.split(",")) {
-        const trimmed = k.trim();
-        if (trimmed) entries.push({ key: trimmed, prenote: kPre, postnote: kPost });
-      }
-    } else if (keyContent.length > 0) {
-      // Drop an empty key body (`\cite{}`) — it contributes no entry, leaving
-      // `keys === []` so the pristine, key-less citation path fires correctly.
-      entries.push({ key: keyContent, prenote: kPre, postnote: kPost });
-    }
-    rest = rest.slice(m[0].length);
-  }
-
+  // Consume every `[pre][post]{key}` group through THE argument reader.
+  const read = readCiteUnitsAt(command, head[0].length, true);
   // A bare head with no brace group at all is unparseable. But a command that
-  // DID match a `{...}` group (even an empty one) is a valid, key-less citation.
-  if (!matchedGroup) return null;
-  if (rest.trim().length > 0) return null;
+  // DID read a `{...}` group (even an empty one) is a valid, key-less citation.
+  if (read.units.length === 0) return null;
+  if (command.slice(read.end).trim().length > 0) return null;
+
+  const groupCount = read.units.length;
+  const notesOf = (opts: string[]) =>
+    opts.length === 2
+      ? { pre: opts[0], post: opts[1] }
+      : { pre: undefined, post: opts.length === 1 ? opts[0] : undefined };
+  const first = notesOf(read.units[0].opts);
+  const entries: ParsedCiteKey[] = [];
+  read.units.forEach((unit, group) => {
+    const { pre, post } = notesOf(unit.opts);
+    // A group's comma list is split the SAME way for singular and plural forms
+    // (task 1141 — `\cites[p. 1]{a,b}` once kept `"a,b"` as one key). The
+    // group's notes are placed where LaTeX renders them: prenote before its
+    // FIRST key, postnote after its LAST — never mirrored onto every key.
+    // An empty key body (`\cite{}`) contributes no entry, leaving
+    // `keys === []` so the pristine, key-less citation path fires correctly.
+    const keys = splitCiteKeys(unit.body);
+    const last = keys.length - 1;
+    keys.forEach((key, i) => {
+      entries.push({
+        key,
+        prenote: i === 0 ? pre : undefined,
+        postnote: i === last ? post : undefined,
+        group,
+      });
+    });
+  });
+  const firstPre = first.pre;
+  const firstPost = first.post;
 
   const keys = entries.map((e) => e.key);
   const shape = { type: cmdName, starred, capitalized, keys };
@@ -276,6 +284,7 @@ export function resolveCiteNoteRows(parsed: ParsedCiteCommand): ParsedCiteKey[] 
       key: e.key,
       prenote: e.prenote,
       postnote: e.postnote,
+      group: e.group,
     }));
   }
   const last = parsed.entries.length - 1;
@@ -374,7 +383,30 @@ export function serializeCiteCommand(
 
   const pluralType = type.endsWith("s") ? type : type + "s";
   const pluralBase = capitalized ? pluralType[0].toUpperCase() + pluralType.slice(1) : pluralType;
-  const parts = perKey.map((e) => `${bracketsFor(e.prenote, e.postnote)}{${e.key}}`);
+  // One `[pre][post]{…}` unit per READ group: consecutive keys that came from
+  // the same group (a comma list, `\cites[p. 1]{a,b}`) are re-joined, so the
+  // bytes survive a round trip (task 1141). The join is only taken where it is
+  // exact — the run's inner keys carry no notes of their own — otherwise each
+  // key gets its own unit, which never loses a note.
+  const parts: string[] = [];
+  for (let i = 0; i < perKey.length; ) {
+    let j = i;
+    const g = perKey[i].group;
+    if (g !== undefined) {
+      while (
+        j + 1 < perKey.length &&
+        perKey[j + 1].group === g &&
+        !perKey[j].postnote &&
+        !perKey[j + 1].prenote
+      ) {
+        j++;
+      }
+    }
+    const run = perKey.slice(i, j + 1);
+    const keys = run.map((e) => e.key).join(",");
+    parts.push(`${bracketsFor(run[0].prenote, run[run.length - 1].postnote)}{${keys}}`);
+    i = j + 1;
+  }
   return `\\${pluralBase}${star}${parts.join("")}`;
 }
 

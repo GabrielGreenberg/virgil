@@ -23,18 +23,15 @@
 // EMPTY: a flag whose right answer is "deliberately undocumented" would still
 // need to say so in the skill, which is what the coverage leg asks for.
 //
-// STATED SCOPE, so this is not over-built. Measured across `editor/scripts/`,
-// `create_card.py` is the ONLY script with a meaningful flag set —
-// `rename_citekey.py` and `list_requests.py` declare none, and
-// `get_para_context.py` has one (`--neighbors`) with no single owning skill.
-// `card_by_id.py` joined that last group in task 1112: one flag (`--panel`,
-// the cross-sidecar disambiguator), shared by move-card and restore-card. So
-// this is deliberately ONE pair, not a generalized script↔skill census; a
-// census over a population of one is a table pretending to be a rule. If a
-// second flag-bearing script ever gains an owning skill, widen the pair into a
-// table THEN.
+// SCOPE. This pair is the strict leg (flags ⊆ the skill's own `## Args`
+// section). It used to also CLAIM create_card.py was the only flag-bearing
+// editor script, checked against a hand-listed `siblings` array — which went
+// stale the first time a sibling grew a flag (card_by_id.py's `--panel`, task
+// 1112), and was already false of scripts it never listed (apply_response.py,
+// reflect.py, …). Task 1126 replaced that claim with the DERIVED census below:
+// every flag of every editor script is documented in a skill that invokes it.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
@@ -102,19 +99,100 @@ describe("create-card.md Args ⊇ create_card.py flags (population DERIVED)", ()
     const flat = read(SKILL).replace(/\s+/g, " ");
     expect(flat).toMatch(/with no requestId the chat path\s*synthesizes automatically/i);
   });
+});
 
-  it("the scope claim is CHECKED — create_card.py is the only flag-bearing editor script", () => {
-    // The stated reason this is one pair and not a census. If a sibling grows a
-    // real flag set, this fails and the pair should become a table.
-    // Each sibling's flag count as measured; growth past it fails.
-    const siblings: Record<string, number> = {
-      "rename_citekey.py": 0,
-      "list_requests.py": 0,
-      "card_by_id.py": 1, // --panel (task 1112), no single owning skill
-    };
-    for (const [f, max] of Object.entries(siblings)) {
-      const n = [...read(`editor/scripts/${f}`).matchAll(/add_argument\(\s*\n?\s*"--/g)].length;
-      expect(n, `${f} has grown optional flags — widen this pair into a table`).toBeLessThanOrEqual(max);
-    }
+// ─── The census (task 1126) ─────────────────────────────────────────────────
+//
+// An agent learns a script's vocabulary from the skill prose that tells it to
+// run the script — the script's `--help` is not in its context. So a flag no
+// invoking skill mentions is a capability no agent can reach, and the cost is
+// concrete: card_by_id.py's ambiguity REFUSAL says "re-run with --panel", and
+// no skill had ever said the flag existed.
+//
+// Every axis is DERIVED, nothing hand-listed:
+//   - the POPULATION is every `editor/scripts/*.py` declaring an
+//     `add_argument("--…")` (one-line, multi-line, either quote);
+//   - a script's INVOKERS are the `editor/skills/*.md` files naming it
+//     (`_`-includes count: they ship beside the skills and are linked from
+//     them, which is where shared doctrine like `_card-resolve.md` lives);
+//   - each flag must appear in AT LEAST ONE invoker.
+// A script NO skill names is a maintainer tool, not agent vocabulary, and is
+// out of scope — reported, not failed (skill_catalog.py today). A flag that is
+// deliberately not for agents still gets a sentence saying so, the way
+// `--margin` does in create-card.md.
+//
+// Residual, stated: "appears in an invoker" is a substring test, so a flag
+// spelled like a different script's flag in the same file (`--kind`) can be
+// satisfied by the other script's docs. The strict per-section leg above is
+// what pins create_card.py, the one script with a dedicated Args section.
+
+const SCRIPTS_DIR = "editor/scripts";
+const SKILLS_DIR = "editor/skills";
+
+/** Every `--flag` an editor script declares, or [] for a flagless one. */
+function scriptFlags(src: string): string[] {
+  const out: string[] = [];
+  for (const m of src.matchAll(/add_argument\(\s*["'](--[a-z0-9-]+)["']/g)) {
+    if (!out.includes(m[1])) out.push(m[1]);
+  }
+  return out;
+}
+
+function census() {
+  const skills = readdirSync(join(REPO, SKILLS_DIR))
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => ({ name: f, text: read(`${SKILLS_DIR}/${f}`) }));
+  return readdirSync(join(REPO, SCRIPTS_DIR))
+    .filter((f) => f.endsWith(".py"))
+    .sort()
+    .map((script) => ({ script, flags: scriptFlags(read(`${SCRIPTS_DIR}/${script}`)) }))
+    .filter((r) => r.flags.length > 0)
+    .map((r) => {
+      const invokers = skills.filter((s) => s.text.includes(r.script));
+      const undocumented = r.flags.filter((f) => !invokers.some((s) => s.text.includes(f)));
+      return { ...r, invokers: invokers.map((s) => s.name), undocumented };
+    });
+}
+
+describe("every editor script's flags are documented by a skill that invokes it (DERIVED census)", () => {
+  it("the census is non-vacuous — it discovers the flag-bearing scripts and their invokers", () => {
+    const rows = census();
+    expect(rows.length).toBeGreaterThanOrEqual(10);
+    const byName = Object.fromEntries(rows.map((r) => [r.script, r]));
+    // The row whose staleness birthed this census, and the strict pair's script.
+    expect(byName["card_by_id.py"]?.flags).toEqual(["--panel"]);
+    expect(byName["card_by_id.py"]?.invokers.length).toBeGreaterThanOrEqual(8);
+    expect(byName["create_card.py"]?.flags.length).toBeGreaterThanOrEqual(15);
+    // Single-quote and `group.add_argument` forms must not slip the needle.
+    expect(scriptFlags(`group.add_argument('--x', action="store_true")`)).toEqual(["--x"]);
+    expect(scriptFlags(`p.add_argument(\n    "--y",\n    default=1)`)).toEqual(["--y"]);
+  });
+
+  it("no invoked script declares a flag that none of its invoking skills mentions", () => {
+    const gaps = census()
+      .filter((r) => r.invokers.length > 0 && r.undocumented.length > 0)
+      .map((r) => `${r.script}: ${r.undocumented.join(", ")} (invoked by ${r.invokers.join(", ")})`);
+    expect(
+      gaps,
+      "a script flag no invoking skill documents — an agent composes its" +
+        " invocation from the skill prose, so the flag is unreachable. Document" +
+        " it in an invoking skill (or a `_`-include they link); if it is not" +
+        " for agents, say that in a sentence.",
+    ).toEqual([]);
+  });
+
+  it("every skill that resolves a card id links the shared resolution doctrine (`--panel`)", () => {
+    // card_by_id.py REFUSES an id two panels share; the answer (`--panel` on
+    // the script, `panel` / `panelA`/`panelB` on the op) is stated ONCE in
+    // _card-resolve.md, and each resolving skill must point there.
+    const include = read(`${SKILLS_DIR}/_card-resolve.md`);
+    expect(include).toContain("--panel");
+    expect(include).toMatch(/ambiguous/);
+    const resolvers = readdirSync(join(REPO, SKILLS_DIR)).filter(
+      (f) => f.endsWith(".md") && !f.startsWith("_") && read(`${SKILLS_DIR}/${f}`).includes("card_by_id.py <docPath>"),
+    );
+    expect(resolvers.length).toBeGreaterThanOrEqual(8);
+    const unlinked = resolvers.filter((f) => !read(`${SKILLS_DIR}/${f}`).includes("](_card-resolve.md)"));
+    expect(unlinked, "a skill runs card_by_id.py without linking _card-resolve.md").toEqual([]);
   });
 });

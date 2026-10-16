@@ -235,6 +235,51 @@ describe("resolveFirstLineTarget — the composed descent", () => {
     document.body.removeChild(wrapper);
   });
 
+  describe("a <blockquote> resolves through its FIRST element child, structurally (task 1138)", () => {
+    function quote(inner: string): HTMLElement {
+      const bq = document.createElement("blockquote");
+      bq.setAttribute("data-uuid", "q");
+      bq.setAttribute("data-text-object-kind", "blockquote");
+      bq.innerHTML = inner;
+      document.body.appendChild(bq);
+      return bq;
+    }
+
+    it("a quote OPENING with a list answers the first item's <p>, not the paragraph after the list", () => {
+      const bq = quote(
+        `<ul data-uuid="l" data-text-object-kind="bulletList"><li data-uuid="li" data-text-object-kind="listItem"><p>A</p></li></ul><p>B</p>`,
+      );
+      expect(resolveFirstLineTarget(bq).textContent).toBe("A");
+      document.body.removeChild(bq);
+    });
+
+    it("a plain quote answers its first <p>", () => {
+      const bq = quote(`<p>A</p><p>B</p>`);
+      expect(resolveFirstLineTarget(bq).textContent).toBe("A");
+      document.body.removeChild(bq);
+    });
+
+    it("a quote opening with a textless pod answers the pod (its border box)", () => {
+      const bq = quote(`<div data-uuid="m" data-text-object-kind="displayMath">x</div><p>B</p>`);
+      const target = resolveFirstLineTarget(bq);
+      expect(target.getAttribute("data-text-object-kind")).toBe("displayMath");
+      expect(blockHasOwnTextLine(target)).toBe(false);
+      document.body.removeChild(bq);
+    });
+
+    it("skips a leading ProseMirror widget decoration", () => {
+      const bq = quote(`<span class="ProseMirror-widget"></span><p>A</p>`);
+      expect(resolveFirstLineTarget(bq).textContent).toBe("A");
+      document.body.removeChild(bq);
+    });
+
+    it("an empty quote falls back to itself", () => {
+      const bq = quote(``);
+      expect(resolveFirstLineTarget(bq)).toBe(bq);
+      document.body.removeChild(bq);
+    });
+  });
+
   it("a nested list descends through both levels, and the guard bounds the walk", () => {
     const outer = document.createElement("ul");
     outer.setAttribute("data-uuid", "o");

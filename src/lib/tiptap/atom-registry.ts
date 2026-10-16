@@ -233,6 +233,13 @@ export const CARD_ATOM_REGISTRY = Object.fromEntries(
   CARD_ATOMS.map((m) => [m.kind, m]),
 ) as Record<CardAtomKind, CardAtomMeta>;
 
+/** "Is this kind a Card-bearing atom's?" — the MEMBERSHIP form, derived (task
+ *  1133). A type guard so a caller keeps the narrowing a hand-spelled
+ *  `k === "footnote" || k === "citation"` used to give it. Card-kind consumers
+ *  reach it through `isInlineAtomCardKind` (`@/cards/predicates`). */
+export const isCardAtomKind = (k: string): k is CardAtomKind =>
+  Object.prototype.hasOwnProperty.call(CARD_ATOM_REGISTRY, k);
+
 /** The node attrs that carry a Card-bearing atom's entity id. */
 export const CARD_ATOM_ID_ATTRS: ReadonlyArray<CardAtomIdAttr> = CARD_ATOMS.map(
   (m) => m.idAttr as CardAtomIdAttr,

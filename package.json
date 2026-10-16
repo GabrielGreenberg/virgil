@@ -1,6 +1,6 @@
 {
   "name": "virgil",
-  "version": "0.1.135",
+  "version": "0.1.136",
   "engines": {
     "node": "22.x || 24.x"
   },

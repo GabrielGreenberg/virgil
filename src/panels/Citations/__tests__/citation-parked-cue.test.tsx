@@ -73,6 +73,7 @@ function renderCard(opts: {
     createdAt: "2026-08-08T00:00:00.000Z",
   };
   const props: CitationCardProps = {
+    onAddBibEntry: null,
     citation,
     isAnchored: opts.isAnchored,
     isDraft: opts.isDraft,

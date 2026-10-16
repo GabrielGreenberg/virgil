@@ -931,26 +931,21 @@ describe("census · the structural floor and the shared cap", () => {
     );
   });
 
-  it("a TIER-1 surface reads the user's PREFERENCE, never the auto verdict", () => {
-    // Two things at once, and the second is the load-bearing one. (a) The save
-    // pill is TIER 1 by this bar's own ladder, so a narrow window must not
-    // carry it away. (b) The occupancy predicate is state-independent ONLY
-    // because the protected width R does not depend on the verdict — feed the
-    // verdict into a tier-1 element's width and R becomes a function of the
-    // rule's own output, which re-opens the flip-flop the predicate closes.
+  it("a TIER-1 surface reads NEITHER the auto verdict NOR a layout preference", () => {
+    // The occupancy predicate is state-independent ONLY because the protected
+    // width R does not depend on the verdict — feed the verdict into a tier-1
+    // element's width and R becomes a function of the rule's own output, which
+    // re-opens the flip-flop the predicate closes. Since task 1131 tier-1
+    // visibility is the bar-status policy's alone (must-see state), so no
+    // tier-1 item reads the collapse verdict, the raw pref, or zen.
     const cluster = commentsStripped(
       read("src/components/editor-layout/StatusCluster.tsx"),
     );
-    expect(cluster).toMatch(
-      /collapsed=\{\(collapsePreference \?\? topbarRightCollapsed\) \|\| zenModeOn\}/,
-    );
-    const topbar = commentsStripped(
-      read("src/components/editor-layout/TopBar.tsx"),
-    );
-    expect(
-      topbar,
-      "TopBar must hand down the RAW pref beside the effective verdict",
-    ).toMatch(/collapsePreference=\{statusCluster\.topbarRightCollapsed\}/);
+    const start = cluster.indexOf("const statusItems");
+    expect(start).toBeGreaterThan(-1);
+    const items = cluster.slice(start, cluster.indexOf("};", start));
+    expect(items).not.toMatch(/topbarRightCollapsed|collapsePreference|zenModeOn/);
+    expect(cluster).not.toMatch(/collapsePreference/);
   });
 
   it("the group clips only while collapsed", () => {

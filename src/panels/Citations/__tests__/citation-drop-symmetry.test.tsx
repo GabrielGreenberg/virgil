@@ -149,6 +149,7 @@ function buttonEnabledFor(command: string): boolean {
     createdAt: "2026-06-16T00:00:00.000Z",
   };
   const props: CitationCardProps = {
+    onAddBibEntry: null,
     citation: cit,
     isDraft: true,
     isSelected: false,
@@ -245,6 +246,7 @@ function renderCard(command = "") {
   };
   const onUpdateCitation = vi.fn();
   const props: CitationCardProps = {
+    onAddBibEntry: null,
     citation: cit,
     isDraft: true,
     isSelected: false,

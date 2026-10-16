@@ -34,6 +34,7 @@ import { ArchiveCard } from "@/panels/Archive";
 import { CutterCommentCard, CutterSuggestionCard, CutterSuggestionTrailing } from "@/panels/Cutter";
 import { TodoRow, TodoDoneToggle } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
+import { citationCardDoors } from "@/panels/Citations/citation-card-doors";
 import {
   RevisionRequestCard,
   RevisionSuggestionCard,
@@ -624,25 +625,31 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
         citation={cit}
         isSelected={isSelected}
         isAnchored={isAnchored}
-        bibEntries={ctx.bibEntries}
-        bibPackage={ctx.bibPackage}
-        getDisplayText={ctx.getCitationDisplayText}
+        // ONE door list, shared with the Omni build (task 1143). Spelled out
+        // field by field (not `citationCardDoors(ctx)`) so each read stays
+        // visible to the card-float-ctx honesty census; the source type is
+        // all-required, so a missing door still fails to compile.
+        {...citationCardDoors({
+          bibEntries: ctx.bibEntries,
+          bibPackage: ctx.bibPackage,
+          getCitationDisplayText: ctx.getCitationDisplayText,
+          updateCitation: ctx.updateCitation,
+          addBibEntry: ctx.addBibEntry,
+          getFormattedBib: ctx.getFormattedBib,
+          getAnnotation: ctx.getAnnotation,
+          setAnnotation: ctx.setAnnotation,
+          requestBibReview: ctx.requestBibReview,
+          cancelBibReview: ctx.cancelBibReview,
+          getBibReviewStatus: ctx.getBibReviewStatus,
+          getBibReviewNotes: ctx.getBibReviewNotes,
+          saveBibEntry: ctx.saveBibEntry,
+        })}
         onSelect={selectMirror(ctx.setSelectedCitationId, cit.id)}
         onJump={(sourceEl) => {
           ctx.setSelectedCitationId(cit.id);
           ctx.editorRef.current?.scrollToCitation(cit.id, sourceEl);
         }}
-        onUpdateCitation={ctx.updateCitation}
         onDelete={ctx.deleteCitation}
-        getFormattedBib={ctx.getFormattedBib}
-        getAnnotation={ctx.getAnnotation}
-        setAnnotation={ctx.setAnnotation}
-        onRequestReview={ctx.requestBibReview}
-        onCancelReview={ctx.cancelBibReview}
-        getReviewStatus={ctx.getBibReviewStatus}
-        getReviewNotes={ctx.getBibReviewNotes}
-        onSaveBibEntry={ctx.saveBibEntry}
-        onAddBibEntry={ctx.addBibEntry}
         isPoppedOut
       />
     ),

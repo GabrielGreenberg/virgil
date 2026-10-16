@@ -184,12 +184,11 @@ describe("resolveInlineContextElement", () => {
     expect(resolveInlineContextElement(anchor)).toBe(anchor);
   });
 
-  it("descends blockquote to its first paragraph", () => {
+  it("par-title-wrapper prefers the body <p> even when another <p> precedes it", () => {
     const anchor = build(`
-      <blockquote><p>Quoted</p></blockquote>
+      <div class="par-title-wrapper"><p class="stray">title</p><div class="par-body-container"><p class="body">B</p></div></div>
     `);
-    const target = resolveInlineContextElement(anchor);
-    expect(target.tagName).toBe("P");
+    expect(resolveInlineContextElement(anchor).className).toBe("body");
   });
 
   it("returns the anchor itself for unrecognized wrappers", () => {

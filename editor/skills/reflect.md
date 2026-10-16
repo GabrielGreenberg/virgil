@@ -108,6 +108,10 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
 - `<taskId>` — the `ai-requests.json` id, a `bib-review-requests.json` bibKey, a
   `virtual:<panel>:<cardId>` card-flag id, or `-` for a Task-less mechanical op
   (a card-op / writes-only edit that completed no Task).
+- `--summary "<one line>"` — overrides the memo's one-line summary (otherwise
+  taken from `--memo-json`'s `summary`, then the prior memo's).
+- `--kind <kind>` — overrides the Task kind the memo is filed under (otherwise
+  read from the Task); use it for a `-` taskId, which has no Task to read.
 
 ## Procedure
 

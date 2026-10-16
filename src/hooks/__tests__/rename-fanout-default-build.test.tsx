@@ -33,14 +33,14 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 vi.mock("@/lib/storage", async () => {
   const { mockStorageModule } = await import("@/lib/__tests__/_mock-storage");
+  const { bibDisk } = await import("@/lib/__tests__/_bib-disk");
   const { vi: v } = await import("vitest");
   return mockStorageModule({
     readSidecar: v.fn(async () => ({})),
     readSidecarIfExists: v.fn(async () => ({})),
-    readBib: v.fn(async () => ({
-      bibText: "@article{smith2020,\n  title = {A}\n}\n",
-      detectedPackage: undefined,
-    })),
+    // A bib whose writes LAND (task 1142): the fan-out follows only a
+    // `written` rename, and the derived `mutateBib` stub is a refused one.
+    ...bibDisk("@article{smith2020,\n  title = {A}\n}\n"),
   });
 });
 
@@ -58,9 +58,11 @@ import { useCitations } from "../useCitations";
 import { useAnnotations } from "../useAnnotations";
 import { useBibReview } from "../useBibReview";
 import { namedBibEntry } from "@/lib/bib-test-entry";
+import { resetBibDisk } from "@/lib/__tests__/_bib-disk";
 
 beforeEach(() => {
   __resetForTests();
+  resetBibDisk();
 });
 afterEach(() => {
   setIdentityCascadeFlag(undefined);

@@ -155,6 +155,9 @@ interface UiRow {
   key: string;
   prenote?: string;
   postnote?: string;
+  /** The `[…]{…}` group the key was READ from (`ParsedCiteKey.group`), so a
+   *  persist re-joins a plural comma list rather than splitting it (task 1141). */
+  group?: number;
 }
 
 function inferTypeFromBare(command: string): {
@@ -200,6 +203,7 @@ function rowsFromCommand(command: string): UiRow[] {
     key: r.key,
     prenote: r.prenote,
     postnote: r.postnote,
+    group: r.group,
   }));
 }
 
@@ -264,8 +268,12 @@ export interface CitationCardProps {
   onUpdateCitation: (id: string, command: string) => void;
   /** Add a library-only entry into the paper's references.bib. Used when
    *  the citekey picker locks onto an entry that doesn't yet exist in the
-   *  local bib. */
-  onAddBibEntry?: (entry: BibEntry) => void;
+   *  local bib. REQUIRED (task 1143): a mount that left it out offered
+   *  library rows as addable and then never added them. A surface that
+   *  genuinely cannot write the bib passes `null`, and the picker then offers
+   *  only the paper's own entries. Production surfaces spread
+   *  `citationCardDoors` (./citation-card-doors) rather than listing doors. */
+  onAddBibEntry: ((entry: BibEntry) => void) | null;
   /** Unused in the new layout (the inline BibEntryCard expansion is gone)
    *  but kept so the panel host can keep passing the callbacks for now. */
   getFormattedBib?: (entry: BibEntry) => string;
@@ -550,6 +558,7 @@ export function CitationCard({
         key: r.key.trim(),
         prenote: r.prenote || undefined,
         postnote: r.postnote || undefined,
+        group: r.group,
       }));
       const command = serializeCiteCommand(
         {

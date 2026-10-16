@@ -107,6 +107,24 @@ doc = make_doc(
 check(text_of(list_rows(doc), "q-note") == "Check the dating of the gloss",
       "note: drain reads the CURRENT title, not the toggle-time snapshot")
 
+print("\n=== UNTITLED note (the default since T6/C12): title, else body (task 1140) ===")
+def _body(text):
+    return {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]}
+doc = make_doc(
+    {"notes.json": {"cards": [
+        {"id": "n2", "kind": "note", "title": "", "content": _body("Please check this"),
+         "aiRequest": True, "links": []},
+        {"id": "n3", "kind": "note", "title": "", "content": _body("Unbridged ask"),
+         "aiRequest": True, "links": []},
+    ]}},
+    [bridged("q-untitled", "note", "notes", "n2", text="<note>")],
+)
+rows = list_rows(doc)
+check(text_of(rows, "q-untitled") == "Please check this",
+      "untitled note, bridged: drain reads the BODY, not the stored placeholder")
+check(text_of(rows, "virtual:notes:n3") == "Unbridged ask",
+      "untitled note, unbridged fallback: virtual row reads the BODY")
+
 print("\n=== the (wire kind, panel) PAIR picks the card kind ===")
 # note and highlight share notes.json; a highlight row must not read a note's
 # title (or vice versa) just because the ids collide on the panel.

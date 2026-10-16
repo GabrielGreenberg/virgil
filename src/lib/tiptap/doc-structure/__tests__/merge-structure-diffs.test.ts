@@ -12,6 +12,7 @@ import {
   type FootnoteEntry,
   type StructureDiff,
 } from "../types";
+import { diffWakesStructuralWatchers } from "../bus";
 
 function block(uuid: string, pos: number): BlockEntry {
   return { uuid, pos, typeName: "paragraph", parTitled: false };
@@ -50,6 +51,38 @@ describe("mergeStructureDiffs — the composition table", () => {
     expect(merged.changedBlocks.map((b) => [b.uuid, b.pos])).toEqual([["m", 40]]);
   });
 
+  // Task 1129: neither transaction compared the two sides (A saw a death, B a
+  // birth), so a plain OR of their flags left a `changedBlocks` entry that woke
+  // no structural watcher. The merge derives the flags with the inspector's own
+  // comparator (`compareReturnedBlock`).
+  it("removed ∘ added sets blockOrderChanged — the block came back as a new node, and the bus must wake", () => {
+    const merged = mergeStructureDiffs(
+      diff({ removedBlocks: [block("m", 0)] }),
+      diff({ addedBlocks: [block("m", 0)] }),
+    );
+    expect(merged.blockOrderChanged).toBe(true);
+    expect(merged.blockParTitleChanged).toBe(false);
+    expect(diffWakesStructuralWatchers(merged)).toBe(true);
+  });
+
+  it("removed ∘ added with a differing parTitled sets blockParTitleChanged — the breadcrumb drops the lost title", () => {
+    const merged = mergeStructureDiffs(
+      diff({ removedBlocks: [{ ...block("t", 0), parTitled: true }] }),
+      diff({ addedBlocks: [block("t", 0)] }),
+    );
+    expect(merged.blockParTitleChanged).toBe(true);
+    expect(merged.changedBlocks.map((b) => b.parTitled)).toEqual([false]);
+  });
+
+  it("a removal and an UNRELATED add set no block flag — only a returning uuid is compared", () => {
+    const merged = mergeStructureDiffs(
+      diff({ removedBlocks: [{ ...block("gone", 0), parTitled: true }] }),
+      diff({ addedBlocks: [block("new", 0)] }),
+    );
+    expect(merged.blockOrderChanged).toBe(false);
+    expect(merged.blockParTitleChanged).toBe(false);
+  });
+
   it("added ∘ changed → added, carrying the fresher entry", () => {
     const merged = mergeStructureDiffs(
       diff({ addedBlocks: [block("n", 0)] }),
@@ -79,15 +112,18 @@ describe("mergeStructureDiffs — the composition table", () => {
     expect(merged.footnoteOrderChanged).toBe(true);
   });
 
-  it("an anchor removed then re-added reports NEITHER — the id never left the document", () => {
-    // Anchors and labels have no `changed` bucket: their buckets mean "this id
-    // entered / left". A `changed` verdict there is silence, not an event.
+  it("an anchor removed then re-added composes to CHANGED — the id never left the document", () => {
+    // Add/remove mean "this id entered / left". Removed by one transaction and
+    // re-added by a later one, it did neither: the composed diff reports it as
+    // `changed` (task 1128), carrying the later extent, and no add/remove.
     const anchor = { id: "an-1", from: 1, to: 5, kind: "note" };
     const merged = mergeStructureDiffs(
       diff({ removedAnchors: [anchor] }),
       diff({ addedAnchors: [{ ...anchor, from: 9, to: 13 }] }),
     );
-    expect(merged).toBe(EMPTY_DIFF);
+    expect(merged.addedAnchors).toEqual([]);
+    expect(merged.removedAnchors).toEqual([]);
+    expect(merged.changedAnchors).toEqual([{ ...anchor, from: 9, to: 13 }]);
   });
 
   it("a block deleted later in the dispatch drops out of contentChangedUuids", () => {

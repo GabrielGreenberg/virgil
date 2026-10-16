@@ -28,38 +28,9 @@ import {
   type AnchoredCardRef,
   type CardStore,
 } from "./anchored-card-store";
-import {
-  cardKeyForEntity,
-  findEntity,
-} from "./entity-hover";
+import { cardKeyForEntity } from "./entity-hover";
+import { linksForCardRef } from "./card-anchor-links";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
-import type { Link } from "./types";
-
-/** Synthesize a Link for inline-atom selections (footnote, citation) so
- *  resolveLink can find the in-editor element. */
-function linkForInlineAtom(
-  nodeName: "footnote" | "citation",
-  id: string,
-): Link {
-  return {
-    id,
-    kind: nodeName,
-    anchor: { type: "inline-atom", nodeName, pos: null },
-    target: { type: "card", ref: { kind: nodeName, id } },
-    createdAt: "",
-  };
-}
-
-function getAnchorLinks(
-  ref: AnchoredCardRef,
-  collections: EntityCollectionSlots,
-): Link[] {
-  if (ref.kind === "footnote" || ref.kind === "citation") {
-    return [linkForInlineAtom(ref.kind, ref.id)];
-  }
-  const entity = findEntity(ref, collections);
-  return entity?.links ?? [];
-}
 
 export interface UsePlacementArgs {
   editor: Editor | null;
@@ -125,7 +96,7 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     const cardY = cardEl.getBoundingClientRect().top;
 
     // Find every in-editor anchor for this card.
-    const links = getAnchorLinks(selection, collections);
+    const links = linksForCardRef(selection, collections);
     if (links.length === 0) return;
 
     const viewportMid = window.innerHeight / 2;

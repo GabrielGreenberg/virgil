@@ -93,13 +93,13 @@ describe("rederiveAiRequestForMorph (task 701)", () => {
       requests: [row({ kind: "highlight", text: "the tinted passage" })],
     };
     await rederiveAiRequestForMorph("doc", "highlight", "note", "c1", {
-      text: "<note>",
+      text: "Check the dating",
       paragraphIds: ["p-1"],
       selectedText: "the tinted passage",
     });
     expect(seeded.state.requests[0]).toMatchObject({
       kind: "note",
-      text: "<note>",
+      text: "Check the dating",
       paragraphIds: ["p-1"],
     });
   });

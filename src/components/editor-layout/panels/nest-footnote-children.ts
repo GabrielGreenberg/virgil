@@ -4,7 +4,8 @@
  *
  * PHASE 1 — citations only. A `\cite` that lives inside a footnote body is
  * tagged `nestedInFootnoteId` on the DocStructureObserver `CitationEntry`
- * (`structure.citations[].nestedInFootnoteId`, load-only `buildInitial`). That
+ * (`structure.citations[].nestedInFootnoteId`, stamped by the shared entity
+ * extractor on the load AND step paths — task 1128). That
  * datum is already in the structure snapshot — this module is PURE rendering
  * plumbing: it does NO doc walk. The host derives the
  * `citationId → footnoteId` map from the snapshot under a structural gate
@@ -77,8 +78,8 @@ export function buildNestedFootnoteChildMap(
 // generalizes "footnote owner" → "container owner": a `\cite` inside an
 // EXAMPLE block nests under the example's omni card, with the IDENTICAL render
 // treatment (16px indent, ordered under the parent). The owner fact is the
-// generalized `CitationEntry.nestedInContainerId = { kind, id }` the load-only
-// `buildInitial` pass stamps for BOTH kinds. This is still PURE rendering
+// generalized `CitationEntry.nestedInContainerId = { kind, id }` the shared
+// entity extractor stamps for BOTH kinds, on the load and step paths alike. This is still PURE rendering
 // plumbing keyed off the snapshot — no doc walk; the host gates it on the same
 // `useStructuralRevisions().citations` counter so it never runs per keystroke.
 // ---------------------------------------------------------------------------

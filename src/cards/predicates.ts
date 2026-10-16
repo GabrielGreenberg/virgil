@@ -20,6 +20,11 @@ import type { PanelThemeKey } from "@/lib/panel-theme";
 import type { AiRequestKindOnDisk, AiRequestLink } from "@/lib/types";
 import type { CardBodySchemaScope } from "@/lib/tiptap/borrowed-schema";
 import { LEGACY_TOKEN_CROSSWALK } from "./legacy-token-crosswalk";
+import {
+  CARD_ATOMS,
+  isCardAtomKind,
+  type CardAtomKind,
+} from "@/lib/tiptap/atom-registry";
 
 /** All card kinds, in registry declaration order. */
 export const CARD_KINDS = Object.keys(CARD_REGISTRY) as CardKind[];
@@ -171,20 +176,22 @@ export const excerptCardKinds = (): CardKind[] =>
   CARD_KINDS.filter(isExcerptCardKind);
 
 /** Whether a kind renders as an in-text inline atom (footnote / citation),
- *  whose existence is the editor's job (not a sidecar collection). NOT cleanly
- *  facet-derivable: `markerType === null` is shared with `highlight` (a tint,
- *  not an atom) and `bib`/`ai`/`example`, so this stays an explicit literal —
- *  the single source consumers route through (replacing the local
- *  `isInlineAtomKind` in `useAnchorHighlightReconciler`). A dev assertion
- *  (below) pins the invariant that both have `markerType === null`. */
-export const isInlineAtomCardKind = (k: CardKind): boolean =>
-  k === "footnote" || k === "citation";
+ *  whose existence is the editor's job (not a sidecar collection). DERIVED from
+ *  the atom registry (task 1133): a Card kind is an inline-atom kind exactly
+ *  when it names a Card-bearing atom row (`idAttr !== null` — `CARD_ATOMS`).
+ *  The card registry can't answer this from its own facets (`markerType ===
+ *  null` is shared with `highlight` / `bib` / `ai` / `example`), but it never
+ *  had to: the atom registry already publishes the set. A type guard, so the
+ *  call sites that used to spell `k === "footnote" || k === "citation"` keep
+ *  their narrowing. */
+export const isInlineAtomCardKind = (k: CardKind): k is CardKind & CardAtomKind =>
+  isCardAtomKind(k);
 
 if (process.env.NODE_ENV !== "production") {
-  // The two inline-atom kinds carry no margin marker (their in-text atom IS the
-  // surface). If a registry edit ever gives one a `markerType`, the explicit
-  // literal above would silently drift from the facet — make it loud.
-  for (const k of ["footnote", "citation"] as const) {
+  // The inline-atom kinds carry no margin marker (their in-text atom IS the
+  // surface). If a registry edit ever gives one a `markerType`, the two
+  // registries disagree about what the surface is — make it loud.
+  for (const { kind: k } of CARD_ATOMS) {
     if (CARD_REGISTRY[k].markerType !== null) {
       console.error(
         `[predicates] isInlineAtomCardKind invariant broken: "${k}" must have ` +

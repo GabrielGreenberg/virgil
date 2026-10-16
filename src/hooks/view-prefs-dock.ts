@@ -188,6 +188,9 @@ export function placeInStack(
   opts: PlaceInStackOptions = {},
 ): ViewPrefs {
   const { index, freeSpacePx } = opts;
+  // The stack as the user SAW it: an explicit `index` is a gap between the
+  // bands on screen, so it is translated into the post-removal model below.
+  const shown = stackFor(p, side);
   let next: ViewPrefs = {
     ...p,
     panelModes: { ...p.panelModes, [id]: "docked" as PanelMode },
@@ -216,7 +219,14 @@ export function placeInStack(
       next = pruneMRU(next, victim);
     }
   }
-  const at = index == null ? stack.length : Math.max(0, Math.min(index, stack.length));
+  // Screen index → model index (task 1136): every shown band that sat before
+  // the drop gap and has since left the stack — the evicted LRU victim, or
+  // `id` itself on a same-side re-place — shifted the later slots left by
+  // one. Counting the survivors before the gap is that translation.
+  const at =
+    index == null
+      ? stack.length
+      : shown.slice(0, Math.max(0, index)).filter((x) => stack.includes(x)).length;
   next = withStack(next, side, [...stack.slice(0, at), id, ...stack.slice(at)]);
   // Invariant 3.
   return bumpMRU(next, side, id);

@@ -403,11 +403,15 @@ describe("census · a data-integrity state is never hideable", () => {
   });
 
   it("the badge decides hideability from the SSOT, not from its own opinion", () => {
-    // The clean/pending tiers are a reassurance and may collapse; the two loud
-    // tiers may not. That split is `isSaveTierProtected`, and the badge must
-    // ASK it rather than restate it — the census's own reason for existing.
+    // The clean/pending tiers are a reassurance; the two loud tiers are
+    // must-see. That split is `isSaveTierProtected`, and since task 1131 the
+    // badge ASKS it through the one bar-status policy rather than restating
+    // it — the census's own reason for existing.
     const code = codeOnlyLines(read("src/components/SaveStateBadge.tsx"));
-    expect(code).toContain("isSaveTierProtected(");
+    expect(code).toContain("barStatusVisible(");
+    expect(codeOnlyLines(read("src/lib/bar-status-policy.ts"))).toContain(
+      "isSaveTierProtected(",
+    );
   });
 });
 
@@ -521,10 +525,9 @@ describe("census · ONE tone table for every surface that presents an interrupti
     // its reason, so a new presenter must either enter the door or be named
     // — and a painter that quietly stopped asking the door fails as a
     // non-painter nobody declared.
-    const NON_PAINTERS: Record<string, string> = {
-      "src/components/SoftwareUpdateBanner.tsx":
-        "reads describeBlockReason(...).sentence into the blocked list; paints no interruption tone",
-    };
+    // Task 1131: the update banner renders through the bar pill now, so the
+    // non-painter list is empty — kept as the declaration point.
+    const NON_PAINTERS: Record<string, string> = {};
     // A presenter paints by asking the door directly, or — since task 769 —
     // by handing its tone to the ONE bar pill, which asks it.
     expect(codeOnlyLines(read(BAR_PILL))).toContain("paletteForTone(");
@@ -542,6 +545,7 @@ describe("census · ONE tone table for every surface that presents an interrupti
         "src/components/MirrorRecoveryBadge.tsx",
         "src/components/PreservationNoticeBadge.tsx",
         "src/components/SaveStateBadge.tsx",
+        "src/components/SoftwareUpdateBanner.tsx",
       ].sort(),
     );
   });
