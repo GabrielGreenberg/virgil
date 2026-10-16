@@ -149,6 +149,21 @@ export type BibWriteResult =
   | { kind: "read-only" }
   | { kind: "failed"; error: unknown };
 
+/**
+ * Is the file now what the caller's mutation asked for? ONE positive question
+ * (task 1142), so a caller that acts on the write — a rename's `\cite{}`
+ * fan-out, an optimistic view standing as truth — asks "did it land" rather
+ * than blacklisting the refusals it happened to know about. `written` landed;
+ * `declined` means the mutator found nothing to change, i.e. the disk already
+ * says it. Every other kind — the refusals below AND `stale` (the pipeline was
+ * superseded mid-write) — leaves the file without the change.
+ */
+export function didBibWriteLand(
+  r: BibWriteResult,
+): r is ({ kind: "written" } & BibMutationResult) | { kind: "declined" } {
+  return r.kind === "written" || r.kind === "declined";
+}
+
 /** Did this result mean the user's change is NOT on disk and never will be? */
 export function isBibWriteRefused(
   r: BibWriteResult,
