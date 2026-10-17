@@ -203,22 +203,13 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
    *  todo can still be separately archived. Filtering happens at the panel; this
    *  just persists the flag through the same sidecar path. (Distinct from the
    *  pane-level clear-done door, which permanently DELETES completed todos
-   *  through the unbridging executor — see the note below `reorder`.) */
+   *  through the unbridging executor — see the "NO BULK PURGE" note below.) */
   const setArchived = useCallback((id: string, archived: boolean) => {
     pristine.markDirty(id);
     update((prev) => ({
       items: prev.items.map((i) => (i.id === id ? { ...i, archived } : i)),
     }));
   }, [update, pristine]);
-
-  const reorder = useCallback((fromIndex: number, toIndex: number) => {
-    update((prev) => {
-      const items = [...prev.items];
-      const [moved] = items.splice(fromIndex, 1);
-      items.splice(toIndex, 0, moved);
-      return { items };
-    });
-  }, [update]);
 
   // NO BULK PURGE LIVES HERE (task 681). The Todo panel's "clear done" control
   // used to reach a raw `archiveDone` on this hook — a plain
@@ -470,7 +461,6 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       setAiRequest,
       deleteItem,
       setArchived,
-      reorder,
       addParagraphId,
       removeParagraphId,
       detachAnchorSources,
@@ -496,7 +486,6 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       setAiRequest,
       deleteItem,
       setArchived,
-      reorder,
       addParagraphId,
       removeParagraphId,
       detachAnchorSources,
