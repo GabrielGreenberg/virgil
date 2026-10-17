@@ -75,6 +75,7 @@ import { iconHint } from "@/components/Hint";
 import { Button } from "@/components/Button";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -443,7 +444,7 @@ function BibEntryPickerBody({
   // input (spread) and the external input (attached via addEventListener).
   const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
+      if (isCommitEnter(e)) {
         e.preventDefault();
         // Stage the active/raw key through the normal pick path (this is what
         // adds a library-only entry to the paper's bib), then — in a deferred

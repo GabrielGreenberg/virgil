@@ -67,6 +67,7 @@ import type {
   UserNote,
 } from "@/lib/types";
 import { Panel } from "@/panels/_shared/Panel";
+import { isCommitEnter } from "@/lib/key-intent";
 
 type BreadcrumbSegment = {
   text: string;
@@ -963,7 +964,7 @@ function SearchPanel({
         e.preventDefault();
         goPrev();
         clearStaleHover(listRef.current);
-      } else if (e.key === "Enter") {
+      } else if (isCommitEnter(e)) {
         e.preventDefault();
         goNext();
         clearStaleHover(listRef.current);

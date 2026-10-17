@@ -42,6 +42,7 @@ import {
 } from "@/lib/document-class";
 import { DOC_TYPES } from "@/lib/doc-types";
 import { iconHint } from "@/components/Hint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /**
  * The distinct `\documentclass` names offered by the doc-type control,
@@ -472,7 +473,7 @@ export default function ManageStylesModal({
                             // Enter is MINE". Without it the shell would fall
                             // through to the cued default ("Done") and a rename
                             // would close the whole modal.
-                            if (e.key === "Enter") {
+                            if (isCommitEnter(e)) {
                               e.preventDefault();
                               commitRename(s.id);
                             } else if (e.key === "Escape") {

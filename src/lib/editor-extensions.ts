@@ -108,6 +108,7 @@ import {
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 import { surfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
+import { isCommitEnter } from "@/lib/key-intent";
 
 // --- Heading callback refs (threaded from the host component) ----------
 // Formerly lexical closures inside VirgilEditor; the heading NodeView reads
@@ -1187,7 +1188,7 @@ export function createHeadingWithLabel(
           };
 
           input.addEventListener("keydown", (ev) => {
-            if (ev.key === "Enter") { ev.preventDefault(); void commit("enter"); }
+            if (isCommitEnter(ev)) { ev.preventDefault(); void commit("enter"); }
             if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanupSizer(); finish(); }
           });
 

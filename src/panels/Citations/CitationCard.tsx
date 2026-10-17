@@ -54,6 +54,7 @@ import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1300,7 +1301,7 @@ export function CitationCard({
                   value={codeDraft}
                   onChange={(e) => updateCodeDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (isCommitEnter(e)) {
                       e.preventDefault();
                       // One Enter, one commit — the explicit call and the
                       // blur's own `onBlur` would otherwise both run it.
@@ -1532,7 +1533,7 @@ function CitationKeyRow({
             onChange={(e) => setPgDraft(e.target.value)}
             onBlur={() => session.commit(commitPg)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isCommitEnter(e)) {
                 e.preventDefault();
                 // One Enter, one write: pre-529 the explicit `commitPg()` and
                 // the blur's own `onBlur` each ran it from this stale closure,

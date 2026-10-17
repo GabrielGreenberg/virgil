@@ -76,6 +76,7 @@ import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
 import { omniPinStore, pinOwnerOf } from "./editor-layout/omni-pin-store";
 import { iconHint } from "@/components/Hint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /**
  * True when a keyboard event originated from an interactive control nested
@@ -1239,7 +1240,7 @@ export function CardBodyTitle({
             });
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (isCommitEnter(e)) {
               e.preventDefault();
               // Already ONE commit before 529 — this branch only blurs and lets
               // `onBlur` do the work — so it is byte-equivalent through the
@@ -3268,7 +3269,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
                     // Only when the header itself is focused — never steal
                     // Enter/Space from inputs nested in the trailing slot.
                     if (e.target !== e.currentTarget) return;
-                    if (e.key === "Enter" || e.key === " ") {
+                    if (isCommitEnter(e) || e.key === " ") {
                       e.preventDefault();
                       e.stopPropagation();
                       headerActivate();

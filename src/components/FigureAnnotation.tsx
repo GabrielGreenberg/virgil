@@ -8,6 +8,7 @@ import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { iconHint } from "@/components/Hint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
 // `src/components/Editor.tsx` (vanilla-DOM extension) but built as a React
@@ -288,7 +289,7 @@ export default function FigureAnnotation({
               checkConflict(e.target.value.trim());
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isCommitEnter(e)) {
                 e.preventDefault();
                 // The conflict REFUSAL keeps the session open, so it is asked
                 // BEFORE the door: `commitAndBlur` always blurs, which would

@@ -31,6 +31,7 @@
  * this one. Allowlist EMPTY.
  */
 import type { KeyboardEvent, MouseEvent } from "react";
+import { isCommitEnter, isImeComposing } from "@/lib/key-intent";
 
 /** The two events an activation can arrive on — a click, or Enter/Space. */
 export type ActivationEvent = MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>;
@@ -42,9 +43,13 @@ export interface ActivatableProps {
   onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
 }
 
-/** Is `key` one of the two keys the `button` role activates on? */
-export function isActivationKey(key: string): boolean {
-  return key === "Enter" || key === " ";
+/**
+ * Is this keydown one of the two keys the `button` role activates on? An IME
+ * owns both while composing (Enter commits the candidate, Space converts), so
+ * neither activates then (task 1165).
+ */
+export function isActivationKey(e: Parameters<typeof isCommitEnter>[0]): boolean {
+  return isCommitEnter(e) || (e.key === " " && !isImeComposing(e));
 }
 
 /**
@@ -62,7 +67,7 @@ export function activatableProps(
     onClick: (e) => activate(e),
     onKeyDown: (e) => {
       if (e.target !== e.currentTarget) return;
-      if (!isActivationKey(e.key)) return;
+      if (!isActivationKey(e)) return;
       // Enter would otherwise submit an enclosing form; Space would scroll.
       e.preventDefault();
       activate(e);

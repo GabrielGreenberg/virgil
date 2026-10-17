@@ -35,6 +35,7 @@ import { Input } from "./field-primitives";
 import { withFocusIndicator } from "./focus-indicator";
 import { useFieldDraft } from "./field-draft";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /** How long a rejected value stays visible before the box reverts to the
  *  stored color. Long enough to read, short enough not to strand the field. */
@@ -142,7 +143,7 @@ export function HexColorField({
         onChange={(e) => setText(e.target.value)}
         onBlur={commitText}
         onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
+          if (isCommitEnter(e)) e.currentTarget.blur();
         }}
         {...NEVER_SPELLCHECK_PROPS}
         tone="transparent"

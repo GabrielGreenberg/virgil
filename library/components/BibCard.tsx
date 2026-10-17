@@ -13,6 +13,7 @@ import { bibFieldDisplay, reconstructBibtex } from "@/lib/bib-parser";
 import { Button } from "@/components/Button";
 import { Textarea } from "@/components/field-primitives";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
+import { isCommitEnter } from "@/lib/key-intent";
 
 interface Props {
   entry: BibEntry | null;
@@ -272,7 +273,7 @@ export function AiNotePanel({
           resize: "vertical",
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          if (isCommitEnter(e) && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             if (!busy) onSubmit();
           }

@@ -8,6 +8,7 @@ import {
   type PanelBodyKey,
 } from "@/lib/panel-typography";
 import { usePanelTypography } from "@/hooks/usePanelTypography";
+import { isCommitEnter } from "@/lib/key-intent";
 
 const MIN = 8;
 const MAX = 32;
@@ -80,7 +81,7 @@ export default function PanelTextSize({ panelKey }: { panelKey: PanelBodyKey }) 
           if (Number.isFinite(n)) commit(panelKey, n);
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur();
+          if (isCommitEnter(e) || e.key === "Escape") (e.target as HTMLInputElement).blur();
         }}
       />
       <span>pts</span>

@@ -16,6 +16,7 @@ import { activatableProps } from "@/lib/activatable-props";
 import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
 import { useFieldDraft } from "@/components/field-draft";
 import { iconHint } from "@/components/Hint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export interface FloatTitleFieldProps {
   /** Current title text, or null when there's no title. */
@@ -100,7 +101,7 @@ export function FloatTitleField({
           placeholder={placeholder}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (e.key === "Enter") {
+            if (isCommitEnter(e)) {
               e.preventDefault();
               commitFrom(e.currentTarget);
             } else if (e.key === "Escape") {

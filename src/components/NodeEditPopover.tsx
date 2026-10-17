@@ -33,6 +33,7 @@ import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export type NodeEditFamily = "math" | "figure";
 
@@ -180,7 +181,7 @@ export default function NodeEditPopover({
   }, []);
 
   const onInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "Enter") return;
+    if (!isCommitEnter(e)) return;
     if (isMath) {
       // Plain Enter commits; Shift+Enter inserts a newline (display math).
       if (!e.shiftKey) {

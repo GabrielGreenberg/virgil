@@ -72,10 +72,13 @@ describe("the four parts", () => {
   });
 
   it("isActivationKey names exactly the two keys", () => {
-    expect(isActivationKey("Enter")).toBe(true);
-    expect(isActivationKey(" ")).toBe(true);
-    expect(isActivationKey("Spacebar")).toBe(false);
-    expect(isActivationKey("a")).toBe(false);
+    expect(isActivationKey({ key: "Enter", keyCode: 0 })).toBe(true);
+    expect(isActivationKey({ key: " ", keyCode: 0 })).toBe(true);
+    expect(isActivationKey({ key: "Spacebar", keyCode: 0 })).toBe(false);
+    expect(isActivationKey({ key: "a", keyCode: 0 })).toBe(false);
+    // An IME owns Enter/Space while composing (task 1165).
+    expect(isActivationKey({ key: "Enter", keyCode: 229 })).toBe(false);
+    expect(isActivationKey({ key: " ", keyCode: 0, isComposing: true })).toBe(false);
   });
 });
 

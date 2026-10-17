@@ -19,6 +19,7 @@ import {
   restoreAllConfirms,
   useSuppressedConfirms,
 } from "./confirm-suppression";
+import { isCommitEnter } from "@/lib/key-intent";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
@@ -177,7 +178,7 @@ function PresetBar({
   }, [saving, newName, onSave, presets, onUndoable, onRestore, settings]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleSave();
+    if (isCommitEnter(e)) handleSave();
     if (e.key === "Escape") setSaving(false);
   }, [handleSave]);
 

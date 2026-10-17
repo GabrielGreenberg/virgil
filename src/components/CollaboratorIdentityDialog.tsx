@@ -23,6 +23,7 @@ import {
   type CollabIdentity,
 } from "@/lib/collab";
 import { iconHint } from "@/components/Hint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export interface CollaboratorIdentityDialogProps {
   open: boolean;
@@ -93,7 +94,7 @@ export default function CollaboratorIdentityDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && canSubmit) {
+                if (isCommitEnter(e) && canSubmit) {
                   e.preventDefault();
                   submit();
                 }

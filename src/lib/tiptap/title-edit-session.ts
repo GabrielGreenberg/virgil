@@ -102,6 +102,7 @@ import { chromeOnly } from "@/lib/view-only-chrome";
 import type { ViewLifetime } from "@/lib/tiptap/view-lifetime";
 import { claimGestureKey } from "@/lib/pane-resize/pointer-invariants";
 import { INLINE_EDIT_INPUT_Z, INLINE_EDIT_OVERLAY_Z } from "@/floats/float-policy";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /** The input's own class — the ONE spelling; CSS and every suite read it. */
 export const PAR_TITLE_INPUT_CLASS = "par-title-input";
@@ -249,7 +250,7 @@ export function createParTitleSession(opts: ParTitleSessionOptions): ParTitleSes
       // the session does not answer them, and the paragraph's pre-552 blanket
       // `stopPropagation()` made this the one field in the app where Save did
       // nothing.
-      if (ev.key === "Enter") {
+      if (isCommitEnter(ev)) {
         claimGestureKey(ev);
         commitSession();
       } else if (ev.key === "Escape") {

@@ -24,6 +24,7 @@ import {
   setDataIfChanged,
   setTextIfChanged,
 } from "@/lib/tiptap/idempotent-dom";
+import { isCommitEnter } from "@/lib/key-intent";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -211,7 +212,7 @@ function createExampleLabelPod(params: {
       if (armed) void commit("blur");
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      if (isCommitEnter(e)) {
         e.preventDefault();
         void commit("enter");
       } else if (e.key === "Escape") {

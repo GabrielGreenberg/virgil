@@ -13,6 +13,7 @@ import {
   slashDisabledNames,
   stepEnabledIndex,
 } from "./slash-applicability";
+import { isCommitEnter } from "@/lib/key-intent";
 
 const META_KEY = "slashPopup";
 
@@ -304,7 +305,7 @@ export const SlashPopupExtension = Extension.create({
               return true;
             }
 
-            if (event.key === "Enter" || event.key === "Tab") {
+            if (isCommitEnter(event) || event.key === "Tab") {
               if (cur.filtered.length === 0) return false;
               event.preventDefault();
               // The key is CONSUMED either way, and that is a decision rather

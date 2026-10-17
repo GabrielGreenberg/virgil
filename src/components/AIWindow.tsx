@@ -64,6 +64,7 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { iconHint } from "@/components/Hint";
 import type { StatusTone } from "./StatusDot";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -918,7 +919,7 @@ export default function AIWindow({
   ]);
 
   const onComposerKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (isCommitEnter(e) && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       submitComposer();
     }
