@@ -8,7 +8,7 @@ import type { RequestBibReview } from "@/hooks/useBibReview";
 import { Button, ItemMenu, PANEL } from "@/components/panel-primitives";
 import { Input, Textarea } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
-import PanelThemePicker from "@/components/PanelThemePicker";
+import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
@@ -635,9 +635,7 @@ function BibliographyPanel({
   // `keepMenuOpen` — which is what they did before through the bubbled click.
   const headerLeading = (
     <ItemMenu align="left">
-      <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-        <PanelThemePicker panelKey="bib" label="Bibliography color" />
-      </div>
+      <PanelThemeMenuRow keys={["bib"]} />
       <MenuSeparator />
       <MenuSectionLabel>Display</MenuSectionLabel>
       <MenuRadioGroup

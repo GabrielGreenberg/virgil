@@ -14,6 +14,7 @@
 import type { PrefLeaf } from "./preferences-tree";
 import { SANS_CORE_FONTS, SERIF_CORE_FONTS } from "./font-catalogue";
 import {
+  PANEL_THEME_COPY,
   PANEL_THEME_FAMILIES,
   SYSTEM_THEME_KEYS,
   type PanelThemeFamily,
@@ -70,28 +71,6 @@ const panel = (
   description?: string,
 ): SmartPanelItem => ({ kind: "panel-color", panelKey, label, description });
 
-/** User-facing copy for each theme key's row in the "Panel theme" section
- *  (task 977). A TOTAL record, so a new `PanelThemeKey` fails tsc until it has
- *  a label. System keys carry copy too (the record stays total) but never
- *  reach the section — they are not user-overridable. */
-export const PANEL_THEME_PREF_COPY: Readonly<
-  Record<PanelThemeKey, { label: string; description: string }>
-> = Object.freeze({
-  footnote:  { label: "Footnotes",    description: "Footnote cards, superscript markers, and anchor highlights." },
-  citation:  { label: "Citations",    description: "Citation cards, badges, and in-text highlights." },
-  bib:       { label: "Bibliography", description: "Bibliography entries and linked citation anchors." },
-  highlight: { label: "Highlights",   description: "Highlight cards and the in-text highlight band." },
-  example:   { label: "Examples",     description: "Example cards and their in-text anchors." },
-  revision:  { label: "Revisions",    description: "Revision cards and change markers." },
-  report:    { label: "Reports",      description: "Report cards and their margin markers." },
-  aiRequest: { label: "AI requests",  description: "AI-request accents (system colour, not editable)." },
-  note:      { label: "Margin notes", description: "Note cards and margin markers." },
-  archive:   { label: "Archive",      description: "Archived-snippet cards and anchors." },
-  todo:      { label: "To-dos",       description: "Task cards and checklist markers." },
-  cut:       { label: "Cuts",         description: "Deleted-text cards and strikethrough markers." },
-  error:     { label: "Errors",       description: "Compile-error cards (system colour, not editable)." },
-});
-
 /** The "Panel theme" rows, DERIVED from `PANEL_THEME_FAMILIES` (task 977) in
  *  family order — the same membership the per-panel picker covers — minus the
  *  non-overridable `SYSTEM_THEME_KEYS`. It used to be a hand list of eight that
@@ -102,7 +81,7 @@ export const PANEL_THEME_ITEMS: readonly SmartPanelItem[] = (
   PANEL_THEME_FAMILIES[family].keys
     .filter((key) => !SYSTEM_THEME_KEYS.has(key))
     .map((key) =>
-      panel(key, PANEL_THEME_PREF_COPY[key].label, PANEL_THEME_PREF_COPY[key].description),
+      panel(key, PANEL_THEME_COPY[key].label, PANEL_THEME_COPY[key].description),
     ),
 );
 

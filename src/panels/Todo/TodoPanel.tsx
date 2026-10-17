@@ -6,7 +6,7 @@ import type { TodoItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { Button } from "@/components/Button";
 import { IconArchive } from "@/components/editor-layout/panel-icons";
-import PanelThemePicker from "@/components/PanelThemePicker";
+import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -96,9 +96,7 @@ export default function TodoPanel({
       onAdd={(rect) => onAdd(rect)}
       headerLeading={
         <ItemMenu align="left">
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="todo" label="Todo color" />
-          </div>
+          <PanelThemeMenuRow keys={["todo"]} />
           <CardViewModeMenuItems kind="todo" />
         </ItemMenu>
       }

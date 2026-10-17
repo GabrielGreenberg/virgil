@@ -32,6 +32,7 @@ import {
   DEFAULT_PANEL_COLORS,
   getPanelColor,
   isPanelColorOverridden,
+  panelThemeColorLabel,
   PICKER_SWATCHES,
   PRESET_COLORS,
   setPanelColor,
@@ -90,8 +91,8 @@ const isActive = (el: HTMLElement) =>
   el.className.includes("ring-2") && el.className.includes("ring-edge-strong");
 
 async function openPickerFor(key: PanelThemeKey) {
-  render(<PanelThemePicker panelKey={key} label={`${key} color`} />);
-  fireEvent.click(screen.getByLabelText(`${key} color`));
+  render(<PanelThemePicker panelKey={key} />);
+  fireEvent.click(screen.getByLabelText(panelThemeColorLabel(key)));
   await settle();
 }
 

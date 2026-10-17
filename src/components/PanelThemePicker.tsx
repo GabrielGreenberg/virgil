@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import {
   clearPanelColor,
   DEFAULT_PANEL_COLORS,
+  panelThemeColorLabel,
   PICKER_SWATCHES,
   setPanelColor,
   type PanelThemeKey,
@@ -53,13 +54,32 @@ import { iconHint } from "@/components/Hint";
  *  the rendered layout cannot disagree about what "the row above" means. */
 const SWATCH_COLS = 7;
 
-export default function PanelThemePicker({
-  panelKey,
-  label,
-}: {
-  panelKey: PanelThemeKey;
-  label?: string;
-}) {
+/** The colour row every docked panel's header kebab (`ItemMenu`) opens with
+ *  (task 1163). It owns the row chrome and the multi-key stacking (Notes
+ *  carries two pickers — note + highlight — stacked), so a panel passes only
+ *  its theme key(s). The ten panels used to hand-roll this `<div>` each, with a
+ *  hand-spelled label that drifted from Preferences ("Cutter color" vs "Cuts");
+ *  `panel-theme-menu-row-census.test.ts` pins that no panel renders the picker
+ *  directly. */
+export function PanelThemeMenuRow({ keys }: { keys: readonly PanelThemeKey[] }) {
+  return (
+    <div
+      className={`px-3 py-1.5 flex items-center justify-end gap-2${
+        keys.length > 1 ? " flex-col" : ""
+      }`}
+    >
+      {keys.map((key) => (
+        <PanelThemePicker key={key} panelKey={key} />
+      ))}
+    </div>
+  );
+}
+
+/** The picker's name (hover hint + `aria-label`) is DERIVED from the theme
+ *  key's one label table (`PANEL_THEME_COPY`, via `panelThemeColorLabel`) — it
+ *  takes no `label` prop, so it cannot drift from Preferences (task 1163). */
+export default function PanelThemePicker({ panelKey }: { panelKey: PanelThemeKey }) {
+  const label = panelThemeColorLabel(panelKey);
   const current = usePanelColor(panelKey);
   const isOverridden = useIsPanelColorOverridden(panelKey);
 
@@ -78,7 +98,7 @@ export default function PanelThemePicker({
 
   return (
     <AnchoredMenu
-      ariaLabel={label ?? "Panel color"}
+      ariaLabel={label}
       // Grid above list — the swatch grid, then the reset row.
       layout="composite"
       // `role="menu"` (the shell default), deliberately NOT the
@@ -100,8 +120,8 @@ export default function PanelThemePicker({
       // flips it to the other edge (and above) when the viewport says so, which
       // the hand-rolled version never did.
       align="end"
-      triggerHint={label ?? "Panel color"}
-      triggerAriaLabel={label ?? "Panel color"}
+      triggerHint={label}
+      triggerAriaLabel={label}
       // The hover affordance is a BORDER-COLOUR shift, not a ring (task 507).
       //
       // `AnchoredMenu` supplies this trigger's focus indicator now — the
