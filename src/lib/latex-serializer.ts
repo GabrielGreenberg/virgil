@@ -40,11 +40,11 @@ import {
 import type { LocalPackageManifest } from "@/lib/local-packages";
 import {
   typographyToLatex,
-  smartenStraightQuotes,
   escapeLatexChars,
 } from "@/lib/latex-typography";
 import {
   carriedEnvEnd,
+  smartenQuotesOutsideSyntax,
   END_DOCUMENT_TOKEN,
   extractBraced,
   findDocumentBoundary,
@@ -364,7 +364,7 @@ function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (hasCommentTailMark(marks)) return text;
   if (hasVerbatimMark(marks)) return text;
   if (marks.some((m) => m.type === "latexCommand")) {
-    return smartenStraightQuotes(text);
+    return smartenQuotesOutsideSyntax(text);
   }
   return escapeLatex(text, { typography: !isCodeWrapped(marks) });
 }
@@ -439,7 +439,7 @@ function escapeLatex(
   // Straight/curly `"` → smart LaTeX pairs via the shared serialize-side
   // helper (also used by serializeMarks' latexCommand path) so the
   // opener/closer character class has exactly ONE definition.
-  const escaped = smartenStraightQuotes(escapeLatexChars(text));
+  const escaped = smartenQuotesOutsideSyntax(escapeLatexChars(text));
   // Typographic reverse-map (accents/special-letters/dashes/ellipsis →
   // canonical LaTeX) runs AFTER char-escaping so its emitted `\^{e}` / `\~{n}`
   // commands aren't re-escaped by the `^`/`~` members above. Suppressed for
