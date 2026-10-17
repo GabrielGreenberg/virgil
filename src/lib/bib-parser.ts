@@ -218,15 +218,20 @@ export function parseBibFile(bibText: string): BibEntry[] {
   // any pre-existing `\vbid` uid is reserved against fresh mints.
   const usedUids = bibUidsOf(blocks.map((b) => ({ uid: b.vbidUid })));
 
-  // Positional cursor over `blocks`: pair each parsed item with the next
-  // unconsumed block whose citekey matches (case-insensitive), falling back to
-  // strict source order if citation-js dropped/reordered an item. Each block
-  // is consumed at most once so duplicate citekeys keep their own raw + uid.
+  // Keyed cursor over `blocks`: pair each parsed item with the next
+  // unconsumed block whose citekey matches (case-insensitive). Each block is
+  // consumed at most once so duplicate citekeys keep their own raw + uid.
+  //
+  // There is NO positional fallback (task 1156). When citation-js and the
+  // scanner disagree about which blocks exist, "the next unconsumed block" is
+  // a DIFFERENT entry's — the item got its neighbour's raw, span and uid, and
+  // an edit to it was spliced over the neighbour's bytes. A keyed miss now
+  // means NO block: the item carries no source anchor, and `spliceBibWrite`
+  // refuses any write that would have to place it (fail closed, not cross-wired).
   const consumed = new Array<boolean>(blocks.length).fill(false);
   const takeBlock = (key: string): OrderedRawBlock | undefined => {
     const lc = key.toLowerCase();
-    let idx = blocks.findIndex((b, i) => !consumed[i] && b.key.toLowerCase() === lc);
-    if (idx === -1) idx = consumed.findIndex((c) => !c); // positional fallback
+    const idx = blocks.findIndex((b, i) => !consumed[i] && b.key.toLowerCase() === lc);
     if (idx === -1) return undefined;
     consumed[idx] = true;
     return blocks[idx];
@@ -346,8 +351,14 @@ export function serializeBibFileAgainst(
   // "a new entry" and must not be treated as one: appending it would ALSO
   // delete the block it claims to be. That is a refusal.
   const baseline = new Map<number, BibSourceRef>();
+  // Citekeys the file's own parse yielded WITHOUT a block — citation-js read an
+  // entry the scanner could not locate (task 1156). Such an entry is not new,
+  // so appending it would duplicate it; it has no span, so it cannot be
+  // spliced. Any write carrying one is refused.
+  const unlocated = new Set<string>();
   for (const e of parseBibFile(originalText)) {
     if (e.source) baseline.set(e.source.start, e.source);
+    else unlocated.add(e.key.toLowerCase());
   }
   const openers = lineAnchoredOpeners(originalText);
   const bindings = orderedVbidBindings(originalText);
@@ -382,6 +393,7 @@ export function serializeBibFileAgainst(
     //     does not, treating it as new would ALSO delete the block it claims to
     //     be (a duplicate and a deletion from one inconsistent ref) — refuse.
     if (!src || originalText.slice(src.start, src.end) !== src.text) {
+      if (!src && unlocated.has(e.key.toLowerCase())) return null;
       appended.push(e);
       continue;
     }

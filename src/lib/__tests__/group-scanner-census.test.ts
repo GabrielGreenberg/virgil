@@ -39,7 +39,9 @@ const ALLOWED: Record<string, Allowed> = {
       "payload/option readers, whose payload is literal by definition",
   },
   "src/lib/bib-source.ts": {
-    depth: 5,
+    // 5 → 3 (task 1156): the block / citekey-head / braced-value walks fold into
+    // ONE `walkDelimited`; the quoted-value walk and `bracesBalance` remain.
+    depth: 3,
     bracket: 0,
     reason: "BibTeX grammar, not TeX: `%` is not a comment inside a .bib field's braces",
   },
