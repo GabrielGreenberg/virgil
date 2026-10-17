@@ -347,6 +347,58 @@ const PERMITTED_REDERIVED_KEY_CLAIMS: Record<string, string> = {};
 // rather than by allowlist, because its listener does not die with a gesture.
 const PERMITTED_UNCLAIMED_GESTURE_KEYS: Record<string, string> = {};
 
+// ── The Escape-ANSWER census (task 1167) ─────────────────────────────────────
+// The two key-claim legs above ask about key handlers that EXIST. Both are
+// structurally blind to a gesture with NO key handler at all — which is what
+// the Outline focus-band edge drag shipped as until task 1167: it took the
+// engine's two pointer invariants and not its third, so Escape mid-drag did
+// nothing and the next mouseup committed the boundary anyway ("Escape means
+// cancel", docs/agents/laws/escape-means-cancel.md).
+//
+// So every held pointer gesture either cancels on Escape through a
+// gesture-scoped, claimed key handler (the task-504 population), or is listed
+// here saying WHY it has no Escape of its own. Each entry opens with ONE
+// verdict tag, and the tag is the classification:
+//
+//   [hands-off: …]         a threshold detector / host whose session is ended
+//                          by an owner that DOES answer Escape (the drop-mode
+//                          controller), so a second answer would end it twice;
+//   [no-durable-commit: …] the gesture writes only session state the user can
+//                          move straight back (a scroll offset, a dialog's
+//                          on-screen position) — nothing outlives it to cancel;
+//   [mode-owned: …]        the gesture stages into an enclosing MODE whose own
+//                          Escape abandons the whole staged session;
+//   [owed: …]              a durable commit with no Escape cancel yet — a KNOWN
+//                          gap, stated rather than hidden, so it can be routed.
+//
+// A new gesture lands RED here until it answers. Prefer wiring the Escape
+// (window capture keydown + `claimGestureKey` + the one end path's non-commit
+// branch — focus-band-drag.ts is the smallest worked example) over listing it.
+const PERMITTED_ESCAPELESS_GESTURES: Record<string, string> = {
+  "src/components/Marginalia.tsx":
+    "[hands-off: the marker re-anchor press watcher only arms a trailing-click guard past 3px; the drop session it starts is the drop-mode controller's, which cancels on a claimed Escape]",
+  "src/components/panel-primitives.tsx":
+    "[hands-off: the card-lift threshold detector hands the pointer to the lift host / drop-mode session before anything commits; clearStaleHover's one-shot pointermove commits nothing]",
+  "src/lib/tiptap/inline-atom-grab.ts":
+    "[hands-off: pre-threshold it commits nothing; post-threshold the drop-mode controller owns the pointer AND Escape (its own docblock lists Escape as one of the session's four endings)]",
+  "src/text-objects/TextObjectGrabHandle.tsx":
+    "[hands-off: the grab handle's hold-threshold detector hands off to LiftHost before any commit; the hover tracker is not a gesture]",
+  "src/text-objects/LiftHost.tsx":
+    "[hands-off: the lift overlay rides a drop-mode session, and that session's Escape (the controller's claimed handler) is one of the endings this host already tears down on]",
+  "src/components/editor-layout/editor-scrollbar.tsx":
+    "[no-durable-commit: the thumb drag writes only a scroll offset — no document, preference or layout state outlives the gesture]",
+  "src/hooks/useDragPosition.ts":
+    "[no-durable-commit: the Preferences window's on-screen position IS session state and is never persisted]",
+  "src/hooks/useMarginEdit.ts":
+    "[mode-owned: guide drags stage into the margin-edit session's liveMargins; nothing is written until Save, and the MODE's own Escape (mirroring its Cancel button) abandons the whole staged session]",
+  "src/components/FloatingPanel.tsx":
+    "[owed: a move/resize release persists the float's rect (and may redock or stack-capture); the end path already has a non-committing `cancel` ending, but no Escape reaches it, and a cancel would also have to drop the live translate / restore the pre-gesture size]",
+  "src/components/editor-layout/drag-drop.tsx":
+    "[owed: the strip-icon reorder commits a durable panel move (`onMove`) on release; there is no Escape cancel]",
+};
+
+const ESCAPE_VERDICT_TAG = /^\[(hands-off|no-durable-commit|mode-owned|owed): \S/;
+
 // ── The allowlist registry + the [cost: …] tag rule (task 334) ───────────────
 // `keystroke-subscriber-guardrail` has enforced a `[cost: …]` prefix on every
 // justification in every one of its allowlists since Wave-4 P6; this file
@@ -423,6 +475,11 @@ const ALLOWLISTS: Record<
     list: PERMITTED_REDERIVED_KEY_CLAIMS,
     cost: false,
     why: "answers a KEY-OWNERSHIP question (why a gesture-owning file spells its own preventDefault+stopPropagation pair instead of claimGestureKey); empty likewise — a hit is IMPORT-it, and a keydown handler has no per-frame cost to state",
+  },
+  PERMITTED_ESCAPELESS_GESTURES: {
+    list: PERMITTED_ESCAPELESS_GESTURES,
+    cost: false,
+    why: "answers a KEY-OWNERSHIP question (why a held gesture has no Escape cancel of its own) — each entry opens with an Escape verdict tag instead; a gesture with no key handler has no per-event key cost to state",
   },
   PERMITTED_UNCLAIMED_GESTURE_KEYS: {
     list: PERMITTED_UNCLAIMED_GESTURE_KEYS,
@@ -952,6 +1009,34 @@ export function findUnclaimedGestureKeys(source: string): string[] {
     // EMPTY set must not exonerate what it could not read.
     return body === null || !/\bclaimGestureKey\s*\(/.test(body);
   });
+}
+
+/**
+ * Does this source own a HELD pointer gesture (task 1167's population)? The
+ * union of the two gesture censuses' own membership tests — a window-level
+ * move listener torn down from a pointer release, or an element-scoped held
+ * gesture — so this leg can never disagree with them about what a gesture is.
+ */
+export function ownsHeldPointerGesture(source: string): boolean {
+  return (
+    (detectWindowMoveListener(source) && detectPointerReleaseTeardown(source)) ||
+    detectElementPointerGesture(source)
+  );
+}
+
+/**
+ * ...and does it ANSWER Escape itself? True iff it has at least one
+ * gesture-scoped key handler and every such handler claims its press — the
+ * task-504 population, read through the same two functions so the legs agree
+ * on what "the handler" is. Stated limit: the needle is a gesture-scoped key
+ * handler that claims, not the literal `"Escape"` comparison inside it — the
+ * only such handlers in either silo end the gesture on Escape.
+ */
+export function answersEscape(source: string): boolean {
+  return (
+    findGestureScopedKeyHandlers(source).length > 0 &&
+    findUnclaimedGestureKeys(source).length === 0
+  );
 }
 
 /** The receiver + event alternation BOTH censuses key on (see the class
@@ -1778,6 +1863,8 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
     expect(scoped.map((f) => f.rel).sort()).toEqual([
       "src/components/drop-mode/controller.ts",
       "src/lib/pane-resize/use-pane-resize-handle.ts",
+      // Task 1167 — the bespoke gesture that lacked the engine's third invariant.
+      "src/panels/Outline/focus-band-drag.ts",
     ]);
     const unclaimed = files504
       .map((f) => ({ rel: f.rel, names: findUnclaimedGestureKeys(f.source) }))
@@ -1968,6 +2055,73 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
     `;
     expect(detectWindowMoveListener(hoverWatcher)).toBe(true);
     expect(detectPointerReleaseTeardown(hoverWatcher)).toBe(false);
+  });
+});
+
+describe("pane-drag guardrail — Escape-answer census (task 1167)", () => {
+  const files = walkBothSilos();
+  const gestures = files.filter((f) => ownsHeldPointerGesture(f.source));
+
+  it("every held pointer gesture answers Escape, or says why it has none", () => {
+    // Anchor: a detector that stopped matching would leave this leg
+    // vacuously green. Twelve gesture files today (both pointer censuses).
+    expect(gestures.length).toBeGreaterThanOrEqual(12);
+    const escapeless = gestures
+      .filter((f) => !answersEscape(f.source))
+      .map((f) => f.rel)
+      .sort();
+    expect(
+      escapeless,
+      "a held gesture with no Escape cancel. Wire one (window CAPTURE keydown → claimGestureKey(e) → the one end path's NON-committing branch; see src/panels/Outline/focus-band-drag.ts), or list the file in PERMITTED_ESCAPELESS_GESTURES under the verdict tag that is TRUE of it",
+    ).toEqual(Object.keys(PERMITTED_ESCAPELESS_GESTURES).sort());
+  });
+
+  it("the known Escape answerers are in the population (the census can see)", () => {
+    const answering = gestures.filter((f) => answersEscape(f.source)).map((f) => f.rel).sort();
+    expect(answering).toEqual([
+      "src/components/drop-mode/controller.ts",
+      "src/panels/Outline/focus-band-drag.ts",
+    ]);
+  });
+
+  it("every exemption opens with ONE Escape verdict tag", () => {
+    const untagged = Object.entries(PERMITTED_ESCAPELESS_GESTURES)
+      .filter(([, why]) => !ESCAPE_VERDICT_TAG.test(why))
+      .map(([rel]) => rel);
+    expect(untagged).toEqual([]);
+  });
+
+  it("would flag a gesture with no key handler, and passes one that claims its Escape (fixtures)", () => {
+    const bare = `
+      const onMove = (e) => { if (isMissedRelease(e)) end(); };
+      const onUp = () => end();
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      function end() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+    `;
+    expect(ownsHeldPointerGesture(bare)).toBe(true);
+    expect(answersEscape(bare)).toBe(false);
+
+    const answered = `
+      const onMove = (e) => { if (isMissedRelease(e)) end(); };
+      const onUp = () => end();
+      const onKey = (e) => { if (e.key !== "Escape") return; claimGestureKey(e); end(); };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      window.addEventListener("keydown", onKey, true);
+      function end() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        window.removeEventListener("keydown", onKey, true);
+      }
+    `;
+    expect(answersEscape(answered)).toBe(true);
+
+    // An UNCLAIMED Escape is not an answer — the 504 leg's failure, seen from here.
+    expect(answersEscape(answered.replace("claimGestureKey(e); ", ""))).toBe(false);
   });
 });
 

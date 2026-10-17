@@ -255,3 +255,66 @@ describe("useFocusBandEdgeDrag — per-move cost (task 334)", () => {
     release();
   });
 });
+
+// ── Task 1167: Escape means cancel ───────────────────────────────────────────
+// The engine's third invariant, which this bespoke gesture lacked: Escape
+// abandons the drag (no boundary write, authoritative rect restored) and
+// CLAIMS the press so no other Escape owner also answers it.
+describe("useFocusBandEdgeDrag — Escape cancels (task 1167)", () => {
+  const pressEscape = () => {
+    const ev = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    const reachedBubble = vi.fn();
+    window.addEventListener("keydown", reachedBubble);
+    act(() => {
+      document.body.dispatchEvent(ev);
+    });
+    window.removeEventListener("keydown", reachedBubble);
+    return { ev, reachedBubble };
+  };
+
+  it("Escape mid-drag ends without committing, and the release writes nothing", () => {
+    const { press, move, release, onSnapBoundary, restore, rendered } = setup();
+    press("bottom");
+    move(250); // onto row 9 — a real, committable move
+    const { ev, reachedBubble } = pressEscape();
+
+    expect(ev.defaultPrevented).toBe(true);
+    expect(reachedBubble).not.toHaveBeenCalled(); // claimed — no other owner hears it
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(rendered.result.current.isDraggingRef.current).toBe(false);
+    expect(document.body.style.cursor).toBe("");
+
+    release();
+    expect(onSnapBoundary).not.toHaveBeenCalled();
+  });
+
+  it("drops a queued frame rather than painting it after the cancel", () => {
+    const { press, setBand, onSnapBoundary } = setup();
+    press("bottom");
+    act(() => {
+      document.dispatchEvent(new MouseEvent("mousemove", { clientY: 250, buttons: 1 }));
+    }); // frame pending
+    pressEscape();
+    act(() => flushRaf());
+    expect(setBand).not.toHaveBeenCalled();
+    expect(onSnapBoundary).not.toHaveBeenCalled();
+  });
+
+  it("with no drag live, Escape is not claimed — it travels on to other owners", () => {
+    setup();
+    const { ev, reachedBubble } = pressEscape();
+    expect(ev.defaultPrevented).toBe(false);
+    expect(reachedBubble).toHaveBeenCalledTimes(1);
+  });
+
+  it("repaints only when the snapped row changes (row-equality bail)", () => {
+    const { press, move, setBand } = setup();
+    press("bottom");
+    move(240);
+    move(250);
+    move(260); // all nearest row 9
+    expect(setBand).toHaveBeenCalledTimes(1);
+    move(150); // row 5
+    expect(setBand).toHaveBeenCalledTimes(2);
+  });
+});

@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { isMissedRelease, isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
+import {
+  claimGestureKey,
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
 import type { BlockAddress } from "@/lib/tiptap/block-address";
 
 /**
@@ -54,6 +58,15 @@ export interface FocusBandRow extends BlockAddress {
   bottom: number;
 }
 
+/**
+ * How a gesture ends. `commit` runs the release decision; `cancel` (Escape)
+ * and `detach` (unmount / Focus mode locked mid-gesture) write nothing and
+ * restore the authoritative rect. The two non-commit endings are kept apart
+ * by NAME only — the user abandoning a drag and the panel going away are
+ * different facts even where they take the same path.
+ */
+type DragEnding = "commit" | "cancel" | "detach";
+
 /** Live drag state — the mousedown snapshot plus the row the edge is on now. */
 interface FocusBandDragState {
   edge: "top" | "bottom";
@@ -103,7 +116,7 @@ export interface FocusBandEdgeDragOptions {
  * `apply()`/`commit()`, only a transient rect and a single committed block
  * index, so the engine's shape does not fit.
  *
- * What it DOES take from the engine is the pair of pointer invariants every
+ * What it DOES take from the engine is the three gesture invariants every
  * gesture needs (`../../lib/pane-resize/pointer-invariants`):
  *
  *  - a **primary-button start gate**, so a right-press can't begin a drag
@@ -113,9 +126,15 @@ export interface FocusBandEdgeDragOptions {
  *    iframe, outside the window). Before this, the gesture stayed live: the
  *    band ghost-tracked a released pointer and the user's NEXT CLICK ran the
  *    mouseup handler, committing an `onSnapBoundary` boundary they never
- *    chose. That durable, unrequested state write is the bug.
+ *    chose. That durable, unrequested state write is the bug;
+ *  - **Escape cancels** (task 1167, the "Escape means cancel" law) — the band
+ *    snaps back to the committed range and the release writes nothing. The
+ *    press is CLAIMED (`claimGestureKey`), since a live gesture is the
+ *    innermost transient thing on screen and one press ends exactly one
+ *    thing. Before this the listeners heard no key at all: Escape did
+ *    nothing and the next mouseup committed the boundary anyway.
  *
- * Every exit — mouseup, failsafe, and unmount/disable mid-gesture — runs the
+ * Every exit — mouseup, failsafe, Escape, and unmount/disable mid-gesture — runs the
  * same `endDrag`, which is the only code that nulls the drag state and clears
  * the body cursor/selection stamp. Mid-drag stays a purely LOCAL overlay
  * gesture (CHIP B): the rect is driven from the mousedown snapshot, RAF-
@@ -138,7 +157,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
   // Non-null exactly while the listeners are mounted. mousedown refuses to
   // start a gesture without them — a drag with no end path alive would stamp
   // the body cursor and never clear it.
-  const endDragRef = useRef<((mode: "commit" | "detach") => void) | null>(null);
+  const endDragRef = useRef<((mode: DragEnding) => void) | null>(null);
 
   const { enabled } = options;
 
@@ -183,6 +202,10 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
       }
       const row = drag.rows[bestIdx];
       if (!row) return;
+      // Row-equality bail: a frame whose cursor is still nearest the row the
+      // edge is already painted on has nothing to repaint. `pending` is only
+      // ever written here, so a non-null match means this exact rect is up.
+      if (drag.pending?.uuid === row.uuid && drag.pending.index === row.index) return;
       drag.pending = { uuid: row.uuid, index: row.index };
       // Transient rect against the fixed edge. Clamp so the band never inverts
       // or collapses (consistent with snapBoundary's 1-row clamp).
@@ -197,10 +220,10 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
 
     /**
      * THE single end path. `commit` runs the normal release decision;
-     * `detach` (unmount / Focus mode locked mid-gesture) tears down without
-     * writing anything.
+     * `cancel` (Escape) and `detach` (unmount / Focus mode locked
+     * mid-gesture) tear down without writing anything.
      */
-    const endDrag = (mode: "commit" | "detach") => {
+    const endDrag = (mode: DragEnding) => {
       // Drop the container-rect snapshot on EVERY ending, before the guard —
       // the element's identity can outlive a gesture while its position moves
       // between them (a pane resize, a scroll of an ancestor), so the next
@@ -276,11 +299,23 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
 
     const handleMouseUp = () => endDrag("commit");
 
+    // Escape abandons the drag (task 1167). Window CAPTURE, like the engine's,
+    // so an open popup's own Escape handling can't shadow it — and the press
+    // is claimed only while a drag is live: with no gesture this listener
+    // answers nothing and lets every key travel on.
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !dragRef.current) return;
+      claimGestureKey(e);
+      endDrag("cancel");
+    };
+
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("keydown", handleKeyDown, true);
       // Unmounting (or locking Focus mode) mid-gesture must not leave the
       // body stamped `ns-resize`/`user-select: none` with no listener left
       // alive to clear it.
