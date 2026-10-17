@@ -93,10 +93,10 @@ function useAnnotationStore(initial: Record<string, string> = {}) {
 }
 
 const NOOP_PROPS = {
-  onRequestReview: () => {},
+  onRequestReview: async () => ({ ok: true as const }),
   onCancelReview: () => {},
   getReviewStatus: () => "none" as const,
-  onSaveBibEntry: () => {},
+  onSaveBibEntry: async () => ({ kind: "declined" as const }),
 };
 
 /* ─────────────────────────── BIB-F8-01 (flush) ─────────────────────────── */

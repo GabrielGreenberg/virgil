@@ -257,7 +257,7 @@ describe("hole 3 — duplicate composite identity", () => {
     disk.set(BIB, { requests: [req("complete", "t0")] });
     const { result } = renderHook(() => useBibReview(DOC));
     await waitFor(() => expect(result.current.requests).toHaveLength(1));
-    act(() => result.current.requestReview("k", "fields"));
+    act(() => { void result.current.requestReview("k", "fields"); });
     await waitFor(() => {
       const rows = (disk.get(BIB) as { requests: BibReviewRequest[] }).requests;
       expect(rows.map((r) => r.status)).toEqual(["pending"]);

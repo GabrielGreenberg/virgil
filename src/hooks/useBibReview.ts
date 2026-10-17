@@ -65,6 +65,32 @@ export function oneRowPerIdentity(
  */
 type GetBibEntry = (key: string) => BibEntry | undefined;
 
+/**
+ * What a review-request write answers (task 1158). The card's composer keeps
+ * the user's typed note until `ok` — it used to delete the draft on the click,
+ * so a refused write (a library paper's read-only sidecar, no write handle, a
+ * real failure) rolled the row back AND lost the note.
+ */
+export type BibReviewWriteResult = { ok: true } | { ok: false; reason: string };
+
+/** THE request door's signature, named once so every host carries the verdict. */
+export type RequestBibReview = (
+  bibKey: string,
+  type: "fields" | "notes",
+  requestNotes?: string,
+) => Promise<BibReviewWriteResult>;
+
+/** The words a composer shows beside the draft it kept. */
+const BIB_REVIEW_REFUSAL_REASON: Record<
+  "no-handle" | "read-only" | "failed" | "stale",
+  string
+> = {
+  "no-handle": "Not sent — this paper is not open for writing.",
+  "read-only": "Not sent — review requests can't be saved for a library paper.",
+  failed: "Not sent — the request could not be saved.",
+  stale: "Not sent — the paper changed while sending. Try again.",
+};
+
 export function useBibReview(
   docId: string | null,
   getBibEntry?: GetBibEntry,
@@ -72,6 +98,22 @@ export function useBibReview(
 ) {
   const cascadeOn = isIdentityCascadeOn() && !!getBibEntry;
   const [state, setState] = useState<BibReviewState>(EMPTY);
+  // The state a MUTATOR computes from (task 1158). The mutators used to call
+  // `persist` from inside a `setState` updater — a side effect React may run
+  // twice (StrictMode) and whose result no caller could see, so a composer
+  // closed before it knew whether its request was written. Now each mutator
+  // reads this, computes `next`, commits it, and persists ONCE, returning the
+  // verdict. Mirrored after every render (other writers — the load, the
+  // re-read, the converge — set state directly) and advanced synchronously by
+  // `commit`, so two mutations in one tick compose.
+  const stateRef = useRef<BibReviewState>(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
+  const commit = useCallback((next: BibReviewState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
   const docIdRef = useRef(docId);
   // THE MERGE BASE (task 719) — what this hook last knew the file to hold (its
   // load, or its own last submitted payload). The third input the write needs
@@ -197,14 +239,15 @@ export function useBibReview(
    * a doc that has since changed (it bails on `docIdRef`).
    */
   const persist = useCallback(
-    async (s: BibReviewState) => {
+    async (s: BibReviewState): Promise<BibReviewWriteResult> => {
       const docId = docIdRef.current;
       const refuse = (
         reason: "no-handle" | "read-only" | "failed",
         detail?: string,
-      ) => {
+      ): BibReviewWriteResult => {
         recordSidecarRefusal({ docId, what: "bibliography review", reason, detail });
         if (docId) fetchState(docId);
+        return { ok: false, reason: BIB_REVIEW_REFUSAL_REASON[reason] };
       };
       if (!handle) return refuse("no-handle");
       if (!libraryPaperSidecarWritable(handle.docId, "bib-review-requests.json")) {
@@ -230,10 +273,15 @@ export function useBibReview(
         if (baselineRef.current === base) {
           convergeOnWrite("bib-review-requests.json", base, ticket, s, wrote, setState);
         }
+        return { ok: true };
       } catch (err) {
-        if (isStalePipelineError(err)) return;
+        // The doc switched under the write; the new owner is authoritative,
+        // and the composer that asked belongs to a pane no longer showing it.
+        if (isStalePipelineError(err)) {
+          return { ok: false, reason: BIB_REVIEW_REFUSAL_REASON.stale };
+        }
         console.error("Failed to save bib review requests:", err);
-        refuse("failed", err instanceof Error ? err.message : undefined);
+        return refuse("failed", err instanceof Error ? err.message : undefined);
       } finally {
         inFlightRef.current -= 1;
         replayDeferredRead();
@@ -256,13 +304,15 @@ export function useBibReview(
     [],
   );
 
-  const requestReview = useCallback((bibKey: string, type: "fields" | "notes", requestNotes?: string) => {
-    setState((prev) => {
-      // Don't duplicate an existing pending request for same entry+type
+  const requestReview: RequestBibReview = useCallback(
+    (bibKey: string, type: "fields" | "notes", requestNotes?: string) => {
+      const prev = stateRef.current;
+      // Don't duplicate an existing pending request for same entry+type —
+      // the request the user is sending is already the one on file.
       const existing = prev.requests.find(
         (r) => matchesKey(r, bibKey) && r.type === type && r.status === "pending"
       );
-      if (existing) return prev;
+      if (existing) return Promise.resolve({ ok: true } as const);
       // ONE ROW PER IDENTITY (task 849). The file is keyed `(bibKey, type)` —
       // that is the merge's `idFields` — so a re-request REPLACES the entry's
       // completed row rather than sitting beside it. Two rows under one id were
@@ -281,22 +331,24 @@ export function useBibReview(
         ...(uid ? { entryUid: uid } : {}),
       };
       const next = { requests: [...kept, req] };
-      persist(next);
-      return next;
-    });
-  }, [persist, matchesKey]);
+      commit(next);
+      return persist(next);
+    },
+    [persist, matchesKey, commit],
+  );
 
-  const cancelRequest = useCallback((bibKey: string, type: "fields" | "notes") => {
-    setState((prev) => {
+  const cancelRequest = useCallback(
+    (bibKey: string, type: "fields" | "notes"): Promise<BibReviewWriteResult> => {
       const next = {
-        requests: prev.requests.filter(
+        requests: stateRef.current.requests.filter(
           (r) => !(matchesKey(r, bibKey) && r.type === type && r.status === "pending")
         ),
       };
-      persist(next);
-      return next;
-    });
-  }, [persist, matchesKey]);
+      commit(next);
+      return persist(next);
+    },
+    [persist, matchesKey, commit],
+  );
 
   const getRequestStatus = useCallback(
     (bibKey: string, type: "fields" | "notes"): "none" | "pending" | "complete" => {
@@ -322,17 +374,18 @@ export function useBibReview(
     [state.requests, matchesKey],
   );
 
-  const clearRequest = useCallback((bibKey: string, type: "fields" | "notes") => {
-    setState((prev) => {
+  const clearRequest = useCallback(
+    (bibKey: string, type: "fields" | "notes"): Promise<BibReviewWriteResult> => {
       const next = {
-        requests: prev.requests.filter(
+        requests: stateRef.current.requests.filter(
           (r) => !(matchesKey(r, bibKey) && r.type === type)
         ),
       };
-      persist(next);
-      return next;
-    });
-  }, [persist, matchesKey]);
+      commit(next);
+      return persist(next);
+    },
+    [persist, matchesKey, commit],
+  );
 
   const refresh = useCallback(() => {
     const id = docIdRef.current;
@@ -358,21 +411,20 @@ export function useBibReview(
   const renameBibKey = useCallback(
     (oldKey: string, newKey: string) => {
       if (!oldKey || !newKey || oldKey === newKey) return;
-      setState((prev) => {
-        if (!prev.requests.some((r) => r.bibKey === oldKey)) return prev;
-        const next = {
-          ...prev,
-          requests: oneRowPerIdentity(
-            prev.requests.map((r) =>
-              r.bibKey === oldKey ? { ...r, bibKey: newKey } : r,
-            ),
+      const prev = stateRef.current;
+      if (!prev.requests.some((r) => r.bibKey === oldKey)) return;
+      const next = {
+        ...prev,
+        requests: oneRowPerIdentity(
+          prev.requests.map((r) =>
+            r.bibKey === oldKey ? { ...r, bibKey: newKey } : r,
           ),
-        };
-        persist(next);
-        return next;
-      });
+        ),
+      };
+      commit(next);
+      void persist(next);
     },
-    [persist],
+    [persist, commit],
   );
 
   return useMemo(

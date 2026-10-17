@@ -79,10 +79,10 @@ function renderPanel(
       bibEntries={[SMITH]}
       selectedBibKey={null}
       onSelectBibKey={() => {}}
-      onSaveBibEntry={() => {}}
+      onSaveBibEntry={async () => ({ kind: "declined" as const })}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
-      onRequestReview={() => {}}
+      onRequestReview={async () => ({ ok: true as const })}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
       docId="doc1"

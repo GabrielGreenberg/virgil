@@ -528,10 +528,10 @@ describe("omni builder anchorState classification", () => {
       getFormattedBib: () => "",
       getAnnotation: () => "",
       setAnnotation: noop,
-      requestBibReview: noop,
+      requestBibReview: async () => ({ ok: true as const }),
       cancelBibReview: noop,
       getBibReviewStatus: () => "none",
-      saveBibEntry: noop,
+      saveBibEntry: async () => ({ kind: "declined" as const }),
       addBibEntry: null,
     });
     const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));

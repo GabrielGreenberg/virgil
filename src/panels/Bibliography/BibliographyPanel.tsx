@@ -3,7 +3,8 @@
 import { attrSelector } from "@/lib/attr-selector";
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
-import type { BibEntrySave } from "@/hooks/useCitations";
+import type { SaveBibEntry } from "@/hooks/useCitations";
+import type { RequestBibReview } from "@/hooks/useBibReview";
 import { Button, ItemMenu, PANEL } from "@/components/panel-primitives";
 import { Input, Textarea } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
@@ -101,10 +102,10 @@ interface BibliographyPanelProps {
   /** Takes the ENTRY, not its citekey (task 690) — a citekey names as many
    *  blocks as carry it, and the mutator used to rewrite every one. */
   /** THE bib-entry write door — one write per gesture (task 691). */
-  onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
+  onSaveBibEntry: SaveBibEntry;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
-  onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
+  onRequestReview: RequestBibReview;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   getReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;

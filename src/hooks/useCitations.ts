@@ -9,6 +9,7 @@ import {
   mutateProjectBib,
   type BibMutator,
   type BibWriteResult,
+  type BibSaveResult,
   type DocBibChangedDetail,
 } from "@/lib/project-bib";
 import { isUnanchored } from "@/links/links";
@@ -57,6 +58,16 @@ export interface BibEntrySave {
   key?: string;
 }
 
+/**
+ * THE save door's signature, named once (task 1158) so every host that hands
+ * it down to a bib card carries the VERDICT with it — a composer closes on
+ * `didBibSaveLand`, never on the click.
+ */
+export type SaveBibEntry = (
+  entry: BibEntry,
+  patch: BibEntrySave,
+) => Promise<BibSaveResult>;
+
 /** No stored family: the user has not chosen one. Detection seeds the VIEW
  *  (never the sidecar) and `DEFAULT_BIB_FAMILY` answers until it resolves. */
 const EMPTY: CitationsState = {
@@ -94,7 +105,7 @@ export const CITATIONS_INERT: CitationsHook = {
   setBibPackage: () => {},
   addBibEntry: () => {},
   updateBibEntry: () => {},
-  saveBibEntry: () => {},
+  saveBibEntry: () => Promise.resolve({ kind: "no-handle" } as const),
   replaceBibEntry: () => {},
   updateBibKeyAndType: () => {},
   getBibEntry: () => undefined,
@@ -579,7 +590,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    * prevent, arrived at from the other side.
    */
   const saveBibEntry = useCallback(
-    (target: BibEntry, patch: BibEntrySave) => {
+    (target: BibEntry, patch: BibEntrySave): Promise<BibSaveResult> => {
       // The entry as this hook currently holds it. A card can hand back a
       // stale copy; the address resolves against the live list either way.
       const address = bibAddressOf(bibEntriesRef.current, target);
@@ -612,14 +623,16 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       );
       if (!check.ok) {
         console.warn(`Refusing bib save: ${check.reason}`);
-        return;
+        return Promise.resolve({ kind: "invalid", reason: check.reason });
       }
       const oldKey = entry.key;
       const uid = entry.uid;
       // ONE mutation: fields, type and key together, applied to EXACTLY the
       // entry `address` names (NOT key-matched — two blocks can share a
       // citekey, and `prev.map` rewrote both; task 690).
-      void runBibMutation((prev) =>
+      // The verdict is RETURNED (task 1158): a composer holding the user's
+      // typed fields closes only on a save that landed (`didBibSaveLand`).
+      return runBibMutation((prev) =>
         mapAddressedBibEntry(prev, address, (e) => {
           const updated: BibEntry = {
             ...e,
@@ -635,7 +648,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           return updated;
         }),
       ).then((result) => {
-        if (oldKey === newKey) return; // a pure retype/field save moves no identity
+        if (oldKey === newKey) return result; // a pure retype/field save moves no identity
         // A rename fans out ONLY over a write that LANDED (task 1142). Every
         // other verdict — `not-found` (the address named no entry in the
         // file), `failed`, a library paper's `read-only` `.bib`, a pane with
@@ -645,7 +658,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         // 689 exists to prevent. A rename cannot be `declined` (the key
         // changed, so the mutator always produces a list), so the one verdict
         // that permits it is `written`.
-        if (result.kind !== "written") return;
+        if (result.kind !== "written") return result;
         // citation-refs sidecar rewrite (boundary-safe, whole-token).
         rewriteCitationRefs(oldKey, newKey);
         // …then every registered migrator: the editor `\cite{}` doc-rewrite
@@ -656,6 +669,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         void identityCascade.runIdentityChange(
           renameCitekeyChange({ uid, oldKey, newKey, newType }),
         );
+        return result;
       });
     },
     [runBibMutation, rewriteCitationRefs, identityCascade],
@@ -681,7 +695,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    */
   const replaceBibEntry = useCallback(
     (entry: BibEntry, fields: Record<string, string>, type?: string) => {
-      saveBibEntry(entry, { fields, ...(type !== undefined ? { type } : {}) });
+      void saveBibEntry(entry, { fields, ...(type !== undefined ? { type } : {}) });
     },
     [saveBibEntry],
   );
@@ -712,7 +726,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    */
   const updateBibKeyAndType = useCallback(
     (target: BibEntry, newKey: string, newType: string) => {
-      saveBibEntry(target, { key: newKey, type: newType });
+      void saveBibEntry(target, { key: newKey, type: newType });
     },
     [saveBibEntry],
   );

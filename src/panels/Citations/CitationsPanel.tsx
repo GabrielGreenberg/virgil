@@ -2,7 +2,8 @@
 
 import { useMemo, useCallback, useState, memo, useRef } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
-import type { BibEntrySave } from "@/hooks/useCitations";
+import type { SaveBibEntry } from "@/hooks/useCitations";
+import type { RequestBibReview } from "@/hooks/useBibReview";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
 // is a second speller that silently stops matching if it ever changes (202).
@@ -47,11 +48,7 @@ interface CitationsPanelProps {
   getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
-  onRequestReview: (
-    bibKey: string,
-    type: "fields" | "notes",
-    requestNotes?: string,
-  ) => void;
+  onRequestReview: RequestBibReview;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (
     bibKey: string,
@@ -60,7 +57,7 @@ interface CitationsPanelProps {
   getReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   /** Takes the ENTRY, not its citekey (task 690) — see `bib-address.ts`. */
   /** THE bib-entry write door — one write per Save gesture (task 691). */
-  onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
+  onSaveBibEntry: SaveBibEntry;
   onAddBibEntry: (entry: BibEntry) => void;
   recentlyAddedId?: string | null;
   /** Container-nested cite nesting (Part B / Phase 2a). `citationId →

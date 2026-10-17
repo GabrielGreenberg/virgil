@@ -76,10 +76,10 @@ function doorSource(addBibEntry: ((e: BibEntry) => void) | null) {
     getFormattedBib: () => "",
     getAnnotation: () => "",
     setAnnotation: () => {},
-    requestBibReview: () => {},
+    requestBibReview: async () => ({ ok: true as const }),
     cancelBibReview: () => {},
     getBibReviewStatus: () => "none" as const,
-    saveBibEntry: () => {},
+    saveBibEntry: async () => ({ kind: "declined" as const }),
   };
 }
 

@@ -2,7 +2,8 @@
 
 import React, { useState, useCallback, useMemo } from "react";
 import type { BibEntry } from "@/lib/types";
-import type { BibEntrySave } from "@/hooks/useCitations";
+import type { SaveBibEntry } from "@/hooks/useCitations";
+import type { RequestBibReview } from "@/hooks/useBibReview";
 import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
 import { Input } from "./field-primitives";
@@ -26,6 +27,12 @@ import {
 } from "@/components/bib-review-request";
 import { validateBibEntryHeadChange } from "@/lib/bib-entry-head";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
+import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import {
+  isBibFileWriteAllowed,
+  isSidecarWriteAllowed,
+} from "@/components/editor-layout/chrome-config";
+import { didBibSaveLand, bibSaveRefusalReason } from "@/lib/project-bib";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -39,7 +46,7 @@ export interface BibEntryCardProps {
   // if a CSL preview in the Bibliography card is later wanted.
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
-  onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
+  onRequestReview: RequestBibReview;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   /** The note a PENDING request was sent with, read back from the persisted
@@ -55,7 +62,7 @@ export interface BibEntryCardProps {
    * head write — which raced in the `.bib`'s serial queue and could drop the
    * field edits silently. There is one door now, so it cannot.
    */
-  onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
+  onSaveBibEntry: SaveBibEntry;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
   /** Bib entries list — needed for formatMinimalCitation in drag ghost. */
   bibEntries?: BibEntry[];
@@ -102,6 +109,13 @@ export interface BibEntryCardProps {
    */
   readOnly?: { reason: string };
 }
+
+/** The review-request queue's sidecar — the file the host must permit. */
+const BIB_REVIEW_SIDECAR = "bib-review-requests.json";
+
+/** Said where "Edit entry" would be on a host whose `.bib` is not writable. */
+const BIB_HOST_READ_ONLY_REASON =
+  "Read-only here — this paper's bibliography is managed by the library.";
 
 /* ── Rich-text annotation editor ──────────────────────────────────── */
 //
@@ -170,13 +184,25 @@ export default function BibEntryCard({
    * reaches for `onSaveBibEntry` directly is the defect; reaching through
    * `writes` makes the compiler ask the question.
    */
+  const chrome = useEditorChrome();
   const writes = readOnly
     ? null
     : {
-        save: onSaveBibEntry,
+        // Per-door HOST writability (task 1158), read from the host's own
+        // declaration rather than only the preview flag: the Library Reader
+        // mounts this card over a `library-paper:` doc whose `.bib` and
+        // `bib-review-requests.json` its storage funnel refuses — Edit entry
+        // and Request review were offered there, accepted the user's typing,
+        // and lost it to a silent `read-only` roll-back. A door the host will
+        // not honour is withheld, not offered.
+        save: isBibFileWriteAllowed(chrome) ? onSaveBibEntry : null,
         setAnnotation,
-        requestReview: onRequestReview,
-        cancelReview: onCancelReview,
+        requestReview: isSidecarWriteAllowed(chrome, BIB_REVIEW_SIDECAR)
+          ? onRequestReview
+          : null,
+        cancelReview: isSidecarWriteAllowed(chrome, BIB_REVIEW_SIDECAR)
+          ? onCancelReview
+          : null,
       };
   /** A preview card never drags: its `\cite{key}` would name a key this
    *  paper's `references.bib` does not hold. (This was a separate `draggable`
@@ -197,6 +223,10 @@ export default function BibEntryCard({
   const [editBibType, setEditBibType] = useState("");
   const [editBibKey, setEditBibKey] = useState("");
   const [showBibWarning, setShowBibWarning] = useState(false);
+  // A Save in flight, and why the last one did not land (task 1158). The
+  // editor stays open — typed fields intact — until the door says LANDED.
+  const [savingBib, setSavingBib] = useState(false);
+  const [saveBibError, setSaveBibError] = useState<string | null>(null);
   const { copied, copy } = useCopyFlash();
 
   // DISPLAY — projected through the bib-row door (task 409), so `L{\'o}pez`
@@ -251,13 +281,14 @@ export default function BibEntryCard({
     setEditBibType(entry.type);
     setEditBibKey(entry.key);
     setShowBibWarning(true);
+    setSaveBibError(null);
   };
   const commitEditBib = () => {
     // The gate, read where the write actually happens (task 692). The editor
     // that reaches this is not rendered on a preview card at all, so this is
     // belt-and-braces — but it is the compiler's belt: `writes.save` cannot be
     // called without it.
-    if (!writes) return;
+    if (!writes?.save || savingBib) return;
     // THE door (task 690). Save used to accept anything the two free-text
     // boxes held: an empty `@type` wrote `@{key,…}` — a block Virgil's own
     // extractor cannot read back, so the next parse dropped the entry and the
@@ -275,15 +306,35 @@ export default function BibEntryCard({
     // The editor's `editBibFields` is the COMPLETE intended field set (seeded
     // from `entry.fields`, edited in place), so a Save is set-all — a field the
     // user cleared must be deleted, not silently retained (BIB-A3-02).
-    writes.save(entry, {
-      fields: editBibFields,
-      type: editBibType.trim(),
-      key: editBibKey.trim(),
-    });
+    //
+    // CLOSE ON LANDED, never on the click (task 1158). The editor's state is
+    // the ONLY copy of what the user typed: the optimistic view rolls back on
+    // a refusal (a library paper's read-only `.bib`, an unbalanced neighbour
+    // the splice will not rewrite, an entry that vanished), so closing first
+    // destroyed every edited field — silently, for the unvoiced kinds.
+    setSavingBib(true);
+    setSaveBibError(null);
+    void writes
+      .save(entry, {
+        fields: editBibFields,
+        type: editBibType.trim(),
+        key: editBibKey.trim(),
+      })
+      .then((result) => {
+        setSavingBib(false);
+        if (didBibSaveLand(result)) {
+          setEditingBib(false);
+          setShowBibWarning(false);
+        } else {
+          setSaveBibError(bibSaveRefusalReason(result));
+        }
+      });
+  };
+  const cancelEditBib = () => {
     setEditingBib(false);
     setShowBibWarning(false);
+    setSaveBibError(null);
   };
-  const cancelEditBib = () => { setEditingBib(false); setShowBibWarning(false); };
   /** Drop a field from the in-progress edit map. Because Save routes through
    *  the set-all `replaceBibEntry` (D3), a field removed here is DELETED on
    *  Save — not silently retained as `field = {}` (BIB-F5-04, "I cleared the
@@ -418,14 +469,14 @@ export default function BibEntryCard({
             <Chevron expanded={fieldsOpen} />
             <span>BibTeX Fields</span>
           </button>
-          {writes && (
+          {writes?.requestReview && (
           <ReviewRequestChip type="fields" status={fieldsReviewStatus} composer={reviewComposer} />
           )}
         </div>
 
         {fieldsOpen && (
           <div className="mt-1.5 space-y-1.5">
-            {writes && (
+            {writes?.requestReview && (
               <ReviewRequestStrip
                 type="fields"
                 status={fieldsReviewStatus}
@@ -484,12 +535,21 @@ export default function BibEntryCard({
                       {headCheck.reason}
                     </div>
                   )}
+                  {saveBibError && (
+                    <div
+                      className="text-error text-xs px-2 py-1"
+                      role="alert"
+                      data-bib-save-error=""
+                    >
+                      {saveBibError}
+                    </div>
+                  )}
                   <div className="flex gap-1 mt-1">
                     <Button
                       variant="primary"
                       size="sm"
                       onClick={commitEditBib}
-                      disabled={!headCheck.ok}
+                      disabled={!headCheck.ok || savingBib}
                       title={headCheck.ok ? undefined : headCheck.reason}
                     >
                       Save
@@ -521,11 +581,13 @@ export default function BibEntryCard({
                       bibliography by citekey: it either matched nothing and
                       vanished, or matched a DIFFERENT record and overwrote it
                       set-all. Saying so beats a button that lies. */}
-                  {writes ? (
+                  {writes?.save ? (
                     <button onClick={(e) => { e.stopPropagation(); startEditBib(); }}
                       className="text-xs text-ink-muted hover:text-ink-body underline mt-1">Edit entry</button>
                   ) : (
-                    <div className="text-xs text-ink-muted mt-1 italic">{readOnly!.reason}</div>
+                    <div className="text-xs text-ink-muted mt-1 italic">
+                      {readOnly?.reason ?? BIB_HOST_READ_ONLY_REASON}
+                    </div>
                   )}
                 </div>
               )}
@@ -551,17 +613,21 @@ export default function BibEntryCard({
             <Chevron expanded={annotationOpen} />
             <span>Annotations</span>
           </button>
+          {writes.requestReview && (
           <ReviewRequestChip type="notes" status={notesReviewStatus} composer={reviewComposer} />
+          )}
         </div>
 
         {annotationOpen && (
           <div className="mt-1.5 space-y-1.5">
+            {writes.requestReview && (
             <ReviewRequestStrip
               type="notes"
               status={notesReviewStatus}
               sentNote={getReviewNotes?.(entry.key, "notes")}
               composer={reviewComposer}
             />
+            )}
             <div className={PANEL.subpodWhite}>
               <AnnotationEditor bibKey={entry.key} content={annotation} onUpdate={writes.setAnnotation} />
             </div>

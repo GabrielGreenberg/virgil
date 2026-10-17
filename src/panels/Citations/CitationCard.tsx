@@ -8,7 +8,8 @@ import {
   useState,
 } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
-import type { BibEntrySave } from "@/hooks/useCitations";
+import type { SaveBibEntry } from "@/hooks/useCitations";
+import type { RequestBibReview } from "@/hooks/useBibReview";
 import {
   bibFieldDisplay,
   citationCommandOrNull,
@@ -279,11 +280,7 @@ export interface CitationCardProps {
   getFormattedBib?: (entry: BibEntry) => string;
   getAnnotation?: (key: string) => string;
   setAnnotation?: (key: string, text: string) => void;
-  onRequestReview?: (
-    bibKey: string,
-    type: "fields" | "notes",
-    requestNotes?: string,
-  ) => void;
+  onRequestReview?: RequestBibReview;
   onCancelReview?: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus?: (
     bibKey: string,
@@ -295,7 +292,7 @@ export interface CitationCardProps {
    *  690) — see `bib-address.ts`. Before the door this surface handed the card
    *  only a MERGE writer, so a field cleared in the inline editor came back
    *  (BIB-A3-02); the one door is set-all. */
-  onSaveBibEntry?: (entry: BibEntry, patch: BibEntrySave) => void;
+  onSaveBibEntry?: SaveBibEntry;
   isAnchored?: boolean;
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;

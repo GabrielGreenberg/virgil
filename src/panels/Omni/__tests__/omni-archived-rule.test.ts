@@ -104,10 +104,10 @@ function citationItems(citations: CitationRef[]): OmniItem[] {
     getFormattedBib: () => "",
     getAnnotation: () => "",
     setAnnotation: noop,
-    requestBibReview: noop,
+    requestBibReview: async () => ({ ok: true as const }),
     cancelBibReview: noop,
     getBibReviewStatus: () => "none" as const,
-    saveBibEntry: noop,
+    saveBibEntry: async () => ({ kind: "declined" as const }),
     addBibEntry: null,
   });
 }

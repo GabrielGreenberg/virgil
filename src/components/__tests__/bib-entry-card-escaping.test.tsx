@@ -46,10 +46,10 @@ function renderCard(entry: BibEntry) {
       onClick={() => {}}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
-      onRequestReview={() => {}}
+      onRequestReview={async () => ({ ok: true as const })}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onSaveBibEntry={() => {}}
+      onSaveBibEntry={async () => ({ kind: "declined" as const })}
     />,
   );
 }

@@ -1,5 +1,6 @@
 import type { BibEntry } from "@/lib/types";
-import type { BibEntrySave } from "@/hooks/useCitations";
+import type { SaveBibEntry } from "@/hooks/useCitations";
+import type { RequestBibReview } from "@/hooks/useBibReview";
 import type { CitationCardProps } from "./CitationCard";
 
 /**
@@ -50,18 +51,14 @@ export interface CitationDoorSource {
   getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
-  requestBibReview: (
-    bibKey: string,
-    type: "fields" | "notes",
-    requestNotes?: string,
-  ) => void;
+  requestBibReview: RequestBibReview;
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   getBibReviewStatus: (
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
   getBibReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
-  saveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
+  saveBibEntry: SaveBibEntry;
 }
 
 export function citationCardDoors(s: CitationDoorSource): CitationCardDoors {

@@ -20,7 +20,8 @@ import type {
   CitationRef,
   FootnoteRef,
 } from "@/lib/types";
-import type { BibEntrySave } from "@/hooks/useCitations";
+import type { SaveBibEntry } from "@/hooks/useCitations";
+import type { RequestBibReview } from "@/hooks/useBibReview";
 import type { CardAnchorResolver } from "@/links/card-anchor-rows";
 
 /**
@@ -196,13 +197,13 @@ export interface PoppedCardDeps {
   getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
-  requestBibReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
+  requestBibReview: RequestBibReview;
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   getBibReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   /** The note the PENDING request was sent with (task 981). */
   getBibReviewNotes?: (bibKey: string, type: "fields" | "notes") => string | undefined;
   /** THE bib-entry write door — one write per Save gesture (task 691). */
-  saveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
+  saveBibEntry: SaveBibEntry;
   addBibEntry: (entry: import("@/lib/types").BibEntry) => void;
 
   // Citations

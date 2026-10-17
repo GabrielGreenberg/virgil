@@ -27,6 +27,7 @@
  */
 
 import { useCallback, useState } from "react";
+import type { RequestBibReview } from "@/hooks/useBibReview";
 import {
   AMBER_ATTENTION_STRIP,
   AMBER_PENDING_CHIP,
@@ -60,7 +61,7 @@ export const REVIEW_REQUEST_COPY: Record<
  */
 export function useReviewRequestComposer(opts: {
   bibKey: string;
-  request: ((bibKey: string, type: BibReviewType, notes?: string) => void) | null;
+  request: RequestBibReview | null;
   cancel: ((bibKey: string, type: BibReviewType) => void) | null;
   getStatus: (bibKey: string, type: BibReviewType) => BibReviewStatus;
   /** Called when a composer opens, so the card can expand the pod it lives in. */
@@ -68,8 +69,20 @@ export function useReviewRequestComposer(opts: {
 }) {
   const { bibKey, request, cancel, getStatus, onOpen } = opts;
   const [drafts, setDrafts] = useState<Partial<Record<BibReviewType, string>>>({});
+  // Why the last send of a type did not land (task 1158) — shown beside the
+  // draft it kept. Cleared by the next send, an edit, or a close.
+  const [errors, setErrors] = useState<Partial<Record<BibReviewType, string>>>({});
 
   const isComposing = (type: BibReviewType) => drafts[type] !== undefined;
+
+  const clearError = useCallback((type: BibReviewType) => {
+    setErrors((prev) => {
+      if (prev[type] === undefined) return prev;
+      const next = { ...prev };
+      delete next[type];
+      return next;
+    });
+  }, []);
 
   const close = useCallback((type: BibReviewType) => {
     setDrafts((prev) => {
@@ -77,16 +90,32 @@ export function useReviewRequestComposer(opts: {
       delete next[type];
       return next;
     });
-  }, []);
+    clearError(type);
+  }, [clearError]);
 
+  /**
+   * SEND, and keep the draft until the write is known to have LANDED (task
+   * 1158). This used to close on the click: a refused write (a library paper's
+   * read-only sidecar, no handle, a real failure) rolled the row back and the
+   * note the user typed was gone. Now a refusal leaves the composer open with
+   * the note intact and the reason beside it. (While the write is in flight the
+   * optimistic row reads "pending", so the strip shows the sent note, not the
+   * composer — the draft is held underneath, not re-sendable.)
+   */
   const send = useCallback(
     (type: BibReviewType) => {
       if (!request) return;
       const note = (drafts[type] ?? "").trim();
-      request(bibKey, type, note || undefined);
-      close(type);
+      clearError(type);
+      void request(bibKey, type, note || undefined).then((result) => {
+        if (result.ok) {
+          close(type);
+        } else {
+          setErrors((prev) => ({ ...prev, [type]: result.reason }));
+        }
+      });
     },
-    [request, bibKey, drafts, close],
+    [request, bibKey, drafts, close, clearError],
   );
 
   /** The chip's click — one gesture, three meanings by state. */
@@ -110,7 +139,15 @@ export function useReviewRequestComposer(opts: {
     setDrafts((prev) => ({ ...prev, [type]: text }));
   }, []);
 
-  return { isComposing, draftOf: (t: BibReviewType) => drafts[t] ?? "", setDraft, send, close, toggle };
+  return {
+    isComposing,
+    draftOf: (t: BibReviewType) => drafts[t] ?? "",
+    errorOf: (t: BibReviewType) => errors[t],
+    setDraft,
+    send,
+    close,
+    toggle,
+  };
 }
 
 export type ReviewRequestComposer = ReturnType<typeof useReviewRequestComposer>;
@@ -223,6 +260,15 @@ export function ReviewRequestStrip({
         placeholder={REVIEW_REQUEST_COPY[type].placeholder}
         className="w-full text-xs bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none"
       />
+      {composer.errorOf(type) && (
+        <div
+          role="alert"
+          data-review-request-error={type}
+          className="text-error text-xs mt-0.5"
+        >
+          {composer.errorOf(type)}
+        </div>
+      )}
     </div>
   );
 }
