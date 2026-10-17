@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Input } from "./field-primitives";
 import { iconHint } from "@/components/Hint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 interface SizeStepperProps {
   value: number;
@@ -59,7 +60,7 @@ export default function SizeStepper({
         }}
         onBlur={() => { setFocused(false); commitRaw(draft); }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur();
+          if (isCommitEnter(e) || e.key === "Escape") (e.target as HTMLInputElement).blur();
         }}
         className="w-16 px-2 py-1 text-sm tabular-nums"
         style={{ fontVariantNumeric: "tabular-nums" }}

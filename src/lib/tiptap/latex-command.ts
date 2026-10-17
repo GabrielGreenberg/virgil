@@ -24,6 +24,7 @@ import {
 } from "./changed-ranges";
 import { forEachBareCommand } from "./cmd-only-paragraph";
 import { blockCarriesProse, inlineIsProse } from "@/lib/prose-index";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /**
  * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
@@ -991,7 +992,7 @@ export const LatexCommandMark = Mark.create({
         key: new PluginKey("virgilCommands"),
         props: {
           handleKeyDown(view, event) {
-            if (event.key !== "Enter") return false;
+            if (!isCommitEnter(event)) return false;
             const { state } = view;
             const { from } = state.selection;
             if (from !== state.selection.to) return false; // collapsed cursor only

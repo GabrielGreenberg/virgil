@@ -51,6 +51,7 @@ import {
 } from "./card-archive-view";
 import { ArchiveViewEmptyState } from "./ArchiveViewEmptyState";
 import { PanelAddProvider } from "./CreationHint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export interface CardListPanelProps<T> {
   kind: PanelKind;
@@ -261,7 +262,7 @@ export function CardListPanel<T>({
       // Enter only when the LIST itself or a card ROOT has focus (the keyboard
       // puts focus on the stepped-to card) — on a control inside a card, Enter
       // belongs to that card's buttons and fields.
-      if (e.key === "Enter" && !e.defaultPrevented && isNavKeyTarget(e)) {
+      if (isCommitEnter(e) && !e.defaultPrevented && isNavKeyTarget(e)) {
         if (visibleItems.length === 0) return;
         e.preventDefault();
         activateIndex(selectedIndex < 0 ? 0 : selectedIndex);

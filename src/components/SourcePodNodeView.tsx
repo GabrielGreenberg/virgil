@@ -15,6 +15,7 @@ import {
 } from "@/lib/field-edit-session";
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import { useIsFloatPopped } from "@/hooks/usePoppedCards";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /**
  * THE source pod — one implementation of the "raw bytes in a framed, foldable,
@@ -390,7 +391,7 @@ export default function SourcePodNodeView({
               placeholder="Block title…"
               onKeyDown={(e) => {
                 e.stopPropagation();
-                if (e.key === "Enter") {
+                if (isCommitEnter(e)) {
                   e.preventDefault();
                   const el = e.currentTarget;
                   session.commitAndBlur(el, () => commitTitleFrom(el));

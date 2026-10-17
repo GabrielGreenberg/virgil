@@ -33,6 +33,7 @@ import {
   AMBER_PENDING_CHIP,
 } from "@/panels/_shared/amber-attention";
 import { StatusDot } from "@/components/StatusDot";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export type BibReviewType = "fields" | "notes";
 export type BibReviewStatus = "none" | "pending" | "complete";
@@ -247,7 +248,7 @@ export function ReviewRequestStrip({
         value={composer.draftOf(type)}
         onChange={(e) => composer.setDraft(type, e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (isCommitEnter(e)) {
             e.preventDefault();
             e.stopPropagation();
             composer.send(type);

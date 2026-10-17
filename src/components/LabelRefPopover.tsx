@@ -43,6 +43,7 @@ import { useMenuItem } from "./menu/useMenuItem";
 import { useMenuCombobox } from "./menu/useMenuCombobox";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import type { RefCommand } from "@/lib/ref-display";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /**
  * A discoverable target for a `\ref`. Headings carry their own section
@@ -345,7 +346,7 @@ function LabelRefBody({
                 open: showDropdown,
                 onNavigate: () => setDropdownOpen(true),
                 onKeyDown: (e) => {
-                  if (e.key === "Enter") {
+                  if (isCommitEnter(e)) {
                     e.preventDefault();
                     // Commit the roving-active option when one is highlighted;
                     // otherwise fall back to the raw typed value.

@@ -41,6 +41,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useFieldEditSession } from "@/lib/field-edit-session";
+import { isCommitEnter } from "@/lib/key-intent";
 
 export interface InlineRenameInputProps {
   /** The current name; seeds the draft and is the no-op baseline. */
@@ -136,7 +137,7 @@ export function InlineRenameInput({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => session.commit(finish)}
       onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Enter") {
+        if (isCommitEnter(e)) {
           e.preventDefault();
           session.commitAndBlur(e.currentTarget, finish);
         } else if (e.key === "Escape") {

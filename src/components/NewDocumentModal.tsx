@@ -10,6 +10,7 @@ import SystemDialog, {
 import { Field, Input } from "./field-primitives";
 import { InlineError } from "./InlineError";
 import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /**
  * What `onCreate` DID — the report this dialog reads to decide whether its
@@ -106,7 +107,7 @@ export default function NewDocumentModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (isCommitEnter(e)) {
                   e.preventDefault();
                   submit();
                 }

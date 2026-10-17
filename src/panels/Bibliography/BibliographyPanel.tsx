@@ -41,6 +41,7 @@ import {
   enumOptions,
   type RegistryPrefs,
 } from "@/lib/view-prefs/registry";
+import { isCommitEnter } from "@/lib/key-intent";
 
 /** True when two bib entries describe the same record at field level —
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
@@ -481,7 +482,7 @@ function BibliographyPanel({
       setShowRequestForm(false);
       setRequestText("");
     }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmitRequest();
+    if (isCommitEnter(e) && (e.metaKey || e.ctrlKey)) handleSubmitRequest();
   });
 
   const localEntryByKey = useMemo(() => {

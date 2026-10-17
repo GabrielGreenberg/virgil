@@ -31,7 +31,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { buildLetterMap } from "./nav-core";
 import { isEditableEventTarget } from "@/lib/drag-blocklist";
-import { isImeComposing, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
+import { isCommitEnter, isImeComposing, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import { claimActiveDescendant, type ActiveDescendantClaim } from "./caret-host";
 import type { MenuRegistry } from "./registry";
 import type { MenuLayout, MenuOrientation, NavDir } from "./types";
@@ -200,7 +200,7 @@ export function useMenuKeyboard(
       return ran;
     };
 
-    if (plain && (e.key === "Enter" || e.key === " " || e.key === "Spacebar")) {
+    if (plain && (isCommitEnter(e) || e.key === " " || e.key === "Spacebar")) {
       if (e.repeat) return true;
       // Consume ONLY if something actually ran (task 477). This is the
       // defence-in-depth half of that task: `consume()` used to answer true

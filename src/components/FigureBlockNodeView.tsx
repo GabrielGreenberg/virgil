@@ -38,6 +38,7 @@ import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { iconHint } from "@/components/Hint";
+import { isCommitEnter } from "@/lib/key-intent";
 
 const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
@@ -1037,7 +1038,7 @@ export function FigureChrome({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (e.key === "Enter") {
+            if (isCommitEnter(e)) {
               e.preventDefault();
               // Commit AND blur through the door: pre-529 the explicit call and
               // the blur's own `onBlur` both ran `commitDraft` from this same

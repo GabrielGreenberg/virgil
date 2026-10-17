@@ -329,9 +329,11 @@ const TAKES_DOOR = /session\.(?:cancel|commitAndBlur)\(/i;
  *  This is the honest discriminator: Escape needs a door only where it means
  *  something DIFFERENT from Enter. */
 function hasDistinctCancel(body: string): boolean {
+  // Enter is spelled `isCommitEnter(e)` in production (task 1165's one Enter
+  // gate); the literal is kept for the fixtures below.
   const withoutAlias = body
-    .replace(/["']Enter["'][^;{]*?["']Escape["']/g, "")
-    .replace(/["']Escape["'][^;{]*?["']Enter["']/g, "");
+    .replace(/(?:["']Enter["']|isCommitEnter\(\w*\))[^;{]*?["']Escape["']/g, "")
+    .replace(/["']Escape["'][^;{]*?(?:["']Enter["']|isCommitEnter\(\w*\))/g, "");
   return /["']Escape["']/.test(withoutAlias);
 }
 
