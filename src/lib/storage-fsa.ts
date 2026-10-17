@@ -128,6 +128,7 @@ import {
   asBibFamily,
   type BibFamily,
 } from "@/lib/bib-family";
+import { declaredBibFiles, pickDeclaredBibFile } from "@/lib/bib-resources";
 import { DocUnreachableError, probeDocFolder } from "@/lib/doc-load-failure";
 
 // ---------------------------------------------------------------------------
@@ -1533,11 +1534,11 @@ export async function snapshotConflictSides(
 // Bibliography (sibling .bib file in the doc folder)
 // ---------------------------------------------------------------------------
 
-const BIB_DECL_RE = /\\(?:bibliography|addbibresource)\{([^}]+)\}/;
-
 /**
  * Resolve which .bib filename inside the doc folder belongs to this doc:
- *  1. Whatever `\bibliography{}` or `\addbibresource{}` declares.
+ *  1. What the LIVE `\bibliography{}` / `\addbibresource{}` declarations
+ *     name — the first declared file that exists, else the first declared
+ *     (`pickDeclaredBibFile`, the ONE rule both backends share; task 1157).
  *  2. If only one .bib exists in the folder, that one.
  *  3. If multiple, prefer one whose stem matches the .tex stem.
  *  4. Fall back to `references.bib`.
@@ -1547,12 +1548,18 @@ async function resolveBibFilename(docId: string): Promise<string> {
   const meta = await getDocMetaOrThrow(docId);
 
   const tex = await safeReadText(docHandle, meta.texFilename, "");
-  const m = tex.match(BIB_DECL_RE);
-  if (m) {
-    let name = m[1].trim();
-    if (!name.endsWith(".bib")) name += ".bib";
-    return name;
-  }
+  const declared = await pickDeclaredBibFile(
+    declaredBibFiles(tex),
+    async (name) => {
+      try {
+        await docHandle.getFileHandle(name);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
+  if (declared) return declared;
 
   const bibFiles: string[] = [];
   for await (const entry of docHandle.values()) {

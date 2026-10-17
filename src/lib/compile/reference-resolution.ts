@@ -29,6 +29,7 @@ import {
   projectLiveLatex,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
+import { listBibResourceDecls } from "@/lib/bib-resources";
 
 export interface PassPlan {
   /** Number of compile passes to run (1, 2, or 3). */
@@ -48,14 +49,14 @@ const MANUAL_BIB_RE = /\\begin\{thebibliography\}/;
 
 // A bib BACKEND (bibtex/biber runs between passes) — needs a THIRD pass. The
 // package half asks the lexer's ONE load reader (task 781), so a spaced
-// `\usepackage {biblatex}` or a comma list counts; the resource commands are
-// matched directly.
-const BIB_RESOURCE_RE = /\\bibliography\{|\\addbibresource\{/;
+// `\usepackage {biblatex}` or a comma list counts; the resource half asks the
+// ONE bib-declaration reader (task 1157), so `\addbibresource[opts]{…}` and a
+// spaced `\bibliography {…}` count too.
 function loadsBibBackend(live: string): boolean {
   return (
     preambleListLoadsPackage(live, "natbib") ||
     preambleListLoadsPackage(live, "biblatex") ||
-    BIB_RESOURCE_RE.test(live)
+    listBibResourceDecls(live).length > 0
   );
 }
 

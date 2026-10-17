@@ -195,7 +195,9 @@ Six rules it earned:
   task 220 makes for the skills: no Web Lock reaches python, and none is
   claimed — but merging over the file as it is on disk means a skill's entry is
   never computed away from a stale base, because there is no base but the disk.
-- **`bibFilenameFromTex` is spelled once in the dev backend** — the name
+- **`bibFilenameFor` is spelled once in the dev backend** (née
+  `bibFilenameFromTex`; since task 1157 both backends delegate the parse +
+  multi-file pick to `src/lib/bib-resources.ts`) — the name
   resolver, the reader and the retired write door used to carry three
   byte-identical copies of the `\bibliography{}` match — and the dev door
   finally takes the per-file queue (`bib/<name>`, so `flushPrefix` drains it);
