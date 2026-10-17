@@ -217,7 +217,7 @@ export function useReports(
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
-    [update, pristine, state.cards],
+    [update, pristine],
   );
 
   /** Create a Report Request (the user's "ask"). */
@@ -303,19 +303,19 @@ export function useReports(
         ),
       }));
       if (firstCommit) {
-        const card = state.cards.find(
+        const card = stateRef.current.cards.find(
           (c) => c.id === id && c.kind === "report-request",
         ) as ReportRequestCard | undefined;
         if (card?.aiRequest) bridgeRequest({ ...card, content, text }, true);
       }
     },
-    [update, pristine, state.cards, bridgeRequest],
+    [update, pristine, bridgeRequest, stateRef],
   );
 
   const setRequestAiRequest = useCallback(
     (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine.markDirty(id);
-      const card = state.cards.find(
+      const card = stateRef.current.cards.find(
         (c) => c.id === id && c.kind === "report-request",
       ) as ReportRequestCard | undefined;
       update((prev) => ({
@@ -333,7 +333,7 @@ export function useReports(
         mode,
       );
     },
-    [update, pristine, state.cards, bridgeRequestById],
+    [update, pristine, bridgeRequestById, stateRef],
   );
 
   /** Flip a report card's kind in place (report ⇄ report-request) via the
@@ -446,7 +446,7 @@ export function useReports(
    *  duplicate walker rewires anchors after slice insertion. */
   const cloneReport = useCallback(
     (sourceId: string): string | null => {
-      const source = state.cards.find((c) => c.id === sourceId);
+      const source = stateRef.current.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "report") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
       // `links`→[] is intentionally reset for the clone — the duplicate walker
@@ -469,12 +469,12 @@ export function useReports(
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
-    [update, state.cards],
+    [update, stateRef],
   );
 
   const cloneRequest = useCallback(
     (sourceId: string): string | null => {
-      const source = state.cards.find((c) => c.id === sourceId);
+      const source = stateRef.current.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "report-request") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
       // `aiRequest`→false and `links`→[] are intentionally reset for the clone,
@@ -493,7 +493,7 @@ export function useReports(
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
-    [update, state.cards],
+    [update, stateRef],
   );
 
   const discardPristineCards = useCallback(() => {

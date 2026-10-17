@@ -564,7 +564,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
    */
   const preserveModeBAnchor = useCallback(
     (id: string): string | null => {
-      const card = cards.find((c) => c.id === id);
+      const card = stateRef.current.cards.find((c) => c.id === id);
       if (!card) return null;
       const textAnchor = getTextAnchor(card);
       if (!textAnchor) return null;
@@ -583,7 +583,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       }));
       return textAnchor.anchorId;
     },
-    [cards, update],
+    [update, stateRef],
   );
 
   const deleteNote = useCallback(
@@ -614,7 +614,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
    *  walker rewires anchors after the slice is inserted. */
   const cloneNote = useCallback(
     (sourceId: string): string | null => {
-      const source = cards.find((c) => c.id === sourceId);
+      const source = stateRef.current.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "note") return null;
       // Task 076/099: the record-level envelope (`archived`) is carried via the
       // shared clone/morph SSOT `carryCardEnvelope`; `originalAnchor` (the
@@ -635,14 +635,14 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       update((prev) => ({ cards: [...prev.cards, clone] }));
       return clone.id;
     },
-    [update, cards],
+    [update, stateRef],
   );
 
   /** Deep-copy a highlight sidecar entry with a fresh id. Same shape as
    *  cloneNote — links cleared, walker rewires after insertion. */
   const cloneHighlight = useCallback(
     (sourceId: string): string | null => {
-      const source = cards.find((c) => c.id === sourceId);
+      const source = stateRef.current.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "highlight") return null;
       // Task 076/099: same as cloneNote — envelope (`archived`) via the shared
       // `carryCardEnvelope` SSOT; `originalAnchor` inline; `aiRequest`/`links` reset.
@@ -658,7 +658,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       update((prev) => ({ cards: [...prev.cards, clone] }));
       return clone.id;
     },
-    [update, cards],
+    [update, stateRef],
   );
 
   /** Re-attach a Mode B text-range anchor on a freshly-cloned note or
@@ -713,7 +713,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       // the note/highlight the user no longer sees. Context is built from the
       // morphed record (same transform the update applies) through the TO
       // kind's own context builder — the one a re-tick would use.
-      const card = cards.find((c) => c.id === id);
+      const card = stateRef.current.cards.find((c) => c.id === id);
       if (!card || card.kind === toKind || !morphCarriesAiRequest(card.kind)) return;
       const next = applyCardMorph(card.kind, card);
       if (!next.aiRequest) return;
@@ -725,7 +725,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         next.kind === "note" ? noteContext(next) : highlightContext(next),
       );
     },
-    [update, pristine, cards, docId],
+    [update, pristine, docId, stateRef],
   );
 
   /**

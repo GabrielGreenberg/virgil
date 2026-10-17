@@ -106,7 +106,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     pristine.markNew(item.id);
     update((prev) => ({ items: [...prev.items, item] }));
     return item;
-  }, [update, state.items.length, pristine]);
+  }, [update, pristine]);
 
   /**
    * Stack-pull door (task 330): create a todo FROM a snapshot seed.
@@ -185,14 +185,14 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
 
   const setAiRequest = useCallback((id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
     pristine.markDirty(id);
-    const todo = state.items.find((i) => i.id === id);
+    const todo = stateRef.current.items.find((i) => i.id === id);
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, aiRequest: value } : i),
     }));
     // Card-MAY-BE-ABSENT (task 697): clearing a flag needs no todo, so the
     // CONTEXT degrades and the CALL still fires.
     bridgeFlagForCard(docId, "todo", id, value, mode, todo, todoContext);
-  }, [update, pristine, docId, state.items]);
+  }, [update, pristine, docId, stateRef]);
 
   const deleteItem = useCallback((id: string) => {
     pristine.markDirty(id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useMemo } from "react";
 
 /**
  * Tracks card IDs that were created but not yet edited. Card-list hooks
@@ -39,5 +39,10 @@ export function usePristineTracker(): PristineTracker {
     return ids;
   }, []);
 
-  return { markNew, markDirty, isPristine, takePristine };
+  // Memoized (task 1164): every card hook lists `pristine` as a useCallback dep,
+  // so a fresh literal here re-identified EVERY card mutator on every render.
+  return useMemo(
+    () => ({ markNew, markDirty, isPristine, takePristine }),
+    [markNew, markDirty, isPristine, takePristine],
+  );
 }
