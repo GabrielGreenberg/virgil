@@ -927,6 +927,16 @@ function podAddress(pod: OutlinePod): BlockSpanAddress {
   return { uuid: pod.uuid, index: pod.blockIndex, section: pod.type === "heading" };
 }
 
+/**
+ * Is this drag one of the edit-mode panel's OWN pods (task 1166)? The private
+ * `MIME_OUTLINE_POD` type names an outline pod drag; the live dragging id says
+ * it started in THIS panel instance (the drop reads that id, not the payload).
+ */
+function isOwnPodDrag(e: React.DragEvent, draggingId: string | null): boolean {
+  if (draggingId == null) return false;
+  return Array.from(e.dataTransfer?.types ?? []).includes(MIME_OUTLINE_POD);
+}
+
 function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
   const pods: OutlinePod[] = [];
 
@@ -1100,7 +1110,10 @@ const EditablePod = memo(function EditablePod({
         <div className="absolute top-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full z-10 -translate-y-1/2" />
       )}
       <div
-        draggable
+        // A pod with no durable uuid cannot be moved — the commit resolves
+        // blocks by uuid and refuses a null one (task 1166) — so the gesture
+        // never starts rather than ending in a drop that lands nothing.
+        draggable={pod.uuid != null}
         onDragStart={(e) => onDragStart(pod, e)}
         onDragEnd={onDragEnd}
         className={`flex items-center gap-1.5 rounded-md border transition-[color,background-color,border-color,opacity,box-shadow] cursor-grab active:cursor-grabbing ${
@@ -1216,6 +1229,9 @@ function EditableOutline({
   const hiddenIds = useMemo(() => computeHiddenPods(pods, collapsed), [pods, collapsed]);
   const visiblePods = useMemo(() => pods.filter((p) => !hiddenIds.has(p.id)), [pods, hiddenIds]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // Mirror of `draggingId` the dragover/drop gates read synchronously (they
+  // are stable callbacks, and dragover can fire before React re-renders).
+  const draggingIdRef = useRef<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ podId: string; position: "above" | "below" } | null>(null);
 
   // The painted drop-line derives from the LANDING index via the same
@@ -1233,6 +1249,7 @@ function EditableOutline({
   }, [dropTarget, pods, visiblePods, draggingId]);
 
   const handleDragStart = useCallback((pod: OutlinePod, e: React.DragEvent) => {
+    draggingIdRef.current = pod.id;
     setDraggingId(pod.id);
     e.dataTransfer.effectAllowed = "move";
     // A PRIVATE type, never `text/plain` (task 708): the id means something
@@ -1263,6 +1280,11 @@ function EditableOutline({
   }, []);
 
   const handleDragOver = useCallback((podId: string, e: React.DragEvent) => {
+    // Only THIS panel's own pod drag is a drop target here (task 1166). A
+    // foreign drag — a card, a file, a text selection, another pane's outline
+    // pod — is left alone: no preventDefault, so no move cursor, no lit line,
+    // and its drop falls through to whoever else wants it.
+    if (!isOwnPodDrag(e, draggingIdRef.current)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     // Determine above/below based on mouse position
@@ -1281,6 +1303,7 @@ function EditableOutline({
   }, []);
 
   const handleDragEnd = useCallback(() => {
+    draggingIdRef.current = null;
     setDraggingId(null);
     setDropTarget(null);
   }, []);
@@ -1290,7 +1313,10 @@ function EditableOutline({
   }, []);
 
   const handleDrop = useCallback((targetPodId: string, e: React.DragEvent) => {
+    // Same gate as dragover: a foreign drop is not ours to swallow.
+    if (!isOwnPodDrag(e, draggingIdRef.current)) return;
     e.preventDefault();
+    draggingIdRef.current = null;
     if (!draggingId || !dropTarget) { setDraggingId(null); setDropTarget(null); return; }
 
     const sourcePod = pods.find((p) => p.id === draggingId);

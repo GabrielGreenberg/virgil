@@ -13,11 +13,11 @@ import {
  * Fixture (doc order): h1 owns blocks 0-9 with a parTitle, a subheading h2
  * (blocks 6-9) and its parTitle nested inside; h3 is the next sibling section.
  */
-const h1: DropPod = { id: "h1", blockIndex: 0, blockCount: 10 };
-const pt1: DropPod = { id: "pt1", blockIndex: 2, blockCount: 1 };
-const h2: DropPod = { id: "h2", blockIndex: 6, blockCount: 4 };
-const pt2: DropPod = { id: "pt2", blockIndex: 8, blockCount: 1 };
-const h3: DropPod = { id: "h3", blockIndex: 10, blockCount: 5 };
+const h1: DropPod = { id: "h1", blockIndex: 0, blockCount: 10, uuid: "u-h1" };
+const pt1: DropPod = { id: "pt1", blockIndex: 2, blockCount: 1, uuid: "u-pt1" };
+const h2: DropPod = { id: "h2", blockIndex: 6, blockCount: 4, uuid: "u-h2" };
+const pt2: DropPod = { id: "pt2", blockIndex: 8, blockCount: 1, uuid: "u-pt2" };
+const h3: DropPod = { id: "h3", blockIndex: 10, blockCount: 5, uuid: "u-h3" };
 const allPods = [h1, pt1, h2, pt2, h3];
 
 describe("landingBlockIndex", () => {
@@ -91,10 +91,29 @@ describe("resolveDropIndicator", () => {
 
 describe("isRejectedDrop", () => {
   it("matches handleDrop's guards: same pod, strictly-inside landing", () => {
-    expect(isRejectedDrop(undefined, h1, 10)).toBe(false);
     expect(isRejectedDrop(h1, h1, 0)).toBe(true);
     expect(isRejectedDrop(h1, pt1, 2)).toBe(true); // inside (0, 10)
     expect(isRejectedDrop(h1, h3, 10)).toBe(false); // boundary
     expect(isRejectedDrop(h2, h3, 15)).toBe(false); // clear of the range
+  });
+});
+
+describe("isRejectedDrop — drags that can never land (task 1166)", () => {
+  it("refuses a drag with no outline source (a card, a file, a text selection)", () => {
+    expect(isRejectedDrop(undefined, h1, 10)).toBe(true);
+    expect(resolveDropIndicator(allPods, h3, "above", undefined)).toBeNull();
+    expect(resolveDropIndicator(allPods, h1, "below", undefined)).toBeNull();
+  });
+
+  it("refuses a uuid-less source or target — the commit cannot address it", () => {
+    const bareSource: DropPod = { ...h3, uuid: null };
+    const bareTarget: DropPod = { ...pt1, uuid: null };
+    expect(isRejectedDrop(bareSource, h1, 0)).toBe(true);
+    expect(isRejectedDrop(h3, bareTarget, 2)).toBe(true);
+    expect(resolveDropIndicator(allPods, h1, "above", bareSource)).toBeNull();
+    expect(resolveDropIndicator(allPods, bareTarget, "above", h3)).toBeNull();
+    // Control: the same drags with uuids light.
+    expect(resolveDropIndicator(allPods, h1, "above", h3)).not.toBeNull();
+    expect(resolveDropIndicator(allPods, pt1, "above", h3)).not.toBeNull();
   });
 });
