@@ -932,7 +932,10 @@ export function typographyToLatex(text: string): string {
  * Callers run this INSIDE `escapeLatex` after char-escaping and, for
  * `latexCommand`, on the raw mark text — never on `code`/verbatim spans.
  */
-export function smartenStraightQuotes(text: string): string {
+export function smartenStraightQuotes(
+  text: string,
+  isQuoteSyntaxAt: (s: string, i: number) => boolean,
+): string {
   return (
     text
       // The two curly glyphs, from `QUOTE_PAIR_TABLE` — the same table the
@@ -942,9 +945,17 @@ export function smartenStraightQuotes(text: string): string {
       // whitespace / opening punctuation (incl. `/`) / a dash glyph;
       // otherwise closing. An ESCAPED `"` (odd backslash run — `\"u`, the
       // umlaut accent inside a raw `latexCommand` run) is not a quote at all
-      // and passes through: THE escape rule, `isEscaped` (task 779 M2).
+      // and passes through: THE escape rule, `isEscaped` (task 779 M2). Nor
+      // is a `"` the caller's predicate calls SYNTAX (task 1160): a URL byte,
+      // a TeX hex constant. The predicate is REQUIRED and is the lexer's — a
+      // zero-import leaf cannot read the command tables — so the one caller
+      // is `smartenQuotesOutsideSyntax` and a census forbids a second.
       .replace(/"/g, (q, i: number, s: string) =>
-        isEscaped(s, i) ? q : i === 0 || SMART_QUOTE_OPENER_PREV.test(s[i - 1]) ? "``" : "''",
+        isEscaped(s, i) || isQuoteSyntaxAt(s, i)
+          ? q
+          : i === 0 || SMART_QUOTE_OPENER_PREV.test(s[i - 1])
+            ? "``"
+            : "''",
       )
   );
 }

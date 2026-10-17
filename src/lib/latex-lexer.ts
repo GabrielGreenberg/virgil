@@ -42,6 +42,7 @@ import {
   isEscaped,
   findUnescaped,
   matchCharEscapeAt,
+  smartenStraightQuotes,
 } from "@/lib/latex-typography";
 import { BLOCK_TEX_MARKERS } from "@/lib/latex-markers";
 import { COMMENT_TAIL_MARK_NAME } from "@/lib/mark-composition";
@@ -1740,6 +1741,225 @@ function skipVerbatimArgumentsAt(text: string, i: number): number {
   return p;
 }
 
+// ---------------------------------------------------------------------------
+// "Is this `"` a quotation mark?" — ONE question, ONE owner (task 1160)
+// ---------------------------------------------------------------------------
+//
+// The serializer's smart-quote rung canonicalises a straight `"` to ``` `` ```
+// or `''`. That is right for a QUOTATION MARK and destructive wherever the `"`
+// is LaTeX SYNTAX, which it is in three places the rung used to know nothing
+// about (task 779 taught it the fourth, the escaped `\"u`):
+//
+//  1. inside a VERBATIM ARGUMENT (`VERBATIM_ARGUMENT_COMMANDS`): `\url{…?q="a"}`
+//     saved as `?q=''a''` and the PDF link broke; `\href`'s FIRST argument is
+//     verbatim, its second is prose and still smartens;
+//  2. as the radix of a TeX HEX CONSTANT: `\char"41`, `\symbol{"41}`,
+//     `\catcode"22=12` — smartened to a backtick, a different number;
+//  3. in a document where babel makes `"` an ACTIVE shorthand (`"a` = ä,
+//     `Stra"se`) — there EVERY bare `"` in the body is a command.
+//
+// 1 and 2 are positional facts about the bytes, answered by
+// {@link isQuoteSyntaxAt} at serialize time and fed to the ONE smartening
+// door, {@link smartenQuotesOutsideSyntax}. 3 is a document fact, read once
+// from the preamble by the parser (it is the only layer that has one) and
+// carried on the byte-literal `latexVerbatim` carrier, so the serializer — a
+// per-block, memoised walk with no preamble in hand — never has to know.
+
+/** TeX primitives that read a NUMBER right after the control word, where a
+ *  `"` is the hex radix (`\char"41`), not a quote. Optional spaces and one
+ *  `=` may stand between (`\catcode "22 = 12`). */
+export const TEX_NUMBER_PRIMITIVES: ReadonlySet<string> = new Set([
+  "char",
+  "mathchar",
+  "catcode",
+  "mathcode",
+  "delcode",
+  "lccode",
+  "uccode",
+  "sfcode",
+]);
+
+/** LaTeX commands whose single brace argument is a TeX number (`\symbol{"41}`). */
+const TEX_NUMBER_ARGUMENT_COMMANDS: ReadonlySet<string> = new Set(["symbol"]);
+
+/** A TeX hex digit — UPPERCASE only, which is TeX's own rule. */
+const TEX_HEX_DIGIT = /[0-9A-F]/;
+
+/**
+ * The TeX number constant at `pos` (after optional spaces and one optional
+ * `=`): `"` + hex digits, `'` + octal digits, or decimal digits. The index
+ * just past it, or -1. Read by {@link matchCommandArgumentRun} so a
+ * `TEX_NUMBER_PRIMITIVES` command carries its number on the same raw run —
+ * which is what lets the serializer see `\char"41` whole.
+ */
+export function matchTexNumberAt(text: string, pos: number): number {
+  let p = pos;
+  while (text[p] === " ") p++;
+  if (text[p] === "=") {
+    p++;
+    while (text[p] === " ") p++;
+  }
+  const lead = text[p];
+  let digit: RegExp;
+  let q = p;
+  if (lead === '"') {
+    digit = TEX_HEX_DIGIT;
+    q++;
+  } else if (lead === "'") {
+    digit = /[0-7]/;
+    q++;
+  } else {
+    digit = /[0-9]/;
+  }
+  const first = q;
+  while (q < text.length && digit.test(text[q])) q++;
+  return q > first ? q : -1;
+}
+
+/** The control word whose name ENDS at `end` (exclusive), or null — read
+ *  backwards, because the predicate is asked at the `"` and the command that
+ *  owns it stands to its left. */
+function controlWordEndingAt(text: string, end: number): string | null {
+  let j = end;
+  while (j > 0 && /[a-zA-Z@]/.test(text[j - 1])) j--;
+  if (j === end || j === 0 || text[j - 1] !== "\\" || isEscaped(text, j - 1)) {
+    return null;
+  }
+  return text.slice(j, end);
+}
+
+/** Is the `"` at `i` the radix of a TeX hex constant? */
+function isHexRadixAt(text: string, i: number): boolean {
+  if (!TEX_HEX_DIGIT.test(text[i + 1] ?? "")) return false;
+  let j = i;
+  while (j > 0 && text[j - 1] === " ") j--;
+  if (text[j - 1] === "=") {
+    j--;
+    while (j > 0 && text[j - 1] === " ") j--;
+  }
+  const word = controlWordEndingAt(text, j);
+  if (word && TEX_NUMBER_PRIMITIVES.has(word)) return true;
+  // `\symbol{"41}` — the `"` opens the brace argument.
+  if (text[j - 1] === "{" && !isEscaped(text, j - 1)) {
+    const owner = controlWordEndingAt(text, j - 1);
+    return !!owner && TEX_NUMBER_ARGUMENT_COMMANDS.has(owner);
+  }
+  return false;
+}
+
+/** The `[start, end)` interiors of every verbatim argument in `text`. */
+function verbatimArgumentSpans(text: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  for (let i = text.indexOf("\\"); i !== -1; i = text.indexOf("\\", i + 1)) {
+    if (isEscaped(text, i)) continue;
+    const word = matchCommandToken(text, i);
+    if (!word) continue;
+    const count = VERBATIM_ARGUMENT_COMMANDS[word.name];
+    if (!count) continue;
+    let p = word.end;
+    for (let k = 0; k < count && text[p] === "{"; k++) {
+      const close = blindGroupClose(text, p);
+      if (close === -1) break;
+      spans.push([p + 1, close]);
+      p = close + 1;
+    }
+  }
+  return spans;
+}
+
+/**
+ * THE question: is the straight `"` at `text[i]` LaTeX SYNTAX rather than a
+ * quotation mark? True inside a verbatim argument and at a TeX hex radix (see
+ * the header above). Escape parity (`\"u`) is `smartenStraightQuotes`' own
+ * rule and is not repeated here.
+ */
+export function isQuoteSyntaxAt(text: string, i: number): boolean {
+  if (text[i] !== '"') return false;
+  if (isHexRadixAt(text, i)) return true;
+  for (const [a, b] of verbatimArgumentSpans(text)) if (i >= a && i < b) return true;
+  return false;
+}
+
+/**
+ * THE smart-quote door every serializer calls (task 1160): the leaf's
+ * `smartenStraightQuotes` with {@link isQuoteSyntaxAt} as its syntax
+ * predicate. Verbatim spans are computed ONCE per call, not once per `"`.
+ */
+export function smartenQuotesOutsideSyntax(text: string): string {
+  if (!text.includes('"')) return smartenStraightQuotes(text, () => false);
+  const spans = text.includes("\\") ? verbatimArgumentSpans(text) : [];
+  return smartenStraightQuotes(
+    text,
+    (s, i) => isHexRadixAt(s, i) || spans.some(([a, b]) => i >= a && i < b),
+  );
+}
+
+// --- 3. the active-`"` document (babel shorthands) -------------------------
+
+/** babel languages whose `.ldf` makes `"` an active shorthand character. A
+ *  language listed here that a given paper does not use costs nothing: the
+ *  straight `"` is merely kept as typed instead of canonicalised. */
+const QUOTE_SHORTHAND_LANGUAGES: ReadonlySet<string> = new Set([
+  "german", "ngerman", "austrian", "naustrian", "swissgerman", "nswissgerman",
+  "germanb", "ngermanb", "dutch", "afrikaans", "flemish", "danish", "icelandic",
+  "norsk", "norwegian", "nynorsk", "swedish", "finnish", "estonian", "catalan",
+  "czech", "slovak", "polish", "slovene", "slovenian", "croatian", "serbian",
+  "sorbian", "lowersorbian", "uppersorbian", "russian", "ukrainian",
+  "bulgarian", "portuguese", "portuges", "brazil", "brazilian", "frisian",
+  "spanish", "italian", "latin", "basque", "galician",
+]);
+
+/**
+ * Does the LIVE preamble make `"` an active character in the body? babel
+ * loaded with a `"`-shorthand language (in its own options or the class's
+ * global ones), or an explicit `\useshorthands{"}` / `\shorthandon{"}` /
+ * `\defineshorthand{"…}`. A detector, so it reads {@link livePreamble}.
+ */
+export function preambleActivatesQuoteShorthand(tex: string): boolean {
+  const pre = livePreamble(tex);
+  if (/\\(?:useshorthands\*?|shorthandon|defineshorthand(?:\[[^\]]*\])?)\s*\{\s*\x22/.test(pre)) {
+    return true;
+  }
+  const loads = listPackageLoads(pre);
+  const babel = loads.filter((l) => l.entries.includes("babel"));
+  if (babel.length === 0) return false;
+  const cls = /\\documentclass\s*\[([^\]]*)\]/.exec(pre);
+  const options = [cls?.[1] ?? "", ...babel.map((l) => l.options ?? "")]
+    .join(",")
+    .split(",")
+    .map((o) => o.trim().replace(/^.*=/, ""));
+  return options.some((o) => QUOTE_SHORTHAND_LANGUAGES.has(o));
+}
+
+/** The parse-time scope of {@link preambleActivatesQuoteShorthand}: set by
+ *  `parseLatex` (the only layer with a preamble) around ONE synchronous parse,
+ *  read by BOTH inline parsers. Absent — a fragment, a card body, a paste —
+ *  it is false, the linguex precedent (`linguexModelled`). */
+let quoteShorthandActive = false;
+
+export function withQuoteShorthand<T>(active: boolean, fn: () => T): T {
+  const prev = quoteShorthandActive;
+  quoteShorthandActive = active;
+  try {
+    return fn();
+  } finally {
+    quoteShorthandActive = prev;
+  }
+}
+
+/**
+ * At `text[i]`, under an active-`"` parse: the end of the run of straight `"`
+ * that starts here, which the inline parsers push on the byte-literal
+ * `latexVerbatim` carrier (so no serializer smartens it). -1 otherwise — and
+ * always -1 for an escaped `"` (`\"u` is an accent command, read elsewhere).
+ */
+export function matchShorthandQuoteRunAt(text: string, i: number): number {
+  if (!quoteShorthandActive || text[i] !== '"' || isEscaped(text, i)) return -1;
+  let j = i;
+  while (text[j] === '"') j++;
+  return j;
+}
+
 /**
  * THE group-close scan (task 777): the index of the `}` (or, for a `[` at
  * `open`, the `]`) that closes the group, or -1.
@@ -2492,6 +2712,15 @@ export function matchCommandArgumentRun(
   // A verbatim-argument command's leading groups are read comment-BLIND
   // (task 777): `\url{a%20b}`'s `%` is a URL byte, not a comment.
   const verbatimCount = (name && VERBATIM_ARGUMENT_COMMANDS[name]) || 0;
+  // A TeX number primitive carries its number on the same run (task 1160):
+  // `\char"41` is ONE construct, and split across a raw run and a prose run
+  // the `"` reached the prose rung alone and was smartened into a backtick.
+  if (name && TEX_NUMBER_PRIMITIVES.has(name)) {
+    const numEnd = matchTexNumberAt(text, pos);
+    if (numEnd !== -1) {
+      return { raw: text.slice(pos, numEnd), end: numEnd, starred: false, groups: [] };
+    }
+  }
   let p = pos;
   const starred = text[p] === "*";
   if (starred) p++;

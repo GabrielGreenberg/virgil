@@ -74,6 +74,9 @@ import {
   projectStructuralLatex,
   unwrapVerbatimEnvBody,
   verbatimMark,
+  withQuoteShorthand,
+  preambleActivatesQuoteShorthand,
+  matchShorthandQuoteRunAt,
   commentTailMark,
   matchCommentTailAt,
   startsLineComment,
@@ -486,6 +489,23 @@ export function parseInlineContent(
   };
 
   while (i < text.length) {
+    // A babel-active `"` (task 1160) is a COMMAND, not a quotation mark: carry
+    // the run byte-literal so no serializer smartens it. The lexer owns the
+    // gate; outside an active-`"` parse this never matches.
+    if (!inCode && text[i] === '"') {
+      const quoteRunEnd = matchShorthandQuoteRunAt(text, i);
+      if (quoteRunEnd !== -1) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: text.slice(i, quoteRunEnd),
+          marks: [verbatimMark("carrier")],
+        });
+        i = quoteRunEnd;
+        continue;
+      }
+    }
+
     // LaTeX double-quote pairs → curly quotes in the display. The spellings
     // AND the positions come from `QUOTE_PAIR_TABLE` (task 368) — this test was
     // hand-written here and in the other inline parser, byte for byte, and a
@@ -1029,6 +1049,16 @@ export function parseInlineContent(
 }
 
 export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent {
+  // Whether babel makes `"` an ACTIVE shorthand here (task 1160) — asked ONCE
+  // of the live preamble, and in force for exactly this synchronous parse, so
+  // both inline parsers (this file's and the footnote/card fork) carry every
+  // bare `"` byte-literal and no serializer smartens `Stra"se`.
+  return withQuoteShorthand(preambleActivatesQuoteShorthand(latex), () =>
+    parseLatexInScope(latex, sidecar),
+  );
+}
+
+function parseLatexInScope(latex: string, sidecar?: VirgilSidecar): JSONContent {
   seenTitleFields.clear();
   // Which example dialect may be MODELLED here (task 355). Asked ONCE, of the
   // LIVE preamble (`preambleLoadsPackage` projects comments and verbatim away

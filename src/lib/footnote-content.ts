@@ -31,7 +31,6 @@ import {
   matchSpecialLetter,
   dashesToGlyphs,
   typographyToLatex,
-  smartenStraightQuotes,
   escapeLatexChars,
   matchCharEscapeAt,
   CHAR_ESCAPE_LEADS,
@@ -41,6 +40,8 @@ import {
 } from "@/lib/latex-typography";
 import {
   commentTailMark,
+  smartenQuotesOutsideSyntax,
+  matchShorthandQuoteRunAt,
   findMatchingBrace,
   hasCommentTailMark,
   hasVerbatimMark,
@@ -362,7 +363,7 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
   //    for LaTeX itself (task 339). `escapeLatexChars` reads
   //    `CHAR_ESCAPE_TABLE` — the same table the parse rung below matches
   //    against, and the same one the main serializer emits from.
-  const escaped = smartenStraightQuotes(escapeLatexChars(text));
+  const escaped = smartenQuotesOutsideSyntax(escapeLatexChars(text));
   // Typographic reverse-map runs AFTER char-escaping so its `\^{e}`/`\~{n}`
   // output isn't re-escaped. Suppressed for code spans by the caller.
   return opts?.typography === false ? escaped : typographyToLatex(escaped);
@@ -397,7 +398,7 @@ function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (hasCommentTailMark(marks)) return text;
   if (hasVerbatimMark(marks)) return text;
   if (marks.some((m) => m.type === "latexCommand")) {
-    return smartenStraightQuotes(text);
+    return smartenQuotesOutsideSyntax(text);
   }
   return escapeLatex(text, { typography: !isCodeWrapped(marks) });
 }
@@ -687,6 +688,23 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
   };
 
   while (i < text.length) {
+    // A babel-active `"` (task 1160) — the twin of the main parser's branch,
+    // reading the same lexer gate, so a footnote in a German paper keeps its
+    // `"a` shorthands exactly as the body does.
+    if (!inCode && text[i] === '"') {
+      const quoteRunEnd = matchShorthandQuoteRunAt(text, i);
+      if (quoteRunEnd !== -1) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: text.slice(i, quoteRunEnd),
+          marks: [verbatimMark("carrier")],
+        });
+        i = quoteRunEnd;
+        continue;
+      }
+    }
+
     // LaTeX double-quote pairs → curly quotes in the display. The spellings
     // AND the positions come from `QUOTE_PAIR_TABLE` (task 368) — this test was
     // hand-written here and in the other inline parser, byte for byte, and a

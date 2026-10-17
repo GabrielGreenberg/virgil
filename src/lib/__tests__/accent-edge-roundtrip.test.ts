@@ -19,9 +19,9 @@ import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import {
   __typographyTables,
   matchAccent,
-  smartenStraightQuotes,
   typographyToLatex,
 } from "@/lib/latex-typography";
+import { smartenQuotesOutsideSyntax as smartenStraightQuotes } from "@/lib/latex-lexer";
 
 function save(tex: string): string {
   const content = parseLatex(tex);
