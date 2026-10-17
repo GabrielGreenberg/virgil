@@ -223,7 +223,7 @@ import {
   LIFECYCLE_ACTION_IDS,
 } from "@/text-objects/action-scope";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
-import { surfaceReadOnlyByHost } from "@/lib/tiptap/surface-editable";
+import { surfaceEditableNow, surfaceReadOnlyByHost } from "@/lib/tiptap/surface-editable";
 import { refusalPhrase, type Refusal } from "./refusal";
 import {
   sliceIsFullyCapturedBy,
@@ -3435,6 +3435,47 @@ const TEXT_COLOR_ACTION_ROW: ActionSpec = {
   applies: formatApplies("textColor"),
   run: textColorRun,
 };
+
+/**
+ * The text-color row's deferred COMMIT door (task 1168) — the popover's swatch
+ * pick, custom pick and Clear all land HERE, never as panel-side chains.
+ *
+ * `textColorRun` gates the popover's OPEN; the mark lands on the PICK, which can
+ * be many seconds later (the native picker alone can hold focus that long) —
+ * long enough for the pen to change hands. Task 638 closed this exact window for
+ * `\ref` / `\cite` at `insertInlineAtom`; the colour popover was the one deferred
+ * lightning commit it missed, and on MAIN the result was a silent false
+ * success: `readOnlyEnforcer` dropped the addMark, but the MRU palette reordered
+ * and the popover closed as if it had worked.
+ *
+ * So the commit RE-ASKS at commit time, against a ctx the caller builds then:
+ *   1. the row's OWN `applies()` — the collab gate (`ctx.canEdit`) and the
+ *      schema-precise `textColor` container gate, the same verdict that greys
+ *      the cell;
+ *   2. `surfaceEditableNow(editor)` — the LIVE pen ∧ host answer, re-read at the
+ *      moment of the mutation (a React `canEdit` is only as fresh as the last
+ *      render), honest on MAIN and on a card body alike.
+ *
+ * `ctx.ref` names the range to colour (the popover's stashed selection, which
+ * survives the native picker's focus theft); a collapsed ref leaves the live
+ * selection alone. `color === null` clears.
+ *
+ * Returns whether the write was ISSUED and accepted by the command — the caller's
+ * permission for its side effects (the MRU bump). `false` means nothing was
+ * written and the caller must not pretend otherwise.
+ */
+export function applyTextColor(ctx: ActionContext, color: string | null): boolean {
+  if (TEXT_COLOR_ACTION_ROW.applies(ctx) !== "ok") return false;
+  if (!surfaceEditableNow(ctx.editor)) return false;
+  const chain = ctx.editor.chain().focus();
+  const ref = ctx.ref;
+  if (ref.kind === "selection" && ref.from !== ref.to) {
+    chain.setTextSelection({ from: ref.from, to: ref.to });
+  }
+  if (color === null) chain.unsetTextColor();
+  else chain.setTextColor(color);
+  return !!chain.run();
+}
 
 /** The format rows by id (built above), in grid render order (the order
  *  `ActionsMenuPanel` lays out the cells), for the registry assembly + the grid
