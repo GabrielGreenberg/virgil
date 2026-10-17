@@ -141,13 +141,19 @@ export function LibraryTabView({
   // Three-dots menu in a Project library tab → remove the entry from
   // the doc's references.bib. The library subsystem dispatches the
   // event after a user-confirm; this listener owns the file write.
-  // Idempotent across racing scoped LibraryTabView mounts.
+  //
+  // The removal takes EXACTLY ONE block (task 1159) — the first carrying the
+  // key, the row the Project tab shows — so it is NOT idempotent over a
+  // duplicated key: a second mount handling the same dispatch would remove
+  // the next twin. Hence ONE mount claims each dispatch
+  // (`stopImmediatePropagation` — every mount listens on `window`).
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ docId?: string; citekey?: string }>)
         .detail;
       if (!detail?.docId || !detail?.citekey) return;
-      void removeEntryFromProjectBib(detail.docId, detail.citekey);
+      e.stopImmediatePropagation();
+      void removeEntryFromProjectBib(detail.docId, { key: detail.citekey, keyOrdinal: 0 });
     };
     window.addEventListener("virgil-library-remove-from-project-bib", handler);
     return () =>

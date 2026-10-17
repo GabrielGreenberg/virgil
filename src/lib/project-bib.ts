@@ -58,7 +58,13 @@ import { mutateBib } from "@/lib/storage";
 import { parseBibFile, serializeBibFileAgainst } from "@/lib/bib-parser";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
-import { BIB_NO_MATCH, type BibNoMatch } from "@/lib/bib-address";
+import {
+  BIB_NO_MATCH,
+  citekeyIdentity,
+  resolveBibEntryIndex,
+  type BibEntryAddress,
+  type BibNoMatch,
+} from "@/lib/bib-address";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -410,12 +416,16 @@ export async function addEntriesToProjectBib(
   if (incoming.length === 0) return { appended: 0, result: { kind: "declined" } };
   let appended = 0;
   const result = await mutateProjectBib(docId, (existing) => {
-    const seen = new Set(existing.map((e) => e.key));
+    // Keyed by citekey IDENTITY (case-folded, task 1159): BibTeX reads
+    // `Smith2020` and `smith2020` as one key, so appending the one beside the
+    // other is a "Repeated entry", not a new reference.
+    const seen = new Set(existing.map((e) => citekeyIdentity(e.key)));
     const used = bibUidsOf(existing);
     const additions: BibEntry[] = [];
     for (const e of incoming) {
-      if (seen.has(e.key)) continue;
-      seen.add(e.key); // de-dupe within `incoming` too
+      const id = citekeyIdentity(e.key);
+      if (seen.has(id)) continue;
+      seen.add(id); // de-dupe within `incoming` too
       // Mint against the uids on DISK, so a fresh id can never collide with
       // an entry a peer landed since this window last read the file.
       const uid = e.uid && !used.has(e.uid) ? e.uid : mintBibUid(used);
@@ -436,10 +446,16 @@ export async function addEntriesToProjectBib(
 }
 
 /**
- * Remove the entry with the given citekey from the doc's references.bib.
+ * Remove EXACTLY the entry `address` names from the doc's references.bib.
  * Resolves the door's own {@link BibWriteResult}: `written` on a removal,
- * `declined` on a miss, and a refusal kind when nothing reached disk —
- * a miss and a failed write are not the same answer.
+ * `declined` when the address names nothing (the entry is already gone —
+ * which is what a remove asked for), and a refusal kind when nothing reached
+ * disk — a miss and a failed write are not the same answer.
+ *
+ * Addressed like every other mutator since task 690, not by citekey (task
+ * 1159): a `references.bib` may hold two blocks under one key, and the old
+ * `filter((e) => e.key !== citekey)` deleted every one of them — the block
+ * the user could not see along with the one they chose.
  *
  * The central library and `master.bib` are left untouched — this only
  * mutates the per-doc references.bib. Any `\cite{citekey}` commands
@@ -448,12 +464,13 @@ export async function addEntriesToProjectBib(
  */
 export async function removeEntryFromProjectBib(
   docId: string,
-  citekey: string,
+  address: BibEntryAddress,
 ): Promise<BibWriteResult> {
   if (!docId) return { kind: "no-handle" };
-  if (!citekey) return { kind: "declined" };
+  if (!address?.key) return { kind: "declined" };
   return mutateProjectBib(docId, (existing) => {
-    const next = existing.filter((e) => e.key !== citekey);
-    return next.length === existing.length ? null : next; // null = not present
+    const i = resolveBibEntryIndex(existing, address);
+    if (i === -1) return null; // not present
+    return [...existing.slice(0, i), ...existing.slice(i + 1)];
   });
 }
