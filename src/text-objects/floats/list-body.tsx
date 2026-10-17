@@ -47,11 +47,13 @@ import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
+import { soleRoot } from "@/lib/tiptap/bound-root";
+import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
 
 interface ListSource {
@@ -160,6 +162,9 @@ export function ListBody({
       surface: "float",
       editable: true,
       cardContext: true,
+      // Task 1170: the doc is exactly one list (either kind — the list-type
+      // toggle swaps it) — no edit can leave the float without it.
+      boundRoot: soleRoot("bulletList", "orderedList"),
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
@@ -188,22 +193,20 @@ export function ListBody({
   });
 
   function writeBackToMain(doc: JSONContent) {
-    const ed = ref.current?.getEditor();
-    if (!ed) return;
-    // The live source range doubles as this write's position hint (task 140),
-    // so the float→main direction stops walking the doc per float keystroke.
-    const src = findListByUuid(ed.state.doc, uuid, sourceRangeRef.current);
-    if (!src) return;
-    const incoming = doc.content ?? [];
-    if (incoming.length === 0) return;
-    const first = incoming[0];
-    if (
-      !first ||
-      (first.type !== "bulletList" && first.type !== "orderedList")
-    ) {
-      return;
-    }
-    try {
+    // One door (task 1170): a refusal reaches `WriteRefusedBanner`, never a
+    // bare return / swallowed catch.
+    const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
+      // The live source range doubles as this write's position hint (task
+      // 140), so the float→main direction stops walking the doc per keystroke.
+      const src = findListByUuid(ed.state.doc, uuid, sourceRangeRef.current);
+      if (!src) return null;
+      const first = (doc.content ?? [])[0];
+      if (
+        !first ||
+        (first.type !== "bulletList" && first.type !== "orderedList")
+      ) {
+        return refuseWrite(wrongRootReason("list"));
+      }
       const newNode = ed.state.schema.nodeFromJSON({
         ...first,
         attrs: {
@@ -212,13 +215,9 @@ export function ListBody({
           uuid: src.node.attrs.uuid,
         },
       });
-      const tr = ed.state.tr.replaceWith(src.start, src.end, newNode);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (tr.docChanged) ed.view.dispatch(tr);
-    } catch {
-      /* schema mismatch / stale uuid — swallow */
-    }
+      return { from: src.start, to: src.end, content: newNode };
+    });
+    reportWrite(outcome);
   }
 
   const readSource = useCallback(
@@ -255,7 +254,7 @@ export function ListBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
@@ -270,6 +269,7 @@ export function ListBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
+      <WriteRefusedBanner message={writeRefusal} />
       <div
         className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
       >

@@ -48,11 +48,13 @@ import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
+import { soleRoot } from "@/lib/tiptap/bound-root";
+import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
 
 type FigureKind = "figureBlock" | "graphicsBlock";
@@ -135,6 +137,9 @@ export function FigureBody({
       // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
       spellcheckPortRef,
       surface: "float",
+      // Task 1170: the doc is exactly one kind node — no edit can leave
+      // the float without it.
+      boundRoot: soleRoot(kind),
       editable: true,
       cardContext: false,
       // The figure NodeView's third mode: editable caption + read-only image,
@@ -175,17 +180,19 @@ export function FigureBody({
   // (the float omits the numberer) and the popover never rewrites it, so it
   // stays in lockstep; `uuid` is always pinned to MAIN's below.
   function writeBackToMain(doc: JSONContent) {
-    const ed = ref.current?.getEditor();
-    if (!ed) return;
-    // The live source range doubles as this write's position hint (task 140),
-    // so the float→main direction stops walking the doc per float keystroke.
-    const src = findFigureByUuid(ed.state.doc, uuid, kind, sourceRangeRef.current);
-    if (!src) return;
-    const incoming = doc.content ?? [];
-    if (incoming.length === 0) return;
-    const first = incoming[0];
-    if (!first || first.type !== kind) return;
-    try {
+    // One door (task 1170): a refusal reaches `WriteRefusedBanner`, never a
+    // bare return / swallowed catch.
+    const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
+      // The live source range doubles as this write's position hint (task
+      // 140), so the float→main direction stops walking the doc per keystroke.
+      const src = findFigureByUuid(ed.state.doc, uuid, kind, sourceRangeRef.current);
+      if (!src) return null;
+      const first = (doc.content ?? [])[0];
+      if (!first || first.type !== kind) {
+        return refuseWrite(wrongRootReason(kind === "figureBlock" ? "figure" : "graphic"));
+      }
+      // Rebuild over MAIN's own attrs (the source uuid always pinned), with
+      // the float's content + changed attrs winning.
       const newNode = ed.state.schema.nodeFromJSON({
         ...first,
         attrs: {
@@ -194,13 +201,9 @@ export function FigureBody({
           uuid: src.node.attrs.uuid,
         },
       });
-      const tr = ed.state.tr.replaceWith(src.start, src.end, newNode);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (tr.docChanged) ed.view.dispatch(tr);
-    } catch {
-      /* schema mismatch / stale uuid — swallow */
-    }
+      return { from: src.start, to: src.end, content: newNode };
+    });
+    reportWrite(outcome);
   }
 
   const readSource = useCallback(
@@ -227,7 +230,7 @@ export function FigureBody({
     [uuid, kind],
   );
 
-  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
@@ -242,6 +245,7 @@ export function FigureBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
+      <WriteRefusedBanner message={writeRefusal} />
       <div
         className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
       >

@@ -777,3 +777,91 @@ describe("ExampleCard schema-invalid write-back surfacing (EX-F5-03)", () => {
     editor.destroy();
   });
 });
+
+// ── Task 1170 — the card is BOUND to its one exampleBlock ────────────────────
+//
+// Cmd-A used to make an AllSelection over the card's `block+` doc, so typing
+// (or Backspace) replaced the whole exampleBlock with a bare paragraph; the
+// write-back's root-type guard then returned silently on that keystroke and
+// every one after it. The card showed the rewrite; the paper never got it.
+describe("ExampleCard bound root (task 1170)", () => {
+  it("Cmd-A + type rewrites the SAME exampleBlock in main (uuid kept)", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    act(() => {
+      cardEd.commands.selectAll();
+    });
+    act(() => {
+      cardEd.view.dispatch(cardEd.state.tr.insertText("New example"));
+    });
+    expect(cardEd.state.doc.childCount).toBe(1);
+    expect(cardEd.state.doc.firstChild!.type.name).toBe("exampleBlock");
+    const after = findExampleBlock(editor, EX_A)!;
+    expect(after.node.attrs.uuid).toBe(EX_A);
+    expect(after.node.textContent).toBe("New example");
+    // And the NEXT keystroke still lands (the old bug dropped every later one).
+    act(() => {
+      const end = cardEd.state.selection.to;
+      cardEd.view.dispatch(cardEd.state.tr.insertText("!", end, end));
+    });
+    expect(findExampleBlock(editor, EX_A)!.node.textContent).toBe("New example!");
+    expect(container.querySelector("[data-example-write-error]")).toBeNull();
+    editor.destroy();
+  });
+
+  it("Cmd-A + Backspace empties the exampleBlock instead of vanishing it", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    act(() => {
+      cardEd.commands.selectAll();
+    });
+    act(() => {
+      cardEd.commands.keyboardShortcut("Backspace");
+    });
+    expect(cardEd.state.doc.firstChild!.type.name).toBe("exampleBlock");
+    const after = findExampleBlock(editor, EX_A)!;
+    expect(after.node.attrs.uuid).toBe(EX_A);
+    expect(after.node.textContent).toBe("");
+    editor.destroy();
+  });
+
+  it("a re-seed from main clears a lingering rejection banner", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    const spy = vi
+      .spyOn(editor.state.schema, "nodeFromJSON")
+      .mockImplementation(() => {
+        throw new Error("invalid content for node exampleBlock");
+      });
+    act(() => {
+      const at = cardEd.state.selection.from;
+      cardEd.view.dispatch(cardEd.state.tr.insertText("!", at, at));
+    });
+    expect(container.querySelector("[data-example-write-error]")).not.toBeNull();
+    spy.mockRestore();
+    // A foreign MAIN edit inside example A re-seeds the card from the paper.
+    act(() => {
+      const src = findExampleBlock(editor, EX_A)!;
+      let at = -1;
+      src.node.descendants((n, pos) => {
+        if (at < 0 && n.isText) at = src.pos + 1 + pos;
+        return at < 0;
+      });
+      editor.view.dispatch(editor.state.tr.insertText("Z", at, at));
+    });
+    expect(container.querySelector("[data-example-write-error]")).toBeNull();
+    editor.destroy();
+  });
+});

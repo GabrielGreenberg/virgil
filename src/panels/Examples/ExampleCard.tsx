@@ -34,7 +34,13 @@ import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline"
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { applyExpexWidthVars, computeExpexWidths } from "@/lib/tiptap/expex";
-import { FLOAT_WRITE_META } from "@/lib/float-sync";
+import {
+  landFloatWrite,
+  nextWriteRefusal,
+  refuseWrite,
+  wrongRootReason,
+} from "@/lib/float-write-back";
+import { soleRoot } from "@/lib/tiptap/bound-root";
 import {
   findAndTrackSourceNode,
   findSourceNodeByUuid,
@@ -202,22 +208,25 @@ function ExampleCardEditor({
   const [writeError, setWriteError] = useState<string | null>(null);
 
   function writeBackToMain(doc: JSONContent) {
-    const ed = editorRef.current?.getEditor();
-    if (!ed) return;
-    // The live source range doubles as this write's position hint (task 140's
-    // ladder, reached from the card since task 723), so the card→main
-    // direction stops walking the doc per card keystroke.
-    const src = findAndTrackSourceNode(
-      ed.state.doc,
-      exampleId,
-      "exampleBlock",
-      sourceRangeRef,
-    );
-    if (!src) return;
-    const incoming = doc.content ?? [];
-    const first = incoming[0];
-    if (!first || first.type !== "exampleBlock") return;
-    try {
+    // The ONE whole-block write door (task 1170), shared with every block
+    // float: a refusal comes back as an outcome and lands in the banner below,
+    // never in a bare `return` — the root-type early return used to drop every
+    // keystroke after a Cmd-A rewrite with no word to the user.
+    const outcome = landFloatWrite(editorRef.current?.getEditor(), floatId, (ed) => {
+      // The live source range doubles as this write's position hint (task
+      // 140's ladder, reached from the card since task 723), so the card→main
+      // direction stops walking the doc per card keystroke.
+      const src = findAndTrackSourceNode(
+        ed.state.doc,
+        exampleId,
+        "exampleBlock",
+        sourceRangeRef,
+      );
+      if (!src) return null;
+      const first = (doc.content ?? [])[0];
+      if (!first || first.type !== "exampleBlock") {
+        return refuseWrite(wrongRootReason("example"));
+      }
       const newNode = ed.state.schema.nodeFromJSON({
         ...first,
         attrs: {
@@ -226,32 +235,21 @@ function ExampleCardEditor({
           uuid: src.node.attrs.uuid,
         },
       });
-      const tr = ed.state.tr.replaceWith(src.start, src.end, newNode);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (tr.docChanged) ed.view.dispatch(tr);
+      return { from: src.start, to: src.end, content: newNode };
+    });
+    if (outcome.status === "landed") {
       // This write is the one edit whose effect on the range we know exactly:
-      // the block now occupies `start … start + newNode.nodeSize`. Stamping it
-      // here is what keeps the NEXT keystroke hinted — a write that grows or
-      // shrinks the block would otherwise invalidate the hint it just used.
-      sourceRangeRef.current = {
-        from: src.start,
-        to: src.start + newNode.nodeSize,
-      };
-      // The write reached the doc — clear any prior rejection banner.
-      setWriteError((prev) => (prev === null ? prev : null));
-    } catch (err) {
-      // The edit could not be rebuilt into a valid node, so the document is
-      // intentionally left untouched. Surface the rejection instead of
-      // swallowing it (EX-F5-03) — the user sees their edit did not land and
-      // can undo/fix it rather than discovering the loss on the next re-seed.
-      setWriteError(
-        err instanceof Error && err.message
-          ? `This edit couldn't be saved (${err.message}).`
-          : "This edit couldn't be saved — it produced an invalid example.",
-      );
+      // the block now occupies `from … to`. Stamping it here is what keeps the
+      // NEXT keystroke hinted — a write that grows or shrinks the block would
+      // otherwise invalidate the hint it just used.
+      sourceRangeRef.current = { from: outcome.from, to: outcome.to };
     }
+    // EX-F5-03: a refusal raises the banner (the doc is intentionally left
+    // untouched — the user sees their edit did not land); a landed write
+    // clears it.
+    setWriteError((prev) => nextWriteRefusal(prev, outcome));
   }
+
 
   // Doc-id mirror (#39 nit 3): thread the real docId so figure/graphics atoms
   // nested in an example resolve + render their actual image (read-only)
@@ -270,6 +268,11 @@ function ExampleCardEditor({
       surface: "float",
       editable: effectiveEditable,
       cardContext: true,
+      // Task 1170: the card edits exactly one exampleBlock. Cmd-A selects its
+      // content (so Cmd-A → type rewrites the example in place instead of
+      // replacing it with a bare paragraph the write-back cannot carry), and
+      // no edit can leave the card without its root.
+      boundRoot: soleRoot("exampleBlock"),
       docIdRef,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
@@ -349,6 +352,10 @@ function ExampleCardEditor({
       return;
     }
     lastSyncedRef.current = nextJson;
+    // The re-seed replaces whatever a refused write left in the card with what
+    // the paper holds, so a lingering rejection banner would describe content
+    // that is no longer there (task 1170, the tick-216 carry).
+    setWriteError((prev) => (prev === null ? prev : null));
     // Caret restore mapped through the structural change (EX-F8-02): a foreign
     // edit upstream of the caret shifts the content, so re-applying the raw
     // {from,to} offset would land the caret earlier than its logical position.

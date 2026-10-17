@@ -109,6 +109,7 @@ import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 import { surfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 import { isCommitEnter } from "@/lib/key-intent";
+import { BoundRoot, type BoundRootPredicate } from "@/lib/tiptap/bound-root";
 
 // --- Heading callback refs (threaded from the host component) ----------
 // Formerly lexical closures inside VirgilEditor; the heading NodeView reads
@@ -1691,6 +1692,15 @@ export interface EditorExtensionsCtx {
    * does not name it; its allowlist is EMPTY.
    */
   spellcheckPortRef?: SpellcheckPortRef | null;
+  /**
+   * Float only — the ONE root shape this surface edits (task 1170). A
+   * whole-block surface (an example card, a block float) passes a predicate
+   * (usually `soleRoot("exampleBlock")`), and `BoundRoot` holds the surface
+   * doc to it: select-all selects the root's content, and a transaction that
+   * would leave the doc without its sole root is refused. Omit for a surface
+   * that legitimately holds several blocks (a section, a linked range).
+   */
+  boundRoot?: BoundRootPredicate | null;
 }
 
 export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
@@ -2071,6 +2081,10 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
             },
           }),
         ]
+      : []),
+    // Task 1170: bind a whole-block surface's doc to its one root node.
+    ...(isFloat && ctx.boundRoot
+      ? [BoundRoot.configure({ isBound: ctx.boundRoot })]
       : []),
   ];
 }
