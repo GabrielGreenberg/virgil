@@ -53,7 +53,12 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { cardActionRows } from "@/lib/actions/action-registry";
+import {
+  applyTextColor,
+  cardActionRows,
+  VIRGIL_ACTION_REGISTRY,
+  type ActionContext,
+} from "@/lib/actions/action-registry";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import {
@@ -310,6 +315,83 @@ describe("task 638 (B) — a deferred atom commit refuses while the partner hold
     });
 
     expect(landed.refused).toBe(true);
+    expect(editor.state.doc.toJSON()).toEqual(before);
+    editor.destroy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (C) The deferred COLOUR commit (task 1168)
+//
+// `textColorRun` gates the colour popover's OPEN; the mark lands on the swatch
+// PICK, through `applyTextColor` — the one deferred lightning commit task 638
+// did not reach. It must re-ask at commit time: a refusal writes nothing and
+// reports `false`, which is what withholds the panel's MRU bump.
+// ---------------------------------------------------------------------------
+
+describe("task 1168 (C) — the deferred colour commit refuses while the partner holds the pen", () => {
+  const colourCtx = (editor: Editor, canEdit?: boolean): ActionContext => ({
+    editor,
+    view: editor.view,
+    ref: { kind: "selection", from: 7, to: 11, paragraphId: "" },
+    surface: "lightning",
+    canEdit,
+  });
+  const coloured = (editor: Editor): number => {
+    let n = 0;
+    editor.state.doc.descendants((node) => {
+      if (node.marks.some((m) => m.type.name === "textColor")) n += 1;
+      return true;
+    });
+    return n;
+  };
+
+  it("POSITIVE CONTROL: the commit lands on an editable editor", () => {
+    const editor = mountDoc(FIXTURE(), true);
+    expect(applyTextColor(colourCtx(editor, true), "#c00000")).toBe(true);
+    expect(coloured(editor), "the mark lands when editable").toBe(1);
+    expect(applyTextColor(colourCtx(editor, true), null), "Clear lands too").toBe(true);
+    expect(coloured(editor)).toBe(0);
+    editor.destroy();
+  });
+
+  it("the pen can flip BETWEEN the popover's open and its pick (live gate)", () => {
+    const editor = mountDoc(FIXTURE(), true);
+    // open-time: the row's gate passed (we held the pen)
+    expect(VIRGIL_ACTION_REGISTRY["text-color"]!.applies(colourCtx(editor, true))).toBe("ok");
+    const before = editor.state.doc.toJSON();
+
+    editor.setEditable(false); // …the partner takes over while the popover is open
+
+    // The ctx's React `canEdit` is still the stale `true` — the door re-reads live.
+    expect(applyTextColor(colourCtx(editor, true), "#c00000")).toBe(false);
+    expect(applyTextColor(colourCtx(editor, true), null)).toBe(false);
+    expect(editor.state.doc.toJSON(), "the document is untouched").toEqual(before);
+    editor.destroy();
+  });
+
+  it("the ctx-side collab gate (`canEdit: false`) refuses through the row's own applies()", () => {
+    const editor = mountDoc(FIXTURE(), true);
+    const before = editor.state.doc.toJSON();
+    expect(applyTextColor(colourCtx(editor, false), "#c00000")).toBe(false);
+    expect(editor.state.doc.toJSON()).toEqual(before);
+    editor.destroy();
+  });
+
+  it("MAIN's host axis (editableRef false — the enforcer's own answer) refuses, not a silent drop", () => {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const ctx = mainCtx();
+    const editableRef = { current: true };
+    const editor = new Editor({
+      element,
+      editable: true,
+      extensions: buildEditorExtensions({ ...ctx, editableRef }),
+      content: { type: "doc", content: FIXTURE() },
+    });
+    const before = editor.state.doc.toJSON();
+    editableRef.current = false;
+    expect(applyTextColor(colourCtx(editor, true), "#c00000")).toBe(false);
     expect(editor.state.doc.toJSON()).toEqual(before);
     editor.destroy();
   });

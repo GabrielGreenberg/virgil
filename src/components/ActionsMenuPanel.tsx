@@ -44,6 +44,7 @@ import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu
 import type { DragHandleAction } from "./DragHandleMenu";
 import type { TextObjectKind } from "@/text-objects/types";
 import {
+  applyTextColor,
   cardActionRows,
   extractInlineFromSlice,
   VIRGIL_ACTION_REGISTRY,
@@ -357,7 +358,9 @@ export function ActionsMenuPanel({
       // `openColorPopover` click handler had.
       openColorPopover: (rect) => {
         const { from, to } = editor.state.selection;
-        if (from !== to) stashedRangeRef.current = { from, to };
+        // Rewritten on EVERY open (task 1168): a collapsed caret clears it, so a
+        // popover dismissed without a pick can never leave a stale range behind.
+        stashedRangeRef.current = from !== to ? { from, to } : null;
         setColorPopoverAnchor(rect);
       },
       // The SHARED create-popover seam (citation + `\ref`). The 'Cross-ref' grid
@@ -399,24 +402,20 @@ export function ActionsMenuPanel({
     // it dismisses on click-outside. Faithful to pre-6a/6b behavior.
   };
 
-  const applyColor = (color: string) => {
+  // The popover's three commits (swatch, custom pick, Clear) cross the
+  // `text-color` row's ONE commit door (task 1168), which re-asks the row's own
+  // `applies()` and the LIVE pen ∧ host gate against a ctx built NOW — not the
+  // open-time verdict. A refused commit writes nothing and bumps no MRU slot;
+  // either way the popover closes (it has nothing left to offer).
+  const commitColor = (color: string | null) => {
     const stashed = stashedRangeRef.current;
-    const chain = editor.chain().focus();
-    if (stashed) chain.setTextSelection(stashed);
-    chain.setTextColor(color).run();
-    bumpColorToFront(color);
+    const landed = applyTextColor(gridCellCtx(stashed), color);
+    if (landed && color !== null) bumpColorToFront(color);
     setColorPopoverAnchor(null);
     stashedRangeRef.current = null;
   };
-
-  const clearColor = () => {
-    const stashed = stashedRangeRef.current;
-    const chain = editor.chain().focus();
-    if (stashed) chain.setTextSelection(stashed);
-    chain.unsetTextColor().run();
-    setColorPopoverAnchor(null);
-    stashedRangeRef.current = null;
-  };
+  const applyColor = (color: string) => commitColor(color);
+  const clearColor = () => commitColor(null);
 
   const isActive = (name: string, attrs?: Record<string, unknown>) =>
     editor.isActive(name, attrs);
@@ -448,14 +447,16 @@ export function ActionsMenuPanel({
   // uniform OR keeps every cell rendering the same way). One ctx per call;
   // computed at menu-open, never per keystroke — keystroke sanctity.
   // ───────────────────────────────────────────────────────────────────────
-  const gridCellCtx = (): ActionContext =>
+  // `range` overrides the live selection — the colour commit passes its stashed
+  // range (task 1168), the grid cells pass nothing.
+  const gridCellCtx = (range?: { from: number; to: number } | null): ActionContext =>
     ({
       editor,
       view: editor.view,
       ref: {
         kind: "selection",
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
+        from: range?.from ?? editor.state.selection.from,
+        to: range?.to ?? editor.state.selection.to,
         paragraphId: "",
       },
       surface: "lightning",
@@ -470,6 +471,23 @@ export function ActionsMenuPanel({
   // cell that IS disabled (render-time, gesture rate).
   const gridCellReason = (id: ActionId): string | null =>
     verdictOf(VIRGIL_ACTION_REGISTRY[id]!, gridCellCtx()).reason;
+
+  // Task 1168: an ALREADY-OPEN colour popover closes when its cell greys (the
+  // pen changes hands while the user is picking). The commit door refuses on its
+  // own; this is the affordance half — no live swatch over a surface that can no
+  // longer take one. Adjusted on the boolean EDGE during render (React's
+  // "storing information from previous renders" pattern, not an effect): the
+  // panel re-renders on `canEdit`, never on a keystroke. The stash needs no
+  // reset here — `openColorPopover` rewrites it on every open.
+  const colorCellDisabled = gridCellDisabled("text-color");
+  const [colorCellWasDisabled, setColorCellWasDisabled] = useState(colorCellDisabled);
+  if (colorCellDisabled !== colorCellWasDisabled) {
+    setColorCellWasDisabled(colorCellDisabled);
+    if (colorCellDisabled) {
+      setColorPopoverAnchor(null);
+      setColorPopoverEl(null);
+    }
+  }
 
   // The 11 card-action rows, decorated with their per-open disabled state, fed
   // to `<MenuItemsFromRegistry>` (the same mapper the grab menu uses). CHIP 7b:
