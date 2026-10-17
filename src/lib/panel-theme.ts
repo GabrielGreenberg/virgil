@@ -78,6 +78,37 @@ export const PANEL_THEME_FAMILIES: Readonly<
   system: { label: "System", keys: ["error"] },
 });
 
+/** User-facing name of each theme key — the ONE label table (task 977, moved
+ *  here from `smart-preferences.ts` by task 1163). A TOTAL record, so a new
+ *  `PanelThemeKey` fails tsc until it has a label. Two readers: the
+ *  Preferences "Panel theme" rows (label + description) and every panel
+ *  kebab's colour picker (`panelThemeColorLabel`), so the same colour is named
+ *  the same way in both places. System keys carry copy too (the record stays
+ *  total) but never reach either surface — they are not user-overridable. */
+export const PANEL_THEME_COPY: Readonly<
+  Record<PanelThemeKey, { label: string; description: string }>
+> = Object.freeze({
+  footnote:  { label: "Footnotes",    description: "Footnote cards, superscript markers, and anchor highlights." },
+  citation:  { label: "Citations",    description: "Citation cards, badges, and in-text highlights." },
+  bib:       { label: "Bibliography", description: "Bibliography entries and linked citation anchors." },
+  highlight: { label: "Highlights",   description: "Highlight cards and the in-text highlight band." },
+  example:   { label: "Examples",     description: "Example cards and their in-text anchors." },
+  revision:  { label: "Revisions",    description: "Revision cards and change markers." },
+  report:    { label: "Reports",      description: "Report cards and their margin markers." },
+  aiRequest: { label: "AI requests",  description: "AI-request accents (system colour, not editable)." },
+  note:      { label: "Margin notes", description: "Note cards and margin markers." },
+  archive:   { label: "Archive",      description: "Archived-snippet cards and anchors." },
+  todo:      { label: "To-dos",       description: "Task cards and checklist markers." },
+  cut:       { label: "Cuts",         description: "Deleted-text cards and strikethrough markers." },
+  error:     { label: "Errors",       description: "Compile-error cards (system colour, not editable)." },
+});
+
+/** The colour picker's trigger name for a theme key ("Cuts color") — derived
+ *  from `PANEL_THEME_COPY`, never hand-spelled at a call site (task 1163). */
+export function panelThemeColorLabel(key: PanelThemeKey): string {
+  return `${PANEL_THEME_COPY[key].label} color`;
+}
+
 /** Curated palette for the color picker. */
 export const PRESET_COLORS: { name: string; hex: string }[] = [
   { name: "Amber",    hex: "#d4a843" },

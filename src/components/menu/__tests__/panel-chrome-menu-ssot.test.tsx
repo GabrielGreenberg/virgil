@@ -97,11 +97,11 @@ function arrow(key: string) {
 
 describe("PanelThemePicker — on the primitive", () => {
   it("portals to document.body at the chrome z-tier (it was an in-flow z-[9999])", async () => {
-    const { container } = render(<PanelThemePicker panelKey="note" label="Note color" />);
-    fireEvent.click(screen.getByLabelText("Note color"));
+    const { container } = render(<PanelThemePicker panelKey="note" />);
+    fireEvent.click(screen.getByLabelText("Margin notes color"));
     await settle();
 
-    const surface = document.body.querySelector('[aria-label="Note color"][role]') as HTMLElement;
+    const surface = document.body.querySelector('[aria-label="Margin notes color"][role]') as HTMLElement;
     expect(surface).toBeTruthy();
     // A body child, NOT a descendant of the component's own wrapper — which is
     // what an `absolute top-full` popup is, and why the panel list clipped it.
@@ -113,8 +113,8 @@ describe("PanelThemePicker — on the primitive", () => {
   });
 
   it("picking a preset writes the panel colour and closes", async () => {
-    render(<PanelThemePicker panelKey="note" label="Note color" />);
-    fireEvent.click(screen.getByLabelText("Note color"));
+    render(<PanelThemePicker panelKey="note" />);
+    fireEvent.click(screen.getByLabelText("Margin notes color"));
     await settle();
 
     const preset = PRESET_COLORS.find(
@@ -124,13 +124,13 @@ describe("PanelThemePicker — on the primitive", () => {
     await settle();
 
     expect(getPanelColor("note").toLowerCase()).toBe(preset.hex.toLowerCase());
-    expect(document.body.querySelector('[aria-label="Note color"][role]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Margin notes color"][role]')).toBeNull();
     clearPanelColor("note");
   });
 
   it("navigates the swatch GRID in two axes — the composite layout, its first consumer", async () => {
-    render(<PanelThemePicker panelKey="note" label="Note color" />);
-    fireEvent.click(screen.getByLabelText("Note color"));
+    render(<PanelThemePicker panelKey="note" />);
+    fireEvent.click(screen.getByLabelText("Margin notes color"));
     await settle();
 
     const activeName = () =>
@@ -153,7 +153,7 @@ describe("PanelThemePicker nested in ItemMenu — the task-151 shape", () => {
   const nested = () => (
     <ItemMenu align="left">
       <div>
-        <PanelThemePicker panelKey="note" label="Note color" />
+        <PanelThemePicker panelKey="note" />
       </div>
     </ItemMenu>
   );
@@ -162,7 +162,7 @@ describe("PanelThemePicker nested in ItemMenu — the task-151 shape", () => {
     const { container } = render(nested());
     fireEvent.click(container.querySelector('[aria-haspopup="menu"]') as HTMLElement);
     await settle();
-    fireEvent.click(screen.getByLabelText("Note color"));
+    fireEvent.click(screen.getByLabelText("Margin notes color"));
     await settle();
     expect(menus()).toHaveLength(2);
 
@@ -180,7 +180,7 @@ describe("PanelThemePicker nested in ItemMenu — the task-151 shape", () => {
     const { container } = render(nested());
     fireEvent.click(container.querySelector('[aria-haspopup="menu"]') as HTMLElement);
     await settle();
-    fireEvent.click(screen.getByLabelText("Note color"));
+    fireEvent.click(screen.getByLabelText("Margin notes color"));
     await settle();
 
     const preset = PRESET_COLORS.find(
@@ -312,20 +312,20 @@ describe("click fences that survive portaling", () => {
     const { container } = render(
       <ItemMenu align="left">
         <div>
-          <PanelThemePicker panelKey="note" label="Note color" />
+          <PanelThemePicker panelKey="note" />
         </div>
       </ItemMenu>,
     );
     fireEvent.click(container.querySelector('[aria-haspopup="menu"]') as HTMLElement);
     await settle();
-    fireEvent.click(screen.getByLabelText("Note color"));
+    fireEvent.click(screen.getByLabelText("Margin notes color"));
     await settle();
     expect(menus()).toHaveLength(2);
 
     // The menu CONTAINER, i.e. the padding band around the 168px grid. If the
     // padding sits on the container while the fence sits on a child, missing a
     // swatch by a few pixels closes the picker AND the kebab behind it.
-    const picker = menus().find((m) => m.getAttribute("aria-label") === "Note color")!;
+    const picker = menus().find((m) => m.getAttribute("aria-label") === "Margin notes color")!;
     fireEvent.click(picker);
     await settle();
     expect(menus()).toHaveLength(2);

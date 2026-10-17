@@ -11,7 +11,7 @@ import {
   ItemMenu,
   PANEL,
 } from "@/components/panel-primitives";
-import PanelThemePicker from "@/components/PanelThemePicker";
+import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { citeNotesDroppedByPackage } from "@/lib/cite-command-model";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
@@ -320,9 +320,7 @@ function CitationsPanel({
       }}
       headerLeading={
         <ItemMenu align="left">
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="citation" label="Citation color" />
-          </div>
+          <PanelThemeMenuRow keys={["citation"]} />
           {/* Row migration (task 477): both groups were bare `<button>`s, so this
               kebab's registry was empty and the shared keyboard controller
               swallowed Enter/Space/every arrow and activated nothing. Each group

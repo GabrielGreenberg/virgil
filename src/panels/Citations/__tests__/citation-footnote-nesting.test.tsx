@@ -47,6 +47,7 @@ vi.mock("@/panels/Citations/CitationCard", () => ({
 // PanelThemePicker reaches preferences; not relevant to nesting layout.
 vi.mock("@/components/PanelThemePicker", () => ({
   default: () => null,
+  PanelThemeMenuRow: () => null,
 }));
 
 import CitationsPanel from "@/panels/Citations";

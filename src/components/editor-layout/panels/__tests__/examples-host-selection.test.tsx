@@ -51,6 +51,7 @@ vi.mock("@/panels/Examples/ExampleCard", () => ({
 // PanelThemePicker reaches for theme wiring we don't provide here.
 vi.mock("@/components/PanelThemePicker", () => ({
   default: () => <div data-testid="theme-picker" />,
+  PanelThemeMenuRow: () => <div data-testid="theme-picker" />,
 }));
 
 class ResizeObserverStub {

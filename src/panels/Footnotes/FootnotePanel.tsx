@@ -8,7 +8,7 @@ import {
   ItemMenu,
   PANEL,
 } from "@/components/panel-primitives";
-import PanelThemePicker from "@/components/PanelThemePicker";
+import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -129,9 +129,7 @@ function FootnotePanel({
       onAdd={onAdd}
       headerLeading={
         <ItemMenu align="left">
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="footnote" label="Footnote color" />
-          </div>
+          <PanelThemeMenuRow keys={["footnote"]} />
           <CardViewModeMenuItems kind="footnotes" />
         </ItemMenu>
       }

@@ -21,7 +21,7 @@ import {
   docProductsEnabled,
   useWordCountsProduct,
 } from "@/lib/doc-products/use-doc-products";
-import PanelThemePicker from "@/components/PanelThemePicker";
+import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -133,9 +133,7 @@ export default function CutterPanel({
       onAddOptions={onAddOptions}
       headerLeading={
         <ItemMenu align="left">
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="cut" label="Cutter color" />
-          </div>
+          <PanelThemeMenuRow keys={["cut"]} />
           <CardViewModeMenuItems kind="cutter" />
         </ItemMenu>
       }

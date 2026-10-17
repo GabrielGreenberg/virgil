@@ -6,7 +6,7 @@ import {
   ItemMenu,
   PANEL,
 } from "@/components/panel-primitives";
-import PanelThemePicker from "@/components/PanelThemePicker";
+import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { ExampleCard } from "./ExampleCard";
@@ -42,9 +42,7 @@ function ExamplesPanel(props: ExamplesPanelProps) {
       kind="examples"
       headerLeading={
         <ItemMenu align="left">
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="example" label="Example color" />
-          </div>
+          <PanelThemeMenuRow keys={["example"]} />
         </ItemMenu>
       }
       items={examples}

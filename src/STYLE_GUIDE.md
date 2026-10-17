@@ -2658,6 +2658,14 @@ to `MenuProvider` (retiring its old `fixed z-[9999]` portal + hand-rolled
 mousedown closer). A wrapping `onClick`→close preserves the old "any click inside
 dismisses" semantics + the stopPropagation fence against the card header.
 
+**A panel-header kebab's colour row is `PanelThemeMenuRow({ keys })`** (in
+`PanelThemePicker.tsx`, task 1163) — never a hand-rolled `<div>` around a
+`<PanelThemePicker>`. The row owns its chrome and stacks multiple keys (Notes
+passes `["note", "highlight"]`); the picker takes no `label` and names itself
+from `PANEL_THEME_COPY` (`panelThemeColorLabel`, `src/lib/panel-theme.ts`), the
+same table the Preferences "Panel theme" rows read, so a colour has one name
+everywhere. Pinned by `panel-theme-menu-row-census.test.ts`.
+
 **Every ROW inside a menu is REGISTERED — there is no "opaque children" tier.**
 This sentence used to end *"opaque children still work without per-item
 registration — wrap them in `useMenuItem` when a menu wants roving nav"*, and
