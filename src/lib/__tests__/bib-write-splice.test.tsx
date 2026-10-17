@@ -503,3 +503,161 @@ describe("the block splice · every byte the edit does not name survives", () =>
     expect(out).toContain("isbn = {978-1}");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 1156 — ONE delimiting rule, BibTeX's: a `"` inside braces is text, and
+// `@type( … )` is a block. Plus fail-closed pairing when citation-js and the
+// scanner ever disagree again.
+// ---------------------------------------------------------------------------
+
+import spanCorpus from "./fixtures/bib-entry-span-corpus.json";
+import { lineAnchoredOpeners, bibMacroReferences } from "@/lib/bib-source";
+import { serializeBibForExport } from "@/lib/bib-parser";
+
+describe("task 1156 · a `\"` inside a braced value is a literal everywhere the scanner walks", () => {
+  const GERMAN = `@article{k,\n  title = {"Uber die Grundlagen},\n  year = {1900}\n}\n\n@book{seven,\n  title = {The 7" single},\n  note = {after}\n}\n`;
+
+  it("the block walk balances both entries (no quote opened inside braces)", () => {
+    const blocks = scanBibSource(GERMAN);
+    expect(blocks.map((b) => [b.key, b.balanced])).toEqual([["k", true], ["seven", true]]);
+  });
+
+  it("the field scan reads every field after the quote-bearing value", () => {
+    const k = scanBibSource(GERMAN)[0];
+    const raw = GERMAN.slice(k.start, k.end);
+    expect(scanBibFields(raw).map((f) => f.name)).toEqual(["title", "year"]);
+    const seven = scanBibSource(GERMAN)[1];
+    expect(scanBibFields(GERMAN.slice(seven.start, seven.end)).map((f) => f.name)).toEqual(["title", "note"]);
+  });
+
+  it("a quote in the citekey head's braces does not hide the head comma", () => {
+    const b = scanBibSource(`@misc{q,\n  title = {"a}\n}`)[0];
+    expect(b.key).toBe("q");
+  });
+
+  it("a German `\"U` title round-trips and is EDITABLE (no unbalanced refusal)", async () => {
+    const result = await mountWith(GERMAN);
+    await act(async () => {
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "k"), { year: "1901" });
+    });
+    await settle();
+    expect(DISK).toContain("year = {1901}");
+    expect(DISK).toContain(`title = {"Uber die Grundlagen}`);
+    expect(DISK).toContain(`@book{seven,\n  title = {The 7" single},\n  note = {after}\n}`);
+    expect(getSidecarRefusal(DOC)).toBeFalsy();
+  });
+
+  it("export keeps a quote-bearing crossref parent", () => {
+    const src = `@incollection{child,\n  title = {C},\n  crossref = {parent}\n}\n\n@book{parent,\n  title = {"Uber Alles}\n}\n`;
+    const child = parseBibFile(src).find((e) => e.key === "child")!;
+    const out = serializeBibForExport([child], src);
+    expect(out).toContain(`@book{parent,`);
+    expect(out).toContain(`{"Uber Alles}`);
+  });
+});
+
+describe("task 1156 · the parenthesised `@type( … )` form is a block", () => {
+  const PAREN = `@string(jphil = {Journal of Philosophy})\n\n@article(a,\n  title = {A (with parens)},\n  journal = jphil\n)\n\n@article{b,\n  title = {B}\n}\n`;
+
+  it("the scanner delimits the paren macro and entry, braces and parens nesting inside", () => {
+    const blocks = scanBibSource(PAREN);
+    expect(blocks.map((b) => [b.kind, b.key, b.balanced])).toEqual([
+      ["macro", "", true],
+      ["entry", "a", true],
+      ["entry", "b", true],
+    ]);
+    expect(PAREN.slice(blocks[1].start, blocks[1].end).endsWith("jphil\n)")).toBe(true);
+    expect(scanBibFields(PAREN.slice(blocks[1].start, blocks[1].end)).map((f) => f.name)).toEqual([
+      "title",
+      "journal",
+    ]);
+  });
+
+  it("each entry is paired with its OWN block — `a` never takes `b`'s raw", () => {
+    const [a, b] = parseBibFile(PAREN);
+    expect(a.key).toBe("a");
+    expect(a.raw.startsWith("@article(a,")).toBe(true);
+    expect(b.raw.startsWith("@article{b,")).toBe(true);
+    expect(a.uid).not.toBe(b.uid);
+  });
+
+  it("editing `a` leaves `b` byte-identical (and the paren close is kept)", async () => {
+    const result = await mountWith(PAREN);
+    await act(async () => {
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "a"), { title: "A2" });
+    });
+    await settle();
+    expect(DISK).toContain("@article{b,\n  title = {B}\n}");
+    expect(DISK).toContain("title = {A2}");
+    expect(DISK).toContain("@string(jphil = {Journal of Philosophy})");
+    expect(parseBibFile(DISK).map((e) => e.key)).toEqual(["a", "b"]);
+    expect(DISK.match(/@article\{b,/g)).toHaveLength(1);
+  });
+
+  it("a field added to a paren block lands inside its `)`", () => {
+    const blk = `@misc(p,\n  title = {T}\n)`;
+    expect(spliceBibBlock(blk, { set: { year: "2000" } })).toBe(`@misc(p,\n  title = {T},\n  year = {2000}\n)`);
+  });
+
+  it("the export closure keeps a paren `@string` the entry references", () => {
+    const a = parseBibFile(PAREN)[0];
+    expect(bibMacroReferences(a.raw)).toEqual(["jphil"]);
+    expect(serializeBibForExport([a], PAREN)).toContain("@string(jphil = {Journal of Philosophy})");
+  });
+});
+
+describe("task 1156 · fail-closed pairing — a keyed miss gets NO block, and a write refuses", () => {
+  it("a `\"` in a citekey is part of the key (it opens no quote), so every item gets its OWN block", () => {
+    // Before the fix the scanner lost `a"b`, and the positional fallback handed
+    // citation-js's `a"b` item the NEXT entry's raw, span and uid.
+    const src = `@misc{a"b,\n title={x}\n}\n\n@misc{c,\n title={y}\n}\n`;
+    const [ab, c] = parseBibFile(src);
+    expect(ab.key).toBe('a"b');
+    expect(ab.raw.startsWith('@misc{a"b,')).toBe(true);
+    expect(c.raw.startsWith("@misc{c,")).toBe(true);
+  });
+
+  it("when the scanner and citation-js disagree, the item is NOT cross-wired and any write refuses", async () => {
+    // Force a disagreement: a scanner that cannot see block `a`.
+    vi.resetModules();
+    vi.doMock("@/lib/bib-source", async () => {
+      const real = await vi.importActual<typeof import("@/lib/bib-source")>("@/lib/bib-source");
+      return { ...real, scanBibSource: (t: string) => real.scanBibSource(t).filter((b) => b.key !== "a") };
+    });
+    try {
+      const fresh = await import("@/lib/bib-parser");
+      const src = `@article{a,\n  title = {A}\n}\n\n@article{b,\n  title = {B}\n}\n`;
+      const [a, b] = fresh.parseBibFile(src);
+      expect(a.key).toBe("a");
+      expect(a.source).toBeUndefined(); // NOT b's block
+      expect(a.raw).toBe("");
+      expect(b.raw.startsWith("@article{b,")).toBe(true);
+      // An edit to b would otherwise also APPEND a duplicate `a` — refuse instead.
+      const edited = [a, { ...b, raw: "@article{b,\n  title = {B2}\n}" }];
+      expect(fresh.serializeBibFileAgainst(src, edited)).toBeNull();
+    } finally {
+      vi.doUnmock("@/lib/bib-source");
+      vi.resetModules();
+    }
+  });
+});
+
+describe("task 1156 · TS↔Python parity on task 614's shared span corpus", () => {
+  type Case = { name: string; bib: string; key: string; expect: string | null };
+  for (const c of (spanCorpus as { cases: Case[] }).cases) {
+    it(c.name, () => {
+      const text = c.bib;
+      const want = String(c.key).normalize("NFC");
+      const hits = scanBibSource(text).filter((b) => b.kind === "entry" && b.key.normalize("NFC") === want);
+      const b = hits[hits.length - 1]; // LAST wins on a duplicated key, as in both silos
+      let got: string | null;
+      if (!b) got = null;
+      else if (!b.balanced || lineAnchoredOpeners(text).filter((o) => o >= b.start && o < b.end).length !== 1)
+        got = "refuse";
+      else got = text.slice(b.start, b.end);
+      // The Python silos' span starts at the opener's LINE (indentation
+      // included); the TS block starts at its `@`. Same entry, same extent.
+      expect(got).toBe(typeof c.expect === "string" && c.expect !== "refuse" ? c.expect.trimStart() : c.expect);
+    });
+  }
+});

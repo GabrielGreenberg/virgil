@@ -72,6 +72,8 @@ export interface BibSourceBlock {
   key: string;
   /** Offset of the `@`. `text.slice(start, end)` is the block. */
   start: number;
+  /** Offset of the block's opening delimiter — `{`, or `(` in the parenthesised form. */
+  open: number;
   end: number;
   /**
    * Did the brace walk return to depth 0 inside this block? `false` means the
@@ -132,42 +134,104 @@ function isWordChar(ch: string): boolean {
 }
 
 /**
- * Walk from the opening brace of a block to its matching close.
+ * THE delimiting rule — the one walk every scan in this module goes through,
+ * so the block walk, the citekey head, the field values and the macro-term
+ * reader cannot disagree about where something ends (task 1156).
  *
- * Quote- and brace-aware (task 614's rule, ported): a `"` opens a quoted value
- * and the `}` inside it is LITERAL, so `note = "a } b"` no longer closes the
- * block early and truncates everything after it. Braces still nest inside a
- * quoted value (that is BibTeX's own rule), and the closing `"` is the one at
- * the depth the quote opened at. `\{` / `\}` / `\"` are literal characters.
+ * It is BibTeX's own rule (and citation-js's), which task 614 settled for the
+ * Python silo (`bib_resolve.find_entry_span`):
  *
- * Returns the offset just past the closing brace, or `-1` if it never closed.
+ * - **Brace depth is the only structure.** `{` / `}` nest everywhere.
+ * - **A `"` is a delimiter only where a VALUE starts** — at the block's own
+ *   level, after an entry's citekey head (a `"` in `@misc{a"b, …}` is part of
+ *   the key, as citation-js reads it). Inside a braced value it is a literal
+ *   character, so a babel
+ *   shorthand `title = {"Uber …}` or `{The 7" single}` no longer opens a quote
+ *   that nothing can close (which made the whole entry "unbalanced": every
+ *   edit refused, its later fields lost, the export dropping it).
+ * - Inside a quoted value braces still nest, and a stray `}` there is LITERAL —
+ *   it can never close the block, so `note = "a } b"` does not truncate it.
+ * - **A block may be `@type{…}` or `@type(…)`.** In the parenthesised form the
+ *   `)` closes only at brace depth 0 outside a quote; braces nest inside it.
+ * - `\{` / `\}` / `\"` are literal characters.
+ *
+ * `open` is the offset of the opening delimiter. In `"entry"` / `"macro"` mode
+ * it is a block's `{` or `(` and quotes delimit at its top level — for an
+ * entry, only once its head comma has passed. In `"value"` mode it is a braced
+ * value's `{` and nothing but braces counts. With `stopAtComma`, the walk also
+ * stops at the first top-level `,` (the citekey head's end).
+ *
+ * Returns the offset OF the stop character (the closer, or the comma), or `-1`
+ * if the walk reached `limit` without one.
  */
-function walkBlockBody(text: string, openBrace: number, limit: number): number {
-  let depth = 0;
-  let quoteDepth: number | null = null;
-  for (let i = openBrace; i < limit; i++) {
+type WalkMode = "entry" | "macro" | "value";
+
+function walkDelimited(
+  text: string,
+  open: number,
+  limit: number,
+  mode: WalkMode,
+  stopAtComma = false,
+): number {
+  const closer = text[open] === "(" ? ")" : "}";
+  let depth = 0; // brace depth INSIDE the outer delimiter
+  let inQuote = false;
+  let inHead = mode === "entry"; // an entry's citekey runs to its first comma
+  for (let i = open + 1; i < limit; i++) {
     const ch = text[i];
     if (ch === "\\") {
       i++; // escaped character — never a delimiter
       continue;
     }
-    if (ch === '"') {
-      if (quoteDepth === null) quoteDepth = depth;
-      else if (quoteDepth === depth) quoteDepth = null;
+    if (ch === "{") {
+      depth++;
       continue;
     }
-    if (quoteDepth !== null) {
-      // Inside a quoted value braces still nest, but a `}` can never close the
-      // BLOCK — that is the parity rule the old walk was missing.
-      if (ch === "{") depth++;
-      else if (ch === "}" && depth > quoteDepth) depth--;
+    if (ch === "}" && depth > 0) {
+      depth--;
+      continue;
+    }
+    if (depth > 0) continue; // inside a braced value: `"` , `)` and `,` are text
+    if (inQuote) {
+      if (ch === '"') inQuote = false;
+      continue; // a stray `}` / `)` / `,` inside a quoted value is literal
+    }
+    if (ch === closer) return i;
+    if (mode === "value") continue;
+    if (ch === ",") {
+      if (stopAtComma) return i;
+      inHead = false;
+    } else if (ch === '"' && !inHead) inQuote = true;
+  }
+  return -1;
+}
+
+/**
+ * Walk from a block's (or a braced value's) opening delimiter to its matching
+ * close via {@link walkDelimited}. Returns the offset just past the closer, or
+ * `-1` if it never closed.
+ */
+function walkBlockBody(text: string, open: number, limit: number, mode: WalkMode): number {
+  const close = walkDelimited(text, open, limit, mode);
+  return close === -1 ? -1 : close + 1;
+}
+
+/**
+ * From the opening `"` of a quoted value, the offset of its closing `"` (the
+ * first unescaped one at brace depth 0 — braces nest inside), or `-1`.
+ */
+function walkQuotedValue(text: string, openQuote: number, limit: number): number {
+  let depth = 0;
+  for (let j = openQuote + 1; j < limit; j++) {
+    const ch = text[j];
+    if (ch === "\\") {
+      j++;
       continue;
     }
     if (ch === "{") depth++;
     else if (ch === "}") {
-      depth--;
-      if (depth === 0) return i + 1;
-    }
+      if (depth > 0) depth--;
+    } else if (ch === '"' && depth === 0) return j;
   }
   return -1;
 }
@@ -182,7 +246,7 @@ function walkBlockBody(text: string, openBrace: number, limit: number): number {
  * swallowed the intervening entry.
  */
 export function lineAnchoredOpeners(text: string): number[] {
-  const re = /^[ \t]*@\w+[ \t]*[{(]/gm;
+  const re = /^\ufeff?[ \t]*@\w+[ \t]*[{(]/gm; // a leading BOM is not text before the opener
   const out: number[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) out.push(m.index + m[0].indexOf("@"));
@@ -221,60 +285,36 @@ export function scanBibSource(text: string): BibSourceBlock[] {
       i = at + 1;
       continue;
     }
-    // BibTeX's parenthesised form: `@type(key, …)`. Rare, and the walk below is
-    // brace-shaped, so treat it as free text rather than guess at its extent.
-    if (text[j] === "(") {
-      i = at + 1;
-      continue;
-    }
+    // `{` or BibTeX's parenthesised `(` — the delimiting rule handles both, so
+    // the scan agrees with citation-js about which blocks exist (task 1156).
     const openBrace = j;
-    let end = walkBlockBody(text, openBrace, text.length);
+    const lcType = type.toLowerCase();
+    const isMacro = MACRO_TYPES.has(lcType);
+    let end = walkBlockBody(text, openBrace, text.length, isMacro ? "macro" : "entry");
     const balanced = end !== -1;
     if (!balanced) {
       const nextOpener = openers.find((o) => o > at);
       end = nextOpener ?? text.length;
     }
-    const lcType = type.toLowerCase();
-    if (MACRO_TYPES.has(lcType)) {
-      blocks.push({ kind: "macro", type: lcType, key: "", start: at, end, balanced, bodyStart: openBrace + 1 });
+    if (isMacro) {
+      blocks.push({ kind: "macro", type: lcType, key: "", start: at, open: openBrace, end, balanced, bodyStart: openBrace + 1 });
     } else {
       // The citekey runs to the first `,` at the head's own depth. A block with
       // no comma at all (`@misc{key}`) is still an entry: its key is the body.
-      let k = openBrace + 1;
-      let depth = 1;
-      let quoteDepth: number | null = null;
-      let comma = -1;
-      for (; k < end; k++) {
-        const ch = text[k];
-        if (ch === "\\") {
-          k++;
-          continue;
-        }
-        if (ch === '"') {
-          if (quoteDepth === null) quoteDepth = depth;
-          else if (quoteDepth === depth) quoteDepth = null;
-          continue;
-        }
-        if (quoteDepth !== null) continue;
-        if (ch === "{") depth++;
-        else if (ch === "}") {
-          depth--;
-          if (depth === 0) break;
-        } else if (ch === "," && depth === 1) {
-          comma = k;
-          break;
-        }
-      }
-      const keyEnd = comma === -1 ? Math.max(openBrace + 1, end - 1) : comma;
+      const comma = walkDelimited(text, openBrace, end, "entry", true);
+      // (A stop at the closer, not a comma, means "no comma".)
+      const isComma = comma !== -1 && text[comma] === ",";
+      const keyEnd = !isComma ? Math.max(openBrace + 1, end - 1) : comma;
       const key = text.slice(openBrace + 1, keyEnd).trim();
       blocks.push({
         kind: "entry",
         type: lcType,
         key,
         start: at,
+        open: openBrace,
         end,
         balanced,
-        bodyStart: comma === -1 ? keyEnd : comma + 1,
+        bodyStart: !isComma ? keyEnd : comma + 1,
       });
     }
     i = Math.max(end, at + 1);
@@ -285,9 +325,10 @@ export function scanBibSource(text: string): BibSourceBlock[] {
 /**
  * Locate every `name = value` field inside ONE entry block, with its span.
  *
- * Offsets are relative to `block`. The value walk is the same quote/brace
- * parity rule as {@link walkBlockBody}, so a `"`-quoted value carrying a brace
- * (or a braced value carrying a quote) does not truncate the field — which
+ * Offsets are relative to `block`. The value walk is the same delimiting rule
+ * as {@link walkDelimited} (a `"` inside a braced value is text), so a
+ * `"`-quoted value carrying a brace (or a braced value carrying a quote) does
+ * not truncate the field — which
  * used to corrupt the NAME of everything after it and drop the entry's later
  * fields.
  */
@@ -317,28 +358,15 @@ export function scanBibFields(block: string): BibFieldSpan[] {
     let valueStart: number;
     let valueEnd: number;
     if (block[i] === "{") {
-      const close = walkBlockBody(block, i, bodyEnd + 1);
+      const close = walkBlockBody(block, i, bodyEnd + 1, "value");
       if (close === -1) break;
       delimiter = "brace";
       valueStart = i + 1;
       valueEnd = close - 1;
       i = close;
     } else if (block[i] === '"') {
-      let j = i + 1;
-      let qdepth = 0;
-      while (j < bodyEnd) {
-        const ch = block[j];
-        if (ch === "\\") {
-          j += 2;
-          continue;
-        }
-        if (ch === "{") qdepth++;
-        else if (ch === "}") {
-          if (qdepth > 0) qdepth--;
-        } else if (ch === '"' && qdepth === 0) break;
-        j++;
-      }
-      if (j >= bodyEnd) break;
+      const j = walkQuotedValue(block, i, bodyEnd);
+      if (j === -1) break;
       delimiter = "quote";
       valueStart = i + 1;
       valueEnd = j;
@@ -388,27 +416,14 @@ export function bibMacroReferences(block: string): string[] {
       continue;
     }
     if (ch === "{") {
-      const close = walkBlockBody(block, i, bodyEnd + 1);
+      const close = walkBlockBody(block, i, bodyEnd + 1, "value");
       i = close === -1 ? bodyEnd : close;
       expectTerm = false;
       continue;
     }
     if (ch === '"') {
-      let j = i + 1;
-      let depth = 0;
-      while (j < bodyEnd) {
-        const c = block[j];
-        if (c === "\\") {
-          j += 2;
-          continue;
-        }
-        if (c === "{") depth++;
-        else if (c === "}") {
-          if (depth > 0) depth--;
-        } else if (c === '"' && depth === 0) break;
-        j++;
-      }
-      i = j + 1;
+      const j = walkQuotedValue(block, i, bodyEnd);
+      i = j === -1 ? bodyEnd : j + 1;
       expectTerm = false;
       continue;
     }
@@ -521,8 +536,7 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
     patches.push({ start: 1, end: 1 + head.type.length, text: edit.type });
   }
   if (edit.key !== undefined && edit.key !== head.key) {
-    const openBrace = block.indexOf("{");
-    const keyStart = block.indexOf(head.key, openBrace + 1);
+    const keyStart = block.indexOf(head.key, head.open + 1);
     if (keyStart === -1) return null;
     patches.push({ start: keyStart, end: keyStart + head.key.length, text: edit.key });
   }
@@ -582,7 +596,7 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
   let out = applyPatches(block, patches);
 
   if (additions.length > 0) {
-    const close = out.lastIndexOf("}");
+    const close = out.lastIndexOf(block[head.open] === "(" ? ")" : "}");
     if (close === -1) return null;
     // Match the indentation the block's own fields use, so an inserted field
     // looks like the ones around it rather than like a different writer. Read
