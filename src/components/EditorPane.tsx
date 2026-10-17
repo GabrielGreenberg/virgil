@@ -310,6 +310,7 @@ import {
   type LabelRenameConfirm,
 } from "@/lib/tiptap/label-rename";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
+import { archiveRestoreRefusal } from "@/lib/archive-restore-gate";
 import {
   buildMarginItemHandlers,
   deleteMarginItem,
@@ -5110,6 +5111,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ],
   );
   const handleArchiveRestore = useCallback((id: string) => {
+    // THE PEN (task 1169): asked LIVE, before either route. The card route
+    // (reinstate into its panel + drop the snippet from archive.json) is React
+    // state plus sidecar writes the `readOnlyEnforcer` never sees; the excerpt
+    // route IS refused by the enforcer, but its not-landed toast would blame
+    // the caret. One gate, one honest cause, for every caller of this door.
+    const refusal = archiveRestoreRefusal(innerRef.current?.getEditor());
+    if (refusal) {
+      dragHandleNotify({ message: refusal });
+      return;
+    }
     const origin = archiveHook.snippetOrigin(id);
     // RETURN ADDRESS (task 965): an anchored clip goes back where it came
     // from, read off the SAME authority its Jump lands on (`jumpTarget`), so
@@ -5154,8 +5165,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       return;
     }
     if (!restored && address) {
-      // It had somewhere to go and still didn't land — a read-only host, or a
-      // body the document's schema can't hold. Moving the caret would not help,
+      // It had somewhere to go and still didn't land — a body the document's
+      // schema can't hold (a read-only surface was refused above, by name). Moving the caret would not help,
       // so don't tell the user to.
       dragHandleNotify({
         message:

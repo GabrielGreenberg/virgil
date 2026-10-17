@@ -34,11 +34,14 @@ export interface CardRestoreActionsApi {
    *  EditorPane) set it false, since a read-only editor swallows the insert and
    *  the control could only ever fail. */
   enabled: boolean;
-  /** Hand the card's excerpt back to the document at the caret and drop the
-   *  card. A NO-OP unless the content lands: the card body is the only copy of
-   *  prose that was deleted from the document, so an insert that the schema
-   *  refuses, or that a read-only host swallows, must leave the card standing
-   *  (the host notifies). */
+  /** Hand the card's excerpt back to the document — at the clip's return
+   *  address (task 965: just after/before the block it was cut from, the same
+   *  place its Jump lands), falling back to the caret only when no live anchor
+   *  survives — and drop the card. A NO-OP unless the content lands: the card
+   *  body is the only copy of prose that was deleted from the document, so an
+   *  insert that the schema refuses, or a press while the surface is read-only
+   *  (the pen or the host — task 1169 refuses it up front, by name), must
+   *  leave the card standing (the host notifies). */
   restore: (kind: CardKind, id: string) => void;
   /** What the control says for this card. Absent → "Restore to document".
    *  An agent-archived CARD (task 712, `src/lib/archive-origin.ts`) restores
