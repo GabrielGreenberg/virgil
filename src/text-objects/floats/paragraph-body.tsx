@@ -45,11 +45,13 @@ import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
+import { soleRoot } from "@/lib/tiptap/bound-root";
+import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
 
 export function ParagraphBody({
@@ -110,6 +112,10 @@ export function ParagraphBody({
       surface: "float",
       editable: chrome.showParagraphFloatTitleEdit,
       cardContext: true,
+      // Task 1170: the doc is exactly one paragraph — an Enter that would
+      // split it (whose second half the write-back could never carry) is
+      // refused rather than silently dropped.
+      boundRoot: soleRoot("paragraph"),
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
@@ -138,22 +144,23 @@ export function ParagraphBody({
   });
 
   function writeBackToMain(doc: JSONContent) {
-    const ed = ref.current?.getEditor();
-    if (!ed) return;
-    const firstPar = doc.content?.[0];
-    if (!firstPar || firstPar.type !== "paragraph") return;
-    // The live source range doubles as this write's position hint, so the
-    // float→main direction stops walking the doc on every float keystroke too.
-    const src = findSourceNodeByUuid(
-      ed.state.doc,
-      uuid,
-      "paragraph",
-      sourceRangeRef.current,
-    );
-    if (!src) return;
-    const pos = src.start;
-    const found: PMNode = src.node;
-    try {
+    // One door (task 1170): a refusal reaches `WriteRefusedBanner`, never a
+    // bare return / swallowed catch.
+    const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
+      // The live source range doubles as this write's position hint, so the
+      // float→main direction stops walking the doc on every float keystroke.
+      const src = findSourceNodeByUuid(
+        ed.state.doc,
+        uuid,
+        "paragraph",
+        sourceRangeRef.current,
+      );
+      if (!src) return null;
+      const firstPar = (doc.content ?? [])[0];
+      if (!firstPar || firstPar.type !== "paragraph" || (doc.content ?? []).length !== 1) {
+        return refuseWrite(wrongRootReason("paragraph"));
+      }
+      const found: PMNode = src.node;
       const fragment = (firstPar.content ?? []).map((c) =>
         ed.state.schema.nodeFromJSON(c),
       );
@@ -166,13 +173,9 @@ export function ParagraphBody({
         fragment,
         found.marks,
       );
-      const tr = ed.state.tr.replaceWith(pos, pos + found.nodeSize, newPar);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (tr.docChanged) ed.view.dispatch(tr);
-    } catch {
-      /* schema mismatch / stale uuid — swallow */
-    }
+      return { from: src.start, to: src.start + found.nodeSize, content: newPar };
+    });
+    reportWrite(outcome);
   }
 
   const readSource = useCallback(
@@ -198,7 +201,7 @@ export function ParagraphBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
@@ -213,6 +216,7 @@ export function ParagraphBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
+      <WriteRefusedBanner message={writeRefusal} />
       <div
         className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
       >

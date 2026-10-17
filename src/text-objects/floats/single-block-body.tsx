@@ -74,11 +74,13 @@ import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
   type FloatSourceKind,
-  FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
+import { soleRoot } from "@/lib/tiptap/bound-root";
+import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import { parseTextObjectPopoutKey } from "../text-object-registry";
 import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
 
@@ -278,6 +280,9 @@ export function SingleBlockBody({
       // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
       spellcheckPortRef,
       surface: "float",
+      // Task 1170: the doc is exactly one config.schemaType node — no edit can leave
+      // the float without it.
+      boundRoot: soleRoot(config.schemaType),
       // Read-only kinds (displayMath) build the float editor non-editable;
       // floats gate editability via TipTap's own `editable` flag (the main
       // surface uses the readOnlyEnforcer plugin instead — see editor-extensions).
@@ -316,26 +321,24 @@ export function SingleBlockBody({
   });
 
   function writeBackToMain(doc: JSONContent) {
-    const ed = ref.current?.getEditor();
-    if (!ed) return;
-    // The live source range doubles as this write's position hint (task 140),
-    // so the float→main direction stops walking the doc per float keystroke.
-    const src = findBlockByUuid(
-      ed.state.doc,
-      config.schemaType,
-      uuid,
-      sourceRangeRef.current,
-    );
-    if (!src) return;
-    const incoming = doc.content ?? [];
-    if (incoming.length === 0) return;
-    const first = incoming[0];
-    if (!first || first.type !== config.schemaType) return;
-    try {
-      // Rebuild from MAIN's OWN attrs (preserving the source uuid + any attrs
-      // the float doesn't model), with the float's content fragment. A
-      // whole-node replaceWith over the node's own range — the open-slice
-      // L3f-7 case does NOT apply (this is a single closed block boundary).
+    // One door (task 1170): a refusal reaches `WriteRefusedBanner`, never a
+    // bare return / swallowed catch.
+    const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
+      // The live source range doubles as this write's position hint (task
+      // 140), so the float→main direction stops walking the doc per keystroke.
+      const src = findBlockByUuid(
+        ed.state.doc,
+        config.schemaType,
+        uuid,
+        sourceRangeRef.current,
+      );
+      if (!src) return null;
+      const first = (doc.content ?? [])[0];
+      if (!first || first.type !== config.schemaType) {
+        return refuseWrite(wrongRootReason("block"));
+      }
+      // Rebuild over MAIN's own attrs (the source uuid always pinned), with
+      // the float's content + changed attrs winning.
       const newNode = ed.state.schema.nodeFromJSON({
         ...first,
         attrs: {
@@ -344,13 +347,9 @@ export function SingleBlockBody({
           uuid: src.node.attrs.uuid,
         },
       });
-      const tr = ed.state.tr.replaceWith(src.start, src.end, newNode);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (tr.docChanged) ed.view.dispatch(tr);
-    } catch {
-      /* schema mismatch / stale uuid — swallow */
-    }
+      return { from: src.start, to: src.end, content: newNode };
+    });
+    reportWrite(outcome);
   }
 
   const readSource = useCallback(
@@ -377,7 +376,7 @@ export function SingleBlockBody({
     [config, uuid],
   );
 
-  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
@@ -392,6 +391,7 @@ export function SingleBlockBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
+      <WriteRefusedBanner message={writeRefusal} />
       <div
         className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
       >

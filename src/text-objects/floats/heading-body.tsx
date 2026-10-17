@@ -51,11 +51,12 @@ import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { headingTypeName } from "@/lib/heading-types";
 import {
-  FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
+import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
 
 export function HeadingBody({
@@ -161,30 +162,27 @@ export function HeadingBody({
   });
 
   function writeBackToMain(doc: JSONContent) {
-    const ed = ref.current?.getEditor();
-    if (!ed) return;
-    // The live section range doubles as this write's position hint (task 140),
-    // so the float→main direction stops re-scanning the doc's top level on
-    // every float keystroke.
-    const range = getSectionRangeByUuid(
-      ed.state.doc,
-      uuid,
-      sourceRangeRef.current,
-    );
-    if (!range) return;
-    const incoming = doc.content ?? [];
-    if (incoming.length === 0) return;
-    try {
-      const newNodes: PMNode[] = incoming
-        .map((j) => {
-          try {
-            return ed.state.schema.nodeFromJSON(j);
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean) as PMNode[];
-      if (newNodes.length === 0) return;
+    // One door (task 1170): a refusal reaches `WriteRefusedBanner`, never a
+    // bare return / swallowed catch. A section holds several blocks, so this
+    // float binds no root; but it no longer filters out blocks that fail to
+    // build either — writing the REST of the section while silently dropping
+    // one block was the same loss in miniature. Any unbuildable block now
+    // refuses the whole write.
+    const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
+      // The live section range doubles as this write's position hint (task
+      // 140), so the float→main direction stops re-scanning the doc's top
+      // level on every float keystroke.
+      const range = getSectionRangeByUuid(
+        ed.state.doc,
+        uuid,
+        sourceRangeRef.current,
+      );
+      if (!range) return null;
+      const incoming = doc.content ?? [];
+      if (incoming.length === 0) return refuseWrite(wrongRootReason("section"));
+      const newNodes: PMNode[] = incoming.map((j) =>
+        ed.state.schema.nodeFromJSON(j),
+      );
       const sourceHeading = range.nodes[0];
       if (
         sourceHeading?.type.name === "heading" &&
@@ -199,13 +197,9 @@ export function HeadingBody({
           newNodes[0].marks,
         );
       }
-      const tr = ed.state.tr.replaceWith(range.start, range.end, newNodes);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (tr.docChanged) ed.view.dispatch(tr);
-    } catch {
-      /* schema mismatch / stale uuid — swallow */
-    }
+      return { from: range.start, to: range.end, content: newNodes };
+    });
+    reportWrite(outcome);
   }
 
   const readSource = useCallback(
@@ -235,7 +229,7 @@ export function HeadingBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
@@ -250,6 +244,7 @@ export function HeadingBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
+      <WriteRefusedBanner message={writeRefusal} />
       <div
         className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
       >

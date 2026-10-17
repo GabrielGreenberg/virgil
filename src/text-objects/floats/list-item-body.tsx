@@ -45,11 +45,13 @@ import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
+import { soleRoot } from "@/lib/tiptap/bound-root";
+import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import { generateShortId } from "@/lib/uuid";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -305,6 +307,9 @@ export function ListItemBody({
       surface: "float",
       editable: true,
       cardContext: true,
+      // Task 1170: the float doc is exactly one bulletList wrapper — Cmd-A
+      // selects its content, and no edit can leave the float without it.
+      boundRoot: soleRoot("bulletList", "orderedList"),
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
@@ -327,25 +332,26 @@ export function ListItemBody({
   });
 
   function writeBackToMain(floatDoc: JSONContent) {
-    const ed = ref.current?.getEditor();
-    if (!ed) return;
-    // The live source range doubles as this write's position hint (task 140),
-    // so the float→main direction stops walking the doc per float keystroke.
-    const wb = resolveInnerWriteback(
-      ed.state.doc,
-      uuid,
-      floatDoc,
-      sourceRangeRef.current,
-    );
-    if (!wb) return;
-    try {
-      const tr = ed.state.tr.replaceWith(wb.from, wb.to, wb.items);
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, floatId);
-      if (tr.docChanged) ed.view.dispatch(tr);
-    } catch {
-      /* schema mismatch / stale uuid — swallow */
-    }
+    // One door (task 1170): a refusal reaches `WriteRefusedBanner`, never a
+    // bare return / swallowed catch.
+    const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
+      // The live source range doubles as this write's position hint (task
+      // 140), so the float→main direction stops walking the doc per keystroke.
+      const wb = resolveInnerWriteback(
+        ed.state.doc,
+        uuid,
+        floatDoc,
+        sourceRangeRef.current,
+      );
+      if (wb) return { from: wb.from, to: wb.to, content: wb.items };
+      // Nothing to write: either the source is gone (the missing-source
+      // banner owns that) or the float's content has no faithful form in
+      // main — which must be SAID, not dropped.
+      return findListItemByUuid(ed.state.doc, uuid, sourceRangeRef.current)
+        ? refuseWrite(wrongRootReason("list item"))
+        : null;
+    });
+    reportWrite(outcome);
   }
 
   const readSource = useCallback(
@@ -385,7 +391,7 @@ export function ListItemBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
@@ -400,6 +406,7 @@ export function ListItemBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
+      <WriteRefusedBanner message={writeRefusal} />
       <div
         className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
       >

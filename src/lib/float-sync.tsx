@@ -47,6 +47,8 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
 import { useReportFloatSourceMissing } from "@/floats/float-source-report";
 import { trackSourceRange, type SourceRange } from "@/lib/float-source-range";
+import { nextWriteRefusal, type FloatWriteOutcome } from "@/lib/float-write-back";
+import { InlineError } from "@/components/InlineError";
 
 export type { SourceRange };
 
@@ -139,6 +141,22 @@ export function SourceMissingBanner({
 }
 
 export const FLOAT_WRITE_META = "from-float";
+
+/**
+ * Strip rendered when this float's last write-back was REFUSED (task 1170) —
+ * the edit has no faithful representation in main, so main kept what it had.
+ * The float-side twin of the Example card's EX-F5-03 banner: a refusal is
+ * never silent. Cleared by the next write that lands, or by a re-seed from
+ * main (which replaces the refused content with what the paper holds).
+ */
+export function WriteRefusedBanner({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <InlineError className="px-2 py-1 border-b border-[var(--edge-warning,#e7d49a)]">
+      {message}
+    </InlineError>
+  );
+}
 
 export interface UseMainTransactionSyncArgs {
   mainEditor: Editor | null;
@@ -305,9 +323,24 @@ export function useFloatMainSync({
    *  every float keystroke too. Read-only for callers; a `ref` (not state) so
    *  tracking it never re-renders. */
   sourceRangeRef: RefObject<SourceRange | null>;
+  /** The message of the float's last REFUSED write-back, or null (task
+   *  1170). Render it through `WriteRefusedBanner`. */
+  writeRefusal: string | null;
+  /** Feed every `landFloatWrite` outcome here: a refusal raises the banner,
+   *  a landed write clears it. */
+  reportWrite: (outcome: FloatWriteOutcome) => void;
 } {
   const [sourceMissing, setSourceMissing] = useState(false);
   const sourceRangeRef = useRef<SourceRange | null>(null);
+  const [writeRefusal, setWriteRefusal] = useState<string | null>(null);
+  const reportWrite = useCallback((outcome: FloatWriteOutcome) => {
+    setWriteRefusal((prev) => nextWriteRefusal(prev, outcome));
+  }, []);
+  // A re-seed replaces the refused content with what main holds, so the
+  // banner describing that content no longer describes anything.
+  const onReseeded = useCallback(() => {
+    setWriteRefusal((prev) => (prev === null ? prev : null));
+  }, []);
 
   const onMainDocChanged = useCallback(() => {
     if (!mainEditor || !floatEditor) return;
@@ -317,8 +350,9 @@ export function useFloatMainSync({
       readSource,
       setSourceMissing,
       sourceRangeRef,
+      onReseeded,
     );
-  }, [mainEditor, floatEditor, readSource]);
+  }, [mainEditor, floatEditor, readSource, onReseeded]);
 
   useMainTransactionSync({
     // Subscribe (and seed) only once both editors exist — the seed call
@@ -329,7 +363,7 @@ export function useFloatMainSync({
     sourceRangeRef,
   });
 
-  return { sourceMissing, sourceRangeRef };
+  return { sourceMissing, sourceRangeRef, writeRefusal, reportWrite };
 }
 
 function syncFromMain(
@@ -338,6 +372,7 @@ function syncFromMain(
   readSource: UseFloatMainSyncArgs["readSource"],
   setSourceMissing: (v: boolean) => void,
   sourceRangeRef: RefObject<SourceRange | null>,
+  onReseeded: () => void,
 ): void {
   const { doc, missing, range } = readSource(
     mainEditor.state.doc,
@@ -362,6 +397,7 @@ function syncFromMain(
   // position. `reseedPreservingCaret` diffs old↔new and maps the caret through
   // the edit — the shared single owner with ExampleCard's re-seed.
   reseedPreservingCaret(floatEditor, doc);
+  onReseeded();
 }
 
 function sameDoc(a: JSONContent, b: JSONContent): boolean {
