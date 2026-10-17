@@ -337,13 +337,17 @@ export function ListItemBody({
     const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
       // The live source range doubles as this write's position hint (task
       // 140), so the float→main direction stops walking the doc per keystroke.
-      const hint = sourceRangeRef.current;
-      const wb = resolveInnerWriteback(ed.state.doc, uuid, floatDoc, hint);
+      const wb = resolveInnerWriteback(
+        ed.state.doc,
+        uuid,
+        floatDoc,
+        sourceRangeRef.current,
+      );
       if (wb) return { from: wb.from, to: wb.to, content: wb.items };
       // Nothing to write: either the source is gone (the missing-source
       // banner owns that) or the float's content has no faithful form in
       // main — which must be SAID, not dropped.
-      return findListItemByUuid(ed.state.doc, uuid, hint)
+      return findListItemByUuid(ed.state.doc, uuid, sourceRangeRef.current)
         ? refuseWrite(wrongRootReason("list item"))
         : null;
     });

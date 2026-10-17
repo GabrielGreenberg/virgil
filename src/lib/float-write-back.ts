@@ -28,7 +28,7 @@
  * door is O(edit) per keystroke like the code it replaced.
  */
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
 
 export interface FloatWritePlan {
@@ -88,6 +88,11 @@ export function landFloatWrite(
     if (p === null) return { status: "no-source" };
     if ("refused" in p) return { status: "refused", reason: p.refused };
     const content = p.content as PMNode | PMNode[];
+    // An echo of what main already holds (the surface re-emitting unchanged
+    // content) dispatches nothing. O(block), the same order as the rebuild.
+    if (main.state.doc.slice(p.from, p.to).content.eq(Fragment.from(content))) {
+      return { status: "unchanged" };
+    }
     const tr = main.state.tr.replaceWith(p.from, p.to, content);
     if (!tr.docChanged) return { status: "unchanged" };
     tr.setMeta("addToHistory", false);

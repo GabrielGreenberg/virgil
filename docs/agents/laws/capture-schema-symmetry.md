@@ -3715,3 +3715,21 @@ The classification now lives once in `src/lib/footnote-source-attrs.ts`
 capture, the orphan capture, the stack pull and `footnoteDropSpec`.
 CI: `footnote-source-attrs.test.ts` — its census fails until a new footnote
 attr is classified.
+
+## The surface half — a whole-block surface is bound to its root (task 1170)
+
+The same symmetry holds for an EDITING SURFACE: a surface may not hold content
+its write-back cannot represent, because that content is lost the moment the
+surface re-seeds. An expanded Example card and every block float edit exactly
+ONE node over a `block+` float doc; they declare it (`boundRoot:
+soleRoot("exampleBlock")`, …) and `BoundRoot`
+([src/lib/tiptap/bound-root.ts](../../../src/lib/tiptap/bound-root.ts)) turns
+select-all into a selection of the root's CONTENT and refuses any transaction
+that would leave the doc without its sole root (fail open for a doc not seeded
+in that shape). Every such surface then writes back through ONE door,
+`landFloatWrite` ([src/lib/float-write-back.ts](../../../src/lib/float-write-back.ts)),
+which returns `landed | unchanged | no-source | refused` — and a refusal is
+rendered (`WriteRefusedBanner` for floats, the card's EX-F5-03 banner), cleared
+by the next landed write or a re-seed. Never a bare `return` or a swallowed
+`catch`. CI: `bound-root.test.ts` (incl. the whole-block write-back CENSUS),
+`ExampleCardEditor.test.tsx` → "bound root (task 1170)".
