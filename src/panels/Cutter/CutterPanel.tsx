@@ -30,6 +30,7 @@ import { byCreatedAt, withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTra
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
 import { CutterGoalStrip } from "./CutterGoalStrip";
+import type { SuggestionFieldUpdater } from "@/panels/_shared/suggestion-field-vocabulary";
 
 type Item =
   | { kind: "comment"; id: string; createdAt: string; data: CutterCommentCardData }
@@ -62,16 +63,7 @@ export default function CutterPanel({
   onAddSuggestion: (anchorRect?: DOMRect) => CutterSuggestionCardData;
   onUpdateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
-  onUpdateSuggestionField: (
-    id: string,
-    field:
-      | "original_text"
-      | "suggested_text"
-      | "explanation"
-      | "user_text"
-      | "instructions",
-    value: string,
-  ) => void;
+  onUpdateSuggestionField: SuggestionFieldUpdater;
   /* NO suggestion landing-verb props (task 684): Apply / Accept / Reject /
      Keep / Revert resolve from the `PendingChangeController` context inside the
      card, so this panel is no longer one of the places that has to remember to

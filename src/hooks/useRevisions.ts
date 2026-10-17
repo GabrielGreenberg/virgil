@@ -46,6 +46,7 @@ import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
+import type { SuggestionField } from "@/panels/_shared/suggestion-field-vocabulary";
 
 const EMPTY_STATE: RevisionsState = { cards: [], tracker: null };
 
@@ -530,12 +531,7 @@ export function useRevisions(
   const updateSuggestionField = useCallback(
     (
       id: string,
-      field:
-        | "original_text"
-        | "suggested_text"
-        | "explanation"
-        | "user_text"
-        | "instructions",
+      field: SuggestionField,
       value: string,
     ) => {
       pristine.markDirty(id);

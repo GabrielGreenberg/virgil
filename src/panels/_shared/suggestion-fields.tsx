@@ -9,8 +9,8 @@
  * is the single source of truth; both cards consume it (Cutter passes
  * `panelKey="cut"`, Revisions `panelKey="revision"`).
  *
- * `FieldTitleRow` / `CopyButton` live here too (CutterSuggestionCard re-exports
- * them for backward compatibility).
+ * `FieldTitleRow` / `CopyButton` live here too — module-private: the field
+ * blocks below are their only callers.
  */
 
 import { useRef, useState, type ReactNode } from "react";
@@ -188,7 +188,7 @@ export function SuggestionTrailing({
   );
 }
 
-export function CopyButton({ text }: { text: string }) {
+function CopyButton({ text }: { text: string }) {
   const { copied, copy } = useCopyFlash();
   const handle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -219,7 +219,7 @@ export function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function FieldTitleRow({
+function FieldTitleRow({
   label,
   kindHint,
   text,

@@ -15,6 +15,7 @@ import { useDockedJumpGate } from "../contexts/card-anchor";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
+import type { SuggestionFieldUpdater } from "@/panels/_shared/suggestion-field-vocabulary";
 
 export interface CutterHostProps {
   side: Side;
@@ -25,16 +26,7 @@ export interface CutterHostProps {
   clearGoal: () => void;
   updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
-  updateSuggestionField: (
-    id: string,
-    field:
-      | "original_text"
-      | "suggested_text"
-      | "explanation"
-      | "user_text"
-      | "instructions",
-    value: string,
-  ) => void;
+  updateSuggestionField: SuggestionFieldUpdater;
   /** Morph comment ⇄ suggestion via the kind-chevron — routes through the
    *  EditorPane morph chokepoint (float-key remap). */
   convertCard: CardMorphHandler;

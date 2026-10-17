@@ -16,6 +16,7 @@ import {
 } from "@/panels/_shared/omni-anchor-rows";
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
+import type { SuggestionFieldUpdater } from "@/panels/_shared/suggestion-field-vocabulary";
 
 interface BuildArgs {
   cards: CutterCard[];
@@ -26,16 +27,7 @@ interface BuildArgs {
   editor: Editor | null;
   updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
-  updateSuggestionField: (
-    id: string,
-    field:
-      | "original_text"
-      | "suggested_text"
-      | "explanation"
-      | "user_text"
-      | "instructions",
-    value: string,
-  ) => void;
+  updateSuggestionField: SuggestionFieldUpdater;
   /* NO acceptSuggestion / rejectSuggestion (task 684): the card resolves every
      landing verb from the `PendingChangeController` context, so omni no longer
      hands it a bare status write where the docked panel handed it an Apply. */
