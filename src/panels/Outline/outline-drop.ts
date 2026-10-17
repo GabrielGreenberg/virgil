@@ -16,6 +16,10 @@ export interface DropPod {
   id: string;
   blockIndex: number;
   blockCount: number;
+  /** Durable block uuid — the address the commit resolves (`resolveBlockSpan`
+   *  refuses a null one). A pod without one can be neither moved nor landed on,
+   *  so the indicator must refuse it too (task 1166). */
+  uuid: string | null;
 }
 
 /** Block index the moved section will be inserted at for this hover. */
@@ -65,9 +69,18 @@ export function isNoOpLanding(
 }
 
 /**
- * True when the drop is a move-into-self and must not be offered: dropping on
- * the dragged pod itself, or landing strictly inside its own block range. A lit
- * line the drop then ignores is the 083 false-affordance class.
+ * True when the drop must not be offered — the ONE answer to "will this land?"
+ * that both the indicator and handleDrop read. A lit line the drop then
+ * ignores is the 083 false-affordance class. Refused:
+ *
+ *   - no outline SOURCE (task 1166): a foreign drag — a card, a file, a text
+ *     selection — has nothing for this panel to move;
+ *   - a source or target with no durable uuid (task 1166): the commit
+ *     addresses blocks through `resolveBlockSpan`, which refuses a null uuid
+ *     (the legacy `\partitle{X}` empty paragraph is the live case), so the
+ *     line would promise a move the write cannot make;
+ *   - dropping on the dragged pod itself, or landing strictly inside its own
+ *     block range (move-into-self).
  *
  * This is the SNAPSHOT half — it keeps the affordance honest against what the
  * user can see. The live half runs in `handleReorderBlocks` against the
@@ -81,7 +94,8 @@ export function isRejectedDrop(
   target: DropPod,
   landing: number,
 ): boolean {
-  if (!source) return false;
+  if (!source) return true;
+  if (source.uuid == null || target.uuid == null) return true;
   if (source.id === target.id) return true;
   return isInsideOwnRange(source.blockIndex, source.blockCount, landing);
 }
