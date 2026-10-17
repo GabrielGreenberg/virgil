@@ -116,7 +116,7 @@ export function useArchive(docId: string | null) {
       update((prev) => ({ snippets: [...prev.snippets, snippet] }));
       return snippet;
     },
-    [update, state.snippets.length],
+    [update],
   );
 
   /**

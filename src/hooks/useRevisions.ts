@@ -474,13 +474,13 @@ export function useRevisions(
         ),
       }));
       if (firstCommit) {
-        const card = state.cards.find(
+        const card = stateRef.current.cards.find(
           (c) => c.id === id && c.kind === "comment",
         ) as RevisionRequestCard | undefined;
         if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
       }
     },
-    [update, pristine, state.cards, bridgeComment],
+    [update, pristine, bridgeComment, stateRef],
   );
 
   const updateCommentText = useCallback(
@@ -497,19 +497,19 @@ export function useRevisions(
         ),
       }));
       if (firstCommit) {
-        const card = state.cards.find(
+        const card = stateRef.current.cards.find(
           (c) => c.id === id && c.kind === "comment",
         ) as RevisionRequestCard | undefined;
         if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
       }
     },
-    [update, pristine, state.cards, bridgeComment],
+    [update, pristine, bridgeComment, stateRef],
   );
 
   const setCommentAiRequest = useCallback(
     (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine.markDirty(id);
-      const card = state.cards.find(
+      const card = stateRef.current.cards.find(
         (c) => c.id === id && c.kind === "comment",
       ) as RevisionRequestCard | undefined;
       update((prev) => ({
@@ -525,7 +525,7 @@ export function useRevisions(
         mode,
       );
     },
-    [update, pristine, state.cards, bridgeCommentById],
+    [update, pristine, bridgeCommentById, stateRef],
   );
 
   const updateSuggestionField = useCallback(
@@ -710,7 +710,7 @@ export function useRevisions(
    *  cleared; walker rewires anchors after slice insertion. */
   const cloneComment = useCallback(
     (sourceId: string): string | null => {
-      const source = state.cards.find((c) => c.id === sourceId);
+      const source = stateRef.current.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "comment") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
       // the CAPTURE PAIR (`selectedText` + its rich twin `selectedContent`) via
@@ -729,13 +729,13 @@ export function useRevisions(
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
-    [update, state.cards],
+    [update, stateRef],
   );
 
   /** Deep-copy a revision-suggestion sidecar entry with a fresh id. */
   const cloneSuggestion = useCallback(
     (sourceId: string): string | null => {
-      const source = state.cards.find((c) => c.id === sourceId);
+      const source = stateRef.current.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "suggestion") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
       // the CAPTURE PAIR via the sibling SSOT `carryCapturedPassage` (task 694);
@@ -756,7 +756,7 @@ export function useRevisions(
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
-    [update, state.cards],
+    [update, stateRef],
   );
 
   const discardPristineCards = useCallback(() => {

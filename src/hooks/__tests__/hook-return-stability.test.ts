@@ -39,6 +39,9 @@ const MEMOIZED_RETURN_HOOKS: Record<string, string> = {
   useBibReview: resolve(SRC_HOOKS, "useBibReview.ts"),
   useAiRequests: resolve(SRC_HOOKS, "useAiRequests.ts"),
   useSuggestions: resolve(SRC_HOOKS, "useSuggestions.ts"),
+  // Task 1164: not consumed whole as a prop, but every card hook lists it as a
+  // useCallback dep — a fresh literal re-identified every card mutator.
+  usePristineTracker: resolve(SRC_HOOKS, "usePristineTracker.ts"),
   useLibraryTabs: resolve(REPO_ROOT, "library/hooks/useLibraryTabs.ts"),
 };
 
