@@ -69,6 +69,27 @@
 import type { BibEntry } from "@/lib/types";
 
 /**
+ * Citekey EQUALITY as BibTeX and biber judge it: case-insensitively (task
+ * 1159). `Smith2020` and `smith2020` are one key to the compiler — a file
+ * holding both draws a "Repeated entry" error — so every mutator question of
+ * the form "is this key already taken?" (add-dedupe, the rename collision
+ * check) asks it here, never with a raw `===`. The parser's own block pairing
+ * (`bib-parser.ts` `takeBlock`) already folds case the same way.
+ *
+ * Deliberately NOT used by the address ladder below: an address is resolved
+ * against a re-parse of the SAME bytes, where the key matches exactly, and an
+ * exact match is the sharper rung — it keeps case-twin blocks apart.
+ */
+export function citekeyEq(a: string, b: string): boolean {
+  return citekeyIdentity(a) === citekeyIdentity(b);
+}
+
+/** The case-folded form {@link citekeyEq} compares — for `Set`/`Map` keys. */
+export function citekeyIdentity(key: string): string {
+  return key.toLowerCase();
+}
+
+/**
  * A durable-as-possible coordinate for one entry, taken from the list it was
  * displayed in and resolvable against any later parse of the same file.
  */

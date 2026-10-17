@@ -265,8 +265,8 @@ describe("project-bib: the Library drop and the panel save compose", () => {
     });
     expect((await addEntriesToProjectBib(DOC, [entry("a"), entry("b"), entry("b")])).appended).toBe(1);
     expect(keysOnDisk()).toEqual(["a", "b"]);
-    expect((await removeEntryFromProjectBib(DOC, "a")).kind).toBe("written");
-    expect((await removeEntryFromProjectBib(DOC, "a")).kind).toBe("declined");
+    expect((await removeEntryFromProjectBib(DOC, { key: "a", keyOrdinal: 0 })).kind).toBe("written");
+    expect((await removeEntryFromProjectBib(DOC, { key: "a", keyOrdinal: 0 })).kind).toBe("declined");
     expect(keysOnDisk()).toEqual(["b"]);
   });
 

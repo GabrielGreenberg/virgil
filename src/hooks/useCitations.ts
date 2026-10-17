@@ -32,6 +32,7 @@ import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
 import { spliceBibBlock } from "@/lib/bib-source";
 import {
   bibAddressOf,
+  citekeyEq,
   mapAddressedBibEntry,
   resolveBibEntry,
 } from "@/lib/bib-address";
@@ -747,7 +748,8 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       const knownUids = bibUidsOf(bibEntriesRef.current);
       const uid = entry.uid || mintBibUid(knownUids);
       runBibMutation((prev) => {
-        if (prev.some((e) => e.key === entry.key)) return null;
+        // Case-insensitive, as BibTeX judges keys (task 1159).
+        if (prev.some((e) => citekeyEq(e.key, entry.key))) return null;
         const used = bibUidsOf(prev);
         // `source` names a span in the file the entry was PARSED from; this
         // entry is arriving from elsewhere (a library drop, find-citation) and

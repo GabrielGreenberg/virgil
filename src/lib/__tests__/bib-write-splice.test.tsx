@@ -325,7 +325,7 @@ describe("member 4 · bytes Virgil cannot model are never re-emitted, so they ca
   it("a removal takes its own block and leaves the macro and header behind", async () => {
     DISK = WITH_MACRO;
     beginDocPipeline(DOC);
-    await removeEntryFromProjectBib(DOC, "jones1999");
+    await removeEntryFromProjectBib(DOC, { key: "jones1999", keyOrdinal: 0 });
     await settle();
     expect(DISK).not.toContain("@book{jones1999");
     expect(DISK).toContain("@article{smith2020,");

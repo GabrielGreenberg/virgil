@@ -221,7 +221,7 @@ describe("a failed references.bib write is published to the user", () => {
     expect(added).toEqual({ appended: 0, result: { kind: "failed", error: writeError } });
     expect(getSidecarRefusal(DOC)?.reason).toBe("failed");
     resetSidecarRefusals();
-    expect((await removeEntryFromProjectBib(DOC, "a")).kind).toBe("failed");
+    expect((await removeEntryFromProjectBib(DOC, { key: "a", keyOrdinal: 0 })).kind).toBe("failed");
     expect(getSidecarRefusal(DOC)?.reason).toBe("failed");
   });
 

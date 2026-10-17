@@ -40,7 +40,7 @@
 
 import type { BibEntry } from "@/lib/types";
 import type { BibEntryAddress } from "@/lib/bib-address";
-import { resolveBibEntryIndex } from "@/lib/bib-address";
+import { citekeyEq, resolveBibEntryIndex } from "@/lib/bib-address";
 
 /** A head the door accepts, or the reason it does not — in the user's words,
  *  because the card renders it verbatim. */
@@ -148,7 +148,11 @@ export function validateBibEntryHead(
     context.self !== undefined
       ? resolveBibEntryIndex(context.entries, context.self)
       : -1;
-  const collidesAt = context.entries.findIndex((e, i) => e.key === key && i !== selfIndex);
+  // Case-insensitive (task 1159): BibTeX reads `Smith2020` and `smith2020` as
+  // ONE key, so renaming onto a case-twin is a collision, not a new key.
+  const collidesAt = context.entries.findIndex(
+    (e, i) => citekeyEq(e.key, key) && i !== selfIndex,
+  );
   if (collidesAt !== -1) {
     return {
       ok: false,
@@ -189,6 +193,8 @@ export function validateBibEntryHeadChange(
   const type = next.type.trim();
   const typeCheck = validateBibEntryType(type);
   if (!typeCheck.ok) return typeCheck;
-  if (key === current.key) return { ok: true };
+  // Exact on purpose: a case-only change (`smith` → `Smith`) MOVES the key,
+  // so it is checked — and passes, since the collision check excludes self.
+  if (key === current.key) return { ok: true }; // citekey-exact: did the key move?
   return validateBibEntryHead({ key, type }, context);
 }
