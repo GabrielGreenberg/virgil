@@ -28,7 +28,6 @@ import {
   READONLY_HUMAN_FIELDS,
   StaleNotice,
   SuggestionTrailing,
-  type SuggestionField,
 } from "@/panels/_shared/suggestion-fields";
 // The collapsed cue's ORIGINAL half reads the same door the expanded excerpt
 // does, so the two cannot disagree about what the passage says.
@@ -38,6 +37,7 @@ import { capturedPassageOneLine } from "@/panels/_shared/captured-passage";
 import {
   hasSuggestionReplacement,
   suggestionReplacement,
+  type SuggestionFieldUpdater,
 } from "@/panels/_shared/suggestion-field-vocabulary";
 
 /**
@@ -70,9 +70,8 @@ import {
  *
  * — which means a new suggestion family, or a re-themed one, costs a registry
  * row and no card edit at all. The two panel-side files survive as named
- * wrappers (their import sites, their `*Trailing` exports and the Cutter's
- * legacy `CopyButton` / `FieldTitleRow` re-exports are load-bearing), each one
- * now a single delegation that has nothing left to forget.
+ * wrappers (their import sites and their `*Trailing` exports are
+ * load-bearing), each one now a single delegation that has nothing left to forget.
  */
 
 /** The two suggestion shapes are field-for-field identical (`src/lib/types.ts`),
@@ -113,7 +112,7 @@ export function SuggestionCard({
    *  and the key every other facet is derived through. */
   family: PendingChangeFamily;
   selected: boolean;
-  onUpdateField: (id: string, field: SuggestionField, value: string) => void;
+  onUpdateField: SuggestionFieldUpdater;
   /* NO landing-verb props (task 684). Apply / Accept / Reject / Keep / Revert
      all resolve from the `PendingChangeController` context, so the card behaves
      identically on every surface and a new mount site has nothing to forget.

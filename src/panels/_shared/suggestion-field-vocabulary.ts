@@ -24,6 +24,16 @@ export type SuggestionField =
   | "user_text"
   | "instructions";
 
+/** The one handler shape every suggestion-field write travels through — the
+ *  `useCutter` / `useRevisions` `updateSuggestionField`, the panel and omni
+ *  props that carry it, and the cards' `onUpdateField`. Named once so a field
+ *  added to `SuggestionField` reaches every signature without a hand edit. */
+export type SuggestionFieldUpdater = (
+  id: string,
+  field: SuggestionField,
+  value: string,
+) => void;
+
 /** The order the human composition grid renders. (`instructions` is AI-only and
  *  deliberately absent — it never renders on the human surface.) */
 export const FIELD_ORDER: SuggestionField[] = [

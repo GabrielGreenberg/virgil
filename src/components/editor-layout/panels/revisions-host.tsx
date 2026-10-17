@@ -16,6 +16,7 @@ import { useDockedJumpGate } from "../contexts/card-anchor";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
+import type { SuggestionFieldUpdater } from "@/panels/_shared/suggestion-field-vocabulary";
 
 export interface RevisionsHostProps {
   side: Side;
@@ -25,16 +26,7 @@ export interface RevisionsHostProps {
   setTrackerTarget: (target: number | null) => void;
   updateCommentContent: (id: string, content: JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
-  updateSuggestionField: (
-    id: string,
-    field:
-      | "original_text"
-      | "suggested_text"
-      | "explanation"
-      | "user_text"
-      | "instructions",
-    value: string,
-  ) => void;
+  updateSuggestionField: SuggestionFieldUpdater;
   convertCard: CardMorphHandler;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */

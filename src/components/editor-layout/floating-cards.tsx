@@ -23,6 +23,7 @@ import type {
 import type { SaveBibEntry } from "@/hooks/useCitations";
 import type { RequestBibReview } from "@/hooks/useBibReview";
 import type { CardAnchorResolver } from "@/links/card-anchor-rows";
+import type { SuggestionFieldUpdater } from "@/panels/_shared/suggestion-field-vocabulary";
 
 /**
  * Deps bundle for the popped-card renderer. Sourced entirely from the
@@ -161,16 +162,7 @@ export interface PoppedCardDeps {
   // Cutter
   updateCutterCommentContent: (id: string, content: JSONContent) => void;
   setCutterCommentAiRequest: (id: string, value: boolean) => void;
-  updateCutterSuggestionField: (
-    id: string,
-    field:
-      | "original_text"
-      | "suggested_text"
-      | "explanation"
-      | "user_text"
-      | "instructions",
-    value: string,
-  ) => void;
+  updateCutterSuggestionField: SuggestionFieldUpdater;
   /* NO `set<Family>SuggestionStatus` (task 684). It existed so the float host
      could wire the card's Accept/Reject to a bare status write — the write that
      made a popped-out suggestion do something different from the same card
@@ -213,16 +205,7 @@ export interface PoppedCardDeps {
   // Revisions panel (mirrors Cutter)
   updateRevisionCommentContent: (id: string, content: JSONContent) => void;
   setRevisionCommentAiRequest: (id: string, value: boolean) => void;
-  updateRevisionSuggestionField: (
-    id: string,
-    field:
-      | "original_text"
-      | "suggested_text"
-      | "explanation"
-      | "user_text"
-      | "instructions",
-    value: string,
-  ) => void;
+  updateRevisionSuggestionField: SuggestionFieldUpdater;
   /* NO `set<Family>SuggestionStatus` (task 684). It existed so the float host
      could wire the card's Accept/Reject to a bare status write — the write that
      made a popped-out suggestion do something different from the same card

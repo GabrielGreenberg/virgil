@@ -2,18 +2,9 @@
 
 import type { CutterSuggestionCard as CutterSuggestionCardData } from "@/lib/types";
 import type { CardMorphHandler } from "@/cards/types";
-import {
-  CopyButton,
-  FieldTitleRow,
-  SuggestionTrailing,
-  type SuggestionField,
-} from "@/panels/_shared/suggestion-fields";
+import { SuggestionTrailing } from "@/panels/_shared/suggestion-fields";
+import type { SuggestionFieldUpdater } from "@/panels/_shared/suggestion-field-vocabulary";
 import { SuggestionCard } from "@/panels/_shared/SuggestionCard";
-
-// Re-exported for backward compatibility — these now live in the shared
-// suggestion-fields module (CutterCommentCard imports them from here, and the
-// Cutter barrel re-exports them).
-export { CopyButton, FieldTitleRow };
 
 /** Status dot + author chip + status label — the cutter-suggestion header
  *  trailing, shown docked and (via the `toFloatable` factory) in `FloatChrome`. */
@@ -34,7 +25,7 @@ export function CutterSuggestionTrailing({
 export function CutterSuggestionCard(props: {
   card: CutterSuggestionCardData;
   selected: boolean;
-  onUpdateField: (id: string, field: SuggestionField, value: string) => void;
+  onUpdateField: SuggestionFieldUpdater;
   /** Morph suggestion ⇄ comment via the kind-chevron. */
   onConvert?: CardMorphHandler;
   onDelete: (id: string) => void;
