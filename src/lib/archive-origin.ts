@@ -5,7 +5,9 @@
  *
  *  - an EXCERPT — a slice of the document the user cut out of the prose. Its
  *    body is the only copy of that text, and restoring it hands the slice back
- *    to the document at the caret (`useArchive.restoreSnippet`'s landing path).
+ *    to the document at its return address — where it was cut from (task 965),
+ *    or the caret when no live anchor survives (`useArchive.restoreSnippet`'s
+ *    landing path).
  *  - a whole CARD set aside by `/editor/archive-card`
  *    (`editor/scripts/apply_response.py` `cmd_archive`). It carries an origin
  *    record — `originalPanel` + the verbatim `originalCard` + `archivedAt` — and
