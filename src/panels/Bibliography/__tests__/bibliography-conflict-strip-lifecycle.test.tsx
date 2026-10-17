@@ -94,7 +94,7 @@ function Host({
 }: {
   onAdd?: (e: BibEntry) => void;
   onSelect?: (k: string | null) => void;
-  onSave?: (e: BibEntry, patch: BibEntrySave) => void;
+  onSave?: (e: BibEntry, patch: BibEntrySave) => unknown;
 }) {
   const [entries, setEntries] = useState<BibEntry[]>([SMITH_LOCAL]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -121,10 +121,10 @@ function Host({
       selectedBibKey={selected}
       onSelectBibKey={handleSelect}
       onAddBibEntry={handleAdd}
-      onSaveBibEntry={onSave ?? (() => {})}
+      onSaveBibEntry={async (e, p) => { onSave?.(e, p); return { kind: "declined" as const }; }}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
-      onRequestReview={() => {}}
+      onRequestReview={async () => ({ ok: true as const })}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
       docId="doc1"

@@ -80,10 +80,10 @@ const baseProps = {
   getFormattedBib: () => "",
   getAnnotation: () => "",
   setAnnotation: () => {},
-  onRequestReview: () => {},
+  onRequestReview: async () => ({ ok: true as const }),
   onCancelReview: () => {},
   getReviewStatus: () => "none" as const,
-  onSaveBibEntry: () => {},
+  onSaveBibEntry: async () => ({ kind: "declined" as const }),
   onAddBibEntry: () => {},
 };
 

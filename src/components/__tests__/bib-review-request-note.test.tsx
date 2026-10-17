@@ -25,7 +25,7 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-import { render, screen, fireEvent, cleanup, renderHook, act } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, renderHook, act, waitFor } from "@testing-library/react";
 import BibEntryCard from "@/components/BibEntryCard";
 import { useBibReview } from "@/hooks/useBibReview";
 import type { BibEntry } from "@/lib/types";
@@ -43,7 +43,7 @@ const ENTRY: BibEntry = {
 function renderCard(
   overrides: Partial<React.ComponentProps<typeof BibEntryCard>> = {},
 ) {
-  const onRequestReview = vi.fn();
+  const onRequestReview = vi.fn(async () => ({ ok: true as const }));
   const onCancelReview = vi.fn();
   const utils = render(
     <BibEntryCard
@@ -55,7 +55,7 @@ function renderCard(
       onRequestReview={onRequestReview}
       onCancelReview={onCancelReview}
       getReviewStatus={() => "none"}
-      onSaveBibEntry={() => {}}
+      onSaveBibEntry={async () => ({ kind: "declined" as const })}
       {...overrides}
     />,
   );
@@ -68,7 +68,7 @@ const noteInput = (c: HTMLElement, type: "fields" | "notes") =>
   c.querySelector(`[data-review-request-note="${type}"]`) as HTMLInputElement | null;
 
 describe.each(["fields", "notes"] as const)("task 981 — %s review request", (type) => {
-  it("opening the composer writes nothing; Return sends the typed note once", () => {
+  it("opening the composer writes nothing; Return sends the typed note once", async () => {
     const { container, onRequestReview } = renderCard();
     fireEvent.click(chip(container, type));
     expect(onRequestReview).not.toHaveBeenCalled();
@@ -82,7 +82,8 @@ describe.each(["fields", "notes"] as const)("task 981 — %s review request", (t
       type,
       "add the DOI; check the page range",
     );
-    expect(noteInput(container, type)).toBeNull();
+    // Closes once the write is known to have LANDED (task 1158).
+    await waitFor(() => expect(noteInput(container, type)).toBeNull());
   });
 
   it("the chip reads Send while composing and sends on click (empty note is fine)", () => {
@@ -128,7 +129,7 @@ it("the fields placeholder addresses the reviewer, not the annotator", () => {
 describe("task 981 — useBibReview carries the note into the row", () => {
   it("requestReview persists requestNotes; getRequestNotes reads it back", () => {
     const { result } = renderHook(() => useBibReview(null));
-    act(() => result.current.requestReview("foo2020", "fields", "add the DOI"));
+    act(() => { void result.current.requestReview("foo2020", "fields", "add the DOI"); });
     const row = result.current.requests.find((r) => r.bibKey === "foo2020");
     expect(row?.requestNotes).toBe("add the DOI");
     expect(result.current.getRequestNotes("foo2020", "fields")).toBe("add the DOI");

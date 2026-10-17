@@ -164,6 +164,56 @@ export function didBibWriteLand(
   return r.kind === "written" || r.kind === "declined";
 }
 
+/**
+ * What a USER-GESTURE save answers (task 1158): the door's own verdict, or
+ * `invalid` — the head the user typed failed the validation door
+ * (`validateBibEntryHeadChange`) before any write was attempted.
+ *
+ * A composer (the bib card's "Edit entry") holds the user's typed fields until
+ * it reads this, and closes only on {@link didBibSaveLand}. It used to close on
+ * the CLICK, so every verdict below that is not "landed" — a library paper's
+ * `read-only` `.bib`, the unbalanced-span refusal, a vanished entry — rolled
+ * the optimistic view back AND destroyed the draft that was the only copy of
+ * what the user had typed.
+ */
+export type BibSaveResult = BibWriteResult | { kind: "invalid"; reason: string };
+
+/** Did a user-gesture save land? The ONE question a composer closes on. */
+export function didBibSaveLand(r: BibSaveResult): boolean {
+  return r.kind !== "invalid" && didBibWriteLand(r);
+}
+
+/**
+ * The reason a save that did NOT land gives the person who pressed Save — said
+ * at the composer that still holds their draft. This is the voice the
+ * `read-only` / `no-handle` kinds deliberately lack on the refusal CHANNEL
+ * (see {@link refusedWrite}: window-event writers stay quiet); a composer is
+ * always the user's own gesture in the paper they are looking at, so here it
+ * is owed. `null` for a save that landed.
+ */
+export function bibSaveRefusalReason(r: BibSaveResult): string | null {
+  switch (r.kind) {
+    case "written":
+    case "declined":
+      return null;
+    case "invalid":
+      return r.reason;
+    case "read-only":
+      return "This bibliography is read-only here — a library paper's references are managed by the library. Nothing was changed.";
+    case "no-handle":
+      return "This paper is not open for writing, so references.bib was not changed.";
+    case "stale":
+      return "The paper changed while saving, so the edit was not applied. Your changes are still here — try Save again.";
+    case "not-found":
+    case "failed": {
+      const err = "error" in r ? r.error : undefined;
+      return err instanceof Error && err.message
+        ? err.message
+        : "references.bib could not be updated. Nothing was changed.";
+    }
+  }
+}
+
 /** Did this result mean the user's change is NOT on disk and never will be? */
 export function isBibWriteRefused(
   r: BibWriteResult,

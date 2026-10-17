@@ -47,10 +47,10 @@ function renderCard(annotation: string) {
       onClick={() => {}}
       getAnnotation={() => annotation}
       setAnnotation={() => {}}
-      onRequestReview={() => {}}
+      onRequestReview={async () => ({ ok: true as const })}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onSaveBibEntry={() => {}}
+      onSaveBibEntry={async () => ({ kind: "declined" as const })}
     />,
   );
 }

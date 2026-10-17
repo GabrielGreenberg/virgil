@@ -242,7 +242,7 @@ describe("useBibReview converges through the shared doors", () => {
         requests: [{ bibKey: "k1", type: "fields", requestedAt: "t", status: "complete" }],
       });
     };
-    act(() => result.current.requestReview("k2", "notes"));
+    act(() => { void result.current.requestReview("k2", "notes"); });
     await settle();
     expect(result.current.getRequestStatus("k1", "fields")).toBe("complete");
     expect(result.current.getRequestStatus("k2", "notes")).toBe("pending");

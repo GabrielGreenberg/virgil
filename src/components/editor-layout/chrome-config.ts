@@ -240,6 +240,21 @@ export function isSidecarWriteAllowed(
 }
 
 /**
+ * The UI-layer permit for a write to the doc's BIBLIOGRAPHY FILE (task 1158) —
+ * asked by the bib card before it offers "Edit entry".
+ *
+ * The `.bib` is not a sidecar, so it is in no host's derived writable set: a
+ * read-mostly host (a whitelist — the Reader) never writes it, and the storage
+ * funnel agrees (`libraryPaperWriteAllowed(docId, BIB_WRITE_SUBKEY)` is false
+ * for a `library-paper:` doc). Without this permit the card offered the editor
+ * there, the save answered `read-only` — deliberately unvoiced on the refusal
+ * channel — and the user's typed fields rolled back in silence.
+ */
+export function isBibFileWriteAllowed(chrome: EditorChromeConfig): boolean {
+  return writableSidecarsFor(chrome.editableCardKinds) === null;
+}
+
+/**
  * The UI-layer permit for a CARD MUTATION: may a change to a card of this kind
  * reach disk under this chrome? Asked by `EditableCard` before it offers a
  * DELETE affordance — the trash, the menu item and the shell's delete key.

@@ -8,6 +8,7 @@
 // This suite also pins the count: ONE call per Save, never the two (fields,
 // then head) that raced in the `.bib` write queue.
 
+import type { SaveBibEntry } from "@/hooks/useCitations";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("@/lib/storage", async () =>
@@ -38,7 +39,7 @@ function makeEntry(): BibEntry {
 }
 
 function renderCard(overrides: Partial<React.ComponentProps<typeof BibEntryCard>> = {}) {
-  const onSaveBibEntry = vi.fn();
+  const onSaveBibEntry = vi.fn<SaveBibEntry>(async () => ({ kind: "declined" as const }));
   render(
     <BibEntryCard
       entry={makeEntry()}
@@ -46,7 +47,7 @@ function renderCard(overrides: Partial<React.ComponentProps<typeof BibEntryCard>
       onClick={() => {}}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
-      onRequestReview={() => {}}
+      onRequestReview={async () => ({ ok: true as const })}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
       onSaveBibEntry={onSaveBibEntry}
@@ -75,7 +76,7 @@ describe("BibEntryCard inline editor — field delete (BIB-F5-04)", () => {
     expect(onSaveBibEntry).toHaveBeenCalledTimes(1);
     // The mutator takes the ENTRY, not its citekey (task 690) — a citekey
     // names as many `.bib` blocks as carry it.
-    const [target, patch] = onSaveBibEntry.mock.calls[0];
+    const [target, patch] = onSaveBibEntry.mock.calls[0] as [BibEntry, { fields: Record<string, string> }];
     expect(target.key).toBe("foo2020");
     // The removed field is GONE from the set-all map (deleted, not retained).
     expect("note" in patch.fields).toBe(false);

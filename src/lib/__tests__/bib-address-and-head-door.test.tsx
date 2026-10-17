@@ -27,6 +27,7 @@
 // an existing citekey was accepted in full — after which the panel showed one
 // card for two blocks and every later edit reached both.
 
+import type { SaveBibEntry } from "@/hooks/useCitations";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 class ResizeObserverStub {
@@ -268,10 +269,10 @@ function renderCard(entries: BibEntry[], index: number, handlers: Record<string,
       onClick={() => {}}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
-      onRequestReview={() => {}}
+      onRequestReview={async () => ({ ok: true as const })}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onSaveBibEntry={() => {}}
+      onSaveBibEntry={async () => ({ kind: "declined" as const })}
       {...handlers}
     />,
   );
@@ -302,7 +303,7 @@ describe("the card · Save is disabled and says why", () => {
   });
 
   it("renaming onto an existing citekey disables Save, and nothing is dispatched", () => {
-    const onSaveBibEntry = vi.fn();
+    const onSaveBibEntry = vi.fn<SaveBibEntry>(async () => ({ kind: "declined" as const }));
     renderCard(entries, 0, { onSaveBibEntry });
     openEditor();
     fireEvent.change(screen.getByDisplayValue("smith2020"), { target: { value: "jones1999" } });
@@ -312,7 +313,7 @@ describe("the card · Save is disabled and says why", () => {
   });
 
   it("a legal head keeps Save live and dispatches the ENTRY, not the citekey", () => {
-    const onSaveBibEntry = vi.fn();
+    const onSaveBibEntry = vi.fn<SaveBibEntry>(async () => ({ kind: "declined" as const }));
     renderCard(entries, 0, { onSaveBibEntry });
     openEditor();
     fireEvent.change(screen.getByDisplayValue("smith2020"), { target: { value: "smith2021" } });
