@@ -39,6 +39,7 @@ import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
 import { asBibFamily, type BibFamily } from "@/lib/bib-family";
+import { declaredBibFiles, pickDeclaredBibFile } from "@/lib/bib-resources";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
 import type {
@@ -952,17 +953,16 @@ export async function snapshotConflictSides(
 // Bibliography
 // ---------------------------------------------------------------------------
 
-const BIB_DECL_RE = /\\(?:bibliography|addbibresource)\{([^}]+)\}/;
-
-/** The `.bib` filename a `.tex` declares (`\bibliography{}` /
- *  `\addbibresource{}`), falling back to `references.bib`. Spelled ONCE:
- *  the name resolver, the reader and the write door used to carry three
- *  byte-identical copies of this match (task 558). */
-function bibFilenameFromTex(tex: string): string {
-  const m = tex.match(BIB_DECL_RE);
-  if (!m) return "references.bib";
-  const name = m[1].trim();
-  return name.endsWith(".bib") ? name : `${name}.bib`;
+/** The `.bib` filename a `.tex` declares, falling back to `references.bib`.
+ *  Spelled ONCE for the name resolver, the reader and the write door (task
+ *  558); the declaration parse and the multi-file pick are the shared
+ *  `bib-resources` rule the FSA backend uses too (task 1157). */
+async function bibFilenameFor(docId: string, tex: string): Promise<string> {
+  const picked = await pickDeclaredBibFile(
+    declaredBibFiles(tex),
+    async (name) => (await fetchText(docFileUrl(docId, name))) !== null,
+  );
+  return picked ?? "references.bib";
 }
 
 /**
@@ -974,12 +974,12 @@ function bibFilenameFromTex(tex: string): string {
  * `\bibliography{}`/`\addbibresource{}`, falling back to `references.bib`.
  */
 export async function getBibFilename(docId: string): Promise<string> {
-  return bibFilenameFromTex(await readTex(docId));
+  return bibFilenameFor(docId, await readTex(docId));
 }
 
 export async function readBib(docId: string): Promise<BibReadResult> {
   const tex = await readTex(docId);
-  const bibFilename = bibFilenameFromTex(tex);
+  const bibFilename = await bibFilenameFor(docId, tex);
   const bibText = (await fetchText(docFileUrl(docId, bibFilename))) ?? "";
   // NOTE: readBib is a PURE reader — it does NOT stamp the disk ledger. The
   // .bib baseline is established by the watcher's PRIME pass + by the write
@@ -1024,7 +1024,10 @@ export async function mutateBib(
     // Resolved INSIDE the queued task, like the FSA twin (task 691): the name
     // costs IO, and a key that cannot be spelled synchronously is a queue that
     // does not order writes by CALL order.
-    const bibFilename = bibFilenameFromTex(await readTex(h.docId));
+    const bibFilename = await bibFilenameFor(
+      h.docId,
+      await readTex(h.docId),
+    );
     // The in-lock base read is NON-stamping, for the reason the FSA twin
     // states: the `.bib` fingerprint is the watcher's baseline.
     const current = (await fetchText(docFileUrl(h.docId, bibFilename))) ?? "";
