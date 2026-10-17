@@ -319,8 +319,8 @@ const LEDGER: Record<string, Row> = {
   },
   "panels/Outline/focus-band-drag.ts": {
     scope: "gesture",
-    events: ["document.mousemove", "document.mouseup"],
-    why: "focus-band drag pair",
+    events: ["document.mousemove", "document.mouseup", "window.keydown"],
+    why: "focus-band drag pair + its Escape cancel (task 1167), which claims a press only while a drag is live — a hidden pane has none",
   },
   "text-objects/LiftHost.tsx": {
     scope: "gesture",
