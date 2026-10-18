@@ -62,7 +62,6 @@ import { editorJump, selectMirror } from "./body-contract";
 import type { CardKind } from "../types";
 import { CARD_REGISTRY, morphOptionsFor, registerCardFloatable } from "../card-registry";
 import { hasCollabClaims } from "../predicates";
-import { canMorphNoteToHighlight } from "../morphs";
 import { CardKindHeader } from "@/components/panel-primitives";
 
 /** Shared shell for a card `Floatable`. `key`/`domain`/`surface` are uniform;
@@ -167,22 +166,18 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
   const jump = cardJumpGate(note, ctx.resolveCardRows);
   return cardFloatable("note", id, {
     chromeSlots: {
-      // WS7 (A6): the kind-chevron title slot is gated off for
-      // paragraph-only Mode-A notes (no text range → nothing for a
-      // highlight to tint); FloatChrome falls back to the plain title.
-      ...(canMorphNoteToHighlight(note)
-        ? {
-            title: (
-              <CardKindHeader
-                kind="note"
-                options={morphOptionsFor("note")}
-                onChange={(k) => {
-                  ctx.morphCard("note", id, k);
-                }}
-              />
-            ),
-          }
-        : {}),
+      // WS7 (A6): a paragraph-only Mode-A note's registered morph gate
+      // refuses it (no text range → nothing for a highlight to tint), so
+      // `morphOptionsFor` answers ["note"] and the header is the plain label.
+      title: (
+        <CardKindHeader
+          kind="note"
+          options={morphOptionsFor("note", note)}
+          onChange={(k) => {
+            ctx.morphCard("note", id, k);
+          }}
+        />
+      ),
     },
     jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(note, null),
@@ -216,7 +211,7 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="highlight"
-          options={morphOptionsFor("highlight")}
+          options={morphOptionsFor("highlight", hl)}
           onChange={(k) => {
             ctx.morphCard("highlight", id, k);
           }}
@@ -403,7 +398,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="cutter-comment"
-          options={morphOptionsFor("cutter-comment")}
+          options={morphOptionsFor("cutter-comment", card)}
           onChange={(k) => {
             ctx.morphCard("cutter-comment", id, k);
           }}
@@ -475,7 +470,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="report"
-          options={morphOptionsFor("report")}
+          options={morphOptionsFor("report", card)}
           onChange={(k) => {
             ctx.morphCard("report", id, k);
           }}
@@ -512,7 +507,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="report-request"
-          options={morphOptionsFor("report-request")}
+          options={morphOptionsFor("report-request", card)}
           onChange={(k) => {
             ctx.morphCard("report-request", id, k);
           }}
@@ -672,7 +667,7 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
       title: (
         <CardKindHeader
           kind="revision-comment"
-          options={morphOptionsFor("revision-comment")}
+          options={morphOptionsFor("revision-comment", card)}
           onChange={(k) => {
             ctx.morphCard("revision-comment", id, k);
           }}

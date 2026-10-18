@@ -35,7 +35,7 @@ describe("morphOptionsFor: the menu is the morph route", () => {
 
   it("offers exactly the kind itself + its declared target", () => {
     for (const k of MORPHING) {
-      expect(new Set(morphOptionsFor(k))).toEqual(
+      expect(new Set(morphOptionsFor(k, null))).toEqual(
         new Set([k, CARD_REGISTRY[k].morph!.to]),
       );
     }
@@ -43,13 +43,13 @@ describe("morphOptionsFor: the menu is the morph route", () => {
 
   it("a non-morphing kind offers only itself (CardKindHeader then renders the plain label)", () => {
     for (const k of CARD_KINDS.filter((x) => CARD_REGISTRY[x].morph == null)) {
-      expect(morphOptionsFor(k)).toEqual([k]);
+      expect(morphOptionsFor(k, null)).toEqual([k]);
     }
   });
 
   it("PARITY with the retired `cardKindsForPanel(panel)` menu — same list, same order, so no chevron changes today", () => {
     for (const k of MORPHING) {
-      expect(morphOptionsFor(k)).toEqual(
+      expect(morphOptionsFor(k, null)).toEqual(
         cardKindsForPanel(CARD_REGISTRY[k].panel!),
       );
     }
@@ -109,7 +109,7 @@ describe("a third kind in a morphing panel", () => {
     installThird();
     // `report` still declares report-request; the third kind merely shares the panel.
     expect(cardKindsForPanel("reports")).toContain(THIRD); // it IS a panel member
-    expect(morphOptionsFor("report")).not.toContain(THIRD); // …and still not offered
+    expect(morphOptionsFor("report", null)).not.toContain(THIRD); // …and still not offered
     expect(resolveMorphTarget("report", THIRD)).toBeNull();
   });
 
@@ -120,8 +120,8 @@ describe("a third kind in a morphing panel", () => {
       lossy: true,
       drops: ["title"],
     };
-    expect(morphOptionsFor("report")).toContain(THIRD);
-    expect(morphOptionsFor("report")).not.toContain("report-request");
+    expect(morphOptionsFor("report", null)).toContain(THIRD);
+    expect(morphOptionsFor("report", null)).not.toContain("report-request");
     // The dispatch follows the selection…
     expect(resolveMorphTarget("report", THIRD)).toBe(THIRD);
     // …and the hardcoded partner is no longer reachable at all.

@@ -66,7 +66,7 @@ export function ReportRequestCard({
       id={request.id}
       cardKind="report-request"
       kind="report-request"
-      kindOptions={onConvert ? morphOptionsFor("report-request") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("report-request", request) : undefined}
       onKindChange={
         onConvert ? (k) => onConvert("report-request", request.id, k) : undefined
       }

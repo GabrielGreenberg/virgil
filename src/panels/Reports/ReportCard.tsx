@@ -68,7 +68,7 @@ export function ReportCard({
       id={report.id}
       cardKind="report"
       kind="report"
-      kindOptions={onConvert ? morphOptionsFor("report") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("report", report) : undefined}
       onKindChange={onConvert ? (k) => onConvert("report", report.id, k) : undefined}
       selected={isSelected}
       theme={theme}

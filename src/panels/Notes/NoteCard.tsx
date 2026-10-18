@@ -10,7 +10,6 @@ import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
-import { canMorphNoteToHighlight } from "@/cards/morphs";
 import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 
 export function NoteCard({
@@ -68,22 +67,18 @@ export function NoteCard({
   const isSelected = ac.selected || selected;
   const theme = useCardKindTheme("note");
 
-  // WS7 (A6): the note→highlight chevron is gated off for paragraph-only
-  // Mode-A notes (and orphaned ones) — no text range, nothing to tint.
-  // Covers docked AND omni (both render this component); the float's
-  // CardKindHeader title slot is gated in cards/floats/index.tsx.
-  const morphable = canMorphNoteToHighlight(note);
-
   const card = (
     <EditableCard
       {...shell}
       id={note.id}
       cardKind="note"
       kind="note"
-      kindOptions={onConvert && morphable ? morphOptionsFor("note") : undefined}
-      onKindChange={
-        onConvert && morphable ? (k) => onConvert("note", note.id, k) : undefined
-      }
+      // WS7 (A6): a paragraph-only Mode-A (or orphaned) note has no range for
+      // a highlight to tint — its REGISTERED morph gate refuses it, so the
+      // option list is just ["note"] and the header renders the plain label
+      // (docked AND omni render this component; task 1173).
+      kindOptions={onConvert ? morphOptionsFor("note", note) : undefined}
+      onKindChange={onConvert ? (k) => onConvert("note", note.id, k) : undefined}
       selected={isSelected}
       theme={theme}
       hideToolbar

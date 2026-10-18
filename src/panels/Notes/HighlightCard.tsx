@@ -106,7 +106,7 @@ export function HighlightCard({
       onTrashClick={tryDelete}
       cardId={card.id}
       kind="highlight"
-      kindOptions={onConvert ? morphOptionsFor("highlight") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("highlight", card) : undefined}
       onKindChange={onConvert ? (k) => onConvert("highlight", card.id, k) : undefined}
       className="mb-2"
       {...(extraDataAttrs ?? {})}

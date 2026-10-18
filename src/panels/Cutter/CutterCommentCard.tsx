@@ -87,7 +87,7 @@ export function CutterCommentCard({
       id={card.id}
       cardKind="cutter-comment"
       kind="cutter-comment"
-      kindOptions={onConvert ? morphOptionsFor("cutter-comment") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("cutter-comment", card) : undefined}
       onKindChange={
         onConvert ? (k) => onConvert("cutter-comment", card.id, k) : undefined
       }

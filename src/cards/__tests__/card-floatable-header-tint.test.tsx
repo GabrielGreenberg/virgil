@@ -14,8 +14,9 @@
 //      it through the shared accent path yields the theme's headerDefault
 //      (checked for note + todo).
 //   2. A text-object floatable declares NO themeKey (neutral strip).
-//   3. Bonus chip-D/WS7 residue: the note float's kind-chevron title slot is
-//      gated exactly like the docked card (Mode-B yes, Mode-A no).
+//   3. Bonus chip-D/WS7 residue: the note float's kind-chevron is gated
+//      exactly like the docked card (Mode-B yes, Mode-A no) — through the
+//      registered morph gate, not a hand check (task 1173).
 //
 // RENEGOTIATED (task 493): legs 1-2 asserted a RESOLVED `headerTint` hex baked
 // onto the `Floatable`. That is exactly the value that could not follow a live
@@ -24,7 +25,8 @@
 // unchanged (a note float paints the note theme's headerDefault); what moved is
 // WHERE the colour is resolved, which is the fix.
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, cleanup } from "@testing-library/react";
 
 // cards/floats imports every panel's card components → `@/lib/storage`
 // (the known barrel/storage gotcha).
@@ -36,6 +38,11 @@ vi.mock("@/lib/storage", async () =>
 // real text-object float bodies onto TEXT_OBJECT_REGISTRY (so the paragraph
 // floatable below actually builds instead of returning null).
 import "@/cards/floats";
+// The note's morph GATE is registered by the morphs boot module (task 898).
+// In the app it is always loaded wherever a chevron is live — `onConvert` is
+// wired only by the hooks that import `applyCardMorph` from it — so load it
+// here too: the chevron now asks the registry, not a hand check (task 1173).
+import "@/cards/morphs";
 import "@/text-objects/floats";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_THEMES } from "@/components/panel-primitives";
@@ -265,19 +272,24 @@ describe("citation float canJump (task 136 — anchor-state jump gate)", () => {
 });
 
 describe("note float kind-chevron gate (WS7 — float half of the docked gate)", () => {
-  it("Mode-B note: chromeSlots.title carries the CardKindHeader", () => {
-    const f = CARD_REGISTRY.note.toFloatable(
-      "n1",
-      ctxWith({ notes: [note([modeBLink()])] }),
-    );
-    expect(f!.chromeSlots?.title).toBeTruthy();
+  // Task 1173: the float no longer hand-checks `canMorphNoteToHighlight` and
+  // drops the slot — it asks `morphOptionsFor("note", note)` like every other
+  // chevron, and the REGISTERED gate answers. So the slot is always present;
+  // what the gate decides is whether it RENDERS a dropdown or the plain label.
+  const CHEVRON = '[aria-label="Change card type"]';
+  function renderTitle(links: Link[]) {
+    const f = CARD_REGISTRY.note.toFloatable("n1", ctxWith({ notes: [note(links)] }));
+    return render(<>{f!.chromeSlots?.title}</>);
+  }
+  afterEach(cleanup);
+
+  it("Mode-B note: the title slot renders the kind-chevron", () => {
+    expect(renderTitle([modeBLink()]).container.querySelector(CHEVRON)).not.toBeNull();
   });
 
-  it("Mode-A note: title slot gated off (plain label fallback in FloatChrome)", () => {
-    const f = CARD_REGISTRY.note.toFloatable(
-      "n1",
-      ctxWith({ notes: [note([modeALink()])] }),
-    );
-    expect(f!.chromeSlots?.title).toBeUndefined();
+  it("Mode-A note: the registry gate refuses → plain label, no chevron", () => {
+    const { container } = renderTitle([modeALink()]);
+    expect(container.querySelector(CHEVRON)).toBeNull();
+    expect(container.textContent).toContain(CARD_REGISTRY.note.label);
   });
 });

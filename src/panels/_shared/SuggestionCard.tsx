@@ -63,7 +63,7 @@ import {
  *
  *   - the accent            → `useCardKindTheme(family)` → `registry.themeKey`
  *   - the owning panel      → `registry.panel`
- *   - the morph kind menu   → `morphOptionsFor(family)` (registry `morph.to`)
+ *   - the morph kind menu   → `morphOptionsFor(family, card)` (registry `morph.to`)
  *   - the body typography   → `PANEL_KIND_TO_BODY_KEY[registry.panel]`
  *   - the pop / anchor keys → `cardPopKey(family, id)` / `{ kind: family, id }`
  *   - the docked hook attr  → `data-<family>-entry`
