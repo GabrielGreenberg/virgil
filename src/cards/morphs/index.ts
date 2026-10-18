@@ -320,13 +320,12 @@ registerCardMorph("highlight", (card) => highlightToNote(card as HighlightCard))
  *  Mode-B text-range anchor. A highlight IS its text range — a
  *  paragraph-only Mode-A note (and an orphaned note, `links: []`) has no
  *  range to tint, so the morph would produce an invisible highlight.
- *  Consumer-owned predicate: the registry `morph` field stays static (the
- *  note⇄highlight pair is still declared and the converter registered);
- *  the chevron call sites gate on this — NoteCard's `kindOptions` (covers
- *  docked + omni, which render the same component) and the note float
- *  builder's `chromeSlots.title` CardKindHeader — and since task 898 it is
- *  REGISTERED as the note's morph gate, so the lifecycle executor refuses a
- *  morph the chevron would never offer (`canMorphCard`). The reverse direction
+ *  The registry `morph` field stays static (the note⇄highlight pair is still
+ *  declared and the converter registered); this predicate is REGISTERED as
+ *  the note's morph gate (task 898), so every chevron — which asks
+ *  `morphOptionsFor(kind, card)` with the record (task 1173) — and the
+ *  lifecycle executor (`canMorphCard`) read the same answer. Nothing outside
+ *  this module calls it directly. The reverse direction
  *  (highlight → note) needs NO gate — every highlight has a range, and a
  *  note can always hold one. */
 export function canMorphNoteToHighlight(note: UserNote): boolean {

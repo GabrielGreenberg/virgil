@@ -86,7 +86,7 @@ export function RevisionRequestCard({
       id={card.id}
       cardKind="revision-comment"
       kind="revision-comment"
-      kindOptions={onConvert ? morphOptionsFor("revision-comment") : undefined}
+      kindOptions={onConvert ? morphOptionsFor("revision-comment", card) : undefined}
       onKindChange={
         onConvert ? (k) => onConvert("revision-comment", card.id, k) : undefined
       }

@@ -42,6 +42,11 @@ class ResizeObserverStub {
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
 import { render, cleanup } from "@testing-library/react";
+// The note's morph GATE is registered by the morphs boot module (task 898).
+// In the app it is always loaded wherever a chevron is live — `onConvert` is
+// wired only by the hooks that import `applyCardMorph` from it — so load it
+// here too: the chevron now asks the registry, not a hand check (task 1173).
+import "@/cards/morphs";
 import { NoteCard } from "@/panels/Notes/NoteCard";
 import { HighlightCard } from "@/panels/Notes/HighlightCard";
 import { RevisionRequestCard } from "@/panels/Revisions/RevisionRequestCard";

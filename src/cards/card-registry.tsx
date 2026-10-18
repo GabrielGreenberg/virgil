@@ -178,16 +178,26 @@ export function morphCarriesAiRequest(fromKind: CardKind): boolean {
  *  holds exactly a pair, so the two agreed by coincidence. A third kind added
  *  to a morphing panel is reachable from neither end and is simply not offered.
  *
- *  Returns a single-element list for a non-morphing kind — or, given the
- *  `card`, a record its morph gate refuses (`canMorphCard`) — which
+ *  Returns a single-element list for a non-morphing kind — or for a `card`
+ *  its morph gate refuses (`canMorphCard`) — which
  *  `CardKindHeader` renders as the plain label (`options.length <= 1` → no
  *  dropdown). */
-export function morphOptionsFor(kind: CardKind, card?: unknown): CardKind[] {
-  const to = CARD_REGISTRY[kind].morph?.to;
-  if (to == null || to === kind) return [kind];
+export function morphOptionsFor(kind: CardKind, card: unknown): CardKind[] {
   // A record its gate refuses offers no morph — the chevron renders the plain
   // label (task 898: a settled suggestion cannot round-trip back to pending).
   if (!canMorphCard(kind, card)) return [kind];
+  return kindMorphOptions(kind);
+}
+
+/** The option list for the KIND alone, no record consulted — the shape every
+ *  morph route offers before any gate. Module-private on purpose: its one
+ *  reader is `assertMorphCoverage` (a boot check over kinds, with no card in
+ *  hand). A UI surface always HAS the record and must ask `morphOptionsFor
+ *  (kind, card)` — the `card` parameter is required so a new chevron cannot
+ *  forget the per-record gate (task 1173). */
+function kindMorphOptions(kind: CardKind): CardKind[] {
+  const to = CARD_REGISTRY[kind].morph?.to;
+  if (to == null || to === kind) return [kind];
   const panel = CARD_REGISTRY[kind].panel;
   const order = (Object.keys(CARD_REGISTRY) as CardKind[]).filter(
     (k) => CARD_REGISTRY[k].panel === panel,
@@ -245,10 +255,10 @@ export function assertMorphCoverage(): void {
     // The TIE between the declared target and the menu the user actually sees:
     // the chevron's options ARE `morphOptionsFor`, so a target it does not
     // return is a target no user can select (task 722).
-    if (!morphOptionsFor(k).includes(m.to)) {
+    if (!kindMorphOptions(k).includes(m.to)) {
       console.error(
         `[CardMorph] "${k}".morph.to = "${m.to}" is not offered by ` +
-          `morphOptionsFor("${k}") (${JSON.stringify(morphOptionsFor(k))}) — ` +
+          `morphOptionsFor("${k}") (${JSON.stringify(kindMorphOptions(k))}) — ` +
           `the chevron cannot reach the declared target.`,
       );
     }
