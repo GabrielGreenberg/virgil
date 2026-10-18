@@ -16,6 +16,10 @@ import {
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import { useIsFloatPopped } from "@/hooks/usePoppedCards";
 import { isCommitEnter } from "@/lib/key-intent";
+import {
+  sourcePodPreview,
+  SOURCE_POD_PREVIEW_CLASSES,
+} from "@/lib/tiptap/source-pod-static";
 
 /**
  * THE source pod — one implementation of the "raw bytes in a framed, foldable,
@@ -334,24 +338,20 @@ export default function SourcePodNodeView({
   // with CodeMirror. The schema still recognizes the node, so JSON round-trips
   // and restoring the snippet brings the full pod back in the main editor.
   if (cardContext) {
+    // ONE preview, two renderers (task 1171): the model and the classes are
+    // the ones the node's `renderHTML` emits for the T1 static tier and the
+    // clipboard, so a collapsed card paints the same title + body/label at
+    // either tier. The look lives in globals.css, not here.
+    const preview = sourcePodPreview(source, title, config.emptyLabel);
+    const c = SOURCE_POD_PREVIEW_CLASSES;
     return (
-      <NodeViewWrapper className="source-pod-card-preview my-2">
-        {title && (
-          <div className="text-[11px] text-[var(--ink-muted)] mb-1 font-medium">
-            {title}
-          </div>
-        )}
-        <pre
-          contentEditable={false}
-          className="font-mono text-[12px] leading-snug whitespace-pre-wrap break-words rounded border px-2.5 py-1.5"
-          style={{
-            backgroundColor: "var(--code-block-bg, rgba(124, 94, 60, 0.04))",
-            borderColor: "var(--heading-annotation-border, #a8c4de)",
-            color: "var(--ink-strong)",
-          }}
-        >
-          {source || (
-            <span className="text-[var(--ink-muted)] italic">{config.emptyLabel}</span>
+      <NodeViewWrapper className={c.wrapper}>
+        {preview.title && <div className={c.title}>{preview.title}</div>}
+        <pre contentEditable={false} className={c.source}>
+          {preview.body.kind === "source" ? (
+            preview.body.text
+          ) : (
+            <span className={c.empty}>{preview.body.label}</span>
           )}
         </pre>
       </NodeViewWrapper>
