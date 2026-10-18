@@ -119,8 +119,9 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     const [target, env] = openForCardMock.mock.calls[0];
     expect(target).toEqual({
       omniKey: "float:card:note:n1",
-      // note is one of the legacy entrySelectorBase overrides.
-      entrySelector: '[data-note-entry="n1"]',
+      // The ONE address (task 1172): canonical card key, OR'd with the
+      // legacy `data-note-entry` hook attribute.
+      entrySelector: '[data-card-key="float:card:note:n1"], [data-note-entry="n1"]',
       panelId: "notes",
       cardKind: "note",
       skipScroll: true,

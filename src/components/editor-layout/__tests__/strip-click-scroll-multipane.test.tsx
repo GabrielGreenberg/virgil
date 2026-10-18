@@ -45,7 +45,10 @@ function mountEntry(visible: boolean): HTMLElement {
 const noop = () => {};
 
 function selections(noteId: string | null): SelectionsContextValue {
-  return new Proxy({ selectedNoteId: noteId } as Record<string, unknown>, {
+  return new Proxy({
+    selectedNoteId: noteId,
+    selected: noteId ? { kind: "note", id: noteId } : null,
+  } as Record<string, unknown>, {
     get: (t, k) => (k in t ? t[k as string] : k.toString().startsWith("set") ? noop : null),
   }) as unknown as SelectionsContextValue;
 }
