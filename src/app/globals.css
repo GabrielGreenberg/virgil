@@ -1936,13 +1936,25 @@ textarea {
   padding-right: 70px;
 }
 
-/* The STATIC projection of a source pod's bytes — the `<pre>` a source-pod
-   node's own `renderHTML` emits (src/lib/tiptap/source-pod-static.ts), which is
-   what the T1 static card tier and the clipboard see. Mirrors the card-context
-   preview `SourcePodNodeView` renders live, so a collapsed card body paints the
-   same thing at either tier instead of a blank gap (task 388). */
-.source-pod-static-source {
+/* ── source-pod card preview ──────────────────────────────────────
+   The compact preview of a source pod inside a card body (archive card, note,
+   HeadingFloat, …). ONE look for its two renderers (task 1171): the live
+   card-context branch of `SourcePodNodeView` and the node's own `renderHTML`
+   (src/lib/tiptap/source-pod-static.ts — the T1 static card tier and the
+   clipboard). Both emit these classes from one model and carry no styling of
+   their own, so a collapsed card body paints the same title, bytes and empty
+   label at either tier (task 388 gave the static tier its bytes). */
+.source-pod-card-preview {
   margin: 0.5rem 0;
+}
+.source-pod-card-preview-title {
+  margin-bottom: 0.25rem;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.source-pod-static-source {
+  margin: 0;
   padding: 6px 10px;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: var(--radius-md);
@@ -1953,6 +1965,10 @@ textarea {
   line-height: 1.375;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+}
+.source-pod-card-preview-empty {
+  font-style: italic;
+  color: var(--ink-muted);
 }
 
 /* ── forest tree ──────────────────────────────────────────────────

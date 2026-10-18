@@ -2,7 +2,8 @@ import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import { generateShortId } from "@/lib/uuid";
 import TexBlockNodeView from "@/components/TexBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { sourcePodStaticBody } from "./source-pod-static";
+import { sourcePodPreview, sourcePodStaticBody, SOURCE_POD_PREVIEW_CLASSES } from "./source-pod-static";
+import { TEX_POD_CONFIG } from "./tex-pod-config";
 // CHIP 5b: the SINGLE canonical raw-LaTeX-block creator lives in the action
 // registry (`texRun` → seed `code` from the selection, mint a collision-free
 // uuid, insert the `texBlock`), reached by the slash `\tex` command and by the
@@ -83,11 +84,22 @@ export const TexBlock = Node.create<TexBlockOptions>({
   renderHTML({ HTMLAttributes, node }) {
     // The code rides the markup as a TEXT child, not only as an attribute —
     // see `sourcePodStaticBody`. Without it the T1 static card tier and the
-    // clipboard both project this node to an empty div (task 388).
+    // clipboard both project this node to an empty div (task 388). It is the
+    // SAME preview the live card-context NodeView paints — title line and
+    // empty label included (task 1171).
     return [
       "div",
-      mergeAttributes(HTMLAttributes, { "data-type": "tex-block" }),
-      sourcePodStaticBody((node.attrs.code as string) || ""),
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "tex-block",
+        class: SOURCE_POD_PREVIEW_CLASSES.wrapper,
+      }),
+      ...sourcePodStaticBody(
+        sourcePodPreview(
+          node.attrs.code as string | null,
+          node.attrs.parTitle as string | null,
+          TEX_POD_CONFIG.emptyLabel,
+        ),
+      ),
     ];
   },
 

@@ -1,7 +1,8 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import ForestBlockNodeView from "@/components/ForestBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { sourcePodStaticBody } from "./source-pod-static";
+import { sourcePodPreview, sourcePodStaticBody, SOURCE_POD_PREVIEW_CLASSES } from "./source-pod-static";
+import { FOREST_POD_CONFIG } from "@/lib/forest/pod-config";
 
 /**
  * `forestBlock` — a `\begin{forest}…\end{forest}` environment, carried WHOLE.
@@ -72,11 +73,22 @@ export const ForestBlock = Node.create<ForestBlockOptions>({
   renderHTML({ HTMLAttributes, node }) {
     // The source rides the markup as a TEXT child, not only as an attribute —
     // see `sourcePodStaticBody`. Without it the T1 static card tier and the
-    // clipboard both project this node to an empty div (task 388).
+    // clipboard both project this node to an empty div (task 388). It is the
+    // SAME preview the live card-context NodeView paints — title line and
+    // empty label included (task 1171).
     return [
       "div",
-      mergeAttributes(HTMLAttributes, { "data-type": "forest-block" }),
-      sourcePodStaticBody((node.attrs.source as string) || ""),
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "forest-block",
+        class: SOURCE_POD_PREVIEW_CLASSES.wrapper,
+      }),
+      ...sourcePodStaticBody(
+        sourcePodPreview(
+          node.attrs.source as string | null,
+          node.attrs.parTitle as string | null,
+          FOREST_POD_CONFIG.emptyLabel,
+        ),
+      ),
     ];
   },
 
