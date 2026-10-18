@@ -4,10 +4,11 @@ import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
 // is a second speller that silently stops matching if it ever changes (202).
-// The footnote/citation entry addresses below were hand-copied from
-// `panelEntrySelector`'s own rows, byte for byte. One owner now (task 204):
-// a composite selector drifts the way selectors do — by not matching.
-import { panelEntrySelector } from "../panel-selection";
+// Every card's DOM address — footnote/citation atoms and the anchor-click
+// kinds alike — comes from the ONE owner, `cardEntrySelector` (task 204, then
+// 1172 retired this file's own per-kind override table): a composite selector
+// drifts the way selectors do — by not matching.
+import { cardEntrySelector } from "../panel-selection";
 // Pure dock-stack derivation — imported from the LEAF (not the hook module) so
 // this bridge stays clear of `useViewPrefs`'s heavy `OmniViewPanel` → storage
 // runtime chain (see view-prefs-derived.ts + anchor-route-derivation-contract).
@@ -18,7 +19,7 @@ import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
-import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
+import { cardPopKey } from "@/panels/panel-registry";
 import { anchorRowId } from "@/links/card-anchor-rows";
 import {
   ATOM_CREATE_POPOVER_EVENT,
@@ -54,26 +55,13 @@ type AnchorClickKind =
   | "report"
   | "report-request";
 
-/** Per-kind `entrySelectorBase` overrides. The default is `data-card-key` (the
- *  canonical AF float-key selector); the overrides are the panels that stamp
- *  their entries with a legacy `data-<kind>-entry` attribute instead (cf. the
- *  same conventions in `panel-selection.ts`), so the listener queries
- *  `[data-<kind>-entry="${id}"]` instead of `cardDomSelector(kind, id)`. */
-const ENTRY_SELECTOR_BASE_OVERRIDE: Partial<Record<AnchorClickKind, string>> = {
-  note: "data-note-entry",
-  archive: "data-archive-entry",
-  todo: "data-todo-entry",
-  report: "data-report-entry",
-  "report-request": "data-report-request-entry",
-};
-
 /** `AnchorClickKind` → routing config, DERIVED: `cardKind` is the kind itself
- *  and `panelId` is `panelForCardKind(kind)` (the registry SSOT), with the
- *  small `entrySelectorBase` override map above. A pin-test asserts these
- *  derived routes ≡ frozen literals. */
+ *  and `panelId` is `panelForCardKind(kind)` (the registry SSOT); the entry's
+ *  DOM address is `cardEntrySelector(kind, id)`, resolved at click time. A
+ *  pin-test asserts these derived routes ≡ frozen literals. */
 export const ANCHOR_CLICK_ROUTES: Record<
   AnchorClickKind,
-  { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }
+  { panelId: PanelId; cardKind: CardKind }
 > = Object.fromEntries(
   (
     [
@@ -98,11 +86,10 @@ export const ANCHOR_CLICK_ROUTES: Record<
       {
         panelId: panel as PanelId,
         cardKind: kind,
-        entrySelectorBase: ENTRY_SELECTOR_BASE_OVERRIDE[kind] ?? "data-card-key",
       },
     ];
   }),
-) as Record<AnchorClickKind, { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }>;
+) as Record<AnchorClickKind, { panelId: PanelId; cardKind: CardKind }>;
 
 /** Everything `routeAnchorClick` needs: the `openForCard` routing env (prefs
  *  read live at click time) plus the omni click-pin publisher. Built from the
@@ -150,10 +137,7 @@ function routeAnchorClick(
   // (which would have to re-derive the polymorphic kind).
   env.getActiveCardStore().select({ kind: detail.kind, id });
 
-  const entrySelector =
-    route.entrySelectorBase === "data-card-key"
-      ? cardDomSelector(route.cardKind, id)
-      : `[${route.entrySelectorBase}="${id}"]`;
+  const entrySelector = cardEntrySelector(route.cardKind, id);
 
   const clickY: number | undefined =
     typeof detail.clickY === "number" ? detail.clickY : undefined;
@@ -313,9 +297,7 @@ export function useMarkerClickBridges(deps: {
       openForCard(
         {
           omniKey: cardPopKey("footnote", detail.footnoteId),
-          // Non-null: `panelEntrySelector` returns null only for the panels
-          // with no selection concept, and "footnotes" is not one of them.
-          entrySelector: panelEntrySelector("footnotes", detail.footnoteId)!,
+          entrySelector: cardEntrySelector("footnote", detail.footnoteId),
           panelId: "footnotes",
           cardKind: "footnote",
           // skipScroll: alignment is handled by shifting the omni cards
@@ -357,7 +339,7 @@ export function useMarkerClickBridges(deps: {
       openForCard(
         {
           omniKey: cardPopKey("citation", detail.citationId),
-          entrySelector: panelEntrySelector("citations", detail.citationId)!,
+          entrySelector: cardEntrySelector("citation", detail.citationId),
           panelId: "citations",
           cardKind: "citation",
           // skipScroll: alignment is handled by shifting the omni cards

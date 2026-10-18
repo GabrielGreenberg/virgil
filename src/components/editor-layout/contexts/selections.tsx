@@ -21,6 +21,11 @@ import type { EntityKind } from "@/links/_shared/entity-hover";
  */
 
 export interface SelectionsContextValue {
+  /** The store's ONE selection, kind and all — what the per-kind slots below
+   *  are projections of. Consumers that ask "which card is selected in panel
+   *  P?" derive from this + `panelForCardKind` rather than switching over the
+   *  slots (`getPanelSelection`, task 1172). */
+  selected: { kind: EntityKind; id: string } | null;
   selectedNoteId: string | null;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   selectedFootnoteId: string | null;
@@ -215,6 +220,7 @@ function useSelectionsValue(
 
   return useMemo<SelectionsContextValue>(
     () => ({
+      selected: sel ? { kind: sel.kind, id: sel.id } : null,
       selectedNoteId: idFor("note"),
       setSelectedNoteId,
       selectedFootnoteId: idFor("footnote"),
