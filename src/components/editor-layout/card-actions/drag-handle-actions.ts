@@ -42,6 +42,7 @@ import {
   commitRangeDelete,
   expandCascadeRange,
   settleRangeCardObligations,
+  type RangeSettlement,
 } from "@/text-objects/delete-range";
 import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import {
@@ -50,6 +51,7 @@ import {
 } from "@/text-objects/anchor-resolution";
 import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import type { CardCreationApi } from "./card-creation";
+import { trackDispatchTarget, type DispatchTargetTracker } from "./grab-menu-target";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
 import { omniSideToReveal } from "@/hooks/view-prefs-derived";
@@ -210,10 +212,18 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
   );
 
   const dispatchUnguarded = useCallback(
-    async (action: DragHandleAction, ref: DragHandleRef) => {
+    async (
+      action: DragHandleAction,
+      clicked: DragHandleRef,
+      tracker: DispatchTargetTracker | null,
+    ) => {
       const handle = editorRef.current;
       const ed = handle?.getEditor();
       if (!handle || !ed) return;
+      // The ref every statement below acts on. It is the CLICKED ref until the
+      // first await returns, and is re-issued from the tracker after it — see
+      // "THE TARGET ACROSS THE GAP" below.
+      let ref = clicked;
 
       // ── COLLAB GATE (task 638) — the DEEPEST point, and the only one BOTH
       // menus pass through. Every card row declares `surfaces: { grab: true,
@@ -297,6 +307,43 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
         notifyRefused(lifecycleLabel(action), notify);
         return;
       }
+
+      // ── THE TARGET ACROSS THE GAP (task 1181) ───────────────────────────
+      // Editability was not the only thing the confirm let move. A SELECTION
+      // ref names its passage by nothing but `from`/`to`, and every resolve
+      // below (`resolveRefRange`, `outerRangeFor`) only CLAMPS those to the
+      // current doc — so an insert above the passage while the dialog was open
+      // (an external reload, a cowork apply, an anchor mint) made Confirm delete
+      // or archive whatever had shifted into the old offsets: text the user
+      // never selected. The tracker has followed the passage through every edit
+      // since the click; the ref is re-issued at its MAPPED span, and a passage
+      // that was itself edited or removed meanwhile is a loud refusal, not a
+      // guess. A block ref addresses by uuid and comes back unchanged.
+      if (tracker) {
+        const live = tracker.current();
+        if (!live) {
+          notifyTargetMoved(lifecycleLabel(action), clicked, notify);
+          return;
+        }
+        ref = live;
+      }
+      // The SECOND gap: the settle prompt a range leg awaits (task 636). A
+      // settlement's own rewrite is carried by `settleRangeCardObligations`
+      // itself (`mapRangeThroughSettlement`); when nothing settled, every edit
+      // that landed while the prompt was open is someone else's, and the range
+      // is carried through those by the same rule as above. Recorded edits mark
+      // the settlement `docMoved`, so anything derived from the pre-prompt doc
+      // (the archive capture) is re-derived. Null = the target itself went.
+      // RESIDUAL: a foreign edit that lands in the SAME prompt as a settlement
+      // rides `mapRangeThroughSettlement`'s snapshot diff, not this mapping.
+      const carryAcrossSettle = (
+        s: RangeSettlement,
+        mark: number,
+      ): RangeSettlement | null => {
+        if (!tracker || s.docMoved || tracker.checkpoint() === mark) return s;
+        const span = tracker.follow(ref, { from: s.from, to: s.to }, mark);
+        return span ? { ...s, from: span.from, to: span.to, docMoved: true } : null;
+      };
 
       // Annotation actions (H/N/F/C/Q/T/E/X) work on the heading line for
       // headings; lifecycle actions (D/A/⌫) work on the whole section.
@@ -853,13 +900,19 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // every splice in the range FIRST; a decline aborts the whole gesture
           // with the document untouched. The returned range is corrected for
           // whatever the settlements moved.
-          const settlement = await settleRangeCardObligations(
+          const archiveMark = tracker?.checkpoint() ?? 0;
+          const asked = await settleRangeCardObligations(
             ed,
             extended.from,
             extended.to,
             appliedSplice,
           );
-          if (!settlement) break;
+          if (!asked) break;
+          const settlement = carryAcrossSettle(asked, archiveMark);
+          if (!settlement) {
+            notifyTargetMoved("Archive", clicked, notify);
+            break;
+          }
           // A selection wholly inside an applied span the user just REVERTED
           // has nothing of theirs left to archive (task 897): the revert was
           // their answer for that text. Stop — there is no passage to set aside.
@@ -1018,13 +1071,19 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // the user answered, Cancel left a card whose text had vanished, and
           // Revert could no longer resolve the range it existed to restore. A
           // decline aborts the whole gesture with the document untouched.
-          const settlement = await settleRangeCardObligations(
+          const deleteMark = tracker?.checkpoint() ?? 0;
+          const asked = await settleRangeCardObligations(
             ed,
             extended.from,
             extended.to,
             appliedSplice,
           );
-          if (!settlement) break;
+          if (!asked) break;
+          const settlement = carryAcrossSettle(asked, deleteMark);
+          if (!settlement) {
+            notifyTargetMoved("Delete", clicked, notify);
+            break;
+          }
           // Nothing of the user's selection survives the settlement (it lay
           // wholly inside an applied span they reverted — task 897): the
           // revert stands, and there is nothing left to delete.
@@ -1118,8 +1177,12 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
   // `notify` door the refusals use.
   const dispatch = useCallback(
     async (action: DragHandleAction, ref: DragHandleRef): Promise<void> => {
+      // Follow the target for as long as the dispatch is in flight (task 1181)
+      // — its awaits are where the document moves under a ref.
+      const ed = editorRef.current?.getEditor();
+      const tracker = ed && !ed.isDestroyed ? trackDispatchTarget(ed, ref) : null;
       try {
-        await dispatchUnguarded(action, ref);
+        await dispatchUnguarded(action, ref, tracker);
       } catch (err) {
         if (err instanceof DocChangeRefused) {
           notifyRefused(lifecycleLabel(action), notify);
@@ -1130,9 +1193,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           tone: "danger",
           message: `${lifecycleLabel(action)} failed — something went wrong, see the console for details.`,
         });
+      } finally {
+        tracker?.dispose();
       }
     },
-    [dispatchUnguarded, notify],
+    [dispatchUnguarded, editorRef, notify],
   );
 
   return { dispatch };
@@ -1259,6 +1324,21 @@ function notifyStaleRef(
   console.warn(`[${label}] stale ref — could not resolve outer range`, ref);
   notify({
     message: "Could not find the source. Close the menu and try again.",
+  });
+}
+
+/** The loud refusal for a target that moved under an in-flight gesture (task
+ *  1181): the passage the user selected was itself edited or removed while the
+ *  confirm (or settle) prompt was open, so there is no longer a passage that is
+ *  the one they asked about. Nothing was changed. */
+function notifyTargetMoved(
+  label: string,
+  ref: DragHandleRef,
+  notify: DragHandleActionsDeps["notify"],
+): void {
+  console.warn(`[${label}] refused — the target changed while the prompt was open`, ref);
+  notify({
+    message: `${label} didn't happen — the selected text changed while you were confirming, so nothing was changed.`,
   });
 }
 

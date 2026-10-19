@@ -152,6 +152,74 @@ export function liveGrabRef(
   };
 }
 
+/**
+ * The DISPATCH half of the same premise (task 1181). The open menu follows its
+ * target until the click — and `current()` hands the dispatcher a ref that is
+ * true AT the click. But a destructive dispatch then AWAITS: the confirm dialog
+ * (unbounded user time) and, further down, the settle prompt. A selection ref
+ * carries nothing but numbers, and a clamp keeps numbers in RANGE, not on the
+ * same TEXT — so an insert above the passage landing while the dialog was open
+ * made Confirm delete whatever had shifted into the old offsets.
+ *
+ * So the dispatch keeps following for as long as it is in flight: every
+ * doc-changing transaction (and its `appendedTransactions`) is recorded, and
+ * after each await the target is re-issued through `followGrabTarget` — the one
+ * mapping rule, with the one staleness rule. Recording is O(1) per transaction;
+ * the mapping runs only when the dispatch asks, O(steps recorded). The
+ * subscription lives exactly as long as the dispatch (`dispose()` in the
+ * caller's `finally`), so outside a gesture it costs nothing.
+ */
+export interface DispatchTargetTracker {
+  /** The ref to act on now: a node ref as-is (it addresses by uuid), a
+   *  selection ref re-issued at its span mapped through every edit since the
+   *  tracker opened — or null when the selected text itself was changed or
+   *  removed (the caller refuses LOUDLY: the user confirmed something that can
+   *  no longer happen as asked). */
+  current(): DragHandleRef | null;
+  /** A position in the recorded history, for `follow`. */
+  checkpoint(): number;
+  /** `span` (true at `since`) carried through every edit recorded after it,
+   *  with `ref`'s staleness rule — null when stale. */
+  follow(ref: DragHandleRef, span: GrabSpan, since: number): GrabSpan | null;
+  dispose(): void;
+}
+
+export function trackDispatchTarget(
+  editor: Editor,
+  ref: DragHandleRef,
+): DispatchTargetTracker {
+  const seed = initialGrabSpan(editor.state.doc, ref);
+  const trs: Transaction[] = [];
+  const handler = ({
+    transaction,
+    appendedTransactions,
+  }: {
+    transaction: Transaction;
+    appendedTransactions?: Transaction[];
+  }) => {
+    if (transaction.docChanged) trs.push(transaction);
+    for (const tr of appendedTransactions ?? []) if (tr.docChanged) trs.push(tr);
+  };
+  editor.on("transaction", handler);
+  return {
+    current() {
+      if (ref.kind !== "selection" || trs.length === 0) return ref;
+      const state = followGrabTarget(ref, { span: seed, stale: false }, trs);
+      return liveGrabRef(ref, state, editor.state.doc);
+    },
+    checkpoint: () => trs.length,
+    follow(target, span, since) {
+      if (since >= trs.length) return span;
+      const next = followGrabTarget(target, { span, stale: false }, trs.slice(since));
+      return next.stale || !next.span ? null : next.span;
+    },
+    dispose() {
+      editor.off("transaction", handler);
+      trs.length = 0;
+    },
+  };
+}
+
 type RectLike = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 
 function toRectLike(r: RectLike): RectLike {
