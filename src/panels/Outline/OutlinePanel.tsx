@@ -34,7 +34,7 @@ import { iconHint } from "@/components/Hint";
 import { activatableProps } from "@/lib/activatable-props";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
  * One place defines the outline's left-edge geometry, used by both the view
@@ -309,7 +309,7 @@ function InlineLabel({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (isCommitEnter(e)) commit();
-            if (e.key === "Escape") setEditing(false);
+            if (isCancelEscape(e)) setEditing(false);
           }}
           onBlur={commit}
           onClick={(e) => e.stopPropagation()}
@@ -1170,7 +1170,7 @@ const EditablePod = memo(function EditablePod({
             onChange={(e) => setEditText(e.target.value)}
             onKeyDown={(e) => {
               if (isCommitEnter(e)) commitRename();
-              if (e.key === "Escape") { setEditText(pod.text); setEditing(false); }
+              if (isCancelEscape(e)) { setEditText(pod.text); setEditing(false); }
             }}
             onBlur={commitRename}
             className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${

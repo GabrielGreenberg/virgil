@@ -33,7 +33,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { buildLetterMap } from "./nav-core";
 import { isEditableEventTarget } from "@/lib/drag-blocklist";
-import { isCommitEnter, isImeComposing, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
+import {
+  isCancelEscape,
+  isCommitEnter,
+  isImeComposing,
+  swallowRepeatsUntilKeyup,
+} from "@/lib/key-intent";
 import { claimActiveDescendant, type ActiveDescendantClaim } from "./caret-host";
 import type { MenuRegistry } from "./registry";
 import type { MenuLayout, MenuOrientation, NavDir } from "./types";
@@ -342,7 +347,9 @@ export function useMenuKeyboard(
     };
     const onKey = (e: KeyboardEvent) => {
       // Leave Escape to useMenuDismiss; ignore modifier combos for nav keys.
-      if (e.key === "Escape") return;
+      // (A composing Escape falls through to `consume`, whose IME bail passes
+      // it to the IME untouched.)
+      if (isCancelEscape(e)) return;
       // A window-CAPTURE listener sees keys the menu was never given. When the
       // caret sits in an editable control, every key this controller consumes
       // is a key that control needs: arrows move the caret, letters type, and

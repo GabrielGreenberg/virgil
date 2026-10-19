@@ -25,6 +25,11 @@
  * e.metaKey`; `isPlainEnter` for dialogs). Pinned by
  * `enter-key-census.test.ts`: this file is the only one that compares a key to
  * "Enter".
+ *
+ * **Escape has ONE spelling in the menu doors** (task 1188): `isCancelEscape`.
+ * Escape pressed mid-composition CANCELS THE COMPOSITION — it is the IME's key,
+ * not "cancel this menu / field". Pinned (for the menu-door population — every
+ * file built on `@/components/menu`) by `menu-key-intent-census.test.ts`.
  */
 
 type KeyLike = Pick<KeyboardEvent, "isComposing" | "keyCode" | "key" | "code" | "repeat">;
@@ -50,6 +55,15 @@ export function isImeComposing(e: ImeProbe): boolean {
  */
 export function isCommitEnter(e: ImeProbe & { key: string }): boolean {
   return e.key === "Enter" && !isImeComposing(e);
+}
+
+/**
+ * An Escape the USER pressed to cancel — not the IME's composition-cancel
+ * Escape. Repeat stays the caller's question (a cancel answers the first press;
+ * see `useMenuDismiss`).
+ */
+export function isCancelEscape(e: ImeProbe & { key: string }): boolean {
+  return e.key === "Escape" && !isImeComposing(e);
 }
 
 /** A fresh, non-IME press — the only kind that may ACTIVATE something. */

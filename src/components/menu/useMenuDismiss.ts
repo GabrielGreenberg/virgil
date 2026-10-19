@@ -17,6 +17,9 @@
  *     menus — reproduces `ActionsMenuPanel.tsx:338`) and an `onEscape?: () =>
  *     boolean` two-stage interceptor: return true to consume Escape WITHOUT
  *     closing (e.g. first clear a filter, then close on the next press).
+ *     Escape is a deliberate press only (task 1188, `@/lib/key-intent`): a
+ *     composing Escape is the IME's and passes through; a held Escape's
+ *     repeats are consumed and end nothing.
  *
  * ── DISMISS is not CANCEL (task 687) ────────────────────────────────────────
  * This hook ends a menu through TWO doors that mean different things, and until
@@ -59,6 +62,7 @@
 
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
+import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 
 export interface UseMenuDismissOptions {
   /** The menu container — clicks inside it never dismiss. */
@@ -169,15 +173,21 @@ export function useMenuDismiss(opts: UseMenuDismissOptions): void {
     if (!open || !ownsEscape) return;
     if (typeof window === "undefined") return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // Two-stage: let an interceptor consume Escape without closing.
-      if (onEscape && onEscape()) {
-        e.preventDefault();
-        if (stopProp) e.stopPropagation();
-        return;
-      }
+      // A composing Escape is the IME's — it cancels the COMPOSITION, not the
+      // menu — so it passes through untouched (task 1188).
+      if (!isCancelEscape(e)) return;
       e.preventDefault();
       if (stopProp) e.stopPropagation();
+      // A cancel answers the FIRST press only (task 1188). A held Escape's
+      // repeats are consumed and end nothing: without this, closing a nested
+      // popover handed Escape to its parent and the next repeat closed that
+      // too, then leaked to app-level Escape handlers once no menu was left.
+      if (e.repeat) return;
+      // Once this press has acted (the menu usually closes and takes this
+      // listener with it), its repeats are eaten until keyup.
+      swallowRepeatsUntilKeyup(e);
+      // Two-stage: let an interceptor consume Escape without closing.
+      if (onEscape && onEscape()) return;
       endOnEscape();
     };
     window.addEventListener("keydown", onKey, true);

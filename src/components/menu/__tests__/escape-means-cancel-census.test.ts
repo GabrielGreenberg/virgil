@@ -144,7 +144,9 @@ describe("Escape means cancel — the surface census", () => {
     expect(code).toMatch(/isInside\([\s\S]{0,120}?onCloseRef\.current\(\)/);
     expect(code).toMatch(/onCloseRef\.current\s*=\s*onClose/);
     // Escape must NOT still reach onClose directly.
-    const escapeEffect = code.slice(code.indexOf('e.key !== "Escape"'));
+    const at = code.indexOf("!isCancelEscape(e)");
+    expect(at, "anchor: the Escape effect's key-intent gate (task 1188)").toBeGreaterThan(-1);
+    const escapeEffect = code.slice(at);
     expect(escapeEffect).not.toMatch(/\bonClose\(\)/);
   });
 

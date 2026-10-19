@@ -41,7 +41,7 @@ import {
   enumOptions,
   type RegistryPrefs,
 } from "@/lib/view-prefs/registry";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
 /** True when two bib entries describe the same record at field level —
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
@@ -478,7 +478,7 @@ function BibliographyPanel({
   }, [requestText, onAddEntryRequest]);
 
   const onRequestKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
-    if (e.key === "Escape") {
+    if (isCancelEscape(e)) {
       setShowRequestForm(false);
       setRequestText("");
     }
@@ -720,7 +720,7 @@ function BibliographyPanel({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") closeSearch();
+                if (isCancelEscape(e)) closeSearch();
               }}
               placeholder={
                 searchScope === "local"
