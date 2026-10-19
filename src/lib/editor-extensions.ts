@@ -110,6 +110,7 @@ import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/li
 import { surfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 import { isCommitEnter } from "@/lib/key-intent";
 import { BoundRoot, type BoundRootPredicate } from "@/lib/tiptap/bound-root";
+import { VirgilHorizontalRule } from "@/lib/tiptap/virgil-horizontal-rule";
 
 // --- Heading callback refs (threaded from the host component) ----------
 // Formerly lexical closures inside VirgilEditor; the heading NodeView reads
@@ -1741,6 +1742,9 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
       listItem: false,
       blockquote: false,
       codeBlock: false,
+      // Task 1176: re-registered below as `VirgilHorizontalRule` — the same
+      // node without upstream's `---` input rule (`---` is an em-dash in LaTeX).
+      horizontalRule: false,
       // Main styles the drop-cursor; floats disable it (they don't host
       // cross-block drops — matches the bodies' pre-FCU StarterKit config).
       dropcursor: isFloat ? false : { color: "var(--drag-highlight)", width: 2 },
@@ -1803,6 +1807,9 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     createListItemWithUuid(),
     createBlockquoteWithUuid(),
     createCodeBlockWithUuid(),
+    // Task 1176: StarterKit's `horizontalRule` (turned off above) minus its
+    // `---` input rule — `---` is an em-dash in LaTeX.
+    VirgilHorizontalRule,
     // ── Borrowed-schema atoms (backlog #11) ──────────────────────────────
     // The block-atom previews (TexBlock/FigureBlock/FigureCaption/
     // GraphicsBlock + the LatexComment/Citation/LabelRef/Footnote/InlineMath/

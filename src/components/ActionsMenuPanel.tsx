@@ -142,7 +142,7 @@ export const LIGHTNING_ACTIVE_MARKS = [
 export const LIGHTNING_GRID_CELL_IDS = [
   "bold", "italic", "strike", "code", "bullet-list", "ordered-list", "blockquote",
   "example", "inline-math", "display-math", "text-color", "tex", "figure",
-  "graphics", "ref", "forest", "small-caps",
+  "graphics", "ref", "forest", "small-caps", "horizontal-rule",
 ] as const satisfies readonly ActionId[];
 
 export interface ActionsMenuPanelProps {
@@ -848,6 +848,20 @@ export function ActionsMenuPanel({
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1.5 12.5 L4.5 3.5 L7.5 12.5 M2.6 9.5 H6.4" />
               <path d="M9 12.5 L11.25 6.5 L13.5 12.5 M9.8 10.4 H12.7" />
+            </svg>
+          </FmtBtn>
+          {/* Horizontal rule (task 1176) — `\hrulefill` on its own line. The
+              registry's `horizontalRuleRun` (collab gate + container guard),
+              never TipTap's unguarded `setHorizontalRule()`. */}
+          <FmtBtn
+            id="horizontal-rule"
+            row={4}
+            col={2}
+            disabled={gridCellDisabled("horizontal-rule")}
+            run={() => runGridAction("horizontal-rule")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M2 8 H14" />
             </svg>
           </FmtBtn>
         </MenuGrid>

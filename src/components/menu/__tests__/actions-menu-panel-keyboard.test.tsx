@@ -236,27 +236,27 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
 
   it("ArrowUp off the list TOP re-enters the grid at the remembered column, CLAMPED to the last row's extent", () => {
     renderPanel();
-    // Enter the grid at column 2 (Strike) and descend. Since task 385 the last
-    // row is PARTIAL (since task 808: `forest` col 0 + `small-caps` col 1), so
-    // a vertical move from col 2 into it clamps to col 1 — nav-core's R3 rule,
-    // which is what keeps a partial row reachable at all. RENEGOTIATED rather
-    // than re-scoped: the pre-385 leg asserted a full last row could hand the
-    // remembered column straight back, and the memory itself is still live (the
-    // col-2 walk below proves it) — what changed is that the row it re-enters
-    // has no col 2 to offer.
+    // Enter the grid at column 3 and descend. Since task 385 the last row is
+    // PARTIAL (task 808: `forest` col 0 + `small-caps` col 1; task 1176:
+    // `horizontal-rule` col 2), so a vertical move from col 3 into it clamps to
+    // col 2 — nav-core's R3 rule, which is what keeps a partial row reachable at
+    // all. Task 1176 moved the walk from col 2 to col 3: the new cell filled
+    // col 2, so the old walk no longer reached a clamp at all. The memory itself
+    // is still live — what changed is that the row it re-enters has no col 3.
     key("ArrowDown"); // Bold (0,0)
     key("ArrowRight");
-    key("ArrowRight"); // Strike (0,2)
-    key("ArrowDown"); // Ordered list (1,2)
-    key("ArrowDown"); // Display math (2,2)
-    key("ArrowDown"); // graphics (3,2)
-    expect(activeHint()).toBe("Image");
-    key("ArrowDown"); // small caps (4,1) — clamped to the last row's extent
-    expect(activeHint()).toBe("Small caps");
+    key("ArrowRight");
+    key("ArrowRight"); // (0,3)
+    key("ArrowDown"); // (1,3)
+    key("ArrowDown"); // text color (2,3)
+    key("ArrowDown"); // cross-ref (3,3)
+    expect(activeHint()).toBe("Cross-ref");
+    key("ArrowDown"); // horizontal rule (4,2) — clamped to the last row's extent
+    expect(activeHint()).toBe("Horizontal rule");
     key("ArrowDown"); // → first card
     expect(activeCardLabel()).toBe(cardActionRows("lightning")[0].label);
     key("ArrowUp"); // back into the grid at {maxRow, clamped}
-    expect(activeHint()).toBe("Small caps");
+    expect(activeHint()).toBe("Horizontal rule");
   });
 
   it("ArrowDown/Up navigate WITHIN the card list once inside it", () => {
