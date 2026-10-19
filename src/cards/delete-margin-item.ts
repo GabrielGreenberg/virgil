@@ -52,6 +52,7 @@ import {
   cardHasContent,
   type CardContentKind,
 } from "@/cards/has-content";
+import { cardKindFromRecord } from "@/cards/predicates";
 import type { MarkerType } from "@/cards/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { DeclinableCardDelete } from "@/panels/card-lifecycle-registry";
@@ -331,10 +332,7 @@ export function buildMarginItemHandlers(
     cut: {
       findCard: (id) => deps.cutter.cards.find((c) => c.id === id),
       cards: deps.cutter.cards,
-      contentKind: (card) =>
-        (card as { kind?: string }).kind === "suggestion"
-          ? "cutter-suggestion"
-          : "cutter-comment",
+      contentKind: (card) => cardKindFromRecord(card as { kind?: string }, "cutter"),
       unanchor: deps.cutter.removeCardParagraphId,
       detach: deps.cutter.detachAnchorSources,
       reanchor: deps.cutter.addCardParagraphId,
@@ -352,10 +350,7 @@ export function buildMarginItemHandlers(
     revision: {
       findCard: (id) => deps.revisions.cards.find((r) => r.id === id),
       cards: deps.revisions.cards,
-      contentKind: (card) =>
-        (card as { kind?: string }).kind === "suggestion"
-          ? "revision-suggestion"
-          : "revision-comment",
+      contentKind: (card) => cardKindFromRecord(card as { kind?: string }, "revisions"),
       unanchor: deps.revisions.removeCardParagraphId,
       detach: deps.revisions.detachAnchorSources,
       reanchor: deps.revisions.addCardParagraphId,
@@ -364,10 +359,7 @@ export function buildMarginItemHandlers(
     report: {
       findCard: (id) => deps.reports.cards.find((r) => r.id === id),
       cards: deps.reports.cards,
-      contentKind: (card) =>
-        (card as { kind?: string }).kind === "report-request"
-          ? "report-request"
-          : "report",
+      contentKind: (card) => cardKindFromRecord(card as { kind?: string }, "reports"),
       unanchor: deps.reports.removeCardParagraphId,
       detach: deps.reports.detachAnchorSources,
       reanchor: deps.reports.addCardParagraphId,

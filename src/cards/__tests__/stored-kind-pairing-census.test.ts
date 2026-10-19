@@ -9,7 +9,7 @@ import {
   type PolymorphicPanel,
 } from "../predicates";
 import { CARD_REGISTRY } from "../card-registry";
-import { commentsStripped, walkFiles } from "../../lib/__tests__/_source-scan";
+import { matchesWithLines, strip, walkFiles } from "../../lib/__tests__/_source-scan";
 
 /**
  * Task 999 — the stored-kind ↔ card-kind pairing is ONE declared table
@@ -24,6 +24,8 @@ import { commentsStripped, walkFiles } from "../../lib/__tests__/_source-scan";
  *
  * The census bans both SHAPES outside `predicates.ts`, with the token sets
  * DERIVED from the table so a new row is covered without editing this file.
+ * It matches over the WHOLE file, not per line (task 1185): Prettier wraps the
+ * ternary over three lines, and the per-line form passed four of them.
  */
 
 const ROOT = join(__dirname, "..", "..");
@@ -53,12 +55,13 @@ describe("stored-kind pairing census (task 999)", () => {
   it("no stored→spine ternary or literal convertCard outside predicates.ts", () => {
     const offenders: string[] = [];
     for (const file of sources()) {
-      const code = commentsStripped(readFileSync(file, "utf8"));
-      code.split("\n").forEach((line, i) => {
-        if (TERNARY.test(line) || CONVERT_LITERAL.test(line)) {
-          offenders.push(`${relative(ROOT, file)}:${i + 1}: ${line.trim()}`);
+      // Comments blanked, literals kept, LINE-ALIGNED so a hit's line is true.
+      const code = strip(readFileSync(file, "utf8"), true, true);
+      for (const re of [TERNARY, CONVERT_LITERAL]) {
+        for (const { line, text } of matchesWithLines(code, re)) {
+          offenders.push(`${relative(ROOT, file)}:${line}: ${text}`);
         }
-      });
+      }
     }
     expect(offenders, `route through cardKindFromRecord / storedKindForCardKind:\n${offenders.join("\n")}`).toEqual([]);
   });
@@ -67,6 +70,20 @@ describe("stored-kind pairing census (task 999)", () => {
     expect(TERNARY.test(`c.kind === "suggestion" ? "revision-suggestion" : "revision-comment"`)).toBe(true);
     expect(TERNARY.test(`c?.kind === "report-request" ? "report-request" : "report"`)).toBe(true);
     expect(CONVERT_LITERAL.test(`cutterHookRaw.convertCard(id, "comment")`)).toBe(true);
+  });
+
+  it("the scan sees a ternary a formatter wrapped over several lines (task 1185)", () => {
+    const wrapped = [
+      "clearTextAnchorLink(",
+      "  c,",
+      '  c.kind === "suggestion"',
+      '    ? "cutter-suggestion"',
+      '    : "cutter-comment",',
+      ");",
+    ].join("\n");
+    expect(matchesWithLines(wrapped, TERNARY)).toEqual([
+      { line: 3, text: 'c.kind === "suggestion"' },
+    ]);
   });
 });
 
