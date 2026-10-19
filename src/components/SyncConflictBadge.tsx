@@ -78,7 +78,7 @@ import {
   BarStatusPill,
   useBarStatusMenu,
 } from "./status/BarStatusPill";
-import { barStatusVisible } from "@/lib/bar-status-policy";
+import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 
 /** Copy — a 16px stroke-only two-sheets glyph (the "there are two of these" idea). */
 function ForkIcon() {
@@ -236,10 +236,10 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
   // offers no cleanup either, because there is no surface to offer it from. That
   // is the right trade — raising a pill for files the user was never told to
   // care about would make a warning out of housekeeping.
-  if (
-    !barStatusVisible("sync-conflict", { standing: !!notice && notice.total > 0 }) ||
-    !notice
-  ) {
+  const visible = useBarStatusVisible("sync-conflict", {
+    standing: !!notice && notice.total > 0,
+  });
+  if (!visible || !notice) {
     return null;
   }
 

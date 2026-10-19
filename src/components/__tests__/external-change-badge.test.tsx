@@ -20,7 +20,9 @@
 // no-document landing screen without a provider — see the no-provider test.)
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, fireEvent, screen } from "@testing-library/react";
+import { render, cleanup, fireEvent, screen, act } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { BAR_STATUS_POLICY } from "@/lib/bar-status-policy";
 import type {
   ExternalChangeState,
   FileChange,
@@ -60,6 +62,22 @@ vi.mock("@/components/ConfirmDialog", () => ({
 }));
 
 import ExternalChangeBadge from "../ExternalChangeBadge";
+
+/** Task 1174 — a plain `change` paints only once it has LASTED the policy's
+ *  settle window (a conflict paints at once). Render, then let it pass. */
+const SETTLE_MS = BAR_STATUS_POLICY["external-change"].settleMs;
+function renderSettled(ui: ReactElement) {
+  vi.useFakeTimers();
+  try {
+    const r = render(ui);
+    act(() => {
+      vi.advanceTimersByTime(SETTLE_MS + 10);
+    });
+    return r;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 function state(over: Partial<ExternalChangeState>): ExternalChangeState {
   return {
@@ -104,7 +122,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 describe("ExternalChangeBadge — render gate", () => {
   it("renders nothing when severity is null", () => {
     currentState = state({ severity: null });
-    const { container } = render(<ExternalChangeBadge />);
+    const { container } = renderSettled(<ExternalChangeBadge />);
     expect(container.firstChild).toBeNull();
   });
 
@@ -114,10 +132,40 @@ describe("ExternalChangeBadge — render gate", () => {
       changes: [texModified],
       paused: true,
     });
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     expect(screen.getByText("Watching paused")).toBeTruthy();
     // No Reload affordance while watching is paused.
     expect(screen.queryByText("Reload")).toBeNull();
+  });
+});
+
+describe("ExternalChangeBadge — the settle rule (task 1174)", () => {
+  it("a plain change that reconciles inside the settle window NEVER paints", () => {
+    vi.useFakeTimers();
+    try {
+      currentState = state({ severity: "change", changes: [texModified] });
+      const Badge = ExternalChangeBadge as unknown as (p: { tick?: number }) => ReactElement | null;
+      const { container, rerender } = render(<Badge tick={1} />);
+      expect(container.querySelector("[data-external-change-badge]")).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS - 1_000);
+      });
+      expect(container.querySelector("[data-external-change-badge]")).toBeNull();
+      currentState = state({ severity: null });
+      rerender(<Badge tick={2} />);
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS * 2);
+      });
+      expect(container.querySelector("[data-external-change-badge]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a CONFLICT — unlanded edits at risk — paints at once", () => {
+    currentState = state({ severity: "conflict", changes: [texModified] });
+    const { container } = render(<ExternalChangeBadge />);
+    expect(container.querySelector('[data-external-change-badge="conflict"]')).toBeTruthy();
   });
 });
 
@@ -127,7 +175,7 @@ describe("ExternalChangeBadge — 'change' (amber, no unsaved edits)", () => {
   });
 
   it("labels a modified change 'Changed on disk' and tones amber", () => {
-    const { container } = render(<ExternalChangeBadge />);
+    const { container } = renderSettled(<ExternalChangeBadge />);
     expect(screen.getByText("Changed on disk")).toBeTruthy();
     expect(
       container.querySelector('[data-external-change-badge="change"]'),
@@ -135,7 +183,7 @@ describe("ExternalChangeBadge — 'change' (amber, no unsaved edits)", () => {
   });
 
   it("primary Reload calls reloadFromDisk WITHOUT a confirm", async () => {
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByText("Reload"));
     await flush();
     expect(confirmSpy).not.toHaveBeenCalled();
@@ -143,7 +191,7 @@ describe("ExternalChangeBadge — 'change' (amber, no unsaved edits)", () => {
   });
 
   it("Dismiss (kebab) calls watcher.acknowledge", async () => {
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByLabelText("External change options"));
     fireEvent.click(screen.getByText("Dismiss"));
     await flush();
@@ -152,7 +200,7 @@ describe("ExternalChangeBadge — 'change' (amber, no unsaved edits)", () => {
 
   it("labels a removed change 'Removed on disk'", () => {
     currentState = state({ severity: "change", changes: [texRemoved] });
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     expect(screen.getByText("Removed on disk")).toBeTruthy();
   });
 });
@@ -170,7 +218,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
   });
 
   it("labels the conflict calmly and does NOT paint the danger ramp", () => {
-    const { container } = render(<ExternalChangeBadge />);
+    const { container } = renderSettled(<ExternalChangeBadge />);
     expect(screen.getByText("Changed on disk · unsaved edits")).toBeTruthy();
     const pill = container.querySelector(
       '[data-external-change-badge="conflict"]',
@@ -184,7 +232,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
   });
 
   it("offers BOTH doors inline — the user's own side is not behind a menu", () => {
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     expect(screen.getByText("Keep mine")).toBeTruthy();
     expect(screen.getByText("Use disk")).toBeTruthy();
     // The one-sided "Reload" primary is gone from this tier.
@@ -192,7 +240,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
   });
 
   it("'Keep mine' resolves through the conflict door, never a bare acknowledge", async () => {
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByText("Keep mine"));
     await flush();
     expect(resolveConflict).toHaveBeenCalledWith("keep-mine");
@@ -203,7 +251,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
   });
 
   it("'Use disk' resolves through the conflict door, never a bare reload", async () => {
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByText("Use disk"));
     await flush();
     expect(resolveConflict).toHaveBeenCalledWith("take-disk");
@@ -211,7 +259,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
   });
 
   it("neither door takes a destructive confirm — the net is what replaces it", async () => {
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByText("Use disk"));
     await flush();
     fireEvent.click(screen.getByText("Keep mine"));
@@ -221,7 +269,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
 
   it("a resolution that got NO net is REPORTED, not passed off as done", async () => {
     outcome = { choice: "keep-mine", archive: null, applied: true };
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByText("Keep mine"));
     await flush();
     expect(confirmSpy).toHaveBeenCalledTimes(1);
@@ -230,7 +278,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
 
   it("a resolution that failed to APPLY is reported too", async () => {
     outcome = { choice: "take-disk", archive: null, applied: false };
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByText("Use disk"));
     await flush();
     expect(confirmSpy).toHaveBeenCalledTimes(1);
@@ -238,7 +286,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
   });
 
   it("the kebab carries both full labels with their loss-side stated", () => {
-    render(<ExternalChangeBadge />);
+    renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByLabelText("External change options"));
     expect(screen.getByText("Keep my version")).toBeTruthy();
     expect(screen.getByText("Load the disk version")).toBeTruthy();
@@ -253,7 +301,7 @@ describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
 describe("ExternalChangeBadge — menu portals to body", () => {
   it("the kebab menu renders under document.body, not inside the badge wrapper", () => {
     currentState = state({ severity: "change", changes: [texModified] });
-    const { container } = render(<ExternalChangeBadge />);
+    const { container } = renderSettled(<ExternalChangeBadge />);
     fireEvent.click(screen.getByLabelText("External change options"));
     // The menu role="menu" container is portaled to body.
     const menu = document.body.querySelector('[role="menu"]');

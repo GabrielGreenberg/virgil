@@ -27,6 +27,24 @@ import {
   type SaveAttemptOutcome,
 } from "@/lib/save-request";
 import { UNSAVED_ESCALATE_MS, UNSAVED_WARN_MS } from "@/lib/save-state";
+import { BAR_STATUS_POLICY } from "@/lib/bar-status-policy";
+import type { ReactElement } from "react";
+
+/** Task 1174 — the `unsaved` tier paints only once it has LASTED the policy's
+ *  settle window. Render, then let the window pass on fake timers. */
+const SETTLE_MS = BAR_STATUS_POLICY["save-state"].settleMs;
+function renderSettled(ui: ReactElement) {
+  vi.useFakeTimers();
+  try {
+    const r = render(ui);
+    act(() => {
+      vi.advanceTimersByTime(SETTLE_MS + 10);
+    });
+    return r;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 const DOC = "doc-1";
 let disposeDoor: (() => void) | null = null;
@@ -80,9 +98,49 @@ describe("SaveStateBadge · the tiers", () => {
     expect(screen.queryByText(/Saving/)).toBeNull();
   });
 
+  it("UNSAVED that clears inside its settle window NEVER paints (task 1174)", () => {
+    vi.useFakeTimers();
+    try {
+      act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 1_000)));
+      render(<SaveStateBadge docId={DOC} />);
+      expect(pill()).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS - 1_000);
+      });
+      expect(pill()).toBeNull();
+      // The write lands before the window closes: nothing was ever shown…
+      act(() => noteSaveLanded(DOC));
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS * 2);
+      });
+      // …and nothing is shown after the window either.
+      expect(pill()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("UNSAVED paints once it has LASTED the settle window", () => {
+    vi.useFakeTimers();
+    try {
+      act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 1_000)));
+      render(<SaveStateBadge docId={DOC} />);
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS - 1);
+      });
+      expect(pill()).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(2);
+      });
+      expect(pill()?.getAttribute("data-save-state")).toBe("unsaved");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("UNSAVED — amber, AGED, and offers Save now", () => {
     act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 5_000)));
-    render(<SaveStateBadge docId={DOC} />);
+    renderSettled(<SaveStateBadge docId={DOC} />);
     expect(pill()?.getAttribute("data-save-state")).toBe("unsaved");
     expect(screen.getByRole("status").textContent).toMatch(/Unsaved · /);
     expect(saveBtn()).not.toBeNull();
@@ -129,28 +187,31 @@ describe("SaveStateBadge · the REGISTER (task 571)", () => {
     document.querySelector("[data-bar-status-label]")?.getAttribute("style") ?? "";
   const tone = () => pill()?.getAttribute("data-save-tone");
 
-  it("a COWORK hold is the LIVE warm family, and offers NO button", () => {
-    act(() => noteSaveBlocked(DOC, "cowork"));
-    render(<SaveStateBadge docId={DOC} />);
-    expect(pill()?.getAttribute("data-save-state")).toBe("blocked");
-    expect(tone()).toBe("live");
-    expect(swatch()).toContain("--amber-100");
-    expect(swatch()).not.toContain("--danger");
-    // 489's "Try again" could only re-report the hold (the door answers
-    // `cowork`, which names no flow, so the click did nothing). 545's band
-    // decided `recommended: null` for the same state; the badge agrees.
-    expect(saveBtn()).toBeNull();
-    expect(document.body.textContent).not.toMatch(/Try again/);
+  it("a COWORK hold paints NO save pill — the cowork-pen pill explains it (task 1174)", () => {
+    // Pre-1174 this leg pinned the hold's LIVE register on the save pill; the
+    // pill now leaves the hold to the cowork-pen pill (one event, one pill),
+    // and so never trails it by the 1.5 s the re-armed save takes to land.
+    // The register itself still lives in `describeBlockReason` (census).
+    vi.useFakeTimers();
+    try {
+      act(() => noteSaveBlocked(DOC, "cowork"));
+      render(<SaveStateBadge docId={DOC} />);
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS * 3);
+      });
+      expect(pill()).toBeNull();
+      expect(saveBtn()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("…and past the escalation threshold the sentence still comes out, with still no button", () => {
+  it("…not even past the escalation threshold — the cowork-pen pill still stands for it", () => {
     act(() =>
       noteSaveBlocked(DOC, "cowork", Date.now() - (UNSAVED_ESCALATE_MS + 1_000)),
     );
     render(<SaveStateBadge docId={DOC} />);
-    expect(pill()?.getAttribute("data-save-escalated")).toBe("true");
-    expect(document.body.textContent).toMatch(/clears itself/i);
-    expect(saveBtn()).toBeNull();
+    expect(pill()).toBeNull();
   });
 
   it("a netted CONFLICT is the WARNING family, with its Resolve door", () => {
@@ -183,7 +244,7 @@ describe("SaveStateBadge · the REGISTER (task 571)", () => {
 
   it("the UNSAVED tier is the WARNING family — nothing has declined the write", () => {
     act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 5_000)));
-    render(<SaveStateBadge docId={DOC} />);
+    renderSettled(<SaveStateBadge docId={DOC} />);
     expect(tone()).toBe("warning");
     expect(swatch()).toContain("--amber-100");
   });
@@ -191,14 +252,24 @@ describe("SaveStateBadge · the REGISTER (task 571)", () => {
 
 describe("SaveStateBadge · the must-see rule (task 357, folded into bar-status-policy by 1131)", () => {
   it("a DATA-INTEGRITY state is always shown", () => {
-    act(() => noteSaveBlocked(DOC, "preservation"));
-    render(<SaveStateBadge docId={DOC} />);
-    expect(pill()?.getAttribute("data-save-state")).toBe("blocked");
-    act(() => {
-      clearUnsavedWork();
-      noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 1_000));
-    });
-    expect(pill()?.getAttribute("data-save-state")).toBe("unsaved");
+    vi.useFakeTimers();
+    try {
+      // A refusal is not coming to clear itself: it paints at once…
+      act(() => noteSaveBlocked(DOC, "preservation"));
+      render(<SaveStateBadge docId={DOC} />);
+      expect(pill()?.getAttribute("data-save-state")).toBe("blocked");
+      act(() => {
+        clearUnsavedWork();
+        noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 1_000));
+      });
+      // …while `unsaved` waits out its settle window (task 1174), then shows.
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS + 10);
+      });
+      expect(pill()?.getAttribute("data-save-state")).toBe("unsaved");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -209,7 +280,7 @@ describe("SaveStateBadge · what the button DOES", () => {
       return { landed: true };
     });
     act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 1_000)));
-    render(<SaveStateBadge docId={DOC} />);
+    renderSettled(<SaveStateBadge docId={DOC} />);
 
     await act(async () => {
       fireEvent.click(saveBtn() as Element);
@@ -269,7 +340,7 @@ describe("SaveStateBadge · what the button DOES", () => {
 
   it("with no door registered, the click cannot claim success", async () => {
     act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 1_000)));
-    render(<SaveStateBadge docId={DOC} />);
+    renderSettled(<SaveStateBadge docId={DOC} />);
     await act(async () => {
       fireEvent.click(saveBtn() as Element);
     });

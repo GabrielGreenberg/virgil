@@ -3901,7 +3901,12 @@ exactly **"⟳ Virgil update"** — state detail goes in the hover hint, never i
 the label. Every item renders through `BarStatusPill` (an actionable chip uses
 its `onActivate` variant). A new bar status item adds a row to the table first;
 the census (`bar-status-policy.test.tsx`) fails on an item the table does not
-name.
+name. **Must-see means it LASTS** (task 1174, "if it's that short, I don't want
+to see it"): every row also declares a `settleMs` the state must outlast before
+it paints (plus an optional `immediate` for work genuinely at risk), and items
+render through the ONE hook `useBarStatusVisible(id, state)`, which owns the
+single settle timer — a state that clears itself inside its window never
+paints, and no item carries a timer of its own.
 
 ### Occupancy priority — who yields when the bar is narrow
 

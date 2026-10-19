@@ -36,12 +36,13 @@
  *   unread for seventy minutes.
  * - **`unsaved`** — dirty, unblocked, and older than {@link UNSAVED_WARN_MS}.
  *   Nothing has *declined* the write, but it has not landed either. Twenty
- *   seconds against a 1500 ms debounce is generous by an order of magnitude,
- *   and it has to be: `debouncedSave` re-arms on every keystroke, so a
- *   genuinely continuous typing burst holds a document dirty with nothing
- *   wrong. What it says at twenty seconds is nonetheless TRUE — the last
- *   twenty seconds of writing are not on disk — and it clears itself 1500 ms
- *   after the user stops.
+ *   seconds against a 1500 ms debounce is generous by an order of magnitude.
+ *   Since task 1174 the debounce also has a MAXWAIT (`AUTOSAVE_MAX_WAIT_MS`,
+ *   10 s, in `useDocument.ts`), so a continuous typing burst still writes and
+ *   cannot age a document into this tier: `unsaved` now means autosave is
+ *   genuinely not landing. The bar adds its own settle window on top
+ *   (`bar-status-policy.ts`), so even a slow write that is about to land does
+ *   not flash a pill.
  * - **`blocked`** — a gate said no, and said why. Immediately, with no grace
  *   period — and in the REGISTER the reason's interruption kind has (task
  *   571): the alarm ramp only where the user's work is on no disk and nothing

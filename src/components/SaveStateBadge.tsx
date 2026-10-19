@@ -48,7 +48,7 @@ import { memo, useCallback, useState } from "react";
 
 import { useSaveState } from "@/hooks/useSaveState";
 import { describeAge, describeBlockReason } from "@/lib/save-state";
-import { barStatusVisible } from "@/lib/bar-status-policy";
+import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 import { type InterruptionTone } from "@/lib/interruption-tone";
 import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
@@ -92,11 +92,17 @@ function SaveStateBadgeImpl({ docId }: { docId: string | null }) {
     requestBlockingFlow(docId, outcome.reason);
   }, [docId, busy]);
 
-  if (!docId) return null;
   // Task 1131: the bar shows must-see state only (`bar-status-policy.ts`).
   // The two quiet tiers — "Saved · 13:28" and "Saving…" — are reassurance,
   // so they render nothing; the absence of a save pill IS the all-clear.
-  if (!barStatusVisible("save-state", { tier: view.tier })) return null;
+  // Task 1174: an `unsaved` tier paints only once it has LASTED the policy's
+  // settle window, and a cowork hold is the cowork-pen pill's to explain.
+  const visible = useBarStatusVisible("save-state", {
+    tier: view.tier,
+    reason: view.reason,
+  });
+  if (!docId) return null;
+  if (!visible) return null;
 
   // ── the two loud tiers ─────────────────────────────────────────────────
   const blocked = view.tier === "blocked" && view.reason !== null;

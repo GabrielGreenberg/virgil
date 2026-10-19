@@ -6,8 +6,9 @@
 // silently stops accepting keystrokes is a worse experience than one that never
 // went read-only at all.
 
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, act } from "@testing-library/react";
+import { BAR_STATUS_POLICY } from "@/lib/bar-status-policy";
 import CoworkPenBadge from "@/components/CoworkPenBadge";
 import { clearCoworkPen, noteCoworkPen } from "@/lib/cowork-pen";
 
@@ -31,9 +32,37 @@ describe("CoworkPenBadge", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("names what is happening while a cowork skill holds the pen", () => {
-    hold("doc-1");
-    render(<CoworkPenBadge docId="doc-1" />);
+  it("a hold that releases inside the settle window NEVER paints (task 1174)", () => {
+    vi.useFakeTimers();
+    try {
+      hold("doc-1");
+      const { container } = render(<CoworkPenBadge docId="doc-1" />);
+      expect(container.firstChild).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(BAR_STATUS_POLICY["cowork-pen"].settleMs - 1_000);
+      });
+      expect(container.firstChild).toBeNull();
+      act(() => clearCoworkPen());
+      act(() => {
+        vi.advanceTimersByTime(BAR_STATUS_POLICY["cowork-pen"].settleMs * 2);
+      });
+      expect(container.firstChild).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names what is happening while a cowork skill holds the pen (once the hold LASTS)", () => {
+    vi.useFakeTimers();
+    try {
+      hold("doc-1");
+      render(<CoworkPenBadge docId="doc-1" />);
+      act(() => {
+        vi.advanceTimersByTime(BAR_STATUS_POLICY["cowork-pen"].settleMs + 10);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(screen.getByText(/Virgil is editing this paper/i)).toBeTruthy();
     // …and it says WHY the editor stopped accepting typing.
     const label = screen
