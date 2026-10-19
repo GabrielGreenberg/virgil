@@ -69,6 +69,11 @@ import type { EditorView } from "@tiptap/pm/view";
  *
  *   - `drag-handle-actions.ts` — the card dispatcher BOTH menus cross;
  *   - `drop-mode/commit-seam.ts` + `drop-mode/hit-test.ts` — the drop gestures;
+ *   - `commands.ts` + `slash-applicability.ts` + `slash-popup.ts` (task
+ *     1183) — the slash surface. Its commits are pure PM, but its OFFER is a
+ *     menu: asking a constant gate there opened the popup fully lit in the
+ *     Library Reader and let every row run into the enforcer. A surface that
+ *     OFFERS a command asks the honest door, like the grab menu and lightning;
  *   - `insert-inline-atom.ts` (task 911). It builds only a transaction, but its
  *     REPORT is what its callers register a card on (`commitCitationCreate`,
  *     the footnote creators: "the report is the permission"). A dropped
@@ -80,7 +85,7 @@ import type { EditorView } from "@tiptap/pm/view";
  * there costs a dropped transaction and nothing else:
  *
  *   - the typed-LaTeX input rules (`math.ts`, `citation.ts`, `footnote.ts`,
- *     `latex-comment.ts`, `commands.ts`, `typed-latex-input-rules.ts`), all of
+ *     `latex-comment.ts`, `typed-latex-input-rules.ts`), all of
  *     which build a transaction and report nothing a caller acts on;
  *   - `RichTextField.tsx`, a CARD-BODY surface, where `view.editable` is the
  *     honest answer by construction (no enforcer, no `editableRef`).

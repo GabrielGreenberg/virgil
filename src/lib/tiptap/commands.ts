@@ -1,6 +1,6 @@
 import type { EditorView } from "@tiptap/pm/view";
 import { generateShortId } from "@/lib/uuid";
-import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 // CHIP 4a-ii: the PM→React bridge the slash `\cite` uses to register the
 // citation CARD (the atom is still inserted synchronously below). Replaces the
 // `virgil-citation-create` CustomEvent — one typed entrypoint into the
@@ -72,15 +72,14 @@ export interface VirgilCommand {
 function runViewOnlyAction(id: ActionId, view: EditorView): void {
   const spec = VIRGIL_ACTION_REGISTRY[id];
   if (!spec) return;
-  // CHIP 7b: the UNIFORM collab read-only gate for the pure-PM slash commands
-  // (heading / tex / title-fields). `view.editable` is the in-editor mirror of
-  // `collab.canEditMainText` (EditorLayout flips it via `setEditable` when the
-  // partner holds the pen). When read-only the command no-ops — no block insert /
-  // conversion. (In practice PM already suppresses `handleTextInput` on a
-  // non-editable view, so the slash popup won't even fire; this makes the refusal
-  // EXPLICIT + uniform with the other surfaces.) No over-gating: a non-collab
-  // editor is always editable.
-  if (collabReadOnly(view)) return;
+  // CHIP 7b → task 1183: the read-only gate for the pure-PM slash commands
+  // (heading / tex / title-fields), asked through the ONE editability door —
+  // pen (`view.editable`, flipped by `setEditable` when the partner holds it)
+  // ∧ host (the Library Reader's `editableRef`, which `view.editable` cannot
+  // see on MAIN). The popup's open gate asks the same door, so this refusal is
+  // the explicit backstop, not the only guard. No over-gating: an editor with
+  // neither restriction is always editable.
+  if (!surfaceEditableNow(view)) return;
   // Task 398: ONE ctx constructor, shared with the popup's OFFER. It was inline
   // here; the popup then had no way to ask the same question without re-deriving
   // it, which is exactly how the offer and the commit came to disagree.
@@ -110,14 +109,14 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
  *
  * It owns the two steps every bridge-dispatched slash command shares, ONCE:
  *
- *   1. CHIP 7b — the UNIFORM collab read-only gate. `view.editable` is the
- *      in-editor mirror of `collab.canEditMainText` (EditorLayout flips it via
- *      `setEditable` when the partner holds the pen). When read-only the command
+ *   1. CHIP 7b → task 1183 — the read-only gate, asked through
+ *      `surfaceEditableNow` (pen ∧ host: `view.editable` alone is constant on
+ *      MAIN and blind to the Library Reader). When read-only the command
  *      no-ops. The bridge's own `runAction` ALSO no-ops on `!isEditable`
  *      (`EditorPane.tsx`), so this is an EXPLICIT, uniform early refusal — not
  *      the only guard — mirroring `runViewOnlyAction`'s gate for the pure-PM
- *      commands and the typed surface's `collabReadOnly`. No
- *      over-gating: a non-collab editor is always editable.
+ *      commands. No over-gating: an editor with neither restriction is
+ *      always editable.
  *   2. the bridge dispatch itself — `runEditorAction(view, …)`, routed via the
  *      EXACT live `view` so it reaches THIS pane's handle under multi-doc
  *      keep-alive, not a hidden keep-alive pane's — and (task 642) carries that
@@ -135,7 +134,7 @@ function runBridgeAction(
   view: EditorView,
   payload?: Record<string, unknown>,
 ): void {
-  if (collabReadOnly(view)) return;
+  if (!surfaceEditableNow(view)) return;
   runEditorAction(view, id, {
     surface: "slash",
     ...(payload ? { payload } : {}),
@@ -217,12 +216,12 @@ function citePrepare(view: EditorView): undefined | false {
 /** `\footnote`'s pre-work: gate, then insert the atom SYNCHRONOUSLY and hand
  *  its id to the bridge call as the payload. See the row. */
 function footnotePrepare(view: EditorView): Record<string, unknown> | false {
-  // CHIP 7b: collab read-only gate. Unlike the other bridge-dispatched
+  // CHIP 7b → task 1183: read-only gate (pen ∧ host). Unlike the other bridge-dispatched
   // commands, `\footnote` inserts its atom SYNCHRONOUSLY below (BEFORE the
   // bridge dispatch), so this refusal MUST run here as a bespoke pre-gate —
   // deferring to `runBridgeAction`'s gate alone would land an orphan atom on a
   // read-only view. (`runBridgeAction`'s gate re-checks harmlessly afterwards.)
-  if (collabReadOnly(view)) return false;
+  if (!surfaceEditableNow(view)) return false;
   const { state } = view;
   // Task 843: the id attr comes off the registry row (task 645's SSOT) rather
   // than being hand-paired with the node name here. The node TYPE stays a

@@ -66,6 +66,8 @@ import {
   type ActionContext,
 } from "@/lib/actions/action-registry";
 import { paragraphUuidAt } from "@/links/links";
+import { owningEditor } from "@/lib/tiptap/owning-editor";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
 /**
  * The slash surface's `ActionContext`, built ONCE here so the OFFER and the
@@ -79,6 +81,13 @@ import { paragraphUuidAt } from "@/links/links";
  * object below is complete for the question; `editable` comes off the real view
  * (it is a view PROP, not state — the in-editor mirror of
  * `collab.canEditMainText`).
+ *
+ * `canEdit` is `surfaceEditableNow(view)` — the pen ∧ host conjunction every
+ * other command surface asks (task 1183). `view.editable` alone is a constant
+ * `true` on MAIN, so in the Library Reader the popup used to offer every row
+ * and the read-only enforcer then dropped the write. The synthesized `editor`
+ * carries the owning editor's STORAGE so `refusalOf` can tell "open read-only"
+ * (the host) from "your co-author has the pen".
  */
 export function buildSlashActionContext(
   view: EditorView,
@@ -92,6 +101,7 @@ export function buildSlashActionContext(
       ? view
       : ({ state: target, editable: view.editable } as unknown as EditorView);
   const pos = target.selection.head;
+  const owner = owningEditor(view);
   return {
     // For a TipTap editor `view === editor.view`; the slash plugin has only the
     // view, so `editor` is filled with the same view-bearing object the registry
@@ -99,6 +109,7 @@ export function buildSlashActionContext(
     editor: {
       view: viewLike,
       state: target,
+      storage: owner?.storage ?? {},
     } as unknown as ActionContext["editor"],
     view: viewLike,
     ref: {
@@ -107,11 +118,12 @@ export function buildSlashActionContext(
       paragraphId: paragraphUuidAt(target.doc, pos) ?? "",
     },
     surface: "slash",
-    // CHIP 7b's uniform collab read-only gate: `view.editable` is the in-editor
-    // mirror of `collab.canEditMainText`. `gateApplies` turns `canEdit === false`
-    // into `"disabled"` for EVERY row, so a read-only pane greys the whole popup
-    // rather than eating characters on a document it cannot write.
-    canEdit: view.editable,
+    // The ONE editability door (task 1183): pen (`view.editable`, the mirror
+    // of `collab.canEditMainText`) ∧ host (`editableRef`, the Library Reader).
+    // `gateApplies` turns `canEdit === false` into `"disabled"` for EVERY row,
+    // so a read-only surface greys the whole popup rather than offering writes
+    // the enforcer will drop.
+    canEdit: surfaceEditableNow(view),
   };
 }
 
