@@ -547,11 +547,30 @@ The token scales:
 Locked aliases (must track each other): `--theme-color`/`--topbar-bg`,
 `--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
 `--h1-color`/`--foreground`, `--h2h3-color`/`--editor-text-color`,
-`--scrollbar-hover`/`--muted-light`. Each is DERIVED (`var(--partner)`), never
+`--scrollbar-hover`/`--muted-light`, `--zen-canvas-cool`/`--topbar-bg`. Each is DERIVED (`var(--partner)`), never
 a re-spelled literal, and
 [src/__tests__/token-contract.test.ts](__tests__/token-contract.test.ts) fails
 if one is flattened back to a literal — "locked" names an invariant here, not
 a convention.
+
+**Zen canvas — paint vs colour (task 1177).** `--background` is the canvas
+COLOUR and is always solid: ~20 consumers use it as one (`color-mix()`,
+box-shadow spreads, gradient stops, `bg-background`). The canvas PAINT is a
+separate token, `--canvas-paint` — the colour off zen, and in zen
+`--zen-canvas`, a warm-bottom (`--zen-canvas-warm`, sand) → cool-top
+(`--zen-canvas-cool` = `--topbar-bg`) gradient with `fixed` attachment. Every
+surface that IS the canvas or MASKS as it (EditorLayout's root and main rows
+via `.canvas-paint`; the two sticky pod caps) paints `--canvas-paint`, so they
+all show the same viewport-pinned gradient and stay seamless. A box-shadow
+cannot carry a gradient, so the pod frame's matte ring reads `--canvas-matte`,
+transparent in zen. Never assign a gradient to `--background`;
+`canvas-paint-census.test.ts` pins it.
+
+| Token | Value | Role |
+|---|---|---|
+| `--canvas-paint` | `var(--background)` · zen: `var(--zen-canvas)` | the window canvas's paint (root, rows, pod caps) |
+| `--zen-canvas` | `linear-gradient(to top, warm, cool) fixed` | zen's viewport-fixed canvas gradient |
+| `--canvas-matte` | `var(--background)` · zen: `transparent` | pod frame matte ring (box-shadow) |
 
 **Scrollbars (task 1175).** One width, `--scrollbar-size` (6px), feeds the
 styled `::-webkit-scrollbar` (width + height) and is mirrored by the editor's

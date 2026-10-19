@@ -3179,7 +3179,7 @@ export default function EditorLayout() {
         site are descendants of the per-doc external-change watcher. It self-
         gates on currentDocId (no provider when no doc is open). */}
     <DiskWatcherProviderGate docId={currentDocId} liveDocIds={keepAliveDocIds}>
-    <div className="flex flex-col h-screen bg-[var(--background)]">
+    <div className="flex flex-col h-screen canvas-paint">
       {/* Top bar: logo + tabs + right-side status/action cluster.
           Extracted into the memoized <TopBar> (with its memoized <TabStrip>
           and <StatusCluster> children) so background paneState ticks no
@@ -3389,7 +3389,7 @@ export default function EditorLayout() {
 
       {/* Main area */}
       {activePane === "paper" && currentPaperCitekey ? (
-        <div className="flex flex-1 overflow-hidden bg-[var(--background)]">
+        <div className="flex flex-1 overflow-hidden canvas-paint">
           {/* Keyed by citekey: switching popped paper tabs swaps papers, and
               every piece of per-paper state below (header note, reader load)
               must start fresh rather than carry across (task 765). */}
@@ -3456,7 +3456,7 @@ export default function EditorLayout() {
           )}
         </FramedViewerSurface>
       ) : currentDocId ? null : (
-        <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-1 items-center justify-center canvas-paint">
           <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-xl">
             {docs.length > 0 ? (
               <RecentPapersList docs={docs} onOpen={openFile} onRemove={deleteFile} />
