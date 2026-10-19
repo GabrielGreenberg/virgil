@@ -30,7 +30,8 @@ import {
  *
  * `resolveMarginaliaLane` is the one answer. `hosted` is what the render gate
  * reads; `reserved` is `hosted` minus the single FLOOR-only exception (a
- * compressed code-split). The sibling `marginalia-right-margin-geometry`
+ * compressed code-split) — and, since task 1178, PLUS zen, which hides the
+ * markers but keeps normal view's page (width and inset) unchanged. The sibling `marginalia-right-margin-geometry`
  * suite pins the pure lane functions; this one pins the COMPOSITION, which
  * before 671 was pinned by nothing.
  */
@@ -51,10 +52,12 @@ const CELLS: ReadonlyArray<{
     reserved: true,
   },
   {
+    // Task 1178: zen hides the markers but shows normal view's page, so it
+    // keeps normal view's floored text inset.
     name: "zen",
     input: { showMarginalia: true, zenMode: true, compressX: false },
     hosted: false,
-    reserved: false,
+    reserved: true,
   },
   {
     name: "zen + compressed code-split",
@@ -103,10 +106,11 @@ describe("resolveMarginaliaLane — the matrix", () => {
     });
   }
 
-  it("reserved IMPLIES hosted, over the whole 2×3×2 input space", () => {
+  it("outside zen, reserved IMPLIES hosted, over the whole input space", () => {
     // A floor for a lane nobody paints is wasted prose width — the Reader bug.
+    // Zen is the one stated exception (task 1178, below).
     for (const showMarginalia of [true, false, undefined]) {
-      for (const zenMode of [true, false, undefined]) {
+      for (const zenMode of [false, undefined]) {
         for (const compressX of [true, false]) {
           const lane = resolveMarginaliaLane({ showMarginalia, zenMode, compressX });
           if (lane.reserved) expect(lane.hosted).toBe(true);
@@ -115,9 +119,20 @@ describe("resolveMarginaliaLane — the matrix", () => {
     }
   });
 
-  it("the ONLY way hosted and reserved differ is a compressed code-split", () => {
+  it("zen never moves the floor: reserved is the same with zen on or off", () => {
+    // Task 1178: zen is a VIEW of the normal page — same width, same inset.
     for (const showMarginalia of [true, false, undefined]) {
-      for (const zenMode of [true, false, undefined]) {
+      for (const compressX of [true, false]) {
+        const on = resolveMarginaliaLane({ showMarginalia, zenMode: true, compressX });
+        const off = resolveMarginaliaLane({ showMarginalia, zenMode: false, compressX });
+        expect(on.reserved).toBe(off.reserved);
+      }
+    }
+  });
+
+  it("outside zen, the ONLY way hosted and reserved differ is a compressed code-split", () => {
+    for (const showMarginalia of [true, false, undefined]) {
+      for (const zenMode of [false, undefined]) {
         const loose = resolveMarginaliaLane({ showMarginalia, zenMode, compressX: false });
         expect(loose.reserved).toBe(loose.hosted);
       }
@@ -143,9 +158,10 @@ describe("the two gates, composed — what the pane paints vs. what it floors", 
       floor: MARGINALIA_MIN_MARGIN_RIGHT,
     });
 
-  it("no pane is floored for a lane it does not paint", () => {
+  it("no pane is floored for a lane it does not paint (zen aside — task 1178)", () => {
     const NARROW = 24; // MARGIN_MIN.right — the narrowest a drag reaches
     for (const cell of CELLS) {
+      if (cell.input.zenMode) continue;
       const lane = resolveMarginaliaLane(cell.input);
       if (paints(lane, 7) === 0) {
         expect(flooredLeft(lane, NARROW)).toBe(NARROW);
@@ -154,11 +170,13 @@ describe("the two gates, composed — what the pane paints vs. what it floors", 
     }
   });
 
-  it("zen paints nothing and keeps its margin freedom (its own comment, now true)", () => {
+  it("zen paints nothing yet keeps normal view's floored inset (task 1178)", () => {
     const zen = resolveMarginaliaLane({ showMarginalia: true, zenMode: true, compressX: false });
+    const normal = resolveMarginaliaLane({ showMarginalia: true, zenMode: false, compressX: false });
     expect(paints(zen, 7)).toBe(0);
-    expect(flooredRight(zen, 0)).toBe(0);
-    expect(flooredLeft(zen, 0)).toBe(0);
+    expect(flooredRight(zen, 0)).toBe(flooredRight(normal, 0));
+    expect(flooredLeft(zen, 0)).toBe(flooredLeft(normal, 0));
+    expect(flooredRight(zen, 0)).toBe(MARGINALIA_MIN_MARGIN_RIGHT);
   });
 
   it("the Reader paints markers, so its 184px of lane is earned, not stale", () => {

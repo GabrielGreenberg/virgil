@@ -5,11 +5,11 @@ import { onLayoutGestureSetChange } from "@/lib/pane-resize";
 
 /**
  * The flex-column PIN — a gesture-scoped freeze of a side column's width
- * (`PanelColumn` and `ZenMargin`, both stamped `[data-flex-col]`).
+ * (`PanelColumn`, stamped `[data-flex-col]`; task 1178 retired the zen
+ * margins that were its second kind).
  *
  * A column's resting flex is React's (`0 0 pref` for a panel column under a
- * `--panel-min` floor, `1 100 pref` for a zen margin, which shrinks hard on a
- * narrow window), so its RENDERED width can sit far from the stored pref. While
+ * `--panel-min` floor), so its RENDERED width can sit far from the stored pref. While
  * a side-column gutter drags, every column in that row must hold its rendered
  * width — or a shrunk column snaps back to its pref the moment the gesture
  * lifts its min-width, and the editor jumps under the pointer.
@@ -43,8 +43,8 @@ function unpinFlexColumn(col: HTMLElement): void {
   col.style.removeProperty("--flex-pin");
 }
 
-type FlexColumnKind = "editor-panel" | "zen-margin";
-const FLEX_COLUMN_KINDS: readonly FlexColumnKind[] = ["editor-panel", "zen-margin"];
+type FlexColumnKind = "editor-panel";
+const FLEX_COLUMN_KINDS: readonly FlexColumnKind[] = ["editor-panel"];
 
 /** The gutter gesture id of a side column — the ONE minting door, so the
  *  family test below cannot drift from the ids it recognises. Instance-unique

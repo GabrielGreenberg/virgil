@@ -772,7 +772,7 @@ utility (`md:text-*`) or `vw`-sized font in `src/` or `library/` — the only
 `@media` blocks are `prefers-reduced-motion`, `display-mode:
 window-controls-overlay` and `print`. This is easy to break by analogy,
 because the app *does* respond to width everywhere else (the page column is
-clamped between `--page-min` and `--page-max`, zen margins collapse,
+the remainder after the side rails, and zen keeps that width centred,
 `--margin-col-handle-inset` exists for narrow viewports). The reason is
 **ownership, not aesthetics**: every editor size is a user preference
 (`--editor-font-size`, `--font-headers-h1/-h2/-h3-size`, wired in
@@ -1872,7 +1872,7 @@ has focus**: no per-pod stripe, ring, border, or shadow-change on focus.
 ## Resize gutters
 
 Every draggable divider in the app — the panel-band dividers, the
-panel↔editor gutters, the code splitter, zen margins, and three of the four
+panel↔editor gutters, the code splitter, and three of the four
 Library resizers — shares ONE grip chrome: `.drag-gap.drag-gap-{h,v}
 .band-grip`. The strip is **invisible at rest** (only the resize cursor
 shows) and reveals a single centered **grip pill** on hover AND drag. The

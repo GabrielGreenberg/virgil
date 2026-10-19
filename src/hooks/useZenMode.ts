@@ -5,21 +5,23 @@
  * ==============================================================
  *
  * A global toggle that hides the editor's surrounding chrome (icon strips,
- * panel columns, floating MenuBar, marginalia margins, popped-out panels
+ * panel columns, floating MenuBar, marginalia markers, popped-out panels
  * and cards) while leaving the underlying layout state untouched. The top
  * bar stays visible so there's always an affordance to toggle Zen off.
  *
- * In Zen mode, empty adjustable "page margins" take the place of where
- * the panel columns would normally sit. Their widths are stored here
- * (leftMargin / rightMargin), independent of the panel column widths, so
- * a narrow reading margin doesn't force narrow panels when Zen is off.
+ * Zen is a VIEW of the normal page, not a second layout: the page keeps the
+ * width normal view gives it, centred where the panels were. That width is
+ * DERIVED (`normal-view-rails.ts`), never stored here — so this store is
+ * on/off and nothing else (task 1178 retired the old per-side zen margins and
+ * their drag handles; change the page width in normal view).
  *
  * Architecture: module-scoped state, pub/sub via useSyncExternalStore,
  * localStorage persistence, and a body attribute mirror
  * (`data-zen-mode="on"`). `useWindowChrome.ts` mirrors the same shape.
  *
- * Storage key: "virgil-zen-mode" — JSON: { on: boolean, leftMargin: number, rightMargin: number }.
- * Legacy boolean values are migrated on load.
+ * Storage key: "virgil-zen-mode" — JSON: { on: boolean }. Legacy boolean
+ * values are migrated on load; the retired `leftMargin` / `rightMargin`
+ * fields of older blobs are ignored and dropped on the next write.
  */
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
@@ -27,21 +29,13 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 
 const STORAGE_KEY = "virgil-zen-mode";
-const DEFAULT_MARGIN = 160;
-// Bounds are generous so Zen can preserve whatever margins the non-Zen
-// layout currently has (icon strip alone ≈ 42px; strip + wide panel can
-// easily exceed 600). Drag handle in ZenMargin has its own bounds.
-const MIN_MARGIN = 0;
-const MAX_MARGIN = 1200;
 
 interface ZenState {
   on: boolean;
-  leftMargin: number;
-  rightMargin: number;
 }
 
-let _state: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN };
-const _ssrSnapshot: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN };
+let _state: ZenState = { on: false };
+const _ssrSnapshot: ZenState = { on: false };
 let _loaded = false;
 const _listeners = new Set<() => void>();
 
@@ -57,7 +51,7 @@ function _notify() {
  * also what a peer's `clear()` must produce.
  */
 function _readFromStorage(): ZenState {
-  const base: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN };
+  const base: ZenState = { on: false };
   if (typeof window === "undefined") return base;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -65,14 +59,10 @@ function _readFromStorage(): ZenState {
     const parsed = JSON.parse(raw);
     if (typeof parsed === "boolean") {
       // Legacy format: just the on/off flag.
-      return { ...base, on: parsed };
+      return { on: parsed };
     }
     if (parsed && typeof parsed === "object") {
-      return {
-        on: parsed.on === true,
-        leftMargin: typeof parsed.leftMargin === "number" ? parsed.leftMargin : DEFAULT_MARGIN,
-        rightMargin: typeof parsed.rightMargin === "number" ? parsed.rightMargin : DEFAULT_MARGIN,
-      };
+      return { on: parsed.on === true };
     }
   } catch {
     /* ignore */
@@ -89,11 +79,11 @@ function _loadOnce() {
 
 // Cross-window re-sync (task 179, following 177). `_loaded` is a one-shot
 // latch, so without this a second window's snapshot could never re-hydrate and
-// its next whole-blob `_persist()` would silently drop the peer's zen state /
-// margin widths. The `storage` event never fires in the writing window, so
-// this is the peer channel only; the re-read runs the same validation as the
-// hydrate, and `_notify()` re-renders every `useZenMode` consumer (which also
-// re-runs the `data-zen-mode` body-attribute effect).
+// its next whole-blob `_persist()` would silently drop the peer's zen state.
+// The `storage` event never fires in the writing window, so this is the peer
+// channel only; the re-read runs the same validation as the hydrate, and
+// `_notify()` re-renders every `useZenMode` consumer (which also re-runs the
+// `data-zen-mode` body-attribute effect).
 subscribeToStorageKey(STORAGE_KEY, () => {
   _state = _readFromStorage();
   _notify();
@@ -110,27 +100,9 @@ function _subscribe(listener: () => void) {
 }
 
 /**
- * Clamp a zen page-margin width.
- *
- * `floor` is the right-margin geometry min-floor (backlog #8): the smallest
- * margin that still fully reserves the marginalia marker lane. It is applied
- * ONLY WHEN MARKERS ARE VISIBLE. Zen mode is distraction-free reading and
- * hides the marginalia markers — a claim this comment made for a year before
- * `resolveMarginaliaLane` made it true (task 671) — so the marker lane is
- * never live here; the setters below pass the default
- * `MIN_MARGIN` (0) and zen keeps its full freedom down to a zero margin, the
- * regression the floor must NOT cause in reading modes. The parameter is
- * threaded so the gate is explicit (and so a future zen-with-markers mode
- * could opt in by passing the lane floor).
- */
-function _clamp(n: number, floor: number = MIN_MARGIN) {
-  return Math.max(floor, Math.min(MAX_MARGIN, n));
-}
-
-/**
  * Read/write the zen-mode state.
  *
- *   const { on, toggle, set, leftMargin, rightMargin, setLeftMargin, setRightMargin } = useZenMode();
+ *   const { on, toggle, set } = useZenMode();
  */
 export function useZenMode() {
   _loadOnce();
@@ -152,40 +124,16 @@ export function useZenMode() {
 
   const set = useCallback((value: boolean) => {
     if (_state.on === value) return;
-    _state = { ..._state, on: value };
+    _state = { on: value };
     _persist();
     _notify();
   }, []);
 
   const toggle = useCallback(() => {
-    _state = { ..._state, on: !_state.on };
+    _state = { on: !_state.on };
     _persist();
     _notify();
   }, []);
 
-  const setLeftMargin = useCallback((w: number) => {
-    const next = _clamp(w);
-    if (_state.leftMargin === next) return;
-    _state = { ..._state, leftMargin: next };
-    _persist();
-    _notify();
-  }, []);
-
-  const setRightMargin = useCallback((w: number) => {
-    const next = _clamp(w);
-    if (_state.rightMargin === next) return;
-    _state = { ..._state, rightMargin: next };
-    _persist();
-    _notify();
-  }, []);
-
-  return {
-    on: state.on,
-    toggle,
-    set,
-    leftMargin: state.leftMargin,
-    rightMargin: state.rightMargin,
-    setLeftMargin,
-    setRightMargin,
-  };
+  return { on: state.on, toggle, set };
 }

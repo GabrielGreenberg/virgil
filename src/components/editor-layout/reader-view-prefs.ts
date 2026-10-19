@@ -130,8 +130,6 @@ const READER_NOOP_HANDLERS: Omit<EditorMutationHandlers, "onScrollToHeading"> = 
   onFocusSnapBoundary: () => {},
   focusFloating: () => {},
   setIsResizingPanels: () => {},
-  setZenLeftMargin: () => {},
-  setZenRightMargin: () => {},
   // Reader writes are intentionally scoped to note annotations; the per-card
   // archive view never changes in a read-only doc.
   setCardArchiveView: () => {},
@@ -677,8 +675,6 @@ export function useReaderView(
       focusState: null,
       focusBand: null,
       zenMode: false,
-      zenLeftMargin: 0,
-      zenRightMargin: 0,
       getOmniEnabled,
       setOmniSideToDefault: vp.resetOmniSide,
       categorySides,

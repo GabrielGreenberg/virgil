@@ -370,6 +370,13 @@ React rendered from the unchanged pref. `syncPanelPrefsToRendered`, the
 `pane-resize-adoption.test.tsx` → "task 1052 — the begin edge pins, it never
 persists".
 
+Task 1178 then retired the zen margins outright: zen's page width is DERIVED
+from normal view's ([normal-view-rails.ts](../../../src/components/editor-layout/normal-view-rails.ts) —
+the editor column takes `flex: 0 1 calc(100% − both normal-view rails)`,
+centred), so zen has no divider, no stored width and no pin. A second width
+store beside a derived one is the class this removes; the 1052 legs now run on
+two `PanelColumn`s.
+
 **Owed, not claimed:** the preview eyeball — narrow the window in zen mode,
 click a margin gutter without moving, widen the window, and confirm both
 margins re-expand.

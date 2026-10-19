@@ -77,8 +77,9 @@ export const MARGIN_OPPOSITE: Record<MarginSide, MarginSide> = {
 };
 
 // Per-side minimum padding when the marginalia marker lane is NOT reserved —
-// i.e. zen (which hides the markers) and a compressed code-split (where the
-// 48px comfort cap wins). NOT the read-only Library Reader: it hosts the lane
+// i.e. the Marginalia toggle off and a compressed code-split (where the 48px
+// comfort cap wins). NOT zen: it hides the markers but keeps normal view's
+// floored inset (task 1178). NOT the read-only Library Reader: it hosts the lane
 // like the editor (task 671).
 // Right and top/bottom floor low so the slider can drive the prose nearly to
 // the pod edge — the residual ~8px gap is the irreducible --pod-cap-inner
@@ -105,7 +106,7 @@ export const MARGIN_MAX = 240;
 
 /**
  * Per-side minimum padding when the marginalia marker lane IS reserved (the
- * editor with the Marginalia toggle on, outside zen). The horizontal floors
+ * editor with the Marginalia toggle on — zen included, task 1178). The horizontal floors
  * rise to the right-margin geometry SSOT minimums so the marker grid always
  * fits beside the scrollbar / bolt without eating into the prose (backlog #8).
  * `Math.max` with the base floor so we never LOWER an existing floor (left's
@@ -215,11 +216,12 @@ interface UseMarginEditOpts {
   viewPrefs: MarginEditViewPrefs | null | undefined;
   /**
    * True when the marginalia marker lane is rendered and must be reserved —
-   * a pane that paints markers (the Marginalia toggle on, outside zen —
-   * the editor AND the Library Reader), outside a compressed code-split. When
+   * a pane with the Marginalia toggle on (the editor AND the Library Reader,
+   * and zen, which keeps normal view's floor — task 1178), outside a
+   * compressed code-split. When
    * true, the horizontal margin drag floors at `MARGIN_MIN_WITH_MARKERS` so a
-   * drag can't shrink the margin below the marker lane. False where no markers
-   * are painted (zen, or the master toggle off) and in a compressed code-split,
+   * drag can't shrink the margin below the marker lane. False with the master
+   * toggle off and in a compressed code-split,
    * which keep full margin freedom via the lower `MARGIN_MIN`. The caller must
    * pass `resolveMarginaliaLane(...).reserved` — the SAME resolution that
    * decides whether an icon is painted at all (task 671), never a second
@@ -419,7 +421,7 @@ export function useMarginEdit({
       const oppositeSide = MARGIN_OPPOSITE[side];
 
       // Pick the floor table: when the marginalia marker lane is reserved
-      // (editor, markers on, not zen), the horizontal sides floor at the lane
+      // (editor, markers on — zen included), the horizontal sides floor at the lane
       // minimum so the drag can't shrink the margin under the marker grid
       // (backlog #8). Reading modes that hide markers use the lower base min.
       const minTable = laneReservedRef.current

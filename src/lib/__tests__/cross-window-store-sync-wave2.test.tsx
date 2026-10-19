@@ -109,21 +109,20 @@ describe("useStorageKeySync", () => {
 describe("useZenMode cross-window sync", () => {
   const KEY = "virgil-zen-mode";
 
-  it("re-syncs from a peer write, and the next local write preserves it", async () => {
+  it("re-syncs from a peer write, and the next local write starts from it", async () => {
     const { useZenMode } = await import("@/hooks/useZenMode");
     const { result } = renderHook(() => useZenMode());
-    act(() => result.current.setLeftMargin(200));
+    act(() => result.current.set(false));
 
-    // Peer (same base) turns zen ON and rewrites the whole blob.
+    // Peer turns zen ON (an old-format blob, still carrying the margins
+    // task 1178 retired).
     act(() => peerWrite(KEY, { on: true, leftMargin: 200, rightMargin: 320 }));
-
     expect(result.current.on).toBe(true);            // observed, no reload
-    expect(result.current.rightMargin).toBe(320);
 
-    // The clobber test: our next whole-blob write starts from the refreshed
-    // base, so the peer's right margin and zen flag survive it.
-    act(() => result.current.setLeftMargin(210));
-    expect(read(KEY)).toEqual({ on: true, leftMargin: 210, rightMargin: 320 });
+    // Our next whole-blob write starts from the refreshed base and drops the
+    // retired fields — zen's page width is derived, not stored.
+    act(() => result.current.toggle());
+    expect(read(KEY)).toEqual({ on: false });
   });
 
   it("runs a peer blob through the same validation as the hydrate", async () => {
@@ -132,7 +131,7 @@ describe("useZenMode cross-window sync", () => {
 
     act(() => peerWrite(KEY, { on: "yes", leftMargin: "wide" }));
     expect(result.current.on).toBe(false);           // non-boolean rejected
-    expect(result.current.leftMargin).toBe(160);     // non-number → default
+    expect(result.current).not.toHaveProperty("leftMargin");
 
     act(() => peerWrite(KEY, true));                 // legacy boolean form
     expect(result.current.on).toBe(true);

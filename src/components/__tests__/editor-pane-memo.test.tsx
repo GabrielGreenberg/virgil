@@ -92,8 +92,6 @@ const HANDLERS = {
   onFocusSnapBoundary: stableFn,
   focusFloating: stableFn,
   setIsResizingPanels: stableFn,
-  setZenLeftMargin: stableFn,
-  setZenRightMargin: stableFn,
   setCardArchiveView: stableFn,
 } as unknown as EditorMutationHandlers;
 
@@ -101,8 +99,6 @@ const VIEW = {
   isResizingPanels: false,
   focusState: null,
   zenMode: false,
-  zenLeftMargin: 0,
-  zenRightMargin: 0,
   getOmniEnabled: stableFn,
   setOmniSideToDefault: stableFn,
   categorySides: {},
