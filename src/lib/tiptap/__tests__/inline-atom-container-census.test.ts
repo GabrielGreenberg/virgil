@@ -82,10 +82,12 @@ const SPLICE =
 const LANDS = new RegExp(`${SPLICE.source}|\\bdispatch\\s*\\(`);
 
 const ASKS_DOOR = /insertInlineAtom\s*\(/;
-/** Either form of the inline SSOT: the caret form or (task 428) the RANGE form. */
-const ASKS_INLINE_SSOT = /(?:posHostsInlineAtom|inlineRangeAllowsAtom)\s*\(/;
-/** The RANGE form alone (task 428) — what a selection-REPLACING splice owes. */
-const ASKS_INLINE_RANGE = /inlineRangeAllowsAtom\s*\(/;
+/** Either form of the inline SSOT: the caret form or (task 428) the RANGE form
+ *  — the boolean or (task 1184) the WHERE form it is derived from. */
+const ASKS_INLINE_SSOT = /(?:posHostsInlineAtom|inlineRangeAllowsAtom|inlineRangeAtomRefusedAt)\s*\(/;
+/** The RANGE form alone (task 428) — what a selection-REPLACING splice owes;
+ *  `inlineRangeAtomRefusedAt` is the same walk answered as WHERE (task 1184). */
+const ASKS_INLINE_RANGE = /(?:inlineRangeAllowsAtom|inlineRangeAtomRefusedAt)\s*\(/;
 const ASKS_BLOCK_SSOT = /posHostsBlockInsert\s*\(/;
 /**
  * A splice that consumes the LIVE SELECTION rather than an explicit position:

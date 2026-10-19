@@ -216,6 +216,10 @@ import {
   blockRangeHostsBlockInsert,
   blockTypeHostsBlockInsert,
   blockRangeReachesVerbatim,
+  blockRangeActionRefusedAt,
+  blockRangeBlockInsertRefusedAt,
+  inlineRangeAtomRefusedAt,
+  blockRangeVerbatimAt,
 } from "@/text-objects/text-object-registry";
 import {
   actionScopeClass,
@@ -1225,9 +1229,17 @@ function surfaceLacks(ctx: ActionContext, member: SchemaMember): boolean {
 //      true answer for every row, whatever else a row's kind would also refuse;
 //   2. schema membership (task 1182 — `spec.makes`, `surfaceLacks`): this
 //      surface has no such node / mark at all;
-//   3. the selection-mode gate (`selectionModeDisables`);
-//   4. the row's own base — its declared `refusal(ctx)` when the row has one,
-//      else the generic kind / container refusal at the ref.
+//   3. the row's own base — its declared `refusal(ctx)`, which answers `null`
+//      when the row's own gate PASSES. Asked before the selection gate, in
+//      `gateApplies`'s own order (task 1184): a row its container refuses is
+//      refused whatever is selected, so "Select some text first" would send
+//      the user to do something that cannot help;
+//   4. the selection-mode gate (`selectionModeDisables`);
+//   5. the generic kind / container refusal at the ref, for a row that
+//      declares no `refusal`.
+//
+// A refusal that names a block names the block that REFUSED — the range gates
+// answer WHERE (`…RefusedAt`, task 1184), not the block the range starts in.
 //
 // The words come from ONE table (`refusalPhrase`, `./refusal.ts`). Every
 // command surface calls this instead of `applies()` where it paints a row.
@@ -1262,8 +1274,10 @@ export function refusalOf(spec: ActionSpec, ctx: ActionContext): Refusal {
   // Task 1182: a surface that can never hold what the row makes says so before
   // any per-caret reason — no selection or container would change the answer.
   if (spec.makes && surfaceLacks(ctx, spec.makes)) return { cause: "surface" };
+  const own = spec.refusal?.(ctx) ?? null;
+  if (own) return own;
   if (selectionModeDisables(spec.selection, ctx)) return { cause: "needs-selection" };
-  return spec.refusal?.(ctx) ?? genericRefusal(ctx);
+  return genericRefusal(ctx);
 }
 
 /**
@@ -1397,19 +1411,29 @@ function cardActionAllowedForCtx(id: CardActionId, ctx: ActionContext): boolean 
 /**
  * The reason half of `cardActionAllowedForCtx` (task 968): the curated KIND set
  * refusing (the policy layer) is a `kind` refusal; the positional layer refusing
- * is a `container` refusal about the block the scope starts in. Asked only after
- * the row's `applies()` greyed and the shared gates did not explain it.
+ * is a `container` refusal about the block that refused (task 1184 — the
+ * gate's own `…RefusedAt` answer, not the scope's start). `null` when this
+ * row's own gate passes, so `refusalOf` can ask it BEFORE the selection gate:
+ * the same walk `cardActionAllowedForCtx` makes, answered as WHERE.
  */
 function cardRefusal(id: CardActionId, ctx: ActionContext): Refusal | null {
   const ref = ctx.ref;
+  const raw = ctx.view?.state?.doc;
+  const doc = raw && typeof raw.resolve === "function" ? raw : null;
   if (ref.kind !== "cursor" && ref.kind !== "selection") {
     if (!kindAllowsCardAction(ref, id)) {
       return { cause: "kind", subject: isTextObjectKind(ref.kind) ? ref.kind : null };
     }
+    if (!doc || !INLINE_INSERT_ACTIONS.has(id as DragHandleAction)) return null;
     const scope = cardResolveScope(id, ctx);
-    return { cause: "container", subject: scope ? containerAt(ctx, scope.from) : null };
+    if (!scope) return null;
+    const at = blockRangeActionRefusedAt(doc, scope.from, scope.to, id as DragHandleAction);
+    return at === null ? null : { cause: "container", subject: containerAt(ctx, at) };
   }
-  return { cause: "container", subject: containerAt(ctx, ref.kind === "cursor" ? ref.pos : ref.from) };
+  if (!doc) return null;
+  const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
+  const at = blockRangeActionRefusedAt(doc, from, to, id as DragHandleAction);
+  return at === null ? null : { cause: "container", subject: containerAt(ctx, at) };
 }
 
 /**
@@ -2001,8 +2025,8 @@ function titleFieldRefusal(ctx: ActionContext): Refusal | null {
   const doc = ctx.view?.state?.doc;
   if (!doc || typeof doc.resolve !== "function") return null;
   const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
-  if (!blockRangeReachesVerbatim(doc, from, to)) return null;
-  return { cause: "container", subject: containerAt(ctx, from) };
+  const at = blockRangeVerbatimAt(doc, from, to);
+  return at === null ? null : { cause: "container", subject: containerAt(ctx, at) };
 }
 
 /** The 3 title-field rows, in canonical doc-top order. Exhaustive over
@@ -2750,9 +2774,8 @@ function blockInsertRefusal(
     // from prose into a `codeBlock` / `latexComment` greys the cell. A cursor
     // ref is the caret form (from === to).
     const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
-    if (!blockRangeHostsBlockInsert(doc, from, to, insertType)) {
-      return { cause: "container", subject: containerAt(ctx, from) };
-    }
+    const at = blockRangeBlockInsertRefusedAt(doc, from, to, insertType);
+    if (at !== null) return { cause: "container", subject: containerAt(ctx, at) };
     // CAPTURE half (task 907): a WRAP row's run also refuses a selection its
     // capture cannot carry — ask the run's own question, not a copy of it.
     if (capture && !wrapCaptureHolds(doc, from, to, capture)) return { cause: "capture" };
@@ -2817,9 +2840,8 @@ function inlineAtomInsertRefusal(
     // textblock it reaches must host it — a selection running from prose into a
     // `codeBlock` greys the cell. A cursor ref is the caret form (from === to).
     const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
-    if (!inlineRangeAllowsAtom(doc, from, to, atomType)) {
-      return { cause: "container", subject: containerAt(ctx, from) };
-    }
+    const at = inlineRangeAtomRefusedAt(doc, from, to, atomType);
+    if (at !== null) return { cause: "container", subject: containerAt(ctx, at) };
     // CAPTURE half (task 907) — see `blockInsertApplies`.
     if (capture && !wrapCaptureHolds(doc, from, to, capture)) return { cause: "capture" };
     return null;
@@ -3313,6 +3335,35 @@ function wrapperApplies(
 }
 
 /**
+ * The reason half of `wrapperApplies` (task 1184), `null` exactly when
+ * `wrapperSafeHere` passes — so the reason reads the gate's own predicate. A
+ * wrapper refuses for one of two causes, and they ask different things of the
+ * user: a block whose IDENTITY the wrap would destroy (a heading, a title, a
+ * code block, an atom block — a `kind` refusal naming that block), or a
+ * CONTAINER that cannot host the wrapper at all (an expex item — a `container`
+ * refusal). The identity-bearing block is a leaf the wrap would enclose: a
+ * non-paragraph textblock or atom among the affected block range's children.
+ * Before this the row declared no refusal, and the generic fallback called a
+ * heading a container ("…inside this heading").
+ */
+function wrapperRefusal(wrapperNodeName: string): (ctx: ActionContext) => Refusal | null {
+  return (ctx: ActionContext) => {
+    if (wrapperSafeHere(ctx.view, wrapperNodeName)) return null;
+    const { $from, $to } = ctx.view!.state.selection;
+    const range = $from.blockRange($to);
+    if (range) {
+      for (let i = range.startIndex; i < range.endIndex; i += 1) {
+        const child = range.parent.child(i);
+        const name = child.type.name;
+        if (name === "paragraph" || !(child.isTextblock || child.isAtom)) continue;
+        if (isTextObjectKind(name)) return { cause: "kind", subject: name };
+      }
+    }
+    return { cause: "container", subject: containerAt(ctx, $from.pos) };
+  };
+}
+
+/**
  * The WHOLE wrapper safety question — identity + container, one derivation
  * since task 1107 (`selectionHostsWrapper`) — read off the ONE door every surface
  * reads, `wrapperSafeInState` (`@/lib/tiptap/wrapper-gate`, task 427). The
@@ -3447,6 +3498,7 @@ function formatToggleRow(
       opts.wrapper !== undefined
         ? wrapperApplies(opts.wrapper)
         : formatApplies(opts.mark),
+    ...(opts.wrapper !== undefined ? { refusal: wrapperRefusal(opts.wrapper) } : {}),
     run: (ctx) => {
       if (isCollabReadOnly(ctx)) return; // the ctx-side collab gate — no-op (task 638)
       // Defense-in-depth (Bug #1 + task 397): a wrapper toggle on a block whose
