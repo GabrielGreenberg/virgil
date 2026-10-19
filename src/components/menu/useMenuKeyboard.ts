@@ -293,7 +293,7 @@ export function useMenuKeyboard(
       !e.altKey &&
       typeof e.key === "string" &&
       (e.key.length === 1 ||
-        e.key === "Enter" ||
+        isCommitEnter(e) ||
         e.key === "Backspace" ||
         e.key === "Delete")
     ) {
