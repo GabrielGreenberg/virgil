@@ -330,11 +330,14 @@ const TAKES_DOOR = /session\.(?:cancel|commitAndBlur)\(/i;
  *  something DIFFERENT from Enter. */
 function hasDistinctCancel(body: string): boolean {
   // Enter is spelled `isCommitEnter(e)` in production (task 1165's one Enter
-  // gate); the literal is kept for the fixtures below.
+  // gate), and Escape `isCancelEscape(e)` in the menu doors (task 1188); the
+  // literals are kept for the fixtures below.
+  const ESC = String.raw`(?:["']Escape["']|isCancelEscape\(\w*\))`;
+  const ENTER = String.raw`(?:["']Enter["']|isCommitEnter\(\w*\))`;
   const withoutAlias = body
-    .replace(/(?:["']Enter["']|isCommitEnter\(\w*\))[^;{]*?["']Escape["']/g, "")
-    .replace(/["']Escape["'][^;{]*?(?:["']Enter["']|isCommitEnter\(\w*\))/g, "");
-  return /["']Escape["']/.test(withoutAlias);
+    .replace(new RegExp(`${ENTER}[^;{]*?${ESC}`, "g"), "")
+    .replace(new RegExp(`${ESC}[^;{]*?${ENTER}`, "g"), "");
+  return new RegExp(ESC).test(withoutAlias);
 }
 
 /** Every production site where a keydown's CANCEL branch blurs an element that
