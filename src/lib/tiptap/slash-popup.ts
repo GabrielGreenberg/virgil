@@ -14,6 +14,7 @@ import {
   stepEnabledIndex,
 } from "./slash-applicability";
 import { isCommitEnter } from "@/lib/key-intent";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
 const META_KEY = "slashPopup";
 
@@ -256,6 +257,12 @@ export const SlashPopupExtension = Extension.create({
             const cur = slashPopupKey.getState(view.state);
             if (cur && cur.open) return false;
             if (text !== "\\") return false;
+            // Task 1183: a surface the user may not edit opens no popup — the
+            // same answer PM gives a non-editable view (it never calls
+            // `handleTextInput` there). MAIN keeps `view.editable` true in the
+            // Library Reader, so the host axis has to be asked HERE, through
+            // the one door every command surface asks.
+            if (!surfaceEditableNow(view)) return false;
             if (!isFreshPosition(view, from)) return false;
             const filtered = filterByPrefix("");
             // Ask the registry BEFORE the popup is ever painted, so the first
