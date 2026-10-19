@@ -29,6 +29,9 @@ export type RefusalCause =
   | "pen"
   /** The host mounted this surface read-only (the Library Reader — task 733). */
   | "host"
+  /** This surface's SCHEMA has no such node / mark at all — a footnote or note
+   *  body cannot hold a heading, a rule, an example (task 1182). */
+  | "surface"
   /** A `selection: "required"` action at a collapsed caret (DA-5). */
   | "needs-selection"
   /** The target block's KIND excludes the action (`TEXT_OBJECT_REGISTRY.actions`,
@@ -70,6 +73,8 @@ export function refusalPhrase(refusal: Refusal): string {
       return "Your co-author has the pen";
     case "host":
       return "This paper is open read-only";
+    case "surface":
+      return "Not available in this field";
     case "needs-selection":
       return "Select some text first";
     case "capture":
