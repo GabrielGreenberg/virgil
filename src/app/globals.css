@@ -833,13 +833,40 @@
   /* PROMOTE-DEFAULTS-END */
 }
 
-/* Zen mode (enhanced): unify window canvas with topbar background so the
-   topbar visually melts into the surrounding canvas. The editor pod
-   keeps its own surface (white pod with border/shadow/radius) — only
-   the surrounding canvas changes. data-zen-mode is set on document.body
-   by useZenMode. */
+/* Canvas PAINT vs canvas COLOUR (task 1177).
+   --background is the canvas COLOUR: ~20 consumers read it as a solid value
+   (background-color, color-mix(), box-shadow spreads, gradient stops), so it
+   must never hold a gradient. --canvas-paint is the canvas PAINT — what the
+   window canvas and every canvas-coloured MASK (the sticky pod caps) paint
+   with. Off zen it is just the colour; in zen it is the viewport-fixed
+   --zen-canvas gradient, so the root and the caps paint ONE gradient pinned
+   to the viewport and the caps stay seamless however far the pod scrolls.
+   --canvas-matte is the colour of the pod frame's box-shadow matte ring — a
+   shadow cannot carry a gradient, so in zen the matte drops out (the caps
+   already fill the frame's corner notches).
+   Painters: `.canvas-paint` (EditorLayout's root + main rows) and the two
+   pod caps in EditorPane. Census: canvas-paint-census.test.ts. */
+:root {
+  --zen-canvas-warm: #e9d8c4; /* sand — the bottom stop */
+  --zen-canvas-cool: var(--topbar-bg); /* the top stop: equals the bar, so the transparent zen bar melts into it */
+  --zen-canvas: linear-gradient(to top, var(--zen-canvas-warm), var(--zen-canvas-cool)) fixed;
+  --canvas-paint: var(--background);
+  --canvas-matte: var(--background);
+}
+.canvas-paint {
+  background: var(--canvas-paint);
+}
+
+/* Zen mode (enhanced): the topbar goes transparent and the window canvas
+   becomes a warm (bottom) → cool (top) gradient whose top stop is the topbar
+   colour, so the bar melts into it. The editor pod keeps its own surface
+   (white pod with border/shadow/radius) — only the surrounding canvas
+   changes. --background stays SOLID (the gradient's top stop) for its colour
+   consumers. data-zen-mode is set on document.body by useZenMode. */
 body[data-zen-mode="on"] {
   --background: var(--topbar-bg);
+  --canvas-paint: var(--zen-canvas);
+  --canvas-matte: transparent;
 }
 
 @theme inline {

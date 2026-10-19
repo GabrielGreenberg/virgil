@@ -7181,7 +7181,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   marginBottom: 'calc(-1 * var(--pod-cap-inner))',
                   marginLeft: 'calc(-1 * var(--pod-cap-bleed))',
                   marginRight: 'calc(-1 * var(--pod-cap-bleed))',
-                  background: 'var(--background)',
+                  background: 'var(--canvas-paint)',
                   borderTopLeftRadius: 'var(--pod-cap-h)',
                   borderTopRightRadius: 'var(--pod-cap-h)',
                   justifyContent: 'flex-end',
@@ -7255,8 +7255,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   // edge (the shadow shows on the manila, not hidden
                   // under it). The matte spread (pod-gap) covers the
                   // notch + gutter without reaching the panel rails.
+                  // --canvas-matte, not --background: in zen the canvas
+                  // is a gradient a shadow cannot carry, so the matte goes
+                  // transparent there (task 1177; the caps still fill the
+                  // corner notches, painting the same fixed gradient).
                   boxShadow:
-                    "var(--pod-shadow), 0 0 0 var(--pod-gap) var(--background)",
+                    "var(--pod-shadow), 0 0 0 var(--pod-gap) var(--canvas-matte)",
                 }}
               />
             )}
@@ -7930,7 +7934,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   marginTop: 'calc(-1 * var(--pod-cap-h))',
                   marginLeft: 'calc(-1 * var(--pod-cap-bleed))',
                   marginRight: 'calc(-1 * var(--pod-cap-bleed))',
-                  background: 'var(--background)',
+                  background: 'var(--canvas-paint)',
                   borderBottomLeftRadius: 'var(--pod-cap-h)',
                   borderBottomRightRadius: 'var(--pod-cap-h)',
                   // Hidden when the doc fits within the row's viewport

@@ -60,6 +60,7 @@ const LOCKED_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["--h1-color", "--foreground"],
   ["--h2h3-color", "--editor-text-color"],
   ["--scrollbar-hover", "--muted-light"],
+  ["--zen-canvas-cool", "--topbar-bg"],
 ];
 
 /** Every value `globals.css` gives a token (a token may be re-themed). */
