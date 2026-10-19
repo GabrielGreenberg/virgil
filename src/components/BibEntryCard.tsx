@@ -5,7 +5,7 @@ import type { BibEntry } from "@/lib/types";
 import type { SaveBibEntry } from "@/hooks/useCitations";
 import type { RequestBibReview } from "@/hooks/useBibReview";
 import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
+import { PanelCard, PANEL, PodDisclosure, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
 import { Input } from "./field-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -511,11 +511,10 @@ export default function BibEntryCard({
       {/* ── Pod: BibTeX Fields ──────────────────────────── */}
       <div className="mt-3">
         <div className="flex items-center gap-1.5">
-          <button onClick={(e) => { e.stopPropagation(); setFieldsOpen((p) => !p); }}
-            className="flex items-center gap-1.5 text-xs text-ink-subtle hover:text-ink-body transition-colors">
-            <Chevron expanded={fieldsOpen} />
-            <span>BibTeX Fields</span>
-          </button>
+          <PodDisclosure expanded={fieldsOpen} onToggle={() => setFieldsOpen((p) => !p)}
+            className="text-xs text-ink-subtle hover:text-ink-body transition-colors">
+            BibTeX Fields
+          </PodDisclosure>
           {writes?.requestReview && (
           <ReviewRequestChip type="fields" status={fieldsReviewStatus} composer={reviewComposer} />
           )}
@@ -545,20 +544,20 @@ export default function BibEntryCard({
                   {/* Editable @type and key */}
                   <div className="flex gap-1 items-start">
                     <span className="card-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">@type:</span>
-                    <Input value={editBibType} density="dense"
+                    <Input value={editBibType} density="dense" aria-label="Entry type"
                       onChange={(e) => setEditBibType(e.target.value)}
                       className="flex-1 card-mono px-1 py-0.5 text-xs" />
                   </div>
                   <div className="flex gap-1 items-start">
                     <span className="card-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">key:</span>
-                    <Input value={editBibKey} density="dense"
+                    <Input value={editBibKey} density="dense" aria-label="Cite key"
                       onChange={(e) => setEditBibKey(e.target.value)}
                       className="flex-1 card-mono px-1 py-0.5 text-xs" />
                   </div>
                   {Object.entries(editBibFields).map(([field, val]) => (
                     <div key={field} className="flex gap-1 items-start">
                       <span className="card-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">{field}:</span>
-                      <Input value={val} density="dense"
+                      <Input value={val} density="dense" aria-label={`Field ${field}`}
                         onChange={(e) => setEditBibFields((prev) => ({ ...prev, [field]: e.target.value }))}
                         className="flex-1 card-mono px-1 py-0.5 text-xs" />
                       <button
@@ -629,8 +628,8 @@ export default function BibEntryCard({
                       vanished, or matched a DIFFERENT record and overwrote it
                       set-all. Saying so beats a button that lies. */}
                   {writes?.save ? (
-                    <button onClick={(e) => { e.stopPropagation(); startEditBib(); }}
-                      className="text-xs text-ink-muted hover:text-ink-body underline mt-1">Edit entry</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); startEditBib(); }}
+                      className="text-xs text-ink-muted hover:text-ink-body underline mt-1 focus-ring">Edit entry</button>
                   ) : (
                     <div className="text-xs text-ink-muted mt-1 italic">
                       {readOnly?.reason ?? BIB_HOST_READ_ONLY_REASON}
@@ -657,13 +656,12 @@ export default function BibEntryCard({
       {writes && (writes.setAnnotation || annotation) && (
       <div className="mt-2">
         <div className="flex items-center gap-1.5">
-          <button onClick={(e) => { e.stopPropagation(); setAnnotationOpen((p) => !p); }}
-            className={`flex items-center gap-1.5 text-xs transition-colors ${
+          <PodDisclosure expanded={annotationOpen} onToggle={() => setAnnotationOpen((p) => !p)}
+            className={`text-xs transition-colors ${
               annotation ? AMBER_ATTENTION_INK : "text-ink-subtle hover:text-ink-body"
             }`}>
-            <Chevron expanded={annotationOpen} />
-            <span>Annotations</span>
-          </button>
+            Annotations
+          </PodDisclosure>
           {writes.requestReview && (
           <ReviewRequestChip type="notes" status={notesReviewStatus} composer={reviewComposer} />
           )}
