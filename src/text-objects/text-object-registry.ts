@@ -1340,29 +1340,57 @@ export const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
  * decision says to leave permissive — while a container-level range never
  * proposes one as a landing site.
  *
+ * Each entry carries a position inside its textblock (task 1184), so the
+ * `…RefusedAt` gates can say WHICH block refused.
+ *
  * `from`/`to` are clamped and ordered, so a stale or borderline ref can't throw.
  */
-function rangeTextblockTypes(doc: PMNode, from: number, to: number): NodeType[] {
+function rangeTextblocks(doc: PMNode, from: number, to: number): RangeTextblock[] {
   const size = doc.content.size;
   const lo = Math.max(0, Math.min(Math.min(from, to), size));
   const hi = Math.max(0, Math.min(Math.max(from, to), size));
-  const types: NodeType[] = [];
+  const blocks: RangeTextblock[] = [];
   const seen = new Set<NodeType>();
-  const push = (node: PMNode) => {
+  const push = (node: PMNode, pos: number) => {
     if (!node.isTextblock || seen.has(node.type)) return;
     seen.add(node.type);
-    types.push(node.type);
+    blocks.push({ type: node.type, pos });
   };
-  push(doc.resolve(lo).parent);
-  push(doc.resolve(hi).parent);
+  push(doc.resolve(lo).parent, lo);
+  push(doc.resolve(hi).parent, hi);
   if (hi > lo) {
-    doc.nodesBetween(lo, hi, (node) => {
+    doc.nodesBetween(lo, hi, (node, pos) => {
       if (NO_INLINE_LANDING_INSIDE.has(node.type.name)) return false;
-      push(node);
+      push(node, pos + 1);
       return true;
     });
   }
-  return types;
+  return blocks;
+}
+
+/** One textblock type the range reaches, with a position INSIDE the first
+ *  textblock of that type it met — so a refusal can name the block that
+ *  actually refused, not whichever block the range happens to start in
+ *  (task 1184). */
+interface RangeTextblock {
+  type: NodeType;
+  pos: number;
+}
+
+/** The first reached textblock failing `ok`, as a position inside it; `null`
+ *  when every one passes. The shape every `…RefusedAt` gate below shares. */
+function firstRefusing(
+  blocks: readonly RangeTextblock[],
+  ok: (type: NodeType) => boolean,
+): number | null {
+  for (const b of blocks) if (!ok(b.type)) return b.pos;
+  return null;
+}
+
+/** The clamped range start — where a refusal with no single offending
+ *  textblock (the start-anchored rules, a range reaching none) is about. */
+function rangeStart(doc: PMNode, from: number, to: number): number {
+  return Math.max(0, Math.min(Math.min(from, to), doc.content.size));
 }
 
 /**
@@ -1400,14 +1428,28 @@ export function blockRangeAllowsAction(
   to: number,
   action: DragHandleAction,
 ): boolean {
+  return blockRangeActionRefusedAt(doc, from, to, action) === null;
+}
+
+/**
+ * {@link blockRangeAllowsAction} answered as WHERE it refuses (task 1184): a
+ * position inside the block that refused, `null` when the action is allowed.
+ * The boolean is derived from this, so the verdict and the reason that names
+ * its block cannot read two walks.
+ */
+export function blockRangeActionRefusedAt(
+  doc: PMNode,
+  from: number,
+  to: number,
+  action: DragHandleAction,
+): number | null {
+  const lo = rangeStart(doc, from, to);
   if (!INLINE_INSERT_ACTIONS.has(action)) {
-    const size = doc.content.size;
-    const lo = Math.max(0, Math.min(Math.min(from, to), size));
-    return blockKindAllowsAction(doc.resolve(lo).parent.type.name, action);
+    return blockKindAllowsAction(doc.resolve(lo).parent.type.name, action) ? null : lo;
   }
-  const targets = rangeTextblockTypes(doc, from, to);
-  if (targets.length === 0) return false;
-  return targets.every((type) => blockKindAllowsAction(type.name, action));
+  const targets = rangeTextblocks(doc, from, to);
+  if (targets.length === 0) return lo;
+  return firstRefusing(targets, (type) => blockKindAllowsAction(type.name, action));
 }
 
 /**
@@ -1556,7 +1598,7 @@ function isMarklessVerbatimType(type: NodeType): boolean {
  * live in a `titleField` (jumping between title fields is their purpose), but
  * a caret inside literal source is not a place a command runs from: the slash
  * commit would delete the typed `\date` out of the user's verbatim text and
- * teleport them. Same walk as every range gate here (`rangeTextblockTypes`),
+ * teleport them. Same walk as every range gate here (`rangeTextblocks`),
  * bounded by the range, never the doc.
  */
 export function blockRangeReachesVerbatim(
@@ -1564,7 +1606,13 @@ export function blockRangeReachesVerbatim(
   from: number,
   to: number,
 ): boolean {
-  return rangeTextblockTypes(doc, from, to).some(isMarklessVerbatimType);
+  return blockRangeVerbatimAt(doc, from, to) !== null;
+}
+
+/** {@link blockRangeReachesVerbatim} answered as WHERE (task 1184): a position
+ *  inside the first markless verbatim textblock the range reaches, or `null`. */
+export function blockRangeVerbatimAt(doc: PMNode, from: number, to: number): number | null {
+  return firstRefusing(rangeTextblocks(doc, from, to), (type) => !isMarklessVerbatimType(type));
 }
 
 /**
@@ -1655,11 +1703,26 @@ export function blockRangeHostsBlockInsert(
   to: number,
   insertType?: NodeType,
 ): boolean {
+  return blockRangeBlockInsertRefusedAt(doc, from, to, insertType) === null;
+}
+
+/**
+ * {@link blockRangeHostsBlockInsert} answered as WHERE it refuses (task 1184):
+ * layer 1 names the textblock that would not survive, layer 2 the range start
+ * (where the block lands). `null` = the insert is safe. The boolean is derived
+ * from this.
+ */
+export function blockRangeBlockInsertRefusedAt(
+  doc: PMNode,
+  from: number,
+  to: number,
+  insertType?: NodeType,
+): number | null {
   // Layer 1 — survival of every textblock the mutation touches.
-  const targets = rangeTextblockTypes(doc, from, to);
-  if (!targets.every(blockTypeHostsBlockInsert)) return false;
+  const torn = firstRefusing(rangeTextblocks(doc, from, to), blockTypeHostsBlockInsert);
+  if (torn !== null) return torn;
   // Layer 2 — hostability where the block actually lands (the range start).
-  const clamped = Math.max(0, Math.min(Math.min(from, to), doc.content.size));
+  const clamped = rangeStart(doc, from, to);
   const $pos = doc.resolve(clamped);
   if (insertType && $pos.depth > 0) {
     const container = $pos.node($pos.depth - 1);
@@ -1673,9 +1736,9 @@ export function blockRangeHostsBlockInsert(
     const hostable =
       container.canReplaceWith(idx, idx, insertType) ||
       container.canReplaceWith(idx + 1, idx + 1, insertType);
-    if (!hostable) return false;
+    if (!hostable) return clamped;
   }
-  return true;
+  return null;
 }
 
 /**
@@ -1780,7 +1843,7 @@ export function posHostsInlineAtom(
  * the blocks. Same shape task 148 closed on the block side, for the same
  * reason: a payload arrives in the target's vocabulary or not at all.
  *
- * Reads the SAME walk the block gate reads (`rangeTextblockTypes`), fails
+ * Reads the SAME walk the block gate reads (`rangeTextblocks`), fails
  * CLOSED (every reachable textblock must admit the atom), and keeps the one
  * permissive answer the caret form already gave: a range reaching NO textblock
  * (a gap beside a block atom, a GapCursor) is a place PM wraps rather than
@@ -1794,10 +1857,22 @@ export function inlineRangeAllowsAtom(
   to: number,
   atomType: NodeType,
 ): boolean {
-  const targets = rangeTextblockTypes(doc, from, to);
-  if (targets.length === 0) return true; // a gap — PM wraps, nothing to corrupt
+  return inlineRangeAtomRefusedAt(doc, from, to, atomType) === null;
+}
+
+/** {@link inlineRangeAllowsAtom} answered as WHERE it refuses (task 1184): a
+ *  position inside the first textblock that cannot host the atom, or `null`. */
+export function inlineRangeAtomRefusedAt(
+  doc: PMNode,
+  from: number,
+  to: number,
+  atomType: NodeType,
+): number | null {
+  const targets = rangeTextblocks(doc, from, to);
+  if (targets.length === 0) return null; // a gap — PM wraps, nothing to corrupt
   const policyAction = inlineAtomPolicyAction(atomType);
-  return targets.every(
+  return firstRefusing(
+    targets,
     (type) =>
       blockTypeHostsInlineAtom(type, atomType) &&
       (policyAction === null || blockKindAllowsAction(type.name, policyAction)),

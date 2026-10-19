@@ -14,7 +14,10 @@
 //   (1) the phrase table — one phrase per cause, subject labels mid-sentence;
 //   (2) each shared gate: a refused ctx yields its reason, a passing ctx none;
 //   (3) the grab menu RENDERS it — pen / host / container reasons on the rows;
-//   (4) the slash popup's reason door answers the same gate.
+//   (4) the slash popup's reason door answers the same gate;
+//   (5) task 1184 — the reason names the gate that ACTUALLY greyed the row (the
+//       row's own gate before the selection gate) and the block that ACTUALLY
+//       refused (not the block the range starts in).
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
@@ -86,7 +89,10 @@ const FIXTURE: JSONContent[] = [
   },
 ];
 
-function mount(hostEditable = true): { editor: Editor; editableRef: RefObject<boolean> } {
+function mount(
+  hostEditable = true,
+  content: JSONContent[] = FIXTURE,
+): { editor: Editor; editableRef: RefObject<boolean> } {
   const editableRef: RefObject<boolean> = { current: hostEditable };
   const ctx: EditorExtensionsCtx = {
     surface: "main",
@@ -103,7 +109,7 @@ function mount(hostEditable = true): { editor: Editor; editableRef: RefObject<bo
     element,
     editable: true,
     extensions: buildEditorExtensions(ctx),
-    content: { type: "doc", content: FIXTURE },
+    content: { type: "doc", content },
   });
   editors.push(editor);
   return { editor, editableRef };
@@ -329,5 +335,69 @@ describe("task 968 (4) — slashCommandReason answers the same gate", () => {
     );
     expect(slashCommandReason(editor.view, "cite")).toBeNull();
     expect(slashCommandReason(editor.view, "no-such-command")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (5) task 1184 — the right cause, the right block
+// ---------------------------------------------------------------------------
+
+const LIST_THEN_CODE: JSONContent[] = [
+  {
+    type: "bulletList",
+    content: [
+      {
+        type: "listItem",
+        content: [{ type: "paragraph", attrs: { uuid: "li-A" }, content: [text("A list item")] }],
+      },
+    ],
+  },
+  { type: "codeBlock", attrs: { uuid: "code-B" }, content: [text("y = 2")] },
+  { type: "heading", attrs: { level: 2, uuid: "head-A" }, content: [text("A heading")] },
+];
+
+describe("task 1184 (5) — the reason names the gate and the block that refused", () => {
+  it("CAUSE ORDER: Highlight at a caret in a code block names the code block, not the selection", () => {
+    const { editor } = mount();
+    const code = inside(editor, "codeBlock");
+    const caret = ctxFor(editor, { kind: "cursor", pos: code.from + 1, paragraphId: "" });
+    expect(verdictOf(row("highlight"), caret)).toEqual({
+      state: "disabled",
+      reason: "Not available inside this code block",
+    });
+    // …and selecting text there does not lift it — the first reason was the true one.
+    expect(verdictOf(row("highlight"), ctxFor(editor, sel(editor, "codeBlock"))).reason).toBe(
+      "Not available inside this code block",
+    );
+    // A caret in prose still asks for a selection.
+    const prose = inside(editor, "paragraph");
+    const proseCaret = ctxFor(editor, { kind: "cursor", pos: prose.from + 1, paragraphId: "" });
+    expect(verdictOf(row("highlight"), proseCaret).reason).toBe(NEEDS_SELECTION);
+  });
+
+  it("SUBJECT: a range from a list item into a code block names the CODE BLOCK", () => {
+    const { editor } = mount(true, LIST_THEN_CODE);
+    const from = inside(editor, "paragraph").from + 1;
+    const to = inside(editor, "codeBlock").from + 2;
+    const ctx = ctxFor(editor, { kind: "selection", from, to, paragraphId: "" });
+    for (const id of ["footnote", "citation", "tex"] as ActionId[]) {
+      expect(verdictOf(row(id), ctx)).toEqual({
+        state: "disabled",
+        reason: "Not available inside this code block",
+      });
+    }
+  });
+
+  it("WRAPPER: a list toggle on a heading is a KIND refusal naming the heading", () => {
+    const { editor } = mount(true, LIST_THEN_CODE);
+    const head = inside(editor, "heading");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, head.from + 1)),
+    );
+    const ctx = ctxFor(editor, { kind: "cursor", pos: head.from + 1, paragraphId: "" });
+    expect(verdictOf(row("bullet-list"), ctx)).toEqual({
+      state: "disabled",
+      reason: "Not available on this heading",
+    });
   });
 });
