@@ -599,8 +599,8 @@ export default function LeftList({
       <div
         ref={rowsRef}
         onScroll={handleRowsScroll}
+        className="panel-scroll"
         style={{
-          overflowY: "auto",
           flex: 1,
           outline: dropHighlight ? "2px solid var(--accent)" : "none",
           outlineOffset: -2,

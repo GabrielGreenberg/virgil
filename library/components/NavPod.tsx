@@ -49,10 +49,10 @@ export default function NavPod({ title, children, style }: Props) {
         {title}
       </div>
       <div
+        className="panel-scroll"
         style={{
           flex: 1,
           minHeight: 0,
-          overflowY: "auto",
           padding: "8px 0",
         }}
       >
