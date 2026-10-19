@@ -33,6 +33,7 @@ import { EditorView } from "@tiptap/pm/view";
 import { keymap } from "@tiptap/pm/keymap";
 import { baseKeymap } from "@tiptap/pm/commands";
 import { schema } from "@tiptap/pm/schema-basic";
+import { editsDocument } from "@/lib/key-intent";
 
 class ResizeObserverStub {
   observe() {}
@@ -274,6 +275,115 @@ describe("task 1180 — over its OWN host, a declined key is swallowed, not hand
     keyOn(view.dom as HTMLElement, "Enter");
     expect(view.state.doc.childCount).toBe(2);
     view.destroy();
+  });
+});
+
+describe("task 1189 — the owned-host rule decides by EFFECT, not by modifier", () => {
+  function pmView(from: number, to: number) {
+    const pmHost = document.createElement("div");
+    document.body.appendChild(pmHost);
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("hello world")])]),
+      plugins: [keymap(baseKeymap)],
+    });
+    const view = new EditorView(pmHost, {
+      state: state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to))),
+    });
+    Object.defineProperty(view.dom, "isContentEditable", { value: true, configurable: true });
+    view.focus();
+    return view;
+  }
+
+  it("Option/AltGr characters and modified deletes are swallowed behind the open menu", () => {
+    const editable = mountEditable();
+    editable.focus();
+    const pmHandler = vi.fn();
+    editable.addEventListener("keydown", pmHandler);
+    const onSelect = vi.fn();
+    render(<DragHandleMenu anchorRect={RECT} onSelect={onSelect} onClose={() => {}} kind="selection" />);
+
+    const keys = [
+      keyOn(editable, "å", { altKey: true }), // Mac Option+a
+      keyOn(editable, "™", { altKey: true }), // Mac Option+2
+      keyOn(editable, "@", { ctrlKey: true, altKey: true }), // AltGr+q (German)
+      keyOn(editable, "Backspace", { altKey: true }), // delete word
+      keyOn(editable, "Backspace", { metaKey: true }), // delete to line start
+      keyOn(editable, "Delete", { altKey: true }), // delete word forward
+      keyOn(editable, "Backspace", { ctrlKey: true }), // pc delete word
+    ];
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(pmHandler).not.toHaveBeenCalled();
+    for (const e of keys) expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("commands still pass: undo/redo, clipboard, select-all", () => {
+    const editable = mountEditable();
+    editable.focus();
+    const pmHandler = vi.fn();
+    editable.addEventListener("keydown", pmHandler);
+    render(<DragHandleMenu anchorRect={RECT} onSelect={() => {}} onClose={() => {}} kind="selection" />);
+
+    const keys = [
+      keyOn(editable, "z", { metaKey: true }),
+      keyOn(editable, "z", { metaKey: true, shiftKey: true }),
+      keyOn(editable, "c", { ctrlKey: true }),
+      keyOn(editable, "x", { metaKey: true }),
+      keyOn(editable, "v", { ctrlKey: true }),
+      keyOn(editable, "a", { metaKey: true }),
+    ];
+    expect(pmHandler).toHaveBeenCalledTimes(keys.length);
+    for (const e of keys) expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("on a REAL ProseMirror view: Mod+Backspace over a selection deletes nothing", () => {
+    const view = pmView(1, 6);
+    const before = view.state.doc;
+    render(<DragHandleMenu anchorRect={RECT} onSelect={() => {}} onClose={() => {}} kind="selection" />);
+    // jsdom is not a Mac, so PM's keymap reads Mod as Ctrl.
+    const e = keyOn(view.dom as HTMLElement, "Backspace", { ctrlKey: true });
+    expect(e.defaultPrevented).toBe(true);
+    expect(view.state.doc.eq(before)).toBe(true);
+    view.destroy();
+  });
+
+  it("control: the same Mod+Backspace with NO menu open DOES delete (the probe is live)", () => {
+    const view = pmView(1, 6);
+    keyOn(view.dom as HTMLElement, "Backspace", { ctrlKey: true });
+    expect(view.state.doc.textContent).toBe(" world");
+    view.destroy();
+  });
+
+  it("editsDocument: the predicate's table, both platforms", () => {
+    const k = (key: string, m: Partial<Record<"metaKey" | "ctrlKey" | "altKey", boolean>> = {}) => ({
+      key,
+      keyCode: 0,
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      ...m,
+    });
+    for (const mac of [true, false]) {
+      expect(editsDocument(k("q"), mac)).toBe(true);
+      expect(editsDocument(k("å", { altKey: true }), mac)).toBe(true);
+      expect(editsDocument(k("@", { ctrlKey: true, altKey: true }), mac)).toBe(true);
+      expect(editsDocument(k("Backspace", { metaKey: true }), mac)).toBe(true);
+      expect(editsDocument(k("Delete", { altKey: true }), mac)).toBe(true);
+      expect(editsDocument(k("Enter", { shiftKey: true } as never), mac)).toBe(true);
+      expect(editsDocument(k("Enter", { metaKey: true }), mac)).toBe(false);
+      expect(editsDocument(k("z", { metaKey: true }), mac)).toBe(false);
+      expect(editsDocument(k("v", { ctrlKey: true }), mac)).toBe(false);
+      expect(editsDocument(k("ArrowLeft", { altKey: true }), mac)).toBe(false);
+      expect(editsDocument(k("Escape"), mac)).toBe(false);
+      // An IME-composing key is the IME's (task 994/1188).
+      expect(editsDocument({ ...k("a"), keyCode: 229 }, mac)).toBe(false);
+    }
+    // macOS Cocoa Ctrl text bindings delete/insert; elsewhere Ctrl+H/D/K are commands.
+    for (const key of ["h", "d", "k", "o", "t"]) {
+      expect(editsDocument(k(key, { ctrlKey: true }), true)).toBe(true);
+      expect(editsDocument(k(key, { ctrlKey: true }), false)).toBe(false);
+    }
+    expect(editsDocument(k("a", { ctrlKey: true }), true)).toBe(false);
   });
 });
 
