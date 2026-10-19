@@ -29,6 +29,7 @@ import {
 import type { LibraryIndexItem } from "@/lib/library/library-types";
 import { membershipChipsFor } from "@/components/library/provenance-chips";
 import { parseRawCitekeys } from "@/lib/bib-entry-head";
+import type { LiveAnchor } from "@/components/menu/live-anchor";
 import {
   BibEntryPickerMenu,
   type MembershipChips,
@@ -40,6 +41,8 @@ export interface CitekeyPickerProps {
   open: boolean;
   anchorEl?: HTMLElement | null;
   anchorRect?: DOMRect | null;
+  /** Forwarded to `BibEntryPickerMenu` (task 1190). */
+  trackAnchor?: LiveAnchor;
   onClose: () => void;
   /** Escape / the header × — the CANCEL door, forwarded to
    *  `BibEntryPickerMenu`. Defaults to `onClose`; the deferred citation CREATE
@@ -86,6 +89,7 @@ export function CitekeyPicker({
   open,
   anchorEl,
   anchorRect,
+  trackAnchor,
   onClose,
   onCancel,
   paperBibEntries,
@@ -204,6 +208,7 @@ export function CitekeyPicker({
       open={open}
       anchorEl={anchorEl}
       anchorRect={anchorRect}
+      trackAnchor={trackAnchor}
       onClose={onClose}
       onCancel={onCancel}
       entries={mergedEntries}

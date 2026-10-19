@@ -67,6 +67,7 @@ import type {
 import { bibStateTone } from "@/lib/library/status-tone";
 import { LibraryMembershipChips } from "@/components/library/provenance-chips";
 import { MenuProvider } from "@/components/menu/MenuProvider";
+import type { LiveAnchor } from "@/components/menu/live-anchor";
 import { useMenuItem } from "@/components/menu/useMenuItem";
 import { menuRowRovingStyle } from "@/components/menu/row-tone";
 import { useMenuCombobox, type ComboboxKeyEvent } from "@/components/menu/useMenuCombobox";
@@ -90,6 +91,10 @@ export interface BibEntryPickerMenuProps {
   open: boolean;
   anchorEl?: HTMLElement | null;
   anchorRect?: DOMRect | null;
+  /** A LIVE anchor (task 1190) — re-read on scroll/reflow in place of
+   *  `anchorRect`/`anchorEl`. The citation create popover passes the caret at
+   *  its tracked insertion point, so the menu follows the spot it will land at. */
+  trackAnchor?: LiveAnchor;
   onClose: () => void;
   /** Escape / the header × — the CANCEL door. Defaults to `onClose`. Supply it
    *  only where dismissing and cancelling differ (the deferred-commit citation
@@ -198,6 +203,7 @@ function BibEntryPickerMenuInner({
   externalQuery,
   externalInputEl,
   footer,
+  trackAnchor,
 }: BibEntryPickerMenuProps) {
   // The internal search input ref lives at the provider level so the
   // `getActiveDescendantHost` thunk (which the provider's keyboard controller
@@ -238,7 +244,7 @@ function BibEntryPickerMenuInner({
       layout="combobox"
       role="listbox"
       anchorRect={anchorThunk}
-      trackAnchor={anchorThunk}
+      trackAnchor={trackAnchor ?? anchorThunk}
       placements={BIB_PICKER_PLACEMENTS}
       gap={4}
       maxHeight

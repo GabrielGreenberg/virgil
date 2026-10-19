@@ -174,7 +174,7 @@ import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
 import { caretAnchor, nodeAnchor } from "./menu/live-anchor";
 import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover";
-import type { AtomCreateRequest } from "@/lib/actions/atom-create";
+import type { AtomCreateSession } from "@/lib/actions/atom-create";
 import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import { applyMathEdit } from "@/lib/tiptap/atom-edit-target";
@@ -1205,7 +1205,14 @@ export default function EditorLayout() {
   // the popover materializes the atom only on commit. `\ref` create folds onto
   // this in a later chip — for now only `kind: "citation"` is dispatched.
   const [atomCreateRequest, setAtomCreateRequest] =
-    useState<AtomCreateRequest | null>(null);
+    useState<AtomCreateSession | null>(null);
+  // The open request's position tracker lives exactly as long as the request
+  // (task 1190): closing or replacing the popover disposes it, so no
+  // transaction subscriber exists while no create popover is open.
+  useEffect(() => {
+    if (!atomCreateRequest) return;
+    return () => atomCreateRequest.at.dispose();
+  }, [atomCreateRequest]);
   // Live anchors (task 747): the `\ref` popovers follow their chip / caret on
   // scroll instead of staying where it was when they opened. One per request.
   const activeRefAnchor = useMemo(
@@ -1215,7 +1222,7 @@ export default function EditorLayout() {
   const atomCreateAnchor = useMemo(
     () =>
       atomCreateRequest
-        ? caretAnchor(atomCreateRequest.editor, atomCreateRequest.pos)
+        ? caretAnchor(atomCreateRequest.editor, atomCreateRequest.at.get)
         : undefined,
     [atomCreateRequest],
   );
@@ -2242,6 +2249,21 @@ export default function EditorLayout() {
   // + soft-route via the proven citation cursor path (`runAction` carrying the
   // payload — the COMMIT half of `citationRun`). One atom + one card, no blank
   // pristine flash, all subsequent edits in the gutter at the standard position.
+  // The create popover's spot was deleted while it was open (task 1190) — an
+  // agent write, a code-pane re-parse or a reload replaced the text it was
+  // captured in. Nothing is inserted; say so, since the user picked something.
+  const notifyAtomCreateSpotGone = useCallback(
+    (kind: "citation" | "ref") => {
+      void runConfirm({
+        title: kind === "citation" ? "Citation not added" : "Reference not added",
+        message:
+          "The text where you opened this was changed or removed while you were choosing, so nothing was inserted. Place the cursor and try again.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    },
+    [runConfirm],
+  );
   const commitCitationCreate = useCallback(
     (pos: number, keys: string[], owner?: Editor | null) => {
       const handle = editorRef.current;
@@ -3583,15 +3605,17 @@ export default function EditorLayout() {
       {atomCreateRequest?.kind === "citation" && (
         <CitationCreatePopover
           anchorRect={atomCreateRequest.rect}
+          trackAnchor={atomCreateAnchor}
           paperBibEntries={bibEntries}
           onAddBibEntry={citationsHook.addBibEntry}
-          onCommit={(keys) =>
-            commitCitationCreate(
-              atomCreateRequest.pos,
-              keys,
-              atomCreateRequest.editor,
-            )
-          }
+          onCommit={(keys) => {
+            // The TRACKED insertion point (task 1190): the captured spot mapped
+            // through every edit since the popover opened; null = it was
+            // deleted, and the commit refuses rather than guessing.
+            const at = atomCreateRequest.at.get();
+            if (at === null) return notifyAtomCreateSpotGone("citation");
+            commitCitationCreate(at, keys, atomCreateRequest.editor);
+          }}
           onClose={() => setAtomCreateRequest(null)}
         />
       )}
@@ -3608,9 +3632,11 @@ export default function EditorLayout() {
           labels={gatherLabels()}
           refCommand={atomCreateRequest.refCommand ?? "ref"}
           onJumpToLabel={handleRefJump}
-          onInsertRef={(label, cmd) =>
-            handleInsertRef(label, cmd, atomCreateRequest.pos, atomCreateRequest.editor)
-          }
+          onInsertRef={(label, cmd) => {
+            const at = atomCreateRequest.at.get();
+            if (at === null) return notifyAtomCreateSpotGone("ref");
+            handleInsertRef(label, cmd, at, atomCreateRequest.editor);
+          }}
           onClose={() => setAtomCreateRequest(null)}
         />
       )}

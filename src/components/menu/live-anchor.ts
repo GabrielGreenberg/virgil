@@ -61,10 +61,17 @@ export function elementAnchor(
 }
 
 /** Re-read the caret box at `pos` in `editor`; `null` when the editor is gone
- *  or `pos` has fallen outside the document. */
-export function caretAnchor(editor: Editor | null | undefined, pos: number): LiveAnchor {
+ *  or `pos` has fallen outside the document. `pos` may be a thunk — a
+ *  `TrackedPos.get` (task 1190), so the anchor follows the same mapped
+ *  position the commit will land at; a `null` from it means the spot is gone. */
+export function caretAnchor(
+  editor: Editor | null | undefined,
+  at: number | (() => number | null),
+): LiveAnchor {
   return () => {
     if (!editor || editor.isDestroyed) return null;
+    const pos = typeof at === "function" ? at() : at;
+    if (pos === null) return null;
     if (pos < 0 || pos > editor.state.doc.content.size) return null;
     const c = coordsAtPosCached(editor, pos);
     if (!c) return null;

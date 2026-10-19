@@ -38,10 +38,14 @@ import type { BibEntry } from "@/lib/types";
 import { Button } from "@/components/Button";
 import { CitekeyPicker } from "./CitekeyPicker";
 import { iconHint } from "@/components/Hint";
+import type { LiveAnchor } from "@/components/menu/live-anchor";
 
 export interface CitationCreatePopoverProps {
   /** Caret rect captured at trigger time — the popover anchors here. */
   anchorRect: DOMRect;
+  /** The caret at the TRACKED insertion point (task 1190): the popover
+   *  follows the spot the commit will land at; `anchorRect` is its fallback. */
+  trackAnchor?: LiveAnchor;
   /** Paper's local references.bib entries (merged with the library inside). */
   paperBibEntries: BibEntry[];
   /** Add a library-only entry to the paper's bib (fires when such an entry is
@@ -72,6 +76,7 @@ function mergeKeys(prev: string[], keys: string[]): string[] {
 
 export function CitationCreatePopover({
   anchorRect,
+  trackAnchor,
   paperBibEntries,
   onAddBibEntry,
   onCommit,
@@ -128,6 +133,7 @@ export function CitationCreatePopover({
     <CitekeyPicker
       open
       anchorRect={anchorRect}
+      trackAnchor={trackAnchor}
       paperBibEntries={paperBibEntries}
       onSelectKeys={stageKeys}
       onAddBibEntry={onAddBibEntry}
