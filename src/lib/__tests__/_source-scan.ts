@@ -216,6 +216,33 @@ export const commentsStripped = (src: string) => strip(src, true);
  *  `file:line` or reads a marker comment sitting near a code hit. */
 export const codeOnlyLines = (src: string) => strip(src, false, true);
 
+/** One regex hit in a scanned file: its 1-based line and that line's text. */
+export interface LineHit {
+  line: number;
+  text: string;
+}
+
+/**
+ * Every match of `re` over the WHOLE `code`, each mapped back to the line it
+ * starts on — for a census whose banned SHAPE spans several tokens. Testing one
+ * line at a time is blind to the same shape once a formatter wraps it (task
+ * 1185: Prettier split three `x.kind === "…" ? "…" : "…"` ternaries over three
+ * lines and the per-line census passed them all). `\s*` in the pattern spans
+ * the newlines; `code` must be LINE-ALIGNED with the file
+ * (`strip(…, keepLines = true)` / {@link codeOnlyLines}) for the numbers to be
+ * true. `re` need not carry the `g` flag.
+ */
+export function matchesWithLines(code: string, re: RegExp): LineHit[] {
+  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+  const lines = code.split("\n");
+  const hits: LineHit[] = [];
+  for (const m of code.matchAll(g)) {
+    const line = code.slice(0, m.index).split("\n").length;
+    hits.push({ line, text: lines[line - 1].trim() });
+  }
+  return hits;
+}
+
 /**
  * CSS RULE BODIES only — the token-home blocks (`:root`, `@theme`) removed.
  *

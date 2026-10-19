@@ -341,6 +341,10 @@ export const STORED_KIND_BY_PANEL = {
 export type PolymorphicPanel = keyof typeof STORED_KIND_BY_PANEL;
 /** The stored `record.kind` discriminators panel `P` writes. */
 export type StoredKindOf<P extends PolymorphicPanel> = keyof (typeof STORED_KIND_BY_PANEL)[P];
+/** The spine card kinds panel `P`'s collection holds — what
+ *  `cardKindFromRecord(record, P)` can answer. */
+export type SpineKindOf<P extends PolymorphicPanel> =
+  (typeof STORED_KIND_BY_PANEL)[P][StoredKindOf<P>];
 /** Where a polymorphic-panel card kind lives: its panel and stored token. */
 export type StoredKindAddress = {
   [P in PolymorphicPanel]: { panel: P; stored: StoredKindOf<P> };
@@ -380,7 +384,16 @@ export const isSuggestionKind = (k: CardKind): boolean => SUGGESTION_KINDS.has(k
  * Not the morph: `applyCardMorph` (A9) FLIPS a record's `kind` and salvages
  * fields; this only READS the current `kind` back to a spine kind. Different
  * layer, kept apart — they share only this table's vocabulary.
+ *
+ * Given a literal polymorphic panel the answer is narrowed to that panel's row
+ * (`SpineKindOf<P>`), so a caller typed to a narrower kind union (e.g. a
+ * delete wrapper's `CardContentKind`) routes here without a cast.
  */
+export function cardKindFromRecord<P extends PolymorphicPanel>(
+  record: { kind?: string },
+  panel: P,
+): SpineKindOf<P>;
+export function cardKindFromRecord(record: { kind?: string }, panel: PanelKind): CardKind;
 export function cardKindFromRecord(
   record: { kind?: string },
   panel: PanelKind,

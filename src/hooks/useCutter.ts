@@ -823,9 +823,7 @@ export function useCutter(
             getTextAnchor(c)?.anchorId === anchorId
               ? clearTextAnchorLink(
                   c,
-                  c.kind === "suggestion"
-                    ? "cutter-suggestion"
-                    : "cutter-comment",
+                  cardKindFromRecord(c, "cutter"),
                 )
               : c,
           ),
