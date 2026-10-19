@@ -36,6 +36,7 @@ import { isEditableEventTarget } from "@/lib/drag-blocklist";
 import {
   isCancelEscape,
   isCommitEnter,
+  editsDocument,
   isImeComposing,
   swallowRepeatsUntilKeyup,
 } from "@/lib/key-intent";
@@ -283,25 +284,15 @@ export function useMenuKeyboard(
       }
     }
 
-    // The owned-host rule (task 1180): a key that would EDIT the document —
-    // a printable character (Shift included: it types a capital), Enter,
-    // Backspace, Delete — never falls through to the editor behind an open
-    // menu. This is the arm that catches a DISABLED row's letter/alias (the
-    // letter map above excludes greyed rows so they cannot RUN) and every
-    // letter no row claims. Meta/Ctrl/Alt combos still pass: they are editor
-    // COMMANDS the user chose (undo, clipboard, line jumps), the same
-    // modifier boundary the nav keys draw above.
-    if (
-      ownedHost &&
-      !e.metaKey &&
-      !e.ctrlKey &&
-      !e.altKey &&
-      typeof e.key === "string" &&
-      (e.key.length === 1 ||
-        isCommitEnter(e) ||
-        e.key === "Backspace" ||
-        e.key === "Delete")
-    ) {
+    // The owned-host rule (task 1180): a key that would EDIT the document
+    // never falls through to the editor behind an open menu. This is the arm
+    // that catches a DISABLED row's letter/alias (the letter map above
+    // excludes greyed rows so they cannot RUN) and every letter no row claims.
+    // "Would it edit?" is decided by EFFECT, not by modifier (task 1189):
+    // Option/AltGr type characters and Option/Cmd+Backspace delete, so they
+    // are swallowed too, while editor COMMANDS (undo, clipboard, select-all)
+    // and modified nav still pass — see `editsDocument`.
+    if (ownedHost && editsDocument(native)) {
       return true;
     }
     return false;

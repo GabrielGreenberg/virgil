@@ -30,7 +30,16 @@
  * Escape pressed mid-composition CANCELS THE COMPOSITION — it is the IME's key,
  * not "cancel this menu / field". Pinned (for the menu-door population — every
  * file built on `@/components/menu`) by `menu-key-intent-census.test.ts`.
+ *
+ * **"Would this key EDIT the document?" has ONE spelling** (task 1189):
+ * `editsDocument`. It decides by EFFECT, not by modifier — Option/AltGr type
+ * characters and Option/Cmd+Backspace delete words and lines, so "any modifier
+ * means a command" is wrong. Reader: the menu controller's owned-host rule
+ * (task 1180), which swallows every editing key behind an open caret-parked
+ * menu while commands (undo, clipboard, select-all) still pass.
  */
+
+import { isMac } from "@/lib/platform";
 
 type KeyLike = Pick<KeyboardEvent, "isComposing" | "keyCode" | "key" | "code" | "repeat">;
 
@@ -69,6 +78,54 @@ export function isCancelEscape(e: ImeProbe & { key: string }): boolean {
 /** A fresh, non-IME press — the only kind that may ACTIVATE something. */
 export function isDeliberateKeyPress(e: ImeProbe & { repeat: boolean }): boolean {
   return !e.repeat && !isImeComposing(e);
+}
+
+/**
+ * The macOS Cocoa text-system Ctrl bindings that EDIT rather than move:
+ * Ctrl+H (delete back), Ctrl+D (delete forward), Ctrl+K (kill to line end),
+ * Ctrl+O (open line), Ctrl+T (transpose). Ctrl+A/E/F/B/N/P only move the caret.
+ */
+const MAC_CTRL_EDIT_KEYS = new Set(["h", "d", "k", "o", "t"]);
+
+type EditProbe = ImeProbe &
+  Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey">;
+
+/**
+ * Would this keydown EDIT the document if it reached the editor? Decided by
+ * effect (task 1189):
+ *
+ *   - **Backspace / Delete, with ANY modifier** — Option/Ctrl deletes a word,
+ *     Cmd deletes to the line start.
+ *   - **Enter, unless Meta/Ctrl is held** — Shift/Alt+Enter still break the
+ *     line; Mod+Enter is an app command.
+ *   - **A printable character, unless Meta or plain Ctrl is held** — Shift types
+ *     a capital, Mac Option types "å"/"™", and AltGr arrives as Ctrl+Alt and
+ *     types "@"/"€"/"{" on European layouts.
+ *   - **On macOS, Ctrl+H/D/K/O/T** — the Cocoa text-editing bindings.
+ *
+ * Everything else — Cmd/Ctrl+Z, +C/X/V, +A, arrows, Tab, Escape — is a
+ * command or navigation and is NOT an edit by this predicate. An IME-composing
+ * key is the IME's, never ours (task 994): answered false.
+ */
+export function editsDocument(e: EditProbe, mac: boolean = isMac()): boolean {
+  if (isImeComposing(e)) return false;
+  const key = typeof e.key === "string" ? e.key : "";
+  if (key === "Backspace" || key === "Delete") return true;
+  if (key === "Enter") return !e.metaKey && !e.ctrlKey;
+  if (
+    mac &&
+    e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey &&
+    MAC_CTRL_EDIT_KEYS.has(key.toLowerCase())
+  ) {
+    return true;
+  }
+  if (key.length !== 1) return false;
+  if (e.metaKey) return false;
+  // Plain Ctrl is a command (Ctrl+Z/V on Windows/Linux); Ctrl+Alt is AltGr.
+  if (e.ctrlKey && !e.altKey) return false;
+  return true;
 }
 
 /** Two events name the same physical key (code when known, else the key, case-folded). */
