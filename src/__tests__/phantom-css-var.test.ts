@@ -429,22 +429,10 @@ const PERMITTED_ORPHAN_TOKENS: Readonly<Record<string, string>> = {
   "--window-inset-bottom":
     "the unread rung of the window-inset SSOT; no bottom-anchored chrome exists yet, and the model's claim is that every edge has a var",
 
-  // A PAGE-WIDTH mechanism whose live implementation is JS. EditorLayout's
-  // `useState(880)` re-spells --page-preferred's value as a literal at another
-  // depth, and 640 / 1400 appear nowhere in TS at all — the same "one role,
-  // spelled twice, chosen by eye" disease task 460 fixed on the drag-ghost
-  // axis, on the width axis. (Task 902 took --page-preferred OUT of the
-  // machine-managed PROMOTE-DEFAULTS block: the seed is now the pref→CSS table
-  // rendered at the defaults, and a token nothing reads has no row there.)
-  // Whether the editor basis should read the token is a layout decision, not
-  // a cleanup.
-  "--page-preferred": "page-width mechanism moved to JS (EditorLayout `useState(880)`); token left behind",
-  "--page-min": "page-width mechanism moved to JS; 640 appears in no component",
-  "--page-max": "page-width mechanism moved to JS; 1400 appears in no component",
-
   // Sibling of the LIVE --panel-min (read by panel-column.tsx). The band-height
   // floor that would consume this is MIN_BAND_PX = 140 in view-prefs-dock.ts —
-  // a different value at a different depth. Same disease as the --page-* trio.
+  // a different value at a different depth. (The --page-* trio it was likened to
+  // was deleted in task 1178.)
   "--panel-min-h":
     "the height twin of the live --panel-min; the real floor is MIN_BAND_PX=140 in view-prefs-dock.ts",
 

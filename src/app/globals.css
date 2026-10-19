@@ -272,16 +272,14 @@
    * there carries no shadow at all. */
   --shadow-drag-ghost-filter: drop-shadow(0 8px 16px rgba(0,0,0,0.25));
 
-  /* Page-as-solid-object sizing. Editor column prefers --page-preferred
-     and only shrinks toward --page-min when the window is too narrow to
-     keep both the page and its surrounding canvas/margins at their
-     preferred widths. See EditorLayout.tsx and zen-margin.tsx. */
-  --page-preferred: 880px;
-  --page-min: 640px;
-  --page-max: 1400px;
+  /* Side-rail geometry. The page (editor column) stores no width: it is the
+     row minus the rails — icon strip (--icon-strip-w, a STATED width) plus
+     the panel column (its panelWidths pref, floored by --panel-min). Zen
+     reads the same terms to keep that width with the rails hidden
+     (normal-view-rails.ts, task 1178). */
+  --icon-strip-w: 46px;
   --panel-min: 160px;
   --panel-min-h: 200px;
-  --zen-margin-min: 20px;
 
   /* Editor colors
      --h1-color and --h2h3-color are locked to the primary text tokens
@@ -5760,7 +5758,7 @@ body.perf-contain .static-borrowed-text {
   letter-spacing: 0.04em;
 }
 
-/* ── Flex-column pin (task 1052) — a side column (PanelColumn / ZenMargin)
+/* ── Flex-column pin (task 1052) — a side column (PanelColumn)
    holds `--flex-pin` for the life of a side-column gutter gesture, set and
    removed by `flex-column-pin.ts`. `!important` because it must beat the
    inline flex React renders from the STORED pref, which it overrides only
@@ -5829,7 +5827,7 @@ body.perf-contain .static-borrowed-text {
 /* ── Shared resize-gutter grip (`.band-grip`) — orientation-agnostic ──
    ONE grip-pill chrome consumed by every resizer in the app: the panel-band
    dividers + bottom-band/omni edge (horizontal), the panel↔editor gutters,
-   code splitter, and zen margins (vertical), AND the three library resizers.
+   and code splitter (vertical), AND the three library resizers.
    The gutter strip itself is the hover/hit zone; the centered pill is HIDDEN
    at rest (bug sweep #2: a persistent lozenge cluttered the quiet gutter) and
    fades in on hover/drag (`--drag-highlight` + growing on the LONG axis).

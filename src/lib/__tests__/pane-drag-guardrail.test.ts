@@ -1390,12 +1390,14 @@ describe("pane-drag guardrail — engine-consumer chrome census (task 189)", () 
     );
 
   it("resolves every engine handle to the element it is spread onto (the census can see)", () => {
-    // Ten handles today across seven files (panel-primitives, split-editor-panes,
-    // zen-margin, split-with-code, panel-column ×2, LibraryView ×3, LeftList).
+    // Nine handles today across six files (panel-primitives, split-editor-panes,
+    // split-with-code, panel-column ×2, LibraryView ×3, LeftList). Task 1178
+    // removed the tenth, zen-margin: zen's page width is derived from normal
+    // view's, so it has no divider of its own.
     // A REMOVAL is a review prompt, not a silent shrink — update the number and
     // say which divider went. A site whose tags are empty means the tag scanner
     // stopped matching, which would make every other leg here vacuous.
-    expect(sites.length).toBeGreaterThanOrEqual(10);
+    expect(sites.length).toBeGreaterThanOrEqual(9);
     for (const s of sites) {
       expect(s.tags.length, `${s.key}: no element spreads this handle`).toBeGreaterThan(0);
     }
@@ -1513,11 +1515,12 @@ describe("pane-drag guardrail — zero-move commit census (task 470)", () => {
     );
 
   it("resolves every engine handle's commit body (the census can see)", () => {
-    // Ten handles today; every one declares a commit (the spec requires it),
+    // Nine handles today (task 1178 removed zen-margin's); every one declares
+    // a commit (the spec requires it),
     // so a shortfall means the scanner stopped matching and every other leg
     // here went vacuous. An empty body is the same failure by another route:
     // the delimiter walk hit EOF without closing.
-    expect(sites.length).toBeGreaterThanOrEqual(10);
+    expect(sites.length).toBeGreaterThanOrEqual(9);
     for (const c of sites) {
       expect(c.body.trim().length, `${c.key}: commit body did not resolve`).toBeGreaterThan(0);
     }

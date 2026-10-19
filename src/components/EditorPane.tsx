@@ -104,7 +104,7 @@ import { useViewLifetime } from "@/hooks/useViewLifetime";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { useCodePaneSplit } from "./editor-layout/CodePaneSplitContext";
 import { EditorScrollbar } from "./editor-layout/editor-scrollbar";
-import { ZenMargin } from "./editor-layout/zen-margin";
+import { ICON_STRIP_WIDTH_VAR, normalViewPodBasis, PANE_ROW_GAP_PX } from "./editor-layout/normal-view-rails";
 import PrintAppendices from "./PrintAppendices";
 import { LoadingScreen } from "./LoadingScreen";
 import type { PrintPanelKey } from "@/lib/print";
@@ -554,12 +554,8 @@ export interface EditorPaneViewPrefs {
   //    editor pod). The user adjusts these to push the page down from
   //    the docked MenuBar or up from the bottom edge of the window.
 
-  // ── Zen mode (replaces panel rails with adjustable margins) ────
+  // ── Zen mode (hides the rails; the page keeps normal view's width) ────
   zenMode: boolean;
-  zenLeftMargin: number;
-  zenRightMargin: number;
-  setZenLeftMargin: (px: number) => void;
-  setZenRightMargin: (px: number) => void;
 
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
@@ -4010,7 +4006,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // strength of a marker-hiding that five docstrings asserted and no code
   // performed. `resolveMarginaliaLane` states it once: zen hides the markers,
   // the Reader hosts them, and `reserved` is `hosted` minus the compressed
-  // code-split (the one exception that is about the FLOOR, not the markers).
+  // code-split (an exception about the FLOOR, not the markers) — plus zen,
+  // which keeps normal view's floor so its page is unchanged (task 1178).
   //
   // `useCodePaneSplit()` is a `useContext` read — keystroke-free, and it
   // changes only when the code pane opens/closes or crosses its compressed
@@ -4963,10 +4960,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   //     minimum so the grid never collides with the scrollbar / bolt / text.
   // In compressed code-split the lane is NOT reserved (see
   // `marginaliaLaneReserved` above — `!compressX`), so the comfort cap WINS and
-  // the floor is a pass-through; so does zen, which hides the markers outright
-  // and therefore keeps its margin freedom down to 0. The floor `Math.max` only
-  // bites where markers are actually painted and the code pane is not
-  // compressing the column — the normal editor, and the Library Reader.
+  // the floor is a pass-through. Zen hides the markers but KEEPS the floor, so
+  // its text inset is normal view's (task 1178). The floor `Math.max` bites
+  // wherever the Marginalia toggle is on and the code pane is not compressing
+  // the column — the normal editor, zen, and the Library Reader.
   const effectiveLeftMargin = resolveHorizontalMargin(effectiveMargins.left, {
     compress: compressX,
     laneReserved: marginaliaLaneReserved,
@@ -5476,6 +5473,25 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => orderedSidePanels("right"),
     [orderedSidePanels],
   );
+  // Zen's page width IS normal view's (task 1178): the editor column takes
+  // the row minus the rails normal view would mount, from the same inputs
+  // those rails render from — so toggling zen never changes the line length.
+  // null outside zen (and under a code split, where no rails mount anyway).
+  const zenPodBasis =
+    viewPrefs?.zenMode && !codeSplit.active
+      ? normalViewPodBasis({
+          left: {
+            present: visiblePanelsLeft.length > 0,
+            collapsed: !!viewPrefs.prefs.collapsedLeft,
+            panelPref: viewPrefs.getPanelWidth("left", "omni"),
+          },
+          right: {
+            present: visiblePanelsRight.length > 0,
+            collapsed: !!viewPrefs.prefs.collapsedRight,
+            panelPref: viewPrefs.getPanelWidth("right", "omni"),
+          },
+        })
+      : null;
   // Panel docking is driven entirely by `viewPrefs.prefs.dockStack` — the
   // canonical SSOT both the main app and the Reader render from (PaneRail lays
   // out the docked bands straight off it, and strip clicks toggle it through
@@ -6882,7 +6898,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               flex: 1,
               minHeight: 0,
               minWidth: 0,
-              gap: 2,
+              gap: PANE_ROW_GAP_PX,
             }}
           >
             {/* Hide editor panel rails when code view is active: with
@@ -6891,15 +6907,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 appear as "ghost" card-strip slices beside the pod.
                 Matches the pre-refactor UX where code view replaced
                 the whole pane (no rails at all). */}
-            {!codeSplit.active && (viewPrefs?.zenMode ? (
-              <ZenMargin
-                side="left"
-                marginPref={viewPrefs.zenLeftMargin}
-                onMarginPrefChange={viewPrefs.setZenLeftMargin}
-                isResizing={viewPrefs.isResizingPanels}
-                onResizingChange={viewPrefs.setIsResizingPanels}
-              />
-            ) : visiblePanelsLeft.length > 0 && (
+            {/* Zen mounts no rail: the editor column below takes normal
+                view's pod width (`zenPodBasis`), centred (task 1178). */}
+            {!codeSplit.active && !viewPrefs?.zenMode && visiblePanelsLeft.length > 0 && (
               <PaneRail
                 side="left"
                 visiblePanels={visiblePanelsLeft}
@@ -6958,7 +6968,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 tail={leftMarginPrelude}
                 omniBulkPendingChanges={omniBulkPendingChanges}
               />
-            ))}
+            )}
             {/* Column wrapper — sits between the two PaneRails. Holds the
                 docked MenuBar (when `menuBar` is provided) plus the
                 editor pod. Path A 7.6 finish (additive) introduced this
@@ -6974,7 +6984,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 // first; rails honor their basis (320px each), the
                 // column gets the rest. Mirrors the old EditorLayout's
                 // `flex: 1000 1 ${editorBasis}px` editor-column rule.
-                flex: "1000 1 0",
+                // Zen mounts no rails: the column takes the width normal
+                // view would give it (ONE derivation, normal-view-rails.ts)
+                // and auto margins centre it (task 1178).
+                ...(zenPodBasis != null
+                  ? { flex: `0 1 ${zenPodBasis}`, marginInline: "auto" }
+                  : { flex: "1000 1 0" }),
                 // Text-width floor: ensure the prose column never collapses
                 // below 300px on narrow windows. Adds `--editor-pl` /
                 // `--editor-pr` (set just below; consumed by Editor.tsx's
@@ -8008,15 +8023,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             </div>
             {/* Hide right rail when code view is active — see comment
                 above the left rail. Both rails go away together. */}
-            {!codeSplit.active && (viewPrefs?.zenMode ? (
-              <ZenMargin
-                side="right"
-                marginPref={viewPrefs.zenRightMargin}
-                onMarginPrefChange={viewPrefs.setZenRightMargin}
-                isResizing={viewPrefs.isResizingPanels}
-                onResizingChange={viewPrefs.setIsResizingPanels}
-              />
-            ) : visiblePanelsRight.length > 0 && (
+            {!codeSplit.active && !viewPrefs?.zenMode && visiblePanelsRight.length > 0 && (
               <PaneRail
                 side="right"
                 visiblePanels={visiblePanelsRight}
@@ -8074,7 +8081,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 wordCountHook={wordCountHook}
                 omniBulkPendingChanges={omniBulkPendingChanges}
               />
-            ))}
+            )}
           </div>
           {/* Custom thin scrollbar pinned to the editor column's
               right edge. Shown only when the row scrolls — the
@@ -8360,6 +8367,9 @@ function IconStrip({
     <div
       data-strip-side={side}
       className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-20 self-start"
+      // A STATED width, not a content-sized one: zen derives normal view's
+      // page width from it (normal-view-rails.ts, task 1178).
+      style={{ width: `var(${ICON_STRIP_WIDTH_VAR})` }}
     >
       {/* View-controls pod: collapse/expand. The split toggle is
           retired — panels now stack as bands over omni. */}

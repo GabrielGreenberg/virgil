@@ -3,7 +3,7 @@
 // Editor-side pane-resize adoption (library-UI refactor P5): the editor's
 // dividers — the panel↔editor gutter (PanelColumn), the stacked-band divider
 // (BandDivider), the code splitter (SplitWithCode), the main-editor split
-// (SplitEditorPanes), and the zen margins (ZenMargin) — run on the shared
+// (SplitEditorPanes) — run on the shared (task 1178 retired the zen margins)
 // gesture engine (src/lib/pane-resize) with the discipline the old useDragGap
 // family violated:
 //
@@ -90,7 +90,6 @@ import {
   codeSplitEditorBoundsPx,
 } from "@/components/editor-layout/split-with-code";
 import { SplitEditorPanes } from "@/components/editor-layout/split-editor-panes";
-import { ZenMargin } from "@/components/editor-layout/zen-margin";
 import { EditorScrollbar } from "@/components/editor-layout/editor-scrollbar";
 import { MIN_BAND_PX, type PanelId } from "@/hooks/useViewPrefs";
 import {
@@ -574,179 +573,44 @@ describe("SplitEditorPanes on the pane-resize engine", () => {
   });
 });
 
-// ── ZenMargin (zen-mode page margins) ───────────────────────────────────────
-
-// Wired like the real consumer (EditorPane → viewPrefs): marginPref and
-// isResizing round-trip through state, so the end-edge return to the resting
-// `1 100 …px` flex at the committed pref is exercised, not just spied.
-function renderZenMargin(side: "left" | "right", rendered = 200) {
-  const onMarginPrefChange = vi.fn();
-  const onResizingChange = vi.fn();
-  const Harness = () => {
-    const [pref, setPref] = useState(200);
-    const [resizing, setResizing] = useState(false);
-    return (
-      <ZenMargin
-        side={side}
-        marginPref={pref}
-        onMarginPrefChange={(w) => {
-          onMarginPrefChange(w);
-          setPref(w);
-        }}
-        isResizing={resizing}
-        onResizingChange={(r) => {
-          onResizingChange(r);
-          setResizing(r);
-        }}
-      />
-    );
-  };
-  const utils = render(<Harness />);
-  const col = utils.container.querySelector<HTMLElement>(`[data-flex-col="${side}"]`)!;
-  stubRect(col, { width: rendered });
-  // getValue() clamps against the flex parent's free width — give it room.
-  Object.defineProperty(utils.container, "clientWidth", {
-    configurable: true,
-    get: () => 1000,
-  });
-  const handle = utils.container.querySelector(
-    `[data-pane-resize-id^="zen-margin-${side}"]`,
-  )!;
-  return { ...utils, col, handle, onMarginPrefChange, onResizingChange };
-}
-
-describe("ZenMargin on the pane-resize engine", () => {
-  it("left margin: pinned per frame, ONE pref commit on release, resting flex restored", () => {
-    const h = renderZenMargin("left");
-    down(h.handle, 100);
-    expect(h.onResizingChange).toHaveBeenCalledExactlyOnceWith(true);
-    // The pin, not a React flex fork, holds the drag shape.
-    expect(pinOf(h.col)).toBe(200);
-    expect(h.col.style.flex).toBe("1 100 200px");
-
-    move(h.handle, 160);
-    expect(pinOf(h.col)).toBe(260);
-    expect(h.onMarginPrefChange).not.toHaveBeenCalled();
-
-    up(h.handle);
-    expect(h.onMarginPrefChange).toHaveBeenCalledExactlyOnceWith(260);
-    expect(h.onResizingChange).toHaveBeenLastCalledWith(false);
-    expect(h.onResizingChange).toHaveBeenCalledTimes(2);
-    // Unpinned; the render swaps in the resting flex at the committed pref.
-    expect(pinOf(h.col)).toBeNull();
-    expect(h.col.style.flex).toBe("1 100 260px");
-  });
-
-  it("right margin grows as the pointer moves LEFT toward the editor (direction −1)", () => {
-    const h = renderZenMargin("right");
-    down(h.handle, 400);
-    move(h.handle, 340); // 60px toward the axis origin → margin +60
-    expect(pinOf(h.col)).toBe(260);
-    up(h.handle);
-    expect(h.onMarginPrefChange).toHaveBeenCalledExactlyOnceWith(260);
-  });
-
-  it("Escape unpins to the resting flex at the unchanged pref and commits nothing", () => {
-    const h = renderZenMargin("left");
-    down(h.handle, 100);
-    move(h.handle, 160);
-    expect(pinOf(h.col)).toBe(260);
-
-    escape();
-    expect(h.onMarginPrefChange).not.toHaveBeenCalled();
-    expect(h.onResizingChange).toHaveBeenLastCalledWith(false);
-    expect(pinOf(h.col)).toBeNull();
-    expect(h.col.style.flex).toBe("1 100 200px");
-  });
-
-  it("a plain click (zero-move) never writes prefs", () => {
-    const h = renderZenMargin("left");
-    down(h.handle, 100);
-    up(h.handle);
-    expect(h.onMarginPrefChange).not.toHaveBeenCalled();
-    expect(pinOf(h.col)).toBeNull();
-    expect(h.col.style.flex).toBe("1 100 200px");
-  });
-
-  it("bus-edge side effects are instance-scoped: a same-side sibling (keep-alive doc panes) and a foreign gutter never fire them", () => {
-    // TWO same-side instances in ONE root (keep-alive panes mount a ZenMargin
-    // per side each) — a bare side-keyed gesture id would fire BOTH.
-    const a = { onResizingChange: vi.fn() };
-    const b = { onResizingChange: vi.fn() };
-    const utils = render(
-      <div>
-        <ZenMargin
-          side="left"
-          marginPref={200}
-          onMarginPrefChange={vi.fn()}
-          onResizingChange={a.onResizingChange}
-        />
-        <ZenMargin
-          side="left"
-          marginPref={200}
-          onMarginPrefChange={vi.fn()}
-          onResizingChange={b.onResizingChange}
-        />
-      </div>,
-    );
-    const handles = utils.container.querySelectorAll(
-      '[data-pane-resize-id^="zen-margin-left"]',
-    );
-    expect(handles).toHaveLength(2);
-    const cols = utils.container.querySelectorAll<HTMLElement>("[data-flex-col]");
-
-    down(handles[0], 100);
-    // Outside an `.editor-pane-root` each margin is its own row: only the
-    // pressed one pins.
-    expect(pinOf(cols[0])).not.toBeNull();
-    expect(pinOf(cols[1])).toBeNull();
-    up(handles[0]);
-    expect(a.onResizingChange).toHaveBeenCalledTimes(2);
-    expect(b.onResizingChange).not.toHaveBeenCalled();
-
-    // Foreign gestures (a Library gutter) are filtered out too.
-    act(() => {
-      beginLayoutGesture({ kind: "pane", id: "library-nav", axis: "x" });
-    });
-    act(() => {
-      endLayoutGesture({ kind: "pane", id: "library-nav", axis: "x" });
-    });
-    expect(b.onResizingChange).not.toHaveBeenCalled();
-  });
-});
-
 // ── Task 1052: a gutter press never persists a rendered width ───────────────
 //
 // The begin edge used to SYNC every visible column's rendered width into the
-// store (`syncPanelPrefsToRendered`) to pin the flex shape. A zen margin rests
-// at `1 100 pref` and shrinks hard on a narrow window, so a plain click, an
-// Escape, or a drag of the OTHER side overwrote the stored pref with the shrunk
-// rendering, and the margin never re-expanded when the window grew. Now the pin
-// is gesture-scoped DOM state, and only the moved side's commit writes.
+// store (`syncPanelPrefsToRendered`) to pin the flex shape. A column rendered
+// away from its pref (a panel column under its `--panel-min` floor; before
+// task 1178, a zen margin shrunk on a narrow window) therefore had its stored
+// pref overwritten by a plain click, an Escape, or a drag of the OTHER side.
+// Now the pin is gesture-scoped DOM state, and only the moved side's commit
+// writes. (Task 1178 retired the zen margins — zen's page width is derived
+// from normal view's — so the row legs run on the remaining kind, PanelColumn.)
 
-function renderZenRow(stored = 400, rendered = 120) {
-  const stores = { left: stored, right: stored };
+function renderPanelRow(stored = 150, rendered = 240) {
   const writes: Array<[string, number]> = [];
   const Harness = () => {
-    const [prefs, setPrefs] = useState(stores);
+    const [prefs, setPrefs] = useState({ left: stored, right: stored });
     const [resizing, setResizing] = useState(false);
-    const margin = (side: "left" | "right") => (
-      <ZenMargin
+    const column = (side: "left" | "right") => (
+      <PanelColumn
         side={side}
-        marginPref={prefs[side]}
-        onMarginPrefChange={(w) => {
+        panelPref={prefs[side]}
+        onPanelPrefChange={(w) => {
           writes.push([side, w]);
           setPrefs((p) => ({ ...p, [side]: w }));
         }}
         isResizing={resizing}
         onResizingChange={setResizing}
+        omni={<div />}
+        stack={[]}
+        onTradeHeight={vi.fn()}
+        onResizeBottomEdge={vi.fn()}
+        onFocusBand={vi.fn()}
       />
     );
     return (
       <div className="editor-pane-root">
-        {margin("left")}
+        {column("left")}
         <div data-editor-col style={{ minWidth: 0 }} />
-        {margin("right")}
+        {column("right")}
       </div>
     );
   };
@@ -758,42 +622,42 @@ function renderZenRow(stored = 400, rendered = 120) {
   stubRect(col("left"), { width: rendered });
   stubRect(col("right"), { width: rendered });
   const handle = (side: "left" | "right") =>
-    utils.container.querySelector(`[data-pane-resize-id^="zen-margin-${side}"]`)!;
+    utils.container.querySelector(`[data-pane-resize-id^="editor-panel-${side}"]`)!;
   return { col, handle, writes };
 }
 
 describe("task 1052 — the begin edge pins, it never persists", () => {
-  it("a zero-move press on a shrunk margin leaves both stored prefs byte-identical", () => {
-    const h = renderZenRow();
+  it("a zero-move press leaves both stored prefs byte-identical", () => {
+    const h = renderPanelRow();
     down(h.handle("left"), 100);
     // BOTH columns in the row hold their rendered widths for the gesture…
-    expect(pinOf(h.col("left"))).toBe(120);
-    expect(pinOf(h.col("right"))).toBe(120);
+    expect(pinOf(h.col("left"))).toBe(240);
+    expect(pinOf(h.col("right"))).toBe(240);
     up(h.handle("left"));
-    // …and nothing was written: the stored 400 survives to re-expand.
+    // …and nothing was written: the stored 150 survives.
     expect(h.writes).toEqual([]);
     expect(pinOf(h.col("left"))).toBeNull();
     expect(pinOf(h.col("right"))).toBeNull();
-    expect(h.col("left").style.flex).toBe("1 100 400px");
-    expect(h.col("right").style.flex).toBe("1 100 400px");
+    expect(h.col("left").style.flex).toBe("0 0 150px");
+    expect(h.col("right").style.flex).toBe("0 0 150px");
   });
 
   it("Escape after a move writes nothing", () => {
-    const h = renderZenRow();
+    const h = renderPanelRow();
     down(h.handle("left"), 100);
     move(h.handle("left"), 150);
     escape();
     expect(h.writes).toEqual([]);
-    expect(h.col("left").style.flex).toBe("1 100 400px");
+    expect(h.col("left").style.flex).toBe("0 0 150px");
   });
 
-  it("dragging the LEFT margin commits only the left; the right's stored pref is untouched", () => {
-    const h = renderZenRow();
+  it("dragging the LEFT column commits only the left; the right's stored pref is untouched", () => {
+    const h = renderPanelRow();
     down(h.handle("left"), 100);
     move(h.handle("left"), 120);
     up(h.handle("left"));
-    expect(h.writes).toEqual([["left", 140]]);
-    expect(h.col("right").style.flex).toBe("1 100 400px");
+    expect(h.writes.map(([side]) => side)).toEqual(["left"]);
+    expect(h.col("right").style.flex).toBe("0 0 150px");
     expect(pinOf(h.col("right"))).toBeNull();
   });
 

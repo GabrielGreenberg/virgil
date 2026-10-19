@@ -935,9 +935,10 @@ export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
  * margin is floored at exactly enough to host the lane. ONLY applied when
  * markers are shown (backlog #8 ratified choice) — and since task 671 "are
  * markers shown?" is not re-guessed here: it is {@link resolveMarginaliaLane}'s
- * `hosted`, the SAME value the marker render gate returns `[]` on. Zen reading
- * does hide the markers (it is a term in that predicate), so zen keeps its
- * margin freedom down to 0 and never has this floor imposed; the read-only
+ * `reserved`, which differs from the render gate's `hosted` only where the
+ * floor is about the PAGE rather than the markers. Zen reading hides the
+ * markers yet KEEPS this floor (task 1178: zen shows normal view's page, text
+ * inset included, so toggling it never changes the line length); the read-only
  * Library Reader does NOT hide them (it has hosted a full menu bundle since
  * F#16 and its markers are useful read-only), so it is floored like the editor.
  *
@@ -1332,7 +1333,10 @@ export interface MarginaliaLanePolicy {
    *  returns `[]` when false. */
   readonly hosted: boolean;
   /** Is this pane's horizontal margin FLOORED to the lane width? Implies
-   *  `hosted` — a floor for a lane nobody paints is wasted prose width. */
+   *  `hosted` — a floor for a lane nobody paints is wasted prose width —
+   *  with ONE exception, zen: zen is a VIEW of the normal page (task 1178),
+   *  so it keeps normal view's floored inset even though it paints no
+   *  markers, and toggling zen never changes the line length. */
   readonly reserved: boolean;
 }
 
@@ -1363,7 +1367,9 @@ export interface MarginaliaLanePolicy {
  * answer to "will an icon be painted", and `reserved` is `hosted` minus the one
  * exception that is about the FLOOR rather than the markers: a compressed
  * code-split, where the 48px comfort cap deliberately wins and the lane
- * degrades instead of eating the prose column.
+ * degrades instead of eating the prose column. And `reserved` ignores zen
+ * (task 1178): zen hides the markers but shows normal view's page — its width
+ * AND its text inset — so the floor stays where normal view puts it.
  *
  * Pure (no React, no DOM) so the composition is unit-testable away from
  * `EditorPane`.
@@ -1374,7 +1380,10 @@ export function resolveMarginaliaLane({
   compressX,
 }: MarginaliaLaneInput): MarginaliaLanePolicy {
   const hosted = showMarginalia !== false && !zenMode;
-  return { hosted, reserved: hosted && !compressX };
+  // The floor is a property of the PAGE, which zen shows unchanged (task
+  // 1178): evaluated as if zen were off.
+  const reserved = showMarginalia !== false && !compressX;
+  return { hosted, reserved };
 }
 
 /**
@@ -1395,9 +1404,10 @@ export function resolveMarginaliaLane({
  * width instead of losing ~150px+ to an unused lane. So the two paths never
  * both fire — when `compress` is true the floor is inactive, and the `Math.max`
  * only bites in the normal markers-on editor (where `compress` is false). The
- * OTHER way `laneReserved` goes false is that the pane paints no markers at all
- * (the toggle off, or zen) — and since task 671 that is the same predicate the
- * render gate reads, not a second opinion about it.
+ * OTHER way `laneReserved` goes false is that the Marginalia toggle is off —
+ * and since task 671 that is resolved in the same predicate the render gate
+ * reads, not a second opinion about it. (Zen hides the markers but keeps the
+ * floor — task 1178.)
  *
  * Pure (no React, no DOM) so it's unit-testable away from EditorPane.
  */

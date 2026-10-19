@@ -10,7 +10,7 @@
  * The only legitimate Editor/Reader delta is a single NAMED, type-checked
  * set of editor-mutation handlers (`EditorMutationHandlers`): the genuinely
  * editor-only callbacks (orphan edit/delete, block reorder, heading/par
- * rename, label update, focus-mode, the zen-margin setters, and the
+ * rename, label update, focus-mode, and the
  * EditorLayout-supplied `onScrollToHeading`). Routing these through a named
  * type makes "a Reader control is secretly a no-op" a COMPILE error (a
  * missing handler) rather than a silently-dead control.
@@ -83,8 +83,6 @@ export interface EditorMutationHandlers {
   setIsResizingPanels: (r: boolean) => void;
 
   // Zen-mode margins (EditorLayout owns the zen reducer).
-  setZenLeftMargin: (px: number) => void;
-  setZenRightMargin: (px: number) => void;
 
   // Per-card archive view. A real `vp` setter exists, but it is
   // editor-mutation-shaped (it changes how cards are surfaced / written), so
@@ -139,8 +137,6 @@ export interface EditorPaneViewDerivations {
    *  indices against its own snapshot (task 307). */
   focusBand: FocusBand | null;
   zenMode: boolean;
-  zenLeftMargin: number;
-  zenRightMargin: number;
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   setOmniSideToDefault: (side: Side) => void;
   categorySides: Record<OmniCategory, Side | null>;
@@ -204,10 +200,6 @@ export function buildEditorPaneViewPrefs(
 
     // ── Zen mode ────────────────────────────────────────────────────
     zenMode: view.zenMode,
-    zenLeftMargin: view.zenLeftMargin,
-    zenRightMargin: view.zenRightMargin,
-    setZenLeftMargin: editorHandlers.setZenLeftMargin,
-    setZenRightMargin: editorHandlers.setZenRightMargin,
 
     // ── Panel open/close/move (verbatim) ────────────────────────────
     setActiveLeft: vp.setActiveLeft,

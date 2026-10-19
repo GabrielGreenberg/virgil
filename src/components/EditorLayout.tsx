@@ -1079,19 +1079,16 @@ export default function EditorLayout() {
   // Zen mode — render-gates editor chrome (strips, panels, MenuBar,
   // popouts) so the document area appears alone, and is a term in the
   // marker-lane policy (`resolveMarginaliaLane`) so the margin icons go with
-  // them AND the lane's margin floor lifts with them. Top bar
+  // them — while the lane's margin FLOOR stays, so the text inset (like the
+  // page width) is normal view's (task 1178). Top bar
   // stays so the button is always reachable. See useZenMode.ts.
-  const {
-    on: zenModeOn,
-    toggle: toggleZenMode,
-    leftMargin: zenLeftMargin,
-    rightMargin: zenRightMargin,
-    setLeftMargin: setZenLeftMargin,
-    setRightMargin: setZenRightMargin,
-  } = useZenMode();
+  // Zen stores only on/off: its page width is DERIVED from normal view's
+  // (normal-view-rails.ts, task 1178), never a second pair of margins.
+  const { on: zenModeOn, toggle: toggleZenMode } = useZenMode();
 
   // The editor-basis recompute, panel-min-height observer, MenuBar
-  // home-position style, and zen-margin-snapshot toggle that used
+  // home-position style, and zen-margin-snapshot toggle (task 1178 retired
+  // zen's own margins entirely) that used
   // `mainAreaRef` / `editorColRef` / `colRect` / `topbarGaps` /
   // `menuWrapSize` all moved into EditorPane (or were dropped) along
   // with the visual editor JSX. The shell-side zen toggle is a
@@ -2445,8 +2442,6 @@ export default function EditorLayout() {
     onFocusSnapBoundary: handleFocusSnapBoundary,
     focusFloating,
     setIsResizingPanels,
-    setZenLeftMargin,
-    setZenRightMargin,
     setCardArchiveView,
   }), [
     handleScrollToHeading,
@@ -2463,8 +2458,6 @@ export default function EditorLayout() {
     handleFocusSnapBoundary,
     focusFloating,
     setIsResizingPanels,
-    setZenLeftMargin,
-    setZenRightMargin,
     setCardArchiveView,
   ]);
 
@@ -2475,8 +2468,6 @@ export default function EditorLayout() {
     focusState: focusMode.state,
     focusBand: focusMode.band,
     zenMode: zenModeOn,
-    zenLeftMargin,
-    zenRightMargin,
     getOmniEnabled,
     setOmniSideToDefault,
     categorySides,
@@ -2487,8 +2478,6 @@ export default function EditorLayout() {
     focusMode.state,
     focusMode.band,
     zenModeOn,
-    zenLeftMargin,
-    zenRightMargin,
     getOmniEnabled,
     setOmniSideToDefault,
     categorySides,
