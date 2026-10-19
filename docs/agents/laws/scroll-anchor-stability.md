@@ -25,8 +25,8 @@ Both of its strategies are case (a): the Omni pin is anchor-relative inside the
 pod, and the native-list slide is a one-shot `scrollTop` delta plus transient
 spacer padding on the list's OWN scroller — the card then moves with its list by
 layout. Nothing listens to `scroll`: release is driven by user INTENT events
-(wheel / touchmove / scroll keys / scrollbar press), the doc store's selection
-change, a childList change on the card's ancestor path (re-sort / filter), and a
+(wheel / touchmove / scroll keys / scrollbar press), the doc store's DESELECT
+(selecting another card continues the slide), a childList change on the card's ancestor path (re-sort / filter), and a
 zero-height ResizeObserver delivery (hidden). It reads two rects per gesture,
 in the frame after the selection commits, and never the document. It is the
 reposition policy's one named exception (`intent: "selection-alignment"` in
