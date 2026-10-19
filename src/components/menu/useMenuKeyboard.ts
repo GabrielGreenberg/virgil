@@ -10,8 +10,10 @@
  *     keydown installed only while open. It `preventDefault()` +
  *     `stopPropagation()` ONLY on consumed keys (Arrows / Home / End / Enter /
  *     Space / bare-letter shortcuts) so the editor caret never moves and those
- *     keys never reach PM's `handleKeyDown`; every other key passes through.
- *     A key typed into an editable that is NOT this menu's own
+ *     keys never reach PM's `handleKeyDown`. Over the menu's OWN host it also
+ *     swallows every other document-editing key — printable, Enter,
+ *     Backspace, Delete — inert, whether or not a row ran (task 1180); every
+ *     remaining key (Tab, modifier combos) passes through. A key typed into an editable that is NOT this menu's own
  *     activedescendant host (an unrelated field) passes through too — the
  *     host getter is the menu's ownership statement, see the bail below.
  *   - Input-bearing comboboxes (label-ref / bib-picker): NO window listener.
@@ -164,7 +166,18 @@ export function useMenuKeyboard(
 
   // The shared key handler. Returns true if it consumed the event (the window
   // source then prevents default + stops propagation).
-  const consume = useCallback((e: KeyboardEvent | React.KeyboardEvent): boolean => {
+  //
+  // `ownedHost` — the event targets the editable THIS menu parked the caret in
+  // (task 1180). Over that host the menu is the keyboard surface: nothing
+  // behind an open menu is the user's intent to edit, so every key that would
+  // EDIT the document is the menu's whether or not a row runs — a greyed row's
+  // letter or Backspace alias, Enter/Space with no active row, a letter no row
+  // claims. Off that host (a Tab'd button, the combobox source) task 477's
+  // "decline when nothing ran" stands, so the focused control keeps its key.
+  const consume = useCallback((
+    e: KeyboardEvent | React.KeyboardEvent,
+    ownedHost = false,
+  ): boolean => {
     const {
       registry: reg,
       letterShortcuts: letters,
@@ -216,7 +229,12 @@ export function useMenuKeyboard(
       // Deliberately Enter/Space ONLY: an arrow that falls through moves the
       // EDITOR CARET behind an open menu, which is a real side effect, where a
       // consumed arrow in a menu with no rows is an inert swallow.
-      return activated(reg.activate());
+      //
+      // Over the OWNED host the reachability claim above is false (task
+      // 1180): "nothing active yet" is the caret-parked menu's normal OPENING
+      // state, and a declined Enter split the paragraph behind it — so there
+      // the key is swallowed inert.
+      return activated(reg.activate()) || ownedHost;
     }
 
     const dir = NAV_KEYS[e.key];
@@ -258,6 +276,28 @@ export function useMenuKeyboard(
         if (!e.repeat) activated(reg.activateById(id));
         return true;
       }
+    }
+
+    // The owned-host rule (task 1180): a key that would EDIT the document —
+    // a printable character (Shift included: it types a capital), Enter,
+    // Backspace, Delete — never falls through to the editor behind an open
+    // menu. This is the arm that catches a DISABLED row's letter/alias (the
+    // letter map above excludes greyed rows so they cannot RUN) and every
+    // letter no row claims. Meta/Ctrl/Alt combos still pass: they are editor
+    // COMMANDS the user chose (undo, clipboard, line jumps), the same
+    // modifier boundary the nav keys draw above.
+    if (
+      ownedHost &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      typeof e.key === "string" &&
+      (e.key.length === 1 ||
+        e.key === "Enter" ||
+        e.key === "Backspace" ||
+        e.key === "Delete")
+    ) {
+      return true;
     }
     return false;
   }, []);
@@ -334,8 +374,9 @@ export function useMenuKeyboard(
       // the target is editable AND is not this menu's own host. Task 386's
       // protection is untouched — an unrelated `<input>` / `<textarea>` /
       // card-title field is never the host, so its keys still reach it.
-      if (isEditableEventTarget(e.target) && !ownsEditableTarget(e.target)) return;
-      if (consume(e)) {
+      const owned = ownsEditableTarget(e.target);
+      if (isEditableEventTarget(e.target) && !owned) return;
+      if (consume(e, owned)) {
         e.preventDefault();
         e.stopPropagation();
       }

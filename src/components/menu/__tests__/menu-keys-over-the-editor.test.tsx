@@ -28,6 +28,11 @@ import { render, cleanup, act } from "@testing-library/react";
 import { DragHandleMenu } from "../../DragHandleMenu";
 import { cardActionRows } from "@/lib/actions/action-registry";
 import { walkFiles } from "../../../lib/__tests__/_source-scan";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { EditorView } from "@tiptap/pm/view";
+import { keymap } from "@tiptap/pm/keymap";
+import { baseKeymap } from "@tiptap/pm/commands";
+import { schema } from "@tiptap/pm/schema-basic";
 
 class ResizeObserverStub {
   observe() {}
@@ -35,6 +40,11 @@ class ResizeObserverStub {
   disconnect() {}
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
+// jsdom has no Range layout; a real PM view's post-dispatch scrollIntoView
+// reads it (the task-1180 control below splits a paragraph for real).
+const ZERO_RECT = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON() {} };
+Range.prototype.getClientRects ??= (() => []) as unknown as Range["getClientRects"];
+Range.prototype.getBoundingClientRect ??= (() => ZERO_RECT) as unknown as Range["getBoundingClientRect"];
 
 const RECT = { left: 100, top: 100, right: 120, bottom: 140, width: 20, height: 40 };
 
@@ -150,17 +160,120 @@ describe("task 734 — keys typed into the editable the menu parked focus in", (
     expect(pmHandler).not.toHaveBeenCalled();
   });
 
-  it("an UNCONSUMED key still reaches the editable untouched", () => {
+  it("a letter NO row claims is swallowed inert — never typed behind the menu (task 1180)", () => {
+    const editable = mountEditable();
+    editable.focus();
+    const pmHandler = vi.fn();
+    editable.addEventListener("keydown", pmHandler);
+    const onSelect = vi.fn();
+    render(<DragHandleMenu anchorRect={RECT} onSelect={onSelect} onClose={() => {}} kind="selection" />);
+
+    // `q` maps to no row on the grab menu. Pre-1180 it reached PM and typed.
+    const e = keyOn(editable, "q");
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(pmHandler).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("a modifier COMMAND (Cmd+Z, Cmd+V) still reaches the editable", () => {
     const editable = mountEditable();
     editable.focus();
     const pmHandler = vi.fn();
     editable.addEventListener("keydown", pmHandler);
     render(<DragHandleMenu anchorRect={RECT} onSelect={() => {}} onClose={() => {}} kind="selection" />);
 
-    // `q` maps to no row on the grab menu.
-    const e = keyOn(editable, "q");
-    expect(pmHandler).toHaveBeenCalledTimes(1);
-    expect(e.defaultPrevented).toBe(false);
+    const z = keyOn(editable, "z", { metaKey: true });
+    const v = keyOn(editable, "v", { ctrlKey: true });
+    expect(pmHandler).toHaveBeenCalledTimes(2);
+    expect(z.defaultPrevented).toBe(false);
+    expect(v.defaultPrevented).toBe(false);
+  });
+});
+
+describe("task 1180 — over its OWN host, a declined key is swallowed, not handed to the document", () => {
+  it("a GREYED row's letter and Backspace/Delete alias are swallowed and run nothing", () => {
+    const editable = mountEditable();
+    editable.focus();
+    const pmHandler = vi.fn();
+    editable.addEventListener("keydown", pmHandler);
+    const onSelect = vi.fn();
+    // canEdit={false} greys EVERY card row, delete included.
+    render(
+      <DragHandleMenu anchorRect={RECT} onSelect={onSelect} onClose={() => {}} kind="selection" canEdit={false} />,
+    );
+
+    const keys = ["f", "d", "Backspace", "Delete", "F"].map((k) =>
+      keyOn(editable, k, k === "F" ? { shiftKey: true } : {}),
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(pmHandler).not.toHaveBeenCalled();
+    for (const e of keys) expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("Enter / Space with NO active row (the opening state) are swallowed inert", () => {
+    const editable = mountEditable();
+    editable.focus();
+    const pmHandler = vi.fn();
+    editable.addEventListener("keydown", pmHandler);
+    const onSelect = vi.fn();
+    render(<DragHandleMenu anchorRect={RECT} onSelect={onSelect} onClose={() => {}} kind="selection" />);
+
+    expect(activeButton()).toBeUndefined();
+    const enter = keyOn(editable, "Enter");
+    const shiftEnter = keyOn(editable, "Enter", { shiftKey: true });
+    const space = keyOn(editable, " ");
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(pmHandler).not.toHaveBeenCalled();
+    expect(enter.defaultPrevented).toBe(true);
+    expect(shiftEnter.defaultPrevented).toBe(true);
+    expect(space.defaultPrevented).toBe(true);
+  });
+
+  it("on a REAL ProseMirror view: Enter with no active row does not split the paragraph", () => {
+    const pmHost = document.createElement("div");
+    document.body.appendChild(pmHost);
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("hello world")])]),
+      plugins: [keymap(baseKeymap)],
+    });
+    const view = new EditorView(pmHost, {
+      state: state.apply(state.tr.setSelection(TextSelection.create(state.doc, 6))),
+    });
+    // jsdom does not derive isContentEditable from the attribute.
+    Object.defineProperty(view.dom, "isContentEditable", { value: true, configurable: true });
+    view.focus();
+    expect(document.activeElement).toBe(view.dom);
+    const before = view.state.doc;
+
+    const onSelect = vi.fn();
+    render(
+      <DragHandleMenu anchorRect={RECT} onSelect={onSelect} onClose={() => {}} kind="selection" canEdit={false} />,
+    );
+
+    const e = keyOn(view.dom as HTMLElement, "Enter");
+    expect(e.defaultPrevented).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(view.state.doc.eq(before)).toBe(true);
+    expect(view.state.doc.childCount).toBe(1);
+    view.destroy();
+  });
+
+  it("control: the same Enter on the same view with NO menu open DOES split (the probe is live)", () => {
+    const pmHost = document.createElement("div");
+    document.body.appendChild(pmHost);
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("hello world")])]),
+      plugins: [keymap(baseKeymap)],
+    });
+    const view = new EditorView(pmHost, {
+      state: state.apply(state.tr.setSelection(TextSelection.create(state.doc, 6))),
+    });
+    view.focus();
+    keyOn(view.dom as HTMLElement, "Enter");
+    expect(view.state.doc.childCount).toBe(2);
+    view.destroy();
   });
 });
 
