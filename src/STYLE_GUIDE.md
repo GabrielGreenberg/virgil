@@ -1274,6 +1274,34 @@ correct. `panel-theme-key-freeze.test.ts` pins the hex format, but only for
 the fields in its frozen `REQUIRED_PALETTE_FIELDS` list: a NEW palette field
 must be added there in the same commit or it ships unchecked.
 
+### Selection halo (task 1179)
+
+**A selected item wears ONE ring, wherever it is drawn.** The margin marker and
+its panel card present the same selection (the store's one `selected
+{kind,id}`), so they wear the same picture: `selectionHaloRing(accent)` in
+`src/lib/panel-theme.ts` — a 1.5px ring in the marker's own border tint
+(`deriveMarkerPalette(accent).border`). `Marginalia` composes it on the marker;
+`themedCardStyle(theme, selected)` composes it INLINE on every card root
+(docked, floating panel, Omni) between the drop-target ring and the ambient
+lift. It is on by default; the `cardOutlineChrome` pref no longer names
+selection (it keeps its hover outline and the popped-window ring). A kind-less
+row (`theme: null`) has no accent and keeps its neutral selected border alone.
+Never hand-spell a `0 0 0 1.5px` ring in TS — `selection-halo-census.test.ts`.
+
+### Selection alignment (task 1179)
+
+**Selecting a card from the document puts the card LEVEL with what was
+clicked.** A marker / in-text anchor / footnote / citation click calls the one
+door `placeSelectedCard` (`src/components/editor-layout/selected-card-placement.ts`):
+the card's top lands at the click's viewport Y, in Omni (an anchor-relative pin)
+or in a native list (a scrollTop delta, with transient spacer padding when the
+card is near the list's top or bottom). It is the reposition policy's ONE named
+exception (`intent: "selection-alignment"`) — a visible, nearby card still
+moves, because the pairing is the point. The list slide is a one-shot (180 ms
+ease-out, instant under reduced motion or a layout gesture): it releases on
+deselect, on the user scrolling the list, on a re-sort/filter, and when the
+list hides; document scroll leaves it alone. The document never moves.
+
 **A derived value states the contrast it needs; it never approximates it with
 a lightness coordinate.** HSL lightness is hue-blind — `l = 0.40` says nothing
 about how bright a color *reads*, and the error is largest exactly where the

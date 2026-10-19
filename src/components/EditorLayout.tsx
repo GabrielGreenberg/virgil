@@ -1129,22 +1129,10 @@ export default function EditorLayout() {
   // its cross-highlight reads. The click-away below clears the ACTIVE pane's
   // through `paneState.setSelectedBibKey` (task 870 — a shell copy here was
   // shadowed by the pane's SelectionsProvider and drove a dead highlight).
-  // Marker-click → omni card alignment. The user clicked at viewport Y
-  // `clickY` and the corresponding omni card would lock there — IF the move
-  // is necessary. `requestOmniCardPlacement` owns the whole resolution now
-  // (prefix-or-exact wrapper match, the `@<pid>` row's own id, the screen → pod
-  // → anchor-relative conversion, the one-frame retry for a column activated
-  // this render) and, crucially, the necessity rule: a card that is already
-  // fully visible and near enough to the click has NOTHING written for it —
-  // not even a pin at its current top, which would release whichever card
-  // another gesture had pinned — so neither it nor its neighbours move at
-  // all (task 328, example 2).
-  const alignOmniCardWithClick = useCallback(
-    (cardId: string, clickY: number) => {
-      requestOmniCardPlacement(cardId, { viewportY: clickY });
-    },
-    [],
-  );
+  // Marker-click → card alignment is NOT shell state any more: the bridges
+  // call the ONE selection-alignment door (`placeSelectedCard`,
+  // selected-card-placement.ts — task 1179), which pins the Omni card or
+  // slides the native list so the selected card sits level with the click.
 
   // Card-body click → editor scroll alignment. `jumpToLink`/`jumpToCard`
   // (links.ts) scroll the row so the in-text anchor lands at the card's
@@ -2203,7 +2191,6 @@ export default function EditorLayout() {
     setAtomCreateRequest,
     setActiveMath,
     setActiveFigure,
-    alignOmniCardWithClick,
     // Resolve the active doc's store at click time (the bridge's listener
     // effects don't re-subscribe on doc switch). Shares `currentDocIdRef` with
     // the click-away clearSelection so marker-select + click-away target the

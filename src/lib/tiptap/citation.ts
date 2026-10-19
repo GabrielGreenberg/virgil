@@ -64,7 +64,7 @@ export const Citation = Node.create<CitationOptions>({
   // PM otherwise creates a NodeSelection on mousedown for inline atoms,
   // and that selection transaction defaults to `scrollIntoView: true`,
   // scrolling the row ~70px before our click handler can route to
-  // alignOmniCardWithClick. `atom: true` keeps Backspace deletion working
+  // placeSelectedCard. `atom: true` keeps Backspace deletion working
   // as a single unit. Matches footnote.ts.
   selectable: false,
 

@@ -28,6 +28,10 @@ vi.mock("@/lib/storage", async () =>
 vi.mock("@/components/editor-layout/event-bridges/open-for-card", () => ({
   openForCard: vi.fn(),
 }));
+// The selection-alignment door (task 1179) — observed, not run.
+vi.mock("@/components/editor-layout/selected-card-placement", () => ({
+  placeSelectedCard: vi.fn(),
+}));
 vi.mock("@/links/_shared/usePlacement", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/links/_shared/usePlacement")>();
@@ -37,6 +41,7 @@ vi.mock("@/links/_shared/usePlacement", async (importOriginal) => {
 import { useMarkerClickBridges } from "@/components/editor-layout/event-bridges/marker-clicks";
 import { openForCard } from "@/components/editor-layout/event-bridges/open-for-card";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
+import { placeSelectedCard } from "@/components/editor-layout/selected-card-placement";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { ViewPrefs } from "@/hooks/useViewPrefs";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
@@ -50,6 +55,7 @@ import {
 
 const openForCardMock = vi.mocked(openForCard);
 const suppressMock = vi.mocked(suppressNextPlacement);
+const placeMock = vi.mocked(placeSelectedCard);
 
 function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
   const prefs = {
@@ -72,7 +78,6 @@ function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
     setAtomCreateRequest: vi.fn(),
     setActiveMath: vi.fn(),
     setActiveFigure: vi.fn(),
-    alignOmniCardWithClick: vi.fn(),
     // The bridge resolves the active store via this getter at click time; point
     // it at the same instance the `selectSpy` below spies on.
     getActiveCardStore: () => cardStore,
@@ -128,7 +133,7 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     });
     expect(env.prefs).toBe(deps.prefsRef.current);
     // No clickY in the event → no pin alignment.
-    expect(deps.alignOmniCardWithClick).not.toHaveBeenCalled();
+    expect(placeMock).not.toHaveBeenCalled();
   });
 
   it("cutter-suggestion click: canonical data-card-key selector + cutter panel", () => {
@@ -160,10 +165,9 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     });
 
     expect(openForCardMock).toHaveBeenCalledTimes(1);
-    expect(deps.alignOmniCardWithClick).toHaveBeenCalledTimes(1);
-    expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
-      "float:card:todo:t1",
-      123,
+    expect(placeMock).toHaveBeenCalledTimes(1);
+    expect(placeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ omniKey: "float:card:todo:t1", viewportY: 123, store: cardStore }),
     );
   });
 
@@ -191,9 +195,8 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
       skipScroll: true,
     });
     // The pin targets the SAME `@p2` row.
-    expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
-      "float:card:report:r1@p2",
-      200,
+    expect(placeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ omniKey: "float:card:report:r1@p2", viewportY: 200, store: cardStore }),
     );
   });
 
@@ -211,9 +214,8 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
 
     const [target] = openForCardMock.mock.calls[0];
     expect(target).toMatchObject({ omniKey: "float:card:report:r2" });
-    expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
-      "float:card:report:r2",
-      50,
+    expect(placeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ omniKey: "float:card:report:r2", viewportY: 50, store: cardStore }),
     );
   });
 
@@ -225,7 +227,7 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     expect(selectSpy).not.toHaveBeenCalled();
     expect(openForCardMock).not.toHaveBeenCalled();
     expect(suppressMock).not.toHaveBeenCalled();
-    expect(deps.alignOmniCardWithClick).not.toHaveBeenCalled();
+    expect(placeMock).not.toHaveBeenCalled();
   });
 
   it("malformed detail (missing entityId / kind) is ignored", () => {
@@ -368,7 +370,7 @@ describe("origin routing (task 1093)", () => {
 
     expect(selectSpy).not.toHaveBeenCalled();
     expect(openForCardMock).not.toHaveBeenCalled();
-    expect(deps.alignOmniCardWithClick).not.toHaveBeenCalled();
+    expect(placeMock).not.toHaveBeenCalled();
   });
 
   it("an error-marker click from the Reader's doc selects + opens through the Reader's host", () => {

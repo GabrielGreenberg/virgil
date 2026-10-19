@@ -83,7 +83,7 @@ export const Footnote = Node.create<FootnoteOptions>({
   // PM otherwise creates a NodeSelection on mousedown for inline atoms,
   // and that selection transaction defaults to `scrollIntoView: true` —
   // which scrolls the row by ~100px before our click handler can route
-  // to alignOmniCardWithClick. `atom: true` still keeps Backspace
+  // to placeSelectedCard. `atom: true` still keeps Backspace
   // deletion working (single-unit deletion). Repositioning is the
   // `InlineAtomGrab` gesture (mousedown → drop-mode), NOT native HTML5
   // drag. A `contenteditable="false"` island is natively draggable by

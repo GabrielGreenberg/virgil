@@ -44,6 +44,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { selectionHaloRing } from "@/lib/panel-theme";
 import {
   CARD_THEMES,
   PanelCard,
@@ -77,7 +78,10 @@ describe("themedCardStyle composes the drop halo with the ambient lift", () => {
 
   it("docked + no dropTarget → the ambient lift ALONE (byte-identical to pre-508)", () => {
     expect(themedCardStyle(theme, false).boxShadow).toBe(AMBIENT);
-    expect(themedCardStyle(theme, true, { isPoppedOut: false }).boxShadow).toBe(AMBIENT);
+    // Selected adds exactly the selection halo (task 1179) — no drop ring.
+    expect(themedCardStyle(theme, true, { isPoppedOut: false }).boxShadow).toBe(
+      `${selectionHaloRing(theme.accent)}, ${AMBIENT}`,
+    );
   });
 
   it("popped out + dropTarget → the ring ALONE (that branch carries no ambient)", () => {
@@ -113,6 +117,25 @@ function renderPanelCard(overrides: Partial<PanelCardProps> = {}) {
   const { container } = render(<PanelCard {...props} />);
   return container.querySelector("[data-card]") as HTMLElement;
 }
+
+describe("PanelCard paints the SELECTION halo from its own `selected` (task 1179)", () => {
+  // The halo is the card's PROP, read from the doc's own (per-pane) store —
+  // never the `data-card-selected` attribute the anchor-highlight reconciler
+  // stamps with a document-wide sweep. So that sweep reaching a hidden
+  // keep-alive pane's cards cannot paint, or erase, any pane's halo: here the
+  // reconciler never ran (no attribute) and the halo is still there.
+  it("selected → ring + lift inline, with no reconciler stamp needed", () => {
+    const el = renderPanelCard({ selected: true });
+    expect(el.hasAttribute("data-card-selected")).toBe(false);
+    expect(el.style.boxShadow).toContain("1.5px");
+    expect(el.style.boxShadow).toContain(AMBIENT);
+  });
+  it("a stray stamp on an UNselected card paints nothing", () => {
+    const el = renderPanelCard({ selected: false });
+    el.setAttribute("data-card-selected", "true");
+    expect(el.style.boxShadow).toBe(AMBIENT);
+  });
+});
 
 describe("PanelCard paints the halo from isDropTarget", () => {
   it("isDropTarget → the ROOT's inline box-shadow carries the ring AND the lift", () => {

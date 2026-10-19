@@ -204,11 +204,17 @@ describe("no call site keeps a private copy of the rule", () => {
   });
 
   it("the four named publishers all enter a door", () => {
-    // The two pin publishers (marker click, `virgil-card-jumped`) …
+    // The two pin publishers: `virgil-card-jumped` (EditorLayout) and the
+    // marker click, which since task 1179 enters through the selection-
+    // alignment door (`selected-card-placement.ts`) …
     const layout = CODE.get(path.join(SRC, "components/EditorLayout.tsx"))!;
     expect(
       (layout.match(/requestOmniCardPlacement\s*\(/g) ?? []).length,
-    ).toBeGreaterThanOrEqual(2);
+    ).toBeGreaterThanOrEqual(1);
+    const selection = CODE.get(
+      path.join(SRC, "components/editor-layout/selected-card-placement.ts"),
+    )!;
+    expect(selection).toMatch(/requestOmniCardPlacement\s*\(/);
     // … and the two jump paths, whose pin rides the scroll's verdict: the
     // `virgil-card-jumped` dispatch must sit behind the align door's report,
     // because the pin exists only to compensate for a scroll that happened.

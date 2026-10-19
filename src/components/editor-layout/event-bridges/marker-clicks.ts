@@ -19,6 +19,7 @@ import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
+import { placeSelectedCard } from "../selected-card-placement";
 import { cardPopKey } from "@/panels/panel-registry";
 import { anchorRowId } from "@/links/card-anchor-rows";
 import {
@@ -101,7 +102,6 @@ interface AnchorClickEnv {
   setActiveRight: (id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
-  alignOmniCardWithClick: (cardId: string, clickY: number) => void;
   /** Resolve the routed doc's interaction store at CLICK time. A getter (not a
    *  captured instance) because this bridge is shell-mounted above the per-doc
    *  CardStoreProvider and its listener effect doesn't re-subscribe on doc
@@ -115,7 +115,8 @@ interface AnchorClickEnv {
  * click`) and the margin marker click (EditorPane's marker builder dispatches
  * the same event) land here. Select (selection axis ONLY — N1: never touches
  * `expandedSet`), route through `openForCard` (omni-first, native fallback),
- * and pin the omni card at the click Y. No document jump — `skipScroll` +
+ * and place the card level with the click Y (`placeSelectedCard` — the Omni
+ * pin or the native list's slide, task 1179). No document jump — `skipScroll` +
  * `suppressNextPlacement` keep the editor row put; alignment happens by
  * pulling the CARD to the click instead.
  */
@@ -127,7 +128,7 @@ function routeAnchorClick(
   if (!route) return;
 
   const id = detail.entityId;
-  // Click → card alignment goes through alignOmniCardWithClick below, NOT
+  // Click → card alignment goes through placeSelectedCard below, NOT
   // through usePlacement (which would scroll the row and drag the editor).
   // See usePlacement's asymmetry-rule docstring.
   suppressNextPlacement();
@@ -147,7 +148,7 @@ function routeAnchorClick(
   // paragraph's `anchorPid` (only for multi-anchor cards — single-anchor rows
   // have no suffix), so `anchorRowId` appends it here to pin/scroll the RIGHT
   // row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02). The `openForCard` presence
-  // check + `alignOmniCardWithClick` both use the shared prefix-or-exact
+  // check + `placeSelectedCard` both use the shared prefix-or-exact
   // matcher, so the bare key still resolves if the pid is absent.
   const omniKey = anchorRowId(
     cardPopKey(route.cardKind, id),
@@ -159,8 +160,8 @@ function routeAnchorClick(
       entrySelector,
       panelId: route.panelId,
       cardKind: route.cardKind,
-      // skipScroll: alignment is handled by shifting the omni cards
-      // group (alignOmniCardWithClick) so the document stays put.
+      // skipScroll: alignment is the selection-alignment door's
+      // (`placeSelectedCard`), which moves the CARD, so the document stays put.
       skipScroll: true,
     },
     {
@@ -172,10 +173,15 @@ function routeAnchorClick(
     } satisfies OpenForCardDeps,
   );
   if (typeof clickY === "number") {
-    // alignOmniCardWithClick converts clickY → pod-relative and
-    // publishes a pin request. Retries one rAF later if the panel
-    // column hasn't rendered yet (cold-mount case).
-    env.alignOmniCardWithClick(omniKey, clickY);
+    // Selection alignment (task 1179): the ONE door puts the selected card
+    // level with the click in whichever host shows it — the Omni pin or the
+    // native list's slide — the frame after the selection commits.
+    placeSelectedCard({
+      omniKey,
+      entrySelector,
+      viewportY: clickY,
+      store: env.getActiveCardStore(),
+    });
   }
 }
 
@@ -247,15 +253,6 @@ export function useMarkerClickBridges(deps: {
       editor: Editor;
     } | null>
   >;
-  /** ASKS for the omni card with the given id to be placed at `clickY`
-   *  (viewport-Y). Not a promise: the placement door applies the necessity
-   *  rule and a refused move writes NOTHING (task 328), and a wrapper with
-   *  no readable anchor reference refuses too (task 362). When it does
-   *  publish, what it stores is the OFFSET from the card's anchor-derived
-   *  natural top, not a pod coordinate — so the pinned card rides later
-   *  document edits. OmniViewPanel reads the pin and overrides that one
-   *  card's transform. No document scroll. */
-  alignOmniCardWithClick: (cardId: string, clickY: number) => void;
   /** Resolve the ACTIVE doc's interaction store at click time (see
    *  `AnchorClickEnv.getActiveCardStore`). */
   getActiveCardStore: () => CardStore;
@@ -278,7 +275,6 @@ export function useMarkerClickBridges(deps: {
     setAtomCreateRequest,
     setActiveMath,
     setActiveFigure,
-    alignOmniCardWithClick,
     getActiveCardStore,
     getActiveDocId,
   } = deps;
@@ -287,7 +283,7 @@ export function useMarkerClickBridges(deps: {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
-      // Marker click → card alignment goes through alignOmniCardWithClick
+      // Marker click → card alignment goes through placeSelectedCard
       // below, NOT through usePlacement (which would scroll the row and drag
       // the editor). See usePlacement's asymmetry-rule docstring.
       suppressNextPlacement();
@@ -300,8 +296,8 @@ export function useMarkerClickBridges(deps: {
           entrySelector: cardEntrySelector("footnote", detail.footnoteId),
           panelId: "footnotes",
           cardKind: "footnote",
-          // skipScroll: alignment is handled by shifting the omni cards
-          // group (alignOmniCardWithClick) so the document stays put.
+          // skipScroll: the selection-alignment door moves the CARD, so the
+          // document stays put.
           skipScroll: true,
         },
         {
@@ -313,21 +309,23 @@ export function useMarkerClickBridges(deps: {
         },
       );
       if (typeof clickY === "number") {
-        // alignOmniCardWithClick converts clickY → pod-relative and
-        // publishes a pin request. Retries one rAF later if the panel
-        // column hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(cardPopKey("footnote", detail.footnoteId), clickY);
+        placeSelectedCard({
+          omniKey: cardPopKey("footnote", detail.footnoteId),
+          entrySelector: cardEntrySelector("footnote", detail.footnoteId),
+          viewportY: clickY,
+          store: getActiveCardStore(),
+        });
       }
     };
     window.addEventListener("virgil-footnote-click", handler);
     return () => window.removeEventListener("virgil-footnote-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedFootnoteId, alignOmniCardWithClick]);
+  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedFootnoteId, getActiveCardStore]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.citationId) return;
-      // Marker click → card alignment goes through alignOmniCardWithClick
+      // Marker click → card alignment goes through placeSelectedCard
       // below, NOT through usePlacement (which would scroll the row and drag
       // the editor). See usePlacement's asymmetry-rule docstring.
       suppressNextPlacement();
@@ -342,8 +340,8 @@ export function useMarkerClickBridges(deps: {
           entrySelector: cardEntrySelector("citation", detail.citationId),
           panelId: "citations",
           cardKind: "citation",
-          // skipScroll: alignment is handled by shifting the omni cards
-          // group (alignOmniCardWithClick) so the document stays put.
+          // skipScroll: the selection-alignment door moves the CARD, so the
+          // document stays put.
           skipScroll: true,
         },
         {
@@ -354,18 +352,21 @@ export function useMarkerClickBridges(deps: {
           getOmniEnabled,
         },
       );
-      // After openForCard mounts the omni column (or confirms it's already
-      // open), pull the card to align with the click. alignOmniCardWithClick
-      // defers internally with double rAF so it measures AFTER React has
-      // committed the new selection state AND useInTextPositions has
-      // recomputed card positions.
+      // After openForCard mounts the host (or confirms it's already open),
+      // pull the card level with the click. The door defers to the frame
+      // after React commits the new selection, so it measures as painted.
       if (typeof clickY === "number") {
-        alignOmniCardWithClick(cardPopKey("citation", detail.citationId), clickY);
+        placeSelectedCard({
+          omniKey: cardPopKey("citation", detail.citationId),
+          entrySelector: cardEntrySelector("citation", detail.citationId),
+          viewportY: clickY,
+          store: getActiveCardStore(),
+        });
       }
     };
     window.addEventListener("virgil-citation-click", handler);
     return () => window.removeEventListener("virgil-citation-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId, alignOmniCardWithClick]);
+  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId, getActiveCardStore]);
 
   // The EDIT-existing-`\ref` bridge. The chip's NodeView dispatches its
   // IDENTITY — `pos` in the editor that OWNS it, plus that chip's own rect —
@@ -502,7 +503,7 @@ export function useMarkerClickBridges(deps: {
   // `virgil-linked-anchor-click` whenever a Mode B `.linked-anchor` span is
   // clicked, and EditorPane's margin marker builder dispatches the SAME
   // event (with the marker's viewport Y) on a marker click. Both land in
-  // `routeAnchorClick`: select + `openForCard` (omni-first) + pin the card
+  // `routeAnchorClick`: select + `openForCard` (omni-first) + place the card
   // at the click Y — one shared route for in-text AND margin clicks.
   useEffect(() => {
     const handler = (e: Event) => {
@@ -523,7 +524,6 @@ export function useMarkerClickBridges(deps: {
               setActiveRight,
               tryScrollOmniEntry,
               getOmniEnabled,
-              alignOmniCardWithClick,
               getActiveCardStore,
             }
           : {
@@ -535,7 +535,6 @@ export function useMarkerClickBridges(deps: {
               // user just clicked in.
               tryScrollOmniEntry,
               getOmniEnabled: origin.host.getOmniEnabled,
-              alignOmniCardWithClick,
               getActiveCardStore: () => origin.host.cardStore,
             };
       routeAnchorClick(detail, env);
@@ -548,7 +547,6 @@ export function useMarkerClickBridges(deps: {
     setActiveRight,
     tryScrollOmniEntry,
     getOmniEnabled,
-    alignOmniCardWithClick,
     getActiveCardStore,
     getActiveDocId,
   ]);

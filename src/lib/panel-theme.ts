@@ -360,6 +360,17 @@ export function deriveMarkerPalette(baseHex: string): DerivedMarkerPalette {
   }));
 }
 
+/** The SELECTION HALO — the one ring a selected item wears, on the margin
+ *  marker AND on its panel card (task 1179). Both are the same selection (the
+ *  store's one `selected {kind,id}`), so they wear the same picture: a 1.5px
+ *  ring in the marker's own border tint of the kind's accent. This is the only
+ *  spelling of the ring — `Marginalia` and `themedCardStyle(selected)` compose
+ *  it inline, and `selection-halo-census.test.ts` fails on a second
+ *  hand-spelled `0 0 0 1.5px` selection ring. */
+export function selectionHaloRing(accent: string): string {
+  return `0 0 0 1.5px ${deriveMarkerPalette(accent).border}`;
+}
+
 /** Alias for `deriveMarkerPalette` to read fluently at MARKER_META call sites. */
 export const markerPaletteFromAccent = deriveMarkerPalette;
 
