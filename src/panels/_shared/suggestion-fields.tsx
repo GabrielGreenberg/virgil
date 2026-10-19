@@ -14,7 +14,7 @@
  */
 
 import { useRef, useState, type ReactNode } from "react";
-import { Button, Chevron } from "@/components/panel-primitives";
+import { Button, Chevron, PodDisclosure } from "@/components/panel-primitives";
 import { CommitActions } from "@/components/CommitActions";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -727,18 +727,14 @@ export function AppliedRecordBody({
         </div>
       )}
       {/* Row 3 — "Original text" label + chevron disclosure. */}
-      <button
-        type="button"
-        aria-expanded={showOriginal}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowOriginal((v) => !v);
-        }}
-        className="card-meta-label flex items-center gap-1.5 hover:text-ink-strong cursor-pointer"
+      <PodDisclosure
+        expanded={showOriginal}
+        onToggle={() => setShowOriginal((v) => !v)}
+        chevron="trailing"
+        className="card-meta-label hover:text-ink-strong"
       >
-        <span>Original text</span> <Chevron expanded={showOriginal} />
-      </button>
+        Original text
+      </PodDisclosure>
       {/* Row 4 — the original paragraph, bare, as it reads in the main text. */}
       {showOriginal && (
         <CapturedPassage
@@ -831,18 +827,14 @@ export function PendingAiRecordBody({
         </div>
       )}
       {/* Row 3 — "Original text" label + chevron disclosure (collapsed default). */}
-      <button
-        type="button"
-        aria-expanded={showOriginal}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowOriginal((v) => !v);
-        }}
-        className="card-meta-label flex items-center gap-1.5 hover:text-ink-strong cursor-pointer"
+      <PodDisclosure
+        expanded={showOriginal}
+        onToggle={() => setShowOriginal((v) => !v)}
+        chevron="trailing"
+        className="card-meta-label hover:text-ink-strong"
       >
-        <span>Original text</span> <Chevron expanded={showOriginal} />
-      </button>
+        Original text
+      </PodDisclosure>
       {/* Row 4 — the original paragraph, bare, as it reads in the main text. */}
       {showOriginal && (
         <CapturedPassage
