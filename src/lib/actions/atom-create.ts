@@ -17,6 +17,7 @@
 
 import type { Editor } from "@tiptap/core";
 import type { RefCommand } from "@/lib/ref-display";
+import type { TrackedPos } from "@/lib/tiptap/tracked-pos";
 
 /** The two inline-atom kinds that flow through the shared create popover. */
 export type AtomCreateKind = "citation" | "ref";
@@ -29,11 +30,12 @@ export type AtomRefCommand = RefCommand;
 /**
  * A request to open the create popover, captured at TRIGGER time.
  *
- * `pos` is the doc position the atom will land at on commit — the
- * **captured-position contract** (`insertInlineAtom`'s `at`), so the atom lands
- * where the user invoked even though the live PM selection may drift while the
- * modal-ish popover is open. `rect` is the caret's screen rect; the popover
- * anchors to it.
+ * `pos` is the doc position the user invoked at — the **captured-position
+ * contract** (`insertInlineAtom`'s `at`), so the atom lands where the user
+ * invoked even though the live PM selection may drift while the modal-ish
+ * popover is open. It is the TRIGGER-time number only: once the popover opens
+ * it becomes an `AtomCreateSession.at` tracker that follows document edits
+ * (task 1190). `rect` is the caret's screen rect; the popover anchors to it.
  */
 export interface AtomCreateRequest {
   kind: AtomCreateKind;
@@ -54,6 +56,20 @@ export interface AtomCreateRequest {
    * focused footnote editor land in the footnote body, not main).
    */
   editor?: Editor;
+}
+
+/**
+ * The OPEN create popover's state (task 1190). The trigger-time `pos` is
+ * replaced by `at`, a `trackPos` tracker in the owning editor: the document can
+ * move while the user picks (an agent write, a code-pane re-parse, an embedded
+ * card's write-back), so the commit and the live anchor read `at.get()` — the
+ * captured spot mapped through every edit since — and the commit REFUSES when
+ * it is `null` (the spot was deleted). There is deliberately no `pos` here, so
+ * no reader can reach for the stale number. Whoever drops the state disposes
+ * `at` (EditorLayout's request effect).
+ */
+export interface AtomCreateSession extends Omit<AtomCreateRequest, "pos"> {
+  at: TrackedPos;
 }
 
 /** Options a trigger surface may thread into `openAtomCreate`. */

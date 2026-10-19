@@ -519,8 +519,10 @@ describe("the gate is scoped to the CORRUPTING case (task 396)", () => {
   it("a stale past-the-end `at` still lands - the clamp is TipTap's, not doc.content.size", () => {
     // `doc.content.size` resolves to the DOC node, not a textblock. A gate
     // reading the raw clamp refuses a stale captured `at` that the insert would
-    // have landed in prose — and a stale `at` is exactly what the deferred
-    // create popover carries. Neutering `clampToTextRange` back to
+    // have landed in prose. (The deferred create popover no longer hands in a
+    // stale number — it maps its `at` through document edits and refuses when
+    // the spot is gone, task 1190 / `tracked-pos.test.tsx` — so the clamp is
+    // range-safety for every other caller.) Neutering `clampToTextRange` back to
     // `Math.min(at, doc.content.size)` fails this leg.
     const editor = mountProseOnly();
     const result = insertInlineAtom({

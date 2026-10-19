@@ -25,7 +25,9 @@ import { anchorRowId } from "@/links/card-anchor-rows";
 import {
   ATOM_CREATE_POPOVER_EVENT,
   type AtomCreateRequest,
+  type AtomCreateSession,
 } from "@/lib/actions/atom-create";
+import { trackPos } from "@/lib/tiptap/tracked-pos";
 import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tiptap/label";
 import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { isFigurePopoverKind, type FigurePopoverKind } from "@/lib/figures/popover-target";
@@ -222,8 +224,9 @@ export function useMarkerClickBridges(deps: {
   /** Opens the SHARED inline-atom create popover (citation + `\ref`). The
    *  trigger surfaces dispatch `virgil-atom-create-popover` with an
    *  `AtomCreateRequest` (kind + caret rect + captured insertion pos); this
-   *  setter lands it in EditorLayout's `atomCreateRequest` state. */
-  setAtomCreateRequest: Dispatch<SetStateAction<AtomCreateRequest | null>>;
+   *  setter lands it in EditorLayout's `atomCreateRequest` state as an
+   *  `AtomCreateSession` — the pos now a tracker that follows the doc. */
+  setAtomCreateRequest: Dispatch<SetStateAction<AtomCreateSession | null>>;
   setActiveMath: Dispatch<
     SetStateAction<{
       kind: "inline" | "display";
@@ -430,12 +433,19 @@ export function useMarkerClickBridges(deps: {
       // without it leaves `editor` undefined → the commit falls back to MAIN
       // (back-compatible) (CHIP 5).
       const owner = detail.editor as Editor | undefined;
+      const editor = owner && typeof owner.isEditable === "boolean" ? owner : undefined;
+      // The captured `pos` FOLLOWS the owner's document from this moment
+      // (task 1190): an edit landing while the user picks maps it, a deletion
+      // of the spot nulls it and the commit refuses. Started HERE, synchronously
+      // with the open, so no transaction can slip between capture and tracking.
+      // EditorLayout's request effect disposes it when the popover closes or is
+      // replaced.
       setAtomCreateRequest({
         kind,
         rect,
-        pos,
+        at: trackPos(editor, pos),
         refCommand: detail.refCommand ?? "ref",
-        editor: owner && typeof owner.isEditable === "boolean" ? owner : undefined,
+        editor,
       });
     };
     window.addEventListener(ATOM_CREATE_POPOVER_EVENT, handler);

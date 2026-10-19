@@ -217,9 +217,12 @@ export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomRe
   // deferred scrollIntoView that `focus()` schedules by default — the whole point.
   const chain = editor.chain().focus(null, { scrollIntoView: false });
   // Captured-position contract (deferred popover commit): land the atom at the
-  // trigger-time `at` even if the live selection drifted. Clamp to the live doc
-  // so a stale/collab-shifted pos can't throw — `setTextSelection` carries no
-  // scrollIntoView, so the no-scroll invariant is preserved.
+  // caller's `at` even if the live selection drifted. Keeping `at` on the SAME
+  // TEXT across document edits is the caller's job — the create popover hands
+  // in its `trackPos`-mapped position and refuses when that is gone (task
+  // 1190); the clamp only keeps the number inside TipTap's text range, which is
+  // range-safety, not identity. `setTextSelection` carries no scrollIntoView,
+  // so the no-scroll invariant is preserved.
   if (typeof at === "number") {
     chain.setTextSelection(landing);
   }
