@@ -32,7 +32,7 @@ import { getRecoveryActions } from "@/lib/mirror-recovery";
 import { describeAge } from "@/lib/save-state";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
-import { barStatusVisible } from "@/lib/bar-status-policy";
+import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 
 function LifebuoyIcon() {
   return (
@@ -135,7 +135,8 @@ function MirrorRecoveryBadgeImpl({ docId }: { docId: string | null }) {
     }
   }, [docId, busy, confirm, takenAt]);
 
-  if (!barStatusVisible("mirror-recovery", { standing: !!offer }) || !offer) return null;
+  const visible = useBarStatusVisible("mirror-recovery", { standing: !!offer });
+  if (!visible || !offer) return null;
 
   return (
     <BarStatusPill

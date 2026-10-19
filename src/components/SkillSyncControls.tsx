@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import type { SkillSyncError } from "@/hooks/useFiles";
-import { barStatusVisible } from "@/lib/bar-status-policy";
+import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
 
 interface Props {
@@ -46,7 +46,8 @@ function WarnIcon() {
  * per-keystroke work (keystroke-sanctity, AGENTS.md).
  */
 function SkillSyncControls({ error, onResync, onDismissError }: Props) {
-  if (!barStatusVisible("skill-sync", { failed: error !== null }) || !error) {
+  const visible = useBarStatusVisible("skill-sync", { failed: error !== null });
+  if (!visible || !error) {
     return null;
   }
   const label = error.permission ? "Skill sync needs permission" : "Skill sync failed";

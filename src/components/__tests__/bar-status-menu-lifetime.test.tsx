@@ -116,7 +116,9 @@ describe("task 1016 — paused external change: 'Resolve…' lands somewhere", (
 
 describe("task 1016 — the menu's state does not outlive its pill", () => {
   it("open menu, condition clears, condition returns → menu is closed", () => {
-    currentState = state({ severity: "change", changes: [texModified] });
+    // A CONFLICT (unlanded edits at risk) paints at once; a plain `change`
+    // would first wait out the policy's settle window (task 1174).
+    currentState = state({ severity: "conflict", changes: [texModified] });
     const { rerender } = render(<Badge tick={++tick} />);
     fireEvent.click(screen.getByLabelText("External change options"));
     expect(menu()).toBeTruthy();
@@ -125,7 +127,7 @@ describe("task 1016 — the menu's state does not outlive its pill", () => {
     rerender(<Badge tick={++tick} />);
     expect(menu()).toBeNull();
 
-    currentState = state({ severity: "change", changes: [texModified] });
+    currentState = state({ severity: "conflict", changes: [texModified] });
     rerender(<Badge tick={++tick} />);
     expect(menu()).toBeNull();
     expect(screen.getByLabelText("External change options").getAttribute("aria-expanded")).not.toBe(

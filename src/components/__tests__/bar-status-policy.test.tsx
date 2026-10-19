@@ -13,8 +13,10 @@
  * Three halves:
  * - the CENSUS: StatusCluster mounts its protected tier ONLY through the
  *   policy's order, every mounted item is named by the table, and every
- *   item's component asks `barStatusVisible` with its OWN id — so the
+ *   item's component asks `useBarStatusVisible` with its OWN id — so the
  *   registry is read (AGENTS.md "A registry earns its name by being read");
+ *   and every entry declares a settle window (task 1174), applied by that ONE
+ *   hook — no item component arms a timer of its own for it;
  * - the POLICY: the default answers Gabriel chose;
  * - the SURFACES: the update chip says exactly "Virgil update", and the
  *   skills-updated note lives in the Help menu, not on the bar.
@@ -28,6 +30,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import {
   BAR_STATUS_ORDER,
   BAR_STATUS_POLICY,
+  barStatusVerdict,
   barStatusVisible,
   type BarStatusItemId,
 } from "@/lib/bar-status-policy";
@@ -117,12 +120,22 @@ describe("bar status policy · the census", () => {
   });
 
   it.each([...clusterItems()])(
-    "%s → <%s> asks barStatusVisible with its own id",
+    "%s → <%s> asks useBarStatusVisible with its own id",
     (id, tag) => {
       const src = read(fileOf(tag));
-      expect(src).toContain(`barStatusVisible("${id}"`);
+      expect(src).toContain(`useBarStatusVisible("${id}"`);
+      // The pure predicate is not a render gate: reading it directly would
+      // skip the settle rule (task 1174).
+      expect(src.replace(/useBarStatusVisible\(/g, "")).not.toMatch(/\bbarStatusVisible\(/);
     },
   );
+
+  it("every entry DECLARES a settle window (task 1174) — even when it is 0", () => {
+    for (const [id, entry] of Object.entries(BAR_STATUS_POLICY)) {
+      expect(typeof entry.settleMs, id).toBe("number");
+      expect(entry.settleMs, id).toBeGreaterThanOrEqual(0);
+    }
+  });
 
   it("no protected item reads a layout preference (zen / collapse) to decide visibility", () => {
     const items = clusterItems();
@@ -141,21 +154,52 @@ describe("bar status policy · the default answers", () => {
     ["software-update", { update: "activated-elsewhere" }, true],
     ["skill-sync", { failed: false }, false],
     ["skill-sync", { failed: true }, true],
-    ["save-state", { tier: "clean" }, false],
-    ["save-state", { tier: "pending" }, false],
-    ["save-state", { tier: "unsaved" }, true],
-    ["save-state", { tier: "blocked" }, true],
+    ["save-state", { tier: "clean", reason: null }, false],
+    ["save-state", { tier: "pending", reason: null }, false],
+    ["save-state", { tier: "unsaved", reason: null }, true],
+    ["save-state", { tier: "blocked", reason: "conflict" }, true],
+    ["save-state", { tier: "blocked", reason: "preservation" }, true],
+    ["save-state", { tier: "blocked", reason: "error" }, true],
+    // Task 1174: a cowork hold is the cowork-pen pill's to explain.
+    ["save-state", { tier: "blocked", reason: "cowork" }, false],
     ["cowork-pen", { held: true }, true],
     ["preservation", { standing: true }, true],
     ["mirror-recovery", { standing: true }, true],
     ["sync-conflict", { standing: true }, true],
-    ["external-change", { standing: true }, true],
-    ["external-change", { standing: false }, false],
+    ["external-change", { standing: true, atRisk: false }, true],
+    ["external-change", { standing: false, atRisk: false }, false],
     ["pomodoro", { open: true }, true],
     ["pomodoro", { open: false }, false],
   ];
   it.each(cases)("%s %o → %s", (id, state, want) => {
     expect(barStatusVisible(id, state as never)).toBe(want);
+  });
+
+  // Task 1174 — the settle rule's defaults: what paints at once, what must
+  // LAST first.
+  const verdicts: [BarStatusItemId, object, string][] = [
+    ["save-state", { tier: "unsaved", reason: null }, "settle"],
+    ["save-state", { tier: "blocked", reason: "preservation" }, "now"],
+    ["save-state", { tier: "blocked", reason: "error" }, "now"],
+    ["save-state", { tier: "blocked", reason: "conflict" }, "now"],
+    ["save-state", { tier: "pending", reason: null }, "hidden"],
+    ["cowork-pen", { held: true }, "settle"],
+    ["external-change", { standing: true, atRisk: false }, "settle"],
+    ["external-change", { standing: true, atRisk: true }, "now"],
+    ["preservation", { standing: true }, "now"],
+    ["mirror-recovery", { standing: true }, "now"],
+    ["software-update", { update: "waiting" }, "now"],
+    ["skill-sync", { failed: true }, "now"],
+    ["pomodoro", { open: true }, "now"],
+  ];
+  it.each(verdicts)("verdict %s %o → %s", (id, state, want) => {
+    expect(barStatusVerdict(id, state as never)).toBe(want);
+  });
+
+  it("the settle windows Gabriel's report asked for", () => {
+    expect(BAR_STATUS_POLICY["save-state"].settleMs).toBeGreaterThanOrEqual(10_000);
+    expect(BAR_STATUS_POLICY["cowork-pen"].settleMs).toBeGreaterThanOrEqual(10_000);
+    expect(BAR_STATUS_POLICY["external-change"].settleMs).toBeGreaterThanOrEqual(5_000);
   });
 
   it("every entry states WHY", () => {

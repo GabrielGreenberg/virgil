@@ -52,7 +52,7 @@ import { describeAge, describeBlockReason } from "@/lib/save-state";
 import { useAnyUnlandedWork } from "@/hooks/useUnsavedWork";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { BarStatusPill } from "./status/BarStatusPill";
-import { barStatusVisible } from "@/lib/bar-status-policy";
+import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 
 /** The chip's whole label (task 1131). */
 export const VIRGIL_UPDATE_LABEL = "Virgil update";
@@ -180,7 +180,8 @@ function SoftwareUpdateBannerImpl() {
     applyUpdate();
   }, [checking, confirm, elsewhere]);
 
-  if (!barStatusVisible("software-update", { update: updateState })) return null;
+  const visible = useBarStatusVisible("software-update", { update: updateState });
+  if (!visible) return null;
 
   // Task 1131: the label is exactly "Virgil update" in every state — Gabriel
   // asked for the chip and nothing more. The four state distinctions (ready /

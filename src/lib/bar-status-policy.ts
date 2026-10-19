@@ -18,6 +18,16 @@
  * > name cannot be mounted), and every item's one visibility return reads
  * > {@link barStatusVisible}. Census: `bar-status-policy.test.tsx`.
  *
+ * **The settle rule (task 1174).** Must-see is a judgement about a state that
+ * LASTS. Gabriel (2026-10-18): "'unsaved' warnings … last for a few seconds
+ * and then disappear. If it's that short, I don't want to see it." So each
+ * entry also declares `settleMs` — how long the state must stay must-see
+ * before it paints — and an optional `immediate` for states where work is
+ * genuinely at risk. The items read the verdict through ONE hook,
+ * `useBarStatusVisible`, which records the edge and arms ONE timer to the
+ * boundary (owned by the component's `ViewLifetime`); a state that clears
+ * inside its window never paints at all.
+ *
  * The bar-occupancy ladder is unchanged: this decides WHAT enters the
  * protected tier, not how the tier yields.
  *
@@ -28,6 +38,7 @@
 
 import type { UpdateState } from "@/hooks/useUpdateAvailable";
 import { isSaveTierProtected, type SaveTier } from "@/lib/save-state";
+import type { UnsavedBlockReason } from "@/lib/unsaved-work";
 
 /** The state each item reports to the policy. */
 export interface BarStatusStates {
@@ -42,10 +53,12 @@ export interface BarStatusStates {
   "mirror-recovery": { standing: boolean };
   /** A sync daemon left conflicted copies that may hold unseen writing. */
   "sync-conflict": { standing: boolean };
-  /** The file changed on disk (autosave may be paused). */
-  "external-change": { standing: boolean };
-  /** "Is my work on disk?" — only its unsaved/blocked tiers are must-see. */
-  "save-state": { tier: SaveTier };
+  /** The file changed on disk (autosave may be paused). `atRisk` — the user
+   *  has unlanded edits against it (the watcher's `conflict` severity). */
+  "external-change": { standing: boolean; atRisk: boolean };
+  /** "Is my work on disk?" — only its unsaved/blocked tiers are must-see.
+   *  `reason` is the blocking reason (`null` outside the blocked tier). */
+  "save-state": { tier: SaveTier; reason: UnsavedBlockReason | null };
   /** The per-paper skill-bundle sync: a FAILURE is must-see, a success is not. */
   "skill-sync": { failed: boolean };
   /** The writing timer — the user opened it, so it stays. */
@@ -57,49 +70,84 @@ export type BarStatusItemId = keyof BarStatusStates;
 export interface BarStatusPolicyEntry<S> {
   /** Must the user see this state? False ⇒ the item renders nothing. */
   mustSee: (state: S) => boolean;
+  /**
+   * THE SETTLE RULE (task 1174): how long, in ms, a state must STAY must-see
+   * before it paints. A must-see verdict is a judgement about a state that
+   * LASTS — a state that clears itself inside this window never reaches the
+   * bar at all. `0` paints at once. Required, so every item declares it.
+   */
+  settleMs: number;
+  /** A must-see state that skips the settle window (work genuinely at risk). */
+  immediate?: (state: S) => boolean;
   /** Why — the one sentence a reader needs before changing the rule. */
   why: string;
 }
+
+/** A cowork skill's hold is one atomic commit and normally clears in a
+ *  moment; only a hold that lasts deserves the bar. */
+const COWORK_SETTLE_MS = 10_000;
 
 export const BAR_STATUS_POLICY: {
   readonly [K in BarStatusItemId]: BarStatusPolicyEntry<BarStatusStates[K]>;
 } = Object.freeze({
   "software-update": {
     mustSee: (s) => s.update !== "none",
+    settleMs: 0,
     why: "Gabriel asked to keep it — a one-click update, labelled just “Virgil update”.",
   },
   "cowork-pen": {
     mustSee: (s) => s.held,
+    settleMs: COWORK_SETTLE_MS,
     why: "Explains why the editor has stopped accepting typing.",
   },
   preservation: {
     mustSee: (s) => s.standing,
+    settleMs: 0,
     why: "Virgil is refusing to save this paper — work is at risk.",
   },
   "mirror-recovery": {
     mustSee: (s) => s.standing,
+    settleMs: 0,
     why: "Unsaved work survived only in the browser and can be restored.",
   },
   "sync-conflict": {
     mustSee: (s) => s.standing,
+    settleMs: 0,
     why: "Conflicted copies may hold writing Virgil has never shown.",
   },
   "external-change": {
     mustSee: (s) => s.standing,
+    // Virgil's own write, or a sync service's, can blip and reconcile in
+    // seconds; only edits the user has not landed make it urgent.
+    settleMs: 5_000,
+    immediate: (s) => s.atRisk,
     why: "The file changed on disk; autosave may be paused until resolved.",
   },
   "save-state": {
     // The task-357 rule, kept: a data-integrity tier is must-see; the
     // reassurance tiers ("Saved · 13:28", "Saving…") are not shown at all.
-    mustSee: (s) => isSaveTierProtected(s.tier),
+    // Task 1174: a cowork hold is the cowork-pen pill's to explain — one event,
+    // one pill — and the save pill clears 1.5 s after the pen releases, so
+    // showing it here only ever doubled or trailed the pen pill.
+    mustSee: (s) =>
+      isSaveTierProtected(s.tier) && !(s.tier === "blocked" && s.reason === "cowork"),
+    // `unsaved` already means 20 s off disk; since the autosave debounce has
+    // a maxWait it cannot age there through typing, and the settle window
+    // keeps a slow write that is about to land from flashing.
+    settleMs: 10_000,
+    // A refusal, a failed write or an unresolved conflict is not coming to
+    // clear itself — it shows at once.
+    immediate: (s) => s.tier === "blocked",
     why: "Shown only once work has not landed (unsaved) or a gate holds it (blocked).",
   },
   "skill-sync": {
     mustSee: (s) => s.failed,
+    settleMs: 0,
     why: "A failed sync leaves cowork commands stale and needs a retry; a success is informational (Help → Refresh skills).",
   },
   pomodoro: {
     mustSee: (s) => s.open,
+    settleMs: 0,
     why: "The user opened the timer.",
   },
 });
@@ -121,10 +169,29 @@ export const BAR_STATUS_ORDER: readonly BarStatusItemId[] = Object.freeze([
   "pomodoro",
 ]);
 
-/** The ONE visibility question every bar status item asks. */
+/** Is this state MUST-SEE (before the settle rule)? Pure. */
 export function barStatusVisible<K extends BarStatusItemId>(
   id: K,
   state: BarStatusStates[K],
 ): boolean {
   return BAR_STATUS_POLICY[id].mustSee(state);
+}
+
+/**
+ * The full verdict, settle rule included: `hidden` (not must-see), `now`
+ * (paint this frame), or `settle` (must-see, but it has not yet lasted the
+ * entry's {@link BarStatusPolicyEntry.settleMs}). Items read it through the
+ * ONE hook, `useBarStatusVisible`, which owns the single settle timer — no
+ * item component carries a timer of its own.
+ */
+export type BarStatusVerdict = "hidden" | "now" | "settle";
+
+export function barStatusVerdict<K extends BarStatusItemId>(
+  id: K,
+  state: BarStatusStates[K],
+): BarStatusVerdict {
+  const entry = BAR_STATUS_POLICY[id] as BarStatusPolicyEntry<BarStatusStates[K]>;
+  if (!entry.mustSee(state)) return "hidden";
+  if (entry.settleMs <= 0 || entry.immediate?.(state)) return "now";
+  return "settle";
 }

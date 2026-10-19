@@ -406,9 +406,10 @@ describe("census · a data-integrity state is never hideable", () => {
     // The clean/pending tiers are a reassurance; the two loud tiers are
     // must-see. That split is `isSaveTierProtected`, and since task 1131 the
     // badge ASKS it through the one bar-status policy rather than restating
-    // it — the census's own reason for existing.
+    // it — the census's own reason for existing. Since task 1174 it asks
+    // through the policy's ONE hook, which also applies the settle rule.
     const code = codeOnlyLines(read("src/components/SaveStateBadge.tsx"));
-    expect(code).toContain("barStatusVisible(");
+    expect(code).toContain("useBarStatusVisible(");
     expect(codeOnlyLines(read("src/lib/bar-status-policy.ts"))).toContain(
       "isSaveTierProtected(",
     );

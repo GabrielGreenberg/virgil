@@ -85,7 +85,7 @@ import {
   interruptionPillLabel,
   type DocumentInterruption,
 } from "@/lib/document-interruption";
-import { barStatusVisible } from "@/lib/bar-status-policy";
+import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 
 /** RefreshCw — a 16px stroke-only circular-arrows glyph (the "reload" affordance). */
 function ReloadIcon() {
@@ -301,10 +301,13 @@ function ExternalChangeBadge() {
   // Clean — OR no provider at all (no doc open) → render nothing. The no-doc
   // case arrives here as the clean snapshot (severity null) from
   // useExternalChangesOrNull, so this single check covers both.
-  if (
-    !barStatusVisible("external-change", { standing: state.severity != null }) ||
-    state.severity == null
-  ) {
+  // Task 1174: a plain change settles first; a conflict (the user has
+  // unlanded edits against it) paints at once.
+  const visible = useBarStatusVisible("external-change", {
+    standing: state.severity != null,
+    atRisk: state.severity === "conflict",
+  });
+  if (!visible || state.severity == null) {
     return null;
   }
 

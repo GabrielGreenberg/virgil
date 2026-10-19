@@ -61,6 +61,13 @@ import {
   type TexDelimitersChangedDetail,
 } from "@/lib/tex-delimiters-event";
 
+/** The autosave's trailing debounce: a pause this long after an edit writes. */
+export const AUTOSAVE_DEBOUNCE_MS = 1500;
+/** Task 1174 — the debounce's MAXWAIT: during an unbroken typing burst a
+ *  dirty document still writes at least this often, so `dirtySince` cannot
+ *  age into the `unsaved` tier (`save-state.ts` UNSAVED_WARN_MS, 20 s) through
+ *  ordinary writing. "Unsaved" then means autosave is genuinely not landing. */
+export const AUTOSAVE_MAX_WAIT_MS = 10_000;
 
 /**
  * Document load + autosave for the active doc.
@@ -647,12 +654,31 @@ export function useDocument() {
   // recursively. We route the re-arm through this ref to avoid a
   // reference-before-declaration of the `useCallback` const (and to keep the
   // closure stable). The ref is assigned to the callback immediately below.
+  //
+  // MAXWAIT (task 1174): a pure trailing debounce never fires during a typing
+  // burst with no 1500 ms pause, so `dirtySince` aged straight into the
+  // `unsaved` tier while nothing was wrong. The burst's first arm is recorded
+  // and every re-arm is capped at {@link AUTOSAVE_MAX_WAIT_MS} from it, so a
+  // document being typed into still writes at least that often. The capped
+  // fire is the SAME timer body — same pause guard, same refusal doors in
+  // `save` — and it only READS the model (no transaction), so it cannot
+  // disturb an IME composition.
   const debouncedSaveRef = useRef<() => void>(() => {});
+  const burstStartRef = useRef<number | null>(null);
   const debouncedSave = useCallback(() => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
+    const now = Date.now();
+    if (burstStartRef.current === null) burstStartRef.current = now;
+    const delay = Math.max(
+      0,
+      Math.min(AUTOSAVE_DEBOUNCE_MS, burstStartRef.current + AUTOSAVE_MAX_WAIT_MS - now),
+    );
     saveTimerRef.current = setTimeout(() => {
+      // The burst ends with this fire, whichever branch runs: a paused re-arm
+      // below starts a fresh one.
+      burstStartRef.current = null;
       // AUTOSAVE-CLOBBER GUARD (DESIGN §4): while an external change is
       // unresolved, do NOT overwrite disk. RE-ARM the debounce instead of
       // writing, so (a) the dirty flag `saveTimerRef.current !== null` STAYS
@@ -710,7 +736,7 @@ export function useDocument() {
       // preamble edit after the user resolves an external change via
       // Dismiss / "Keep my version", or after a refused write is acknowledged.
       save(doc);
-    }, 1500);
+    }, delay);
   }, [save, docId]);
   // Sync the self-reference ref in an effect (never during render). The re-arm
   // path inside the timer reads it only after this effect has run.
