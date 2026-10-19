@@ -76,7 +76,7 @@ import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
 import { omniPinStore, pinOwnerOf } from "./editor-layout/omni-pin-store";
 import { iconHint } from "@/components/Hint";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
 /**
  * True when a keyboard event originated from an interactive control nested
@@ -1255,7 +1255,7 @@ export function CardBodyTitle({
               // door. It takes it so this input has one spelling of the rule
               // rather than two.
               (e.target as HTMLInputElement).blur();
-            } else if (e.key === "Escape") {
+            } else if (isCancelEscape(e)) {
               e.preventDefault();
               const el = e.currentTarget;
               session.cancel(el, () => {
@@ -1400,7 +1400,7 @@ export function CardTitleInput({
           // the draft the user meant to drop was written by the next
           // click-away. The claim is still released: the cancel's blur runs
           // `onBlur`, which releases before the (skipped) commit.
-          if (e.key === "Escape" && onChange) {
+          if (isCancelEscape(e) && onChange) {
             e.preventDefault();
             session.cancel(e.currentTarget, () => draft.revert());
           }

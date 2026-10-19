@@ -108,7 +108,7 @@ import {
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 import { surfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { BoundRoot, type BoundRootPredicate } from "@/lib/tiptap/bound-root";
 import { VirgilHorizontalRule } from "@/lib/tiptap/virgil-horizontal-rule";
 
@@ -1191,7 +1191,7 @@ export function createHeadingWithLabel(
 
           input.addEventListener("keydown", (ev) => {
             if (isCommitEnter(ev)) { ev.preventDefault(); void commit("enter"); }
-            if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanupSizer(); finish(); }
+            if (isCancelEscape(ev)) { ev.preventDefault(); committed = true; cleanupSizer(); finish(); }
           });
 
           let armed = false;

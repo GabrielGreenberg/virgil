@@ -28,6 +28,7 @@ import RowMenu from "@library/components/RowMenu";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle, type FsaDocMeta } from "@/lib/doc-index";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { isCancelEscape } from "@/lib/key-intent";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
 interface Props {
@@ -79,7 +80,7 @@ export default function MyPapersPod({
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPopupOpen(false);
+      if (isCancelEscape(e)) setPopupOpen(false);
     };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);

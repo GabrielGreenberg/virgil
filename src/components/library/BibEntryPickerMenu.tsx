@@ -69,13 +69,13 @@ import { LibraryMembershipChips } from "@/components/library/provenance-chips";
 import { MenuProvider } from "@/components/menu/MenuProvider";
 import { useMenuItem } from "@/components/menu/useMenuItem";
 import { menuRowRovingStyle } from "@/components/menu/row-tone";
-import { useMenuCombobox } from "@/components/menu/useMenuCombobox";
+import { useMenuCombobox, type ComboboxKeyEvent } from "@/components/menu/useMenuCombobox";
 import { useMenuContext } from "@/components/menu/context";
 import { iconHint } from "@/components/Hint";
 import { Button } from "@/components/Button";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -443,7 +443,7 @@ function BibEntryPickerBody({
   // `onArrowHorizontal`. This is the merged handler for BOTH the internal
   // input (spread) and the external input (attached via addEventListener).
   const onInputKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: ComboboxKeyEvent) => {
       if (isCommitEnter(e)) {
         e.preventDefault();
         // Stage the active/raw key through the normal pick path (this is what
@@ -468,7 +468,7 @@ function BibEntryPickerBody({
         }
         return;
       }
-      if (e.key === "Escape") {
+      if (isCancelEscape(e)) {
         e.preventDefault();
         cancel();
       }
@@ -492,22 +492,13 @@ function BibEntryPickerBody({
 
   // External-input mode: forward keyboard events from the caller-owned input
   // through the SAME composed combobox handler (nav → controller, Enter/
-  // Escape/typing → onInputKeyDown). Replaces the old hand-rolled
-  // addEventListener that called the bespoke key handler. `inputProps.onKeyDown`
-  // only reads `e.key` + the modifier flags + `preventDefault`, so a coerced
-  // native event is sufficient.
+  // Escape/typing → onInputKeyDown). The NATIVE event goes through as-is: the
+  // combobox's key-intent gate reads `isComposing` / `keyCode` / `repeat`, and
+  // the hand-coerced `{ key, metaKey, … }` object this replaced dropped them,
+  // so an IME's candidate-pick Enter committed the entry (task 1188).
   useEffect(() => {
     if (!isExternalInput || !externalInputEl) return;
-    const handler = (e: KeyboardEvent) => {
-      inputProps.onKeyDown({
-        key: e.key,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        altKey: e.altKey,
-        shiftKey: e.shiftKey,
-        preventDefault: () => e.preventDefault(),
-      } as unknown as React.KeyboardEvent);
-    };
+    const handler = (e: KeyboardEvent) => inputProps.onKeyDown(e);
     externalInputEl.addEventListener("keydown", handler);
     return () => externalInputEl.removeEventListener("keydown", handler);
   }, [isExternalInput, externalInputEl, inputProps]);

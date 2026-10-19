@@ -54,7 +54,7 @@ import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1306,7 +1306,7 @@ export function CitationCard({
                       // One Enter, one commit — the explicit call and the
                       // blur's own `onBlur` would otherwise both run it.
                       codeSession.commitAndBlur(e.currentTarget, commitCodeDraft);
-                    } else if (e.key === "Escape") {
+                    } else if (isCancelEscape(e)) {
                       e.preventDefault();
                       // …and the cancel is visible to that same synchronous
                       // `focusout`, so nothing commits behind it.
@@ -1542,7 +1542,7 @@ function CitationKeyRow({
                 // `onChangePostnote` writes to the `\cite` command and the
                 // citations sidecar for one keypress.
                 session.commitAndBlur(pgInputRef.current, commitPg);
-              } else if (e.key === "Escape") {
+              } else if (isCancelEscape(e)) {
                 e.preventDefault();
                 session.cancel(pgInputRef.current, () => {
                   setPgDraft(row.postnote || "");
