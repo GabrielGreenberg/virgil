@@ -271,7 +271,10 @@ describe("LeftList — scroll restore one-shot guard (C7-001)", () => {
   const scrollContainer = (container: HTMLElement) =>
     [...container.querySelectorAll("div")].find(
       (d) =>
-        /auto|scroll/.test(getComputedStyle(d).overflowY) &&
+        // The rows scroller wears `.panel-scroll` (task 1175) — a globals.css
+        // utility jsdom never loads, so the class IS the scroll signal here.
+        (d.classList.contains("panel-scroll") ||
+          /auto|scroll/.test(getComputedStyle(d).overflowY)) &&
         d.querySelector('[data-testid^="row-"]'),
     ) as HTMLDivElement;
 

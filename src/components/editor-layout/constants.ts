@@ -53,7 +53,9 @@ export const FLOATING_PANEL_Z_BASE = 1000;
 // col x + the bolt x), and SelectionActionsMenu.tsx (the pod-anchored bolt x
 // via `computeBoltLeftFromPod`, seated in the inboard band).
 
-/** Width of the overlay scrollbar thumb, in px. */
+/** Width of the overlay scrollbar thumb, in px. Mirrors the CSS
+ *  `--scrollbar-size` token (globals.css) — the one scrollbar width;
+ *  scrollbar-census.test.ts pins the two equal (task 1175). */
 export const SCROLLBAR_THUMB_WIDTH = 6;
 /** Pixels left of the editor column's right edge where the thumb sits. */
 export const SCROLLBAR_RIGHT_INSET = 3;

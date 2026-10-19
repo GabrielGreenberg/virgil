@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import postcss, { type AtRule, type Rule } from "postcss";
 import { describe, expect, it } from "vitest";
 import { SCROLLBAR_THUMB_WIDTH } from "@/components/editor-layout/constants";
+import { walkFiles } from "@/lib/__tests__/_source-scan";
 
 /**
  * Scrollbar CENSUS (task 1175).
@@ -130,22 +131,23 @@ const ALLOW: { file: string; snippet: string; reason: string }[] = [
 
 const BARE = /overflow-y-auto|overflowY:\s*["']auto["']/;
 
-function walk(rel: string, out: string[]) {
-  const abs = path.join(ROOT, rel);
-  const st = statSync(abs);
-  if (st.isFile()) {
-    if (/\.tsx?$/.test(rel)) out.push(rel);
-    return;
+/** Repo-relative .ts/.tsx files under SCOPE (a scope entry may be one file). */
+function scopeFiles(): string[] {
+  const out: string[] = [];
+  for (const rel of SCOPE) {
+    if (/\.tsx?$/.test(rel)) {
+      out.push(rel);
+      continue;
+    }
+    for (const abs of walkFiles(path.join(ROOT, rel), { skipDirs: ["__tests__"] })) {
+      if (/\.tsx?$/.test(abs)) out.push(path.relative(ROOT, abs));
+    }
   }
-  for (const name of readdirSync(abs)) {
-    if (name === "__tests__" || name === "node_modules") continue;
-    walk(path.join(rel, name), out);
-  }
+  return out;
 }
 
 describe("panel scroller census (task 1175)", () => {
-  const files: string[] = [];
-  for (const s of SCOPE) walk(s, files);
+  const files = scopeFiles();
 
   it("scans a real tree", () => {
     expect(files.length).toBeGreaterThan(20);
