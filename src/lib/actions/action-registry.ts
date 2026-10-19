@@ -922,6 +922,20 @@ export interface ActionSpec {
    */
   refusal?(ctx: ActionContext): Refusal | null;
   /**
+   * The schema member this row MAKES — the node it inserts / converts to /
+   * wraps with, or the mark it toggles (task 1182). A row is offered only on a
+   * surface whose schema HOLDS it: a footnote or note body mounts a narrower
+   * schema than the main text (no heading, rule, example, raw-LaTeX block…), so
+   * an insert row lit there ran a `run()` that found no node type and returned —
+   * a lit cell, a click, nothing, no reason. Every gate factory below asks
+   * `surfaceLacks` FIRST, and `refusalOf` reads THIS field for the reason
+   * ("Not available in this field"). `schema-holds-what-rows-make.test.ts` pins
+   * that every node/mark-making row declares it and that the declaration and
+   * the gate agree. Absent on rows that make no schema member of their own (the
+   * card rows, whose creation is a sidecar + bridge affair).
+   */
+  makes?: SchemaMember;
+  /**
    * Resolve the doc range the action operates on, when it differs from the
    * ref's natural range. Optional — defaults to the dispatcher's
    * `resolveRefRange` behavior (heading → heading-line for annotations / whole
@@ -1170,6 +1184,30 @@ function gateApplies(
   return "ok";
 }
 
+/** A schema member a row makes: a node type or a mark type, by name. */
+export type SchemaMember = { node: string } | { mark: string };
+
+/**
+ * SCHEMA MEMBERSHIP (task 1182) — the first question of every row that makes a
+ * node or a mark: does the surface the ctx names have that type at all? `true`
+ * only when a live doc is threaded and its schema LACKS the member — a
+ * view-less / mock-doc ctx cannot ask, so it answers `false` (the shared
+ * "allow" fallback). Before this, every gate treated a missing type as "allow"
+ * (`if (!atomType) return null`, `if (!heading) return true`) while every run
+ * treated it as "do nothing" (`if (!nodeType) return`) — the offer and the
+ * commit answered one question two ways. A missing type is a REFUSAL: the
+ * surface can never hold what the row makes. Greyed (`"disabled"`), not hidden:
+ * no command surface honours `"absent"` (the grid, the bridge and the slash
+ * guard all test `=== "disabled"`), so `"absent"` would paint the row LIT.
+ * O(1): one schema lookup, at gesture rate.
+ */
+function surfaceLacks(ctx: ActionContext, member: SchemaMember): boolean {
+  const doc = ctx.view?.state?.doc;
+  if (!doc || typeof doc.resolve !== "function") return false; // can't ask → allow
+  const schema = doc.type.schema;
+  return "node" in member ? !schema.nodes[member.node] : !schema.marks[member.mark];
+}
+
 // ---------------------------------------------------------------------------
 // verdictOf (task 968) — the verdict WITH its reason.
 //
@@ -1185,8 +1223,10 @@ function gateApplies(
 //      of the user. It is asked FIRST although `gateApplies` asks it after the
 //      row's base: when the whole menu is greyed, the read-only state is the
 //      true answer for every row, whatever else a row's kind would also refuse;
-//   2. the selection-mode gate (`selectionModeDisables`);
-//   3. the row's own base — its declared `refusal(ctx)` when the row has one,
+//   2. schema membership (task 1182 — `spec.makes`, `surfaceLacks`): this
+//      surface has no such node / mark at all;
+//   3. the selection-mode gate (`selectionModeDisables`);
+//   4. the row's own base — its declared `refusal(ctx)` when the row has one,
 //      else the generic kind / container refusal at the ref.
 //
 // The words come from ONE table (`refusalPhrase`, `./refusal.ts`). Every
@@ -1219,6 +1259,9 @@ export function readOnlyRefusal(target: Parameters<typeof surfaceReadOnlyByHost>
  *  for the per-gate unit tests; surfaces read `verdictOf`. */
 export function refusalOf(spec: ActionSpec, ctx: ActionContext): Refusal {
   if (isCollabReadOnly(ctx)) return readOnlyRefusal(ctx.editor ?? ctx.view);
+  // Task 1182: a surface that can never hold what the row makes says so before
+  // any per-caret reason — no selection or container would change the answer.
+  if (spec.makes && surfaceLacks(ctx, spec.makes)) return { cause: "surface" };
   if (selectionModeDisables(spec.selection, ctx)) return { cause: "needs-selection" };
   return spec.refusal?.(ctx) ?? genericRefusal(ctx);
 }
@@ -1932,7 +1975,9 @@ function titleFieldRow(field: TitleActionId): ActionSpec {
     selection: "ignored",
     surfaces: { slash: true },
     slashName: field,
+    makes: { node: "titleField" },
     applies: (ctx) => {
+      if (surfaceLacks(ctx, { node: "titleField" })) return "disabled"; // task 1182
       const base = blockApplies(ctx);
       if (base !== "ok") return base;
       return titleFieldRefusal(ctx) ? "disabled" : "ok";
@@ -2077,6 +2122,7 @@ const TEX_ACTION_ROW: ActionSpec = {
   slashName: "tex",
   // Shared block-atom gate (CHIP 6a: `blockApplies`). A function declaration, so
   // it is hoisted above this row's definition.
+  makes: { node: "texBlock" },
   applies: blockInsertApplies("texBlock", TEX_CAPTURE),
   refusal: blockInsertRefusal("texBlock", TEX_CAPTURE),
   run: texRun,
@@ -2165,6 +2211,7 @@ const FOREST_ACTION_ROW: ActionSpec = {
   surfaces: { slash: true, lightning: true },
   slashName: "forest",
   // Shared block-atom gate (CHIP 6a: `blockApplies` + the container check).
+  makes: { node: "forestBlock" },
   applies: blockInsertApplies("forestBlock"),
   refusal: blockInsertRefusal("forestBlock"),
   run: forestRun,
@@ -2196,6 +2243,7 @@ const HORIZONTAL_RULE_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "hrule",
+  makes: { node: "horizontalRule" },
   applies: blockInsertApplies("horizontalRule"),
   refusal: blockInsertRefusal("horizontalRule"),
   run: horizontalRuleRun,
@@ -2264,6 +2312,7 @@ const REF_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "ref",
+  makes: { node: "labelRef" },
   applies: inlineAtomInsertApplies("labelRef"),
   refusal: inlineAtomInsertRefusal("labelRef"),
   run: refRun,
@@ -2571,6 +2620,7 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "ex",
+  makes: { node: "exampleBlock" },
   applies: blockInsertApplies("exampleBlock", EXAMPLE_CAPTURE),
   refusal: blockInsertRefusal("exampleBlock", EXAMPLE_CAPTURE),
   run: exampleRun,
@@ -2670,6 +2720,7 @@ function blockInsertApplies(
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   const refusal = blockInsertRefusal(nodeName, capture);
   return (ctx: ActionContext) => {
+    if (surfaceLacks(ctx, { node: nodeName })) return "disabled"; // task 1182
     const base = blockApplies(ctx);
     if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
     return refusal(ctx) ? "disabled" : "ok";
@@ -2724,10 +2775,11 @@ function blockInsertRefusal(
 // schema-precise in the atom's own NodeType, so each row passes its own node
 // name and the gate resolves the live type. Degrades to `blockApplies`'s verdict
 // when no live view is threaded (the minimal menu-decoration ctx / a unit-test
-// probe) or when this editor's schema doesn't register the atom at all (a card
-// body built without `includeLabelRefFootnote`) — matching the historic "allow"
-// fallback `blockInsertApplies` and `cardActionAllowedForCtx` both take: a
-// verdict is only issued when the question can actually be asked.
+// probe) — the "allow" fallback `blockInsertApplies` and
+// `cardActionAllowedForCtx` both take. A schema that doesn't register the atom
+// at all (a card body built without `includeLabelRefFootnote`) is NOT that
+// case: the question can be asked and the answer is no (`surfaceLacks`, task
+// 1182).
 //
 // This is the AFFORDANCE half only. `insertInlineAtom` (the one insert door) and
 // `mathRun("inline")` carry the same gate, because the deferred create-popover
@@ -2739,6 +2791,7 @@ function inlineAtomInsertApplies(
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   const refusal = inlineAtomInsertRefusal(nodeName, capture);
   return (ctx: ActionContext) => {
+    if (surfaceLacks(ctx, { node: nodeName })) return "disabled"; // task 1182
     const base = blockApplies(ctx);
     if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
     return refusal(ctx) ? "disabled" : "ok";
@@ -2757,7 +2810,9 @@ function inlineAtomInsertRefusal(
     const doc = ctx.view?.state?.doc;
     if (!doc || typeof doc.resolve !== "function") return null; // no live view → allow
     const atomType = doc.type.schema.nodes[nodeName];
-    if (!atomType) return null; // atom absent from this schema → allow (historic)
+    // Absent from this schema: `applies()` already refused (task 1182), and
+    // `refusalOf` names it from the row's `makes` before asking this half.
+    if (!atomType) return null;
     // RANGE form (task 428): a selection ref is REPLACED by the atom, so every
     // textblock it reaches must host it — a selection running from prose into a
     // `codeBlock` greys the cell. A cursor ref is the caret form (from === to).
@@ -3055,6 +3110,7 @@ const INLINE_MATH_ACTION_ROW: ActionSpec = {
   inputRulePattern: TYPED_LATEX_INPUT_RULES["inline-math"],
   // Task 396: the CONTAINER-aware inline gate, not the bare `blockApplies` —
   // `$x$` in a `codeBlock` / `latexComment` splits the verbatim block.
+  makes: { node: "inlineMath" },
   applies: inlineAtomInsertApplies("inlineMath", MATH_CAPTURE),
   refusal: inlineAtomInsertRefusal("inlineMath", MATH_CAPTURE),
   run: mathRun("inline"),
@@ -3067,6 +3123,7 @@ const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
   // Same correction as its inline twin above: `displayMathInput` owns `$$`.
   surfaces: { lightning: true, typed: true },
   inputRulePattern: TYPED_LATEX_INPUT_RULES["display-math"],
+  makes: { node: "displayMath" },
   applies: blockInsertApplies("displayMath", MATH_CAPTURE),
   refusal: blockInsertRefusal("displayMath", MATH_CAPTURE),
   run: mathRun("display"),
@@ -3077,6 +3134,7 @@ const FIGURE_ACTION_ROW: ActionSpec = {
   category: "block",
   selection: "optional",
   surfaces: { lightning: true },
+  makes: { node: "figureBlock" },
   applies: blockInsertApplies("figureBlock"),
   refusal: blockInsertRefusal("figureBlock"),
   run: figureRun,
@@ -3087,6 +3145,7 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
   category: "block",
   selection: "optional",
   surfaces: { lightning: true },
+  makes: { node: "graphicsBlock" },
   applies: blockInsertApplies("graphicsBlock"),
   refusal: blockInsertRefusal("graphicsBlock"),
   run: graphicsRun,
@@ -3157,6 +3216,7 @@ function formatApplies(
   markName: string,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   return (ctx: ActionContext) => {
+    if (surfaceLacks(ctx, { mark: markName })) return "disabled"; // task 1182
     const base: "ok" | "disabled" = rangeAllowsMark(ctx, markName) ? "ok" : "disabled";
     return gateApplies({ selection: "ignored" }, ctx, base);
   };
@@ -3167,10 +3227,10 @@ function formatApplies(
  * live schema through `NodeType.allowsMarkType`, so `marks: ""` (codeBlock /
  * latexComment) answers false and every other container answers for itself.
  *
- * Degrades to `true` when no live view / no such mark in this schema is threaded
- * (the minimal menu-decoration ctx, a unit-test probe, a card body built without
- * the mark) — the historic "allow" fallback every container gate in this file
- * takes: a verdict is only issued when the question can actually be asked.
+ * Degrades to `true` when no live view is threaded (the minimal
+ * menu-decoration ctx, a unit-test probe) — the "allow" fallback every container
+ * gate in this file takes. A schema WITHOUT the mark is refused before this is
+ * asked (`formatApplies` → `surfaceLacks`, task 1182).
  */
 function rangeAllowsMark(ctx: ActionContext, markName: string): boolean {
   const doc = ctx.view?.state?.doc;
@@ -3244,6 +3304,7 @@ function wrapperApplies(
   wrapperNodeName: string,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   return (ctx: ActionContext) => {
+    if (surfaceLacks(ctx, { node: wrapperNodeName })) return "disabled"; // task 1182
     const base: "ok" | "disabled" = wrapperSafeHere(ctx.view, wrapperNodeName)
       ? "ok"
       : "disabled";
@@ -3381,6 +3442,7 @@ function formatToggleRow(
     ...(slash?.aliases ? { slashAliases: slash.aliases } : {}),
     keybinding,
     ...(inputRulePattern ? { inputRulePattern } : {}),
+    makes: opts.wrapper !== undefined ? { node: opts.wrapper } : { mark: opts.mark },
     applies:
       opts.wrapper !== undefined
         ? wrapperApplies(opts.wrapper)
@@ -3478,6 +3540,7 @@ const TEXT_COLOR_ACTION_ROW: ActionSpec = {
   // toggles — a colour cell that opens a picker over a `marks: ""` verbatim block
   // is the false-affordance shape one step removed: the popover opens, the user
   // picks, and nothing happens (task 397).
+  makes: { mark: "textColor" },
   applies: formatApplies("textColor"),
   run: textColorRun,
 };
@@ -3657,7 +3720,9 @@ function headingRow(id: HeadingActionId): ActionSpec {
     selection: "ignored",
     surfaces: { slash: true, lightning: true },
     slashName,
+    makes: { node: "heading" },
     applies: (ctx) => {
+      if (surfaceLacks(ctx, { node: "heading" })) return "disabled"; // task 1182
       const ref = ctx.ref;
       // Per-kind base: a selection / caret converts iff the SCHEMA can host a
       // heading where it sits — false inside a `listItem` / `exampleItem`, where
@@ -3868,7 +3933,9 @@ const LATEX_COMMENT_ACTION_ROW: ActionSpec = {
   // title field or an atom block there is nothing to convert. Reported as
   // "disabled" (present, greyed) rather than "absent", matching every other
   // block row's container refusal.
+  makes: { node: "latexComment" },
   applies: (ctx) => {
+    if (surfaceLacks(ctx, { node: "latexComment" })) return "disabled"; // task 1182
     const base = blockApplies(ctx);
     if (base !== "ok") return base;
     const doc = ctx.view?.state?.doc;
