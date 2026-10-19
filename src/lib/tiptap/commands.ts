@@ -326,6 +326,9 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // SAME `run()` the lightning grid's tree cell calls. Pure ProseMirror, so NO
   // bridge (`forestRun` carries the CHIP 7b collab gate itself, as `texRun` does).
   viewRow("forest"),
+  // Task 1176: `\hrule` → the SINGLE canonical `horizontalRuleRun`, the same
+  // `run()` the lightning grid's rule cell calls (pure ProseMirror, no bridge).
+  viewRow("hrule"),
   // Bug sweep #6: the 5 structural WRAPPER toggles. `\list`/`\itemize` → bullet
   // list, `\enumerate` → numbered list, `\quote`/`\quotation` → blockquote (the
   // many-to-one alias group in `SLASH_NAME_TO_ACTION_ID`).

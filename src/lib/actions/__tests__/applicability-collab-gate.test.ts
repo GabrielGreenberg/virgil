@@ -158,6 +158,7 @@ describe("DA-5 selection-mode taxonomy — the declarative `selection` field", (
     "inline-math": "optional",
     "display-math": "optional",
     forest: "optional",
+    "horizontal-rule": "optional",
     title: "ignored",
     author: "ignored",
     date: "ignored",

@@ -104,6 +104,7 @@ import {
   MarkSpellingAttrs,
 } from "@/lib/tiptap-extensions";
 import { CardParagraph } from "./cmd-only-paragraph";
+import { VirgilHorizontalRule } from "./virgil-horizontal-rule";
 
 /**
  * The shared StarterKit config both card surfaces use. Heading / blockquote /
@@ -183,6 +184,10 @@ export const EXCERPT_STARTER_KIT_CONFIG = {
   // Task 879 — see the card config above: the item-scoped gate
   // (`VirgilListKeymap`, registered by `buildCardBodySchema`) replaces it.
   listKeymap: false as const,
+  // Task 1176: the node stays mounted — re-registered by
+  // `buildExcerptOnlySchema` as `VirgilHorizontalRule`, minus upstream's `---`
+  // input rule (an em-dash in LaTeX). Same node, one fewer binding.
+  horizontalRule: false as const,
 };
 
 /**
@@ -308,6 +313,7 @@ function buildExcerptOnlySchema(): AnyExtension[] {
     ExcerptDocumentAttrs,
     ExcerptListItem,
     CardBlockquote,
+    VirgilHorizontalRule,
     Highlight.configure({ multicolor: true }),
     TextColor,
     // ── expex example family ────────────────────────────────────────────

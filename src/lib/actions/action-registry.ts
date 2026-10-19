@@ -344,7 +344,8 @@ export type BlockActionId =
   | "graphics" // \includegraphics image block
   | "inline-math" // $x$ wrap/insert
   | "display-math" // $$…$$ wrap/insert
-  | "forest"; // \begin{forest} syntax-tree block
+  | "forest" // \begin{forest} syntax-tree block
+  | "horizontal-rule"; // \hrulefill rule block (task 1176)
 
 /** The HEADING subset of `BlockActionId` — the four `heading-*` ids. Named once
  *  (task 260) so the level table, the row table and the coverage slice all read
@@ -353,7 +354,7 @@ export type BlockActionId =
 export type HeadingActionId = BlockActionId & `heading-${string}`;
 
 /** The NON-heading half of `BlockActionId` — `example` / `tex` / `figure` /
- *  `graphics` / `inline-math` / `display-math` / `forest`. DERIVED by `Exclude`, never
+ *  `graphics` / `inline-math` / `display-math` / `forest` / `horizontal-rule`. DERIVED by `Exclude`, never
  *  hand-listed: the two halves partition `BlockActionId` by construction, so a
  *  new block insert (`table`, `verbatim`, …) is forced into exactly one of them
  *  and its exhaustive row table stops compiling until someone gives it a row
@@ -2103,31 +2104,45 @@ const TEX_ACTION_ROW: ActionSpec = {
 // overwhelmingly common case — this is byte-identical to the siblings.
 // ---------------------------------------------------------------------------
 export function forestRun(ctx: ActionContext): void {
+  insertBlockAtomAtCaret(ctx, "forestBlock", (doc) => ({
+    uuid: generateShortId(collectUuids(doc, "forestBlock")),
+    source: freshForestSource(),
+  }));
+}
+
+/**
+ * The shared body of the COLLAPSE-not-delete block-atom inserts (`forest`,
+ * `horizontal-rule` — task 1176 lifted it out of `forestRun` so the second row
+ * could not grow a second copy of the guard). Collab gate → container guard →
+ * collapse a non-empty selection to its start → `replaceSelectionWith`. Rows
+ * that DELETE a selection (`\tex`, figure/graphics) keep their own paths.
+ */
+function insertBlockAtomAtCaret(
+  ctx: ActionContext,
+  nodeName: string,
+  makeAttrs?: (doc: PMNode) => Record<string, unknown>,
+): void {
   if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
   // only gate: see `isCollabReadOnly` (task 638).
   const { state } = ctx.view;
-  const forestType = state.schema.nodes.forestBlock;
-  if (!forestType) return;
+  const nodeType = state.schema.nodes[nodeName];
+  if (!nodeType) return;
   const { from, to, empty } = state.selection;
   // CONTAINER GUARD (task 147/229, defense-in-depth — the same bail `texRun`
   // and `smartInsertBlock` take): a block atom inserted at a caret inside a
   // block that can't host a block child (titleField / codeBlock /
   // latexComment, or a figureCaption whose figureBlock parent can't re-host)
   // would SPLIT it. Bail so NO surface can corrupt.
-  // RANGE form (task 641): forest COLLAPSES rather than deletes, so it destroys
-  // no text — but a selection reaching into a verbatim block is a gesture whose
-  // stated target the gate never saw, and answering it at `from` alone would
-  // leave this row the one block insert with a narrower question than its
-  // siblings. One predicate, one answer, every block row.
-  if (!blockRangeHostsBlockInsert(state.doc, from, to, forestType)) return;
-  const attrs = {
-    uuid: generateShortId(collectUuids(state.doc, "forestBlock")),
-    source: freshForestSource(),
-  };
+  // RANGE form (task 641): these rows COLLAPSE rather than delete, so they
+  // destroy no text — but a selection reaching into a verbatim block is a
+  // gesture whose stated target the gate never saw, and answering it at `from`
+  // alone would leave them the block inserts with a narrower question than
+  // their siblings. One predicate, one answer, every block row.
+  if (!blockRangeHostsBlockInsert(state.doc, from, to, nodeType)) return;
   let tr = state.tr;
-  // Collapse (never delete) — see the SELECTION POLICY note above.
+  // Collapse (never delete) — see the SELECTION POLICY note on `forestRun`.
   if (!empty) tr = tr.setSelection(TextSelection.create(tr.doc, from));
-  tr = tr.replaceSelectionWith(forestType.create(attrs));
+  tr = tr.replaceSelectionWith(nodeType.create(makeAttrs?.(state.doc)));
   ctx.view.dispatch(tr.scrollIntoView());
 }
 
@@ -2153,6 +2168,37 @@ const FOREST_ACTION_ROW: ActionSpec = {
   applies: blockInsertApplies("forestBlock"),
   refusal: blockInsertRefusal("forestBlock"),
   run: forestRun,
+};
+
+// ---------------------------------------------------------------------------
+// horizontalRuleRun — the `horizontal-rule` block (task 1176). The schema node
+// (StarterKit's `horizontalRule`), its parse (`\hrulefill` alone on a line) and
+// its serialize (`\hrulefill`) all predate this row; what was missing was any
+// INSERT door. Same COLLAPSE-not-delete policy as `forestRun` — a rule absorbs
+// nothing, so consuming the user's selection would be pure loss — and the same
+// guarded path, NOT TipTap's `setHorizontalRule()` (which skips the container
+// guard and so could split a titleField / codeBlock). Its `---` markdown input
+// rule is deliberately OFF (`VirgilHorizontalRule`): in LaTeX `---` is an
+// em-dash, so this row is the only way a rule is made.
+// ---------------------------------------------------------------------------
+export function horizontalRuleRun(ctx: ActionContext): void {
+  insertBlockAtomAtCaret(ctx, "horizontalRule");
+}
+
+/** The single `horizontal-rule` row — slash (`\hrule`) + lightning (the grid's
+ *  rule cell), both calling `horizontalRuleRun`. `selection: "optional"` like
+ *  `forest`: a caret is the normal insert point. No `typed` surface — the
+ *  markdown `---` rule is off on purpose (see above). */
+const HORIZONTAL_RULE_ACTION_ROW: ActionSpec = {
+  id: "horizontal-rule",
+  label: "Horizontal rule",
+  category: "block",
+  selection: "optional",
+  surfaces: { slash: true, lightning: true },
+  slashName: "hrule",
+  applies: blockInsertApplies("horizontalRule"),
+  refusal: blockInsertRefusal("horizontalRule"),
+  run: horizontalRuleRun,
 };
 
 // ---------------------------------------------------------------------------
@@ -3851,12 +3897,12 @@ const ATOM_ACTION_ROWS: Readonly<Record<AtomActionId, ActionSpec>> = {
   ref: REF_ACTION_ROW,
 };
 
-/** The 6 NON-heading block rows, in registration order. Exhaustive over
+/** The 8 NON-heading block rows, in registration order. Exhaustive over
  *  `NonHeadingBlockActionId` — the family with no exhaustive source anywhere
  *  before task 260, so a new block insert (`table` / `verbatim`) shipped with no
  *  row and resolved to nothing at runtime.
  *
- *  `tex`/`example` own the slash surface AND the lightning surface; the 4
+ *  `tex`/`example`/`forest`/`horizontal-rule` own the slash surface AND the lightning surface; the 4
  *  block-ATOM rows (`inline-math` / `display-math` / `figure` / `graphics`) are
  *  LIGHTNING-ONLY grid cells — math WRAPS the selection, figure/graphics INSERT
  *  via `smartInsertBlock`. */
@@ -3870,6 +3916,7 @@ const NON_HEADING_BLOCK_ACTION_ROWS: Readonly<
   figure: FIGURE_ACTION_ROW,
   graphics: GRAPHICS_ACTION_ROW,
   forest: FOREST_ACTION_ROW,
+  "horizontal-rule": HORIZONTAL_RULE_ACTION_ROW,
 };
 
 /**
@@ -4055,6 +4102,7 @@ export const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   footnote: "footnote",
   tex: "tex",
   forest: "forest",
+  hrule: "horizontal-rule",
   list: "bullet-list",
   itemize: "bullet-list",
   enumerate: "ordered-list",
