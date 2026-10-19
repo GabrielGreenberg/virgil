@@ -564,7 +564,7 @@ function BibEntryPickerBody({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto py-1">
+      <div className="panel-scroll flex-1 min-h-0 py-1">
         {filtered.length === 0 ? (
           <div className="px-3 py-4 text-[11px] text-ink-muted text-center space-y-2">
             <div>

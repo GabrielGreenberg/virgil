@@ -459,7 +459,7 @@ export function OmniBinPill({
       </button>
       {expanded && (
         <div
-          className="mt-1 space-y-2 overflow-y-auto rounded bg-surface/95 backdrop-blur-sm border border-edge-subtle p-2"
+          className="panel-scroll mt-1 space-y-2 rounded bg-surface/95 backdrop-blur-sm border border-edge-subtle p-2"
           style={{ maxHeight: "var(--dock-slot-frame-h, 80vh)" }}
         >
           {children}

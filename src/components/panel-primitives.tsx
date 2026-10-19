@@ -2153,8 +2153,12 @@ export const PANEL = {
   /** Scrollable list container wrapping all cards. The leading
    *  `panel-card-list` token is a STABLE hook (not a Tailwind utility) —
    *  Wave-4 Stage A keys `body.perf-contain .panel-card-list` containment
-   *  on it, so every consumer of this constant inherits the rule. */
-  list: "panel-card-list flex-1 overflow-y-auto px-2 py-2 space-y-2",
+   *  on it, so every consumer of this constant inherits the rule.
+   *  `panel-scroll` is the ONE panel-scroller utility (task 1175): it
+   *  reserves the scrollbar gutter, so the right padding is trimmed to
+   *  `pr-0.5` (2px + the 6px gutter ≈ the left's 8px) to keep the visual
+   *  inset balanced. */
+  list: "panel-card-list panel-scroll flex-1 pl-2 pr-0.5 py-2 space-y-2",
   /** Standard card-body padding (UI-consistency sweep, ratified
    *  2026-06-12). One token for EditableCard's expanded body and the
    *  bespoke bodies (citation rows, todo, highlight, AI request).

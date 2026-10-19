@@ -553,6 +553,23 @@ a re-spelled literal, and
 if one is flattened back to a literal — "locked" names an invariant here, not
 a convention.
 
+**Scrollbars (task 1175).** One width, `--scrollbar-size` (6px), feeds the
+styled `::-webkit-scrollbar` (width + height) and is mirrored by the editor's
+custom thumb (`SCROLLBAR_THUMB_WIDTH`). The thumb is transparent at rest,
+`--scrollbar-thumb` on scroll/hover, `--scrollbar-hover` under the pointer, and
+paints 1px inside its track so it reads slimmer than the gutter it holds. The
+Firefox `scrollbar-color`/`scrollbar-width` rules live ONLY inside
+`@supports not selector(::-webkit-scrollbar)` — unfenced, an inheritable
+`scrollbar-color` makes Chromium 121+ drop every webkit rule and draw the fat
+native overlay bar over content. Every panel / list scroller wears
+`.panel-scroll` (`overflow-y:auto; scrollbar-gutter:stable`) instead of a bare
+`overflow-y-auto`, so right-aligned row meta never sits under the thumb; trim
+the scroller's right padding by the gutter (`PANEL.list`: `pl-2 pr-0.5`) to
+keep the visual inset balanced. A card BODY's own max-height scroll is the
+named exception (a gutter would narrow every card's prose).
+[src/__tests__/scrollbar-census.test.ts](__tests__/scrollbar-census.test.ts)
+pins all of it.
+
 Forbidden in new code: `text-stone-*`, `border-stone-*`,
 `bg-stone-*-with-opacity`, hex literals in components, `bg-blue-*` /
 `bg-emerald-*` / `bg-red-*` in panel chrome, and **literal corner radii**

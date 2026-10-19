@@ -1995,7 +1995,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       variant="raw"
       panelExtras={<div className="mx-3 h-px bg-[var(--border)] shrink-0" />}
     >
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 relative">
+      <div ref={scrollRef} className="panel-scroll flex-1 p-1 relative">
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
             headings={headings}
