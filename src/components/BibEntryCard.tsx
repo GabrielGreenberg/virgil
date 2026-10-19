@@ -31,6 +31,7 @@ import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import {
   isBibFileWriteAllowed,
   isSidecarWriteAllowed,
+  type EditorChromeConfig,
 } from "@/components/editor-layout/chrome-config";
 import { didBibSaveLand, bibSaveRefusalReason } from "@/lib/project-bib";
 
@@ -113,9 +114,46 @@ export interface BibEntryCardProps {
 /** The review-request queue's sidecar — the file the host must permit. */
 const BIB_REVIEW_SIDECAR = "bib-review-requests.json";
 
+/** The annotation store's sidecar (`useAnnotations`) — the file the host must
+ *  permit before the Annotations editor is offered (task 1186). */
+const BIB_ANNOTATIONS_SIDECAR = "annotations.json";
+
+/** The entry's own `.bib` — not a sidecar, so it has its own permit. */
+const BIB_FILE = Symbol("bib-file");
+
+/**
+ * Every write door this card holds → the PERSISTED TARGET the host must permit
+ * (task 1186). `writes` is built by reading this table, so each door's host
+ * permit is DERIVED from what it writes rather than hand-written per door —
+ * which is how task 1158 gated three doors and left the fourth
+ * (`setAnnotation`) offered in the Library Reader, where `annotations.json` is
+ * refused: the user typed an annotation, saw it, and lost it on reload. A new
+ * door is added HERE, naming its target, or `writes` has no slot for it.
+ */
+const BIB_CARD_DOOR_TARGETS = {
+  save: BIB_FILE,
+  setAnnotation: BIB_ANNOTATIONS_SIDECAR,
+  requestReview: BIB_REVIEW_SIDECAR,
+  cancelReview: BIB_REVIEW_SIDECAR,
+} as const;
+
+type BibCardDoor = keyof typeof BIB_CARD_DOOR_TARGETS;
+
+/** May this host persist what `door` writes? */
+function hostPermitsDoor(chrome: EditorChromeConfig, door: BibCardDoor): boolean {
+  const target = BIB_CARD_DOOR_TARGETS[door];
+  return target === BIB_FILE
+    ? isBibFileWriteAllowed(chrome)
+    : isSidecarWriteAllowed(chrome, target);
+}
+
 /** Said where "Edit entry" would be on a host whose `.bib` is not writable. */
 const BIB_HOST_READ_ONLY_REASON =
   "Read-only here — this paper's bibliography is managed by the library.";
+
+/** Said under a stored annotation on a host that will not persist one. */
+const BIB_ANNOTATION_READ_ONLY_REASON =
+  "Read-only here — annotations can't be saved in this view.";
 
 /* ── Rich-text annotation editor ──────────────────────────────────── */
 //
@@ -136,10 +174,18 @@ const BIB_HOST_READ_ONLY_REASON =
 //     card ⇄ the popped float) writes the same entry — but never while THIS
 //     field is focused (that would stomp the caret); an entry switch
 //     (`instanceKey` = the citekey) remounts, so it always re-seeds.
+/** Never called — the read-only field's `onChange` (it cannot edit). */
+const NO_ANNOTATION_WRITE = () => {};
+
 function AnnotationEditor({
   bibKey, content, onUpdate,
 }: {
-  bibKey: string; content: string; onUpdate: (key: string, html: string) => void;
+  bibKey: string;
+  content: string;
+  /** `null` ⇒ the host will not persist `annotations.json` (task 1186): the
+   *  stored annotation still READS, but the field accepts no typing — an
+   *  editable field here looked saved and was gone on reload. */
+  onUpdate: ((key: string, html: string) => void) | null;
 }) {
   const [focused, setFocused] = useState(false);
   // The read door — sanitized once per stored value, not per render.
@@ -148,7 +194,7 @@ function AnnotationEditor({
   // flushes a pending edit to the OUTGOING handler on a key change, so an edit
   // can never land on the next entry.
   const handleChange = useCallback(
-    (json: JSONContent) => onUpdate(bibKey, sanitizeAnnotationHtml(richToAnnotationHtml(json))),
+    (json: JSONContent) => onUpdate?.(bibKey, sanitizeAnnotationHtml(richToAnnotationHtml(json))),
     [bibKey, onUpdate],
   );
   const handleFocusChange = useCallback((f: boolean) => setFocused(f), []);
@@ -158,12 +204,13 @@ function AnnotationEditor({
       <RichTextField
         value={value}
         instanceKey={bibKey}
-        onChange={handleChange}
+        onChange={onUpdate ? handleChange : NO_ANNOTATION_WRITE}
         onFocusChange={handleFocusChange}
         placeholder="Write an annotation for this reference..."
         variant="note"
         panelKey="bib"
-        hideToolbar={!focused}
+        editable={onUpdate !== null}
+        hideToolbar={!onUpdate || !focused}
       />
     </div>
   );
@@ -195,15 +242,15 @@ export default function BibEntryCard({
         // and Request review were offered there, accepted the user's typing,
         // and lost it to a silent `read-only` roll-back. A door the host will
         // not honour is withheld, not offered.
-        save: isBibFileWriteAllowed(chrome) ? onSaveBibEntry : null,
-        setAnnotation,
-        requestReview: isSidecarWriteAllowed(chrome, BIB_REVIEW_SIDECAR)
-          ? onRequestReview
-          : null,
-        cancelReview: isSidecarWriteAllowed(chrome, BIB_REVIEW_SIDECAR)
-          ? onCancelReview
-          : null,
-      };
+        //
+        // Task 1186: each door's permit is read from `BIB_CARD_DOOR_TARGETS`
+        // (door → what it persists), never written by hand — 1158's
+        // hand-written permits missed `setAnnotation`.
+        save: hostPermitsDoor(chrome, "save") ? onSaveBibEntry : null,
+        setAnnotation: hostPermitsDoor(chrome, "setAnnotation") ? setAnnotation : null,
+        requestReview: hostPermitsDoor(chrome, "requestReview") ? onRequestReview : null,
+        cancelReview: hostPermitsDoor(chrome, "cancelReview") ? onCancelReview : null,
+      } satisfies Record<BibCardDoor, unknown>;
   /** A preview card never drags: its `\cite{key}` would name a key this
    *  paper's `references.bib` does not hold. (This was a separate `draggable`
    *  prop whose only producer was the same preview flag — one fact, one
@@ -602,8 +649,12 @@ export default function BibEntryCard({
           would show (and overwrite) the note of whatever local entry happened
           to share the citekey, or silently file one under a key the
           bibliography does not hold. The pod is the write, so it goes with
-          the gate (task 692). */}
-      {writes && (
+          the gate (task 692).
+          Task 1186: on a host that will not persist `annotations.json` (the
+          Library Reader) `writes.setAnnotation` is null — the pod still shows
+          an EXISTING annotation, read-only, and is omitted when there is none
+          (nothing to read, and nothing it may write). */}
+      {writes && (writes.setAnnotation || annotation) && (
       <div className="mt-2">
         <div className="flex items-center gap-1.5">
           <button onClick={(e) => { e.stopPropagation(); setAnnotationOpen((p) => !p); }}
@@ -631,6 +682,9 @@ export default function BibEntryCard({
             <div className={PANEL.subpodWhite}>
               <AnnotationEditor bibKey={entry.key} content={annotation} onUpdate={writes.setAnnotation} />
             </div>
+            {!writes.setAnnotation && (
+              <div className="text-xs text-ink-muted italic">{BIB_ANNOTATION_READ_ONLY_REASON}</div>
+            )}
           </div>
         )}
       </div>
