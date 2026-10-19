@@ -224,15 +224,49 @@ describe("native-list slide", () => {
       expect(topOf(list.cards[0])).toBe(BAND_TOP);
     });
 
-    it("on selecting another card elsewhere (hover does NOT release)", () => {
+    it("hover releases nothing; selecting another card IN the list keeps it still", () => {
       const list = buildList();
       place(list, 0, 300);
       list.store.setHover({ kind: "note", id: "n3" });
       flushFrames();
       expect(px(list.scroller.style.paddingTop)).toBe(200);
-      list.store.select({ kind: "note", id: "n4" });
+      // A card click (no placement follows): the clicked card must not slide
+      // out from under the cursor.
+      const before = topOf(list.cards[1]);
+      list.store.select({ kind: "note", id: "n1" });
       flushFrames();
+      expect(topOf(list.cards[1])).toBe(before);
+    });
+
+    it("marker A then marker B mid-release: no stray padding, ever", () => {
+      reduce = false;
+      const list = buildList();
+      place(list, 0, 300);
+      flushFrames(20);
+      // B's click: select (A's state is still on the scroller) …
+      list.store.select({ kind: "note", id: "n1" });
+      rafQueue = [];
+      placeSelectedCard({
+        omniKey: "float:card:note:n1",
+        entrySelector: '[data-card-key="float:card:note:n1"]',
+        viewportY: 260,
+        store: list.store,
+      });
+      flushFrames(20);
+      expect(topOf(list.cards[1])).toBe(260);
+      list.store.clearSelection();
+      flushFrames(20);
       expect(list.scroller.style.paddingTop).toBe("");
+      expect(list.scroller.style.paddingBottom).toBe("");
+    });
+
+    it("a scroll the BROWSER made (focus) is never written back as stale", () => {
+      const list = buildList();
+      place(list, 5, 200); // plain scroll, no spacer
+      list.scroller.scrollTop = 40; // e.g. focus-scroll, no intent event
+      list.store.clearSelection();
+      flushFrames();
+      expect(list.scrollTop()).toBe(40);
     });
 
     it("on the user scrolling the list (wheel)", () => {
@@ -307,6 +341,12 @@ describe("native-list slide", () => {
       fire(0);
       expect(list.scroller.style.paddingTop).toBe("");
     });
+  });
+
+  it("a click above the list's top edge aligns to that edge, not under the header", () => {
+    const list = buildList();
+    place(list, 4, 20); // band starts at 100
+    expect(topOf(list.cards[4])).toBe(BAND_TOP);
   });
 
   it("no slide during a layout gesture", () => {

@@ -6087,9 +6087,11 @@ html {
      content, and its card roots sit outside the body's own `.tiptap`.
 
      `outline` is the fourth zeroed property and the one a reader would omit: it
-     is what a SELECTED card carries into the print appendix
-     (`.card-outline-chrome [data-card-key][data-card-selected]`), which is
-     OUTSIDE `.tiptap` by design — so its rule is deliberately unscoped. */
+     is what a HOVERED card carries into the print appendix
+     (`.card-outline-chrome [data-card-key][data-card-hovered]`; since task
+     1179 a SELECTED card's cue is the inline selection-halo box-shadow, not an
+     outline), which is OUTSIDE `.tiptap` by design — so its rule is
+     deliberately unscoped. */
   .virgil-view-only {
     --tint-color: transparent !important;
     text-decoration: none !important;

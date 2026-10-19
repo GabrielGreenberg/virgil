@@ -101,7 +101,7 @@ export type RepositionVerdict = "move" | "hold";
  *    named intent, so the policy stays the one reader of "may this card
  *    move?" — never a bypass at a call site. Its only publisher is the
  *    selection-alignment door (`selected-card-placement.ts`), pinned by
- *    `selection-alignment-census.test.ts`.
+ *    `selected-card-placement.test.ts`.
  */
 export type RepositionIntent = "necessity" | "selection-alignment";
 

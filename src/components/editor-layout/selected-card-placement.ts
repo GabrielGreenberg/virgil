@@ -34,7 +34,8 @@
  *
  * Release (native list): the slide is a one-shot alignment, like the Omni
  * pin — DOCUMENT scroll does not touch it. It releases, animating its spacer
- * away, when the selection changes (the doc's own store), when the user
+ * away, on DESELECT (the doc's own store; selecting another card continues
+ * the slide instead — see `armRelease`), when the user
  * scrolls the list (wheel / touch drag / scroll keys / scrollbar press — USER intent,
  * never the `scroll` event our own writes raise), when the list re-sorts or
  * filters (its children change), or when the list is hidden (pane switch).
@@ -154,24 +155,39 @@ export function releasedOffset(offset: number, naturalMax: number): number {
   return Math.min(0, Math.max(-Math.max(0, naturalMax), offset));
 }
 
+/** Keys that scroll a focused list. Any other key — typing inside the
+ *  selected card's own editor — is not a scroll and releases nothing. */
+const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", " "]);
+
+/**
+ * One list's slide state, keyed by its SCROLLER and kept until the spacer is
+ * fully gone — including while a release animates. So a second selection in
+ * the same list (marker A, then marker B) CONTINUES from whatever is on screen
+ * rather than mistaking an in-flight spacer for the list's own padding.
+ *
+ * The offset is never cached: it is re-read from the DOM (`padTop − scrollTop`)
+ * whenever a gesture starts, so a scroll the browser made on its own (focus,
+ * scroll anchoring) can never be written back as stale.
+ */
 interface ListSlide {
   scroller: HTMLElement;
-  /** The inline padding the scroller had before the slide (restored on
-   *  release — usually empty, the CSS class supplies the base). */
+  /** The inline padding the scroller had before ANY slide (restored once the
+   *  spacer is gone — usually empty, the CSS class supplies the base). */
   inlinePadTop: string;
   inlinePadBottom: string;
   /** The CSS base padding the spacer is ADDED to. */
   basePadTop: number;
   basePadBottom: number;
-  offset: number;
   anim: number | null;
+  /** The owner whose selection this slide serves; null while releasing. */
+  owner: CardStore | null;
   teardown: () => void;
 }
 
-/** Live slides, one per owner (the doc's card store). */
-const slides = new WeakMap<CardStore, ListSlide>();
-/** And by scroller, so a second store can't stack spacers on one list. */
+/** Slide state by list scroller (lives while a spacer exists). */
 const byScroller = new WeakMap<HTMLElement, ListSlide>();
+/** The owner's live slide (the doc's card store — one per pane). */
+const byOwner = new WeakMap<CardStore, ListSlide>();
 
 function reducedMotion(): boolean {
   return (
@@ -180,16 +196,25 @@ function reducedMotion(): boolean {
   );
 }
 
-/** The scroll extent with NO spacer — read once per gesture. */
-function naturalMaxOf(s: ListSlide): number {
-  const { scroller } = s;
-  const pads = Math.max(0, s.offset) + currentPadBottom(s);
-  return scroller.scrollHeight - pads - scroller.clientHeight;
+function spacerTop(s: ListSlide): number {
+  const v = parseFloat(s.scroller.style.paddingTop);
+  return Number.isFinite(v) ? Math.max(0, v - s.basePadTop) : 0;
 }
 
-function currentPadBottom(s: ListSlide): number {
+function spacerBottom(s: ListSlide): number {
   const v = parseFloat(s.scroller.style.paddingBottom);
   return Number.isFinite(v) ? Math.max(0, v - s.basePadBottom) : 0;
+}
+
+/** The live offset, read off the DOM. */
+function liveOffset(s: ListSlide): number {
+  return spacerTop(s) - s.scroller.scrollTop;
+}
+
+/** The scroll extent with NO spacer. */
+function naturalMaxOf(s: ListSlide): number {
+  const { scroller } = s;
+  return scroller.scrollHeight - spacerTop(s) - spacerBottom(s) - scroller.clientHeight;
 }
 
 function writeFrame(s: ListSlide, f: SlideFrame): void {
@@ -199,16 +224,20 @@ function writeFrame(s: ListSlide, f: SlideFrame): void {
   scroller.scrollTop = f.scrollTop;
 }
 
-/** Animate `s.offset` → `to` (ease-out, `SELECTION_SLIDE_MS`), instantly
+function stopAnim(s: ListSlide): void {
+  if (s.anim !== null) cancelAnimationFrame(s.anim);
+  s.anim = null;
+}
+
+/** Animate the live offset → `to` (ease-out, `SELECTION_SLIDE_MS`), instantly
  *  under reduced motion or a layout gesture. Every frame is computed from the
  *  one `naturalMax` read at the start — nothing re-solves per frame. */
 function animateTo(s: ListSlide, to: number, done?: () => void): void {
-  if (s.anim !== null) cancelAnimationFrame(s.anim);
-  s.anim = null;
+  stopAnim(s);
   const naturalMax = naturalMaxOf(s);
-  const from = s.offset;
+  const from = liveOffset(s);
   const finish = () => {
-    s.offset = to;
+    s.anim = null;
     writeFrame(s, frameForOffset(to, naturalMax));
     done?.();
   };
@@ -220,124 +249,116 @@ function animateTo(s: ListSlide, to: number, done?: () => void): void {
   const step = (now: number) => {
     const t = Math.min(1, (now - start) / SELECTION_SLIDE_MS);
     if (t >= 1) {
-      s.anim = null;
       finish();
       return;
     }
     const eased = 1 - (1 - t) ** 3;
-    s.offset = from + (to - from) * eased;
-    writeFrame(s, frameForOffset(s.offset, naturalMax));
+    writeFrame(s, frameForOffset(from + (to - from) * eased, naturalMax));
     s.anim = requestAnimationFrame(step);
   };
   s.anim = requestAnimationFrame(step);
 }
 
-/** End a slide: animate its spacer away (or drop it at once when the list is
- *  no longer on screen), then restore the scroller's own inline padding. */
-function release(s: ListSlide, owner: CardStore | null, animate: boolean): void {
-  s.teardown();
-  if (owner && slides.get(owner) === s) slides.delete(owner);
+/** Put the scroller's own inline padding back and forget the slide. */
+function restore(s: ListSlide): void {
+  s.scroller.style.paddingTop = s.inlinePadTop;
+  s.scroller.style.paddingBottom = s.inlinePadBottom;
   if (byScroller.get(s.scroller) === s) byScroller.delete(s.scroller);
-  const restore = () => {
-    s.scroller.style.paddingTop = s.inlinePadTop;
-    s.scroller.style.paddingBottom = s.inlinePadBottom;
-  };
-  if (!animate || !s.scroller.isConnected) {
-    if (s.anim !== null) cancelAnimationFrame(s.anim);
-    s.anim = null;
-    const naturalMax = naturalMaxOf(s);
-    const settle = releasedOffset(s.offset, naturalMax);
-    restore();
-    s.scroller.scrollTop = Math.max(0, -settle);
-    return;
-  }
-  const naturalMax = naturalMaxOf(s);
-  animateTo(s, releasedOffset(s.offset, naturalMax), restore);
 }
 
-/** Keys that scroll a focused list. Any other key — typing inside the
- *  selected card's own editor — is not a scroll and releases nothing. */
-const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", " "]);
+/** End a slide: animate its spacer away, keeping the content where it is
+ *  wherever the natural list allows; then restore the inline padding. A list
+ *  no longer on screen drops the spacer at once and writes no scroll. */
+function release(s: ListSlide, animate: boolean): void {
+  s.teardown();
+  s.teardown = () => {};
+  if (s.owner && byOwner.get(s.owner) === s) byOwner.delete(s.owner);
+  s.owner = null;
+  if (!animate || !s.scroller.isConnected || s.scroller.clientHeight === 0) {
+    stopAnim(s);
+    restore(s);
+    return;
+  }
+  animateTo(s, releasedOffset(liveOffset(s), naturalMaxOf(s)), () => restore(s));
+}
 
 function slideListEntry(entry: HTMLElement, targetY: number, store: CardStore): void {
   const scroller = listScrollerFor(entry);
   if (!scroller) return; // row-scrolled: aligning would move the document
-  // One slide per owner and per list: a new selection replaces the old
-  // slide, CONTINUING from its spacer rather than snapping it away first.
-  const prior = slides.get(store) ?? byScroller.get(scroller) ?? null;
-  let carried: { offset: number; base: [number, number]; inline: [string, string] } | null = null;
-  if (prior) {
-    prior.teardown();
-    if (prior.anim !== null) cancelAnimationFrame(prior.anim);
-    prior.anim = null;
-    slides.delete(store);
-    byScroller.delete(prior.scroller);
-    if (prior.scroller === scroller) {
-      carried = {
-        offset: prior.offset,
-        base: [prior.basePadTop, prior.basePadBottom],
-        inline: [prior.inlinePadTop, prior.inlinePadBottom],
-      };
-    } else {
-      release(prior, null, true);
-    }
+
+  // This owner's slide on ANOTHER list ends (one selection, one slide).
+  const elsewhere = byOwner.get(store);
+  if (elsewhere && elsewhere.scroller !== scroller) release(elsewhere, true);
+
+  // This list's state — live, or still animating a release — is CONTINUED:
+  // its base padding is the pre-slide one, never the in-flight spacer.
+  let s = byScroller.get(scroller) ?? null;
+  if (s) {
+    stopAnim(s);
+    s.teardown();
+    s.teardown = () => {};
+    if (s.owner && s.owner !== store && byOwner.get(s.owner) === s) byOwner.delete(s.owner);
   }
 
-  // The two reads this gesture costs (task 1179's contract): the card's
-  // rect and the scroller's — read before any write.
+  // The two rects this gesture costs (task 1179's contract), read before any
+  // write.
   const rect = entry.getBoundingClientRect();
   const band = scroller.getBoundingClientRect();
-  let basePadTop: number;
-  let basePadBottom: number;
-  if (carried) {
-    [basePadTop, basePadBottom] = carried.base;
-  } else {
+  if (!s) {
     const cs = getComputedStyle(scroller);
-    basePadTop = parseFloat(cs.paddingTop) || 0;
-    basePadBottom = parseFloat(cs.paddingBottom) || 0;
+    s = {
+      scroller,
+      inlinePadTop: scroller.style.paddingTop,
+      inlinePadBottom: scroller.style.paddingBottom,
+      basePadTop: parseFloat(cs.paddingTop) || 0,
+      basePadBottom: parseFloat(cs.paddingBottom) || 0,
+      anim: null,
+      owner: null,
+      teardown: () => {},
+    };
   }
-  const currentOffset = carried ? carried.offset : -scroller.scrollTop;
+
+  // The card can only sit level with the click INSIDE the list's visible
+  // band (below its top padding, with its top in view) — a click above the
+  // list's top edge or below a short floating list aligns to that edge.
+  const height = rect.bottom - rect.top;
+  const lo = band.top + s.basePadTop;
+  const hi = Math.max(lo, band.bottom - Math.min(height, band.bottom - lo));
+  const target = Math.min(hi, Math.max(lo, targetY));
+
   const verdict = mayReposition({
     current: rect.top,
-    target: targetY,
+    target,
     rect,
     band,
     intent: "selection-alignment",
   });
-
-  const s: ListSlide = {
-    scroller,
-    inlinePadTop: carried ? carried.inline[0] : scroller.style.paddingTop,
-    inlinePadBottom: carried ? carried.inline[1] : scroller.style.paddingBottom,
-    basePadTop,
-    basePadBottom,
-    offset: currentOffset,
-    anim: null,
-    teardown: () => {},
-  };
-  if (verdict === "hold") {
-    // Already level (jitter): nothing moves. A carried spacer stays as it is
-    // and keeps its release triggers.
-    if (!carried) return;
+  const hasSpacer = spacerTop(s) > 0 || spacerBottom(s) > 0;
+  if (verdict === "hold" && !hasSpacer) {
+    if (byScroller.get(scroller) === s) restore(s);
+    return; // already level, nothing on loan: nothing to own
   }
-  slides.set(store, s);
+  s.owner = store;
+  byOwner.set(store, s);
   byScroller.set(scroller, s);
   s.teardown = armRelease(s, store, entry);
   if (verdict !== "hold") {
-    animateTo(s, offsetForTarget(currentOffset, rect.top, targetY));
+    animateTo(s, offsetForTarget(liveOffset(s), rect.top, target));
   }
 }
 
 /** Wire the release triggers for a live slide; returns their disposer. */
 function armRelease(s: ListSlide, store: CardStore, entry: HTMLElement): () => void {
   const { scroller } = s;
-  const selected = store.getSelectedSnapshot();
-  const end = () => release(s, store, true);
+  const end = () => release(s, true);
 
-  // Selection changed (deselect, or another card) — the store notifies on
-  // hover too, so compare the selection snapshot's identity: O(1).
+  // DESELECT releases. Selecting ANOTHER card does not: a marker click on it
+  // re-enters the door and continues this spacer; a click on a card IN this
+  // list must not slide the card out from under the cursor (nor fight
+  // usePlacement's measurement of it). The store also notifies on hover, so
+  // this is one O(1) snapshot read.
   const unsubscribe = store.subscribe(() => {
-    if (store.getSelectedSnapshot() !== selected) end();
+    if (store.getSelectedSnapshot() === null) end();
   });
 
   // The USER scrolling the list. Our own scrollTop writes raise `scroll`, so
@@ -370,8 +391,8 @@ function armRelease(s: ListSlide, store: CardStore, entry: HTMLElement): () => v
     }
   }
 
-  // The list hidden (keep-alive pane switch, panel closed): a zero-height
-  // box. Released WITHOUT animation — nobody can see it.
+  // The list hidden (keep-alive pane switch, panel closed — a removed node
+  // reports a zero box too): released WITHOUT animation, nobody can see it.
   let first = true;
   const ro =
     typeof ResizeObserver !== "undefined"
@@ -381,7 +402,7 @@ function armRelease(s: ListSlide, store: CardStore, entry: HTMLElement): () => v
             return;
           }
           const box = entries[entries.length - 1]?.contentRect;
-          if (box && box.height === 0) release(s, store, false);
+          if (box && box.height === 0) release(s, false);
         })
       : null;
   ro?.observe(scroller);
