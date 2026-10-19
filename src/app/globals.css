@@ -4222,9 +4222,13 @@ textarea {
  * so it survives with the class absent. The class is the pref's REGISTRY
  * projection, painted on the owning instance's roots — `.editor-pane-root`
  * and each FloatingPanel it portals (task 927; it used to sit on <body>,
- * which the Library Reader's own toggle could not reach). */
+ * which the Library Reader's own toggle could not reach).
+ *
+ * SELECTION is no longer here (task 1179): a selected docked card always
+ * wears the SELECTION HALO — the margin marker's own ring, composed inline by
+ * `themedCardStyle` from `selectionHaloRing`. The pref keeps only its HOVER
+ * role (and the popped-window ring below). */
 .card-outline-chrome [data-card-key][data-card-hovered="true"],
-.card-outline-chrome [data-card-key][data-card-selected="true"],
 .card-outline-chrome [data-card-key]:hover {
   outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
@@ -6083,9 +6087,11 @@ html {
      content, and its card roots sit outside the body's own `.tiptap`.
 
      `outline` is the fourth zeroed property and the one a reader would omit: it
-     is what a SELECTED card carries into the print appendix
-     (`.card-outline-chrome [data-card-key][data-card-selected]`), which is
-     OUTSIDE `.tiptap` by design — so its rule is deliberately unscoped. */
+     is what a HOVERED card carries into the print appendix
+     (`.card-outline-chrome [data-card-key][data-card-hovered]`; since task
+     1179 a SELECTED card's cue is the inline selection-halo box-shadow, not an
+     outline), which is OUTSIDE `.tiptap` by design — so its rule is
+     deliberately unscoped. */
   .virgil-view-only {
     --tint-color: transparent !important;
     text-decoration: none !important;

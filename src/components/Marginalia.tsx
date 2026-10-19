@@ -37,10 +37,12 @@ import {
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelSideMap } from "@/lib/margin-side";
 import {
+  DEFAULT_PANEL_COLORS,
   deriveMarkerPalette,
   getPanelColor,
   getPanelColorVersion,
   isPanelColorOverridden,
+  selectionHaloRing,
   subscribePanelColors,
 } from "@/lib/panel-theme";
 import {
@@ -314,17 +316,23 @@ export function MarkerButton({
   // than a user-overridable panel color slot. The check is retained so a future
   // fixed-accent marker skips the override path without re-plumbing this.
   const themeKey = panelThemeKeyForMarkerType(m.type);
-  const palette =
-    !NON_REGISTRY_MARKER_TYPES.has(m.type) && isPanelColorOverridden(themeKey)
-      ? deriveMarkerPalette(getPanelColor(themeKey))
-      : { color: meta.color, bg: meta.bg, border: meta.border };
+  const overridden =
+    !NON_REGISTRY_MARKER_TYPES.has(m.type) && isPanelColorOverridden(themeKey);
+  const palette = overridden
+    ? deriveMarkerPalette(getPanelColor(themeKey))
+    : { color: meta.color, bg: meta.bg, border: meta.border };
+  // The accent the palette above derives from — the selection halo below
+  // derives from the SAME accent, so the ring matches the badge border.
+  const accent = overridden ? getPanelColor(themeKey) : DEFAULT_PANEL_COLORS[themeKey];
 
   // Hover OR selected paint the same quiet 1.5px ring — no heavy selected halo.
   // The marker's colored badge (bg + 1.5px border) carries persistent kind
   // identity; selection stays visible because the ring persists while selected.
   // Mirrors the panel-card change (selected collapsed to hover weight).
+  // The ring is the ONE selection halo (`selectionHaloRing`, task 1179) — the
+  // selected panel card wears the identical ring, from the same accent.
   const interactionShadow =
-    selected || hovered ? `0 0 0 1.5px ${palette.border}` : undefined;
+    selected || hovered ? selectionHaloRing(accent) : undefined;
 
   // Re-anchor by grab is folded onto the unified drop-mode controller (chip H).
   // A pin can re-anchor when the editor is editable AND the marker is a real

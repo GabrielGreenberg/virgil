@@ -63,7 +63,7 @@ export interface OpenForCardArgs {
  * `[attr^="key@"]` (prefix — the multi-anchor rows when only the bare key is
  * known). When the caller passes an `@<pid>`-suffixed key the exact arm wins, so it
  * pins/scrolls the RIGHT row. Used by `openForCard`, `tryScrollOmniEntry`,
- * `alignOmniCardWithClick`, and the `virgil-card-jumped` handler — one grammar,
+ * `placeSelectedCard`, and the `virgil-card-jumped` handler — one grammar,
  * not four hand-rolled copies. `attr` is `data-omni-entry` (the card) or
  * `data-omni-entry-wrapper` (the positioned wrapper).
  */
@@ -125,9 +125,12 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   const homeSide = resolveHomeSide(prefs, panelId, fallbackSide);
   const isActive = dockedSideOf(prefs, panelId) === homeSide;
 
-  // Rule 2: Native panel already open on home side → just scroll.
+  // Rule 2: Native panel already open on home side → just scroll (unless
+  // the caller places the card itself — task 1179: this rule used to ignore
+  // `skipScroll`, so a marker click got a "nearest" scroll here AND the
+  // caller's own placement).
   if (isActive) {
-    scrollPanelEntryAfterMount(entrySelector, { targetY });
+    if (!skipScroll) scrollPanelEntryAfterMount(entrySelector, { targetY });
     return;
   }
 

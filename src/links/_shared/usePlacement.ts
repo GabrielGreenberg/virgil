@@ -144,7 +144,7 @@ let _suppressNextPlacement = false;
  *  legacy slot setters (which route through cardStore.select) and
  *  don't want placement to fire. The usual case is a marker click in the
  *  editor or a margin icon click in the panel column: alignment is
- *  handled by `alignOmniCardWithClick` (offset-based card shift), not by
+ *  handled by `placeSelectedCard` (offset-based card shift), not by
  *  scrolling the row (which would drag the editor too — both views share
  *  the row scroll). Honors the asymmetry rule in this hook's docstring:
  *  text/marginalia → card alignment is the caller's responsibility;

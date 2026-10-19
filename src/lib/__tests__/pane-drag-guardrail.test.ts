@@ -122,6 +122,8 @@ const PERMITTED_WINDOW_DRAG_GESTURES: Record<string, string> = {
 // A PARKED / SUPPRESSED verdict is checked against the file (it must reference
 // the bus); a LIVE one is a human-verified claim, like every allowlist here.
 const PERMITTED_GESTURE_RESIZE_OBSERVERS: Record<string, string> = {
+  "src/components/editor-layout/selected-card-placement.ts":
+    "[cost: per fire = one comparison of the delivered contentRect height (no DOM read); a non-zero height is a no-op] LIVE — Selection-slide hide detector (task 1179): observes the ONE list scroller of a live slide, and only a zero-height box (pane hidden / panel closed) acts — a pane drag can resize the list mid-gesture but never to zero, so every gesture fire is one comparison.",
   // ── library silo ──
   "library/components/panel-tabs/PanelTabStrip.tsx":
     "[cost: per fire = a scheduled frame; per coalesced FRAME = one flush-right boolean measure behind an equality bail; ZERO fires during a layout gesture] PARKED — Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); parked via parkDuringLayoutGesture.",

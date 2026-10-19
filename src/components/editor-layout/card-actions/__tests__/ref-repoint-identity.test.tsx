@@ -208,7 +208,6 @@ describe("the click carries identity and the bridge stores it (no DOM re-find)",
       setAtomCreateRequest: vi.fn(),
       setActiveMath: vi.fn(),
       setActiveFigure: vi.fn(),
-      alignOmniCardWithClick: vi.fn(),
       getActiveCardStore: () => ({}) as never,
     };
     renderHook(() => useMarkerClickBridges(deps as unknown as Parameters<typeof useMarkerClickBridges>[0]));

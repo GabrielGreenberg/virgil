@@ -74,6 +74,8 @@ const PERMITTED_DEEP_MUTATION_OBSERVERS: Record<string, string> = {
 // PERMITTED_GESTURE_RESIZE_OBSERVERS (task 837). Before that census went
 // two-silo, this list's "RAF-scheduled" answered nothing about a gesture.
 const PERMITTED_RESIZE_OBSERVERS: Record<string, string> = {
+  "components/editor-layout/selected-card-placement.ts":
+    "Lives only while a selection slide is live (task 1179), on that ONE panel-list scroller: the callback reads the delivered contentRect (no DOM read, no write unless the list went zero-height = hidden, which releases the slide once and disconnects). Panel-local, never over editor content.",
   "components/figure-chrome-beside.ts":
     "Observes the figure block's own box + its column — node-local sizing, RAF-scheduled (lifted out of FigureBlockNodeView by task 837; its layout-gesture verdict — PARKED — lives in pane-drag-guardrail's two-silo gesture census).",
   // DocumentFolderTab's chrome-measurement RO was deleted by the Library UI

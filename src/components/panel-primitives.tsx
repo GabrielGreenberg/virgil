@@ -69,7 +69,7 @@ import { cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useCompressedLines } from "./editor-layout/contexts/card-display";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme, type PanelThemeKey } from "@/lib/panel-theme";
+import { themeFromAccent, DEFAULT_PANEL_COLORS, selectionHaloRing, type CardTheme, type PanelThemeKey } from "@/lib/panel-theme";
 import { CheckSquare, checkboxSemantics } from "./CheckSquare";
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
@@ -714,13 +714,21 @@ export function themedCardStyle(
       ...(options.dropTarget ? { boxShadow: CARD_DROP_TARGET_RING } : {}),
     };
   }
+  // Layers, outermost-intent first: the transient drop-target ring, then the
+  // SELECTION HALO (task 1179 — the same ring the selected margin marker
+  // wears, from `selectionHaloRing`, the one spelling; on by default, no
+  // longer gated on the `cardOutlineChrome` pref), then the ambient lift. A
+  // kind-less row (theme null) has no accent to ring with, so it keeps its
+  // neutral selected border alone.
+  const layers: string[] = [];
+  if (options?.dropTarget) layers.push(CARD_DROP_TARGET_RING);
+  if (selected && theme) layers.push(selectionHaloRing(theme.accent));
+  layers.push("var(--card-shadow-ambient)");
   return {
     ...(selected
       ? { borderColor: theme ? theme.borderSelected : NEUTRAL_SELECTED_BORDER }
       : {}),
-    boxShadow: options?.dropTarget
-      ? `${CARD_DROP_TARGET_RING}, var(--card-shadow-ambient)`
-      : "var(--card-shadow-ambient)",
+    boxShadow: layers.join(", "),
   };
 }
 
@@ -3165,17 +3173,14 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       //
       // STATED INTERACTION, not a residual left to be rediscovered: the
       // `cardOutlineChrome` View pref (default OFF) writes its own `outline`
-      // on `body.card-outline-chrome [data-card-key][data-card-selected]`,
-      // which is (0,3,1) against this class's (0,2,0) and therefore WINS. It
-      // costs nothing, because Tab into a card SELECTS it (`onFocusCapture`
-      // below), so with that pref on a keyboard-focused card is showing the
-      // themed selection edge on the same property — a visible indicator, in
-      // the accent rather than `--edge-strong`. That is the pre-554 story
-      // ("themed selection is the indicator") surviving exactly where the user
-      // opted into it, and this class supplying one where they did not. Which
-      // edge should win when both apply is a product call, not a cascade
-      // accident; it is pinned in the census so a change to either rule has to
-      // face it.
+      // on `.card-outline-chrome [data-card-key][data-card-hovered]` / `:hover`,
+      // which is (0,3,0) against this class's (0,2,0) and therefore WINS on a
+      // hovered card. Since task 1179 the pref no longer names SELECTION (a
+      // selected card wears the inline selection halo instead), so a
+      // keyboard-focused, selected card shows this class's `--edge-strong`
+      // edge on top of the halo. Which edge should win when both apply is a
+      // product call, not a cascade accident; it is pinned in the census so a
+      // change to either rule has to face it.
       className={withFocusIndicator(
         `group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`,
         FOCUS_OUTLINE_CLASS,

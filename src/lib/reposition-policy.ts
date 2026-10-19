@@ -88,6 +88,23 @@ const VISIBILITY_SLACK_PX = 0.5;
 
 export type RepositionVerdict = "move" | "hold";
 
+/**
+ * WHY the publisher wants the move — the rule's one named exception.
+ *
+ *  - `"necessity"` (the default): the whole rule above. A visible, nearby
+ *    element HOLDS.
+ *  - `"selection-alignment"` (task 1179): the user selected a card by
+ *    clicking its margin marker or in-text anchor, and the card is to sit
+ *    LEVEL with what they clicked — even when it is already visible and near.
+ *    Being near is not the point: the pairing is. Only rungs 0 (jitter) and
+ *    the unreadable-delta fail-open still apply. This is spelled HERE, as a
+ *    named intent, so the policy stays the one reader of "may this card
+ *    move?" — never a bypass at a call site. Its only publisher is the
+ *    selection-alignment door (`selected-card-placement.ts`), pinned by
+ *    `selected-card-placement.test.ts`.
+ */
+export type RepositionIntent = "necessity" | "selection-alignment";
+
 export interface RepositionQuery {
   /** Where the element is now (any 1-D space, as long as `target` shares it). */
   readonly current: number;
@@ -98,6 +115,8 @@ export interface RepositionQuery {
   /** The band it must sit inside to count as visible (its scroll container),
    *  or null when it can't be read. */
   readonly band: Band | null;
+  /** Defaults to `"necessity"`. See {@link RepositionIntent}. */
+  readonly intent?: RepositionIntent;
 }
 
 /** A band we can actually reason about: present, finite and non-degenerate.
@@ -145,6 +164,7 @@ export function mayReposition(q: RepositionQuery): RepositionVerdict {
   const delta = Math.abs(q.target - q.current);
   if (!Number.isFinite(delta)) return "move"; // unreadable ⇒ fail open
   if (delta <= REPOSITION_EPSILON_PX) return "hold";
+  if (q.intent === "selection-alignment") return "move";
   if (!isKnown(q.rect) || !isKnown(q.band)) return "move"; // fail open
   if (!isFullyVisible(q.rect, q.band)) return "move";
   if (delta > farThresholdFor(q.band)) return "move";

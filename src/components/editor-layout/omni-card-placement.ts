@@ -45,7 +45,7 @@ import {
 } from "./omni-pin-store";
 import { findOmniEntry } from "./event-bridges/open-for-card";
 import { resolveAlignScroll } from "./layout-scroll";
-import { mayReposition } from "@/lib/reposition-policy";
+import { mayReposition, type RepositionIntent } from "@/lib/reposition-policy";
 
 /** Where the gesture wants the card. `viewportY` is a screen Y (a click);
  *  `podTop` is already pod-relative (a jump's pre-scroll measurement, which
@@ -200,6 +200,7 @@ function holdIsNeeded(r: Resolved, desiredPodTop: number): boolean {
 function publish(
   target: HTMLElement | { key: string },
   desired: DesiredCardTop | "hold",
+  intent: RepositionIntent = "necessity",
 ): void {
   let retried = false;
   const apply = () => {
@@ -246,6 +247,7 @@ function publish(
         target: desiredPodTop,
         rect,
         band,
+        intent,
       });
       if (verdict === "hold") return; // refused: write nothing, move nothing
     } else if (!holdIsNeeded(r, desiredPodTop)) {
@@ -267,12 +269,17 @@ function publish(
  * sanctions the move. A refused placement writes NOTHING, so neither this
  * card, nor its neighbours, nor a card an earlier gesture pinned shifts by a
  * pixel.
+ *
+ * `intent` is the policy's named exception (task 1179): the selection-
+ * alignment door passes `"selection-alignment"` so a selected card pins level
+ * with its clicked marker even when it is already visible and near.
  */
 export function requestOmniCardPlacement(
   cardKey: string,
   desired: DesiredCardTop,
+  intent: RepositionIntent = "necessity",
 ): void {
-  publish({ key: cardKey }, desired);
+  publish({ key: cardKey }, desired, intent);
 }
 
 /**

@@ -3214,7 +3214,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         return;
       }
       // Suppress the selection-driven placement scroll — alignment happens
-      // by pulling the card to the click (alignOmniCardWithClick), never by
+      // by pulling the card to the click (placeSelectedCard), never by
       // scrolling the document row.
       suppressNextPlacement();
       cardStoreInst.select(ref);

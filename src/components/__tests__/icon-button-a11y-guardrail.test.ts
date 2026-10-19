@@ -1590,10 +1590,12 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
     expect(writers).toEqual([
       ".focus-outline:focus",
       ".focus-outline:focus-visible",
-      // The PREF, whose three selectors share one block. (0,3,0) beats the
-      // class, and that is the stated interaction above.
+      // The PREF, whose two HOVER selectors share one block. (0,3,0) beats
+      // the class, and that is the stated interaction above. Since task 1179
+      // it no longer names SELECTION (a selected card always wears the
+      // inline selection halo instead), so a keyboard-focused selected card
+      // shows the class's own edge — the pref can only win on hover.
       '.card-outline-chrome [data-card-key][data-card-hovered="true"],\n' +
-        '.card-outline-chrome [data-card-key][data-card-selected="true"],\n' +
         ".card-outline-chrome [data-card-key]:hover",
       // The popped-card suppression — (0,4,0), so it beat the class too, and
       // unscoped it deleted the indicator on EVERY popped card. Task 554

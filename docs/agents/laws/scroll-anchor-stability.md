@@ -15,3 +15,20 @@ This is the "card/overlay position recomputes and JUMPS on scroll" class (task 0
 A portaled `<MenuProvider>` is shape (b) by construction — but only if it is handed something to re-read. A rect captured at open is a frozen anchor: the menu stays where its trigger WAS. Every portaled menu therefore passes `trackAnchor`, built from [src/components/menu/live-anchor.ts](../../../src/components/menu/live-anchor.ts) (`elementAnchor` for a DOM trigger, `caretAnchor` for a document position, `nodeAnchor` for an inline atom); a thunk returning `null` falls back to the open-time rect. `portal={false}` menus move with their host by layout and are exempt; a menu whose parent re-derives its rect every frame (the lightning menu) is allowlisted with that reason.
 
 CI: `menu-live-anchor-census.test.ts` (census + allowlist-only-shrinks), `menu-live-anchor.test.tsx` (real consumers follow a moved anchor on scroll).
+
+## The selection-alignment half (task 1179)
+
+Selecting a card from the document (margin marker, in-text anchor, footnote /
+citation atom) aligns the card with the click through ONE door,
+`placeSelectedCard` ([selected-card-placement.ts](../../../src/components/editor-layout/selected-card-placement.ts)).
+Both of its strategies are case (a): the Omni pin is anchor-relative inside the
+pod, and the native-list slide is a one-shot `scrollTop` delta plus transient
+spacer padding on the list's OWN scroller — the card then moves with its list by
+layout. Nothing listens to `scroll`: release is driven by user INTENT events
+(wheel / touchmove / scroll keys / scrollbar press), the doc store's DESELECT
+(selecting another card continues the slide), a childList change on the card's ancestor path (re-sort / filter), and a
+zero-height ResizeObserver delivery (hidden). It reads two rects per gesture,
+in the frame after the selection commits, and never the document. It is the
+reposition policy's one named exception (`intent: "selection-alignment"` in
+`reposition-policy.ts`) — never a bypass. CI: `selected-card-placement.test.ts`,
+`selection-halo-census.test.ts`, `gutter-stability-census.test.ts`.
