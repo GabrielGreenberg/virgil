@@ -199,6 +199,7 @@ describe("raw passthrough declares only from LIVE bytes", () => {
  *  coverage leg below rather than silently skipping the sweep. */
 const SAMPLE_FOR: Record<string, string> = {
   expex: "\\pex one",
+  "bare-ex": "\\ex one",
   xlistenv: "\\begin{xlist}\\a one\\end{xlist}",
   graphicx: "\\includegraphics{fig.png}",
   tikz: "\\begin{tikzpicture}\\draw (0,0);\\end{tikzpicture}",

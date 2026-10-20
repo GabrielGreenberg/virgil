@@ -172,7 +172,14 @@ yourself**, and don't read a missing `\usepackage{expex}` as a bug — it may be
 surfaced conflict.
 A shim over a package is dropped WITH it (task 780): `LatexRequirement.dependsOn`
 (`xlistenv` → `expex`) makes every family drop go through `dropRequirement`, so a
-gb4e / linguex paper no longer gets an `xlist` shim it cannot compile. An expex
+gb4e / linguex paper no longer gets an `xlist` shim it cannot compile. Since task
+1206 a bare `\ex` / `\begin{xlist}` is SHARED vocabulary (expex and gb4e both
+speak it — `BARE_EX_SPEAKERS`): it declares the `bare-ex` "any member" need, met
+by a loaded gb4e (no notice) or resolved to expex; only expex-unique tokens
+(`\pex`, `\xe`, `\begingl`, `\getref`) pin expex. `langsci-gb4e` reads as gb4e
+(`PACKAGE_LOAD_ALIASES`, latex-lexer.ts), and the `xlist` shim is guarded
+(`\ifdefined\xlist\else…\fi`), so it can never meet an `xlist` defined
+elsewhere. An expex
 `\ex` header has ONE grammar (task 782); a header with a second `\label` or late
 `[opts]` is refused whole to the byte-literal carrier.
 

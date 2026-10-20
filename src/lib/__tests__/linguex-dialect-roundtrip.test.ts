@@ -389,14 +389,17 @@ describe("3 · serialize", () => {
     // so nothing but this leg keeps it agreeing with `matchExpexOpenerAt` about
     // what an expex opener IS — and a drift here is silent in the direction
     // that rewrites a user's preamble.
-    const expexDetector = PACKAGE_DETECTORS.find((d) => d.id === "expex");
-    expect(expexDetector).toBeDefined();
+    // Since task 1206 the opener vocabulary spans TWO rows: `expex` (the
+    // expex-unique `\\pex`) and `bare-ex` (the `\\ex` gb4e shares).
+    const rows = PACKAGE_DETECTORS.filter((d) => d.id === "expex" || d.id === "bare-ex");
+    expect(rows).toHaveLength(2);
+    const expexDetector = { re: { test: (s: string) => rows.some((r) => r.re.test(s)) } };
     for (const probe of ["\\ex x", "\\ex~x", "\\pex x", "\\ex\nx"]) {
-      expect(expexDetector!.re.test(probe), probe).toBe(true);
+      expect(expexDetector.re.test(probe), probe).toBe(true);
       expect(matchExpexOpenerAt(probe, 0), probe).not.toBeNull();
     }
     for (const probe of ["\\ex. x", "\\pex. x", "\\example x", "\\exercise x"]) {
-      expect(expexDetector!.re.test(probe), probe).toBe(false);
+      expect(expexDetector.re.test(probe), probe).toBe(false);
       expect(matchExpexOpenerAt(probe, 0), probe).toBeNull();
     }
   });
