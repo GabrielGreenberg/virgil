@@ -10,10 +10,9 @@ export interface AnchorableBlock {
 
 /**
  * Walk the doc once, collecting every anchorable block's
- * `{ uuid, pos, isAtom }` at every level. Used by:
- *   - useMarginaliaRegistry — structure-change diffing + initial prime.
- *   - TextObjectGrabHandle — resolving a known UUID to its current pos.
- *   - ActiveTextObjectContext — resolving the active block by UUID.
+ * `{ uuid, pos, isAtom }` at every level. Used by the EditorGeometry
+ * service (`src/lib/editor-geometry/service.ts`, which
+ * `useMarginaliaRegistry` adapts) — structure-change diffing + initial prime.
  *
  * Walks into anchorable containers so sub-objects (`listItem`,
  * `exampleItem`) and nested kinds (`graphicsBlock` inside a list item)

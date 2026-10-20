@@ -1689,8 +1689,9 @@ Six rules they earned:
   walk that both ladders already ran is what answers — `selectionOwner`, written
   twice before this and read from one place now.
 - **The two ladders stay DIFFERENT, and that is stated at both sites.** The grab
-  handle resolves a DRAG PAYLOAD; `active-text-object-context`'s
-  `resolveFromSelection` resolves an ANCHOR TARGET for the menus. Whether a
+  handle resolves a DRAG PAYLOAD; the menus resolve an ANCHOR TARGET
+  (`active-text-object-context`'s `resolveFromSelection` was that second
+  ladder until task 1201 deleted the unread provider). Whether a
   triple-click over a whole paragraph should mint a Mode-B `linkedRange` or a
   Mode-A paragraph anchor is a product question with no reported symptom, so
   only their shared ancestor walk was unified.

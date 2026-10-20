@@ -60,7 +60,6 @@ import {
   stripFootnoteNestedCitation,
 } from "./citation-doc-ops";
 import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
-import { ActiveTextObjectProvider } from "@/text-objects/active-text-object-context";
 import { SelectionActionsMenu } from "./SelectionActionsMenu";
 import { SlashCommandPopup } from "./SlashCommandPopup";
 import { sectionFoldingPluginKey } from "@/lib/section-folding";
@@ -479,14 +478,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // `readOnlyRef` (editableRef.current === !readOnlyRef.current).
   const editableRef = useRef(editable);
   editableRef.current = editable;
-  // Stable ref to the live TipTap editor instance — read at event time by
-  // the slash popup and active-text-object context. Populated below via
-  // useEffect once `useEditor` returns the instance. (The grab handle and
-  // the selection-actions menu take `editor` as a tracked PROP instead —
-  // task 736: this ref fills AFTER children render, so a render-time read
-  // of it, or an effect keyed on the ref object, binds to null and never
-  // re-binds on a swap.)
-  const editorInstanceRef = useRef<Editor | null>(null);
   // docId mirror — FigureBlock / GraphicsBlock NodeViews read it via
   // `extension.options.docIdRef.current` to resolve `\includegraphics`
   // paths against the active paper folder.
@@ -1684,17 +1675,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     applyHighlight();
   }, [highlightText, highlightRange, applyHighlight]);
 
-  // Keep the stable editor ref in sync for anything that needs a
-  // non-rerendering handle.
-  useEffect(() => {
-    editorInstanceRef.current = editor;
-    return () => {
-      if (editorInstanceRef.current === editor) {
-        editorInstanceRef.current = null;
-      }
-    };
-  }, [editor]);
-
   // Verification hook: expose the DocStructureObserver's emit counter on
   // `window.__virgilBusStats` so the keystroke-sanctity success criteria can be
   // checked live in the dev preview. Registers this editor in the shared probe
@@ -1751,14 +1731,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   }, [editor]);
 
   return (
-    <ActiveTextObjectProvider editorRef={editorInstanceRef}>
-      <div className="flex flex-col flex-1 min-w-0">
-        <EditorContent editor={editor} />
-        <TextObjectGrabHandle editor={editor} />
-        <SelectionActionsMenu editor={editor} documentClass={documentClass ?? null} />
-        <SlashCommandPopup editor={editor} />
-      </div>
-    </ActiveTextObjectProvider>
+    <div className="flex flex-col flex-1 min-w-0">
+      <EditorContent editor={editor} />
+      <TextObjectGrabHandle editor={editor} />
+      <SelectionActionsMenu editor={editor} documentClass={documentClass ?? null} />
+      <SlashCommandPopup editor={editor} />
+    </div>
   );
 });
 
