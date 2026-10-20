@@ -64,6 +64,8 @@ import {
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { ExcerptReturnAddress } from "@/lib/tiptap/restore-excerpt";
+import { freshenReturningUuids, withCarriedMarks } from "@/lib/tiptap/slice-capture";
+import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import VirgilEditor, { type EditorHandle } from "./Editor";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SCROLL_PERSIST } from "@/lib/layout-gesture-probe";
@@ -4280,31 +4282,37 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         clone: notesHook.cloneNote,
         delete: notesHook.deleteNote,
         bindAnchor: notesHook.bindAnchor,
+        carry: notesHook.carry,
       },
       highlight: {
         clone: notesHook.cloneHighlight,
         delete: notesHook.deleteNote,
         bindAnchor: notesHook.bindAnchor,
+        carry: notesHook.carry,
       },
       "revision-comment": {
         clone: revisionsHook.cloneComment,
         delete: revisionsHook.deleteCard,
         bindAnchor: revisionsHook.bindAnchor,
+        carry: revisionsHook.carry,
       },
       "revision-suggestion": {
         clone: revisionsHook.cloneSuggestion,
         delete: revisionsHook.deleteCard,
         bindAnchor: revisionsHook.bindAnchor,
+        carry: revisionsHook.carry,
       },
       "cutter-comment": {
         clone: cutterHook.cloneComment,
         delete: cutterHook.deleteCard,
         bindAnchor: cutterHook.bindAnchor,
+        carry: cutterHook.carry,
       },
       "cutter-suggestion": {
         clone: cutterHook.cloneSuggestion,
         delete: cutterHook.deleteCard,
         bindAnchor: cutterHook.bindAnchor,
+        carry: cutterHook.carry,
       },
       // The three kinds task 721 brought to Mode-B parity. They were unwired
       // here for as long as their registry rows claimed they carried no
@@ -4319,16 +4327,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         clone: todosHook.cloneTodo,
         delete: todosHook.deleteItem,
         bindAnchor: todosHook.bindAnchor,
+        carry: todosHook.carry,
       },
       report: {
         clone: reportsHook.cloneReport,
         delete: reportsHook.deleteCard,
         bindAnchor: reportsHook.bindAnchor,
+        carry: reportsHook.carry,
       },
       "report-request": {
         clone: reportsHook.cloneRequest,
         delete: reportsHook.deleteCard,
         bindAnchor: reportsHook.bindAnchor,
+        carry: reportsHook.carry,
       },
     }),
     [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, todosHook, reportsHook, deleteFootnoteUnbridged],
@@ -5107,6 +5118,24 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       reportsHookRaw.reinstate,
     ],
   );
+  // The five card stores that hold dormant links (task 1194) — the same five
+  // `reinstateByPanel` names, each exposing its `useDormantRevival` doors.
+  const dormantReturnDoors = useMemo(
+    () => [
+      notesHookRaw.returnRemapped,
+      todosHookRaw.returnRemapped,
+      cutterHookRaw.returnRemapped,
+      revisionsHookRaw.returnRemapped,
+      reportsHookRaw.returnRemapped,
+    ],
+    [
+      notesHookRaw.returnRemapped,
+      todosHookRaw.returnRemapped,
+      cutterHookRaw.returnRemapped,
+      revisionsHookRaw.returnRemapped,
+      reportsHookRaw.returnRemapped,
+    ],
+  );
   const handleArchiveRestore = useCallback((id: string) => {
     // THE PEN (task 1169): asked LIVE, before either route. The card route
     // (reinstate into its panel + drop the snippet from archive.json) is React
@@ -5138,7 +5167,27 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       (content) =>
         landReturningDisplaced({
           doc: () => innerRef.current?.getEditor()?.state.doc ?? null,
-          land: () => innerRef.current?.restoreArchive(content, address) ?? false,
+          // CARRIED MARKS (task 1194): the Mode-B marks of the cards that
+          // travelled with the passage go back on in the SAME transaction
+          // as the text — which is what revives their dormant links.
+          //
+          // UUID COLLISION (task 1194): a returning block whose uuid is
+          // already live gets a fresh one HERE rather than from the backfill,
+          // so the cards that went dormant on the old id follow it.
+          land: () => {
+            const ed = innerRef.current?.getEditor();
+            if (!ed) return innerRef.current?.restoreArchive(content, address) ?? false;
+            const { content: fresh, remap } = freshenReturningUuids(
+              content,
+              collectBlockUuids(ed.state.doc),
+            );
+            const landing = withCarriedMarks(ed.state.schema, fresh, snippet?.carriedMarks);
+            const landed = innerRef.current?.restoreArchive(landing, address) ?? false;
+            if (landed && remap.size > 0) {
+              for (const back of dormantReturnDoors) back(id, remap);
+            }
+            return landed;
+          },
           displaced: snippet?.displaced,
           retarget: anchorRetarget,
           snapshotOf: (uuid) =>
@@ -5211,6 +5260,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     anchorPass,
     anchorRetarget,
     reinstateByPanel,
+    dormantReturnDoors,
     dragHandleNotify,
     cardLifecycleSignal,
   ]);

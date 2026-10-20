@@ -100,7 +100,7 @@ function makeHarness(editor: Editor, duringConfirm: () => void) {
       { get: () => () => ({ id: "card-1", footnoteId: "card-1" }) },
     ) as unknown as DragHandleActionsDeps["cardCreation"],
     cardLifecycle: { get: () => ({ clone: () => "c", delete: () => {} }) },
-    anchorRetarget: { retarget: () => [] },
+    anchorRetarget: { retarget: () => [], carry: () => 0 },
     appliedSplice: { get: () => null, ask: async () => null, settle: () => true },
     confirm,
     notify,

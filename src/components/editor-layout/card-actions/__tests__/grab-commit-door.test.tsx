@@ -183,6 +183,7 @@ function makeHarness(
         counts.retargets += 1;
         return [];
       },
+      carry: () => 0,
     },
     appliedSplice: { get: () => null, ask: async () => null, settle: () => true },
     confirm: async () => {

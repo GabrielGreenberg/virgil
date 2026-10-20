@@ -1,9 +1,13 @@
 "use client";
 
+import { useCallback, useMemo, useRef } from "react";
 import {
   dormantKeysOf,
   insertionTouchesDormant,
+  markDormant,
   reviveLiveLinks,
+  reviveRemapped,
+  type CarriedKeys,
   type DormantCardShape,
   type DormantKeys,
 } from "@/links/dormant";
@@ -25,13 +29,30 @@ import { useAnchorsRevived } from "@/lib/tiptap/orphan-events";
  * nothing dormant answers in O(1) and never calls `update()`, so a not-yet-loaded panel is never poisoned (the
  * `useReconcileModeAAnchors` loader invariant).
  */
+/** The per-kind CARRY op (task 1194): the archive capture took the text
+ *  `keys` names into snippet `snippetId` — mark those links dormant (and the
+ *  card archived-with-its-text when every anchor is). The kind's
+ *  `CardLifecycle.carry`. */
+export type CarryCard = (id: string, snippetId: string, keys: CarriedKeys) => void;
+
+/** Restore's collision door (task 1194): the snippet's returning blocks were
+ *  given fresh uuids (`remap`, old → new) — move this kind's dormant links
+ *  onto them and revive them. See `reviveRemapped`. */
+export type ReturnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => void;
+
+/** The two writes a card hook exposes for the dormant state. */
+export interface DormantDoors {
+  carry: CarryCard;
+  returnRemapped: ReturnRemapped;
+}
+
 export function useDormantRevival<S, C extends DormantCardShape>(
   docId: string | null,
   update: (updater: (prev: S) => S) => void,
   state: S,
   selectCards: (state: S) => readonly C[],
   mapCards: (state: S, next: C[]) => S,
-): void {
+): DormantDoors {
   // No refs: `useAnchorsRevived` already re-points its listener at the latest
   // handler every render, so this closure always reads the current state.
   useAnchorsRevived(docId, (detail) => {
@@ -53,6 +74,35 @@ export function useDormantRevival<S, C extends DormantCardShape>(
       return changed ? mapCards(prev, next) : prev;
     });
   });
+
+  // The WRITE half (task 1194) — the archive capture's door into this kind's
+  // state. Same `update` / select / map the reviver uses, so making a link
+  // dormant and reviving it are one vocabulary over one store. Identity-stable
+  // (the lifecycle table is a memo; the selectors are inline lambdas).
+  const io = useRef({ update, selectCards, mapCards });
+  io.current = { update, selectCards, mapCards };
+  const mapEach = useCallback((step: (c: C) => C) => {
+    const { update: write, selectCards: select, mapCards: map } = io.current;
+    write((prev) => {
+      let changed = false;
+      const next = select(prev).map((c) => {
+        const r = step(c);
+        if (r !== c) changed = true;
+        return r;
+      });
+      return changed ? map(prev, next) : prev;
+    });
+  }, []);
+  const carry = useCallback<CarryCard>(
+    (id, snippetId, keys) =>
+      mapEach((c) => (c.id === id ? markDormant(c, snippetId, keys) : c)),
+    [mapEach],
+  );
+  const returnRemapped = useCallback<ReturnRemapped>(
+    (snippetId, remap) => mapEach((c) => reviveRemapped(c, snippetId, remap)),
+    [mapEach],
+  );
+  return useMemo(() => ({ carry, returnRemapped }), [carry, returnRemapped]);
 }
 
 /** The dormant-key index per card ARRAY — the sidecar hooks hand out a new

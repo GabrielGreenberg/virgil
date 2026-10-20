@@ -590,7 +590,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "note",
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // A note carries a rich body + an optional user title.
     content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
@@ -617,7 +617,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: null, // tint, no margin icon
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // A highlight is a color + range; no user-typed body → never warns on delete.
     content: null,
     dropSpec: null,
@@ -653,7 +653,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: null, // in-text atom
-    lifecycle: { clone: true, delete: true, bindAnchor: false },
+    lifecycle: { clone: true, delete: true, bindAnchor: false, carry: false },
     // A footnote's body rides `attrs.content` (threaded in as `content` by the
     // caller); the `\footnote` title (`\thanks` acknowledgement label) is an
     // extra user field. FN-A1-02: a title-only footnote IS content (its marker
@@ -679,7 +679,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "archive",
     // R18 ratified: NO cascade — archive survives anchor-paragraph deletion.
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
+    lifecycle: { clone: false, delete: false, bindAnchor: false, carry: false },
     // An archive snippet carries a rich body + an optional display title.
     content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
@@ -718,7 +718,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // refutes; duplicating a passage therefore carried its note and silently
     // dropped its todo. `lifecycle-cascade-criterion.test.ts` now bans the
     // sentence as well as the value.
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // A todo has TWO user-typed fields: the `text` title line AND the free-text
     // `notes` textarea (TodoRow). Both must be visible to the has-content confirm
     // (SSOT §T4 3.1) — a `text:"" notes:"…"` todo is reachable, so gating on
@@ -743,7 +743,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "system",
     anchored: false,
     markerType: null,
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
+    lifecycle: { clone: false, delete: false, bindAnchor: false, carry: false },
     // System kind (derived from the .bib); no panel-trash delete-confirm.
     content: null,
     dropSpec: null, // intentional: bib entries don't anchor to text
@@ -765,7 +765,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: null, // in-text atom
-    lifecycle: { clone: true, delete: true, bindAnchor: false },
+    lifecycle: { clone: true, delete: true, bindAnchor: false, carry: false },
     // A citation's "content" is its cite keys (the `\cite{key,…}` reference);
     // deleting the card removes the in-text `\cite{}` atom, so a citation with
     // keys must confirm (CI-F7-01 / OMNI-F7-01). The `keys` array counts when
@@ -795,7 +795,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "revision",
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // A revision comment carries a rich body + its plain-text mirror.
     content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
@@ -832,7 +832,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "cut",
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // A cutter comment carries a rich body + its plain-text mirror.
     content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
@@ -872,7 +872,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "cut",
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // `original_text` is a read-only capture of the targeted passage on EVERY
     // surface (the human field grid renders it `readOnly`; an AI card renders no
     // grid at all) and is recoverable from the document → never counted.
@@ -915,7 +915,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "revision",
-    lifecycle: { clone: true, delete: true, bindAnchor: true }, // provider re-keyed suggestion→here at the flip
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true }, // provider re-keyed suggestion→here at the flip
     // Same as the cutter suggestion: `original_text` never counts, and
     // `suggested_text` counts iff the record is human-authored (task 241).
     content: {
@@ -954,7 +954,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // Cascade ON, at parity with the other Mode-B kinds (task 721) —
     // `carriesModeBAnchor("report")` is true, so both walkers reach it. See
     // the `todo` row for the false premise this replaced.
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // A report carries a user-authored title + a rich body (+ its plain-text
     // mirror). REP-F7-01: a titled-but-empty-body report IS content — the title
     // must trigger the delete-confirm, so `title` counts.
@@ -988,7 +988,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // `carriesModeBAnchor("report-request")` is true, so both walkers reach it.
     // The clone resets `aiRequest`, so a duplicated request never files a
     // second inbox row off the copy.
-    lifecycle: { clone: true, delete: true, bindAnchor: true },
+    lifecycle: { clone: true, delete: true, bindAnchor: true, carry: true },
     // A report request carries a rich body + its plain-text mirror.
     content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
@@ -1020,7 +1020,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // PERMANENT (R19): the lifecycle is the exampleBlock TextObject's
     // (origin:derived); a card-level clone/delete would double-act = two-kinds
     // violation.
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
+    lifecycle: { clone: false, delete: false, bindAnchor: false, carry: false },
     // NO card-level user content at all (task 726). Everything an example holds
     // — its body, its `(N)`, its sub-items, its glosses — is the `\ex … \xe`
     // block in the `.tex`, edited in place through the card's own expex editor;
@@ -1071,7 +1071,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "system",
     anchored: false,
     markerType: "error",
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
+    lifecycle: { clone: false, delete: false, bindAnchor: false, carry: false },
     // System kind (linter diagnostic); no user content, no panel-trash confirm.
     content: null,
     dropSpec: null,

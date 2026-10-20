@@ -93,17 +93,26 @@ export type CardOrigin = "user" | "system" | "derived";
  *  own UI delete (every card can be dismissed from its panel regardless).
  *  So a kind is `{clone:true,delete:true}` IFF it is walker-reachable —
  *  either it carries an inline atom, OR it sets `bindAnchor:true` (a Mode-B
- *  text-range anchor the slice can re-bind). The all-false kinds are the
- *  Mode-A paragraph-anchored kinds (todo / report / report-request) and the
- *  origin:derived mirror (example) — no text-range anchor for the cascade to
- *  reach — plus `archive` (R18: ratified NO cascade; it survives anchor
- *  deletion). `assertLifecycleCoverage` + the E-4 criterion test pin this so a
+ *  text-range anchor the slice can re-bind). Todo / report / report-request
+ *  carry the mark too (task 721), so they are cascade-capable like note. The
+ *  all-false kinds are the origin:derived mirror (example), `archive` (R18:
+ *  ratified NO cascade; it survives anchor deletion) and the non-anchored
+ *  system kinds — nothing the walker can reach. `assertLifecycleCoverage` + the E-4 criterion test pin this so a
  *  future chip can't "fill" a permanent gap without tripping a test. */
 export interface CardLifecycleCapability {
   clone: boolean;
   delete: boolean;
   /** Mode-B re-anchor after clone. */
   bindAnchor: boolean;
+  /** ARCHIVE-CARRY (task 1194): what an ARCHIVE of this card's text does to
+   *  it. `true` — the card travels with the passage: its captured links go
+   *  dormant, the card is archived with the snippet, and Restore brings it
+   *  back. `false` — the pre-1194 answer stands: an inline-atom kind is
+   *  deleted (its marker rides the slice and its sidecar ref is rebuilt on
+   *  restore), and `archive` re-homes onto the preceding paragraph (task 491).
+   *  A one-line narrowing per kind; `archive-carry-census.test.ts` requires a
+   *  round-trip test row for every kind that declares it. */
+  carry: boolean;
 }
 
 /** The set of fields a `morph` drops — the fields the TO shape cannot hold.

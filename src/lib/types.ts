@@ -294,6 +294,14 @@ export interface ArchivedSnippet {
    *  `returnBefore` for the same reason. Restore hands them back to the
    *  restored passage (`landReturningDisplaced`). Absent ≡ none. */
   displaced?: DisplacedAnchorRecord[];
+  /** CARRIED MARKS (task 1194). The Mode-B `linkedAnchor` marks whose cards
+   *  travelled into this snippet. The excerpt schema deliberately has no
+   *  `linkedAnchor` mark (`card-body-capture.ts`), so the marks ride beside
+   *  `content` as a side record — offsets RELATIVE TO `content` (a position
+   *  in the captured doc), taken in the same pass that built it. Restore
+   *  re-stamps them onto the excerpt before it lands, which is what revives
+   *  the dormant links. One entry per contiguous marked run. Absent ≡ none. */
+  carriedMarks?: CarriedMarkRecord[];
   /** All paragraphs this snippet is anchored to. See src/links/links.ts
    *  for helpers (getLinkedTextObjectIds, addTextObjectLink, …). */
   links: Link[];
@@ -972,6 +980,16 @@ export interface OrphanedFootnotesState {
  *  `ArchivedSnippet.displaced`). `kind` is a `MarginItemKind`, typed as a
  *  string here because it round-trips through `archive.json`; an unknown kind
  *  is simply skipped on restore. */
+/** One carried `linkedAnchor` run — see `ArchivedSnippet.carriedMarks`. */
+export interface CarriedMarkRecord {
+  anchorId: string;
+  /** The mark's own attrs, verbatim (`anchorId`, `linkCard`, …). */
+  attrs: Record<string, unknown>;
+  /** Positions inside the snippet's `content` doc. */
+  from: number;
+  to: number;
+}
+
 export interface DisplacedAnchorRecord {
   kind: string;
   /** The card's id within its kind's collection. */

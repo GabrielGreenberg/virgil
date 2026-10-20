@@ -30,10 +30,15 @@
  *
  * **Mode-B (`linkedAnchor`) anchors deliberately do NOT re-home**, and that is
  * a statement rather than an omission: a Mode-B anchor names a TEXT RANGE, and
- * the range is precisely what left. Those cards keep the pre-491 path
- * (`cleanupLinksInRange` → the kind's `lifecycle.delete`), which the archive
- * and delete branches share, so widening here would silently change what
- * Delete does too. Task 393's equality leg still pins that half.
+ * the range is precisely what left. Those cards go through
+ * `cleanupLinksInRange`, which the archive and delete branches share — Delete
+ * deletes them, Archive CARRIES them (task 1194).
+ *
+ * **Since task 1194 only `archive` cards still re-home.** Every kind that
+ * declares `lifecycle.carry` travels INTO the snippet instead — its link goes
+ * dormant and comes back on Restore ({@link carryDisplacedAnchors}); the
+ * archive gesture hands {@link retargetDisplacedAnchors} that predicate as
+ * `keep`. The join re-home (task 514) passes no `keep` and is unchanged.
  *
  * ## Why the sweep asks the COLLECTION
  *
@@ -58,6 +63,12 @@ import type { DisplacedAnchorRecord } from "@/lib/types";
 import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 import type { MarginItemHandlers, MarginItemKind } from "./delete-margin-item";
+import type { CardWithLinks } from "@/links/links";
+import type { CardKind } from "./types";
+import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
+import { CARD_REGISTRY } from "./card-registry";
+import { cardKindFromRecord } from "./predicates";
+import { panelForMarkerType } from "./marker-meta";
 
 /** Where the displaced anchors go. Resolved ONCE per gesture by
  *  `resolveDisplacedAnchorTarget` so the snippet and every card it displaced
@@ -81,6 +92,10 @@ export interface RetargetDisplacedAnchorsArgs {
   /** The target paragraph's normalized text, so the fresh Mode-A link is
    *  self-healing on reload exactly as the re-anchor gesture's is. */
   snapshot: string | null;
+  /** Cards this sweep leaves where they are because they TRAVEL with the
+   *  capture instead (task 1194 — {@link carryDisplacedAnchors}). Absent for
+   *  the join re-home, which has no snippet to travel into. */
+  keep?: (kind: MarginItemKind, card: CardWithLinks) => boolean;
 }
 
 /**
@@ -107,6 +122,7 @@ export function retargetDisplacedAnchors({
   removed,
   target,
   snapshot,
+  keep,
 }: RetargetDisplacedAnchorsArgs): DisplacedAnchorRecord[] {
   if (!target || removed.size === 0) return [];
   // A target inside the removal would hand every card a uuid that is about to
@@ -118,6 +134,7 @@ export function retargetDisplacedAnchors({
   for (const kind of Object.keys(handlers) as MarginItemKind[]) {
     const bundle = handlers[kind];
     for (const card of bundle.cards) {
+      if (keep?.(kind, card)) continue;
       const pids = getLinkedTextObjectIds(card);
       const displaced = pids.filter((pid) => removed.has(pid));
       if (displaced.length === 0) continue;
@@ -132,6 +149,66 @@ export function retargetDisplacedAnchors({
   return moved;
 }
 
+/** The spine kind of a card in a margin bundle — `cut` / `revision` /
+ *  `report` bundles hold two kinds each, told apart by the record's own
+ *  `kind`. */
+export function marginCardKind(kind: MarginItemKind, card: CardWithLinks): CardKind {
+  return cardKindFromRecord(card as { kind?: string }, panelForMarkerType(kind));
+}
+
+/** Does an ARCHIVE carry this margin card with the passage (task 1194)? Its
+ *  kind's declared `lifecycle.carry` — the predicate the capture hands
+ *  {@link retargetDisplacedAnchors} as `keep`, so a card is either carried or
+ *  re-homed, never both. `archive` declares no carry: an archive card inside
+ *  the passage still stacks on the preceding paragraph (task 491). */
+export function travelsWithArchive(kind: MarginItemKind, card: CardWithLinks): boolean {
+  return CARD_REGISTRY[marginCardKind(kind, card)]?.lifecycle.carry === true;
+}
+
+export interface CarryDisplacedAnchorsArgs {
+  handlers: Record<MarginItemKind, MarginItemHandlers>;
+  /** Block uuids the capture removed whole (`collectRemovedAnchorUuids`). */
+  removed: ReadonlySet<string>;
+  /** The snippet the passage now lives in. */
+  snippetId: string;
+  /** The per-doc lifecycle table — its `carry` op is the write. */
+  lifecycle: CardLifecycleApi;
+}
+
+/**
+ * **An archive CARRIES the Mode-A cards of its passage** (task 1194) — the
+ * replacement, for every travelling kind, of the 491 re-home above. A card
+ * whose paragraph left WHOLE goes into the archive with it: the link that
+ * named that paragraph turns dormant in `snippetId` (the paragraph's uuid
+ * rides the capture and comes back on Restore, which revives the link by
+ * liveness), and a card with no live anchor left is archived with the
+ * snippet. A link to SURVIVING text is untouched, so a multi-anchor card stays
+ * active there. Nothing is written onto the neighbour and nothing goes in the
+ * snippet's `displaced` record — there is nothing to hand back.
+ *
+ * Returns how many cards it carried. O(cards × anchors) on a click.
+ */
+export function carryDisplacedAnchors({
+  handlers,
+  removed,
+  snippetId,
+  lifecycle,
+}: CarryDisplacedAnchorsArgs): number {
+  if (removed.size === 0 || !snippetId) return 0;
+  let carried = 0;
+  for (const kind of Object.keys(handlers) as MarginItemKind[]) {
+    for (const card of handlers[kind].cards) {
+      if (!travelsWithArchive(kind, card)) continue;
+      if (!getLinkedTextObjectIds(card).some((pid) => removed.has(pid))) continue;
+      const carry = lifecycle.get(marginCardKind(kind, card))?.carry;
+      if (!carry) continue;
+      carry(card.id, snippetId, { pids: removed });
+      carried += 1;
+    }
+  }
+  return carried;
+}
+
 /**
  * The stable API the drag-handle dispatcher holds.
  *
@@ -143,6 +220,8 @@ export function retargetDisplacedAnchors({
  */
 export interface AnchorRetargetApi {
   retarget(args: Omit<RetargetDisplacedAnchorsArgs, "handlers">): DisplacedAnchorRecord[];
+  /** The archive's Mode-A CARRY (task 1194) — see {@link carryDisplacedAnchors}. */
+  carry(args: Omit<CarryDisplacedAnchorsArgs, "handlers">): number;
   /** The inverse, for Restore (task 1079) — see {@link returnDisplacedAnchors}. */
   returnDisplaced(args: Omit<ReturnDisplacedAnchorsArgs, "handlers">): number;
 }
@@ -158,6 +237,7 @@ export function useAnchorRetargetApi(
     () => ({
       retarget: (args) =>
         retargetDisplacedAnchors({ ...args, handlers: ref.current }),
+      carry: (args) => carryDisplacedAnchors({ ...args, handlers: ref.current }),
       returnDisplaced: (args) =>
         returnDisplacedAnchors({ ...args, handlers: ref.current }),
     }),

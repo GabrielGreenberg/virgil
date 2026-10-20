@@ -224,7 +224,7 @@ function makeHarness(editor: Editor, appliedSplice: AppliedSpliceOps) {
         },
       }),
     } as unknown as DragHandleActionsDeps["cardLifecycle"],
-    anchorRetarget: { retarget: () => [] },
+    anchorRetarget: { retarget: () => [], carry: () => 0 },
     appliedSplice,
     confirm: async () => true,
     notify,
