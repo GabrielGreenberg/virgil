@@ -382,6 +382,15 @@ export const COMMAND_MAP = new Map(VIRGIL_COMMANDS.map((c) => [c.name, c]));
  * `false` having dispatched NOTHING: the document is byte-identical and the
  * caller decides whether to consume the key or let it through.
  *
+ * **A collapsed caret at `to`, or nothing (task 1196).** The door deletes
+ * `from..to` and then runs an action that reads the LIVE selection. Under a
+ * range selection that is two defects: a forward range survives the delete and
+ * the action consumes it (`\footnote` + Shift+End replaced the rest of the
+ * line), and a backward range puts the caller's `selection.from` INSIDE the
+ * typed name, so only part of `\name` is deleted and the rest is stranded. The
+ * precondition lives HERE, in the one door, so neither caller can forget it —
+ * the popup closes on a range (`reSync`) so it never offers what this refuses.
+ *
  * `mutate` lets the popup fold its own close-meta into the delete transaction,
  * so a successful command still costs exactly the transactions it did before.
  */
@@ -394,6 +403,8 @@ export function commitSlashCommand(
 ): boolean {
   const cmd = COMMAND_MAP.get(name);
   if (!cmd) return false;
+  const sel = view.state.selection;
+  if (!sel.empty || sel.from !== to) return false;
   // ASK FIRST — this ordering IS the fix. Nothing below runs on a refusal.
   if (!slashCommandEnabled(view, name)) return false;
   const tr = view.state.tr.delete(from, to);
