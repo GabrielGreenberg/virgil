@@ -54,6 +54,7 @@ import {
   projectDetectableLatex,
   startsBlockBoundary,
   emitInlineMath,
+  emitDisplayMath,
   wrapVerbatimEnvBody,
   TEX_BLOCK_END_ESCAPE,
 } from "@/lib/latex-lexer";
@@ -917,7 +918,16 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "displayMath": {
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuidAnchorSuffix(uuid);
-      return `\\[\n${node.attrs?.latex || ""}\n\\]${anchor}\n\n`;
+      // Source adjacency (task 1207): an equation written INSIDE a paragraph
+      // (no blank line on a side) marks that side with the JOIN sentinel, and
+      // the one blank-run pass every emit path ends at (`collapseBlankRuns`)
+      // turns the blank line there back into the single newline the user
+      // wrote. Resolved on the JOINED string rather than here because the
+      // neighbour's bytes are not this node's — a block's bytes stay a pure
+      // function of the block (the child-part memo's contract, above).
+      const before = node.attrs?.joinPrev ? DISPLAY_JOIN : "";
+      const after = node.attrs?.joinNext ? DISPLAY_JOIN : "";
+      return `${before}${emitDisplayMath(node.attrs)}${anchor}\n\n${after}`;
     }
 
     case "footnote": {
@@ -1122,8 +1132,7 @@ function serializeExampleBlock(node: JSONContent): string {
       // preceding paragraph stays its own block on re-parse.
       const mUuid = child.attrs?.uuid as string | null;
       const mAnchor = uuidAnchorSuffix(mUuid);
-      const latex = (child.attrs?.latex as string) || "";
-      pieces.push({ type: "displayMath", text: `\\[\n${latex}\n\\]${mAnchor}` });
+      pieces.push({ type: "displayMath", text: `${emitDisplayMath(child.attrs)}${mAnchor}` });
     } else if (child.type === "exampleGloss") {
       pieces.push({
         type: "exampleGloss",
@@ -1347,8 +1356,7 @@ function serializeExampleItem(node: JSONContent): string {
       // block on re-parse (round-trip verified in displaymath-in-item-roundtrip).
       const mUuid = child.attrs?.uuid as string | null;
       const mAnchor = uuidAnchorSuffix(mUuid);
-      const latex = (child.attrs?.latex as string) || "";
-      pieces.push(`\\[\n${latex}\n\\]${mAnchor}`);
+      pieces.push(`${emitDisplayMath(child.attrs)}${mAnchor}`);
     } else if (child.type === "exampleGloss") {
       pieces.push(serializeExampleGloss(child).trimEnd());
     } else if (child.type === "exampleItemList") {
@@ -1638,6 +1646,13 @@ const SERIALIZER_GENERATED_ENVS = [
  * serializes a PARAGRAPH — no block atom can appear in one — so it cannot see a
  * sentinel. The restore below also strips any unpaired sentinel defensively.
  */
+/**
+ * The display-math JOIN sentinel (task 1207): "the blank line on this side of
+ * the equation is not the user's". `collapseBlankRuns` folds every `\n\n`
+ * immediately before it to a single `\n` and then drops it, so it — like the
+ * carry sentinels below — never reaches the user's file.
+ */
+const DISPLAY_JOIN = "\u0000\u241f<vjoin/>";
 const CARRIED_OPEN = "\u0000\u241f<vcarry>";
 const CARRIED_CLOSE = "</vcarry>\u241f\u0000";
 
@@ -1658,7 +1673,13 @@ function carriedSource(bytes: string): string {
  * site today.
  */
 function withoutCarrySentinels(text: string): string {
-  return text.split(CARRIED_OPEN).join("").split(CARRIED_CLOSE).join("");
+  return text
+    .split(CARRIED_OPEN)
+    .join("")
+    .split(CARRIED_CLOSE)
+    .join("")
+    .split(DISPLAY_JOIN)
+    .join("");
 }
 
 const CARRIED_SPAN_RE = new RegExp(
@@ -1738,6 +1759,13 @@ function collapseBlankRuns(s: string): string {
         const block = blocks[Number(i)];
         return block === undefined ? whole : block;
       })
+      // A display equation written inside its paragraph (task 1207): the
+      // blank line on a JOIN side is folded back to the user's one newline.
+      // Runs after the collapse, so a run of 3+ newlines was already two.
+      .split(`\n\n${DISPLAY_JOIN}`)
+      .join("\n")
+      .split(DISPLAY_JOIN)
+      .join("")
       // Defensive: an unpaired sentinel must never reach the user's file.
       .split(CARRIED_OPEN)
       .join("")
