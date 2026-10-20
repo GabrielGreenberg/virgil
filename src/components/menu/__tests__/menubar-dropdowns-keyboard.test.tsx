@@ -38,6 +38,9 @@ import { REGISTRY_DEFAULTS, type RegistryPrefs } from "@/lib/view-prefs/registry
 vi.mock("@/text-objects/text-object-registry", async (importActual) => ({
   ...(await importActual<typeof import("@/text-objects/text-object-registry")>()),
   posHostsBlockInsert: () => true,
+  // Task 1199: every level now commits through the registry's `headingRun`,
+  // whose range gate this stub doc cannot answer either.
+  blockRangeHostsBlockInsert: () => true,
 }));
 
 // jsdom has no ResizeObserver; useFloatingMenuPosition measures with one.
@@ -92,9 +95,14 @@ interface FakeCommandProps {
 }
 
 /** A minimal editor stub: `isActive("heading", {level})` reflects `currentLevel`
- *  (null ⇒ paragraph), `isEditable` true, and a spy-able chain. Levels 0/5/6 +
- *  'Body' take the direct editor-chain path (no action registry), so we can
- *  assert them; levels 1–4 route through the registry (not asserted here). */
+ *  (null ⇒ paragraph), `isEditable` true, a spy-able chain, and a view whose
+ *  `state.tr` is the spy-able transaction and whose `dispatch` is a spy.
+ *  Task 1199: every row commits through ONE door — the focus hand-back on the
+ *  chain, then the transform dispatched on the view (`runHeadingLevel` for
+ *  every level, `setParagraphInRange` for Body text). The stub doc cannot
+ *  answer the heading gates, so they take the registry's "can't ask → allow"
+ *  fallback; their own refusals are covered over the real schema in
+ *  block-type-verdicts.test.ts. */
 function makeEditor(currentLevel: number | null) {
   const run = vi.fn(() => true);
   const chain: FakeChain = {
@@ -121,6 +129,7 @@ function makeEditor(currentLevel: number | null) {
     tr: { selection: { from: 1, to: 1 }, setBlockType, doc, mapping: { map: (p) => p } },
     dispatch: () => {},
   };
+  const dispatch = vi.fn();
   const editor = {
     isEditable: true,
     schema: { nodes: { heading: headingType, paragraph: paragraphType } },
@@ -133,9 +142,20 @@ function makeEditor(currentLevel: number | null) {
     chain: () => chain,
     // `editable` on the VIEW, because that is where a real TipTap editor
     // keeps it and where the surface-editability door reads it (task 733).
-    view: { editable: true, state: { selection: { head: 1 }, doc: {} } },
+    view: {
+      editable: true,
+      state: {
+        selection: { from: 1, to: 1, head: 1 },
+        doc,
+        schema: { nodes: { heading: headingType, paragraph: paragraphType } },
+        get tr() {
+          return commandProps.tr;
+        },
+      },
+      dispatch,
+    },
   } as unknown as Editor;
-  return { editor, chain, run, setBlockType, headingType, paragraphType };
+  return { editor, chain, run, dispatch, setBlockType, headingType, paragraphType };
 }
 
 function blockButtons(): HTMLButtonElement[] {
@@ -191,12 +211,12 @@ describe("BlockTypeDropdown — portaled render + click selection", () => {
 
   it("clicking 'Body text' demotes through the ONE door + closes", () => {
     // Task 1003: `setParagraphInRange` (heading-level.ts), not `setParagraph()`.
-    const { editor, chain, setBlockType, paragraphType } = makeEditor(2); // a heading
+    const { editor, chain, dispatch, setBlockType, paragraphType } = makeEditor(2); // a heading
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
     fireEvent.click(blockButtonByLabel("Body text")!);
     expect(chain.setParagraph).not.toHaveBeenCalled();
-    expect(chain.command).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
     expect(setBlockType).toHaveBeenCalledTimes(1);
     expect(setBlockType.mock.calls[0][2]).toBe(paragraphType);
     expect(document.querySelector('[role="menu"]')).toBeNull(); // closed
@@ -212,13 +232,13 @@ describe("BlockTypeDropdown — portaled render + click selection", () => {
     // level-only change for a heading. Preservation end-to-end over the real
     // schema is heading-level-attr-preservation.test.ts; what belongs HERE is
     // that the dropdown's out-of-scope half reaches that door at all.
-    const { editor, chain, setBlockType, headingType } = makeEditor(null); // paragraph
+    const { editor, chain, dispatch, setBlockType, headingType } = makeEditor(null); // paragraph
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
     fireEvent.click(blockButtonByLabel("Part")!);
 
     expect(chain.setNode).not.toHaveBeenCalled();
-    expect(chain.command).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
     expect(setBlockType).toHaveBeenCalledTimes(1);
     const [from, to, type, attrs] = setBlockType.mock.calls[0] as [
       number, number, unknown, (n: unknown) => Record<string, unknown>,
@@ -241,13 +261,14 @@ describe("BlockTypeDropdown — portaled render + click selection", () => {
   });
 
   it("a read-only editor makes the pick inert (no chain call)", () => {
-    const { editor, chain, setBlockType } = makeEditor(2);
+    const { editor, chain, dispatch, setBlockType } = makeEditor(2);
     (editor as unknown as { isEditable: boolean }).isEditable = false;
     (editor.view as unknown as { editable: boolean }).editable = false;
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
     fireEvent.click(blockButtonByLabel("Body text")!);
-    expect(chain.command).not.toHaveBeenCalled();
+    expect(chain.run).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
     expect(setBlockType).not.toHaveBeenCalled();
   });
 });
@@ -374,7 +395,7 @@ function activeViewRow(): HTMLButtonElement | undefined {
 
 describe("BlockTypeDropdown — heading rows follow the document class (task 752)", () => {
   it("in an `article`, Chapter is visible but disabled, arrow-skipped and inert", () => {
-    const { editor, chain } = makeEditor(null);
+    const { editor, chain, dispatch } = makeEditor(null);
     const { container } = render(<BlockTypeDropdown editor={editor} documentClass="article" />);
     fireEvent.click(container.querySelector("button")!);
     expect(blockButtons()).toHaveLength(8); // stays visible — full vocabulary
@@ -394,7 +415,7 @@ describe("BlockTypeDropdown — heading rows follow the document class (task 752
 
     // A click is inert: no write, menu stays open.
     fireEvent.click(chapter);
-    expect(chain.command).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
     expect(chain.run).not.toHaveBeenCalled();
     expect(document.querySelector('[role="menu"]')).toBeTruthy();
   });
@@ -424,11 +445,11 @@ describe("BlockTypeDropdown — heading rows follow the document class (task 752
 
   it("pickBlockType refuses a class-unsupported level even when called directly", async () => {
     const { pickBlockType } = await import("../../MenuBar");
-    const { editor, chain } = makeEditor(null);
+    const { editor, dispatch } = makeEditor(null);
     pickBlockType(editor, "0", "letter"); // \part in a letter
-    expect(chain.command).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
     pickBlockType(editor, "0", "article"); // allowed
-    expect(chain.command).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 });
 
