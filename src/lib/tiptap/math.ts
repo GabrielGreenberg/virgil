@@ -329,6 +329,14 @@ function blockReplaceStart($from: ResolvedPos, start: number, type: NodeType): n
   return $from.node(-1).canReplaceWith(index, index, type) ? $from.before() : start;
 }
 
+/** A source-adjacency flag (task 1207): kept in the model, never on the
+ *  clipboard — a pasted equation sits wherever it is dropped. */
+const SOURCE_ADJACENCY_ATTR = {
+  default: false,
+  parseHTML: () => false,
+  renderHTML: () => ({}),
+};
+
 export const DisplayMath = Node.create<MathOptions>({
   name: "displayMath",
   group: "block textObject",
@@ -343,8 +351,20 @@ export const DisplayMath = Node.create<MathOptions>({
   addAttributes() {
     // `latex` rides the ONE clipboard codec (task 1068), like inline math's;
     // `uuid` keeps its own stated policy (a paste never carries it).
+    //
+    // Task 1207 — the equation's SOURCE layout, opaque to every UI and read
+    // only by the emitter (`emitDisplayMath` / the serializer's join pass):
+    // `padOpen`/`padClose` are the whitespace inside `\[…\]` (null ⇒ the
+    // canonical newline), and ride the clipboard with the equation. The JOIN
+    // flags record that no blank line separated the equation from its
+    // neighbour in the source — a fact about WHERE it sat, so a paste (a new
+    // place) never carries them: they state their own null clipboard policy.
     return withClipboardCodec({
       latex: { default: "" },
+      padOpen: { default: null },
+      padClose: { default: null },
+      joinPrev: SOURCE_ADJACENCY_ATTR,
+      joinNext: SOURCE_ADJACENCY_ATTR,
       uuid: UUID_ATTR_SPEC.uuid,
     });
   },

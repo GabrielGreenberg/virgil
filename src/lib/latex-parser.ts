@@ -56,7 +56,9 @@ import {
   findDocumentBoundary,
   END_DOCUMENT_TOKEN,
   isEscaped,
-  findUnescaped,
+  findMathClose,
+  displayMathJoinAttrs,
+  displayMathPadAttrs,
   matchBeginEnvAt,
   matchBraceGroupAt,
   matchStrayBraceAt,
@@ -1634,9 +1636,11 @@ function parseBody(
       // Escape-aware close search (parity SSOT — see the mid-paragraph twin):
       // a `\\` line break right before a literal `]` (e.g. a matrix row ending
       // `\\` before the environment close) must not close the math early.
-      const endMath = findUnescaped(ctx.src, "\\]", ctx.pos + 2);
+      const endMath = findMathClose(ctx.src, "\\]", ctx.pos + 2);
       if (endMath !== -1) {
-        const latex = ctx.src.slice(ctx.pos + 2, endMath).trim();
+        const openAt = ctx.pos;
+        const raw = ctx.src.slice(ctx.pos + 2, endMath);
+        const latex = raw.trim();
         ctx.pos = endMath + 2;
         // Check for trailing %!v:xxxx UUID anchor
         let mathUuid: string | null = null;
@@ -1646,9 +1650,27 @@ function parseBody(
           mathUuid = uuidMatch[1];
           ctx.pos += uuidMatch[0].length;
         }
+        // The equation's SOURCE ADJACENCY (task 1207). The model keeps display
+        // math a block either way, but whether the source had a blank line
+        // (TeX's `\par`) on each side is the user's paragraphing, not layout:
+        // `Lead in.\n\[x^2\]\nwhere…` is ONE paragraph with a display in it,
+        // and "where…" continues it unindented. So the block records it, and
+        // the serializer re-emits exactly that — plus the delimiters' own
+        // line layout (`\[x^2\]` on one line stays on one line).
+        const joins = displayMathJoinAttrs(
+          ctx.src,
+          openAt,
+          ctx.pos,
+          parent.content.length > 0,
+        );
         parent.content.push({
           type: "displayMath",
-          attrs: { latex, ...(mathUuid ? { uuid: mathUuid } : {}) },
+          attrs: {
+            latex,
+            ...displayMathPadAttrs(raw),
+            ...joins,
+            ...(mathUuid ? { uuid: mathUuid } : {}),
+          },
         });
         continue;
       }

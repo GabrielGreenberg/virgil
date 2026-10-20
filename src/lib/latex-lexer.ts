@@ -816,9 +816,11 @@ export interface InlineMathMatch {
  * (memo §A "Critical exclusions"), which is the whole reason a delimiter this
  * scanner does not know is worse than one it refuses.
  *
- * The close search runs through {@link findUnescaped} for every form, so a `\\`
+ * The close search runs through {@link findMathClose} for every form, so a `\\`
  * line break immediately before a literal `]`/`)`/`$` cannot close the run
- * early (task 210's parity rule, now stated once for all four pairs).
+ * early (task 210's parity rule, now stated once for all four pairs), and a
+ * delimiter nested inside a `\text{…}` group is not the run's closer (task
+ * 1207).
  */
 export function matchInlineMathAt(
   text: string,
@@ -834,12 +836,118 @@ export function matchInlineMathAt(
     // the backslash before the backslash.)
     if (d.open[0] === "$" && isEscaped(text, start)) return null;
     const payloadStart = start + d.open.length;
-    const closeIdx = findUnescaped(text, d.close, payloadStart);
+    const closeIdx = findMathClose(text, d.close, payloadStart);
     if (closeIdx === -1) continue;
     const raw = text.slice(payloadStart, closeIdx);
     return { latex: raw, delim: d.open, end: closeIdx + d.close.length };
   }
   return null;
+}
+
+/**
+ * **THE math-closer scanner** (task 1207): the index of the delimiter `close`
+ * that ends a math run whose payload starts at `from`, or -1.
+ *
+ * A closer counts only at BRACE DEPTH 0 of the payload. TeX re-enters math
+ * inside a text box — `$\text{for all $x_i$}$` is ONE formula whose `\text`
+ * argument holds a second, nested one — and a `$` inside an open `{…}` group
+ * can never close the outer run (in valid source it can only be such a nested
+ * run's own delimiter). The pre-1207 search was a flat `findUnescaped`, so it
+ * closed at the inner `$`: the formula was split, `x_i$}` fell into the prose
+ * buffer, and the save wrote `$x\_i$` — a printed underscore in the PDF.
+ *
+ * A group is stepped over by THE group scanner ({@link findGroupClose}), so
+ * escapes follow the one parity rule (`\{`/`\}` are literal braces) and an
+ * escaped closer is not a closer. The scan stops at
+ * a blank line — a math run cannot hold a paragraph break — and when the
+ * brace-aware scan finds nothing (unbalanced braces in hand-written source),
+ * it falls back to the flat search, so malformed input reads exactly as it did
+ * before. Shared by both inline parsers (through {@link matchInlineMathAt}) and
+ * the block-level `\[…\]` reader in `latex-parser.ts`, so the three cannot
+ * disagree about where a formula ends.
+ */
+export function findMathClose(text: string, close: string, from: number): number {
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\n" && /^\n[ \t]*\n/.test(text.slice(i, i + 64))) break;
+    if ((ch === "{" || ch === "}") && isEscaped(text, i)) continue;
+    if (ch === "{") {
+      // A group is stepped over WHOLE by the one group scanner (task 777), so
+      // nothing inside it — a nested `$x_i$` — can read as this run's closer.
+      const groupEnd = findGroupClose(text, i);
+      if (groupEnd === -1) break;
+      i = groupEnd;
+    } else if (ch === "}") {
+      break; // a `}` closing a group the run did not open: not a formula
+    } else if (ch === close[0] && text.startsWith(close, i) && !isEscaped(text, i)) {
+      return i;
+    }
+  }
+  return findUnescaped(text, close, from);
+}
+
+/**
+ * **THE display-math envelope** (task 1207) — the `\[…\]` bytes of a
+ * `displayMath` block, spelled once for every emitter (the top-level block,
+ * an example body, an example item).
+ *
+ * `padOpen` / `padClose` are the whitespace the SOURCE had inside the
+ * delimiters: absent ⇒ Virgil's canonical `\[\n…\n\]`; `""` ⇒ the one-line
+ * `\[x^2\]` the user wrote. A pad is only ever whitespace, and a pad without
+ * a newline is refused where the payload's last line holds a `%` comment —
+ * the `\]` would otherwise be commented out.
+ */
+export function emitDisplayMath(attrs: Record<string, unknown> | undefined): string {
+  const latex = typeof attrs?.latex === "string" ? attrs.latex : "";
+  const pad = (v: unknown): string =>
+    typeof v === "string" && /^\s*$/.test(v) ? v : "\n";
+  const open = pad(attrs?.padOpen);
+  let close = pad(attrs?.padClose);
+  if (!close.includes("\n")) {
+    const lastLine = latex.slice(latex.lastIndexOf("\n") + 1);
+    if (/(^|[^\\])(\\\\)*%/.test(lastLine)) close = "\n";
+  }
+  return `\\[${open}${latex}${close}\\]`;
+}
+
+/** The parse-side pad spread: only a NON-canonical layout is recorded, so a
+ *  `\[\n…\n\]` block's JSON is unchanged from before task 1207. */
+export function displayMathPadAttrs(raw: string): {
+  padOpen?: string;
+  padClose?: string;
+} {
+  const latex = raw.trim();
+  const padOpen = latex ? raw.slice(0, raw.indexOf(latex)) : raw;
+  const padClose = latex ? raw.slice(raw.indexOf(latex) + latex.length) : "";
+  const out: { padOpen?: string; padClose?: string } = {};
+  if (padOpen !== "\n") out.padOpen = padOpen;
+  if (padClose !== "\n") out.padClose = padClose;
+  return out;
+}
+
+/**
+ * Does a block-level `\[…\]` spanning `[openAt, endAt)` sit INSIDE a
+ * paragraph (task 1207)? `joinPrev` — something precedes it in its container
+ * and no blank line separates them; `joinNext` — content follows and no blank
+ * line separates them. A blank line is TeX's `\par`, so these are the user's
+ * paragraphing, which the serializer must reproduce rather than normalize.
+ */
+export function displayMathJoinAttrs(
+  src: string,
+  openAt: number,
+  endAt: number,
+  hasPrev: boolean,
+): { joinPrev?: true; joinNext?: true } {
+  const out: { joinPrev?: true; joinNext?: true } = {};
+  if (hasPrev) {
+    let i = openAt;
+    while (i > 0 && /[ \t\n]/.test(src[i - 1])) i--;
+    if (i > 0 && !/\n[ \t]*\n/.test(src.slice(i, openAt))) out.joinPrev = true;
+  }
+  let j = endAt;
+  while (j < src.length && /[ \t\n]/.test(src[j])) j++;
+  if (j < src.length && !/\n[ \t]*\n/.test(src.slice(endAt, j))) out.joinNext = true;
+  return out;
 }
 
 export interface ProjectLiveLatexOptions {
