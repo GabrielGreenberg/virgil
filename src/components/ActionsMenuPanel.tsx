@@ -49,16 +49,16 @@ import {
   extractInlineFromSlice,
   VIRGIL_ACTION_REGISTRY,
   verdictOf,
-  readOnlyRefusal,
   type ActionContext,
   type ActionId,
 } from "@/lib/actions/action-registry";
-import { refusalPhrase } from "@/lib/actions/refusal";
+import { lightningContext } from "@/lib/actions/lightning-context";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
 import { useCollabContext } from "@/hooks/useCollab";
 import { BlockTypeDropdown } from "./MenuBar";
+import { blockTypeVerdict } from "@/lib/actions/block-type";
 import { IconExample } from "./editor-layout/panel-icons";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
@@ -326,18 +326,10 @@ export function ActionsMenuPanel({
     // up-front.
     editor.chain().focus().run();
     const ctx: ActionContext = {
-      editor,
-      view: editor.view,
-      ref: {
-        kind: "selection",
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
-        paragraphId: "",
-      },
-      surface: "lightning",
-      // CHIP 7b: the uniform collab gate. When the partner holds the pen the
-      // row's `run()` no-ops (and the cell is greyed below).
-      canEdit,
+      // The lightning panel's one ctx constructor (task 1199), carrying the
+      // uniform collab gate (CHIP 7b): when the partner holds the pen the row's
+      // `run()` no-ops (and the cell is greyed below).
+      ...lightningContext(editor, canEdit),
       payload,
       // The INSERT-time popover seam (figure/graphics). The grid is a React
       // subtree separate from EditorLayout's `activeFigure` state, so this
@@ -450,18 +442,7 @@ export function ActionsMenuPanel({
   // `range` overrides the live selection — the colour commit passes its stashed
   // range (task 1168), the grid cells pass nothing.
   const gridCellCtx = (range?: { from: number; to: number } | null): ActionContext =>
-    ({
-      editor,
-      view: editor.view,
-      ref: {
-        kind: "selection",
-        from: range?.from ?? editor.state.selection.from,
-        to: range?.to ?? editor.state.selection.to,
-        paragraphId: "",
-      },
-      surface: "lightning",
-      canEdit,
-    }) as ActionContext;
+    lightningContext(editor, canEdit, range);
   const gridCellDisabled = (id: ActionId): boolean =>
     !canEdit || VIRGIL_ACTION_REGISTRY[id]!.applies(gridCellCtx()) === "disabled";
   // Task 968: WHY a cell is grey — the same row, the same ctx, through
@@ -471,6 +452,11 @@ export function ActionsMenuPanel({
   // cell that IS disabled (render-time, gesture rate).
   const gridCellReason = (id: ActionId): string | null =>
     verdictOf(VIRGIL_ACTION_REGISTRY[id]!, gridCellCtx()).reason;
+  // Task 1199: the ¶ cell dispatches no row of its own, so it asks the
+  // block-type verdict — read-only, or no heading level applies here and there
+  // is no heading for "Body text" to demote (a footnote body, a list-item
+  // caret, a protected block). The SAME `headingLevelVerdict` its rows grey on.
+  const blockTypeCell = blockTypeVerdict(editor, documentClass, canEdit);
 
   // Task 1168: an ALREADY-OPEN colour popover closes when its cell greys (the
   // pen changes hands while the user is picking). The commit door refuses on its
@@ -562,6 +548,7 @@ export function ActionsMenuPanel({
       // that keeps a row grey but changes why (out of a title, into code)
       // re-renders the hint too.
       LIGHTNING_GRID_CELL_IDS.map((id) => (gridCellDisabled(id) ? gridCellReason(id) ?? 1 : 0)).join(","),
+      blockTypeCell.disabled ? blockTypeCell.reason ?? 1 : 0,
       LIGHTNING_CARD_ROWS.map((entry) => {
         const v = cardRowVerdict(entry);
         return v.state === "disabled" ? v.reason ?? 1 : 0;
@@ -667,7 +654,8 @@ export function ActionsMenuPanel({
             col={0}
             editor={editor}
             documentClass={documentClass}
-            disabled={!canEdit}
+            disabled={blockTypeCell.disabled}
+            reason={blockTypeCell.reason}
           />
           <FmtBtn
             id="bullet-list"
@@ -1119,19 +1107,20 @@ function BlockTypeGridCell({
   editor,
   documentClass,
   disabled,
+  reason,
 }: {
   row: number;
   col: number;
   editor: Editor;
   documentClass: string | null;
-  /** Task 1017: the panel's `!canEdit` — the SAME verdict every sibling cell
-   *  greys on, so ¶ cannot offer rows `pickBlockType` would silently drop. */
+  /** `blockTypeVerdict` (task 1199): read-only (task 1017), or no row would
+   *  do anything here — so ¶ cannot offer rows `pickBlockType` would drop. */
   disabled: boolean;
+  /** WHY it is grey — the same verdict's reason. */
+  reason: string | null;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  // The only way this cell greys is the surface being read-only, so its reason
-  // is the read-only refusal (pen vs host) — no registry row to ask.
-  const why = disabled ? refusalPhrase(readOnlyRefusal(editor)) : null;
+  const why = disabled ? reason : null;
   const { active: roving, getItemProps } = useMenuItem({
     id: "block-type",
     region: "grid",

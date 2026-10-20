@@ -3803,6 +3803,72 @@ function headingRow(id: HeadingActionId): ActionSpec {
 const HEADING_ACTION_ROWS: Readonly<Record<HeadingActionId, ActionSpec>> =
   mapRecord(HEADING_ID_LEVEL, (_level, id) => headingRow(id));
 
+// ---------------------------------------------------------------------------
+// EVERY heading level, one verdict + one door (task 1199).
+//
+// The registry rows cover \chapter…\subsubsection (levels 1–4), the four that
+// own a slash command. The ¶ block-type dropdown also offers Part (0),
+// Paragraph heading (5) and Subparagraph heading (6). It used to run 1–4
+// through `spec.run(ctx)` WITHOUT `spec.applies(ctx)`, and 0/5/6 through a
+// hand copy of `headingRun`'s gate + door, so its rows stayed lit in a footnote
+// body, a list item or a protected block, where both run paths silently bail.
+//
+// `headingLevelSpec(level)` closes that: levels 1–4 ARE their registry rows,
+// and 0/5/6 take the SAME `applies` (it does not depend on the level) with
+// `headingRun(level)` as their run. So the dropdown asks the same ladder the
+// registry's heading rows answer (surface schema → read-only → container /
+// list item) and commits through the same door — the next gate added to
+// `headingRow` reaches every level without an edit at the dropdown.
+// The document-class gate is NOT here: it is the caller's (`document-class.ts`),
+// because the slash `\chapter` is deliberately not class-gated (task 752).
+// ---------------------------------------------------------------------------
+
+const LEVEL_HEADING_ID: ReadonlyMap<number, HeadingActionId> = new Map(
+  keysOf(HEADING_ID_LEVEL).map((id) => [HEADING_ID_LEVEL[id], id] as const),
+);
+const OFF_REGISTRY_HEADING_SPECS = new Map<number, ActionSpec>();
+
+/** The spec governing heading `level` — the registry row for 1–4, else a
+ *  row-less spec that shares the heading rows' `applies` / `makes` and runs
+ *  `headingRun(level)`. Not registered: it carries the section row's id and
+ *  label only so it satisfies `ActionSpec`, and no surface lists it. */
+function headingLevelSpec(level: number): ActionSpec {
+  const id = LEVEL_HEADING_ID.get(level);
+  if (id) return HEADING_ACTION_ROWS[id];
+  let spec = OFF_REGISTRY_HEADING_SPECS.get(level);
+  if (!spec) {
+    spec = { ...HEADING_ACTION_ROWS["heading-section"], run: headingRun(level) };
+    OFF_REGISTRY_HEADING_SPECS.set(level, spec);
+  }
+  return spec;
+}
+
+/** Whether the heading gates can be ASKED at `ctx`: a live ProseMirror doc is
+ *  threaded. `selectionCanHostHeading` walks the doc, so a doc-less ctx (a
+ *  stub editor) takes the module's shared "can't ask → allow" fallback here
+ *  rather than throwing — the same answer `surfaceLacks` gives it. */
+function headingGatesCanAsk(ctx: ActionContext): boolean {
+  const doc = ctx.view?.state?.doc;
+  return !!doc && typeof doc.resolve === "function";
+}
+
+/** Whether a SET to heading `level` applies at `ctx`, and if not, why —
+ *  `verdictOf` over the level's spec. The class gate is the caller's. */
+export function headingLevelVerdict(ctx: ActionContext, level: number): ActionVerdict {
+  if (!headingGatesCanAsk(ctx)) return { state: "ok", reason: null };
+  return verdictOf(headingLevelSpec(level), ctx);
+}
+
+/** SET heading `level` at `ctx` — asks `applies()` first (the gate the ¶
+ *  dropdown used to skip), then runs the canonical `headingRun`. Returns
+ *  whether it ran. */
+export function runHeadingLevel(ctx: ActionContext, level: number): boolean {
+  const spec = headingLevelSpec(level);
+  if (headingGatesCanAsk(ctx) && spec.applies(ctx) === "disabled") return false;
+  void spec.run(ctx);
+  return true;
+}
+
 /**
  * The DA-5 selection-mode (CHIP 7b) for each card action. ONLY `highlight` is
  * `"required"` — it wraps the live range in a `linkedAnchor` mark and has

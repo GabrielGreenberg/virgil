@@ -54,7 +54,7 @@ const BESPOKE_CELLS: Record<string, { id: string | null; why: string }> = {
   },
   BlockTypeGridCell: {
     id: null,
-    why: "a nested-menu trigger for the BlockType dropdown — it dispatches no action row of its own, so there is no row to ask; its ITEMS carry their own per-level gating. It still greys on the SURFACE axis every row folds in (`!canEdit`, task 1017) — and on nothing else",
+    why: "a nested-menu trigger for the BlockType dropdown — it dispatches no action row of its own, so there is no ONE row to ask. It asks `blockTypeVerdict` (task 1199): the surface axis every row folds in (`!canEdit`, task 1017), plus the registry's heading verdict over every level its rows offer (`headingLevelVerdict` — the same one each row greys on), so a footnote body or a list-item caret greys ¶ instead of opening dead rows",
   },
 };
 
@@ -107,12 +107,18 @@ describe("task 397 — every grid cell asks its own row", () => {
       for (const hit of elementsNamed(SRC, name)) {
         if (!/\brow=\{/.test(hit.tag)) continue; // the declaration, not a call site
         if (id === null) {
-          // Task 1017: no row to ask, but the read-only surface verdict is
-          // not a row's — it is the `!canEdit` every row's door ORs in. That
-          // and only that (pre-1017 this cell took NO disabled= and offered
-          // rows on a read-only surface that the verb then dropped).
+          // Task 1199 (restating 1017's `!canEdit`): no ONE row to ask, so the
+          // cell reads the block-type verdict — computed once, from the
+          // panel's own `canEdit` — for both its grey and its reason. Pre-1017
+          // it took NO disabled=; 1017–1198 it greyed on read-only alone and
+          // offered heading rows in a footnote body / list item that the verb
+          // then dropped.
           const m = ANY_DISABLED.exec(hit.tag);
-          expect(m?.[1]?.trim(), `${name} declares no action row, so its disabled= must be exactly the surface verdict \`!canEdit\``).toBe("!canEdit");
+          expect(m?.[1]?.trim(), `${name} declares no action row, so its disabled= must be the block-type verdict`).toBe("blockTypeCell.disabled");
+          expect(hit.tag, `${name} must explain its grey with the SAME verdict`).toMatch(/reason=\{blockTypeCell\.reason\}/);
+          expect(SRC, "the block-type verdict must be asked with the panel's own canEdit").toMatch(
+            /const blockTypeCell = blockTypeVerdict\(editor, documentClass, canEdit\);/,
+          );
         } else {
           expect(hit.tag, `${name} must ask the ${id} row`).toMatch(OWN_ID(id));
         }

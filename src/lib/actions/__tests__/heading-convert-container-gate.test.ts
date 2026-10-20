@@ -338,9 +338,10 @@ describe("heading slash commands stay no-ops in list/example items (task 149 kee
 // 6. The BlockType dropdown's OUT-of-scope levels (task 153)
 //
 // Levels 0 (Part) / 5 (Paragraph heading) / 6 (Subparagraph heading) have no
-// registry row, so `applyHeadingFromDropdown` falls through to a bare
-// `setNode("heading", {level})` that NEVER reaches `headingRun` — bypassing
-// 149's container bail. The same in-place conversion 149 proved corrupts a
+// registry row, so the dropdown used to fall through to a bare
+// `setNode("heading", {level})` that NEVER reached `headingRun` — bypassing
+// 149's container bail. (Since task 1199 every level commits through the
+// registry's `runHeadingLevel`; these cases now pin that door.) The same in-place conversion 149 proved corrupts a
 // titleField / codeBlock / latexComment. Task 153 gates that fallback on the
 // SAME `posHostsBlockInsert` SSOT, so `pickBlockType(editor, "0"|"5"|"6")` is a
 // no-op inside a protected block — matching the levels-1–4 behavior 149 gives.

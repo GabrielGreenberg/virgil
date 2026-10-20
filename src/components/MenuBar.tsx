@@ -25,20 +25,22 @@ import { elementAnchor } from "./menu/live-anchor";
 // the `\chapter`…`\subsubsection` slash commands call. The dropdown used to
 // `toggleHeading` (clicking 'Section' on an existing level-2 heading reverted it
 // to a paragraph); it now always SETs. Heading is pure ProseMirror (no React
-// `cardCreation`), so the dropdown calls `run()` directly — no bridge.
+// `cardCreation`), so no bridge. Task 1199: every level (0–6) is asked and
+// committed through `headingLevelVerdict` / `runHeadingLevel`.
 import {
-  VIRGIL_ACTION_REGISTRY,
+  headingLevelVerdict,
+  runHeadingLevel,
   type ActionContext,
-  type BlockActionId,
 } from "@/lib/actions/action-registry";
-import { paragraphUuidAt } from "@/links/links";
-// Task 153: the SAME 147/149 SSOT container predicate the registry `headingRun`
-// bails on — so the dropdown's OUT-of-scope levels (0/5/6), which never reach
-// `headingRun`, can't corrupt a titleField / codeBlock / latexComment either.
-import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
-import { setHeadingLevelInRange, setParagraphInRange } from "@/lib/tiptap/heading-level";
+import { lightningContext } from "@/lib/actions/lightning-context";
+import {
+  BODY_TEXT_VALUE,
+  blockTypeOptions,
+  selectionHoldsHeading,
+} from "@/lib/actions/block-type";
+import { setParagraphInRange } from "@/lib/tiptap/heading-level";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
-import { classAllowsHeadingLevel, headingLevelOptions } from "@/lib/document-class";
+import { classAllowsHeadingLevel } from "@/lib/document-class";
 import { HEADING_TYPES } from "@/lib/heading-types";
 import { iconHint } from "@/components/Hint";
 import { useSpellDictionaries } from "@/lib/spell/spellcheck-context";
@@ -123,167 +125,22 @@ interface MenuBarProps {
   showEditItems?: boolean;
 }
 
-/** The dropdown's rows: "Body text", then every heading level DERIVED from
- *  `headingLevelOptions` — the vocabulary × the document class, the same rows
- *  the heading lozenge's `HeadingTypeMenu` maps (task 752). This used to be a
- *  hand-listed 0..6 that never learned the class table, so it offered a live
- *  `\chapter` in an `article` the lozenge greyed out. A class-unsupported
- *  level stays VISIBLE (greyed, arrow-skipped, inert) exactly as there. */
-interface BlockTypeOption {
-  value: string;
-  label: string;
-  disabled: boolean;
-  hint?: string;
-}
-const BODY_TEXT_VALUE = "p";
-function blockTypeOptions(documentClass: string | null | undefined): BlockTypeOption[] {
-  return [
-    { value: BODY_TEXT_VALUE, label: "Body text", disabled: false },
-    ...headingLevelOptions(documentClass).map((o) => ({
-      value: String(o.level),
-      label: o.menuLabel,
-      disabled: o.disabled,
-      hint: o.hint,
-    })),
-  ];
-}
-
-/** The BlockType dropdown's heading levels that have a canonical registry row
- *  (CHIP 5a): \chapter(1)…\subsubsection(4). Levels 0 (Part), 5 (Paragraph
- *  heading) and 6 (Subparagraph heading) are out of the heading-alignment scope
- *  — they have no slash command + no registry row, so they keep a direct
- *  `setBlockType` (also SET + numbered, for consistency with the SET decision —
- *  never a toggle). */
-const LEVEL_TO_HEADING_ACTION: Readonly<Record<string, BlockActionId>> = {
-  "1": "heading-chapter",
-  "2": "heading-section",
-  "3": "heading-subsection",
-  "4": "heading-subsubsection",
-};
-
-/**
- * Apply a heading conversion from the BlockType dropdown — always SET, never
- * toggle (CHIP 5a). Levels 1–4 route through the registry's canonical
- * `headingRun` (the SAME `run()` the slash commands call); the out-of-scope
- * levels (0/5/6) fall back to a direct SET `setBlockType` so the dropdown's
- * verb is uniformly "set" across every level.
- *
- * Pure ProseMirror — builds a minimal view-only `ActionContext` from
- * `editor.view` (the registry heading `run()` reads only `ctx.view`). No
- * bridge: heading needs no React-land `cardCreation`.
- */
-function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
-  // CHIP 7b: the uniform read-only gate — false when the partner holds the pen,
-  // so a heading conversion refuses here too (the registry `run()` ALSO guards
-  // on `ctx.canEdit`; this fail-safes the direct-set fallback below). No
-  // over-gating: a non-collab, host-writable editor is always editable.
-  //
-  // TASK 733 — asked through `surfaceEditableNow`, not `editor.isEditable`.
-  // The latter is `view.editable`, the PEN mirror, which MAIN pins `true` for
-  // the view's whole life; the HOST axis (a Library Reader pane's React
-  // `editable={false}`) lives in `editableRef`, and only the door reads both.
-  if (!surfaceEditableNow(editor)) return;
-  const id = LEVEL_TO_HEADING_ACTION[levelValue];
-  if (id) {
-    const spec = VIRGIL_ACTION_REGISTRY[id];
-    if (spec) {
-      const view = editor.view;
-      const pos = view.state.selection.head;
-      const ctx: ActionContext = {
-        editor,
-        view,
-        ref: {
-          kind: "cursor",
-          pos,
-          paragraphId: paragraphUuidAt(view.state.doc, pos) ?? "",
-        },
-        surface: "lightning",
-        canEdit: surfaceEditableNow(editor),
-      };
-      void spec.run(ctx);
-      return;
-    }
-  }
-  // Task 153: out-of-scope levels (0/5/6) skip `headingRun` entirely, so they
-  // bypass 149's container bail. Mirror it here with the SAME 147/149 SSOT
-  // predicate — ONE gate governs every heading-convert surface — so picking
-  // Part / Paragraph heading / Subparagraph heading with the caret in a
-  // titleField / codeBlock / latexComment is a no-op, not an in-place
-  // `setBlockType` that corrupts the structural node (silent \title{} loss on
-  // reload). `.focus()` restores the ProseMirror selection to the caret's block,
-  // so the head pos IS the SET's source — the same block the predicate tests.
-  // Read via `editor.view.state` (identical to `editor.state`) to match the
-  // levels-1–4 path above, which already works off `editor.view`.
-  const { state } = editor.view;
-  // RANGE form (task 641): `setNode` below converts EVERY textblock in the
-  // selection, so the gate must cover the whole range — the same widening
-  // `headingRun` takes for levels 1–4. Asked only when the doc can answer
-  // (a live ProseMirror doc), matching the "no live view → allow" fallback the
-  // registry's own `applies()` factories take: a verdict is issued only when the
-  // question can actually be asked, never invented from a doc-less stub.
-  const doc = state.doc as typeof state.doc | undefined;
-  if (
-    doc &&
-    typeof doc.resolve === "function" &&
-    !blockRangeHostsBlockInsert(doc, state.selection.from, state.selection.to)
-  )
-    return;
-  // Out-of-scope level (0/5/6, or a misconfigured value): SET directly +
-  // numbered (NOT toggle — matches the SET decision for the whole dropdown).
-  //
-  // Task 658: through the SAME door `headingRun` takes, so the two halves of
-  // ONE dropdown cannot disagree about what a heading carries. `setNode` (a
-  // literal `{ level, numbered: true }`) rebuilt the node from defaults, so
-  // picking 'Part' on an existing `\section*{Foo}\label{sec:foo}` dropped the
-  // label, the `\section[short]` title and the block's uuid, and forced it
-  // numbered. `setHeadingLevelInRange` spreads the node's own attrs when the
-  // target is already a heading and falls back to the conversion defaults only
-  // for a genuine type change.
-  const level = parseInt(levelValue) as unknown as 1 | 2 | 3 | 4 | 5 | 6;
-  editor
-    .chain()
-    .focus()
-    .command(({ tr, dispatch }) => {
-      const headingType = editor.schema.nodes.heading;
-      if (!headingType) return false;
-      // `.focus()` has already restored the ProseMirror selection, so `tr`'s
-      // own selection is the SET's source — the same range the gate above
-      // tested.
-      if (dispatch)
-        setHeadingLevelInRange(
-          tr,
-          tr.selection.from,
-          tr.selection.to,
-          headingType,
-          level,
-        );
-      return true;
-    })
-    .run();
-}
-
-/** Whether any heading lies in the current selection (the mixed-range test
- *  behind the ¶ dropdown's checkmark — task 1003). Read via `editor.view.state`
- *  and asked only when the doc can answer (a live ProseMirror doc) — the same
- *  "no live doc → no verdict" fallback `pickBlockType`'s range gate takes, so a
- *  doc-less editor renders the dropdown instead of throwing (task 1006). */
-function selectionHoldsHeading(editor: Editor): boolean {
-  const state = editor.view?.state;
-  const doc = state?.doc as typeof state.doc | undefined;
-  if (!state || !doc || typeof doc.nodesBetween !== "function") return false;
-  const { from, to } = state.selection;
-  let found = false;
-  doc.nodesBetween(from, to, (node) => {
-    if (found) return false;
-    if (node.type.name === "heading") found = true;
-    return !node.isTextblock;
-  });
-  return found;
+/** The ctx every ¶ commit is asked against — the lightning panel's one
+ *  constructor, which asks the surface's live editability itself. */
+function blockTypeContext(editor: Editor): ActionContext {
+  return lightningContext(editor);
 }
 
 /** Apply a BlockType row's pick — the shared verb behind a click AND an
  *  Enter activation (so keyboard + mouse take the identical path).
- *  Exported for the task-153 container-gate regression test. */
+ *
+ *  Task 1199: ONE door for every row. Each heading level (0–6) commits through
+ *  the registry's `runHeadingLevel`, which asks the heading `applies()` before
+ *  `headingRun` — the gate this path used to skip (`spec.run` without
+ *  `spec.applies`, and a hand copy of the run for 0/5/6). Every row hands focus
+ *  back the same way, first, as the grid's `runGridAction` does: the pick came
+ *  from a toolbar button, so DOM focus may be on the ¶ trigger. The selection
+ *  IS the block being converted, so the focus scroll lands on the edit. */
 export function pickBlockType(
   editor: Editor,
   value: string,
@@ -300,30 +157,28 @@ export function pickBlockType(
   // sectioning command that fails to compile.
   if (value !== BODY_TEXT_VALUE && !classAllowsHeadingLevel(documentClass, parseInt(value)))
     return;
+  // A row the verdict greys is inert here too — no focus move, no write —
+  // whatever path reached the verb (a keyboard activation, a menu left open
+  // across a caret move). `runHeadingLevel` re-asks at commit.
+  if (value !== BODY_TEXT_VALUE && headingLevelVerdict(blockTypeContext(editor), parseInt(value)).state === "disabled")
+    return;
+  editor.chain().focus().run();
+  const ctx = blockTypeContext(editor);
   if (value === BODY_TEXT_VALUE) {
     // 'Body' is the explicit way OUT of heading-hood (CHIP 5a: the heading
     // items no longer toggle off). Task 1003: over the WHOLE selection, the
     // same range the levels convert — through the inverse door, which demotes
-    // only headings (a range with none is a no-op). The old
-    // `isActive("heading")` gate was true only when headings covered the
-    // ENTIRE selection, so a heading+paragraph range silently did nothing.
-    editor
-      .chain()
-      .focus()
-      .command(({ tr, dispatch }) => {
-        const paragraphType = editor.schema.nodes.paragraph;
-        if (!paragraphType) return false;
-        if (dispatch)
-          setParagraphInRange(tr, tr.selection.from, tr.selection.to, paragraphType);
-        return true;
-      })
-      .run();
-  } else {
-    // CHIP 5a: SET (never toggle). Levels 1–4 route through the
-    // registry's canonical headingRun; 0/5/6 fall back to a direct
-    // SET. See applyHeadingFromDropdown.
-    applyHeadingFromDropdown(editor, value);
+    // only headings (a range with none is a no-op).
+    const { state } = ctx.view;
+    const paragraphType = state.schema.nodes.paragraph;
+    if (!paragraphType) return;
+    ctx.view.dispatch(
+      setParagraphInRange(state.tr, state.selection.from, state.selection.to, paragraphType),
+    );
+    return;
   }
+  // CHIP 5a: SET (never toggle), every level through the one heading door.
+  runHeadingLevel(ctx, parseInt(value));
 }
 
 // Both MenuBar dropdowns are ordinary PORTALED menus (task 751): the ONE
@@ -479,7 +334,7 @@ export function BlockTypeDropdown({
           <MenuRadioGroup
             idPrefix=""
             ariaLabel="Block type"
-            options={blockTypeOptions(documentClass)}
+            options={blockTypeOptions(editor, documentClass)}
             value={current}
             onPick={(v) => {
               pickBlockType(editor, v, documentClass);

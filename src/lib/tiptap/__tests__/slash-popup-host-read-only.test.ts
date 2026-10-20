@@ -194,8 +194,19 @@ describe("CENSUS — every ActionContext builder asks surfaceEditableNow (task 1
       }
     }
     expect(offenders).toEqual([]);
-    // SELF-CHECK: slash, grab, bridge, menubar at minimum.
-    expect(builders).toBeGreaterThanOrEqual(4);
+    // SELF-CHECK: slash, grab, bridge, lightning at minimum. Task 1199 folded
+    // the menubar's private builder and the grid's two into ONE lightning
+    // constructor, so the floor is the stated four doors, the last of which
+    // must be that constructor.
+    expect(builders).toBeGreaterThanOrEqual(3);
+    expect(
+      files.some(
+        ({ rel, src }) =>
+          rel.endsWith(path.join("lib", "actions", "lightning-context.ts")) &&
+          /\bcanEdit:\s*surfaceEditableNow\(/.test(src),
+      ),
+      "the lightning panel's one ActionContext constructor asks the door",
+    ).toBe(true);
   });
 
   it("a shorthand `canEdit,` in an ActionContext builder is bound from surfaceEditableNow", () => {
