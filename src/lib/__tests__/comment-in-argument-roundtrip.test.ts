@@ -12,6 +12,8 @@
 // delimiters, as `storage-fsa.writeDocBundle` does), TWO cycles, and every
 // control through the identical harness.
 import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
@@ -251,5 +253,28 @@ describe("task 1021 — the private scanners 777 left behind", () => {
     );
     // A real comment after the run is still a comment.
     expect(projectLiveLatex("\\verb|x| a % c", opts)).toBe("         a    ");
+  });
+});
+
+// Task 1203 — the comment-BLIND count is the VERBATIM-argument rule and
+// nothing else. Every call site must sit in a verbatim context, so no prose
+// group can ever be closed by a `}` inside a comment or a `\verb` run.
+describe("task 1203 — blindGroupClose CENSUS", () => {
+  const src = fs.readFileSync(path.resolve(__dirname, "../latex-lexer.ts"), "utf8");
+
+  it("is module-private and called only from the verbatim-argument readers", () => {
+    expect(src).not.toMatch(/export\s+function\s+blindGroupClose/);
+    const sites: string[] = [];
+    const re = /blindGroupClose\(/g;
+    for (let m = re.exec(src); m; m = re.exec(src)) {
+      const before = src.slice(0, m.index);
+      if (/function\s+$/.test(before)) continue; // the definition
+      const owner = [...before.matchAll(/function\s+(\w+)\s*\(/g)].pop()?.[1] ?? "?";
+      const line = before.slice(before.lastIndexOf("\n") + 1) + "…";
+      sites.push(owner === "findGroupClose" ? `${owner}:${/opts\.verbatim/.test(line)}` : owner);
+    }
+    expect(sites.sort()).toEqual(
+      ["findGroupClose:true", "skipVerbatimArgumentsAt", "verbatimArgumentSpans"].sort(),
+    );
   });
 });

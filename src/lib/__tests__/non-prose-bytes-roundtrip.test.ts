@@ -431,15 +431,14 @@ describe("M6 — a bare `{…}` group survives a save", () => {
     );
   });
 
-  it("a group ending in a COMMENT gains the newline that closes it", () => {
-    // The one byte this fix moves, pinned rather than merely noted. In the
-    // SOURCE `{a % c}` the comment swallows the `}` and its newline, so the
-    // group is never closed and LaTeX errors at end of file. The comment
-    // carrier's line obligation (task 347's `closeCommentTail`) writes the
-    // newline the tail owes before the `}` is emitted — so the output CLOSES
-    // the group the user had left open, and is a fixed point from there.
+  it("a group ending in a COMMENT keeps its bytes (task 1203)", () => {
+    // In the SOURCE `{a % c}` the comment swallows the `}` and its newline, so
+    // the group is never closed. Pre-1203 the comment-BLIND close was taken and
+    // a newline written before it — silently CLOSING the group the user had
+    // left open. The group scan now fails closed (the `{` is a source byte),
+    // the comment runs to end of line as TeX reads it, and nothing moves.
     const out = twoCycles("The set {a % c} tail.\n");
-    expect(out).toBe("The set {a % c\n} tail.");
+    expect(out).toBe("The set {a % c} tail.");
   });
 
   it("CONTROL — an ESCAPED brace the user typed is still a literal", () => {
