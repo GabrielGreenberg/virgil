@@ -137,9 +137,21 @@ describe("task 777 M3 — the scanner itself", () => {
     expect(extractBraced(t, 4)?.content).toBe("a%20b}.\n More.");
   });
 
-  it("fails closed: no close in the same paragraph → the blind close", () => {
+  // Task 1203 retired the blind fallback across a blank line: a group may span
+  // paragraphs (task 1018), so the aware close is TeX's answer there too.
+  it("a close across a blank line is the AWARE close, never the commented one", () => {
     const t = "{a% note}\n\nnext }";
-    expect(findMatchingBrace(t, 0)).toBe(t.indexOf("}"));
+    expect(findMatchingBrace(t, 0)).toBe(t.lastIndexOf("}"));
+  });
+
+  it("fails closed: no aware close → -1, never a brace inside a comment", () => {
+    expect(findMatchingBrace("{a% note}\n\nnext", 0)).toBe(-1);
+    expect(findMatchingBrace("{a% note}\nnext", 0)).toBe(-1);
+  });
+
+  it("a \\verb brace is not a delimiter", () => {
+    const t = "{x \\verb|}| y} z";
+    expect(findMatchingBrace(t, 0)).toBe(t.indexOf("y}") + 1);
   });
 
   it("an escaped \\% is literal", () => {

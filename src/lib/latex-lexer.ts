@@ -1707,8 +1707,9 @@ export interface GroupScanOptions {
   verbatim?: boolean;
 }
 
-/** The comment-BLIND close scan — the pre-777 rule, kept as the fail-closed
- *  answer and as the verbatim-argument rule. `open` holds `{` or `[`. */
+/** The comment-BLIND close scan — the VERBATIM-argument rule only (`%` is an
+ *  ordinary byte inside `\url{…}`). Never a fallback for a prose group (task
+ *  1203). `open` holds `{` or `[`. */
 function blindGroupClose(text: string, open: number): number {
   const bracket = text[open] === "[";
   let depth = bracket ? 0 : 1;
@@ -1722,6 +1723,20 @@ function blindGroupClose(text: string, open: number): number {
     } else if (bracket && depth <= 0) return i;
   }
   return -1;
+}
+
+/**
+ * THE verbatim-run skip (task 1203): if a run TeX reads with `%` and braces as
+ * ordinary bytes starts at `i` (a live `\`) — an inline `\verb` run, or a
+ * {@link VERBATIM_ARGUMENT_COMMANDS} command with its verbatim arguments —
+ * the index just past it; else -1. Every brace-depth reader (the group
+ * scanner, the argument paragraph splitter, the parser's paragraph reader)
+ * steps over a run with THIS, so `\verb|{|` can open no group in any of them.
+ */
+export function matchVerbatimRunAt(text: string, i: number): number {
+  if (text[i] !== "\\" || isEscaped(text, i)) return -1;
+  const verb = matchInlineVerbAt(text, i);
+  return verb !== -1 ? verb : skipVerbatimArgumentsAt(text, i);
 }
 
 /** If a {@link VERBATIM_ARGUMENT_COMMANDS} command starts at `i` (a `\`),
@@ -1974,14 +1989,23 @@ export function matchShorthandQuoteRunAt(text: string, i: number): number {
  * {@link VERBATIM_ARGUMENT_COMMANDS} argument are skipped whole — TeX changes
  * `%`'s catcode there.
  *
- * Why this is not the task-338 hazard (`startsLineComment`'s narrowing): that
- * one is a construct-TERMINATOR scan over a whole body, where a wrong comment
- * reading swallows the rest of the document. A group scan is BOUNDED, and it
- * FAILS CLOSED twice: if the comment-aware reading finds no close, or finds one
- * only across a blank line (a `\par`, which no argument Virgil models may
- * contain in its comment-aware reading), the answer is the comment-BLIND close
- * — byte-for-byte the pre-777 behaviour. The aware reading is only ever taken
- * where it names a close inside the same paragraph.
+ * The aware reading is the ONLY reading (task 1203). Task 777 fell back to the
+ * comment-BLIND close whenever the aware close lay across a blank line, on the
+ * premise that no argument contains a `\par`; task 1018 overturned that premise
+ * (a `\long` argument — `\footnote`, `\thanks`, a bare group — legitimately
+ * spans paragraphs), and the fallback then cut `\footnote{One. % old }\n\nTwo.}`
+ * at the COMMENTED brace: the comment's newline was re-emitted, the brace went
+ * live, and the paper stopped compiling. A `}` inside a comment or a verbatim
+ * run is never a delimiter, in any paragraph — that is TeX's own reading.
+ *
+ * It FAILS CLOSED: if the aware reading finds no close, the answer is -1 (the
+ * open brace is a source byte — task 1018's stray-brace rule), never a brace
+ * the blind count would take from inside a comment. Why this is not the
+ * task-338 hazard (a construct-TERMINATOR scan swallowing the rest of the
+ * document): a group scan answers only "where does THIS group close", and the
+ * one whole-body caller (`readParagraph`'s blank-line question) bounds the
+ * answer by `groupCrossesStructure`. The comment-blind count survives only as
+ * the VERBATIM-argument rule (`opts.verbatim`), where `%` is an ordinary byte.
  */
 export function findGroupClose(
   text: string,
@@ -1993,42 +2017,27 @@ export function findGroupClose(
   if (opts.verbatim) return blindGroupClose(text, open);
   const bracket = openCh === "[";
   let depth = bracket ? 0 : 1;
-  let skipped = false;
-  let aware = -1;
   for (let i = open + 1; i < text.length; i++) {
     const ch = text[i];
     if (ch === "%") {
       const tail = matchCommentTailAt(text, i);
       if (tail) {
-        skipped = true;
         i = tail.end - 1;
         continue;
       }
     } else if (ch === "\\" && !isEscaped(text, i)) {
-      const verb = matchInlineVerbAt(text, i);
-      const past = verb !== -1 ? verb : skipVerbatimArgumentsAt(text, i);
-      if (past !== -1) {
-        skipped = true;
-        i = past - 1;
-      }
+      const past = matchVerbatimRunAt(text, i);
+      if (past !== -1) i = past - 1;
       continue;
     }
     if ((ch !== "{" && ch !== "}" && ch !== "]") || isEscaped(text, i)) continue;
     if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
-      if (!bracket && depth === 0) {
-        aware = i;
-        break;
-      }
-    } else if (bracket && depth <= 0) {
-      aware = i;
-      break;
-    }
+      if (!bracket && depth === 0) return i;
+    } else if (bracket && depth <= 0) return i;
   }
-  if (!skipped) return aware;
-  if (aware !== -1 && !/\n[ \t]*\n/.test(text.slice(open, aware))) return aware;
-  return blindGroupClose(text, open);
+  return -1;
 }
 
 /**
@@ -2037,7 +2046,7 @@ export function findGroupClose(
  * dropped. A blank line is TeX's `\par`; one nested inside a group
  * (`\textbf{a\n\nb}`) belongs to that group and does not split. Groups are
  * skipped by the ONE group scanner ({@link findGroupClose}), and a `%` comment
- * or an inline `\verb` run is stepped over whole, so a brace or newline inside
+ * or a verbatim run ({@link matchVerbatimRunAt}) is stepped over whole, so a brace or newline inside
  * either cannot move a boundary. An unbalanced `{` is read as a single byte —
  * the body is already bounded by its own argument, so nothing can be swallowed.
  */
@@ -2048,8 +2057,8 @@ export function splitTopLevelParagraphs(text: string): string[] {
   while (i < text.length) {
     const ch = text[i];
     if (ch === "\\") {
-      const verb = matchInlineVerbAt(text, i);
-      i = verb !== -1 ? verb : i + 2;
+      const past = matchVerbatimRunAt(text, i);
+      i = past !== -1 ? past : i + 2;
       continue;
     }
     if (ch === "%") {
