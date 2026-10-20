@@ -1,4 +1,4 @@
-<!-- last-verified: f850f33c 2026-10-19 -->
+<!-- last-verified: 3507fd9c 2026-10-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -13,7 +13,7 @@
 > shape is owned by [anchoring.md](anchoring.md) and only referenced here.
 
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
-The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **59** exported
+The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **60** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
 if they ever disagree, the code wins). The full type index — every exported type,
 grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
@@ -66,6 +66,13 @@ below carry only what's *distinctive*:
   switches are `isArchivable` / `archiveRemovesAtom` in
   [src/cards/predicates.ts](../../src/cards/predicates.ts) — read those, don't
   hard-code the list.
+- **`archivedWith?: string`** — DORMANT anchoring (tasks 1193–1195): on a card,
+  the archive snippet id when EVERY anchor link of the card went into that
+  snippet with its passage (the card is then also `archived: true`); on a single
+  `Link`, the snippet that link's text lives in. Revived by liveness when the
+  passage is restored. In the app only [src/links/dormant.ts](../../src/links/dormant.ts)
+  reads or writes it; the `/editor/*` scripts round-trip it untouched and never
+  treat a dormant link as orphaned (`is_dormant_link` in `editor/scripts/_common.py`).
 - **`titleAuto?: boolean`** — title provenance (T6/C12). `true` ≡ the title (or,
   for a todo, the body `text`) was machine-supplied and may be stripped on load;
   `false` ≡ user-owned, never strip; `undefined` ≡ pre-T6 record (`resolveLoadedTitle`
@@ -250,11 +257,15 @@ writes it, and skills must not either.
 
 ```ts
 ArchivedSnippet { id; title; titleAuto?; content; createdAt; links: Link[];
-                  archived?; unanchored?; returnBefore?; displaced?;
+                  archived?; unanchored?; returnBefore?; displaced?; carriedMarks?;
                   originalPanel?; originalCard?; archivedAt? }  // links may pin many
 // RETURNING MARGIN (task 1079) — `displaced?: DisplacedAnchorRecord[]`
 // ({ kind; id; from: string[]; to; added }) records the Mode-A cards the capture
 // re-homed onto the neighbour; Restore hands them back (`landReturningDisplaced`).
+// CARRIED MARKS (task 1194) — `carriedMarks?: CarriedMarkRecord[]`
+// ({ anchorId; attrs; from; to }, offsets relative to `content`) records the Mode-B
+// `linkedAnchor` runs whose cards travelled into the snippet (the excerpt schema has
+// no such mark); Restore re-stamps them, reviving the dormant links.
 // ORIGIN RECORD (task 712) — the last three are present iff the snippet is a whole
 // CARD set aside by `/editor/archive-card`, not a slice of the document:
 // `originalPanel` names the panel it left, `originalCard` is that card VERBATIM.
@@ -484,7 +495,7 @@ the type exists, and check 2 now holds it to that.
 
 This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
 field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
-forward-points to. All **59** exported types are named below (schema above, or
+forward-points to. All **60** exported types are named below (schema above, or
 doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
@@ -496,7 +507,7 @@ doc-of-record noted), grouped by family:
   `CutItemLegacy`. Revisions: `RevisionRequestCard`, `RevisionSuggestionCard`,
   `RevisionCard`, `RevisionsTracker`, `RevisionsState`. Reports: `ReportCard`,
   `ReportRequestCard`, `ReportItem`, `ReportsState`. Archive: `ArchivedSnippet`,
-  `ArchiveState`, `DisplacedAnchorRecord`. (Examples have no type — the sidecar shadow was retired, task 726.)
+  `ArchiveState`, `DisplacedAnchorRecord`, `CarriedMarkRecord`. (Examples have no type — the sidecar shadow was retired, task 726.)
 - **The Task surface** — `AiRequest`, `AiRequestKind`, `AiRequestKindOnDisk`,
   `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`,
   `AiRequestClosedBy`, `AiRequestsState`.

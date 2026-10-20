@@ -1,4 +1,4 @@
-<!-- last-verified: f850f33c 2026-10-19 -->
+<!-- last-verified: 3507fd9c 2026-10-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -159,6 +159,11 @@ the pull is gap-only and synthesizes no `\footnote` atom, and every footnote lis
 selects an atomless ref only when it declares `archived || unanchored`, so
 `addFootnoteFromSeed` sets the flag from THIS pull's placement (the source's flag
 does not travel). CI: `stack-pull-reachability.test.tsx` (total over `StackCardKind`).
+
+Archiving a PASSAGE that contains a `\footnote` atom is different from archiving the
+card (task 1194): footnotes do not `carry`. The atom IS the card's body and rides the
+captured slice verbatim; its sidecar ref is deleted (it is derivable) and Restore
+re-derives the panel row from the returning atom. Pinned by `archive-carries-cards.test.tsx`.
 
 When a footnote's in-text marker is deleted but its body/title might still be
 wanted, it becomes an **orphan**. The `Footnote` plugin

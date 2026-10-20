@@ -1,4 +1,4 @@
-<!-- last-verified: f850f33c 2026-10-19 -->
+<!-- last-verified: 3507fd9c 2026-10-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -227,6 +227,15 @@ Since task 1079 the capture also records the Mode-A cards it RE-HOMED onto the
 neighbour (`ArchivedSnippet.displaced`, `DisplacedAnchorRecord`), and Restore
 hands them back to the restored passage through one door
 (`landReturningDisplaced`, [src/cards/retarget-anchors.ts](../../src/cards/retarget-anchors.ts)).
+Since task 1194 an archive CARRIES the cards anchored to the passage instead of
+re-homing (Mode A) or deleting (Mode B) them: each kind declaring
+`lifecycle.carry` in `CARD_REGISTRY` gets its links made DORMANT in the snippet
+(`archivedWith`, [src/links/dormant.ts](../../src/links/dormant.ts)), Mode-B mark
+runs ride beside the content as `ArchivedSnippet.carriedMarks`, and Restore
+re-stamps them (`withCarriedMarks`) so the links revive by liveness. Task 1195 shows
+the relation on both cards (`archiveRelation` shell row, `cardsArchivedWith`), and
+deleting the passage RELEASES its cards (`releaseFromSnippet`), never deletes them.
+Doctrine: [capture-schema-symmetry → the carry half](../agents/laws/capture-schema-symmetry.md).
 
 - **`isArchivable(kind)`** ([predicates.ts](../../src/cards/predicates.ts)) —
   derived from provenance: `origin === "user"`, MINUS one exception.

@@ -1,4 +1,4 @@
-<!-- last-verified: f850f33c 2026-10-19 -->
+<!-- last-verified: 3507fd9c 2026-10-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -219,6 +219,14 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
   `jumpToCard` ([src/links/jump-to-card.ts](../../src/links/jump-to-card.ts)) no longer
   walks links itself: it asks `CardAnchorPass.jumpTarget(card, rowPid?)` — the row's
   pid when live, else the authority's winner — so it lands where the marker is.
+- **A link can be DORMANT (tasks 1193–1195).** When an archive captures a passage, the
+  cards anchored to it travel with it (`CardMeta.lifecycle.carry`): their links are
+  stamped `archivedWith: <snippetId>` ([src/links/dormant.ts](../../src/links/dormant.ts),
+  the ONLY reader/writer). Every anchor reader skips a dormant link — the resolver never
+  snapshot-rebinds or orphans it, the row authority draws no row — and it REVIVES by
+  liveness (`reviveLiveLinks`, from the load reconcile and `useDormantRevival`) when the
+  passage is restored. A card unarchived alone while its passage stays archived resolves
+  `AnchorState` **`parked`** (neutral, like `free`; [anchor-state.ts](../../src/links/anchor-state.ts)).
 - **Legacy helpers.** `reconcileModeAAnchors` / `findParagraphIdBySnapshot` /
   `isModeAOrphaned` in [src/links/links.ts](../../src/links/links.ts) are kept exported
   **for their own tests only** — production funnels through the resolver SSOT. `isModeAOrphaned`

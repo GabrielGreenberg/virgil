@@ -1,4 +1,4 @@
-<!-- last-verified: f850f33c 2026-10-19 -->
+<!-- last-verified: 3507fd9c 2026-10-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -263,12 +263,18 @@ were not universally consulted, which is the shape all three share:
   `commitSlashCommand` door shared with the popup-less `virgilCommands` Enter executor in
   `latex-command.ts` — the FIFTH surface, which carried its own copy of the same defect and
   is why a popup-only fix would have shipped green. *Residual:* a successful command is still
-  TWO undo steps.
+  TWO undo steps. Since task 1196 the door runs only on a collapsed caret at the typed
+  name's end — a range (or a caret off the name) is refused with nothing dispatched, and
+  the popup closes on a range.
 
 - **968 — a greyed command says WHY.** `verdictOf` (action-registry.ts) walks the same gates
   `applies()` does and names the one that refused as a `Refusal`; ONE table,
   [refusal.ts](../../src/lib/actions/refusal.ts), turns it into words — grab menu, lightning
-  grid and slash popup all render that reason rather than a bare grey.
+  grid and slash popup all render that reason rather than a bare grey. Since task 1184 the
+  reason names the gate AND the block that refused (`Refusal.cause` + `subject`), and
+  since task 1182 a row that creates a node/mark declares it (`makes`) and is greyed with
+  cause `"surface"` where the editor's schema cannot hold it at all (`surfaceLacks` — a
+  footnote or note body has no heading, rule or example).
 
 - **427 — the SSOT was built and ONE caller adopted it.** The residual 397 filed: the
   wrapper actions had three live surfaces that never touched the registry — StarterKit's
