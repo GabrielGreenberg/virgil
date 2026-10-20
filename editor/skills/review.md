@@ -150,6 +150,14 @@ with `/loop /editor/review`.
    row as answered — so a later `/editor/review` does NOT re-list it. The user,
    not the drain, closes it via accept/reject.
 
+   **Phrase or paragraph.** Every subskill that lands a margin card can pin it
+   to the exact words it is about (`create_card.py --range`, task 1197) — the
+   way the user pins a card to a selection. The rule the subskills follow: a
+   comment about a phrase or sentence pins to that text; one about the
+   paragraph's argument as a whole stays on the paragraph; a Task the user
+   filed on a selection keeps its span. See
+   [create-card.md](create-card.md) → "Phrase or paragraph?".
+
 4. **Surface progress as you go.** Before each dispatch, print:
    ```
    ════════════════════════════════════════════════════════════

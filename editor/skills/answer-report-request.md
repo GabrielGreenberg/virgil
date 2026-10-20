@@ -70,6 +70,13 @@ Report Request by appending a **Report card authored by AI** to
    the helper through heredoc scratch files, never as quoted argv — see
    [`_op-json.md`](_op-json.md).
 
+   **Pin to the words when the answer is about the words** (task 1197): if your
+   report is about a specific phrase or sentence rather than the paragraph as a
+   whole, add `--range "@$t/span"` with those words verbatim from the `.tex` — the
+   card lands on that span (Mode B), exactly as if the user had selected it. A
+   Task already filed on a selection keeps its span without the flag. Rule +
+   refusals: [create-card.md](create-card.md) → "Phrase or paragraph?".
+
    - Real `requestId` (`kind: report`, `linkedTo.panel == "reports"`): pass
      the row's `paragraphIds[0]` as `--anchor` (a no-op for a real id — the
      same one call shape every re-route uses, [_ask-shape.md](_ask-shape.md)) —

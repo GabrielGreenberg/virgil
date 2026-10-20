@@ -5,11 +5,11 @@ description: |
   belongs on the next paragraph", "point this todo at §3", or as the mechanical
   re-anchor step behind a reorganization. Resolves the card via card_by_id.py,
   validates the new anchor exists in the .tex, then routes a `move` op that
-  rewrites the card's Mode-A paragraph anchor (links[*].anchor.textObjectIds),
-  atomic + pen-protected. Handles paragraph-anchored (Mode-A) cards only;
-  DEFERS + flags atom-bearing cards (footnote/citation — re-anchoring means
-  moving the .tex marker) and Mode-B text-range anchors. Does NOT move the
-  underlying text. Args: <docPath> <cardId> <newAnchor>.
+  rewrites the card's anchor (links[*].anchor), atomic + pen-protected — to a
+  paragraph (Mode A), or, with a range, to a span of words in it (Mode B: the
+  \vlid pair in the .tex moves with it). DEFERS + flags atom-bearing cards
+  (footnote/citation — re-anchoring means moving the .tex marker). Does NOT move
+  the underlying text. Args: <docPath> <cardId> <newAnchor> [<range>].
 ---
 
 # /editor/move-card $ARGUMENTS
@@ -30,6 +30,10 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
   exist in the `.tex` (the op refuses an unknown anchor rather than guess). If
   you only have a selection or a heading, resolve its paragraph uuid first with
   `get_para_context.py` / `cards_for_paragraph.py`.
+- `<range>` (optional) — words **verbatim from that paragraph's `.tex`** to pin
+  the card to instead of the whole paragraph (as `newRange`, plus
+  `rangeOccurrence: N` when the words repeat). Same rule of thumb and refusals
+  as `create-card --range` ([create-card.md](create-card.md)).
 
 ## Procedure
 
@@ -46,13 +50,18 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
    ```
    It validates the anchor against the `.tex`, sets the card's
    `anchor.textObjectIds` to `[<uuid>]` (Mode-A paragraph anchor), and commits.
-   Prints `{ok, version, op:"move", cardId, newAnchor, anchorsMoved}`.
+   To pin it to words in that paragraph, put the op in a scratch file
+   ([_op-json.md](_op-json.md)) with `"newRange": "<verbatim words>"`. A card
+   that was pinned to a span loses its old `\vlid` pair in the same commit
+   (range → paragraph, or range → new range, keeping its range id).
+   Prints `{ok, version, op:"move", cardId, newAnchor, anchorsMoved[, rangeId]}`.
 
 ## Applicability (derived from the manifest)
 
-- **Movable (Mode-A paragraph anchor)** — `note`, `todo`, `report`,
-  `report-request`, `comment`, `cutter-comment`, and the suggestion cards, when
-  anchored to a paragraph.
+- **Movable** — `note`, `todo`, `report`, `report-request`, `comment`,
+  `cutter-comment`, and the suggestion cards, whether anchored to a paragraph
+  (Mode A) or to a span of text (Mode B, `targetKind: "linkedRange"`), and
+  to either.
 - **Deferred + flagged** —
   - **`footnote` / `citation`** (atom-bearing): the card's tie is **id equality**
     with its `.tex \v*id` marker, and "the paragraph anchor **follows** the Atom"
@@ -60,17 +69,14 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
     the `\vfid…\footnote{}` / `\vcid…\cite{}` characters in the `.tex` — an atom
     move, not a sidecar edit. The op **refuses** and points you at the in-document
     move. (v1 scope: anchor-only cards first.)
-  - **Mode-B (text-range) anchors** (`targetKind: "linkedRange"`): re-anchoring a
-    range needs a fresh `linkedAnchor` mark in the `.tex` — deferred; the op
-    refuses.
   - **Dormant links** (`archivedWith` set — "archived with its text", task 1193):
     the link's text sits in an archive snippet and returns when it is restored.
     The op skips them, and refuses a card whose links are all dormant.
 
 > **Enforcement (task 156).** The panel side of that list lives in
 > `apply_response.MUTATION_PANEL_POLICY` — one allow-list table per op, exhaustive
-> over the card-store universe, asked by every mutation op. (The Mode-B deferral
-> is an anchor-shape check inside `cmd_move`, not a panel question.)
+> over the card-store universe, asked by every mutation op. (The Mode-B range
+> move is an anchor-shape branch inside `cmd_move`, not a panel question.)
 
 ## Reply
 

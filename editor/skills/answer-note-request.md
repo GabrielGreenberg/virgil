@@ -115,6 +115,13 @@ two paths:
    `--title`. Don't pass `--margin`: which side a note's margin chrome sits on
    follows the Notes panel's dock and is resolved live by the app.
 
+   **Pin to the words when the answer is about the words** (task 1197): if your
+   note is about a specific phrase or sentence rather than the paragraph as a
+   whole, add `--range "@$t/span"` with those words verbatim from the `.tex` — the
+   card lands on that span (Mode B), exactly as if the user had selected it. A
+   Task already filed on a selection keeps its span without the flag. Rule +
+   refusals: [create-card.md](create-card.md) → "Phrase or paragraph?".
+
    - **Path (d) — standalone** (a real `ai-requests.json` id, no `linkedTo`):
      anchor is read from the Task. Title is a short descriptive subject phrase
      (no `Re:`), matching the convention of existing notes in `notes.json`:

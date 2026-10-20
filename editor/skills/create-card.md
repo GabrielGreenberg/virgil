@@ -84,6 +84,21 @@ full reasoning.
 - `--kind=<kind>` — one of the rows above.
 - `--anchor <uuid>` — the paragraph `%!v:` UUID to anchor at (required for the
   chat path; for a Task it's read from `paragraphIds`).
+- `--range "@<file>"` — **pin the card to a span of text** in that paragraph
+  instead of the whole paragraph (a Mode-B text-range anchor — what the user
+  makes by selecting words and adding a card). The file holds the words
+  **verbatim from the `.tex`** paragraph (any LaTeX inside included, never the
+  `%!v:` marker). `note` / `todo` / `report` / `report-request` and the
+  responder `suggestion` / `comment` take it; `footnote` / `citation` /
+  `example` refuse it. The script wraps exactly that span in a `\vlid…\vlidend`
+  pair (the id is allocated — never write one yourself) and writes the
+  `linkedRange` link, in one commit — at every safety level, since the pair is
+  the card's anchor, not a proposed edit. It REFUSES (nothing written) a span
+  that is absent, repeats (add `--range-occurrence N`, or lengthen it), cuts a
+  command or sits inside a `{…}` argument or `$…$` math, or overlaps another
+  anchored range — pick whole words of plain prose, or a whole construct.
+  For a `suggestion`, the range must contain `--original`.
+- `--range-occurrence N` — which occurrence (1-based) of a repeated `--range`.
 - `--safety-level 1|2|3` — overrides the Task's `safetyLevel` for this run
   (carded kinds only; see Safety). Omit for a direct create.
 - `--accept-task-kind <kind>` — extra Task kind(s) a Workflow-A create may drain
@@ -198,6 +213,8 @@ just decides the inputs and invokes it.
    # note / todo — anchored sidecar cards
    create_card.py <doc> --kind=note --body "@$t/body" --title "@$t/title" --anchor 4402
    create_card.py <doc> --kind=todo --body "@$t/body" --notes "@$t/notes" --anchor 4402
+   # …pinned to a phrase rather than the paragraph ($t/span = the verbatim words)
+   create_card.py <doc> --kind=note --body "@$t/body" --anchor 4402 --range "@$t/span"
    # report / report-request — same reports.json, different on-disk kind
    create_card.py <doc> --kind=report --body "@$t/body" --title "@$t/title" --anchor 1101
    create_card.py <doc> --kind=report-request --body "@$t/body" --anchor 2201
@@ -221,6 +238,13 @@ just decides the inputs and invokes it.
    the panel but the `.tex` anchor isn't placed yet.
 
 ## Per-kind notes
+
+- **Phrase or paragraph?** If the card is about **specific wording** — a phrase,
+  a term, one sentence — pin it to that text with `--range`; the user sees the
+  words tinted and the card points at them. If it is about the paragraph's
+  argument **as a whole**, keep the paragraph anchor (no `--range`). A Task the
+  user filed on a selection already carries its span: answering it copies that
+  anchor automatically, so pass `--range` only to pin somewhere else.
 
 - **`aiOriginRequestId`** — a sidecar-only carded card (`note` / `todo` /
   `report` / `report-request`) created from a **real** Task is stamped with an
