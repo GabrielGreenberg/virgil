@@ -55,6 +55,14 @@ import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
  * the source census above be exact — it looks for Virgil's own gated plugins,
  * and StarterKit has none of them.
  *
+ * A source census cannot see a rule a stack INHERITS from an upstream
+ * extension — that is how StarterKit's markdown mark rules (`` `x` `` → code,
+ * `*x*` → italic, …) stayed live in prose as an uncensused third provider
+ * (task 1198: typing LaTeX quotes `` `a' and `b' `` lost both backticks to
+ * `\texttt`). Those are stripped at the kit (`virgil-starter-kit.ts`), and
+ * the full set of upstream input/paste rules each production stack runs is
+ * MEASURED by mounting it — `input-rule-provider-census.test.ts`.
+ *
  * Keys are `ActionId`s, but typed as a plain string map here on purpose: the
  * registry imports this leaf (it must, to record the patterns), so the
  * dependency runs census → registry and the `ActionId` join is asserted on the

@@ -40,7 +40,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
 import {
   starterKitConfigForScope,
   buildCardBodySchema,
@@ -127,7 +127,7 @@ export function BorrowedMainText({
         // borrowed-schema.ts). `"card"` is the narrow footnote/note surface;
         // `"excerpt"` keeps StarterKit's full block vocabulary because the body
         // holds a verbatim document slice (task 308).
-        StarterKit.configure({ ...starterKitConfigForScope(schemaScope) }),
+        VirgilStarterKit.configure({ ...starterKitConfigForScope(schemaScope) }),
         // Scope-resolved inline-atom + block sub-schema (borrowed-schema.ts —
         // backlog #11). `includeLabelRefFootnote: true` adds the read-only
         // `\ref` (LabelRef) + nested footnote markers (Footnote) this borrowed

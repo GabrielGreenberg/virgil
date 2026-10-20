@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, useEditorState, EditorContent, JSONContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -333,7 +333,7 @@ function RichTextFieldImpl({
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
+      VirgilStarterKit.configure({
         // Scope-resolved card-body StarterKit config. At `"card"` scope
         // heading/blockquote/codeBlock/horizontalRule are disabled — they make
         // no sense in a footnote / note body and would balloon the surface. At

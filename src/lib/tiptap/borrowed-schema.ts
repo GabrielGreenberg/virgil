@@ -60,7 +60,7 @@ import {
   canMountInSchema,
   type SchemaMountCheck,
 } from "@/lib/tiptap/schema-mount";
-import StarterKit from "@tiptap/starter-kit";
+import { VirgilStarterKit, withoutMarkdownRules } from "./virgil-starter-kit";
 import ListItem from "@tiptap/extension-list-item";
 import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
@@ -314,7 +314,7 @@ function buildExcerptOnlySchema(): AnyExtension[] {
     ExcerptListItem,
     CardBlockquote,
     VirgilHorizontalRule,
-    Highlight.configure({ multicolor: true }),
+    withoutMarkdownRules(Highlight).configure({ multicolor: true }),
     TextColor,
     // ── expex example family ────────────────────────────────────────────
     ExampleBlock.configure({ cardContext: true }),
@@ -414,7 +414,7 @@ export function cardBodySchemaFor(scope: CardBodySchemaScope): Schema {
   let cached = SCHEMA_CACHE.get(scope);
   if (!cached) {
     cached = getSchema([
-      StarterKit.configure({ ...starterKitConfigForScope(scope) }),
+      VirgilStarterKit.configure({ ...starterKitConfigForScope(scope) }),
       // The widest option set a surface at this scope can mount. A body that
       // registers FEWER atoms (RichTextField omits the nested `footnote`
       // marker at "card" scope) is not the concern here: this predicate gates a

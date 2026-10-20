@@ -42,7 +42,7 @@
  */
 
 import { getSchema, type AnyExtension, type Extensions } from "@tiptap/core";
-import StarterKit from "@tiptap/starter-kit";
+import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
 import type { JSONContent } from "@tiptap/react";
 import {
   DOMSerializer,
@@ -100,7 +100,7 @@ export function extensionsForScope(scope: CardBodySchemaScope): Extensions {
   const cached = EXTENSIONS_CACHE.get(scope);
   if (cached) return cached;
   const exts: Extensions = [
-    StarterKit.configure({ ...starterKitConfigForScope(scope) }),
+    VirgilStarterKit.configure({ ...starterKitConfigForScope(scope) }),
     ...buildCardBodySchema(scope, { includeLabelRefFootnote: true }),
   ];
   EXTENSIONS_CACHE.set(scope, exts);
