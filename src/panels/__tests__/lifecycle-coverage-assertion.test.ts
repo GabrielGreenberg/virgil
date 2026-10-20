@@ -64,11 +64,12 @@ function conformingRegistry(): CardLifecycleRegistry {
   const reg: CardLifecycleRegistry = {};
   for (const k of CARD_KINDS) {
     const d = CARD_REGISTRY[k].lifecycle;
-    if (!d.clone && !d.delete && !d.bindAnchor) continue; // nothing to wire
+    if (!d.clone && !d.delete && !d.bindAnchor && !d.carry) continue; // nothing to wire
     const entry: Partial<CardLifecycle> = {};
     if (d.clone) entry.clone = () => null;
     if (d.delete) entry.delete = () => {};
     if (d.bindAnchor) entry.bindAnchor = () => {};
+    if (d.carry) entry.carry = () => {};
     reg[k] = entry as CardLifecycle;
   }
   return reg;
@@ -152,7 +153,7 @@ const ANCHOR = "const cardLifecycleRegistry = useMemo";
  *  the interface and wired in `EditorPane` fails this file until it is named
  *  here and given a `CardMeta.lifecycle` column. That is the intended cost: a
  *  fourth lifecycle op is a spine change, not a quiet one. */
-const OPS = ["clone", "delete", "bindAnchor"] as const;
+const OPS = ["clone", "delete", "bindAnchor", "carry"] as const;
 type OpName = (typeof OPS)[number];
 
 interface ParsedRegistry {
@@ -297,7 +298,7 @@ describe("the REAL lifecycle registry EditorPane builds conforms to CARD_REGISTR
     }
     expect(
       [...unknown].sort(),
-      "the live registry supplies an op outside `clone`/`delete`/`bindAnchor`. " +
+      "the live registry supplies an op outside `clone`/`delete`/`bindAnchor`/`carry`. " +
         "Add it to OPS here AND to `CardLifecycleCapability` + every " +
         "`CARD_REGISTRY[kind].lifecycle` row, so the declaration still covers it.",
     ).toEqual([]);
@@ -325,6 +326,7 @@ describe("the REAL lifecycle registry EditorPane builds conforms to CARD_REGISTR
         clone: wired.has("clone"),
         delete: wired.has("delete"),
         bindAnchor: wired.has("bindAnchor"),
+        carry: wired.has("carry"),
       };
       for (const op of OPS) {
         if (declared[op] !== has[op]) {

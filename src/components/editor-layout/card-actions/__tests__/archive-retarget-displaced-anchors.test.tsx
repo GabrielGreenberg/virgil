@@ -58,7 +58,16 @@ import {
 } from "@/links/links";
 import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
 import {
+  dormantSnippetOf,
+  isDormantLink,
+  markDormant,
+  reviveLiveLinks,
+  type CarriedKeys,
+} from "@/links/dormant";
+import { collectBlockUuids } from "@/lib/tiptap/node-identity";
+import {
   landReturningDisplaced,
+  carryDisplacedAnchors,
   retargetDisplacedAnchors,
   returnDisplacedAnchors,
 } from "@/cards/retarget-anchors";
@@ -171,10 +180,46 @@ function makeCardStore() {
     const c = byKind.get(kind)!.find((x) => x.id === id);
     return c ? getLinkedTextObjectIds(c) : null;
   };
-  return { seed, handlers, pidsOf };
+  const cardOf = (kind: MarginItemKind, id: string) =>
+    byKind.get(kind)!.find((x) => x.id === id) as
+      | (CardWithLinks & { archived?: boolean; archivedWith?: string })
+      | undefined;
+  /** The per-kind lifecycle `carry` (task 1194) over this store — the REAL
+   *  `markDormant`, exactly what `useDormantRevival`'s writer applies. */
+  const carry = (id: string, snippetId: string, keys: CarriedKeys) => {
+    for (const arr of byKind.values()) {
+      const i = arr.findIndex((c) => c.id === id);
+      if (i >= 0) arr[i] = markDormant(arr[i], snippetId, keys);
+    }
+  };
+  /** The reviver's answer against the live doc (task 1193's liveness rule). */
+  const revive = (editor: Editor) => {
+    const live = collectBlockUuids(editor.state.doc);
+    for (const arr of byKind.values()) {
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = reviveLiveLinks(arr[i], {
+          isUuidLive: (u) => live.has(u),
+          isAnchorIdLive: () => false,
+        });
+      }
+    }
+  };
+  return { seed, handlers, pidsOf, cardOf, carry, revive };
 }
 
-function makeHarness(editor: Editor, handlers: Record<MarginItemKind, MarginItemHandlers>) {
+/** Every pid the card STORES, dormant or live — `getLinkedTextObjectIds`
+ *  answers only the live ones (task 1193). */
+function storedPids(card: CardWithLinks): string[] {
+  return (card.links ?? []).flatMap((l) =>
+    l.anchor.type === "textObject" ? l.anchor.textObjectIds : [],
+  );
+}
+
+function makeHarness(
+  editor: Editor,
+  handlers: Record<MarginItemKind, MarginItemHandlers>,
+  carry?: (id: string, snippetId: string, keys: CarriedKeys) => void,
+) {
   const notify = vi.fn();
   const archiveCalls: {
     paragraphId: unknown;
@@ -213,9 +258,12 @@ function makeHarness(editor: Editor, handlers: Record<MarginItemKind, MarginItem
   const deps: DragHandleActionsDeps = {
     editorRef: { current: { getEditor: () => editor } as never },
     cardCreation,
-    cardLifecycle: { get: () => ({ delete: () => {} }) } as unknown as DragHandleActionsDeps["cardLifecycle"],
+    cardLifecycle: {
+      get: () => ({ delete: () => {}, ...(carry ? { carry } : {}) }),
+    } as unknown as DragHandleActionsDeps["cardLifecycle"],
     anchorRetarget: {
       retarget: (args) => retargetDisplacedAnchors({ ...args, handlers }),
+      carry: (args) => carryDisplacedAnchors({ ...args, handlers }),
     },
     // task 636: the range legs' SETTLE bag. Inert here — no card in these
     // fixtures owns a live applied splice, so `get` answers null and the ask
@@ -247,7 +295,7 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
     store.seed("archive", "old-clip", ["p-target"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
 
@@ -264,7 +312,7 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
     store.seed("archive", "old-clip", ["p-target"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
 
@@ -273,51 +321,77 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
     expect(store.pidsOf("archive", "old-clip")).toEqual(["p-before"]);
   });
 
-  it("re-homes EVERY paragraph-anchored kind, not just archive cards", async () => {
+  // TASK 1194 RENEGOTIATES 491 FOR EVERY KIND BUT `archive`. 491 re-homed
+  // every Mode-A card onto the neighbour because the passage's cards had
+  // nowhere else to be. Since 1193 they do: the archive itself. Gabriel asked
+  // for "an archived text AND archived notes linked to it", so a travelling
+  // kind (`lifecycle.carry`) now goes INTO the snippet — link kept, dormant —
+  // and comes back on Restore. Only an archive card keeps 491's stacking
+  // (an archive nested in an archive is its own question).
+  it("CARRIES every travelling kind into the snippet; an archive card still re-homes", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
-    for (const kind of ["note", "todo", "cut", "revision", "report", "archive"] as MarginItemKind[]) {
+    const travelling: MarginItemKind[] = ["note", "todo", "cut", "revision", "report"];
+    for (const kind of [...travelling, "archive"] as MarginItemKind[]) {
       store.seed(kind, `${kind}-1`, ["p-target"]);
     }
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
 
-    for (const kind of ["note", "todo", "cut", "revision", "report", "archive"] as MarginItemKind[]) {
-      expect(store.pidsOf(kind, `${kind}-1`)).toEqual(["p-before"]);
+    expect(store.pidsOf("archive", "archive-1")).toEqual(["p-before"]);
+    const snippetId = "card-1";
+    for (const kind of travelling) {
+      const card = store.cardOf(kind, `${kind}-1`)!;
+      // Nothing re-homed onto the neighbour, nothing deleted: the link is the
+      // same link, dormant in the snippet, and the card archived with it.
+      expect(storedPids(card)).toEqual(["p-target"]);
+      expect(getLinkedTextObjectIds(card)).toEqual([]); // no live row
+      expect(card.links!.every(isDormantLink)).toBe(true);
+      expect(dormantSnippetOf(card)).toBe(snippetId);
+      expect(card.archived).toBe(true);
     }
+    // …and the snippet records no displacement for them: nothing to hand back.
+    expect(h.archiveCalls[0].displaced).toEqual([
+      { kind: "archive", id: "archive-1", from: ["p-target"], to: "p-before", added: true },
+    ]);
   });
 
-  it("a multi-anchor card moves ONLY the consumed anchor", async () => {
+  it("a multi-anchor card stays ACTIVE on its surviving anchor; only the archived link sleeps", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
     store.seed("note", "multi", ["p-target", "p-after"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
 
-    const pids = store.pidsOf("note", "multi")!;
-    expect(new Set(pids)).toEqual(new Set(["p-after", "p-before"]));
+    const card = store.cardOf("note", "multi")!;
+    expect(new Set(storedPids(card))).toEqual(new Set(["p-target", "p-after"]));
+    expect(getLinkedTextObjectIds(card)).toEqual(["p-after"]);
+    expect(card.links!.filter(isDormantLink).map((l) => (l.anchor as { textObjectIds: string[] }).textObjectIds)).toEqual([["p-target"]]);
+    expect(card.archived).toBeUndefined();
+    expect(dormantSnippetOf(card)).toBeNull();
   });
 
-  it("a card already anchored to the neighbour gains no DUPLICATE row", async () => {
-    // Repeated adjacent archives converge on one survivor; a second identical
-    // link would paint a second marker on it.
+  it("a card also on the neighbour gains no neighbour row — it was there already", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
     store.seed("note", "both", ["p-target", "p-before"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
 
-    expect(store.pidsOf("note", "both")).toEqual(["p-before"]);
+    const card = store.cardOf("note", "both")!;
+    expect(storedPids(card)).toEqual(["p-target", "p-before"]);
+    expect(card.links!.map(isDormantLink)).toEqual([true, false]);
+    expect(card.archived).toBeUndefined();
   });
 
   it("falls FORWARD when the captured passage is the document's first block", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
     store.seed("archive", "first-clip", ["p-before"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", { kind: "paragraph", id: "p-before" } as DragHandleRef);
 
@@ -347,7 +421,7 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
     store.seed("archive", "doomed", ["p-target"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("delete", TARGET_REF);
 
@@ -365,7 +439,7 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
     ]);
     const store = makeCardStore();
     store.seed("archive", "safe", ["p-target"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     // A stale ref never resolves, so the branch bails before the capture.
     await h.dispatch("archive", { kind: "paragraph", id: "p-nope" } as DragHandleRef);
@@ -473,23 +547,47 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     return out;
   }
 
-  it("the note goes back to the restored paragraph, which keeps its uuid", async () => {
+  // Since task 1194 only an ARCHIVE card is re-homed (and so recorded in
+  // `displaced`); the travelling kinds are carried dormant instead. These
+  // 1079 legs therefore drive an archive card through the re-home path, and
+  // the carried kinds get their own round trip below.
+  it("the archive card goes back to the restored paragraph, which keeps its uuid", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
-    store.seed("note", "n", ["p-target"]);
-    const h = makeHarness(editor, store.handlers);
+    store.seed("archive", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
-    expect(store.pidsOf("note", "n")).toEqual(["p-before"]);
+    expect(store.pidsOf("archive", "n")).toEqual(["p-before"]);
     expect(h.archiveCalls[0].displaced).toEqual([
-      { kind: "note", id: "n", from: ["p-target"], to: "p-before", added: true },
+      { kind: "archive", id: "n", from: ["p-target"], to: "p-before", added: true },
     ]);
 
     expect(restore(editor, store.handlers, h.archiveCalls[0])).toBe(true);
 
-    // THE DEFECT LEG: pre-1079 the note stayed stacked on p-before.
+    // THE DEFECT LEG: pre-1079 the card stayed stacked on p-before.
     expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
-    expect(store.pidsOf("note", "n")).toEqual(["p-target"]);
+    expect(store.pidsOf("archive", "n")).toEqual(["p-target"]);
+  });
+
+  it("a CARRIED note comes back with its paragraph: same link, revived by liveness (task 1194)", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const store = makeCardStore();
+    store.seed("note", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers, store.carry);
+
+    await h.dispatch("archive", TARGET_REF);
+    expect(store.cardOf("note", "n")!.archived).toBe(true);
+
+    expect(restore(editor, store.handlers, h.archiveCalls[0])).toBe(true);
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
+    store.revive(editor);
+
+    const card = store.cardOf("note", "n")!;
+    expect(getLinkedTextObjectIds(card)).toEqual(["p-target"]);
+    expect(card.links!.some(isDormantLink)).toBe(false);
+    expect(card.archived).toBeUndefined();
+    expect(dormantSnippetOf(card)).toBeNull();
   });
 
   it("every Mode-A kind round-trips, and a card already on the neighbour keeps that anchor", async () => {
@@ -498,10 +596,13 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     const kinds: MarginItemKind[] = ["note", "todo", "cut", "revision", "report", "archive"];
     for (const kind of kinds) store.seed(kind, `${kind}-1`, ["p-target"]);
     store.seed("note", "both", ["p-target", "p-before"]);
-    const h = makeHarness(editor, store.handlers);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
     restore(editor, store.handlers, h.archiveCalls[0]);
+    // The carried kinds come back by liveness (task 1194); the archive card
+    // through the 1079 hand-back.
+    store.revive(editor);
 
     for (const kind of kinds) expect(store.pidsOf(kind, `${kind}-1`)).toEqual(["p-target"]);
     // It was on p-before BEFORE the archive — the capture didn't put it there,
@@ -512,24 +613,24 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
   it("a card the user moved between archive and restore stays where they put it", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
-    store.seed("note", "n", ["p-target"]);
-    const h = makeHarness(editor, store.handlers);
+    store.seed("archive", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
-    // The user re-anchors the note to p-after.
-    store.handlers.note.unanchor("n", "p-before");
-    store.handlers.note.reanchor("n", "p-after", "paragraph", null);
+    // The user re-anchors the card to p-after.
+    store.handlers.archive.unanchor("n", "p-before");
+    store.handlers.archive.reanchor("n", "p-after", "paragraph", null);
 
     restore(editor, store.handlers, h.archiveCalls[0]);
 
-    expect(store.pidsOf("note", "n")).toEqual(["p-after"]);
+    expect(store.pidsOf("archive", "n")).toEqual(["p-after"]);
   });
 
   it("a restore whose uuid was RE-MINTED (collision) leaves the displaced card on the neighbour", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
-    store.seed("note", "n", ["p-target"]);
-    const h = makeHarness(editor, store.handlers);
+    store.seed("archive", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
     // Something else now holds the archived uuid (e.g. the user restored a copy
@@ -545,7 +646,7 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     restore(editor, store.handlers, h.archiveCalls[0]);
 
     expect(editor.state.doc.textContent).toContain("Target passage.");
-    expect(store.pidsOf("note", "n")).toEqual(["p-before"]);
+    expect(store.pidsOf("archive", "n")).toEqual(["p-before"]);
   });
 
   it("a REFUSED landing hands nothing back", () => {

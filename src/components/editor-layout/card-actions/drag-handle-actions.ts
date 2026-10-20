@@ -39,6 +39,7 @@ import {
 import { commitDocThenCards } from "@/components/drop-mode/commit-seam";
 import { transactionAdmitted } from "@/lib/tiptap/transaction-admitted";
 import {
+  collectCarriedAnchorIds,
   commitRangeDelete,
   expandCascadeRange,
   settleRangeCardObligations,
@@ -55,7 +56,8 @@ import { trackDispatchTarget, type DispatchTargetTracker } from "./grab-menu-tar
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
 import { omniSideToReveal } from "@/hooks/view-prefs-derived";
-import type { AnchorRetargetApi } from "@/cards/retarget-anchors";
+import { travelsWithArchive, type AnchorRetargetApi } from "@/cards/retarget-anchors";
+import { captureCarriedMarks } from "@/lib/tiptap/slice-capture";
 import {
   captureParagraphSnapshot,
   tryCreateLinkedAnchor,
@@ -131,7 +133,7 @@ export interface DragHandleActionsDeps {
    * a bundle whose collections are empty, which is a no-op — an ANSWER, not an
    * omission.
    */
-  anchorRetarget: Pick<AnchorRetargetApi, "retarget">;
+  anchorRetarget: Pick<AnchorRetargetApi, "retarget" | "carry">;
   /**
    * The SETTLE obligation's ops bag (task 238), for the RANGE legs (task 636).
    *
@@ -1009,6 +1011,20 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // an archive snippet minted for text that was never archived.
           // (`richContent` was captured above, from the settled document, so the
           // snippet still carries every inline atom the delete removes.)
+          // ── THE PASSAGE CARRIES ITS CARDS (task 1194) ──────────────────
+          // Gabriel: an archived text AND the notes linked to it. Every card
+          // of a kind that declares `lifecycle.carry` goes INTO the archive
+          // with its text — its links kept, dormant — instead of being
+          // re-homed (Mode A, task 491) or deleted (Mode B, task 393). The
+          // Mode-B marks it rode on are recorded on the snippet, read off the
+          // same pre-delete cut as `richContent`, so Restore can re-stamp them
+          // over exactly the same words. Archive cards keep the 491 stacking.
+          const carriedMarks = captureCarriedMarks(
+            ed.state.doc,
+            settled.from,
+            settled.to,
+            collectCarriedAnchorIds(ed.state.doc, settled.from, settled.to),
+          );
           let snippetId: string | null = null;
           const landed = commitRangeDelete(
             ed,
@@ -1022,8 +1038,10 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 // Self-healing on reload, exactly as the drop-mode re-anchor
                 // gesture's fresh links are.
                 snapshot,
+                // A travelling card is carried below, never re-homed.
+                keep: travelsWithArchive,
               });
-              snippetId = cardCreation.createArchiveSnippet({
+              const snippet = cardCreation.createArchiveSnippet({
                 text,
                 content: richContent,
                 paragraphId: snippetParagraphId,
@@ -1031,8 +1049,19 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 returnBefore: snippetReturnBefore,
                 // Task 1079: which cards moved, so Restore can hand them back.
                 displaced,
+                carriedMarks,
                 mode: "omni",
-              }).id;
+              });
+              snippetId = snippet.id;
+              // Mode A: the cards whose paragraph left whole go dormant here;
+              // Mode B: the range's card half carries the contained marks'
+              // cards into the same snippet (`carryInto`).
+              anchorRetarget.carry({
+                removed: displacedUuids,
+                snippetId: snippet.id,
+                lifecycle: cardLifecycle,
+              });
+              return { carryInto: snippet.id };
             },
           );
           if (!landed || snippetId == null) {

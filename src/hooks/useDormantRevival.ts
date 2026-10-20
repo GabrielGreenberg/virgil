@@ -1,9 +1,12 @@
 "use client";
 
+import { useCallback, useRef } from "react";
 import {
   dormantKeysOf,
   insertionTouchesDormant,
+  markDormant,
   reviveLiveLinks,
+  type CarriedKeys,
   type DormantCardShape,
   type DormantKeys,
 } from "@/links/dormant";
@@ -25,13 +28,19 @@ import { useAnchorsRevived } from "@/lib/tiptap/orphan-events";
  * nothing dormant answers in O(1) and never calls `update()`, so a not-yet-loaded panel is never poisoned (the
  * `useReconcileModeAAnchors` loader invariant).
  */
+/** The per-kind CARRY op (task 1194): the archive capture took the text
+ *  `keys` names into snippet `snippetId` — mark those links dormant (and the
+ *  card archived-with-its-text when every anchor is). The kind's
+ *  `CardLifecycle.carry`. */
+export type CarryCard = (id: string, snippetId: string, keys: CarriedKeys) => void;
+
 export function useDormantRevival<S, C extends DormantCardShape>(
   docId: string | null,
   update: (updater: (prev: S) => S) => void,
   state: S,
   selectCards: (state: S) => readonly C[],
   mapCards: (state: S, next: C[]) => S,
-): void {
+): CarryCard {
   // No refs: `useAnchorsRevived` already re-points its listener at the latest
   // handler every render, so this closure always reads the current state.
   useAnchorsRevived(docId, (detail) => {
@@ -53,6 +62,27 @@ export function useDormantRevival<S, C extends DormantCardShape>(
       return changed ? mapCards(prev, next) : prev;
     });
   });
+
+  // The WRITE half (task 1194) — the archive capture's door into this kind's
+  // state. Same `update` / select / map the reviver uses, so making a link
+  // dormant and reviving it are one vocabulary over one store. Identity-stable
+  // (the lifecycle table is a memo; the selectors are inline lambdas).
+  const io = useRef({ update, selectCards, mapCards });
+  io.current = { update, selectCards, mapCards };
+  return useCallback<CarryCard>((id, snippetId, keys) => {
+    const { update: write, selectCards: select, mapCards: map } = io.current;
+    write((prev) => {
+      const cur = select(prev);
+      let changed = false;
+      const next = cur.map((c) => {
+        if (c.id !== id) return c;
+        const r = markDormant(c, snippetId, keys);
+        if (r !== c) changed = true;
+        return r;
+      });
+      return changed ? map(prev, next) : prev;
+    });
+  }, []);
 }
 
 /** The dormant-key index per card ARRAY — the sidecar hooks hand out a new

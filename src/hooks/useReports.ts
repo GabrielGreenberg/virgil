@@ -409,7 +409,7 @@ export function useReports(
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  useDormantRevival<ReportsState, ReportItem>(
+  const carry = useDormantRevival<ReportsState, ReportItem>(
     docId,
     update,
     state,
@@ -590,6 +590,7 @@ export function useReports(
       detachAnchorSources,
       reconcileAnchors,
       reinstate,
+      carry,
       loaded,
       loadError,
       deleteCard,
@@ -614,6 +615,7 @@ export function useReports(
       detachAnchorSources,
       reconcileAnchors,
       reinstate,
+      carry,
       loaded,
       loadError,
       deleteCard,

@@ -14,9 +14,12 @@
  *   2. DO — `commitRangeDelete`: the range's `tr.delete`, MEASURED, and only
  *      once it has landed `cleanupLinksInRange`. Synchronous; nothing in the
  *      card half can refuse, because phase one already asked — and nothing in
- *      it runs at all when the DOCUMENT half was refused (task 735).
+ *      it runs at all when the DOCUMENT half was refused (task 735). For an
+ *      ARCHIVE the card half CARRIES rather than deletes every contained card
+ *      of a travelling kind (task 1194 — `RangeCardDisposition`).
  *
- * Both phases enumerate through ONE walker, `collectRangeCardTargets`, so the
+ * Both phases enumerate through ONE walker, `walkRangeCards` (read-only view:
+ * `collectRangeCardTargets`), so the
  * gesture can never ask about one set of cards and destroy another — but they
  * ask it two different questions (task 897). The ASK settles every card the
  * range TOUCHES (an applied splice the delete would clip must be kept or
@@ -58,6 +61,7 @@ import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import { commitDocThenCards } from "@/components/drop-mode/commit-seam";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { StepMap } from "@tiptap/pm/transform";
+import { CARD_REGISTRY } from "@/cards/card-registry";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -249,7 +253,7 @@ export function commitRangeDelete(
   from: number,
   to: number,
   lifecycle: CardLifecycleApi,
-  beforeCards?: () => void,
+  beforeCards?: () => RangeCardDisposition | void,
 ): boolean {
   const before = editor.state.doc;
   // Tag the removal as deliberate so `MarginaliaAnchorGuard` does not resurrect
@@ -258,9 +262,45 @@ export function commitRangeDelete(
     .delete(from, to)
     .setMeta(LIFECYCLE_DELETE_META, true);
   return commitDocThenCards(editor, tr, () => {
-    beforeCards?.();
-    cleanupLinksInRange(before, from, to, lifecycle);
+    const disposition = beforeCards?.();
+    cleanupLinksInRange(before, from, to, lifecycle, disposition?.carryInto ?? null);
   });
+}
+
+/** What the range's card half does with the cards it CONTAINS (task 1194).
+ *  A Delete answers nothing — every contained card is deleted. An Archive
+ *  answers the snippet the passage now lives in: a contained `linkedAnchor`
+ *  card of a kind that declares `lifecycle.carry` TRAVELS into it (its links
+ *  go dormant) instead of being deleted. Inline atoms still delete — their
+ *  markers ride the captured slice and their sidecar refs are rebuilt on
+ *  restore. */
+export interface RangeCardDisposition {
+  carryInto?: string | null;
+}
+
+/** Does an archive of this kind's text carry the card rather than delete it?
+ *  The registry's declaration — read here, by the walker, and by the capture's
+ *  mark record, so the three can never disagree about who travels. */
+export function cardKindCarries(kind: CardKind): boolean {
+  return CARD_REGISTRY[kind]?.lifecycle.carry === true;
+}
+
+/**
+ * The `linkedAnchor` ids an archive of `[from, to)` CARRIES — every mark wholly
+ * inside the range whose card kind travels ({@link cardKindCarries}). The same
+ * containment walk the card half uses, so the snippet records exactly the
+ * marks whose cards went dormant (and Restore re-stamps exactly those).
+ */
+export function collectCarriedAnchorIds(
+  doc: PMNode,
+  from: number,
+  to: number,
+): Set<string> {
+  const out = new Set<string>();
+  for (const hit of walkRangeCards(doc, from, to)) {
+    if (hit.contained && hit.anchorId && cardKindCarries(hit.kind)) out.add(hit.anchorId);
+  }
+  return out;
 }
 
 /** One sidecar-bearing card the walk found inside a range. */
@@ -492,8 +532,32 @@ export function cleanupLinksInRange(
   from: number,
   to: number,
   lifecycle: CardLifecycleApi,
+  carryInto: string | null = null,
 ): void {
-  for (const target of collectRangeCardTargets(doc, from, to)) {
+  // ARCHIVE-CARRY (task 1194): the travelling cards are gathered per card, so
+  // a card with several marks inside the passage goes dormant in ONE write and
+  // is archived-with-its-text only once every carried link is dormant.
+  const carried = new Map<string, { kind: CardKind; id: string; anchorIds: Set<string> }>();
+  const deletions: RangeCardTarget[] = [];
+  for (const hit of walkRangeCards(doc, from, to)) {
+    if (!hit.contained) continue;
+    if (carryInto && hit.anchorId && cardKindCarries(hit.kind) && lifecycle.get(hit.kind)?.carry) {
+      const key = `${hit.kind}:${hit.id}`;
+      const entry = carried.get(key) ?? { kind: hit.kind, id: hit.id, anchorIds: new Set<string>() };
+      entry.anchorIds.add(hit.anchorId);
+      carried.set(key, entry);
+      continue;
+    }
+    if (deletions.some((t) => t.kind === hit.kind && t.id === hit.id)) continue;
+    deletions.push({ kind: hit.kind, id: hit.id });
+  }
+  for (const { kind, id, anchorIds } of carried.values()) {
+    lifecycle.get(kind)?.carry?.(id, carryInto!, { anchorIds });
+  }
+  for (const target of deletions) {
+    // A card carried by one mark is not deleted for another of its marks in
+    // the same passage — carrying is the archive's answer for that card.
+    if (carried.has(`${target.kind}:${target.id}`)) continue;
     const committed = lifecycle.get(target.kind)?.delete(target.id);
     if (process.env.NODE_ENV === "production") continue;
     void Promise.resolve(committed).then((ok) => {

@@ -48,6 +48,7 @@ import type { CardKind } from "./_shared/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { panelForCardKind } from "@/cards/predicates";
 import type { PristineCardManager } from "@/hooks/usePristineCardManager";
+import type { CarryCard } from "@/hooks/useDormantRevival";
 
 /** A delete that CAN decline — resolves `false` when the lifecycle executor's
  *  SETTLE prompt was cancelled and the card survives (task 238). Every
@@ -98,6 +99,13 @@ export interface CardLifecycle {
     anchorId: string,
     anchorText: string,
   ): void;
+  /** ARCHIVE-CARRY (task 1194): an archive capture took the text `keys` names
+   *  into snippet `snippetId`. The card is not deleted — those links go
+   *  DORMANT (`@/links/dormant` `markDormant`) and come back when the snippet
+   *  is restored. Not an ending event: nothing is settled or unbridged. Only
+   *  the kinds whose `CARD_REGISTRY` row declares `lifecycle.carry` wire it;
+   *  every other kind keeps `delete` (atoms) or the Mode-A re-home (archive). */
+  carry?: CarryCard;
 }
 
 export type CardLifecycleRegistry = Partial<Record<CardKind, CardLifecycle>>;
@@ -195,11 +203,17 @@ export function assertLifecycleCoverage(registry: CardLifecycleRegistry): void {
   for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
     const declared = CARD_REGISTRY[k].lifecycle;
     const e = registry[k];
-    const has = { clone: !!e?.clone, delete: !!e?.delete, bindAnchor: !!e?.bindAnchor };
+    const has = {
+      clone: !!e?.clone,
+      delete: !!e?.delete,
+      bindAnchor: !!e?.bindAnchor,
+      carry: !!e?.carry,
+    };
     if (
       declared.clone !== has.clone ||
       declared.delete !== has.delete ||
-      declared.bindAnchor !== has.bindAnchor
+      declared.bindAnchor !== has.bindAnchor ||
+      declared.carry !== has.carry
     ) {
       console.error(
         `[CardLifecycle] "${k}": registry declares ${JSON.stringify(declared)} ` +

@@ -4,7 +4,12 @@ import { useAnchorOrphaned, useTextObjectOrphaned } from "@/lib/tiptap/orphan-ev
 import { useCallback, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { JSONContent } from "@tiptap/react";
-import type { ArchiveState, ArchivedSnippet, DisplacedAnchorRecord } from "@/lib/types";
+import type {
+  ArchiveState,
+  ArchivedSnippet,
+  CarriedMarkRecord,
+  DisplacedAnchorRecord,
+} from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import {
   addTextObjectLink,
@@ -55,6 +60,7 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
     unanchored: s.unanchored,
     returnBefore: typeof s.returnBefore === "string" && s.returnBefore ? s.returnBefore : undefined,
     displaced: migrateDisplaced(s.displaced),
+    carriedMarks: migrateCarriedMarks(s.carriedMarks),
     links: migrateCardLinks("archive", raw),
   }, ["text"]);
 }
@@ -74,6 +80,22 @@ function migrateDisplaced(raw: unknown): DisplacedAnchorRecord[] | undefined {
   return out.length ? out : undefined;
 }
 
+/** Task 1194: keep only well-formed carried-mark runs (tolerated, not
+ *  trusted — a malformed run is dropped, so its card simply stays dormant);
+ *  none ≡ absent. */
+function migrateCarriedMarks(raw: unknown): CarriedMarkRecord[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: CarriedMarkRecord[] = [];
+  for (const r of raw as Partial<CarriedMarkRecord>[]) {
+    if (!r || typeof r.anchorId !== "string" || !r.anchorId) continue;
+    if (!Number.isInteger(r.from) || !Number.isInteger(r.to)) continue;
+    if ((r.from as number) < 0 || (r.to as number) <= (r.from as number)) continue;
+    const attrs = r.attrs && typeof r.attrs === "object" ? r.attrs : {};
+    out.push({ anchorId: r.anchorId, attrs: { ...attrs, anchorId: r.anchorId }, from: r.from!, to: r.to! });
+  }
+  return out.length ? out : undefined;
+}
+
 function migrateArchiveShape(raw: unknown): ArchiveState {
   const s = raw as Partial<ArchiveState>;
   return { snippets: Array.isArray(s.snippets) ? s.snippets.map(migrateSnippet) : [] };
@@ -82,6 +104,15 @@ function migrateArchiveShape(raw: unknown): ArchiveState {
 /** Task 715 — no legacy top-level key was ever consumed here. Exported under
  *  the original name: the wrapper is the migrator now, at every caller. */
 export const migrateArchive = withSidecarEnvelope(migrateArchiveShape);
+
+/** What the capture alone can record on a fresh snippet (tasks 104, 965,
+ *  1079, 1194). One shape, threaded unchanged from the archive gesture. */
+export interface ArchiveCaptureRecord {
+  unanchored?: boolean;
+  returnBefore?: string;
+  displaced?: DisplacedAnchorRecord[];
+  carriedMarks?: CarriedMarkRecord[];
+}
 
 export function useArchive(docId: string | null) {
   const { state, update, stateRef, loaded, loadError } =
@@ -94,7 +125,7 @@ export function useArchive(docId: string | null) {
   const archiveContent = useCallback(
     (
       content: unknown,
-      opts?: { unanchored?: boolean; returnBefore?: string; displaced?: DisplacedAnchorRecord[] },
+      opts?: ArchiveCaptureRecord,
     ): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
@@ -111,6 +142,8 @@ export function useArchive(docId: string | null) {
         ...(opts?.returnBefore ? { returnBefore: opts.returnBefore } : {}),
         // Returning margin (task 1079) — likewise only the capture knows it.
         ...(opts?.displaced?.length ? { displaced: opts.displaced } : {}),
+        // Carried marks (task 1194) — the Mode-B half of what travelled.
+        ...(opts?.carriedMarks?.length ? { carriedMarks: opts.carriedMarks } : {}),
         links: [],
       };
       update((prev) => ({ snippets: [...prev.snippets, snippet] }));

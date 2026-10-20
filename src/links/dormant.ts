@@ -109,6 +109,58 @@ function isTargetLive(link: Link, live: AnchorLiveness): boolean {
   return link.anchor.textObjectIds.some((pid) => !!pid && live.isUuidLive(pid));
 }
 
+/** Which of a card's links an archive capture took with it (task 1194). */
+export interface CarriedKeys {
+  /** Block uuids the capture removed WHOLE — a Mode-A link travels when every
+   *  pid it names is among them. */
+  pids?: ReadonlySet<string>;
+  /** `linkedAnchor` ids whose WHOLE mark lies inside the capture — a Mode-B
+   *  link travels by its mark only (the reviver's rule, mirrored). */
+  anchorIds?: ReadonlySet<string>;
+}
+
+function isCarriedLink(link: Link, keys: CarriedKeys): boolean {
+  if (link.anchor.type !== "textObject" || isDormantLink(link)) return false;
+  if (isModeB(link)) {
+    const anchorId = link.anchor.textRange?.anchorId;
+    return !!anchorId && !!keys.anchorIds?.has(anchorId);
+  }
+  const pids = link.anchor.textObjectIds.filter(Boolean);
+  return pids.length > 0 && pids.every((pid) => !!keys.pids?.has(pid));
+}
+
+/**
+ * THE WRITER (task 1194): the archive capture took this card's text with it.
+ * Every link `keys` names becomes dormant in `snippetId`; a link it does not
+ * name stays live, so a card also anchored to surviving text stays active
+ * there. When every anchor link is dormant in THIS snippet the card is
+ * archived with it (`archived` + `archivedWith`), which every archived filter
+ * already hides — unless the user had archived it by hand, which stays a
+ * hand archive (revival must not unarchive what the user put away).
+ *
+ * Identity-preserving no-op when `keys` names none of the card's links.
+ */
+export function markDormant<T extends DormantCardShape>(
+  card: T,
+  snippetId: string,
+  keys: CarriedKeys,
+): T {
+  const links = card.links;
+  if (!snippetId || !links || !links.some((l) => isCarriedLink(l, keys))) return card;
+  const next = links.map((l) =>
+    isCarriedLink(l, keys) ? { ...l, archivedWith: snippetId } : l,
+  );
+  const out: T = { ...card, links: next };
+  const anchors = next.filter((l) => l.anchor.type === "textObject");
+  const allHere = anchors.every((l) => l.archivedWith === snippetId);
+  const byHand = card.archived === true && !isArchivedWithText(card);
+  if (allHere && !byHand) {
+    out.archived = true;
+    out.archivedWith = snippetId;
+  }
+  return out;
+}
+
 function stripLinkDormancy(link: Link): Link {
   const { archivedWith: _drop, ...rest } = link;
   void _drop;

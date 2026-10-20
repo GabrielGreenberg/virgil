@@ -116,7 +116,10 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 const ANCHOR_ID = "b50e";
-const CARD_KEY = "revision:rev-1";
+// A REAL CardKind (task 1194): `linkCardKey` only mints spine kinds, and the
+// archive's carry decision reads the kind's registry row — the pre-1194
+// "revision:" spelling named no row, so it could only ever be deleted.
+const CARD_KEY = "revision-comment:rev-1";
 
 /** The `linkedAnchor` mark as the editor really stamps it. */
 function anchorMark(): JSONContent["marks"] {
@@ -188,6 +191,7 @@ function makeHarness(editor: Editor) {
   const notify = vi.fn();
   const archiveCalls: ArchiveCall[] = [];
   const lifecycleCalls: LifecycleCall[] = [];
+  const carryCalls: LifecycleCall[] = [];
   let n = 0;
   const nextId = () => `card-${++n}`;
 
@@ -212,11 +216,13 @@ function makeHarness(editor: Editor) {
     cardLifecycle: {
       get: (kind: string) => ({
         delete: (id: string) => lifecycleCalls.push(`${kind}:${id}`),
+        // Task 1194: the archive's answer for a travelling kind.
+        carry: (id: string) => carryCalls.push(`${kind}:${id}`),
       }),
     } as unknown as DragHandleActionsDeps["cardLifecycle"],
     // task 491: the capture-retarget door. Inert here — no card
     // collections are wired, so the sweep finds nothing to move.
-    anchorRetarget: { retarget: () => [] },
+    anchorRetarget: { retarget: () => [], carry: () => 0 },
     // task 636: the range legs' SETTLE bag. Inert here — no card in these
     // fixtures owns a live applied splice, so `get` answers null and the ask
     // phase is a no-op (which is an ANSWER, not an omission).
@@ -238,6 +244,7 @@ function makeHarness(editor: Editor) {
     notify,
     archiveCalls,
     lifecycleCalls,
+    carryCalls,
   };
 }
 
@@ -329,21 +336,18 @@ describe("task 393 — an anchored passage archives", () => {
     expect(canMountInCardBody(reloaded, "excerpt").ok).toBe(true);
   });
 
-  it("orphans the MODE-B anchored card exactly as a plain Delete would", async () => {
-    // A DECISION, not an accident: archiving text that carries another card's
-    // Mode-B anchor puts that card on the normal orphan path (its kind's
-    // `lifecycle.delete`, which for an anchored card is the orphan-strip /
-    // re-pin route) — the same path Delete takes over the same range. Asserted
-    // as an EQUALITY between the two actions so neither can drift alone.
-    //
-    // SCOPED, since task 491: this equality is about **Mode-B** anchors, and it
-    // stands. A Mode-B anchor names the TEXT RANGE, and the range is exactly
-    // what left — so an archive has no more to offer it than a delete does, and
-    // both route through `cleanupLinksInRange`, which the two actions share.
-    // The **Mode-A** half is now asymmetric on purpose (an archive SETS TEXT
-    // ASIDE, so a paragraph anchor it consumes re-homes onto the surviving
-    // neighbour where a delete still orphans) — pinned side by side in
-    // `archive-retarget-displaced-anchors.test.tsx`.
+  it("CARRIES the Mode-B anchored card where a plain Delete deletes it — the same population", async () => {
+    // RENEGOTIATED IN PLACE (task 1194). Tasks 393 and 491 pinned this as an
+    // EQUALITY: archive and delete sent a Mode-B card down the same
+    // `lifecycle.delete`, because "a Mode-B anchor names the TEXT RANGE, and
+    // the range is exactly what left — an archive has no more to offer it than
+    // a delete does". Task 1193 gave it more to offer: the range did not
+    // leave, it went INTO the archive, and Restore brings it back. So the
+    // equality now holds on the POPULATION (both actions reach exactly the
+    // same cards, through the one walker `cleanupLinksInRange`) and differs on
+    // the VERB: Delete still deletes, Archive carries — the card's link goes
+    // dormant in the snippet, and the snippet records the mark it rode on.
+    // The Mode-A twin is in `archive-retarget-displaced-anchors.test.tsx`.
     const archived = mountDoc(anchoredSectionDoc());
     const a = makeHarness(archived);
     await a.dispatch("archive", HEADING_REF);
@@ -352,8 +356,10 @@ describe("task 393 — an anchored passage archives", () => {
     const d = makeHarness(deleted);
     await d.dispatch("delete", HEADING_REF);
 
-    expect(a.lifecycleCalls).toContain(`revision:rev-1`);
-    expect(a.lifecycleCalls).toEqual(d.lifecycleCalls);
+    expect(d.lifecycleCalls).toContain(CARD_KEY);
+    expect(a.carryCalls).toEqual(d.lifecycleCalls);
+    expect(a.lifecycleCalls).toEqual([]);
+    expect(d.carryCalls).toEqual([]);
     // Both remove the same text; only Archive keeps a copy.
     expect(archived.state.doc.textContent).toBe(deleted.state.doc.textContent);
   });

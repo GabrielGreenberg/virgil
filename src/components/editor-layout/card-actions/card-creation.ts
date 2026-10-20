@@ -12,8 +12,10 @@ import type {
   TodoItem,
   CitationRef,
   ArchivedSnippet,
+  CarriedMarkRecord,
   DisplacedAnchorRecord,
 } from "@/lib/types";
+import type { ArchiveCaptureRecord } from "@/hooks/useArchive";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { TextObjectKind } from "@/text-objects/types";
@@ -128,7 +130,7 @@ export interface CardCreationDeps {
    *  walker + tr.delete) before/around the call. */
   archiveContent: (
     content: unknown,
-    opts?: { unanchored?: boolean; returnBefore?: string; displaced?: DisplacedAnchorRecord[] },
+    opts?: ArchiveCaptureRecord,
   ) => ArchivedSnippet;
   updateArchiveSnippet: (id: string, content: unknown) => void;
   addArchiveTextObjectId: (
@@ -321,6 +323,9 @@ export interface CardCreationApi {
     /** Task 1079: the cards the capture re-homed — see
      *  `ArchivedSnippet.displaced`. */
     displaced?: DisplacedAnchorRecord[];
+    /** Task 1194: the Mode-B marks whose cards travelled — see
+     *  `ArchivedSnippet.carriedMarks`. */
+    carriedMarks?: CarriedMarkRecord[];
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   } & AutoFocusOpt) => ArchivedSnippet;
@@ -678,6 +683,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         unanchored: !opts.paragraphId,
         returnBefore: opts.returnBefore,
         displaced: opts.displaced,
+        carriedMarks: opts.carriedMarks,
       });
       if (opts.content !== undefined) {
         updateArchiveSnippet(snippet.id, opts.content);

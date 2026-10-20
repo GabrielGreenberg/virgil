@@ -75,7 +75,9 @@
  * payload the destructive door VALIDATES is byte-identical to the one this
  * produces.
  */
-import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
+import { Fragment, type Node as PMNode, type Schema } from "@tiptap/pm/model";
+import { Transform } from "@tiptap/pm/transform";
+import type { CarriedMarkRecord } from "@/lib/types";
 import type { JSONContent } from "@tiptap/react";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { serializeBodyOnly, serializeParagraphInline } from "@/lib/latex-serializer";
@@ -117,6 +119,79 @@ export function captureRangeContent(doc: PMNode, from: number, to: number): JSON
     type: "doc",
     content: content ? (content.toJSON() as JSONContent[]) : [],
   });
+}
+
+/**
+ * The CARRIED-MARK record of the same cut (task 1194): every contiguous run of
+ * a `linkedAnchor` mark in `anchorIds`, at its position INSIDE the captured
+ * content. The content ({@link captureRangeContent}) is this very cut with
+ * `DOC_ONLY_MARKS` stripped — a mark strip, never a structural change — so a
+ * position here is a position in the stored `content`, and nothing can drift
+ * between the two: they are read off one fragment of one document.
+ */
+export function captureCarriedMarks(
+  doc: PMNode,
+  from: number,
+  to: number,
+  anchorIds: ReadonlySet<string>,
+): CarriedMarkRecord[] {
+  if (anchorIds.size === 0) return [];
+  const content = cutRange(doc, from, to);
+  if (!content) return [];
+  const runs: CarriedMarkRecord[] = [];
+  const open = new Map<string, CarriedMarkRecord>();
+  content.descendants((node, pos) => {
+    if (!node.isInline) return true;
+    const end = pos + node.nodeSize;
+    for (const mark of node.marks) {
+      if (mark.type.name !== "linkedAnchor") continue;
+      const id = mark.attrs.anchorId;
+      if (typeof id !== "string" || !anchorIds.has(id)) continue;
+      const run = open.get(id);
+      if (run && run.to === pos) {
+        run.to = end;
+        continue;
+      }
+      const fresh: CarriedMarkRecord = { anchorId: id, attrs: { ...mark.attrs }, from: pos, to: end };
+      open.set(id, fresh);
+      runs.push(fresh);
+    }
+    return false;
+  });
+  return runs;
+}
+
+/**
+ * Restore's half (task 1194): the excerpt `content` with its carried
+ * `linkedAnchor` runs stamped back on, in the LIVE document's schema — so the
+ * marks land in the very transaction that lands the text, wherever it lands.
+ * A run that no longer fits the content (a hand-edited archive.json, a body
+ * edited since) is skipped, never forced: its card simply stays dormant.
+ */
+export function withCarriedMarks(
+  schema: Schema,
+  content: JSONContent,
+  marks: readonly CarriedMarkRecord[] | undefined,
+): JSONContent {
+  const type = schema.marks.linkedAnchor;
+  if (!marks?.length || !type) return content;
+  let node: PMNode;
+  try {
+    node = schema.nodeFromJSON(content);
+  } catch {
+    return content;
+  }
+  const tr = new Transform(node);
+  const size = node.content.size;
+  for (const m of marks) {
+    if (m.from < 0 || m.to > size || m.to <= m.from) continue;
+    try {
+      tr.addMark(m.from, m.to, type.create({ ...m.attrs, anchorId: m.anchorId }));
+    } catch {
+      continue;
+    }
+  }
+  return tr.docChanged ? (tr.doc.toJSON() as JSONContent) : content;
 }
 
 /**

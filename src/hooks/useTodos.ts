@@ -268,7 +268,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  useDormantRevival<TodoState, TodoItem>(
+  const carry = useDormantRevival<TodoState, TodoItem>(
     docId,
     update,
     state,
@@ -476,6 +476,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       detachAnchorSources,
       reconcileAnchors,
       reinstate,
+      carry,
       loaded,
       loadError,
       setTodoAnchor,
@@ -501,6 +502,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       detachAnchorSources,
       reconcileAnchors,
       reinstate,
+      carry,
       loaded,
       loadError,
       setTodoAnchor,
