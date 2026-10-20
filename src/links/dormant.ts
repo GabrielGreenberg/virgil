@@ -294,24 +294,14 @@ export function passageOf(card: DormantCardShape): string | null {
 }
 
 /**
- * PARKED: the card is out of the archive but every anchor it has is still in
- * one — its text is archived, the card is not. It has nowhere to sit in the
- * document, yet it is not lost: restoring the passage re-attaches it (the
- * reviver). The anchor-state SSOT classifies it `parked` — neutral, never the
- * red `orphaned` (`resolveAnchorState`'s `parked` intent).
- */
-export function isParked(card: DormantCardShape): boolean {
-  return card.archived !== true && isFullyDormant(card);
-}
-
-/**
  * THE per-card archive toggle for a kind that can travel (task 1195). Every
  * card hook's `setArchived` writes through this, so a hand toggle can never
  * leave the card-level field claiming "archived with its text" when it is not:
  *
  *  - UNARCHIVE: the card leaves the archive; `archivedWith` is cleared, its
- *    dormant LINKS are kept — its text is still archived, so it reads parked
- *    and re-attaches by itself if the passage is restored.
+ *    dormant LINKS are kept — its text is still archived, so it reads PARKED
+ *    (`resolveAnchorState`'s `parked` intent: neutral, never the red
+ *    `orphaned`) and re-attaches by itself if the passage is restored.
  *  - ARCHIVE by hand: a hand archive (no `archivedWith`), which revival never
  *    undoes.
  *

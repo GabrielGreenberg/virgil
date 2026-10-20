@@ -1660,6 +1660,23 @@ ruled the two-pill split a distinction without a difference for the user
 to the rows. The parked cue on the docked card is that same intent made
 visible.
 
+**Parked with its passage (task 1195).** A third neutral member of the bin:
+a card whose TEXT is archived (its anchors went dormant with an archived
+passage) but which the user unarchived on its own. `AnchorState` `parked`,
+the same dashed `◌` as a parked ref, never `BadgeOrphaned` — it has a place
+in the text, the place is just in the archive, and it re-attaches when the
+passage is restored. Its card says so in the **archive-relation row**.
+
+**The archive-relation row** (task 1195) is a small muted line under the
+card body — `text-[11px]`, `--muted` — holding **chips** (`rounded-xs`,
+1px `--border`, `hover-on-light`): on an Archive card, "Archived with this
+passage: N <kind nouns>" then one chip per travelled card (registry `label`
++ title); on a travelled card, "Archived with passage" (or the parked
+re-attach sentence) then one chip naming the passage. Kind nouns come from
+`CARD_REGISTRY` labels, never hand-typed. It is a SHELL slot
+(`archiveRelation`, supplied by `useAnchoredCardShell`) — a kind never opts
+in, so every kind that can travel shows it.
+
 **Vocabulary.** "Unanchored" is the ONE word for a card with no place in
 the text, wherever it is a pill or chip label — orphaned or parked alike.
 "Unplaced" is retired from the omni surface (task 544). (The docked card's

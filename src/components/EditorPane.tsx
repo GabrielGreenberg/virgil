@@ -455,10 +455,6 @@ import type {
   FootnoteRef,
   RevisionSuggestionCard,
   CutterSuggestionCard,
-  NoteCardItem,
-  ReportItem,
-  RevisionCard,
-  CutterCard,
 } from "@/lib/types";
 import { cardsArchivedWith, type DormantCardShape } from "@/links/dormant";
 import {
@@ -2057,41 +2053,46 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // aiRequest routing, so the executor no-ops the unbridge. Wrapping at the
   // hook-memo level means every door that threads `archiveHook.deleteSnippet`
   // — margin marker, panel trash, the footnote-sync bridge — inherits it.
-  //
-  // Task 1195: a deleted PASSAGE first RELEASES the cards that travelled with
-  // it — the five stores drop their links dormant in it and clear
-  // `archivedWith`, so an archived card stays an ordinary archived card and an
-  // unarchived (parked) one reads unanchored. A card is never deleted by its
-  // passage's delete. Wired HERE, inside the one executor's raw mutation, so
-  // every door that deletes a snippet releases by construction.
-  const releaseNotes = notesHookRaw.release;
-  const releaseTodos = todosHookRaw.release;
-  const releaseCutter = cutterHookRaw.release;
-  const releaseRevisions = revisionsHookRaw.release;
-  const releaseReports = reportsHookRaw.release;
   const deleteArchiveSnippet = useMemo(
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) =>
           archiveHookRaw.snippets.some((s) => s.id === id) ? "archive" : null,
-        rawDelete: (id: string) => {
-          for (const release of [releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports]) {
-            release(id);
-          }
-          return archiveHookRaw.deleteSnippet(id);
-        },
+        rawDelete: archiveHookRaw.deleteSnippet,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [
-      archiveHookRaw.snippets, archiveHookRaw.deleteSnippet, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal,
-      releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports,
-    ],
+    [archiveHookRaw.snippets, archiveHookRaw.deleteSnippet, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+  );
+  // Task 1195: a deleted PASSAGE then RELEASES the cards that travelled with
+  // it — the five stores drop their links dormant in it and clear
+  // `archivedWith`, so an archived card stays an ordinary archived card and an
+  // unarchived (parked) one reads unanchored. A card is never deleted by its
+  // passage's delete. AFTER the executor, and only when it went through: a
+  // declined delete keeps the passage, so its cards must keep their way back.
+  // Folded into `archiveHook.deleteSnippet` below, so every door that deletes
+  // a snippet (panel trash, margin marker, footnote-sync bridge) releases.
+  const releaseNotes = notesHookRaw.release;
+  const releaseTodos = todosHookRaw.release;
+  const releaseCutter = cutterHookRaw.release;
+  const releaseRevisions = revisionsHookRaw.release;
+  const releaseReports = reportsHookRaw.release;
+  const deletePassage = useCallback(
+    async (id: string) => {
+      const deleted = await deleteArchiveSnippet(id);
+      if (deleted) {
+        for (const release of [releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports]) {
+          release(id);
+        }
+      }
+      return deleted;
+    },
+    [deleteArchiveSnippet, releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports],
   );
   const archiveHook = useMemo(
-    () => ({ ...archiveHookRaw, deleteSnippet: deleteArchiveSnippet }),
-    [archiveHookRaw, deleteArchiveSnippet],
+    () => ({ ...archiveHookRaw, deleteSnippet: deletePassage }),
+    [archiveHookRaw, deletePassage],
   );
   // #55b: resolve a footnote's anchoring paragraph(s) from the LIVE doc, so the
   // bridged AI-request carries `paragraphIds` and is actually drainable (the
@@ -5682,11 +5683,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // and the passage delete confirm, all through one context.
   const archivedWithApi = useMemo(() => {
     const travelled = cardsArchivedWith<CardKind, DormantCardShape>([
-      { cards: notesHook.cards, kindOf: (c) => ((c as NoteCardItem).kind === "highlight" ? "highlight" : "note") },
-      { cards: todosHook.items, kindOf: () => "todo" },
-      { cards: reportsHook.cards, kindOf: (c) => ((c as ReportItem).kind === "report-request" ? "report-request" : "report") },
-      { cards: revisionsHook.cards, kindOf: (c) => ((c as RevisionCard).kind === "suggestion" ? "revision-suggestion" : "revision-comment") },
-      { cards: cutterHook.cards, kindOf: (c) => ((c as CutterCard).kind === "suggestion" ? "cutter-suggestion" : "cutter-comment") },
+      { cards: notesHook.cards, kindOf: (c) => cardKindFromRecord(c as { kind?: string }, "notes") },
+      { cards: todosHook.items, kindOf: (c) => cardKindFromRecord(c as { kind?: string }, "todo") },
+      { cards: reportsHook.cards, kindOf: (c) => cardKindFromRecord(c as { kind?: string }, "reports") },
+      { cards: revisionsHook.cards, kindOf: (c) => cardKindFromRecord(c as { kind?: string }, "revisions") },
+      { cards: cutterHook.cards, kindOf: (c) => cardKindFromRecord(c as { kind?: string }, "cutter") },
     ]);
     const snippets = new Map(archiveHook.snippets.map((sn) => [sn.id, sn]));
     return buildArchivedWithApi(
