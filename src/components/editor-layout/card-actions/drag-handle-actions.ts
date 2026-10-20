@@ -943,7 +943,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // Resolved ONCE, here, and read by BOTH halves of the gesture — the
           // fresh snippet's own anchor and every Mode-A card the capture
           // displaced. Two resolutions would put them on two paragraphs, which
-          // is precisely NOT stacking. `resolveDisplacedAnchorTarget` is also
+          // is precisely NOT stacking. `resolveDisplacedAnchorPlacement` is also
           // the honest form of what B2 (below) always meant: it asks whether
           // the range's own host block SURVIVES rather than approximating that
           // with `ref.kind !== "selection"`, and it falls FORWARD when the

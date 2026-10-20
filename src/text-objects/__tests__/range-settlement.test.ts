@@ -8,7 +8,11 @@
 //
 //   • ONE ENUMERATION. The ask phase and the delete phase must see the same
 //     population, or the gesture asks about one set of cards and destroys
-//     another. Both read `collectRangeCardTargets`.
+//     another. Both read the module's one private walker (`walkRangeCards`),
+//     so this suite pins it through the two phases' OWN outputs — the ask's
+//     `RangeSettlement.targets` and the delete's lifecycle calls — never a
+//     test-only view of it (task 1201 deleted `collectRangeCardTargets`, an
+//     export only this suite called).
 //   • ONE MAPPING. A settlement's `revert` splices the pre-suggestion
 //     original back over the applied text, and the original may be LONGER than
 //     what replaced it. The range is carried across it by
@@ -30,7 +34,7 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import {
-  collectRangeCardTargets,
+  cleanupLinksInRange,
   mapRangeThroughSettlement,
   settleRangeCardObligations,
   commitRangeDelete,
@@ -85,28 +89,44 @@ function splitMarkDoc(): JSONContent[] {
   ];
 }
 
-describe("collectRangeCardTargets — one enumeration for both phases", () => {
-  it("yields ONE target for a mark spanning several text nodes", () => {
+/** The ask phase's population: what `settleRangeCardObligations` would ask
+ *  about. With no applied-splice ops it returns before dispatching anything,
+ *  so this is a pure read of the TOUCHED set. */
+async function askedTargets(editor: Editor, from: number, to: number) {
+  return (await settleRangeCardObligations(editor, from, to, undefined))!.targets;
+}
+
+/** The delete phase's population: the ids `cleanupLinksInRange` destroys —
+ *  the CONTAINED set — read off the PRE-delete doc, nothing dispatched. */
+function deletedIds(editor: Editor, from: number, to: number): string[] {
+  const deleted: string[] = [];
+  cleanupLinksInRange(editor.state.doc, from, to, recordingLifecycle(deleted));
+  return deleted;
+}
+
+describe("one enumeration for both phases", () => {
+  it("yields ONE target for a mark spanning several text nodes — in both phases", async () => {
     const editor = mountDoc(splitMarkDoc());
-    const targets = collectRangeCardTargets(
-      editor.state.doc,
-      0,
-      editor.state.doc.content.size,
-    );
-    expect(targets).toEqual([{ kind: "revision-suggestion", id: "sugg-1" }]);
+    const size = editor.state.doc.content.size;
+    expect(await askedTargets(editor, 0, size)).toEqual([
+      { kind: "revision-suggestion", id: "sugg-1" },
+    ]);
+    expect(deletedIds(editor, 0, size)).toEqual(["sugg-1"]);
   });
 
-  it("is read-only — it dispatches nothing and the doc is untouched", () => {
+  it("the ask is read-only — it dispatches nothing and the doc is untouched", async () => {
     const editor = mountDoc(splitMarkDoc());
     const before = JSON.stringify(editor.state.doc.toJSON());
-    collectRangeCardTargets(editor.state.doc, 0, editor.state.doc.content.size);
+    await askedTargets(editor, 0, editor.state.doc.content.size);
     expect(JSON.stringify(editor.state.doc.toJSON())).toBe(before);
   });
 
-  it("an empty or inverted range yields nothing", () => {
+  it("an empty or inverted range yields nothing", async () => {
     const editor = mountDoc(splitMarkDoc());
-    expect(collectRangeCardTargets(editor.state.doc, 5, 5)).toEqual([]);
-    expect(collectRangeCardTargets(editor.state.doc, 9, 4)).toEqual([]);
+    expect(await askedTargets(editor, 5, 5)).toEqual([]);
+    expect(await askedTargets(editor, 9, 4)).toEqual([]);
+    expect(deletedIds(editor, 5, 5)).toEqual([]);
+    expect(deletedIds(editor, 9, 4)).toEqual([]);
   });
 });
 
@@ -402,10 +422,8 @@ describe("task 897 — clipping a note's anchor does not delete the note", () =>
   it("a selection CLIPPING the anchor keeps the card; the mark simply shrinks", async () => {
     const editor = mountDoc(noteDoc());
     expect(editor.state.doc.textBetween(27, 38)).toBe("here after.");
-    expect(collectRangeCardTargets(editor.state.doc, 27, 38)).toEqual([]);
-    expect(collectRangeCardTargets(editor.state.doc, 27, 38, "touched")).toEqual([
-      { kind: "note", id: "note-1" },
-    ]);
+    expect(deletedIds(editor, 27, 38)).toEqual([]);
+    expect(await askedTargets(editor, 27, 38)).toEqual([{ kind: "note", id: "note-1" }]);
     const deleted: string[] = [];
     expect(commitRangeDelete(editor, 27, 38, recordingLifecycle(deleted))).toBe(true);
     expect(deleted).toEqual([]);

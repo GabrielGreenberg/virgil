@@ -77,7 +77,7 @@ import type { DisplacedAnchorRecord } from "@/lib/types";
 import {
   collectRemovedAnchorUuids,
   findNextAnchorableBlock,
-  resolveDisplacedAnchorTarget,
+  resolveDisplacedAnchorPlacement,
 } from "@/text-objects/anchor-resolution";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 
@@ -454,7 +454,7 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
 // and the strict-containment rule are exercised, not restated.
 // ---------------------------------------------------------------------------
 
-describe("resolveDisplacedAnchorTarget", () => {
+describe("resolveDisplacedAnchorPlacement — the neighbour", () => {
   function doc(content: JSONContent[]) {
     return mountDoc(content).state.doc;
   }
@@ -491,7 +491,7 @@ describe("resolveDisplacedAnchorTarget", () => {
       if (node.attrs?.uuid === "p-tail") tailPos = pos;
       return true;
     });
-    expect(resolveDisplacedAnchorTarget(listDoc, tailPos, listDoc.content.size, new Set())?.uuid).toBe("li-2");
+    expect(resolveDisplacedAnchorPlacement(listDoc, tailPos, listDoc.content.size, new Set())?.target.uuid).toBe("li-2");
     // Forward from the document start lands on the list's FIRST item.
     expect(findNextAnchorableBlock(listDoc, 0)?.uuid).toBe("li-1");
   });
@@ -503,13 +503,13 @@ describe("resolveDisplacedAnchorTarget", () => {
       if (node.attrs?.uuid === "p-target") inside = pos + 3; // mid-text
       return true;
     });
-    expect(resolveDisplacedAnchorTarget(d, inside, inside + 2, new Set())?.uuid).toBe("p-target");
+    expect(resolveDisplacedAnchorPlacement(d, inside, inside + 2, new Set())?.target.uuid).toBe("p-target");
   });
 
   it("returns null when nothing anchorable survives", () => {
     const d = doc(threeParagraphDoc());
     const removed = new Set(["p-before", "p-target", "p-after"]);
-    expect(resolveDisplacedAnchorTarget(d, 0, d.content.size, removed)).toBeNull();
+    expect(resolveDisplacedAnchorPlacement(d, 0, d.content.size, removed)).toBeNull();
   });
 });
 

@@ -18,8 +18,7 @@
  *      ARCHIVE the card half CARRIES rather than deletes every contained card
  *      of a travelling kind (task 1194 — `RangeCardDisposition`).
  *
- * Both phases enumerate through ONE walker, `walkRangeCards` (read-only view:
- * `collectRangeCardTargets`), so the
+ * Both phases enumerate through ONE walker, `walkRangeCards`, so the
  * gesture can never ask about one set of cards and destroy another — but they
  * ask it two different questions (task 897). The ASK settles every card the
  * range TOUCHES (an applied splice the delete would clip must be kept or
@@ -310,18 +309,15 @@ export interface RangeCardTarget {
 }
 
 /**
- * Which cards a range walk reports (task 897).
+ * A walk hit, with the anchor's full extent where it has one.
  *
- *   • `"contained"` — the cards the range DESTROYS: every inline atom in it, and
- *     every `linkedAnchor` whose WHOLE extent lies inside `[from, to)`. The
- *     default, and the only population `cleanupLinksInRange` may delete.
- *   • `"touched"` — every card the range so much as overlaps: the population
- *     the ASK phase settles, because an applied splice the delete would clip is
- *     still an obligation even though its card is not destroyed.
+ * Every hit is a card the range TOUCHES — the population the ASK phase
+ * settles, because an applied splice the delete would clip is still an
+ * obligation even though its card is not destroyed. `contained` marks the
+ * subset the range DESTROYS (task 897): every inline atom in it, and every
+ * `linkedAnchor` whose WHOLE extent lies inside `[from, to)` — the only
+ * population `cleanupLinksInRange` may delete.
  */
-export type RangeCardReach = "contained" | "touched";
-
-/** A walk hit, with the anchor's full extent where it has one. */
 interface RangeCardHit extends RangeCardTarget {
   contained: boolean;
   /** The `linkedAnchor`'s id and bounding extent (null for an inline atom). */
@@ -397,27 +393,6 @@ function walkRangeCards(doc: PMNode, from: number, to: number): RangeCardHit[] {
     hit.contained = !!extent && extent.from >= from && extent.to <= to;
   }
   return hits;
-}
-
-/**
- * The READ-ONLY half of the walk: the sidecar-bearing cards a range holds, in
- * document order, deduplicated. Dispatches nothing and mutates nothing.
- *
- * It exists because the walk has two callers with opposite obligations, and
- * they must read ONE enumeration or the gesture asks about one set of cards and
- * destroys another: `settleRangeCardObligations` ASKS about every card the
- * range touches before anything moves, and `cleanupLinksInRange` DELETES the
- * ones it contains after (`reach`, task 897).
- */
-export function collectRangeCardTargets(
-  doc: PMNode,
-  from: number,
-  to: number,
-  reach: RangeCardReach = "contained",
-): RangeCardTarget[] {
-  return walkRangeCards(doc, from, to)
-    .filter((hit) => reach === "touched" || hit.contained)
-    .map(({ kind, id }) => ({ kind, id }));
 }
 
 /**

@@ -71,7 +71,7 @@ import { cardKindFromRecord } from "./predicates";
 import { panelForMarkerType } from "./marker-meta";
 
 /** Where the displaced anchors go. Resolved ONCE per gesture by
- *  `resolveDisplacedAnchorTarget` so the snippet and every card it displaced
+ *  `resolveDisplacedAnchorPlacement` so the snippet and every card it displaced
  *  land on the same paragraph — which is what "stack up" means. */
 export interface AnchorRetargetTarget {
   uuid: string;
