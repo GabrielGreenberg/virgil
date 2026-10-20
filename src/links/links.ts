@@ -37,6 +37,7 @@ import { docStructureKey, resolveTouchedBlock } from "@/lib/tiptap/doc-structure
 import type { Link, LinkResolution } from "./_shared/types";
 import { isModeB, isRangedModeB } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
+import { isDormantLink } from "./dormant";
 import { generateEntityId } from "@/lib/uuid";
 import { transactionAdmitted } from "@/lib/tiptap/transaction-admitted";
 import { resolvePaneMarker } from "@/components/editor-layout/pane-dom";
@@ -1220,12 +1221,14 @@ export function reanchorByText(
 
 export type CardWithLinks = { id: string; links?: Link[] };
 
-/** All TextObject UUIDs any of this card's anchor-kind links cover. */
+/** All TextObject UUIDs any of this card's LIVE anchor-kind links cover. A
+ *  dormant link (task 1193, `./dormant`) names archived text, not a TextObject
+ *  of this document, so it contributes none. */
 export function getLinkedTextObjectIds(card: CardWithLinks): string[] {
   const links = card.links ?? [];
   const out: string[] = [];
   for (const link of links) {
-    if (link.anchor.type !== "textObject") continue;
+    if (link.anchor.type !== "textObject" || isDormantLink(link)) continue;
     for (const pid of link.anchor.textObjectIds) {
       if (!out.includes(pid)) out.push(pid);
     }
@@ -1244,7 +1247,9 @@ export function getTextAnchorFromLinks(
   links: readonly Link[],
 ): { anchorId: string; anchorText: string } | null {
   for (const link of links) {
-    if (isRangedModeB(link)) {
+    // A dormant highlight (task 1193) has no mark in the document to find or
+    // re-apply — `reanchorByText` would bind it to a duplicate elsewhere.
+    if (isRangedModeB(link) && !isDormantLink(link)) {
       return {
         anchorId: link.anchor.textRange.anchorId,
         anchorText: link.anchor.textRange.textSnapshot,
@@ -1638,7 +1643,9 @@ export function removeTextObjectLink<T extends CardWithLinks>(
   let changed = false;
   const next: Link[] = [];
   for (const link of links) {
-    if (link.anchor.type !== "textObject") {
+    // A dormant link's uuid is absent BECAUSE it is archived (task 1193) —
+    // the orphan sweep must not strip what a restore will bring back.
+    if (link.anchor.type !== "textObject" || isDormantLink(link)) {
       next.push(link);
       continue;
     }
@@ -1741,8 +1748,11 @@ export function setTextAnchorLink<T extends CardWithLinks>(
     anchorId,
     textSnapshot: anchorText,
   });
-  // Drop any existing anchor-kind links; this new one is canonical.
-  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "textObject");
+  // Drop any existing LIVE anchor-kind links; this new one is canonical. A
+  // dormant link (task 1193) is the card's claim on archived text — kept.
+  const kept = (card.links ?? []).filter(
+    (l) => l.anchor.type !== "textObject" || isDormantLink(l),
+  );
   return { ...card, links: [...kept, next] };
 }
 
@@ -1753,7 +1763,10 @@ export function clearTextAnchorLink<T extends CardWithLinks>(
 ): T {
   if (!hasTextAnchor(card)) return card;
   const textObjectIds = getLinkedTextObjectIds(card);
-  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "textObject");
+  // Dormant links (task 1193) ride through untouched, as in setTextAnchorLink.
+  const kept = (card.links ?? []).filter(
+    (l) => l.anchor.type !== "textObject" || isDormantLink(l),
+  );
   const newLinks: Link[] = [...kept];
   for (const pid of textObjectIds) {
     newLinks.push(makeAnchorLink(cardKind, card.id, "paragraph", [pid]));

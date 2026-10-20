@@ -29,6 +29,7 @@ import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
+import { useDormantRevival } from "./useDormantRevival";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: TodoState = { items: [] };
@@ -262,6 +263,15 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const reconcileAnchors = useReconcileModeAAnchors<TodoState, TodoItem>(
     update,
     () => stateRef.current,
+    (s) => s.items,
+    (_s, items) => ({ items }),
+  );
+
+  // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
+  useDormantRevival<TodoState, TodoItem>(
+    docId,
+    update,
+    state,
     (s) => s.items,
     (_s, items) => ({ items }),
   );

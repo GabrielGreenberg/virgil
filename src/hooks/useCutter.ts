@@ -44,6 +44,7 @@ import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
+import { useDormantRevival } from "./useDormantRevival";
 import type { PristineKindApi } from "./usePristineCardManager";
 import type { SuggestionField } from "@/panels/_shared/suggestion-field-vocabulary";
 
@@ -677,6 +678,15 @@ export function useCutter(
   const reconcileAnchors = useReconcileModeAAnchors<CutterState, CutterCard>(
     update,
     () => stateRef.current,
+    (s) => s.cards,
+    (s, cards) => ({ ...s, cards }),
+  );
+
+  // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
+  useDormantRevival<CutterState, CutterCard>(
+    docId,
+    update,
+    state,
     (s) => s.cards,
     (s, cards) => ({ ...s, cards }),
   );

@@ -78,6 +78,9 @@ export interface RevisionRequestCard {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -115,6 +118,9 @@ export interface RevisionSuggestionCard {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   author: "human" | "ai";
   original_text: string;
   suggested_text: string;
@@ -198,6 +204,9 @@ export interface ReportCard {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   /** Display author. "ai" renders as "AI"; "human" renders the user's name. */
   author: "human" | "ai";
   title: string;
@@ -224,6 +233,9 @@ export interface ReportRequestCard {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -308,6 +320,9 @@ export interface TodoItem {
    *  View Archives/All. Absent ≡ active. Orthogonal to `done`. See isArchivable
    *  (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   text: string;
   /** Title provenance (T6/C12) — for a todo the "title" IS the body `text`
    *  (the legacy seed put a generated "Task N" there). `true` = machine-seeded
@@ -660,6 +675,9 @@ export interface UserNote {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   title: string; // optional display title (empty string if untitled)
   /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
   titleAuto?: boolean;
@@ -683,6 +701,9 @@ export interface HighlightCard {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   /** Hex color override; null = panel-theme default. v1 always null. */
   highlightColor: string | null;
   aiRequest: boolean;
@@ -716,6 +737,9 @@ export interface CutterCommentCard {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -754,6 +778,9 @@ export interface CutterSuggestionCard {
   /** Archived (set aside): hidden from active list / omni / in-doc; shown under
    *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
   archived?: boolean;
+  /** Archived WITH its text (task 1193): the archive snippet every one of
+   *  this card's links is dormant in. Owned by `@/links/dormant`. */
+  archivedWith?: string;
   /** Who composed this suggestion. Human-authored cards default to filling
    *  any of the fields directly; AI-authored cards typically arrive with
    *  the first three fields populated and `user_text` empty for the human

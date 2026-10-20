@@ -30,6 +30,11 @@ import { useEffect, useRef } from "react";
 
 export const ANCHOR_ORPHANED_EVENT = "virgil-anchor-orphaned";
 export const TEXTOBJECT_ORPHANED_EVENT = "virgil-textobject-orphaned";
+/** The RETURN direction (task 1193): an anchor came back. Announced for every
+ *  inserted block uuid / `linkedAnchor` mark, so the card hooks can revive a
+ *  DORMANT link (`@/links/dormant`) whose archived text is in the doc again —
+ *  a Restore, a doc Undo of an archive, any re-insertion alike. */
+export const ANCHORS_REVIVED_EVENT = "virgil-anchors-revived";
 
 export interface AnchorOrphanedDetail {
   /** The document whose editor removed the mark; `null` = no document. */
@@ -43,6 +48,20 @@ export interface TextObjectOrphanedDetail {
   docId: string | null;
   uuid: string;
   typeName: string;
+}
+
+export interface AnchorsRevivedDetail {
+  /** The document whose editor inserted the anchors; `null` = no document. */
+  docId: string | null;
+  /** Block uuids the transaction inserted (live on the settled doc). */
+  uuids: string[];
+  /** `linkedAnchor` mark ids the transaction inserted (live on the settled doc). */
+  anchorIds: string[];
+}
+
+export function dispatchAnchorsRevived(detail: AnchorsRevivedDetail): void {
+  if (detail.uuids.length === 0 && detail.anchorIds.length === 0) return;
+  window.dispatchEvent(new CustomEvent(ANCHORS_REVIVED_EVENT, { detail }));
 }
 
 export function dispatchAnchorOrphaned(detail: AnchorOrphanedDetail): void {
@@ -98,4 +117,12 @@ export function useTextObjectOrphaned(
   handler: (detail: TextObjectOrphanedDetail) => void,
 ): void {
   useOrphanEvent(TEXTOBJECT_ORPHANED_EVENT, docId, handler);
+}
+
+/** Subscribe to anchor RETURNS (blocks / marks re-inserted) in `docId` only. */
+export function useAnchorsRevived(
+  docId: string | null,
+  handler: (detail: AnchorsRevivedDetail) => void,
+): void {
+  useOrphanEvent(ANCHORS_REVIVED_EVENT, docId, handler);
 }

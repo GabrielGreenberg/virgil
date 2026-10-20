@@ -5,6 +5,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import type { MutableRefObject, RefObject } from "react";
 import {
   dispatchAnchorOrphaned,
+  dispatchAnchorsRevived,
   dispatchTextObjectOrphaned,
 } from "@/lib/tiptap/orphan-events";
 import { hasLiveAnchor, hasLiveBlock, readDiffFor } from "@/lib/tiptap/doc-structure";
@@ -169,14 +170,31 @@ export const LinkedAnchorGuard = Extension.create<{
             },
           };
         },
-        // [cost: O(1)/tx — docChanged + observer-diff removedAnchors gate; then O(removed anchors) O(1) snapshot lookups inside a setTimeout off the dispatch — no doc walk on any path] (task 433 census; task 878)
+        // [cost: O(1)/tx — docChanged + observer-diff removedAnchors/addedAnchors gate; then O(removed + added anchors) O(1) snapshot lookups inside a setTimeout off the dispatch — no doc walk on any path] (task 433 census; task 878; task 1193)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           // Read the diff already computed by DocStructureObserver
           // (which runs before us). No doc walks — just the typed
           // delta the observer published.
           const diff = readDiffFor(transactions, newState);
-          if (!diff || diff.removedAnchors.length === 0) return null;
+          if (!diff) return null;
+          // The RETURN direction (task 1193): a mark came (back) into the doc.
+          // A dormant highlight whose archived words were restored revives on
+          // it. Settled-doc liveness, as for departures below.
+          if (diff.addedAnchors.length > 0) {
+            const added = diff.addedAnchors;
+            setTimeout(() => {
+              const state = liveView?.state ?? null;
+              dispatchAnchorsRevived({
+                docId: docIdRef?.current ?? null,
+                uuids: [],
+                anchorIds: added
+                  .filter((a) => !state || hasLiveAnchor(state, a.id))
+                  .map((a) => a.id),
+              });
+            }, 0);
+          }
+          if (diff.removedAnchors.length === 0) return null;
           setTimeout(() => {
             // Liveness is the observer snapshot's answer, read off the SETTLED
             // state (task 878): an id the index still holds survived (interior
@@ -334,11 +352,28 @@ export const TextObjectOrphanGuard = Extension.create<{
             },
           };
         },
-        // [cost: O(1)/tx — docChanged + observer-diff removedBlocks gate; then O(replace steps × depth) for the departure classification and O(removed blocks) O(1) snapshot lookups inside a setTimeout off the dispatch — both only on a block-removal transaction (a join keystroke included), and no doc walk on any path] (task 433 census; task 878)
+        // [cost: O(1)/tx — docChanged + observer-diff removedBlocks/addedBlocks gate; then O(replace steps × depth) for the departure classification and O(removed + added blocks) O(1) snapshot lookups inside a setTimeout off the dispatch — only on a block-insert/removal transaction (Enter and a join keystroke included), and no doc walk on any path] (task 433 census; task 878; task 1193)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           const diff = readDiffFor(transactions, newState);
-          if (!diff || diff.removedBlocks.length === 0) return null;
+          if (!diff) return null;
+          // The RETURN direction (task 1193): blocks came (back) into the doc.
+          // A dormant Mode-A link whose archived paragraph was restored — or
+          // whose archive was undone — revives on its uuid. O(added blocks).
+          if (diff.addedBlocks.length > 0) {
+            const added = diff.addedBlocks;
+            setTimeout(() => {
+              const state = liveView?.state ?? null;
+              dispatchAnchorsRevived({
+                docId: docIdRef?.current ?? null,
+                uuids: added
+                  .filter((b) => !state || hasLiveBlock(state, b.uuid))
+                  .map((b) => b.uuid),
+                anchorIds: [],
+              });
+            }, 0);
+          }
+          if (diff.removedBlocks.length === 0) return null;
           const removed = diff.removedBlocks;
           // Read HERE, not in the deferred callback: the classification is a
           // fact about THIS batch's steps, and `transactions` is only in scope

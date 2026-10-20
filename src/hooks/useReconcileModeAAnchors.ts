@@ -12,6 +12,7 @@ import {
   reconcileCardToResolved,
   type ResolveIndex,
 } from "@/links/resolve-card-anchor";
+import { reviveLiveLinks } from "@/links/dormant";
 
 /**
  * Shared factory for a panel hook's Mode-A anchor reconcile.
@@ -128,20 +129,30 @@ export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
  *     (AUGMENTATION 2 — HYBRID CLEANUP).
  */
 function reconcileOne<C extends CardWithLinks>(
-  card: C,
+  input: C,
   editor: Editor,
   index: ResolveIndex,
 ): { card: C; changed: boolean } {
+  // Revival by LIVENESS (task 1193): a dormant link whose archived text is
+  // back in the document — restored while the app was closed, or by the
+  // agent's restore door — comes back to life here, before the ladder runs.
+  // A link still dormant is skipped by every rung and never rewritten.
+  const card = reviveLiveLinks(input, {
+    isUuidLive: (uuid) => index.uuidToParagraph.has(uuid),
+    isAnchorIdLive: (anchorId) => index.anchorIdToParagraph.has(anchorId),
+  });
+  const revived = card !== input;
   const res = resolveCardAnchor(card, editor, index);
   const liveText =
     res.source === "uuid" && res.paragraphId
       ? captureParagraphSnapshot(editor, res.paragraphId)
       : null;
-  return reconcileCardToResolved(card, res, {
+  const out = reconcileCardToResolved(card, res, {
     liveText,
     isAnchorIdLive: (anchorId) => index.anchorIdToParagraph.has(anchorId),
     liveMarkText: res.source === "mark" ? liveMarkTextFor(card, res, editor) : null,
   });
+  return revived ? { card: out.card, changed: true } : out;
 }
 
 /**
