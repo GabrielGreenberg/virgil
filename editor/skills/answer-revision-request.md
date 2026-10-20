@@ -108,6 +108,14 @@ source request in place.
    the source request's `text` / `content` — the door lowers its `aiRequest`
    flag for you.
 
+   **Pin to the words when the answer is about the words** (task 1197): if your
+   suggestion or reply is about a specific phrase or sentence rather than the
+   paragraph as a whole, add `--range "@$t/span"` with those words verbatim from
+   the `.tex` — the card lands on that span (Mode B), exactly as if the user had
+   selected it. A Task already filed on a selection keeps its span without the
+   flag. Rule + refusals: [create-card.md](create-card.md) → "Phrase or
+   paragraph?". For a suggestion the span must contain `--original`.
+
 5. **Land it — one call per path.** Free text goes through `@` scratch files
    ([`_op-json.md`](_op-json.md)):
    ```bash

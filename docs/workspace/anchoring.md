@@ -261,3 +261,12 @@ conventions for the orphans you do create are [gardening.md](gardening.md#orphan
    ([src/links/resolve-card-anchor.ts](../../src/links/resolve-card-anchor.ts)) — never
    walk the doc per card. When you write a fresh Mode-A anchor, pass a
    `paragraphSnapshot` so it self-heals the reload race; legacy links get it backfilled.
+7. **A skill pins to a span through ONE door** (task 1197). `create_card.py
+   --range` (and `move`'s `newRange`) build a Mode-B anchor through
+   `apply_response.range_anchor`: locate the verbatim span in the anchored
+   paragraph (refusing an absent / ambiguous span, one that cuts a command,
+   group or math run, or one that overlaps an existing range), take the id from
+   `create_card._gen_range_id`, and land the `\vlid…\vlidend` pair (a
+   `wrap-span` `anchorEdit`) in the same commit as the `linkedRange` link — at
+   every safety level, since the pair is the card's anchor, not a proposed edit.
+   Never splice a `\vlid` pair by hand.

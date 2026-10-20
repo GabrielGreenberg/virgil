@@ -215,3 +215,50 @@ describe("marker ids — the allocator is still the only collision check", () =>
     expect(src).toContain("([0-9a-fA-F]{2,8})");
   });
 });
+
+describe("marker ids — a \\vlid range pair has ONE writer and ONE id source (task 1197)", () => {
+  // Skills pin a card to a span through `create_card.py --range` / the `move`
+  // op's `newRange`; both land `apply_response.py`'s `wrap-span` edit, whose id
+  // comes from `create_card.py::_gen_range_id` (the card-marker namespace with
+  // the range markers joined, through `_gen_marker_id`). A second script that
+  // spliced its own `\vlid{…}` — or minted the id itself — would be a second,
+  // unchecked door into the same id space. Allowlist: the one wrapper.
+  const SCRIPTS = "editor/scripts";
+  const WRITER = /["']\\\\vlid(?:end)?\{["']/;
+  const pyFiles = readdirSync(join(REPO, SCRIPTS))
+    .filter((f) => f.endsWith(".py"))
+    .sort();
+
+  it("only apply_response.py's _wrap_span_in_tex composes a \\vlid token", () => {
+    const writers: string[] = [];
+    for (const f of pyFiles) {
+      read(`${SCRIPTS}/${f}`)
+        .split("\n")
+        .forEach((line, i) => {
+          if (WRITER.test(line)) writers.push(`${f}:${i + 1}`);
+        });
+    }
+    expect(writers.length, "the census sees the one sanctioned writer").toBe(1);
+    expect(writers[0]).toMatch(/^apply_response\.py:/);
+    const src = read(`${SCRIPTS}/apply_response.py`);
+    const fn = src.slice(src.indexOf("def _wrap_span_in_tex"), src.indexOf("def _unwrap_span_in_tex"));
+    expect(WRITER.test(fn), "the writer line sits inside _wrap_span_in_tex").toBe(true);
+  });
+
+  it("the range id is allocated through _gen_marker_id, and the primitive never mints one", () => {
+    const cc = read(ALLOCATOR);
+    const gen = cc.slice(cc.indexOf("def _gen_range_id"), cc.indexOf("# ----", cc.indexOf("def _gen_range_id")));
+    expect(gen).toContain("_gen_marker_id(");
+    expect(gen).toMatch(/"vlid", "vlidend"/);
+    const ar = read(`${SCRIPTS}/apply_response.py`);
+    const prim = ar.slice(ar.indexOf("def range_anchor"), ar.indexOf("def _wrap_span_in_tex"));
+    expect(prim).not.toMatch(/token_hex\(|uuid4\(|_gen_\w+\(/);
+    // The move op takes its fresh id from the same allocator.
+    expect(ar).toContain("from create_card import _gen_range_id");
+  });
+
+  it("the census can see a violation (canary)", () => {
+    expect(WRITER.test(`    out = "\\\\vlid{" + rid + "}"`)).toBe(true);
+    expect(WRITER.test(`    r"""A fresh \`\\vlid{}\` range id"""`)).toBe(false);
+  });
+});

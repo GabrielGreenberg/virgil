@@ -124,6 +124,13 @@ matters" (write a note). Read the todo and dispatch.
      returned JSON `status`** to finalize (step 4): `complete` is terminal;
      `in-progress` means the answer is a proposal, *not done yet*.
 
+     **Pin to the words when the answer is about the words** (task 1197): if your
+     note is about a specific phrase or sentence rather than the paragraph as a
+     whole, add `--range "@$t/span"` with those words verbatim from the `.tex` —
+     the card lands on that span (Mode B), exactly as if the user had selected it.
+     A Task already filed on a selection keeps its span without the flag. Rule +
+     refusals: [create-card.md](create-card.md) → "Phrase or paragraph?".
+
    - **Text edit → suggestion card (L3 propose).**
      One `create_card.py --kind=suggestion` call builds and lands the
      suggestion card (task 1044): the door anchors it to the source todo's own

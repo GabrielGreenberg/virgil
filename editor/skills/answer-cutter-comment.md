@@ -107,6 +107,14 @@ once — see step 5).
    exit "$rc"
    ```
 
+   **Pin to the words when the answer is about the words** (task 1197): if your
+   cut suggestion is about a specific phrase or sentence rather than the paragraph
+   as a whole, add `--range "@$t/span"` with those words verbatim from the `.tex`
+   — the card lands on that span (Mode B), exactly as if the user had selected it.
+   A Task already filed on a selection keeps its span without the flag. Rule +
+   refusals: [create-card.md](create-card.md) → "Phrase or paragraph?". For a
+   suggestion the span must contain `--original`.
+
 5. **What the door guarantees.** Nothing lands when `original_text` is not
    verbatim in the anchored paragraph (no paraphrase, never the `%!v:`
    marker — accept's stale guard asks the same question through the same

@@ -27,7 +27,7 @@ bump, committed all-or-nothing under the pen):
   apply_response.py <doc> update   <op-json>   # { cardId, set?:{…}, body?, summary? }
   apply_response.py <doc> archive  <op-json>   # { cardId } → archive.json (origin preserved)
   apply_response.py <doc> restore  <op-json>   # { cardId } archive.json → original panel
-  apply_response.py <doc> move     <op-json>   # { cardId, newAnchor } re-anchor (Mode-A only)
+  apply_response.py <doc> move     <op-json>   # { cardId, newAnchor[, newRange, rangeOccurrence] } re-anchor
   apply_response.py <doc> link     <op-json>   # { cardAId, cardBId, kind? } bidirectional
   apply_response.py <doc> accept   <op-json>   # { cardId } L3: splice proposal + status→accepted + Task done
   apply_response.py <doc> reject   <op-json>   # { cardId } L3: status→rejected + Task done (.tex untouched)
@@ -87,6 +87,10 @@ Schema (v1 superset — every field optional unless noted):
                    "replacement": "…\\begin{document}\n\n", // region-replace / replace-span substitute
                    "match": "<verbatim span>",            // replace-span: swap this span at anchorUuid (stale-guarded)
                    "endMarker": "\\begin{document}" },   // region-replace boundary
+    "anchorEdit": { "mode": "wrap-span", "anchorUuid": "3301", "match": "<verbatim span>",
+                    "rangeId": "<allocated>", "occurrence": 2 },  // a range-anchored card's
+                               //   \\vlid pair (task 1197); also "unwrap-span" {rangeId};
+                               //   one or a list. Lands with the card at EVERY level.
     "bibEdit":   { "mode": "append" | "set-fields" | "replace",
                    "entry":   "@article{key, …}",         // append / replace
                    "citekey": "key",                      // set-fields / replace
@@ -174,6 +178,7 @@ from _common import (
     find_bib_file,
     find_tex_file,
     is_ai_request_kind,
+    is_dormant_link,
     is_terminal_status,
     CLOSED_BY_LEAVE,
     is_finalizable_by_proposal,
@@ -582,8 +587,8 @@ OP_OWNED_FIELDS: dict[str, _FieldOwnership] = {
              "change states and are not writable from the contract at all."),
     ),
     # move — the anchor. cmd_move validates the new uuid against the .tex, refuses
-    # an atom-bearing card (the anchor follows the Atom) and refuses a Mode-B
-    # linkedRange (which needs a new mark in the .tex, not a sidecar edit). A raw
+    # an atom-bearing card (the anchor follows the Atom) and moves a Mode-B
+    # linkedRange together with its `\vlid` pair in the .tex (task 1197). A raw
     # `set` rewrites the same array with none of that.
     "move": _FieldOwnership(
         fields=frozenset({"links"}),
@@ -592,8 +597,8 @@ OP_OWNED_FIELDS: dict[str, _FieldOwnership] = {
         route="apply_response.py <doc> move '{\"cardId\":\"$cardId\",\"newAnchor\":\"<uuid>\"}'",
         why=("update refuses $field on a $kind ($cardId): `links` IS the card's anchor, and "
              "re-anchoring is the move op's — it validates the target uuid against the .tex, "
-             "refuses an atom-bearing card (the paragraph anchor follows the Atom) and refuses "
-             "a Mode-B linkedRange (which needs a new linkedAnchor mark in the document). A raw "
+             "refuses an atom-bearing card (the paragraph anchor follows the Atom) and moves "
+             "a Mode-B text range together with its \\vlid marker pair in the .tex. A raw "
              "set writes an unvalidated anchor that resolves to nothing. Run $route "
              "(/editor/move-card)."),
     ),
@@ -1254,6 +1259,14 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
         carrying ZERO suggestion knowledge — it just swaps a span. Stale-guarded:
         if the anchor is gone or `match` no longer appears in that paragraph, it
         dies and nothing is spliced (see _replace_span_in_tex).
+      wrap-span (task 1197) — at the `%!v:<anchorUuid>` paragraph, wrap the
+        verbatim `match` span (the `occurrence`-th LIVE hit, 1-based, when it
+        repeats) in `\vlid{rangeId}…\vlidend{rangeId}`: a Mode-B range anchor's
+        in-document half. Refuses a span that is absent, ambiguous, or would
+        cut a command / group / math run / existing range (locate_range_span).
+      unwrap-span (task 1197) — delete every `\vlid{rangeId}` / `\vlidend{rangeId}`
+        token: a range anchor leaving its span. A pair already gone (the mark was
+        lost) is a no-op, never an error.
     """
     tex_path = find_tex_file(doc)
     return tex_path, _tex_splice_text(tex_path.read_text(encoding="utf-8"), te)
@@ -1289,6 +1302,12 @@ def _tex_splice_text(text: str, te: dict) -> str:
 
     if mode == "replace-span":
         return _replace_span_in_tex(text, te)
+
+    if mode == "wrap-span":
+        return _wrap_span_in_tex(text, te)
+
+    if mode == "unwrap-span":
+        return _unwrap_span_in_tex(text, te)
 
     insert = te.get("insert")
     if not insert:
@@ -1430,6 +1449,224 @@ def _locate_proposal_span(text: str, anchor: str, match: str) -> int:
     if region is None:
         return _NO_ANCHOR
     return _find_in_paragraph(text, match, *region, live_only=False)
+
+
+# ---------------------------------------------------------------------------
+# Mode-B range anchors (task 1197) — the contract's ONE "pin a card to a span"
+# primitive. The app anchors a card to a TEXT SPAN with a `linkedAnchor` mark,
+# persisted as `\vlid{id}…\vlidend{id}` in the .tex plus a sidecar link
+# `{targetKind:"linkedRange", textObjectIds:[paragraph], textRange:{anchorId:id,
+# textSnapshot}}` (docs/workspace/anchoring.md §Mode B). The parser resurrects
+# the mark from the pair; `reapplyModeBAnchors` re-stamps its kind from the
+# sidecar on load. Every skill writer that pins a card to text — create-card's
+# anchored kinds, the responder proposals, `move` — builds its anchor through
+# `range_anchor` and lands the `wrap-span` / `unwrap-span` edit it returns as
+# the op's `anchorEdit`, in the same commit as the card.
+# ---------------------------------------------------------------------------
+
+_RANGE_TOKEN_RE = re.compile(r"\\(vlid|vlidend)\{([^{}]*)\}")
+_CONTROL_SEQ_RE = re.compile(r"\\(?:[A-Za-z@]+\*?|.)", re.S)
+
+
+def _range_pairs(text: str) -> list[tuple[str, int, int]]:
+    r"""Every existing `\vlid{id}…\vlidend{id}` pair as (id, content_start,
+    content_end) — matched innermost-first by id, exactly as the parser's
+    `applyLinkedAnchorBoundaries` pairs them. Ranges may cross paragraphs, so
+    this reads the whole file, live tokens only."""
+    live = project_structural_latex(text)
+    opened: list[tuple[str, int]] = []
+    pairs: list[tuple[str, int, int]] = []
+    for m in _RANGE_TOKEN_RE.finditer(text):
+        if live[m.start()] != text[m.start()]:
+            continue  # inside a comment / verbatim run — not a marker
+        rid = m.group(2)
+        if m.group(1) == "vlid":
+            opened.append((rid, m.end()))
+            continue
+        for k in range(len(opened) - 1, -1, -1):
+            if opened[k][0] == rid:
+                pairs.append((rid, opened[k][1], m.start()))
+                del opened[k]
+                break
+    return pairs
+
+
+def _unescaped(text: str, ch: str, start: int, end: int) -> list[int]:
+    """Indices of `ch` in text[start:end] not escaped by a backslash."""
+    out = []
+    for k in range(start, end):
+        if text[k] == ch:
+            n = 0
+            while k - 1 - n >= 0 and text[k - 1 - n] == "\\":
+                n += 1
+            if n % 2 == 0:
+                out.append(k)
+    return out
+
+
+def locate_range_span(text: str, anchor: str, span: str, occurrence: int | None = None) -> int:
+    r"""The ONE answer to "where, in the anchored paragraph, is the span a card
+    is to be pinned to?" Returns the span's start index, or DIES (nothing
+    written) with a message naming what to change.
+
+    The span is VERBATIM source text, found LIVE (never in a `%` comment) in the
+    `%!v:<anchor>` paragraph only — the same scoping replace-span uses, so an
+    identically worded phrase elsewhere in the paper is out of reach. Then the
+    wrap must keep the .tex well-formed and the pair unambiguous, so it refuses
+    a span that: repeats with no `occurrence`; contains a `%` or a paragraph
+    break; cuts a control sequence or leaves a command's argument outside;
+    starts inside a `{…}` group or `$…$` math (depth 0 only — pin the whole
+    construct, or the paragraph); has unbalanced braces or `$`; or touches an
+    existing range (a span inside, around, or across another `\vlid` pair —
+    one `linkedAnchor` mark per character, so the overlap would split one of
+    the two cards). Adjacent ranges are fine."""
+    if not span or not span.strip():
+        die("range: the span is empty — pass the verbatim words to pin the card to")
+    if span != span.strip():
+        die("range: the span starts or ends with whitespace — trim it to the words themselves")
+    if "%" in span:
+        die("range: the span contains `%` (a comment or the `%!v:` marker) — pin prose only")
+    if re.search(r"\n\s*\n", span):
+        die("range: the span crosses a paragraph break — pin a span inside one paragraph")
+    region = _anchored_paragraph(text, anchor)
+    if region is None:
+        die(f"range: anchor paragraph %!v:{anchor} not found in the .tex")
+    start, end = region
+    live = project_structural_latex(text)
+    hits: list[int] = []
+    k = text.find(span, start, end)
+    while k != -1:
+        if live[k:k + len(span)] == span:
+            hits.append(k)
+        k = text.find(span, k + 1, end)
+    if not hits:
+        die(f"range: the span is not found verbatim in paragraph %!v:{anchor} — copy it "
+            f"byte-for-byte from the .tex (including any LaTeX inside it, never the %!v: marker)")
+    if occurrence is None:
+        if len(hits) > 1:
+            die(f"range: the span occurs {len(hits)} times in paragraph %!v:{anchor} — pass "
+                f"--range-occurrence N (1..{len(hits)}) to say which, or lengthen the span")
+        i = hits[0]
+    else:
+        if occurrence < 1 or occurrence > len(hits):
+            die(f"range: --range-occurrence {occurrence} is out of range — the span occurs "
+                f"{len(hits)} time(s) in paragraph %!v:{anchor}")
+        i = hits[occurrence - 1]
+    j = i + len(span)
+
+    # Commands: no control sequence straddles either edge, and a command that
+    # ENDS the span keeps its argument with it.
+    for m in _CONTROL_SEQ_RE.finditer(text, start, end):
+        if m.start() < i < m.end() or m.start() < j < m.end():
+            die("range: the span cuts through a LaTeX command — widen or narrow it to whole words")
+        if m.end() == j and text[m.start() + 1:m.end()].rstrip("*").isalpha() and j < len(text) \
+                and text[j] in "{[":
+            die("range: the span ends on a command whose argument lies outside it — include "
+                "the whole command or leave it out")
+    if span[0] in "{[":
+        die("range: the span starts with an argument bracket — start it on a word")
+    if _RANGE_TOKEN_RE.search(span):
+        die("range: the span contains an existing \\vlid range marker — pin a span that does "
+            "not overlap another anchored range")
+    # Depth 0: not inside a group or math run, and balanced within itself.
+    depth = len(_unescaped(text, "{", start, i)) - len(_unescaped(text, "}", start, i))
+    if depth > 0:
+        die("range: the span sits inside a {…} group (a command's argument) — pin the whole "
+            "construct, or pin the card to the paragraph")
+    if len(_unescaped(text, "$", start, i)) % 2:
+        die("range: the span sits inside $…$ math — pin the whole formula, or the paragraph")
+    braces = sorted([(k, 1) for k in _unescaped(text, "{", i, j)]
+                    + [(k, -1) for k in _unescaped(text, "}", i, j)])
+    run = 0
+    for _, step in braces:
+        run += step
+        if run < 0:
+            break
+    if run != 0:
+        die("range: the span's braces do not balance — include the whole {…} group or none of it")
+    if len(_unescaped(text, "$", i, j)) % 2:
+        die("range: the span's $ math does not close inside it — include the whole formula")
+    for rid, cs, ce in _range_pairs(text):
+        if i < ce and j > cs:
+            die(f"range: the span overlaps an existing anchored range (\\vlid{{{rid}}}) — "
+                f"pin a span that does not overlap it, or pin the card to the paragraph")
+    return i
+
+
+def range_snapshot(span: str) -> str:
+    r"""The span's best-effort READING text for `textRange.textSnapshot`, in the
+    app's canonical form (`normalizeParagraphText`: zero-widths stripped,
+    whitespace collapsed, ends trimmed). It is the recovery key only — the
+    `\vlid` pair is the anchor, and the app's resolver heals the snapshot from
+    the live mark text — so this strips markup rather than rendering it."""
+    s = re.sub(r"\\(?:vfid|vcid|vexid|vxid|vlid|vlidend|vbid)\{[^{}]*\}", "", span)
+    s = s.replace("``", "\u201c").replace("''", "\u201d").replace("~", " ")
+    s = re.sub(r"\\[A-Za-z@]+\*?", "", s)
+    s = re.sub(r"\\(.)", r"\1", s)
+    s = s.replace("{", "").replace("}", "")
+    s = re.sub(r"[\u200B\u200C\u200D\u2060\uFEFF]", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def range_anchor(text: str, paragraph_uuid: str, span: str, occurrence: int | None,
+                 range_id: str) -> tuple[dict, dict]:
+    r"""Build a Mode-B anchor for `span` in paragraph `paragraph_uuid`:
+    returns (anchor_obj, anchor_edit). The anchor object is the sidecar half
+    (`targetKind:"linkedRange"`, the containing paragraph in `textObjectIds`,
+    `textRange.anchorId == range_id`); the edit is the `.tex` half — a
+    `wrap-span` texEdit the caller lands as the op's `anchorEdit`. Located now
+    (so a bad span refuses before anything is composed) and again inside the
+    pen when the edit is applied. `range_id` comes from create_card's allocator
+    (`_gen_range_id` → `_gen_marker_id`), never invented."""
+    locate_range_span(text, paragraph_uuid, span, occurrence)
+    anchor = {
+        "type": "textObject",
+        "targetKind": "linkedRange",
+        "textObjectIds": [paragraph_uuid],
+        "textRange": {"anchorId": range_id, "textSnapshot": range_snapshot(span) or span},
+    }
+    edit = {"mode": "wrap-span", "anchorUuid": paragraph_uuid, "match": span,
+            "rangeId": range_id}
+    if occurrence is not None:
+        edit["occurrence"] = occurrence
+    return anchor, edit
+
+
+def _wrap_span_in_tex(text: str, te: dict) -> str:
+    r"""mode=wrap-span: `\vlid{rangeId}` + span + `\vlidend{rangeId}`."""
+    anchor = te.get("anchorUuid")
+    match = te.get("match")
+    rid = te.get("rangeId")
+    if not anchor or not match or not rid:
+        die("texEdit mode=wrap-span requires anchorUuid, match and rangeId")
+    if not re.fullmatch(r"[0-9A-Za-z_-]+", rid):
+        die(f"wrap-span: rangeId {rid!r} is not a marker id")
+    if re.search(r"\\vlid(?:end)?\{" + re.escape(rid) + r"\}", text):
+        die(f"wrap-span: \\vlid{{{rid}}} is already in the .tex — a range id names one span")
+    i = locate_range_span(text, anchor, match, te.get("occurrence"))
+    j = i + len(match)
+    return text[:i] + "\\vlid{" + rid + "}" + match + "\\vlidend{" + rid + "}" + text[j:]
+
+
+def _unwrap_span_in_tex(text: str, te: dict) -> str:
+    r"""mode=unwrap-span: remove the `\vlid{rangeId}` / `\vlidend{rangeId}` tokens."""
+    rid = te.get("rangeId")
+    if not rid:
+        die("texEdit mode=unwrap-span requires rangeId")
+    return re.sub(r"\\vlid(?:end)?\{" + re.escape(rid) + r"\}", "", text)
+
+
+def _range_link_ids(card: dict) -> list[str]:
+    """The `textRange.anchorId`s of a card's live (non-dormant) Mode-B links."""
+    out = []
+    for link in card.get("links") or []:
+        anchor = link.get("anchor") if isinstance(link, dict) else None
+        if isinstance(anchor, dict) and anchor.get("targetKind") == "linkedRange" \
+                and not is_dormant_link(link):
+            rid = (anchor.get("textRange") or {}).get("anchorId")
+            if rid:
+                out.append(rid)
+    return out
 
 
 def _guard_proposal_landing(doc: Path, panel: str, card: dict) -> None:
@@ -1752,6 +1989,20 @@ def _apply_paper_writes(doc: Path, txn: "_Txn", op: dict) -> None:
         _annotation_apply(doc, txn, op["annotationEdit"])
 
 
+_ANCHOR_EDIT_MODES = ("wrap-span", "unwrap-span")
+
+
+def _apply_anchor_edits(doc: Path, txn: "_Txn", edits) -> None:
+    r"""Queue a card's range-anchor `.tex` edit(s) — `wrap-span` / `unwrap-span`
+    only, one dict or a list applied in order (a range move unwraps the old pair
+    before wrapping the new one). Each re-locates inside the pen, so a span the
+    app has since edited away refuses rather than wrapping the wrong words."""
+    for te in edits if isinstance(edits, list) else [edits]:
+        if not isinstance(te, dict) or te.get("mode") not in _ANCHOR_EDIT_MODES:
+            die(f"anchorEdit must be a {' / '.join(_ANCHOR_EDIT_MODES)} texEdit (or a list of them)")
+        txn.add_text(find_tex_file(doc), lambda t, te=te: _tex_splice_text(t, te))
+
+
 def _has_paper_writes(op: dict) -> bool:
     return any(op.get(k) for k in
                ("texEdit", "bibEdit", "renameCitekey", "settingsEdit", "annotationEdit"))
@@ -2033,6 +2284,11 @@ def cmd_write(
 
     # 5. The paper-file edits — .tex / .bib / settings / annotation (only when
     #    applying, not for a Level-3 proposal). All ride the same atomic commit.
+    #    The ANCHOR edit is not one of them: a range-anchored card's `\vlid`
+    #    pair IS the card's anchor, not the change a proposal proposes, so it
+    #    lands with the card at every level (task 1197).
+    if op.get("anchorEdit"):
+        _apply_anchor_edits(doc, txn, op["anchorEdit"])
     if apply_writes:
         _apply_paper_writes(doc, txn, op)
 
@@ -2541,17 +2797,26 @@ def cmd_restore(doc: Path, op: dict) -> dict:
 
 
 def cmd_move(doc: Path, op: dict) -> dict:
-    """Re-anchor a Mode-A (paragraph-anchored) card to a new paragraph by
-    rewriting its `links[*].anchor.textObjectIds`. Atom-bearing cards
-    (footnote/citation) and Mode-B (text-range) anchors are deferred + flagged —
-    re-anchoring those means relocating a `.tex` marker, not a sidecar edit."""
+    r"""Re-anchor a card: to a new paragraph (`newAnchor`, Mode A), or to a span
+    of text in it (`newAnchor` + `newRange`, Mode B — task 1197). Atom-bearing
+    cards (footnote/citation) are refused: their anchor follows the Atom.
+
+    A Mode-B card leaving its span has its old `\vlid` pair removed in the same
+    commit; a card arriving at a span has a new pair wrapped around it (the
+    range id is reused on a range→range move, else freshly allocated by
+    create_card's `_gen_range_id`). Both halves go through `range_anchor`, the
+    one primitive create-card pins through, so the span refusals are the same."""
     from card_by_id import find_card, card_kind
     from _common import find_paragraph_uuids
 
     card_id = op.get("cardId")
     new_anchor = op.get("newAnchor")
+    new_range = op.get("newRange")
+    occurrence = op.get("rangeOccurrence")
     if not card_id or not new_anchor:
         die("move requires op.cardId and op.newAnchor")
+    if occurrence is not None and not new_range:
+        die("move: rangeOccurrence needs newRange")
     hit = find_card(doc, card_id, op.get("panel"))
     if hit is None:
         die(f"card not found: {card_id}")
@@ -2570,8 +2835,7 @@ def cmd_move(doc: Path, op: dict) -> dict:
     links = card.get("links")
     if not isinstance(links, list) or not links:
         die(f"{kind} {card_id} has no anchor links to move")
-    from _common import is_dormant_link
-    moved = 0
+    movable = []
     dormant = 0
     for link in links:
         anchor = link.get("anchor") if isinstance(link, dict) else None
@@ -2582,25 +2846,60 @@ def cmd_move(doc: Path, op: dict) -> dict:
         if is_dormant_link(link):
             dormant += 1
             continue
-        if anchor.get("targetKind") == "linkedRange":
-            die(f"{kind} {card_id} is a Mode-B text-range anchor; re-anchoring a range needs a new "
-                f"linkedAnchor mark in the .tex — deferred. move-card handles Mode-A paragraph anchors.")
-        anchor["textObjectIds"] = [new_anchor]
-        anchor["targetKind"] = anchor.get("targetKind") or "paragraph"
-        moved += 1
-    if moved == 0 and dormant:
+        movable.append(link)
+    if not movable and dormant:
         die(f"{kind} {card_id} was archived with its text (snippet "
             f"{card.get('archivedWith') or '?'}); restore that snippet to bring it back")
-    if moved == 0:
-        die(f"{kind} {card_id} has no Mode-A paragraph anchor to move")
-    txn.mark(sidecar(doc, hit.filename))
+    if not movable:
+        die(f"{kind} {card_id} has no paragraph or text-range anchor to move")
+    if new_range and len(movable) > 1:
+        die(f"{kind} {card_id} has {len(movable)} anchors; a move to a text range re-pins a "
+            f"card with one anchor")
 
+    # The card's old range pair(s) leave the .tex; locate the new span in the
+    # text as it will be once they have.
+    old_ids = _range_link_ids(card)
+    edits: list[dict] = [{"mode": "unwrap-span", "rangeId": rid} for rid in old_ids]
+    after = tex
+    for te in edits:
+        after = _unwrap_span_in_tex(after, te)
+    range_id = None
+    if new_range:
+        if old_ids:
+            range_id = old_ids[0]
+        else:
+            from create_card import _gen_range_id
+            range_id = _gen_range_id(doc)
+        new_obj, wrap = range_anchor(after, new_anchor, new_range, occurrence, range_id)
+        edits.append(wrap)
+        movable[0]["anchor"] = new_obj
+    else:
+        for link in movable:
+            anchor = link["anchor"]
+            if anchor.get("targetKind") == "linkedRange":  # leaving its span → Mode A
+                link["anchor"] = {"type": "textObject", "targetKind": "paragraph",
+                                  "textObjectIds": [new_anchor]}
+            else:
+                anchor["textObjectIds"] = [new_anchor]
+                anchor["targetKind"] = anchor.get("targetKind") or "paragraph"
+    txn.mark(sidecar(doc, hit.filename))
+    if edits:
+        _apply_anchor_edits(doc, txn, edits)
+
+    where = f"%!v:{new_anchor}" + (f" «{_short(new_range)}»" if new_range else "")
+    extra = {"op": "move", "cardId": card_id, "newAnchor": new_anchor, "anchorsMoved": len(movable)}
+    if range_id:
+        extra["rangeId"] = range_id
     return _mutation_commit(
         doc, txn,
-        summary=op.get("summary") or f"Moved {kind} {card_id} → %!v:{new_anchor}",
+        summary=op.get("summary") or f"Moved {kind} {card_id} → {where}",
         request_id=op.get("requestId"),
-        extra={"op": "move", "cardId": card_id, "newAnchor": new_anchor, "anchorsMoved": moved},
+        extra=extra,
     )
+
+
+def _short(s: str, n: int = 40) -> str:
+    return s if len(s) <= n else s[:n] + "…"
 
 
 # --- link -------------------------------------------------------------------

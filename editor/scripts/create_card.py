@@ -177,15 +177,49 @@ def _card_marker_namespace(doc: Path) -> tuple[tuple[str, ...], set[str]]:
     return tuple(MARKER_ANCHORED_PANELS.values()), used
 
 
+def _range_anchor_ids(doc: Path) -> set[str]:
+    """Every `textRange.anchorId` any card sidecar already holds (the archive
+    included) — a range id names one span, live or archived."""
+    out: set[str] = set()
+
+    def walk(n):
+        if isinstance(n, dict):
+            tr = n.get("textRange")
+            if isinstance(tr, dict) and isinstance(tr.get("anchorId"), str):
+                out.add(tr["anchorId"])
+            for v in n.values():
+                walk(v)
+        elif isinstance(n, list):
+            for v in n:
+                walk(v)
+
+    for filename in {f for f, _ in AR.ALL_CARD_SIDECARS.values()}:
+        walk(read_json(sidecar(doc, filename), default={}))
+    return out
+
+
+def _gen_range_id(doc: Path) -> str:
+    r"""A fresh `\vlid{}` range id (task 1197): the card-marker namespace with
+    the range markers joined — collision-free against every card-marker id,
+    every `\vlid`/`\vlidend` already in the .tex, and every range id a sidecar
+    holds. The ONLY source of a range id; `apply_response.range_anchor` takes
+    it as an argument and never mints one."""
+    macros, used = _card_marker_namespace(doc)
+    return _gen_marker_id(doc, macros + ("vlid", "vlidend"), used | _range_anchor_ids(doc))
+
+
 # ---------------------------------------------------------------------------
 # Shared anchor-link + sibling-comment builders (the anchored-card spine —
 # docs/workspace/anchoring.md, Mode A textObject Link).
 # ---------------------------------------------------------------------------
 
 
-def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str) -> dict:
+def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str,
+                 range_anchor: dict | None = None) -> dict:
     """A Mode-A paragraph anchor: a `kind:"anchor"` textObject Link from the
-    card to the anchor paragraph (src/links/_shared/types.ts).
+    card to the anchor paragraph (src/links/_shared/types.ts) — or, given the
+    Mode-B `range_anchor` object `apply_response.range_anchor` built, the same
+    Link pinned to that span (task 1197).
 
     NOTE (task 205): the anchor carries NO `margin: {side}`. Which side a
     card's margin chrome sits on is a live function of where its panel is
@@ -196,7 +230,7 @@ def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str) -> dict:
     return {
         "id": str(uuid.uuid4()),
         "kind": "anchor",
-        "anchor": {
+        "anchor": copy.deepcopy(range_anchor) if range_anchor else {
             "type": "textObject",
             "targetKind": "paragraph",
             "textObjectIds": [anchor_uuid],
@@ -330,7 +364,7 @@ def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "content": _jsoncontent(body),
             "createdAt": now_iso(),
             "aiRequest": False,
-            "links": [_anchor_link("note", nid, ctx.anchor)],
+            "links": [_anchor_link("note", nid, ctx.anchor, ctx.range_anchor)],
         },
         insert=None,
         result_id=nid,
@@ -360,7 +394,7 @@ def _build_todo(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "done": False,
             "aiRequest": False,
             "createdAt": now_iso(),
-            "links": [_anchor_link("todo", tid, ctx.anchor)],
+            "links": [_anchor_link("todo", tid, ctx.anchor, ctx.range_anchor)],
         },
         insert=None,
         result_id=tid,
@@ -391,8 +425,8 @@ def _build_report(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             **title_fields("report", a.title),
             "text": body,
             "content": _jsoncontent(body),
-            "selectedText": ctx.selected_text or "",
-            "links": [_anchor_link("report", rid, ctx.anchor)],
+            "selectedText": ctx.selected_text or ctx.range_text or "",
+            "links": [_anchor_link("report", rid, ctx.anchor, ctx.range_anchor)],
         },
         insert=None,
         result_id=rid,
@@ -420,8 +454,8 @@ def _build_report_request(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindB
             "text": body,
             "content": _jsoncontent(body),
             "aiRequest": bool(a.ai_request),
-            "selectedText": ctx.selected_text or "",
-            "links": [_anchor_link("report-request", rid, ctx.anchor)],
+            "selectedText": ctx.selected_text or ctx.range_text or "",
+            "links": [_anchor_link("report-request", rid, ctx.anchor, ctx.range_anchor)],
         },
         insert=None,
         result_id=rid,
@@ -517,6 +551,9 @@ class Ctx:
     is_virtual: bool = False
     request: dict | None = None  # the Workflow-A ai-requests.json row, when one was read
     linked: dict | None = None   # the source card {panel, cardId} the Task answers, if any
+    range_anchor: dict | None = None  # the Mode-B anchor object, when --range pins a span
+    range_edit: dict | None = None    # …and its wrap-span `.tex` edit (op.anchorEdit)
+    range_text: str | None = None     # …and the span's reading text (its snapshot)
 
 
 def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set[str]) -> "Ctx | dict":
@@ -608,6 +645,32 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
                request=req, linked=linked)
 
 
+# The kinds a span can pin (task 1197): every sidecar-anchored card the app can
+# itself anchor to a range (`LinkedAnchorKind`, src/links/links.ts) — and the
+# responder proposals. An atom (footnote / citation) is placed by its marker
+# and an example is a block, so neither takes one.
+RANGE_KINDS = {"note", "todo", "report", "report-request"} | {"suggestion", "comment"}
+
+
+def _resolve_range(doc: Path, a: argparse.Namespace, anchor: str, ctx: "Ctx") -> None:
+    r"""`--range` → a Mode-B anchor on `ctx` (task 1197), through the contract's
+    one primitive (`apply_response.range_anchor`: locate + refuse + build), with
+    the id from the one allocator (`_gen_range_id`). No --range → Mode A,
+    untouched."""
+    if a.range is None:
+        if a.range_occurrence is not None:
+            die("--range-occurrence needs --range")
+        return
+    if a.kind not in RANGE_KINDS:
+        die(f"--range does not apply to --kind={a.kind}: it pins a margin card to a span "
+            f"(one of {sorted(RANGE_KINDS)}); an atom or block is placed by its own marker")
+    tex = find_tex_file(doc).read_text(encoding="utf-8")
+    AR.locate_range_span(tex, anchor, a.range, a.range_occurrence)  # refuse before allocating
+    rid = _gen_range_id(doc)
+    ctx.range_anchor, ctx.range_edit = AR.range_anchor(tex, anchor, a.range, a.range_occurrence, rid)
+    ctx.range_text = ctx.range_anchor["textRange"]["textSnapshot"]
+
+
 def _require_anchor(doc: Path, anchor: str) -> None:
     """The paragraph UUID must exist in the .tex (refuse rather than guess)."""
     tex = find_tex_file(doc).read_text(encoding="utf-8")
@@ -649,6 +712,7 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     if isinstance(ctx, dict):  # already-terminal / already-answered Task → idempotent no-op
         return ctx
     _require_anchor(doc, ctx.anchor)
+    _resolve_range(doc, a, ctx.anchor, ctx)
 
     build = CARDED_BUILDERS[a.kind](doc, a, ctx)
 
@@ -664,6 +728,8 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     # ai-requests.json Task to point back at, so it's excluded too.
     if ctx.request_id and not ctx.is_virtual and build.insert is None:
         build.card["aiOriginRequestId"] = ctx.request_id
+    if ctx.range_anchor:
+        build.summary += f" (pinned to «{_snippet(ctx.range_text, 40)}»)"
 
     op: dict = {
         "panel": build.panel,
@@ -678,6 +744,8 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
         }
         if ctx.selected_text:
             op["texEdit"]["selectedText"] = ctx.selected_text
+    if ctx.range_edit:
+        op["anchorEdit"] = ctx.range_edit
     if ctx.request_id:
         op["requestId"] = ctx.request_id
     if ctx.synthesize:
@@ -824,8 +892,19 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
     # The anchor: the source card's own (copied verbatim — Mode A/B and its
     # paragraph id(s) in one move), unless the caller deliberately aimed
     # elsewhere; otherwise the canonical Mode-A anchor at the resolved paragraph.
+    # An explicit --range pins THIS answer to the span it names, at the resolved
+    # paragraph (task 1197) — the caller chose the words, so it wins the copy.
     src_anchor = _first_anchor(source)
-    if src_anchor and (not explicit_anchor or explicit_anchor == src_anchor["textObjectIds"][0]):
+    if a.range is not None:
+        anchor_uuid = explicit_anchor or (src_anchor["textObjectIds"][0] if src_anchor else ctx.anchor)
+        _require_anchor(doc, anchor_uuid)
+        if kind == "suggestion" and a.original and a.original not in a.range:
+            die("--range must contain --original: the span a suggestion rewrites sits inside "
+                "the words it is pinned to (else the range markers split original_text and "
+                "accept would refuse it as stale)")
+        _resolve_range(doc, a, anchor_uuid, ctx)
+        anchor_obj = ctx.range_anchor
+    elif src_anchor and (not explicit_anchor or explicit_anchor == src_anchor["textObjectIds"][0]):
         anchor_obj = {k: v for k, v in copy.deepcopy(src_anchor).items() if k != "margin"}
     else:
         anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [ctx.anchor]}
@@ -850,7 +929,7 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
         instructions = _plain_text(source)
     else:
         instructions = a.task_text or _plain_text(source)
-    selected = ctx.selected_text or (source or {}).get("selectedText") or ""
+    selected = ctx.selected_text or ctx.range_text or (source or {}).get("selectedText") or ""
 
     cid = str(uuid.uuid4())
     link = _anchor_link(kind, cid, anchor_uuid)  # ref.kind is re-stamped by the write door
@@ -887,6 +966,8 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
         card["aiOriginRequestId"] = request_id
 
     op: dict = {"panel": panel, "card": card, "summary": summary, "clearSourceFlag": True}
+    if ctx.range_edit:
+        op["anchorEdit"] = ctx.range_edit
     if request_id:
         op["requestId"] = request_id
     if ctx.synthesize:
@@ -951,6 +1032,9 @@ def _create_example(doc: Path, a: argparse.Namespace) -> dict:
     if a.safety_level is not None:
         die("--kind=example is a direct tex-only create; safety levels (which gate card "
             "lifecycle) don't apply — omit --safety-level")
+    if a.range is not None:
+        die("--range does not apply to --kind=example: an example is a block, placed after "
+            "the paragraph")
     anchor = a.anchor
     if not anchor:
         die("--anchor <uuid> is required for --kind=example")
@@ -1005,6 +1089,11 @@ def main(argv: list[str]) -> int:
     p.add_argument("--body", type=text_arg,
                    help="card body / example text (user/chat supplied); @<path> reads a file")
     p.add_argument("--anchor", help="paragraph UUID to anchor at (required for the chat path)")
+    p.add_argument("--range", type=text_arg,
+                   help="pin the card to this span of the anchor paragraph — VERBATIM source text "
+                        "(a Mode-B text-range anchor: \\vlid…\\vlidend in the .tex); @<path> reads a file")
+    p.add_argument("--range-occurrence", type=int, dest="range_occurrence",
+                   help="which occurrence of --range (1-based) when the span repeats in the paragraph")
     p.add_argument("--safety-level", type=int, choices=[1, 2, 3], dest="safety_level")
     p.add_argument("--synthesize", action="store_true", help="synthesize the Task (chat path)")
     p.add_argument("--task-text", dest="task_text", type=text_arg,

@@ -293,8 +293,16 @@ r = op(sb, "move", {"cardId": FN, "newAnchor": "1101"})
 check(r.returncode != 0 and "atom-bearing" in r.stderr, "refuses moving a footnote (atom-bearing → defer)")
 r = op(sb, "move", {"cardId": CIT, "newAnchor": "1101"})
 check(r.returncode != 0 and "atom-bearing" in r.stderr, "refuses moving a citation (atom-bearing → defer)")
+# A Mode-B card MOVES since task 1197 (it used to defer): range → paragraph
+# leaves Mode A on the new paragraph. This sample card's mark has no \vlid
+# pair in the .tex (its snapshot is the recovery key), so the .tex is untouched;
+# the pair-removal leg lives in test_range_anchor.py.
+tex_before = tex_of(sb)
 r = op(sb, "move", {"cardId": CUTTER_B, "newAnchor": "1101"})
-check(r.returncode != 0 and ("Mode-B" in r.stderr or "range" in r.stderr), "refuses moving a Mode-B (text-range) anchor → defer")
+anc = by_id(sb, "cutter.json", "cards", CUTTER_B)["links"][0]["anchor"]
+check(r.returncode == 0 and anc == {"type": "textObject", "targetKind": "paragraph", "textObjectIds": ["1101"]},
+      f"moves a Mode-B (text-range) card to a paragraph → Mode A ({r.stderr.strip()[:120]})")
+check(tex_of(sb) == tex_before, "…with no stray .tex edit when the card had no \\vlid pair")
 
 
 # ───────────────────────────────── link (bidirectional) ───────────────────
