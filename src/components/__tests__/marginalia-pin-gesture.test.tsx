@@ -47,6 +47,7 @@ vi.mock("@/components/drop-mode/controller", () => ({
 }));
 
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import { MarkerButton } from "@/components/Marginalia";
 import { buildFloatKey } from "@/floats/float-key";
 import type { MarginaliaMarker } from "@/lib/marginalia";
@@ -97,6 +98,7 @@ describe("margin-pin → beginCardDropGesture (folded re-anchor)", () => {
         />,
       );
       pressPin(0);
+      promotePress();
       expect(beginDropSession).toHaveBeenCalledTimes(1);
       const arg = beginDropSession.mock.calls[0][0] as {
         cardKey: string;
@@ -128,6 +130,7 @@ describe("margin-pin gesture guards", () => {
       />,
     );
     pressPin(0);
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
   });
 
@@ -139,6 +142,7 @@ describe("margin-pin gesture guards", () => {
       />,
     );
     pressPin(0);
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
   });
 
@@ -150,10 +154,12 @@ describe("margin-pin gesture guards", () => {
       />,
     );
     pressPin(2); // right button
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
     // …and a primary press on the SAME pin DOES start one (guard is
     // button-selective, not globally inert).
     pressPin(0);
+    promotePress();
     expect(beginDropSession).toHaveBeenCalledTimes(1);
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
   });

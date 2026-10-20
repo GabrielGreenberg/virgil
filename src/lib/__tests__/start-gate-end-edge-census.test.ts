@@ -23,7 +23,9 @@ const END_EDGE = /\b(?:isMissedRelease|watchHeldPress)\b/;
  *  that pays the end-edge invariant itself. Each entry names that owner. */
 const DELEGATES_END: Record<string, string> = {
   "src/components/stack/StackThumbnail.tsx":
-    "the press is handed straight to `beginDropSession`; the drop-mode controller owns the session's end (it imports isMissedRelease)",
+    "the press is handed straight to `pendDropSession` (watchHeldPress ends the pending press); the drop-mode controller owns the session's end (it imports isMissedRelease)",
+  "src/components/Marginalia.tsx":
+    "the marker's press is handed to `beginCardDropGesture` → `pendDropSession` (watchHeldPress ends the pending press); the drop-mode controller owns the session's end, and the trailing-click guard watches its own held press (task 1192)",
   "src/lib/pane-resize/pointer-invariants.ts": "the invariants' own home",
 };
 

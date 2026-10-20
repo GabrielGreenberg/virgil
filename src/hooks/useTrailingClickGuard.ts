@@ -28,6 +28,7 @@
 
 import { useMemo, useRef } from "react";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
+import { watchHeldPress } from "@/lib/pane-resize/pointer-invariants";
 
 export interface TrailingClickGuard {
   /** A fresh press: the click path is open again. Call from mousedown. */
@@ -76,13 +77,14 @@ export function useTrailingClickGuard(): TrailingClickGuard {
         if (armedRef.current) return;
         armedRef.current = true;
         if (detachRef.current || lifetime.disposed) return;
-        const onUp = () => release();
-        window.addEventListener("mouseup", onUp, true);
-        const unregister = lifetime.onDispose(() =>
-          window.removeEventListener("mouseup", onUp, true),
-        );
+        // The held press's end edge, however it ends: the real mouseup, or a
+        // release we never saw (missed-release move, context menu, blur) —
+        // `watchHeldPress` is the one spelling of that edge (task 1192: the
+        // marker's own missed-release watcher folded into it).
+        const unwatch = watchHeldPress(() => release());
+        const unregister = lifetime.onDispose(unwatch);
         detachRef.current = () => {
-          window.removeEventListener("mouseup", onUp, true);
+          unwatch();
           unregister();
         };
       },

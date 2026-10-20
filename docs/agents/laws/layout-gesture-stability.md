@@ -163,3 +163,18 @@ no >8 ms task attributable to the drag path, plus Gabriel's own feel check.
 A worktree cannot run the dev server, so both happen against clean `main`.
 
 Deliberately NOT done, and a UX call rather than an oversight: **no root-level `PaneFreeze`**. Its anchor must be the *stationary* edge (anchoring to the moving one is visibly worse than no freeze at all), knowing which window edge moved requires a `screenX`/`screenY` probe this codebase otherwise doesn't use, and freezing the whole app during a live OS resize shows background slivers until release.
+
+## The press half (task 1192)
+
+A content drag's begin edge (`beginDropSession`) is not cheap or local: it sets
+`body[data-drop-mode-active]` (making margin markers, the `+K` pill and the grab
+handle click-through), the crosshair cursor, the content `LayoutGestureBus`
+begin, `user-select:none`, and the session payload resolutions. So **a press is
+not a drag until it moves**: every press-started producer (margin marker, card
+drop button, float drop button, stack thumbnail) records the press through
+`pendDropSession` / `pendDrag` (`src/components/drop-mode/pending-session.ts`)
+and begins only past `DROP_DRAG_THRESHOLD_PX` (3 px). A release, missed
+release, context menu, blur or Escape first discards the press, and the
+browser's own click reaches the pressed element. The trailing-click guard arms
+on the same promote edge. CI: `drop-session-press-census.test.ts`,
+`marker-click-drop-pending.test.tsx`.

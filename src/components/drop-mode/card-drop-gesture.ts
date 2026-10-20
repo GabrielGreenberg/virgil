@@ -12,6 +12,11 @@
  *   - the lifted-overlay grab handle (`@/text-objects/TextObjectGrabHandle`).
  *
  * Contract (one call per mousedown):
+ *   0. The press only PENDS (`pendDropSession`, task 1192): nothing below
+ *      happens until the pointer travels past `DROP_DRAG_THRESHOLD_PX`, so a
+ *      plain click has no drop-mode side effects at all and its own `click`
+ *      reaches the pressed element (the margin marker's select). On that
+ *      promote edge:
  *   1. `beginDropSession({ cardKey, origin, inPlace: true, externalCommit: true })`.
  *      - `inPlace` skips `markSourceFloat` (a docked card has no popout to dim;
  *        a float dims itself via FloatChrome, not this helper).
@@ -21,6 +26,7 @@
  *      Its lifetime is the SESSION's (task 772): Escape, the missed-release
  *      failsafe and a teardown all disarm it, so a stale release can never
  *      commit a later gesture's session.
+ *   3. The caller's `onPromote` (the marker arms its trailing-click guard).
  *
  * The button itself owns the press-swallow (stopPropagation + preventDefault +
  * `draggable=false` + dragstart swallow) so the header drag-lift and the
@@ -31,7 +37,8 @@
  * domain-neutral FloatChrome and the margin pin to call.
  */
 
-import { armReleaseCommit, beginDropSession } from "./controller";
+import { armReleaseCommit } from "./controller";
+import { pendDropSession } from "./pending-session";
 
 export interface CardDropGestureOpts {
   /** The canonical `float:card:<kind>:<id>` key of the card being (re)anchored.
@@ -39,25 +46,24 @@ export interface CardDropGestureOpts {
   cardKey: string;
   /** Viewport coords of the mousedown — the session origin (ESC / leave math). */
   origin: { x: number; y: number };
+  /** Runs when the press became a drag AND the session began. */
+  onPromote?: () => void;
 }
 
 /**
- * Start a card drop session from a button mousedown and arm the one-shot
- * commit-on-mouseup. Returns true if a session started (a spec exists, no
- * other session active, a DropCtx is registered), false otherwise — callers
- * may use the result to skip arming a press-suppressor, but the listener is
- * only installed when a session actually started, so a false return leaves no
- * dangling listener.
+ * Pend a card drop session from a button mousedown; on the drag threshold it
+ * begins the session and arms the one-shot commit-on-mouseup. Returns the
+ * pending record's disposer (a no-op once it promoted or ended).
  */
-export function beginCardDropGesture(opts: CardDropGestureOpts): boolean {
-  const started = beginDropSession({
+export function beginCardDropGesture(opts: CardDropGestureOpts): () => void {
+  return pendDropSession({
     cardKey: opts.cardKey,
     origin: opts.origin,
     inPlace: true,
     externalCommit: true,
+    onPromote: () => {
+      armReleaseCommit();
+      opts.onPromote?.();
+    },
   });
-  if (!started) return false;
-
-  armReleaseCommit();
-  return true;
 }

@@ -62,6 +62,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import type { ReactElement } from "react";
 import { UnanchoredFootnoteCard } from "@/panels/Footnotes/FootnoteCard";
 import { buildFootnoteOmniItems } from "@/panels/Footnotes/omni";
@@ -153,6 +154,7 @@ describe("the parked footnote card's re-anchor affordance (task 316)", () => {
     it(`starts a real drop session for its own key from the ${name} mount`, () => {
       render(mount());
       fireEvent.mouseDown(screen.getByLabelText("Drop into text"), { button: 0 });
+      promotePress();
       expect(beginDropSession).toHaveBeenCalledTimes(1);
       const arg = beginDropSession.mock.calls[0][0] as Record<string, unknown>;
       expect(arg.cardKey).toBe(KEY);

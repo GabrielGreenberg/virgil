@@ -55,6 +55,7 @@ class ResizeObserverStub {
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import { FloatChrome } from "@/floats/FloatChrome";
 
 beforeEach(() => {
@@ -190,6 +191,7 @@ describe("FloatChrome (re)anchor drop button (chip D)", () => {
     });
     // beginCardDropGesture → beginDropSession with the float's key + inPlace +
     // externalCommit (the shared neutral gesture contract).
+    promotePress();
     expect(beginDropSession).toHaveBeenCalledTimes(1);
     const arg = beginDropSession.mock.calls[0][0] as unknown as {
       cardKey: string;
@@ -222,10 +224,12 @@ describe("FloatChrome (re)anchor drop button (chip D)", () => {
       clientX: 50,
       clientY: 60,
     });
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
     // A primary press on the same button still starts one — the guard is
     // button-selective, not globally inert.
     fireEvent.mouseDown(screen.getByLabelText(DROP_LABEL), { button: 0 });
+    promotePress();
     expect(beginDropSession).toHaveBeenCalledTimes(1);
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
   });
@@ -296,6 +300,7 @@ describe("FloatChrome (re)anchor drop button (chip D)", () => {
       expect(onDropPress).toHaveBeenCalledTimes(1);
       // The supplied handler WINS — the default card gesture (→ beginDropSession)
       // must NOT fire when onDropPress is present.
+      promotePress();
       expect(beginDropSession).not.toHaveBeenCalled();
       // The press event carries the cursor coords the caller reads for `origin`.
       const ev = onDropPress.mock.calls[0][0] as { clientX: number; clientY: number };
@@ -349,6 +354,7 @@ describe("FloatChrome (re)anchor drop button (chip D)", () => {
       });
       // beginCardDropGesture → beginDropSession with the float's key (the
       // unchanged card behavior).
+      promotePress();
       expect(beginDropSession).toHaveBeenCalledTimes(1);
       const arg = beginDropSession.mock.calls[0][0] as unknown as {
         cardKey: string;

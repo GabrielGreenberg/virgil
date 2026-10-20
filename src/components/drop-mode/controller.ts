@@ -11,13 +11,19 @@
  * lifted-overlay grab handle, and the stack-pull thumbnail. (The legacy
  * Shift-mousedown-on-a-FloatingPanel-header entry was retired in req-7.)
  *
+ * A PRESS-started producer never calls `beginDropSession` from its mousedown:
+ * it pends through `pendDropSession` / `pendDrag` (`./pending-session`), which
+ * begins only past `DROP_DRAG_THRESHOLD_PX`, so a plain click pays none of the
+ * begin edge's global side effects (task 1192 —
+ * `drop-session-press-census.test.ts`).
+ *
  * Public API:
  *   - `registerDropCtx(token, ctx)` — called by each mounted
  *     `DropModeProvider` (one per `EditorPane`) to publish ITS OWN
  *     per-doc hook bag; returns a dispose that removes only that
  *     entry. `setDropCtx(ctx | null)` is the view-less legacy publish.
  *   - `lookupSpec(kind)` — registry-aware spec lookup.
- *   - `beginDropSession({...})` — called from a producer's mousedown.
+ *   - `beginDropSession({...})` — called on a producer's drag edge.
  *     Installs window listeners and a CSS hook.
  *   - `useDropSession()` — React hook for components that need to react
  *     to the current placement (Indicator).

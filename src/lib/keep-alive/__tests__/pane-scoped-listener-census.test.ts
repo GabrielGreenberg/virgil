@@ -84,11 +84,6 @@ const LEDGER: Record<string, Row> = {
     events: ["window.mousemove", "window.mouseup"],
     why: "float drag, armed on the header mousedown",
   },
-  "components/Marginalia.tsx": {
-    scope: "gesture",
-    events: ["window.mousemove", "window.mouseup"],
-    why: "marker drag pair (the overflow group's click-away/Escape moved onto useMenuDismiss, task 819)",
-  },
   "components/PendingChangePill.tsx": {
     scope: "visible",
     events: ["window.resize"],
@@ -108,6 +103,11 @@ const LEDGER: Record<string, Row> = {
     scope: "gesture",
     events: ["window.mousemove", "window.mouseup", "window.keydown", "window.mouseup"],
     why: "drop-mode session listeners, torn down when the session ends; the second mouseup is armReleaseCommit's one-shot (task 772), disarmed by firing or by the session's end",
+  },
+  "components/drop-mode/pending-session.ts": {
+    scope: "gesture",
+    events: ["window.mousemove", "window.keydown"],
+    why: "the pending drop press (task 1192): armed on a producer's mousedown, removed on the drag threshold or the held press's end (watchHeldPress)",
   },
   "components/editor-layout/editor-scrollbar.tsx": {
     scope: "visible",
@@ -193,11 +193,6 @@ const LEDGER: Record<string, Row> = {
     scope: "doc",
     events: ["window.TEX_DELIMITERS_CHANGED_EVENT"],
     why: "the delimiters event carries its docId",
-  },
-  "hooks/useTrailingClickGuard.ts": {
-    scope: "gesture",
-    events: ["window.mouseup"],
-    why: "a drag's trailing-click suppression observes its own end edge, armed on the drag threshold (task 1152)",
   },
   "hooks/useDragPosition.ts": {
     scope: "gesture",

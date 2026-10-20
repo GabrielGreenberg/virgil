@@ -54,6 +54,7 @@ class ResizeObserverStub {
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import type { ComponentProps } from "react";
 import { PanelCard, CardDropButton, CARD_THEMES } from "@/components/panel-primitives";
 // `theme` below is the only CARD_THEMES use (a fixed note theme for all kinds).
@@ -134,6 +135,7 @@ describe("CardDropButton gesture start (inPlace + externalCommit)", () => {
     fireEvent.mouseDown(screen.getByLabelText("Drop into text"), {
       button: 0, clientX: 50, clientY: 60,
     });
+    promotePress();
     expect(beginDropSession).toHaveBeenCalledTimes(1);
     const arg = beginDropSession.mock.calls[0][0] as unknown as {
       cardKey: string; origin: { x: number; y: number }; inPlace?: boolean; externalCommit?: boolean;
@@ -153,6 +155,7 @@ describe("CardDropButton gesture start (inPlace + externalCommit)", () => {
     // A disabled <button> swallows synthetic events in jsdom, but assert the
     // handler is inert regardless (the early `if (disabled) return`).
     fireEvent.mouseDown(screen.getByLabelText("Drop into text"), { button: 0 });
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
   });
 
@@ -165,10 +168,12 @@ describe("CardDropButton gesture start (inPlace + externalCommit)", () => {
     fireEvent.mouseDown(screen.getByLabelText("Drop into text"), {
       button: 2, clientX: 50, clientY: 60,
     });
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
     // And a primary press on the SAME button still does start one, proving the
     // guard is button-selective rather than globally inert.
     fireEvent.mouseDown(screen.getByLabelText("Drop into text"), { button: 0 });
+    promotePress();
     expect(beginDropSession).toHaveBeenCalledTimes(1);
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
   });
@@ -177,10 +182,25 @@ describe("CardDropButton gesture start (inPlace + externalCommit)", () => {
     const key = buildFloatKey({ domain: "card", kind: "note", id: "n9" });
     render(<CardDropButton cardKey={key} />);
     fireEvent.mouseDown(screen.getByLabelText("Drop into text"), { button: 0 });
+    promotePress();
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
     expect(commitDropSession).toHaveBeenCalledTimes(1);
     // One-shot: a second mouseup does NOT re-commit.
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
     expect(commitDropSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("a plain click (press + release, no movement) begins NO session and commits nothing (task 1192)", () => {
+    const key = buildFloatKey({ domain: "card", kind: "note", id: "n9" });
+    render(<CardDropButton cardKey={key} />);
+    fireEvent.mouseDown(screen.getByLabelText("Drop into text"), { button: 0, clientX: 10, clientY: 10 });
+    // Sub-threshold jitter is still a click.
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 12, clientY: 11, buttons: 1 }));
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+    expect(beginDropSession).not.toHaveBeenCalled();
+    expect(commitDropSession).not.toHaveBeenCalled();
+    // The released press is discarded: a later move cannot promote it.
+    promotePress();
+    expect(beginDropSession).not.toHaveBeenCalled();
   });
 });
