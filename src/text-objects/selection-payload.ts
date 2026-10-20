@@ -6,16 +6,18 @@
  * > affordance for it is the block's own grab handle — not a text slice with the
  * > block's shell left behind.**
  *
- * Both selection ladders in this directory (`TextObjectGrabHandle`'s
- * `resolveActiveRefs` and `active-text-object-context`'s `resolveFromSelection`)
- * open with the same ancestor walk: from `sel.from`, outward, to the nearest
- * uuid-bearing `TextObjectKind` — the `DEFERRING_PARENTS` fact that a
+ * The grab handle's selection ladder (`TextObjectGrabHandle`'s
+ * `resolveActiveRefs`) opens with an ancestor walk: from `sel.from`, outward, to
+ * the nearest uuid-bearing `TextObjectKind` — the `DEFERRING_PARENTS` fact that a
  * `listItem`'s inner paragraph carries no uuid while the `listItem` does. That
- * walk was written twice; it is `selectionOwner` here, read by both.
+ * walk is `selectionOwner` here. (A second ladder, `active-text-object-context`'s
+ * `resolveFromSelection`, once shared it; task 1201 deleted that provider —
+ * nothing ever read it.)
  *
  * The WHOLE-BLOCK question on top of it is the grab handle's alone, and the
- * asymmetry is deliberate rather than an oversight — stated here so nobody
- * "unifies" it later without deciding:
+ * asymmetry against the menus' anchor resolution (`resolveAnchorableNode`) is
+ * deliberate rather than an oversight — stated here so nobody "unifies" it later
+ * without deciding:
  *
  *   • The grab handle resolves a DRAG PAYLOAD. Dragging a whole-block selection
  *     as a text slice is destructive by construction: the inline-cursor branch
@@ -27,7 +29,7 @@
  *   • The menus resolve an ANCHOR TARGET. Whether a triple-click over a whole
  *     paragraph should mint a Mode-B `linkedRange` or a Mode-A paragraph anchor
  *     is a product question about card anchoring with no reported symptom, so
- *     `resolveFromSelection` keeps its pre-482 answer.
+ *     the menus keep their pre-482 answer.
  *
  * Task 482. The reported class is the SEQUENCE trap — a block-move commit used
  * to leave a content TextSelection over what it moved, so the second drag at the
@@ -38,7 +40,6 @@
  * text-range move that landed as exactly one new block.
  */
 
-import type { Editor } from "@tiptap/react";
 import { NodeSelection, type Selection } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isNodeTextObjectKind } from "./text-object-registry";
@@ -103,10 +104,6 @@ export function wholeBlockSelection(sel: Selection, doc: PMNode): SelectionOwner
   return selectionOwner(doc, sel.from);
 }
 
-/** Convenience for a live editor. */
-export function wholeBlockSelectionIn(editor: Editor): SelectionOwner | null {
-  return wholeBlockSelection(editor.state.selection, editor.state.doc);
-}
 
 
 /**

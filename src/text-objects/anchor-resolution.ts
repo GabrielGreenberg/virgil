@@ -236,19 +236,9 @@ export function collectRemovedAnchorUuids(
  * `null` — no anchorable block survives anywhere (the capture emptied the
  * document) — is a real answer: the caller leaves every card on the ordinary
  * orphan path rather than inventing a home.
- */
-export function resolveDisplacedAnchorTarget(
-  doc: PMNode,
-  from: number,
-  to: number,
-  removed: ReadonlySet<string>,
-): AnchorableBlock | null {
-  return resolveDisplacedAnchorPlacement(doc, from, to, removed)?.target ?? null;
-}
-
-/**
- * `resolveDisplacedAnchorTarget`'s answer PLUS which side of the captured
- * range it sits on (task 965). Rungs 1 and 2 answer a block at or ABOVE the
+ *
+ * The answer carries the neighbour (`target`) PLUS which side of the captured
+ * range it sits on (`below`, task 965). Rungs 1 and 2 answer a block at or ABOVE the
  * range — the passage came from just after it. Rung 3 (the forward fall at the
  * document's first block) answers a block BELOW — the passage came from just
  * before it. That direction is a fact only the capture can see: once the range

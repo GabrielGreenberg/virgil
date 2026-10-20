@@ -135,7 +135,7 @@ experiences as loss.
 > exactly where the fresh snippet lands. One neighbour, resolved ONCE per
 > gesture, read by BOTH halves — that is what "stack up" means.**
 
-[resolveDisplacedAnchorTarget](../../../src/text-objects/anchor-resolution.ts) resolves
+[resolveDisplacedAnchorPlacement](../../../src/text-objects/anchor-resolution.ts) resolves
 the neighbour; [retargetDisplacedAnchors](../../../src/cards/retarget-anchors.ts) moves
 the anchors. Seven rules they earned:
 
@@ -160,7 +160,7 @@ the anchors. Seven rules they earned:
 - **The neighbour is resolved ONCE and read by both halves.** Two resolutions
   would put the snippet and the cards it displaced on two paragraphs, which is
   precisely NOT stacking — and the census asks for exactly one
-  `resolveDisplacedAnchorTarget` call per capture site for that reason.
+  `resolveDisplacedAnchorPlacement` call per capture site for that reason.
 - **The resolver is the honest form of what B2 always MEANT.** The snippet's own
   anchor used `findPreviousAnchorableBlock` gated on `ref.kind !== "selection"`
   — an approximation of *"is the whole anchoring entity being deleted?"*, which
@@ -1689,8 +1689,9 @@ Six rules they earned:
   walk that both ladders already ran is what answers — `selectionOwner`, written
   twice before this and read from one place now.
 - **The two ladders stay DIFFERENT, and that is stated at both sites.** The grab
-  handle resolves a DRAG PAYLOAD; `active-text-object-context`'s
-  `resolveFromSelection` resolves an ANCHOR TARGET for the menus. Whether a
+  handle resolves a DRAG PAYLOAD; the menus resolve an ANCHOR TARGET
+  (`active-text-object-context`'s `resolveFromSelection` was that second
+  ladder until task 1201 deleted the unread provider). Whether a
   triple-click over a whole paragraph should mint a Mode-B `linkedRange` or a
   Mode-A paragraph anchor is a product question with no reported symptom, so
   only their shared ancestor walk was unified.
@@ -3382,13 +3383,13 @@ now two explicit phases, and the order is the whole content of the fix:
 Four rules it earned:
 
 - **ONE enumeration, two phases — two QUESTIONS (task 897).**
-  `collectRangeCardTargets` is the read-only half of the walk, and both phases
-  read it. A gesture that asked about one set of cards and destroyed another
-  would be the same bug wearing a fix's clothes. But "which cards does this
-  range DESTROY?" is CONTAINMENT, not overlap: the delete takes only the cards
-  whose `linkedAnchor` extent lies wholly inside the range (`reach:
-  "contained"`, the default), while the ask settles every card the range
-  TOUCHES (`"touched"`) — a clipped applied splice is still an obligation. A
+  The module's one private walker (`walkRangeCards`) is read by both phases
+  (task 1201 deleted `collectRangeCardTargets`, a test-only view of it). A
+  gesture that asked about one set of cards and destroyed another would be the
+  same bug wearing a fix's clothes. But "which cards does this range DESTROY?"
+  is CONTAINMENT, not overlap: the delete takes only the hits marked
+  `contained` — cards whose `linkedAnchor` extent lies wholly inside the range —
+  while the ask settles every card the range TOUCHES — a clipped applied splice is still an obligation. A
   selection clipping a note's span used to delete the whole note and leave the
   rest of its mark pointing at nothing; now the `tr.delete` just shrinks it.
 - **ONE MAPPING, never a scalar shift (task 897).** A settle's `revert` splices

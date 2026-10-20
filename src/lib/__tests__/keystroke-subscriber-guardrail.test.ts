@@ -194,8 +194,6 @@ const PERMITTED_SELECTION_SUBSCRIBERS: Allowlist = {
     "[cost: O(1)/event; RAF body O(depth) + cached range lookup] Code-band sync (mounted only while the code pane is open): disposed check + RAF-pending bail; the RAF body is one active-uuid ancestor walk + a WeakMap-cached char-range lookup (re-parse O(source) only after a code-doc change) + a {from,to} equality bail before the CM dispatch.",
   "text-objects/TextObjectGrabHandle.tsx":
     "[cost: O(1)/event; RAF body O(1) while typing, O(depth) per selection handle] Same RAF scheduler as its update subscription — see the keystroke entry. The caret moves on every keystroke, so this IS a keystroke handler: since task 336 its RAF body cannot reach the hover resolver in keyboard modality, and a selection handle (the branch a shift-arrow must still move) costs one ancestor walk plus one placement.",
-  "text-objects/active-text-object-context.tsx":
-    "[cost: O(depth)/event, un-deferred] Active-text-object recompute: resolveFromSelection is a doc.resolve + ancestor walk over the selection head (never a doc walk), with a refsEqual identity bail before any subscriber notify.",
 };
 
 const PERMITTED_LIBRARY_SELECTION_SUBSCRIBERS: Allowlist = {
