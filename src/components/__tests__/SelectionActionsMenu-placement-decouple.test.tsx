@@ -43,6 +43,8 @@ const h = vi.hoisted(() => {
     cacheRef: { current: cache as unknown },
     scrollParent: null as HTMLElement | null,
     scrollIntoView: vi.fn(),
+    // The live-anchor thunk the menu hands the panel (task 1200).
+    track: null as null | (() => { top: number; left: number } | null),
   };
 });
 
@@ -64,15 +66,20 @@ vi.mock("@/lib/editor-geometry", () => ({
 vi.mock("../ActionsMenuPanel", () => ({
   ActionsMenuPanel: ({
     triggerRect,
+    trackAnchor,
   }: {
     triggerRect: { left: number; top: number };
-  }) => (
+    trackAnchor?: () => { top: number; left: number } | null;
+  }) => {
+    h.track = trackAnchor ?? null;
+    return (
     <div
       data-testid="actions-menu-panel"
       data-left={triggerRect.left}
       data-top={triggerRect.top}
     />
-  ),
+    );
+  },
 }));
 vi.mock("../Hint", () => ({ useHint: () => ({}) }));
 vi.mock("../editor-layout/panel-icons", () => ({
@@ -137,6 +144,7 @@ beforeEach(() => {
     clearTimeout(id as unknown as ReturnType<typeof setTimeout>)) as typeof cancelAnimationFrame;
   h.coords = { left: 200, top: 100, bottom: 120 }; // on-screen by default
   h.scrollIntoView.mockClear();
+  h.track = null;
   h.scrollParent = document.createElement("div");
   document.body.appendChild(h.scrollParent);
 });
@@ -212,6 +220,44 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
       baseElement.querySelector('[data-testid="actions-menu-panel"]'),
       "a genuine off-screen drop still closes the menu",
     ).toBeNull();
+  });
+
+  // Task 1200 — the OPEN menu's position is LIVE during the scroll. The
+  // placement pass is suppressed for the whole gesture (the resting bolt's
+  // jitter guard), so the static `triggerRect` is frozen at the scroll's start;
+  // the panel must therefore get a `trackAnchor` thunk that re-reads the head
+  // line from the live view — the provider calls it ≤1/frame on scroll.
+  it("hands the open menu a LIVE anchor that follows the line mid-scroll", () => {
+    const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
+    openViaBolt(baseElement as HTMLElement);
+    const panel = () =>
+      baseElement.querySelector('[data-testid="actions-menu-panel"]') as HTMLElement;
+    expect(h.track, "the panel receives a trackAnchor thunk").toBeTypeOf("function");
+    expect(h.track!()?.top).toBe(100);
+
+    // Scroll starts (suppression on) and the line moves down the viewport.
+    act(() => {
+      fireEvent.scroll(h.scrollParent!);
+    });
+    h.coords = { left: 200, top: 300, bottom: 320 };
+    act(() => {
+      vi.advanceTimersByTime(16); // one frame — well inside the 120 ms idle
+    });
+    // The static rect is frozen (that was the bug's whole mechanism)…
+    expect(panel().dataset.top).toBe("100");
+    // …but the live anchor answers the line's CURRENT position.
+    expect(h.track!()).toMatchObject({ top: 300, left: 760 });
+
+    // Line scrolls off-screen mid-gesture: the thunk holds the LAST live rect
+    // (null would fall back to the frozen open-time rect and fling the menu back).
+    h.coords = { left: 200, top: -80, bottom: -60 };
+    expect(h.track!()).toMatchObject({ top: 300 });
+
+    // Scroll-idle: the settled off-screen drop still closes the menu.
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(panel()).toBeNull();
   });
 
   // Task 299 — the resting ⚡ bolt's hover-on-light affordance must be LIVE.
