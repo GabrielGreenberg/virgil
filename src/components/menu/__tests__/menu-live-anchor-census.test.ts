@@ -42,10 +42,12 @@ const REPO_ROOT = path.resolve(SRC, "..");
  * keyed by repo-relative file. An entry must say what re-derives the rect.
  * The set may only SHRINK.
  */
-const PERMITTED_FROZEN_ANCHORS: Record<string, string> = {
-  "src/components/ActionsMenuPanel.tsx":
-    "The lightning menu's `triggerRect` is re-derived on EVERY render by its parent `SelectionActionsMenu` from the bolt's own placement, which follows scroll through the viewport-frame channel (RAF-coalesced, gesture-parked). The rect it receives is therefore current each frame the bolt moves; a thunk would re-read the same number. (Its CHILD, the text-color popover, is a separate `<MenuProvider>` in SelectionColorPopover.tsx and does pass `trackAnchor`.)",
-};
+// EMPTY since task 1200. Its last entry, ActionsMenuPanel.tsx, claimed the
+// lightning menu's `triggerRect` was "current each frame the bolt moves" — but
+// the bolt's placement pass is SUPPRESSED for the whole scroll, so the rect was
+// frozen exactly while its line moved. A re-derived-by-the-parent rect is not a
+// live anchor unless the parent re-derives it on scroll; pass `trackAnchor`.
+const PERMITTED_FROZEN_ANCHORS: Record<string, string> = {};
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.tsx$/.test(full)) out.push(full);
@@ -108,6 +110,13 @@ describe("menu live-anchor census (task 747)", () => {
       frozen,
       "these menus portal at position:fixed from a rect captured at open, so they stay put while their anchor scrolls — pass `trackAnchor` (src/components/menu/live-anchor.ts) or allowlist with the reason the rect is already live",
     ).toEqual([]);
+  });
+
+  it("the frozen-anchor allowlist is empty (task 1200 — the lightning menu tracks its bolt)", () => {
+    expect(Object.keys(PERMITTED_FROZEN_ANCHORS)).toEqual([]);
+    const lightning = sites.filter((s) => s.file === "src/components/ActionsMenuPanel.tsx");
+    expect(lightning.length).toBeGreaterThan(0);
+    expect(lightning.every((s) => /\btrackAnchor=/.test(s.tag))).toBe(true);
   });
 
   it("every allowlist entry is still a frozen-anchor site (the set only shrinks)", () => {

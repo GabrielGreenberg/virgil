@@ -22,7 +22,8 @@
  *  - {@link TextObjectGrabHandle} (left side) for the drag-to-lift gesture.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { LiveAnchor } from "./menu/live-anchor";
 import { isPrimaryDragStart, watchHeldPress } from "@/lib/pane-resize/pointer-invariants";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -158,6 +159,18 @@ function computePlacement(editor: Editor, cache: EditorViewportFrame): Placement
     anchorNodePos,
     range: { from, to },
     mode: sel.empty ? "cursor" : "selection",
+  };
+}
+
+/** The bolt's square at a placement — the rect the open menu anchors to. */
+function boltRect(p: Placement) {
+  return {
+    left: p.left,
+    top: p.top,
+    right: p.left + BUTTON_SIZE,
+    bottom: p.top + BUTTON_SIZE,
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
   };
 }
 
@@ -398,6 +411,28 @@ export function SelectionActionsMenu({
     updateRef.current();
   }, [cacheVersion]);
 
+  // The OPEN menu's live anchor (task 1200). The placement pass above is
+  // suppressed for the whole scroll so the RESTING bolt doesn't jitter — which
+  // also froze `placement`, and with it the rect the open menu was positioned
+  // from: the menu sat at its old screen spot while its line scrolled away,
+  // then snapped at scroll-idle. So the menu does not ride `placement` for its
+  // position at all: this thunk re-derives the bolt rect from the LIVE view
+  // through the same `computePlacement` (one `coordsAtPosCached` read), and the
+  // menu provider calls it at most once per frame on scroll/resize, gesture-
+  // parked (Scroll-anchor stability law, shape (b)) — no listener added here.
+  // `placement` keeps owning the menu's LIFECYCLE (identity change, settled
+  // off-screen drop). An off-screen read answers the LAST live rect (the bolt
+  // clamped at the scroll band's edge), not null: the provider's null fallback
+  // is the static `triggerRect` — frozen at the scroll's START — so null would
+  // fling the menu back to where it opened until the settled close lands.
+  const lastBoltRectRef = useRef<ReturnType<typeof boltRect> | null>(null);
+  const trackBolt = useCallback<LiveAnchor>(() => {
+    if (!editor || editor.isDestroyed) return null;
+    const live = computePlacement(editor, cacheRef.current);
+    if (live.visible) lastBoltRectRef.current = boltRect(live);
+    return lastBoltRectRef.current;
+  }, [editor, cacheRef]);
+
   // Shown again → settle the placement a hidden-pane resize skipped (task 598).
   // Hidden → close the open menu (task 753): it anchors to a bolt the hidden
   // pane no longer paints, and its actions would dispatch into a document the
@@ -605,14 +640,8 @@ export function SelectionActionsMenu({
         nodeKind={menuTarget.kind}
         range={menuTarget.range}
         mode={menuTarget.mode}
-        triggerRect={{
-          left: placement.left,
-          top: placement.top,
-          right: placement.left + BUTTON_SIZE,
-          bottom: placement.top + BUTTON_SIZE,
-          width: BUTTON_SIZE,
-          height: BUTTON_SIZE,
-        }}
+        triggerRect={boltRect(placement)}
+        trackAnchor={trackBolt}
         triggerEl={boltEl}
         onClose={() => setMenuTarget(null)}
         documentClass={documentClass}

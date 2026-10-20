@@ -63,7 +63,7 @@ import { IconExample } from "./editor-layout/panel-icons";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
-import { elementAnchor } from "./menu/live-anchor";
+import { elementAnchor, type LiveAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
 import { MenuGrid, MenuList } from "./menu/regions";
 import {
@@ -176,6 +176,14 @@ export interface ActionsMenuPanelProps {
     width: number;
     height: number;
   };
+  /** The LIVE bolt rect (task 1200): re-read by the provider at most once per
+   *  frame on scroll/resize, so the open menu travels with its line. The
+   *  static `triggerRect` alone is NOT live during a scroll — the parent's
+   *  placement pass is suppressed for the whole gesture to keep the RESTING
+   *  bolt from jittering, so the rect it hands down is frozen until scroll-idle.
+   *  Null (anchor off-screen) falls back to `triggerRect` until the parent's
+   *  settled off-screen close lands. */
+  trackAnchor?: LiveAnchor;
   /** The element that opened this menu (the ⚡ bolt), exempted from
    *  click-outside so a press on it reaches its own toggle instead of closing
    *  the menu for the click to re-open (task 992). */
@@ -198,6 +206,7 @@ export function ActionsMenuPanel({
   range,
   mode,
   triggerRect,
+  trackAnchor,
   triggerEl = null,
   onClose,
   documentClass = null,
@@ -565,6 +574,7 @@ export function ActionsMenuPanel({
         layout="composite"
         role="menu"
         anchorRect={triggerRect}
+        trackAnchor={trackAnchor}
         placements={PANEL_PLACEMENTS}
         gap={4}
         letterShortcuts
