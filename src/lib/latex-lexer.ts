@@ -667,7 +667,8 @@ export const LATEX_COMMAND_MARK = "latexCommand";
  * the third question in this neighbourhood, and the one nothing owned (task
  * 517). Distinct from `CARRIER_MARK_NAMES`, which is the STRICTER census of
  * carriers whose bytes are literal or inert; a `latexCommand` run is neither
- * (it smart-quotes, and a `latexCommand` scanner must look INSIDE it), which
+ * (a `latexCommand` scanner must look INSIDE it — though since task 1204 its
+ * bytes, like every raw-LaTeX run's, are emitted unsmartened), which
  * is exactly why `isOpaqueRun` must keep reading the narrow set and a
  * prose/spell/search consumer must read this one.
  *
@@ -1898,9 +1899,22 @@ export function isQuoteSyntaxAt(text: string, i: number): boolean {
 /**
  * THE smart-quote door every serializer calls (task 1160): the leaf's
  * `smartenStraightQuotes` with {@link isQuoteSyntaxAt} as its syntax
- * predicate. Verbatim spans are computed ONCE per call, not once per `"`.
+ * predicate. Verbatim spans are computed ONCE per call, not once per `"`, on
+ * the same string the predicate is asked about.
+ *
+ * PROSE ONLY (task 1204). A run that wears a raw-LaTeX mark
+ * (`RAW_LATEX_MARK_NAMES`) never reaches this door — its bytes are the
+ * source's own. Inside a `\texttt` code span (`codeSpan: true`) a straight
+ * `"` is a literal typewriter character, not a quotation mark (the font has no
+ * ``` `` ``` ligature: smartening printed literal backticks), so only the
+ * curly glyphs — which the parse rung produced from ``` `` ```/`''` in that
+ * same span — are mapped back.
  */
-export function smartenQuotesOutsideSyntax(text: string): string {
+export function smartenQuotesOutsideSyntax(
+  text: string,
+  opts?: { codeSpan?: boolean },
+): string {
+  if (opts?.codeSpan) return smartenStraightQuotes(text, () => true);
   if (!text.includes('"')) return smartenStraightQuotes(text, () => false);
   const spans = text.includes("\\") ? verbatimArgumentSpans(text) : [];
   return smartenStraightQuotes(
@@ -1924,6 +1938,12 @@ const QUOTE_SHORTHAND_LANGUAGES: ReadonlySet<string> = new Set([
   "spanish", "italian", "latin", "basque", "galician",
 ]);
 
+/** Standalone packages (no babel) that activate the `"` shorthand. */
+const STANDALONE_QUOTE_SHORTHAND_PACKAGES: ReadonlySet<string> = new Set([
+  "german",
+  "ngerman",
+]);
+
 /**
  * Does the LIVE preamble make `"` an active character in the body? babel
  * loaded with a `"`-shorthand language (in its own options or the class's
@@ -1936,6 +1956,11 @@ export function preambleActivatesQuoteShorthand(tex: string): boolean {
     return true;
   }
   const loads = listPackageLoads(pre);
+  // The pre-babel standalone language packages (`\usepackage{ngerman}`,
+  // `{german}`) make `"` active on their own (task 1204).
+  if (loads.some((l) => l.entries.some((e) => STANDALONE_QUOTE_SHORTHAND_PACKAGES.has(e)))) {
+    return true;
+  }
   const babel = loads.filter((l) => l.entries.includes("babel"));
   if (babel.length === 0) return false;
   const cls = /\\documentclass\s*\[([^\]]*)\]/.exec(pre);

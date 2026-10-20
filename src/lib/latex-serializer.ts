@@ -48,7 +48,7 @@ import {
   END_DOCUMENT_TOKEN,
   extractBraced,
   findDocumentBoundary,
-  hasVerbatimMark,
+  hasRawLatexMark,
   hasCommentTailMark,
   isEscaped,
   projectDetectableLatex,
@@ -348,25 +348,26 @@ const DEFAULT_POSTAMBLE = `\n${END_DOCUMENT_TOKEN}\n`;
  *    PDF. Checked BEFORE `latexCommand` so the stricter carrier wins if a node
  *    ever ends up carrying both (task 264).
  *
- *  - `latexCommand` — text that is already raw LaTeX, returned as-is except
- *    that uncompilable ASCII / smart quotes get smart-LaTeX-ified so they
- *    round-trip to a valid `.tex` even when the mark has been inherited onto
- *    stray text by Tiptap's default mark-extension behavior.
+ *  - `latexCommand` — text that is already raw LaTeX, returned as-is. Until
+ *    task 1204 its quotes were smart-LaTeX-ified, a net for prose INHERITING
+ *    the mark at its trailing edge — which task 360 made impossible
+ *    (`inclusive: false`). What the net still did was rewrite the source's
+ *    own bytes: `\includegraphics{"my icon"}` (a graphicx-quoted filename)
+ *    saved as ``` {``my icon''} ``` and stopped compiling. All three carriers
+ *    are now one predicate, `hasRawLatexMark` — the prose index's own.
  *
  * Everything else is PROSE and is escaped — with the typographic reverse-map
- * suppressed inside a `code` wrapper, where `--` is two literal hyphens and
+ * and straight-quote smartening suppressed inside a `code` wrapper, where `--` is two literal hyphens and
  * accent commands stay raw (memo §A exclusion). Note that `code` is a WRAPPER
  * mark and is nonetheless read here: it is the one wrapper that changes how the
  * inner bytes are produced.
  */
 function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
-  if (hasCommentTailMark(marks)) return text;
-  if (hasVerbatimMark(marks)) return text;
-  if (marks.some((m) => m.type === "latexCommand")) {
-    return smartenQuotesOutsideSyntax(text);
-  }
-  return escapeLatex(text, { typography: !isCodeWrapped(marks) });
+  // Every raw-LaTeX run — comment tail, verbatim carrier, `\command` — is the
+  // source's own bytes (task 1204): ONE predicate, the prose index's.
+  if (hasRawLatexMark(marks)) return text;
+  return escapeLatex(text, { codeSpan: isCodeWrapped(marks) });
 }
 
 /**
@@ -418,7 +419,7 @@ function serializeMarklessTextBody(content: JSONContent[] | undefined): string {
 
 function escapeLatex(
   text: string,
-  opts?: { typography?: boolean },
+  opts?: { codeSpan?: boolean },
 ): string {
   // Char-escaping is `escapeLatexChars`, driven by `CHAR_ESCAPE_TABLE` — THE
   // vocabulary, shared with the parser's un-escape rung and with the
@@ -439,13 +440,18 @@ function escapeLatex(
   // Straight/curly `"` → smart LaTeX pairs via the shared serialize-side
   // helper (also used by serializeMarks' latexCommand path) so the
   // opener/closer character class has exactly ONE definition.
-  const escaped = smartenQuotesOutsideSyntax(escapeLatexChars(text));
+  //
+  // Inside a `\texttt` code span a straight `"` stays literal (task 1204):
+  // the typewriter font has no quote ligatures, so ``` `` ``` printed as two
+  // backticks. The door's `codeSpan` mode maps only the curly glyphs back.
+  const codeSpan = opts?.codeSpan === true;
+  const escaped = smartenQuotesOutsideSyntax(escapeLatexChars(text), { codeSpan });
   // Typographic reverse-map (accents/special-letters/dashes/ellipsis →
   // canonical LaTeX) runs AFTER char-escaping so its emitted `\^{e}` / `\~{n}`
   // commands aren't re-escaped by the `^`/`~` members above. Suppressed for
   // code spans by the caller (memo §A). The dash-glyph used as a `"`-opening
   // lookbehind (— –) is untouched by the escape pass before being mapped here.
-  return opts?.typography === false ? escaped : typographyToLatex(escaped);
+  return codeSpan ? escaped : typographyToLatex(escaped);
 }
 
 function serializeTitleField(node: JSONContent): string {

@@ -43,8 +43,7 @@ import {
   smartenQuotesOutsideSyntax,
   matchShorthandQuoteRunAt,
   findMatchingBrace,
-  hasCommentTailMark,
-  hasVerbatimMark,
+  hasRawLatexMark,
   matchBraceGroupAt,
   matchStrayBraceAt,
   matchCommandToken,
@@ -351,7 +350,7 @@ export function htmlToJson(html: string): JSONContent {
 // JSON ↔ LaTeX (used by latex-parser / latex-serializer)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function escapeLatex(text: string, opts?: { typography?: boolean }): string {
+function escapeLatex(text: string, opts?: { codeSpan?: boolean }): string {
   // Both halves go through the shared SSOTs, not local copies, because this
   // file's copies had each drifted from the main serializer's:
   //  - quote smartening was missing `/` from the opener character class, so
@@ -363,10 +362,13 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
   //    for LaTeX itself (task 339). `escapeLatexChars` reads
   //    `CHAR_ESCAPE_TABLE` — the same table the parse rung below matches
   //    against, and the same one the main serializer emits from.
-  const escaped = smartenQuotesOutsideSyntax(escapeLatexChars(text));
+  // Inside a code span a straight `"` stays literal (task 1204) — the door's
+  // `codeSpan` mode.
+  const codeSpan = opts?.codeSpan === true;
+  const escaped = smartenQuotesOutsideSyntax(escapeLatexChars(text), { codeSpan });
   // Typographic reverse-map runs AFTER char-escaping so its `\^{e}`/`\~{n}`
-  // output isn't re-escaped. Suppressed for code spans by the caller.
-  return opts?.typography === false ? escaped : typographyToLatex(escaped);
+  // output isn't re-escaped. Suppressed for code spans.
+  return codeSpan ? escaped : typographyToLatex(escaped);
 }
 
 /**
@@ -377,7 +379,8 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
  *  - `latexVerbatim` — BYTE-LITERAL (a `\verb<delim>…<delim>` run), emitted
  *    exactly as parsed. Before task 264 this fork had no `\verb` handling at
  *    all, so a footnote's `\verb"code"` came back ``\verb``code''``.
- *  - `latexCommand` — already raw LaTeX; only the quote smartening runs.
+ *  - `latexCommand` — already raw LaTeX, emitted as parsed. Until task 1204
+ *    it was quote-smartened, which broke `\includegraphics{"my icon"}`.
  *
  * Everything else is prose and is escaped, with typography suppressed inside a
  * `code` wrapper (memo §A). Both carriers used to sit here as an early `return`
@@ -395,12 +398,10 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
  */
 function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
-  if (hasCommentTailMark(marks)) return text;
-  if (hasVerbatimMark(marks)) return text;
-  if (marks.some((m) => m.type === "latexCommand")) {
-    return smartenQuotesOutsideSyntax(text);
-  }
-  return escapeLatex(text, { typography: !isCodeWrapped(marks) });
+  // Every raw-LaTeX run — comment tail, verbatim carrier, `\command` — is the
+  // source's own bytes (task 1204): ONE predicate, the prose index's.
+  if (hasRawLatexMark(marks)) return text;
+  return escapeLatex(text, { codeSpan: isCodeWrapped(marks) });
 }
 
 function serializeInlineNode(node: JSONContent): string {
