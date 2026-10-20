@@ -130,10 +130,9 @@ describe("LaTeX double-quote round-trip", () => {
     expect(out).not.toContain("and/''");
   });
 
-  it("smartens quotes on a raw latexCommand-marked node via the shared helper", () => {
-    // The latexCommand path smartens straight quotes WITHOUT the full
-    // typographic reverse-map — and shares the same opener class, so `/"`
-    // opens there too.
+  it("leaves quotes on a raw latexCommand-marked node byte-literal (task 1204)", () => {
+    // A raw-LaTeX run is the source's own bytes: no smartening, no
+    // typographic reverse-map.
     const doc = {
       type: "doc",
       content: [
@@ -150,7 +149,7 @@ describe("LaTeX double-quote round-trip", () => {
       ],
     };
     const out = serializeBody(doc as any);
-    expect(out).toContain("x/``y''");
+    expect(out).toContain('x/"y"');
   });
 });
 

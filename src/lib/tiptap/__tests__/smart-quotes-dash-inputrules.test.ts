@@ -132,18 +132,32 @@ describe("SmartQuotes dash input rules", () => {
     ed.destroy();
   });
 
-  it("still converts inside a latexCommand mark (unchanged by task 264)", () => {
-    // The sibling carrier deliberately does NOT gate: smartening a quote typed
-    // into a stray inherited `latexCommand` span is what keeps it emitting
-    // valid `.tex`.
+  it("does not convert inside a latexCommand mark (task 1204)", () => {
+    // The third raw-LaTeX carrier is `code` too now. Before, a `"` typed into
+    // `\url{…?q=` became a curly glyph and saved as ``` `` ```, and a `--`
+    // became an en-dash glyph the raw path then wrote into the `.tex` as-is.
     const ed = new Editor({
       element: document.body.appendChild(document.createElement("div")),
       extensions: [Document, Paragraph, Text, Code, CodeBlock, LatexCommandMark, SmartQuotes],
-      content: '<p><span data-latex-cmd="">ab</span></p>',
+      content: '<p><span data-latex-cmd="">\\url{ab}</span></p>',
     });
-    ed.commands.setTextSelection(2);
-    typeText(ed, "--");
-    expect(ed.getText()).toBe(`a${EN_DASH}b`);
+    // Caret between `a` and `b`, inside the command's argument.
+    ed.commands.setTextSelection(7);
+    typeText(ed, '--"');
+    expect(ed.getText()).toBe('\\url{a--"b}');
+    expect(serializeBodyOnly(ed.getJSON())).toBe('\\url{a--"b}');
+    ed.destroy();
+  });
+
+  it("text typed AFTER a latexCommand run is prose and still smartens (task 1204)", () => {
+    const ed = new Editor({
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: [Document, Paragraph, Text, Code, CodeBlock, LatexCommandMark, SmartQuotes],
+      content: '<p><span data-latex-cmd="">\\foo{x}</span></p>',
+    });
+    ed.commands.setTextSelection(ed.state.doc.content.size);
+    typeText(ed, ' says "hi"');
+    expect(serializeBodyOnly(ed.getJSON())).toContain("\\foo{x} says ``hi''");
     ed.destroy();
   });
 

@@ -920,44 +920,50 @@ export function typographyToLatex(text: string): string {
  * context. Ordered opener-before-closer so the greedy closing catch-all only
  * sees the quotes the opener rule didn't claim.
  *
- * This is the ONE serialize-side smart-quote transform, shared by
- * `escapeLatex` (prose char-escape path) and `serializeMarks`' raw
- * `latexCommand` path — previously duplicated byte-for-byte in both, which let
- * the opener character class drift (the `/` omission that made `and/"or"`
- * serialize a wrong-way closing pair). Sits beside `typographyToLatex` because
- * it is the same "glyph → canonical LaTeX" direction, but is a SEPARATE export:
- * the `latexCommand` path smartens quotes WITHOUT running the full typographic
- * reverse-map (the user typed raw LaTeX there on purpose).
+ * This is the ONE serialize-side smart-quote transform. Sits beside
+ * `typographyToLatex` because it is the same "glyph → canonical LaTeX"
+ * direction, but is a SEPARATE export: a `\texttt` code span maps its curly
+ * glyphs (the inverse of a parse rung that fired there) WITHOUT the full
+ * typographic reverse-map.
  *
- * Callers run this INSIDE `escapeLatex` after char-escaping and, for
- * `latexCommand`, on the raw mark text — never on `code`/verbatim spans.
+ * It runs on PROSE only (task 1204): the lexer's `smartenQuotesOutsideSyntax`
+ * is its one caller, and the serializers reach that door only for runs that
+ * wear no raw-LaTeX mark. A raw `latexCommand` run is a byte-literal slice of
+ * the source and is never smartened — `\includegraphics{"my icon"}` keeps its
+ * graphicx-quoted filename.
  */
 export function smartenStraightQuotes(
   text: string,
   isQuoteSyntaxAt: (s: string, i: number) => boolean,
 ): string {
-  return (
-    text
-      // The two curly glyphs, from `QUOTE_PAIR_TABLE` — the same table the
-      // parse rung reads, so the serialize half can no longer drift from it.
-      .replace(QUOTE_GLYPH_RE, (g) => TEX_BY_QUOTE_GLYPH.get(g)!)
-      // Straight `"` → smart LaTeX pair. Opening if at start or after
-      // whitespace / opening punctuation (incl. `/`) / a dash glyph;
-      // otherwise closing. An ESCAPED `"` (odd backslash run — `\"u`, the
-      // umlaut accent inside a raw `latexCommand` run) is not a quote at all
-      // and passes through: THE escape rule, `isEscaped` (task 779 M2). Nor
-      // is a `"` the caller's predicate calls SYNTAX (task 1160): a URL byte,
-      // a TeX hex constant. The predicate is REQUIRED and is the lexer's — a
-      // zero-import leaf cannot read the command tables — so the one caller
-      // is `smartenQuotesOutsideSyntax` and a census forbids a second.
-      .replace(/"/g, (q, i: number, s: string) =>
-        isEscaped(s, i) || isQuoteSyntaxAt(s, i)
-          ? q
-          : i === 0 || SMART_QUOTE_OPENER_PREV.test(s[i - 1])
-            ? "``"
-            : "''",
-      )
-  );
+  // ONE pass over the ORIGINAL string (task 1204). This used to be two
+  // chained `.replace`s, curly glyphs first — and each curly glyph widens to
+  // two characters, so the straight-`"` pass saw indices into a LONGER string
+  // than the one the caller's predicate had measured its verbatim spans on: a
+  // `“` before a `\url{…?q="a"}` in one text node shifted the span and the
+  // URL's `"` was smartened. Every index handed to `isQuoteSyntaxAt` is now an
+  // index into `text` itself.
+  return text.replace(QUOTE_CHAR_RE, (q, i: number, s: string) => {
+    // The two curly glyphs, from `QUOTE_PAIR_TABLE` — the same table the parse
+    // rung reads, so the serialize half can no longer drift from it.
+    const tex = TEX_BY_QUOTE_GLYPH.get(q);
+    if (tex) return tex;
+    // Straight `"` → smart LaTeX pair. Opening if at start or after
+    // whitespace / opening punctuation (incl. `/`) / a dash glyph; otherwise
+    // closing. An ESCAPED `"` (odd backslash run — `\"u`, the umlaut accent)
+    // is not a quote at all and passes through: THE escape rule, `isEscaped`
+    // (task 779 M2). Nor is a `"` the caller's predicate calls SYNTAX (task
+    // 1160): a URL byte, a TeX hex constant. The predicate is REQUIRED and is
+    // the lexer's — a zero-import leaf cannot read the command tables — so the
+    // one caller is `smartenQuotesOutsideSyntax` and a census forbids a second.
+    // (A curly glyph before the `"` is not in the opener class, so it reads
+    // as a closer exactly as its two-character TeX spelling used to.)
+    return isEscaped(s, i) || isQuoteSyntaxAt(s, i)
+      ? q
+      : i === 0 || SMART_QUOTE_OPENER_PREV.test(s[i - 1])
+        ? "``"
+        : "''";
+  });
 }
 
 /** The character before a straight `"` that makes it an OPENING quote. */
@@ -996,8 +1002,10 @@ const TEX_BY_QUOTE_GLYPH = new Map<string, string>(
   QUOTE_PAIR_TABLE.map((e) => [e.glyph, e.tex]),
 );
 
-const QUOTE_GLYPH_RE = new RegExp(
-  QUOTE_PAIR_TABLE.map((e) => e.glyph).join("|"),
+/** Every character the serialize-side smartener rewrites: the straight `"`
+ *  plus each curly glyph of the table (all single code units). */
+const QUOTE_CHAR_RE = new RegExp(
+  `["${QUOTE_PAIR_TABLE.map((e) => e.glyph).join("")}]`,
   "g",
 );
 

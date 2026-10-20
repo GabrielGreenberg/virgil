@@ -7,6 +7,7 @@ import { serializeBodyOnly, serializeToLatex } from "@/lib/latex-serializer";
 import { richJsonToLatex, richLatexToJson } from "@/lib/footnote-content";
 import {
   isQuoteSyntaxAt,
+  smartenQuotesOutsideSyntax,
   matchTexNumberAt,
   preambleActivatesQuoteShorthand,
 } from "@/lib/latex-lexer";
@@ -56,6 +57,10 @@ const SYNTAX_ROWS = [
   String.raw`\char "41 x`,
   String.raw`\symbol{"41}`,
   String.raw`\catcode"22=12 x`,
+  // Task 1204 — a code span and a raw command's arguments are not prose.
+  String.raw`Use \texttt{print("hi")} here.`,
+  String.raw`Click \includegraphics[height=1em]{"my icon"} here.`,
+  String.raw`\input{"chap 1"}`,
 ];
 
 describe("a `\"` that is LaTeX syntax survives every save (task 1160)", () => {
@@ -80,9 +85,9 @@ describe("a `\"` that is LaTeX syntax survives every save (task 1160)", () => {
     });
   }
 
-  it("\\href smartens its TEXT argument and leaves its URL byte-identical", () => {
-    const out = saveBody(EN, String.raw`\href{http://x.org/?q="a"}{"text"}`);
-    expect(out).toBe(String.raw`\href{http://x.org/?q="a"}{` + "``text''}");
+  it("\\href keeps BOTH arguments byte-identical — a raw command run is never smartened (task 1204)", () => {
+    const row = String.raw`\href{http://x.org/?q="a"}{"text"}`;
+    expect(saveBody(EN, row)).toBe(row);
   });
 
   it("ordinary English prose quotes are still canonicalised", () => {
@@ -143,6 +148,33 @@ describe("a babel-active `\"` document keeps every shorthand (task 1160)", () =>
   it("the gate is scoped to one parse — a later preamble-less parse smartens", () => {
     parseLatex(body(DE, 'Stra"se'));
     expect(cardBody('a "b" c')).toBe("a ``b'' c");
+  });
+});
+
+describe("smartening is prose-only (task 1204)", () => {
+  it("a curly glyph before a verbatim argument does not shift its span", () => {
+    expect(smartenQuotesOutsideSyntax("“a” \\url{x?q=\"a\"}")).toBe(
+      "``a'' \\url{x?q=\"a\"}",
+    );
+  });
+
+  it("a code span keeps its straight quotes and still maps curly glyphs", () => {
+    expect(smartenQuotesOutsideSyntax('"x" “y”', { codeSpan: true })).toBe(
+      "\"x\" ``y''",
+    );
+  });
+
+  it("\\texttt round-trips its `` / '' pairs", () => {
+    const row = "\\texttt{``a''}";
+    expect(saveBody(EN, row)).toBe(row);
+  });
+
+  it("the standalone ngerman / german packages activate the shorthand", () => {
+    expect(preambleActivatesQuoteShorthand("\\usepackage{ngerman}\n")).toBe(true);
+    expect(preambleActivatesQuoteShorthand("\\usepackage{german}\n")).toBe(true);
+    expect(preambleActivatesQuoteShorthand("% \\usepackage{ngerman}\n")).toBe(false);
+    const NG = "\\documentclass{article}\n\\usepackage{ngerman}\n";
+    expect(saveBody(NG, 'Stra"se')).toBe('Stra"se');
   });
 });
 

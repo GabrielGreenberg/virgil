@@ -185,9 +185,10 @@ describe("the verbatim carrier does not leak into prose (task 264)", () => {
     expect(out).toContain("``hello''");
   });
 
-  it("still smartens a STRAY latexCommand span", () => {
-    // The smartening on the `latexCommand` path is load-bearing for marks
-    // TipTap inherited onto plain prose — 264 must not disable it.
+  it("emits a latexCommand span byte-literal, quotes included (task 1204)", () => {
+    // The smartening that once ran on the `latexCommand` path was a net for
+    // marks TipTap inherited onto prose; task 360 made the mark non-inclusive,
+    // and task 1204 retired the net — a raw run's bytes are the source's.
     const doc = {
       type: "doc",
       content: [
@@ -203,7 +204,7 @@ describe("the verbatim carrier does not leak into prose (task 264)", () => {
         },
       ],
     } as JSONContent;
-    expect(serializeBody(doc)).toContain("``hi''");
+    expect(serializeBody(doc)).toContain(`\\unknowncmd{he said "hi"}`);
   });
 
   it("still smartens straight quotes in a footnote body", () => {

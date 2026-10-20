@@ -515,3 +515,25 @@ whitespace in the quote matches any whitespace run including the block
 separator, and a quote containing raw-LaTeX carrier text finds no prose match
 (no band, never a wrong band). The dead `EditorHandle.replaceText` rode the
 same locator and was deleted. CI: `find-prose-text.test.ts`.
+
+### The smartening half: quote canonicalisation is a PROSE transform (task 1204)
+
+The serializer's straight-`"` → ``` `` ```/`''` rung runs only on runs the prose
+index calls prose. Both inline serializers (`latex-serializer.ts`,
+`footnote-content.ts`) return a run wearing ANY raw-LaTeX mark
+(`hasRawLatexMark` — comment tail, verbatim carrier, `\command`) byte-for-byte;
+the `latexCommand` path's old smartening net (for prose that INHERITED the mark,
+impossible since task 360's `inclusive: false`) rewrote graphicx-quoted
+filenames (`\includegraphics{"my icon"}`) and `\input{"chap 1"}`. A `\texttt`
+code span is prose to the index but not to this rung: `smartenQuotesOutsideSyntax`'s
+`codeSpan` mode keeps a straight `"` literal (typewriter has no ligature) and
+maps back only the curly glyphs the parse rung produced from ``` `` ```/`''`.
+Type-time half: `latexCommand` is now `code: true` like its two siblings, so
+TipTap's input rules (quotes, dashes, autocorrect) never fire inside a raw run.
+The leaf `smartenStraightQuotes` is ONE pass over the original string, so the
+syntax predicate's verbatim spans are indexed on the string they were measured
+on (a curly glyph before `\url{…?q="a"}` no longer shifts them). Standalone
+`\usepackage{ngerman}`/`{german}` count as activating the `"` shorthand.
+RESIDUAL: the TYPED `"` in a babel-shorthand paper still becomes a curly glyph —
+the input rules have no per-doc preamble fact to read. CI:
+`quote-syntax-roundtrip.test.ts`, `smart-quotes-dash-inputrules.test.ts`.

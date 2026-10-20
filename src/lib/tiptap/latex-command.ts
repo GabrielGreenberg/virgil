@@ -537,8 +537,8 @@ export const LatexCommandMark = Mark.create({
 
   // NOT inclusive (task 360). ProseMirror's default is `true`, so text typed at
   // the trailing edge of a marked run INHERITED the carrier — which is why
-  // `serializeMarks`' latexCommand branch smart-quotes: prose that had drifted
-  // onto the mark still had to round-trip to valid `.tex`. With the type-time
+  // `serializeMarks`' latexCommand branch used to smart-quote: prose that had
+  // drifted onto the mark still had to round-trip to valid `.tex`. With the type-time
   // carrier deriving the mark from the text, inheritance is not merely
   // unnecessary but wrong: finishing `\emph{hi}` and continuing to write must
   // produce prose, and the scanner re-extends the mark itself while a command is
@@ -546,10 +546,14 @@ export const LatexCommandMark = Mark.create({
   // same reason (`latexVerbatim` task 264, `latexCommentTail` task 347) —
   // interior text keeps the mark either way; only the boundary changes.
   //
-  // Deliberately NOT `code: true`, unlike those siblings: smartening a typed
-  // quote inside a `\command` run is what keeps a stray inherited mark emitting
-  // valid `.tex`, and that net stays.
+  // `code: true`, like those siblings (task 1204). The run's bytes are raw
+  // LaTeX the user typed or the file holds, and the serializer now emits them
+  // as-is; `code` is what keeps TipTap's input rules (smart quotes, dashes,
+  // autocorrect) from rewriting a `"` typed into `\url{…?q="a"}` or
+  // `\includegraphics{"my icon"}` into a curly glyph. The inherited-mark net
+  // that once argued against it went away with `inclusive: false`.
   inclusive: false,
+  code: true,
 
   parseHTML() {
     return [{ tag: 'span[data-latex-cmd]' }];

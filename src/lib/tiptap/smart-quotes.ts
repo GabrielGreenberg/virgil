@@ -39,15 +39,13 @@ import { createTypeTimeRewriter } from "./type-time-rewrite";
  * textblock — are the same set, so a future verbatim node kind is gated by
  * shipping rather than by someone remembering this file.
  *
- * The MARK half is deliberately asymmetric and must stay so: `latexVerbatim`
- * and `latexCommentTail` are `code` (measured — a `"` typed inside either run
- * is left literal), while `latexCommand` is deliberately NOT, because
- * smartening a quote typed into a stray inherited command span is what keeps
- * it emitting valid `.tex` (`latex-command.ts` says so in place). Do not
- * "unify" that away.
- *
- * Doing the conversion at type time also bypasses any `latexCommand` mark
- * inheritance that would otherwise let a raw `"` / `--` through to the .tex.
+ * The MARK half is symmetric since task 1204: all three raw-LaTeX carriers —
+ * `latexVerbatim`, `latexCommentTail` and `latexCommand` — are `code`, so a
+ * `"` typed inside any of them stays the straight byte the serializer now
+ * emits as-is. (`latexCommand` was once deliberately NOT `code`, to smarten a
+ * quote typed into a stray INHERITED command span; task 360 made the mark
+ * non-inclusive, so no prose inherits it, and the net only rewrote raw
+ * arguments like `\includegraphics{"my icon"}`.)
  *
  * Apostrophes (`'`) are intentionally untouched — straight apostrophes are
  * the only sane representation for contractions like "don't", and LaTeX
