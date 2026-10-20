@@ -61,6 +61,7 @@ vi.mock("@/components/drop-mode/controller", () => ({
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import { MarginColumn } from "@/components/Marginalia";
 import { UnanchoredCardsChip } from "@/components/UnanchoredCardsChip";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
@@ -268,6 +269,7 @@ describe("UnanchoredCardsChip — the relocated affordance", () => {
       document.querySelector("[data-marginalia-marker]") as HTMLElement,
       { button: 0, buttons: 1, clientX: 10, clientY: 10 },
     );
+    promotePress();
     expect(beginDropSession).toHaveBeenCalledTimes(1);
   });
 
@@ -280,6 +282,7 @@ describe("UnanchoredCardsChip — the relocated affordance", () => {
       document.querySelector("[data-marginalia-marker]") as HTMLElement,
       { button: 0, buttons: 1, clientX: 10, clientY: 10 },
     );
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
   });
 });

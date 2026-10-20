@@ -4,7 +4,7 @@
  * StackThumbnail — one compressed card in the strip. Renders a per-kind
  * preview, a tiny X (remove), and a small date stamp.
  *
- * Mousedown initiates a pull: `beginDropSession({ cardKey: 'stack-pull:<id>' })`
+ * Mousedown PENDS a pull (`pendDropSession`; it begins past the drag threshold)
  * — the controller mounts the placement indicator and our stack-pull
  * DropSpec runs `applyDrop` on release.
  */
@@ -13,7 +13,7 @@ import { useMemo } from "react";
 import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import type { StackItem } from "@/lib/stack/types";
 import { STACK_PULL_PREFIX } from "@/lib/stack/types";
-import { beginDropSession } from "@/components/drop-mode/controller";
+import { pendDropSession } from "@/components/drop-mode/pending-session";
 import { summarizeStackItem } from "@/lib/stack/snapshot";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -43,7 +43,8 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
     if (!isPrimaryDragStart(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    beginDropSession({
+    // Pend, don't begin (task 1192): a click on a thumbnail is not a pull.
+    pendDropSession({
       cardKey: `${STACK_PULL_PREFIX}:${item.id}`,
       origin: { x: e.clientX, y: e.clientY },
     });

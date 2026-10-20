@@ -84,6 +84,13 @@ function beginForeignSession(): boolean {
   });
 }
 
+/** Press the card's drop button and drag past the threshold (the press alone
+ *  only PENDS the session — task 1192). */
+function grab(): void {
+  beginCardDropGesture({ cardKey: CARD_KEY, origin: { x: 0, y: 0 } });
+  window.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 20, buttons: 1 }));
+}
+
 const release = () => window.dispatchEvent(new MouseEvent("mouseup"));
 
 afterEach(() => {
@@ -94,7 +101,7 @@ afterEach(() => {
 describe("the card drop gesture's release commit is session-scoped", () => {
   it("control: the release commits its OWN session", () => {
     installCtx();
-    expect(beginCardDropGesture({ cardKey: CARD_KEY, origin: { x: 0, y: 0 } })).toBe(true);
+    grab();
     expect(getDropSession()).not.toBeNull();
     release();
     // No placement → commit cancels: the session ended through the release.
@@ -103,7 +110,7 @@ describe("the card drop gesture's release commit is session-scoped", () => {
 
   it("Escape: the stale release does not commit the next gesture", () => {
     installCtx();
-    beginCardDropGesture({ cardKey: CARD_KEY, origin: { x: 0, y: 0 } });
+    grab();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(getDropSession()).toBeNull();
     expect(beginForeignSession()).toBe(true);
@@ -113,7 +120,7 @@ describe("the card drop gesture's release commit is session-scoped", () => {
 
   it("missed-release failsafe: the stale release does not commit the next gesture", () => {
     installCtx();
-    beginCardDropGesture({ cardKey: CARD_KEY, origin: { x: 0, y: 0 } });
+    grab();
     window.dispatchEvent(new MouseEvent("mousemove", { clientX: 5, clientY: 5, buttons: 0 }));
     expect(getDropSession()).toBeNull();
     expect(beginForeignSession()).toBe(true);
@@ -123,7 +130,7 @@ describe("the card drop gesture's release commit is session-scoped", () => {
 
   it("teardown: the stale release does not commit the next gesture", () => {
     installCtx();
-    beginCardDropGesture({ cardKey: CARD_KEY, origin: { x: 0, y: 0 } });
+    grab();
     cancelDropSession();
     expect(beginForeignSession()).toBe(true);
     release();

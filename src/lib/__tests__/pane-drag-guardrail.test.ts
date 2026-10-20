@@ -250,10 +250,10 @@ const PERMITTED_ANNOUNCED_SEPARATORS: Record<string, string> = {};
 const PERMITTED_WINDOW_POINTER_LISTENERS: Record<string, string> = {
   "src/components/FloatingPanel.tsx":
     "[cost: see the chrome-census entry — per MOVE event pointer arithmetic + a scheduled frame; per RESIZE event clamp arithmetic + a scheduled frame (coalesced since task 335)] Float move + edge resize — the reference implementation of the four bespoke-gesture obligations (task 330). Also on the chrome census above.",
-  "src/components/Marginalia.tsx":
-    "[cost: per move = one absolute-delta compare against the press origin + at most one ref write; no DOM read, no state commit, no frame] Marker re-anchor press watcher: a >3px movement arms the trailing-click guard (`useTrailingClickGuard`, task 1152 — it disarms itself on the gesture end edge) so the trailing click can't also open the panel; the drop session itself is the drop-mode controller's. Both invariants since task 333 — without the bail a swallowed mouseup left these listeners installed forever, so every later mouse movement re-armed the suppressor and the marker's click stopped opening its panel, permanently.",
   "src/components/drop-mode/controller.ts":
     "[cost: see the chrome-census entry — per move two scalar writes and a scheduling bail with ZERO DOM reads, per coalesced FRAME one hitTest at the live pointer] Drop-mode placement session — the ONE chokepoint every pointer-driven content drag routes through; commit once on release, `isMissedRelease` bail (with the LayoutGestureBus in the loop, a swallowed mouseup would wedge every parked follower app-wide). Also on the chrome census above.",
+  "src/components/drop-mode/pending-session.ts":
+    "[cost: per move = one isMissedRelease bit test + two absolute-delta compares against the press origin; no DOM read, no state, no frame] The PENDING drop press (task 1192): every press-started drop producer (margin marker, card drop button, float drop button, stack thumbnail) records its press here and begins its session only past DROP_DRAG_THRESHOLD_PX, so a plain click has no drop-mode side effects and reaches the pressed element. The release edges are `watchHeldPress` (the SSOT: mouseup / missed release / contextmenu / blur); Escape is claimed at window capture. It replaces the marker's own press watcher.",
   "src/components/editor-layout/editor-scrollbar.tsx":
     "[cost: per move = one arithmetic delta + one `row.scrollTop` write; no DOM read, deliberately NOT frame-gated] Scrollbar THUMB drag — the category-defining entry: it wears no drag chrome whatsoever, so the census above is structurally blind to it and it ran with ZERO pointer invariants (not even a button gate) until task 333. Now: primary-button start gate, `isMissedRelease` bail through the one end path. The un-coalesced write is justified rather than inherited: a scroll position is state the browser itself coalesces to one paint, unlike a layout write — which is exactly the argument FloatingPanel's resize branch could not make, and why task 335 made that branch coalesce its own.",
   "src/components/panel-primitives.tsx":
@@ -377,8 +377,6 @@ const PERMITTED_UNCLAIMED_GESTURE_KEYS: Record<string, string> = {};
 // (window capture keydown + `claimGestureKey` + the one end path's non-commit
 // branch — focus-band-drag.ts is the smallest worked example) over listing it.
 const PERMITTED_ESCAPELESS_GESTURES: Record<string, string> = {
-  "src/components/Marginalia.tsx":
-    "[hands-off: the marker re-anchor press watcher only arms a trailing-click guard past 3px; the drop session it starts is the drop-mode controller's, which cancels on a claimed Escape]",
   "src/components/panel-primitives.tsx":
     "[hands-off: the card-lift threshold detector hands the pointer to the lift host / drop-mode session before anything commits; clearStaleHover's one-shot pointermove commits nothing]",
   "src/lib/tiptap/inline-atom-grab.ts":
@@ -766,8 +764,13 @@ export function detectWindowMoveListener(source: string): boolean {
  * ends some OTHER way is exactly the shape that must not slip through.
  */
 export function detectPointerReleaseTeardown(source: string): boolean {
-  return /(?:window|document)(?:\.body|\.documentElement)?\.addEventListener\(\s*["'](?:mouseup|pointerup|touchend)["']/.test(
-    stripComments(source),
+  const code = stripComments(source);
+  return (
+    /(?:window|document)(?:\.body|\.documentElement)?\.addEventListener\(\s*["'](?:mouseup|pointerup|touchend)["']/.test(code) ||
+    // The SSOT's held-press end edge (mouseup / missed release / contextmenu /
+    // blur) is a release teardown too — task 1192's pending drop press ends
+    // through it, and a census blind to it would lose that gesture.
+    /\bwatchHeldPress\(/.test(code)
   );
 }
 
@@ -1867,6 +1870,8 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
     // obviously broken. Both known members must always be in it.
     expect(scoped.map((f) => f.rel).sort()).toEqual([
       "src/components/drop-mode/controller.ts",
+      // Task 1192 — the pending drop press claims Escape before it is a drag.
+      "src/components/drop-mode/pending-session.ts",
       "src/lib/pane-resize/use-pane-resize-handle.ts",
       // Task 1167 — the bespoke gesture that lacked the engine's third invariant.
       "src/panels/Outline/focus-band-drag.ts",
@@ -2085,6 +2090,7 @@ describe("pane-drag guardrail — Escape-answer census (task 1167)", () => {
     const answering = gestures.filter((f) => answersEscape(f.source)).map((f) => f.rel).sort();
     expect(answering).toEqual([
       "src/components/drop-mode/controller.ts",
+      "src/components/drop-mode/pending-session.ts",
       "src/panels/Outline/focus-band-drag.ts",
     ]);
   });

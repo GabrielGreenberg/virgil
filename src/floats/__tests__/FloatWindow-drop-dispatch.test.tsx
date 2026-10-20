@@ -89,6 +89,7 @@ class ResizeObserverStub {
   ResizeObserverStub;
 
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import {
   PoppedCardsContext,
   type PoppedCardsValue,
@@ -162,14 +163,21 @@ describe("FloatWindow drop-button domain dispatch (Chip 2)", () => {
       clientX: 33,
       clientY: 44,
     });
+    // The press alone lifts nothing (task 1192): a click is not a drag.
+    expect(beginLift).not.toHaveBeenCalled();
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 33, clientY: 60, buttons: 1 }));
     expect(beginLift).toHaveBeenCalledTimes(1);
+    // The cursor origin is the threshold point; the grab origin is the press.
     expect(beginLift.mock.calls[0][0]).toEqual({
       terminalPolicy: "float",
       ref: { kind: "paragraph", id: "p7" },
       cardKey: "float:textobject:paragraph:p7",
-      origin: { x: 33, y: 44 },
+      origin: { x: 33, y: 60 },
+      grabOrigin: { x: 33, y: 44 },
     });
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
     // The textobject path must NOT also fire the card gesture.
+    promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
   });
 
@@ -180,6 +188,7 @@ describe("FloatWindow drop-button domain dispatch (Chip 2)", () => {
       clientX: 33,
       clientY: 44,
     });
+    promotePress();
     expect(beginLift).not.toHaveBeenCalled();
     expect(beginDropSession).not.toHaveBeenCalled();
   });
@@ -193,6 +202,7 @@ describe("FloatWindow drop-button domain dispatch (Chip 2)", () => {
     });
     // Card floats keep the no-ghost gesture.
     expect(beginLift).not.toHaveBeenCalled();
+    promotePress();
     expect(beginDropSession).toHaveBeenCalledTimes(1);
     const arg = beginDropSession.mock.calls[0][0] as { cardKey: string };
     expect(arg.cardKey).toBe("float:card:note:n7");

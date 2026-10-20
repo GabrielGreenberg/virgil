@@ -30,10 +30,7 @@ import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 import { useTrailingClickGuard } from "@/hooks/useTrailingClickGuard";
-import {
-  isMissedRelease,
-  isPrimaryDragStart,
-} from "@/lib/pane-resize/pointer-invariants";
+import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelSideMap } from "@/lib/margin-side";
 import {
@@ -339,8 +336,9 @@ export function MarkerButton({
   // anchored card (`m.entityKind` — `= CardKind` — is present; the only marker
   // without it is the non-card "error" badge, which is not re-anchorable). The
   // gesture mirrors the card DROP BUTTON exactly: a primary-button mousedown
-  // starts `beginCardDropGesture`, which begins an `inPlace + externalCommit`
-  // drop session and arms a one-shot mouseup commit. The controller owns the
+  // pends `beginCardDropGesture`, which — once the press travels past the drag
+  // threshold (task 1192) — begins an `inPlace + externalCommit` drop session
+  // and arms a one-shot mouseup commit. The controller owns the
   // hit-test + the blue paragraph-side Indicator; a drop in a paragraph's margin
   // band runs that kind's registered `dropSpec` (the same `links.ts`
   // add/removeTextObjectLink the panel mutates), so the re-anchor is identical
@@ -383,45 +381,19 @@ export function MarkerButton({
         // Don't let the press bubble into the card-root lift / native drag.
         e.stopPropagation();
         e.preventDefault();
-        // Start the session FIRST and gate everything else on its return. If a
-        // session is already live, begin returns false — installing the
-        // suppress-click watcher / arming the trailing-click guard anyway would let a
-        // >3px move+release swallow the trailing panel-open click (a dead
-        // press). On a false return, do nothing: no listeners, no suppression.
-        const started = beginCardDropGesture({
+        // Re-open the click path for this press, then only PEND the session
+        // (task 1192): a drop session makes the marker click-through for its
+        // whole life (the task-351 rule), so one begun on the press turned a
+        // plain click's mouseup into a hit on the editor beneath and the
+        // marker's select never ran. The session — and the trailing-click
+        // guard, on the SAME edge — starts only once the press travels past
+        // the drag threshold; a release first leaves this a plain click.
+        trailingClick.reset();
+        beginCardDropGesture({
           cardKey: reanchorKey,
           origin: { x: e.clientX, y: e.clientY },
+          onPromote: () => trailingClick.arm(),
         });
-        if (!started) return;
-        // Re-arm the click path; a movement watcher flips it only on a real drag.
-        trailingClick.reset();
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const onUp = () => {
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-        };
-        const onMove = (ev: MouseEvent) => {
-          // Missed-release failsafe (task 185/333). Two costs without it, and
-          // the second is the one that bites: a swallowed mouseup leaves these
-          // listeners installed forever, so every later mouse movement re-arms
-          // the trailing-click guard and the marker's click stops opening its
-          // panel. Do NOT read this event's coordinate — it is not part of the
-          // drag. The release was never observed, so disarm the guard here.
-          if (isMissedRelease(ev)) {
-            onUp();
-            trailingClick.release();
-            return;
-          }
-          if (
-            Math.abs(ev.clientX - startX) > 3 ||
-            Math.abs(ev.clientY - startY) > 3
-          ) {
-            trailingClick.arm();
-          }
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
       } : undefined}
       onClick={(e) => {
         e.preventDefault();

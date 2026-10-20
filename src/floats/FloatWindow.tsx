@@ -24,6 +24,7 @@ import { FloatChrome } from "./FloatChrome";
 import { useFloatAccent } from "./use-float-accent";
 import { FloatSourceReportProvider } from "./float-source-report";
 import { useLiftHost } from "@/text-objects/LiftHost";
+import { pendDrag } from "@/components/drop-mode/pending-session";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { Floatable } from "./types";
 
@@ -180,15 +181,25 @@ export function FloatWindow({
   const onDropPress =
     floatable.domain === "textobject" && liftHost
       ? (e: ReactMouseEvent) => {
-          liftHost.beginLift({
-            terminalPolicy: "float",
-            // `floatable.kind` is `string` on the contract (CardKind |
-            // TextObjectKind); in the textobject branch it is a
-            // `TextObjectKind` by construction (`textObjectFloatable` builds it
-            // from `ref.kind`). Narrow it for `beginLift`'s `TextObjectRef`.
-            ref: { kind: floatable.kind as TextObjectKind, id: floatable.id },
-            cardKey: floatable.key,
-            origin: { x: e.clientX, y: e.clientY },
+          // A press is not a drag until it moves (task 1192): the lift — and
+          // the drop session it begins — waits for the threshold, so a click
+          // on the button flashes no crosshair and parks no geometry. The
+          // threshold point is the cursor's origin; the press is the grab's.
+          const press = { x: e.clientX, y: e.clientY };
+          pendDrag({
+            origin: press,
+            onPromote: (ev) =>
+              liftHost.beginLift({
+                terminalPolicy: "float",
+                // `floatable.kind` is `string` on the contract (CardKind |
+                // TextObjectKind); in the textobject branch it is a
+                // `TextObjectKind` by construction (`textObjectFloatable` builds it
+                // from `ref.kind`). Narrow it for `beginLift`'s `TextObjectRef`.
+                ref: { kind: floatable.kind as TextObjectKind, id: floatable.id },
+                cardKey: floatable.key,
+                origin: { x: ev.clientX, y: ev.clientY },
+                grabOrigin: press,
+              }),
           });
         }
       : undefined;
