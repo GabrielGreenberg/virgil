@@ -82,7 +82,7 @@ import type { JSONContent } from "@tiptap/react";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { serializeBodyOnly, serializeParagraphInline } from "@/lib/latex-serializer";
 import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
-import { NODE_UUID_REGEX } from "@/lib/uuid";
+import { NODE_UUID_REGEX, generateShortId } from "@/lib/uuid";
 import { cutFreshAttrs } from "@/lib/node-attr-sets";
 
 /** A range of a live document — the capture shape. The leaf takes the cut. */
@@ -192,6 +192,40 @@ export function withCarriedMarks(
     }
   }
   return tr.docChanged ? (tr.doc.toJSON() as JSONContent) : content;
+}
+
+/**
+ * Restore's COLLISION answer (task 1194): the excerpt with every block uuid
+ * that is already LIVE replaced by a fresh one, and the old → new map. Left to
+ * itself `BlockUuidBackfill` would re-mint such a newcomer anyway (keeping the
+ * pre-existing block's identity — the right tie-break for a paste-as-new); the
+ * landing does it FIRST so it knows the new id, and the cards that went
+ * dormant on the old one can follow it (`reviveRemapped`). A content with no
+ * collision is returned as-is with an empty map.
+ */
+export function freshenReturningUuids(
+  content: JSONContent,
+  live: ReadonlySet<string>,
+): { content: JSONContent; remap: Map<string, string> } {
+  const remap = new Map<string, string>();
+  const taken = new Set<string>(live);
+  const visit = (node: JSONContent): JSONContent => {
+    const uuid = (node.attrs as { uuid?: unknown } | undefined)?.uuid;
+    let next = node;
+    if (typeof uuid === "string" && uuid && live.has(uuid)) {
+      const fresh = remap.get(uuid) ?? generateShortId(taken);
+      taken.add(fresh);
+      remap.set(uuid, fresh);
+      next = { ...node, attrs: { ...node.attrs, uuid: fresh } };
+    }
+    if (node.content?.length) {
+      const kids = node.content.map(visit);
+      if (kids.some((k, i) => k !== node.content![i])) next = { ...next, content: kids };
+    }
+    return next;
+  };
+  const out = visit(content);
+  return { content: out, remap };
 }
 
 /**

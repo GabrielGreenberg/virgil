@@ -673,7 +673,7 @@ export function useRevisions(
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const carry = useDormantRevival<RevisionsState, RevisionCard>(
+  const { carry, returnRemapped } = useDormantRevival<RevisionsState, RevisionCard>(
     docId,
     update,
     state,
@@ -869,6 +869,7 @@ export function useRevisions(
       reconcileAnchors,
       reinstate,
       carry,
+      returnRemapped,
       loaded,
       loadError,
       deleteCard,
@@ -900,6 +901,7 @@ export function useRevisions(
       reconcileAnchors,
       reinstate,
       carry,
+      returnRemapped,
       loaded,
       loadError,
       deleteCard,

@@ -194,6 +194,43 @@ export function reviveLiveLinks<T extends DormantCardShape>(
   return out;
 }
 
+/**
+ * A RESTORE WHOSE UUID COLLIDED (task 1194). When a returning block's uuid is
+ * already live (the user archived a copy, or something since took the id),
+ * the landing gives the returning block a FRESH uuid (`remap`: old → new) —
+ * so a dormant Mode-A link naming the old uuid would otherwise never revive,
+ * and the load reconcile would one day revive it onto the SQUATTER. This
+ * rewrites every such link of `snippetId` to the new uuid and revives it in
+ * the same write (the landing has just made the new uuid live). Mode-B links
+ * are untouched: they revive by their mark, which the landing re-stamped.
+ * Identity-preserving no-op when nothing names a remapped uuid.
+ */
+export function reviveRemapped<T extends DormantCardShape>(
+  card: T,
+  snippetId: string,
+  remap: ReadonlyMap<string, string>,
+): T {
+  const links = card.links;
+  if (!links || remap.size === 0) return card;
+  let touched = false;
+  const next = links.map((l) => {
+    if (l.archivedWith !== snippetId || isModeB(l) || l.anchor.type !== "textObject") return l;
+    const ids = l.anchor.textObjectIds;
+    if (!ids.some((u) => remap.has(u))) return l;
+    touched = true;
+    return {
+      ...l,
+      anchor: { ...l.anchor, textObjectIds: ids.map((u) => remap.get(u) ?? u) },
+    };
+  });
+  if (!touched) return card;
+  const fresh = new Set(remap.values());
+  return reviveLiveLinks({ ...card, links: next } as T, {
+    isUuidLive: (u) => fresh.has(u),
+    isAnchorIdLive: () => false,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // The reviver's index — O(cards) to build, O(1) per inserted key to consult
 // ---------------------------------------------------------------------------

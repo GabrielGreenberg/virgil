@@ -683,7 +683,7 @@ export function useCutter(
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const carry = useDormantRevival<CutterState, CutterCard>(
+  const { carry, returnRemapped } = useDormantRevival<CutterState, CutterCard>(
     docId,
     update,
     state,
@@ -879,6 +879,7 @@ export function useCutter(
       reconcileAnchors,
       reinstate,
       carry,
+      returnRemapped,
       loaded,
       loadError,
       deleteCard,
@@ -911,6 +912,7 @@ export function useCutter(
       reconcileAnchors,
       reinstate,
       carry,
+      returnRemapped,
       loaded,
       loadError,
       deleteCard,

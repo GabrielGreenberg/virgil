@@ -30,10 +30,15 @@
  *
  * **Mode-B (`linkedAnchor`) anchors deliberately do NOT re-home**, and that is
  * a statement rather than an omission: a Mode-B anchor names a TEXT RANGE, and
- * the range is precisely what left. Those cards keep the pre-491 path
- * (`cleanupLinksInRange` → the kind's `lifecycle.delete`), which the archive
- * and delete branches share, so widening here would silently change what
- * Delete does too. Task 393's equality leg still pins that half.
+ * the range is precisely what left. Those cards go through
+ * `cleanupLinksInRange`, which the archive and delete branches share — Delete
+ * deletes them, Archive CARRIES them (task 1194).
+ *
+ * **Since task 1194 only `archive` cards still re-home.** Every kind that
+ * declares `lifecycle.carry` travels INTO the snippet instead — its link goes
+ * dormant and comes back on Restore ({@link carryDisplacedAnchors}); the
+ * archive gesture hands {@link retargetDisplacedAnchors} that predicate as
+ * `keep`. The join re-home (task 514) passes no `keep` and is unchanged.
  *
  * ## Why the sweep asks the COLLECTION
  *

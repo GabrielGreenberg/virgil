@@ -207,12 +207,65 @@ class, so the durable proof here is the unit contract — archive two adjacent
 passages that each carry a card, and both markers stack on the surviving
 neighbour.
 
-**Residual, stated.** `cleanupLinksInRange` still DELETES a footnote / citation
-card whose atom sits inside the captured range, and a Mode-B card whose mark
-does, exactly as it did before. That is shared with Delete and is a product
-question (should an archive carry its footnotes into the clip?) rather than an
-anchor one, so it is recorded here rather than changed under a fix about
-paragraph anchors.
+**Residual — CLOSED by task 1194** (see "The carry half" below). A Mode-B card
+whose mark lies wholly inside the capture is no longer deleted: it travels into
+the snippet. A footnote / citation card is still DELETED from its sidecar, and
+that is now the stated answer rather than an open question: the atom IS the
+card's body (content, title, command, ids — every attr), it rides the captured
+slice, and Restore puts it back verbatim; the panel rows re-derive from the
+atom (`getFootnotes()`), so the sidecar ref is the derivable part. Pinned by
+`archive-carries-cards.test.tsx` ("footnote and citation atoms"): every atom
+attr equal across archive → restore, and exactly one sidecar delete per atom.
+
+### The carry half: an archive takes the CARDS with the text, and Restore brings them back
+
+Task 491 re-homed the Mode-A cards a capture displaced, and 393 deleted the
+Mode-B ones, because the passage's cards had nowhere else to be. Task 1193 gave
+them somewhere: a link can be DORMANT (`@/links/dormant`) — its text is inside an
+archive snippet and will come back. Gabriel asked for *"an archived text AND
+archived notes linked to it"*, so since task 1194 an archive CARRIES:
+
+- **Declared per kind.** `CARD_REGISTRY[kind].lifecycle.carry` (beside `clone` /
+  `delete` / `bindAnchor`), wired as `CardLifecycle.carry` from the card hook's
+  `useDormantRevival` writer (`markDormant`). `lifecycle-coverage-assertion`
+  pins the wiring both ways; narrowing who travels ("notes only") is a one-line
+  registry change. Travelling today: note, highlight, todo, report,
+  report-request, revision- and cutter- comment/suggestion. `archive` does NOT
+  carry (an archive in an archive is its own question): it keeps 491's
+  stacking and 1079's hand-back.
+- **Mode A** (`carryDisplacedAnchors`): a travelling card whose paragraph left
+  WHOLE gets that link dormant in the snippet; `retargetDisplacedAnchors` is
+  told to `keep` it, so a card is carried or re-homed, never both. A link to
+  surviving text stays live — a multi-anchor card stays active there.
+- **Mode B** (`cleanupLinksInRange`, `RangeCardDisposition.carryInto`): a
+  contained mark's travelling card is carried instead of deleted — same
+  population as Delete (one walker), different verb. The excerpt schema has no
+  `linkedAnchor`, so the snippet records the runs beside its content
+  (`ArchivedSnippet.carriedMarks`, positions INSIDE the content, read off the
+  same `cutRange` the content is — `captureCarriedMarks`). A mark the capture
+  only clips survives shrunk (task 897, unchanged).
+- **Carrying is not an ending event.** Nothing is settled or unbridged: the ASK
+  phase (`settleRangeCardObligations`) still runs first over every touched card
+  exactly as before, and the carried card keeps its Task/AI-request intact.
+- **Restore** re-stamps `carriedMarks` onto the excerpt in the live schema
+  (`withCarriedMarks`) so the marks land in the SAME transaction as the text,
+  wherever it lands; the dormant links then revive by liveness (1193). A
+  returning block whose uuid is already live is given a fresh uuid BEFORE the
+  landing (`freshenReturningUuids`) and the dormant Mode-A links follow it
+  (`reviveRemapped` via each hook's `returnRemapped`) — never revived onto the
+  squatter. Legacy snippets carrying `displaced` restore through 1079 unchanged.
+- **Doc Undo** of an archive restores uuids and marks, so the cards revive by
+  liveness with no undo-specific code. The snippet STAYS in `archive.json`:
+  user data the editor's history does not own (dropping it would make a later
+  Redo lose the only copy); restoring it again lands a second copy whose
+  colliding uuids are freshened.
+
+Pinned by `archive-carries-cards.test.tsx` (whole-paragraph, selection,
+clipped mark, multi-anchor, collision, Undo, JSON reload, and a registry-driven
+CENSUS: every kind declaring `carry` has a round-trip row), with 393's equality
+and 491's Mode-A legs renegotiated in place (`archive-anchored-capture`,
+`archive-retarget-displaced-anchors`). **Owed:** a real-PWA eyeball (anchor
+class, FSA-masked) on a real paper.
 
 ### The rebuild half: a per-kind capability is DERIVED, never hand-enumerated
 

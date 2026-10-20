@@ -950,10 +950,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // capture starts at the document's first block (where the previous
           // rung has no answer and everything used to orphan).
           //
-          // Mode-B (`linkedAnchor`) anchors deliberately do NOT move: a Mode-B
-          // anchor names the TEXT RANGE, which is exactly what left. Those stay
-          // on the `cleanupLinksInRange` path Delete shares — see
-          // `src/cards/retarget-anchors.ts` and task 393's equality leg.
+          // Since task 1194 this re-home is ARCHIVE CARDS ONLY: every kind that
+          // declares `lifecycle.carry` travels with the passage instead (see
+          // "THE PASSAGE CARRIES ITS CARDS" below). Mode-B (`linkedAnchor`)
+          // anchors never move: they ride `cleanupLinksInRange`, which Delete
+          // shares — Delete deletes them, Archive carries them.
           //
           // RESOLVED before the delete (positions are pre-delete), APPLIED
           // right after it lands (task 735): the `virgil-textobject-orphaned`

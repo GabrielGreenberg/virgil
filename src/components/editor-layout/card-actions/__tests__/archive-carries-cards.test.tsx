@@ -45,13 +45,14 @@ import {
   isDormantLink,
   markDormant,
   reviveLiveLinks,
+  reviveRemapped,
   type CarriedKeys,
   type DormantCardShape,
 } from "@/links/dormant";
 import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
 import { carryDisplacedAnchors, retargetDisplacedAnchors } from "@/cards/retarget-anchors";
 import { restoreExcerptAtAnchor } from "@/lib/tiptap/restore-excerpt";
-import { withCarriedMarks } from "@/lib/tiptap/slice-capture";
+import { freshenReturningUuids, withCarriedMarks } from "@/lib/tiptap/slice-capture";
 import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_KINDS } from "@/cards/predicates";
@@ -192,7 +193,11 @@ function makeStore(cards: Card[]) {
       });
     }
   };
-  return { byId, carry, handlers, revive };
+  /** The hooks' `returnRemapped` door over this store. */
+  const returnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => {
+    for (let i = 0; i < all.length; i++) all[i] = reviveRemapped(all[i], snippetId, remap);
+  };
+  return { byId, carry, handlers, revive, returnRemapped };
 }
 
 function fixtureStore() {
@@ -261,17 +266,27 @@ function makeHarness(editor: Editor, store: ReturnType<typeof makeStore>) {
   };
 }
 
-/** The pane's Restore, minus React: re-stamp the carried marks, land at the
- *  return address (the same two calls `handleArchiveRestore` makes). */
-function restore(editor: Editor, s: SnippetCall): boolean {
+/** The pane's Restore, minus React — the same calls `handleArchiveRestore`'s
+ *  `land` makes: freshen colliding uuids, re-stamp the carried marks, land at
+ *  the return address, and hand any remap to the stores' `returnRemapped`. */
+function restore(
+  editor: Editor,
+  s: SnippetCall,
+  returnRemapped?: (snippetId: string, remap: ReadonlyMap<string, string>) => void,
+): boolean {
   const anchor = s.paragraphId as string;
-  const content = withCarriedMarks(editor.state.schema, s.content, s.carriedMarks);
-  return (
+  const { content: fresh, remap } = freshenReturningUuids(
+    s.content,
+    collectBlockUuids(editor.state.doc),
+  );
+  const content = withCarriedMarks(editor.state.schema, fresh, s.carriedMarks);
+  const landed =
     restoreExcerptAtAnchor(editor, content, {
       uuid: anchor,
       side: s.returnBefore === anchor ? "before" : "after",
-    }) === true
-  );
+    }) === true;
+  if (landed && remap.size > 0) returnRemapped?.(s.id, remap);
+  return landed;
 }
 
 /** The words a `linkedAnchor` covers in the live doc. */
@@ -360,6 +375,66 @@ describe("task 1194 — a whole-paragraph archive carries every card on it", () 
   });
 });
 
+describe("task 1194 — the two other ways the text comes back", () => {
+  it("a uuid COLLISION on restore remaps the dormant links onto the fresh block and revives them", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    // Something now holds the archived uuid.
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: "paragraph",
+      attrs: { uuid: "p-target" },
+      content: [{ type: "text", text: "Squatter." }],
+    });
+
+    expect(restore(editor, h.snippets[0], store.returnRemapped)).toBe(true);
+    store.revive(editor);
+
+    // The returned paragraph has a fresh uuid; the squatter keeps its own.
+    let returned = "";
+    editor.state.doc.forEach((n) => {
+      if (n.textContent.startsWith("Alpha")) returned = n.attrs.uuid as string;
+    });
+    expect(returned).not.toBe("p-target");
+    expect(returned).toBeTruthy();
+    const n1 = store.byId("n1");
+    expect(n1.links!.some(isDormantLink)).toBe(false);
+    expect(n1.archived).toBeUndefined();
+    // Onto the RETURNED words — never the squatter.
+    expect((n1.links![0].anchor as { textObjectIds: string[] }).textObjectIds).toEqual([returned]);
+    // Mode B revives by its re-stamped mark, collision or not.
+    expect(store.byId("m1").archived).toBeUndefined();
+    expect(markedText(editor, "A-note")).toBe("beta gamma");
+  });
+
+  it("a doc UNDO of the archive revives the cards by liveness; the snippet stays in the Archive", async () => {
+    // DECISION (task 1194): Undo restores the text — uuids and marks alike —
+    // so every carried card revives through 1193's liveness rule, with no
+    // undo-specific code. The snippet is NOT deleted: it is user data in
+    // archive.json, written by a gesture the editor's history does not own,
+    // and dropping it would make a later Redo lose the only copy. It stays,
+    // a harmless duplicate the user can delete — and Restoring it then lands
+    // a second copy whose colliding uuids are freshened (the leg above), so
+    // nothing is ever re-attached to the wrong block.
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    expect(store.byId("n1").archived).toBe(true);
+
+    editor.commands.undo();
+
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
+    store.revive(editor);
+    for (const id of ["m1", "h1", "n1"]) {
+      expect(store.byId(id).archived, id).toBeUndefined();
+      expect(store.byId(id).links!.some(isDormantLink), id).toBe(false);
+    }
+    expect(h.snippets).toHaveLength(1);
+  });
+});
+
 describe("task 1194 — a SELECTION archive inside one paragraph", () => {
   it("P survives, the Mode-A note is untouched, the contained marks' cards travel and return", async () => {
     const editor = mountDoc(doc());
@@ -407,6 +482,53 @@ describe("task 1194 — a SELECTION archive inside one paragraph", () => {
     expect(store.byId("m1").links!.some(isDormantLink)).toBe(false);
     expect(store.byId("h1").archived).toBe(true);
     expect(h.snippets[0].carriedMarks?.map((m) => m.anchorId)).toEqual(["A-hl"]);
+  });
+});
+
+describe("task 1194 — footnote and citation atoms (the capture-schema residual, answered)", () => {
+  it("ride the slice and come back with every attr; their sidecar refs are deleted at capture", async () => {
+    const editor = mountDoc([
+      { type: "paragraph", attrs: { uuid: "p-before" }, content: [{ type: "text", text: "Before." }] },
+      {
+        type: "paragraph",
+        attrs: { uuid: "p-target" },
+        content: [
+          { type: "text", text: "Claim" },
+          {
+            type: "footnote",
+            attrs: {
+              footnoteId: "fn1",
+              content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Note body." }] }] },
+            },
+          },
+          { type: "text", text: " and source " },
+          { type: "citation", attrs: { citationId: "c1", command: "\\citep{doe2020}" } },
+          { type: "text", text: "." },
+        ],
+      },
+      { type: "paragraph", attrs: { uuid: "p-after" }, content: [{ type: "text", text: "After." }] },
+    ]);
+    const atoms = () => {
+      const out: Record<string, unknown>[] = [];
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "footnote" || n.type.name === "citation") out.push({ type: n.type.name, ...n.attrs });
+        return true;
+      });
+      return out;
+    };
+    const before = atoms();
+    expect(before).toHaveLength(2);
+    const store = makeStore([]);
+    const h = makeHarness(editor, store);
+
+    await h.dispatch("archive", P_REF);
+    expect(atoms()).toEqual([]);
+    // Not carried — deleted: the atom IS the card's body, and it rides the
+    // captured slice; the sidecar ref is the derivable part.
+    expect(h.deletes.sort()).toEqual(["citation:c1", "footnote:fn1"]);
+
+    expect(restore(editor, h.snippets[0])).toBe(true);
+    expect(atoms()).toEqual(before);
   });
 });
 
