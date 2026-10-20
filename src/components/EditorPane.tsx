@@ -455,7 +455,17 @@ import type {
   FootnoteRef,
   RevisionSuggestionCard,
   CutterSuggestionCard,
+  NoteCardItem,
+  ReportItem,
+  RevisionCard,
+  CutterCard,
 } from "@/lib/types";
+import { cardsArchivedWith, type DormantCardShape } from "@/links/dormant";
+import {
+  ArchivedWithProvider,
+  buildArchivedWithApi,
+  passageTitle,
+} from "@/panels/_shared/archived-with";
 import {
   useCardLifecycleApi,
   assertLifecycleCoverage,
@@ -2047,17 +2057,37 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // aiRequest routing, so the executor no-ops the unbridge. Wrapping at the
   // hook-memo level means every door that threads `archiveHook.deleteSnippet`
   // — margin marker, panel trash, the footnote-sync bridge — inherits it.
+  //
+  // Task 1195: a deleted PASSAGE first RELEASES the cards that travelled with
+  // it — the five stores drop their links dormant in it and clear
+  // `archivedWith`, so an archived card stays an ordinary archived card and an
+  // unarchived (parked) one reads unanchored. A card is never deleted by its
+  // passage's delete. Wired HERE, inside the one executor's raw mutation, so
+  // every door that deletes a snippet releases by construction.
+  const releaseNotes = notesHookRaw.release;
+  const releaseTodos = todosHookRaw.release;
+  const releaseCutter = cutterHookRaw.release;
+  const releaseRevisions = revisionsHookRaw.release;
+  const releaseReports = reportsHookRaw.release;
   const deleteArchiveSnippet = useMemo(
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) =>
           archiveHookRaw.snippets.some((s) => s.id === id) ? "archive" : null,
-        rawDelete: archiveHookRaw.deleteSnippet,
+        rawDelete: (id: string) => {
+          for (const release of [releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports]) {
+            release(id);
+          }
+          return archiveHookRaw.deleteSnippet(id);
+        },
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [archiveHookRaw.snippets, archiveHookRaw.deleteSnippet, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [
+      archiveHookRaw.snippets, archiveHookRaw.deleteSnippet, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal,
+      releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports,
+    ],
   );
   const archiveHook = useMemo(
     () => ({ ...archiveHookRaw, deleteSnippet: deleteArchiveSnippet }),
@@ -5645,6 +5675,38 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ],
   );
 
+  // "Archived with this passage" (task 1195): THE derivation over the five
+  // stores that can carry cards with a passage — recomputed when a store or
+  // the snippets change (a sidecar write), never on a document keystroke —
+  // read by the Archive card's chip row, each travelled card's passage line
+  // and the passage delete confirm, all through one context.
+  const archivedWithApi = useMemo(() => {
+    const travelled = cardsArchivedWith<CardKind, DormantCardShape>([
+      { cards: notesHook.cards, kindOf: (c) => ((c as NoteCardItem).kind === "highlight" ? "highlight" : "note") },
+      { cards: todosHook.items, kindOf: () => "todo" },
+      { cards: reportsHook.cards, kindOf: (c) => ((c as ReportItem).kind === "report-request" ? "report-request" : "report") },
+      { cards: revisionsHook.cards, kindOf: (c) => ((c as RevisionCard).kind === "suggestion" ? "revision-suggestion" : "revision-comment") },
+      { cards: cutterHook.cards, kindOf: (c) => ((c as CutterCard).kind === "suggestion" ? "cutter-suggestion" : "cutter-comment") },
+    ]);
+    const snippets = new Map(archiveHook.snippets.map((sn) => [sn.id, sn]));
+    return buildArchivedWithApi(
+      travelled,
+      (id) => {
+        const sn = snippets.get(id);
+        return sn ? passageTitle(sn) : "Deleted passage";
+      },
+      (panel, id) => openItemInPanel(panel as PanelId, id),
+    );
+  }, [
+    notesHook.cards,
+    todosHook.items,
+    reportsHook.cards,
+    revisionsHook.cards,
+    cutterHook.cards,
+    archiveHook.snippets,
+    openItemInPanel,
+  ]);
+
   // Side derivations — which side each panel is currently DOCKED on. Hosts
   // use these to align cross-panel highlight sync (e.g. citations panel ↔
   // bibliography panel). Read from the live `dockStack` (the canonical
@@ -6621,6 +6683,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
         <CollabProvider value={collab}>
         <CardArchiveViewProvider value={cardArchiveViewApi}>
+        <ArchivedWithProvider value={archivedWithApi}>
         <CardArchiveActionsProvider value={cardArchiveActions}>
         <CardRestoreActionsProvider value={cardRestoreActions}>
         <PoppedCardsContext.Provider value={poppedCardsValue}>
@@ -8207,6 +8270,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         </PoppedCardsContext.Provider>
         </CardRestoreActionsProvider>
         </CardArchiveActionsProvider>
+        </ArchivedWithProvider>
         </CardArchiveViewProvider>
         </CollabProvider>
         </SelectionsProvider>

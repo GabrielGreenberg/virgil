@@ -31,6 +31,7 @@ import {
   type WithJump,
 } from "@/links/card-anchor-rows";
 import { resolveAnchorState, type AnchorIntent } from "@/links/anchor-state";
+import { isFullyDormant } from "@/links/dormant";
 
 /**
  * One omni row. Derived from `OmniItem` rather than restated so a row can
@@ -116,12 +117,16 @@ export function buildOmniAnchorRows(
   const { rows, anchored } = resolve(card);
 
   if (rows.length === 0) {
-    // No stored anchor at all.
+    // No LIVE anchor at all — none stored, or every one archived with its
+    // text (task 1195: `parked`, neutral, never laundered into `orphaned`).
     return [
       {
         omniId: baseId,
         pos: null,
-        anchorState: resolveAnchorState(null, freeIntent),
+        anchorState: resolveAnchorState(
+          null,
+          isFullyDormant(card) ? { ...freeIntent, parked: true } : freeIntent,
+        ),
         anchored: false,
         withJump: NO_JUMP,
       },

@@ -263,12 +263,16 @@ export function usePanelCardTryDelete(
     readCard?: () => unknown;
     message?: string;
     confirmLabel?: string;
+    /** Confirm even when the card holds no content — the delete has a
+     *  consequence beyond the card itself (task 1195: an archived passage
+     *  that cards travelled with). */
+    alwaysConfirm?: boolean;
   },
 ): { tryDelete: () => void; dialog: ReactNode } {
   const { confirm, dialog } = useConfirmDialog();
   const message = opts.message ?? CARD_DELETE_CONFIRM_MESSAGE;
   const confirmLabel = opts.confirmLabel ?? "Delete";
-  const { anchorRef, readCard } = opts;
+  const { anchorRef, readCard, alwaysConfirm } = opts;
   // The host permit (task 637). `PanelCard` already withholds the trash button
   // under a host that refuses this kind's sidecar, but this hook is ALSO the
   // executor the shell's Delete/Backspace key arms — a keyboard path with no
@@ -278,13 +282,13 @@ export function usePanelCardTryDelete(
   const tryDelete = useCallback(() => {
     if (!onDelete || !deleteAllowed) return;
     void (async () => {
-      if (cardHasContent(kind, readCard ? readCard() : card)) {
+      if (alwaysConfirm || cardHasContent(kind, readCard ? readCard() : card)) {
         const ok = await confirm({ message, confirmLabel, tone: "danger", anchorRef });
         if (!ok) return;
       }
       onDelete(id);
     })();
-  }, [kind, card, readCard, id, onDelete, deleteAllowed, confirm, message, confirmLabel, anchorRef]);
+  }, [kind, card, readCard, id, onDelete, deleteAllowed, confirm, message, confirmLabel, anchorRef, alwaysConfirm]);
   return { tryDelete, dialog };
 }
 
@@ -1604,6 +1608,13 @@ export interface EditableCardProps {
    *  See {@link UnanchoredCardCue}: it carries the `cardKey`, so a card that
    *  wears the cue has necessarily wired the re-anchor gesture. */
   unanchored?: UnanchoredCardCue;
+  /** The archive-relation row (task 1195) — forwarded verbatim to `PanelCard`.
+   *  Supplied by `useAnchoredCardShell`, never by a card by hand. */
+  archiveRelation?: ReactNode;
+  /** A delete-confirm sentence that replaces the shared one AND confirms even
+   *  an empty card — the delete reaches beyond the card (task 1195: the
+   *  Archive card names the cards archived with its passage). */
+  deleteConfirm?: string;
 }
 
 /**
@@ -1626,6 +1637,7 @@ export function EditableCard({
   compressed, compressedSummary, compressedContent, onToggleExpanded, onHeaderActivate,
   kind, kindLabelOverride, kindOptions, onKindChange,
   canJump, onJump, chromeless, forceReadOnly, extraCardClass, title, unanchored,
+  archiveRelation, deleteConfirm,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -1789,7 +1801,7 @@ export function EditableCard({
     undefined,
     id,
     deleteThunk,
-    { anchorRef: cardRef, readCard },
+    { anchorRef: cardRef, readCard, message: deleteConfirm, alwaysConfirm: !!deleteConfirm },
   );
 
   /** The shell-level delete key. Retired onto the SHARED door in task 386: the
@@ -1892,6 +1904,7 @@ export function EditableCard({
       extraCardClass={extraCardClass ? `${cursorClass} ${extraCardClass}` : cursorClass}
       title={title}
       unanchored={unanchored}
+      archiveRelation={archiveRelation}
       draggable={cardDraggable}
       onDragStart={onDragStart}
       tabIndex={selected ? 0 : -1}
@@ -2715,6 +2728,11 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  `extraCardClass` rather than replacing it: a parked card that is also a
    *  drop target is two true states, not a choice between them. */
   unanchored?: UnanchoredCardCue;
+  /** The archive-relation row (task 1195): on an Archive card, the cards that
+   *  travelled with the passage; on a travelled card, the passage it belongs
+   *  to. ONE shell slot every kind inherits through `useAnchoredCardShell`
+   *  (`@/panels/_shared/archived-with`), never opted into per component. */
+  archiveRelation?: ReactNode;
   /** When true, the card is in its collapsed/minimized (compressed) form. Docked,
    *  this equals `!expanded`. It no longer gates the lift-off drag — lift works
    *  in both states now (`onWrapperMouseDown`) — it only suppresses the
@@ -2852,6 +2870,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onClick,
     cardKey: cardKeyProp,
     unanchored,
+    archiveRelation,
     title: titleProp,
     isCollapsed,
     onToggleExpanded,
@@ -3387,6 +3406,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
           )}
         </>
       )}
+      {archiveRelation}
       {onRestoreClick && !isCollapsed && (
         <CardRestoreButton onClick={onRestoreClick} label={restoreLabel} />
       )}

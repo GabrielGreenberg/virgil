@@ -6,6 +6,7 @@ import {
   insertionTouchesDormant,
   markDormant,
   reviveLiveLinks,
+  releaseFromSnippet,
   reviveRemapped,
   type CarriedKeys,
   type DormantCardShape,
@@ -40,10 +41,16 @@ export type CarryCard = (id: string, snippetId: string, keys: CarriedKeys) => vo
  *  onto them and revive them. See `reviveRemapped`. */
 export type ReturnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => void;
 
-/** The two writes a card hook exposes for the dormant state. */
+/** The passage `snippetId` was deleted for good (task 1195): drop this
+ *  kind's links dormant there and clear `archivedWith`. Never deletes a card.
+ *  See `releaseFromSnippet`. */
+export type ReleaseSnippet = (snippetId: string) => void;
+
+/** The writes a card hook exposes for the dormant state. */
 export interface DormantDoors {
   carry: CarryCard;
   returnRemapped: ReturnRemapped;
+  release: ReleaseSnippet;
 }
 
 export function useDormantRevival<S, C extends DormantCardShape>(
@@ -102,7 +109,14 @@ export function useDormantRevival<S, C extends DormantCardShape>(
     (snippetId, remap) => mapEach((c) => reviveRemapped(c, snippetId, remap)),
     [mapEach],
   );
-  return useMemo(() => ({ carry, returnRemapped }), [carry, returnRemapped]);
+  const release = useCallback<ReleaseSnippet>(
+    (snippetId) => mapEach((c) => releaseFromSnippet(c, snippetId)),
+    [mapEach],
+  );
+  return useMemo(
+    () => ({ carry, returnRemapped, release }),
+    [carry, returnRemapped, release],
+  );
 }
 
 /** The dormant-key index per card ARRAY — the sidecar hooks hand out a new
