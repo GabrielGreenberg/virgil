@@ -49,6 +49,14 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
 import { panelForCardKind } from "@/cards/predicates";
 import type { PristineCardManager } from "@/hooks/usePristineCardManager";
 
+/** A delete that CAN decline — resolves `false` when the lifecycle executor's
+ *  SETTLE prompt was cancelled and the card survives (task 238). Every
+ *  `makeUnbridgingDelete` composition has this shape. Named once so a table
+ *  whose caller ACTS on the answer (`deleteMarginItem` strips the inline mark
+ *  only on a commit) can demand it: a `(id) => void` assigned there is a type
+ *  error, not a delete whose refusal is silently read as success (task 1119). */
+export type DeclinableCardDelete = (id: string) => Promise<boolean>;
+
 /** Per-kind lifecycle operations.
  *
  *  `clone(sourceId)` returns the new id, or null if the source id was
@@ -79,14 +87,6 @@ import type { PristineCardManager } from "@/hooks/usePristineCardManager";
  *  which carry the mark (task 721). Implementations MUST be idempotent —
  *  a second call with the same `anchorId` is a no-op. See
  *  ACTION-MENU-DIAGNOSIS.md cluster C2. */
-/** A delete that CAN decline — resolves `false` when the lifecycle executor's
- *  SETTLE prompt was cancelled and the card survives (task 238). Every
- *  `makeUnbridgingDelete` composition has this shape. Named once so a table
- *  whose caller ACTS on the answer (`deleteMarginItem` strips the inline mark
- *  only on a commit) can demand it: a `(id) => void` assigned there is a type
- *  error, not a delete whose refusal is silently read as success (task 1119). */
-export type DeclinableCardDelete = (id: string) => Promise<boolean>;
-
 export interface CardLifecycle {
   clone(sourceId: string): string | null;
   /** `void` for a kind whose delete cannot refuse (footnote, citation); a
