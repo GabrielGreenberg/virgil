@@ -45,8 +45,12 @@
  *  - `orphaned` — no live marker AND no free intent: the marker was lost
  *    (genuinely deleted in-text). This is the recoverable-error state
  *    (red `BadgeOrphaned`).
+ *  - `parked`   — no live marker because the card's TEXT is archived (every
+ *    anchor link dormant — `@/links/dormant`, task 1195): the user unarchived
+ *    the card while its passage stays archived. Neutral, like `free` — and it
+ *    re-attaches by itself if the passage is restored.
  */
-export type AnchorState = "anchored" | "free" | "orphaned";
+export type AnchorState = "anchored" | "free" | "orphaned" | "parked";
 
 /**
  * The card's declared anchor *intent*, independent of its live position.
@@ -59,6 +63,9 @@ export type AnchorState = "anchored" | "free" | "orphaned";
 export interface AnchorIntent {
   /** Deliberately-free: created in the panel, never placed in-text. */
   unanchored?: boolean;
+  /** Every anchor is archived with its text (task 1195) — wins over
+   *  `unanchored`: the card HAS a place, it is just in the archive. */
+  parked?: boolean;
 }
 
 /**
@@ -74,6 +81,7 @@ export interface AnchorIntent {
  * | pos        | unanchored | result      |
  * |------------|------------|-------------|
  * | non-null   | (any)      | `anchored`  |
+ * | null/undef | (`parked`) | `parked`    |
  * | null/undef | `true`     | `free`      |
  * | null/undef | falsy      | `orphaned`  |
  *
@@ -99,5 +107,6 @@ export function resolveAnchorState(
   intent: AnchorIntent | null | undefined,
 ): AnchorState {
   if (pos != null) return "anchored";
+  if (intent?.parked) return "parked";
   return intent?.unanchored ? "free" : "orphaned";
 }

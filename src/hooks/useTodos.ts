@@ -30,6 +30,7 @@ import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import { useDormantRevival } from "./useDormantRevival";
+import { setArchivedFlag } from "@/links/dormant";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: TodoState = { items: [] };
@@ -208,7 +209,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const setArchived = useCallback((id: string, archived: boolean) => {
     pristine.markDirty(id);
     update((prev) => ({
-      items: prev.items.map((i) => (i.id === id ? { ...i, archived } : i)),
+      items: prev.items.map((i) => (i.id === id ? setArchivedFlag(i, archived) : i)),
     }));
   }, [update, pristine]);
 
@@ -268,7 +269,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const { carry, returnRemapped } = useDormantRevival<TodoState, TodoItem>(
+  const { carry, returnRemapped, release } = useDormantRevival<TodoState, TodoItem>(
     docId,
     update,
     state,
@@ -478,6 +479,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       reinstate,
       carry,
       returnRemapped,
+      release,
       loaded,
       loadError,
       setTodoAnchor,
@@ -505,6 +507,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       reinstate,
       carry,
       returnRemapped,
+      release,
       loaded,
       loadError,
       setTodoAnchor,

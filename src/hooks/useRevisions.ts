@@ -46,6 +46,7 @@ import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import { useDormantRevival } from "./useDormantRevival";
+import { setArchivedFlag } from "@/links/dormant";
 import type { PristineKindApi } from "./usePristineCardManager";
 import type { SuggestionField } from "@/panels/_shared/suggestion-field-vocabulary";
 
@@ -673,7 +674,7 @@ export function useRevisions(
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const { carry, returnRemapped } = useDormantRevival<RevisionsState, RevisionCard>(
+  const { carry, returnRemapped, release } = useDormantRevival<RevisionsState, RevisionCard>(
     docId,
     update,
     state,
@@ -710,7 +711,7 @@ export function useRevisions(
       pristine.markDirty(id);
       update((prev) => ({
         ...prev,
-        cards: prev.cards.map((c) => (c.id === id ? { ...c, archived } : c)),
+        cards: prev.cards.map((c) => (c.id === id ? setArchivedFlag(c, archived) : c)),
       }));
     },
     [update, pristine],
@@ -870,6 +871,7 @@ export function useRevisions(
       reinstate,
       carry,
       returnRemapped,
+      release,
       loaded,
       loadError,
       deleteCard,
@@ -902,6 +904,7 @@ export function useRevisions(
       reinstate,
       carry,
       returnRemapped,
+      release,
       loaded,
       loadError,
       deleteCard,

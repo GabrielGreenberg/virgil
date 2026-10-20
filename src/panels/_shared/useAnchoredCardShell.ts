@@ -22,7 +22,7 @@
  * fails on an optional card prop nobody passes.
  */
 
-import type { MouseEvent } from "react";
+import { createElement, type MouseEvent, type ReactNode } from "react";
 import { makeCompressedSummary } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -30,6 +30,7 @@ import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard, type UseAnchoredCardResult } from "@/links/_shared/useAnchoredCard";
 import { useHoverClaim } from "@/links/_shared/anchored-card-store";
 import type { CardKind } from "@/cards/types";
+import { ArchiveRelationRow } from "./archived-with";
 
 export interface AnchoredCardShellOptions {
   kind: CardKind;
@@ -62,6 +63,9 @@ export interface AnchoredCardShellProps {
   onClick: (e?: MouseEvent) => void;
   canJump: boolean;
   onJump?: (e: MouseEvent) => void;
+  /** The passage↔card archive relation row (task 1195) — every kind gets it
+   *  here, so no card opts in by hand. Renders nothing without a relation. */
+  archiveRelation: ReactNode;
 }
 
 export interface AnchoredCardShell {
@@ -124,6 +128,7 @@ export function useAnchoredCardShell(opts: AnchoredCardShellOptions): AnchoredCa
       onClick,
       canJump: !!onJump,
       onJump: onJump ? (e: MouseEvent) => onJump(cardElementOf(e)) : undefined,
+      archiveRelation: createElement(ArchiveRelationRow, { kind, id }),
     },
   };
 }

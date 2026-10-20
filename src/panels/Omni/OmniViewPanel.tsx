@@ -52,6 +52,7 @@ import { holdOmniCard } from "@/components/editor-layout/omni-card-placement";
 import { useLayoutGestureActive } from "@/lib/pane-resize";
 import { cardShellWithin, pressFromInteractiveControl } from "@/lib/drag-blocklist";
 import { iconHint } from "@/components/Hint";
+import { PARKED_WITH_PASSAGE_COPY } from "@/panels/_shared/archived-with";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -505,11 +506,15 @@ function ParkedGlyph() {
 export function OmniUnanchoredBin({
   free,
   orphaned,
+  parked = [],
 }: {
   free: OmniItem[];
   orphaned: OmniItem[];
+  /** Cards whose text is archived (task 1195) — neutral, listed last, each
+   *  row saying it re-attaches when the passage is restored. */
+  parked?: OmniItem[];
 }) {
-  const count = free.length + orphaned.length;
+  const count = free.length + orphaned.length + parked.length;
   if (count === 0) return null;
   const anyOrphaned = orphaned.length > 0;
   return (
@@ -544,6 +549,19 @@ export function OmniUnanchoredBin({
             data-omni-bin-row="free"
           >
             <span className="pt-1 shrink-0" data-omni-bin-free-marker="">
+              <ParkedGlyph />
+            </span>
+            <div className="min-w-0 flex-1">{item.content}</div>
+          </div>
+        ))}
+        {parked.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-start gap-2"
+            data-omni-bin-row="parked"
+            title={PARKED_WITH_PASSAGE_COPY}
+          >
+            <span className="pt-1 shrink-0" data-omni-bin-parked-marker="">
               <ParkedGlyph />
             </span>
             <div className="min-w-0 flex-1">{item.content}</div>
@@ -801,10 +819,11 @@ function OmniViewPanel({
   // mount-race guard the cascade split had). `anchorState` splits the rows by
   // the builder-declared intent; an `anchored` item carrying pos:null is a
   // builder regression and is treated as orphaned rather than dropped.
-  const { free, orphaned } = useMemo(() => {
+  const { free, orphaned, parked } = useMemo(() => {
     const free: OmniItem[] = [];
     const orphaned: OmniItem[] = [];
-    if (!editor) return { free, orphaned };
+    const parked: OmniItem[] = [];
+    if (!editor) return { free, orphaned, parked };
     for (const item of items) {
       if (item.outsideFocus) continue;
       const cat = categoryOf(item);
@@ -812,9 +831,10 @@ function OmniViewPanel({
       const pos = resolvePos(item.id) ?? item.pos;
       if (pos != null) continue;
       if (item.anchorState === "free") free.push(item);
+      else if (item.anchorState === "parked") parked.push(item);
       else orphaned.push(item);
     }
-    return { free, orphaned };
+    return { free, orphaned, parked };
   }, [items, editor, resolvePos, placedCategories]);
 
   // Report "this side is showing something" up so the column can stay open
@@ -827,7 +847,7 @@ function OmniViewPanel({
   // both in the list and in the bin) changes nothing. Effect fires only when
   // the count flips (every input is structurally memoized; plain typing never
   // recomputes it), so this is off the keystroke path.
-  const presentCount = visibleItems.length + free.length + orphaned.length;
+  const presentCount = visibleItems.length + free.length + orphaned.length + parked.length;
   useEffect(() => {
     onVisibleCardsChange?.(presentCount);
   }, [presentCount, onVisibleCardsChange]);
@@ -986,14 +1006,14 @@ function OmniViewPanel({
         {binSlot ? (
           createPortal(
             <OmniBinStack host="frame">
-              <OmniUnanchoredBin free={free} orphaned={orphaned} />
+              <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
               <OmniOutsideFocusBin items={outsideFocus} />
             </OmniBinStack>,
             binSlot,
           )
         ) : (
           <OmniBinStack host="pod" occupantRef={setPodOccupant}>
-            <OmniUnanchoredBin free={free} orphaned={orphaned} />
+            <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
             <OmniOutsideFocusBin items={outsideFocus} />
           </OmniBinStack>
         )}

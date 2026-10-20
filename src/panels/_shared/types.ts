@@ -11,6 +11,7 @@
  */
 
 import type { ReactNode } from "react";
+import type { AnchorState } from "@/links/anchor-state";
 
 export type PanelKind =
   | "outline"
@@ -68,9 +69,11 @@ export interface OmniItem {
    *  - `"orphaned"`  — *intends* to anchor (has a link / in-text marker)
    *                    but the target is missing from the doc, so `pos`
    *                    came back null.
-   *  The omni view routes `free` + `orphaned` into the unanchored bin and
-   *  cascades only `anchored` items inline with the text. */
-  anchorState: "anchored" | "free" | "orphaned";
+   *  - `"parked"`    — its anchors are archived WITH their text (task 1195):
+   *                    neutral, re-attaches if the passage is restored.
+   *  The omni view routes `free` + `parked` + `orphaned` into the unanchored
+   *  bin and cascades only `anchored` items inline with the text. */
+  anchorState: AnchorState;
   /** True when focus view is active and this card's anchor falls OUTSIDE the
    *  focused band. Its in-text anchor is hidden (`display:none`), so it can't
    *  cascade inline; the omni view routes it into the collapsed "N outside

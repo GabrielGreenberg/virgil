@@ -8,6 +8,7 @@ import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
+import { passageDeleteMessage, useArchivedWith } from "@/panels/_shared/archived-with";
 
 export function ArchiveCard({
   snippet,
@@ -50,6 +51,9 @@ export function ArchiveCard({
     summaryContent: snippet.content,
   });
   const isSelected = ac.selected || selected;
+  // Task 1195: deleting the passage never deletes the cards archived with it
+  // (the pane releases them) — the confirm says so, naming them.
+  const deleteConfirm = passageDeleteMessage(useArchivedWith().travelledWith(snippet.id));
   const card = (
     <EditableCard
       {...shell}
@@ -64,6 +68,7 @@ export function ArchiveCard({
       bodyTitle={snippet.title}
       onBodyTitleChange={(t) => onUpdateTitle(snippet.id, t)}
       onDelete={() => onDelete(snippet.id)}
+      deleteConfirm={deleteConfirm}
       value={snippet.content}
       variant={bodyVariantForCardKind("archive")}
       panelKey="archive"

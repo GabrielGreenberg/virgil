@@ -274,3 +274,98 @@ export function insertionTouchesDormant(
     inserted.anchorIds.some((a) => keys.anchorIds.has(a))
   );
 }
+
+// ---------------------------------------------------------------------------
+// The two sides of the link, made visible (task 1195)
+// ---------------------------------------------------------------------------
+
+/**
+ * The PASSAGE a card belongs to: the snippet its text was archived into. The
+ * card-level field while the card is archived WITH its text; otherwise the
+ * snippet of its first dormant link — so a card the user unarchived on its own
+ * (its passage still archived, see {@link setArchivedFlag}) still names its
+ * passage. Null for a card with no dormant link.
+ */
+export function passageOf(card: DormantCardShape): string | null {
+  const own = dormantSnippetOf(card);
+  if (own) return own;
+  for (const l of card.links ?? []) if (isDormantLink(l)) return l.archivedWith!;
+  return null;
+}
+
+/**
+ * THE per-card archive toggle for a kind that can travel (task 1195). Every
+ * card hook's `setArchived` writes through this, so a hand toggle can never
+ * leave the card-level field claiming "archived with its text" when it is not:
+ *
+ *  - UNARCHIVE: the card leaves the archive; `archivedWith` is cleared, its
+ *    dormant LINKS are kept — its text is still archived, so it reads PARKED
+ *    (`resolveAnchorState`'s `parked` intent: neutral, never the red
+ *    `orphaned`) and re-attaches by itself if the passage is restored.
+ *  - ARCHIVE by hand: a hand archive (no `archivedWith`), which revival never
+ *    undoes.
+ *
+ * Identity-preserving when the flag already reads `archived` — so a repeated
+ * archive of a card archived WITH its text keeps it so.
+ */
+export function setArchivedFlag<T extends DormantCardShape>(card: T, archived: boolean): T {
+  if (!!card.archived === archived) return card;
+  const out: T = { ...card, archived };
+  delete out.archivedWith;
+  return out;
+}
+
+/**
+ * The passage was DELETED for good (task 1195): nothing can revive these
+ * links any more. Drop every link dormant in `snippetId` and clear the card's
+ * `archivedWith` — the card itself is never deleted: an archived card stays an
+ * ordinary archived card, an active one reads unanchored. Identity-preserving
+ * when the card names nothing in that snippet.
+ */
+export function releaseFromSnippet<T extends DormantCardShape>(card: T, snippetId: string): T {
+  const links = card.links;
+  const linked = !!links && links.some((l) => l.archivedWith === snippetId);
+  const owned = card.archivedWith === snippetId;
+  if (!linked && !owned) return card;
+  const out: T = { ...card };
+  if (linked) out.links = links!.filter((l) => l.archivedWith !== snippetId);
+  if (owned) delete out.archivedWith;
+  return out;
+}
+
+/** A card that travelled with a passage, as the two surfaces read it. */
+export interface TravelledCard<K extends string = string, C extends DormantCardShape = DormantCardShape> {
+  kind: K;
+  card: C;
+  /** Still archived (the card's own Archives view) — false once the user
+   *  unarchived it on its own and it reads parked. */
+  archived: boolean;
+}
+
+/** One card store: its cards and how to name each one's kind. */
+export interface TravelSource<K extends string, C extends DormantCardShape> {
+  cards: readonly C[];
+  kindOf: (card: C) => K;
+}
+
+/**
+ * THE derivation (task 1195): which cards travelled with which passage. Built
+ * from the card stores alone — no snippet-side list exists, so deleting or
+ * re-archiving a card updates both surfaces with no second write. O(cards);
+ * built when a store changes, never per document keystroke.
+ */
+export function cardsArchivedWith<K extends string, C extends DormantCardShape>(
+  sources: readonly TravelSource<K, C>[],
+): ReadonlyMap<string, readonly TravelledCard<K, C>[]> {
+  const out = new Map<string, TravelledCard<K, C>[]>();
+  for (const { cards, kindOf } of sources) {
+    for (const card of cards) {
+      const snippet = passageOf(card);
+      if (!snippet) continue;
+      let list = out.get(snippet);
+      if (!list) out.set(snippet, (list = []));
+      list.push({ kind: kindOf(card), card, archived: card.archived === true });
+    }
+  }
+  return out;
+}

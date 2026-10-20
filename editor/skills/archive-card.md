@@ -96,7 +96,11 @@ pen**, with the audit notification + version bump. Fully reversible by
 > that is itself inside an archive snippet ("archived with its text"); a card all
 > of whose links are dormant also carries `archivedWith` + `archived: true`. Never
 > treat such a link as orphaned or rebind it — it revives when the snippet is
-> restored. Scripts round-trip both fields untouched.
+> restored. Scripts round-trip both fields untouched. **Scripts never delete an
+> excerpt (passage) snippet** — `restore` removes only a snippet carrying an
+> origin record (a whole card set aside by this op). Deleting a passage is the
+> app's alone, because it must first RELEASE the cards archived with it (drop
+> their dormant links, clear `archivedWith`; never delete them — task 1195).
 
 > **Note (origin record).** To make restore lossless this op adds
 > `originalPanel` + the verbatim `originalCard` + `archivedAt` to the snippet.

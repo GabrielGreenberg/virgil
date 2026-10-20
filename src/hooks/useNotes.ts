@@ -28,6 +28,7 @@ import {
 } from "@/links/links";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import { useDormantRevival } from "./useDormantRevival";
+import { setArchivedFlag } from "@/links/dormant";
 import {
   bridgeFlagForCard,
   rederiveAiRequestForMorph,
@@ -542,7 +543,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const { carry, returnRemapped } = useDormantRevival<NotesState, NoteCardItem>(
+  const { carry, returnRemapped, release } = useDormantRevival<NotesState, NoteCardItem>(
     docId,
     update,
     state,
@@ -612,7 +613,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     (id: string, archived: boolean) => {
       pristine.markDirty(id);
       update((prev) => ({
-        cards: prev.cards.map((c) => (c.id === id ? { ...c, archived } : c)),
+        cards: prev.cards.map((c) => (c.id === id ? setArchivedFlag(c, archived) : c)),
       }));
     },
     [update, pristine],
@@ -794,6 +795,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       reinstate,
       carry,
       returnRemapped,
+      release,
       loaded,
       loadError,
       preserveModeBAnchor,
@@ -830,6 +832,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       reinstate,
       carry,
       returnRemapped,
+      release,
       loaded,
       loadError,
       preserveModeBAnchor,
