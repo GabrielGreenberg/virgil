@@ -9,7 +9,7 @@
 
 import type { JSONContent } from "@tiptap/react";
 import type { CardBodyBlockAtom } from "@/lib/node-attr-sets";
-import { generateShortId } from "@/lib/uuid";
+import { mintParseId, withDeclaredIds } from "@/lib/parse-id-scope";
 import { commentBodyForEmit } from "@/lib/latex-comment-body";
 import {
   emitMarker,
@@ -657,6 +657,12 @@ const BLOCK_ATOM_TO_LATEX: Record<
  */
 export function richLatexToJson(latex: string): JSONContent {
   if (!latex || !latex.trim()) return emptyRichContent();
+  // Fresh citation ids avoid every id the body (or, nested, the whole file)
+  // declares — task 1205's one door.
+  return withDeclaredIds(latex, () => richLatexToJsonInScope(latex));
+}
+
+function richLatexToJsonInScope(latex: string): JSONContent {
   // One paragraph per top-level blank line (task 1018) — a multi-paragraph
   // `\footnote{One.\n\nTwo.}` is legal LaTeX and opens as two paragraphs.
   const paragraphs = splitTopLevelParagraphs(latex);
@@ -895,7 +901,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         nodes.push({
           type: "citation",
           attrs: {
-            citationId: pendingCitationId.take(i) || generateShortId(),
+            citationId: pendingCitationId.take(i) || mintParseId(),
             command: cite.command,
             displayText: "",
           },
