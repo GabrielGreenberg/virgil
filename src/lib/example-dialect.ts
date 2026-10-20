@@ -66,6 +66,25 @@ export const EXAMPLE_PACKAGE_FAMILY: readonly string[] = [
 ];
 
 /**
+ * The members of `EXAMPLE_PACKAGE_FAMILY` whose syntax a BARE `\ex` (no
+ * period) and a `\begin{xlist}` belong to (task 1206). Those two tokens are
+ * SHARED vocabulary — expex's `\ex … \xe` and gb4e's
+ * `\begin{exe} \ex … \end{exe}` both open with `\ex`, and gb4e defines
+ * `xlist` itself (Virgil's `xlistenv` shim defines it over expex) — so a body
+ * that holds only them needs SOME member that speaks them, not expex in
+ * particular. linguex is deliberately absent: its `\ex.` is a period-
+ * delimited macro, so a bare `\ex` under linguex is still an error and is
+ * still surfaced as the conflict it is.
+ *
+ * Read by the `bare-ex` requirement (latex-requirements.ts): a loaded member
+ * in this list satisfies it outright; with none loaded it resolves to expex
+ * (`DEFAULT_EXAMPLE_DIALECT`). Before 1206 the fallback detector filed these
+ * tokens as an expex PIN, and every gb4e paper got a notice claiming its
+ * examples were "written for the expex package".
+ */
+export const BARE_EX_SPEAKERS: readonly string[] = ["expex", "gb4e"];
+
+/**
  * The dialect an example carries when nothing says otherwise — every example
  * that existed before this attr did, every programmatically built node, and
  * every card-body / float / paste that has no document to ask.

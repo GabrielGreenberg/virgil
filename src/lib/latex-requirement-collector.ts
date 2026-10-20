@@ -100,9 +100,20 @@ export const PACKAGE_DETECTORS: ReadonlyArray<{
     // Virgil opened it, which is precisely the failure direction
     // `latex-requirements`' own header warns about. Measured on a
     // linguex-only paper, before and after.
+    //
+    // Only expex-UNIQUE vocabulary pins expex (task 1206) — `\xe` included,
+    // since gb4e closes with `\end{exe}`. A bare `\ex` and
+    // `\begin{xlist}` are shared with gb4e, so they declare the `bare-ex`
+    // need below — "some member that speaks `\ex`" — and a gb4e paper's
+    // carried `\begin{exe} \ex …` is satisfied by its own gb4e rather than
+    // reported as an expex paper.
     id: "expex",
-    re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z.])|\\begin\{xlist\}/,
+    re: /\\(?:begingl|getfullref|getref|pex|xe)(?![a-zA-Z.])/,
   },
+  // The shared half of the old expex row: same `.` discriminator against
+  // linguex. Resolved by `ensurePreambleRequirements` against
+  // `BARE_EX_SPEAKERS` — any loaded speaker satisfies it, else expex.
+  { id: "bare-ex", re: /\\ex(?![a-zA-Z.])|\\begin\{xlist\}/ },
   // The other half of the same discriminator (task 543): a `\ex.` IS linguex
   // — the period is the whole of linguex's opener grammar, the one
   // `matchLinguexOpenerAt` owns, and the agreement is pinned beside the expex

@@ -54,6 +54,7 @@ import {
   detectBodyRequirements,
   ensurePreambleRequirements,
   LATEX_REQUIREMENTS,
+  requirementCoveredBy,
   type RequirementConflict,
 } from "@/lib/latex-requirements";
 import { PACKAGE_DETECTORS } from "@/lib/latex-requirement-collector";
@@ -261,7 +262,7 @@ describe("1 · coverage — every schema construct's emitted bytes are DECLARED"
       expect(typesIn(doc).has(type), `fixture no longer parses to ${type}`).toBe(true);
       const declared = declaredFor(doc);
       const detected = detectBodyRequirements(bodyFor(doc));
-      const rescued = [...detected].filter((id) => !declared.has(id));
+      const rescued = [...detected].filter((id) => !requirementCoveredBy(id, declared));
       expect(
         rescued,
         `${type} emits package-bound bytes its emit-site never declared: ${rescued.join(", ")}`,
@@ -285,7 +286,7 @@ describe("1 · coverage — every schema construct's emitted bytes are DECLARED"
       expect(markTypesIn(doc).has(type), `fixture no longer parses to mark ${type}`).toBe(true);
       const declared = declaredFor(doc);
       const detected = detectBodyRequirements(bodyFor(doc));
-      expect([...detected].filter((id) => !declared.has(id))).toEqual([]);
+      expect([...detected].filter((id) => !requirementCoveredBy(id, declared))).toEqual([]);
     });
   }
 
@@ -482,9 +483,11 @@ describe("3 · the example family through the REAL save pipeline", () => {
     expect(usepackageCount(c1, "expex")).toBe(0);
     expect(usepackageCount(c1, "linguex")).toBe(0);
     expect(usepackageCount(c1, "gb4e")).toBe(1);
-    expect(conflicts).toEqual([
-      { family: "example", declared: "expex", preambleHas: "gb4e" },
-    ]);
+    // Task 1206: and NO notice. A bare `\ex` is gb4e's own syntax (the
+    // `bare-ex` need, met by the loaded gb4e) — the pre-1206 pin here
+    // asserted a dialog telling the author their gb4e examples were
+    // "written for the expex package".
+    expect(conflicts).toEqual([]);
     expect(save(c1)).toBe(c1);
     // The body is carried whole — task 342's rule, unchanged.
     expect(c1).toContain("\\begin{exe}\n\\ex Susan left.\n\\ex Bill stayed.\n\\end{exe}");
@@ -497,20 +500,63 @@ describe("3 · the example family through the REAL save pipeline", () => {
     "\\begin{exe}\n\\ex Main.\n\\begin{xlist}\n\\ex a.\n\\ex b.\n\\end{xlist}\n\\end{exe}";
   const XLIST_SHIM = "\\newenvironment{xlist}{\\pex}{\\xe}";
 
-  for (const [name, pkg] of [
-    ["GB4E", GB4E],
-    ["LINGUEX", LINGUEX],
+  for (const [name, pkg, expectConflict] of [
+    // gb4e SPEAKS this body (task 1206): no shim, no expex, no notice.
+    ["GB4E", GB4E, false],
+    ["LANGSCI-GB4E", "\\usepackage{langsci-gb4e}", false],
+    // linguex does not — a bare `\ex` is not linguex syntax — so the honest
+    // notice stays.
+    ["LINGUEX", LINGUEX, true],
   ] as const) {
-    it(`a ${name} paper's \\begin{xlist} never injects the expex xlist shim — only the family conflict is reported`, () => {
+    it(`a ${name} paper's \\begin{xlist} never injects the expex xlist shim${expectConflict ? " — only the family conflict is reported" : " and raises no notice"}`, () => {
       const { out, conflicts } = conflictsOf(tex(XLIST_BODY, pkg));
       expect(preambleOf(out)).not.toContain(XLIST_SHIM);
       expect(usepackageCount(out, "expex")).toBe(0);
-      expect(conflicts).toEqual([
-        { family: "example", declared: "expex", preambleHas: pkg.slice(12, -1) },
-      ]);
+      expect(conflicts).toEqual(
+        expectConflict
+          ? [{ family: "example", declared: "expex", preambleHas: "linguex" }]
+          : [],
+      );
       expect(save(out)).toBe(out);
     });
   }
+
+  // Task 1206 — the two MEASURED rows, through the real save pipeline.
+  it("a LANGSCI-GB4E paper is a gb4e paper: nothing injected over it, no notice", () => {
+    const { out, conflicts } = conflictsOf(
+      tex("\\begin{exe}\n\\ex Foo.\n\\end{exe}", "\\usepackage{langsci-gb4e}"),
+    );
+    expect(usepackageCount(out, "expex")).toBe(0);
+    expect(conflicts).toEqual([]);
+    expect(save(out)).toBe(out);
+  });
+
+  it("a GENUINE expex example under gb4e still raises the notice (the pin survives the split)", () => {
+    const { out, conflicts } = conflictsOf(tex("\\pex\n\\a One.\n\\xe", GB4E));
+    expect(usepackageCount(out, "expex")).toBe(0);
+    expect(conflicts).toEqual([
+      { family: "example", declared: "expex", preambleHas: "gb4e" },
+    ]);
+  });
+
+  it("an `xlist` the user defined with \\NewDocumentEnvironment is never defined twice", () => {
+    const out = ensurePreambleRequirements(
+      `\\documentclass{article}\n${EXPEX}\n\\NewDocumentEnvironment{xlist}{}{\\pex}{\\xe}\n\\begin{document}\n`,
+      detectBodyRequirements(XLIST_BODY),
+    );
+    expect(out).not.toContain("\\newenvironment{xlist}");
+  });
+
+  it("the injected xlist shim is idempotent BY CONSTRUCTION — guarded on an existing \\xlist", () => {
+    const shim = LATEX_REQUIREMENTS.find((r) => r.id === "xlistenv")!;
+    expect(shim.injectLine).toMatch(/^\\ifdefined\\xlist\\else\\newenvironment\{xlist\}/);
+    expect(shim.injectLine.endsWith("\\fi")).toBe(true);
+    // A preamble a pre-1206 build saved (the bare line) is satisfied as-is.
+    const legacy = `\\documentclass{article}\n${EXPEX}\n${XLIST_SHIM}\n\\begin{document}\n`;
+    const resaved = ensurePreambleRequirements(legacy, detectBodyRequirements(XLIST_BODY));
+    expect(resaved).not.toContain("\\ifdefined\\xlist");
+    expect(resaved.split(XLIST_SHIM)).toHaveLength(2);
+  });
 
   it("CONTROL — an expex preamble with a nested xlist still gets the shim, once", () => {
     const out = ensurePreambleRequirements(

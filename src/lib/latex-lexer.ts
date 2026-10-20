@@ -1493,7 +1493,9 @@ export function preambleLoadsPackage(tex: string, name: string): boolean {
  *  - comma-separated lists, each entry trimmed;
  *  - WRAPPER packages — an entry `<name>-<suffix>` (`biblatex-chicago`,
  *    `tikz-cd`) loads its core, so it satisfies, and must gate, the core. Only
- *    the PREFIX form counts: `biblatex-chicago` is not the `chicago` package.
+ *    the PREFIX form counts: `biblatex-chicago` is not the `chicago` package
+ *    — except the named {@link PACKAGE_LOAD_ALIASES} rows (`langsci-gb4e`
+ *    IS gb4e, task 1206).
  *
  * Comments and verbatim are the caller's projection's business (the input is
  * already live bytes).
@@ -1551,10 +1553,32 @@ export function listPackageLoads(text: string): PackageLoad[] {
   return out;
 }
 
-/** Does this load load `name` — directly, or through a `<name>-<suffix>`
- *  WRAPPER (`biblatex-chicago` loads `biblatex`)? */
+/**
+ * Packages that load (or ARE a re-badged copy of) a core package under a name
+ * the `<name>-<suffix>` wrapper rule cannot see, because the core's name is
+ * the SUFFIX, not the prefix (task 1206). `langsci-gb4e` — Language Science
+ * Press's patched gb4e, the example package every langscibook volume loads —
+ * defines `\ex`, `exe` and `xlist` exactly as gb4e does; reading it as "no
+ * example package" injected `\usepackage{expex}` over it, and expex's later
+ * `\ex` broke every example in the paper (task 543's defect, one spelling
+ * over). Only rows whose package files we have read belong here; an absent
+ * name answers "provides only itself", which is today's behaviour.
+ */
+export const PACKAGE_LOAD_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "langsci-gb4e": ["gb4e"],
+};
+
+/** Does this load load `name` — directly, through a `<name>-<suffix>`
+ *  WRAPPER (`biblatex-chicago` loads `biblatex`), or through a
+ *  {@link PACKAGE_LOAD_ALIASES} row (`langsci-gb4e` loads `gb4e`)? */
 export function packageLoadIncludes(load: PackageLoad, name: string): boolean {
-  return load.entries.some((p) => p === name || p.startsWith(name + "-"));
+  return load.entries.some(
+    (p) =>
+      p === name ||
+      p.startsWith(name + "-") ||
+      (Object.prototype.hasOwnProperty.call(PACKAGE_LOAD_ALIASES, p) &&
+        PACKAGE_LOAD_ALIASES[p].includes(name)),
+  );
 }
 
 // ---------------------------------------------------------------------------

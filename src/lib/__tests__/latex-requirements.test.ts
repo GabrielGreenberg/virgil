@@ -67,7 +67,12 @@ describe("detectBodyRequirements — detection matrix", () => {
     expect(detectBodyRequirements("See \\getfullref{ex:1.a}.")).toContain(
       "expex",
     );
+    // Task 1206: a bare `\\begin{xlist}` (and a bare `\\ex`) is SHARED with
+    // gb4e — it declares "some `\\ex` speaker", not an expex pin.
     expect(detectBodyRequirements("\\begin{xlist}\n\\a x\n\\end{xlist}")).toContain(
+      "bare-ex",
+    );
+    expect(detectBodyRequirements("\\begin{xlist}\n\\a x\n\\end{xlist}")).not.toContain(
       "expex",
     );
   });

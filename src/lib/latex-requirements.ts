@@ -35,6 +35,8 @@ import {
   projectDetectableLatex,
 } from "@/lib/latex-lexer";
 import {
+  BARE_EX_SPEAKERS,
+  DEFAULT_EXAMPLE_DIALECT,
   EXAMPLE_PACKAGE_FAMILY,
   asExampleDialect,
   type ExampleDialect,
@@ -49,7 +51,7 @@ import { withLocalLoads, type LocalPackageManifest } from "@/lib/local-packages"
 import { PACKAGE_DETECTORS } from "@/lib/latex-requirement-collector";
 import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
 
-export type LatexRequirementKind = "package" | "shim";
+export type LatexRequirementKind = "package" | "shim" | "family";
 
 export interface LatexRequirement {
   /** Package name (`expex`) or shim command name (`vfid`). */
@@ -72,6 +74,20 @@ export interface LatexRequirement {
    * happen (task 780). Read by `dropRequirement`, never restated in a pass.
    */
   dependsOn?: string;
+  /**
+   * A `family` requirement only (task 1206): the need is "ANY of these
+   * packages", not one of them. A loaded member satisfies it outright; with
+   * none loaded it RESOLVES to `resolvesTo` (a registry id), which is then
+   * injected like any pin. It is resolved before injection and never injected
+   * itself — its `injectLine` is the resolution's, stated so the registry's
+   * every-row-has-a-line invariant holds.
+   */
+  anyOf?: readonly string[];
+  resolvesTo?: string;
+  /** Inject lines an EARLIER build wrote for this requirement — still
+   *  recognized by `stripAutoInjectedLines`, so a preamble saved before the
+   *  line changed does not read as drifted. */
+  legacyInjectLines?: readonly string[];
 }
 
 function packageReq(name: string, options?: string): LatexRequirement {
@@ -126,6 +142,19 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   packageReq("xcolor"),
   packageReq("graphicx"),
   packageReq("expex"),
+  // `bare-ex` (task 1206) — the need a SHARED example token declares: a bare
+  // `\ex` or `\begin{xlist}`, which expex and gb4e both speak
+  // (`BARE_EX_SPEAKERS`). A gb4e (or langsci-gb4e) paper satisfies it with
+  // its own package; a bare preamble resolves it to expex, today's injection.
+  {
+    id: "bare-ex",
+    kind: "family",
+    anyOf: BARE_EX_SPEAKERS,
+    resolvesTo: DEFAULT_EXAMPLE_DIALECT,
+    injectLine: `\\usepackage{${DEFAULT_EXAMPLE_DIALECT}}`,
+    isSatisfied: (live) =>
+      BARE_EX_SPEAKERS.some((p) => preambleListLoadsPackage(live, p)),
+  },
   // `linguex` — the second example dialect Virgil models (task 355) and, since
   // task 543, injects: declared from the NODE MODEL by the serializer's linguex
   // arm and by the `PACKAGE_DETECTORS` fallback for a carried `\ex.`. It shares
@@ -158,17 +187,45 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   // expex: under a gb4e or linguex preamble the example-family pass refuses
   // expex, and this shim goes with it (gb4e defines `xlist` itself, and
   // `\pex`/`\xe` exist under neither — task 780).
+  //
+  // IDEMPOTENT by construction (task 1206): the line defines `xlist` only if
+  // nothing already has, so an `xlist` defined anywhere this scan cannot see —
+  // `\NewDocumentEnvironment`, a `\def\xlist`, a local `.sty`, a class — can
+  // never meet it as "Environment xlist already defined". `\ifdefined` (e-TeX,
+  // in every pdfLaTeX) rather than `\provideenvironment`, which needs a LaTeX
+  // kernel ≥ 2020-10 that the vendored SwiftLaTeX format predates. The
+  // `isSatisfied` regex is now only a NOISE gate (don't add a line the
+  // preamble visibly already answers), never the safety.
   {
     id: "xlistenv",
     kind: "shim",
     dependsOn: "expex",
-    injectLine: "\\newenvironment{xlist}{\\pex}{\\xe}",
-    isSatisfied: (live) => /\\(?:new|renew)environment\{xlist\}/.test(live),
+    injectLine: "\\ifdefined\\xlist\\else\\newenvironment{xlist}{\\pex}{\\xe}\\fi",
+    legacyInjectLines: ["\\newenvironment{xlist}{\\pex}{\\xe}"],
+    isSatisfied: (live) =>
+      /\\(?:(?:new|renew|provide)environment\*?|(?:New|Renew|Provide|Declare)DocumentEnvironment)\s*\{xlist\}|\\(?:def|let)\s*\\xlist(?![a-zA-Z])/.test(
+        live,
+      ),
   },
   ...SHIM_COMMAND_NAMES.map(shimReq),
 ];
 
 const REQUIREMENT_BY_ID = new Map(LATEX_REQUIREMENTS.map((r) => [r.id, r]));
+
+/**
+ * Does a DECLARED requirement set already cover `id`? Yes when it holds `id`
+ * itself, or when `id` is a `family` need ("any of these", task 1206) and the
+ * set pins one of its members — a modelled expex example declares `expex`,
+ * which answers the `bare-ex` its own `\ex` bytes raise in the fallback.
+ */
+export function requirementCoveredBy(
+  id: string,
+  declared: ReadonlySet<string>,
+): boolean {
+  if (declared.has(id)) return true;
+  const r = REQUIREMENT_BY_ID.get(id);
+  return r?.kind === "family" && (r.anyOf ?? []).some((m) => declared.has(m));
+}
 
 /**
  * Refuse `id` AND every requirement that depends on it, transitively (the
@@ -466,6 +523,20 @@ export function ensurePreambleRequirements(
   const loadedExample = EXAMPLE_PACKAGE_FAMILY.filter((id) =>
     preambleListLoadsPackage(scannable, id),
   );
+  // Resolve every "ANY of these" need first (task 1206): a loaded member
+  // satisfies it — and, where that member is itself a registry id, stands in
+  // as its need, so a requirement written in terms of it survives — else it
+  // becomes its default resolution, a pin like any other. Only after this
+  // does the family pass see the needs, so a shared token can never be
+  // reported as the wrong member's.
+  for (const r of LATEX_REQUIREMENTS) {
+    if (r.kind !== "family" || !effective.delete(r.id)) continue;
+    const loadedMember = (r.anyOf ?? []).find((p) =>
+      preambleListLoadsPackage(scannable, p),
+    );
+    const standIn = loadedMember ?? r.resolvesTo;
+    if (standIn && REQUIREMENT_BY_ID.has(standIn)) effective.add(standIn);
+  }
   const neededExample = EXAMPLE_PACKAGE_FAMILY.map(asExampleDialect).filter(
     (d): d is ExampleDialect => d !== null && effective.has(d),
   );
@@ -493,6 +564,17 @@ export function ensurePreambleRequirements(
         declared: dialect,
         preambleHas: "expex",
       });
+    }
+  }
+
+  // A requirement written in terms of another never lands without it (the
+  // `dependsOn` edge, read here as an INVARIANT rather than only on the
+  // refusal path): a `\begin{xlist}` whose need was met by a loaded gb4e
+  // leaves expex out of the effective set, and the expex-primitive shim goes
+  // with it — gb4e defines `xlist` itself.
+  for (const r of LATEX_REQUIREMENTS) {
+    if (r.dependsOn && effective.has(r.id) && !effective.has(r.dependsOn)) {
+      dropRequirement(effective, r.id);
     }
   }
 
@@ -574,7 +656,10 @@ export function buildPreamble(
 // ---------------------------------------------------------------------------
 
 const INJECT_LINE_SET = new Set(
-  LATEX_REQUIREMENTS.map((r) => r.injectLine.trim()),
+  LATEX_REQUIREMENTS.flatMap((r) => [
+    r.injectLine.trim(),
+    ...(r.legacyInjectLines ?? []).map((l) => l.trim()),
+  ]),
 );
 
 /**
