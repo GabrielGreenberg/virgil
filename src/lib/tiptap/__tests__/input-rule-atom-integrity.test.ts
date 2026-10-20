@@ -294,13 +294,16 @@ describe("controls — every rule still fires over plain text", () => {
     expect(nodesOf(ed, "inlineMath").map((n) => n.attrs?.latex)).toEqual(["a+b"]);
   });
 
-  it("`*x*` still italicizes", () => {
+  // Task 1198 inverted this control: StarterKit's markdown mark rules are
+  // stripped at the kit (`virgil-starter-kit.ts`) — `*` is literal in LaTeX —
+  // so `*x*` now stays TEXT. `input-rule-provider-census.test.ts` owns the rule.
+  it("`*x*` stays literal — no markdown italic rule is mounted", () => {
     const ed = mount(para(txt("a ")));
     caretAtParagraphEnd(ed);
     typeText(ed, "*x*");
     const json = JSON.stringify(ed.getJSON());
-    expect(json).toContain('"italic"');
-    expect(paragraphText(ed)).toBe("a x");
+    expect(json).not.toContain('"italic"');
+    expect(paragraphText(ed)).toBe("a *x*");
   });
 
   it("typed `\\cite{k}` still becomes a citation", () => {

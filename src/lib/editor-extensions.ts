@@ -58,7 +58,7 @@ import { focusViewPlugin } from "@/lib/focus-view";
 import { headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "@/components/HeadingTypeMenu";
 import { paintMenuTriggerAria } from "@/components/menu/menu-trigger";
-import StarterKit from "@tiptap/starter-kit";
+import { VirgilStarterKit, withoutMarkdownRules } from "@/lib/tiptap/virgil-starter-kit";
 import { CaretPlaceholder } from "@/lib/tiptap/caret-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import type { Editor } from "@tiptap/react";
@@ -783,7 +783,7 @@ export function createListItemWithUuid() {
 }
 
 export function createCodeBlockWithUuid() {
-  return CodeBlock.extend({
+  return withoutMarkdownRules(CodeBlock).extend({
     group: "block textObject",
     addAttributes() {
       return {
@@ -817,20 +817,16 @@ export function createHeadingWithLabel(
 ) {
   const isFloat = opts?.surface === "float";
   const host = opts?.host;
-  return Heading.extend({
+  // TipTap's markdown heading input rules (`#`/`##`/… + space) are dead
+  // surface area in this LaTeX-first editor (slash popup + the heading type
+  // menu cover heading creation), stripped by the ONE markdown-rule door (task
+  // 1198). They also produced a real bug at level 0: with `levels: [0..6]`,
+  // the level-0 rule becomes `^(#{0,0})\s$`, i.e. `^\s$`. TipTap's
+  // input-rules plugin reruns rules on Enter with `text="\n"`, so Enter at
+  // parentOffset 0 of any paragraph matched it and `setBlockType`d the
+  // paragraph into a \part — the paragraph's text became the heading's title.
+  return withoutMarkdownRules(Heading).extend({
     group: "block textObject",
-    // TipTap's default markdown-style heading input rules (`#`/`##`/… + space)
-    // are dead surface area in this LaTeX-first editor (slash popup + the
-    // heading type menu cover heading creation). They also produce a real
-    // bug at level 0: with `levels: [0..6]`, the level-0 rule becomes
-    // `^(#{0,0})\s$`, i.e. `^\s$`. TipTap's input-rules plugin reruns rules
-    // on Enter with `text="\n"`, so Enter at parentOffset 0 of any paragraph
-    // matches that rule and `setBlockType`s the paragraph into a \part —
-    // the paragraph's text becomes the heading's title. Disabling the rules
-    // outright kills the bug and the unused markdown shortcuts in one shot.
-    addInputRules() {
-      return [];
-    },
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1734,7 +1730,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
   };
 
   return [
-    StarterKit.configure({
+    VirgilStarterKit.configure({
       heading: false,
       paragraph: false,
       bulletList: false,
@@ -1863,7 +1859,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
           }),
         ]
       : []),
-    Highlight.configure({
+    withoutMarkdownRules(Highlight).configure({
       multicolor: true,
     }),
     // TextColor: SHARED core (FCU Chip C1, decision 4). Colored text now

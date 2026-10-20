@@ -1,4 +1,5 @@
 import HorizontalRule from "@tiptap/extension-horizontal-rule";
+import { withoutMarkdownRules } from "./virgil-starter-kit";
 
 /**
  * StarterKit's `horizontalRule` node with its markdown INPUT RULE removed
@@ -9,11 +10,8 @@ import HorizontalRule from "@tiptap/extension-horizontal-rule";
  * `horizontal-rule` row (`\hrule` / the lightning grid cell).
  *
  * Mounted wherever a rule can appear — the MAIN editor and the EXCERPT card
- * body — each with StarterKit's own `horizontalRule: false`, so no surface can
- * keep the upstream rule by inheriting the stock node.
+ * body — each with StarterKit's own `horizontalRule: false`. Since task 1198
+ * the strip is the shared markdown-rule door (`virgil-starter-kit.ts`), which
+ * `VirgilStarterKit` also applies to its own `horizontalRule` child.
  */
-export const VirgilHorizontalRule = HorizontalRule.extend({
-  addInputRules() {
-    return [];
-  },
-});
+export const VirgilHorizontalRule = withoutMarkdownRules(HorizontalRule);

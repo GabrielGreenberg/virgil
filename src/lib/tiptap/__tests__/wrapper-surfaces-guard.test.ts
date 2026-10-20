@@ -34,7 +34,7 @@ import { codeOnlyLines } from "@/lib/__tests__/_source-scan";
 import { VIRGIL_ACTION_REGISTRY } from "@/lib/actions/action-registry";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
-import StarterKit from "@tiptap/starter-kit";
+import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
 import type { AnyExtension } from "@tiptap/core";
 import {
   buildCardBodySchema,
@@ -291,7 +291,7 @@ describe("the registry's RECORD of the wrapper surfaces is the binding (task 427
  *  Placeholder / TabIndent / read-only (none of which touch the schema). */
 function cardBodyStack(scope: CardBodySchemaScope): AnyExtension[] {
   return [
-    StarterKit.configure({ ...starterKitConfigForScope(scope) }),
+    VirgilStarterKit.configure({ ...starterKitConfigForScope(scope) }),
     ...buildCardBodySchema(scope, { includeLabelRefFootnote: true }),
   ];
 }
@@ -533,7 +533,7 @@ describe("CENSUS: every production wrapper-toggle call is guarded (task 427)", (
   it("every production file that mounts a StarterKit is a NAMED wrapper surface", () => {
     const mounters = FILES.filter((f) => {
       const code = codeOnlyLines(readFileSync(f, "utf8"));
-      return /\bStarterKit\.configure\s*\(/.test(code) || /^\s*StarterKit,\s*$/m.test(code);
+      return /\b(?:Virgil)?StarterKit\.configure\s*\(/.test(code) || /^\s*(?:Virgil)?StarterKit,\s*$/m.test(code);
     }).map(rel);
     // Sorted so the diff on a new surface reads as "you added a file".
     expect([...mounters].sort()).toEqual([...STARTERKIT_MOUNTERS].sort());
