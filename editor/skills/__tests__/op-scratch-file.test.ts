@@ -212,6 +212,7 @@ const FREE_TEXT_KEYS = [
   "fields",
   "replacement",
   "annotation",
+  "newRange",
 ] as const;
 
 /**
@@ -617,7 +618,7 @@ const allFlagSites = () => siloFiles().flatMap((f) => flagSites(f, FREE_TEXT_FLA
 describe("free-text FLAGS — both helpers read `@<path>` (task 815)", () => {
   it("create_card.py declares every free-text flag with type=text_arg", () => {
     expect(textArgFlags(HELPERS.create_card).sort()).toEqual(
-      ["body", "explanation", "item", "notes", "original", "suggested", "task-text", "title"].sort(),
+      ["body", "explanation", "item", "notes", "original", "range", "suggested", "task-text", "title"].sort(),
     );
   });
 
