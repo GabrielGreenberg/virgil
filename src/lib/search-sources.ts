@@ -14,6 +14,7 @@ import {
   SUGGESTION_SEARCH_FIELDS,
   type SuggestionField,
 } from "@/panels/_shared/suggestion-field-vocabulary";
+import { compileLiteral } from "@/lib/whole-word";
 import type { CardWithLinks } from "@/links/links";
 import type { CardAnchorResolver } from "@/links/card-anchor-rows";
 import type {
@@ -291,20 +292,17 @@ export function scopesForVisiblePanels(
   });
 }
 
-/** Compile the user query into a RegExp or return null on bad patterns. */
+/**
+ * Compile the user query into a RegExp or return null on bad patterns.
+ * Delegates to `compileLiteral` (whole-word.ts): Unicode-aware whole-word
+ * boundaries, so `etc.`, `(1)` and `café` match whole and `del` does not match
+ * inside `Gödel` (task 1202 — the old bare ASCII `\b` got all four wrong).
+ */
 export function compileQuery(
   query: string,
   opts: { caseSensitive: boolean; wholeWord: boolean },
 ): RegExp | null {
-  if (!query) return null;
-  let pattern = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  if (opts.wholeWord) pattern = `\\b${pattern}\\b`;
-  const flags = opts.caseSensitive ? "g" : "gi";
-  try {
-    return new RegExp(pattern, flags);
-  } catch {
-    return null;
-  }
+  return compileLiteral(query, opts);
 }
 
 type ScanMatch = Snippet & { start: number; end: number; match: string };

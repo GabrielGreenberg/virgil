@@ -16,12 +16,15 @@ import {
   wholeWordPattern,
   wholeWordPatternFor,
   escapeRegExp,
+  wholeWordFlags,
+  compileLiteral,
 } from "@/lib/whole-word";
+import { compileQuery } from "@/lib/search-sources";
 
 /** Match the escaper used inline at the two live `\b` sites. */
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-function re(token: string, flags = "g"): RegExp {
+function re(token: string, flags = wholeWordFlags(true)): RegExp {
   return new RegExp(wholeWordPattern(esc(token)), flags);
 }
 
@@ -141,5 +144,70 @@ describe("realistic citekey rewrite (BIB-F7-04) — whole-token replace", () => 
     const command = "\\cite{+weird}";
     const result = command.replace(re("+weird"), "tidy");
     expect(result).toBe("\\cite{tidy}");
+  });
+});
+
+describe("Unicode + punctuation whole-word — the Search W toggle (task 1202)", () => {
+  const W = { caseSensitive: false, wholeWord: true };
+  const find = (q: string, text: string, o = W) =>
+    text.match(compileQuery(q, o)!);
+
+  it.each([
+    ["etc.", "et al., etc. for more"],
+    ["(1)", "example (1) shows"],
+    ["café", "the café was open"],
+    ["naïve", "a naïve view"],
+    ["Gödel", "Gödel proved it"],
+    ["Gödel", "(Gödel)"],
+  ])("finds %s whole in %j", (q, text) => {
+    expect(find(q, text)).toEqual([q]);
+  });
+
+  it("the OLD bare-\\b pattern missed them (fix is load-bearing)", () => {
+    for (const [q, text] of [["etc.", "x etc. y"], ["café", "the café was"]]) {
+      expect(text.match(new RegExp(`\\b${esc(q)}\\b`, "gi"))).toBeNull();
+    }
+  });
+
+  it("does NOT match `del` inside `Gödel` / `caf` inside `café`", () => {
+    expect(find("del", "Gödel proved it")).toBeNull();
+    expect(find("caf", "the café was open")).toBeNull();
+  });
+
+  it("decomposed é (e + U+0301) still counts as a word char", () => {
+    expect(find("cafe", "the cafe\u0301 was")).toBeNull();
+  });
+
+  it("does not match `cat` inside `cats`", () => {
+    expect(find("cat", "two cats")).toBeNull();
+    expect(find("cat", "a cat.")).toEqual(["cat"]);
+  });
+
+  it("case-insensitive Unicode folding: `É` finds `é`", () => {
+    expect(find("ÉTÉ", "un été")).toEqual(["été"]);
+    expect(find("É", "é", { caseSensitive: false, wholeWord: false })).toEqual(["é"]);
+    expect(find("É", "é", { caseSensitive: true, wholeWord: false })).toBeNull();
+  });
+
+  it("plain and whole-word modes share one flag set (always `u`)", () => {
+    for (const caseSensitive of [true, false]) {
+      for (const wholeWord of [true, false]) {
+        const r = compileQuery("x", { caseSensitive, wholeWord })!;
+        expect(r.flags).toBe(wholeWordFlags(caseSensitive));
+        expect(r.unicode).toBe(true);
+      }
+    }
+  });
+
+  it("compileQuery IS compileLiteral (one door) and empty → null", () => {
+    expect(compileQuery("a.b", W)!.source).toBe(compileLiteral("a.b", W)!.source);
+    expect(compileQuery("", W)).toBeNull();
+  });
+
+  it("every regex-syntax char compiles legally under `u`", () => {
+    for (const q of [".*+?^${}()|[]\\", "a/b", "x-y"]) {
+      expect(compileQuery(q, W)).not.toBeNull();
+      expect(compileQuery(q, { ...W, wholeWord: false })!.test(`>${q}<`)).toBe(true);
+    }
   });
 });
