@@ -58,6 +58,7 @@ import {
   type ModeBBag,
   type ModeBRecord,
 } from "@/cards/mode-b-collections";
+import { isDormantLink } from "@/links/dormant";
 
 /** One re-apply instruction: re-stamp `kind`'s `linkedAnchor` mark with
  *  `anchorId` over the doc text `text`. Matches the `EditorHandle`'s
@@ -103,7 +104,10 @@ export type ModeBCardArrays = ModeBBag;
  *  paragraph; RC-A then heals it to a single clean Mode-A link. */
 export function hasSeparateModeALink(card: CardWithLinks): boolean {
   for (const link of card.links ?? []) {
-    if (link.anchor.type === "textObject" && !isModeB(link)) return true;
+    // A dormant link (task 1193) is archived text, not a relocation.
+    if (link.anchor.type === "textObject" && !isModeB(link) && !isDormantLink(link)) {
+      return true;
+    }
   }
   return false;
 }
@@ -116,7 +120,7 @@ export function hasSeparateModeALink(card: CardWithLinks): boolean {
  *  recovery. */
 function modeBParagraphId(card: CardWithLinks): string | undefined {
   for (const link of card.links ?? []) {
-    if (isModeB(link)) return link.anchor.textObjectIds[0];
+    if (isModeB(link) && !isDormantLink(link)) return link.anchor.textObjectIds[0];
   }
   return undefined;
 }

@@ -92,6 +92,12 @@ pen**, with the audit notification + version bump. Fully reversible by
 > to the app's `isArchivable`. Read it there rather
 > than trusting this prose; it is where a refusal is actually enforced.
 
+> **Note (dormant links, task 1193).** A link carrying `archivedWith` names text
+> that is itself inside an archive snippet ("archived with its text"); a card all
+> of whose links are dormant also carries `archivedWith` + `archived: true`. Never
+> treat such a link as orphaned or rebind it — it revives when the snippet is
+> restored. Scripts round-trip both fields untouched.
+
 > **Note (origin record).** To make restore lossless this op adds
 > `originalPanel` + the verbatim `originalCard` + `archivedAt` to the snippet.
 > Since task 712 these are part of the app's `ArchivedSnippet` contract

@@ -111,6 +111,10 @@ export interface Link {
   anchor: LinkAnchor;
   target: LinkTarget;
   createdAt: string;
+  /** DORMANT (task 1193): the id of the archive snippet this link's text
+   *  lives in. Absent on every live link. Read and written ONLY through
+   *  `@/links/dormant` — see that module for the state and its readers. */
+  archivedWith?: string;
 }
 
 /** A Mode B anchor link (targets a `linkedRange`). Not a separate runtime

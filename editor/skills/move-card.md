@@ -63,6 +63,9 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
   - **Mode-B (text-range) anchors** (`targetKind: "linkedRange"`): re-anchoring a
     range needs a fresh `linkedAnchor` mark in the `.tex` — deferred; the op
     refuses.
+  - **Dormant links** (`archivedWith` set — "archived with its text", task 1193):
+    the link's text sits in an archive snippet and returns when it is restored.
+    The op skips them, and refuses a card whose links are all dormant.
 
 > **Enforcement (task 156).** The panel side of that list lives in
 > `apply_response.MUTATION_PANEL_POLICY` — one allow-list table per op, exhaustive

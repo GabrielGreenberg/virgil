@@ -27,6 +27,7 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
+import { useDormantRevival } from "./useDormantRevival";
 import {
   bridgeFlagForCard,
   rederiveAiRequestForMorph,
@@ -536,6 +537,15 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const reconcileAnchors = useReconcileModeAAnchors<NotesState, NoteCardItem>(
     update,
     () => stateRef.current,
+    (s) => s.cards,
+    (_s, cards) => ({ cards }),
+  );
+
+  // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
+  useDormantRevival<NotesState, NoteCardItem>(
+    docId,
+    update,
+    state,
     (s) => s.cards,
     (_s, cards) => ({ cards }),
   );

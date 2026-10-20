@@ -2570,10 +2570,17 @@ def cmd_move(doc: Path, op: dict) -> dict:
     links = card.get("links")
     if not isinstance(links, list) or not links:
         die(f"{kind} {card_id} has no anchor links to move")
+    from _common import is_dormant_link
     moved = 0
+    dormant = 0
     for link in links:
         anchor = link.get("anchor") if isinstance(link, dict) else None
         if not isinstance(anchor, dict) or anchor.get("type") != "textObject":
+            continue
+        # A dormant link (task 1193) is the card's claim on ARCHIVED text — it
+        # comes back when the snippet is restored, so a move leaves it alone.
+        if is_dormant_link(link):
+            dormant += 1
             continue
         if anchor.get("targetKind") == "linkedRange":
             die(f"{kind} {card_id} is a Mode-B text-range anchor; re-anchoring a range needs a new "
@@ -2581,6 +2588,9 @@ def cmd_move(doc: Path, op: dict) -> dict:
         anchor["textObjectIds"] = [new_anchor]
         anchor["targetKind"] = anchor.get("targetKind") or "paragraph"
         moved += 1
+    if moved == 0 and dormant:
+        die(f"{kind} {card_id} was archived with its text (snippet "
+            f"{card.get('archivedWith') or '?'}); restore that snippet to bring it back")
     if moved == 0:
         die(f"{kind} {card_id} has no Mode-A paragraph anchor to move")
     txn.mark(sidecar(doc, hit.filename))
@@ -2766,9 +2776,10 @@ def _suggestion_anchor_uuid(card: dict) -> str | None:
     Link. Tolerates both the live `textObjectIds` shape and the legacy
     `paragraphIds` one (the responder-skill markdown still documents the latter;
     on-disk suggestion cards use textObjectIds)."""
+    from _common import is_dormant_link
     for link in card.get("links") or []:
         anchor = link.get("anchor") if isinstance(link, dict) else None
-        if not isinstance(anchor, dict):
+        if not isinstance(anchor, dict) or is_dormant_link(link):
             continue
         ids = anchor.get("textObjectIds") or anchor.get("paragraphIds")
         if isinstance(ids, list) and ids:

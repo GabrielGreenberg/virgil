@@ -41,6 +41,7 @@
 import type { Editor } from "@tiptap/react";
 import type { AnchorRowSource, CardWithLinks } from "./links";
 import { getLinkedTextObjectIds } from "./links";
+import { withoutDormantLinks } from "./dormant";
 import {
   buildResolveIndex,
   resolveCardAnchor,
@@ -220,6 +221,11 @@ export function resolveCardAnchorRows(
   editor: Editor | null,
   index: ResolveIndex | null,
 ): CardAnchorRows {
+  // A DORMANT link (task 1193) draws nothing: its text is in an archive
+  // snippet. Resolve the card's LIVE view, so an all-dormant card has no rows
+  // (not an orphan row) and a multi-anchor card renders only its live anchors.
+  const live = withoutDormantLinks(card);
+  if (live !== card) return resolveCardAnchorRows(live, editor, index);
   const pids = getLinkedTextObjectIds(card);
 
   if (!index) {

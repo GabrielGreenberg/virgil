@@ -33,6 +33,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Link } from "./_shared/types";
 import { isModeB } from "./_shared/types";
+import { isDormantLink, isFullyDormant } from "./dormant";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { paragraphUuidAt, type CardWithLinks } from "./links";
 
@@ -48,8 +49,10 @@ export { normalizeParagraphText };
 /** Which rung of the resolution ladder produced the binding.
  *  `uuid`/`mark` are high-confidence (the live doc still carries the
  *  exact anchor); `snapshot` is a low-confidence text re-find;
- *  `orphan` is the un-resolvable residue. */
-export type AnchorSource = "uuid" | "mark" | "snapshot" | "orphan";
+ *  `orphan` is the un-resolvable residue; `dormant` (task 1193) is a card
+ *  whose every anchor link names ARCHIVED text — absent on purpose, waiting
+ *  to be restored, so neither re-found by snapshot nor reported orphaned. */
+export type AnchorSource = "uuid" | "mark" | "snapshot" | "orphan" | "dormant";
 
 export interface CardAnchorResolution {
   /** Live paragraph UUID the card resolves to now, or `null` for orphan. */
@@ -228,6 +231,11 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
  *      reported per the link the snapshot came from.
  *   4. Else `{paragraphId:null, source:'orphan', linkIndex:null}`.
  *
+ * DORMANT links (task 1193, `./dormant`) take part in NO rung: their text is
+ * in an archive snippet, so a snapshot match could only be a duplicate
+ * paragraph elsewhere. A card whose anchor links are ALL dormant resolves
+ * `{source:'dormant'}` before rung 1 — never `orphan`.
+ *
  * EVERY resolving rung reports `linkIndex` — WHICH link won — so no
  * consumer ever has to re-derive it from `mode` (task 664).
  *
@@ -243,11 +251,17 @@ export function resolveCardAnchor(
   void editor; // accepted for contract symmetry; the index carries every lookup
   const links = card.links ?? [];
 
+  // --- Dormant: every anchor link is archived with its text (task 1193) ---
+  if (isFullyDormant(card)) {
+    return { paragraphId: null, mode: null, source: "dormant", linkIndex: null };
+  }
+
   // --- Rung 1: Mode-A uuid (strictly first) -------------------------------
   // EVERY id, not `[0]` (task 664). A legacy multi-id Mode-A link whose
   // first pid died but whose second is alive is anchored on the second.
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
+    if (isDormantLink(link)) continue;
     if (link.anchor.type !== "textObject") continue;
     if (isModeB(link)) continue;
     for (const pid of link.anchor.textObjectIds) {
@@ -260,6 +274,7 @@ export function resolveCardAnchor(
   // --- Rung 2: Mode-B surviving mark --------------------------------------
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
+    if (isDormantLink(link)) continue;
     if (!isModeB(link)) continue;
     const anchorId = link.anchor.textRange?.anchorId;
     if (!anchorId) continue;
@@ -277,6 +292,7 @@ export function resolveCardAnchor(
   // the snapshot rung (so uuid still beats snapshot).
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
+    if (isDormantLink(link)) continue;
     if (!isModeB(link)) continue;
     for (const pid of link.anchor.textObjectIds) {
       if (pid && index.uuidToParagraph.has(pid)) {
@@ -288,6 +304,7 @@ export function resolveCardAnchor(
   // --- Rung 3: snapshot fallback (low confidence) -------------------------
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
+    if (isDormantLink(link)) continue;
     if (link.anchor.type !== "textObject") continue;
     const modeB = isModeB(link);
     const rawSnapshot = modeB
@@ -373,6 +390,8 @@ export interface ReconcileOpts {
  *     RE-POINT its `textObjectIds` to the mark's paragraph if they do not
  *     already name it (task 934 — stored and resolved agree).
  *   - `source === 'orphan'` → no-op (nothing recoverable).
+ *   - `source === 'dormant'` → no-op, and no branch above ever rewrites a
+ *     dormant link (task 1193): its text is archived, not lost.
  *
  * `opts` is optional — called WITHOUT it (R0 pure callers / existing tests)
  * the function behaves exactly as before (no backfill from live text, no
@@ -492,6 +511,7 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
     (l) =>
       l.anchor.type === "textObject" &&
       !isModeB(l) &&
+      !isDormantLink(l) &&
       // EVERY id (task 664) — a legacy multi-id link that carries
       // `paragraphId` anywhere already owns this paragraph, so the dead
       // hybrid must be DROPPED rather than converted into a duplicate.
@@ -501,7 +521,9 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
   let changed = false;
   const next: Link[] = [];
   for (const link of links) {
-    if (link.anchor.type !== "textObject") {
+    // A dormant link (task 1193) is archived, not dead: its missing mark is
+    // not a hybrid residue to clean up, and it owns no live paragraph.
+    if (link.anchor.type !== "textObject" || isDormantLink(link)) {
       next.push(link);
       continue;
     }
