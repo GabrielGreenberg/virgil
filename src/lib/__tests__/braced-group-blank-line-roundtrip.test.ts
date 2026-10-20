@@ -126,3 +126,33 @@ describe("task 1018 — a blank line inside a balanced group is not a paragraph 
     expectStable(input);
   });
 });
+
+// Task 1203 — the group that spans a blank line is closed by the comment- and
+// verbatim-AWARE reading, never the blind count. Pre-1203 `findGroupClose`
+// fell back to the blind close across `\n\n`, so a `}` inside a `%` comment
+// ended the footnote and the comment's brace went live; and `readParagraph`
+// counted the `{` of `\verb|{|`, merging two paragraphs into one node.
+describe("task 1203 — a commented or verbatim brace never closes a group", () => {
+  it.each([
+    ["a commented } in a multi-paragraph footnote", "A\\footnote{One. % old }\nmore.\n\nTwo.} b."],
+    ["a commented } in a multi-paragraph \\thanks", "\\section{T\\thanks{one % x }\n\ntwo}}"],
+    ["a commented } in a bare group", "A {\\itshape one % }\n\ntwo} b."],
+    ["\\verb braces across paragraphs", "Type \\verb|{| to open.\n\nLater \\verb|}| closes."],
+    ["a \\verb brace inside a multi-paragraph footnote", "A\\footnote{Use \\verb|}| here.\n\nTwo.} b."],
+  ])("%s round-trips and is a fixed point", (_label, input) => {
+    expectStable(input);
+  });
+
+  it("the footnote keeps BOTH paragraphs and the comment stays a comment", () => {
+    const doc = parse(PRE + "A\\footnote{One. % old }\nmore.\n\nTwo.} b." + POST);
+    expect(findAll(doc, "footnote")).toHaveLength(1);
+    const out = save(PRE + "A\\footnote{One. % old }\nmore.\n\nTwo.} b." + POST);
+    // the commented brace is still on a comment line, never live source
+    expect(out).toMatch(/% old \}\n/);
+  });
+
+  it("\\verb|{| … blank line … \\verb|}| stays TWO paragraphs", () => {
+    const doc = parse(PRE + "Type \\verb|{| to open.\n\nLater \\verb|}| closes." + POST);
+    expect(findAll(doc, "paragraph")).toHaveLength(2);
+  });
+});

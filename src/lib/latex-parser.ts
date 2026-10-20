@@ -68,6 +68,7 @@ import {
   matchInlineMathAt,
   inlineMathDelimAttr,
   matchInlineVerbAt,
+  matchVerbatimRunAt,
   matchLineBreakAt,
   skipOpaqueConstructAt,
   skipLineCommentAt,
@@ -2769,6 +2770,23 @@ function readParagraph(ctx: ParseContext): string {
       if (math && !/\n[ \t]*\n/.test(ctx.src.slice(ctx.pos, math.end))) {
         result += ctx.src.slice(ctx.pos, math.end);
         ctx.pos = math.end;
+        continue;
+      }
+    }
+
+    // A VERBATIM RUN is read whole too (task 1203): `\verb|{|` or `\url{a%b}`
+    // holds bytes TeX does not read as braces or comments, so they may neither
+    // open a group here nor start a comment tail. The lexer's ONE skip
+    // (`matchVerbatimRunAt`) is the rule `findGroupClose` and
+    // `splitTopLevelParagraphs` step over runs with, so the three brace-depth
+    // readers cannot disagree about which `{` is open. Before 1203 this loop
+    // counted the `{` of `\verb|{|`, saw a group open at the next blank line,
+    // and merged two paragraphs into one node.
+    if (!inCommentTail && ctx.src[ctx.pos] === "\\") {
+      const past = matchVerbatimRunAt(ctx.src, ctx.pos);
+      if (past !== -1 && !/\n[ \t]*\n/.test(ctx.src.slice(ctx.pos, past))) {
+        result += ctx.src.slice(ctx.pos, past);
+        ctx.pos = past;
         continue;
       }
     }

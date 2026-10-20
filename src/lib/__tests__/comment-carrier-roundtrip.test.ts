@@ -373,23 +373,26 @@ describe("the carrier's line obligation", () => {
   });
 });
 
-describe("an argument's comment is CARRIED, and its line is closed (task 777)", () => {
+describe("an argument's comment is CARRIED, and the source is KEPT (tasks 777, 1203)", () => {
   it.each([
-    ["a `\\texttt{}` argument", "Set \\texttt{a%b} here.\n", "Set \\texttt{a%b\n} here."],
-    ["a `\\textbf{}` argument", "Set \\textbf{a%b} here.\n", "Set \\textbf{a%b\n} here."],
-    ["a heading", "\\section{a%b}\n", "\\section{a%b\n}"],
-  ])("%s keeps its comment a comment", (_name, src, expected) => {
+    ["a `\\texttt{}` argument", "Set \\texttt{a%b} here.\n", "%b} here."],
+    ["a `\\textbf{}` argument", "Set \\textbf{a%b} here.\n", "%b} here."],
+    ["a heading", "\\section{a%b}\n", "%b}"],
+  ])("%s keeps its comment a comment", (_name, src, tail) => {
     // Task 347 escaped these, on the premise that "the next byte inside an
     // argument is `}`". The premise was false (TeX comments to end of line
     // wherever the `%` stands, and the brace is normally on a later line — see
     // `comment-in-argument-roundtrip.test.ts`), and the escape PRINTED the
     // user's note. The single-line shape is the one where the source itself
-    // already commented out its own brace; the carrier keeps the comment and
-    // `composeInlineRun`'s comment rule closes its line, so the brace the
-    // serializer writes is live — and the result is a fixed point.
-    expect(commentTailRuns(parseLatex(src))).toEqual(["%b"]);
+    // already commented out its own brace. Task 777 then took the comment-BLIND
+    // close and wrote a newline before it — silently CLOSING a group the user
+    // had left open, a change of meaning on save. Since task 1203 the group
+    // scan fails closed (no aware close → the `{` is a source byte), so the
+    // comment runs to end of line exactly as TeX reads it, and the bytes are
+    // KEPT, a fixed point.
+    expect(commentTailRuns(parseLatex(src))).toEqual([tail]);
     const { bodyText } = twoCycles(src);
-    expect(bodyText).toBe(expected);
+    expect(bodyText).toBe(src.trim());
     expect(bodyText).not.toContain("\\%");
   });
 });

@@ -12,6 +12,8 @@
 // delimiters, as `storage-fsa.writeDocBundle` does), TWO cycles, and every
 // control through the identical harness.
 import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
@@ -137,9 +139,21 @@ describe("task 777 M3 — the scanner itself", () => {
     expect(extractBraced(t, 4)?.content).toBe("a%20b}.\n More.");
   });
 
-  it("fails closed: no close in the same paragraph → the blind close", () => {
+  // Task 1203 retired the blind fallback across a blank line: a group may span
+  // paragraphs (task 1018), so the aware close is TeX's answer there too.
+  it("a close across a blank line is the AWARE close, never the commented one", () => {
     const t = "{a% note}\n\nnext }";
-    expect(findMatchingBrace(t, 0)).toBe(t.indexOf("}"));
+    expect(findMatchingBrace(t, 0)).toBe(t.lastIndexOf("}"));
+  });
+
+  it("fails closed: no aware close → -1, never a brace inside a comment", () => {
+    expect(findMatchingBrace("{a% note}\n\nnext", 0)).toBe(-1);
+    expect(findMatchingBrace("{a% note}\nnext", 0)).toBe(-1);
+  });
+
+  it("a \\verb brace is not a delimiter", () => {
+    const t = "{x \\verb|}| y} z";
+    expect(findMatchingBrace(t, 0)).toBe(t.indexOf("y}") + 1);
   });
 
   it("an escaped \\% is literal", () => {
@@ -239,5 +253,28 @@ describe("task 1021 — the private scanners 777 left behind", () => {
     );
     // A real comment after the run is still a comment.
     expect(projectLiveLatex("\\verb|x| a % c", opts)).toBe("         a    ");
+  });
+});
+
+// Task 1203 — the comment-BLIND count is the VERBATIM-argument rule and
+// nothing else. Every call site must sit in a verbatim context, so no prose
+// group can ever be closed by a `}` inside a comment or a `\verb` run.
+describe("task 1203 — blindGroupClose CENSUS", () => {
+  const src = fs.readFileSync(path.resolve(__dirname, "../latex-lexer.ts"), "utf8");
+
+  it("is module-private and called only from the verbatim-argument readers", () => {
+    expect(src).not.toMatch(/export\s+function\s+blindGroupClose/);
+    const sites: string[] = [];
+    const re = /blindGroupClose\(/g;
+    for (let m = re.exec(src); m; m = re.exec(src)) {
+      const before = src.slice(0, m.index);
+      if (/function\s+$/.test(before)) continue; // the definition
+      const owner = [...before.matchAll(/function\s+(\w+)\s*\(/g)].pop()?.[1] ?? "?";
+      const line = before.slice(before.lastIndexOf("\n") + 1) + "…";
+      sites.push(owner === "findGroupClose" ? `${owner}:${/opts\.verbatim/.test(line)}` : owner);
+    }
+    expect(sites.sort()).toEqual(
+      ["findGroupClose:true", "skipVerbatimArgumentsAt", "verbatimArgumentSpans"].sort(),
+    );
   });
 });
