@@ -376,6 +376,25 @@ def title_fields(kind: str, value: str | None, *, auto: bool | None = None) -> d
 # ---------------------------------------------------------------------------
 
 
+def is_dormant_link(link) -> bool:
+    """True when a Link's text is inside an ARCHIVE snippet — "archived with its
+    text" (task 1193). Python twin of `isDormantLink` in src/links/dormant.ts.
+
+    A dormant link's uuid / mark is absent from the .tex ON PURPOSE (the
+    snippet holds it, and restoring the snippet brings it back), so no script
+    may treat it as orphaned, rebind it, or report its paragraph as the card's
+    live anchor. Scripts round-trip the field untouched."""
+    return isinstance(link, dict) and isinstance(link.get("archivedWith"), str) \
+        and bool(link.get("archivedWith"))
+
+
+def card_archived_with(card: dict) -> str | None:
+    """The archive snippet a card was archived WITH (every link dormant there),
+    or None. Twin of `dormantSnippetOf` in src/links/dormant.ts."""
+    v = card.get("archivedWith") if isinstance(card, dict) else None
+    return v if isinstance(v, str) and v else None
+
+
 def card_paragraph_ids(card: dict) -> list[str]:
     """Pull the TextObject UUID(s) a card's anchor links cover. Mirrors
     `getLinkedTextObjectIds()` in src/links/links.ts.
@@ -394,6 +413,9 @@ def card_paragraph_ids(card: dict) -> list[str]:
     request `paragraphIds` in list_requests.py.)"""
     out: list[str] = []
     for link in card.get("links", []) or []:
+        # A dormant link (task 1193) names archived text, not a live paragraph.
+        if is_dormant_link(link):
+            continue
         anchor = link.get("anchor") or {}
         if anchor.get("type") not in ("textObject", "anchor"):
             continue
@@ -452,8 +474,10 @@ def rich_json_to_text(value) -> str:
 
 
 def card_text_anchor(card: dict) -> str | None:
-    """Mode B text snapshot if any."""
+    """Mode B text snapshot if any (live links only — task 1193)."""
     for link in card.get("links", []) or []:
+        if is_dormant_link(link):
+            continue
         anchor = link.get("anchor") or {}
         tr = anchor.get("textRange")
         if isinstance(tr, dict) and tr.get("textSnapshot"):

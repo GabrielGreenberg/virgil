@@ -20,7 +20,9 @@ card-hosting sidecars that are intentionally writeback-exempt (so they have no
 CLI:
   card_by_id.py <docPath> <cardId> [--panel <panel>]
     → prints {"found": bool, "cardId", "panel", "filename", "listKey",
-              "archived", "cardKind", "card"} as JSON (exit 0 if found, 1 if not).
+              "archived", "archivedWith", "cardKind", "card"} as JSON (exit 0 if
+    found, 1 if not). `archivedWith` names the archive snippet a card was
+    archived WITH its text (task 1193), else null.
     An id that names cards in more than one sidecar (a footnote and a citation
     minted the same 4-hex id) REFUSES, naming the panels; `--panel` picks one.
 
@@ -41,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from _common import die, read_json, resolve_doc, sidecar
+from _common import card_archived_with, die, read_json, resolve_doc, sidecar
 
 # Import the single source of truth for the writeback panels. apply_response
 # does NOT import this module at load time (its mutation handlers import
@@ -204,6 +206,9 @@ def main(argv: list[str]) -> int:
             "filename": hit.filename,
             "listKey": hit.list_key,
             "archived": hit.archived,
+            # Archived WITH its text (task 1193): the snippet whose restore
+            # brings this card back. Null for every other card.
+            "archivedWith": card_archived_with(hit.card),
             "cardKind": card_kind(hit),
             "card": hit.card,
         },

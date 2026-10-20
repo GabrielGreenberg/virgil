@@ -24,7 +24,6 @@ import {
   insertionTouchesDormant,
   isArchivedWithText,
   isDormantLink,
-  markDormant,
   reviveLiveLinks,
   type DormantCardShape,
 } from "@/links/dormant";
@@ -84,6 +83,20 @@ function modeB(id: string, pid: string, anchorId: string, text: string, archived
 
 type Card = DormantCardShape & { kind?: string };
 
+/** Fixture: the state task 1194's archive capture will write — every anchor
+ *  link (or those in `linkIds`) dormant in `snippetId`, and the card archived
+ *  WITH its text when that covers all of them. Hand-built on purpose: the app
+ *  writer arrives with its caller (1194). */
+function markDormant<T extends Card>(card: T, snippetId: string, linkIds?: Set<string>): T {
+  const links = (card.links ?? []).map((l) =>
+    l.anchor.type === "textObject" && (!linkIds || linkIds.has(l.id))
+      ? { ...l, archivedWith: snippetId }
+      : l,
+  );
+  const all = links.filter((l) => l.anchor.type === "textObject").every((l) => l.archivedWith === snippetId);
+  return { ...card, links, ...(all ? { archived: true, archivedWith: snippetId } : {}) };
+}
+
 /** A hand-built index: `live` uuids, `marks` anchorId → pid, `texts` snapshot → pid. */
 function index(
   live: string[],
@@ -103,20 +116,6 @@ function index(
 // ---------------------------------------------------------------------------
 
 describe("dormant vocabulary", () => {
-  it("markDormant archives the card WITH its text only when every anchor link is dormant", () => {
-    const card: Card = { id: "n1", links: [modeA("l1", "P1"), modeA("l2", "P2")] };
-    const partial = markDormant(card, "snip", new Set(["l1"]));
-    expect(isDormantLink(partial.links![0])).toBe(true);
-    expect(isDormantLink(partial.links![1])).toBe(false);
-    expect(partial.archived).toBeUndefined();
-    expect(isArchivedWithText(partial)).toBe(false);
-
-    const full = markDormant(card, "snip");
-    expect(full.archived).toBe(true);
-    expect(full.archivedWith).toBe("snip");
-    expect(markDormant(full, "snip")).toBe(full); // idempotent
-  });
-
   it("reviveLiveLinks revives only links whose target is live, and unarchives the card", () => {
     const card = markDormant<Card>(
       { id: "n1", links: [modeA("l1", "P1"), modeB("l2", "P9", "A1", "words")] },
@@ -415,5 +414,17 @@ describe("load revival — useReconcileModeAAnchors", () => {
     // Its snapshot matches live P2 — a dormant link is never rebound by it.
     expect(b).toBe(stillArchived);
     editor.destroy();
+  });
+});
+
+describe("the dormant fields survive the load migrators", () => {
+  it("migrateCardLinks keeps Link.archivedWith; carryUnknownKeys keeps the card's", async () => {
+    const { migrateCardLinks } = await import("@/links/migrate-card");
+    const { carryUnknownKeys } = await import("@/lib/sidecar-migrate");
+    const raw = markDormant<Card>({ id: "n1", links: [modeA("l1", "P1"), modeB("l2", "P1", "A1", "w")] }, "snip");
+    const links = migrateCardLinks("note", raw);
+    expect(links.every((l) => isDormantLink(l))).toBe(true);
+    const card = carryUnknownKeys(raw, { id: "n1", archived: raw.archived, links });
+    expect(isArchivedWithText(card as Card)).toBe(true);
   });
 });

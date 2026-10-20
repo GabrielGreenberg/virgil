@@ -34,7 +34,9 @@
  * correct by construction rather than each remembering to call a hook.
  *
  * OWNERSHIP: nothing outside this module reads or writes either
- * `archivedWith` field (pinned by `dormant-links-census.test.ts`).
+ * `archivedWith` field (pinned by `dormant-links-census.test.ts`). The WRITE
+ * side that makes a link dormant arrives with its caller, the archive capture
+ * (task 1194); this task ships the readers and the reviver.
  */
 
 import type { Link } from "./_shared/types";
@@ -63,11 +65,6 @@ export function isDormantLink(link: Link): boolean {
   return typeof link.archivedWith === "string" && link.archivedWith.length > 0;
 }
 
-/** The snippet a dormant link lives in, or null. */
-export function dormantSnippetOfLink(link: Link): string | null {
-  return isDormantLink(link) ? (link.archivedWith as string) : null;
-}
-
 /** The snippet a card was archived WITH (every link dormant there), or null. */
 export function dormantSnippetOf(card: DormantCardShape): string | null {
   return typeof card.archivedWith === "string" && card.archivedWith.length > 0
@@ -78,11 +75,6 @@ export function dormantSnippetOf(card: DormantCardShape): string | null {
 /** True when the card was archived with its text (not archived by hand). */
 export function isArchivedWithText(card: DormantCardShape): boolean {
   return dormantSnippetOf(card) !== null;
-}
-
-/** Does any of the card's links name archived text? */
-export function hasDormantLinks(card: { links?: Link[] }): boolean {
-  return (card.links ?? []).some(isDormantLink);
 }
 
 /** True when the card HAS anchor links and every one of them is dormant. */
@@ -103,37 +95,6 @@ export function withoutDormantLinks<T extends { links?: Link[] }>(card: T): T {
 // ---------------------------------------------------------------------------
 // Writers
 // ---------------------------------------------------------------------------
-
-/**
- * Mark the card's anchor links dormant in `snippetId` — every anchor link,
- * or only those whose id is in `linkIds`. When that leaves EVERY anchor link
- * dormant in the one snippet, the card itself is archived with the text.
- * Returns the input unchanged when nothing changes.
- */
-export function markDormant<T extends DormantCardShape>(
-  card: T,
-  snippetId: string,
-  linkIds?: ReadonlySet<string>,
-): T {
-  if (!snippetId) return card;
-  const links = card.links ?? [];
-  let changed = false;
-  const next = links.map((l) => {
-    if (l.anchor.type !== "textObject") return l;
-    if (linkIds && !linkIds.has(l.id)) return l;
-    if (l.archivedWith === snippetId) return l;
-    changed = true;
-    return { ...l, archivedWith: snippetId };
-  });
-  if (!changed) return card;
-  const out: T = { ...card, links: next };
-  const anchors = next.filter((l) => l.anchor.type === "textObject");
-  if (anchors.length > 0 && anchors.every((l) => l.archivedWith === snippetId)) {
-    out.archived = true;
-    out.archivedWith = snippetId;
-  }
-  return out;
-}
 
 /** Is a dormant link's target live in the document again? Mode B answers by
  *  its MARK only: its stored pids name the paragraph the highlight was born
