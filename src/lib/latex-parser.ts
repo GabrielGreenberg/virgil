@@ -5,10 +5,10 @@ import { footnoteNumbersFor } from "@/lib/footnote-numbering";
 import { matchCiteCommandAt } from "@/lib/cite-commands";
 import {
   detachItemAnchor,
-  generateShortId,
   NODE_UUID_ANCHOR,
   NODE_UUID_REGEX,
 } from "@/lib/uuid";
+import { mintParseId, withDeclaredIds } from "@/lib/parse-id-scope";
 import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
 import { buildRefTargetIndexJSON, resolveRefDisplay } from "@/lib/ref-display";
 import {
@@ -426,7 +426,8 @@ const GLOSS_INLINE = { commentTails: false } as const;
  * we stash the id in `pendingFootnoteId` / `pendingCitationId`; the atom that
  * starts at exactly that position consumes it, and nothing else can (see
  * {@link PendingMarkerId} — task 341). Without these markers we fall back to
- * `generateShortId()` for legacy `.tex` files without markers — first
+ * `mintParseId()` for legacy `.tex` files without markers — an id no
+ * marker in the file declares (task 1205, `parse-id-scope.ts`) — first
  * save will anchor the generated id back into the source.
  *
  * A `%` COMMENT TAIL is recognized as the byte-literal carrier it is (task
@@ -461,6 +462,14 @@ const GLOSS_INLINE = { commentTails: false } as const;
 export function parseInlineContent(
   text: string,
   inCode = false,
+  opts?: { commentTails?: boolean },
+): JSONContent[] {
+  return withDeclaredIds(text, () => parseInlineInScope(text, inCode, opts));
+}
+
+function parseInlineInScope(
+  text: string,
+  inCode: boolean,
   opts?: { commentTails?: boolean },
 ): JSONContent[] {
   const nodes: JSONContent[] = [];
@@ -570,7 +579,7 @@ export function parseInlineContent(
           text: "{",
           marks: [{ type: "latexCommand" }],
         });
-        nodes.push(...parseInlineContent(group.content, inCode, opts));
+        nodes.push(...parseInlineInScope(group.content, inCode, opts));
         nodes.push({
           type: "text",
           text: "}",
@@ -700,7 +709,7 @@ export function parseInlineContent(
         flush();
         const inner = extractBraced(text, wrapper.bodyOpen);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(
+          const innerNodes = parseInlineInScope(
             inner.content,
             wrapper.row.opensCode === true || inCode,
           );
@@ -793,7 +802,7 @@ export function parseInlineContent(
           const attrs: Record<string, unknown> = {
             content: richLatexToJson(args.required),
             number: 0,
-            footnoteId: pendingFootnoteId.take(i) || generateShortId(),
+            footnoteId: pendingFootnoteId.take(i) || mintParseId(),
           };
           // Raw and opaque, the `exnoOverride` shape. Deliberately NOT fed to
           // `numberFootnotes`: in LaTeX `\footnote[3]` also does not STEP the
@@ -827,7 +836,7 @@ export function parseInlineContent(
             attrs: {
               content: richLatexToJson(inner.content),
               number: 0,
-              footnoteId: pendingFootnoteId.take(i) || generateShortId(),
+              footnoteId: pendingFootnoteId.take(i) || mintParseId(),
               thanks: true,
             },
           });
@@ -848,7 +857,7 @@ export function parseInlineContent(
         nodes.push({
           type: "citation",
           attrs: {
-            citationId: pendingCitationId.take(i) || generateShortId(),
+            citationId: pendingCitationId.take(i) || mintParseId(),
             command: cite.command,
             displayText: "",
           },
@@ -1054,8 +1063,12 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   // of the live preamble, and in force for exactly this synchronous parse, so
   // both inline parsers (this file's and the footnote/card fork) carry every
   // bare `"` byte-literal and no serializer smartens `Stra"se`.
-  return withQuoteShorthand(preambleActivatesQuoteShorthand(latex), () =>
-    parseLatexInScope(latex, sidecar),
+  // Every id the file DECLARES is reserved against this parse's fresh mints
+  // (task 1205) — an unmarked `\cite` can never be minted a later marker's id.
+  return withDeclaredIds(latex, () =>
+    withQuoteShorthand(preambleActivatesQuoteShorthand(latex), () =>
+      parseLatexInScope(latex, sidecar),
+    ),
   );
 }
 
@@ -3413,7 +3426,7 @@ function buildExampleBlockFromBody(
     // the panel and sidecar have a stable id to key by. The serializer
     // then emits `\vexid{…}` on the next save, anchoring the id in the
     // .tex itself.
-    uuid: opts.uuid || generateShortId(),
+    uuid: opts.uuid || mintParseId(),
     kind: opts.kind,
     tag: opts.tag,
     label: opts.label,
@@ -3495,7 +3508,7 @@ function assembleExampleBody(
   if (itemNodes.length === 0) {
     itemNodes.push({
       type: "exampleItem",
-      attrs: { uuid: generateShortId(), tag: "", label: "", subLabel: "" },
+      attrs: { uuid: mintParseId(), tag: "", label: "", subLabel: "" },
       content: [{ type: "paragraph" }],
     });
   }
@@ -3584,7 +3597,7 @@ function buildExampleItemFromText(
     // sub-example number and must survive the parse→serialize cycle. Only
     // carry it when present so an override-free item's attrs stay identical.
     attrs: {
-      uuid: uuid || generateShortId(),
+      uuid: uuid || mintParseId(),
       tag,
       label,
       subLabel: "",
@@ -3617,7 +3630,7 @@ function buildExampleItemListFromBody(body: string): JSONContent {
   if (itemNodes.length === 0) {
     itemNodes.push({
       type: "exampleItem",
-      attrs: { uuid: generateShortId(), tag: "", label: "", subLabel: "" },
+      attrs: { uuid: mintParseId(), tag: "", label: "", subLabel: "" },
       content: [{ type: "paragraph" }],
     });
   }
