@@ -1,9 +1,10 @@
 /**
  * Boundary-aware whole-word pattern builder (LHS-panel sweep · T6 · C26).
  *
- * Both the search query compiler (`search-sources.ts compileQuery`) and the
- * citekey-rewrite regex (`useCitations.ts updateBibKeyAndType`) historically
- * bracketed their token with a bare `\b` on each side:
+ * The search query compiler (`search-sources.ts compileQuery`, via
+ * `compileLiteral` below — every Search scope and the click-time
+ * `revalidateInBlock` copy) historically bracketed its token with a bare `\b`
+ * on each side (as did a since-retired citekey-rewrite regex):
  *
  *     `\b${escaped}\b`
  *
@@ -16,8 +17,8 @@
  *
  * The deep fix is to stop assuming a tidy word-char-bounded token: build the
  * boundary per-edge from the token's actual edge character. On a *word-char*
- * edge we keep the honest `\b` semantics via a `(?<!\w)` / `(?!\w)` lookaround
- * (identical match set to `\b`, but composable with the non-word case below). On
+ * edge we keep `\b` semantics via a negative lookaround on the Unicode WORD
+ * class (task 1202: `\b`'s own class is ASCII, so it mis-read `é`/`ö`). On
  * a *non-word* edge we instead assert that the token is not glued to a
  * continuation of the SAME token-character class — so `+foo` matches in `( +foo)`
  * but not inside `x+foo` or `++foo`, keeping whole-token semantics honest for
@@ -29,8 +30,15 @@
  * helper only adds the boundary guards.
  */
 
-/** Word char per JS `\w`: `[A-Za-z0-9_]`. */
-const WORD_CHAR = /[A-Za-z0-9_]/;
+/**
+ * The WORD class, Unicode-aware (task 1202): letters, combining marks, numbers
+ * and `_`. JS's own `\w` / `\b` are ASCII-only, so they call `é` / `ö` a
+ * NON-word char — "café" never matched whole and "del" matched inside
+ * "Gödel". Every pattern built here therefore needs the `u` flag; callers get
+ * it from `wholeWordFlags` / `compileLiteral`, never by remembering it.
+ */
+const WORD_CLASS = "\\p{L}\\p{M}\\p{N}_";
+const WORD_CHAR = new RegExp(`[${WORD_CLASS}]`, "u");
 
 /**
  * The "token continuation" class for a non-word edge: word chars plus the
@@ -38,19 +46,20 @@ const WORD_CHAR = /[A-Za-z0-9_]/;
  * (`: - + . / & @`). A non-word edge is a boundary iff the adjacent char is NOT
  * one of these — i.e. the token isn't part of a longer run of the same class.
  */
-const TOKEN_CONTINUATION = "A-Za-z0-9_:+./&@-";
+const TOKEN_CONTINUATION = `${WORD_CLASS}:+./&@-`;
 
 /**
  * Recover the first/last *literal* character of an escaped pattern. The regex
  * escaper (`/[.*+?^${}()|[\]\\]/g → "\\$&"`) prefixes a backslash before special
  * chars, so the escaped string's edge may be a `\` followed by the real char.
- * We look past a leading/trailing backslash to read the true edge character.
+ * We look past a leading backslash to read the true edge character. Both read
+ * a whole CODE POINT, so an astral letter (𝑥) is classed as the letter it is.
  */
 function leadingLiteralChar(escaped: string): string {
   if (escaped.length === 0) return "";
   // A backslash-escaped pair: the literal char is the second of the pair.
-  if (escaped[0] === "\\" && escaped.length >= 2) return escaped[1];
-  return escaped[0];
+  const at = escaped[0] === "\\" && escaped.length >= 2 ? 1 : 0;
+  return String.fromCodePoint(escaped.codePointAt(at)!);
 }
 
 function trailingLiteralChar(escaped: string): string {
@@ -58,20 +67,22 @@ function trailingLiteralChar(escaped: string): string {
   // A trailing backslash-escaped pair: the literal char is the last char, and
   // the char before it is the escaping backslash. (A lone trailing backslash
   // can't occur in a valid escaped pattern, so this is safe.)
-  const last = escaped[escaped.length - 1];
-  return last;
+  const chars = Array.from(escaped.slice(-2));
+  return chars[chars.length - 1];
 }
 
 /**
  * Build a whole-word/whole-token regex pattern around an already-escaped token.
  *
- * - Word-char edge  → `(?<!\w)` / `(?!\w)` guard (the honest `\b` equivalent).
+ * - Word-char edge  → `(?<![<word>])` / `(?![<word>])` guard (`\b`, made
+ *                     Unicode-honest).
  * - Non-word edge   → `(?<![<class>])` / `(?![<class>])` guard against the token
  *                     continuation class, so punctuated tokens (`+foo`, `foo!`,
  *                     `a:b`) match as whole tokens.
  *
  * @param escaped a regex-escaped token (the output of `escapeRegExp(token)`).
- * @returns a pattern string ready to drop into `new RegExp(pattern, flags)`.
+ * @returns a pattern string for `new RegExp(pattern, wholeWordFlags(…))` —
+ *          it REQUIRES the `u` flag.
  */
 export function wholeWordPattern(escaped: string): string {
   if (escaped.length === 0) return escaped;
@@ -80,10 +91,10 @@ export function wholeWordPattern(escaped: string): string {
   const lastChar = trailingLiteralChar(escaped);
 
   const leftGuard = WORD_CHAR.test(firstChar)
-    ? "(?<!\\w)"
+    ? `(?<![${WORD_CLASS}])`
     : `(?<![${TOKEN_CONTINUATION}])`;
   const rightGuard = WORD_CHAR.test(lastChar)
-    ? "(?!\\w)"
+    ? `(?![${WORD_CLASS}])`
     : `(?![${TOKEN_CONTINUATION}])`;
 
   return `${leftGuard}${escaped}${rightGuard}`;
@@ -102,4 +113,32 @@ export function escapeRegExp(raw: string): string {
 /** Raw token → whole-word pattern (escape + boundary guards). */
 export function wholeWordPatternFor(raw: string): string {
   return wholeWordPattern(escapeRegExp(raw));
+}
+
+/**
+ * The flags every pattern from this module compiles with: global, Unicode
+ * (required by the `\p{…}` guards — and it makes case-folding Unicode-honest,
+ * so `É` finds `é`), and `i` unless case-sensitive.
+ */
+export function wholeWordFlags(caseSensitive: boolean): "gu" | "giu" {
+  return caseSensitive ? "gu" : "giu";
+}
+
+/**
+ * Raw literal → compiled global RegExp, optionally whole-word. The ONE door
+ * for "find this literal text": the plain and whole-word modes share one
+ * escape and one flag set, so a caller cannot pair a `\p{…}` guard with a
+ * non-`u` regex. Returns null for an empty or uncompilable query.
+ */
+export function compileLiteral(
+  raw: string,
+  opts: { caseSensitive: boolean; wholeWord: boolean },
+): RegExp | null {
+  if (!raw) return null;
+  const pattern = opts.wholeWord ? wholeWordPatternFor(raw) : escapeRegExp(raw);
+  try {
+    return new RegExp(pattern, wholeWordFlags(opts.caseSensitive));
+  } catch {
+    return null;
+  }
 }
