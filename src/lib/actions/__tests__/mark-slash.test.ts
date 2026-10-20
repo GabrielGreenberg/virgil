@@ -30,6 +30,7 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import {
+  COMMAND_MAP,
   commitSlashCommand,
   VIRGIL_COMMAND_NAMES,
 } from "@/lib/tiptap/commands";
@@ -173,13 +174,16 @@ describe("mark slash commands — commit (via the bridge)", () => {
     editor.destroy();
   });
 
-  it("`\\textsc` with a selection marks the selection", () => {
+  it("`\\textsc`'s action marks a selection; the slash DOOR refuses one (task 1196)", () => {
     const editor = mountEditor("Alpha beta");
     publishHandle(editor);
     editor.commands.setTextSelection({ from: 1, to: 6 });
-    // commit over an empty range (nothing typed to delete) keeps the selection
-    const ran = commitSlashCommand(editor.view, "textsc", 1, 1);
-    expect(ran).toBe(true);
+    // The commit door runs on a collapsed caret at the typed name's end only —
+    // over a range it would delete-then-consume the user's selection.
+    expect(commitSlashCommand(editor.view, "textsc", 1, 1)).toBe(false);
+    expect(save(editor)).not.toContain("\\textsc{");
+    // The ACTION (below the door) still marks a selection when run directly.
+    COMMAND_MAP.get("textsc")!.action(editor.view, "\\textsc");
     expect(save(editor)).toContain("\\textsc{Alpha} beta");
     editor.destroy();
   });

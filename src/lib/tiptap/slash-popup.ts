@@ -142,6 +142,11 @@ function reSync(
   mappedSlashPos: number,
 ): PluginState {
   const newDoc = newState.doc;
+  // Task 1196: a RANGE selection closes the popup — the commit door refuses
+  // one, and a popup on screen offering a commit the door will refuse is the
+  // offer/commit split task 398 closed. Closed, the user's Enter is an ordinary
+  // Enter over their selection.
+  if (!newState.selection.empty) return CLOSED;
   const cursor = newState.selection.from;
   if (mappedSlashPos < 0 || mappedSlashPos >= newDoc.content.size) return CLOSED;
   if (cursor < mappedSlashPos) return CLOSED;
