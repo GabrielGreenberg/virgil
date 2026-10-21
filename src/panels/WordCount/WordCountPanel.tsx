@@ -40,7 +40,7 @@ export default function WordCountPanel({
 }: WordCountPanelProps) {
   const { config, setInclude } = useWordCountConfig();
 
-  const visible = (cat: Category) => config.include[cat] ?? true;
+  const visible = (cat: Category) => config.include[cat];
   const toggleCat = (cat: Category) => setInclude(cat, !visible(cat));
 
   // Words and chars come from the ONE filter door in word-count-core, which

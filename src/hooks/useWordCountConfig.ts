@@ -6,9 +6,12 @@
  * localStorage so the user's choices follow them across panels.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { useStorageKeySync } from "@/lib/cross-window-storage";
-import type { Category } from "@/lib/word-count-core";
+import { useSyncExternalStore } from "react";
+import {
+  subscribeToStorageKey,
+  writeStorageIfChanged,
+} from "@/lib/cross-window-storage";
+import { ALL_CATEGORIES, type Category } from "@/lib/word-count-core";
 
 // Category vocabulary lives in the shared word-count core (the SSOT walker);
 // re-exported here so existing panel imports keep working.
@@ -32,77 +35,93 @@ export const DEFAULT_WORD_COUNT_CONFIG: WordCountConfig = {
 };
 
 const STORAGE_KEY = "virgil-wordcount-config";
-const CHANGE_EVENT = "virgil-wordcount-config-change";
 
+/**
+ * Read the stored config through ONE parse path (hydrate AND sync).
+ *
+ * Every category comes back a real boolean: a stored key that is not `true`
+ * (`false`, `null`, a string…) reads as OFF, and only an ABSENT key takes the
+ * default. That is the same "truthy ⇒ counted" spelling `sumIncluded` in
+ * word-count-core applies, so a checkbox can never show ON for a category the
+ * total excludes (task 1224).
+ */
 function loadConfig(): WordCountConfig {
   if (typeof window === "undefined") return DEFAULT_WORD_COUNT_CONFIG;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_WORD_COUNT_CONFIG;
-    const parsed = JSON.parse(raw) as Partial<WordCountConfig>;
-    // Merge with defaults so newly added categories pick up sane defaults.
-    return {
-      include: {
-        ...DEFAULT_WORD_COUNT_CONFIG.include,
-        ...(parsed?.include ?? {}),
-      },
-    };
+    const parsed = JSON.parse(raw) as { include?: Record<string, unknown> } | null;
+    const stored = parsed?.include;
+    if (!stored || typeof stored !== "object") return DEFAULT_WORD_COUNT_CONFIG;
+    const include = { ...DEFAULT_WORD_COUNT_CONFIG.include };
+    for (const cat of ALL_CATEGORIES) {
+      if (cat in stored) include[cat] = stored[cat] === true;
+    }
+    return { include };
   } catch {
     return DEFAULT_WORD_COUNT_CONFIG;
   }
 }
 
+/*
+ * ONE module-level store, N readers (task 1224). The Word Count, Outline and
+ * Cutter panels each mount `useWordCountConfig`; they used to hold N private
+ * copies kept in step by a same-window CustomEvent dispatched from INSIDE a
+ * setState updater — a render-phase side effect that could set state in a
+ * sibling component mid-render. Now the value lives here, a write updates it
+ * once, persists once and notifies every reader; React reads it through
+ * `useSyncExternalStore`. The cross-window leg rides `subscribeToStorageKey`
+ * and re-reads through the same `loadConfig`.
+ */
+let snapshot: WordCountConfig | null = null;
+const listeners = new Set<() => void>();
+let offStorage: (() => void) | null = null;
+
+function getSnapshot(): WordCountConfig {
+  return (snapshot ??= loadConfig());
+}
+
+function getServerSnapshot(): WordCountConfig {
+  return DEFAULT_WORD_COUNT_CONFIG;
+}
+
+function notify(): void {
+  for (const l of [...listeners]) l();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  offStorage ??= subscribeToStorageKey(STORAGE_KEY, () => {
+    snapshot = loadConfig();
+    notify();
+  });
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size > 0) return;
+    offStorage?.();
+    offStorage = null;
+    // Nobody is listening for peer writes any more, so the cache may go
+    // stale — drop it; the next reader re-hydrates from storage.
+    snapshot = null;
+  };
+}
+
+/** Set one category's include flag: update, persist, notify — in that order, outside React. */
+function setInclude(cat: Category, value: boolean): void {
+  const prev = getSnapshot();
+  if (prev.include[cat] === value) return;
+  const next: WordCountConfig = { include: { ...prev.include, [cat]: value } };
+  snapshot = next;
+  // Idempotent write: no storage event for peers when nothing changed on disk.
+  writeStorageIfChanged(STORAGE_KEY, JSON.stringify(next));
+  notify();
+}
+
 /**
- * Subscribe to config changes from any hook instance — multiple panels can
- * mount this hook simultaneously and they all need to stay in sync without
- * lifting state to a parent.
+ * The shared word-count config. Every caller reads the same snapshot, so the
+ * panels stay in sync without lifting state to a parent.
  */
 export function useWordCountConfig() {
-  const [config, setConfig] = useState<WordCountConfig>(() => loadConfig());
-
-  useEffect(() => {
-    const onChange = (e: Event) => {
-      const detail = (e as CustomEvent<WordCountConfig>).detail;
-      if (detail) setConfig(detail);
-    };
-    window.addEventListener(CHANGE_EVENT, onChange as EventListener);
-    return () => window.removeEventListener(CHANGE_EVENT, onChange as EventListener);
-  }, []);
-
-  // The `CHANGE_EVENT` above is a SAME-window bus — it keeps sibling hook
-  // instances (Word Count panel + Outline panel) in step, but a second app
-  // window never hears it. Without the cross-window channel that window's
-  // config stays on its load-time snapshot and its next `setInclude` writes
-  // the whole `include` map over the peer's category toggles (task 179,
-  // following 177). Re-read through the SAME `loadConfig` merge path; the
-  // write lives in the setters, so a sync can't echo back out.
-  useStorageKeySync(STORAGE_KEY, () => setConfig(loadConfig()));
-
-  const setInclude = useCallback((cat: Category, value: boolean) => {
-    setConfig((prev) => {
-      const next: WordCountConfig = {
-        ...prev,
-        include: { ...prev.include, [cat]: value },
-      };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore — quota / private mode
-      }
-      window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: next }));
-      return next;
-    });
-  }, []);
-
-  const reset = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_WORD_COUNT_CONFIG));
-    } catch {}
-    window.dispatchEvent(
-      new CustomEvent(CHANGE_EVENT, { detail: DEFAULT_WORD_COUNT_CONFIG }),
-    );
-    setConfig(DEFAULT_WORD_COUNT_CONFIG);
-  }, []);
-
-  return { config, setInclude, reset };
+  const config = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return { config, setInclude };
 }

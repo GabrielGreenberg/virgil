@@ -184,11 +184,6 @@ const LEDGER: Record<string, Row> = {
     events: ["window.SIDECAR_CHANGED_EVENT"],
     why: "sidecar-changed carries its docId + filename (the one external re-read every sidecar hook shares, task 1078)",
   },
-  "hooks/useWordCountConfig.ts": {
-    scope: "shared-state",
-    events: ["window.CHANGE_EVENT"],
-    why: "one app-wide word-count preference, mirrored by every subscriber",
-  },
   "lib/doc-products/pipeline.ts": {
     scope: "doc",
     events: ["window.TEX_DELIMITERS_CHANGED_EVENT"],
