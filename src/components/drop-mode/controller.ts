@@ -34,6 +34,7 @@
 import { attrSelector } from "@/lib/attr-selector";
 import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { pickActiveByEditor } from "@/lib/active-editor-probe";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
@@ -379,14 +380,18 @@ export function beginDropSession(opts: {
       ? resolveSessionBlockPayload(spec, opts.cardKey, ctx)
       : NO_BLOCK_PAYLOAD,
     // Where the payload lives right now (task 480), on the same edge and for
-    // the same reason: it walks the document, and nothing edits the document
-    // under a hold gesture, so the answer is a per-SESSION fact. The candidate
-    // filter reads it so the source's OWN gap is never offered a bar.
+    // the same reason: it walks the document, so it must never run per move.
+    // The candidate filter reads it so the source's OWN gap is never offered a
+    // bar. It is POSITIONAL, so it is stamped with the doc it was measured
+    // against (below) and re-resolved at commit if a concurrent writer moved
+    // that doc under the held pointer (task 1217).
     sourceRange: resolveSessionSourceRange(spec, opts.cardKey, ctx),
     origin: opts.origin,
     placement: null,
     inPlace,
   };
+  sourceRangeDoc = docOf(session.sourceRange?.editor);
+  placementDoc = null;
   installListeners({ attachMouseUp: opts.externalCommit !== true });
   // A drop session is a CONTENT layout gesture: publish the begin edge so
   // every geometry follower on the LayoutGestureBus parks for its duration
@@ -411,6 +416,8 @@ export function endDropSession() {
   const key = session.cardKey;
   const inPlace = session.inPlace;
   session = null;
+  placementDoc = null;
+  sourceRangeDoc = null;
   // Idempotent (no-op if commit entry already ended it). Every cancel path
   // funnels here, so a session can never outlive its bus gesture — a wedged
   // content gesture would hold every parked geometry follower app-wide.
@@ -440,6 +447,63 @@ export function cancelDropSession() {
 // of events inside one frame resolves at the LAST position by construction.
 let lastPointerX = 0;
 let lastPointerY = 0;
+
+// ── The documents the session's POSITIONS were measured against (task 1217) ──
+//
+// A `between-blocks` `insertPos`, an `inline-cursor` `pos` and the session's
+// `sourceRange` are raw ProseMirror positions — SNAPSHOTS of the doc the
+// hit-test (or `beginDropSession`) read. A concurrent writer between the last
+// move and the release — an AI sidecar writeback, the external-change reload, a
+// code-pane re-parse — moves that doc under a still pointer, and a commit at the
+// old offset lands content one block early/late, inside a different block, or
+// throws. The addressing law ("the affordance may ask the snapshot; the WRITE
+// asks the live doc") is honoured by stamping each positional fact with its doc
+// (PM docs are immutable, so identity compares exactly) and, at commit, re-asking
+// the ONE resolution door the affordance used when a stamp no longer matches.
+// `paragraph-side` placements are uuid-keyed and need no stamp.
+let placementDoc: PMNode | null = null;
+let sourceRangeDoc: PMNode | null = null;
+
+function docOf(editor: Editor | null | undefined): PMNode | null {
+  return editor?.state?.doc ?? null;
+}
+
+/** Is this placement still addressing the document it was measured against? */
+function placementIsLive(placement: Placement, measuredAgainst: PMNode | null): boolean {
+  if (placement.kind === "paragraph-side") return true; // uuid-keyed
+  return docOf(placement.editor) === measuredAgainst;
+}
+
+/**
+ * The session's placement, re-resolved against the LIVE document if any
+ * positional fact it rests on has gone stale (task 1217). Re-runs the very
+ * move pass the affordance ran — same pointer, same origin dead-zone rule, same
+ * `hitTest` — so hover ≡ commit holds for the doc the write will land in.
+ * Returns null when the live doc offers no landing at the pointer (the caller
+ * cancels).
+ */
+function livePlacement(): Placement | null {
+  if (!session) return null;
+  const current = session.placement;
+  if (!current) return null;
+  const sourceStale =
+    session.sourceRange !== null &&
+    docOf(session.sourceRange.editor) !== sourceRangeDoc;
+  if (!sourceStale && placementIsLive(current, placementDoc)) return current;
+  if (sourceStale) {
+    // The self-drop filter reads it: a stale range could refuse the gap the
+    // source now abuts, or admit its own (moved) gap.
+    const sourceRange = resolveSessionSourceRange(
+      session.spec,
+      session.cardKey,
+      session.ctx,
+    );
+    session = { ...session, sourceRange };
+    sourceRangeDoc = docOf(sourceRange?.editor);
+  }
+  runMovePass();
+  return session?.placement ?? null;
+}
 /** Ask for a pass — never run one inline. Auto-scroll's frame writes
  *  `scrollTop` and then calls this, so the WRITE and the next READ land in
  *  different frames. */
@@ -608,6 +672,7 @@ function runMovePass() {
   if (
     withinOriginDeadZone(session.origin, lastPointerX, lastPointerY)
   ) {
+    placementDoc = null;
     updatePlacement(null);
     return;
   }
@@ -622,6 +687,9 @@ function runMovePass() {
     session.blockPayload,
     session.sourceRange,
   );
+  // Stamped even when `updatePlacement` bails on equality: the hit-test just
+  // re-asked THIS doc, so an equal position is a fresh one.
+  placementDoc = docOf(placement?.editor);
   updatePlacement(placement);
 }
 
@@ -697,7 +765,9 @@ export async function commitDropSession(): Promise<void> {
   // which can have changed under a long drag (a background pane mounting, the
   // user tabbing away) and would apply the drop against a different document.
   const ctx = s.ctx;
-  let placement = s.placement;
+  // The WRITE asks the live doc (task 1217): a positional placement measured
+  // against a doc that has since moved is re-resolved at the release point.
+  let placement = livePlacement();
   if (!placement) {
     cancelDropSession();
     return;
@@ -718,6 +788,7 @@ export async function commitDropSession(): Promise<void> {
     }
     placement = { ...placement, paragraphId: minted };
   }
+  const resolvedAgainst = docOf(placement.editor);
   const decision = s.spec.classifyDrop(placement, s.cardKey, ctx);
   if (decision.kind === "no-op") {
     cancelDropSession();
@@ -747,6 +818,13 @@ export async function commitDropSession(): Promise<void> {
     // late `true` never applies against a torn-down ctx, and a late `false`
     // never ends a session that is not its own.
     if (!session || sessionSerial !== serial) return;
+    // The dialog is a long async gap and the pointer has since left the
+    // landing, so a positional placement whose doc moved meanwhile cannot be
+    // re-asked — it is refused rather than written at a stale offset.
+    if (ok && !placementIsLive(placement, resolvedAgainst)) {
+      endDropSession();
+      return;
+    }
     if (ok) {
       finishApply(s.spec, placement, s.cardKey, ctx);
     } else {

@@ -223,7 +223,9 @@ export function withinOriginDeadZone(
  *
  * It walks the document, so it must never run per pointer event; and it cannot
  * be resolved lazily inside the hit-test, because the answer is a per-SESSION
- * fact (nothing edits the document during a hold gesture) and a per-frame walk
+ * fact (the user does not edit the document during a hold gesture; a concurrent
+ * writer that does is caught by the controller's doc stamp and re-resolved at
+ * commit — task 1217) and a per-frame walk
  * is exactly the cost the content-drag law forbids (`AGENTS.md`, "The content
  * half").
  *

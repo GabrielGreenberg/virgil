@@ -304,3 +304,24 @@ polices is the hole, not the coverage; read with strings KEPT.
 
 CI: `mode-a-anchor-shape-census.test.ts`, `resolve-card-anchor.test.ts`,
 `migrate-card.test.ts`.
+
+## The drop half (task 1217) — a drag's last hit-test is a SNAPSHOT
+
+A drop session's `between-blocks` `insertPos`, `inline-cursor` `pos` and its
+session `sourceRange` are raw ProseMirror positions recorded by the LAST move
+pass (or at `beginDropSession`). A concurrent writer between that pass and the
+release — an AI sidecar writeback, the external-change reload, a code-pane
+re-parse — moves the doc under a still pointer, and the commit used to write at
+the old offset (one block early/late, inside another block, or a throw that
+`finishApply` swallowed as "not landed"). The controller now STAMPS each
+positional fact with the doc it was measured against (`placementDoc`,
+`sourceRangeDoc` — PM docs are immutable, so identity compares exactly) and,
+in `commitDropSession`, `livePlacement()` re-resolves a stale `sourceRange` and
+re-runs the ONE move pass at the release point (same pointer, same origin
+dead-zone, same `hitTest`), so hover ≡ commit holds against the doc the write
+lands in; a null answer cancels. `paragraph-side` placements are uuid-keyed and
+exempt. Across the confirm dialog's long gap the pointer has left the landing,
+so a positional placement whose doc moved is REFUSED, never re-asked.
+
+CI: `commit-live-placement.test.ts` (every leg against a MOVED doc, plus
+unmoved-doc controls).
