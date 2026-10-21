@@ -283,12 +283,22 @@ describe("task 032 consumer wiring", () => {
     expect(css).toContain(`--float-z-base: ${FLOAT_Z_BASE};`);
     // No float-band rule re-spells the base as a bare literal.
     expect(css).not.toMatch(new RegExp(`z-index:\\s*${FLOAT_Z_BASE};`));
-    for (const sel of [".lifted-text-overlay {", ".lifted-text-overlay__header {", ".inline-atom-ghost {"]) {
+    for (const sel of [".lifted-text-overlay {", ".lifted-text-overlay__header {"]) {
       const at = css.indexOf(sel);
       expect(at, sel).toBeGreaterThan(-1);
       const body = css.slice(at, css.indexOf("}", at));
       expect(body, sel).toContain("z-index: var(--float-z-base);");
     }
+  });
+
+  it("the inline-atom ghost reads --drag-ghost-z, which mirrors DRAG_GHOST_Z (task 1218)", () => {
+    const css = readFileSync(path.join(SRC, "app/globals.css"), "utf8");
+    // A cursor-following drag ghost, not a float-band card: it must clear every
+    // popped card (FLOAT_Z_MAX) and stay under the drop bar.
+    expect(css).toContain(`--drag-ghost-z: ${DRAG_GHOST_Z};`);
+    const at = css.indexOf(".inline-atom-ghost {");
+    expect(at).toBeGreaterThan(-1);
+    expect(css.slice(at, css.indexOf("}", at))).toContain("z-index: var(--drag-ghost-z);");
   });
 
   it("the .hint-bubble rule reads --hint-z, which mirrors HINT_Z (CSS can't import TS; task 793)", () => {

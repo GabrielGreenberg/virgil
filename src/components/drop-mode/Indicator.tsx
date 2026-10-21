@@ -55,7 +55,8 @@ export function DropModeIndicator() {
         pointerEvents: "none",
         zIndex: DROP_INDICATOR_Z,
         background: "var(--insertion-bar)",
-        borderRadius: 1,
+        // No inline radius (task 1218): each shape's rounding is stated in
+        // globals.css (`.dropmode-bar-*`), where an inline value would beat it.
       }}
     />,
     document.body,
