@@ -2171,11 +2171,14 @@ dialogs had done exactly that, in four class strings. `<Field label="Name">
 | `layout` | `stack` (default for `section`) · `inline` (default for `row`) | Label above vs. beside the control. |
 | `control` | `native` (default) · `group` | `group` when the control is not a labelable element (CodeMirror, `FontPicker`, `SizeStepper`): the label renders as text and the widget names itself with `aria-labelledby={labelId}`. |
 
-A **single-choice set of cards** (NewDocumentModal's document type) is a
-radio group, not a column of buttons: `role="radiogroup"` labelled by its
-`Field`, each card `role="radio"` + `aria-checked`, one tab stop (roving
-`tabIndex`), arrow keys move choice and focus together. Selection must
-never be signalled by colour alone.
+A **single-choice set of cards or swatches** (NewDocumentModal's document
+type, the collaborator identity colours) is a radio group, not a row of
+buttons: `role="radiogroup"` labelled by its `Field`, each option
+`role="radio"` + `aria-checked`, one tab stop (roving `tabIndex`), arrow keys
+move choice and focus together. The contract is ONE hook,
+`useRadioGroup` (`src/hooks/useRadioGroup.ts`, task 1216) — spread its
+`groupProps` / `radioProps(i)`; never hand-roll the key handler. Selection
+must never be signalled by colour (or a border) alone.
 
 **Intended exceptions, so the next audit doesn't re-file them.** A
 *chromeless* field is a different control and stays hand-rolled: a bare
