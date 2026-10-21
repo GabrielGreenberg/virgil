@@ -22,7 +22,11 @@ import {
 // from the engine's SSOT, never re-derived (docs/agents/laws/pane-drag-stability.md "Pane-drag stability";
 // task 185). A bespoke gesture buys a different SHAPE, not an exemption.
 import { isMissedRelease, isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
-import { onLayoutGestureSetChange } from "@/lib/pane-resize";
+import {
+  onLayoutGestureSetChange,
+  parkDuringLayoutGesture,
+  type LayoutGesturePark,
+} from "@/lib/pane-resize";
 import {
   isOverStackIcon,
   isHeaderOverStackIcon,
@@ -31,7 +35,7 @@ import {
 } from "@/lib/stack/stack-drop-target";
 import { canCaptureToStack } from "@/floats/stack-capture";
 import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/drag-blocklist";
-import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import { useIsVisible, usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 import { paneDockSlot } from "@/components/editor-layout/pane-dom";
 import {
@@ -101,12 +105,51 @@ interface MoveGeometry {
   dock: DockGeometry | null;
 }
 
+/** The viewport bounds a floating shell's top-left is held inside — the slice
+ *  of `MoveGeometry` that is about the VIEWPORT rather than the dock. */
+export interface FloatViewportBounds {
+  maxX: number;
+  maxY: number;
+  insetTop: number;
+}
+
+/** Strip of a shell that must stay on-screen horizontally, so its header can
+ *  always be grabbed back. */
+const FLOAT_REACHABLE_W = 60;
+
+/** Read the live viewport bounds. Edges only (a mount, a resize settle, a
+ *  gesture begin) — `getWindowInsetTopPx` is not a per-frame cost. */
+export function readFloatViewportBounds(): FloatViewportBounds {
+  return {
+    maxX: window.innerWidth - FLOAT_REACHABLE_W,
+    maxY: window.innerHeight - FLOAT_VIEWPORT_MARGIN,
+    insetTop: getWindowInsetTopPx(),
+  };
+}
+
+/**
+ * THE float placement clamp (task 1221) — one rule for every site that places
+ * a floating shell: the mount seed (a persisted rect restored into a smaller
+ * window, a spawn cascade walked past the edge), a re-seed from new props, the
+ * window-resize settle, and every frame of the move gesture. The header stays
+ * reachable: at least `FLOAT_REACHABLE_W` px of the shell remains inside the
+ * viewport horizontally, and its top sits between the OS-reserved strip and
+ * `FLOAT_VIEWPORT_MARGIN` above the bottom edge. Pure; identity-preserving
+ * when nothing moves, so callers can equality-bail on the result.
+ */
+export function clampFloatPos<P extends { x: number; y: number; width: number }>(
+  pos: P,
+  b: FloatViewportBounds,
+): P {
+  const x = Math.max(-pos.width + FLOAT_REACHABLE_W, Math.min(b.maxX, pos.x));
+  const y = Math.max(b.insetTop, Math.min(b.maxY, pos.y));
+  return x === pos.x && y === pos.y ? pos : { ...pos, x, y };
+}
+
 /** THE move gesture's geometry sweep. Gesture edges only — never per move. */
 function readMoveGeometry(needsDock: boolean): MoveGeometry {
   return {
-    maxX: window.innerWidth - 60,
-    maxY: window.innerHeight - 40,
-    insetTop: getWindowInsetTopPx(),
+    ...readFloatViewportBounds(),
     dock: needsDock ? readDockGeometry() : null,
   };
 }
@@ -336,11 +379,13 @@ function FloatingPanelInner({
   // Reader's toggles, the editor's the editor's. Empty outside a pane.
   const viewPrefRoot = useViewPrefProjection();
   const viewPrefAttrs = useViewPrefProjectionAttrs(viewPrefRoot);
-  const [pos, setPos] = useState({
-    x: initialX,
-    y: initialY,
-    width: initialWidth,
-    height: initialHeight,
+  // Seeded through the placement clamp (task 1221): a persisted rect saved on
+  // a wider display, or a spawn cascade stepped past the edge, must not mount
+  // the shell where its header can't be reached. Not written back — the
+  // clamped rect persists on the next real commit (move / resize).
+  const [pos, setPos] = useState(() => {
+    const seed = { x: initialX, y: initialY, width: initialWidth, height: initialHeight };
+    return typeof window === "undefined" ? seed : clampFloatPos(seed, readFloatViewportBounds());
   });
   const rootRef = useRef<HTMLDivElement>(null);
   // Drag state covers both move and resize gestures. While docked, only
@@ -512,8 +557,40 @@ function FloatingPanelInner({
     // but "unreachable today" is what a latent trap looks like — and the clear
     // is one ref write on a path that already re-renders.
     clearTranslateOnCommitRef.current = true;
-    setPos({ x: initialX, y: initialY, width: initialWidth, height: initialHeight });
+    setPos(
+      clampFloatPos(
+        { x: initialX, y: initialY, width: initialWidth, height: initialHeight },
+        readFloatViewportBounds(),
+      ),
+    );
   }, [initialX, initialY, initialWidth, initialHeight]);
+
+  // Re-clamp when the window shrinks under a floating shell (task 1221) —
+  // PARKED on the layout-gesture bus, so a live OS window drag settles ONCE on
+  // its end edge, while a one-shot resize (maximize toggle, display change)
+  // runs immediately. Pane-scoped: a float in a hidden keep-alive pane renders
+  // nothing and answers no resize; the arm on show catches up whatever resize
+  // happened while it was hidden. Equality-bailed through `clampFloatPos`'s
+  // identity, and skipped while this shell's own gesture is live (the
+  // gesture's snapshot owns the position until release). Not persisted: the
+  // next commit carries it.
+  const clampParkRef = useRef<LayoutGesturePark<[]> | null>(null);
+  useEffect(() => {
+    if (mode !== "floating" || !isVisible) return;
+    const park = parkDuringLayoutGesture(() => {
+      if (dragStateRef.current) return;
+      setPos((prev) => clampFloatPos(prev, readFloatViewportBounds()));
+    }, "float-viewport-clamp");
+    clampParkRef.current = park;
+    park.fire();
+    return () => {
+      clampParkRef.current = null;
+      park.dispose();
+    };
+  }, [mode, isVisible]);
+  usePaneScopedListener("window", "resize", () => clampParkRef.current?.fire(), {
+    enabled: mode === "floating",
+  });
 
   // Drop the imperative translate in the SAME commit that writes the new
   // left/top, so the float never paints once at "old pos + transform" and once
@@ -685,14 +762,14 @@ function FloatingPanelInner({
         // (`getWindowInsetTopPx` reads localStorage + the WCO titlebar rect,
         // which is not a 240 Hz cost), and the shell moves by transform rather
         // than by a React commit.
+        // The same clamp the mount and the resize settle use (task 1221); its
+        // top bound is the OS-reserved strip (WCO title bar) instead of 0, so
+        // a panel dragged to the top can't tuck under the window controls.
         const geom = geometry();
-        const nx = Math.max(
-          -latestPosRef.current.width + 60,
-          Math.min(geom.maxX, s.origX + dx),
+        const { x: nx, y: ny } = clampFloatPos(
+          { x: s.origX + dx, y: s.origY + dy, width: latestPosRef.current.width },
+          geom,
         );
-        // Clamp the top to the OS-reserved strip (WCO title bar) instead of 0,
-        // so a panel dragged to the top can't tuck under the window controls.
-        const ny = Math.max(geom.insetTop, Math.min(geom.maxY, s.origY + dy));
         liveMoveRef.current = { x: nx, y: ny };
         scheduleTranslate();
         // Stack-drop affordance: when a card/block float drags over the
