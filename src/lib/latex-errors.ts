@@ -41,13 +41,46 @@ export interface LatexError {
   /** Lint rule id or compile-pattern label. */
   ruleId?: string;
   /**
-   * The input file the diagnostic came from, when the log's `( ... )`
-   * file-nesting resolved one (e.g. `chapters/intro.tex` for a cross-file
-   * error). Undefined for the main file / when no file was open. Carried from
-   * `parseTexLog`; used so a cross-file error doesn't land on the wrong line of
-   * the main editor.
+   * The input file the diagnostic came from, when it is NOT the main file
+   * (e.g. `chapters/intro.tex` for a cross-file error).
+   *
+   * INVARIANT: `undefined` ⇔ the main file (or no file was open). The
+   * producer establishes it — `parseTexLog` drops the main file's own name,
+   * however the log spelled it (`./main.tex`, `/work/main.tex`) — so no
+   * consumer compares filenames. Lint records never carry it (they lint the
+   * main source). Read it through `isMainFileDiagnostic` / `mainFileLine`,
+   * never by hand: a consumer that maps `line` into the main source without
+   * asking lands a cross-file error on the wrong main-file line (task 1208).
    */
   file?: string;
+}
+
+/** Is this diagnostic about the file the editor shows? THE one predicate. */
+export function isMainFileDiagnostic(err: Pick<LatexError, "file">): boolean {
+  return err.file == null;
+}
+
+/**
+ * The diagnostic's line IN THE MAIN SOURCE, or 0 when it has none there — no
+ * line, or a line in another file. Every consumer that maps a diagnostic onto
+ * the main `.tex` (paragraph, snippet, code-view jump, dedup) reads this.
+ */
+export function mainFileLine(err: Pick<LatexError, "file" | "line">): number {
+  return isMainFileDiagnostic(err) && err.line > 0 ? err.line : 0;
+}
+
+/**
+ * Human location label: `line 42:3`, `chapters/intro.tex · line 42`, or
+ * `chapters/intro.tex` (cross-file, no line). Null when there is nothing to
+ * say (main file, no line).
+ */
+export function diagnosticLocationLabel(
+  err: Pick<LatexError, "file" | "line" | "column">,
+): string | null {
+  const at =
+    err.line > 0 ? `line ${err.line}${err.column ? `:${err.column}` : ""}` : null;
+  if (isMainFileDiagnostic(err)) return at;
+  return at ? `${err.file} · ${at}` : (err.file ?? null);
 }
 
 /**
@@ -64,14 +97,15 @@ export interface LatexError {
  * (`file == null`) is authoritative on the main file's line N — a cross-file
  * compile error at `chapters/intro.tex:12` must NOT suppress a legitimate
  * main-file lint on line 12. So the suppression set is built from main-file
- * compile lines only.
+ * compile lines only (`mainFileLine`; `file == null` ⇔ main by the producer's
+ * invariant — task 1208, which made it true of real logs).
  */
 export function mergeLatexErrors(
   lint: LatexError[],
   compile: LatexError[],
 ): LatexError[] {
   const compileLines = new Set(
-    compile.filter((e) => e.line > 0 && e.file == null).map((e) => e.line),
+    compile.map(mainFileLine).filter((line) => line > 0),
   );
   const keptLint = lint.filter((e) => e.line <= 0 || !compileLines.has(e.line));
   return [...keptLint, ...compile].sort(

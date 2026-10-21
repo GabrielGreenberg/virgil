@@ -8,7 +8,11 @@ import {
   compressedBodyStyle,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
+import {
+  diagnosticLocationLabel,
+  type LatexError,
+  type LatexErrorSeverity,
+} from "@/lib/latex-errors";
 import { ruleTitle } from "@/lib/latex-rules";
 import { canJumpToError, type ErrorJumpMode } from "./error-jump";
 import { iconHint } from "@/components/Hint";
@@ -123,6 +127,9 @@ export function ErrorCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const compressed = !expanded;
   const compressedLines = useCompressedLines();
+  // A cross-file diagnostic names its file — a bare "line 42" would read as
+  // a line of the main source (task 1208).
+  const location = diagnosticLocationLabel(err);
 
   // ONE jumpability answer per card, from the mount's declared semantics
   // (task 125) — used by BOTH the action (the body click below) and the
@@ -175,11 +182,8 @@ export function ErrorCard({
             <span className="mr-2" style={cardTitleStyle(theme)}>
               {title}
             </span>
-            {err.line > 0 && (
-              <span className="text-ink-muted mr-1">
-                line {err.line}
-                {err.column ? `:${err.column}` : ""} —
-              </span>
+            {location && (
+              <span className="text-ink-muted mr-1">{location} —</span>
             )}
             {err.message}
           </div>
@@ -206,13 +210,10 @@ export function ErrorCard({
           </span>
           <span>·</span>
           <span>{err.source === "lint" ? "lint" : "compile"}</span>
-          {err.line > 0 && (
+          {location && (
             <>
               <span>·</span>
-              <span>
-                line {err.line}
-                {err.column ? `:${err.column}` : ""}
-              </span>
+              <span data-error-location="">{location}</span>
             </>
           )}
           {err.ruleId && (

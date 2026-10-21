@@ -504,8 +504,10 @@ class CompileService {
       // abort card when we have output). On a later-pass failure keep the errors;
       // on a clean run keep only warnings.
       const diagnostics = hardFailure
-        ? parseTexLog(lastLog, lastPassStatus)
-        : parseTexLog(lastLog, 0).filter((d) => d.severity !== "error");
+        ? parseTexLog(lastLog, lastPassStatus, { mainFile: mainTexFilename })
+        : parseTexLog(lastLog, 0, { mainFile: mainTexFilename }).filter(
+            (d) => d.severity !== "error",
+          );
       // An offline miss makes even a produced PDF degraded (a package the doc
       // asked for was unavailable, so the output may be missing content).
       const degraded =
@@ -530,7 +532,9 @@ class CompileService {
       log: lastLog,
       ranPasses,
       bibtexStatus,
-      diagnostics: parseTexLog(lastLog, lastPassStatus || 1),
+      diagnostics: parseTexLog(lastLog, lastPassStatus || 1, {
+        mainFile: mainTexFilename,
+      }),
       offlineMisses: misses,
       downloadFailures: failures,
     };

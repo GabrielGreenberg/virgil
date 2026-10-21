@@ -26,7 +26,11 @@ import type { Editor } from "@tiptap/react";
 import { useLatexLint } from "@/hooks/useLatexLint";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
-import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
+import {
+  mainFileLine,
+  mergeLatexErrors,
+  type LatexError,
+} from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { resolveErrorHighlightRange } from "@/lib/error-highlight-range";
 import { getBus } from "@/lib/tiptap/doc-structure";
@@ -187,7 +191,10 @@ export function useDiagnostics({
     if (ranges.length === 0) return EMPTY_STRING_MAP;
     const m = new Map<string, string>();
     for (const err of allLatexErrors) {
-      const uuid = paragraphForLine(ranges, err.line);
+      // Only a main-file line maps into the main source (task 1208).
+      const line = mainFileLine(err);
+      if (line <= 0) continue;
+      const uuid = paragraphForLine(ranges, line);
       if (uuid) m.set(err.id, uuid);
     }
     return m.size === 0 ? EMPTY_STRING_MAP : m;
@@ -198,8 +205,9 @@ export function useDiagnostics({
     const lines = sourceText.split("\n");
     const m = new Map<string, string>();
     for (const err of allLatexErrors) {
-      if (err.line <= 0 || err.line > lines.length) continue;
-      const raw = lines[err.line - 1].trim();
+      const line = mainFileLine(err);
+      if (line <= 0 || line > lines.length) continue;
+      const raw = lines[line - 1].trim();
       if (!raw) continue;
       m.set(err.id, raw.length > 140 ? raw.slice(0, 140) + "…" : raw);
     }

@@ -52,7 +52,7 @@ import { isMultiDocKeepAliveOn } from "@/lib/multi-doc-keepalive-flag";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import { collabClaimsFor } from "@/cards/collab-broadcast";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
-import type { LatexError } from "@/lib/latex-errors";
+import { mainFileLine, type LatexError } from "@/lib/latex-errors";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import type { ErrorJump } from "@/panels/Errors";
 import { IconErrors } from "./editor-layout/panel-icons";
@@ -1469,7 +1469,10 @@ export default function EditorLayout() {
   // error line, and select the card (selection lives in EditorPane now).
   const codeJump = useCallback((err: LatexError) => {
     paneStateRef.current?.setSelectedErrorId?.(err.id);
-    codeEditorHandleRef.current?.scrollToLine?.(err.line, err.column);
+    // Gated upstream by `canJumpToError`; asked again here so no caller can
+    // scroll the main source to a line of ANOTHER file (task 1208).
+    const line = mainFileLine(err);
+    if (line > 0) codeEditorHandleRef.current?.scrollToLine?.(line, err.column);
   }, []);
   // The code sidebar's jump capability (task 125): handler + the semantics it
   // implements, bound here at the handler's own definition so the mount below

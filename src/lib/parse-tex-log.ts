@@ -19,7 +19,13 @@ import { LATEX_RULE } from "./latex-rules";
  *     when it enters an input file and `)` when it leaves. We keep a stack of
  *     open files and tag each diagnostic with the innermost one, so a
  *     cross-file error carries `file` instead of landing on the wrong line of
- *     the main editor.
+ *     the main editor. A diagnostic whose innermost file IS the main file gets
+ *     `file: undefined` — the `LatexError.file` invariant ("undefined ⇔ the
+ *     main file", read through `isMainFileDiagnostic`). The main file is the
+ *     caller's `mainFile` when given, else the log's OUTERMOST opened file
+ *     (pdfTeX opens the job file first, at depth 0, and every other input
+ *     nests inside it); compared by `sameLogFile`, so `./main.tex`,
+ *     `main.tex` and an absolute engine path (`/work/main.tex`) all agree.
  *
  *  3. **Tighter `!` detector.** Only the real pdfTeX error grammar counts
  *     (`! LaTeX Error:`, `! Undefined control sequence`, `! Package X Error:`,
@@ -149,9 +155,13 @@ function toLogicalLines(physical: string[]): string[] {
  * paths that look like source files (`.tex`/`.ltx`, or a relative `./`/`../`)
  * push onto the stack, so `(hyperref)`-style folds and `(1)` counters don't.
  */
-function trackFiles(logical: string[]): (string | undefined)[] {
+function trackFiles(logical: string[]): {
+  perLine: (string | undefined)[];
+  outermost: string | undefined;
+} {
   const stack: string[] = [];
   const perLine: (string | undefined)[] = [];
+  let outermost: string | undefined;
   for (const line of logical) {
     // The file in force when this line begins.
     perLine.push(stack.length ? stack[stack.length - 1] : undefined);
@@ -166,7 +176,9 @@ function trackFiles(logical: string[]): (string | undefined)[] {
           j++;
         }
         if (/\.(tex|ltx|sty|cls|def)$/i.test(tok) || /^\.{0,2}\//.test(tok)) {
-          stack.push(normalizeFile(tok));
+          const file = normalizeFile(tok);
+          if (outermost === undefined && stack.length === 0) outermost = file;
+          stack.push(file);
         } else {
           // A non-file paren group (e.g. "(1)" or "(hyperref)"): push a
           // sentinel so the matching ")" balances without changing the file.
@@ -177,7 +189,7 @@ function trackFiles(logical: string[]): (string | undefined)[] {
       }
     }
   }
-  return perLine;
+  return { perLine, outermost };
 }
 
 const SENTINEL = "\0non-file";
@@ -186,7 +198,36 @@ function normalizeFile(tok: string): string {
   return tok.replace(/^\.\//, "");
 }
 
-export function parseTexLog(log: string, status = 0): LatexError[] {
+/**
+ * Could a log spelling and a project-relative filename name the same file?
+ * Leading `./` is dropped on both; an ABSOLUTE spelling (the engine's work
+ * dir, e.g. `/work/main.tex`) matches a relative one ending `/<relative>`.
+ * Never a bare basename compare — `chapters/main.tex` is not `main.tex`. Used
+ * ONCE per log, to reconcile the job file with the caller's `mainFile`.
+ */
+export function sameLogFile(a: string, b: string): boolean {
+  const x = normalizeFile(a);
+  const y = normalizeFile(b);
+  if (x === y) return true;
+  if (x.startsWith("/") && !y.startsWith("/")) return x.endsWith(`/${y}`);
+  if (y.startsWith("/") && !x.startsWith("/")) return y.endsWith(`/${x}`);
+  return false;
+}
+
+export interface ParseTexLogOptions {
+  /**
+   * The job's main `.tex` filename (project-relative). A diagnostic whose
+   * innermost file is this one gets `file: undefined`. Omitted → the log's
+   * outermost opened file stands in for it.
+   */
+  mainFile?: string;
+}
+
+export function parseTexLog(
+  log: string,
+  status = 0,
+  options: ParseTexLogOptions = {},
+): LatexError[] {
   const out: LatexError[] = [];
   let ordinal = 0;
   const push = (
@@ -206,12 +247,22 @@ export function parseTexLog(log: string, status = 0): LatexError[] {
 
   const physical = (log ?? "").split(/\r?\n/);
   const lines = toLogicalLines(physical);
-  const fileAt = trackFiles(lines);
+  const { perLine: fileAt, outermost } = trackFiles(lines);
+  // The main file as the LOG spells it. The outermost file is the job file;
+  // the caller's `mainFile` only confirms (or, with no outermost, supplies)
+  // it. Thereafter an EXACT compare — never a suffix match per diagnostic, or
+  // `/work/chapters/main.tex` would pass for `main.tex`.
+  const mainSpelling =
+    outermost && (!options.mainFile || sameLogFile(outermost, options.mainFile))
+      ? outermost
+      : options.mainFile && normalizeFile(options.mainFile);
 
   for (let i = 0; i < lines.length; i++) {
     const ln = lines[i];
+    const open = fileAt[i] && fileAt[i] !== SENTINEL ? fileAt[i] : undefined;
+    // `undefined` ⇔ the main file (the `LatexError.file` invariant).
     const currentFile =
-      fileAt[i] && fileAt[i] !== SENTINEL ? fileAt[i] : undefined;
+      open && open !== mainSpelling ? open : undefined;
 
     if (ln.startsWith("!")) {
       const message = ln.replace(/^!+\s*/, "").trim();
