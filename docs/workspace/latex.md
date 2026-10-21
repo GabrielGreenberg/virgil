@@ -1,4 +1,4 @@
-<!-- last-verified: 3507fd9c 2026-10-20 -->
+<!-- last-verified: 2c905f37 2026-10-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -72,7 +72,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\\*`, `\\[2pt]`, `\\*[1ex]` | carried on `latexCommand` — Virgil doesn't model break spacing, so the whole token + its argument run rides the carrier (`matchLineBreakAt`, task 349 M4) |
 | `~` (tie) | **U+00A0** in the document, re-emitted as `~`. A tie is a `"glyph"` member of `CHAR_ESCAPE_TABLE`, so provenance lives as two distinct code points; a prose-typed ASCII `~` still emits `\textasciitilde{}` (task 349 M5) |
 | a BARE `{ … }` group | braces carried on `latexCommand`, content stays editable prose (`matchBraceGroupAt`, task 349 M6). An escaped `\{` is still a literal brace |
-| a mid-line `% …` tail | text under the **`latexCommentTail`** mark — *not typeset at all*, re-emitted verbatim (`matchCommentTailAt`, task 347). A comment line between two prose lines does NOT break the paragraph, because LaTeX doesn't break there. Since task 777 a tail is recognized at EVERY inline depth (inside `\emph{}` / `\section{}` / `\caption{}`, and in footnote / card bodies) — never escaped to a printed `\%`; brace matching is comment-aware through the lexer's one `findGroupClose` (verbatim-argument commands `\url`/`\href`/`\path`/`\nolinkurl` stay blind) Since task 1021 every round-tripping group/bracket read goes through the comment-aware `findGroupClose`, so a `}` inside a comment never closes a caption/argument. |
+| a mid-line `% …` tail | text under the **`latexCommentTail`** mark — *not typeset at all*, re-emitted verbatim (`matchCommentTailAt`, task 347). A comment line between two prose lines does NOT break the paragraph, because LaTeX doesn't break there. Since task 777 a tail is recognized at EVERY inline depth (inside `\emph{}` / `\section{}` / `\caption{}`, and in footnote / card bodies) — never escaped to a printed `\%`; brace matching is comment-aware through the lexer's one `findGroupClose` (verbatim-argument commands `\url`/`\href`/`\path`/`\nolinkurl` stay blind) Since task 1021 every round-tripping group/bracket read goes through the comment-aware `findGroupClose`, so a `}` inside a comment never closes a caption/argument. Since task 1203 the aware reading is the ONLY one (no blind fallback across a blank line; no close ⇒ the brace is a source byte), and every brace-depth reader steps over verbatim runs through one door, `matchVerbatimRunAt`. |
 | `\verb<d>…<d>` | text under the **`latexVerbatim`** mark (byte-literal — no typography, no escaping) |
 
 ## The opaque fallbacks
@@ -211,7 +211,10 @@ elsewhere. An expex
   left ambiguous in the prose buffer.
   With `{ typography }` set it also runs `typographyToLatex` after char-escaping,
   reverse-mapping directly-typed glyphs (é, –, —, …) back to canonical LaTeX
-  commands (the smart-quote precedent), suppressed inside code spans.
+  commands (the smart-quote precedent), suppressed inside code spans. Quote
+  smartening is PROSE-only (task 1204): a run wearing a raw-LaTeX mark
+  (`hasRawLatexMark`) is emitted byte-literal and a `\texttt` code span keeps its
+  straight `"`.
 - **Preamble:** with none supplied, `CLASSIC_PREAMBLE` is the default;
   `ensurePreambleRequirements` (`src/lib/latex-requirements.ts`, the old
   `ensureVirgilCommands`) tops up the seven `\v*` no-op shims (`SHIM_COMMAND_NAMES`:
@@ -258,7 +261,12 @@ block parser recognizes only it. `$$…$$` is the **editor-side** register (the
 `displayMath` node's DOM form + its `$$` input rule); it is normalized to `\[…\]`
 on save. So: a `.tex` on disk uses `\[…\]` for the BLOCK; a `$$…$$` that sits
 MID-paragraph is an `inlineMath` atom with `delim: "$$"` and stays `$$…$$` on disk
-(task 1070). Typed `$$x$$` reaches that rule because the inline `$` rule refuses an
+(task 1070). A line-start `\[…\]` written INSIDE a paragraph (no blank line on a
+side) records that adjacency (`joinPrev`/`joinNext`) and its delimiter padding
+(`padOpen`/`padClose`); ONE envelope, `emitDisplayMath` (`latex-lexer.ts`),
+re-emits exactly that, so a save no longer inserts `\par`s (task 1207). Math
+closers are found by `findMathClose`, which steps over `{…}` groups, so
+`$\text{for all $x_i$}$` is one formula. Typed `$$x$$` reaches that rule because the inline `$` rule refuses an
 opener preceded by `$` (task 744); a typed block at a textblock's start leaves no
 empty paragraph above it.
 

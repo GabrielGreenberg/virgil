@@ -1,4 +1,4 @@
-<!-- last-verified: 3507fd9c 2026-10-20 -->
+<!-- last-verified: 2c905f37 2026-10-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -128,6 +128,8 @@ missing block ids before serialization:
   fails the build instead of going write-only (tasks 343 / 346). `needsUuidWork`
   (the save-path gate that decides whether `assignUuids` runs at all) reads the
   same set.
+
+At PARSE time the ids a file declares are authoritative (task 1205): every parse-time mint goes through `mintParseId` ([src/lib/parse-id-scope.ts](../../src/lib/parse-id-scope.ts)), which draws against the `\v*id` / `%!v:` / `%!vtex:begin` ids pre-scanned once per parse by `withDeclaredIds` (`parseInlineContent` wraps `parseInlineInScope` in it) — a census forbids `generateShortId` in the parser modules.
 
 Companions: `extractSidecarData` writes paragraph titles + content fingerprints
 keyed by id into `virgil.json`; `recoverOrphanedUuids` re-attaches a sidecar id to

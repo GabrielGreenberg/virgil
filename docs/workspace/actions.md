@@ -1,4 +1,4 @@
-<!-- last-verified: 3507fd9c 2026-10-20 -->
+<!-- last-verified: 2c905f37 2026-10-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -159,14 +159,15 @@ now **17 used cells** (the former spacer was filled by the `\ref` cell in
 CHIP 7a; task 385 added the **tree** cell for `forest`). CHIP 6a/6b folded the FORMAT mark / list / blockquote / math /
 text-color / block-atom cells INTO the registry: each cell dispatches via
 `runGridAction(id)` → `VIRGIL_ACTION_REGISTRY[id].run(ctx)` (a view-only
-`ActionContext` off the live selection — the SAME SSOT the slash/typed surfaces
-reach). Every cell, `\tex` and `ex` included, now routes through
+`ActionContext` off the live selection, built by ONE constructor,
+`lightningContext` in [lightning-context.ts](../../src/lib/actions/lightning-context.ts),
+task 1199 — the SAME SSOT the slash/typed surfaces reach). Every cell, `\tex` and `ex` included, now routes through
 `runGridAction`.
 
 | Cell | Effect | Dispatch |
 |---|---|---|
 | Bold / Italic / Strike / Code / Small caps (task 808, row 4) | toggle inline mark | `runGridAction("bold")` … → registry row (`backbone: "tiptap-chain"`) |
-| BlockType | set paragraph/heading level | `<BlockTypeDropdown>` (`setBlockType`) |
+| BlockType | set paragraph/heading level | `<BlockTypeDropdown>` → `pickBlockType` (MenuBar.tsx) — every heading level commits through ONE door, `runHeadingLevel` (action-registry.ts, gated by `headingLevelVerdict`); rows greyed by `blockTypeOptions` / the ¶ cell by `blockTypeVerdict` ([block-type.ts](../../src/lib/actions/block-type.ts), task 1199) |
 | Bullet list / Numbered list / Blockquote | toggle block wrapper | `runGridAction("bullet-list")` … → registry row |
 | Example (`ex`) | wrap selection in an `exampleBlock` | `runGridAction("example")` → registry `exampleRun` (shared with slash `\ex`) |
 | Inline math (`$x$`) / Display math (`$$`) | wrap selection in math | `runGridAction("inline-math" / "display-math")` → registry row |
@@ -699,7 +700,7 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 
 ### Inherited TipTap defaults (enabled in StarterKit)
 
-`StarterKit.configure({…})` ([editor-extensions.ts:1661](../../src/lib/editor-extensions.ts))
+`VirgilStarterKit.configure({…})` ([editor-extensions.ts:1733](../../src/lib/editor-extensions.ts); StarterKit minus its markdown rules, task 1198)
 **disables** the block nodes (`heading`, `paragraph`, `bulletList`,
 `orderedList`, `listItem`, `blockquote`, `codeBlock`) and replaces each with a
 Virgil builder that `.extend()`s the base — so they keep the inherited keymaps

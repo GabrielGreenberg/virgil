@@ -1,4 +1,4 @@
-<!-- last-verified: 3507fd9c 2026-10-20 -->
+<!-- last-verified: 2c905f37 2026-10-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -45,6 +45,10 @@ action registry so both recognize the same pattern.
 - Inserting a footnote = splice `\vfid{<fresh-id>}\footnote{<body>}` into the
   paragraph **and** write the matching `footnotes.json` Card, atomically. Never do
   one without the other.
+- An UNMARKED `\footnote` / `\cite` / example is minted its id at parse time by
+  `mintParseId` ([parse-id-scope.ts](../../src/lib/parse-id-scope.ts), task 1205),
+  which never reuses an id the file declares elsewhere — so it cannot steal a
+  later marker's id (and its card) through first-occurrence dedup.
 
 ## citation
 
