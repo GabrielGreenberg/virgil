@@ -2168,7 +2168,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [deleteFootnoteUnbridged, footnotesHook.deleteFootnote],
   );
   const suggestionsHook = useSuggestions(docId);
-  const collab = useCollab(docId);
+  // Task 1213 — the pane's visibility gates the pen heartbeat: a keep-alive
+  // pane parked display:none lets a pen it holds go stale honestly.
+  const collab = useCollab(docId, { visible: useIsVisible() });
   const documentStyleHook = useDocumentStyle(docId);
   void documentStyleHook; // surfaces in DocStyleDropdown post-swap
   // Per-EditorPane recently-added tracker. Card-creation flows

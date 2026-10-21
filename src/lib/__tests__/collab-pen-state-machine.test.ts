@@ -17,6 +17,7 @@ import { COLLAB_TIMINGS, type CollabSidecar } from "@/lib/collab";
 const NOW = Date.parse("2026-10-08T12:00:00.000Z");
 const iso = (ms: number) => new Date(ms).toISOString();
 const ADA = { name: "Ada", color: "#112233" };
+const ADA_S = { name: "Ada", session: "s-ada" };
 
 function sidecar(holder: string | null, heartbeatAgoMs = 0): CollabSidecar {
   const hb = holder ? iso(NOW - heartbeatAgoMs) : null;
@@ -42,14 +43,15 @@ const STALE = COLLAB_TIMINGS.penStaleMs + 1000;
 
 describe("pen state machine — preconditions on the fresh read (task 1015)", () => {
   it("pass by a non-holder is refused (a partner's take-over survives)", () => {
-    expect(passPenMutator("Ada")(sidecar("Bob"))).toBeNull();
-    expect(passPenMutator("Ada")(sidecar(null))).toBeNull();
+    expect(passPenMutator(ADA_S)(sidecar("Bob"))).toBeNull();
+    expect(passPenMutator(ADA_S)(sidecar(null))).toBeNull();
   });
 
   it("pass by the holder clears the pen", () => {
-    const next = passPenMutator("Ada")(sidecar("Ada"));
+    const next = passPenMutator(ADA_S)(sidecar("Ada"));
     expect(next?.pen).toEqual({
       holder: null,
+      holderSession: null,
       since: null,
       lastHeartbeat: null,
       lastActivity: null,
@@ -58,13 +60,13 @@ describe("pen state machine — preconditions on the fresh read (task 1015)", ()
   });
 
   it("take on a pen a partner holds is refused — even a stale one", () => {
-    expect(takePenMutator(ADA, "take", clock)(sidecar("Bob"))).toBeNull();
-    expect(takePenMutator(ADA, "take", clock)(sidecar("Bob", STALE))).toBeNull();
+    expect(takePenMutator(ADA, "s-ada", "take", clock)(sidecar("Bob"))).toBeNull();
+    expect(takePenMutator(ADA, "s-ada", "take", clock)(sidecar("Bob", STALE))).toBeNull();
   });
 
   it("take on a free pen (or my own) succeeds and drops my request", () => {
     for (const holder of [null, "Ada"]) {
-      const next = takePenMutator(ADA, "take", clock)(sidecar(holder));
+      const next = takePenMutator(ADA, "s-ada", "take", clock)(sidecar(holder));
       expect(next?.pen.holder).toBe("Ada");
       expect(next?.pen.lastHeartbeat).toBe(iso(NOW));
       expect(next?.pen.requestedBy).toEqual([]);
@@ -73,11 +75,11 @@ describe("pen state machine — preconditions on the fresh read (task 1015)", ()
   });
 
   it("take-over on a FRESH partner pen is refused (they heartbeated since the poll)", () => {
-    expect(takePenMutator(ADA, "take-over", clock)(sidecar("Bob", 1000))).toBeNull();
+    expect(takePenMutator(ADA, "s-ada", "take-over", clock)(sidecar("Bob", 1000))).toBeNull();
   });
 
   it("take-over on a stale partner pen succeeds", () => {
-    const next = takePenMutator(ADA, "take-over", clock)(sidecar("Bob", STALE));
+    const next = takePenMutator(ADA, "s-ada", "take-over", clock)(sidecar("Bob", STALE));
     expect(next?.pen.holder).toBe("Ada");
   });
 
