@@ -63,25 +63,43 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
   // re-keyed `booktitle` as `journal`. Fixed at mount, like the form state.
   const [entry] = useState<BibEntry>(() => bibEditBase(shown));
   const [mode, setMode] = useState<Mode>("form");
+  // One seed at mount feeds the fields, the initial rows AND the id allocator,
+  // so they never diverge (task 128) and every key has ONE editor (task 1209).
+  // The raw→form re-seed adopts the same source.
+  const [seed] = useState<FormSeed>(() => seedFormState(entry.type, entry.fields));
   const [type, setType] = useState<string>(entry.type);
-  const [fields, setFields] = useState<Record<string, string>>({ ...entry.fields });
-  // One seed at mount feeds BOTH the initial rows and the id allocator, so the
-  // two never diverge (task 128). The raw→form re-seed adopts the same source.
-  const [extraRows, setExtraRows] = useState<ExtraRow[]>(() => seedExtraRows(entry).rows);
+  const [fields, setFields] = useState<Record<string, string>>(seed.fields);
+  const [extraRows, setExtraRows] = useState<ExtraRow[]>(seed.rows);
   const [raw, setRaw] = useState<string>(() => emitBibEntry(entry.type, entry.key, entry.fields));
   const [rawError, setRawError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleId = useId();
-  const nextId = useRef(seedExtraRows(entry).nextId);
+  const nextId = useRef(seed.nextId);
   // The keys the "Other fields" rows were seeded with. Such a key is the USER's
   // to keep or remove through its row — ✕ or a rename takes it out — so the
   // hidden-field carry-over in `consolidateFields` must never re-add it (task
   // 763: it did, which made ✕ on a custom field inert).
-  const seededExtraKeys = useRef(new Set(seedExtraRows(entry).rows.map((r) => r.key)));
+  const seededExtraKeys = useRef(new Set(seed.rows.map((r) => r.key)));
 
   const updateField = (k: string, v: string) =>
     setFields((cur) => ({ ...cur, [k]: v }));
+
+  // A type change re-decides which keys are form fields. A row whose key the
+  // new type SHOWS is handed to that form field (its value — what the user last
+  // saw — wins) and the row goes, so no key has two editors and no stale row
+  // overwrites the field on save (task 1209). The other direction — a form
+  // field the new type hides — is the carry-over in `consolidateFields` (763).
+  const changeType = (next: string) => {
+    const adopted = adoptRowsForType(next, fields, extraRows);
+    setType(next);
+    if (adopted.folded.length === 0) return;
+    setFields(adopted.fields);
+    setExtraRows(adopted.rows);
+    // A folded key is a form field's now, not a row's: switching to a type
+    // that hides it again is 763's carry-over, never a resurrected row.
+    for (const k of adopted.folded) seededExtraKeys.current.delete(k);
+  };
 
   const consolidateFields = (): Record<string, string> => {
     const out: Record<string, string> = {};
@@ -140,9 +158,9 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
         setRawError("Couldn't parse this BibTeX. Fix syntax or stay in raw mode.");
         return;
       }
+      const seeded = seedFormState(parsed.type, parsed.fields);
       setType(parsed.type);
-      setFields(parsed.fields);
-      const seeded = seedExtraRowsFromFields(parsed.type, parsed.fields);
+      setFields(seeded.fields);
       setExtraRows(seeded.rows);
       seededExtraKeys.current = new Set(seeded.rows.map((r) => r.key));
       // Resync the shared allocator so the next "+ Add field" can't collide
@@ -233,7 +251,7 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
           <FormView
             type={type}
             baseType={entry.type}
-            setType={setType}
+            setType={changeType}
             fields={fields}
             updateField={updateField}
             publicationFields={publicationFields}
@@ -695,26 +713,75 @@ function typeOptions(baseType: string, type: string): string[] {
 
 type ExtraRow = { id: number; key: string; value: string };
 
-/** The result of a seed: the rows PLUS the next free id. Both the mount seed
- *  and the raw→form re-seed must adopt `nextId` so the monotonic `addRow`
- *  allocator can never mint an id that collides with a re-seeded row (the
- *  two allocators share ONE counter — see task 128). */
-type ExtraSeed = { rows: ExtraRow[]; nextId: number };
+/** The result of a seed: the form's fields, the rows, PLUS the next free id.
+ *  Both the mount seed and the raw→form re-seed must adopt `nextId` so the
+ *  monotonic `addRow` allocator can never mint an id that collides with a
+ *  re-seeded row (the two allocators share ONE counter — see task 128). */
+type FormSeed = {
+  fields: Record<string, string>;
+  rows: ExtraRow[];
+  nextId: number;
+};
 
-function seedExtraRows(entry: BibEntry): ExtraSeed {
-  return seedExtraRowsFromFields(entry.type, entry.fields);
+/** The ONE ownership rule (task 1209): a key belongs to the form field the
+ *  type shows when it names one — case-insensitively, as BibTeX field names
+ *  are — and to an "Other fields" row otherwise. Never both. */
+function formKeyFor(known: Set<string>, key: string): string | null {
+  const lower = key.trim().toLowerCase();
+  return known.has(lower) ? lower : null;
 }
 
-function seedExtraRowsFromFields(
+/** Split an entry's fields between the form and the rows by `formKeyFor`. A
+ *  shown field spelled `Journal` on disk is re-keyed to the form's `journal`
+ *  (the diff compares keys case-insensitively, so this is not an edit) rather
+ *  than left as a row beside an empty Journal input — two spellings, two
+ *  editors, both saved. */
+function seedFormState(
   type: string,
   fields: Record<string, string>,
-): ExtraSeed {
+): FormSeed {
   const known = knownFieldsForType(type);
+  const out: Record<string, string> = { ...fields };
+  for (const k of Object.keys(fields)) {
+    const formKey = formKeyFor(known, k);
+    if (formKey === null || formKey === k) continue;
+    // An exact-spelling field already holding a value keeps it.
+    if (!(out[formKey] && out[formKey].trim().length > 0)) out[formKey] = fields[k];
+    delete out[k];
+  }
   let id = 1;
-  const rows = Object.entries(fields)
-    .filter(([k, v]) => !known.has(k) && v && v.trim().length > 0)
+  const rows = Object.entries(out)
+    .filter(([k, v]) => formKeyFor(known, k) === null && v && v.trim().length > 0)
     .map(([k, v]) => ({ id: id++, key: k, value: v }));
   // After the map `id` is the last-used id + 1 (or 1 when there were no rows),
   // i.e. the next free id — always strictly greater than every seeded row id.
-  return { rows, nextId: id };
+  return { fields: out, rows, nextId: id };
+}
+
+/** Re-apply the ownership rule after a type change: every row whose key the
+ *  new type shows is folded into that form field — the row's value wins, it is
+ *  what the user last saw or edited — and removed. `folded` names the rows'
+ *  own keys, as spelled. */
+function adoptRowsForType(
+  type: string,
+  fields: Record<string, string>,
+  rows: ExtraRow[],
+): { fields: Record<string, string>; rows: ExtraRow[]; folded: string[] } {
+  const known = knownFieldsForType(type);
+  const out: Record<string, string> = { ...fields };
+  const kept: ExtraRow[] = [];
+  const folded: string[] = [];
+  for (const r of rows) {
+    const formKey = formKeyFor(known, r.key);
+    if (formKey === null) {
+      kept.push(r);
+      continue;
+    }
+    // A differently-spelled twin in `fields` (the disk's `Journal`) would
+    // otherwise ride the hidden-field carry-over beside the form's `journal`.
+    if (r.key !== formKey) delete out[r.key];
+    out[formKey] = r.value;
+    folded.push(r.key);
+  }
+  return { fields: out, rows: kept, folded };
 }
