@@ -10,7 +10,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { render, cleanup, fireEvent } from "@testing-library/react";
+import { StrictMode } from "react";
+import { render, cleanup, fireEvent, act } from "@testing-library/react";
 import {
   InlineRenameInput,
   normalizeRename,
@@ -101,6 +102,66 @@ describe("InlineRenameInput — an edit ends exactly once", () => {
     fireEvent.doubleClick(input);
     expect(onRowClick).not.toHaveBeenCalled();
     expect(onRowDouble).not.toHaveBeenCalled();
+  });
+});
+
+describe("InlineRenameInput — UNMOUNT is an ending (task 1211)", () => {
+  const flush = () => act(async () => { await Promise.resolve(); });
+
+  it("unmount while focused with an edited draft → onClose once, no rename", async () => {
+    const onRename = vi.fn();
+    const onClose = vi.fn();
+    const { getByRole, unmount } = render(
+      <InlineRenameInput initialValue="Old" onRename={onRename} onClose={onClose} />,
+    );
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Half-typed" } });
+    expect(document.activeElement).toBe(input);
+    unmount();
+    await flush();
+    expect(onRename).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("an Escape before the unmount is not ended twice", async () => {
+    const onClose = vi.fn();
+    const { getByRole, unmount } = render(
+      <InlineRenameInput initialValue="Old" onRename={() => {}} onClose={onClose} />,
+    );
+    fireEvent.keyDown(getByRole("textbox"), { key: "Escape" });
+    unmount();
+    await flush();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("the unmount ending runs the CURRENT owner's onClose", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender, unmount } = render(
+      <InlineRenameInput initialValue="Old" onRename={() => {}} onClose={first} />,
+    );
+    rerender(<InlineRenameInput initialValue="Old" onRename={() => {}} onClose={second} />);
+    unmount();
+    await flush();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("StrictMode's mount → cleanup → mount does not close a fresh field", async () => {
+    const onRename = vi.fn();
+    const onClose = vi.fn();
+    const { getByRole, unmount } = render(
+      <StrictMode>
+        <InlineRenameInput initialValue="Old" onRename={onRename} onClose={onClose} />
+      </StrictMode>,
+    );
+    await flush();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(getByRole("textbox")).toBeTruthy();
+    unmount();
+    await flush();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onRename).not.toHaveBeenCalled();
   });
 });
 

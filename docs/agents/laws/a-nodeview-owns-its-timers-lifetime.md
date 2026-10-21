@@ -295,6 +295,17 @@ honest reading of a teardown the user did not ask for: of the two endings, only
 outright when no draft is open, so an Escape or Enter a moment earlier is not
 ended twice — exactly once, in both directions.
 
+**A field whose draft is open FROM MOUNT gates the ending on a real unmount
+(task 1211).** `InlineRenameInput` is a session from its first frame, so
+"skip when no draft is open" cannot tell StrictMode's mount → cleanup → mount
+from a teardown — the fresh field would cancel itself the moment it opened.
+Its `onDispose` defers one microtask and ends only if `lifetime.disposed` is
+still true (`useViewLifetime` re-mints the scope on the re-mount, so a
+simulated disposal reads false). The OWNER half is stated with it: a per-
+element transient id (`PanelTabStrip`'s `editingId` / `tabMenuOpenId` /
+`menuOpen`) is reset in the same render its element stops rendering, so no id
+can outlive the element it names — the belt for menus, which have no field.
+
 **Why the same scope object and not a React-shaped twin.** A lifetime is not a
 React idea. `createViewLifetime` already owns the three kinds, reads the
 platform at CALL time so vitest's fake timers cannot be captured stale, mints
