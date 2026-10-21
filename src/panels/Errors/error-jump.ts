@@ -1,4 +1,4 @@
-import type { LatexError } from "@/lib/latex-errors";
+import { mainFileLine, type LatexError } from "@/lib/latex-errors";
 
 /**
  * How a mount reaches an error's location — task 125.
@@ -57,7 +57,8 @@ export function canJumpToError(
     case "anchor":
       return hasAnchor;
     case "line":
-      return err.line > 0;
+      // A line in ANOTHER file is not a line of the code view (task 1208).
+      return mainFileLine(err) > 0;
     default: {
       // Exhaustiveness: a third mode is a compile error until its rule is
       // stated here, rather than silently inheriting one of these two.
