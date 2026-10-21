@@ -6625,6 +6625,40 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     };
   }, [handleArchiveRestore, archiveSnippetOrigin, chrome.editableCardKinds]);
 
+  // Task 1225 — the two PaneRails (left/right) differ only in `side`,
+  // `visiblePanels` and `tail`; everything else is built ONCE here and spread
+  // into both, so the two call sites cannot drift. PaneRail is not memoized,
+  // so a fresh object per render costs nothing it didn't already pay.
+  const railShared: PaneRailSharedProps = {
+    onBinSurfaceChange: noteBinSurface,
+    examples,
+    citationsHook,
+    annotationsHook,
+    bibReviewHook,
+    notesHook,
+    cardCreation,
+    citationPositionMap,
+    footnoteInfos,
+    footnoteAiRequests,
+    setFootnoteAiRequest: footnotesHook.setFootnoteAiRequest,
+    todosHook,
+    archiveHook,
+    cutterHook,
+    reportsHook,
+    revisionsHook,
+    sortedArchiveSnippets,
+    archivedIds,
+    onArchiveDelete: handleArchiveDelete,
+    onEditFootnote: handleEditFootnote,
+    onEditFootnoteTitle: handleEditFootnoteTitle,
+    onDeleteFootnote: handleDeleteFootnote,
+    unanchoredFootnotes: unanchoredFootnoteRefs,
+    onDeleteUnanchoredFootnote: handleDeleteUnanchoredFootnote,
+    onDeleteCitation: handleDeleteCitation,
+    viewPrefs: effectiveViewPrefs,
+    omniBulkPendingChanges,
+  };
+
   return (
     // This pane's per-doc store provider. Dominates the editor text, marginalia,
     // panels, and every floating/popout portal (React context flows through
@@ -7029,60 +7063,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               <PaneRail
                 side="left"
                 visiblePanels={visiblePanelsLeft}
-                onBinSurfaceChange={noteBinSurface}
-                editor={editor}
-                editorRef={innerRef}
-                examples={examples}
-                docId={docId}
-                citationsHook={citationsHook}
-                annotationsHook={annotationsHook}
-                bibReviewHook={bibReviewHook}
-                bibSettingsHook={bibSettingsHook}
-                notesHook={notesHook}
-                cardCreation={cardCreation}
-                allEditorCitations={allEditorCitations}
-                citationPositionMap={citationPositionMap}
-                citationOrder={citationOrder}
-                footnoteInfos={footnoteInfos}
-                footnoteAiRequests={footnoteAiRequests}
-                setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
-                setBibActiveCitationId={setBibActiveCitationId}
-                pendingCitationCreate={pendingCitationCreate}
-                setPendingCitationCreate={setPendingCitationCreate}
-                pendingCitationMode={pendingCitationMode}
-                setPendingCitationMode={setPendingCitationMode}
-                notesPanelSide={notesPanelSide}
-                bibliographyPanelSide={bibliographyPanelSide}
-                todoPanelSide={todoPanelSide}
-                cutterPanelSide={cutterPanelSide}
-                reportsPanelSide={reportsPanelSide}
-                revisionsPanelSide={revisionsPanelSide}
-                discardPristineNotes={notesHook.discardPristineNotes}
-                todosHook={todosHook}
-                archiveHook={archiveHook}
-                cutterHook={cutterHook}
-                reportsHook={reportsHook}
-                revisionsHook={revisionsHook}
-                sortedArchiveSnippets={sortedArchiveSnippets}
-                archivedIds={archivedIds}
-                onArchiveDelete={handleArchiveDelete}
-                onAddFootnote={handleAddFootnote}
-                onEditFootnote={handleEditFootnote}
-                onEditFootnoteTitle={handleEditFootnoteTitle}
-                onDeleteFootnote={handleDeleteFootnote}
-                unanchoredFootnotes={unanchoredFootnoteRefs}
-                onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
-                onDeleteCitation={handleDeleteCitation}
-                selectedNoteId={selectedNoteId}
-                setSelectedNoteId={setSelectedNoteId}
-                viewPrefs={effectiveViewPrefs}
-                searchState={searchState}
-                setSearchState={setSearchState}
-                setSearchHighlightRange={setSearchHighlightRange}
-                openItemInPanel={openItemInPanel}
-                wordCountHook={wordCountHook}
                 tail={leftMarginPrelude}
-                omniBulkPendingChanges={omniBulkPendingChanges}
+                {...railShared}
               />
             )}
             {/* Column wrapper — sits between the two PaneRails. Holds the
@@ -8143,59 +8125,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               <PaneRail
                 side="right"
                 visiblePanels={visiblePanelsRight}
-                onBinSurfaceChange={noteBinSurface}
-                editor={editor}
-                editorRef={innerRef}
-                examples={examples}
-                docId={docId}
-                citationsHook={citationsHook}
-                annotationsHook={annotationsHook}
-                bibReviewHook={bibReviewHook}
-                bibSettingsHook={bibSettingsHook}
-                notesHook={notesHook}
-                cardCreation={cardCreation}
-                allEditorCitations={allEditorCitations}
-                citationPositionMap={citationPositionMap}
-                citationOrder={citationOrder}
-                footnoteInfos={footnoteInfos}
-                footnoteAiRequests={footnoteAiRequests}
-                setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
-                setBibActiveCitationId={setBibActiveCitationId}
-                pendingCitationCreate={pendingCitationCreate}
-                setPendingCitationCreate={setPendingCitationCreate}
-                pendingCitationMode={pendingCitationMode}
-                setPendingCitationMode={setPendingCitationMode}
-                notesPanelSide={notesPanelSide}
-                bibliographyPanelSide={bibliographyPanelSide}
-                todoPanelSide={todoPanelSide}
-                cutterPanelSide={cutterPanelSide}
-                reportsPanelSide={reportsPanelSide}
-                revisionsPanelSide={revisionsPanelSide}
-                discardPristineNotes={notesHook.discardPristineNotes}
-                todosHook={todosHook}
-                archiveHook={archiveHook}
-                cutterHook={cutterHook}
-                reportsHook={reportsHook}
-                revisionsHook={revisionsHook}
-                sortedArchiveSnippets={sortedArchiveSnippets}
-                archivedIds={archivedIds}
-                onArchiveDelete={handleArchiveDelete}
-                onAddFootnote={handleAddFootnote}
-                onEditFootnote={handleEditFootnote}
-                onEditFootnoteTitle={handleEditFootnoteTitle}
-                onDeleteFootnote={handleDeleteFootnote}
-                unanchoredFootnotes={unanchoredFootnoteRefs}
-                onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
-                onDeleteCitation={handleDeleteCitation}
-                selectedNoteId={selectedNoteId}
-                setSelectedNoteId={setSelectedNoteId}
-                viewPrefs={effectiveViewPrefs}
-                searchState={searchState}
-                setSearchState={setSearchState}
-                setSearchHighlightRange={setSearchHighlightRange}
-                openItemInPanel={openItemInPanel}
-                wordCountHook={wordCountHook}
-                omniBulkPendingChanges={omniBulkPendingChanges}
+                {...railShared}
               />
             )}
           </div>
@@ -8348,6 +8278,10 @@ type WiredTodosHook = Omit<ReturnType<typeof useTodos>, "deleteItem"> & {
   clearDone: (ids?: readonly string[]) => Promise<void>;
 };
 
+/** PaneRail renders the strip + the PanelColumn + the omni desktop
+ *  (`OmniHost`) — never a docked panel body, which `PaneRailBody` renders.
+ *  So this interface is exactly what that render path reads (task 1225); a
+ *  new body-only prop belongs on `PaneRailBodyProps`, not here. */
 interface PaneRailProps {
   side: "left" | "right";
   visiblePanels: PanelKind[];
@@ -8355,41 +8289,18 @@ interface PaneRailProps {
    *  the pane keeps the pod-header unanchored chip only for sides that do
    *  not. Threaded straight through to `PanelColumn`. */
   onBinSurfaceChange?: (side: Side, present: boolean) => void;
-  editor: Editor | null;
-  editorRef: RefObject<EditorHandle | null>;
   examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
-  docId: string;
   citationsHook: ReturnType<typeof useCitations>;
   annotationsHook: ReturnType<typeof useAnnotations>;
   bibReviewHook: ReturnType<typeof useBibReview>;
-  bibSettingsHook: ReturnType<typeof useBibSettings>;
   notesHook: WithMorphDoor<ReturnType<typeof useNotes>>;
   cardCreation: ReturnType<typeof useCardCreation>;
-  allEditorCitations: Array<{
-    citationId: string;
-    command: string;
-    keys: string[];
-    pos: number;
-  }>;
   citationPositionMap: Map<string, number>;
-  citationOrder: string[];
   footnoteInfos: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getFootnotes"]>;
   /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
    *  sidecar). Threaded down alongside `footnoteInfos`. */
   footnoteAiRequests: Record<string, boolean>;
   setFootnoteAiRequest: (id: string, value: boolean) => void;
-  setBibActiveCitationId: React.Dispatch<React.SetStateAction<string | null>>;
-  pendingCitationCreate: string | null;
-  setPendingCitationCreate: React.Dispatch<React.SetStateAction<string | null>>;
-  pendingCitationMode: "anchored" | "unanchored";
-  setPendingCitationMode: React.Dispatch<React.SetStateAction<"anchored" | "unanchored">>;
-  notesPanelSide: "left" | "right" | null;
-  bibliographyPanelSide: "left" | "right" | null;
-  todoPanelSide: "left" | "right" | null;
-  cutterPanelSide: "left" | "right" | null;
-  reportsPanelSide: "left" | "right" | null;
-  revisionsPanelSide: "left" | "right" | null;
-  discardPristineNotes: () => void;
   todosHook: WiredTodosHook;
   archiveHook: ReturnType<typeof useArchive>;
   cutterHook: WithMorphDoor<ReturnType<typeof useCutter>>;
@@ -8401,7 +8312,6 @@ interface PaneRailProps {
    *  and the unanchored chip read — three renderers of one card, one resolution. */
   archivedIds: ReadonlySet<string>;
   onArchiveDelete: (id: string) => void;
-  onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
   onDeleteFootnote: (id: string) => void;
@@ -8415,17 +8325,8 @@ interface PaneRailProps {
    *  `onEditFootnote` (same as the docked panel). */
   unanchoredFootnotes: FootnoteRef[];
   onDeleteUnanchoredFootnote: (id: string) => void;
-  selectedNoteId: string | null;
-  setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
-  // Errors surface (`ErrorsHost` / `OmniHost`) reads the diagnostics bundle from
+  // The omni error mirror (`OmniHost`) reads the diagnostics bundle from
   // `DiagnosticsProvider` via `useDiagnosticsContext()`, not from props.
-  // Search panel
-  searchState: SearchPanelState;
-  setSearchState: React.Dispatch<React.SetStateAction<SearchPanelState>>;
-  setSearchHighlightRange: React.Dispatch<React.SetStateAction<{ from: number; to: number } | null>>;
-  openItemInPanel: (panel: PanelId, itemId: string) => void;
-  // WordCount panel
-  wordCountHook: ReturnType<typeof useWordCount>;
   // Step 7.5 sub-pass 2 — opt-in canonical PanelColumn / FloatingPanel
   // / OmniHost / OutlineHost surface. Reader omits.
   viewPrefs?: EditorPaneViewPrefs;
@@ -8442,6 +8343,9 @@ interface PaneRailProps {
    *  each card. Absent / count 0 → no header. */
   omniBulkPendingChanges?: OmniBulkPendingChanges;
 }
+
+/** Everything a PaneRail takes that is the same on both sides (task 1225). */
+type PaneRailSharedProps = Omit<PaneRailProps, "side" | "visiblePanels" | "tail">;
 
 /**
  * Canonical icon strip — view-controls pod (collapse/blank/split) + the
@@ -8540,34 +8444,16 @@ function IconStrip({
 function PaneRail({
   side,
   visiblePanels,
-  editor,
-  editorRef,
   examples,
-  docId,
   citationsHook,
   annotationsHook,
   bibReviewHook,
-  bibSettingsHook,
   notesHook,
   cardCreation,
-  allEditorCitations,
   citationPositionMap,
-  citationOrder,
   footnoteInfos,
   footnoteAiRequests,
   setFootnoteAiRequest,
-  setBibActiveCitationId,
-  pendingCitationCreate,
-  setPendingCitationCreate,
-  pendingCitationMode,
-  setPendingCitationMode,
-  notesPanelSide,
-  bibliographyPanelSide,
-  todoPanelSide,
-  cutterPanelSide,
-  reportsPanelSide,
-  revisionsPanelSide,
-  discardPristineNotes,
   todosHook,
   archiveHook,
   cutterHook,
@@ -8576,20 +8462,12 @@ function PaneRail({
   sortedArchiveSnippets,
   archivedIds,
   onArchiveDelete,
-  onAddFootnote,
   onEditFootnote,
   onEditFootnoteTitle,
   onDeleteFootnote,
   unanchoredFootnotes,
   onDeleteUnanchoredFootnote,
   onDeleteCitation,
-  selectedNoteId,
-  setSelectedNoteId,
-  searchState,
-  setSearchState,
-  setSearchHighlightRange,
-  openItemInPanel,
-  wordCountHook,
   viewPrefs,
   tail,
   omniBulkPendingChanges,
