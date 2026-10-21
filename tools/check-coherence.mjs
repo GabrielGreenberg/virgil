@@ -1122,7 +1122,19 @@ function parserInlineCommands() {
   const start = src.indexOf("export function parseInlineContent");
   if (start === -1) return null;
   const end = src.indexOf("\n}", start);
-  const body = src.slice(start, end === -1 ? undefined : end);
+  const wrapper = src.slice(start, end === -1 ? undefined : end);
+  // Since task 1205 `parseInlineContent` is a thin door (`withDeclaredIds(…,
+  // () => parseInlineInScope(…))`) and the cases live in the function it
+  // DELEGATES to. Follow every call in the wrapper to a top-level function of
+  // the same file, one level — derived from the wrapper's own calls, never a
+  // hand-typed neighbour name (the fail-open class described above).
+  let body = wrapper;
+  for (const cm of wrapper.matchAll(/\b([A-Za-z_$][\w$]*)\(/g)) {
+    const ds = src.indexOf(`\nfunction ${cm[1]}(`);
+    if (ds === -1) continue;
+    const de = src.indexOf("\n}", ds + 1);
+    body += src.slice(ds, de === -1 ? undefined : de);
+  }
   const out = new Set();
   // In the .ts source a regex `/^\\textbf\{/` is the chars `^ \ \ t e x t …`,
   // so match `^` + two literal backslashes + an optional `(` + the command
