@@ -196,6 +196,29 @@ describe("a running timer does not repaint the Virgil bar", () => {
   });
 });
 
+describe("the timer renders through the ONE bar pill (task 1214)", () => {
+  it("announces Done through the pill's live region, mounted before it has anything to say", () => {
+    mountCluster();
+    act(() => { setPomodoroDuration(3000); });
+    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    const bar = screen.getByTestId("bar");
+    const group = bar.querySelector("[data-bar-status-widget]")!;
+    expect(group.getAttribute("role")).toBe("group");
+    expect(group.getAttribute("aria-label")).toBe("Writing timer");
+    const live = group.querySelector("[data-bar-status-label]")!;
+    expect(live.getAttribute("role")).toBe("status");
+    expect(live.textContent).toBe("");
+
+    act(() => { fireEvent.click(screen.getByLabelText("Start timer")); });
+    act(() => { vi.advanceTimersByTime(4000); });
+
+    expect(getPomodoroState().status).toBe("done");
+    // The SAME region (not a fresh one) now carries the sentence.
+    expect(bar.querySelector("[data-bar-status-widget] [data-bar-status-label]")).toBe(live);
+    expect(live.textContent).toBe("Done");
+  });
+});
+
 describe("the clock is truthful on the frame the widget appears", () => {
   it("re-opening over a timer that ran UNSEEN for ten minutes paints the truth immediately", () => {
     // The mount-boundary property. A single component that returned null while
@@ -302,11 +325,11 @@ describe("census — the perf claim is STRUCTURAL, not careful", () => {
    * widgets"), and four pills now share one vocabulary — the whole bar row
    * shares ONE seam anchor (task 289), so a resident that mints its own type
    * size or vertical padding reintroduces the two-baseline drift that task
-   * removed. A shared component would NOT catch this: every one of these pills
-   * legitimately differs in background, border source and padding, so a
-   * primitive over them buys a `className` passthrough — and a passthrough is
-   * exactly how a caller re-mints the geometry. What holds them together is the
-   * vocabulary, so the vocabulary is what gets a leg.
+   * removed. Since task 1214 every status resident (the timer included)
+   * renders through ONE pill, `BarStatusPill`, which takes NO `className`
+   * passthrough — the door a caller would re-mint the geometry through — and
+   * whose own census lives in `bar-status-pill.test.tsx`. This leg still pins
+   * the vocabulary, so a resident that hand-rolls a pill fails here too.
    *
    * Membership is DISCOVERED from `StatusCluster`'s own resident imports, never
    * hand-listed: a sixth resident is covered by being rendered, not by someone

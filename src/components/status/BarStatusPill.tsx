@@ -29,13 +29,32 @@
  * > of the labelled span in ONE button style (`.topbarbtn`), and the kebab and
  * > its rows are ONE implementation.
  *
- * `quiet` is the one register the leaf does not model: a non-actionable,
- * grey statement that is not an interruption at all (the external-change
- * watcher paused by a permission loss). It is the pill's own, and it never
- * enters the tone table — it presents no `InterruptionKind`.
+ * The pill adds two registers the leaf does not model — states that are NOT
+ * interruptions, so they never enter the tone table (they present no
+ * `InterruptionKind`):
  *
- * Census: `bar-status-pill.test.tsx` — every badge `StatusCluster` mounts
- * renders through here, and no `*Badge.tsx` spells the raw pill class.
+ * - **`quiet`** — grey, not an interruption (the external-change watcher
+ *   paused by a permission loss; the update chip; the running timer).
+ *   Actionability is ORTHOGONAL to the register (task 1214): a quiet pill may
+ *   be a control (`onActivate`) or carry controls (`widget`).
+ * - **`presence`** — the collaborator pen readout. Body ink on a surface
+ *   ground, and NOT a live region: its label is a running duration ("idle
+ *   12s") that re-renders on every heartbeat, and a polite region would read
+ *   each tick aloud. The partner's identity colour arrives as
+ *   `identityEdge` — data, not a design token.
+ *
+ * **The widget slot** (task 1214). A resident that is a small READOUT WITH
+ * CONTROLS (the Pomodoro: play/pause, a clock, a progress track, dismiss)
+ * passes them as `widget`: they render INSIDE the pill's chrome, which
+ * becomes a labelled `group`, and the `label` becomes the pill's announced
+ * sentence (the timer's "Done") — a live region mounted for the pill's whole
+ * life, so a state that appears inside it is actually read out.
+ *
+ * Census: `bar-status-pill.test.tsx` — its subjects are DERIVED from the
+ * policy table's mount (`StatusCluster`'s `statusItems`, one per
+ * `BAR_STATUS_ORDER` row) plus every component the cluster imports: each
+ * policy row renders through here, and no cluster resident spells the raw
+ * pill class, a private kebab or a private menu row.
  */
 
 import {
@@ -58,8 +77,9 @@ import { menuRowReasonProps, menuRowRovingStyle, menuRowToneClass } from "@/comp
 import { iconHint } from "@/components/Hint";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
-/** The pill's registers: the leaf's four, plus the pill's own `quiet`. */
-export type BarStatusTone = InterruptionTone | "quiet";
+/** The pill's registers: the leaf's four, plus the pill's own `quiet` and
+ *  `presence` (neither is an interruption). */
+export type BarStatusTone = InterruptionTone | "quiet" | "presence";
 
 /** The one width cap for a bar pill's labelled span. The label truncates
  *  inside it; the full sentence lives on `data-hint` and in the menu. */
@@ -77,17 +97,41 @@ const QUIET_PALETTE: TonePalette = Object.freeze({
   ink: "var(--ink-subtle)",
 });
 
-const QUIET_ANNOUNCEMENT = Object.freeze({
+/** `presence`: the collaborator pen readout — surface ground, subtle
+ *  hairline, body ink. */
+const PRESENCE_PALETTE: TonePalette = Object.freeze({
+  bg: "var(--surface)",
+  edge: "var(--edge-subtle)",
+  ink: "var(--ink-body)",
+});
+
+/** A pill's role/aria-live pairing. `role` is absent for a register that is
+ *  not a live region. */
+export interface BarStatusAnnouncement {
+  role?: "status" | "alert";
+  "aria-live": "polite" | "assertive" | "off";
+}
+
+const QUIET_ANNOUNCEMENT: BarStatusAnnouncement = Object.freeze({
   role: "status" as const,
   "aria-live": "polite" as const,
 });
 
+/** `presence` is a running readout, not news: no role, and `off`. */
+const PRESENCE_ANNOUNCEMENT: BarStatusAnnouncement = Object.freeze({
+  "aria-live": "off" as const,
+});
+
 export function barStatusPalette(tone: BarStatusTone): TonePalette {
-  return tone === "quiet" ? QUIET_PALETTE : paletteForTone(tone);
+  if (tone === "quiet") return QUIET_PALETTE;
+  if (tone === "presence") return PRESENCE_PALETTE;
+  return paletteForTone(tone);
 }
 
-export function barStatusAnnouncement(tone: BarStatusTone) {
-  return tone === "quiet" ? QUIET_ANNOUNCEMENT : announcementForTone(tone);
+export function barStatusAnnouncement(tone: BarStatusTone): BarStatusAnnouncement {
+  if (tone === "quiet") return QUIET_ANNOUNCEMENT;
+  if (tone === "presence") return PRESENCE_ANNOUNCEMENT;
+  return announcementForTone(tone);
 }
 
 /* ── the kebab menu ─────────────────────────────────────────────────── */
@@ -278,8 +322,12 @@ export function BarStatusAction({
 
 export interface BarStatusPillProps {
   tone: BarStatusTone;
-  /** A 14–16px stroke glyph; the pill inks it with the tone's edge. */
-  glyph: ReactNode;
+  /** A 14–16px stroke glyph; the pill inks it with the tone's edge. Optional
+   *  only for a `widget` pill, whose controls lead. */
+  glyph?: ReactNode;
+  /** An IDENTITY colour (a collaborator's) replacing the register's edge on
+   *  the pill's hairline — data, never a design token. */
+  identityEdge?: string | null;
   /** Adds a class to the glyph wrapper (the cowork hold's breathing pulse). */
   glyphClassName?: string;
   /** The visible label — truncates under the one width cap. */
@@ -305,6 +353,13 @@ export interface BarStatusPillProps {
    * keeps the tone's `aria-live` but not its `role`, so it stays a button.
    */
   onActivate?: () => void;
+  /**
+   * Inline controls rendered INSIDE the pill's chrome (task 1214 — the
+   * Pomodoro). The chrome becomes a `group` named by `ariaLabel`; `label` is
+   * then the announced sentence, rendered after the controls in a live region
+   * that stays mounted (empty until there is something to say).
+   */
+  widget?: ReactNode;
 }
 
 export function BarStatusPill({
@@ -320,6 +375,8 @@ export function BarStatusPill({
   data,
   children,
   onActivate,
+  identityEdge,
+  widget,
 }: BarStatusPillProps) {
   const palette = barStatusPalette(tone);
   // Destructured into plain locals: the two element setters are callback
@@ -339,20 +396,23 @@ export function BarStatusPill({
   const announcement = barStatusAnnouncement(tone);
   const labelStyle: CSSProperties = {
     background: palette.bg,
-    borderColor: palette.edge,
+    borderColor: identityEdge || palette.edge,
     color: palette.ink,
     maxWidth: BAR_STATUS_PILL_MAX_WIDTH,
   };
+  const glyphEl = glyph != null && (
+    <span
+      aria-hidden
+      className={glyphClassName}
+      style={{ color: palette.edge, display: "inline-flex" }}
+      data-bar-status-glyph
+    >
+      {glyph}
+    </span>
+  );
   const labelBody = (
     <>
-      <span
-        aria-hidden
-        className={glyphClassName}
-        style={{ color: palette.edge, display: "inline-flex" }}
-        data-bar-status-glyph
-      >
-        {glyph}
-      </span>
+      {glyphEl}
       <span className="truncate">{label}</span>
     </>
   );
@@ -364,7 +424,24 @@ export function BarStatusPill({
       data-bar-status-pill={tone}
       {...data}
     >
-      {onActivate ? (
+      {widget != null ? (
+        <div
+          role="group"
+          className={`${BAR_STATUS_PILL_CLASS} shrink-0`}
+          style={labelStyle}
+          aria-label={ariaLabel}
+          data-hint={hint}
+          data-bar-status-widget
+        >
+          {glyphEl}
+          {widget}
+          {/* Mounted even while empty: a live region that only appears WITH
+              its text (or is `display:none` until then) is not read out. */}
+          <span className="truncate" {...announcement} data-bar-status-label>
+            {label}
+          </span>
+        </div>
+      ) : onActivate ? (
         <button
           type="button"
           onClick={onActivate}

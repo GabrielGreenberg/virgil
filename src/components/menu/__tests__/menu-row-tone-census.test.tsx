@@ -219,7 +219,7 @@ describe("menu row tones — consumer census (task 986)", () => {
       "components/TabPlusMenu.tsx",
       "components/UnanchoredCardsChip.tsx",
       "components/RecentPapersList.tsx",
-      "components/CollabStatusPill.tsx",
+      // CollabStatusPill's row is BarStatusPill's since task 1214.
       "components/status/BarStatusPill.tsx",
     ]) {
       expect(rels, must).toContain(must);

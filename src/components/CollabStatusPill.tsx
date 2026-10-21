@@ -18,49 +18,29 @@
  *   that doesn't fit naturally on the icon toggle). Lives in the
  *   topbar's modes/views section, left of the divider. Renders nothing
  *   when collab is off.
+ *
+ * The badge renders through the ONE bar pill, `BarStatusPill` (task 1214):
+ * its distinct family is a REGISTER of that pill (`presence` — body ink, not
+ * a live region, because the label is a ticking duration), and the partner's
+ * colour arrives as the pill's `identityEdge`. The width cap, the action
+ * style (`.topbarbtn`), the kebab and its rows are the pill's — this file
+ * used to hand-roll all four (a 260px cap, a `Button variant="warm"`, a
+ * private kebab and an 11px private row).
  */
 
-import { memo, useCallback, useRef, useState, type ReactNode } from "react";
+import { memo } from "react";
 import { type PenStatus } from "@/lib/collab";
 import { formatElapsed } from "@/lib/relative-time";
 import { StatusDot, type StatusTone } from "./StatusDot";
 import { useCollabContext } from "@/hooks/useCollab";
-import { MenuProvider } from "./menu/MenuProvider";
-import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
-import { useMenuItem } from "./menu/useMenuItem";
-import { menuRowRovingStyle, menuRowToneClass } from "./menu/row-tone";
 import { iconHint } from "@/components/Hint";
-import { Button } from "./Button";
-import { menuTriggerAria } from "@/components/menu/menu-trigger";
-
-// Anchor the kebab dropdown below its trigger, flipping above when the topbar
-// sits near the viewport bottom. Matches ExternalChangeBadge (the sibling
-// topbar kebab) so the two dropdowns behave identically.
-// Drop below the trigger, flip above near the viewport bottom — the ONE
-// button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
-// fourth copy of this table cannot drift from the other three.
-const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
-
-/** The one interactive row of the collab kebab — "Edit identity…". Registers
- *  into the provider (via `useMenuItem`) so it gains arrow-nav + the roving
- *  active highlight for free, matching every other `<Menu>` list item. */
-function EditIdentityRow({ onSelect }: { onSelect: () => void }) {
-  const { active, getItemProps } = useMenuItem({
-    id: "edit-identity",
-    region: "list",
-    run: onSelect,
-  });
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      className={`w-full text-left px-3 py-1.5 text-[11px] ${menuRowToneClass("default", false)}`}
-      style={menuRowRovingStyle(active, false)}
-    >
-      Edit identity…
-    </button>
-  );
-}
+import {
+  BarStatusAction,
+  BarStatusMenuDetail,
+  BarStatusMenuRow,
+  BarStatusPill,
+  useBarStatusMenu,
+} from "@/components/status/BarStatusPill";
 
 interface CollabStatusPillProps {
   /** Called when the user wants to set up / enter collaborator mode. */
@@ -117,34 +97,9 @@ function CollabStatusPill({
   // it lets the owning StatusCluster bail on collab pen/presence ticks (frequent
   // during active collaboration) — only this memoized pill re-renders.
   const collab = useCollabContext();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  // The pill wrapper is held in STATE (not a ref) so it can be handed to the
-  // menu provider's `excludeRefs` without reading a ref during render — the
-  // kebab trigger lives outside the body-portaled menu, so it must be exempt
-  // from click-outside or the toggle click would self-close the menu.
-  const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
-  const kebabRef = useRef<HTMLButtonElement | null>(null);
-
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-    setAnchorRect(null);
-  }, []);
-
-  const toggleMenu = useCallback(() => {
-    setMenuOpen((o) => {
-      const next = !o;
-      setAnchorRect(
-        next ? (kebabRef.current?.getBoundingClientRect() ?? null) : null,
-      );
-      return next;
-    });
-  }, []);
-
-  const trackAnchor = useCallback(
-    () => kebabRef.current?.getBoundingClientRect() ?? null,
-    [],
-  );
+  // Called unconditionally (rules of hooks); the icon variant mounts no kebab,
+  // and a controller with no kebab can never open (task 1016).
+  const menu = useBarStatusMenu();
 
   // ── Icon variant ──────────────────────────────────────────────────
   if (variant === "icon") {
@@ -219,84 +174,47 @@ function CollabStatusPill({
       ? collab.pen.requestedBy.map((r) => r.name).join(", ")
       : null;
 
-  const menu: ReactNode =
-    menuOpen && anchorRect && typeof document !== "undefined" ? (
-      <MenuProvider
-        id="collab-status-menu"
-        layout="list"
-        role="menu"
-        anchorRect={anchorRect}
-        placements={MENU_PLACEMENTS}
-        gap={4}
-        trackAnchor={trackAnchor}
-        // The kebab trigger lives outside the portaled menu, so exempt the pill
-        // wrapper from click-outside (else the toggle click self-closes it).
-        excludeRefs={[wrapEl]}
-        onClose={closeMenu}
-        ariaLabel="Collaborator options"
-        // Body-portaled at the menu primitive's CHROME_Z (z:2000 tier) so the
-        // sticky topbar's z-30 stacking context can't clip the dropdown; its
-        // surface chrome is the primitive's `.menu-surface` (task 295).
-        containerClassName="min-w-[11rem] max-w-[260px] py-1"
-      >
-        <EditIdentityRow
-          onSelect={() => {
-            closeMenu();
-            onEditIdentity();
-          }}
-        />
-        {pendingNames && (
-          <div className="px-3 py-1 text-[10px] text-ink-faint border-t border-edge-subtle">
-            Pending request: {pendingNames}
-          </div>
-        )}
-      </MenuProvider>
-    ) : null;
+  const { closeMenu } = menu;
 
   return (
-    <div ref={setWrapEl} className="relative flex items-center gap-1">
-      <div
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] text-ink-body bg-surface border border-edge-subtle max-w-[260px] truncate"
-        style={partnerColor && !iHavePen ? { borderColor: partnerColor } : undefined}
-        data-hint="Collaborator pen status" aria-description="Collaborator pen status"
-      >
-        {/* Decorative: the pill's own text label states the pen state, and the
-            wrapper carries the hint as its description. */}
-        <StatusDot tone={PEN_TONE[pen.status]} size="md" className="shrink-0" />
-        <span className="truncate">{label}</span>
-        {myRequestPending && !iHavePen && (
-          <span className="text-[10px] text-ink-faint">· requested</span>
-        )}
-      </div>
-      {actionLabel && onAction && (
-        <Button variant="warm" size="sm" onClick={onAction}>
-          {actionLabel}
-        </Button>
-      )}
-      {/* Kebab: the only home for "Edit identity" now that the icon
-          button is a pure toggle. Renders next to the pen action. The
-          dropdown body-portals via MenuProvider at the chrome-menu tier
-          (OPEN_CHROME_MENU_Z) — the Virgil bar is `sticky z-30`, which
-          establishes a stacking context that would trap an inline
-          `absolute` dropdown BELOW floating panels / popped cards
-          (z-1200+), no matter its own z-index (STYLE_GUIDE portal rule).
-          Portaling to document.body escapes that trap. */}
-      <button
-        ref={kebabRef}
-        type="button"
-        onClick={toggleMenu}
-        {...iconHint({ label: "Collaborator options" })}
-        {...menuTriggerAria("menu", menuOpen)}
-        className="iconbtn-sm iconbtn-on-dark"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-          <circle cx="5" cy="12" r="1.6" />
-          <circle cx="12" cy="12" r="1.6" />
-          <circle cx="19" cy="12" r="1.6" />
-        </svg>
-      </button>
-      {menu}
-    </div>
+    <BarStatusPill
+      tone="presence"
+      identityEdge={partnerColor && !iHavePen ? partnerColor : null}
+      // Decorative: the label states the pen state; the dot is its colour.
+      glyph={<StatusDot tone={PEN_TONE[pen.status]} size="md" className="shrink-0" />}
+      label={myRequestPending && !iHavePen ? `${label} · requested` : label}
+      ariaLabel={`Collaborator pen status: ${label}`}
+      hint="Collaborator pen status"
+      data={{ "data-collab-pen": pen.status }}
+      actions={
+        actionLabel &&
+        onAction && <BarStatusAction onClick={onAction}>{actionLabel}</BarStatusAction>
+      }
+      // The kebab is the only home for "Edit identity" now that the icon
+      // button is a pure toggle; the pill body-portals its menu at the
+      // chrome-menu tier, out of the sticky bar's z-30 stacking context.
+      menu={{
+        controller: menu,
+        id: "collab-status-menu",
+        ariaLabel: "Collaborator options",
+        kebabLabel: "Collaborator options",
+        children: (
+          <>
+            <BarStatusMenuRow
+              id="edit-identity"
+              label="Edit identity…"
+              run={() => {
+                closeMenu();
+                onEditIdentity();
+              }}
+            />
+            {pendingNames && (
+              <BarStatusMenuDetail>Pending request: {pendingNames}</BarStatusMenuDetail>
+            )}
+          </>
+        ),
+      }}
+    />
   );
 }
 
