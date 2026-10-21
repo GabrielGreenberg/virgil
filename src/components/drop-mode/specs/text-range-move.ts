@@ -72,7 +72,6 @@
  * either of them to a branch deliberately exempted from the fit.
  */
 
-import { TextSelection } from "@tiptap/pm/state";
 import type { Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import {
@@ -97,6 +96,7 @@ import {
   insertNodesAdvancing,
   resolveInsertPos,
   placeCaretAtLanding,
+  selectInlineRun,
 } from "../util/mapped-insert";
 import { plannedDropSpec } from "../planned-spec";
 import {
@@ -259,7 +259,7 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
       // the text around a caret is exactly what ProseMirror's fitter is for, and
       // no container is being entered. The between-blocks branch below fits.
       tr.replace(at, at, slice);
-      selectInserted(tr, at, slice.size);
+      selectInlineRun(tr, at, slice.size);
       // The commit's answer IS the report (task 1024): a vetoed dispatch
       // (read-only host, pen handed off) reaches `finishApply` as `false`, so
       // the float this move was dragged from is not closed over nothing.
@@ -277,7 +277,7 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     // This move's `commit` deletes the source unconditionally, so the delete is
     // gated on evidence the insert landed rather than on the absence of a throw.
     if (!insertLanded(insertTr, slice.size)) return null;
-    selectInserted(insertTr, insertPos, slice.size);
+    selectInlineRun(insertTr, insertPos, slice.size);
     return {
       commit: () => {
         // ONE all-or-nothing commit (task 648) — the twin of the
@@ -303,23 +303,6 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     };
   },
 });
-
-/** Select the inserted run so the user sees where the text landed. Guarded —
- *  a near-boundary position that can't host a text selection is skipped. */
-function selectInserted(
-  tr: import("@tiptap/pm/state").Transaction,
-  pos: number,
-  size: number,
-): void {
-  try {
-    const end = Math.min(tr.doc.content.size, pos + size);
-    tr.setSelection(
-      TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(end)),
-    );
-  } catch {
-    /* position couldn't host a text selection — leave the doc's selection */
-  }
-}
 
 /**
  * Between-paragraphs move: drop the marked run into a block gap as BLOCK
