@@ -186,3 +186,83 @@ describe("BibEditModal — opens on the disk entry, not the CSL projection", () 
     expect(onSave).not.toHaveBeenCalled();
   });
 });
+
+// TASK 1209: after a type change each key has ONE editor. A row whose key the
+// new type shows as a form field is folded into that field — before, the row
+// stayed, the field was shown twice, and the row's stale value overwrote the
+// user's edit (or clearing) of the form field on save.
+describe("BibEditModal — a type change gives each key one editor", () => {
+  function renderMisc(fields: Record<string, string>) {
+    const body = Object.entries(fields)
+      .map(([k, v]) => `  ${k} = {${v}}`)
+      .join(",\n");
+    const raw = `@misc{lee2010,\n${body}\n}\n`;
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SystemDialogProvider>
+        <BibEditModal
+          entry={{ key: "lee2010", type: "misc", fields, raw }}
+          onSave={onSave}
+          onClose={vi.fn()}
+        />
+      </SystemDialogProvider>,
+    );
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "article" } });
+    return { onSave };
+  }
+
+  const BASE = { author: "Lee, K.", title: "T", year: "2010" };
+
+  it("the folded field renders once, as the form field", () => {
+    renderMisc({ ...BASE, journal: "Old Journal" });
+    expect(screen.getAllByDisplayValue("Old Journal")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Remove journal" })).toBeNull();
+  });
+
+  it("an edit to the folded field is what is saved", async () => {
+    const { onSave } = renderMisc({ ...BASE, journal: "Old Journal" });
+    fireEvent.change(screen.getByDisplayValue("Old Journal"), {
+      target: { value: "New Journal" },
+    });
+    await save();
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.type).toBe("article");
+    expect(payload.set).toEqual({ journal: "New Journal" });
+    expect(payload.remove).toEqual([]);
+  });
+
+  it("clearing the folded field removes it", async () => {
+    const { onSave } = renderMisc({ ...BASE, journal: "Old Journal" });
+    fireEvent.change(screen.getByDisplayValue("Old Journal"), { target: { value: "" } });
+    await save();
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.remove).toEqual(["journal"]);
+    expect(payload.set).toEqual({});
+  });
+
+  it("switching back keeps the field (763's carry-over), not a resurrected row", async () => {
+    const { onSave } = renderMisc({ ...BASE, journal: "Old Journal" });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "misc" } });
+    expect(screen.queryByDisplayValue("Old Journal")).toBeNull();
+    // A type round-trip back to the disk type is no edit at all.
+    await save();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("a differently-cased disk key is one editor, saved under one spelling", async () => {
+    const { onSave } = renderMisc({ ...BASE, Journal: "Old Journal" });
+    expect(screen.getAllByDisplayValue("Old Journal")).toHaveLength(1);
+    fireEvent.change(screen.getByDisplayValue("Old Journal"), {
+      target: { value: "New Journal" },
+    });
+    await save();
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.set).toEqual({ journal: "New Journal" });
+    expect(payload.remove).toEqual([]);
+  });
+
+  it("a key the new type does not show stays a row", () => {
+    renderMisc({ ...BASE, customa: "Alpha" });
+    expect(screen.getByRole("button", { name: "Remove customa" })).toBeTruthy();
+  });
+});
