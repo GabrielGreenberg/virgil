@@ -28,6 +28,8 @@ import {
 } from "react";
 import { readSidecar, readTextFile } from "@/lib/storage";
 import {
+  activityMutator,
+  heartbeatMutator,
   mutateCollab,
   passPenMutator,
   releaseSelf,
@@ -43,12 +45,15 @@ import {
   ensureParticipant,
   COLLAB_IDENTITY_KEY,
   findClaim,
+  holdsPen,
   loadIdentity,
+  mintCollabSession,
   saveIdentity,
   sweepStalePresence,
   touchPresence,
   type CollabFocusClaim,
   type CollabIdentity,
+  type CollabSelf,
   type CollabSidecar,
   type DerivedPen,
 } from "@/lib/collab";
@@ -84,8 +89,13 @@ export interface CollabState {
   /** Task 489 — a cowork skill holds this paper's pen right now, so the
    *  document is read-only and its autosave is paused. `null` otherwise. */
   coworkPen: CoworkPenState | null;
-  /** Have I currently claimed the pen? */
+  /** Does THIS session (this pane of this window) hold the pen? Task 1213:
+   *  the name is per-browser, so a sibling pane or window of mine holding
+   *  it is NOT `iHavePen` here — see `penHeldElsewhere`. */
   iHavePen: boolean;
+  /** The pen is held under my name by ANOTHER session — a sibling pane or
+   *  window of this browser. Taking it here moves it to this session. */
+  penHeldElsewhere: boolean;
   /** When holder is partner: their color (for chrome accents). */
   partnerColor: string | null;
 }
@@ -147,6 +157,7 @@ export const COLLAB_INERT: CollabHook = {
   canEditMainText: true,
   coworkPen: null,
   iHavePen: false,
+  penHeldElsewhere: false,
   partnerColor: null,
   setIdentity: () => {},
   enableCollab: async () => {},
@@ -165,7 +176,23 @@ export const COLLAB_INERT: CollabHook = {
   getCursorSelections: () => [],
 };
 
-export function useCollab(docId: string | null): CollabHook {
+export interface UseCollabOptions {
+  /** Is the pane that owns this hook VISIBLE (task 1213)? A paper parked
+   *  `display:none` by multi-doc keep-alive is not being worked on: it
+   *  writes no heartbeat, so a pen it holds goes stale honestly and the
+   *  partner is offered "Take over". Defaults to `true`. */
+  visible?: boolean;
+}
+
+export function useCollab(
+  docId: string | null,
+  { visible = true }: UseCollabOptions = {},
+): CollabHook {
+  // Task 1213 — this instance's holding SESSION. The identity name is
+  // per-browser (every pane and window shares it); pen and presence
+  // ownership is per session, so one pane's release or heartbeat cannot act
+  // for a sibling pane or window of the same name.
+  const [session] = useState(mintCollabSession);
   const [identity, setIdentityState] = useState<CollabIdentity | null>(() =>
     loadIdentity(),
   );
@@ -184,6 +211,12 @@ export function useCollab(docId: string | null): CollabHook {
   docIdRef.current = docId;
   const identityRef = useRef(identity);
   identityRef.current = identity;
+  /** The live `{ name, session }` — `null` before an identity is set. */
+  const selfRef = useRef<() => CollabSelf | null>(() => null);
+  selfRef.current = () => {
+    const name = identityRef.current?.name;
+    return name ? { name, session } : null;
+  };
   const lastActivityWriteRef = useRef(0);
   const lastSelectionRef = useRef<string>("");
   const lastCursorRef = useRef<string | null>(null);
@@ -221,7 +254,7 @@ export function useCollab(docId: string | null): CollabHook {
       // the CAS may re-run `fn` on a newer base.
       let refusedBase: CollabSidecar | null = null;
       const landed = await mutateCollab(id, (fresh) => {
-        const base = mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null);
+        const base = mergeKeepingSelf(fresh, sidecarRef.current, selfRef.current());
         const next = fn(base);
         refusedBase = next === null ? base : null;
         return next;
@@ -317,7 +350,7 @@ export function useCollab(docId: string | null): CollabHook {
         void loadCoworkPen(fresh.pen ?? null);
         if (!cancelled) {
           // Merge: keep our own focus heartbeat if we wrote it more recently.
-          const merged = mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null);
+          const merged = mergeKeepingSelf(fresh, sidecarRef.current, selfRef.current());
           // Skip setSidecar when the polled-then-merged content is
           // byte-identical to what we already have. `mergeKeepingSelf`
           // returns a fresh object literal every call, so without this
@@ -364,34 +397,35 @@ export function useCollab(docId: string | null): CollabHook {
 
   /* ── Heartbeats: pen + claimed card ──────────────────────────── */
 
+  // Gated on the pane being VISIBLE (task 1213): a keep-alive pane parked
+  // `display:none` must not keep a pen fresh while its holder works on a
+  // different paper — staleness is heartbeat-clocked, so the partner would
+  // never be offered "Take over". Hidden, the pen goes stale honestly; shown
+  // again, the next beat refreshes it if no one took it meanwhile.
   useEffect(() => {
-    if (!identity || !sidecar.enabled) return;
+    if (!identity || !sidecar.enabled || !visible) return;
     const id = setInterval(() => {
-      const me = identityRef.current?.name;
-      if (!me) return;
-      mutate((prev) => {
-        if (!prev.enabled) return prev;
-        let next = prev;
-        const now = new Date().toISOString();
-        if (prev.pen.holder === me) {
-          next = {
-            ...next,
-            pen: { ...next.pen, lastHeartbeat: now },
-          };
-        }
-        const myEntry = next.presence[me];
-        if (myEntry?.focusedCard) {
-          next = touchPresence(next, me, {
-            focusedCard: { ...myEntry.focusedCard, lastHeartbeat: now },
-          });
-        } else if (myEntry) {
-          next = touchPresence(next, me, {});
-        }
-        return next;
-      });
+      const self = selfRef.current();
+      if (!self) return;
+      void mutate(heartbeatMutator(self));
     }, COLLAB_TIMINGS.cardHeartbeatMs);
     return () => clearInterval(id);
-  }, [identity, sidecar.enabled, mutate]);
+  }, [identity, sidecar.enabled, visible, mutate]);
+
+  /* ── Leaving the paper in-app: release (task 1213) ──────────── */
+  // Closing the pane or switching it to another doc is a release door like
+  // `pagehide` — before, unmount only stopped the heartbeat and the partner
+  // waited the full stale window for a pen nobody was holding. The release
+  // is THIS session's (fresh-read mutator), so a sibling pane or window on
+  // the same paper keeps its pen and presence.
+  useEffect(() => {
+    if (!docId) return;
+    return () => {
+      const self = selfRef.current();
+      if (!self) return;
+      void mutateCollab(docId, releaseSelf(self));
+    };
+  }, [docId]);
 
   /* ── pagehide: best-effort release; pageshow(persisted): re-join ── */
   // `pagehide`, not `beforeunload` (task 872): it fires on close AND on
@@ -405,9 +439,9 @@ export function useCollab(docId: string | null): CollabHook {
   useEffect(() => {
     const onPageHide = () => {
       const id = docIdRef.current;
-      const me = identityRef.current?.name;
-      if (!id || !me) return;
-      const release = releaseSelf(me);
+      const self = selfRef.current();
+      if (!id || !self) return;
+      const release = releaseSelf(self);
       const local = release(sidecarRef.current);
       if (local) sidecarRef.current = local;
       void mutateCollab(id, release);
@@ -419,7 +453,9 @@ export function useCollab(docId: string | null): CollabHook {
       const me = identityRef.current;
       if (!docIdRef.current || !me) return;
       void mutate((prev) =>
-        prev.enabled ? touchPresence(ensureParticipant(prev, me), me.name, {}) : prev,
+        prev.enabled
+          ? touchPresence(ensureParticipant(prev, me), me.name, {}, session)
+          : prev,
       );
     };
     window.addEventListener("pagehide", onPageHide);
@@ -428,7 +464,7 @@ export function useCollab(docId: string | null): CollabHook {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
     };
-  }, [mutate]);
+  }, [mutate, session]);
 
   /* ── Actions ─────────────────────────────────────────────────── */
 
@@ -444,17 +480,17 @@ export function useCollab(docId: string | null): CollabHook {
     await mutate((prev) => {
       let next: CollabSidecar = { ...prev, enabled: true };
       next = ensureParticipant(next, me);
-      next = touchPresence(next, me.name, {});
+      next = touchPresence(next, me.name, {}, session);
       return next;
     });
-  }, [mutate]);
+  }, [mutate, session]);
 
   const disableCollab = useCallback(async () => {
     await mutate((prev) => {
-      const me = identityRef.current?.name ?? null;
+      const self = selfRef.current();
       // Leave exactly as the unload release does (my pen, my presence), then
       // switch the mode off.
-      const released = me ? releaseSelf(me)(prev) ?? prev : prev;
+      const released = self ? releaseSelf(self)(prev) ?? prev : prev;
       return { ...released, enabled: false };
     });
   }, [mutate]);
@@ -465,13 +501,13 @@ export function useCollab(docId: string | null): CollabHook {
   const takePen = useCallback(async () => {
     const me = identityRef.current;
     if (!me) return;
-    await mutate(takePenMutator(me, "take"));
-  }, [mutate]);
+    await mutate(takePenMutator(me, session, "take"));
+  }, [mutate, session]);
 
   const passPen = useCallback(async () => {
-    const me = identityRef.current?.name;
-    if (!me) return;
-    await mutate(passPenMutator(me));
+    const self = selfRef.current();
+    if (!self) return;
+    await mutate(passPenMutator(self));
   }, [mutate]);
 
   const requestPen = useCallback(async () => {
@@ -496,28 +532,18 @@ export function useCollab(docId: string | null): CollabHook {
   const takeOver = useCallback(async () => {
     const me = identityRef.current;
     if (!me) return;
-    await mutate(takePenMutator(me, "take-over"));
-  }, [mutate]);
+    await mutate(takePenMutator(me, session, "take-over"));
+  }, [mutate, session]);
 
   const bumpActivity = useCallback(() => {
-    const me = identityRef.current?.name;
-    if (!me) return;
+    const self = selfRef.current();
+    if (!self) return;
     const now = Date.now();
     if (now - lastActivityWriteRef.current < COLLAB_TIMINGS.activityThrottleMs) {
       return;
     }
     lastActivityWriteRef.current = now;
-    void mutate((prev) => {
-      if (prev.pen.holder !== me) return prev;
-      return {
-        ...prev,
-        pen: {
-          ...prev.pen,
-          lastActivity: new Date(now).toISOString(),
-          lastHeartbeat: new Date(now).toISOString(),
-        },
-      };
-    });
+    void mutate(activityMutator(self, now));
   }, [mutate]);
 
   const claimCard = useCallback(
@@ -533,10 +559,10 @@ export function useCollab(docId: string | null): CollabHook {
             focusedAt: now,
             lastHeartbeat: now,
           },
-        }),
+        }, session),
       );
     },
-    [mutate],
+    [mutate, session],
   );
 
   const releaseClaim = useCallback(async () => {
@@ -545,9 +571,9 @@ export function useCollab(docId: string | null): CollabHook {
     await mutate((prev) => {
       const entry = prev.presence[me];
       if (!entry?.focusedCard) return prev;
-      return touchPresence(prev, me, { focusedCard: null });
+      return touchPresence(prev, me, { focusedCard: null }, session);
     });
-  }, [mutate]);
+  }, [mutate, session]);
 
   const updateSelection = useCallback(
     (cards: { panelKind: PanelThemeKey; cardId: string }[]) => {
@@ -562,10 +588,10 @@ export function useCollab(docId: string | null): CollabHook {
       lastSelectionRef.current = key;
       void mutate((prev) => {
         if (!prev.enabled) return prev;
-        return touchPresence(prev, me, { selectedCards: cards });
+        return touchPresence(prev, me, { selectedCards: cards }, session);
       });
     },
-    [mutate],
+    [mutate, session],
   );
 
   const updateCursorParagraph = useCallback(
@@ -576,10 +602,10 @@ export function useCollab(docId: string | null): CollabHook {
       lastCursorRef.current = paragraphId;
       void mutate((prev) => {
         if (!prev.enabled) return prev;
-        return touchPresence(prev, me, { cursorParagraphId: paragraphId });
+        return touchPresence(prev, me, { cursorParagraphId: paragraphId }, session);
       });
     },
-    [mutate],
+    [mutate, session],
   );
 
   const getCardSelections = useCallback(
@@ -660,7 +686,8 @@ export function useCollab(docId: string | null): CollabHook {
     return next;
   }, [sidecar.pen, tick]);
   const me = identity?.name ?? null;
-  const iHavePen = !!me && sidecar.pen.holder === me;
+  const iHavePen = !!me && holdsPen(sidecar.pen, { name: me, session });
+  const penHeldElsewhere = !!me && sidecar.pen.holder === me && !iHavePen;
   const partnerColor = useMemo(() => {
     if (!sidecar.pen.holder || sidecar.pen.holder === me) return null;
     return (
@@ -705,6 +732,7 @@ export function useCollab(docId: string | null): CollabHook {
       canEditMainText,
       coworkPen,
       iHavePen,
+      penHeldElsewhere,
       partnerColor,
       setIdentity,
       enableCollab,
@@ -729,6 +757,7 @@ export function useCollab(docId: string | null): CollabHook {
       canEditMainText,
       coworkPen,
       iHavePen,
+      penHeldElsewhere,
       partnerColor,
       setIdentity,
       enableCollab,
@@ -807,14 +836,16 @@ export function useCardClaim(
 function mergeKeepingSelf(
   fresh: CollabSidecar,
   local: CollabSidecar,
-  selfName: string | null,
+  self: CollabSelf | null,
 ): CollabSidecar {
-  if (!selfName) return fresh;
+  if (!self) return fresh;
+  const selfName = self.name;
   let next = fresh;
-  // Pen: if we still think we hold it AND fresh agrees, keep our timestamps.
+  // Pen: if THIS session still thinks it holds it AND fresh agrees, keep our
+  // timestamps (task 1213 — a sibling session of my name is not "self").
   if (
-    local.pen.holder === selfName &&
-    fresh.pen.holder === selfName &&
+    holdsPen(local.pen, self) &&
+    holdsPen(fresh.pen, self) &&
     local.pen.lastHeartbeat &&
     (!fresh.pen.lastHeartbeat ||
       Date.parse(local.pen.lastHeartbeat) >
@@ -829,7 +860,9 @@ function mergeKeepingSelf(
       },
     };
   }
-  // Presence: if we have a fresher local heartbeat, prefer it.
+  // Presence: if we have a fresher local heartbeat, prefer it — but the
+  // `sessions` map stays the disk's, with only OUR session's stamp laid over
+  // it, so a sibling session's join or release on disk is never undone.
   const localMine = local.presence[selfName];
   const freshMine = fresh.presence[selfName];
   if (
@@ -838,9 +871,17 @@ function mergeKeepingSelf(
       Date.parse(localMine.lastHeartbeat) >
         Date.parse(freshMine.lastHeartbeat))
   ) {
+    const mineAt = localMine.sessions?.[self.session];
+    const sessions =
+      mineAt !== undefined
+        ? { ...(freshMine?.sessions ?? {}), [self.session]: mineAt }
+        : freshMine?.sessions;
+    const entry = { ...localMine };
+    if (sessions) entry.sessions = sessions;
+    else delete entry.sessions;
     next = {
       ...next,
-      presence: { ...next.presence, [selfName]: localMine },
+      presence: { ...next.presence, [selfName]: entry },
     };
   }
   return next;

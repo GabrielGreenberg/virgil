@@ -186,6 +186,12 @@ function CollabStatusPill({
     }
     actionLabel = "Pass";
     onAction = () => void collab.passPen();
+  } else if (collab.penHeldElsewhere) {
+    // Task 1213 — held under MY name by a sibling pane or window: not a
+    // partner to request from. Taking it here moves the pen to this pane.
+    label = "You hold the pen in another pane";
+    actionLabel = "Take here";
+    onAction = () => void collab.takePen();
   } else {
     const partner = pen.holder ?? "Partner";
     if (pen.status === "stale") {

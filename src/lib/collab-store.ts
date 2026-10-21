@@ -28,10 +28,14 @@ import {
 import {
   COLLAB_SIDECAR_FILE,
   EMPTY_COLLAB_SIDECAR,
+  COLLAB_TIMINGS,
   derivePen,
   ensureParticipant,
+  holdsPen,
   touchPresence,
   type CollabIdentity,
+  type CollabPresenceEntry,
+  type CollabSelf,
   type CollabSidecar,
 } from "@/lib/collab";
 
@@ -72,32 +76,137 @@ export async function mutateCollab(
 }
 
 /**
- * The leave-the-paper mutator: clear MY pen if I hold it and drop MY presence
- * key — nothing else. Applied to the fresh disk read, so a partner's pen
- * request, presence or claim that landed since our last poll survives.
+ * The leave-the-paper mutator: clear the pen if THIS SESSION holds it and
+ * drop this session's presence — nothing else. Applied to the fresh disk
+ * read, so a partner's pen request, presence or claim that landed since our
+ * last poll survives.
+ *
+ * Task 1213 — "mine" is the SESSION (one pane of one window), not the name:
+ * the name is per-browser, so before this window A's `pagehide` cleared the
+ * pen window B was writing under and deleted B's presence. Now the pen goes
+ * only when `self` holds it ({@link holdsPen}), and the presence entry only
+ * when no OTHER fresh session of the name is left in it.
  * Returns `null` when there is nothing of mine to remove.
  */
-export function releaseSelf(me: string): CollabMutator {
+export function releaseSelf(
+  self: CollabSelf,
+  now: number = Date.now(),
+): CollabMutator {
   return (prev) => {
     if (!prev.enabled) return null;
     let next = prev;
-    if (prev.pen.holder === me) {
+    if (holdsPen(prev.pen, self)) {
       next = {
         ...next,
         pen: {
           ...next.pen,
           holder: null,
+          holderSession: null,
           since: null,
           lastHeartbeat: null,
           lastActivity: null,
         },
       };
     }
-    if (next.presence[me]) {
-      const { [me]: _gone, ...rest } = next.presence;
-      next = { ...next, presence: rest };
+    const entry = next.presence[self.name];
+    if (entry) {
+      const others = otherFreshSessions(entry, self.session, now);
+      if (others) {
+        if (entry.sessions && self.session in entry.sessions) {
+          next = {
+            ...next,
+            presence: {
+              ...next.presence,
+              [self.name]: { ...entry, sessions: others },
+            },
+          };
+        }
+      } else {
+        const { [self.name]: _gone, ...rest } = next.presence;
+        next = { ...next, presence: rest };
+      }
     }
     return next === prev ? null : next;
+  };
+}
+
+/** The sessions of `entry` other than `session` whose heartbeat is still
+ *  fresh (inside `penStaleMs` — the clock presence is swept on), or `null`
+ *  when none is left. A crashed sibling that never released is not "left":
+ *  its heartbeat ages out. */
+function otherFreshSessions(
+  entry: CollabPresenceEntry,
+  session: string,
+  now: number,
+): Record<string, string> | null {
+  if (!entry.sessions) return null;
+  const out: Record<string, string> = {};
+  let any = false;
+  for (const [id, at] of Object.entries(entry.sessions)) {
+    if (id === session) continue;
+    const t = Date.parse(at);
+    if (Number.isFinite(t) && now - t < COLLAB_TIMINGS.penStaleMs) {
+      out[id] = at;
+      any = true;
+    }
+  }
+  return any ? out : null;
+}
+
+/**
+ * The periodic heartbeat (task 1213): refresh the pen's heartbeat iff THIS
+ * session holds it — stamping `holderSession`, which migrates a legacy
+ * session-less record to its first heartbeating session — and refresh this
+ * session's presence (and focus claim) if it has one. A session that does
+ * not hold the pen never touches it, so a sibling pane or window of the same
+ * name cannot keep a pen fresh that it is not writing under.
+ */
+export function heartbeatMutator(
+  self: CollabSelf,
+  clock: () => number = Date.now,
+): CollabMutator {
+  return (prev) => {
+    if (!prev.enabled) return null;
+    let next = prev;
+    const now = new Date(clock()).toISOString();
+    if (holdsPen(prev.pen, self)) {
+      next = {
+        ...next,
+        pen: { ...next.pen, holderSession: self.session, lastHeartbeat: now },
+      };
+    }
+    const myEntry = next.presence[self.name];
+    if (myEntry?.focusedCard) {
+      next = touchPresence(
+        next,
+        self.name,
+        { focusedCard: { ...myEntry.focusedCard, lastHeartbeat: now } },
+        self.session,
+      );
+    } else if (myEntry) {
+      next = touchPresence(next, self.name, {}, self.session);
+    }
+    return next === prev ? null : next;
+  };
+}
+
+/** Stamp real input on the pen — only when THIS session holds it. */
+export function activityMutator(
+  self: CollabSelf,
+  at: number,
+): CollabMutator {
+  return (prev) => {
+    if (!holdsPen(prev.pen, self)) return null;
+    const iso = new Date(at).toISOString();
+    return {
+      ...prev,
+      pen: {
+        ...prev.pen,
+        holderSession: self.session,
+        lastActivity: iso,
+        lastHeartbeat: iso,
+      },
+    };
   };
 }
 
@@ -111,9 +220,12 @@ export function releaseSelf(me: string): CollabMutator {
  * already landed. Without the check, a stale-UI Pass erased the partner's
  * freshly-held pen and the second of two Takes silently stole the first. */
 
-/** Who may take the pen how: `take` only when it is free (or already
- *  mine — a re-take refreshes); `take-over` also when the holder's
- *  heartbeat is stale per {@link derivePen}, the same clock the pill reads. */
+/** Who may take the pen how: `take` only when it is free (or already held
+ *  under my NAME — a re-take refreshes, and a take from a sibling pane or
+ *  window of mine MOVES the pen to this session: one person, so no
+ *  partner's pen is stolen, and the sibling stops holding it); `take-over`
+ *  also when the holder's heartbeat is stale per {@link derivePen}, the
+ *  same clock the pill reads. */
 export type PenTakeMode = "take" | "take-over";
 
 export function canTakePen(
@@ -127,11 +239,12 @@ export function canTakePen(
   return mode === "take-over" && derivePen(prev.pen, now).status === "stale";
 }
 
-/** Take (or take over) the pen for `me`: enable collab, join the roster and
- *  presence, become holder, drop my own pending request. `null` when the
- *  pen on disk is not takable in `mode`. */
+/** Take (or take over) the pen for `me` in `session`: enable collab, join
+ *  the roster and presence, become holder, drop my own pending request.
+ *  `null` when the pen on disk is not takable in `mode`. */
 export function takePenMutator(
   me: CollabIdentity,
+  session: string,
   mode: PenTakeMode,
   clock: () => number = Date.now,
 ): CollabMutator {
@@ -140,12 +253,13 @@ export function takePenMutator(
     if (!canTakePen(prev, me.name, mode, t)) return null;
     const now = new Date(t).toISOString();
     let next = ensureParticipant(prev, me);
-    next = touchPresence(next, me.name, {});
+    next = touchPresence(next, me.name, {}, session);
     return {
       ...next,
       enabled: true,
       pen: {
         holder: me.name,
+        holderSession: session,
         since: now,
         lastHeartbeat: now,
         lastActivity: now,
@@ -157,15 +271,17 @@ export function takePenMutator(
   };
 }
 
-/** Pass (put down) the pen — only MY pen. `null` when someone else holds
- *  it on disk (it was taken over since the UI last polled) or it is free. */
-export function passPenMutator(me: string): CollabMutator {
+/** Pass (put down) the pen — only the pen THIS session holds. `null` when
+ *  someone else holds it on disk (it was taken over since the UI last
+ *  polled, or moved to a sibling session of mine) or it is free. */
+export function passPenMutator(self: CollabSelf): CollabMutator {
   return (prev) => {
-    if (prev.pen.holder !== me) return null;
+    if (!holdsPen(prev.pen, self)) return null;
     return {
       ...prev,
       pen: {
         holder: null,
+        holderSession: null,
         since: null,
         lastHeartbeat: null,
         lastActivity: null,

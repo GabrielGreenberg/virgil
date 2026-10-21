@@ -77,6 +77,13 @@ export interface CollabPenState {
   lastActivity: string | null;
   /** Pending requests from non-holders. */
   requestedBy: CollabRequest[];
+  /** Task 1213 — WHICH live session (one `useCollab` instance: one pane of
+   *  one window) holds the pen. The holder NAME is per-browser, so every
+   *  pane and window of that browser shares it; ownership is the session.
+   *  Absent on a legacy record: then any session of `holder`'s name counts
+   *  as the holder (see {@link holdsPen}) until its next heartbeat stamps
+   *  its own session. */
+  holderSession?: string | null;
 }
 
 export interface CollabFocusClaim {
@@ -91,6 +98,12 @@ export interface CollabPresenceEntry {
   focusedCard: CollabFocusClaim | null;
   selectedCards: { panelKind: string; cardId: string }[];
   cursorParagraphId: string | null;
+  /** Task 1213 — the live sessions (panes/windows) of this name present on
+   *  the paper, session id → ISO of that session's last heartbeat. One
+   *  name, several sessions: a release drops only its own session, and the
+   *  entry goes only when no fresh session of the name remains. Absent on a
+   *  legacy entry (then a release drops the entry, as before). */
+  sessions?: Record<string, string>;
 }
 
 export interface CollabSidecar {
@@ -215,6 +228,32 @@ export function saveIdentity(identity: CollabIdentity): void {
   announceStorageKey(COLLAB_IDENTITY_KEY);
 }
 
+/* ── Holding sessions (task 1213) ─────────────────────────────────── */
+
+/** One live holder of collab state: the per-browser identity NAME plus the
+ *  per-instance SESSION (one `useCollab` — one pane of one window). Every
+ *  "is this mine?" question about the pen or presence asks the session. */
+export interface CollabSelf {
+  name: string;
+  session: string;
+}
+
+/** Mint a session id for one `useCollab` instance. Unique per pane per
+ *  window per page load — a reload is a new session. */
+export function mintCollabSession(): string {
+  const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Does `self` hold `pen`? The name must match AND the session — except on
+ *  a legacy record that names no session, which any session of the name
+ *  holds until its next heartbeat stamps one ({@link CollabPenState}). */
+export function holdsPen(pen: CollabPenState, self: CollabSelf): boolean {
+  if (pen.holder !== self.name) return false;
+  return !pen.holderSession || pen.holderSession === self.session;
+}
+
 /* ── Pure update helpers ──────────────────────────────────────────── */
 
 /** Touch a presence entry for `name`, creating one if missing. */
@@ -222,6 +261,9 @@ export function touchPresence(
   sidecar: CollabSidecar,
   name: string,
   patch: Partial<CollabPresenceEntry> = {},
+  /** Task 1213 — the session touching it; recorded in `sessions` so a
+   *  later release of a SIBLING session leaves this one's presence. */
+  session?: string,
 ): CollabSidecar {
   const now = new Date().toISOString();
   const prev = sidecar.presence[name] ?? {
@@ -230,11 +272,13 @@ export function touchPresence(
     selectedCards: [],
     cursorParagraphId: null,
   };
+  const entry: CollabPresenceEntry = { ...prev, lastHeartbeat: now, ...patch };
+  if (session) entry.sessions = { ...(prev.sessions ?? {}), [session]: now };
   return {
     ...sidecar,
     presence: {
       ...sidecar.presence,
-      [name]: { ...prev, lastHeartbeat: now, ...patch },
+      [name]: entry,
     },
   };
 }
