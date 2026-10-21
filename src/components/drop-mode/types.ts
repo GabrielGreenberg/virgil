@@ -432,7 +432,9 @@ export interface StackPullApi {
 
 /**
  * Per-kind drop behavior. Each kind (note, todo, paragraph, footnote, …)
- * contributes one spec; the registry composes them into a single record.
+ * contributes one spec. There is no composed record: `lookupSpec(cardKey)`
+ * (`registry.ts`) DISPATCHES per key — `CARD_REGISTRY[kind].dropSpec` for a
+ * card kind, `TRANSIENT_SPECS` for a transient key, or a text-object spec.
  */
 export interface DropSpec {
   /**
@@ -634,9 +636,9 @@ export interface DropSpec {
  */
 export interface DropSession {
   cardKey: string;
-  /** The kind prefix of `cardKey` (e.g. "note", "paragraph"). Used to
-   *  look the spec up in the registry. */
-  kind: string;
+  /** Resolved once at `beginDropSession` by `lookupSpec(cardKey)` — the FULL
+   *  key, not its kind prefix (`linkedRange` routes to the text-range-move
+   *  spec). No `kind` field rides alongside: nothing read one (task 1220). */
   spec: DropSpec;
   /**
    * The per-doc ctx this gesture STARTED in, resolved once at
