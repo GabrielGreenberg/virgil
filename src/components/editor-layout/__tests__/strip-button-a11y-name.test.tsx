@@ -62,4 +62,19 @@ describe("StripButton accessible name", () => {
     expect(hiddenHost).not.toBeNull();
     expect(hiddenHost!.contains(svg)).toBe(true);
   });
+  // Task 1226 — STYLE_GUIDE's panel-strip spec names the toggle class and the
+  // pressed-state channel; this ties the spec to the shipped button.
+  it("is a 24px iconbtn-toggle whose active state is aria-pressed", () => {
+    const { getByRole, rerender } = render(
+      <StripButton panelId="notes" active={false} onClick={vi.fn()} onMove={vi.fn()} side="left" />,
+    );
+    const btn = getByRole("button", { name: panelLabel("notes") });
+    expect(btn.classList.contains("iconbtn-md")).toBe(true);
+    expect(btn.classList.contains("iconbtn-toggle")).toBe(true);
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    rerender(
+      <StripButton panelId="notes" active onClick={vi.fn()} onMove={vi.fn()} side="left" />,
+    );
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+  });
 });

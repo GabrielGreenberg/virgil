@@ -8428,7 +8428,10 @@ function IconStrip({
           side={side}
         />
       ))}
-      <div className="mt-auto">
+      {/* One flex item for the menu's trigger + popover. Content-sized strip
+          (sticky, no height), so the filter sits `gap-2.5` under the last
+          strip button — it is not pinned to the strip's bottom (task 1226). */}
+      <div>
         <OmniFilterMenu
           side={side}
           enabled={viewPrefs.getOmniEnabled(side)}
