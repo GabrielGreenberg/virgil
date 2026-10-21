@@ -3016,14 +3016,16 @@ number. Full ladder, low → high:
 | draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` (= `FLOAT_Z_MAX + 1`) |
 | open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |
 | inline title-edit overlay + input | 2001–2002 | `INLINE_EDIT_OVERLAY_Z`, `INLINE_EDIT_INPUT_Z` |
-| drag ghosts (strip-button ghost, clamped HTML5 ghost) | 9998 | `DRAG_GHOST_Z` (= `DROP_INDICATOR_Z - 1`) |
+| drag ghosts (strip-button ghost, clamped HTML5 ghost, inline-atom ghost) | 9998 | `DRAG_GHOST_Z` (= `DROP_INDICATOR_Z - 1`) |
 | drop-mode indicator | 9999 | `DROP_INDICATOR_Z` |
 | modal scrim + centered dialogs | 10000 | `MODAL_SCRIM_Z` |
 | hint / tooltip bubble | 10010 | `HINT_Z` |
 
 `HINT_Z` has no TS consumer — the only site is the `.hint-bubble` CSS rule
 (CSS can't import TS), which reads the `--hint-z` var; `--float-z-base` does the
-same for the float band. Those `:root` vars are the ONLY CSS spellings of a rung,
+same for the float band and `--drag-ghost-z` for the inline-atom ghost. (The
+block lift's `.lifted-text-overlay` stays on the float band even in ghost mode:
+the same element flips to a popout card mid-gesture.) Those `:root` vars are the ONLY CSS spellings of a rung,
 and `float-policy.test.ts` pins each to its symbol.
 
 **Enforced by census, not by list (task 793).** `z-literal-census.test.ts` walks

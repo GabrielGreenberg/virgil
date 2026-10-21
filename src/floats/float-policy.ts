@@ -201,7 +201,14 @@ export const HINT_Z = 10010;
  *                                     the ladder, not by DOM append order (the
  *                                     strip ghost TIED the bar at 9999; the
  *                                     clamped ghost sat at 99999 — above modals
- *                                     and hints).
+ *                                     and hints). The inline-atom ghost reads
+ *                                     it via the `--drag-ghost-z` CSS mirror.
+ *                                     The block lift's `.lifted-text-overlay`
+ *                                     stays on FLOAT_Z_BASE even in its pure
+ *                                     ghost mode, deliberately: the SAME
+ *                                     element flips ghost⇄popout mid-gesture,
+ *                                     and the popout is a float-band card, so
+ *                                     one rung avoids a z jump at the flip.
  */
 export const DOCK_OUTLINE_Z = FLOATING_PANEL_Z_BASE - 1;
 export const STACK_CHROME_Z = FLOATING_PANEL_Z_BASE - 1;

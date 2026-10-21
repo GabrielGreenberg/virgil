@@ -497,6 +497,9 @@
   --latex-cmd-color: #9ca3af;
 
   /* Drag */
+  /* Descriptive declaration. The SHIPPED default is the PROMOTE-DEFAULTS
+     block below (last wins, by design) — retint via the prefs JSON sidecars,
+     not here (task 1218). */
   --drag-highlight: #3b82f6;
   /* The INSERTION BAR — the one colour for "your drop lands here", read by
      every drop bar: the drop-mode content bar (drop-mode/Indicator.tsx), the
@@ -507,12 +510,14 @@
   --insertion-bar: var(--drag-highlight);
   /* Card / text-object float band base — the CSS MIRROR of FLOAT_Z_BASE
      (src/floats/float-policy.ts). CSS can't import TS, so this is the ONE
-     literal; every float-band rule (.lifted-text-overlay, its header,
-     .inline-atom-ghost) reads the var, and float-policy.test.ts pins the
-     mirror to the symbol. */
+     literal; every float-band rule (.lifted-text-overlay, its header)
+     reads the var, and float-policy.test.ts pins the mirror to the symbol. */
   --float-z-base: 1200;
   /* Hint-bubble tier — the CSS MIRROR of HINT_Z (same pattern, same pin). */
   --hint-z: 10010;
+  /* Cursor-following drag-ghost rung — the CSS MIRROR of DRAG_GHOST_Z (same
+     pattern, same pin). Read by .inline-atom-ghost (task 1218). */
+  --drag-ghost-z: 9998;
 
   /* Drag glow/ring layers — DERIVED from --drag-highlight, never
      re-spelled. This is not cosmetic tidying: --drag-highlight is a USER
@@ -4638,6 +4643,11 @@ body.perf-contain .static-borrowed-text {
  * `#virgil-drop-indicator` is the Virgil-bar strip's drop line
  * (drag-drop.tsx) — it moves by `transform` too, and takes the same opt-in
  * here rather than an inline `transition` no media query can reach. */
+.dropmode-bar-gap,
+.dropmode-bar-side,
+.dropmode-bar-inline {
+  border-radius: 1px;
+}
 .dropmode-bar-vertical {
   border-radius: var(--radius-xs);
 }
@@ -4666,16 +4676,18 @@ body.perf-contain .static-borrowed-text {
 
 /* Inline-atom drag ghost — the translucent copy of the grabbed Atom that
  * floats with the cursor (the inline cousin of `.lifted-text-overlay`).
- * Rendered by <InlineAtomGhost>, portaled to document.body. z-index 1200
- * MATCHES `.lifted-text-overlay` and stays BELOW the blue drop bar (z:9999,
- * Indicator.tsx) so the insertion bar still composes on top — the same
- * invariant the block lift relies on (see the `.lifted-text-overlay` z note
- * above). pointer-events:none lets the live cursor drive posAtCoords
+ * Rendered by <InlineAtomGhost>, portaled to document.body. It is a
+ * cursor-following DRAG GHOST, so it sits on the ladder's DRAG_GHOST_Z rung
+ * (`--drag-ghost-z`, 9998): above every popped card it is dragged across, and
+ * strictly BELOW the blue drop bar (DROP_INDICATOR_Z, 9999) so the insertion
+ * bar still composes on top (task 1218 — it used to borrow the float band's
+ * 1200 from `.lifted-text-overlay`, which is a card, and could paint under a
+ * popped card). pointer-events:none lets the live cursor drive posAtCoords
  * underneath. Sized to the atom (no width/height); the inner clone carries
  * the atom's own class-based look via the `.tiptap` wrapper. */
 .inline-atom-ghost {
   position: fixed;
-  z-index: var(--float-z-base);
+  z-index: var(--drag-ghost-z);
   pointer-events: none;
   opacity: 0.85;
   filter: var(--shadow-drag-ghost-filter);
