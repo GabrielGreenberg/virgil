@@ -152,38 +152,50 @@ describe("editor stacking tiers (BUG #50: margin bolt below floats)", () => {
   });
 });
 
-// Task 137 — the card-float band is BOUNDED. `cardFloatZ` saturates the MRU
-// raise-on-click offset at FLOAT_Z_MAX so a frontmost card can never climb over
-// the draggable-dialog tier (Preferences), however many cards are popped. This
-// pins the ceiling the old unbounded `FLOAT_Z_BASE + idx` silently drifted past.
-describe("card-float band ceiling (task 137: bounded MRU band)", () => {
+// Task 137 — the card-float band is BOUNDED: no rank, however many cards are
+// popped, can climb over the draggable-dialog tier (Preferences). Task 1222 —
+// and it is anchored at the TOP: the most recent card is always FLOAT_Z_MAX and
+// the next four stay distinct, so with 6+ cards a click still raises (the first
+// bounded form tied the MOST recent at the ceiling and let DOM order win).
+describe("card-float band (task 137 bounded, task 1222 top-anchored)", () => {
   it("keeps every attainable card z strictly below the draggable dialog tier", () => {
-    // The core invariant: no offset, however large, can reach Preferences.
-    for (const offset of [0, 1, 4, 5, 6, 7, 20, 1000]) {
-      expect(cardFloatZ(offset)).toBeLessThan(DRAGGABLE_DIALOG_Z);
+    for (const count of [1, 4, 5, 6, 7, 20, 1000]) {
+      for (let rank = -1; rank <= count; rank++) {
+        const z = cardFloatZ(rank, count);
+        expect(z).toBeLessThan(DRAGGABLE_DIALOG_Z);
+        expect(z).toBeLessThanOrEqual(FLOAT_Z_MAX);
+        expect(z).toBeGreaterThanOrEqual(FLOAT_Z_BASE);
+      }
     }
-    // The band ceiling itself sits below the dialog tier, by construction.
     expect(FLOAT_Z_MAX).toBeLessThan(DRAGGABLE_DIALOG_Z);
     expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_MAX + 1);
   });
 
-  it("preserves MRU ordering below the ceiling", () => {
-    expect(cardFloatZ(0)).toBe(FLOAT_Z_BASE);
-    expect(cardFloatZ(3)).toBe(FLOAT_Z_BASE + 3);
-    expect(cardFloatZ(4)).toBe(FLOAT_Z_MAX);
-    // Strictly increasing up to the cap so a raised card out-stacks a buried one.
-    expect(cardFloatZ(2)).toBeGreaterThan(cardFloatZ(1));
+  it("puts the most recent card at FLOAT_Z_MAX whatever the count", () => {
+    expect(cardFloatZ(0, 1)).toBe(FLOAT_Z_MAX);
+    expect(cardFloatZ(2, 3)).toBe(FLOAT_Z_MAX);
+    expect(cardFloatZ(5, 6)).toBe(FLOAT_Z_MAX);
+    expect(cardFloatZ(999, 1000)).toBe(FLOAT_Z_MAX);
   });
 
-  it("saturates at FLOAT_Z_MAX past the ceiling (the 6-7-card overrun is gone)", () => {
-    // Six popped cards → frontmost offset 6 used to reach 1206 > 1205; now clamps.
-    expect(cardFloatZ(5)).toBe(FLOAT_Z_MAX);
-    expect(cardFloatZ(6)).toBe(FLOAT_Z_MAX);
-    expect(cardFloatZ(1000)).toBe(FLOAT_Z_MAX);
+  it("a just-opened float not yet in the stack (rank = count) is the top", () => {
+    expect(cardFloatZ(0, 0)).toBe(FLOAT_Z_MAX);
+    expect(cardFloatZ(6, 6)).toBe(FLOAT_Z_MAX);
   });
 
-  it("floors a negative/absent offset at the band base (never below)", () => {
-    expect(cardFloatZ(-1)).toBe(FLOAT_Z_BASE);
+  it("with 6 cards the top five ranks are distinct and the buried ones share the base", () => {
+    const zs = [0, 1, 2, 3, 4, 5].map((r) => cardFloatZ(r, 6));
+    expect(zs).toEqual([1200, 1200, 1201, 1202, 1203, 1204]);
+    // The two most recent no longer tie (the task-1222 defect).
+    expect(cardFloatZ(4, 6)).toBeLessThan(cardFloatZ(5, 6));
+  });
+
+  it("is strictly increasing across the top five ranks for any count", () => {
+    for (const count of [2, 5, 6, 12]) {
+      for (let rank = Math.max(1, count - 4); rank < count; rank++) {
+        expect(cardFloatZ(rank, count)).toBeGreaterThan(cardFloatZ(rank - 1, count));
+      }
+    }
   });
 });
 
@@ -372,13 +384,16 @@ describe("task 137 consumer wiring (bounded card-float band)", () => {
       "utf8",
     );
     expect(src).toContain("cardFloatZ(");
+    // Task 1222: the rank is passed WITH the stack length, so the band is
+    // anchored at the top (the focused card = FLOAT_Z_MAX).
+    expect(src).toContain("cardFloatZ(idx >= 0 ? idx : cards.length, cards.length)");
     // The old unbounded form must be gone.
     expect(src).not.toContain("FLOAT_Z_BASE +");
   });
 
   it("FloatWindow's floatZIndex fallback derives from cardFloatZ, not FLOAT_Z_BASE + indexHint", () => {
     const src = readFileSync(path.join(SRC, "floats/FloatWindow.tsx"), "utf8");
-    expect(src).toContain("cardFloatZ(indexHint)");
+    expect(src).toContain("cardFloatZ(indexHint, ctx.poppedKeys.length)");
     expect(src).not.toContain("FLOAT_Z_BASE + indexHint");
   });
 });

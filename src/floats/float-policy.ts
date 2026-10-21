@@ -37,9 +37,9 @@ export const FLOAT_Z_BASE = 1200;
  * Preferences window once ~6-7 cards are popped (task 137). Saturating every
  * card z at this ceiling keeps the whole band strictly below the draggable
  * dialog tier by construction. Five distinct levels (1200-1204) is ample for
- * MRU ordering among simultaneously-popped cards; beyond that they share the
- * top and DOM/portal order breaks ties (the same tie behavior a z-collision
- * has always had). Consume via {@link cardFloatZ}, never a raw
+ * MRU ordering among simultaneously-popped cards; the band is anchored at the
+ * top, so it is the five MOST RECENT that stay distinct and older cards share
+ * the base (task 1222). Consume via {@link cardFloatZ}, never a raw
  * `FLOAT_Z_BASE + offset`.
  */
 export const FLOAT_Z_MAX = FLOAT_Z_BASE + 4;
@@ -61,17 +61,25 @@ export const DRAGGABLE_DIALOG_Z = FLOAT_Z_MAX + 1;
 
 /**
  * The ONE derivation of a card / text-object float's paint z-index from its MRU
- * raise-on-click offset (the float's index in the card-filtered focus stack, or
- * the popped-key list for the fallback path). Saturates at {@link FLOAT_Z_MAX}
- * so the band stays strictly below {@link DRAGGABLE_DIALOG_Z} no matter how many
- * cards are popped (task 137). MRU *ordering* is preserved below the ceiling;
- * at/above it cards share the top and DOM order breaks ties (unchanged). Both z
- * sites — `EditorLayout.cardFloatZIndex` (primary) and `FloatWindow`'s
- * `floatZIndex`-absent fallback — route through here, so no raw
+ * raise-on-click RANK: `rank` is the float's index in the card-filtered focus
+ * stack (or the popped-key list for the fallback path) — 0 = least recent —
+ * and `count` is that list's length. A rank at or past the end (a just-opened
+ * float not yet in the stack) is the top.
+ *
+ * The band is anchored at the TOP (task 1222): the most recent float is always
+ * {@link FLOAT_Z_MAX}, the next four sit at distinct levels below it, and only
+ * floats older than that share {@link FLOAT_Z_BASE} — where a tie is harmless,
+ * because they are buried. (Task 137's first form saturated a rank counted from
+ * the LEAST recent, so with 6+ cards the MOST recent ones tied at the ceiling
+ * and DOM order, not the click, decided which painted on top.) The whole band
+ * stays strictly below {@link DRAGGABLE_DIALOG_Z} however many cards are
+ * popped. Both z sites — `EditorLayout.cardFloatZIndex` (primary) and
+ * `FloatWindow`'s `floatZIndex`-absent fallback — route through here, so no raw
  * `FLOAT_Z_BASE + offset` can reintroduce the unbounded band.
  */
-export function cardFloatZ(offset: number): number {
-  return Math.min(FLOAT_Z_BASE + Math.max(0, offset), FLOAT_Z_MAX);
+export function cardFloatZ(rank: number, count: number): number {
+  const fromTop = Math.max(0, count - 1 - rank);
+  return Math.max(FLOAT_Z_BASE, FLOAT_Z_MAX - fromTop);
 }
 
 // Re-exported so panel z-stacking and the float band reference one symbol.
