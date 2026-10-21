@@ -538,7 +538,9 @@ export interface DropSpec {
    *
    * Resolved ONCE per session by `resolveSessionSourceRange`, at
    * `beginDropSession`, exactly as {@link blockPayloadFor} is: it walks the
-   * document, and the answer cannot change under a hold gesture.
+   * document, so it never runs per move. A concurrent writer CAN move the doc
+   * under a held pointer, so the controller re-resolves it at commit when its
+   * doc stamp no longer matches (task 1217).
    */
   sourceRangeFor?: (cardKey: string, ctx: DropCtx) => DropSourceRange | null;
   /**
