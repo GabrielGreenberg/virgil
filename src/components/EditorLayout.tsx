@@ -768,10 +768,10 @@ export default function EditorLayout() {
         (r): r is { kind: "card"; key: string } => r.kind === "card",
       );
       const idx = cards.findIndex((r) => r.key === key);
-      // Bounded card-float band: `cardFloatZ` saturates the MRU offset at
-      // FLOAT_Z_MAX so a frontmost card can never climb over the draggable
-      // dialog tier, however many cards are popped (task 137).
-      return cardFloatZ(idx >= 0 ? idx : cards.length);
+      // Bounded card-float band, anchored at the top: the most recent card is
+      // always FLOAT_Z_MAX and never climbs over the draggable dialog tier,
+      // however many cards are popped (tasks 137, 1222).
+      return cardFloatZ(idx >= 0 ? idx : cards.length, cards.length);
     },
     [focusStack],
   );

@@ -212,7 +212,7 @@ export function FloatWindow({
       initialY={initialY}
       initialWidth={initialWidth}
       initialHeight={initialHeight}
-      zIndex={ctx.floatZIndex?.(key) ?? cardFloatZ(indexHint)}
+      zIndex={ctx.floatZIndex?.(key) ?? cardFloatZ(indexHint, ctx.poppedKeys.length)}
       surface={floatable.surface}
       accentTint={accent.accentTint}
       onChange={(pos) => ctx.setFloatPosition(key, pos)}
