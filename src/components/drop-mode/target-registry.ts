@@ -58,7 +58,9 @@ export function findEditorAtPoint(x: number, y: number): Editor | null {
   return null;
 }
 
-/** Test helper / debug. */
+/** Every registered editor — a PRODUCTION enumeration, not a test helper:
+ *  `util/inline-atom-move.ts`'s `locateAtom` walks it to find a by-id atom in
+ *  whichever pane holds it. Changing or deleting it breaks inline-atom moves. */
 export function getRegisteredEditors(): Editor[] {
   return Array.from(editorByDom.values());
 }

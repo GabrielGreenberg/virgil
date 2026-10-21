@@ -3,12 +3,11 @@
  * and the drop site's target context, decides whether to drop the node
  * directly or wrap it in a fresh single-item parent of the right kind.
  *
- * Why this lives in the registry, not scattered switches:
- * Today drop behavior for each block source kind is a per-case switch
- * in `src/components/drop-mode/specs/`. After the refactor, the wrap/
+ * Why this lives in the registry, not scattered switches: the wrap/
  * no-wrap decision is a function in the registry entry — one shape for
- * every kind. Adding a new sub-object kind = one entry in the registry,
- * no per-spec edits.
+ * every kind — rather than a per-case switch in each spec under
+ * `src/components/drop-mode/specs/`. Adding a new sub-object kind = one
+ * entry in the registry, no per-spec edits.
  *
  * See TEXT-OBJECT-REFACTOR.md §8.
  */

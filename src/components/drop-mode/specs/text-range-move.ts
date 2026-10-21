@@ -309,7 +309,8 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
  * content, fit to the gap's context. Mirrors `textobject.ts`'s element
  * block-move — `classifyParentAt` decides the context, then delete-source +
  * shed-the-emptied-shell + mapped-insert in one transaction (same-editor) /
- * insert-then-delete (cross-editor), advancing a cursor by each node's size.
+ * insert-then-delete (cross-editor), landing through `insertNodesAdvancing`
+ * (advance by what actually LANDED — task 331 — never by each node's size).
  * The payload's identity is settled between the cut and the insert — see the
  * IDENTITY note at the top of this file. The difference from a node move: the
  * payload is the range's slice converted to blocks (`rangeSliceToBlocks` — an

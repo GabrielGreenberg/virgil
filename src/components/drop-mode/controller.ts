@@ -22,7 +22,7 @@
  *     `DropModeProvider` (one per `EditorPane`) to publish ITS OWN
  *     per-doc hook bag; returns a dispose that removes only that
  *     entry. `setDropCtx(ctx | null)` is the view-less legacy publish.
- *   - `lookupSpec(kind)` — registry-aware spec lookup.
+ *   - `lookupSpec(cardKey)` — registry-aware spec lookup (the FULL key).
  *   - `beginDropSession({...})` — called on a producer's drag edge.
  *     Installs window listeners and a CSS hook.
  *   - `useDropSession()` — React hook for components that need to react
@@ -338,7 +338,6 @@ export function beginDropSession(opts: {
   // `parseAnyKey` reads both the `float:` grammar and legacy/transient keys.
   const parsed = parseAnyKey(opts.cardKey);
   if (!parsed) return false;
-  const kind = parsed.kind;
   // `lookupSpec` takes the FULL cardKey: most kinds dispatch on the kind, but
   // `linkedRange` routes to the text-range-move spec (a plain selection moves
   // as a slice, not a block) — L3f-2.
@@ -357,7 +356,6 @@ export function beginDropSession(opts: {
   sessionSerial += 1;
   session = {
     cardKey: opts.cardKey,
-    kind,
     spec,
     ctx,
     // Resolve the payload-aware placement list ONCE, here (task 258): the
