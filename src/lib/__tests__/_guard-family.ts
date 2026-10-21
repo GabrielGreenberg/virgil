@@ -26,6 +26,15 @@
  *      titled, or neither (most are neither) — is caught by what it DOES.
  *      A suite that lists a temp fixture dir rides along; that costs
  *      milliseconds and buys completeness.
+ *   4. it CROSSES A ROOT — imports a module from a different top-level root
+ *      than its own (a `library/` test importing `src/lib/latex-requirements`,
+ *      via `../` or the `@/` / `@library/` aliases). Such a file pins one
+ *      silo's code against another's, so a change in the IMPORTED silo can
+ *      redden it while every suite near the change stays green: task 1206
+ *      rewrote the xlist shim in `src/`, ran the src-side suites, and merged
+ *      `main` red on `library/lib/__tests__/latex-output-stock-compile`
+ *      (task 1212). A targeted-suite pick keyed on where the diff lives can
+ *      never select it; only the unconditional run can.
  *
  * The population is exactly what `npm test` collects: the roots come from
  * `vitest.config.ts`'s own `include` (the meta-test pins that every pattern
@@ -53,6 +62,25 @@ export const CENSUS_TITLE = /\b(?:describe|it|test)(?:\.\w+)*\(\s*["'`][^"'`\n]*
 /** Signature 3: the file enumerates a directory. */
 export const LISTS_A_TREE = /\b(?:walkFiles|trackedFiles|readdirSync|globSync)\s*\(|["'`][^"'`\n]*\bls-files\b/;
 
+/** Signature 4: module specifiers (relative or aliased) in import/export/dynamic-import position. */
+const IMPORT_SPEC = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'`]((?:\.\.?|@|@library)\/[^"'`\n]+)["'`]/g;
+
+/** The top-level root a module specifier resolves into, from the test at `rel`. */
+export function specifierRoot(rel: string, spec: string): string {
+  if (spec.startsWith("@library/")) return "library";
+  if (spec.startsWith("@/")) return "src";
+  return path.posix.normalize(path.posix.join(path.posix.dirname(rel), spec)).split("/")[0];
+}
+
+/** Signature 4: the file imports from a top-level root other than its own. */
+export function crossesARoot(rel: string, code: string): boolean {
+  const own = rel.split("/")[0];
+  for (const m of code.matchAll(IMPORT_SPEC)) {
+    if (specifierRoot(rel, m[1]) !== own) return true;
+  }
+  return false;
+}
+
 /** Which signature(s) select a file — `[]` = not a guard. */
 export function guardSignatures(rel: string, source: string): string[] {
   const out: string[] = [];
@@ -60,6 +88,7 @@ export function guardSignatures(rel: string, source: string): string[] {
   const code = commentsStripped(source);
   if (CENSUS_TITLE.test(code)) out.push("census-title");
   if (LISTS_A_TREE.test(code)) out.push("lists-a-tree");
+  if (crossesARoot(rel, code)) out.push("crosses-a-root");
   return out;
 }
 

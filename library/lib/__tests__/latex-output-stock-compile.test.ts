@@ -70,14 +70,19 @@ describe("_latex-output.md stock-compile advice ↔ latex-requirements", () => {
     expect(new Set(stockCompileLines(md))).toEqual(new Set(expected));
   });
 
+  /** The `xlistenv` row's own emission — read from the table, never
+   *  re-typed here, so a shim rewrite (task 1206's idempotent guard) moves
+   *  this guard with it instead of reddening it (task 1212). */
+  const xlistLine = LATEX_REQUIREMENTS.find((r) => r.id === "xlistenv")
+    ?.injectLine;
+
   it("the derivation sees the xlist shim (the drift that motivated it)", () => {
-    expect(injectedLinesFor(appendixVocabularyBody(md))).toContain(
-      "\\newenvironment{xlist}{\\pex}{\\xe}",
-    );
+    expect(xlistLine).toBeTruthy();
+    expect(injectedLinesFor(appendixVocabularyBody(md))).toContain(xlistLine);
   });
 
   it("is red on a planted omission", () => {
-    const planted = md.replace("\\newenvironment{xlist}{\\pex}{\\xe}\n", "");
+    const planted = md.replace(`${xlistLine}\n`, "");
     expect(planted).not.toBe(md);
     expect(new Set(stockCompileLines(planted))).not.toEqual(
       new Set(injectedLinesFor(appendixVocabularyBody(planted))),

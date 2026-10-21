@@ -172,11 +172,14 @@ family). To compile without that round trip, add these lines before
 `\begin{document}` — exactly what the app injects for the example
 vocabulary above. Note the second line: expex does **not** define the
 `xlist` environment (gb4e did, and gb4e is stripped), so a paper with a
-nested tier fails on "Environment xlist undefined" without it.
+nested tier fails on "Environment xlist undefined" without it. The line
+is guarded (`\ifdefined\xlist\else … \fi`) so it defines `xlist` only if
+nothing else already has — a class, a local `.sty`, or the paper's own
+definition never collides with it as "Environment xlist already defined".
 
 ```latex-stock-compile
 \usepackage{expex}
-\newenvironment{xlist}{\pex}{\xe}
+\ifdefined\xlist\else\newenvironment{xlist}{\pex}{\xe}\fi
 ```
 
 This block is CI-checked against the requirement table
