@@ -327,7 +327,7 @@ export function useFloatMainSync({
    *  1170). Render it through `WriteRefusedBanner`. */
   writeRefusal: string | null;
   /** Feed every `landFloatWrite` outcome here: a refusal raises the banner,
-   *  a landed write clears it. */
+   *  a landed or `unchanged` write clears it. */
   reportWrite: (outcome: FloatWriteOutcome) => void;
 } {
   const [sourceMissing, setSourceMissing] = useState(false);
@@ -336,9 +336,11 @@ export function useFloatMainSync({
   const reportWrite = useCallback((outcome: FloatWriteOutcome) => {
     setWriteRefusal((prev) => nextWriteRefusal(prev, outcome));
   }, []);
-  // A re-seed replaces the refused content with what main holds, so the
-  // banner describing that content no longer describes anything.
-  const onReseeded = useCallback(() => {
+  // The float now equals what main holds — by a re-seed, or because it had
+  // already converged (an undo or a foreign edit that matched it; task 1223) —
+  // so the banner describing refused content no longer describes anything.
+  // Identity-bailed: a no-op when no banner is up.
+  const onConverged = useCallback(() => {
     setWriteRefusal((prev) => (prev === null ? prev : null));
   }, []);
 
@@ -350,9 +352,9 @@ export function useFloatMainSync({
       readSource,
       setSourceMissing,
       sourceRangeRef,
-      onReseeded,
+      onConverged,
     );
-  }, [mainEditor, floatEditor, readSource, onReseeded]);
+  }, [mainEditor, floatEditor, readSource, onConverged]);
 
   useMainTransactionSync({
     // Subscribe (and seed) only once both editors exist — the seed call
@@ -372,7 +374,7 @@ function syncFromMain(
   readSource: UseFloatMainSyncArgs["readSource"],
   setSourceMissing: (v: boolean) => void,
   sourceRangeRef: RefObject<SourceRange | null>,
-  onReseeded: () => void,
+  onConverged: () => void,
 ): void {
   const { doc, missing, range } = readSource(
     mainEditor.state.doc,
@@ -389,7 +391,10 @@ function syncFromMain(
     return;
   }
   setSourceMissing(false);
-  if (sameDoc(doc, floatEditor.getJSON())) return;
+  if (sameDoc(doc, floatEditor.getJSON())) {
+    onConverged();
+    return;
+  }
 
   // Caret restore mapped through the structural change (EX-F8-02 class): a
   // foreign main edit upstream of the float's caret shifts the content, so the
@@ -397,7 +402,7 @@ function syncFromMain(
   // position. `reseedPreservingCaret` diffs old↔new and maps the caret through
   // the edit — the shared single owner with ExampleCard's re-seed.
   reseedPreservingCaret(floatEditor, doc);
-  onReseeded();
+  onConverged();
 }
 
 function sameDoc(a: JSONContent, b: JSONContent): boolean {

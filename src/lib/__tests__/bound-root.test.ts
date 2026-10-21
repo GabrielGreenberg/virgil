@@ -226,11 +226,13 @@ describe("landFloatWrite — the one whole-block write door", () => {
     ).toBe("unchanged");
   });
 
-  it("nextWriteRefusal: refusal raises, landed clears, others keep", () => {
+  it("nextWriteRefusal: refusal raises, landed/unchanged clear, no-source keeps", () => {
     expect(nextWriteRefusal(null, { status: "refused", reason: "r" })).toBe("r");
     expect(nextWriteRefusal("r", { status: "landed", from: 0, to: 1 })).toBeNull();
     expect(nextWriteRefusal("r", { status: "no-source" })).toBe("r");
-    expect(nextWriteRefusal("r", { status: "unchanged" })).toBe("r");
+    // Task 1223: `unchanged` means the surface equals main — undoing a refused
+    // edit back to main's content leaves nothing rejected to describe.
+    expect(nextWriteRefusal("r", { status: "unchanged" })).toBeNull();
   });
 });
 

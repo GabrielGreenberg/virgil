@@ -347,15 +347,13 @@ function ExampleCardEditor({
       return;
     }
     if (lastSyncedRef.current === nextJson) return;
-    if (JSON.stringify(editor.getJSON()) === nextJson) {
-      lastSyncedRef.current = nextJson;
-      return;
-    }
     lastSyncedRef.current = nextJson;
-    // The re-seed replaces whatever a refused write left in the card with what
-    // the paper holds, so a lingering rejection banner would describe content
-    // that is no longer there (task 1170, the tick-216 carry).
+    // Past this point the card equals what the paper holds — it had already
+    // converged (task 1223), or the re-seed below replaces whatever a refused
+    // write left in it (task 1170, the tick-216 carry) — so a lingering
+    // rejection banner would describe content that is no longer there.
     setWriteError((prev) => (prev === null ? prev : null));
+    if (JSON.stringify(editor.getJSON()) === nextJson) return;
     // Caret restore mapped through the structural change (EX-F8-02): a foreign
     // edit upstream of the caret shifts the content, so re-applying the raw
     // {from,to} offset would land the caret earlier than its logical position.
