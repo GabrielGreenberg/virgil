@@ -680,10 +680,18 @@ export default function LibraryView({
     const ext = dotIdx > 0 ? picked.filename.slice(dotIdx) : ".bib";
     let attempt = 1;
     let onDiskName = picked.filename;
-    while (await fileExists(handle, `${SUBDIRS.unsorted}/${onDiskName}`)) {
-      attempt += 1;
-      onDiskName = `${base}-${attempt}${ext}`;
-      if (attempt > 999) break; // pathological safety valve
+    // A faulted existence check (task 1210) can't tell us the name is free,
+    // and writing anyway could clobber a staged file — so the import stops,
+    // the same way a failed write does.
+    try {
+      while (await fileExists(handle, `${SUBDIRS.unsorted}/${onDiskName}`)) {
+        attempt += 1;
+        onDiskName = `${base}-${attempt}${ext}`;
+        if (attempt > 999) break; // pathological safety valve
+      }
+    } catch (err) {
+      console.error("[library] couldn't check unsorted/ for a free .bib name", err);
+      return null;
     }
     try {
       await writeTextFile(handle, `${SUBDIRS.unsorted}/${onDiskName}`, picked.text);

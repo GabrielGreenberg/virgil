@@ -252,10 +252,20 @@ export function useDiskLibraries(
 
   const loadFromDisk = useCallback(
     async (root: FileSystemDirectoryHandle): Promise<Map<string, ManifestRecord>> => {
-      const list = await listLibraryManifests(root);
+      const unreadable: string[] = [];
+      const list = await listLibraryManifests(root, unreadable);
       const next = new Map<string, ManifestRecord>();
       for (const item of list) {
         next.set(item.manifest.id, item);
+      }
+      // A manifest that is listed but could not be READ (task 1210) is
+      // "unknown", not "deleted": carry its last-known record forward so one
+      // faulted file can't drop a library from the list.
+      if (unreadable.length > 0) {
+        const faulted = new Set(unreadable);
+        for (const [id, rec] of baseRef.current) {
+          if (faulted.has(rec.filename) && !next.has(id)) next.set(id, rec);
+        }
       }
       return next;
     },
@@ -433,7 +443,19 @@ export function useDiskLibraries(
       for (const [id, rec] of current) {
         const src = rec.manifest.sourceBibFile;
         if (!src) continue;
-        const exists = await fileExists(root, `${SUBDIRS.unsorted}/${src}`);
+        // A faulted check (task 1210) is "unknown — leave the record as it
+        // is": only a definite absence clears `sourceBibFile`, and one bad
+        // check must not abort the reload (which would publish nothing).
+        let exists: boolean;
+        try {
+          exists = await fileExists(root, `${SUBDIRS.unsorted}/${src}`);
+        } catch (err) {
+          console.warn(
+            `[library] cleanup: couldn't check unsorted/${src} for ${rec.filename}; leaving it`,
+            err,
+          );
+          continue;
+        }
         if (exists) continue;
         const updated: LibraryManifest = {
           ...rec.manifest,
@@ -472,9 +494,17 @@ export function useDiskLibraries(
         await ensureLibrariesDir(root);
         if (!migratedRef.current) {
           migratedRef.current = true;
-          const initial = await loadFromDisk(root);
-          if (initial.size === 0) {
-            await migrateFromLocalStorage(root);
+          // A faulted migration step (task 1210) must not abort the load —
+          // the manifests already on disk still publish. Re-arm so the next
+          // reload retries the one-shot.
+          try {
+            const initial = await loadFromDisk(root);
+            if (initial.size === 0) {
+              await migrateFromLocalStorage(root);
+            }
+          } catch (err) {
+            migratedRef.current = false;
+            console.warn("[library] useDiskLibraries: migration check failed; will retry", err);
           }
         }
         let next = await loadFromDisk(root);

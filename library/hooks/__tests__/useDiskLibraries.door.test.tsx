@@ -14,7 +14,11 @@ const disk = vi.hoisted(() => ({
   files: new Map<string, string>(),
   gate: null as Promise<void> | null,
   stampWrites: 0,
+  /** Paths whose read FAULTS (task 1210) — the door rejects, not "missing". */
+  faults: new Set<string>(),
 }));
+
+const fault = () => Object.assign(new Error("denied"), { name: "NotAllowedError" });
 
 vi.mock("@library/lib/catalog", () => ({
   readCatalogVersion: async () => "1",
@@ -30,16 +34,23 @@ vi.mock("@library/lib/library-storage", () => {
   return {
     SUBDIRS: { libraries: DIR, unsorted: "unsorted" },
     ensureLibrariesDir: async () => ({}),
-    fileExists: async (_r: unknown, p: string) => disk.files.has(p),
+    fileExists: async (_r: unknown, p: string) => {
+      if (disk.faults.has(p)) throw fault();
+      return disk.files.has(p);
+    },
     writeTextFile: async (_r: unknown, p: string, t: string) => {
       disk.files.set(p, t);
     },
-    listLibraryManifests: async () => {
+    listLibraryManifests: async (_r: unknown, unreadable?: string[]) => {
       const out = [];
       for (const [p, t] of disk.files) {
         if (!p.startsWith(`${DIR}/`)) continue;
         const name = p.slice(DIR.length + 1);
         if (name.startsWith(".") || !name.endsWith(".json")) continue;
+        if (disk.faults.has(p)) {
+          unreadable?.push(name);
+          continue;
+        }
         out.push({ filename: name, manifest: JSON.parse(t) });
       }
       return out;
@@ -109,6 +120,7 @@ beforeEach(() => {
   disk.files.clear();
   disk.gate = null;
   disk.stampWrites = 0;
+  disk.faults.clear();
   // Skip the one-shot localStorage migration.
   disk.files.set(".virgil/libraries/.migrated", "{}");
   putManifest("foo.json", []);
@@ -211,5 +223,47 @@ describe("useDiskLibraries — one mutation door (task 762)", () => {
     await waitFor(() => expect(diskCitekeys()).toEqual(["A", "G"]));
     await settle();
     await waitFor(() => expect(memCitekeys(hook)).toEqual(["A", "G"]));
+  });
+});
+
+describe("useDiskLibraries — a read FAULT is unknown, not gone (task 1210)", () => {
+  const libs = (hook: Awaited<ReturnType<typeof mount>>) => hook.result.current.libraries.map((l) => l.id);
+
+  it("a faulted source-.bib check neither aborts the reload nor clears sourceBibFile", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = JSON.parse(disk.files.get(".virgil/libraries/foo.json")!);
+    disk.files.set(".virgil/libraries/foo.json", JSON.stringify({ ...t, sourceBibFile: "src.bib" }));
+    disk.faults.add("unsorted/src.bib");
+    const hook = await mount();
+    expect(libs(hook)).toContain(LIB_ID);
+    expect(JSON.parse(disk.files.get(".virgil/libraries/foo.json")!).sourceBibFile).toBe("src.bib");
+    warn.mockRestore();
+  });
+
+  it("a faulted migration check does not abort the load and is retried next reload", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    disk.files.delete(".virgil/libraries/foo.json");
+    disk.faults.add(".virgil/libraries/.migrated");
+    putManifest("foo.json", ["A"]);
+    // An empty first listing is what sends the hook into the migration check.
+    disk.faults.add(".virgil/libraries/foo.json");
+    const hook = renderHook(() => useDiskLibraries(ROOT));
+    await waitFor(() => expect(hook.result.current.hydrated).toBe(true));
+    disk.faults.delete(".virgil/libraries/foo.json");
+    await act(async () => {
+      await hook.result.current.reload();
+    });
+    expect(libs(hook)).toContain(LIB_ID);
+    warn.mockRestore();
+  });
+
+  it("a manifest that turns unreadable keeps its library listed", async () => {
+    const hook = await mount();
+    expect(libs(hook)).toContain(LIB_ID);
+    disk.faults.add(".virgil/libraries/foo.json");
+    await act(async () => {
+      await hook.result.current.reload();
+    });
+    expect(libs(hook)).toContain(LIB_ID);
   });
 });

@@ -14,12 +14,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 const disk = vi.hoisted(() => ({
-  files: new Map<string, string>(),
+  files: new Map<string, string | Error>(),
   handleOps: [] as string[],
 }));
 
 vi.mock("@library/lib/library-storage", () => ({
-  readTextFile: vi.fn(async (_root: unknown, path: string) => disk.files.get(path)),
+  readTextFile: vi.fn(async (_root: unknown, path: string) => {
+    const v = disk.files.get(path);
+    if (v instanceof Error) throw v;
+    return v;
+  }),
+  isMissingEntryError: (e: { name?: string }) => e?.name === "NotFoundError" || e?.name === "TypeMismatchError",
 }));
 vi.mock("@/lib/doc-index", () => ({
   setDocHandle: vi.fn(async (id: string) => {
@@ -124,5 +129,34 @@ describe("PaperRender — content revision (task 765)", () => {
     popped.unmount();
     await act(flush);
     expect(disk.handleOps).toContain("delete:library-paper:alpha2020");
+  });
+});
+
+describe("PaperRender — the read door's third outcome (task 1210)", () => {
+  const props = { citekey: "alpha2020", scope: "", panel: "left" as const, indexedState: "indexed" as const };
+  const fault = (name: string) => Object.assign(new Error(name), { name });
+
+  it("a FAILED main.tex read says 'couldn't read', never 'is empty'", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    disk.files.set(TEX, fault("NotReadableError"));
+    render(<PaperRender {...props} handle={makeHandle()} />);
+    await act(flush);
+    expect(screen.getByText(/Couldn.t read/)).toBeTruthy();
+    expect(screen.queryByText(/is empty/)).toBeNull();
+    warn.mockRestore();
+  });
+
+  it("an ABSENT paper folder still reads as empty (absence, not failure)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const handle = {
+      getDirectoryHandle: async () => {
+        throw fault("NotFoundError");
+      },
+    } as unknown as FileSystemDirectoryHandle;
+    render(<PaperRender {...props} handle={handle} />);
+    await act(flush);
+    expect(screen.getByText(/is empty/)).toBeTruthy();
+    expect(screen.queryByText(/Couldn.t read/)).toBeNull();
+    warn.mockRestore();
   });
 });

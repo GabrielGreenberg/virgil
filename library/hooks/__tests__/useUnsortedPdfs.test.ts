@@ -102,3 +102,23 @@ describe("useUnsortedPdfs — change-guard (A2)", () => {
     expect(result.current.files).toEqual(["b.pdf", "a.pdf", "bad.pdf"]);
   });
 });
+
+describe("useUnsortedPdfs — a faulted listing (task 1210)", () => {
+  it("keeps the last-good names, never rejects, and warns once per episode", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    listDir.mockResolvedValue([{ kind: "file", name: "a.pdf" }]);
+    readFile.mockResolvedValue({ lastModified: 1 });
+    const { result } = renderHook(() => useUnsortedPdfs(handle));
+    await waitFor(() => expect(result.current.files).toEqual(["a.pdf"]));
+    const good = result.current.files;
+
+    listDir.mockRejectedValue(Object.assign(new Error("denied"), { name: "NotAllowedError" }));
+    await act(async () => {
+      await expect(result.current.reload()).resolves.toBeUndefined();
+      await expect(result.current.reload()).resolves.toBeUndefined();
+    });
+    expect(result.current.files).toBe(good);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("useUnsortedPdfs"))).toHaveLength(1);
+    warn.mockRestore();
+  });
+});

@@ -12,7 +12,7 @@ import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { useReaderView } from "@/components/editor-layout/reader-view-prefs";
 import { readerHostKind } from "@/components/editor-layout/reader-host";
 import { setDocHandle, deleteDocHandle } from "@/lib/doc-index";
-import { readTextFile } from "@library/lib/library-storage";
+import { isMissingEntryError, readTextFile } from "@library/lib/library-storage";
 import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
@@ -132,6 +132,10 @@ export default function PaperRender({
 }: Props) {
   const [tex, setTex] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  // The read door's third outcome (task 1210): `main.tex` exists (or may) but
+  // could not be READ — a permission lapse or an IO fault. Distinct from
+  // `tex === ""` ("is empty"), which a missing folder/file still means.
+  const [readFailed, setReadFailed] = useState(false);
 
   const isIndexed =
     indexedState === "indexed" || indexedState === "deepIndexed";
@@ -154,6 +158,7 @@ export default function PaperRender({
   useEffect(() => {
     setTex(null);
     setParseError(null);
+    setReadFailed(false);
     if (!handle || !citekey || !isIndexed) return;
     const docId = libraryPaperDocId(citekey);
     loadedRevRef.current = revisionRef.current;
@@ -173,11 +178,14 @@ export default function PaperRender({
         if (cancelled) return;
         setTex(t ?? "");
       } catch (e) {
-        // Folder may not exist yet (e.g. mid-indexing). Surface an empty
-        // tex so the "main.tex is empty" branch renders rather than
-        // hanging on the loading state forever.
+        // Folder may not exist yet (e.g. mid-indexing) → absence, and the
+        // "main.tex is empty" branch renders. Any OTHER failure is "couldn't
+        // read" (task 1210), never reported as an empty file. Either way the
+        // load settles rather than hanging on the loading state forever.
         console.warn(`Failed to mount Library paper ${docId}`, e);
-        if (!cancelled) setTex("");
+        if (cancelled) return;
+        if (!isMissingEntryError(e)) setReadFailed(true);
+        setTex("");
       }
     })();
     return () => {
@@ -204,7 +212,9 @@ export default function PaperRender({
       try {
         const t =
           (await readTextFile(handle, `papers/${citekey}/main.tex`)) ?? "";
-        if (cancelled || t === texRef.current) return;
+        if (cancelled) return;
+        setReadFailed(false);
+        if (t === texRef.current) return;
         setParseError(null);
         setTex(t);
       } catch (e) {
@@ -243,6 +253,14 @@ export default function PaperRender({
     return (
       <div style={{ padding: 16, color: "var(--muted)" }}>
         Loading <code>papers/{citekey}/main.tex</code>…
+      </div>
+    );
+  }
+
+  if (readFailed) {
+    return (
+      <div style={{ padding: 16, color: "var(--muted)" }}>
+        Couldn&rsquo;t read <code>papers/{citekey}/main.tex</code>.
       </div>
     );
   }

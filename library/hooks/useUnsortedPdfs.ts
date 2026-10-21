@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listDir, readFile, SUBDIRS } from "@library/lib/library-storage";
+import { faultEpisode } from "@library/lib/read-fault";
 
 const POLL_MS = 6000;
 const UNSORTED_PATH = SUBDIRS.unsorted;
@@ -16,6 +17,7 @@ export function useUnsortedPdfs(handle: FileSystemDirectoryHandle | null) {
   // new array when the EFFECTIVE list (names in display order) actually
   // changed, mirroring the guard already in `useUnsortedBibEntries`.
   const lastNamesRef = useRef<string[]>([]);
+  const faultRef = useRef(faultEpisode("useUnsortedPdfs: unsorted/"));
   const commitNames = useCallback((next: string[]) => {
     const prev = lastNamesRef.current;
     if (prev.length === next.length && prev.every((n, i) => n === next[i])) {
@@ -27,7 +29,17 @@ export function useUnsortedPdfs(handle: FileSystemDirectoryHandle | null) {
 
   const reload = useCallback(async () => {
     if (!handle) return;
-    const entries = await listDir(handle, UNSORTED_PATH);
+    // A faulted listing (task 1210) is "unknown", not "empty": keep the
+    // last-good names and say so once per episode — never an unhandled
+    // rejection from the 6 s poll's `void reload()`.
+    let entries: Awaited<ReturnType<typeof listDir>>;
+    try {
+      entries = await listDir(handle, UNSORTED_PATH);
+    } catch (err) {
+      faultRef.current.fail(err);
+      return;
+    }
+    faultRef.current.ok();
     if (!entries) {
       commitNames([]);
       return;

@@ -79,9 +79,19 @@ export default function PaperFileBody({
   useEffect(() => {
     if (!citekey) return;
     let cancelled = false;
-    void getFullLibraryBibEntry(handle, citekey).then((full) => {
-      if (!cancelled) setFullBibState({ citekey, entry: full });
-    });
+    // Both outcomes SETTLE (task 1210): the read door rejects on a real fault
+    // (permission lapse, IO), and an unsettled fetch would leave the BibTeX
+    // panel on "Loading…" with Edit disabled forever. A failure lands in the
+    // same settled-null branch as "not found" — edit hidden, slim record shown.
+    void getFullLibraryBibEntry(handle, citekey).then(
+      (full) => {
+        if (!cancelled) setFullBibState({ citekey, entry: full });
+      },
+      (err) => {
+        console.warn(`[library] couldn't read master.bib for ${citekey}`, err);
+        if (!cancelled) setFullBibState({ citekey, entry: null });
+      },
+    );
     return () => {
       cancelled = true;
     };
