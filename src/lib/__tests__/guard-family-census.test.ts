@@ -5,7 +5,7 @@
  * The selection rule lives in `_guard-family.ts` (read its header for why the
  * worker runs it on every task). This file pins what could rot around it:
  * the script and config still route through the derived rule; the rule still
- * walks exactly what `npm test` collects; the three signatures still SEE the
+ * walks exactly what `npm test` collects; the four signatures still SEE the
  * guards that motivated them (987's three breaks among them); and no file
  * with a CENSUS block can sit outside the selection.
  */
@@ -50,6 +50,11 @@ describe("guard family — the derived selection", () => {
     const rel = "src/lib/__tests__/ai-requests-authority.test.ts";
     expect(guardSignatures(rel, read(rel))).toEqual(["lists-a-tree"]);
     expect(family).toContain(rel);
+    // A cross-silo pin (task 1212): a `library/` test importing `src/` code,
+    // red on main after a src-only change whose targeted suites all passed.
+    const cross = "library/lib/__tests__/latex-output-stock-compile.test.ts";
+    expect(guardSignatures(cross, read(cross))).toEqual(["crosses-a-root"]);
+    expect(family).toContain(cross);
     // And this file.
     expect(family).toContain("src/lib/__tests__/guard-family-census.test.ts");
   });
@@ -72,6 +77,19 @@ describe("guard family — the derived selection", () => {
       "lists-a-tree",
     ]);
     expect(guardSignatures("a/__tests__/x-guardrail.test.ts", ``)).toEqual(["name"]);
+    // crosses-a-root: relative and aliased imports out of the file's own root
+    // count; an import inside its own root, or a path only in prose, does not.
+    expect(guardSignatures("library/lib/__tests__/x.test.ts", `import { y } from "../../../src/lib/y";`)).toEqual([
+      "crosses-a-root",
+    ]);
+    expect(guardSignatures("library/lib/__tests__/x.test.ts", `import { y } from "@/lib/y";`)).toEqual([
+      "crosses-a-root",
+    ]);
+    expect(guardSignatures("src/lib/__tests__/x.test.ts", `const m = await import("@library/lib/y");`)).toEqual([
+      "crosses-a-root",
+    ]);
+    expect(guardSignatures("src/lib/__tests__/x.test.ts", `import { y } from "@/lib/y";\nimport { z } from "../z";`)).toEqual([]);
+    expect(guardSignatures("library/lib/__tests__/x.test.ts", `// from "../../../src/lib/y"`)).toEqual([]);
   });
 
   it("no CENSUS-titled block lives outside the selection", () => {
