@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * CollaboratorIdentityDialog — first-time identity setup for collaborator mode.
+ * CollaboratorIdentityDialog — the collaborator identity form, for both doors:
+ * first-time setup (turning collab on with no identity yet) and "Edit
+ * identity…" (an identity already exists — `IDENTITY_EDIT_COPY`).
  *
  * Asks for a display name and color. Writes both to localStorage via the
  * helpers in `lib/collab` and returns the chosen identity to the caller.
  * Composed from SystemDialog primitives.
  */
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 import { Input } from "./field-primitives";
 import SystemDialog, {
   SystemDialogBody,
@@ -24,6 +26,11 @@ import {
 } from "@/lib/collab";
 import { iconHint } from "@/components/Hint";
 import { isCommitEnter } from "@/lib/key-intent";
+import { useRadioGroup } from "@/hooks/useRadioGroup";
+
+/** The swatch row's option values, normalised once (the saved colour is
+ *  compared case-insensitively). */
+const SWATCH_HEXES = COLLAB_COLORS.map((c) => c.hex.toLowerCase());
 
 export interface CollaboratorIdentityDialogProps {
   open: boolean;
@@ -33,7 +40,8 @@ export interface CollaboratorIdentityDialogProps {
   onConfirm: (identity: CollabIdentity) => void;
   /** Esc / cancel button. */
   onCancel: () => void;
-  /** Replaces the default header text — useful for "Edit identity" reuse. */
+  /** Replaces the default (first-time setup) header text — the edit door
+   *  passes `IDENTITY_EDIT_COPY` through `useCollaboratorIdentity`. */
   title?: string;
   description?: ReactNode;
 }
@@ -51,6 +59,12 @@ export default function CollaboratorIdentityDialog({
     initial?.color ?? COLLAB_COLORS[0].hex,
   );
   const nameRef = useRef<HTMLInputElement | null>(null);
+  const colorLabelId = useId();
+  const swatchGroup = useRadioGroup({
+    options: SWATCH_HEXES,
+    value: color.toLowerCase(),
+    onChange: setColor,
+  });
 
   const trimmed = name.trim();
   const canSubmit = trimmed.length > 0 && trimmed.length <= 40;
@@ -105,16 +119,25 @@ export default function CollaboratorIdentityDialog({
             />
           </label>
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] text-ink-subtle">Color</span>
-            <div className="flex flex-wrap gap-1.5">
-              {COLLAB_COLORS.map((c) => {
+            <span id={colorLabelId} className="text-[11px] text-ink-subtle">
+              Color
+            </span>
+            {/* A pick-one row, so it is a radio group (task 1216): the chosen
+                colour is announced, not only drawn as a border, and the arrow
+                keys move it. */}
+            <div
+              {...swatchGroup.groupProps}
+              aria-labelledby={colorLabelId}
+              className="flex flex-wrap gap-1.5"
+            >
+              {COLLAB_COLORS.map((c, i) => {
                 const selected = c.hex.toLowerCase() === color.toLowerCase();
                 return (
                   <button
                     data-iconbtn-exempt="color swatch: the fill IS the control"
                     key={c.hex}
                     type="button"
-                    onClick={() => setColor(c.hex)}
+                    {...swatchGroup.radioProps(i)}
                     {...iconHint({ label: c.name })}
                     className="w-6 h-6 rounded-full border-2 motion-safe:transition-transform focus-ring"
                     style={{
@@ -145,6 +168,15 @@ export default function CollaboratorIdentityDialog({
 }
 
 /* ── Imperative hook ─────────────────────────────────────────────── */
+
+/** The header for EDITING an identity that already exists (task 1216). A
+ *  saved change reaches every open paper through `saveIdentity`'s door (task
+ *  1014), which moves this browser's pen and presence onto the new name. */
+export const IDENTITY_EDIT_COPY = {
+  title: "Edit your identity",
+  description:
+    "Your co-author sees this name and color. A change carries over to every open paper.",
+} as const;
 
 interface PendingIdentityAsk {
   initial: CollabIdentity | null;
@@ -182,10 +214,13 @@ export function useCollaboratorIdentity() {
     setPending(null);
   }, [pending]);
 
+  // The copy follows what the ask FOUND: an existing identity is being
+  // edited, a missing one is being set up for the first time.
   const dialog = pending ? (
     <CollaboratorIdentityDialog
       open
       initial={pending.initial}
+      {...(pending.initial ? IDENTITY_EDIT_COPY : {})}
       onConfirm={handleConfirm}
       onCancel={handleCancel}
     />

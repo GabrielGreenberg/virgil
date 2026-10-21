@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useRef, useState } from "react";
 import SystemDialog, {
   SystemDialogBody,
   SystemDialogButton,
@@ -11,6 +11,7 @@ import { Field, Input } from "./field-primitives";
 import { InlineError } from "./InlineError";
 import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
 import { isCommitEnter } from "@/lib/key-intent";
+import { useRadioGroup } from "@/hooks/useRadioGroup";
 
 /**
  * What `onCreate` DID — the report this dialog reads to decide whether its
@@ -168,7 +169,8 @@ export default function NewDocumentModal({
  * the arrow keys did nothing. Now it is a WAI-ARIA radio group: each card is a
  * `role="radio"` with `aria-checked`, one tab stop for the whole group (the
  * checked card — roving tabindex), and the arrow keys move the choice and the
- * focus together, wrapping at the ends, as native radios do.
+ * focus together, wrapping at the ends, as native radios do. The contract is
+ * `useRadioGroup`'s (task 1216), shared with every pick-one row.
  */
 function DocTypePicker({
   labelledBy,
@@ -181,29 +183,17 @@ function DocTypePicker({
   onChange: (id: string) => void;
   disabled: boolean;
 }) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const step =
-      e.key === "ArrowDown" || e.key === "ArrowRight"
-        ? 1
-        : e.key === "ArrowUp" || e.key === "ArrowLeft"
-          ? -1
-          : 0;
-    if (step === 0 || disabled) return;
-    e.preventDefault();
-    const current = Math.max(
-      0,
-      DOC_TYPES.findIndex((t) => t.id === value),
-    );
-    const next = (current + step + DOC_TYPES.length) % DOC_TYPES.length;
-    onChange(DOC_TYPES[next].id);
-    refs.current[next]?.focus();
-  };
+  const ids = DOC_TYPES.map((t) => t.id);
+  const { groupProps, radioProps } = useRadioGroup({
+    options: ids,
+    value,
+    onChange,
+    disabled,
+  });
   return (
     <div
-      role="radiogroup"
+      {...groupProps}
       aria-labelledby={labelledBy}
-      onKeyDown={onKeyDown}
       className="flex flex-col gap-1"
     >
       {DOC_TYPES.map((t, i) => {
@@ -211,14 +201,8 @@ function DocTypePicker({
         return (
           <button
             key={t.id}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
             type="button"
-            role="radio"
-            aria-checked={selected}
-            tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(t.id)}
+            {...radioProps(i)}
             disabled={disabled}
             className={`text-left px-3 py-2 rounded-md border transition-colors ${
               selected
