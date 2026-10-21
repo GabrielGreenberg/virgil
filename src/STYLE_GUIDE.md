@@ -296,23 +296,32 @@ neither is guessable from inside the component. This is the *Buttons* rule
 ("spell the treatment ONCE per control family, not once per button") applied to
 a pair that had drifted into two files under two names.
 
-### The bar status pill (Virgil-bar data-integrity badges)
+### The bar status pill (every Virgil-bar status occupant)
 
-Every badge the Virgil bar's status cluster mounts — cowork pen, preservation
-notice, mirror recovery, sync conflict, external change, save state — renders
-through ONE primitive,
-[`BarStatusPill`](components/status/BarStatusPill.tsx) (task 769). A badge
-states its **tone**, **glyph**, **label**, **actions** and **menu**; the pill
-decides everything else:
+Every status occupant of the Virgil bar renders through ONE primitive,
+[`BarStatusPill`](components/status/BarStatusPill.tsx) (task 769; task 1214
+extended it past the data-integrity badges). That is every row of
+`BAR_STATUS_ORDER` in [bar-status-policy.ts](lib/bar-status-policy.ts) — the
+list is the table's, not this paragraph's — plus the collaborator pen pill,
+which sits in the modes section. An occupant states its **tone**, **glyph**,
+**label**, **actions**, **menu** and (for a readout with controls) **widget**;
+the pill decides everything else:
 
-- **Colour** — `paletteForTone` (the alarm family's register, above). A badge
-  never spells a token; a state the tone table does not model names its TONE.
-  The pill adds one register of its own, `quiet` (surface ground, light
-  hairline, subtle ink), for a non-actionable statement that is not an
-  interruption (the disk watcher paused by a permission loss).
+- **Colour** — `paletteForTone` (the alarm family's register, above). An
+  occupant never spells a token; a state the tone table does not model names
+  its TONE. The pill adds two registers of its own, neither an interruption:
+  `quiet` — **grey, not an interruption** (surface ground, light hairline,
+  subtle ink). Actionability is orthogonal to the register: the paused disk
+  watcher is a quiet statement, the update chip a quiet CONTROL
+  (`onActivate`), the running timer a quiet WIDGET. And `presence` — the
+  collaborator pen readout (surface ground, subtle hairline, body ink); the
+  partner's colour arrives as `identityEdge`, identity data on the hairline,
+  never a token.
 - **Announcement** — `announcementForTone`: `alert` + `assertive` for
   `danger`, `status` + `polite` otherwise. The same table the in-document
   interruption band reads, so a state is announced the same way in both places.
+  `presence` is the one register that is NOT a live region (`aria-live="off"`,
+  no role): its label is a duration that ticks on every heartbeat.
 - **Glyph** — 14–16px stroke, inked with the tone's `edge`.
 - **Width** — ONE cap, 280px, on the labelled span; the label truncates and the
   full sentence lives on `data-hint` and in the menu's detail block.
@@ -321,11 +330,18 @@ decides everything else:
   style (`.topbarbtn`, via `BarStatusAction`), always `type="button"`.
 - **Kebab** — one kebab, one row (`BarStatusMenuRow`: label, optional detail
   line, destructive-choice ink for a row that deletes), one detail block.
+- **Widget** — a resident that is a small readout WITH CONTROLS (the Pomodoro)
+  passes them as `widget`: they render INSIDE the chrome, which becomes a
+  labelled `role="group"`, and `label` becomes the announced sentence in a
+  live region that stays mounted while empty (a region that appears with its
+  text is not read out). See "Compact bar widgets" for the geometry.
 
-The census is `bar-status-pill.test.tsx`: every cluster badge renders through
-the pill, and no `*Badge.tsx` spells the raw pill class or a private
-kebab/row. `CollabStatusPill` (presence, not data integrity) and the library's
-`StatusPill` (entry state, below) are different families.
+The census is `bar-status-pill.test.tsx`, and its subjects are DERIVED, not
+named: every `BAR_STATUS_ORDER` row's component (read off `StatusCluster`'s
+`statusItems`) renders through the pill, and no component the cluster imports
+spells the raw pill class or a private kebab/row. (It selected by `*Badge.tsx`
+filename until task 1214, which is how the timer and the collab pill escaped.)
+The library's `StatusPill` (entry state, below) is a different family.
 
 ### The status-pill tone family (library entry state)
 
@@ -3968,9 +3984,10 @@ priority ladder rather than three independent positioners. Stated once, in
 [bar-occupancy.ts](components/editor-layout/bar-occupancy.ts), and resolved from
 measurements by `useBarOccupancy`:
 
-1. **PROTECTED STATUS** — the data-integrity badges (save state, preservation
-   refusal, external change, sync conflict, mirror recovery), the running
-   Pomodoro widget, and the collapse chip itself. Never yields. That is not a
+1. **PROTECTED STATUS** — every row of `BAR_STATUS_ORDER`
+   ([bar-status-policy.ts](lib/bar-status-policy.ts) is the list; it is not
+   restated here, so it cannot drift), and the collapse chip itself. Never
+   yields. That is not a
    layout preference: a data-integrity notice must not be hideable (see the save
    badge's tier rule), and the chip is what makes a collapse reversible.
 2. **TABS** — Gabriel's decision (2026-08-19): *"text tabs should occlude the
@@ -4094,15 +4111,18 @@ CI: `status-dot-ssot.test.ts` censuses both silos for hand-rolled dots.
 cluster is otherwise all 24px `.topbarbtn` icons; the pomodoro timer
 ([PomodoroTimer.tsx](components/PomodoroTimer.tsx), task 354) is the first thing
 on it that is a small *readout with controls*, so its shape is the precedent for
-the next one. It is a **pill** — `rounded-full` on `--surface-muted` with an
-`--edge-subtle` hairline — sized to sit INSIDE the 24px row (`py-0.5`, 16px
+the next one. It is the bar pill's **widget slot** (task 1214 — "The bar status
+pill" above): `BarStatusPill` owns the chrome (the one `BAR_STATUS_PILL_CLASS`,
+the `quiet` register, the width cap) and the announcement, and the widget
+supplies only its controls. The chrome sits INSIDE the 24px row (`py-0.5`, 16px
 controls), never taller, because the whole bar row shares one seam anchor and a
 tall resident reintroduces the two-baseline drift task 289 removed. Its ghost
 controls take `focus-ring` rather than the `iconbtn` geometry (20px is too big
 for the pill) and spell that class at each button, since the a11y census reads
 the literal `className`. Its progress track/fill is a 3px `--edge-subtle` /
 `--accent` pair, flipping to `--positive` on completion, with **no motion** — a
-pulse on the app's top bar outstays its welcome.
+pulse on the app's top bar outstays its welcome. Completion is SAID, not only
+shown: "Done" is the pill's `label`, so the live region reads it out.
 
 Two rules generalize past the timer. **A resident is PROP-LESS**: `TopBar` /
 `TabStrip` / `StatusCluster` are memoized precisely so background ticks don't

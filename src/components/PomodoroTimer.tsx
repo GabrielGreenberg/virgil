@@ -73,6 +73,7 @@ import {
   type PomodoroState,
 } from "@/lib/pomodoro-timer";
 import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
+import { BarStatusPill } from "@/components/status/BarStatusPill";
 
 /** Tomato-clock: the house 16px stroke glyph — a round face with a leaf. */
 function TimerIcon() {
@@ -231,81 +232,84 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
   const pct = Math.round(pomodoroProgress(state, now) * 100);
 
   return (
-    <div
-      className="inline-flex items-center gap-1.5 mr-1 pl-1.5 pr-1 py-0.5 rounded-full border text-[11px] shrink-0"
-      style={{
-        borderColor: done ? "var(--positive)" : "var(--edge-subtle)",
-        background: "var(--surface-muted)",
-        color: "var(--ink-body)",
-      }}
-      data-pomodoro-status={status}
-    >
-      <button
-        data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
-        type="button"
-        onClick={onPlayPause}
-        className={`${GHOST} focus-ring w-4 h-4`}
-        {...iconHint({ label: running ? "Pause timer" : done ? "Restart timer" : "Start timer" })}
-      >
-        {running ? <PauseIcon /> : <PlayIcon />}
-      </button>
+    <BarStatusPill
+      tone="quiet"
+      ariaLabel="Writing timer"
+      // The announced sentence (the widget slot's live region): empty while
+      // the clock runs — a per-second readout is not news — and "Done" once
+      // the interval completes, so the completion is actually read out.
+      label={
+        done ? (
+          <span style={{ color: "var(--positive-strong)" }} data-pomodoro-done>
+            Done
+          </span>
+        ) : null
+      }
+      data={{ "data-pomodoro-status": status }}
+      widget={
+        <>
+          <button
+            data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
+            type="button"
+            onClick={onPlayPause}
+            className={`${GHOST} focus-ring w-4 h-4`}
+            {...iconHint({ label: running ? "Pause timer" : done ? "Restart timer" : "Start timer" })}
+          >
+            {running ? <PauseIcon /> : <PlayIcon />}
+          </button>
 
-      {/* elapsed / total. Only a clock with nothing in progress (idle / done)
-          offers the preset cycle; a running OR PAUSED one is text, so the
-          control can never discard a live run (task 905 — a pause is a run
-          the user means to resume). */}
-      {running || status === "paused" ? (
-        <span className="tabular-nums" data-pomodoro-clock>
-          {formatPomodoroClock(elapsed, "down")} / {formatPomodoroClock(durationMs)}
-        </span>
-      ) : (
-        <button
-          type="button"
-          onClick={cyclePomodoroDuration}
-          className="tabular-nums rounded px-0.5 hover-on-light focus-ring"
-          data-pomodoro-clock
-          data-hint="Change the interval — 5 / 15 / 25 / 50 min"
-        >
-          {formatPomodoroClock(elapsed, "down")} / {formatPomodoroClock(durationMs)}
-        </button>
-      )}
+          {/* elapsed / total. Only a clock with nothing in progress (idle / done)
+              offers the preset cycle; a running OR PAUSED one is text, so the
+              control can never discard a live run (task 905 — a pause is a run
+              the user means to resume). */}
+          {running || status === "paused" ? (
+            <span className="tabular-nums" data-pomodoro-clock>
+              {formatPomodoroClock(elapsed, "down")} / {formatPomodoroClock(durationMs)}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={cyclePomodoroDuration}
+              className="tabular-nums rounded px-0.5 hover-on-light focus-ring"
+              data-pomodoro-clock
+              data-hint="Change the interval — 5 / 15 / 25 / 50 min"
+            >
+              {formatPomodoroClock(elapsed, "down")} / {formatPomodoroClock(durationMs)}
+            </button>
+          )}
 
-      <span
-        className="h-[3px] w-12 rounded-full overflow-hidden shrink-0"
-        style={{ background: "var(--edge-subtle)" }}
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={pct}
-        aria-label="Timer progress"
-      >
-        <span
-          className="block h-full rounded-full"
-          style={{
-            width: `${pct}%`,
-            background: done ? "var(--positive)" : "var(--accent)",
-          }}
-        />
-      </span>
+          <span
+            className="h-[3px] w-12 rounded-full overflow-hidden shrink-0"
+            style={{ background: "var(--edge-subtle)" }}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
+            aria-label="Timer progress"
+          >
+            <span
+              className="block h-full rounded-full"
+              style={{
+                width: `${pct}%`,
+                background: done ? "var(--positive)" : "var(--accent)",
+              }}
+            />
+          </span>
 
-      {done && (
-        <span style={{ color: "var(--positive-strong)" }} data-pomodoro-done>
-          Done
-        </span>
-      )}
-
-      <button
-        data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
-        type="button"
-        onClick={() => dismissPomodoro()}
-        className={`${GHOST} focus-ring w-4 h-4`}
-        {...iconHint({ label: "Dismiss timer", hint: "Dismiss — stops the timer" })}
-      >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-          <path d="M6 6l12 12M18 6L6 18" />
-        </svg>
-      </button>
-    </div>
+          <button
+            data-iconbtn-exempt="control inside a status pill: shares the pill's ghost hover"
+            type="button"
+            onClick={() => dismissPomodoro()}
+            className={`${GHOST} focus-ring w-4 h-4`}
+            {...iconHint({ label: "Dismiss timer", hint: "Dismiss — stops the timer" })}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </>
+      }
+    />
   );
 }
 

@@ -427,9 +427,8 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
    *  bar, i.e. the wrong direction as well as the wrong token. */
   it.each([
     // Task 769: the three data-integrity badges' kebabs are ONE kebab now,
-    // owned by the bar pill.
+    // owned by the bar pill — and since task 1214 the collab pen pill's too.
     "src/components/status/BarStatusPill.tsx",
-    "src/components/CollabStatusPill.tsx",
   ])("hovers %s's kebab on the DARK variant, like its siblings", (rel) => {
     const src = strip(readFileSync(path.join(REPO_ROOT, rel), "utf8"), true);
     // Task 826: the hand-rolled `w-5 h-5 … rounded hover-on-dark` box became

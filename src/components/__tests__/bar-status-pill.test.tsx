@@ -18,7 +18,7 @@
  *   and no `*Badge.tsx` spells the raw pill class or a private kebab/row.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
@@ -32,6 +32,7 @@ import {
   type BarStatusTone,
 } from "../status/BarStatusPill";
 import { TONE_ANNOUNCEMENT, TONE_PALETTE } from "@/lib/interruption-tone";
+import { BAR_STATUS_ORDER } from "@/lib/bar-status-policy";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -39,12 +40,14 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 afterEach(cleanup);
 
 describe("BarStatusPill · the contract", () => {
-  const EXPECTED: Record<BarStatusTone, { role: string; live: string }> = {
+  const EXPECTED: Record<BarStatusTone, { role: string | null; live: string }> = {
     live: { role: "status", live: "polite" },
     warning: { role: "status", live: "polite" },
     info: { role: "status", live: "polite" },
     danger: { role: "alert", live: "assertive" },
     quiet: { role: "status", live: "polite" },
+    // A ticking readout ("idle 12s") — not a live region (task 1214).
+    presence: { role: null, live: "off" },
   };
 
   it.each(Object.entries(EXPECTED))("tone %s announces as %o", (tone, want) => {
@@ -68,7 +71,7 @@ describe("BarStatusPill · the contract", () => {
     expect((span as HTMLElement).style.maxWidth).toBe(`${BAR_STATUS_PILL_MAX_WIDTH}px`);
   });
 
-  it("the leaf's four tones read the leaf's tables — the pill adds only `quiet`", () => {
+  it("the leaf's four tones read the leaf's tables — the pill adds only `quiet` and `presence`", () => {
     for (const tone of Object.keys(TONE_PALETTE) as (keyof typeof TONE_PALETTE)[]) {
       expect(barStatusPalette(tone)).toBe(TONE_PALETTE[tone]);
       expect(barStatusAnnouncement(tone)).toBe(TONE_ANNOUNCEMENT[tone]);
@@ -93,6 +96,56 @@ describe("BarStatusPill · the contract", () => {
     expect(btn.className).toBe("topbarbtn");
   });
 
+  it("a WIDGET pill puts its controls inside the chrome and announces its label (task 1214)", () => {
+    const { container, rerender } = render(
+      <BarStatusPill
+        tone="quiet"
+        ariaLabel="Writing timer"
+        label={null}
+        widget={<button type="button">Play</button>}
+      />,
+    );
+    const group = container.querySelector("[data-bar-status-widget]") as HTMLElement;
+    expect(group.getAttribute("role")).toBe("group");
+    expect(group.getAttribute("aria-label")).toBe("Writing timer");
+    expect(group.style.maxWidth).toBe(`${BAR_STATUS_PILL_MAX_WIDTH}px`);
+    expect(group.querySelector("button")!.textContent).toBe("Play");
+    // The live region is mounted BEFORE it has anything to say — a region
+    // that appears with its text is not read out.
+    const live = group.querySelector("[data-bar-status-label]")!;
+    expect(live.getAttribute("role")).toBe("status");
+    expect(live.getAttribute("aria-live")).toBe("polite");
+    expect(live.textContent).toBe("");
+    rerender(
+      <BarStatusPill
+        tone="quiet"
+        ariaLabel="Writing timer"
+        label="Done"
+        widget={<button type="button">Play</button>}
+      />,
+    );
+    expect(container.querySelector("[data-bar-status-label]")).toBe(live);
+    expect(live.textContent).toBe("Done");
+    // No glyph given → no empty glyph wrapper.
+    expect(container.querySelector("[data-bar-status-glyph]")).toBeNull();
+  });
+
+  it("an identity edge replaces the register's edge on the hairline only", () => {
+    const { container } = render(
+      <BarStatusPill
+        tone="presence"
+        identityEdge="rgb(18, 52, 86)"
+        glyph={<svg />}
+        label="Ada is editing"
+        ariaLabel="Ada is editing"
+      />,
+    );
+    const span = container.querySelector("[data-bar-status-label]") as HTMLElement;
+    expect(span.style.borderColor).toBe("rgb(18, 52, 86)");
+    const glyph = container.querySelector("[data-bar-status-glyph]") as HTMLElement;
+    expect(glyph.style.color).toBe(barStatusPalette("presence").edge);
+  });
+
   it("the in-document band announces through the SAME table", () => {
     const band = read("src/components/DocumentInterruptionBanner.tsx");
     expect(band).toContain("{...announcementForTone(view.tone)}");
@@ -101,46 +154,81 @@ describe("BarStatusPill · the contract", () => {
 });
 
 describe("BarStatusPill · the census", () => {
+  // Task 1214: the census used to select its subjects by FILENAME
+  // (`readdirSync` + `*Badge.tsx`), so two bar occupants not named `…Badge`
+  // (the Pomodoro, the collab pen pill) hand-rolled the chrome unseen. Its
+  // subjects are now DERIVED from the policy table's own mount.
   const CLUSTER = "src/components/editor-layout/StatusCluster.tsx";
-  /** Every `<…Badge` the cluster mounts — discovered, not hand-listed. */
-  const clusterBadges = () => {
-    const src = read(CLUSTER);
-    return [...new Set([...src.matchAll(/<([A-Z]\w*Badge)(?![\w.])/g)].map((m) => m[1]))];
+  const cluster = () => read(CLUSTER);
+
+  /** Import name → repo-relative file, for every component the cluster
+   *  imports from `src/components` (default or named, `@/components/…` or a
+   *  relative `../…`). */
+  const clusterImports = (): Map<string, string> => {
+    const out = new Map<string, string>();
+    for (const m of cluster().matchAll(/import\s+([^;]+?)\s+from\s+"((?:@\/components|\.\.)\/[\w/]+)"/g)) {
+      const rel = m[2].replace(/^@\/components\//, "src/components/").replace(/^\.\.\//, "src/components/");
+      const file = `${rel}.tsx`;
+      if (!existsSync(join(ROOT, file))) continue;
+      const names = m[1].replace(/type\s+\w+/g, "").match(/[A-Z]\w*/g) ?? [];
+      for (const n of names) out.set(n, file);
+    }
+    return out;
   };
 
-  it("discovers the badges the defect lived on", () => {
-    expect(clusterBadges().sort()).toEqual(
-      [
-        "CoworkPenBadge",
-        "ExternalChangeBadge",
-        "MirrorRecoveryBadge",
-        "PreservationNoticeBadge",
-        "SaveStateBadge",
-        "SyncConflictBadge",
-      ].sort(),
-    );
-  });
+  /** policy id → the component the cluster mounts for it, read off the
+   *  `statusItems: Record<BarStatusItemId, ReactNode>` literal. */
+  const policyMounts = (): Map<string, string> => {
+    const src = cluster();
+    const body = src.slice(src.indexOf("const statusItems: Record<BarStatusItemId"));
+    const out = new Map<string, string>();
+    for (const id of BAR_STATUS_ORDER) {
+      const key = /^[a-z]+$/.test(id) ? id : `"${id}"`;
+      // Ids are `[a-z-]` — no regex metacharacters to escape.
+      const m = new RegExp(`\\n\\s*${key}:\\s*\\(?\\s*<([A-Z]\\w*)`).exec(body);
+      if (m) out.set(id, m[1]);
+    }
+    return out;
+  };
 
-  it.each([
-    "CoworkPenBadge",
-    "ExternalChangeBadge",
-    "MirrorRecoveryBadge",
-    "PreservationNoticeBadge",
-    "SaveStateBadge",
-    "SyncConflictBadge",
-  ])("%s renders through BarStatusPill", (name) => {
-    expect(clusterBadges()).toContain(name);
-    expect(read(`src/components/${name}.tsx`)).toContain("<BarStatusPill");
-  });
-
-  const badgeFiles = () =>
-    readdirSync(join(ROOT, "src/components"))
-      .filter((f) => /Badge\.tsx$/.test(f))
-      .map((f) => `src/components/${f}`);
-
-  it("no *Badge.tsx spells the raw pill chrome, a private kebab, or a private menu row", () => {
+  it("every BAR_STATUS_ORDER row is mounted, and its component renders through BarStatusPill", () => {
+    const mounts = policyMounts();
+    const imports = clusterImports();
+    expect([...mounts.keys()].sort()).toEqual([...BAR_STATUS_ORDER].sort());
     const offenders: string[] = [];
-    for (const rel of badgeFiles()) {
+    for (const [id, comp] of mounts) {
+      const file = imports.get(comp);
+      if (!file) {
+        offenders.push(`${id}: <${comp}> is not an src/components import`);
+        continue;
+      }
+      if (!read(file).includes("<BarStatusPill")) offenders.push(`${id}: ${file} hand-rolls its pill`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("discovers the residents the defect lived on (self-check, so the sweep cannot pass vacuously)", () => {
+    const files = new Set(clusterImports().values());
+    for (const f of [
+      "src/components/PomodoroTimer.tsx",
+      "src/components/CollabStatusPill.tsx",
+      "src/components/SaveStateBadge.tsx",
+      "src/components/SoftwareUpdateBanner.tsx",
+    ]) {
+      expect(files).toContain(f);
+    }
+    expect(policyMounts().get("pomodoro")).toBe("PomodoroTimer");
+  });
+
+  it("the collab pen pill (mounted outside the policy rows) renders through BarStatusPill", () => {
+    expect(cluster()).toMatch(/<CollabStatusPill[\s\S]*?variant="badge"/);
+    expect(read("src/components/CollabStatusPill.tsx")).toContain("<BarStatusPill");
+  });
+
+  it("no cluster resident spells the raw pill chrome, a private kebab, or a private menu row", () => {
+    const offenders: string[] = [];
+    for (const rel of new Set(clusterImports().values())) {
+      if (rel.endsWith("status/BarStatusPill.tsx")) continue;
       const src = read(rel);
       src.split("\n").forEach((line, i) => {
         if (/rounded-full/.test(line) && /text-\[11px\]/.test(line) && /\bborder\b/.test(line)) {
@@ -148,17 +236,13 @@ describe("BarStatusPill · the census", () => {
         }
       });
       if (/function KebabIcon\b/.test(src)) offenders.push(`${rel} private KebabIcon`);
-      if (/function MenuRow\b/.test(src)) offenders.push(`${rel} private MenuRow`);
+      if (/function \w*MenuRow\b/.test(src) || /function \w*IdentityRow\b/.test(src)) {
+        offenders.push(`${rel} private menu row`);
+      }
+      if (/<circle cx="5" cy="12" r="1\.6"/.test(src)) offenders.push(`${rel} private kebab glyph`);
     }
     expect(offenders).toEqual([]);
   });
-
-  it.each(["SoftwareUpdateBanner", "SkillSyncControls"])(
-    "%s (a non-Badge status item) renders through BarStatusPill too (task 1131)",
-    (name) => {
-      expect(read(`src/components/${name}.tsx`)).toContain("<BarStatusPill");
-    },
-  );
 
   it("an ACTIVATABLE pill is a typed button that keeps the button role (task 1131)", () => {
     const { container } = render(

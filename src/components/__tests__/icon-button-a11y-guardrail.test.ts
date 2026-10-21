@@ -519,8 +519,10 @@ describe("a button with visible text does not override it with an aria-label", (
   it("sees a population worth censusing (self-check)", () => {
     // Anchored well under today's count so ordinary churn doesn't trip it.
     // Without this floor a classifier that quietly stopped matching would make
-    // the leg below pass vacuously.
-    expect(sites.length).toBeGreaterThan(40);
+    // the leg below pass vacuously. (40 → 30 at task 1214: folding hand-rolled
+    // menu rows onto shared primitives SHRINKS this population, and a floor
+    // pinned at today's exact count punishes that dedupe.)
+    expect(sites.length).toBeGreaterThan(30);
     expect(sites.some((s) => s.file.startsWith("library/"))).toBe(true);
   });
 
