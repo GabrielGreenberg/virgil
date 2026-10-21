@@ -59,6 +59,7 @@ const LEDGER: Record<string, Row> = {
   "lib/tab-hidden.ts#hiddenSubscribers": { scope: "app-wide", why: "browser-tab visibility edge" },
   "lib/tab-hidden.ts#returnSubscribers": { scope: "app-wide", why: "browser-tab return edge" },
   "hooks/useViewPrefs.ts#sameWindowListeners": { scope: "app-wide", why: "view prefs are one app-wide localStorage value" },
+  "hooks/useWordCountConfig.ts#listeners": { scope: "app-wide", why: "the word-count include-set is one app-wide localStorage pref (task 1224)" },
   "components/confirm-suppression.ts#listeners": { scope: "app-wide", why: "\"don't show again\" is a global pref" },
   "lib/print-intent.ts#subscribers": { scope: "app-wide", why: "one window print at a time" },
   "lib/pane-resize/layout-gesture-bus.ts#listeners": { scope: "app-wide", why: "a layout gesture resizes the whole window's panes" },

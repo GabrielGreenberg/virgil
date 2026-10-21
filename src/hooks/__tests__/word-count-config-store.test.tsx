@@ -37,11 +37,13 @@ function counts(words: Partial<CategoryCounts["words"]>): CategoryCounts {
 }
 
 /** A sibling reader, standing in for the Outline / Cutter panels. */
-const seen: Record<string, Record<string, boolean>> = {};
 function Reader({ id }: { id: string }) {
   const { config } = useWordCountConfig();
-  seen[id] = config.include;
-  return null;
+  return <i data-reader={id} data-include={JSON.stringify(config.include)} />;
+}
+function seenBy(id: string): Record<string, boolean> {
+  const el = document.querySelector(`[data-reader="${id}"]`);
+  return JSON.parse(el!.getAttribute("data-include")!);
 }
 
 describe("word-count config store (task 1224)", () => {
@@ -71,8 +73,8 @@ describe("word-count config store (task 1224)", () => {
       mainText: false,
     });
     for (const id of ["outline", "cutter"]) {
-      expect(seen[id].footnotes).toBe(false);
-      expect(seen[id].mainText).toBe(false);
+      expect(seenBy(id).footnotes).toBe(false);
+      expect(seenBy(id).mainText).toBe(false);
     }
     expect(
       err.mock.calls.some(([m]) => String(m).includes("Cannot update a component")),
@@ -98,8 +100,8 @@ describe("word-count config store (task 1224)", () => {
   it("an absent key takes its default", () => {
     localStorage.setItem(KEY, JSON.stringify({ include: { headings: false } }));
     render(<Reader id="solo" />);
-    expect(seen.solo.headings).toBe(false);
-    expect(seen.solo.mainText).toBe(true);
-    expect(seen.solo.comments).toBe(false);
+    expect(seenBy("solo").headings).toBe(false);
+    expect(seenBy("solo").mainText).toBe(true);
+    expect(seenBy("solo").comments).toBe(false);
   });
 });
