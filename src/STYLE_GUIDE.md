@@ -1900,10 +1900,22 @@ wires `useCycle`/`useListNavKeys` itself; the five that never copied those
 lines had no keyboard nav at all. Task 964, pinned by
 `panels/_shared/__tests__/card-list-keyboard-nav.test.tsx`.
 
-The panel strip (vertical column of toggles) uses 32×32 icon buttons.
-Active toggle: `bg-pod-dark/80 text-ink-strong` — the lit strip icon is
-the **only** active-panel cue. A panel looks **identical whether or not it
-has focus**: no per-pod stripe, ring, border, or shadow-change on focus.
+The panel strip (`IconStrip` in `EditorPane.tsx`; vertical column of
+toggles) has a **stated** width, `--icon-strip-w` (46px, globals.css) — not a
+content-sized one: zen derives normal view's page width from it
+(`normal-view-rails.ts`, task 1178), so never let strip contents size the
+strip. Top→bottom it holds the view-controls pod (a bordered
+`bg-surface/70` chip around the collapse/expand toggle), one `StripButton`
+per panel placed on that side, then the omni filter menu, which sits in the
+flow under the last button (the strip is sticky and content-sized; nothing
+pins it to the bottom). Every toggle — strip buttons and the collapse
+toggle alike — is `iconbtn-md iconbtn-toggle` (24×24) with `aria-pressed`;
+the "on" paint is the shared control-selected path
+(`.iconbtn-toggle[aria-pressed="true"]` in globals.css: tint + ink + inset
+ring), never a hand-rolled fill. The lit strip icon is the **only**
+active-panel cue. A panel looks **identical whether or not it has focus**: no
+per-pod stripe, ring, border, or shadow-change on focus. Pinned by
+`strip-button-a11y-name.test.tsx` (task 1226).
 
 ## Resize gutters
 
