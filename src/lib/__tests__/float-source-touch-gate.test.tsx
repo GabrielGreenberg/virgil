@@ -849,3 +849,34 @@ describe("float source-touch gate — a heading float tracks its whole section",
     expect(float.state.doc.textContent).not.toContain("Mid");
   });
 });
+
+// Task 1223 — the write-refused banner is cleared by CONVERGENCE, not only by a
+// landed write or a re-seed: once the float equals what main holds there is no
+// rejected edit left to describe.
+describe("float write-refused banner clears when the float converges with main", () => {
+  it("an `unchanged` write (undo back to main's content) clears it", () => {
+    const main = mount(mainDoc(4));
+    const { view } = mountParagraphFloat(main, "p3");
+    act(() => view.result.current.reportWrite({ status: "refused", reason: "nope" }));
+    expect(view.result.current.writeRefusal).toBe("nope");
+    act(() => view.result.current.reportWrite({ status: "unchanged" }));
+    expect(view.result.current.writeRefusal).toBeNull();
+  });
+
+  it("a main edit that makes main EQUAL the float (no re-seed needed) clears it", () => {
+    const main = mount(mainDoc(4));
+    const { float, view } = mountParagraphFloat(main, "p3");
+    expect(float.state.doc.textContent).toBe("body 3");
+    // The float holds content main refused (this harness wires no write-back).
+    act(() => {
+      float.view.dispatch(float.state.tr.insertText("Q", 1));
+    });
+    act(() => view.result.current.reportWrite({ status: "refused", reason: "nope" }));
+    expect(view.result.current.writeRefusal).toBe("nope");
+    // A foreign edit brings main to exactly the float's content: syncFromMain
+    // takes the sameDoc early return — which must still clear the banner.
+    typeAt(main, insideBlock(main, "p3"), "Q");
+    expect(float.state.doc.textContent).toBe("Qbody 3");
+    expect(view.result.current.writeRefusal).toBeNull();
+  });
+});

@@ -111,12 +111,15 @@ export function landFloatWrite(
 }
 
 /** Fold an outcome into a surface's "rejected edit" message: a refusal sets
- *  it, a landed write clears it, the others leave it as it is. */
+ *  it; a landed write OR an `unchanged` one clears it — both mean the surface
+ *  now equals what main holds, so no rejected edit is left to describe (task
+ *  1223: undoing a refused edit back to main's content is an `unchanged` echo).
+ *  `no-source` leaves it as it is (SourceMissingBanner owns that state). */
 export function nextWriteRefusal(
   prev: string | null,
   outcome: FloatWriteOutcome,
 ): string | null {
   if (outcome.status === "refused") return outcome.reason;
-  if (outcome.status === "landed") return null;
+  if (outcome.status === "landed" || outcome.status === "unchanged") return null;
   return prev;
 }
