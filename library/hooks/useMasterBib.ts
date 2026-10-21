@@ -45,7 +45,10 @@ export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
       if (stamp !== null) {
         // Fast path: slim index present. lastStampRef is only set after a
         // successful setEntries, so an equal stamp means our state is current.
-        if (stamp === lastStampRef.current) return;
+        if (stamp === lastStampRef.current) {
+          setError(null);
+          return;
+        }
         const result = await libPerfAsync(
           "bib-index read+map",
           () => readBibIndex(handle),
@@ -69,9 +72,15 @@ export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
         lastStampRef.current = null;
         setEntries([]);
         setBibStateByKey(EMPTY_STATES);
+        // Absence is an answer, not a fault (task 1210): an earlier read
+        // error must not outlive the file it was about.
+        setError(null);
         return;
       }
-      if (text === lastTextRef.current) return;
+      if (text === lastTextRef.current) {
+        setError(null);
+        return;
+      }
       lastTextRef.current = text;
       lastStampRef.current = null;
       setEntries(libPerf("master.bib citation-js parse", () => parseBibFile(text), (e) => `${e.length} entries`));

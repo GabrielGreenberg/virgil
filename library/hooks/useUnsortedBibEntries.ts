@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listDir, readTextFile, SUBDIRS } from "@library/lib/library-storage";
+import { faultEpisode } from "@library/lib/read-fault";
 import { parseBibFile } from "@/lib/bib-parser";
 import type { BibEntry } from "@library/lib/types";
 
@@ -26,6 +27,7 @@ export function useUnsortedBibEntries(handle: FileSystemDirectoryHandle | null) 
   // across callers; this is the local skip that avoids even touching
   // the parser when the file is unchanged.
   const lastResultsRef = useRef<Map<string, { text: string; entries: BibEntry[] }>>(new Map());
+  const faultRef = useRef(faultEpisode("useUnsortedBibEntries: unsorted/"));
 
   const reload = useCallback(async () => {
     if (!handle) {
@@ -33,7 +35,17 @@ export function useUnsortedBibEntries(handle: FileSystemDirectoryHandle | null) 
       setByFile((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
-    const entries = await listDir(handle, UNSORTED_PATH);
+    // A faulted listing (task 1210) is "unknown", not "empty": keep the
+    // last-good rows and say so once per episode — never an unhandled
+    // rejection from the 6 s poll's `void reload()`.
+    let entries: Awaited<ReturnType<typeof listDir>>;
+    try {
+      entries = await listDir(handle, UNSORTED_PATH);
+    } catch (err) {
+      faultRef.current.fail(err);
+      return;
+    }
+    faultRef.current.ok();
     if (!entries) {
       lastResultsRef.current.clear();
       setByFile((prev) => (prev.size === 0 ? prev : new Map()));

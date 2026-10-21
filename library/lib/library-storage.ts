@@ -362,6 +362,11 @@ export async function ensureLibrariesDir(
  *  and skipped (so a single corrupt file doesn't block the rest). */
 export async function listLibraryManifests(
   root: FileSystemDirectoryHandle,
+  /** Filled with the names of manifests that are listed but could not be
+   *  READ (a real fault, task 1210). They are skipped like a corrupt file —
+   *  one fault never rejects the whole listing — but a caller that holds
+   *  prior state can tell "unreadable" from "gone". */
+  unreadable?: string[],
 ): Promise<{ filename: string; manifest: LibraryManifest }[]> {
   const entries = await listDir(root, SUBDIRS.libraries);
   if (!entries) return [];
@@ -370,7 +375,14 @@ export async function listLibraryManifests(
     if (e.kind !== "file") continue;
     if (e.name.startsWith(".")) continue;
     if (!e.name.toLowerCase().endsWith(".json")) continue;
-    const manifest = await readLibraryManifest(root, e.name);
+    let manifest: LibraryManifest | undefined;
+    try {
+      manifest = await readLibraryManifest(root, e.name);
+    } catch (err) {
+      console.warn(`[library] listLibraryManifests: couldn't read ${e.name}; skipping`, err);
+      unreadable?.push(e.name);
+      continue;
+    }
     if (!manifest) continue;
     out.push({ filename: e.name, manifest });
   }

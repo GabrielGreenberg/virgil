@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { readJsonFile, VIRGIL_DIR } from "@library/lib/library-storage";
+import { faultEpisode } from "@library/lib/read-fault";
 import type { NotificationItem } from "@library/lib/queue";
 
 const MANIFEST_PATH = `${VIRGIL_DIR}/models/manifest.json`;
@@ -51,10 +52,22 @@ export function useSetupStatus(
   useEffect(() => {
     if (!handle) return;
     let stopped = false;
+    const fault = faultEpisode("useSetupStatus: models/manifest.json");
 
     const tick = async () => {
       if (stopped) return;
-      const manifest = await readJsonFile<SetupManifest>(handle, MANIFEST_PATH);
+      // A faulted read (task 1210) is "unknown": keep the last status rather
+      // than claiming setup is missing (or done), and warn once per episode
+      // — never an unhandled rejection per 30 s poll.
+      let manifest: SetupManifest | undefined;
+      try {
+        manifest = await readJsonFile<SetupManifest>(handle, MANIFEST_PATH);
+      } catch (err) {
+        fault.fail(err);
+        return;
+      }
+      fault.ok();
+      if (stopped) return;
       const missing = computeMissing(manifest);
       if (missing.length === 0) {
         firstSeenAtRef.current = null;

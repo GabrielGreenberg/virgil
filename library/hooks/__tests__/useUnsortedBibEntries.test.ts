@@ -95,3 +95,22 @@ describe("useUnsortedBibEntries — change check (task 1009)", () => {
     expect(result.current.byFile).toBe(first);
   });
 });
+
+describe("useUnsortedBibEntries — a faulted listing (task 1210)", () => {
+  it("keeps the last-good rows and never rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    files = { "a.bib": bib("a1", "A") };
+    const { result } = renderHook(() => useUnsortedBibEntries(handle));
+    await waitFor(() => expect(result.current.byFile.size).toBe(1));
+    const good = result.current.byFile;
+
+    listDir.mockRejectedValue(Object.assign(new Error("io"), { name: "NotReadableError" }));
+    await act(async () => {
+      await expect(result.current.reload()).resolves.toBeUndefined();
+      await expect(result.current.reload()).resolves.toBeUndefined();
+    });
+    expect(result.current.byFile).toBe(good);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("useUnsortedBibEntries"))).toHaveLength(1);
+    warn.mockRestore();
+  });
+});
