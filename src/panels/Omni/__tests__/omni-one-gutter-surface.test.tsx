@@ -369,8 +369,10 @@ describe("census — one owner, one fallback, one floor", () => {
   it("the surface fact is PUBLISHED by the column and threaded from both rails — never re-derived in the pane", () => {
     const pane = codeOnly(SRC("components/EditorPane.tsx"));
     const col = codeOnly(SRC("components/editor-layout/panel-column.tsx"));
-    // Both rail mounts hand the pane's setter down…
-    expect((pane.match(/onBinSurfaceChange=\{noteBinSurface\}/g) ?? []).length).toBe(2);
+    // Both rail mounts hand the pane's setter down — through the ONE shared
+    // rail-props object both sides spread (task 1225)…
+    expect((pane.match(/onBinSurfaceChange: noteBinSurface,/g) ?? []).length).toBe(1);
+    expect((pane.match(/\{\.\.\.railShared\}/g) ?? []).length).toBe(2);
     // …the rail threads it to the column…
     expect(pane).toMatch(/onBinSurfaceChange=\{\(present\) => onBinSurfaceChange\?\.\(side, present\)\}/);
     // …and the column fires it from the slot's own ref edge.
