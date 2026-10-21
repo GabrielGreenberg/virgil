@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 
 import {
+  BAR_STATUS_MENU_WIDTH,
   BAR_STATUS_PILL_MAX_WIDTH,
   BarStatusAction,
   BarStatusPill,
@@ -242,6 +243,28 @@ describe("BarStatusPill · the census", () => {
       if (/<circle cx="5" cy="12" r="1\.6"/.test(src)) offenders.push(`${rel} private kebab glyph`);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("no cluster resident declares its own menu width — the pill owns ONE spec (task 1215)", () => {
+    const offenders: string[] = [];
+    for (const rel of new Set(clusterImports().values())) {
+      if (rel.endsWith("status/BarStatusPill.tsx")) continue;
+      const src = read(rel);
+      if (!src.includes("<BarStatusPill")) continue;
+      src.split("\n").forEach((line, i) => {
+        // The menu surface's width props — gone from `BarStatusMenu`, so a
+        // badge re-adding one is a type error AND this line.
+        if (/\bcontainer(?:ClassName|Style)\b/.test(line)) {
+          offenders.push(`${rel}:${i + 1} ${line.trim()}`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+    // The menu's width is a stated spec, not a literal at the mount.
+    const pill = read("src/components/status/BarStatusPill.tsx");
+    expect(pill).toMatch(/containerStyle=\{MENU_WIDTH_STYLE\}/);
+    expect(pill).not.toMatch(/\b(?:min|max)-w-\[\d+px\]/);
+    expect(BAR_STATUS_MENU_WIDTH.min).toBeLessThan(BAR_STATUS_MENU_WIDTH.max);
   });
 
   it("an ACTIVATABLE pill is a typed button that keeps the button role (task 1131)", () => {

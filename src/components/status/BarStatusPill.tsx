@@ -14,7 +14,8 @@
  * - **announcement** — two of the seven carried `role="status"`; the conflict
  *   pause, the recovery offer and the sync report were role-less spans a
  *   screen reader never announced;
- * - **width** — 260, 280 and 360 px caps with no spec;
+ * - **width** — 260, 280 and 360 px caps with no spec (and, until task 1215,
+ *   three hand-typed MENU widths — 240/320, 260/340, 280/360);
  * - **glyph ink** — one badge left its glyph black;
  * - **actions** — three button styles, one of them underlined links nested
  *   INSIDE the labelled span, so the span's name and the buttons' competed;
@@ -25,7 +26,8 @@
  * > decides everything else.** The palette AND the role/aria-live pairing are
  * > read off the leaf's tables (`paletteForTone`, `announcementForTone` — the
  * > same pairing the in-document band uses), the glyph is inked by the tone's
- * > edge, the label truncates under ONE width cap, actions render as SIBLINGS
+ * > edge, the label truncates under ONE width cap (the menu has ONE width
+ * > spec too, and a badge cannot pass its own), actions render as SIBLINGS
  * > of the labelled span in ONE button style (`.topbarbtn`), and the kebab and
  * > its rows are ONE implementation.
  *
@@ -84,6 +86,16 @@ export type BarStatusTone = InterruptionTone | "quiet" | "presence";
 /** The one width cap for a bar pill's labelled span. The label truncates
  *  inside it; the full sentence lives on `data-hint` and in the menu. */
 export const BAR_STATUS_PILL_MAX_WIDTH = 280;
+
+/** The one width spec for a pill's kebab MENU (task 1215) — every bar status
+ *  menu shares it, so a badge declares no width of its own. Sized for the
+ *  widest resident (the sync-conflict menu's monospace file list). */
+export const BAR_STATUS_MENU_WIDTH = Object.freeze({ min: 280, max: 360 });
+
+const MENU_WIDTH_STYLE: CSSProperties = Object.freeze({
+  minWidth: BAR_STATUS_MENU_WIDTH.min,
+  maxWidth: BAR_STATUS_MENU_WIDTH.max,
+});
 
 /** The pill's chrome — the ONE class string, spelled here and nowhere else. */
 export const BAR_STATUS_PILL_CLASS =
@@ -280,8 +292,6 @@ export interface BarStatusMenu {
   ariaLabel: string;
   /** The kebab button's accessible name + hint. */
   kebabLabel: string;
-  /** Width classes for the menu surface. */
-  containerClassName?: string;
   children: ReactNode;
 }
 
@@ -499,7 +509,8 @@ export function BarStatusPill({
           ariaLabel={menu.ariaLabel}
           // Body-portaled at the menu primitive's CHROME_Z so the sticky
           // topbar's stacking context can't clip it (task 295).
-          containerClassName={menu.containerClassName ?? "min-w-[260px] max-w-[340px] py-1"}
+          containerClassName="py-1"
+          containerStyle={MENU_WIDTH_STYLE}
         >
           {menu.children}
         </MenuProvider>

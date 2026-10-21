@@ -443,7 +443,7 @@ export const FOLDER_TAB_VARIANTS: Record<FolderTabVariant, FolderTabVariantSpec>
    *  stroke --topbar-border. */
   topbar: makeVariant({
     tabH: 30,
-    strokeVar: "var(--topbar-border, #d5d3ce)",
+    strokeVar: "var(--topbar-border)",
     contentInsetRight: S,
     contentPadLeft: 14,
     contentPadRight: 4,

@@ -272,7 +272,6 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
         id: "sync-conflict-menu",
         ariaLabel: "Sync conflict details",
         kebabLabel: "Conflicted copy details",
-        containerClassName: "min-w-[280px] max-w-[360px] py-1",
         children: (
           <>
             {plan.length > 0 && (

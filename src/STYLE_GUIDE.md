@@ -324,7 +324,10 @@ the pill decides everything else:
   no role): its label is a duration that ticks on every heartbeat.
 - **Glyph** — 14–16px stroke, inked with the tone's `edge`.
 - **Width** — ONE cap, 280px, on the labelled span; the label truncates and the
-  full sentence lives on `data-hint` and in the menu's detail block.
+  full sentence lives on `data-hint` and in the menu's detail block. The
+  kebab MENU has ONE width spec too (`BAR_STATUS_MENU_WIDTH`, 280–360px, sized
+  for the sync-conflict file list); `BarStatusMenu` has no width prop, so an
+  occupant cannot declare its own (task 1215 — three hand-typed pairs before).
 - **Actions** — SIBLINGS of the labelled span, never inside it (a button inside
   a labelled span competes with the span's name), in the bar's one button
   style (`.topbarbtn`, via `BarStatusAction`), always `type="button"`.
@@ -339,7 +342,7 @@ the pill decides everything else:
 The census is `bar-status-pill.test.tsx`, and its subjects are DERIVED, not
 named: every `BAR_STATUS_ORDER` row's component (read off `StatusCluster`'s
 `statusItems`) renders through the pill, and no component the cluster imports
-spells the raw pill class or a private kebab/row. (It selected by `*Badge.tsx`
+spells the raw pill class, a private kebab/row, or a menu width. (It selected by `*Badge.tsx`
 filename until task 1214, which is how the timer and the collab pill escaped.)
 The library's `StatusPill` (entry state, below) is a different family.
 
