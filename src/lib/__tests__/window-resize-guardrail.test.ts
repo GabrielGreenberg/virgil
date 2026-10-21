@@ -73,6 +73,8 @@ const PERMITTED_RESIZE_LISTENERS: Record<string, string> = {
     "SUPPRESS — the margin bolt, same shape as the pending pill (a third source feeding its existing suppress/settle predicate). The raw listener is deliberate: a ONE-SHOT resize (maximize, zoom, DPR change) must still reposition immediately, and during a continuous gesture `update()` hits the suppression and returns before scheduling a RAF.",
   "src/components/SlashCommandPopup.tsx":
     "SUPPRESS — a caret-anchored fixed portal; `scheduleUpdate` bails on `isLayoutGestureActive()` and the popup hides for the gesture rather than parking half-detached from its slash.",
+  "src/components/FloatingPanel.tsx":
+    "PARK — the floating shell's viewport re-clamp (task 1221): a window that shrinks under a float pulls its header back on-screen through `clampFloatPos`, the same rule the mount seed and the move gesture use. Nothing user-visible needs it mid-gesture, so a live OS window drag settles it ONCE on the end edge; a one-shot resize runs immediately.",
   "src/components/editor-layout/editor-scrollbar.tsx":
     "PARK + SUPPRESS — the measure pass parks (a full-document layout read → 3 CSS-var writes that re-dirty layout; its read-before-write held within a call and never across calls), and the thumb itself suppresses on the bus edges. This is the single most visible right-side artifact: the thumb is right-anchored on a column with `flex: 1000 1 0`, so it otherwise chases the moving edge a commit behind.",
   "src/components/editor-layout/reader-view-prefs.ts":
@@ -137,7 +139,12 @@ export function detectResizeListener(source: string): boolean {
   const src = stripComments(source);
   return (
     /addEventListener\(\s*["']resize["']/.test(src) ||
-    /\.onresize\s*=/.test(src)
+    /\.onresize\s*=/.test(src) ||
+    // The keep-alive pane-scoped door registers the same window listener one
+    // call away (task 1221 — the first site to reach resize through it); a
+    // census blind to it would let every future resize follower in a pane
+    // dodge the law by switching spellings.
+    /usePaneScopedListener\(\s*["']window["']\s*,\s*["']resize["']/.test(src)
   );
 }
 
@@ -250,6 +257,11 @@ describe("window-resize guardrail — detector fixtures", () => {
   it("flags the `onresize` assignment form", () => {
     const assigned = `window.onresize = () => measureEverything();`;
     expect(detectResizeListener(assigned)).toBe(true);
+  });
+
+  it("flags the keep-alive pane-scoped listener form", () => {
+    const scoped = `usePaneScopedListener("window", "resize", () => measureEverything());`;
+    expect(detectResizeListener(scoped)).toBe(true);
   });
 
   it("does not flag a file that only MENTIONS the pattern in comments", () => {
