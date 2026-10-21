@@ -331,7 +331,6 @@ function ExternalChangeBadge() {
           id: "external-change-menu",
           ariaLabel: "Disk watching actions",
           kebabLabel: "Disk watching options",
-          containerClassName: "min-w-[240px] max-w-[320px] py-1",
           children: (
             <>
               <BarStatusMenuRow
@@ -412,7 +411,6 @@ function ExternalChangeBadge() {
         id: "external-change-menu",
         ariaLabel: "External change actions",
         kebabLabel: "External change options",
-        containerClassName: "min-w-[240px] max-w-[320px] py-1",
         children: (
           <>
             {isConflict ? (

@@ -54,7 +54,7 @@ function TopBarImpl({ zenModeOn, tabStrip, statusCluster }: TopBarProps) {
       // content groups add `mb-[var(--bar-seam-lift)]` (StatusCluster, the "+") to land their
       // optical center at seam−15, matching the tab titles' 094 anchor. TabStrip
       // is `self-stretch` so it fills H and keeps its tabs at the seam (task 289).
-      className={`virgil-bar flex items-end sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
+      className={`virgil-bar flex items-end sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border)]'}`}
       style={{
         color: "var(--virgil-bar-text)",
         background: zenModeOn
