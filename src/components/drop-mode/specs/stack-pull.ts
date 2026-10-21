@@ -32,7 +32,11 @@
  */
 
 import { Node as PMNode, Slice } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
+import {
+  insertNodesAdvancing,
+  placeCaretAtLanding,
+  selectInlineRun,
+} from "../util/mapped-insert";
 import type { JSONContent } from "@tiptap/react";
 import type {
   DropPlan,
@@ -481,17 +485,12 @@ function planInsertText(
     const fit = fitNodesAtInsert(editor, placement.insertPos, blocks);
     if (fit.kind === "reject") return null;
     const blockTr = editor.state.tr;
-    let cursor = placement.insertPos;
-    for (const n of fit.nodes) {
-      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
-      // container fit sanctions an insert the fitter PADS, which adds more
-      // than the node itself — advancing by the node's size alone would put
-      // the next block inside or before this one (task 257 review).
-      const before = blockTr.doc.content.size;
-      blockTr.insert(cursor, n);
-      cursor += blockTr.doc.content.size - before;
-    }
-    selectInserted(blockTr, placement.insertPos, cursor - placement.insertPos);
+    // The ONE splice door (task 1219): advance by what ACTUALLY landed (the
+    // fitter may PAD — task 257 review) and exit on a collapsed caret, never a
+    // selection over the landed blocks — that one makes the next grab at this
+    // row a text-lift (the task 482 payload flip). `liveAt`: no prior steps.
+    const span = insertNodesAdvancing(blockTr, { liveAt: placement.insertPos }, fit.nodes);
+    placeCaretAtLanding(blockTr, span);
     return dispatchPlan(editor, blockTr);
   }
   const target = placement.pos;
@@ -517,14 +516,9 @@ function planInsertText(
   // census credits this line to the sibling branch's `fitNodesAtInsert`, which
   // would be the wrong reason for a true verdict.
   const tr = editor.state.tr.replace(target, target, slice);
-  // Try to select what was inserted so the user can see the landing point.
-  try {
-    const after = tr.doc.resolve(Math.min(tr.doc.content.size, target + slice.size));
-    const $start = tr.doc.resolve(target);
-    tr.setSelection(TextSelection.between($start, after));
-  } catch {
-    /* ignore selection failure — content is in regardless */
-  }
+  // Inline splice: what landed is TEXT inside an existing block, so the run
+  // selection is the truthful exit (same as text-range-move's inline branch).
+  selectInlineRun(tr, target, slice.size);
   return dispatchPlan(editor, tr);
 }
 
@@ -561,9 +555,13 @@ function planInsertParagraph(
   // stack item is a copy that stays in the stack.
   const fit = fitNodesAtInsert(editor, placement.insertPos, [node]);
   if (fit.kind === "reject") return null;
-  const fitted = fit.nodes[0];
-  const tr = editor.state.tr.insert(placement.insertPos, fitted);
-  selectInserted(tr, placement.insertPos, fitted.nodeSize);
+  // The splice door (task 1219): the span is what landed, so a PADDED fit is
+  // measured rather than sized by `fitted.nodeSize`; the exit is a caret.
+  const tr = editor.state.tr;
+  placeCaretAtLanding(
+    tr,
+    insertNodesAdvancing(tr, { liveAt: placement.insertPos }, fit.nodes),
+  );
   return dispatchPlan(editor, tr);
 }
 
@@ -605,28 +603,14 @@ function planInsertHeading(
   // a partial section).
   const fit = fitNodesAtInsert(editor, placement.insertPos, nodes);
   if (fit.kind === "reject") return null;
-  const fitted = fit.nodes;
-  const tr = editor.state.tr.insert(placement.insertPos, fitted as PMNode[]);
-  const totalSize = fitted.reduce((s, n) => s + n.nodeSize, 0);
-  selectInserted(tr, placement.insertPos, totalSize);
+  // The splice door (task 1219) — never `Σ n.nodeSize`, which is the
+  // arithmetic `mapped-insert.ts` names as the bug; the exit is a caret.
+  const tr = editor.state.tr;
+  placeCaretAtLanding(
+    tr,
+    insertNodesAdvancing(tr, { liveAt: placement.insertPos }, fit.nodes),
+  );
   return dispatchPlan(editor, tr);
-}
-
-function selectInserted(
-  tr: import("@tiptap/pm/state").Transaction,
-  pos: number,
-  size: number,
-) {
-  const start = pos + 1;
-  const end = pos + size - 1;
-  if (end <= start) return;
-  try {
-    const $start = tr.doc.resolve(start);
-    const $end = tr.doc.resolve(end);
-    tr.setSelection(TextSelection.between($start, $end));
-  } catch {
-    /* ignore */
-  }
 }
 
 // ── Inline-atom identity remint ───────────────────────────────────────

@@ -169,11 +169,14 @@ export function insertNodesAdvancing(
  * "here is what landed" flash is wanted back it belongs in a DECORATION with its
  * own clear (task 120), not in the selection.
  *
- * The inline-cursor branch of `text-range-move` keeps its own `selectInserted`
- * text selection, and that contrast is the rule rather than an exception: what
- * landed there IS text inside an existing block, so a text selection states it
- * truthfully. Everything routed through `insertNodesAdvancing` landed whole
- * NODES.
+ * The inline-cursor splices (`text-range-move`, `stack-pull`) exit through
+ * `selectInlineRun` below instead, and that contrast is the rule rather than an
+ * exception: what landed there IS text inside an existing block, so a text
+ * selection states it truthfully. Everything routed through
+ * `insertNodesAdvancing` landed whole NODES. Both exits live in this file so the
+ * pair is one decision (task 1219): `drop-mode-landing-door-census` fails any
+ * `TextSelection.between(` — or hand-rolled advancing loop — elsewhere under
+ * `src/components/drop-mode/`.
  *
  * Guarded: a boundary that cannot host a text position leaves the document's own
  * selection alone. That try/catch is not decoration — since task 321 these
@@ -197,5 +200,30 @@ export function placeCaretAtLanding(tr: Transaction, span: InsertedSpan): void {
     tr.setSelection(TextSelection.between($at, $at));
   } catch {
     /* boundary can't host a caret — leave the doc's selection */
+  }
+}
+
+/**
+ * Select the TEXT RUN an inline-cursor splice just merged into an existing
+ * block — the other exit state, and the only one that may span content.
+ *
+ * A caret-position splice (`tr.replace(at, at, openSlice)`) lands text INSIDE a
+ * block that was already there; the selection over that run names exactly what
+ * moved, and no block's grab handle is displaced by it (the host block was not
+ * the payload). It is NOT a substitute for `placeCaretAtLanding` after a
+ * whole-node splice — that is the task 482 payload flip, and the reason both
+ * exits are spelled here rather than per spec (task 1219 found a private
+ * `selectInserted` in two specs with two different meanings).
+ *
+ * Guarded for the same reason as `placeCaretAtLanding`: a near-boundary position
+ * that can't host a text selection leaves the doc's selection alone instead of
+ * throwing out of `planDrop`.
+ */
+export function selectInlineRun(tr: Transaction, pos: number, size: number): void {
+  try {
+    const end = Math.min(tr.doc.content.size, pos + size);
+    tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(end)));
+  } catch {
+    /* position couldn't host a text selection — leave the doc's selection */
   }
 }
