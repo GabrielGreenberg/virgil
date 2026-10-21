@@ -31,6 +31,17 @@
  *     nothing must not happen — `field-draft.ts`, task 532).
  * `onClose` runs once, on whichever ending comes first; `onRename` only on a
  * real change.
+ *
+ * UNMOUNT IS AN ENDING (task 1211). React dispatches no `blur` on unmount, so
+ * a field torn down while focused — every owner renders it only on the ACTIVE
+ * tab/row, and the active one can change under a focused field (a keyboard
+ * tab switch, a programmatic activation) — used to end ZERO times: `onClose`
+ * never ran, the owner's "which id is being renamed" outlived the field, and
+ * the rename box remounted, focused and selected the next time that tab became
+ * active. The teardown now ends the session as a CANCEL, through the field's
+ * own session (the React half of "a NodeView owns its timers' lifetime",
+ * task 686): a teardown the user did not ask for must not commit a half-typed
+ * name.
  */
 
 import {
@@ -40,6 +51,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { isCommitEnter } from "@/lib/key-intent";
 
@@ -98,6 +110,8 @@ export function InlineRenameInput({
   style,
   "aria-label": ariaLabel,
 }: InlineRenameInputProps) {
+  // Declared FIRST (its doc): the lifetime's disposal is the unmount ending.
+  const lifetime = useViewLifetime();
   const [draft, setDraft] = useState(initialValue);
   const ref = useRef<HTMLInputElement | null>(null);
   const session = useFieldEditSession();
@@ -127,6 +141,29 @@ export function InlineRenameInput({
     if (next !== null) onRename(next);
     close();
   };
+
+  // The unmount ending. Its check is deferred one microtask because a
+  // disposal is not yet an unmount: StrictMode's mount → cleanup → mount (and
+  // an offscreen remount) disposes this pass's scope and synchronously mints a
+  // fresh one, and a field that cancelled there would close itself the moment
+  // it opened. Only a scope still disposed after the microtask is a real
+  // teardown. `close` is read through a ref so the ending runs the CURRENT
+  // owner's `onClose`, not the one captured at mount; the `ended` latch makes
+  // it a no-op after an Escape/Enter/blur that already ended the session.
+  const closeRef = useRef(close);
+  useEffect(() => {
+    closeRef.current = close;
+  });
+  useEffect(
+    () =>
+      lifetime.onDispose(() => {
+        queueMicrotask(() => {
+          if (!lifetime.disposed) return;
+          session.cancel(null, () => closeRef.current());
+        });
+      }),
+    [lifetime, session],
+  );
 
   return (
     <input

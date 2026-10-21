@@ -143,6 +143,32 @@ export function PanelTabStrip({
   const [entryDragOverTabId, setEntryDragOverTabId] = useState<string | null>(
     null,
   );
+  // NO PER-ELEMENT ID OUTLIVES ITS ELEMENT (task 1211). `editingId`,
+  // `tabMenuOpenId` and `menuOpen` each name a transient piece of UI — the
+  // rename box, a tab's ⋮ menu, the + menu — and each used to be cleared only
+  // by that UI's own `onClose`, which a teardown never runs. So a tab whose ⋮
+  // menu was open when it left the strip (closed by a shortcut, its `menu`
+  // emptied) kept the id, and the same library reopened from Recent came back
+  // with its menu open; the + menu survived a `showAddTab` off→on toggle the
+  // same way. The rule, once: an id whose element is not rendered this pass is
+  // reset this pass (React's adjust-state-during-render — the reset is never a
+  // painted frame). The rename box also ends itself on unmount
+  // (`InlineRenameInput`); this is the belt for the menus, which have no
+  // field. Element existence mirrors the render below: the rename box only on
+  // the ACTIVE tab; a ⋮ trigger on any tab with a non-empty `menu`, except the
+  // active tab while it is being renamed.
+  const tabById = new Map(tabs.map((t) => [t.id, t] as const));
+  const editingRendered =
+    editingId !== null && editingId === activeId && tabById.has(editingId);
+  const tabMenuRendered = (() => {
+    if (tabMenuOpenId === null) return false;
+    const t = tabById.get(tabMenuOpenId);
+    if (!t?.menu || t.menu.length === 0) return false;
+    return !(t.id === activeId && editingRendered && t.id === editingId);
+  })();
+  if (editingId !== null && !editingRendered) setEditingId(null);
+  if (tabMenuOpenId !== null && !tabMenuRendered) setTabMenuOpenId(null);
+  if (menuOpen && !showAddTab) setMenuOpen(false);
   // Task 053 — whether the ACTIVE tab's right foot is flush against the body's
   // top-right corner (its wrapper's right edge coincides with the body's right
   // edge). The left is reliably `i === 0` (first tab always sits at the strip
