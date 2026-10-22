@@ -111,11 +111,11 @@ describe("promotion is a typed key-intersection with the shipped shape (task 904
       const numKey = Object.keys(editor).find((k) => typeof editor[k] === "number")!;
       const strKey = Object.keys(editor).find((k) => typeof editor[k] === "string")!;
       promote(root, {
-        "virgil-view-prefs/global": { pageWidth: "wide", showHighlights: !view.showHighlights, notWhitelisted: 1 },
+        "virgil-view-prefs/global": { editorLeftMargin: "wide", showHighlights: !view.showHighlights, notWhitelisted: 1 },
         "virgil-editor-prefs": { [numKey]: "12", [strKey]: editor[strKey] + "-x", retiredPref: "x" },
       });
       const v = read(root, VIEW_JSON);
-      expect(v.pageWidth).toBe(view.pageWidth);
+      expect(v.editorLeftMargin).toBe(view.editorLeftMargin);
       expect(v.showHighlights).toBe(!view.showHighlights);
       expect(v).not.toHaveProperty("notWhitelisted");
       const e = read(root, EDITOR_JSON);

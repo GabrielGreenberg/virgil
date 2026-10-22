@@ -203,7 +203,7 @@ describe("scope is one pinned fact", () => {
     "appliedPrefMigrations", "autocorrectTypos", "cardOutlineChrome", "checkSpelling",
     "codePaneRatio", "dividerLevels", "dividerWidth", "editorBottomMargin",
     "editorLeftMargin", "editorRightMargin", "editorTopMargin", "hiddenHighlightTypes",
-    "hiddenMarginaliaTypes", "omniDimResting", "omniHiddenCategories", "pageWidth",
+    "hiddenMarginaliaTypes", "omniDimResting", "omniHiddenCategories",
     "placements", "printOptions", "showCardTitles", "showHeadingLabels",
     "showHighlights", "showLatexComments", "showMarginalia", "showParTitles",
   ];

@@ -56,36 +56,36 @@ describe("useViewPrefs (global blob) — storage event is the floor under the bu
   it("re-reads a peer's global write delivered by `storage` alone, and does not clobber it", async () => {
     const { useViewPrefs } = await import("@/hooks/useViewPrefs");
     const { result } = renderHook(() => useViewPrefs());
-    const peerWidth = result.current.prefs.pageWidth === 1000 ? 1001 : 1000;
+    const peerRight = result.current.prefs.editorRightMargin === 200 ? 201 : 200;
 
-    // Peer window A changes the page width.
+    // Peer window A changes the right margin.
     act(() => {
-      peerWriteRaw(GLOBAL_KEY, JSON.stringify({ ...readGlobal(), pageWidth: peerWidth }));
+      peerWriteRaw(GLOBAL_KEY, JSON.stringify({ ...readGlobal(), editorRightMargin: peerRight }));
     });
-    expect(result.current.prefs.pageWidth).toBe(peerWidth);
+    expect(result.current.prefs.editorRightMargin).toBe(peerRight);
 
     // This window then changes an unrelated GLOBAL pref. Its whole-blob write
-    // must carry A's width, not the stale one it hydrated with.
+    // must carry A's margin, not the stale one it hydrated with.
     const left = result.current.prefs.editorLeftMargin === 150 ? 151 : 150;
     act(() => {
       result.current.setEditorLeftMargin(left);
     });
     expect(readGlobal().editorLeftMargin).toBe(left);
-    expect(readGlobal().pageWidth).toBe(peerWidth);
+    expect(readGlobal().editorRightMargin).toBe(peerRight);
   });
 
   it("a peer sync never becomes an outbound write (no ping-pong)", async () => {
     const { useViewPrefs } = await import("@/hooks/useViewPrefs");
     const { result } = renderHook(() => useViewPrefs());
-    const peerWidth = result.current.prefs.pageWidth + 5;
+    const peerRight = result.current.prefs.editorRightMargin + 5;
     // The peer's own write lands BEFORE the spy, so the spy sees only this
     // window's reaction to the event.
-    localStorage.setItem(GLOBAL_KEY, JSON.stringify({ ...readGlobal(), pageWidth: peerWidth }));
+    localStorage.setItem(GLOBAL_KEY, JSON.stringify({ ...readGlobal(), editorRightMargin: peerRight }));
     const spy = vi.spyOn(localStorage, "setItem");
     act(() => {
       window.dispatchEvent(new StorageEvent("storage", { key: GLOBAL_KEY }));
     });
-    expect(result.current.prefs.pageWidth).toBe(peerWidth);
+    expect(result.current.prefs.editorRightMargin).toBe(peerRight);
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
@@ -93,12 +93,12 @@ describe("useViewPrefs (global blob) — storage event is the floor under the bu
   it("an unchanged persist writes nothing (idempotent whole-blob writes)", async () => {
     const { useViewPrefs } = await import("@/hooks/useViewPrefs");
     const { result } = renderHook(() => useViewPrefs());
-    const width = result.current.prefs.pageWidth === 900 ? 901 : 900;
-    act(() => { result.current.setPageWidth(width); });
-    expect(readGlobal().pageWidth).toBe(width); // the first persist did write
+    const right = result.current.prefs.editorRightMargin === 200 ? 201 : 200;
+    act(() => { result.current.setEditorRightMargin(right); });
+    expect(readGlobal().editorRightMargin).toBe(right); // the first persist did write
     const spy = vi.spyOn(localStorage, "setItem");
     // Re-set the same value: `update` runs, `persist` runs, disk already holds it.
-    act(() => { result.current.setPageWidth(width); });
+    act(() => { result.current.setEditorRightMargin(right); });
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });

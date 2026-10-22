@@ -49,13 +49,12 @@ export const STRUCTURAL_GLOBAL_PREFS = {
     why: "promoted through its own `print-options` entry in dev-prefs-registry.json (a whole sub-blob, not a top-level key), so whitelisting it too would fold it twice",
   },
   placements: { promote: true },
-  pageWidth: { promote: true },
   editorLeftMargin: { promote: true },
   editorRightMargin: { promote: true },
   editorTopMargin: { promote: true },
   editorBottomMargin: { promote: true },
   // The Code-pane splitter ratio: the same "tune once, want it everywhere"
-  // measure as `pageWidth` and the four margins beside it, and persisted
+  // measure as the four margins beside it, and persisted
   // globally for exactly that reason (`ViewPrefs.codePaneRatio`).
   codePaneRatio: { promote: true },
   omniHiddenCategories: { promote: true },
