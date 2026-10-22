@@ -606,6 +606,15 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
         if not anchor:
             die("--anchor <uuid> is required for a virtual (card-flag) request id "
                 "(resolve it from the source card)")
+        # Question 2 for a virtual id: its ONLY state is the source card's
+        # `aiRequest` flag — the drain emits the id exactly while it is UP. A
+        # flag already down means an earlier landing answered it (a re-run, or a
+        # dispatch racing another run): the idempotent no-op, before any card is
+        # built (task 1234). A MISSING card falls through to the write door's
+        # refusal (task 942), which names it.
+        if AR.source_flag_state(doc, linked) == AR.FLAG_DOWN:
+            return {"ok": True, "noop": True, "reason": "request already answered",
+                    "requestId": request_id}
         if not synthesize:
             return Ctx(request_id=request_id, anchor=anchor, safety=safety,
                        selected_text=None, synthesize=False, is_virtual=True, linked=linked)

@@ -289,6 +289,13 @@ check(only_skill(mem) == "draft-suggestion",
 # ── virtual card-flag reply → the answer-* skill from the panel, not "apply" ─
 print("\n=== virtual:<panel>:<cardId> card-flag reply → panel-named skill ===")
 sb = sandbox(); mem = tempfile.mkdtemp(prefix="cowork-m-")
+# The drain emits a virtual id only while the source card's flag is UP (task 1234).
+_np = sb / "virgil" / "notes.json"
+_ns = json.loads(_np.read_text())
+for _c in _ns["cards"]:
+    if _c.get("id") == NOTE_CARD:
+        _c["aiRequest"] = True
+_np.write_text(json.dumps(_ns, indent=2) + "\n")
 r = run([CREATE, str(sb), f"virtual:notes:{NOTE_CARD}", "--kind", "note",
          "--body", "flag reply", "--anchor", "2201", "--safety-level", "1"], mem)
 check(r.returncode == 0, f"virtual note reply exits 0 (stderr={r.stderr.strip()[:160]})")

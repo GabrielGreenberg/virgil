@@ -121,7 +121,9 @@ once — see step 5).
    locator). On success the card is `pending`, the Task **awaiting review**
    (`status: in-progress`), the `.tex` untouched until
    `/editor/accept-suggestion`, and the source comment's `aiRequest` lowered.
-   A re-run on a Task whose proposal exists is a `noop` naming that card. The
+   A re-run on a Task whose proposal exists is a `noop` naming that card (on a
+   `virtual:` id whose flag is already down, a `noop` with no `cardId` — the
+   virtual proposal carries no back-pointer). The
    returned `cardId` is the `<newId>` for the reply.
 
 6. **Reply.** On success:

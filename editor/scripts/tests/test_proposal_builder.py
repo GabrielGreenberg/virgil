@@ -195,6 +195,13 @@ check(snapshot(sb) == before, "nothing written")
 
 print("\n=== virtual id: a sibling comment on a Revisions thread ===")
 sb = sandbox()
+# The drain emits a virtual id only while the source card's flag is UP (task 1234).
+_rp = sb / "virgil" / "revisions.json"
+_rs = json.loads(_rp.read_text())
+for _c in _rs["cards"]:
+    if _c.get("id") == REVISION_COMMENT:
+        _c["aiRequest"] = True
+_rp.write_text(json.dumps(_rs, indent=2) + "\n")
 r, out = create(sb, f"virtual:revisions:{REVISION_COMMENT}", "--kind=comment",
                 "--body", scratch("Agreed — see the suggestion below."))
 check(r.returncode == 0, f"create exited 0 (stderr={r.stderr.strip()[-200:]})")

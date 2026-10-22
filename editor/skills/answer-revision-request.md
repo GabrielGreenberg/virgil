@@ -152,7 +152,8 @@ source request in place.
    ```
    Run **one** of the two calls, then the `rm`/`exit` pair. The returned
    `cardId` is the `<newId>` for the reply; a re-run on a Task whose proposal
-   already exists returns a `noop` naming it.
+   already exists returns a `noop` naming it (a `virtual:` id whose flag is
+   already down: a `noop` with no `cardId`).
 
 6. **Reply.** On success:
    - Path (a) — suggestion (awaiting review):
