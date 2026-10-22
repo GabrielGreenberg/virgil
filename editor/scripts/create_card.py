@@ -559,6 +559,7 @@ class Ctx:
     range_edit: dict | None = None    # …and its wrap-span `.tex` edit (op.anchorEdit)
     range_text: str | None = None     # …and the span's reading text (its snapshot)
     anchor_obj: dict | None = None    # the card's resolved anchor object (`_resolve_anchor`)
+    anchor_degraded: str | None = None  # why an inherited span was NOT kept (task 1235)
 
 
 def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set[str]) -> "Ctx | dict":
@@ -672,6 +673,34 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
 # and an example is a block, so neither takes one.
 RANGE_KINDS = {"note", "todo", "report", "report-request"} | {"suggestion", "comment"}
 
+# A suggestion pinned to a span must REWRITE words inside that span (else the
+# range markers split original_text, or the tint sits on words the proposal does
+# not touch). The one predicate both anchor branches ask (task 1235).
+ORIGINAL_OUTSIDE_SPAN = "original outside inherited span"
+
+
+def _span_holds_original(a: argparse.Namespace, span: str | None) -> bool:
+    """True unless this create is a suggestion whose `--original` is not inside
+    `span` (the span's RAW .tex bytes — the same bytes original_text is copied
+    from). A missing span holds nothing."""
+    original = getattr(a, "original", None)
+    if a.kind != "suggestion" or not original:
+        return True
+    return span is not None and original in span
+
+
+def _inherited_span_tex(doc: Path, anchor_obj: dict) -> str | None:
+    r"""The LIVE raw .tex between an inherited Mode-B anchor's `\vlid` pair, or
+    None when the pair is no longer in the file."""
+    rid = (anchor_obj.get("textRange") or {}).get("anchorId")
+    if not rid:
+        return None
+    text = find_tex_file(doc).read_text(encoding="utf-8")
+    for pid, start, end in AR._range_pairs(text):
+        if pid == rid:
+            return text[start:end]
+    return None
+
 
 def _resolve_range(doc: Path, a: argparse.Namespace, anchor: str, ctx: "Ctx") -> None:
     r"""`--range` → a Mode-B anchor on `ctx` (task 1197), through the contract's
@@ -710,7 +739,13 @@ def _resolve_anchor(doc: Path, a: argparse.Namespace, ctx: "Ctx", explicit_ancho
          the .tex is byte-unchanged. A Mode-B anchor degrades to Mode A at the
          same paragraph when this kind cannot hold a span (`RANGE_KINDS`). A
          dormant (archived) link is never inherited (`_first_anchor`).
-      3. Else Mode A at the resolved paragraph."""
+      3. Else Mode A at the resolved paragraph.
+
+    A suggestion's span must contain its `--original` (`_span_holds_original`,
+    task 1235): an explicit `--range` that does not is REFUSED (the caller chose
+    those words); an inherited span that does not DEGRADES to Mode A at the same
+    paragraph and records `ctx.anchor_degraded` (the caller did not choose it —
+    the proposal is about other words in the paragraph)."""
     src_anchor = _first_anchor(_source_card(doc, ctx.linked))
     src_para = src_anchor["textObjectIds"][0] if src_anchor else None
     # "Did the caller aim elsewhere?" — not when `--anchor` names the Task's OWN
@@ -719,6 +754,10 @@ def _resolve_anchor(doc: Path, a: argparse.Namespace, ctx: "Ctx", explicit_ancho
     # its card, and the card now lives at `src_para`.
     own = {p for p in (src_para, ctx.stored_para) if p}
     if a.range is not None:
+        if not _span_holds_original(a, a.range):
+            die("--range must contain --original: the span a suggestion rewrites sits inside "
+                "the words it is pinned to (else the range markers split original_text and "
+                "accept would refuse it as stale)")
         if explicit_anchor in own and src_para:
             explicit_anchor = src_para
         anchor_uuid = explicit_anchor or src_para or ctx.anchor
@@ -728,10 +767,13 @@ def _resolve_anchor(doc: Path, a: argparse.Namespace, ctx: "Ctx", explicit_ancho
     elif src_anchor and (not explicit_anchor or explicit_anchor in own):
         anchor_obj = {k: v for k, v in copy.deepcopy(src_anchor).items() if k != "margin"}
         if anchor_obj.get("targetKind") == "linkedRange" or anchor_obj.get("textRange"):
-            if a.kind in RANGE_KINDS:
-                ctx.range_text = (anchor_obj.get("textRange") or {}).get("textSnapshot")
-            else:
+            if a.kind not in RANGE_KINDS:
                 anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [src_para]}
+            elif not _span_holds_original(a, _inherited_span_tex(doc, anchor_obj)):
+                anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [src_para]}
+                ctx.anchor_degraded = ORIGINAL_OUTSIDE_SPAN
+            else:
+                ctx.range_text = (anchor_obj.get("textRange") or {}).get("textSnapshot")
     else:
         anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [ctx.anchor]}
     ctx.anchor_obj = anchor_obj
@@ -958,13 +1000,8 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
                 f"bridged from a Revisions card (linkedTo.panel={linked_panel!r})")
         panel = "revisions"
 
-    # The anchor: the one rule every create reads (`_resolve_anchor`, task 1230).
-    # A suggestion's span must still contain the words it rewrites, else the
-    # range markers split original_text and accept would refuse it as stale.
-    if a.range is not None and kind == "suggestion" and a.original and a.original not in a.range:
-        die("--range must contain --original: the span a suggestion rewrites sits inside "
-            "the words it is pinned to (else the range markers split original_text and "
-            "accept would refuse it as stale)")
+    # The anchor: the one rule every create reads (`_resolve_anchor`, task 1230),
+    # which also holds a suggestion's span to the words it rewrites (task 1235).
     _resolve_anchor(doc, a, ctx, a.anchor)
     anchor_obj, anchor_uuid = ctx.anchor_obj, ctx.anchor
 
@@ -986,7 +1023,9 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
         instructions = _plain_text(source)
     else:
         instructions = a.task_text or _plain_text(source)
-    selected = ctx.selected_text or ctx.range_text or (source or {}).get("selectedText") or ""
+    # A degraded anchor is NOT about the source's selected words — don't quote them.
+    selected = "" if ctx.anchor_degraded else (
+        ctx.selected_text or ctx.range_text or (source or {}).get("selectedText") or "")
 
     cid = str(uuid.uuid4())
     link = _anchor_link(kind, cid, anchor_uuid)  # ref.kind is re-stamped by the write door
@@ -1048,6 +1087,8 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
     result["cardId"] = cid
     result["panel"] = panel
     result["subcommand"] = "complete-task --propose" if propose else "complete-task"
+    if ctx.anchor_degraded:
+        result["anchorDegraded"] = ctx.anchor_degraded
     return result
 
 

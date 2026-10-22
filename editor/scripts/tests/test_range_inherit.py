@@ -17,6 +17,9 @@ through the real CLI:
      paragraph (how the responders resolve it) inherits too.
   5. SHARED PAIR — moving one of two cards sharing a range id leaves the pair
      for the other (fresh id for the mover on a range→range move).
+  6. SPAN HOLDS ORIGINAL (task 1235) — a suggestion inherits the span only when
+     its --original lies inside it; otherwise Mode A at the same paragraph,
+     reported as `anchorDegraded`. An explicit --range that misses is refused.
 
 Run from anywhere, no pytest:
     python3 editor/scripts/tests/test_range_inherit.py
@@ -213,6 +216,46 @@ with tempfile.TemporaryDirectory() as tmp:
           and f"\\vlid{{{rid}}}underlines a phrase\\vlidend{{{rid}}}" in t
           and f"\\vlid{{{nid}}}free words\\vlidend{{{nid}}}" in t,
           f"a shared range→range move keeps the shared pair and mints a fresh id ({r.stderr.strip()[:160]})")
+
+print("\n=== suggestion: an inherited span must contain --original (task 1235) ===")
+for original, inside in [("underlines a phrase", True), ("a phrase", True),
+                         ("brackets the argument", False)]:
+    with tempfile.TemporaryDirectory() as tmp:
+        doc = make_doc(tmp)
+        cid, src = pinned_note(doc, tmp)
+        before_tex = tex(doc)
+        file_task(doc, "req-1", "note", cid)
+        r = run(CREATE, str(doc), "req-1", "--kind=suggestion", "--accept-task-kind", "note",
+                "--original", body(tmp, original), "--suggested", body(tmp, "a rewrite"))
+        check(r.returncode == 0, f"suggestion on «{original}» succeeds ({r.stderr.strip()[:200]})")
+        if r.returncode:
+            continue
+        out = json.loads(r.stdout)
+        card = load(doc, "revisions.json")["cards"][-1]
+        a = card["links"][0]["anchor"]
+        check(tex(doc) == before_tex, f"«{original}»: the .tex is byte-unchanged (no \\vlid change)")
+        if inside:
+            check(a.get("textRange") == src.get("textRange") and "anchorDegraded" not in out,
+                  f"«{original}» inside the span → inherits the source's Mode-B anchor")
+        else:
+            check(a == {"type": "textObject", "targetKind": "paragraph", "textObjectIds": ["aaaa"]},
+                  f"«{original}» outside the span → Mode A at the same paragraph")
+            check(out.get("anchorDegraded") == "original outside inherited span",
+                  f"the result reports the degrade ({out.get('anchorDegraded')!r})")
+            check(card.get("selectedText") != "underlines a phrase",
+                  "the degraded card does not quote the source's selected words")
+
+with tempfile.TemporaryDirectory() as tmp:
+    doc = make_doc(tmp)
+    cid, _ = pinned_note(doc, tmp)
+    before_tex = tex(doc)
+    file_task(doc, "req-1", "note", cid)
+    r = run(CREATE, str(doc), "req-1", "--kind=suggestion", "--accept-task-kind", "note",
+            "--original", body(tmp, "brackets the argument"), "--suggested", body(tmp, "x"),
+            "--range", body(tmp, "underlines a phrase"))
+    check(r.returncode != 0 and "--range must contain --original" in r.stderr
+          and tex(doc) == before_tex and not load(doc, "revisions.json"),
+          "an explicit --range that misses --original is still REFUSED, nothing written")
 
 print("\n=== skill prose: no skill says move refuses a Mode-B range ===")
 SKILLS = ROOT / "editor/skills"

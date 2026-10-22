@@ -114,7 +114,9 @@ source request in place.
    the `.tex` — the card lands on that span (Mode B), exactly as if the user had
    selected it. A Task already filed on a selection keeps its span without the
    flag. Rule + refusals: [create-card.md](create-card.md) → "Phrase or
-   paragraph?". For a suggestion the span must contain `--original`.
+   paragraph?". For a suggestion the span must contain `--original`: an
+   explicit `--range` that misses it is refused; an inherited span that misses it
+   degrades to the whole paragraph (result `anchorDegraded`, task 1235).
 
 5. **Land it — one call per path.** Free text goes through `@` scratch files
    ([`_op-json.md`](_op-json.md)):
