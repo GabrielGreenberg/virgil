@@ -29,7 +29,7 @@ vi.mock("@/lib/storage", async () => {
   // A bib whose writes LAND (task 1142): the fan-out follows only a `written`
   // rename, and the default `mutateBib: null` stub is a refused one.
   const { bibDisk } = await import("@/lib/__tests__/_bib-disk");
-  return {
+  return (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
     readSidecar: vi.fn(async () => ({})),
     readSidecarIfExists: vi.fn(async () => ({})),
     writeSidecar: vi.fn(async () => undefined),
@@ -39,7 +39,7 @@ vi.mock("@/lib/storage", async () => {
       "@article{foo,\n  title = {A}\n}\n@article{foobar,\n  title = {B}\n}\n" +
         "@article{smith:2020,\n  title = {C}\n}\n",
     ),
-  };
+  });
 });
 
 import { useCitations } from "../useCitations";

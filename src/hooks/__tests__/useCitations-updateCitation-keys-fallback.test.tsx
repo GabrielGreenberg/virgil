@@ -22,13 +22,15 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 // Storage layer — the hook reads a sidecar (citations.json) + the .bib. Stub
 // both so the hook runs in-memory.
-vi.mock("@/lib/storage", () => ({
-  readSidecar: vi.fn(async () => ({})),
-  readSidecarIfExists: vi.fn(async () => ({})),
-  writeSidecar: vi.fn(async () => undefined),
-  readBib: vi.fn(async () => ({ bibText: "", detectedPackage: undefined })),
-  mutateBib: vi.fn(async () => null),
-}));
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
+    readSidecar: vi.fn(async () => ({})),
+    readSidecarIfExists: vi.fn(async () => ({})),
+    writeSidecar: vi.fn(async () => undefined),
+    readBib: vi.fn(async () => ({ bibText: "", detectedPackage: undefined })),
+    mutateBib: vi.fn(async () => null),
+  }),
+);
 
 import { useCitations } from "../useCitations";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";

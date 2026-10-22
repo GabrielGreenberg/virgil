@@ -15,13 +15,15 @@ const NEW = OLD + "@article{bar,\n  title = {Bar},\n  year = {2002}\n}\n";
 type Read = { bibText: string; detectedPackage?: string };
 const pending: Array<(r: Read) => void> = [];
 
-vi.mock("@/lib/storage", () => ({
-  readSidecar: vi.fn(async () => ({})),
-  readSidecarIfExists: vi.fn(async () => ({})),
-  writeSidecar: vi.fn(async () => undefined),
-  readBib: vi.fn(() => new Promise<Read>((resolve) => pending.push(resolve))),
-  mutateBib: vi.fn(async () => null),
-}));
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
+    readSidecar: vi.fn(async () => ({})),
+    readSidecarIfExists: vi.fn(async () => ({})),
+    writeSidecar: vi.fn(async () => undefined),
+    readBib: vi.fn(() => new Promise<Read>((resolve) => pending.push(resolve))),
+    mutateBib: vi.fn(async () => null),
+  }),
+);
 
 import { useCitations } from "../useCitations";
 import { DOC_BIB_CHANGED_EVENT } from "@/lib/project-bib";

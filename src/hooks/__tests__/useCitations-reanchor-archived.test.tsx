@@ -11,13 +11,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
-vi.mock("@/lib/storage", () => ({
-  readSidecar: vi.fn(async () => ({})),
-  readSidecarIfExists: vi.fn(async () => ({})),
-  writeSidecar: vi.fn(async () => undefined),
-  readBib: vi.fn(async () => ({ bibText: "", detectedPackage: undefined })),
-  mutateBib: vi.fn(async () => null),
-}));
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
+    readSidecar: vi.fn(async () => ({})),
+    readSidecarIfExists: vi.fn(async () => ({})),
+    writeSidecar: vi.fn(async () => undefined),
+    readBib: vi.fn(async () => ({ bibText: "", detectedPackage: undefined })),
+    mutateBib: vi.fn(async () => null),
+  }),
+);
 
 import { useCitations } from "../useCitations";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
