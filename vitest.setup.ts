@@ -30,7 +30,11 @@
  *
  * Pinned by `src/__tests__/test-mount-lifetime.test.tsx`.
  */
-import { afterEach } from "vitest";
+import { afterAll, afterEach } from "vitest";
+import {
+  assertNoMockExportGaps,
+  installMockExportGapDetector,
+} from "./src/lib/__tests__/_mock-export-gap";
 
 afterEach(async () => {
   if (typeof document === "undefined") return;
@@ -38,3 +42,17 @@ afterEach(async () => {
   const { cleanup } = await import("@testing-library/react");
   cleanup();
 });
+
+/*
+ * A `vi.mock` factory that omits an export the code under test CALLS fails
+ * the test (task 1231). vitest throws on the read, a hook's save `catch` logs
+ * it, and the test used to pass without the write it meant to exercise. The
+ * detector records vitest's missing-export message off `console.error` /
+ * `console.warn`, and these hooks turn a recorded gap into a failure. A save
+ * the unmount flushes settles after this test's check, so it is caught by the
+ * next test's — or, after the last test, by the file's `afterAll`.
+ * See `src/lib/__tests__/_mock-export-gap.ts`.
+ */
+installMockExportGapDetector();
+afterEach(() => assertNoMockExportGaps("logged during this test or after the previous one"));
+afterAll(() => assertNoMockExportGaps("logged after the file's last test"));

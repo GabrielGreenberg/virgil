@@ -60,7 +60,7 @@ describe("census · the per-test cleanup is registered once, for every file", ()
 
   it("vitest.setup.ts registers `cleanup` off an IMPORTED afterEach", () => {
     const code = commentsStripped(read("vitest.setup.ts"));
-    expect(code).toMatch(/import\s*\{\s*afterEach\s*\}\s*from\s*["']vitest["']/);
+    expect(code).toMatch(/import\s*\{[^}]*\bafterEach\b[^}]*\}\s*from\s*["']vitest["']/);
     expect(code).toMatch(/\bafterEach\(/);
     expect(code).toMatch(/\bcleanup\(\)/);
     // The import is lazy (a node-env suite has no document; a jsdom suite

@@ -16,11 +16,13 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 // before the bib entries are available.
 let DISK_ANNOTATIONS: unknown = null;
 
-vi.mock("@/lib/storage", () => ({
-  readSidecar: vi.fn(async () => ({})),
-  readSidecarIfExists: vi.fn(async () => DISK_ANNOTATIONS),
-  writeSidecar: vi.fn(async () => undefined),
-}));
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
+    readSidecar: vi.fn(async () => ({})),
+    readSidecarIfExists: vi.fn(async () => DISK_ANNOTATIONS),
+    writeSidecar: vi.fn(async () => undefined),
+  }),
+);
 
 import { useAnnotations } from "../useAnnotations";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";

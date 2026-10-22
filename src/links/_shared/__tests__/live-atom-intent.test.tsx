@@ -17,14 +17,16 @@ import type { FootnotesState } from "@/lib/types";
 
 const DISK: Record<string, unknown> = {};
 
-vi.mock("@/lib/storage", () => ({
-  readSidecar: vi.fn(async (_docId: string, file: string, dflt: unknown) =>
-    file in DISK ? DISK[file] : dflt,
-  ),
-  writeSidecar: vi.fn(async (_handle: unknown, file: string, data: unknown) => {
-    DISK[file] = data;
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
+    readSidecar: vi.fn(async (_docId: string, file: string, dflt: unknown) =>
+      file in DISK ? DISK[file] : dflt,
+    ),
+    writeSidecar: vi.fn(async (_handle: unknown, file: string, data: unknown) => {
+      DISK[file] = data;
+    }),
   }),
-}));
+);
 
 import { staleAtomIntentIds } from "../live-atom-intent";
 import { archivedCardIds } from "../archived-anchor-chrome";

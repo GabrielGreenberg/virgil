@@ -37,7 +37,7 @@ const writeError = new Error("The requested file could not be written");
 
 vi.mock("@/lib/storage", async () => {
   const { enqueueWrite } = await import("@/lib/write-queue");
-  return {
+  return (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
     readSidecar: vi.fn(async () => ({})),
     readSidecarIfExists: vi.fn(async () => null),
     writeSidecar: vi.fn(async () => undefined),
@@ -58,7 +58,7 @@ vi.mock("@/lib/storage", async () => {
           return next;
         }),
     ),
-  };
+  });
 });
 
 import { useCitations } from "@/hooks/useCitations";
