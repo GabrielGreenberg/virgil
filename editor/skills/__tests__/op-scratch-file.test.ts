@@ -50,8 +50,12 @@ const SKILLS = "editor/skills";
 const CONTRACT = "editor/scripts/apply_response.py";
 /** The ONE sanctioned in-folder channel — a path fragment, never a filename. */
 const SANCTIONED_FRAGMENT = "/.virgil/memos/";
-/** Skills whose op payload carries LaTeX and therefore needs an `@` file. */
-const OP_FILE_SKILLS = ["find-citation.md", "style-merge.md"] as const;
+/** Skills whose op payload carries LaTeX and therefore needs an `@` file.
+ *  `find-citation.md` left in task 1238: it no longer builds an op at all — its
+ *  card and BibTeX entry go through `create_card.py --unanchored --bib-entry @f`
+ *  (the FLAG census below covers it), so the retired-shape check still names it. */
+const OP_FILE_SKILLS = ["style-merge.md"] as const;
+const RETIRED_OP_SHAPE_SKILLS = ["find-citation.md", "style-merge.md"] as const;
 /** The op-json delivery doctrine (task 468). */
 const SSOT = "editor/skills/_op-json.md";
 const POINTER = "[`_op-json.md`](_op-json.md)";
@@ -136,7 +140,7 @@ describe("op scratch file — both `@`-file sites take the scratch shape", () =>
     expect(src).toMatch(/rc=\$\?[\s\S]{0,80}rm -f "\$op"[\s\S]{0,40}exit "\$rc"/);
   });
 
-  it.each(OP_FILE_SKILLS)("%s no longer names an in-folder op file", (skill) => {
+  it.each(RETIRED_OP_SHAPE_SKILLS)("%s no longer names an in-folder op file", (skill) => {
     // The retired shape, pinned by its own words so a revert is loud.
     const src = read(`${SKILLS}/${skill}`);
     expect(src).not.toMatch(/mkdir -p "<docPath>/);
@@ -318,8 +322,9 @@ describe("op-json delivery — the CENSUS (allowlist EMPTY)", () => {
     const sites = allSites();
     // 13 → 8 in task 1044: the five hand-built proposal ops (`complete-task
     // --propose` with a card JSON) became `create_card.py --kind=suggestion`
-    // flag calls — sites the FLAG census below covers instead.
-    expect(sites.filter((s) => s.freeText).length).toBeGreaterThanOrEqual(8);
+    // flag calls — sites the FLAG census below covers instead. 8 → 7 in task
+    // 1238: find-citation's card + bibEdit op became a `create_card.py` call.
+    expect(sites.filter((s) => s.freeText).length).toBeGreaterThanOrEqual(7);
     expect(sites.filter((s) => !s.freeText).length).toBeGreaterThanOrEqual(6);
   });
 
@@ -401,8 +406,9 @@ describe("op-json delivery — every free-text site points at the SSOT", () => {
         " The rule is authored ONCE in the include and referenced — do not" +
         " paraphrase it back into a skill.",
     ).toEqual([]);
-    // 8 → 5 in task 1044 (the proposal responders now pass flags, not an op).
-    expect(freeTextSkills().length).toBeGreaterThanOrEqual(5);
+    // 8 → 5 in task 1044 (the proposal responders now pass flags, not an op);
+    // 5 → 4 in task 1238 (find-citation, likewise).
+    expect(freeTextSkills().length).toBeGreaterThanOrEqual(4);
   });
 
   it("every free-text site spells the scratch shape it links to", () => {
@@ -618,7 +624,7 @@ const allFlagSites = () => siloFiles().flatMap((f) => flagSites(f, FREE_TEXT_FLA
 describe("free-text FLAGS — both helpers read `@<path>` (task 815)", () => {
   it("create_card.py declares every free-text flag with type=text_arg", () => {
     expect(textArgFlags(HELPERS.create_card).sort()).toEqual(
-      ["body", "explanation", "item", "notes", "original", "range", "suggested", "task-text", "title"].sort(),
+      ["bib-entry", "body", "explanation", "item", "notes", "original", "range", "suggested", "summary", "task-text", "title"].sort(),
     );
   });
 
@@ -694,5 +700,22 @@ describe("free-text FLAGS — the CENSUS (allowlist EMPTY)", () => {
       expect(src, f).toMatch(/cat > "\$t\/[a-z0-9]+" <<'TXT'/);
       expect(src, f).toMatch(/rc=\$\?\s*\n\s*rm -rf "\$t"\s*\n\s*exit "\$rc"/);
     }
+  });
+});
+
+describe("card ids are ALLOCATED by the door, never written by a skill (task 1238)", () => {
+  it("no skill tells the agent to invent a new card id", () => {
+    // find-citation used to hand-build `{ "id": "<new-uuid>", … }` — a 36-char
+    // id that became the user's `\\vcid{…}` marker on drag, outside the shared
+    // 4-hex marker namespace. Every card-producing skill now lands through
+    // `create_card.py`, which allocates the id.
+    const offenders = mdFiles().filter((f) => /"id"\s*:\s*"<new[-_ ]?(uuid|id)/i.test(read(`${SKILLS}/${f}`)));
+    expect(offenders).toEqual([]);
+  });
+
+  it("find-citation lands its card through create_card.py --unanchored --bib-entry", () => {
+    const src = read(`${SKILLS}/find-citation.md`);
+    expect(src).toMatch(/create_card\.py <docPath> <requestId> --kind=citation[\s\S]{0,200}--unanchored --bib-entry "@\$t\/entry"/);
+    expect(src).not.toMatch(/apply_response\.py <docPath> complete-task/);
   });
 });
