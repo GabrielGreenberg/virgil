@@ -63,6 +63,9 @@ glyphs.
 - `\sout{…}` — strikethrough (`ulem`, loaded `[normalem]`; Virgil adds the
   package on save).
 - `\textsc{…}` — small caps.
+- `\textsubscript{…}`, `\textsuperscript{…}` — text-mode subscript /
+  superscript (LaTeX kernel; no package). For a label like realism₂ write
+  `realism\textsubscript{2}`; a mathematical index stays `$x_2$`.
 - `\texttt{…}` — monospace / code span (typographic transforms suppressed
   inside).
 - `\verb|…|` — inline verbatim (any single non-letter delimiter).
@@ -180,7 +183,7 @@ parser matches them by table, not by a fixed command name.)
 
 ```latex-allowlist
 # inline marks & text
-\textbf \textit \emph \underline \sout \textsc \texttt \verb \textcolor
+\textbf \textit \emph \underline \sout \textsc \textsubscript \textsuperscript \texttt \verb \textcolor
 \footnote \thanks
 \ref \getref \getfullref
 \ldots \dots

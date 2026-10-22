@@ -208,6 +208,9 @@ const MARK_FIXTURES: Record<string, { body: string } | { exempt: string }> = {
   // `\sout{…}` and declares `ulem` from the vocabulary table.
   strike: { body: "\\sout{x}" },
   smallCaps: { body: "\\textsc{x}" },
+  // Task 1239: kernel commands — emitted bytes declare no package.
+  subscript: { body: "x\\textsubscript{2}" },
+  superscript: { body: "x\\textsuperscript{2}" },
   link: {
     exempt:
       "StarterKit mark with no serializer arm — dropped by `applyWrapperMarks`, emits nothing",

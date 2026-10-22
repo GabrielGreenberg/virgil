@@ -101,6 +101,8 @@ import {
   MaketitleMarker,
   TextColor,
   SmallCaps,
+  Subscript,
+  Superscript,
   MarkSpellingAttrs,
 } from "@/lib/tiptap-extensions";
 import { CardParagraph } from "./cmd-only-paragraph";
@@ -304,7 +306,7 @@ const ExcerptListItem = ListItem.extend({
 const CardBulletList = withWrapperGate(BulletList, "bulletList");
 /** Read at CALL time, not module load: `borrowed-schema` and the extension
  *  barrel import each other, so a module-scope array would capture `undefined`. */
-const cardWrapperMarks = (): AnyExtension[] => [SmallCaps, MarkSpellingAttrs];
+const cardWrapperMarks = (): AnyExtension[] => [SmallCaps, Subscript, Superscript, MarkSpellingAttrs];
 const CardOrderedList = withWrapperGate(OrderedList, "orderedList");
 const CardBlockquote = withWrapperGate(Blockquote, "blockquote");
 

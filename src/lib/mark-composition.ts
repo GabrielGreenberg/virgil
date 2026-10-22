@@ -119,6 +119,11 @@ export interface WrapperMarkRow {
  *  TipTap mark and the spell checker's gloss-abbreviation rule. */
 export const SMALL_CAPS_MARK = "smallCaps";
 
+/** The kernel's text-mode sub/superscript marks (task 1239) — spelled once,
+ *  here, for the table rows and the TipTap marks in script-marks.ts. */
+export const SUBSCRIPT_MARK = "subscript";
+export const SUPERSCRIPT_MARK = "superscript";
+
 export const WRAPPER_MARK_ROWS = [
   { mark: "bold", commands: ["textbf"], html: ["strong", "b"], slash: { aliases: ["bf"] } },
   {
@@ -138,6 +143,11 @@ export const WRAPPER_MARK_ROWS = [
     slash: {},
   },
   { mark: SMALL_CAPS_MARK, commands: ["textsc"], slash: { aliases: ["sc"] } },
+  // `\textsubscript` / `\textsuperscript` (LaTeX kernel since 2015 — no
+  // package). Task 1239: the library's OCR clean-up writes `realism\textsubscript{2}`
+  // for a flattened `realism₂`, and with no row here it rendered as raw source.
+  { mark: SUBSCRIPT_MARK, commands: ["textsubscript"], html: ["sub"] },
+  { mark: SUPERSCRIPT_MARK, commands: ["textsuperscript"], html: ["sup"] },
   {
     mark: "code",
     commands: ["texttt"],
