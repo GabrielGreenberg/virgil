@@ -412,7 +412,9 @@ export function PanelColumn({
   useEffect(
     () =>
       // The SET channel — an id filter on the outermost-edge channel strands
-      // `isResizing` under gesture overlap (see zen-margin's twin).
+      // `isResizing` under gesture overlap: that channel publishes only the
+      // OUTERMOST begin/end, so when gestures overlap this column's own end
+      // edge can arrive carrying another gesture's id and be skipped.
       onLayoutGestureSetChange((began, info) => {
         if (info.id !== gestureId) return;
         onResizingChangeRef.current?.(began);

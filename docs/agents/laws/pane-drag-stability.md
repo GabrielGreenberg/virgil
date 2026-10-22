@@ -294,7 +294,8 @@ Five rules it earned:
 - **`restore()`, never `apply(startValue)`.** A wander-and-return has already
   OVERWRITTEN the style with the snapshot px, which for a `clamp()`ed track is a
   RENDERING of a larger stored value, and mid-drag React may have rendered a
-  different flex string than the resting one (`zen-margin` spells this out).
+  different flex string than the resting one (the retired `zen-margin` spelled
+  this out before task 1178 deleted it).
   Only the consumer can re-sync from the source of truth — which is exactly what
   all six retired copies did, so the change is byte-identical for them.
 - **The comparison is EXACT px against the `getValue()` snapshot**, and that is
