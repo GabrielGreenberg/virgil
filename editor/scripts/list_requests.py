@@ -113,10 +113,9 @@ def list_ai_requests(
                 "source": "ai-requests",
                 "kind": r.get("kind", "unknown"),
                 "id": r.get("id"),
-                "text": live_linked_text(index, r.get("kind"), linked)
-                or r.get("text", ""),
-                "paragraphIds": r.get("paragraphIds") or [],
-                "selectedText": r.get("selectedText"),
+                # text / paragraphIds / selectedText: the ONE live projection
+                # the writer door (create_card.py) reads too (task 1232).
+                **project_task_row(index, r),
                 "linkedTo": linked,
                 "extra": {
                     "status": r.get("status"),
@@ -314,6 +313,21 @@ class _CardIndex:
         ]
 
 
+    def linked_card(self, wire_kind, linked) -> tuple[dict, dict] | None:
+        """(card, adapter) of the card a bridged row links to, or None when the
+        link does not resolve (card deleted, sidecar unreadable, unknown kind)."""
+        if not (isinstance(linked, dict) and linked.get("panel") and linked.get("cardId")):
+            return None
+        card_kind = _CARD_KIND_BY_LINK.get((wire_kind, linked["panel"]))
+        adapter = STORAGE_ADAPTER.get(card_kind) if card_kind else None
+        if adapter is None:
+            return None
+        for c in self.cards(adapter):
+            if c.get("id") == linked["cardId"]:
+                return c, adapter
+        return None
+
+
 def live_linked_text(index: "_CardIndex", wire_kind, linked) -> str | None:
     """The CURRENT request text of the card a bridged row links to, or None
     when the link does not resolve (card deleted, sidecar unreadable, unknown
@@ -325,17 +339,41 @@ def live_linked_text(index: "_CardIndex", wire_kind, linked) -> str | None:
     (task 955). The card is the SSOT for what the user asked, so the drain
     reads it, and the responder's ask-shape triage and its `instructions`
     stamp see what the user actually wrote."""
-    if not (isinstance(linked, dict) and linked.get("panel") and linked.get("cardId")):
+    hit = index.linked_card(wire_kind, linked)
+    if hit is None:
         return None
-    card_kind = _CARD_KIND_BY_LINK.get((wire_kind, linked["panel"]))
-    adapter = STORAGE_ADAPTER.get(card_kind) if card_kind else None
-    if adapter is None:
-        return None
-    for c in index.cards(adapter):
-        if c.get("id") == linked["cardId"]:
-            text = card_request_text(c, adapter)
-            return text if isinstance(text, str) and text.strip() else None
-    return None
+    text = card_request_text(*hit)
+    return text if isinstance(text, str) and text.strip() else None
+
+
+def project_task_row(index: "_CardIndex", row: dict) -> dict:
+    """A Task row's `text` / `paragraphIds` / `selectedText` as they stand NOW —
+    the ONE projection the drain emits AND the writer door
+    (`create_card._resolve_context`) reads, so the two agree by construction
+    (task 1232).
+
+    A bridged row's three fields are a SNAPSHOT from bridge time: `text` is
+    the first committed fragment (task 955), and `paragraphIds` /
+    `selectedText` are refreshed only when the bridge re-derives the row (a
+    flag toggle / morph) — never when the user MOVES the card to another
+    paragraph or re-pins its span. The linked card is the SSOT for all three,
+    read exactly as the unbridged fallback reads a virtual row
+    (`card_paragraph_ids`, live links only; `selectedText` or the Mode-B
+    snapshot). The stored values are the fallback only when the link does not
+    resolve (the card is gone) — or, for `paragraphIds`, when the card holds no
+    live anchor."""
+    text = live_linked_text(index, row.get("kind"), row.get("linkedTo"))
+    out = {
+        "text": text or row.get("text", ""),
+        "paragraphIds": row.get("paragraphIds") or [],
+        "selectedText": row.get("selectedText"),
+    }
+    hit = index.linked_card(row.get("kind"), row.get("linkedTo"))
+    if hit is not None:
+        card = hit[0]
+        out["paragraphIds"] = card_paragraph_ids(card) or out["paragraphIds"]
+        out["selectedText"] = card.get("selectedText") or card_text_anchor(card)
+    return out
 
 
 def list_unbridged_card_flags(
