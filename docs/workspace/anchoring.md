@@ -1,4 +1,4 @@
-<!-- last-verified: 2c905f37 2026-10-21 -->
+<!-- last-verified: ff4a500a 2026-10-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -269,4 +269,6 @@ conventions for the orphans you do create are [gardening.md](gardening.md#orphan
    `create_card._gen_range_id`, and land the `\vlid…\vlidend` pair (a
    `wrap-span` `anchorEdit`) in the same commit as the `linkedRange` link — at
    every safety level, since the pair is the card's anchor, not a proposed edit.
-   Never splice a `\vlid` pair by hand.
+   Never splice a `\vlid` pair by hand. An ANSWER to a phrase-pinned card (note/todo/report/proposal) inherits that
+   card's span through the same resolver (task 1230) — no `--range`, no second
+   `\vlid` pair; `move` keeps a range pair another card still holds.

@@ -1,4 +1,4 @@
-<!-- last-verified: 2c905f37 2026-10-21 -->
+<!-- last-verified: ff4a500a 2026-10-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts, src/components/PomodoroTimer.tsx, src/lib/pomodoro-timer.ts -->
 
@@ -84,7 +84,7 @@ Props: `side` ("left"|"right"), `panelPref` / `onPanelPrefChange` (column **widt
 - **The pod seam** (tasks 329 / 329b). Where a raised white pod's bottom edge meets the card lane continuing behind it, the separation reads as *elevation* — the pod's own ambient shadow falling across a thin canvas strip — not as a band of empty desk. `--pod-seam` (globals.css) owns that width and is DERIVED: the greatest downward reach of `--card-shadow-ambient`, rounded up (6px). It is a distinct question from `--pod-gap`, which is the resize strip / column inset; the two were conflated, spelled three ways in one file, and where two spellings met they SUMMED into the ~44px "moat" Gabriel reported. The grab target is the REACHABLE half of the seam, not its nominal box. Rationale + the contract test: STYLE_GUIDE → "The pod seam".
 - Width: inner-edge drag adjusts this column's **panel preferred size**; the editor column (high flex-grow) absorbs the change. Clamped by `--panel-min` and the editor's min-width. For the gesture every side column in the row is PINNED at its rendered width (`useFlexColumnPin`, task 1052) — DOM-only, no pref write; only the dragged side commits, on release. Collapses to zero width when `collapsed`.
 
-Panels render via `<PaneRailBody>` inside EditorPane. The same panel components are used for rail-mounted and floating variants (floating wraps in `FloatingPanel`).
+Panels render via `<PaneRailBody>` inside EditorPane. The same panel components are used for rail-mounted and floating variants (floating wraps in `FloatingPanel`). Float placement has ONE clamp — `clampFloatPos` (`src/floats/float-policy.ts`, task 1221), applied at mount seed, prop re-seed, window-resize settle and the move gesture so a float's header can't land off-screen; card-float stacking is `cardFloatZ(rank, count)` in `FloatingPanel.tsx` (task 1222 — newest float at `FLOAT_Z_MAX`, next four distinct).
 
 ## Panels
 
