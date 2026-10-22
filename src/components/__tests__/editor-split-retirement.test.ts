@@ -95,7 +95,7 @@ describe("editor split: the persisted pref is retired, not merely untyped", () =
     // A blob exactly as a user who clicked the toggle before the fix has it.
     localStorage.setItem(
       GLOBAL_KEY,
-      JSON.stringify({ editorSplit: true, editorSplitRatio: 0.8, pageWidth: 700 }),
+      JSON.stringify({ editorSplit: true, editorSplitRatio: 0.8, editorLeftMargin: 170 }),
     );
     localStorage.setItem(WINDOW_KEY, JSON.stringify({ editorSplit: true }));
 
@@ -106,7 +106,7 @@ describe("editor split: the persisted pref is retired, not merely untyped", () =
     // Canary: the same load carries a NON-retired key straight through, so a
     // future loader change that returned `DEFAULT_PREFS` wholesale (which would
     // pass the two assertions above vacuously) fails here.
-    expect(prefs.pageWidth).toBe(700);
+    expect(prefs.editorLeftMargin).toBe(170);
   });
 
   it("ships no `editorSplit` default, so a fresh install cannot reintroduce it", () => {
@@ -114,7 +114,7 @@ describe("editor split: the persisted pref is retired, not merely untyped", () =
     expect("editorSplit" in json).toBe(false);
     expect("editorSplitRatio" in json).toBe(false);
     // Canary — the file really is the shipped defaults blob.
-    expect("pageWidth" in json).toBe(true);
+    expect("editorLeftMargin" in json).toBe(true);
   });
 });
 

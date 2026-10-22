@@ -88,8 +88,8 @@ describe("promotion whitelist ⇔ the derived promoted set (both halves, both wa
   // ── The structural half (task 676) ──────────────────────────────────
   // The registry half above was guarded from the start; the structural
   // globals were not, and `codePaneRatio` — a global, non-frozen, "tune once
-  // and want it everywhere" measure sitting right beside `pageWidth` and the
-  // four margins — was simply never whitelisted. Nothing said so, because
+  // and want it everywhere" measure sitting right beside the four
+  // margins — was simply never whitelisted. Nothing said so, because
   // nothing looked.
   it("every PROMOTED structural global key is in the whitelist", () => {
     const missing = STRUCTURAL_PROMOTED_GLOBAL_KEYS.filter((k) => !whitelist.has(k));

@@ -174,11 +174,6 @@ export interface ViewPrefs extends RegistryPrefs {
   cardFloatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
   /* `showHighlights` + `hiddenHighlightTypes` are registry-owned
    *  (`VIEW_PREF_REGISTRY`, global scope) and arrive via `RegistryPrefs`. */
-  /** Preferred width of the editor "page" in pixels. The page is the
-   *  solid element of the layout — panels and margins flex around it to
-   *  absorb window resizes. Drag on panel or zen-margin inner edges
-   *  updates this pref. */
-  pageWidth: number;
   /** In-editor text margins (padding inside the editor pod), in pixels.
    *  The left margin must clear the 72px marginalia margin plus an 8px
    *  breathing strip for heading fold-chevrons. Top/bottom/right floor
@@ -285,6 +280,13 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
  *    old `activeLeft === "blank"` sentinel). Its only setter had no caller and
  *    no render gate read it; it survived only as a load migration and a string
  *    of clearers that read it to clear it. Retired with the toggle (task 807).
+ *  - `pageWidth`: a "preferred page width" the panel/zen-margin gutters were
+ *    once meant to write. Nothing has written it since the zen margins were
+ *    deleted (task 1178 — zen's page width is DERIVED from normal view's rails,
+ *    `normal-view-rails.ts`), and no production code ever read it: its setter's
+ *    only caller was a test. It still shipped as a default, a promote row and a
+ *    member of every stored global blob. Retired in task 1243, which also added
+ *    the census that catches the next one (`view-prefs-reader-census.test.ts`).
  */
 const RETIRED_PREF_KEYS = [
   "editorSplit",
@@ -294,6 +296,7 @@ const RETIRED_PREF_KEYS = [
   "omniHideAllCards",
   "blankLeft",
   "blankRight",
+  "pageWidth",
 ] as const;
 
 /** Pre-blob standalone localStorage keys whose feature is retired — removed at
@@ -348,7 +351,7 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
  * etc. — so a draft window and a reviewer window on different monitors
  * can have totally different shapes.
  *
- * Page-layout keys (`pageWidth`, `editor{Left,Right,Top,Bottom}Margin`)
+ * Page-layout keys (`editor{Left,Right,Top,Bottom}Margin`)
  * are global because they're the values
  * the personal-prefs promotion pipeline reads to bake into shipped
  * defaults — see `tools/promote-defaults.mjs` and the whitelist in
@@ -442,7 +445,7 @@ function unionIds(a: readonly string[], b: readonly string[]): string[] {
 }
 
 /** The page-geometry subset of the global keys — the reading-measure prefs
- *  (page width + the four margins) the ephemeral Reader DOES want to track
+ *  (the four margins) the ephemeral Reader DOES want to track
  *  live. Ephemeral mode opens no full global subscription (its dock / popout /
  *  omni state is session-only and must not be reachable by peer windows), but a
  *  margin change made in the main editor SHOULD flow into an open Reader so the
@@ -450,7 +453,6 @@ function unionIds(a: readonly string[], b: readonly string[]): string[] {
  *  ephemeral subscription re-reads — never the layout keys. Numeric + value-
  *  typed so a hostile blob can't inject layout state through it. */
 export const MARGIN_PREF_KEYS = [
-  "pageWidth",
   "editorLeftMargin",
   "editorRightMargin",
   "editorTopMargin",
@@ -472,7 +474,7 @@ function windowStorageKey(): string {
 // ── One fault domain per stored blob (task 674) ─────────────────────────
 // The two pref blobs are INDEPENDENT stores with very different value to the
 // user: `…/window/<id>` is a disposable layout any session rebuilds, while
-// `…/global` holds the durable preferences (margins, page width, print
+// `…/global` holds the durable preferences (margins, print
 // options, divider + marginalia config) tuned once and expected to last. A
 // single `try`/`catch` spanning both fused their failure modes: one truncated
 // per-window blob threw, `loadPrefs` returned `DEFAULT_PREFS` wholesale, and
@@ -994,7 +996,7 @@ export function loadPrefs(): ViewPrefs {
     const globalParsed = readPrefBlob(GLOBAL_STORAGE_KEY);
 
     // Migration: keys promoted from per-window to global (page-layout
-    // dimensions like margins and pageWidth) should live in the global
+    // dimensions like the margins) should live in the global
     // blob. Idempotent — no-ops once the window blob is clean.
     let promotedAny = false;
     for (const k of Object.keys(windowParsed)) {
@@ -1232,7 +1234,7 @@ export type UseViewPrefsResult = ReturnType<typeof useViewPrefs>;
 
 /** Seed ephemeral state from `DEFAULT_PREFS`, folding in ONLY the user's
  *  saved global page geometry + strip placements (read once, no subscribe) so
- *  the Reader opens at the same page width / margins / strip order the editor
+ *  the Reader opens at the same margins / strip order the editor
  *  uses. Everything else (dock state, popouts, omni) starts fresh from
  *  defaults and lives in-memory. Falls back to `DEFAULT_PREFS` if the read or
  *  parse fails — never touches the per-window or legacy keys. */
@@ -1301,7 +1303,7 @@ export function useViewPrefs(opts?: {
   const [prefs, setPrefs] = useState<ViewPrefs>(() =>
     // Ephemeral seeds from DEFAULT_PREFS, but folds in the user's existing
     // global page geometry / placements read ONCE at init (a pleasant
-    // starting point — same page width / margins / strip order as the editor)
+    // starting point — same margins / strip order as the editor)
     // without subscribing to later changes, THEN through the host's
     // `initialSeed` transform. Global mode starts from DEFAULT_PREFS and
     // hydrates from localStorage in the load effect below.
@@ -1334,7 +1336,7 @@ export function useViewPrefs(opts?: {
     // (b) Cross-window + same-window global-pref subscribe.
     //
     // Ephemeral mode (the Library Reader) opens a MARGIN-ONLY subscription: it
-    // re-reads ONLY the page-geometry keys (`MARGIN_PREF_KEYS` — page width +
+    // re-reads ONLY the page-geometry keys (`MARGIN_PREF_KEYS` —
     // the four margins) so a margin change made in the main editor flows into
     // an open Reader and the Reader's prose measure stays in step. It still
     // never re-reads the layout keys (dock / popout / omni stay session-only)
@@ -1954,10 +1956,6 @@ export function useViewPrefs(opts?: {
     update((p) => ({ ...p, codePaneRatio: Math.max(0, Math.min(1, ratio)) }));
   }, [update]);
 
-  const setPageWidth = useCallback((w: number) => {
-    update((p) => ({ ...p, pageWidth: Math.max(400, Math.min(1600, w)) }));
-  }, [update]);
-
   const setEditorLeftMargin = useCallback((px: number) => {
     update((p) => ({ ...p, editorLeftMargin: Math.max(72, Math.min(240, Math.round(px))) }));
   }, [update]);
@@ -2036,7 +2034,6 @@ export function useViewPrefs(opts?: {
     tradePanelHeights,
     notePanelUse,
     setCodePaneRatio,
-    setPageWidth,
     setEditorLeftMargin,
     setEditorRightMargin,
     setEditorTopMargin,

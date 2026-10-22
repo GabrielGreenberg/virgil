@@ -186,12 +186,11 @@ describe("useViewPrefs — ephemeral mode mutates memory but never persists", ()
 
   it("(e) ephemeral: seed folds EVERY page-geometry key from the global blob (audit-218 M2 — no margin key silently defaults)", () => {
     // The main editor persisted a full set of non-default page geometry. When
-    // the Library Reader mounts ephemerally it must seed ALL of it (page width
-    // + the four margins) from that global blob — not open at defaults. This
+    // the Library Reader mounts ephemerally it must seed ALL of it (the four
+    // margins) from that global blob — not open at defaults. This
     // guards the M2 defect class: the seed fold now LOOPS `MARGIN_PREF_KEYS`
     // (mirroring `rereadGlobal`), so a margin key can't be silently omitted.
     const geo = {
-      pageWidth: 640,
       editorLeftMargin: 111,
       editorRightMargin: 122,
       editorTopMargin: 133,
@@ -205,7 +204,6 @@ describe("useViewPrefs — ephemeral mode mutates memory but never persists", ()
         onClick={() => {}}
         read={(vp) =>
           [
-            vp.prefs.pageWidth,
             vp.prefs.editorLeftMargin,
             vp.prefs.editorRightMargin,
             vp.prefs.editorTopMargin,
@@ -215,7 +213,7 @@ describe("useViewPrefs — ephemeral mode mutates memory but never persists", ()
       />,
     );
     // Every geometry key seeded from the global blob at mount.
-    expect(getByTestId("btn").textContent).toBe("640,111,122,133,144");
+    expect(getByTestId("btn").textContent).toBe("111,122,133,144");
   });
 
   it("(d) ephemeral: a MARGIN global-pref event merges into the Reader (live editor→Reader sync), a non-geometry one does not — without writing", () => {

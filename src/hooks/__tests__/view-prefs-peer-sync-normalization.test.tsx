@@ -150,8 +150,8 @@ describe("normalizeGlobalSlice — the pure door", () => {
   });
 
   it("falls a wrongly-typed geometry key back to the shipped default", () => {
-    const out = normalizeGlobalSlice({ pageWidth: "800" });
-    expect(typeof out.pageWidth).toBe("number");
+    const out = normalizeGlobalSlice({ editorLeftMargin: "800" });
+    expect(typeof out.editorLeftMargin).toBe("number");
   });
 
   it("is TOTAL over the global vocabulary and malformed-safe", () => {

@@ -512,7 +512,7 @@ export const stubAddStyleMergeRequest: PaneState["addStyleMergeRequest"] = () =>
  *
  * Kept narrow: only fields PanelColumn / FloatingPanel / OmniHost /
  * OutlineHost actually touch. Window-only prefs (`editorLeftMargin`,
- * `topbarRightCollapsed`, `pageWidth`, etc.) stay in EditorLayout.
+ * `topbarRightCollapsed`, etc.) stay in EditorLayout.
  */
 export interface EditorPaneViewPrefs {
   // ── Read state ──────────────────────────────────────────────────

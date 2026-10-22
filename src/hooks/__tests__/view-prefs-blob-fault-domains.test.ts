@@ -34,7 +34,6 @@ const WINDOW_KEY = `virgil-view-prefs/window/${WINDOW_ID}`;
 
 /** Non-default durable preferences — the things a user tunes once. */
 const TUNED_GLOBAL = {
-  pageWidth: 1234,
   editorLeftMargin: 211,
   dividerWidth: "mid",
 };
@@ -60,8 +59,7 @@ describe("loadPrefs — a corrupt blob costs only ITS OWN store", () => {
 
     const prefs = loadPrefs();
 
-    // (defect leg) — pre-674 these were the shipped defaults 880 / 155 / "text".
-    expect(prefs.pageWidth).toBe(1234);
+    // (defect leg) — pre-674 these were the shipped defaults 155 / "text".
     expect(prefs.editorLeftMargin).toBe(211);
     expect(prefs.dividerWidth).toBe("mid");
   });
@@ -80,7 +78,7 @@ describe("loadPrefs — a corrupt blob costs only ITS OWN store", () => {
     expect(prefs.panelWidths).toEqual({ left: 321 });
     expect(prefs.panelModes).toEqual({ notes: "expanded" });
     // …and the preferences DO fall back, which is the honest half.
-    expect(prefs.pageWidth).toBe(880);
+    expect(prefs.editorLeftMargin).toBe(155);
   });
 
   it("only the corrupt blob's OWN fields fall back", () => {
@@ -89,7 +87,7 @@ describe("loadPrefs — a corrupt blob costs only ITS OWN store", () => {
 
     const prefs = loadPrefs();
 
-    expect(prefs.pageWidth).toBe(1234); // kept
+    expect(prefs.editorLeftMargin).toBe(211); // kept
     expect(prefs.panelWidths).toEqual({}); // defaulted
   });
 });
