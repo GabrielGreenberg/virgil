@@ -28,7 +28,7 @@
 //
 // The instruction was also unnecessary, which is what makes the fix a deletion
 // rather than a new script: `latex-parser.ts` reads
-// `pendingCitationId.take(i) || generateShortId()`, so a BARE `\citet{key}` is
+// `pendingCitationId.take(i) || mintParseId()`, so a BARE `\citet{key}` is
 // minted a fresh 4-hex id on the next parse — exactly what happens when a human
 // types a cite into a footnote. The card/footnote fork (`footnote-content.ts`)
 // does the same. Omitting the marker is the normal path, not a degradation.
@@ -168,7 +168,11 @@ describe("marker ids — the doctrine states the rule once", () => {
 
   it("states that a BARE construct is minted an id on the next parse", () => {
     expect(flat).toMatch(/bare `\\citet\{key\}`/);
-    expect(flat).toContain("generateShortId()");
+    // The doctrine QUOTES the parser's mint line; the quote must be one the
+    // parser still contains (task 1240 — it had drifted to a renamed minter).
+    const quote = /`(pendingCitationId\.take\(i\) \|\| \w+\(\))`/.exec(flat);
+    expect(quote, "doctrine quotes the parser's bare-cite mint line").not.toBeNull();
+    expect(read("src/lib/latex-parser.ts")).toContain(quote![1]);
   });
 
   it("states the REWRITE half — carry an existing marker verbatim", () => {

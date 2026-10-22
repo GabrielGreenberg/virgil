@@ -40,15 +40,17 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
 - `<docPath>` — the paper folder.
 - `<cardId>` — the id of the card to edit (a v4 entity id, or a 4-hex `\v*id`
   marker id for a footnote).
-- `--body "<text>"` — replace the card's primary body. The op maps it per kind:
+- `--body <text>` — replace the card's primary body. The op maps it per kind:
   `note`/`footnote` → `content` (JSONContent); `todo` → `text`;
   `report`/`report-request`/`comment`/`cutter-comment` → `content` **and** the
   plain-text `text` mirror. For a **footnote** it also rewrites the
   `\vfid{…}\footnote{…}` body in the `.tex`, in the same transaction.
 - `--field <k>=<v>` — set a named field (repeatable). Generic: e.g.
   `--field title="New title"`, `--field done=true`, `--field author=ai`,
-  `--field highlightColor=yellow`, `--field suggested_text="…"`. Values are
-  JSON-typed (booleans/numbers bare, strings quoted).
+  `--field highlightColor=yellow`, `--field suggested_text=<text>`. Values are
+  JSON-typed (booleans/numbers bare, strings quoted) — quoted INSIDE the
+  op-json, never on a shell line: any free-text value reaches the helper only
+  through step 2's `@` scratch file.
   **Generic does not mean unrestricted:** a field whose transition another op
   OWNS is refused, with the owning door named in the error. See *Reserved
   fields* below.

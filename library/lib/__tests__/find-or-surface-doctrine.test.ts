@@ -261,6 +261,31 @@ describe("find-or-surface doctrine (cross-silo SSOT)", () => {
     expect(prose).not.toMatch(/in that order of preference/);
   });
 
+  // The same rule, one level out (task 1240): a CONSUMER that restates the
+  // order is a second copy of the policy, and it drifts — answer-bib-review's
+  // hand-written "Crossref → OpenAlex → …" had silently dropped the Library
+  // step. Every skill file in both silos (includes too, the doctrine's own
+  // twins aside) cites §3 rather than spelling an ordered chain. An
+  // unordered mention ("Crossref / OpenAlex") describes what a helper
+  // touches and stays legal; an arrow or "in that order" is a preference.
+  it("no other skill file restates the preference order (population discovered)", () => {
+    const alt = sourceDatabases()
+      .map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    const arrow = new RegExp(`(${alt})\\s*(→|->)\\s*(${alt})`, "i");
+    const inOrder = new RegExp(`(${alt})[^.]{0,80}\\(?in that order`, "i");
+    const offenders: string[] = [];
+    for (const silo of ["editor", "library"]) {
+      for (const name of readdirSync(join(repoRoot, silo, "skills")).sort()) {
+        const rel = `${silo}/skills/${name}`;
+        if (!name.endsWith(".md") || rel === LIBRARY_DOCTRINE || rel === EDITOR_DOCTRINE) continue;
+        const flat = read(rel).replace(/\s+/g, " ");
+        if (arrow.test(flat) || inOrder.test(flat)) offenders.push(rel);
+      }
+    }
+    expect(offenders, "cite _find-or-surface.md §3 instead of restating its order").toEqual([]);
+  });
+
   // Hop 2 is only as good as its names resolving: a typo in a §4 bullet
   // would silently shrink the population instead of failing.
   it("every skill §4 names by failure path exists in a silo", () => {

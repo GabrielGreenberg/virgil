@@ -221,7 +221,7 @@ parser matches them by table, not by a fixed command name.)
   for anchoring. Omitting the marker is not a degradation, it is the **normal
   path**: a bare `\citet{key}` (or `\footnote{…}`) is minted a fresh
   collision-free id on the next parse — `pendingCitationId.take(i) ||
-  generateShortId()` in `src/lib/latex-parser.ts`, and the same in the
+  mintParseId()` in `src/lib/latex-parser.ts`, and the same in the
   card/footnote fork — exactly as a hand-typed one is.
   When you REWRITE existing text, carry any marker already in it through
   **verbatim, with its id**: a rewrite that drops or re-mints one detaches the
