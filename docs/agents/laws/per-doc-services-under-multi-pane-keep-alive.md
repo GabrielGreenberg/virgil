@@ -102,7 +102,8 @@ Four members, and the first two are the ones the user meets:
   prefs.** `syncPanelPrefsToRendered` sweeps `[data-flex-col]` (the SAME element
   as M2/M3/M4's, under a different attribute name) on every panel/margin
   drag-start and writes each column's rendered width to `panelWidths[side]` /
-  the zen margins. It iterates in keep-alive LRU order and the LAST write per
+  the zen margins (both since retired — see below; the zen margins themselves
+  by task 1178). It iterates in keep-alive LRU order and the LAST write per
   side wins, so a warm hidden pane could write `0`. Found by the adversarial
   pass on the fix — and it is the strongest argument that a census keyed on
   attribute NAMES has to enumerate every name a pane stamps, because this call

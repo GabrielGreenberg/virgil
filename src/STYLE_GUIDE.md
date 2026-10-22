@@ -1976,7 +1976,8 @@ row where the 28→44px pill would overflow and clip; having no size axis of
 its own to grow along, it escalates with `--drag-glow-line` instead of a
 width change. Adopting the pill there needs the shared grip to become
 **length-aware** first (clamp the pill's long axis to its strip's extent) — a
-change to chrome shared by nine other sites, and its own task. Before task
+change to chrome shared by every other engine gutter (the live count is
+`pane-drag-guardrail.test.ts`'s handle census, not a numeral here), and its own task. Before task
 189 that one resizer painted `--accent` from React
 `onMouseEnter`/`onMouseLeave`, which also left `.dragging` unused, so hover
 and active drag looked identical.
@@ -1996,10 +1997,11 @@ operated is worse than one that stays quiet.**
 
 For resizers that means: the engine emits `aria-hidden` on every handle, and
 no divider carries `role="separator"` / `aria-orientation` / `aria-label`.
-Until task 189 four of the ten engine handles did — a *named, valueless,
+Until task 189 four of the then-ten engine handles did — a *named, valueless,
 non-operable* splitter ("Resize My Papers pod") — while the other six said
 nothing. **Nothing in the app that resizes anything is focusable or
-arrow-operable**: not the 10 engine handles, not `FloatingPanel`'s 5 edges,
+arrow-operable**: not any engine handle (counted by
+`pane-drag-guardrail.test.ts`, the number's one owner), not `FloatingPanel`'s 5 edges,
 not `EditorPane`'s 4 margin guides, not the Outline focus band's 2. (Those
 are source sites, not painted counts — the Library list renders its column
 boundary once per boundary.) The bespoke families had the same defect one
