@@ -213,6 +213,8 @@ Skip everything else.
   ```bash
   python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --note "No preamble drift detected; nothing to merge."
   ```
+  (a fixed literal, so it stays inline — the same rule as the failure path
+  below).
 - Never write the .tex if the body extraction returns an empty body —
   that's a corrupted source file. Take the failure path:
   `complete-only <requestId> --result impossible --note "Empty body; source looks corrupted; .tex left untouched."`

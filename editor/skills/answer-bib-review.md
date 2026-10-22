@@ -80,8 +80,10 @@ Three modes:
    `requestNotes`.
 
 2. **For `type: "fields"`:**
-   - Look up the entry against Crossref → OpenAlex → Semantic Scholar
-     → arXiv (in that order). Try the library's auth helper. Hand it
+   - Look the entry up per [`_find-or-surface.md`](_find-or-surface.md)
+     steps 2–3 — the Library first, then the external sources in that
+     include's one list (its order is policy; don't restate it here).
+     The library's auth helper does both. Hand it
      step 1's `fields` object **verbatim, with no cleanup** — the DOI,
      arXiv-ID and ISBN fast-paths read those fields, and they are what
      fix bad metadata, so pre-tidying defeats them. So don't retype the
@@ -175,6 +177,9 @@ Three modes:
        "requestId": "<bibKey>", "bibReviewType": "fields" }' \
        --note "No authoritative DOI found; fields left unchanged."
      ```
+     (a fixed literal with nothing for the shell to expand, so it stays
+     inline — a note you COMPOSE goes through scratch,
+     [`_op-json.md`](_op-json.md)).
 
 3. **For `type: "notes"`:**
    - Read the entry + the user's `requestNotes`.

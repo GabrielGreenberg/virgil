@@ -157,7 +157,8 @@ failure path the skill provides, rather than inventing content:
 - **`draft-footnote`** and prose skills → write the prose without the
   unresolved cite and file a missing-bibkey **todo card** (Workflow B:
   `create_card.py <docPath> --kind=todo --anchor <uuid> --body "@$t/body"`,
-  the body through heredoc scratch — `editor/skills/_op-json.md`);
+  the body written to `mktemp` scratch per [_scratch.md](_scratch.md)
+  and passed as `@<path>`, never inline);
   never emit a `\cite*{key}` for a missing key, and never append a
   pending row to `ai-requests.json` by hand — `apply_response.py` exposes
   no subcommand that appends a *pending* request, and `--synthesize-task`

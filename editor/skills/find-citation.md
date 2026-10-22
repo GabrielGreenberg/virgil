@@ -108,8 +108,9 @@ card so the user can drag it into the document.
    A no-library / no-match falls through to external search — never a
    blocker.
 
-   Then use Crossref + OpenAlex + Semantic Scholar (in that
-   order of preference) to find a real, citable paper that matches the
+   Then search the external sources — the one list and its preference
+   order live in [`_find-or-surface.md`](_find-or-surface.md) step 3; don't
+   restate them — to find a real, citable paper that matches the
    request's description. Try the library's search helper first — its
    `--query` mode is the DISCOVERY door (see
    [_find-or-surface.md](_find-or-surface.md), "Calling `bib_auth.py`"):

@@ -105,13 +105,15 @@ documents a call that dies. Three tiers:
   `paragraphIds` at all, HALT and say so; do not guess an anchor from the
   request text.
 - **Tier 2 — a builder with a PREREQUISITE YOU DO NOT HOLD** (`citation`):
-  `create_card.py --kind=citation` requires `--citekey`, and hard-refuses
-  a key that is not already in `references.bib`
-  (`_require_bib_keys` — *"don't fabricate a cite for a missing entry"*).
-  Sourcing the work and adding the entry is a different job, so hand off
-  to [`/editor/find-citation`](find-citation.md), which searches
-  Crossref / OpenAlex / Semantic Scholar / arXiv, writes the `.bib` entry
-  and the citation card in one atomic op. **Do not call
+  `create_card.py --kind=citation` requires `--citekey`, and accepts only
+  a key that is already in `references.bib` or arrives in the SAME op as a
+  `--bib-entry` rider (`_require_bib_keys` — *"don't fabricate a cite for a
+  missing entry"*). Producing that rider means SOURCING the work, which is
+  a different job, so hand off to
+  [`/editor/find-citation`](find-citation.md): it sources per
+  [`_find-or-surface.md`](_find-or-surface.md) (Library first, then the
+  external sources) and lands the `.bib` entry and the citation card in one
+  atomic op. **Do not call
   `--kind=citation` to answer "find me a source for this"** — you have no
   citekey, and the call dies.
   `suggestion` takes three texts in place of `--body` — `--original` (the
