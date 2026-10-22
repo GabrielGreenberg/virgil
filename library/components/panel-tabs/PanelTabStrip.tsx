@@ -36,6 +36,7 @@ import { MenuProvider } from "@/components/menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "@/components/menu/AnchoredMenu";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { MenuSectionLabel, MenuSeparator } from "@/components/menu/MenuChrome";
+import { iconHint } from "@/components/Hint";
 
 // F#15 — the occupancy ladder this strip pioneered (inactive tabs absorb the
 // squeeze first and ellipsize their names to a floor; the active tab resists;
@@ -842,7 +843,7 @@ const BackgroundTab = forwardRef<
         type="button"
         {...TAB_LABEL_ATTRS}
         onClick={onClick}
-        title={label}
+        data-hint={label}
         style={{
           background: "transparent",
           border: "none",
@@ -913,8 +914,14 @@ function PinButton({
         onClick();
       }}
       onMouseDown={(e) => e.stopPropagation()}
-      title={pinned ? "Unpin tab — opening another tab will replace it" : "Pin tab — keep open when another tab is opened"}
-      aria-label={pinned ? "Unpin tab" : "Pin tab"}
+      // A toggle's NAME is the stable mode; its state rides aria-pressed and
+      // the tooltip (STYLE_GUIDE → "Naming a toggle").
+      {...iconHint({
+        label: "Pin tab",
+        hint: pinned
+          ? "Unpin tab — opening another tab will replace it"
+          : "Pin tab — keep open when another tab is opened",
+      })}
       aria-pressed={pinned}
       style={{
         flexShrink: 0,
@@ -976,8 +983,7 @@ function CloseButton({
         onClick();
       }}
       onMouseDown={(e) => e.stopPropagation()}
-      title="Close tab"
-      aria-label="Close tab"
+      {...iconHint({ label: "Close tab" })}
       style={{
         flexShrink: 0,
         background: "transparent",
@@ -1027,8 +1033,7 @@ const AddTabButton = forwardRef<
       ref={ref}
       type="button"
       onClick={onClick}
-      title="New tab"
-      aria-label="New tab"
+      {...iconHint({ label: "New tab" })}
       {...menuTriggerAria("menu", open)}
       style={{
         flexShrink: 0,
@@ -1092,8 +1097,7 @@ function TabMenuTrigger({
           onToggle();
         }}
         onMouseDown={(e) => e.stopPropagation()}
-        title="Library options"
-        aria-label="Library options"
+        {...iconHint({ label: "Library options" })}
         {...menuTriggerAria("menu", open)}
         style={{
           flexShrink: 0,

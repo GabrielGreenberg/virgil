@@ -11,6 +11,7 @@ import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { Dot, StatusPills } from "./StatusPill";
 import RowActionMenu from "./RowActionMenu";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { iconHint } from "@/components/Hint";
 
 export interface RowActions {
   /** Behavior depends on the active library:
@@ -203,8 +204,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
               <button
                 type="button"
                 className="iconbtn-sm"
-                aria-label="Copy citekey"
-                title={copied ? "Copied" : "Copy citekey"}
+                {...iconHint({ label: "Copy citekey", hint: copied ? "Copied" : "Copy citekey" })}
                 draggable={false}
                 onPointerDown={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -318,7 +318,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
           cursorOffsetY: e.clientY - rect.top,
         });
       }}
-      title={`${title}${firstAuthor ? ` — ${firstAuthor}` : ""}${year ? ` (${year})` : ""}`}
+      data-hint={`${title}${firstAuthor ? ` — ${firstAuthor}` : ""}${year ? ` (${year})` : ""}`}
       style={{
         display: "flex",
         alignItems: "stretch",
@@ -395,8 +395,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
         <button
           type="button"
           className="iconbtn-sm"
-          aria-label={ck ? "Open in a new Virgil tab" : "Triage this entry first"}
-          title={ck ? "Open in a new Virgil tab" : "Triage this entry first"}
+          {...iconHint({ label: ck ? "Open in a new Virgil tab" : "Triage this entry first" })}
           disabled={!ck}
           draggable={false}
           onPointerDown={(e) => e.stopPropagation()}

@@ -91,7 +91,7 @@ function renderCard(opts: {
 
 const parkedLook = (el: HTMLElement) =>
   el.className.includes("border-dashed") && el.className.includes("opacity-80");
-const promise = (el: HTMLElement) => el.getAttribute("title");
+const promise = (el: HTMLElement) => el.getAttribute("data-hint");
 
 describe("citation parked cue: look vs promise (task 316)", () => {
   it("keyed + unanchored — the steady parked state: both", () => {

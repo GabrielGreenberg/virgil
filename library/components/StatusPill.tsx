@@ -9,6 +9,7 @@ import {
   indexTierTone,
   type Tone,
 } from "@/lib/library/status-tone";
+import { iconHint } from "@/components/Hint";
 
 // COLOUR is not this file's decision (task 500). Both status axes resolve
 // their tone through `@/lib/library/status-tone` — the one table the paper
@@ -28,7 +29,7 @@ function Pill({ label, tone, title }: PillProps) {
   const fg = `var(--pill-${tone}-fg)`;
   return (
     <span
-      title={title}
+      data-hint={title}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -199,8 +200,10 @@ export function BibNotImportedPill({ compact = false }: { compact?: boolean }) {
 export function BibImportedCheck() {
   return (
     <span
-      title="Bibliography imported into master.bib"
-      aria-label="Bibliography imported"
+      {...iconHint({
+        label: "Bibliography imported",
+        hint: "Bibliography imported into master.bib",
+      })}
       style={{
         color: "var(--pill-blue-fg)",
         fontSize: 13,
@@ -292,7 +295,7 @@ export function StatusPills({
 export function Dot({ tone, title }: { tone: Tone; title: string }) {
   return (
     <span
-      title={title}
+      data-hint={title}
       style={{
         display: "inline-block",
         width: 8,

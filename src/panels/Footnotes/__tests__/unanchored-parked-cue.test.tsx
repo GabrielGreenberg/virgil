@@ -75,7 +75,7 @@ describe("UnanchoredFootnoteCard parked cue (task 278)", () => {
     expect(root.className).toContain("border-dashed");
     expect(root.className).toContain("opacity-80");
     // The tooltip comes from the shared SSOT, footnote noun.
-    expect(root.getAttribute("title")).toBe(unanchoredCardTitle("footnote"));
+    expect(root.getAttribute("data-hint")).toBe(unanchoredCardTitle("footnote"));
   });
 
   it("does NOT adopt the orphaned ERROR badge (its state is neutral `free`)", () => {
@@ -103,6 +103,6 @@ describe("UnanchoredFootnoteCard parked cue (task 278)", () => {
     // deliberately-parked `free` state with the `orphaned` error state).
     const root = cardRoot(container);
     expect(root.className).not.toContain("border-dashed");
-    expect(root.getAttribute("title")).not.toBe(unanchoredCardTitle("footnote"));
+    expect(root.getAttribute("data-hint")).not.toBe(unanchoredCardTitle("footnote"));
   });
 });

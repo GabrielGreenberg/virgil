@@ -140,7 +140,7 @@ export default function TodoPanel({
               variant="ghost"
               size="sm"
               onClick={archiveCompleted}
-              title="Archive completed todos (restore them from the Archives view)"
+              data-hint="Archive completed todos (restore them from the Archives view)"
               className="gap-1.5"
             >
               <IconArchive size={12} />

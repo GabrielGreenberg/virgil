@@ -264,7 +264,7 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
               className="doc-interruption-band__primary"
               disabled={busy}
               onClick={() => void run(view.recommended!)}
-              title={view.recommended.detail}
+              data-hint={view.recommended.detail}
               data-interruption-action={view.recommended.id}
               data-interruption-recommended
             >
@@ -278,7 +278,7 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
               className="doc-interruption-band__secondary"
               disabled={busy}
               onClick={() => void run(a)}
-              title={a.detail}
+              data-hint={a.detail}
               data-interruption-action={a.id}
             >
               {a.label}

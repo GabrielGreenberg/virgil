@@ -282,7 +282,7 @@ function PaletteRow({
       className="lib-dashboard-palette-row"
       disabled={disabled}
       onClick={() => ck && onOpen(ck)}
-      title={`${title}${author ? ` — ${author}` : ""}${year ? ` (${year})` : ""}`}
+      data-hint={`${title}${author ? ` — ${author}` : ""}${year ? ` (${year})` : ""}`}
     >
       <span className="lib-dashboard-row-year">{year || "—"}</span>
       <span className="lib-dashboard-row-author">{author || "—"}</span>

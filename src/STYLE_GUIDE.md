@@ -2325,7 +2325,12 @@ Virgil has **one** hover/focus affordance, rendered app-wide by `HintLayer`
 native `title=""` tooltips and the engine behind Helper mode. **Don't** use
 `title=""` for tooltips and **don't** hand-roll hover popovers — add hint
 attributes and let the single controller do the rest (delay, positioning,
-keyboard a11y, dismissal).
+keyboard a11y, dismissal). CI-enforced over both silos by
+[native-title-tooltip-census.test.ts](__tests__/native-title-tooltip-census.test.ts)
+(task 1236): no `title=` on a JSX intrinsic or on a prop-spreading primitive
+(`Button`, `Input`, …); the one exemption is `<iframe>`, whose `title` is its
+accessible name. A DISABLED `Button` keeps pointer events, so its refusal
+reason is `data-hint={reason}` too.
 
 ### Adding a hint
 

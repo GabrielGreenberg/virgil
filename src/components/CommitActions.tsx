@@ -47,6 +47,7 @@
  * (a lost selection, or a card that lifts when you meant to click Keep).
  */
 import type { ReactElement } from "react";
+import { iconHint } from "@/components/Hint";
 
 /** A check (Keep) / cross (Dismiss) glyph. ONE implementation — this used to be
  *  `PillGlyph` in `PendingChangePill.tsx` and `CommitGlyph` in
@@ -139,8 +140,7 @@ export function CommitActions({
       <button
         data-iconbtn-exempt="commit pair: semantic keep/dismiss tints shared with its text siblings"
         type="button"
-        aria-label="Keep change"
-        title="Keep"
+        {...iconHint({ label: "Keep change", hint: "Keep" })}
         disabled={disabled}
         onMouseDown={onMouseDown}
         onClick={commit(onKeep)}
@@ -152,8 +152,10 @@ export function CommitActions({
       <button
         data-iconbtn-exempt="commit pair: semantic keep/dismiss tints shared with its text siblings"
         type="button"
-        aria-label="Dismiss change"
-        title="Dismiss (restores original, archives the card)"
+        {...iconHint({
+          label: "Dismiss change",
+          hint: "Dismiss (restores original, archives the card)",
+        })}
         disabled={disabled}
         onMouseDown={onMouseDown}
         onClick={commit(onDismiss)}

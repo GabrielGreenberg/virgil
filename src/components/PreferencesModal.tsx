@@ -225,7 +225,7 @@ function PresetBar({
           placeholder="Preset name"
           invalid={nameReserved}
           aria-invalid={nameReserved || undefined}
-          title={nameReserved ? `"${trimmedName}" is a built-in preset name` : undefined}
+          data-hint={nameReserved ? `"${trimmedName}" is a built-in preset name` : undefined}
           className="text-xs px-2 py-1.5 w-28"
         />
       ) : null}
@@ -234,7 +234,7 @@ function PresetBar({
         size="sm"
         onClick={handleSave}
         disabled={saving && !canSaveName}
-        title={saving && nameReserved ? `"${trimmedName}" is a built-in preset name` : undefined}
+        data-hint={saving && nameReserved ? `"${trimmedName}" is a built-in preset name` : undefined}
         className="whitespace-nowrap"
       >
         {saving ? "OK" : "Save"}
@@ -259,7 +259,7 @@ function PresetBar({
               });
             }
           }}
-          title={`Delete preset "${target}"`}
+          data-hint={`Delete preset "${target}"`}
           className="max-w-[9rem]"
         >
           <span className="truncate">Del &ldquo;{target}&rdquo;</span>
@@ -317,9 +317,9 @@ function RestoreHiddenConfirmations() {
   return (
     <button
       onClick={restoreAllConfirms}
-      title={suppressed
+      data-hint={suppressed
         .map((id) => SUPPRESSIBLE_CONFIRM_LABELS[id])
-        .join("\n")}
+        .join(", ")}
       className="text-xs text-ink-muted hover:text-ink-body transition-colors"
     >
       Restore hidden confirmations ({suppressed.length})

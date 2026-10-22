@@ -559,7 +559,7 @@ export function OmniUnanchoredBin({
             key={item.id}
             className="flex items-start gap-2"
             data-omni-bin-row="parked"
-            title={PARKED_WITH_PASSAGE_COPY}
+            data-hint={PARKED_WITH_PASSAGE_COPY}
           >
             <span className="pt-1 shrink-0" data-omni-bin-parked-marker="">
               <ParkedGlyph />

@@ -60,7 +60,7 @@ export default function PagePicker({
         color: "var(--muted)",
         flexShrink: 0,
       }}
-      title="Jump to a printed page"
+      data-hint="Jump to a printed page"
     >
       {!narrow && <span aria-hidden="true">p.</span>}
       <Input

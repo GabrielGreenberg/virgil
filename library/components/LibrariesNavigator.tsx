@@ -324,7 +324,7 @@ function NavRow({
             overflow: "hidden",
             textOverflow: "ellipsis",
           }}
-          title={label}
+          data-hint={label}
         >
           {label}
         </span>
@@ -332,7 +332,7 @@ function NavRow({
       {!editing && isOpen && !active && (
         <span
           aria-hidden
-          title="Open in a panel"
+          data-hint="Open in a panel"
           style={{
             flexShrink: 0,
             width: 6,

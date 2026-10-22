@@ -556,7 +556,7 @@ export default function ManageStylesModal({
             variant="secondary"
             onClick={() => setEditor("fromCurrent")}
             disabled={!canSaveCurrent}
-            title={
+            data-hint={
               !docId
                 ? "Open a document to save its preamble as a new style"
                 : !canSaveCurrent

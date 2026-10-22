@@ -170,7 +170,7 @@ describe("the parked footnote card's re-anchor affordance (task 316)", () => {
     // behind it. Assert both on one render, which is what the cue now is.
     const { container } = render(dockedMount());
     const root = container.querySelector("[data-card]") as HTMLElement;
-    expect(root.getAttribute("title")).toBe(unanchoredCardTitle("footnote"));
+    expect(root.getAttribute("data-hint")).toBe(unanchoredCardTitle("footnote"));
     expect(screen.getByLabelText("Drop into text")).toBeTruthy();
   });
 });

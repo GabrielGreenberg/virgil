@@ -123,11 +123,21 @@ function Harness({ onOpenPaper }: { onOpenPaper: (c: string) => void }) {
   );
 }
 
+/** The row whose hover hint (`data-hint` — never a native `title`, task
+ *  1236) matches `re`. */
+function getByHint(container: HTMLElement, re: RegExp): HTMLElement {
+  const el = [...container.querySelectorAll<HTMLElement>("[data-hint]")].find((n) =>
+    re.test(n.getAttribute("data-hint") ?? ""),
+  );
+  if (!el) throw new Error(`no [data-hint] matching ${re}`);
+  return el;
+}
+
 describe("LeftList — C6 deferred single-click open", () => {
   it("a lone click opens exactly once, only after idle flush", () => {
     const onOpenPaper = vi.fn();
-    const { getByTitle } = render(<Harness onOpenPaper={onOpenPaper} />);
-    fireEvent.click(getByTitle(/Scorekeeping/i));
+    const { container } = render(<Harness onOpenPaper={onOpenPaper} />);
+    fireEvent.click(getByHint(container, /Scorekeeping/i));
     // Highlight is synchronous; the open is deferred.
     expect(onOpenPaper).not.toHaveBeenCalled();
     flushIdle();
@@ -137,10 +147,10 @@ describe("LeftList — C6 deferred single-click open", () => {
 
   it("a burst of clicks coalesces to a single open of the LAST row", () => {
     const onOpenPaper = vi.fn();
-    const { getByTitle } = render(<Harness onOpenPaper={onOpenPaper} />);
-    fireEvent.click(getByTitle(/Scorekeeping/i)); // lewis
-    fireEvent.click(getByTitle(/Critique/i)); // kant
-    fireEvent.click(getByTitle(/Sense and Reference/i)); // frege
+    const { container } = render(<Harness onOpenPaper={onOpenPaper} />);
+    fireEvent.click(getByHint(container, /Scorekeeping/i)); // lewis
+    fireEvent.click(getByHint(container, /Critique/i)); // kant
+    fireEvent.click(getByHint(container, /Sense and Reference/i)); // frege
     expect(onOpenPaper).not.toHaveBeenCalled();
     flushIdle();
     expect(onOpenPaper).toHaveBeenCalledTimes(1);
@@ -149,8 +159,8 @@ describe("LeftList — C6 deferred single-click open", () => {
 
   it("cancels a pending open on unmount (never fires into a torn-down tree)", () => {
     const onOpenPaper = vi.fn();
-    const { getByTitle, unmount } = render(<Harness onOpenPaper={onOpenPaper} />);
-    fireEvent.click(getByTitle(/Scorekeeping/i)); // schedules a deferred open
+    const { container, unmount } = render(<Harness onOpenPaper={onOpenPaper} />);
+    fireEvent.click(getByHint(container, /Scorekeeping/i)); // schedules a deferred open
     unmount(); // cleanup must cancel the pending idle callback
     flushIdle(); // a surviving callback would fire here
     expect(onOpenPaper).not.toHaveBeenCalled();
