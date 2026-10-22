@@ -10,9 +10,18 @@ This script:
 1. Detects every paragraph-leading `^(\\d+)` / `^(\\d+[a-z])` pattern.
 2. Groups consecutive sub-items into `pex` (multi-part) candidates
    when they share the parent example number.
-3. Emits a JSON proposal of `[{line, kind, exno, body, sub_items}, ...]`
-   that a human or model can review before applying.
-4. `--apply` writes the transformations: bare numbered prose becomes
+3. Emits a JSON proposal of
+   `[{line, start_char, kind, exno, body, sub_items, suspect}, ...]`
+   that a human or model reviews before applying. `suspect` names a
+   JUDGMENT concern (a lowercase start reads as broken-prose
+   continuation; `c. ...` reads as an orphan sub-letter) — the reviewer
+   decides, the script only says so.
+4. `--apply --proposals <reviewed.json>` converts EXACTLY the records
+   left in the reviewed file (deleting a record is how a reviewer
+   rejects it). Each record is re-validated against the current text;
+   a stale one refuses the whole apply rather than being guessed at
+   (task 1227). Bare `--apply` converts every candidate only when none
+   is suspect, and refuses otherwise. Bare numbered prose becomes
    `\\ex` / `\\pex` blocks with `\\vexid{<uuid>}` markers.
 
 Refuses to convert examples that:
@@ -20,6 +29,12 @@ Refuses to convert examples that:
 - Live inside an existing `\\begin{enumerate}` block (those are
   enumeration lists, not linguistic examples).
 - Are inside a `\\begin{quote}` (block quote, not an example).
+- Are inside an already-converted `\\ex...\\xe` / `\\pex...\\xe` block,
+  or carry converted-region markup in their body (`\\pgmark{`,
+  `\\vexid{`, `\\xe`, `\\ex[`, `\\pex[`) — a re-run over a partially
+  converted paper would otherwise nest an `\\ex` inside a new one
+  (task 1227). These are MECHANICAL rejections: never proposed, never
+  applied, whatever a proposals file says.
 - Are in the references / bibliography section.
 - Appear to be theorem / proposition numbering (preceded by
   "Theorem ", "Proposition ", "Lemma ", "Corollary ", etc.).
@@ -37,7 +52,8 @@ to hoist them onto their own paragraphs (per abusch2013applying memo).
 
 Usage:
     python3 bulk_convert_numbered_examples.py <main.tex>
-        [--propose-only] [--apply] [--out proposals.json]
+        [--propose-only] [--out proposals.json]
+        [--apply [--proposals reviewed.json]]
 """
 from __future__ import annotations
 
@@ -64,6 +80,13 @@ ENUM_BEGIN = re.compile(r"\\begin\{enumerate\}", re.M)
 ENUM_END = re.compile(r"\\end\{enumerate\}", re.M)
 QUOTE_BEGIN = re.compile(r"\\begin\{quote\}", re.M)
 QUOTE_END = re.compile(r"\\end\{quote\}", re.M)
+# An already-converted expex block: `\ex` / `\pex` opener through the
+# next `\xe` (expex closes a `\pex` with ONE `\xe`; its parts are `\a`).
+EXPEX_OPEN = re.compile(r"\\p?ex(?![A-Za-z])")
+EXPEX_CLOSE = re.compile(r"\\xe(?![A-Za-z])")
+# Body markup that means the candidate overlaps converted/anchored content.
+CONVERTED_MARKUP_RE = re.compile(r"\\pgmark\{|\\vexid\{|\\xe(?![A-Za-z])|\\p?ex\[")
+ORPHAN_SUB_LETTER_RE = re.compile(r"^[a-z]\.\s")
 
 
 def _disallowed_regions(text: str) -> list[tuple[int, int]]:
@@ -78,6 +101,10 @@ def _disallowed_regions(text: str) -> list[tuple[int, int]]:
     ends = [m.end() for m in QUOTE_END.finditer(text)]
     for s, e in zip(starts, ends):
         out.append((s, e))
+    # Already-converted \ex...\xe / \pex...\xe blocks.
+    for m in EXPEX_OPEN.finditer(text):
+        close = EXPEX_CLOSE.search(text, m.end())
+        out.append((m.start(), close.end() if close else len(text)))
     # After References section.
     refs_at = body_end(text)
     if refs_at < len(text):
@@ -95,8 +122,20 @@ def _theorem_context(text: str, pos: int) -> bool:
     return bool(THEOREM_RE.search(ctx))
 
 
+def _suspect_reason(body: str) -> str | None:
+    """A judgment concern the reviewer must rule on (not a rejection)."""
+    if ORPHAN_SUB_LETTER_RE.match(body):
+        return "orphan sub-letter (its parent (N) block is elsewhere)"
+    if body[:1].islower():
+        return "lowercase start (reads as broken-prose continuation)"
+    return None
+
+
 def _gather_examples(text: str) -> list[dict]:
-    """Group consecutive `(N)` / `(Na)`/`(Nb)` paragraph-leaders."""
+    """Group consecutive `(N)` / `(Na)`/`(Nb)` paragraph-leaders.
+
+    Mechanical rejections (disallowed region, theorem numbering, converted
+    markup in the body) are dropped here — no caller can ever apply them."""
     regions = _disallowed_regions(text)
     examples: list[dict] = []
     for m in EX_LINE_RE.finditer(text):
@@ -106,6 +145,8 @@ def _gather_examples(text: str) -> list[dict]:
             continue
         exno = m.group(1)
         body = m.group(2).strip()
+        if CONVERTED_MARKUP_RE.search(body):
+            continue
         line = text[:m.start()].count("\n") + 1
         examples.append({
             "line": line,
@@ -114,6 +155,7 @@ def _gather_examples(text: str) -> list[dict]:
             "body": body,
             "sub_items": [],
             "start_char": m.start(),
+            "suspect": _suspect_reason(body),
         })
     # Now find sub-items and attach to nearest preceding example.
     for m in SUB_ITEM_RE.finditer(text):
@@ -121,14 +163,18 @@ def _gather_examples(text: str) -> list[dict]:
             continue
         letter = m.group(1)
         body = m.group(2).strip()
+        if CONVERTED_MARKUP_RE.search(body):
+            continue
         line = text[:m.start()].count("\n") + 1
-        # Find the nearest preceding example with the same numeric prefix.
+        number = re.match(r"\((\d+)", m.group(0)).group(1)
+        # The nearest preceding example — and only if it carries the SAME
+        # number. `(7b)` after `(3)` is an orphan, not a part of (3).
         parent = None
         for ex in reversed(examples):
             if ex["start_char"] < m.start():
                 parent = ex
                 break
-        if parent is None:
+        if parent is None or parent["exno"] != number:
             continue
         parent["sub_items"].append({"letter": letter, "body": body, "line": line})
         parent["kind"] = "pex"
@@ -141,6 +187,7 @@ def _propose(examples: list[dict]) -> list[dict]:
     for ex in examples:
         out.append({
             "line": ex["line"],
+            "start_char": ex["start_char"],
             "kind": ex["kind"],
             "exno": ex["exno"],
             "body": ex["body"][:200],
@@ -153,8 +200,44 @@ def _propose(examples: list[dict]) -> list[dict]:
                           ex["body"]
                           + " ".join(s["body"] for s in ex["sub_items"]))
             ),
+            "suspect": ex["suspect"],
         })
     return out
+
+
+class StaleProposal(ValueError):
+    """A reviewed record no longer matches a current candidate."""
+
+
+def _select_reviewed(examples: list[dict], reviewed: list[dict]) -> list[dict]:
+    """The candidates the reviewed proposals file names — and only those.
+
+    A record matches the current candidate at its `start_char` when exno,
+    kind, body and sub-item letters all still agree. Anything else (text
+    edited since `--out`, a mechanically rejected candidate, a hand-made
+    record) is STALE: the whole apply is refused, never guessed at."""
+    by_start = {ex["start_char"]: ex for ex in examples}
+    current = {ex["start_char"]: rec for ex, rec in zip(examples, _propose(examples))}
+    chosen: dict[int, dict] = {}
+    stale: list[str] = []
+    for rec in reviewed:
+        start = rec.get("start_char")
+        mine = current.get(start)
+        same = mine is not None and all(
+            rec.get(k) == mine[k] for k in ("exno", "kind", "body")
+        ) and [s.get("letter") for s in rec.get("sub_items", [])] == [
+            s["letter"] for s in mine["sub_items"]
+        ]
+        if not same:
+            stale.append(f"line {rec.get('line')} ({rec.get('exno')})")
+            continue
+        chosen[start] = by_start[start]
+    if stale:
+        raise StaleProposal(
+            "proposals no longer match the current text (re-run --out and "
+            "review again): " + ", ".join(stale)
+        )
+    return [chosen[s] for s in sorted(chosen)]
 
 
 # The no-op declaration that keeps a `\vexid`-bearing .tex compilable under
@@ -237,6 +320,12 @@ def main() -> int:
         action="store_true",
         help="Apply transformations in-place (rewrites main.tex).",
     )
+    parser.add_argument(
+        "--proposals",
+        default=None,
+        help="With --apply: the REVIEWED proposals JSON (from --out, with "
+        "rejected records deleted). Only these records are converted.",
+    )
     parser.add_argument("--propose-only", action="store_true")
     args = parser.parse_args()
     p = Path(args.tex)
@@ -261,10 +350,35 @@ def main() -> int:
             )
         if len(proposals) > 5:
             print(f"  ... and {len(proposals) - 5} more")
-    if args.apply and proposals:
-        new_text = _apply(text, examples)
+    if args.proposals and not args.apply:
+        print("--proposals is only meaningful with --apply", file=sys.stderr)
+        return 2
+    if not args.apply:
+        return 0
+    if args.proposals:
+        try:
+            reviewed = json.loads(Path(args.proposals).read_text(encoding="utf-8"))
+            selected = _select_reviewed(examples, reviewed)
+        except (OSError, ValueError) as e:
+            print(f"refusing --apply: {e}", file=sys.stderr)
+            return 2
+    else:
+        suspects = [prop for prop in proposals if prop["suspect"]]
+        if suspects:
+            print(
+                f"refusing --apply: {len(suspects)} proposal(s) are suspect "
+                "(e.g. line {line}: {why}). Review with --out and pass the "
+                "reviewed file via --proposals.".format(
+                    line=suspects[0]["line"], why=suspects[0]["suspect"],
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        selected = examples
+    if selected:
+        new_text = _apply(text, selected)
         _atomic_write_text(p, new_text)
-        print(f"Applied {len(examples)} example conversions to {p}.")
+    print(f"Applied {len(selected)} example conversions to {p}.")
     return 0
 
 

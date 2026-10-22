@@ -165,34 +165,45 @@ proposals=$(mktemp "${TMPDIR:-/tmp}/virgil-di-examples.XXXXXX")
 python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex \
     --out "$proposals"
 echo "proposals: $proposals"
-# review the proposals file printed above (scratch per _scratch.md), then:
-python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex --apply
 ```
 
-**Re-run safety.** Before invoking `--apply`, count existing
-converted examples:
+Review the proposals file (scratch per [_scratch.md](_scratch.md)):
+**delete every record you reject** and keep the rest. Then apply exactly
+the reviewed list, and remove the scratch file (`$proposals` is the
+path echoed above — set it again if this is a new shell):
 
 ```bash
-grep -c 'exno=' papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex \
+    --apply --proposals "$proposals"; rc=$?
+rm -f "$proposals"
+exit "$rc"
 ```
 
-If the count is `>5`, the paper has prior conversion state and the
-remaining proposals are enriched for false positives. Reject any
-proposal whose body:
+`--apply --proposals` converts ONLY the records left in the file. Each is
+re-checked against the current text; if `main.tex` changed since `--out`,
+the apply is refused (exit 2, nothing written) — re-run `--out` and
+review again. Bare `--apply` (no `--proposals`) refuses whenever any
+record is `suspect`, so always pass the reviewed file.
 
-- starts with a lowercase letter or a function word (`do`, `the`,
-  `is`, `as`, `c.`, `b.`) — broken-prose continuation, not an
-  example;
-- contains `\pgmark{`, `\vexid{`, `\xe`, or `\ex[` — overlaps an
-  already-converted region;
-- is a bare sub-letter (e.g. `(421) c. He walked up to ...`) whose
-  parent `(N)` block is elsewhere — the script's pex grouping is
-  misfiring.
+**Re-run safety.** A paper with prior conversion state (`grep -c 'exno='
+papers/$ARGUMENTS/main.tex` is `>5`) yields proposals enriched for false
+positives. The MECHANICAL rejections are enforced by the script and need
+no review: a candidate inside an existing `\ex…\xe` / `\pex…\xe` block,
+or whose body contains `\pgmark{`, `\vexid{`, `\xe`, `\ex[` or `\pex[`, is
+never proposed and never applied; a `(Na)` sub-item attaches only to the
+`(N)` example with its own number. The JUDGMENT rules are yours — the
+script names them in each record's `suspect` field, and you decide:
 
-If every remaining proposal fails these checks, skip `--apply`
-entirely — the conversion work is done, and forcing a re-run will
-corrupt content. No outstanding-work warning is needed in that
-case.
+- `suspect: lowercase start` — a body opening with a lowercase letter or
+  function word (`do`, `the`, `is`, `as`) is usually broken-prose
+  continuation, not an example: delete it unless it plainly is one;
+- `suspect: orphan sub-letter` — a body like `(421) c. He walked up to
+  ...` whose parent `(N)` block is elsewhere: the pex grouping is
+  misfiring; delete it.
+
+If you reject every record, skip `--apply` entirely (and `rm -f
+"$proposals"`) — the conversion work is done. No outstanding-work
+warning is needed in that case.
 
 ### Detect-and-convert by source variant
 
