@@ -113,7 +113,7 @@ transition that a dedicated op performs, and the op refuses those by name:
 | Field | Owner | Why edit-card can't do it |
 |---|---|---|
 | `status` on a suggestion | [`accept-suggestion`](accept-suggestion.md) / [`reject-suggestion`](reject-suggestion.md) | `accept` splices `original_text` → `suggested_text` into the `.tex` under `replace-span`'s stale-guard **and** completes the originating Task. Setting the field alone flips the panel to *accepted* while the paper is byte-unchanged and the Task stays open. (`applied`/`stale` are the browser's own pending-change states — not writable from the contract at all.) |
-| `links` | [`move-card`](move-card.md) | `links` **is** the anchor; the move op validates the target uuid against the `.tex` and refuses an atom-bearing card or a Mode-B range. |
+| `links` | [`move-card`](move-card.md) | `links` **is** the anchor; the move op validates the target uuid against the `.tex`, refuses an atom-bearing card, and re-pins to a span of text with `newRange` (Mode B — see move-card). |
 | `originalPanel` / `originalCard` | [`archive-card`](archive-card.md) / [`restore-card`](restore-card.md) | the origin record `restore` reads verbatim to put a card back where it came from. |
 | `id`, `aiOriginRequestId` | [`create-card`](create-card.md) | `id` **is** the `\v*id` marker id for a footnote/citation; `aiOriginRequestId` is the back-pointer `accept`/`reject` read to pick which Task to complete. |
 | `relatedCards` | [`link-cards`](link-cards.md) | a card↔card relationship lives on BOTH cards; the `link` op writes both ends in one transaction and refuses the stores that would drop one half. To remove one, run `link` with `"remove":true` — a raw set leaves the other card's half dangling. |

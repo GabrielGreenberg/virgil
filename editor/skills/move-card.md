@@ -53,7 +53,10 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
    To pin it to words in that paragraph, put the op in a scratch file
    ([_op-json.md](_op-json.md)) with `"newRange": "<verbatim words>"`. A card
    that was pinned to a span loses its old `\vlid` pair in the same commit
-   (range → paragraph, or range → new range, keeping its range id).
+   (range → paragraph, or range → new range, keeping its range id) — unless
+   another card still stands on that span (an answer inherits its source
+   card's range id), when the pair stays for it and a range → range move
+   wraps the new span under a fresh id.
    Prints `{ok, version, op:"move", cardId, newAnchor, anchorsMoved[, rangeId]}`.
 
 ## Applicability (derived from the manifest)

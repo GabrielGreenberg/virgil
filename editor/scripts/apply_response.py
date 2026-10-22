@@ -1669,6 +1669,30 @@ def _range_link_ids(card: dict) -> list[str]:
     return out
 
 
+def _range_ids_held_elsewhere(doc: Path, filename: str, card_id: str) -> set[str]:
+    r"""The range ids some OTHER card's live Mode-B link still holds (task 1230).
+    A range id may be SHARED — an answer created for a phrase-pinned card
+    inherits that card's `textRange.anchorId` rather than wrapping a second pair
+    (`create_card._resolve_anchor`), and the app keeps a span marked while ANY
+    live card holds its id. So a card leaving its span may only take the
+    `\vlid` pair with it when no other card still stands on it."""
+    out: set[str] = set()
+
+    def walk(n, fname):
+        if isinstance(n, dict):
+            if isinstance(n.get("links"), list) and not (fname == filename and n.get("id") == card_id):
+                out.update(_range_link_ids(n))
+            for v in n.values():
+                walk(v, fname)
+        elif isinstance(n, list):
+            for v in n:
+                walk(v, fname)
+
+    for fname in {f for f, _ in ALL_CARD_SIDECARS.values()}:
+        walk(read_json(sidecar(doc, fname), default={}), fname)
+    return out
+
+
 def _guard_proposal_landing(doc: Path, panel: str, card: dict) -> None:
     """Refuse — before any byte lands — a suggestion proposal its own accept
     would refuse (task 1044). The write door asks the accept-time questions at
@@ -2802,9 +2826,10 @@ def cmd_move(doc: Path, op: dict) -> dict:
     cards (footnote/citation) are refused: their anchor follows the Atom.
 
     A Mode-B card leaving its span has its old `\vlid` pair removed in the same
-    commit; a card arriving at a span has a new pair wrapped around it (the
-    range id is reused on a range→range move, else freshly allocated by
-    create_card's `_gen_range_id`). Both halves go through `range_anchor`, the
+    commit — unless another card still holds that range id (a shared span, task
+    1230), when the pair stays; a card arriving at a span has a new pair wrapped
+    around it (the range id is reused on a range→range move of an unshared
+    range, else freshly allocated by create_card's `_gen_range_id`). Both halves go through `range_anchor`, the
     one primitive create-card pins through, so the span refusals are the same."""
     from card_by_id import find_card, card_kind
     from _common import find_paragraph_uuids
@@ -2858,7 +2883,10 @@ def cmd_move(doc: Path, op: dict) -> dict:
 
     # The card's old range pair(s) leave the .tex; locate the new span in the
     # text as it will be once they have.
-    old_ids = _range_link_ids(card)
+    # A pair another card still stands on (a shared range id, task 1230) stays;
+    # this card just stops claiming it — and re-pins under a fresh id.
+    shared = _range_ids_held_elsewhere(doc, hit.filename, card_id)
+    old_ids = [rid for rid in _range_link_ids(card) if rid not in shared]
     edits: list[dict] = [{"mode": "unwrap-span", "rangeId": rid} for rid in old_ids]
     after = tex
     for te in edits:
