@@ -45,6 +45,13 @@ Workflow B (chat-initiated — no pre-existing Task):
   create_card.py <docPath> --kind=<k> [--body "<text>" | …] --anchor <uuid> \
       [--safety-level N] [--task-text "<the user's ask>"]
     The Task is synthesized on the fly (apply_response --synthesize-task).
+
+Unanchored citation (find-citation's result — task 1238):
+  create_card.py <docPath> <requestId> --kind=citation --citekey <k> --unanchored \
+      [--bib-entry @<file>] [--cite-command <cmd>] [--summary @<file>]
+    The card the user DRAGS into place: allocated 4-hex id, `unanchored: true`,
+    no .tex splice; a `--bib-entry` rider appends the new source to
+    references.bib in the same atomic commit. Always a direct create.
 """
 
 from __future__ import annotations
@@ -285,6 +292,7 @@ class KindBuild:
     comment_label: str   # noun used in the L2 sibling comment
     detail: str          # body snippet shown in the L2 sibling comment
     warnings: list[str] = field(default_factory=list)  # surfaced on the result json
+    bib_edit: dict | None = None  # a `bibEdit` riding the same atomic op (citation --bib-entry)
 
 
 def _build_footnote(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
@@ -307,12 +315,17 @@ def _build_footnote(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
 def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     r"""citation — atom-bearing. id == \vcid marker (citations.json · citations,
     CitationRef {id, command, keys, createdAt}). The citekey(s) must already be
-    in references.bib (adding a source is /editor/find-citation's job, not this
-    mechanical primitive)."""
+    in references.bib — or arrive in the SAME op as a `--bib-entry` rider
+    (/editor/find-citation's new source: the `.bib` append and the card commit
+    together, all-or-nothing). `--unanchored` builds the card the user drags
+    into place (`unanchored: true`, no `.tex` splice) — find-citation's shape;
+    its id is ALLOCATED here like every other marker id, because it BECOMES the
+    `\vcid{}` the serializer writes when the card is dropped (task 1238)."""
     keys = [k.strip() for k in (a.citekey or "").split(",") if k.strip()]
     if not keys:
         die("--citekey <key[,key2…]> is required for --kind=citation")
-    _require_bib_keys(doc, keys)
+    rider = _bib_entry_rider(a.bib_entry, keys)
+    _require_bib_keys(doc, keys, appended=rider["citekey"] if rider else None)
 
     # The document's bib family is not this script's to choose. Ask the ONE
     # door (bib_family.py: stored `bibPackage` > live preamble load > live cite
@@ -339,17 +352,40 @@ def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
         cmd = cite_command_for(family, "textual")
     command = "\\" + cmd + "{" + ",".join(keys) + "}"
     cid = _gen_marker_id(doc, *_card_marker_namespace(doc))
+    card = {"id": cid, "command": command, "keys": keys, "createdAt": now_iso()}
+    if ctx.unanchored:
+        card["unanchored"] = True  # the editor strips it on drop
+    summary = (f"Added {rider['citekey']} to bibliography" if rider
+               else f"Added citation {command}")
     return KindBuild(
         panel="citations",
-        card={"id": cid, "command": command, "keys": keys, "createdAt": now_iso()},
-        insert="\\vcid{" + cid + "}" + command,
+        card=card,
+        insert=None if ctx.unanchored else "\\vcid{" + cid + "}" + command,
         result_id=cid,
         id_key="citationId",
-        summary=f"Added citation {command}",
+        summary=summary,
         comment_label="citation",
         detail=command,
         warnings=warnings,
+        bib_edit={"mode": "append", "entry": rider["entry"]} if rider else None,
     )
+
+
+def _bib_entry_rider(entry: str | None, keys: list[str]) -> dict | None:
+    """The `--bib-entry` rider: ONE new BibTeX entry that must define one of the
+    cited keys (a rider for an uncited key would append a stray entry). The
+    write door refuses a key the .bib already holds."""
+    if entry is None:
+        return None
+    import bib_resolve as BR
+
+    entry = entry.strip()
+    key = BR.citekey_of(entry)
+    if not key:
+        die("--bib-entry is not a BibTeX entry (expected `@type{citekey, …}`)")
+    if key not in keys:
+        die(f"--bib-entry defines {key!r}, which --citekey does not cite ({', '.join(keys)})")
+    return {"citekey": key, "entry": entry}
 
 
 def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
@@ -546,11 +582,12 @@ assert ALL_KINDS == set(CARDED_BUILDERS) | TEX_ONLY_KINDS, "ALL_KINDS drifted fr
 @dataclass
 class Ctx:
     request_id: str | None
-    anchor: str
+    anchor: str | None  # None only for an `unanchored` create
     safety: int | None
     selected_text: str | None
     synthesize: bool
     is_virtual: bool = False
+    unanchored: bool = False   # a card the user drags into place — no anchor, no .tex splice
     request: dict | None = None  # the Workflow-A ai-requests.json row, when one was read
     request_text: str | None = None  # …and its LIVE ask (`project_task_row`, task 1232)
     stored_para: str | None = None   # …and the row's STORED paragraphIds[0] (a snapshot)
@@ -592,6 +629,7 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     anchor = a.anchor
     safety = a.safety_level
     synthesize = bool(a.synthesize)
+    unanchored = bool(getattr(a, "unanchored", False))
 
     # A virtual card-flag id (virtual:<panel>:<cardId>) — a pre-bridge flag with
     # no ai-requests.json Task to read (list_requests.py emits these for papers
@@ -604,7 +642,7 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     if is_virtual_request_id(request_id):
         linked = parse_virtual_request_id(request_id)  # dies on a malformed / unknown-panel id
         _refuse_create_on_flagged_card(a.kind, request_id, linked)
-        if not anchor:
+        if not anchor and not unanchored:
             die("--anchor <uuid> is required for a virtual (card-flag) request id "
                 "(resolve it from the source card)")
         # Question 2 for a virtual id: its ONLY state is the source card's
@@ -618,9 +656,10 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
                     "requestId": request_id}
         if not synthesize:
             return Ctx(request_id=request_id, anchor=anchor, safety=safety,
-                       selected_text=None, synthesize=False, is_virtual=True, linked=linked)
+                       selected_text=None, synthesize=False, is_virtual=True, linked=linked,
+                       unanchored=unanchored)
         return Ctx(request_id=AR._gen_request_id(), anchor=anchor, safety=safety,
-                   selected_text=None, synthesize=True, linked=linked)
+                   selected_text=None, synthesize=True, linked=linked, unanchored=unanchored)
 
     if request_id and synthesize:
         die(f"--synthesize with an existing request id ({request_id}) — that Task already has "
@@ -628,10 +667,10 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
             "to answer it, or drop the id to synthesize a fresh Task.")
 
     if not request_id:
-        if not anchor:
+        if not anchor and not unanchored:
             die("--anchor <uuid> is required when there is no existing request")
         return Ctx(request_id=AR._gen_request_id(), anchor=anchor, safety=safety,
-                   selected_text=None, synthesize=True)
+                   selected_text=None, synthesize=True, unanchored=unanchored)
 
     ar = read_json(sidecar(doc, "ai-requests.json"), default={"requests": []})
     reqs = ar.get("requests", []) if isinstance(ar, dict) else []
@@ -653,7 +692,7 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     # the ask a proposal stamps and the paragraph it lands at are the ones the
     # responder was handed.
     live = project_task_row(_CardIndex(doc), req)
-    if not anchor:
+    if not anchor and not unanchored:
         pids = live["paragraphIds"]
         if not pids:
             die("request has no paragraphIds; cannot anchor the card (pass --anchor)")
@@ -664,7 +703,8 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     return Ctx(request_id=request_id, anchor=anchor, safety=safety,
                selected_text=live["selectedText"], synthesize=False,
                request=req, request_text=live["text"],
-               stored_para=stored[0] if stored else None, linked=linked)
+               stored_para=stored[0] if stored else None, linked=linked,
+               unanchored=unanchored)
 
 
 # The kinds a span can pin (task 1197): every sidecar-anchored card the app can
@@ -789,14 +829,21 @@ def _require_anchor(doc: Path, anchor: str) -> None:
         die(f"anchor paragraph not found in .tex: %!v:{anchor}")
 
 
-def _require_bib_keys(doc: Path, keys: list[str]) -> None:
-    """A citation's key(s) must already be in references.bib — don't fabricate a
-    cite for a missing entry (that's /editor/find-citation's job)."""
+def _require_bib_keys(doc: Path, keys: list[str], *, appended: str | None = None) -> None:
+    """A citation's key(s) must be in references.bib — or be `appended`, the key
+    a `--bib-entry` rider adds in the SAME atomic op — so no cite is fabricated
+    for a missing entry. Keys are read by bib_resolve's one entry scan (the
+    scan the write door's append/duplicate check uses)."""
+    import bib_resolve as BR
+
     bib = find_bib_file(doc)
-    if bib is None:
+    if bib is None and appended is None:
         die("no references.bib found — add the entry first (see /editor/find-citation)")
-    text = bib.read_text(encoding="utf-8", errors="replace")
-    present = set(re.findall(r"@\w+\s*\{\s*([^,\s]+)", text))
+    present = BR.all_citekeys(bib.read_text(encoding="utf-8", errors="replace")) if bib else set()
+    if appended is not None and appended in present:
+        die(f"--bib-entry: {appended!r} is already in {bib.name} — cite it without a rider "
+            f"(or pick a collision suffix)")
+    present |= {appended} if appended else set()
     missing = [k for k in keys if k not in present]
     if missing:
         die(f"citekey(s) not in {bib.name}: {', '.join(missing)} — add them first "
@@ -821,7 +868,8 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     ctx = _resolve_context(doc, a, accept_task_kinds=accept)
     if isinstance(ctx, dict):  # already-terminal / already-answered Task → idempotent no-op
         return ctx
-    _resolve_anchor(doc, a, ctx, a.anchor)
+    if not ctx.unanchored:
+        _resolve_anchor(doc, a, ctx, a.anchor)
 
     build = CARDED_BUILDERS[a.kind](doc, a, ctx)
 
@@ -835,8 +883,11 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     # Atom-bearing kinds (footnote / citation) are id-equality atoms whose refs
     # carry no such field, so they're excluded; a virtual card-flag id has no
     # ai-requests.json Task to point back at, so it's excluded too.
-    if ctx.request_id and not ctx.is_virtual and build.insert is None:
+    if (ctx.request_id and not ctx.is_virtual and build.insert is None
+            and build.panel not in AR.ATOM_BEARING_PANELS):
         build.card["aiOriginRequestId"] = ctx.request_id
+    if getattr(a, "summary", None):
+        build.summary = a.summary.strip()
     if ctx.range_text:
         build.summary += f" (pinned to «{_snippet(ctx.range_text, 40)}»)"
 
@@ -855,6 +906,8 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
             op["texEdit"]["selectedText"] = ctx.selected_text
     if ctx.range_edit:
         op["anchorEdit"] = ctx.range_edit
+    if build.bib_edit:
+        op["bibEdit"] = build.bib_edit
     if ctx.request_id:
         op["requestId"] = ctx.request_id
     if ctx.synthesize:
@@ -862,19 +915,23 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
             op["linkedTo"] = ctx.linked
         op["kind"] = TASK_KIND[a.kind]
         op["text"] = a.task_text or build.summary
-        op["paragraphIds"] = [ctx.anchor]
+        op["paragraphIds"] = [ctx.anchor] if ctx.anchor else []
         if ctx.selected_text:
             op["selectedText"] = ctx.selected_text
         if ctx.safety is not None:
             op["safetyLevel"] = ctx.safety
-    if ctx.safety == 2:
+    if ctx.safety == 2 and not ctx.unanchored:
         op["comment"] = {
             "panel": "notes",
             "card": _comment_note_card(ctx.anchor, build.detail, build.comment_label),
         }
 
     # Safety level → subcommand. No level ⇒ a direct create the user opted into.
-    if ctx.safety is None:
+    # An UNANCHORED card is always a direct create: it touches no prose — the
+    # user's own drag is its review — and a level-3 proposal would withhold its
+    # `.bib` rider (proposals apply no paper writes), leaving a card that cites
+    # a key the bibliography never received.
+    if ctx.safety is None or ctx.unanchored:
         sub, propose = "complete-task", False
     else:
         sub = AR.SAFETY_LEVEL_SUBCOMMAND[ctx.safety]
@@ -910,6 +967,10 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
 # ---------------------------------------------------------------------------
 
 RESPONDER_KINDS = {"suggestion", "comment"}
+
+# The kinds `--unanchored` / `--bib-entry` may build: a citation is the one card
+# the app keeps unanchored until the user drags it in (CitationRef.unanchored).
+UNANCHORED_KINDS = {"citation"}
 assert not (RESPONDER_KINDS & ALL_KINDS), "a responder record kind is not a create-able CardKind"
 
 # The Task kinds a proposal may drain without --accept-task-kind. Both answer a
@@ -1221,6 +1282,14 @@ def main(argv: list[str]) -> int:
     # citation
     p.add_argument("--citekey", help="bib key(s), comma-separated (citation)")
     p.add_argument("--cite-command", dest="cite_command", help="cite command name, e.g. citet/citep; DEFAULTS from the document's bib family (bib_family.py) — citet under natbib, textcite under biblatex")
+    p.add_argument("--summary", type=text_arg,
+                   help="replace the default one-line completion summary (the toast); @<path> reads a file")
+    p.add_argument("--unanchored", action="store_true",
+                   help="citation: build the card the user DRAGS into place — no anchor, no .tex "
+                        "splice (find-citation's card)")
+    p.add_argument("--bib-entry", dest="bib_entry", type=text_arg,
+                   help="citation: a NEW BibTeX entry for a cited key, appended to references.bib "
+                        "in the same atomic commit as the card; @<path> reads a file")
     # example
     p.add_argument("--label", help="\\label{} for an example block")
     p.add_argument("--item", action="append", type=text_arg,
@@ -1238,6 +1307,10 @@ def main(argv: list[str]) -> int:
     doc = resolve_doc(a.doc)
     if a.kind not in ALL_KINDS | RESPONDER_KINDS:
         die(f"unknown --kind: {a.kind} (one of {sorted(ALL_KINDS | RESPONDER_KINDS)})")
+    if (a.unanchored or a.bib_entry is not None) and a.kind not in UNANCHORED_KINDS:
+        die(f"--unanchored / --bib-entry apply to --kind={'/'.join(sorted(UNANCHORED_KINDS))} only")
+    if a.unanchored and (a.anchor or a.range is not None):
+        die("--unanchored takes no --anchor / --range: the user places the card by dragging it")
 
     try:
         if a.kind in RESPONDER_KINDS:

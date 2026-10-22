@@ -1,7 +1,7 @@
 <!-- Canonical "how free text reaches a Virgil helper" doctrine for every editor
      skill that calls `apply_response.py` with a positional op argument, or
      passes a free-text FLAG (`create_card.py --body/--title/--notes/--item/
-     --task-text/--original/--suggested/--explanation/--range`, `apply_response.py complete-only --note`) — task 815.
+     --task-text/--original/--suggested/--explanation/--range/--bib-entry/--summary`, `apply_response.py complete-only --note`) — task 815.
 
      SSOT: this file is the single source of truth for the inline-vs-`@`-file
      rule. It is referenced by link (like `_ask-shape.md` /
@@ -145,7 +145,7 @@ shell argument like any other:
 
 | helper | free-text flags | id flags (stay inline) |
 |---|---|---|
-| `create_card.py` | `--body`, `--title`, `--notes`, `--item`, `--task-text`, `--original`, `--suggested`, `--explanation`, `--range` | `--kind`, `--anchor`, `--safety-level`, `--label`, `--citekey`, `--cite-command`, `--author`, `--accept-task-kind`, `--range-occurrence` |
+| `create_card.py` | `--body`, `--title`, `--notes`, `--item`, `--task-text`, `--original`, `--suggested`, `--explanation`, `--range`, `--bib-entry`, `--summary` | `--kind`, `--anchor`, `--safety-level`, `--label`, `--citekey`, `--cite-command`, `--author`, `--accept-task-kind`, `--range-occurrence`, `--unanchored` |
 | `apply_response.py complete-only` | `--note` | `--result`, the request id |
 
 A double-quoted argv is the **silent** failure mode at its purest. Inside

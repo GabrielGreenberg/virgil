@@ -134,7 +134,16 @@ full reasoning.
 - `--author human|ai` — `report` byline (default `ai`).
 - `--ai-request` — set a `report-request`'s `aiRequest` flag (default off).
 - `--citekey "k1[,k2…]"` — bib key(s) for `citation` (must already be in
-  `references.bib`).
+  `references.bib`, or arrive as the `--bib-entry` rider).
+- `--summary "@<file>"` — replace the default one-line completion summary
+  (the Task's toast), e.g. to note a tradeoff the user may want to re-route.
+- `--unanchored` — `citation` only: build the card the user DRAGS into place
+  (`unanchored: true`, no `.tex` splice, no anchor read) — the
+  [`find-citation`](find-citation.md) card. Always a direct create, whatever the
+  Task's safety level (it touches no prose; the drag is the review).
+- `--bib-entry "@<file>"` — `citation` only: ONE new BibTeX entry defining a
+  cited key, appended to `references.bib` in the SAME atomic commit as the card.
+  Refused when the key is already in the `.bib` or is not among `--citekey`.
 - `--cite-command <name>` — cite command for `citation`, e.g. `citet` / `citep`.
   **Omit it and the default comes from the DOCUMENT's bib family**
   (`bib_family.py`: stored `bibPackage` > live preamble load > live cite usage
@@ -261,9 +270,12 @@ just decides the inputs and invokes it.
   such field (they're id-equality atoms with no `links` array), and a `virtual:`
   card-flag id isn't stamped either (no Task to point at). You never hand-set it.
 - **`citation`** is mechanical: it splices `\vcid{}\<cmd>{key}` and writes the
-  `CitationRef`, but it does **not** add the bib entry. The citekey(s) must
-  already be in `references.bib` — `create_card.py` refuses otherwise. Adding a
-  source by description is [`find-citation`](find-citation.md)'s job.
+  `CitationRef`, but it does not research a source. The citekey(s) must
+  already be in `references.bib` — or ride in with `--bib-entry` — and
+  `create_card.py` refuses otherwise. FINDING a source by description is
+  [`find-citation`](find-citation.md)'s job; it lands its result through this
+  same door (`--unanchored --bib-entry`), so the card id is always allocated
+  here, never written by a skill.
 - **`report` vs `report-request`** share one file (`reports.json` · `cards`),
   told apart only by the on-disk `kind` discriminator (the two-taxonomy rule,
   [cards.md](../../docs/workspace/cards.md)). A `report` is authored content

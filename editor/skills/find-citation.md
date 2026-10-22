@@ -50,9 +50,9 @@ card so the user can drag it into the document.
      for a source. The id is either a real `kind == "todo"` row in
      `ai-requests.json`, or `virtual:todos:<cardId>` (a pre-bridge todo
      flag, which has **no** `ai-requests.json` row). Admit it; the writeback
-     in step 6 drains it the same way — `apply_response.py complete-task`
-     completes a real todo Task and, for a virtual id, splits it into
-     `{panel: "todos", cardId}` and clears that todo's `aiRequest` flag.
+     in step 6 drains it the same way — `create_card.py` completes a real
+     todo Task and, for a virtual id, splits it into `{panel: "todos",
+     cardId}` and clears that todo's `aiRequest` flag.
      Any other kind is not a hand-off this skill accepts — refuse.
    - Whether it is still open is the drain's call, not a `status` test of
      your own — see [Idempotency](#idempotency). That covers a virtual id
@@ -164,8 +164,8 @@ card so the user can drag it into the document.
    more-verifiable alternative satisfies the request's *hard*
    requirements, prefer the more-verifiable work. A less-verifiable
    citation is a worse citation, even when it sits closer to the
-   user's stated preference. Note the tradeoff in the op `summary`
-   so the user can re-route if they want — e.g.,
+   user's stated preference. Note the tradeoff in step 6's `--summary`
+   (the Task's completion toast) so the user can re-route if they want — e.g.,
    `"Added grafton-wq1997 to bibliography (chose Wilson Quarterly
    over Lingua Franca for verifiability)"`.
 
@@ -192,7 +192,7 @@ card so the user can drag it into the document.
    find-citation.
 
 4. **Compose the BibTeX entry.** Build a complete entry — it rides the
-   writeback in step 6 as `bibEdit` (the contract appends it to
+   writeback in step 6 as `--bib-entry` (the door appends it to
    `references.bib`, atomically, in the *same* commit as the citation
    card). Do **not** hand-append the file. Use `@article` / `@book` /
    `@inproceedings` as appropriate. Field policy:
@@ -216,88 +216,68 @@ card so the user can drag it into the document.
      `address`, `publisher` if available.
 
    Just compose the entry block itself (`@type{citekey, …}`) — the
-   contract's `bibEdit` append inserts the blank-line separator and the
-   single trailing `}\n` for you, and **refuses a citekey that already
-   exists** (so if step 3's collision check missed one, the write fails
-   loudly rather than duplicating).
+   `--bib-entry` append inserts the blank-line separator and the single
+   trailing `}\n` for you, and **refuses a citekey that already exists**
+   (so if step 3's collision check missed one, the write fails loudly
+   rather than duplicating).
 
-5. **Build the CitationRef** (`CitationRef`, `src/lib/types.ts`):
-   ```json
-   { "id": "<new-uuid>",
-     "command": "\\<the family's command>{<citekey>}",
-     "keys": ["<citekey>"],
-     "createdAt": "<ISO now>",
-     "unanchored": true
-   }
-   ```
-   Set `unanchored: true` — the user drags the card to anchor it; the
-   editor strips the flag on drop.
+5. **Choose the cite command.** You never build the card yourself —
+   step 6's `create_card.py` call allocates its id (a 4-hex `\vcid{}` id,
+   free across the shared footnote/citation/example namespace: the id
+   BECOMES the marker the editor writes into the `.tex` when the user drags
+   the card in), stamps `createdAt`, sets `unanchored: true`, and takes the
+   document's bib family from the one door (`bib_family.py`: `\citet` under
+   natbib, `\textcite` under biblatex). Never scan for the package yourself
+   ([_latex-allowlist.md](_latex-allowlist.md) § Citations).
 
-   Cite-command selection — **ask the door, never scan for the package
-   yourself** ([_latex-allowlist.md](_latex-allowlist.md) § Citations):
-
-   ```bash
-   python3 editor/scripts/bib_family.py <docPath>
-   # → {"family":"biblatex","source":"stored","textual":"textcite", …}
-   ```
-
-   Take `textual` as the default command (`\citet` under natbib,
-   `\textcite` under biblatex). This step USED to carry its own
-   `\usepackage{biblatex}` needle and fall through to `\citet` on every
-   miss — and that needle missed 4 of the 6 real biblatex spellings
-   (`\usepackage[backend=biber]{biblatex}`, `\RequirePackage{biblatex}`,
-   `\usepackage{biblatex-chicago}`, `\usepackage{amsmath,biblatex}`), read a
-   commented-out load as live, and never consulted the stored `bibPackage`
-   the user may have set by hand.
-
-   Then refine the VOICE **within that family** from the document itself:
+   Your only choice is an optional VOICE refinement **within that family**,
+   passed as `--cite-command`:
    - If the request names an existing citekey, grep the `.tex` for
      `\cite*{<that-key>}` and match the cite-command of its first in-prose
      occurrence (so a collision-suffix entry like `grafton1997a` inherits the
      style used for `grafton1997`).
    - If the request names a section, match the dominant style in that
      section's prose.
-   - A matched command from a DIFFERENT family than the door reports is the
+   - A matched command from a DIFFERENT family than the door reports
+     (`python3 editor/scripts/bib_family.py <docPath>` prints it) is the
      document disagreeing with itself — keep the door's family and pick the
      matching voice in it (textual ↔ textual, parenthetical ↔ parenthetical).
+     Pass a family-incompatible command anyway and the door lands it with a
+     `warnings` entry rather than rewriting it.
 
-   The user can re-style on drag.
+   No refinement applies → omit `--cite-command`. The user can re-style on
+   drag.
 
-6. **Apply — the citation card and the `.bib` entry land together, atomically.**
-   One `complete-task` op carries *both* the `CitationRef` card and the
-   `bibEdit` append, so they commit all-or-nothing under the pen — a crash
-   can no longer leave one without the other. Status flips to
-   `complete` / result `direct-created` (the two-field vocabulary).
-
-   The op carries FREE TEXT (the card, and a BibTeX `entry` full of braces and
-   backslashes), so it goes through an `@` scratch file — see
-   [`_op-json.md`](_op-json.md) for the rule and why:
+6. **Apply — one call; the card and the `.bib` entry land together, atomically.**
+   [`create_card.py`](create-card.md) `--unanchored --bib-entry` carries both
+   in ONE `complete-task` op, so they commit all-or-nothing under the pen; the
+   Task flips to `complete` / result `direct-created`. The BibTeX entry is free
+   text full of braces and backslashes, so it goes through an `@` scratch file
+   — see [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   op=$(mktemp "${TMPDIR:-/tmp}/virgil-op.XXXXXX")
-   cat > "$op" <<'JSON'
-   { "requestId": "<requestId>",
-     "panel": "citations",
-     "card": { ...the CitationRef (unanchored: true)... },
-     "bibEdit": { "mode": "append", "entry": "@article{<citekey>, ... }" },
-     "summary": "Added <citekey> to bibliography",
-     "clearSourceFlag": true }
-   JSON
-   python3 editor/scripts/apply_response.py <docPath> complete-task "@$op"; rc=$?
-   rm -f "$op"
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
+   cat > "$t/entry" <<'BIB'
+   @article{<citekey>, ... }
+   BIB
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=citation \
+     --citekey <citekey> --unanchored --bib-entry "@$t/entry" \
+     [--cite-command <cmd>] [--summary "@$t/summary"] [--accept-task-kind todo]; rc=$?
+   rm -rf "$t"
    exit "$rc"
    ```
-   (`entry` is the BibTeX block from step 4, as a JSON string — escape `\`
-   as `\\` and newlines as `\n`; the heredoc protects you from the *shell*,
-   not from JSON.) Do **not** touch `references.bib` with the Edit tool;
-   `apply_response.py` is the only writeback path.
-
-   `clearSourceFlag: true` is the contract's default and every
-   linked-completion path passes it. A `citation` Task is unbridged (no
-   `CARD_REGISTRY` kind routes to it in `ai_request_routing.json`), so there
-   the flag resolves to nothing — but a todo handed off by
-   `/editor/answer-todo-request` (step 0) IS bridged: its `linkedTo` (or its
-   `virtual:todos:` id) names the source todo, and a `false` would leave that
-   todo wearing a pending-AI flag it no longer has.
+   - `--summary` only to replace the default toast (`Added <citekey> to
+     bibliography`) — e.g. step 2's verifiability tradeoff; write it to
+     `$t/summary` the same way as the entry.
+   - `--accept-task-kind todo` only for a todo handed off by
+     `/editor/answer-todo-request` (step 0) with a real `kind: todo` row. A
+     `virtual:todos:<cardId>` id needs no flag and no `--anchor` (the card is
+     unanchored); the door drains it and lowers that todo's `aiRequest` flag.
+   - **Library hit whose key is ALREADY in this paper's `references.bib`** →
+     drop `--bib-entry` (the door refuses a rider for a key the `.bib` holds,
+     so a duplicate can never be appended).
+   - Do **not** touch `references.bib` with the Edit tool, and never write a
+     card id, timestamp or `apply_response.py` op by hand — this call is the
+     only writeback path. A re-run on an answered Task returns `noop: true`.
 
 7. **Reply.**
    ```

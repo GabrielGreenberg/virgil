@@ -636,7 +636,9 @@ restoring the pre-467 `edit-card.md` teaching 1, and restoring the unqualified
   is retired and the legacy/v1 split is dissolved. The path there, chip by chip:
   the card-create terminal branches via `create_card.py` → `apply_response.py`
   (chip 11, alongside `draft-footnote` / `create-card`); the **`.bib` / preamble**
-  skills `find-citation` / `answer-bib-review` / `style-merge` via the `bibEdit`
+  skills `find-citation` (since task 1238 through `create_card.py --unanchored
+  --bib-entry`, so its card id is allocated, never hand-written) /
+  `answer-bib-review` / `style-merge` via the `bibEdit`
   / `settingsEdit` / `annotationEdit` capabilities + `texEdit` `region-replace`
   (chip 12); the L3 *apply* side — `/editor/accept-suggestion` +
   `/editor/reject-suggestion` consummating a drafted proposal via the generic
