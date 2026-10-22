@@ -874,6 +874,45 @@ def _stamp_self_link_kind(panel: str, card: dict) -> None:
         ref["kind"] = kind
 
 
+# A virtual request's ONLY state is its source card's `aiRequest` flag (task
+# 942): the drain emits `virtual:<panel>:<cardId>` exactly while that flag is
+# UP. So "is this virtual request still open?" is one question with three
+# answers, asked by the create resolver (create_card._resolve_context) BEFORE it
+# builds a card and by the write door (`_Txn.clear_source_flag`) AT the write —
+# the virtual twin of a real Task's terminal-row refusal (task 1234).
+FLAG_UP = "up"        # open: the drain still surfaces it
+FLAG_DOWN = "down"    # already answered: a re-run / racing dispatch must not re-land
+# (None)              # no such source card: the answer would close nothing
+
+
+def _source_card_in(state: object, list_key: str, card_id: str) -> dict | None:
+    if not isinstance(state, dict):
+        return None
+    return next((c for c in state.get(list_key, []) or []
+                 if isinstance(c, dict) and c.get("id") == card_id), None)
+
+
+def source_flag_state(doc: Path, linked: dict) -> str | None:
+    """FLAG_UP / FLAG_DOWN for the source card `linked` names, or None when there
+    is no such card (or its panel has no writeback sidecar)."""
+    panel = linked.get("panel")
+    card_id = linked.get("cardId")
+    if panel not in PANEL_TO_SIDECAR or not card_id:
+        return None
+    filename, list_key = PANEL_TO_SIDECAR[panel]
+    card = _source_card_in(read_json(sidecar(doc, filename), None), list_key, card_id)
+    if card is None:
+        return None
+    return FLAG_UP if card.get("aiRequest") else FLAG_DOWN
+
+
+def _die_virtual_already_answered(request_id, linked: dict) -> None:
+    die(f"virtual request {request_id}: the {linked.get('panel')} card "
+        f"{linked.get('cardId')!r} has no `aiRequest` flag up — it was answered by an "
+        "earlier landing; nothing was written. Do not land a second answer: report the "
+        "first one.")
+
+
 def _die_missing_source(request_id, linked: dict) -> None:
     die(f"virtual request {request_id}: no {linked.get('panel')} card {linked.get('cardId')!r} "
         "to clear — nothing was written (the answer would land and close nothing, "
@@ -988,27 +1027,27 @@ class _Txn:
         # the one deliberate opt-out is create_card.py's examples block (a
         # virtual id with no distinct source card).
         #
-        # Returns whether the source card was FOUND (task 942) — flag up or
-        # already down. A caller holding a virtual id must refuse on False: the
-        # flag IS that request's only state, so landing an answer that lowers
-        # nothing leaves it to re-surface on every drain. (A bridged `linkedTo`
-        # tolerates it — its Task row closes either way.)
+        # Returns the flag's state BEFORE this call (`source_flag_state`'s
+        # vocabulary): FLAG_UP (lowered it now), FLAG_DOWN (already down), or
+        # None (no such card — task 942). A caller holding a virtual id must
+        # refuse on None (the answer would lower nothing and re-surface on every
+        # drain) AND on FLAG_DOWN (an earlier landing already answered it — a
+        # re-run or racing dispatch, task 1234). A bridged `linkedTo` tolerates
+        # both — its Task row closes, or refuses as terminal, either way.
         panel = linked.get("panel")
         card_id = linked.get("cardId")
         if panel not in PANEL_TO_SIDECAR or not card_id:
-            return False
+            return None
         filename, list_key = PANEL_TO_SIDECAR[panel]
         path = sidecar(self.doc, filename)
-        state = self.jget(path, None)
-        if not isinstance(state, dict):
-            return False
-        for c in state.get(list_key, []) or []:
-            if isinstance(c, dict) and c.get("id") == card_id:
-                if c.get("aiRequest"):
-                    c["aiRequest"] = False
-                    self.mark(path)
-                return True
-        return False
+        c = _source_card_in(self.jget(path, None), list_key, card_id)
+        if c is None:
+            return None
+        if not c.get("aiRequest"):
+            return FLAG_DOWN
+        c["aiRequest"] = False
+        self.mark(path)
+        return FLAG_UP
 
     def close_source_todo(self, linked: dict) -> bool:
         # On ACCEPT of an AI proposal, close the todo the proposal answered
@@ -2301,10 +2340,15 @@ def cmd_write(
     #    card just produced. Only create_card.py's examples block opts out
     #    (clearSourceFlag:false — a virtual id with no distinct source card).
     #    A virtual id whose source card is gone refuses before any byte lands
-    #    (task 942): there is no Task row to close, so nothing would end it.
+    #    (task 942): there is no Task row to close, so nothing would end it. One
+    #    whose flag is ALREADY down refuses too (task 1234): an earlier landing
+    #    answered it, and this is a re-run or a racing dispatch.
     if op.get("clearSourceFlag", True) and isinstance(linked, dict):
-        if not txn.clear_source_flag(linked) and is_virtual:
+        flag = txn.clear_source_flag(linked)
+        if is_virtual and flag is None:
             _die_missing_source(request_id, linked)
+        if is_virtual and flag == FLAG_DOWN:
+            _die_virtual_already_answered(request_id, linked)
 
     # 5. The paper-file edits — .tex / .bib / settings / annotation (only when
     #    applying, not for a Level-3 proposal). All ride the same atomic commit.
@@ -2510,8 +2554,11 @@ def _mutation_commit(
         # A MECHANICAL op on a virtual id whose source card is gone refuses
         # (task 942 — the same "would close nothing" rule as an unknown row
         # id above); accept/reject keep their tolerance for a stale pointer.
-        if not txn.clear_source_flag(linked) and is_virtual and result is None:
+        flag = txn.clear_source_flag(linked)
+        if is_virtual and result is None and flag is None:
             _die_missing_source(rid, linked)
+        if is_virtual and result is None and flag == FLAG_DOWN:
+            _die_virtual_already_answered(rid, linked)
 
     notif_path, notif_content = notification_deferred(
         doc,

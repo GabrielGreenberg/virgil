@@ -14,6 +14,9 @@ Pins:
      `virtual:notes:<missing>`, `virtual:citations:<id>` each exit non-zero
      with every byte unchanged; a valid id lands the card and lowers the flag.
   3. the mutation tail (`update`): a missing source card refuses, byte-identical.
+  4. task 1234: an ALREADY-ANSWERED virtual id (flag down) — create_card no-ops
+     (ONE proposal / ONE answer after two runs) and the write door + mutation
+     tail refuse, byte-identical.
 
 Run from anywhere:  python3 editor/scripts/tests/test_virtual_request_id.py
 """
@@ -130,6 +133,80 @@ r = subprocess.run([sys.executable, APPLY, str(sb), "update",
                    capture_output=True, text=True)
 check(r.returncode != 0, "update with a missing virtual source exits non-zero")
 check(snapshot(sb) == before, "update with a missing virtual source is byte-identical")
+
+# ---------------------------------------------------------------- task 1234
+# A virtual id's ONLY state is its source card's `aiRequest` flag. Once an
+# earlier landing lowered it, a re-run or a racing dispatch must not land a
+# second answer: create_card no-ops before building one, and the write door
+# refuses (byte-identical) when a caller goes around create_card.
+CREATE = str(SCRIPTS / "create_card.py")
+CUT_COMMENT = "582f061d-311f-4ef0-adcd-bff13a86d71b"  # cutter.json comment at 2202
+
+
+def scratch(text):
+    f = Path(tempfile.mkdtemp(prefix="t1234-")) / "arg.txt"
+    f.write_text(text)
+    return f"@{f}"
+
+
+def create(doc, *args):
+    r = subprocess.run([sys.executable, CREATE, str(doc), *args], capture_output=True, text=True)
+    out = {}
+    if r.returncode == 0 and r.stdout.strip():
+        out = json.loads(r.stdout.strip().splitlines()[-1])
+    return r, out
+
+
+def cards(doc, fname):
+    return json.loads((doc / "virgil" / fname).read_text())["cards"]
+
+
+print("\n=== task 1234: a virtual suggestion re-run is a no-op (ONE proposal) ===")
+sb = sandbox()
+cp = sb / "virgil/cutter.json"
+cs = json.loads(cp.read_text())
+for c in cs["cards"]:
+    if c["id"] == CUT_COMMENT:
+        c["aiRequest"] = True
+cp.write_text(json.dumps(cs, indent=2) + "\n")
+n_before = len(cards(sb, "cutter.json"))
+sug = ("--kind=suggestion", "--original", scratch("pre-glossed for purchasers"),
+       "--suggested", scratch(""), "--explanation", "cut it")
+r1, o1 = create(sb, f"virtual:cutter:{CUT_COMMENT}", *sug)
+check(r1.returncode == 0 and not o1.get("noop"), f"first run lands (stderr={r1.stderr.strip()[-200:]})")
+mid = snapshot(sb)
+r2, o2 = create(sb, f"virtual:cutter:{CUT_COMMENT}", *sug)
+check(r2.returncode == 0 and o2.get("noop") is True
+      and o2.get("reason") == "request already answered", f"second run is the idempotent no-op ({o2})")
+check(len(cards(sb, "cutter.json")) == n_before + 1, "cutter.json holds ONE proposal")
+check(snapshot(sb) == mid, "the no-op wrote nothing")
+
+print("\n=== task 1234: a virtual carded answer (note) re-run is a no-op ===")
+sb = sandbox()
+n_before = len(cards(sb, "notes.json"))
+args = (f"virtual:notes:{NID}", "--kind=note", "--body", "Re: flagged.", "--anchor", "4402")
+r1, o1 = create(sb, *args)
+check(r1.returncode == 0 and not o1.get("noop"), f"first run lands (stderr={r1.stderr.strip()[-200:]})")
+mid = snapshot(sb)
+r2, o2 = create(sb, *args)
+check(r2.returncode == 0 and o2.get("noop") is True, f"second run is the no-op ({o2})")
+check(len(cards(sb, "notes.json")) == n_before + 1, "notes.json holds ONE answer")
+check(snapshot(sb) == mid, "the no-op wrote nothing")
+
+print("\n=== task 1234: the write door refuses an already-answered virtual id ===")
+sb = sandbox()
+check(write(sb, f"virtual:notes:{NID}", "answer-a").returncode == 0, "first direct write lands")
+before = snapshot(sb)
+r = write(sb, f"virtual:notes:{NID}", "answer-b")
+check(r.returncode != 0 and "answered by an earlier landing" in r.stderr,
+      f"second direct write refuses ({r.stderr.strip()[-160:]})")
+check(snapshot(sb) == before and note(sb, "answer-b") is None, "…byte-identical")
+r = subprocess.run([sys.executable, APPLY, str(sb), "update",
+                    json.dumps({"cardId": NID, "body": "Rewritten.",
+                                "requestId": f"virtual:notes:{NID}"})],
+                   capture_output=True, text=True)
+check(r.returncode != 0 and snapshot(sb) == before,
+      "mutation tail (update) on an already-answered virtual id refuses, byte-identical")
 
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)
