@@ -202,11 +202,16 @@ two paths:
    <one or two sentences>
    TXT
    python3 editor/scripts/create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> \
-       --accept-task-kind note --original "@$t/original" \
+       --accept-task-kind note --accept-task-kind highlight --original "@$t/original" \
        --suggested "@$t/suggested" --explanation "@$t/explanation"; rc=$?
    rm -rf "$t"
    exit "$rc"
    ```
+   Declare **both** kinds, as path (b) does: this skill drains `note` *and*
+   `highlight`, and a highlighted passage the user wants rewritten reaches
+   this branch as a `highlight` Task — a call that names only `note` is
+   refused before any write (`responder-accept-kinds-census.test.ts` pins
+   every create call in a responder to every kind it drains).
    The card lands and the Task is left **awaiting review** (`status:
    in-progress`), the `.tex` untouched until the user accepts via
    `/editor/accept-suggestion`. Leave the source note intact (the user's
