@@ -66,6 +66,7 @@ from bib_family import (
     resolve_bib_family,
 )
 from _common import (
+    is_dormant_link,
     is_virtual_request_id,
     parse_virtual_request_id,
     die,
@@ -215,11 +216,11 @@ def _gen_range_id(doc: Path) -> str:
 
 
 def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str,
-                 range_anchor: dict | None = None) -> dict:
+                 anchor_obj: dict | None = None) -> dict:
     """A Mode-A paragraph anchor: a `kind:"anchor"` textObject Link from the
     card to the anchor paragraph (src/links/_shared/types.ts) — or, given the
-    Mode-B `range_anchor` object `apply_response.range_anchor` built, the same
-    Link pinned to that span (task 1197).
+    anchor object `_resolve_anchor` settled (a Mode-B span from --range, task
+    1197, or the source card's inherited anchor, task 1230), that object.
 
     NOTE (task 205): the anchor carries NO `margin: {side}`. Which side a
     card's margin chrome sits on is a live function of where its panel is
@@ -230,7 +231,7 @@ def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str,
     return {
         "id": str(uuid.uuid4()),
         "kind": "anchor",
-        "anchor": copy.deepcopy(range_anchor) if range_anchor else {
+        "anchor": copy.deepcopy(anchor_obj) if anchor_obj else {
             "type": "textObject",
             "targetKind": "paragraph",
             "textObjectIds": [anchor_uuid],
@@ -364,7 +365,7 @@ def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "content": _jsoncontent(body),
             "createdAt": now_iso(),
             "aiRequest": False,
-            "links": [_anchor_link("note", nid, ctx.anchor, ctx.range_anchor)],
+            "links": [_anchor_link("note", nid, ctx.anchor, ctx.anchor_obj)],
         },
         insert=None,
         result_id=nid,
@@ -394,7 +395,7 @@ def _build_todo(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "done": False,
             "aiRequest": False,
             "createdAt": now_iso(),
-            "links": [_anchor_link("todo", tid, ctx.anchor, ctx.range_anchor)],
+            "links": [_anchor_link("todo", tid, ctx.anchor, ctx.anchor_obj)],
         },
         insert=None,
         result_id=tid,
@@ -426,7 +427,7 @@ def _build_report(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "text": body,
             "content": _jsoncontent(body),
             "selectedText": ctx.selected_text or ctx.range_text or "",
-            "links": [_anchor_link("report", rid, ctx.anchor, ctx.range_anchor)],
+            "links": [_anchor_link("report", rid, ctx.anchor, ctx.anchor_obj)],
         },
         insert=None,
         result_id=rid,
@@ -455,7 +456,7 @@ def _build_report_request(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindB
             "content": _jsoncontent(body),
             "aiRequest": bool(a.ai_request),
             "selectedText": ctx.selected_text or ctx.range_text or "",
-            "links": [_anchor_link("report-request", rid, ctx.anchor, ctx.range_anchor)],
+            "links": [_anchor_link("report-request", rid, ctx.anchor, ctx.anchor_obj)],
         },
         insert=None,
         result_id=rid,
@@ -554,6 +555,7 @@ class Ctx:
     range_anchor: dict | None = None  # the Mode-B anchor object, when --range pins a span
     range_edit: dict | None = None    # …and its wrap-span `.tex` edit (op.anchorEdit)
     range_text: str | None = None     # …and the span's reading text (its snapshot)
+    anchor_obj: dict | None = None    # the card's resolved anchor object (`_resolve_anchor`)
 
 
 def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set[str]) -> "Ctx | dict":
@@ -671,6 +673,46 @@ def _resolve_range(doc: Path, a: argparse.Namespace, anchor: str, ctx: "Ctx") ->
     ctx.range_text = ctx.range_anchor["textRange"]["textSnapshot"]
 
 
+def _resolve_anchor(doc: Path, a: argparse.Namespace, ctx: "Ctx", explicit_anchor: str | None) -> None:
+    r"""WHERE the card lands — the ONE anchor rule both create paths (carded and
+    proposal) read, so "a Task already filed on a selection keeps its span" is
+    true for every answer, not just a proposal (task 1230). Sets
+    `ctx.anchor_obj` (the link's anchor object) and `ctx.anchor` (its paragraph).
+
+      1. `--range` pins THIS card to the span it names (task 1197) — at
+         `--anchor`, else the source card's paragraph, else the Task's. The
+         caller chose the words, so it wins the inheritance.
+      2. Else, a Task linked to a source card (`linkedTo` / a virtual id) whose
+         caller did not aim elsewhere (no `--anchor`, or `--anchor` = the
+         source's own paragraph) INHERITS the source's first live anchor
+         verbatim — Mode A, or Mode B sharing its `textRange.anchorId`. A shared
+         range is a second claim on a pair already in the .tex (the app keeps a
+         span marked while ANY live card holds its id), so nothing is wrapped and
+         the .tex is byte-unchanged. A Mode-B anchor degrades to Mode A at the
+         same paragraph when this kind cannot hold a span (`RANGE_KINDS`). A
+         dormant (archived) link is never inherited (`_first_anchor`).
+      3. Else Mode A at the resolved paragraph."""
+    src_anchor = _first_anchor(_source_card(doc, ctx.linked))
+    src_para = src_anchor["textObjectIds"][0] if src_anchor else None
+    if a.range is not None:
+        anchor_uuid = explicit_anchor or src_para or ctx.anchor
+        _require_anchor(doc, anchor_uuid)
+        _resolve_range(doc, a, anchor_uuid, ctx)
+        anchor_obj = ctx.range_anchor
+    elif src_anchor and (not explicit_anchor or explicit_anchor == src_para):
+        anchor_obj = {k: v for k, v in copy.deepcopy(src_anchor).items() if k != "margin"}
+        if anchor_obj.get("targetKind") == "linkedRange" or anchor_obj.get("textRange"):
+            if a.kind in RANGE_KINDS:
+                ctx.range_text = (anchor_obj.get("textRange") or {}).get("textSnapshot")
+            else:
+                anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [src_para]}
+    else:
+        anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [ctx.anchor]}
+    ctx.anchor_obj = anchor_obj
+    ctx.anchor = anchor_obj["textObjectIds"][0]
+    _require_anchor(doc, ctx.anchor)
+
+
 def _require_anchor(doc: Path, anchor: str) -> None:
     """The paragraph UUID must exist in the .tex (refuse rather than guess)."""
     tex = find_tex_file(doc).read_text(encoding="utf-8")
@@ -711,8 +753,7 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     ctx = _resolve_context(doc, a, accept_task_kinds=accept)
     if isinstance(ctx, dict):  # already-terminal / already-answered Task → idempotent no-op
         return ctx
-    _require_anchor(doc, ctx.anchor)
-    _resolve_range(doc, a, ctx.anchor, ctx)
+    _resolve_anchor(doc, a, ctx, a.anchor)
 
     build = CARDED_BUILDERS[a.kind](doc, a, ctx)
 
@@ -728,7 +769,7 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     # ai-requests.json Task to point back at, so it's excluded too.
     if ctx.request_id and not ctx.is_virtual and build.insert is None:
         build.card["aiOriginRequestId"] = ctx.request_id
-    if ctx.range_anchor:
+    if ctx.range_text:
         build.summary += f" (pinned to «{_snippet(ctx.range_text, 40)}»)"
 
     op: dict = {
@@ -825,10 +866,13 @@ def _source_card(doc: Path, linked: dict | None) -> dict | None:
 
 
 def _first_anchor(card: dict | None) -> dict | None:
-    """A card's first-link textObject anchor (Mode A, or Mode B with its
-    `textRange`), or None."""
+    """A card's first LIVE textObject anchor (Mode A, or Mode B with its
+    `textRange`), or None. A dormant link (task 1193 — the card's claim on
+    ARCHIVED text) is skipped: it names no paragraph in the live .tex."""
     for link in (card or {}).get("links") or []:
-        anchor = link.get("anchor") if isinstance(link, dict) else None
+        if not isinstance(link, dict) or is_dormant_link(link):
+            continue
+        anchor = link.get("anchor")
         if isinstance(anchor, dict) and anchor.get("textObjectIds"):
             return anchor
     return None
@@ -863,13 +907,12 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
     elif not a.body:
         die("--kind=comment requires --body <reply> (@<path>)")
 
-    explicit_anchor = a.anchor
-    if is_virtual_request_id(a.request):
-        linked = parse_virtual_request_id(a.request)
-        if not a.anchor:  # the virtual path needs an anchor; the source card has one
-            src_anchor = _first_anchor(_source_card(doc, linked))
-            if src_anchor:
-                a.anchor = src_anchor["textObjectIds"][0]
+    if is_virtual_request_id(a.request) and not a.anchor:
+        # the virtual path needs an anchor; the source card names its own
+        # paragraph — and `_resolve_anchor` then inherits its anchor whole
+        src_anchor = _first_anchor(_source_card(doc, parse_virtual_request_id(a.request)))
+        if src_anchor:
+            a.anchor = src_anchor["textObjectIds"][0]
 
     accept = set(RESPONDER_TASK_KINDS[kind]) | set(a.accept_task_kind or [])
     ctx = _resolve_context(doc, a, accept_task_kinds=accept)
@@ -889,27 +932,15 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
                 f"bridged from a Revisions card (linkedTo.panel={linked_panel!r})")
         panel = "revisions"
 
-    # The anchor: the source card's own (copied verbatim — Mode A/B and its
-    # paragraph id(s) in one move), unless the caller deliberately aimed
-    # elsewhere; otherwise the canonical Mode-A anchor at the resolved paragraph.
-    # An explicit --range pins THIS answer to the span it names, at the resolved
-    # paragraph (task 1197) — the caller chose the words, so it wins the copy.
-    src_anchor = _first_anchor(source)
-    if a.range is not None:
-        anchor_uuid = explicit_anchor or (src_anchor["textObjectIds"][0] if src_anchor else ctx.anchor)
-        _require_anchor(doc, anchor_uuid)
-        if kind == "suggestion" and a.original and a.original not in a.range:
-            die("--range must contain --original: the span a suggestion rewrites sits inside "
-                "the words it is pinned to (else the range markers split original_text and "
-                "accept would refuse it as stale)")
-        _resolve_range(doc, a, anchor_uuid, ctx)
-        anchor_obj = ctx.range_anchor
-    elif src_anchor and (not explicit_anchor or explicit_anchor == src_anchor["textObjectIds"][0]):
-        anchor_obj = {k: v for k, v in copy.deepcopy(src_anchor).items() if k != "margin"}
-    else:
-        anchor_obj = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [ctx.anchor]}
-    anchor_uuid = anchor_obj["textObjectIds"][0]
-    _require_anchor(doc, anchor_uuid)
+    # The anchor: the one rule every create reads (`_resolve_anchor`, task 1230).
+    # A suggestion's span must still contain the words it rewrites, else the
+    # range markers split original_text and accept would refuse it as stale.
+    if a.range is not None and kind == "suggestion" and a.original and a.original not in a.range:
+        die("--range must contain --original: the span a suggestion rewrites sits inside "
+            "the words it is pinned to (else the range markers split original_text and "
+            "accept would refuse it as stale)")
+    _resolve_anchor(doc, a, ctx, a.anchor)
+    anchor_obj, anchor_uuid = ctx.anchor_obj, ctx.anchor
 
     # Idempotency: a real Task's proposal already on disk is THE answer. The
     # resolver already no-ops a Task whose resultId landed; this catches a

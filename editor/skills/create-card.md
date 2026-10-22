@@ -244,7 +244,13 @@ just decides the inputs and invokes it.
   words tinted and the card points at them. If it is about the paragraph's
   argument **as a whole**, keep the paragraph anchor (no `--range`). A Task the
   user filed on a selection already carries its span: answering it copies that
-  anchor automatically, so pass `--range` only to pin somewhere else.
+  anchor automatically, so pass `--range` only to pin somewhere else. That holds
+  for EVERY kind here (note / todo / report / report-request as much as a
+  suggestion or comment): a Task linked to a card — or a `virtual:` id at that
+  card's own paragraph — inherits the card's live anchor, span and all, with no
+  new `\vlid` pair in the `.tex` (task 1230). An `--anchor` at a different
+  paragraph lands Mode A there; a kind that cannot hold a span falls back to
+  the paragraph.
 
 - **`aiOriginRequestId`** — a sidecar-only carded card (`note` / `todo` /
   `report` / `report-request`) created from a **real** Task is stamped with an
