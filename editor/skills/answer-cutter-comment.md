@@ -113,8 +113,9 @@ once — see step 5).
    — the card lands on that span (Mode B), exactly as if the user had selected it.
    A Task already filed on a selection keeps its span without the flag. Rule +
    refusals: [create-card.md](create-card.md) → "Phrase or paragraph?". For a
-   suggestion the span must contain `--original`: an explicit `--range` that misses it is refused; an inherited span that misses it
-   degrades to the whole paragraph (result `anchorDegraded`, task 1235).
+   suggestion the span must contain `--original`: an explicit `--range` that
+   misses it is refused; an inherited span that misses it degrades to the whole
+   paragraph (result `anchorDegraded`, task 1235).
 
 5. **What the door guarantees.** Nothing lands when `original_text` is not
    verbatim in the anchored paragraph (no paraphrase, never the `%!v:`
