@@ -97,16 +97,19 @@ directory).
    ```bash
    run_dir=$(mktemp -d "${TMPDIR:-/tmp}/virgil-authenticate-bib.XXXXXX") || exit 1
    echo "runDir=$run_dir"
-   python3 - "<citekey>" > "$run_dir/base.bib" <<'PY'
-   import sys; from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts/library")
-   from _tools import master_entry_for
-   e = master_entry_for(Path("."), sys.argv[1])
-   sys.stdout.write(e["raw"] if e else "")
-   PY
+   python3 .virgil/scripts/library/master_entry.py "<citekey>" > "$run_dir/base.bib"
+   echo "read=$?"
    ```
-   An empty file means the entry is not in master.bib — stop and report it;
-   there is nothing to authenticate. Read the fields from that same file.
+   **Branch on `read=`, never on whether the file is empty** — the script
+   owns three answers (task 1229):
+   - `read=0` — found; `base.bib` holds the entry's block. Read the fields
+     from that same file and continue.
+   - `read=3` — the entry is not in master.bib. Stop and report it; there is
+     nothing to authenticate.
+   - `read=2` — the entry IS there but cannot be read (its braces never
+     balance, or master.bib itself is unreadable). Stop and report the
+     script's stderr message **verbatim** — never as "not in master.bib";
+     the file needs a human, and its fields are a guess.
 
 2. **Coherence pre-flight — ADVISORY, never a gate.** Run the cross-field
    checker *before* the network search, so an internally-incoherent entry is

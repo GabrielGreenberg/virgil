@@ -239,12 +239,12 @@ def _scratch_path(token: str) -> str:
 
 
 def _step_one_base_snapshot(text: str):
-    """The file step 1 redirects the base entry (`master_entry_for`'s raw
-    block) into — derived from the skill, never a pinned spelling, so a scratch
+    """The file step 1 redirects the base entry (`master_entry.py`'s raw
+    block, task 1229) into — derived from the skill, never a pinned spelling, so a scratch
     rename (task 1050) moves the guard with it."""
     step_one = text.split("2. **Coherence pre-flight")[0]
     for block, _ in _fenced_blocks(step_one):
-        if "master_entry_for" not in block:
+        if "master_entry.py" not in block:
             continue
         m = re.search(r"^\s*python3\b[^\n]*?\s>\s*(\"[^\"]+\"|'[^']+'|[^\s<]+)",
                       block, re.M)
