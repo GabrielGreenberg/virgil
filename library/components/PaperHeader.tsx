@@ -29,6 +29,7 @@ import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PagePicker from "./PagePicker";
 import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
 import { iconHint } from "@/components/Hint";
+import { Chevron } from "@/components/Chevron";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -474,8 +475,11 @@ export default function PaperHeader({
                   type="button"
                   onClick={() => setExpanded((x) => !x)}
                   aria-expanded={expanded}
-                  aria-label={expanded ? "Collapse fields" : "Expand fields"}
+                  className="focus-ring"
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 2,
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
@@ -485,7 +489,8 @@ export default function PaperHeader({
                     padding: "0 4px",
                   }}
                 >
-                  {expanded ? "▾ fields" : "▸ fields"}
+                  <Chevron expanded={expanded} />
+                  fields
                 </button>
               )}
               {onEdit ? (

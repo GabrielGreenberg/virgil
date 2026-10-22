@@ -115,8 +115,12 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   commentsStripped,
+  constBindings,
   cssCommentsStripped,
   elementsNamed,
+  expandConsts,
+  resolveConsts,
+  stringConsts,
   strip,
   tagEnd,
   trackedFiles,
@@ -331,6 +335,9 @@ function literalClassName(tag: string): string | null {
   const at = m.index + m[0].length;
   if (tag[at] === '"') return tag.slice(at + 1, tag.indexOf('"', at + 1));
   if (tag[at] === "{" && tag[at + 1] === "`") return tag.slice(at + 2, tag.indexOf("`", at + 2));
+  // `className={NAME}` resolved through a same-file const (task 1237).
+  const q = tag[at + 1];
+  if (tag[at] === "{" && (q === '"' || q === "'")) return tag.slice(at + 2, tag.indexOf(q, at + 2));
   return null;
 }
 /** Roving menu rows are focused programmatically and show `data-active`
@@ -359,6 +366,10 @@ function buttonSites(): { icon: Site[]; text: Site[] } {
     // Safe because `commentsStripped` keeps strings, so a tag is byte-equal
     // in both views, and `elementsNamed` walks in source order.
     let cursor = 0;
+    // Every leg reads the tag RESOLVED through the file's string consts
+    // (task 1237): `className={`ml-auto ${GHOST_BTN}`}` is the pill the const
+    // spells, and a guard that read only the literal tag never saw it.
+    const consts = stringConsts(src);
     for (const hit of elementsNamed(src, "button")) {
       const isIcon = isIconOnly(hit);
       if (isIcon === null) {
@@ -372,7 +383,7 @@ function buttonSites(): { icon: Site[]; text: Site[] } {
       const rawAt = raw.indexOf(hit.tag, cursor);
       if (rawAt >= 0) cursor = rawAt + hit.tag.length;
       const before = rawAt >= 0 ? raw.slice(0, rawAt) : src.slice(0, hit.index);
-      const site: Site = { ...hit, file, line: before.split("\n").length };
+      const site: Site = { ...hit, tag: resolveConsts(hit.tag, consts), file, line: before.split("\n").length };
       if (isIcon) icon.push(site);
       // NOT `!isIcon`: the two classifiers ask different questions and are
       // deliberately not complements. `isIconOnly` counts any child
@@ -466,18 +477,9 @@ describe("icon-only buttons announce, once, and focus visibly", () => {
  * an icon button) is skipped, exactly as leg C skips them. */
 const GEOMETRY = /(?<![\w-])(?:iconbtn-(?:xs|sm|md|lg)|topbarbtn)(?![\w-])/;
 const EXEMPT = /(?<![\w-])data-iconbtn-exempt\s*=\s*"[^"]*\w[^"]*"/;
-/** A SCREAMING_CASE constant the tag reads, resolved against a same-file
- *  `const NAME = "…"` literal — so `className={POPOUT_BUTTON_CLASS}` (whose
+/** Read off the RESOLVED tag, so `className={POPOUT_BUTTON_CLASS}` (whose
  *  value is `"iconbtn-sm"`) is read as what it is, not as opaque. */
-function constantsWearGeometry(file: string, tag: string): boolean {
-  const raw = fs.readFileSync(path.join(ROOT, file), "utf8");
-  for (const [name] of tag.matchAll(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g)) {
-    const decl = new RegExp(`\\bconst\\s+${name}\\s*=\\s*(["\`])([^"\`]*)\\1`).exec(raw);
-    if (decl && GEOMETRY.test(decl[2])) return true;
-  }
-  return false;
-}
-const wearsGeometry = (s: Site) => GEOMETRY.test(s.tag) || constantsWearGeometry(s.file, s.tag);
+const wearsGeometry = (s: Site) => GEOMETRY.test(s.tag);
 
 describe("an icon-only button takes its geometry from iconbtn-* (task 826)", () => {
   const sites = ALL.icon.filter((s) => !opaqueSpread(s.tag) && !notATabStop(s.tag));
@@ -816,51 +818,6 @@ function balancedEnd(s: string, i: number, open: string, close: string): number 
     j++;
   }
   return -1;
-}
-
-/** `NAME` → its initializer text, for every `const NAME = …;` in the file
- *  (module or function scope — `stateClass` is a function-scope one). */
-function constBindings(src: string): Map<string, string> {
-  const out = new Map<string, string>();
-  const decl = /(?:^|[\n;{])[ \t]*(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[^=;]*)?=[ \t]*/g;
-  let m: RegExpExecArray | null;
-  while ((m = decl.exec(src))) {
-    const start = m.index + m[0].length;
-    let j = start;
-    let depth = 0;
-    while (j < src.length) {
-      const c = src[j];
-      if (c === '"' || c === "'" || c === "`") {
-        const q = c;
-        j++;
-        while (j < src.length && src[j] !== q) {
-          if (src[j] === "\\") j++;
-          j++;
-        }
-      } else if (c === "(" || c === "[" || c === "{") depth++;
-      else if (c === ")" || c === "]" || c === "}") depth--;
-      else if (c === ";" && depth <= 0) break;
-      j++;
-    }
-    out.set(m[1], src.slice(start, j));
-  }
-  return out;
-}
-
-/** One element's class list, with `${NAME}` / `{NAME}` resolved. Bounded at
- *  three passes so a self-referential binding cannot spin. */
-function expandConsts(value: string, consts: Map<string, string>): string {
-  let out = value;
-  for (let pass = 0; pass < 3; pass++) {
-    const whole = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(out);
-    const before = out;
-    if (whole && consts.has(whole[1])) out = consts.get(whole[1])!;
-    out = out.replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (m, n: string) =>
-      consts.has(n) ? consts.get(n)! : m,
-    );
-    if (out === before || out.length > 20000) break;
-  }
-  return out;
 }
 
 interface ClassValue {
@@ -1879,6 +1836,11 @@ const STYLE_BORDER = /\bborder\s*:\s*["'`]\s*\d/;
 const STYLE_ROUND = /\bborderRadius\s*:/;
 const STYLE_PAD = /\bpadding(?:Inline|Left|Right)?\s*:/;
 
+/** A list row's own focus indicator: a FILL on focus with the outline
+ *  removed (the picker's file rows) — a stated replacement for the UA ring,
+ *  not the default left standing. */
+const FOCUS_FILL = /(?<![\w-])focus(?:-visible)?:bg-[\w\[(]/;
+
 export function paintsPill(tag: string): boolean {
   const byClass =
     (CLASS_FILL.test(tag) || CLASS_BORDER.test(tag)) && CLASS_ROUND.test(tag) && CLASS_PAD_X.test(tag);
@@ -1911,6 +1873,39 @@ describe("a text-labelled action button renders through <Button> (task 827)", ()
     // primitive if no variant fits — STYLE_GUIDE "Buttons") or a
     // `data-button-exempt="<reason>"` the reviewer can argue with.
     expect(handRolled).toEqual([]);
+  });
+
+  it("a hand-rolled pill that stays raw still carries the app's focus ring (task 1237)", () => {
+    // `<Button>` supplies `.focus-ring`; a `data-button-exempt` site gives
+    // that up along with the variant, so it must spell the ring itself —
+    // STYLE_GUIDE "never leave the UA default ring". The "+ goal" chip sat
+    // exempted beside two ringed siblings and kept the UA outline.
+    const unringed = sites
+      .filter((s) => paintsPill(s.tag) && BUTTON_EXEMPT.test(s.tag))
+      .filter((s) => {
+        const cls = literalClassName(s.tag);
+        return cls !== null && !RING.test(cls) && !FOCUS_FILL.test(cls);
+      })
+      .map(at);
+    expect(unringed).toEqual([]);
+  });
+
+  it("reads a pill whose classes come through a same-file const (task 1237 self-check)", () => {
+    const src = [
+      'const GHOST = "text-[10px] rounded px-1 py-0.5 hover-on-light focus-ring";',
+      "<button className={`ml-auto ${GHOST}`}>edit</button>",
+    ].join("\n");
+    const tag = src.slice(src.indexOf("<button"), src.indexOf(">edit"));
+    expect(paintsPill(tag)).toBe(false);
+    const resolved = resolveConsts(tag, stringConsts(src));
+    expect(paintsPill(resolved)).toBe(true);
+    expect(RING.test(literalClassName(resolved) ?? "")).toBe(true);
+    // A bare `{NAME}` resolves too, and literal text is never rewritten.
+    expect(literalClassName(resolveConsts("<button className={GHOST}>", stringConsts(src)))).toContain("hover-on-light");
+    expect(resolveConsts('<button className="GHOST">', stringConsts(src))).toBe('<button className="GHOST">');
+    expect(resolveConsts("<button GHOST={1} data-GHOST a.GHOST>", stringConsts(src))).toBe(
+      "<button GHOST={1} data-GHOST a.GHOST>",
+    );
   });
 
   it("an exemption never sits on a button that paints no pill", () => {

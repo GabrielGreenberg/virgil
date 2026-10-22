@@ -143,7 +143,7 @@ export function PanelGoalStrip({
           type="button"
           onClick={startEditing}
           data-button-exempt="11px inline strip chip, below Button's sm scale"
-          className="ml-auto text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1.5 py-0.5 hover-on-light"
+          className="ml-auto text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1.5 py-0.5 hover-on-light focus-ring"
           data-hint="Set goal"
         >
           + goal
@@ -165,6 +165,7 @@ export function PanelGoalStrip({
         <button
           type="button"
           onClick={startEditing}
+          data-button-exempt="10px inline strip chip, below Button's sm scale"
           className={`ml-auto ${GHOST_BTN}`}
           data-hint="Edit goal"
         >

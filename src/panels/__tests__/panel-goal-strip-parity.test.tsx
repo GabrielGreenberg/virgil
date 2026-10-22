@@ -337,6 +337,13 @@ const TOKENIZED_281: ReadonlyArray<readonly [string, string]> = [
     "cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light",
     "cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light focus-ring",
   ],
+  // Task 1237: the "+ goal" chip took the same ring — it alone kept the UA
+  // default while its two siblings drew the app's, because the pill/ring
+  // guards could not read the siblings' classes through `GHOST_BTN`.
+  [
+    "cursor-pointer rounded px-1.5 py-0.5 hover-on-light",
+    "cursor-pointer rounded px-1.5 py-0.5 hover-on-light focus-ring",
+  ],
 ];
 
 function tokenized(html: string): {
@@ -498,6 +505,7 @@ describe("CutterGoalStrip renders identically to its pre-286 self", () => {
     );
     expect(r.shipped).toBe(r.legacy);
     expect(r.shipped).toContain("1,240 words");
+    expect(r.a11y).toBe(1);
   });
 
   it("progress state, goal not reached", () => {
