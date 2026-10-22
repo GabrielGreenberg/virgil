@@ -749,7 +749,7 @@ function ProjectHeader({
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
         }}
-        title={hasDoc ? docLabel : undefined}
+        data-hint={hasDoc ? docLabel : undefined}
       >
         {hasDoc
           ? citedOnly

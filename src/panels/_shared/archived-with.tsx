@@ -205,7 +205,7 @@ export function ArchiveRelationRow({ kind, id }: { kind: CardKind; id: string })
             type="button"
             className={CHIP}
             data-archive-travelled-chip={`${e.kind}:${e.id}`}
-            title={`Open this ${kindNoun(e.kind, 1)}${e.archived ? " in its archive" : ""}`}
+            data-hint={`Open this ${kindNoun(e.kind, 1)}${e.archived ? " in its archive" : ""}`}
             onClick={() => api.openCard(e.kind, e.id)}
           >
             <span className="font-medium">{CARD_REGISTRY[e.kind].label}</span>
@@ -233,7 +233,7 @@ export function ArchiveRelationRow({ kind, id }: { kind: CardKind; id: string })
         type="button"
         className={CHIP}
         data-archive-passage-jump=""
-        title="Open the archived passage"
+        data-hint="Open the archived passage"
         onClick={() => api.openPassage(passage.snippetId)}
       >
         <span className="truncate">{passage.archived ? passage.title : `Passage: ${passage.title}`}</span>

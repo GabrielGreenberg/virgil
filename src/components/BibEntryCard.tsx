@@ -596,7 +596,7 @@ export default function BibEntryCard({
                       size="sm"
                       onClick={commitEditBib}
                       disabled={!headCheck.ok || savingBib}
-                      title={headCheck.ok ? undefined : headCheck.reason}
+                      data-hint={headCheck.ok ? undefined : headCheck.reason}
                     >
                       Save
                     </Button>

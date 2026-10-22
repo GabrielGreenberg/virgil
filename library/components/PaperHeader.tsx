@@ -28,6 +28,7 @@ import { indexStateTier } from "@/lib/library/status-tone";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PagePicker from "./PagePicker";
 import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
+import { iconHint } from "@/components/Hint";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -454,8 +455,7 @@ export default function PaperHeader({
                       () => flashFor("copy failed"),
                     );
                   }}
-                  title="Copy citekey"
-                  aria-label="Copy citekey"
+                  {...iconHint({ label: "Copy citekey" })}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -508,7 +508,7 @@ export default function PaperHeader({
                 <button
                   type="button"
                   disabled
-                  title="Loading bibliography…"
+                  data-hint="Loading bibliography…"
                   style={{
                     background: "transparent",
                     border: "none",
@@ -577,7 +577,7 @@ export default function PaperHeader({
               <button
                 type="button"
                 onClick={() => dispatchOpenLibrary({ citekey, target: "tab" })}
-                title="Open this paper in a new tab"
+                data-hint="Open this paper in a new tab"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -752,7 +752,7 @@ function ToggleButton({
       aria-selected={active}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      title={disabled ? disabledTitle : undefined}
+      data-hint={disabled ? disabledTitle : undefined}
       style={{
         background: active ? "var(--control-selected)" : "transparent",
         color: disabled ? "var(--muted)" : active ? "white" : "var(--foreground)",

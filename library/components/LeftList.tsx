@@ -48,6 +48,7 @@ import { searchCatalogFuzzy } from "@library/lib/catalog-search";
 import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
 import { FONT_MONO } from "@/lib/font-stacks";
 import LibrarySearchInput from "./LibrarySearchInput";
+import { iconHint } from "@/components/Hint";
 
 // The header grid and every row consume ONE inherited template var
 // (COL_TEMPLATE_VAR / COL_TEMPLATE_REF from list-columns.ts), defined on the
@@ -725,7 +726,7 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
         if (draggingRef.current) return;
         onSort(col);
       }}
-      title={`Sort by ${label} · drag to reorder`}
+      data-hint={`Sort by ${label} · drag to reorder`}
       style={{
         // Selected-column highlight: a taupe fill (not just text colour) with
         // AA-safe ink text when this column is the active sort (F#12 tokens).
@@ -889,8 +890,10 @@ function FacetSubBar({
               if (draggingRef.current) return;
               onSortFacet(facet);
             }}
-            title={`Sort by ${facet} (best first; click again to reverse) · drag to reorder`}
-            aria-label={`Sort by ${facet}`}
+            {...iconHint({
+              label: `Sort by ${facet}`,
+              hint: `Sort by ${facet} (best first; click again to reverse) · drag to reorder`,
+            })}
             aria-pressed={active}
             style={{
               display: "flex",

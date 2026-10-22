@@ -534,7 +534,7 @@ function ReviewToggleButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={title}
+      data-hint={title}
       aria-pressed={ariaPressed}
       style={{
         background: pressed ? "var(--control-selected)" : "transparent",

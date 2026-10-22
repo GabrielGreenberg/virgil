@@ -127,7 +127,7 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
           ...extraStyle,
         }}
         onClick={onClick}
-        title={title}
+        data-hint={title}
       >
         <FolderTabChrome
           variant="library"

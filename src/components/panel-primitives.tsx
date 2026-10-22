@@ -1601,7 +1601,7 @@ export interface EditableCardProps {
    *  {@link UNANCHORED_CARD_CLASS} dashed/opacity parked cue). Additive: default
    *  `undefined` leaves every existing card's chrome unchanged. */
   extraCardClass?: string;
-  /** Native `title` (hover tooltip) forwarded to the card root. The parked
+  /** Hover tooltip forwarded to the card root (as `data-hint`). The parked
    *  cue's own hint comes from {@link unanchored}, not from here. */
   title?: string;
   /** The deliberately-parked rest state — forwarded verbatim to `PanelCard`.
@@ -3219,7 +3219,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // card via `[data-omni-entry]:not([data-selected])` without depending on
       // class internals. Present-only when selected (CSS matches on presence).
       data-selected={selected ? "" : undefined}
-      title={title}
+      // The card's hover tooltip rides the hint engine, never a native
+      // `title` (STYLE_GUIDE → Hints; native-title-tooltip-census).
+      data-hint={title}
       // The card ROOT is a keyboard target — `tabIndex={selected ? 0 : -1}`,
       // threaded by `EditableCard` or derived above from an armed trash (task
       // 976) — and PanelCard renders it, so

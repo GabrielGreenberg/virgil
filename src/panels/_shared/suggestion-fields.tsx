@@ -540,11 +540,11 @@ export function PendingActionRow({
             variant="warm"
             size="sm"
             disabled={cannotProduce || blockedReason !== null}
-            title={blockedReason ?? undefined}
             data-hint={
-              isAi
+              blockedReason ??
+              (isAi
                 ? "Insert the suggestion as a new paragraph below"
-                : undefined
+                : undefined)
             }
             data-hint-pos={isAi ? "above" : undefined}
             onMouseDown={isAi ? (e) => e.stopPropagation() : undefined}
@@ -598,7 +598,7 @@ export function PendingActionRow({
           variant="warm"
           size="sm"
           disabled={!controller || acceptBlocked !== null}
-          title={acceptBlocked ?? undefined}
+          data-hint={acceptBlocked ?? undefined}
           onClick={(e) => {
             e.stopPropagation();
             controller?.accept(family, id);
