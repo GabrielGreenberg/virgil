@@ -61,10 +61,8 @@ export const PERMITTED_HAND_ROLLED_ANCHORED_SURFACES: Record<string, string> = {
     "NOT AN ANCHORED MENU — a draggable/resizable float shell (the tool-window taxonomy: `SystemDialog variant=\"draggable\"` / FLOAT_Z tiers), whose position is the user's own drag state persisted per float, not a placement solved against a trigger. It measures rects to CLAMP a dragged window inside the viewport. Nothing about the menu primitive fits it; it would have to grow a drag engine to accept one.",
   "src/components/Marginalia.tsx::MarkerButton":
     "NOT AN ANCHORED MENU — an in-text marginalia marker. It is pod-relative chrome positioned by the marginalia registry's layout pass (the scroll-anchor law's branch (a)), not a popup solved against a trigger; the rect read is that measurement.",
-  "src/components/editor-layout/split-editor-panes.tsx::SplitEditorPanes":
-    "NOT AN ANCHORED MENU — a pane layout. Positioned dividers + a shadow token + the pane-resize engine's rect reads; it opens no popup at all.",
   "src/components/editor-layout/split-with-code.tsx::SplitWithCode":
-    "NOT AN ANCHORED MENU — the editor/code split, same shape as its sibling above (gutter chrome + engine rect reads).",
+    "NOT AN ANCHORED MENU — the editor/code split: gutter chrome + the pane-resize engine's rect reads. (Its sibling `SplitEditorPanes` left this list when task 1241 deleted the absolutely-positioned hit-target child that tripped the positioned-surface signal.)",
   "src/components/stack/StackThumbnail.tsx::StackThumbnail":
     "NOT AN ANCHORED MENU — a stack card thumbnail: absolutely-positioned card chrome with a shadow, whose rect read feeds the stack's drag/hit-test, not a placement.",
   "library/components/LeftListRow.tsx::LeftListRow":
