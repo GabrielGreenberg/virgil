@@ -1788,12 +1788,13 @@ drifted before it had an owner:
   `MIN_GAP`. A stacking bug is what un-owned values look like.
 - **Hit area ≠ painted band, and the area that counts is the REACHABLE one.**
   The seam below the last docked band is also that band's only resize handle,
-  so thinning the paint widened the invisible hit extension in lockstep. That
-  extension is deliberately asymmetric (−6 / −8 around a 6px strip): the pod
-  sits directly above at z-1001 and swallows the upward half whole, so what
-  the user can grab is `seam + bottom` = the 14px the 10px strip offered at
-  ±4. Measuring the nominal box instead is how this shipped a 14 → 12 grab
-  for an hour with a green suite. A gesture never pays for a look.
+  so thinning the paint must not thin the grab. Its grab is deliberately
+  biased downward (`drag-gap-grab-end`, the shared `--gutter-grab` — see
+  "Resize gutters"): the pod sits directly above at z-1001 and swallows any
+  upward reach whole, so the whole grab hangs below the edge and the reachable
+  target IS the token. Measuring the nominal box instead is how this once
+  shipped a 14 → 12 grab for an hour with a green suite. A gesture never pays
+  for a look.
 
 A **fade** is not a seam and does not get the token: the ramp at the
 scrollport edge exists so a card dissolves rather than hard-clips where the
@@ -1928,8 +1929,8 @@ pill's rest background is `--edge-hover`, but it rests at `opacity: 0`, so
 the color a user ever *sees* is `--drag-highlight` on both hover and drag;
 what distinguishes them is SIZE, growing along the pill's long axis
 (28→40→44px). It's orientation-agnostic from one rule set in `globals.css`:
-a horizontal gutter gets a wide-short pill on `::before`; a vertical gutter
-a tall-thin pill on `::after` (its `::before` is the hit-area extension).
+a horizontal gutter gets a wide-short pill, a vertical gutter a tall-thin
+one, both on `::after`.
 Don't hand-roll a resizer's look — put `band-grip` on a `.drag-gap-{h,v}`
 element and spread the `usePaneResizeHandle` props on it (the pane-resize
 engine at `src/lib/pane-resize/` owns every divider gesture in both silos
@@ -1945,6 +1946,19 @@ that seam (see "One question per token" above; `pod-seam-contract.test.ts`
 pins its consumers). The code splitter's drag math
 needs the width as a number, so `GAP_WIDTH_PX` is pinned to the token by
 `split-with-code-gutter.test.ts`.
+**The grab is the gutter's, not the site's (task 1241).** A gutter PAINTS at
+its token but GRABS at no less than **`--gutter-grab`** (18px — what every
+editor gutter already offered, so none shrank; the Library's resizers rose to
+it from 6). One rule set owns it — `.drag-gap-{h,v}.band-grip::before`, an
+invisible box centred on the gutter whose percent insets read the token, so it
+fits any painted thickness. Where one neighbour's edge is not free to take, the
+SAME token is carried entirely past the other edge with a bias modifier,
+`drag-gap-grab-end` (toward right/bottom) or `drag-gap-grab-start` — the
+bottom seam (the pod above eats any upward reach), the panel↔editor gutter
+(reaches into the editor, not back over the panel), and the code splitter and
+Library column gutters (the pane to their left keeps its scrollbar at that
+edge). Never a React hit-target child, never a pixel literal at the site:
+`gutter-grab-census.test.ts` fails both.
 The stacked-panel bands additionally carry `.band-grip-occlude` for an
 opaque `--background` backing (they occlude omni cards showing through);
 **no other gutter opts in** — every other resizer stays transparent at rest.

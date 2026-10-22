@@ -1039,8 +1039,11 @@ export default function LibraryView({
                   </>
                 )}
               </div>
+              {/* Both column gutters grab RIGHTWARD (`drag-gap-grab-end`,
+                  --gutter-grab, task 1241): the pane to their left keeps
+                  its scrollbar at the edge the gutter meets. */}
               <div
-                className="drag-gap drag-gap-v band-grip"
+                className="drag-gap drag-gap-v drag-gap-grab-end band-grip"
                 {...navResizeHandle}
               />
             </>
@@ -1058,7 +1061,7 @@ export default function LibraryView({
             {renderPanel("left")}
           </div>
           <div
-            className="drag-gap drag-gap-v band-grip"
+            className="drag-gap drag-gap-v drag-gap-grab-end band-grip"
             {...listResizeHandle}
           />
           <div

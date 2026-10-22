@@ -49,23 +49,30 @@ describe("resize-gutter grip — no legacy hairline layer", () => {
 });
 
 describe("resize-gutter grip — orientation symmetry", () => {
-  // Horizontal pill lives on ::before, vertical on ::after; each orientation
-  // must carry the SAME state set (base + hover + dragging) or they drift.
+  // The pill lives on ::after in BOTH orientations (task 1241 — before it the
+  // horizontal pill sat on ::before); each orientation must carry the SAME
+  // state set (base + hover + dragging) or they drift.
   it.each([
-    ["base", ".drag-gap-h.band-grip::before", ".drag-gap-v.band-grip::after"],
-    ["hover", ".drag-gap-h.band-grip:hover::before", ".drag-gap-v.band-grip:hover::after"],
-    ["dragging", ".drag-gap-h.band-grip.dragging::before", ".drag-gap-v.band-grip.dragging::after"],
+    ["base", ".drag-gap-h.band-grip::after", ".drag-gap-v.band-grip::after"],
+    ["hover", ".drag-gap-h.band-grip:hover::after", ".drag-gap-v.band-grip:hover::after"],
+    ["dragging", ".drag-gap-h.band-grip.dragging::after", ".drag-gap-v.band-grip.dragging::after"],
   ])("defines the %s pill rule for both orientations", (_state, horizontal, vertical) => {
     expect(hasRule(horizontal), `missing horizontal ${horizontal}`).toBe(true);
     expect(hasRule(vertical), `missing vertical ${vertical}`).toBe(true);
   });
 
-  it.each([
-    // Each orientation claims exactly one pseudo for the pill; the OTHER pseudo
-    // must never carry a band-grip rule (that cross-claim is what leaked).
-    ".drag-gap-h.band-grip::after",
-    ".drag-gap-v.band-grip::before",
-  ])("does not cross-claim the other pseudo-element (%s)", (sel) => {
-    expect(hasRule(sel), `unexpected cross-orientation pill rule ${sel}`).toBe(false);
+  it("the grab pseudo (::before) never paints — no pill paint crosses onto it", () => {
+    // ::before is the invisible grab on both orientations. A pill property on
+    // it (the cross-claim that once leaked a hairline) would paint the grab.
+    const re = /(\.drag-gap[^,{}]*::before)[^{}]*\{([^}]*)\}/g;
+    const offenders: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(globals))) {
+      const body = m[2];
+      if (/border-radius|opacity|--edge-hover|--drag-highlight/.test(body)) offenders.push(m[1].trim());
+      const bg = /background:\s*([^;]+);/.exec(body)?.[1].trim();
+      if (bg && bg !== "transparent") offenders.push(m[1].trim());
+    }
+    expect(offenders, `grab pseudo paints: ${offenders.join(", ")}`).toEqual([]);
   });
 });

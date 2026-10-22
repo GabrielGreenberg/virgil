@@ -124,15 +124,8 @@ export function SplitEditorPanes({
       </div>
       {/* Drag gap — canvas shows between the two editor pods */}
       <div className="relative shrink-0 z-10" style={{ height: 'var(--pod-gap)' }}>
-        <div className="drag-gap drag-gap-h band-grip w-full h-full" {...handle}>
-          {/* Wider invisible hit target — a CHILD of the handle so a grab
-              here bubbles to the captured element and the `.dragging` grip
-              chrome lands on the visible gap. */}
-          <div
-            className="absolute inset-x-0 cursor-row-resize"
-            style={{ top: -4, bottom: -4, background: "transparent" }}
-          />
-        </div>
+        {/* Grab: the shared `.band-grip::before` rule at --gutter-grab. */}
+        <div className="drag-gap drag-gap-h band-grip w-full h-full" {...handle} />
       </div>
       {/* Bottom pane — own white pod */}
       <div
