@@ -82,6 +82,7 @@ from _common import (
     text_arg,
     title_fields,
 )
+from list_requests import _CardIndex, project_task_row
 
 # ---------------------------------------------------------------------------
 # The create-able CardKind set.
@@ -551,6 +552,8 @@ class Ctx:
     synthesize: bool
     is_virtual: bool = False
     request: dict | None = None  # the Workflow-A ai-requests.json row, when one was read
+    request_text: str | None = None  # …and its LIVE ask (`project_task_row`, task 1232)
+    stored_para: str | None = None   # …and the row's STORED paragraphIds[0] (a snapshot)
     linked: dict | None = None   # the source card {panel, cardId} the Task answers, if any
     range_anchor: dict | None = None  # the Mode-B anchor object, when --range pins a span
     range_edit: dict | None = None    # …and its wrap-span `.tex` edit (op.anchorEdit)
@@ -635,16 +638,23 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
                 "requestId": request_id, "cardId": req.get("resultId")}
     linked = req.get("linkedTo") if isinstance(req.get("linkedTo"), dict) else None
     _refuse_create_on_flagged_card(a.kind, request_id, linked)
+    # The Task as the DRAIN shows it — text / paragraphIds / selectedText read
+    # through the linked card, not the bridge-time snapshot (task 1232) — so
+    # the ask a proposal stamps and the paragraph it lands at are the ones the
+    # responder was handed.
+    live = project_task_row(_CardIndex(doc), req)
     if not anchor:
-        pids = req.get("paragraphIds") or []
+        pids = live["paragraphIds"]
         if not pids:
             die("request has no paragraphIds; cannot anchor the card (pass --anchor)")
         anchor = pids[0]
     if safety is None and req.get("safetyLevel") is not None:
         safety = req.get("safetyLevel")
+    stored = req.get("paragraphIds") or []
     return Ctx(request_id=request_id, anchor=anchor, safety=safety,
-               selected_text=req.get("selectedText"), synthesize=False,
-               request=req, linked=linked)
+               selected_text=live["selectedText"], synthesize=False,
+               request=req, request_text=live["text"],
+               stored_para=stored[0] if stored else None, linked=linked)
 
 
 # The kinds a span can pin (task 1197): every sidecar-anchored card the app can
@@ -694,12 +704,19 @@ def _resolve_anchor(doc: Path, a: argparse.Namespace, ctx: "Ctx", explicit_ancho
       3. Else Mode A at the resolved paragraph."""
     src_anchor = _first_anchor(_source_card(doc, ctx.linked))
     src_para = src_anchor["textObjectIds"][0] if src_anchor else None
+    # "Did the caller aim elsewhere?" — not when `--anchor` names the Task's OWN
+    # paragraph: the source card's live one, or the row's stored snapshot of it
+    # (a responder handed a pre-move row; task 1232). Either way the Task meant
+    # its card, and the card now lives at `src_para`.
+    own = {p for p in (src_para, ctx.stored_para) if p}
     if a.range is not None:
+        if explicit_anchor in own and src_para:
+            explicit_anchor = src_para
         anchor_uuid = explicit_anchor or src_para or ctx.anchor
         _require_anchor(doc, anchor_uuid)
         _resolve_range(doc, a, anchor_uuid, ctx)
         anchor_obj = ctx.range_anchor
-    elif src_anchor and (not explicit_anchor or explicit_anchor == src_para):
+    elif src_anchor and (not explicit_anchor or explicit_anchor in own):
         anchor_obj = {k: v for k, v in copy.deepcopy(src_anchor).items() if k != "margin"}
         if anchor_obj.get("targetKind") == "linkedRange" or anchor_obj.get("textRange"):
             if a.kind in RANGE_KINDS:
@@ -955,7 +972,7 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
     # A synthesized Task's id was minted by the resolver, so the card points back at it.
     request_id = ctx.request_id
     if ctx.request is not None:
-        instructions = ctx.request.get("text") or ""
+        instructions = ctx.request_text or ""
     elif ctx.is_virtual:
         instructions = _plain_text(source)
     else:

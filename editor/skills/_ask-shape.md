@@ -96,9 +96,12 @@ documents a call that dies. Three tiers:
   refuses outright with *"--anchor \<uuid\> is required for a virtual
   (card-flag) request id"*. So a re-route documented without the flag is
   a call that dies on precisely the ids a responder gets handed most
-  often. For a REAL id the flag is a no-op — `create_card.py` would have
-  applied `paragraphIds[0]` itself — so this is **one call shape, not a
-  branch**, which is one less thing to get wrong. If the row carries no
+  often. For a REAL id the flag is a no-op — `create_card.py` reads the
+  Task through the SAME live projection the drain emits
+  (`list_requests.project_task_row`, task 1232), so it would have applied
+  that `paragraphIds[0]` itself, and an answer still inherits a moved
+  card's span — so this is **one call shape, not a branch**, which is one
+  less thing to get wrong. If the row carries no
   `paragraphIds` at all, HALT and say so; do not guess an anchor from the
   request text.
 - **Tier 2 — a builder with a PREREQUISITE YOU DO NOT HOLD** (`citation`):
