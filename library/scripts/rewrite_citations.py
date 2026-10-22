@@ -698,10 +698,27 @@ def rewrite_possessive(
     return new_body + tail, count
 
 
-_SUPPORTED_STYLES = (
-    "apa", "chicago", "bracket-key", "bracket-numeric",
-    "bracket-author-year", "author-year-paren", "bracket-locator",
-)
+# The ONE style vocabulary (task 1228): name → the inline shape that style's
+# rewriter matches. The CLI's accepted `--style=` values, its usage line and
+# `--list-styles` all read this table, and clean-bibliography.md's "Batch tool"
+# bullets are `--list-styles` verbatim (pinned by
+# tests/test_rewrite_citations_styles.py) — so a skill can no longer describe
+# one style with another's shape.
+STYLES: dict[str, str] = {
+    "chicago": "(Author Year) / Author Year — space separator (the default)",
+    "apa": "(Author, Year) / Author, Year — comma separator",
+    "author-year-paren": "Author (Year) — humanities textual, year in parens",
+    "bracket-key": "[KEY] label, e.g. [GG01] (SIGGRAPH/CS)",
+    "bracket-numeric": "[N], [N, M], [N-M] (CS theses, Vancouver)",
+    "bracket-author-year": "[Author Year] / [A1 Y1; A2 Y2] (SIGGRAPH/Eurographics)",
+    "bracket-locator": "Author [Year] / Author [Year: page] (Noûs/Wiley humanities)",
+}
+_SUPPORTED_STYLES = tuple(STYLES)
+
+
+def style_lines() -> list[str]:
+    """`--list-styles` output: one `--style=<name> — <shape>` line per style."""
+    return [f"--style={name} — {shape}" for name, shape in STYLES.items()]
 
 
 def rewrite_multi_year_same_author(
@@ -802,13 +819,25 @@ def main() -> int:
             also_possessive = True
         elif a == "--fail-on-unbalanced":
             fail_on_unbalanced = True
+        elif a == "--list-styles":
+            print("\n".join(style_lines()))
+            return 0
         else:
             positional.append(a)
+    if style not in STYLES:
+        # An unknown style used to fall through to the chicago rewriter and
+        # "succeed" with whatever space-separated matches it found.
+        print(
+            f"rewrite_citations.py: unknown --style={style!r}; known styles:\n  "
+            + "\n  ".join(style_lines()),
+            file=sys.stderr,
+        )
+        return 2
     if len(positional) != 2:
         print(
             "usage: rewrite_citations.py <main.tex> <references.bib> "
             f"[--style={'|'.join(_SUPPORTED_STYLES)}] "
-            "[--also-possessive] [--fail-on-unbalanced]",
+            "[--also-possessive] [--fail-on-unbalanced] [--list-styles]",
             file=sys.stderr,
         )
         return 2

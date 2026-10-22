@@ -483,10 +483,13 @@ Library reader. Skip the rest of §3g for numeric-style papers.
 
 Citation styles vary per discipline:
 
-- **Author-year, Chicago/MLA** — space-separator: `(Author Year)`.
-  Default; pass `--style=chicago` or omit.
-- **Author-year, APA** (psychology, cognitive science) —
-  comma-separator: `(Author, Year)`. Pass `--style=apa`.
+- **Author-year, Chicago/MLA** — pass `--style=chicago` or omit.
+- **Author-year, APA** (psychology, cognitive science) — pass
+  `--style=apa`.
+- **Author-year, humanities textual** — pass `--style=author-year-paren`.
+
+(The shape each of these matches is stated once, in the Batch-tool
+list below.)
 - **Numeric / Vancouver** (biology, medicine) — bare integers in
   the body. Leave as prose; emit `numeric-citation-style:` warning
   (see above).
@@ -525,15 +528,24 @@ python3 .virgil/scripts/library/rewrite_citations.py \
     papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/references.bib
 ```
 
-**Default style is `chicago`** (no flag needed). Other styles:
+**Default style is `chicago`** (no flag needed). Each style and the
+inline shape it matches — this list is the script's own
+`rewrite_citations.py --list-styles` output, verbatim (a test pins it;
+an unknown `--style=` is refused):
 
-- `--style=apa` for `Author (Year)` parenthetical-year inline.
-- `--style=bracket-key` for `[KEY]` (SIGGRAPH/CS).
-- `--style=bracket-numeric` for `[N]` (CS theses).
-- `--style=bracket-author-year` for `[Author Year]` SIGGRAPH /
-  Eurographics inline.
-- `--style=author-year-paren` for humanities `Author (Year)`.
-- `--style=bracket-locator` for Lee-style `Author [Year: page]`.
+<!-- styles:begin -->
+- `--style=chicago — (Author Year) / Author Year — space separator (the default)`
+- `--style=apa — (Author, Year) / Author, Year — comma separator`
+- `--style=author-year-paren — Author (Year) — humanities textual, year in parens`
+- `--style=bracket-key — [KEY] label, e.g. [GG01] (SIGGRAPH/CS)`
+- `--style=bracket-numeric — [N], [N, M], [N-M] (CS theses, Vancouver)`
+- `--style=bracket-author-year — [Author Year] / [A1 Y1; A2 Y2] (SIGGRAPH/Eurographics)`
+- `--style=bracket-locator — Author [Year] / Author [Year: page] (Noûs/Wiley humanities)`
+<!-- styles:end -->
+
+Pick by the shape the body actually uses: a comma between author and
+year is `apa`; a year alone in parentheses after a textual author
+(`Lewis (1979)`) is `author-year-paren`, not `apa`.
 
 **Always add `--also-possessive`** to rewrite `Author's Year` forms
 to `\citeauthor{key}'s \citeyearpar{key}`.
