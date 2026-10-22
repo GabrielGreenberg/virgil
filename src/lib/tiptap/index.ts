@@ -42,6 +42,7 @@ export { TabIndent } from "./tab-indent";
 export { VirgilListKeymap } from "./list-keymap";
 export { TextColor } from "./text-color";
 export { SmallCaps, MarkSpellingAttrs } from "./small-caps";
+export { Subscript, Superscript } from "./script-marks";
 export { TexBlock, freshTexBlockAttrs } from "./tex-block";
 export { ForestBlock } from "./forest-block";
 export { freshForestSource } from "@/lib/forest/grammar";

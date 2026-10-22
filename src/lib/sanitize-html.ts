@@ -32,7 +32,7 @@
  *  annotations saved before it still carry. */
 const DEFAULT_ALLOWED_TAGS = new Set([
   "p", "div", "br", "span",
-  "b", "strong", "i", "em", "u", "s", "strike", "del", "code",
+  "b", "strong", "i", "em", "u", "s", "strike", "del", "code", "sub", "sup",
   "ul", "ol", "li",
 ]);
 

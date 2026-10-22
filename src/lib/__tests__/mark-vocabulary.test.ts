@@ -175,6 +175,44 @@ describe("small caps — `\\textsc{…}` is a modeled mark", () => {
 
 // ── 2 · strike (content loss) ────────────────────────────────────────────────
 
+// ── 1b · text-mode sub/superscript (task 1239) ───────────────────────────────
+
+describe("`\\textsubscript` / `\\textsuperscript` are modeled marks", () => {
+  it("parse to the subscript/superscript marks (not the raw-LaTeX carrier)", () => {
+    const marks = marksIn(parseLatex(doc("realism\\textsubscript{2} and 1\\textsuperscript{st}.")));
+    expect(marks.has("subscript")).toBe(true);
+    expect(marks.has("superscript")).toBe(true);
+    expect(marks.has("latexCommand")).toBe(false);
+  });
+
+  it("round-trip byte-identically — main and card/footnote, nested included", () => {
+    for (const input of [
+      "realism\\textsubscript{2} b.",
+      "the 1\\textsuperscript{st} c.",
+      "x\\textsubscript{\\textsuperscript{y}} \\emph{a\\textsubscript{1}} d.",
+    ]) {
+      mainStable(input);
+      forkStable(input);
+    }
+  });
+
+  it("a footnote holding `\\textsubscript{2}` MOUNTS in its card body", () => {
+    const json = richLatexToJson("realism\\textsubscript{2}");
+    expect(canMountInCardBody(json, "card").ok).toBe(true);
+    expect(canMountInCardBody(json, "excerpt").ok).toBe(true);
+  });
+
+  it("render as <sub>/<sup> and paste back from them", () => {
+    const ed = mountMain("realism\\textsubscript{2} 1\\textsuperscript{st}");
+    expect(ed.view.dom.querySelector("sub")?.textContent).toBe("2");
+    expect(ed.view.dom.querySelector("sup")?.textContent).toBe("st");
+    const el = document.createElement("div");
+    el.innerHTML = "<p>H<sub>2</sub>O x<sup>n</sup></p>";
+    const parsed = PMDOMParser.fromSchema(ed.schema).parse(el);
+    expect(marksIn(parsed.toJSON())).toEqual(new Set(["subscript", "superscript"]));
+  });
+});
+
 describe("strike — no longer dropped on save", () => {
   it("a TYPED strike serializes as `\\sout{…}`, declares ulem [normalem], and re-parses to strike", () => {
     const ed = mountMain("Alpha beta.");

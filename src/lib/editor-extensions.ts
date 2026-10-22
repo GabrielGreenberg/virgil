@@ -98,6 +98,8 @@ import {
   PgMarkChip,
   TextColor,
   SmallCaps,
+  Subscript,
+  Superscript,
   MarkSpellingAttrs,
   TexBlock,
   ForestBlock,
@@ -1870,6 +1872,8 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // scopes register them too (`buildBorrowedAtomSchema`), because the
     // footnote reader produces them and a mark a schema lacks blanks the body.
     SmallCaps,
+    Subscript,
+    Superscript,
     MarkSpellingAttrs,
     // Per-surface so the atom's single-node-float selection chrome stays
     // MAIN-only (R2). The click→edit bridge (`virgil-math-click` → MathPopover
