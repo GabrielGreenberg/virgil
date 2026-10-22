@@ -250,7 +250,9 @@ just decides the inputs and invokes it.
   card's own paragraph — inherits the card's live anchor, span and all, with no
   new `\vlid` pair in the `.tex` (task 1230). An `--anchor` at a different
   paragraph lands Mode A there; a kind that cannot hold a span falls back to
-  the paragraph.
+  the paragraph — and so does a `suggestion` whose `--original` lies outside the
+  inherited span (the proposal is about other words; the result says
+  `anchorDegraded: "original outside inherited span"`, task 1235).
 
 - **`aiOriginRequestId`** — a sidecar-only carded card (`note` / `todo` /
   `report` / `report-request`) created from a **real** Task is stamped with an
