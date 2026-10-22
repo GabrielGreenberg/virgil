@@ -70,8 +70,11 @@ from each skill, never restated in a skill's own words (task 1045).
    the write: `create_card.py` returns `{"noop": true, "reason": "request
    already terminal"}` for a terminal Task and `{"noop": true, "reason":
    "request already answered"}` when a proposal carrying
-   `aiOriginRequestId == <requestId>` is already in its panel, and
-   `apply_response.py` refuses a landing on a terminal Task. A `noop: true`
+   `aiOriginRequestId == <requestId>` is already in its panel (or, for a
+   `virtual:<panel>:<cardId>` id, when that source card's `aiRequest` flag is
+   already down — the flag IS a virtual request's state), and
+   `apply_response.py` refuses a landing on a terminal Task or on a virtual id
+   whose flag is already down. A `noop: true`
    result gets the same `Skipped … (already answered).` reply — no
    hand-rolled card-existence scan first.
 3. **`Skipped` means nothing happened.** Use it only for (1)/(2). A path that
