@@ -11,6 +11,7 @@ import {
 } from "@library/lib/bib-edit";
 import { bibFieldDisplay, reconstructBibtex } from "@/lib/bib-parser";
 import { Button } from "@/components/Button";
+import { Chevron } from "@/components/Chevron";
 import { Textarea } from "@/components/field-primitives";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
 import { isCommitEnter } from "@/lib/key-intent";
@@ -147,7 +148,11 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
           onClick={() => setExpanded((x) => !x)}
           aria-expanded={expanded}
           aria-label={expanded ? "Collapse bib entry" : "Expand bib entry"}
+          className="focus-ring"
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 2,
             background: "transparent",
             border: "1px solid var(--border-light)",
             borderRadius: "var(--radius-sm)",
@@ -159,7 +164,8 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
             flexShrink: 0,
           }}
         >
-          {expanded ? "▾ less" : "▸ more"}
+          <Chevron expanded={expanded} />
+          {expanded ? "less" : "more"}
         </button>
       </div>
 

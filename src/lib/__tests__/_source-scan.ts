@@ -835,3 +835,168 @@ export function localFunctions(code: string): Map<string, string> {
   }
   return fns;
 }
+
+// ── Same-file string constants (task 1237: one home) ────────────────────────
+// A guard that reads a JSX tag's literal text is blind to whatever the tag
+// takes from a variable: `className={`ml-auto ${GHOST_BTN}`}` paints a ghost
+// pill, but the tag SAYS only `GHOST_BTN`. `icon-button-a11y-guardrail` grew
+// three private answers to that (a SCREAMING_CASE regex for leg E, a
+// `${NAME}` expander for the focus-indicator leg, nothing for legs C and F);
+// they live here now as one, and a census resolves a tag through
+// `resolveConsts(tag, stringConsts(src))` before it asks its question.
+// Pass COMMENT-STRIPPED source (strings kept).
+
+/** Index just past the string/template literal opening at `i`. Template
+ *  `${…}` holes are skipped brace-aware, so a nested literal cannot end it. */
+function literalEnd(s: string, i: number): number {
+  const q = s[i];
+  let j = i + 1;
+  while (j < s.length) {
+    const c = s[j];
+    if (c === "\\") {
+      j += 2;
+      continue;
+    }
+    if (c === q) return j + 1;
+    if (q === "`" && c === "$" && s[j + 1] === "{") {
+      j = holeEnd(s, j + 1);
+      if (j < 0) return -1;
+      continue;
+    }
+    j++;
+  }
+  return -1;
+}
+
+/** Index just past the `}` closing the `{` at `i`, skipping literals. */
+function holeEnd(s: string, i: number): number {
+  let depth = 0;
+  let j = i;
+  while (j < s.length) {
+    const c = s[j];
+    if (c === '"' || c === "'" || c === "`") {
+      j = literalEnd(s, j);
+      if (j < 0) return -1;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return j + 1;
+    j++;
+  }
+  return -1;
+}
+
+/** `NAME` → its initializer text, for every `const NAME = …;` in the file
+ *  (module or function scope — a function-scope `stateClass` counts too). */
+export function constBindings(src: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const decl = /(?:^|[\n;{])[ \t]*(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[^=;]*)?=[ \t]*/g;
+  let m: RegExpExecArray | null;
+  while ((m = decl.exec(src))) {
+    const start = m.index + m[0].length;
+    let j = start;
+    let depth = 0;
+    while (j < src.length) {
+      const c = src[j];
+      if (c === '"' || c === "'" || c === "`") {
+        const end = literalEnd(src, j);
+        if (end < 0) break;
+        j = end;
+        continue;
+      } else if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") depth--;
+      else if (c === ";" && depth <= 0) break;
+      j++;
+    }
+    out.set(m[1], src.slice(start, j));
+  }
+  return out;
+}
+
+/** A value with `${NAME}` holes and a whole-value `NAME` resolved against
+ *  `consts`. Bounded at three passes so a self-referential binding cannot spin. */
+export function expandConsts(value: string, consts: ReadonlyMap<string, string>): string {
+  let out = value;
+  for (let pass = 0; pass < 3; pass++) {
+    const whole = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(out);
+    const before = out;
+    if (whole && consts.has(whole[1])) out = consts.get(whole[1])!;
+    out = out.replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (m, n: string) =>
+      consts.has(n) ? consts.get(n)! : m,
+    );
+    if (out === before || out.length > 20000) break;
+  }
+  return out;
+}
+
+/** The file's consts whose initializer is ONE string or template literal,
+ *  each with its own `${NAME}` holes already expanded — the only bindings a
+ *  tag can be resolved through without guessing what a call or a ternary
+ *  returns. */
+export function stringConsts(src: string): Map<string, string> {
+  const all = constBindings(src);
+  const out = new Map<string, string>();
+  for (const [name, init] of all) {
+    const t = init.trim();
+    if (!/^["'`]/.test(t) || literalEnd(t, 0) !== t.length) continue;
+    out.set(name, expandConsts(t, all));
+  }
+  return out;
+}
+
+/**
+ * `code` (a JSX tag, an expression) with every identifier that names a
+ * `consts` entry replaced by that entry's literal — `{GHOST_BTN}`,
+ * `` `ml-auto ${GHOST_BTN}` `` and `cx(BASE, x)` alike. Literal TEXT is never
+ * rewritten (a class word that happens to equal a const name stays a word);
+ * attribute names (`name=`), member accesses (`a.NAME`), hyphenated parts
+ * (`data-NAME`) and tag names (`<NAME`) are not references and are left alone.
+ */
+export function resolveConsts(code: string, consts: ReadonlyMap<string, string>): string {
+  if (consts.size === 0) return code;
+  const ident = /[A-Za-z_$][\w$]*/y;
+  const walk = (from: number, to: number): string => {
+    let out = "";
+    let i = from;
+    while (i < to) {
+      const c = code[i];
+      if (c === '"' || c === "'") {
+        let end = literalEnd(code, i);
+        if (end < 0 || end > to) end = to;
+        out += code.slice(i, end);
+        i = end;
+      } else if (c === "`") {
+        // Copy the text, recurse into each `${…}` hole.
+        let j = i + 1;
+        out += "`";
+        while (j < to && code[j] !== "`") {
+          if (code[j] === "\\") {
+            out += code.slice(j, j + 2);
+            j += 2;
+          } else if (code[j] === "$" && code[j + 1] === "{") {
+            const end = holeEnd(code, j + 1);
+            const close = end < 0 ? to : end;
+            out += "${" + walk(j + 2, close - 1) + "}";
+            j = close;
+          } else out += code[j++];
+        }
+        out += "`";
+        i = j + 1;
+      } else if (/[A-Za-z_$]/.test(c) && !/[\w$]/.test(code[i - 1] ?? "")) {
+        ident.lastIndex = i;
+        const name = ident.exec(code)![0];
+        const end = i + name.length;
+        const prev = code[i - 1] ?? "";
+        const rest = code.slice(end, end + 8);
+        const reference =
+          consts.has(name) &&
+          prev !== "." && prev !== "-" && prev !== "<" && prev !== "/" &&
+          !/^-|^\s*=(?!=)/.test(rest);
+        out += reference ? consts.get(name)! : name;
+        i = end;
+      } else out += code[i++];
+    }
+    return out;
+  };
+  return walk(0, code.length);
+}

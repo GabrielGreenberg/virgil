@@ -42,6 +42,7 @@ import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, hasArchiveB
 import type { CardBodySchemaScope } from "@/lib/tiptap-extensions";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
 import { useCardRestoreActions } from "@/panels/_shared/card-restore-actions";
+import { Chevron } from "./Chevron";
 import { DropChevrons } from "./icons/DropChevrons";
 import { JumpChevron } from "./icons/JumpChevron";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
@@ -2199,25 +2200,10 @@ export const PANEL = {
    here so the panel vocabulary still offers it. See `./Button`. */
 export { Button, type ButtonVariant, type ButtonSize, type ButtonProps } from "./Button";
 
-/* ── Chevron icon ─────────────────────────────────────────────────── */
-
-export function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`motion-safe:transition-transform duration-150 flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
-    >
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
+/* ── Chevron icon ── lives in its own leaf module (task 1237) so a surface
+   outside the panel vocabulary (the Library's bib chips) can draw THE
+   chevron without importing this module's storage-reaching graph. */
+export { Chevron } from "./Chevron";
 
 /* ── Pod disclosure ───────────────────────────────────────────────── */
 

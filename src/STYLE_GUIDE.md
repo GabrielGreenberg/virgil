@@ -2083,6 +2083,14 @@ BibCard's Submit borrowed a toggle's pressed fill — three "primaries" for one
 role. `<Button>` lives in its own leaf module, `@/components/Button` (it
 imports only React + the focus-indicator door, so rendering a button never
 drags the storage layer into a test); `panel-primitives` re-exports it.
+An exempted pill gives up the variant's `.focus-ring` along with it, so it
+must spell the ring itself (task 1237). The guards read each tag RESOLVED
+through the file's same-file string consts (`_source-scan`'s
+`resolveConsts`), so `` className={`ml-auto ${GHOST_BTN}`} `` is the pill its
+const paints, not an opaque name. Likewise every raw `<button aria-expanded>`
+is a disclosure: `<PodDisclosure>`, or named in `pod-disclosure-census.test.ts`
+with a reason, ringed, and drawing `<Chevron>` (the leaf
+`@/components/Chevron`) — never a "▾/▸" text glyph.
 
 **A disabled `<Button>` keeps its hint.** It keeps pointer events (hover
 and the press nudge are gated on `enabled:`), so the `title` / `data-hint`

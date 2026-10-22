@@ -35,6 +35,7 @@ import {
 import {
   BadgeOrphaned,
   CARD_THEMES,
+  Chevron,
   PrevNextCounter,
   ItemMenu,
   MenuDelete,
@@ -449,14 +450,14 @@ export function OmniBinPill({
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium"
+        className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium focus-ring"
         data-omni-bin-tone={tone}
         data-hint={expanded ? hintExpanded : hintCollapsed}
         aria-expanded={expanded}
       >
         <span aria-hidden="true">{glyph}</span>
         <span>{label}</span>
-        <span className="ml-auto" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+        <span className="ml-auto flex" aria-hidden="true"><Chevron expanded={expanded} /></span>
       </button>
       {expanded && (
         <div
