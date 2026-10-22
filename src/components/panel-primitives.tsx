@@ -3669,18 +3669,12 @@ export function BandDivider({
     >
       {/* Drag gap — the shared grip pill (band-grip): hidden at rest,
           `--drag-highlight` on hover/drag (STYLE_GUIDE "Resize gutters"). */}
+      {/* Its grab (wider than the painted gap) is the shared
+          `.band-grip::before` rule at --gutter-grab — task 1241. */}
       <div
         className="drag-gap drag-gap-h band-grip band-grip-occlude w-full h-full"
         {...handle}
-      >
-        {/* Wider invisible hit target — a CHILD of the handle so a grab here
-            bubbles to the captured element and the `.dragging` grip chrome
-            lands on the visible gap. */}
-        <div
-          className="absolute inset-x-0 cursor-row-resize"
-          style={{ top: -4, bottom: -4, background: "transparent" }}
-        />
-      </div>
+      />
     </div>
   );
 }

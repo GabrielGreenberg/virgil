@@ -195,6 +195,14 @@
      with no lower layer to read through, and it stays --pod-gap.
      See STYLE_GUIDE "Panels" → the seam rule. */
   --pod-seam: 6px;
+  /* ── The GRAB floor (SSOT, task 1241) ─────────────────────────────────
+     How wide a resize gutter's POINTER TARGET is, as distinct from how wide
+     it is painted (--pod-gap / --pod-seam / the Library's LIB_GRID_GUTTER).
+     18 = what every editor-side gutter already offered (a 10px gap ± 4), so
+     no editor grab shrinks; the Library's three resizers rise to it from 6,
+     the code splitter from 10, the bottom seam's reachable half from 14.
+     Read by the one grab rule set at `.drag-gap-{h,v}.band-grip::before`. */
+  --gutter-grab: 18px;
   --pod-border: 1px solid var(--border-light);
   --panel-border: none; /* borderless: panels are warm sheets; separation via --pod-gap + shadow. Also derived at runtime in preferences-tree.ts — keep both in sync. */
   --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
@@ -5790,50 +5798,84 @@ body.perf-contain .static-borrowed-text {
 /* Vertical drag gap (col-resize — between panels and editor) */
 .drag-gap-v {
   cursor: col-resize;
-  /* Raise above sibling editor-column so the ::before hit-area extension
-     (which visually overflows into the editor-column's padding) wins
-     pointer events instead of the editor-column div beneath it. */
-  z-index: 2;
-}
-/* The vertical band-grip pill lives on `::after`; only its horizontal centre
-   anchor lives here — kept at this low specificity so the toward-editor nudges
-   below can override it. All other geometry comes from
-   `.drag-gap-v.band-grip::after`. */
-.drag-gap-v::after {
-  left: 50%;
-}
-/* Panel wrappers add 4px padding on each side, so the real visual
-   gutter between panel pod and editor pod is 8px wider than the
-   drag-gap element itself. Nudge the ::after highlight toward the
-   editor so it lands at the actual center of that gutter, and extend
-   an invisible ::before hit area across the full gutter so users can
-   grab anywhere in that visible gap — not just the 10px centered strip.
-   The EditorScrollbar overlay lives inside the editor column's right
-   padding, so the blue line is free to sit at the editor-facing side
-   of the gap on both left and right (mirror-symmetric). */
-.drag-gap-v.drag-gap-toward-editor-right::after {
-  left: calc(50% + 4px);
-}
-.drag-gap-v.drag-gap-toward-editor-left::after {
-  left: calc(50% - 4px);
-}
-.drag-gap-v::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-.drag-gap-v.drag-gap-toward-editor-right::before {
-  left: 0;
-  right: -8px;
-}
-.drag-gap-v.drag-gap-toward-editor-left::before {
-  left: -8px;
-  right: 0;
 }
 /* Horizontal drag gap (row-resize — panel splits, editor splits) */
 .drag-gap-h {
   cursor: row-resize;
+}
+
+/* ── The GRAB (task 1241) — every engine gutter's pointer target, stated once ──
+   Hit area ≠ painted band (STYLE_GUIDE "Resize gutters"): a gutter PAINTS at
+   its own thickness (--pod-gap 10, --pod-seam 6, the Library's 6) but GRABS
+   at no less than --gutter-grab. Before, the grab was spelled per site — an
+   inline React hit child on three horizontal handles, a ::before on two
+   vertical variants, nothing at all on the code splitter (10px) or the three
+   Library resizers (6px) — so the same gesture asked for an 18px target in
+   one silo and a 6px one in the other.
+
+   `::before` is the grab on BOTH orientations; `::after` is the pill (below).
+   Percent insets resolve against the gutter itself (`.drag-gap` is the
+   containing block), so `(100% - grab) / 2` centres a grab-tall box on any
+   painted thickness, and `min(0px, …)` makes the token a FLOOR — a gutter
+   painted wider than it is never shrunk. z-index 2 lifts the handle (and so
+   its overflowing grab) above the sibling pane it reaches into. */
+.drag-gap.band-grip {
+  z-index: 2;
+}
+.drag-gap-h.band-grip::before,
+.drag-gap-v.band-grip::before {
+  content: '';
+  position: absolute;
+  background: transparent;
+}
+.drag-gap-h.band-grip::before {
+  left: 0;
+  right: 0;
+  top: min(0px, calc((100% - var(--gutter-grab)) / 2));
+  bottom: min(0px, calc((100% - var(--gutter-grab)) / 2));
+}
+.drag-gap-v.band-grip::before {
+  top: 0;
+  bottom: 0;
+  left: min(0px, calc((100% - var(--gutter-grab)) / 2));
+  right: min(0px, calc((100% - var(--gutter-grab)) / 2));
+}
+/* BIASED grab — the SAME token, carried entirely past one edge. A gutter
+   uses it where one neighbour's edge is not free to take: the bottom seam
+   (the docked pod at z-1001 directly above swallows any upward reach —
+   measured, task 329), the PanelColumn↔editor gutter (reaches into the
+   editor column, not back over the panel), and the code splitter + Library
+   column gutters (the pane to their LEFT carries its scrollbar at the edge
+   the gutter meets, so the grab reaches right instead). `-end` = toward
+   right/bottom, `-start` = toward left/top. */
+.drag-gap-h.band-grip.drag-gap-grab-end::before {
+  top: 0;
+  bottom: min(0px, calc(100% - var(--gutter-grab)));
+}
+.drag-gap-h.band-grip.drag-gap-grab-start::before {
+  top: min(0px, calc(100% - var(--gutter-grab)));
+  bottom: 0;
+}
+.drag-gap-v.band-grip.drag-gap-grab-end::before {
+  left: 0;
+  right: min(0px, calc(100% - var(--gutter-grab)));
+}
+.drag-gap-v.band-grip.drag-gap-grab-start::before {
+  left: min(0px, calc(100% - var(--gutter-grab)));
+  right: 0;
+}
+/* The PanelColumn↔editor gutter's pill nudge. Its rationale dates from the
+   first panel chrome (fcd5f7d9: "panel wrappers add 4px padding on each
+   side", so the visible gap was taken to be 8px wider than the handle, its
+   centre 4px toward the editor). The pod frame has been rebuilt since and the
+   nudge has NOT been re-measured against it (task 1241 — a preview
+   measurement is owed: is the pill centred in the gap as seen?). Kept as-is
+   until measured; it moves only the pill, never the grab. */
+.drag-gap-v.drag-gap-toward-editor-right.band-grip::after {
+  left: calc(50% + 4px);
+}
+.drag-gap-v.drag-gap-toward-editor-left.band-grip::after {
+  left: calc(50% - 4px);
 }
 
 /* ── Shared resize-gutter grip (`.band-grip`) — orientation-agnostic ──
@@ -5844,19 +5886,20 @@ body.perf-contain .static-borrowed-text {
    at rest (bug sweep #2: a persistent lozenge cluttered the quiet gutter) and
    fades in on hover/drag (`--drag-highlight` + growing on the LONG axis).
 
-   The pill lives on `::before` for horizontal gutters and on `::after` for
-   vertical ones — because `.drag-gap-v::before` is already claimed by the
-   gutter's invisible hit-area extension, so its `::after` holds the pill.
-   One shared rule set carries every property that doesn't depend on
-   orientation; the two per-orientation blocks
-   below differ only in which axis is the pill's long side + which axis widens.
+   The pill lives on `::after` in BOTH orientations; `::before` is the
+   gutter's invisible grab (the rule set above, task 1241 — before it, the
+   horizontal pill sat on `::before` and the vertical on `::after`, because
+   only the vertical gutters' grab had a pseudo). One shared rule set carries
+   every property that doesn't depend on orientation; the two per-orientation
+   blocks below differ only in which axis is the pill's long side + which
+   axis widens.
    Scoped to `.band-grip`, so bare drag-gap lines are unaffected.
 
    POSITIONING SEAM (task 813): the pill's centre ALONG the gutter reads
    `--band-grip-center` (default 50%). A gutter that hosts its own in-gap
    control at the midpoint (the code splitter's sync-arrows pill) sets it to
    clear that control, instead of the shared pill hiding underneath. */
-.drag-gap-h.band-grip::before,
+.drag-gap-h.band-grip::after,
 .drag-gap-v.band-grip::after {
   content: '';
   position: absolute;
@@ -5871,7 +5914,7 @@ body.perf-contain .static-borrowed-text {
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .drag-gap-h.band-grip::before,
+  .drag-gap-h.band-grip::after,
   .drag-gap-v.band-grip::after {
     transition: background 120ms ease, opacity 120ms ease, width 120ms ease,
       height 120ms ease;
@@ -5879,29 +5922,29 @@ body.perf-contain .static-borrowed-text {
 }
 
 /* Horizontal gutter — a wide-short pill (28×4) that widens along its WIDTH. */
-.drag-gap-h.band-grip::before {
+.drag-gap-h.band-grip::after {
   left: var(--band-grip-center, 50%);
   top: 50%;
   width: 28px;
   height: 4px;
   transform: translate(-50%, -50%);
 }
-.drag-gap-h.band-grip:hover::before {
+.drag-gap-h.band-grip:hover::after {
   background: var(--drag-highlight);
   opacity: 1;
   width: 40px;
 }
-.drag-gap-h.band-grip.dragging::before {
+.drag-gap-h.band-grip.dragging::after {
   background: var(--drag-highlight);
   opacity: 1;
   width: 44px;
 }
 
 /* Vertical gutter — the same pill rotated (4×28), widening along its HEIGHT.
-   Sets the pill's box (top/bottom/width/height/transform); `left` is left to
-   `.drag-gap-v::after` (50%) and the toward-editor nudge so the pill lands at
-   the true centre of the padded gutter. */
+   Its centre across the gutter is 50%, which the PanelColumn gutter's
+   toward-editor nudge (above, higher specificity) overrides. */
 .drag-gap-v.band-grip::after {
+  left: 50%;
   top: var(--band-grip-center, 50%);
   bottom: auto;
   width: 4px;

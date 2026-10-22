@@ -46,7 +46,7 @@ describe("code splitter — gutter width is --pod-gap", () => {
 describe("shared grip — centre-along-gutter seam", () => {
   it.each([
     [".drag-gap-v.band-grip::after", "top"],
-    [".drag-gap-h.band-grip::before", "left"],
+    [".drag-gap-h.band-grip::after", "left"],
   ])("%s centres via --band-grip-center (50%% fallback) on `%s`", (sel, prop) => {
     const re = new RegExp(`\\b${prop}:\\s*var\\(--band-grip-center,\\s*50%\\)`);
     expect(ruleBodies(sel).some((b) => re.test(b))).toBe(true);

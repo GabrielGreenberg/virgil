@@ -114,9 +114,8 @@ function ColumnEdgeFade({ side, edge }: {
  *  `[MIN_BAND_PX, frameH - aboveStackPx]`.
  *
  *  The strip is also the lone band's ONLY resize handle, so thinning the
- *  PAINT must not thin the GRAB: the invisible hit extension below widens in
- *  lockstep (±6 around a 6px strip = the same 18px target the 10px strip had
- *  at ±4). Hit area ≠ painted band. */
+ *  PAINT must not thin the GRAB: its grab is the shared --gutter-grab floor
+ *  (task 1241), not the 6px it paints. Hit area ≠ painted band. */
 function BottomEdgeHandle({
   bottomId,
   frameRef,
@@ -187,26 +186,16 @@ function BottomEdgeHandle({
       className="relative shrink-0 z-10"
       style={{ height: 'var(--pod-seam)', pointerEvents: 'auto' }}
     >
+      {/* The grab is the shared `.band-grip::before` rule at --gutter-grab,
+          BIASED downward (`drag-gap-grab-end`): only that half is reachable,
+          because the docked pod sits at z-1001 directly above and eats any
+          upward reach (measured — a probe one pixel above the band's bottom
+          edge hits the panel card list, not this). So the whole grab hangs
+          below the band's edge: the reachable target IS --gutter-grab. */}
       <div
-        className="drag-gap drag-gap-h band-grip band-grip-occlude w-full h-full"
+        className="drag-gap drag-gap-h drag-gap-grab-end band-grip band-grip-occlude w-full h-full"
         {...handle}
-      >
-        {/* Wider invisible hit target — a CHILD of the handle so a grab here
-            bubbles to the captured element and the `.dragging` grip chrome
-            lands on the visible gap. Thinning the paint must never thin the
-            grab, and the extension is ASYMMETRIC because only one half of it
-            is reachable: the docked pod sits at z-1001 directly above, so it
-            eats the upward extension entirely (measured — a probe one pixel
-            above the band's bottom edge hits the panel card list, not this).
-            What the user can actually grab is `seam + bottom`, so the bottom
-            carries the whole compensation: 6 + 8 = the 14px the pre-329 strip
-            offered at 10 + 4. The top stays at the symmetric −6 for the case
-            the occluder is absent. */}
-        <div
-          className="absolute inset-x-0 cursor-row-resize"
-          style={{ top: -6, bottom: -8, background: 'transparent' }}
-        />
-      </div>
+      />
       {/* No fade below the seam. A card in the omni gap under a docked pod is
           not being clipped by anything — it sits in open canvas — so a second
           field-colored veil over its top edge separated nothing and only
@@ -625,7 +614,10 @@ export function PanelColumn({
         </div>
       )}
       <div
-        className={`drag-gap drag-gap-v band-grip ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
+        // The grab reaches into the EDITOR column, never back over the
+        // panel (`drag-gap-grab-end|start`, --gutter-grab); the
+        // toward-editor class nudges only the pill.
+        className={`drag-gap drag-gap-v band-grip ${side === "left" ? "order-3 drag-gap-toward-editor-right drag-gap-grab-end" : "order-1 drag-gap-toward-editor-left drag-gap-grab-start"}`}
         {...gutterHandle}
         style={{ ...gutterHandle.style, width: 'var(--pod-gap)' }}
       />

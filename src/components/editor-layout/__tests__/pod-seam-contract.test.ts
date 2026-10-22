@@ -161,12 +161,15 @@ describe("pod seam — hit area is not the painted band", () => {
     // This leg's own first draft asserted the nominal `top + seam + bottom`
     // and passed at a genuinely smaller target — a grab that had quietly gone
     // 14 → 12 while the suite stayed green. Assert what the user can reach.
-    const ext = panelColumn.match(
-      /top:\s*-(\d+),\s*bottom:\s*-(\d+),\s*background:\s*'transparent'/,
-    );
-    expect(ext, "bottom-edge hit extension not found").not.toBeNull();
-    const reachable = tokenPx("--pod-seam") + parseFloat(ext![2]);
-    expect(reachable).toBeGreaterThanOrEqual(14);
+    //
+    // Since task 1241 the grab is the shared `--gutter-grab` rule, biased
+    // wholly DOWNWARD by `drag-gap-grab-end`, so the reachable half is the
+    // whole token (`gutter-grab-census.test.ts` evaluates the rule itself).
+    const at = panelColumn.indexOf("data-bottom-edge={bottomId}");
+    expect(at, "BottomEdgeHandle not found").toBeGreaterThan(-1);
+    const seam = panelColumn.slice(at, at + 600);
+    expect(seam).toMatch(/className="drag-gap drag-gap-h drag-gap-grab-end band-grip/);
+    expect(tokenPx("--gutter-grab")).toBeGreaterThanOrEqual(14);
   });
 });
 

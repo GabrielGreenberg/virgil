@@ -418,8 +418,11 @@ export function SplitWithCode({
               className="relative shrink-0 z-10"
               style={{ width: GAP_WIDTH_PX }}
             >
+              {/* Grab reaches RIGHT (`drag-gap-grab-end`, --gutter-grab):
+                  the text pane's own scrollbar sits at the edge this
+                  gutter meets on the left. */}
               <div
-                className="drag-gap drag-gap-v band-grip w-full h-full"
+                className="drag-gap drag-gap-v drag-gap-grab-end band-grip w-full h-full"
                 {...handle}
                 style={
                   onMoveCodeToText && onMoveTextToCode
