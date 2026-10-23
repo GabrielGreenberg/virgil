@@ -10,9 +10,11 @@
  * HORIZONTAL axis — `contentLeft` (the block's text-start X), a MEASURED
  * `markerLeft` (the block's leftmost marker glyph: bullet band / `(n)` /
  * `a.` / plain text), and `gapPx` (the em handle-gap resolved against THIS
- * block's font). Every margin affordance now hugs `markerLeft − gapPx − <its
- * own width>`, so a container and its first item align BY CONSTRUCTION. All
- * fields are viewport-space and resolvable from `el` + ancestry alone.
+ * block's font). Margin affordances anchor on these fields so a container
+ * and its first item align BY CONSTRUCTION — the grab handle's two readings
+ * (hug `markerLeft − gapPx`, or right-justify in `columnRight` since task 487)
+ * are stated once, at `resolveHandleLane` in handle-layout.ts. All fields are
+ * viewport-space and resolvable from `el` + ancestry alone.
  *
  * Chip 4a wires the DRAG DROP-INDICATOR onto the same frame: the between-blocks
  * bar and the expex drop bars now take their x from this `contentLeft` and
@@ -135,8 +137,10 @@ export interface BlockFrame {
    *     markerless container): the list then reads as an ordinary markerless
    *     block and takes the same gutter slot every paragraph takes.
    *   • everything else (no marker) → `contentLeft`.
-   * An affordance's left edge = `markerLeft − gapPx − <its own width>`, so its
-   * RIGHT edge sits one uniform {@link gapPx} left of the marker.
+   * A HUGGING affordance's right edge sits one uniform {@link gapPx} left of
+   * this marker; a handle that occupies a marker column instead anchors on
+   * {@link columnRight}. The one statement of which applies is
+   * `resolveHandleLane` in handle-layout.ts.
    */
   markerLeft: number;
   /**
@@ -352,9 +356,10 @@ type MarginTokenSign = "positive" | "signed";
  * the grab-handle placement FLOOR *and* the left edge of the hover zone that
  * reveals the handle, so both land on top of the prose).
  *
- * Exported for the geometry-SSOT interpreter-hardening regression test (it asserts
- * a `rem` token resolves against root font-size, not the block font-size — the same
- * "for-test" export convention as {@link resolveMarkerGeometry}).
+ * Exported as THE one `--margin-*` interpreter: production reads it beyond this
+ * module (`editor-geometry/viewport-frame.ts`), and the geometry-SSOT
+ * interpreter-hardening regression test asserts through it that a `rem` token
+ * resolves against root font-size, not the block font-size.
  */
 export function resolveMarginEm(
   cs: CSSStyleDeclaration,

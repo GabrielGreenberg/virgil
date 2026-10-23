@@ -130,13 +130,11 @@ interface Placement {
   top: number;
   /** The resolved ref the handle represents. */
   ref: TextObjectRef | SelectionRef;
-  /** Chip 3: half-width cap (px) for the hit/hover halo — half the distance to
-   *  the nearest handle on the SAME visual row, or null when no near sibling
-   *  shares the row. Threaded to the handle as the inline
-   *  `--margin-handle-hit-cap` so two close nested handles (e.g. a bullet
-   *  container + its first item, ~19px apart) get halos that meet at the
-   *  midpoint and stay independently grabbable. Derived from the resolved
-   *  placements ({@link applyHitCaps}), never from a doc walk. */
+  /** Chip 3: half-width cap (px) for the hit/hover halo — the sibling cap ∧
+   *  the outboard lane cap, as stated at {@link applyHitCaps} (finite in
+   *  practice; `null` only as the unbounded fallback). Threaded to the handle
+   *  as the inline `--margin-handle-hit-cap`. Derived from the resolved
+   *  placements, never from a doc walk. */
   hitCapPx: number | null;
   /**
    * Task 382: the furthest-right `left` this handle may take — its lane's
@@ -197,22 +195,6 @@ function placementsEqual(a: Placement, b: Placement): boolean {
 const SAME_ROW_EPS = 16;
 
 /**
- * Chip 3: set each placement's hit-halo cap from the resolved sibling
- * geometry — half the horizontal distance to the nearest handle on the same
- * visual row (or null when none shares the row). Both the halo and the dots
- * are centered on `left + HANDLE_WIDTH / 2`, so the
- * left-edge distance IS the dots-center distance; capping each halo's
- * half-width at half of it makes two close nested handles meet at the
- * midpoint with no overlap, so neither swallows the other.
- *
- * KEYSTROKE SANCTITY: operates only on the freshly-built per-hover
- * `placements` array (≤ a handful of entries — one per containing TextObject
- * level), so it's O(handles²) ≈ O(1), never a doc walk. It runs on the same
- * hover/scroll/RAF placement schedule as the rest of this component (the
- * docChanged-gated `update` subscriber is a sanctioned cheap subscriber in
- * AGENTS.md), adding no doc-proportional work.
- */
-/**
  * Minimum CENTER-to-center distance between two handles that share a visual
  * row (task 353). Handles are {@link HANDLE_WIDTH}=12 wide, so this leaves a
  * 12px void between the boxes — the gap reads as "two controls" rather than as
@@ -261,7 +243,9 @@ const MIN_DISJOINT_GAP_PX = HANDLE_WIDTH + 6;
  * (the narrow-viewport floor). This is what makes non-overlap a PROPERTY rather
  * than a hope: an inner handle can be pinned against its ink, but nothing on
  * this row lies left of the row's own marker, so the margin outboard of the
- * outer handle is free by construction.
+ * outer handle is free of THIS ROW'S ink — though not of all chrome: a
+ * reserved fold-chevron column raises `minLeft` (see `resolveHandleLane` in
+ * handle-layout.ts), and the outboard pass is bounded by it.
  *
  * Its predecessor's stated reason for pushing inboard ONLY — "the outermost
  * handle is already sitting ON the floor" — was a fact about the pre-487
@@ -329,6 +313,25 @@ function applySameRowSeparation(placements: Placement[]): void {
   }
 }
 
+/**
+ * Chip 3: set each placement's hit-halo cap (`hitCapPx`) from the resolved
+ * geometry. The cap is the MIN of two bounds:
+ *  - the SIBLING cap — half the horizontal distance to the nearest handle on
+ *    the same visual row. Both the halo and the dots are centered on
+ *    `left + HANDLE_WIDTH / 2`, so the left-edge distance IS the dots-center
+ *    distance; capping each halo's half-width at half of it makes two close
+ *    nested handles meet at the midpoint, so neither swallows the other;
+ *  - the OUTBOARD lane cap (task 526) — the distance from the dots' center to
+ *    the lane's `minLeft`, so the halo never reaches outboard of its lane.
+ * The outboard cap is always finite, so the result is never null in practice.
+ *
+ * KEYSTROKE SANCTITY: operates only on the freshly-built per-hover
+ * `placements` array (≤ a handful of entries — one per containing TextObject
+ * level), so it's O(handles²) ≈ O(1), never a doc walk. It runs on the same
+ * hover/scroll/RAF placement schedule as the rest of this component (the
+ * docChanged-gated `update` subscriber is a sanctioned cheap subscriber in
+ * AGENTS.md), adding no doc-proportional work.
+ */
 function applyHitCaps(placements: Placement[]): void {
   for (let i = 0; i < placements.length; i++) {
     let nearest = Infinity;
@@ -1012,7 +1015,8 @@ export function TextObjectGrabHandle({ editor }: Props) {
         }
       }
       // 3. Mouse hover — every containing TextObject level via Y-axis
-      // containment scan over the editor's [data-uuid] decorations.
+      // containment: service-first `blocksAtY`, with the [data-uuid] scan
+      // only as its fallback (see the resolver above).
       //
       // THE ONE POINTER-DERIVED BRANCH, so it is answered only in POINTER
       // modality (task 336). The physical pointer is armed for the whole
@@ -1055,7 +1059,7 @@ export function TextObjectGrabHandle({ editor }: Props) {
       const resolved = resolveActiveRefs(editor);
       // Task 394 — HIERARCHICAL placement: every level anchors at its OWN
       // block's first visual line. `computePlacement` takes no per-hover hint —
-      // see `resolveFirstLineTarget` in block-frame.ts for the retired one.
+      // see `resolveFirstLineTarget` in text-metrics.ts for the retired one.
       //
       // Task 425 — the hover SET is no longer "every containing level": it is
       // the hovered item plus only the containers whose TOP ROW the hovered
@@ -1137,8 +1141,10 @@ export function TextObjectGrabHandle({ editor }: Props) {
     // layout gesture, so the live path is unchanged for it.
     const onScroll = () => {
       // Scroll re-schedules placement (block rects change in clientY
-      // space). The DOM-walk resolver re-runs from scratch each frame;
-      // no separate cache to invalidate.
+      // space). The resolver answers service-first from the editor-geometry
+      // service's `blocksAtY` (its own RO/IO-kept cache, which scroll does
+      // not invalidate); the `[data-uuid]` sweep runs only as its fallback.
+      // Nothing here needs invalidating.
       //
       // Cost of parking it, stated precisely because the first draft of this
       // comment got it wrong in the flattering direction: the MOUSEMOVE path
@@ -1189,9 +1195,10 @@ export function TextObjectGrabHandle({ editor }: Props) {
         return;
       }
       mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
-      // Through the park (perf Wave 2): the resolver behind this RAF is the
-      // O(doc) `[data-uuid]` rect sweep, and a CONTENT drag keeps the
-      // pointer moving for its whole duration — mid-gesture the handle sits
+      // Through the park (perf Wave 2): the resolver behind this RAF is
+      // service-first `blocksAtY` (the `[data-uuid]` rect sweep only as its
+      // fallback), and a CONTENT drag keeps the pointer moving for its whole
+      // duration — mid-gesture the handle sits
       // invisible under the drag ghost, so re-resolving per frame is pure
       // waste. Parked moves stash latest-wins and settle in ONE resolve at
       // the gesture's end edge; outside a gesture `fire()` runs inline and
