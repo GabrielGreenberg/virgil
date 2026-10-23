@@ -181,7 +181,7 @@ part of this migration; flagged here so it's tracked.
 
 ## 10. Selection ring on inline atoms is amber-hardcoded
 
-> **Status — LANDED (verified 2026-08-09; re-verified 2026-09-28).** 46dfc5a9, and since superseded upward: no amber rgba literal remains in `src/` or `library/`. The atom selection-ring rules in `globals.css` (`[data-card-selected="true"]`) paint the atom selection ring from the per-kind `--link-anchor-color` (footnotes) and the `--amber-highlight-*` role tokens (citations) — not `--ring-drag-target`.
+> **Status — LANDED (verified 2026-08-09; re-verified 2026-09-28; corrected 2026-10-22).** 46dfc5a9, and since superseded upward. The 2026-08-09 claim that "no amber rgba literal remains in `src/`" was false when written: the code view's parse-error banner (`CodeEditor.tsx`) had painted a raw `rgba(217, 119, 6, …)` since 8b9659c9. Task 2026-10-23-1245 drained it with the rest of the CodeMirror family — the three `EditorView.theme` surfaces now spread one palette (`src/lib/codemirror/virgil-cm-palette.ts`), and `color-token-consumers.test.ts` ("CodeMirror surfaces carry no raw colour literal") censuses every file calling `EditorView.theme(`. The atom selection-ring rules in `globals.css` (`[data-card-selected="true"]`) paint the atom selection ring from the per-kind `--link-anchor-color` (footnotes) and the `--amber-highlight-*` role tokens (citations) — not `--ring-drag-target`.
 
 `.footnote-marker[data-card-selected="true"]` and
 `[data-type="citation"][data-card-selected="true"]` both use

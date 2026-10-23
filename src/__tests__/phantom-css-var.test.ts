@@ -224,7 +224,10 @@ const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
   // → #b8261a moves alert text 7.33:1 → 6.31:1 on white, a real step DOWN
   // (through AAA, still comfortably over AA) accepted to end the fork — where
   // the lighter `--danger` would have taken it to 3.76:1, under AA.
-  "--success": "style-editor validity tick; fallback #15803d",
+  //
+  // `--success` RETIRED (task 2026-10-23-1245): the style editor's validity
+  // tick now reads `--positive-strong`, the positive family's "ok" ink rung
+  // (#15803d green-700 → #047857 emerald-700, same dark-green role).
   "--surface-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
   "--ink-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
   "--edge-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
