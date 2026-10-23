@@ -902,3 +902,46 @@ describe("collab/status chrome carries no raw colour literal", () => {
     expect(hits).toEqual([]);
   });
 });
+
+/**
+ * CodeMirror surfaces carry no raw colour literal (task 2026-10-23-1245).
+ *
+ * Every CodeMirror mount builds its own `EditorView.theme({...})`, and all
+ * three once hand-spelled Virgil's palette — `--accent` at five alphas,
+ * `--code-block-bg` as a hex, a raw red cursor band and a raw amber
+ * parse-error banner (with a fallback that disagreed with its own token).
+ * The colours now live in ONE fragment (`src/lib/codemirror/virgil-cm-palette.ts`)
+ * that every theme spreads. The family is DERIVED — every production file
+ * calling `EditorView.theme(` — so a fourth CodeMirror surface is covered on
+ * arrival; the palette module itself is scanned too.
+ */
+describe("CodeMirror surfaces carry no raw colour literal", () => {
+  const PALETTE = "src/lib/codemirror/virgil-cm-palette.ts";
+  const files = [
+    ...trackedFiles("src", /\.tsx?$/)
+      .filter((p) => !p.includes("__tests__"))
+      .map((p) => path.relative(REPO_ROOT, p))
+      .filter((rel) => strip(read(rel), true, true).includes("EditorView.theme(")),
+    PALETTE,
+  ];
+  // `(?<!&)`: an HTML numeric entity (`&#123;` in JSX text) is not a colour.
+  const LITERAL = /(?<!&)#[0-9a-fA-F]{3,8}\b|\brgba?\(/;
+
+  it("scans the whole family (non-vacuous)", () => {
+    expect(files.length).toBeGreaterThanOrEqual(4);
+    expect(files).toContain("src/components/CodeEditor.tsx");
+    expect(files).toContain("src/components/source-pod-code-mirror.tsx");
+    expect(files).toContain("src/components/StyleEditorModal.tsx");
+  });
+
+  it("leaves no hex / rgb() literal in code (comments ignored)", () => {
+    const hits = files.flatMap((rel) =>
+      strip(read(rel), true, true)
+        .split("\n")
+        .map((line, i) => ({ line, at: `${rel}:${i + 1}` }))
+        .filter(({ line }) => LITERAL.test(line))
+        .map(({ line, at }) => `${at}  ${line.trim().slice(0, 90)}`),
+    );
+    expect(hits).toEqual([]);
+  });
+});

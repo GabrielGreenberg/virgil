@@ -447,9 +447,10 @@ const PINNED_STOCK_RED_SITES: readonly string[] = [
   "src/panels/_shared/suggestion-fields.tsx",
 ];
 
-const PINNED_DECIMAL_RED_SITES: readonly string[] = [
-  "src/components/CodeEditor.tsx", // .cm-virgil-band, rgba(220, 38, 38, 0.09)
-];
+// Was ONE entry — `CodeEditor.tsx`'s `.cm-virgil-band`, rgba(220, 38, 38,
+// 0.09). Task 2026-10-23-1245 moved the band onto the shared CodeMirror
+// palette, which reads it from `--danger` via color-mix, so the list is empty.
+const PINNED_DECIMAL_RED_SITES: readonly string[] = [];
 
 describe("the residual red spellings are a pinned census", () => {
   const files = [...walkSource("src"), ...walkSource("library")];

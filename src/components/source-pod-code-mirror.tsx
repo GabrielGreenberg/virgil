@@ -55,52 +55,44 @@ import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
+import {
+  CM_PALETTE_CORE,
+  withCmPalette,
+} from "@/lib/codemirror/virgil-cm-palette";
 
 /**
  * The pod's look — a slimmed-down `CodeEditor.tsx` `virgilTheme`, sized for
  * inline embedding inside a doc paragraph rather than a full code-view pane.
  * Border tone matches the heading-annotation lozenge so the pod reads as
  * Virgil-native chrome rather than a generic input, and the 44px right inset
- * on the content clears the kind chip.
+ * on the content clears the kind chip. Only the GEOMETRY is local: the
+ * colours come from the shared CodeMirror palette (`virgil-cm-palette.ts`,
+ * task 2026-10-23-1245).
  *
  * ONE theme: the docked pod and the released float must frame identically (no
  * framing jump on release), and until task 729 that was two literal copies
  * kept in step by hand. Module-local on purpose — it reaches a pod only inside
- * `SOURCE_POD_EXTENSIONS`, so there is no second way to mount it.
+ * `SOURCE_POD_EXTENSIONS`, so there is no second way to mount it. Only its
+ * GEOMETRY is local: the colours come from the shared CodeMirror palette
+ * (`virgil-cm-palette.ts`, task 2026-10-23-1245).
  */
-const sourcePodTheme = EditorView.theme({
-  "&": {
-    fontSize: "13px",
-    fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
-    backgroundColor: "var(--code-block-bg, rgba(124, 94, 60, 0.04))",
-    borderRadius: "var(--radius-md)",
-    border: "1px solid var(--heading-annotation-border, #a8c4de)",
-  },
-  "&.cm-focused": {
-    outline: "none",
-  },
-  ".cm-content": {
-    padding: "10px 12px",
-    paddingRight: "44px",
-    caretColor: "var(--accent)",
-  },
-  ".cm-line": {
-    padding: "0",
-  },
-  ".cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.15) !important",
-  },
-  "&.cm-focused .cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.2) !important",
-  },
-  ".cm-cursor": {
-    borderLeftColor: "var(--accent)",
-  },
-  ".cm-matchingBracket": {
-    backgroundColor: "rgba(124, 94, 60, 0.2)",
-    outline: "1px solid rgba(124, 94, 60, 0.4)",
-  },
-});
+const sourcePodTheme = EditorView.theme(
+  withCmPalette(
+    {
+      "&": {
+        fontSize: "13px",
+        fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
+        backgroundColor: "var(--code-block-bg)",
+        borderRadius: "var(--radius-md)",
+        border: "1px solid var(--heading-annotation-border)",
+      },
+      "&.cm-focused": { outline: "none" },
+      ".cm-content": { padding: "10px 12px", paddingRight: "44px" },
+      ".cm-line": { padding: "0" },
+    },
+    CM_PALETTE_CORE,
+  ),
+);
 
 /**
  * The pod's extension set. Module scope is the point — this array's IDENTITY

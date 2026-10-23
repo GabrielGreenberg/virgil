@@ -49,31 +49,31 @@ import {
   findDocumentBoundary,
   findLiveDocumentTokens,
 } from "@/lib/latex-lexer";
+import {
+  CM_PALETTE_CORE,
+  CM_PALETTE_GUTTERS,
+  withCmPalette,
+} from "@/lib/codemirror/virgil-cm-palette";
 
-const editorTheme = EditorView.theme({
-  "&": {
-    fontSize: "13px",
-    fontFamily: "var(--font-mono), 'SF Mono', monospace",
-    backgroundColor: "var(--background)",
-  },
-  ".cm-content": {
-    padding: "12px 0",
-    caretColor: "var(--accent)",
-  },
-  ".cm-line": { padding: "0 16px" },
-  ".cm-gutters": {
-    backgroundColor: "#f5f3f0",
-    color: "var(--muted-light)",
-    border: "none",
-    borderRight: "1px solid var(--border)",
-    fontFamily: "var(--font-mono), monospace",
-    fontSize: "11px",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "rgba(124, 94, 60, 0.04)",
-  },
-  ".cm-cursor": { borderLeftColor: "var(--accent)" },
-});
+const editorTheme = EditorView.theme(
+  withCmPalette(
+    {
+      "&": {
+        fontSize: "13px",
+        fontFamily: "var(--font-mono), 'SF Mono', monospace",
+        backgroundColor: "var(--background)",
+      },
+      ".cm-content": { padding: "12px 0" },
+      ".cm-line": { padding: "0 16px" },
+      ".cm-gutters": {
+        fontFamily: "var(--font-mono), monospace",
+        fontSize: "11px",
+      },
+    },
+    CM_PALETTE_CORE,
+    CM_PALETTE_GUTTERS,
+  ),
+);
 
 
 export interface StyleEditorResult {
@@ -276,7 +276,7 @@ export default function StyleEditorModal({
             automatically.
           </span>
           {validation.ok ? (
-            <span className="text-[var(--success,#15803d)]">✓ Valid</span>
+            <span className="text-[var(--positive-strong)]">✓ Valid</span>
           ) : (
             <span className="text-error">
               ✗ {validation.message}

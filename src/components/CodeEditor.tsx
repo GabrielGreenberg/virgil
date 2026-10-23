@@ -30,52 +30,34 @@ import {
   unregisterPendingFlusher,
 } from "@/lib/multi-window/pending-saves";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
+import {
+  CM_CURSOR_BAND_BG,
+  CM_PALETTE_CORE,
+  CM_PALETTE_GUTTERS,
+  CM_PARSE_BANNER_STYLE,
+  withCmPalette,
+} from "@/lib/codemirror/virgil-cm-palette";
 
-const virgilTheme = EditorView.theme({
-  "&": {
-    fontSize: "13.5px",
-    fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
-    backgroundColor: "var(--background)",
-  },
-  ".cm-content": {
-    padding: "16px 0",
-    caretColor: "var(--accent)",
-  },
-  ".cm-line": {
-    padding: "0 24px",
-  },
-  ".cm-gutters": {
-    backgroundColor: "#f5f3f0",
-    color: "var(--muted-light)",
-    border: "none",
-    borderRight: "1px solid var(--border)",
-    fontFamily: "var(--font-mono), 'SF Mono', monospace",
-    fontSize: "12px",
-  },
-  ".cm-activeLineGutter": {
-    backgroundColor: "#eae7e3",
-    color: "var(--muted)",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "rgba(124, 94, 60, 0.04)",
-  },
-  ".cm-virgil-band": {
-    backgroundColor: "rgba(220, 38, 38, 0.09)",
-  },
-  ".cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.15) !important",
-  },
-  "&.cm-focused .cm-selectionBackground": {
-    backgroundColor: "rgba(124, 94, 60, 0.2) !important",
-  },
-  ".cm-cursor": {
-    borderLeftColor: "var(--accent)",
-  },
-  ".cm-matchingBracket": {
-    backgroundColor: "rgba(124, 94, 60, 0.2)",
-    outline: "1px solid rgba(124, 94, 60, 0.4)",
-  },
-});
+const virgilTheme = EditorView.theme(
+  withCmPalette(
+    {
+      "&": {
+        fontSize: "13.5px",
+        fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
+        backgroundColor: "var(--background)",
+      },
+      ".cm-content": { padding: "16px 0" },
+      ".cm-line": { padding: "0 24px" },
+      ".cm-gutters": {
+        fontFamily: "var(--font-mono), 'SF Mono', monospace",
+        fontSize: "12px",
+      },
+      ".cm-virgil-band": { backgroundColor: CM_CURSOR_BAND_BG },
+    },
+    CM_PALETTE_CORE,
+    CM_PALETTE_GUTTERS,
+  ),
+);
 
 export interface CodeEditorHandle {
   getCurrentLine(): number;
@@ -407,11 +389,7 @@ export default function CodeEditor({
       {parseError && (
         <div
           className="absolute top-2 left-4 right-4 z-10 text-[11px] px-3 py-1.5 rounded border"
-          style={{
-            background: "rgba(217, 119, 6, 0.08)",
-            borderColor: "rgba(217, 119, 6, 0.3)",
-            color: "var(--ink-body, #4a3a1f)",
-          }}
+          style={CM_PARSE_BANNER_STYLE}
           data-hint={parseError}
         >
           Edits paused — LaTeX parse error. Fix the source to resume sync.
