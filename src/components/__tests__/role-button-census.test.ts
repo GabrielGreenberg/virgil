@@ -34,7 +34,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { commentsStripped, elementsNamed, matchFrom, walkFiles } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, constBindings, elementsNamed, matchFrom, walkFiles } from "@/lib/__tests__/_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const LEAF = "src/lib/activatable-props.ts";
@@ -253,5 +253,128 @@ describe("the click-only control", () => {
       `<button type="button" onClick={go}>x</button>`,
     ];
     for (const shape of allowed) expect(clickOnlyControls(shape)).toEqual([]);
+  });
+});
+
+/*
+ * THE MOUSEDOWN-ONLY BUTTON (task 1257) — the same keyboard-dead defect on a
+ * REAL `<button>`. A button whose action runs in `onMouseDown` (to beat a
+ * focus-driven select or a click-outside commit — legitimate timing) and in no
+ * `onClick` is unreachable from the keyboard: Enter/Space and an AT "press"
+ * dispatch only a synthesized `click`. Task 477 fixed it by hand once
+ * (`CardViewModeMenu`); it recurred at three surfaces (card rich-text
+ * toolbar, Pop-out/Dock, math popover Cancel) and an imperative twin
+ * (`createPopoutButtonEl`).
+ *
+ * A `<button>` whose `onMouseDown` does more than guard (stop propagation /
+ * prevent default) must, at the site, either
+ *  - spread `pressProps(action)` (src/lib/press-props.ts — the ONE door: the
+ *    mousedown leg plus a `detail === 0` click leg that never double-fires),
+ *  - carry an `onClick` that does real work too, or
+ *  - state `data-press-exempt="<reason>"` (a press that STARTS A DRAG has no
+ *    keyboard twin to route).
+ * An unresolvable handler NAME counts as work — the census cannot see its
+ * body, so it asks. Imperative leg: a `createElement("button")` binding whose
+ * acting `"mousedown"` listener has no `"click"` listener in the same file.
+ */
+const PRESS_EXEMPT = /(?<![\w-])data-press-exempt\s*=\s*"[^"]*\w[^"]*"/;
+
+/** `name={…}`'s expression in a tag, or null. */
+function attrExpr(tag: string, name: string): string | null {
+  const m = new RegExp(String.raw`(?<![\w-])${name}\s*=\s*\{`).exec(tag);
+  if (!m) return null;
+  const open = m.index + m[0].length - 1;
+  const close = matchFrom(tag, open, "{", "}");
+  return close < 0 ? null : tag.slice(open + 1, close).trim();
+}
+
+/** Does this handler expression DO anything beyond guard calls? A bare name is
+ *  resolved through the file's `const` bindings once; unresolvable → work. */
+function handlerActs(expr: string, consts: ReadonlyMap<string, string>, depth = 0): boolean {
+  const name = /^[A-Za-z_$][\w$]*$/.exec(expr.trim());
+  if (name) {
+    if (name[0] === "undefined" || name[0] === "null") return false;
+    const init = consts.get(name[0]);
+    return init == null || depth > 1 ? true : handlerActs(init, consts, depth + 1);
+  }
+  const rest = expr
+    .replace(/["'`](?:\\.|[^\\])*?["'`]/g, "")
+    .replace(/\b\w+\.(?:stopPropagation|preventDefault)\(\)/g, "")
+    // arrow parameter lists, typed or not: `(e) =>`, `(e: React.MouseEvent) =>`, `e =>`
+    .replace(/\([^()]*\)\s*=>|\b\w+\s*=>/g, "");
+  // Work = any remaining call, or an assignment (not `==`/`=>`).
+  return /[\w$)\]]\s*\(/.test(rest) || /(?<![=!<>])=(?![=>])/.test(rest);
+}
+
+/** Mousedown-only `<button>`s in one COMMENT-STRIPPED source. */
+function mousedownOnlyButtons(src: string): string[] {
+  const consts = constBindings(src);
+  const out: string[] = [];
+  for (const hit of elementsNamed(src, "button")) {
+    const md = attrExpr(hit.tag, "onMouseDown");
+    if (md == null || !handlerActs(md, consts)) continue;
+    if (/\{\s*\.\.\.\s*pressProps\s*\(/.test(hit.tag)) continue;
+    if (PRESS_EXEMPT.test(hit.tag)) continue;
+    const click = attrExpr(hit.tag, "onClick");
+    if (click != null && handlerActs(click, consts)) continue;
+    out.push(`<button onMouseDown={${md.replace(/\s+/g, " ").slice(0, 60)}}>`);
+  }
+  // Imperative twins: `const b = document.createElement("button")` + an
+  // acting `b.addEventListener("mousedown", …)` and no `b.addEventListener("click", …)`.
+  const made = /\b(?:const|let)\s+(\w+)\s*=\s*document\.createElement\(\s*["']button["']\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = made.exec(src))) {
+    const v = m[1];
+    if (new RegExp(String.raw`\bbindPress\(\s*${v}\b`).test(src)) continue;
+    if (new RegExp(String.raw`\b${v}\.addEventListener\(\s*["']click["']`).test(src)) continue;
+    const down = new RegExp(String.raw`\b${v}\.addEventListener\(\s*["']mousedown["']\s*,`, "g");
+    let d: RegExpExecArray | null;
+    while ((d = down.exec(src))) {
+      const open = d.index + d[0].length - 1;
+      const close = matchFrom(src, src.indexOf("(", d.index), "(", ")");
+      const expr = close < 0 ? "" : src.slice(open + 1, close).trim();
+      if (handlerActs(expr, consts)) out.push(`${v}.addEventListener("mousedown", ${expr.replace(/\s+/g, " ").slice(0, 50)})`);
+    }
+  }
+  return out;
+}
+
+describe("the mousedown-only button (task 1257)", () => {
+  it("no <button> acts on mousedown without a keyboard leg", () => {
+    const offenders: Record<string, string[]> = {};
+    for (const rel of PRODUCTION) {
+      if (!/\.tsx?$/.test(rel) || rel === "src/lib/press-props.ts") continue;
+      const hits = mousedownOnlyButtons(commentsStripped(readFileSync(join(ROOT, rel), "utf8")));
+      if (hits.length) offenders[rel] = hits;
+    }
+    // A hit is MIGRATE-it: spread `pressProps(action)` (src/lib/press-props.ts),
+    // or `bindPress(el, action)` for a DOM button; a press that starts a drag
+    // states `data-press-exempt="<reason>"`.
+    expect(offenders).toEqual({});
+  });
+
+  it("CANARY: the classifier bites on the retired shapes (self-check)", () => {
+    const retired = [
+      // RichTextField's toolbar, the math popover Cancel, PopoutButton (its
+      // onClick only SWALLOWED the keyboard click), and the DOM twin.
+      `<button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}>B</button>`,
+      `<button type="button" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); cancel(); }}>Cancel</button>`,
+      `<button onMouseDown={(e) => { e.preventDefault(); onClick(rect(e.currentTarget)); }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); }} />`,
+      `<button onMouseDown={handleDown}>x</button>`,
+      `const btn = document.createElement("button");\nbtn.addEventListener("mousedown", (e) => { e.preventDefault(); opts.onClick(r); });`,
+    ];
+    for (const shape of retired) expect(mousedownOnlyButtons(shape), shape).toHaveLength(1);
+    const allowed = [
+      `<button onMouseDown={(e) => e.stopPropagation()} onClick={go}>x</button>`,
+      `<button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}>x</button>`,
+      `<button onMouseDown={iso ? (e) => e.stopPropagation() : undefined}>x</button>`,
+      `const stop = (e: React.MouseEvent) => e.stopPropagation();\n<button onMouseDown={stop}>x</button>`,
+      `<button {...pressProps(() => cancel())}>Cancel</button>`,
+      `<button onMouseDown={(e) => { beginDrag(e); }} data-press-exempt="drag gesture">x</button>`,
+      `<button onMouseDown={(e) => { commitTitle(); }} onClick={(e) => { e.stopPropagation(); toggle(); }}>x</button>`,
+      `const btn = document.createElement("button");\nbindPress(btn, () => go());`,
+      `const btn = document.createElement("button");\nbtn.addEventListener("mousedown", (e) => { e.preventDefault(); });`,
+    ];
+    for (const shape of allowed) expect(mousedownOnlyButtons(shape), shape).toEqual([]);
   });
 });

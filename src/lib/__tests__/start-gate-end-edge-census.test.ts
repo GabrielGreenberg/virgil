@@ -27,6 +27,8 @@ const DELEGATES_END: Record<string, string> = {
   "src/components/Marginalia.tsx":
     "the marker's press is handed to `beginCardDropGesture` → `pendDropSession` (watchHeldPress ends the pending press); the drop-mode controller owns the session's end, and the trailing-click guard watches its own held press (task 1192)",
   "src/lib/pane-resize/pointer-invariants.ts": "the invariants' own home",
+  "src/lib/press-props.ts":
+    "no gesture to end: `pressProps`/`bindPress` run a ONE-SHOT action on the press itself and hold nothing, so a release the page never sees changes nothing (task 1257)",
 };
 
 function startGateTakers(): string[] {

@@ -34,6 +34,7 @@ import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { isCommitEnter } from "@/lib/key-intent";
+import { pressProps } from "@/lib/press-props";
 
 export type NodeEditFamily = "math" | "figure";
 
@@ -244,12 +245,9 @@ export default function NodeEditPopover({
             type="button"
             className="math-popover-cancel"
             // mousedown (not click) so it fires before the click-outside
-            // commit handler, which is also a mousedown listener
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              cancel();
-            }}
+            // commit handler, which is also a mousedown listener; the door
+            // adds the keyboard leg, so Tab → Cancel → Enter cancels (task 1257)
+            {...pressProps(() => cancel(), { stopPropagation: true })}
           >
             Cancel
           </button>

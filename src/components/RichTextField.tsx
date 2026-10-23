@@ -35,6 +35,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { iconHint } from "@/components/Hint";
+import { pressProps } from "@/lib/press-props";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
@@ -96,6 +97,34 @@ interface RichTextFieldProps {
 // Format toolbar (commands operate on the wrapped Tiptap editor)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** One bit per toolbar verdict, packed by the `FormatToolbar` selector. */
+const BIT = {
+  bulletOk: 1 << 0,
+  orderedOk: 1 << 1,
+  bold: 1 << 2,
+  italic: 1 << 3,
+  underline: 1 << 4,
+  smallCaps: 1 << 5,
+  bulletList: 1 << 6,
+  orderedList: 1 << 7,
+} as const;
+/** No editor yet: both wrappers allowed, nothing active (the pre-1257 `3`). */
+const WRAPPER_OK = BIT.bulletOk | BIT.orderedOk;
+const TOGGLES = [
+  { name: "bold", bit: BIT.bold },
+  { name: "italic", bit: BIT.italic },
+  { name: "underline", bit: BIT.underline },
+  { name: "smallCaps", bit: BIT.smallCaps },
+  { name: "bulletList", bit: BIT.bulletList },
+  { name: "orderedList", bit: BIT.orderedList },
+] as const;
+/** The toggle "on" look, spelled ONCE for the whole toolbar: the tint path of
+ *  the `--control-selected*` family (STYLE_GUIDE "Buttons" → the "on"
+ *  palette), driven by `aria-pressed` — the same pale chip in the light and
+ *  the dark (selected-card) context. */
+const TOGGLE_ON_CLASS =
+  "aria-pressed:bg-[var(--control-selected-tint)] aria-pressed:text-[var(--control-selected-ink)]";
+
 function FormatToolbar({
   editor,
   selected,
@@ -108,30 +137,39 @@ function FormatToolbar({
   // Task 427: the two list buttons are the card-body twin of the lightning
   // grid's wrapper cells, so they read the SAME wrapper door (identity +
   // container) for their `disabled` AND guard the click — a card body mounts the
-  // block atoms and `codeBlock`, so a non-listable block is reachable here. The
-  // selector is O(depth) per transaction (one `blockRange` + one
-  // `findWrapping`) and packs two booleans into one primitive so React bails
-  // the re-render on every keystroke that leaves the verdict unchanged.
-  const wrapperBits = useEditorState({
+  // block atoms and `codeBlock`, so a non-listable block is reachable here.
+  // Task 1257: the same selector also reports which marks/lists are ACTIVE at
+  // the selection, so every toggle paints and announces its state
+  // (`aria-pressed`) the way `ActionsMenuPanel` does. The selector is
+  // O(depth + selection) per transaction (one `blockRange` + one
+  // `findWrapping` per list, `isActive` per toggle — none walks the doc) and
+  // packs the booleans into ONE primitive so React bails the re-render on
+  // every keystroke that leaves the verdict unchanged.
+  const bits = useEditorState({
     editor,
-    selector: ({ editor: ed }) =>
-      ed
-        ? (wrapperSafeInState(ed.state, "bulletList") ? 1 : 0) |
-          (wrapperSafeInState(ed.state, "orderedList") ? 2 : 0)
-        : 3,
+    selector: ({ editor: ed }) => {
+      if (!ed) return WRAPPER_OK;
+      let b = 0;
+      if (wrapperSafeInState(ed.state, "bulletList")) b |= BIT.bulletOk;
+      if (wrapperSafeInState(ed.state, "orderedList")) b |= BIT.orderedOk;
+      for (const t of TOGGLES) if (ed.isActive(t.name)) b |= t.bit;
+      return b;
+    },
   });
   if (!editor) return null;
-  const bulletOk = ((wrapperBits ?? 3) & 1) !== 0;
-  const orderedOk = ((wrapperBits ?? 3) & 2) !== 0;
+  const has = (bit: number) => ((bits ?? WRAPPER_OK) & bit) !== 0;
   const runWrapper = (name: "bulletList" | "orderedList") => {
     if (!wrapperSafeInState(editor.state, name)) return;
     const chain = editor.chain().focus();
     (name === "bulletList" ? chain.toggleBulletList() : chain.toggleOrderedList()).run();
   };
+  // Every toggle acts on MOUSEDOWN so the press lands before it blurs the
+  // field (the editor keeps its selection); `pressProps` adds the keyboard /
+  // AT leg that a mousedown-only button lacked (task 1257).
 
-  const btnClass = selected
+  const btnClass = `${selected
     ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover-on-dark focus-ring disabled:opacity-40 disabled:cursor-default"
-    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light focus-ring disabled:opacity-40 disabled:cursor-default";
+    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light focus-ring disabled:opacity-40 disabled:cursor-default"} ${TOGGLE_ON_CLASS}`;
   const dividerClass = selected
     ? "w-px h-4 bg-surface/20 mx-0.5"
     : "w-px h-4 bg-[var(--border-light)] mx-0.5";
@@ -147,32 +185,42 @@ function FormatToolbar({
       onClick={(e) => e.stopPropagation()}
     >
       <button
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}
+        type="button"
+        aria-pressed={has(BIT.bold)}
+        {...pressProps(() => editor.chain().focus().toggleBold().run())}
         className={`${btnClass} font-bold`}
         data-hint="Bold"
       >B</button>
       <button
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }}
+        type="button"
+        aria-pressed={has(BIT.italic)}
+        {...pressProps(() => editor.chain().focus().toggleItalic().run())}
         className={`${btnClass} italic`}
         data-hint="Italic"
       >I</button>
       <button
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }}
+        type="button"
+        aria-pressed={has(BIT.underline)}
+        {...pressProps(() => editor.chain().focus().toggleUnderline().run())}
         className={`${btnClass} underline`}
         data-hint="Underline"
       >U</button>
       <button
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleSmallCaps().run(); }}
+        type="button"
+        aria-pressed={has(BIT.smallCaps)}
+        {...pressProps(() => editor.chain().focus().toggleSmallCaps().run())}
         className={btnClass}
         style={{ fontVariantCaps: "small-caps" }}
         data-hint="Small caps"
       >Sc</button>
       <div className={dividerClass} />
       <button
-        data-iconbtn-exempt="formatting toolbar: own active state + dark-context variant (STYLE_GUIDE)"
-        onMouseDown={(e) => { e.preventDefault(); runWrapper("bulletList"); }}
+        type="button"
+        data-iconbtn-exempt="formatting toolbar: own aria-pressed active state + dark-context variant (STYLE_GUIDE)"
+        aria-pressed={has(BIT.bulletList)}
+        {...pressProps(() => runWrapper("bulletList"))}
         className={btnClass}
-        disabled={!bulletOk}
+        disabled={!has(BIT.bulletOk)}
         {...iconHint({ label: "Bullet list" })}
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -185,9 +233,11 @@ function FormatToolbar({
         </svg>
       </button>
       <button
-        onMouseDown={(e) => { e.preventDefault(); runWrapper("orderedList"); }}
+        type="button"
+        aria-pressed={has(BIT.orderedList)}
+        {...pressProps(() => runWrapper("orderedList"))}
         className={btnClass}
-        disabled={!orderedOk}
+        disabled={!has(BIT.orderedOk)}
         {...iconHint({ label: "Numbered list" })}
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">

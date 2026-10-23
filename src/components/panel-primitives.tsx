@@ -78,6 +78,7 @@ import CollabPresenceDots from "./CollabPresenceDots";
 import { omniPinStore, pinOwnerOf } from "./editor-layout/omni-pin-store";
 import { iconHint } from "@/components/Hint";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { bindPress, pressProps } from "@/lib/press-props";
 
 /**
  * True when a keyboard event originated from an interactive control nested
@@ -1123,6 +1124,9 @@ export function CardDropButton({
   return (
     <button
       type="button"
+      // A press here STARTS A DRAG (a drop session / lift) — a pointer gesture
+      // with no keyboard twin to route through `pressProps` (task 1257).
+      data-press-exempt="drag gesture: the press begins a pointer drop session"
       // Press must NOT bubble to the header lift or the card-root anchor drag.
       // The button tag already excludes it from the lift; these are defensive.
       onMouseDown={inert ? undefined : (e) => {
@@ -2358,16 +2362,13 @@ export function PopoutButton({
   const title = isPoppedOut ? `Dock ${labelNoun}` : `Pop out ${labelNoun}`;
   // Fire on mousedown (with preventDefault) so the action runs BEFORE the
   // card's focus-driven selection logic — otherwise an unselected card eats
-  // the first click as a "select" and the user has to click twice.
+  // the first click as a "select" and the user has to click twice. The door
+  // keeps the keyboard leg the old click-swallowing `onClick` deleted: Enter /
+  // Space (a `detail === 0` click) pops out too (task 1257).
   return (
     <button
       type="button"
-      onMouseDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onClick(popoutAnchorRect(e.currentTarget));
-      }}
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      {...pressProps((e) => onClick(popoutAnchorRect(e.currentTarget)), { stopPropagation: true })}
       draggable={false}
       onDragStart={(e) => {
         e.stopPropagation();
@@ -2418,11 +2419,8 @@ export function createPopoutButtonEl(opts: {
   // Fire on mousedown (with preventDefault) so the action runs BEFORE the
   // host's focus-driven selection logic — otherwise an unselected card eats
   // the first click as a "select" and the user has to click twice.
-  btn.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    opts.onClick(popoutAnchorRect(btn));
-  });
+  // Same door as the JSX twin: mousedown + a keyboard click leg (task 1257).
+  bindPress(btn, () => opts.onClick(popoutAnchorRect(btn)), { stopPropagation: true });
   btn.addEventListener("dragstart", (e) => {
     e.stopPropagation();
     e.preventDefault();
