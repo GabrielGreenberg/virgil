@@ -150,7 +150,7 @@ export default function NewDocumentModal({
             NOT take initial focus — the name field claims that through the
             shell's `initialFocus`, which runs first. */}
         <SystemDialogButton
-          variant="accent"
+          variant="primary"
           autoFocus
           onClick={submit}
           disabled={!canSubmit}

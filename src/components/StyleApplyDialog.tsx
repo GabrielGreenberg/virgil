@@ -173,11 +173,13 @@ export default function StyleApplyDialog({
         )}
       </SystemDialogBody>
       <SystemDialogFooter>
+        {/* The destructive alternative sits FAR LEFT, away from the cued
+            default — never beside it (STYLE_GUIDE → "Modal footers"). */}
+        <SystemDialogButton variant="danger" className="mr-auto" onClick={onHard}>
+          Hard update
+        </SystemDialogButton>
         <SystemDialogButton variant="secondary" onClick={onCancel}>
           Cancel
-        </SystemDialogButton>
-        <SystemDialogButton variant="danger" onClick={onHard}>
-          Hard update
         </SystemDialogButton>
         <SystemDialogButton variant="primary" onClick={onAi} autoFocus>
           AI-managed update

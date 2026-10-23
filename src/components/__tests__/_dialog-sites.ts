@@ -119,6 +119,36 @@ export function dialogButtonElements(): DialogButtonSite[] {
   return out;
 }
 
+/* ── The FOOTER population (task 1258) ─────────────────────────────── */
+
+export interface DialogFooterSite {
+  /** Path relative to `src/`, or `library/…` for the Library silo. */
+  rel: string;
+  /** The footer's `<SystemDialogButton …>` open tags, in SOURCE (= visual,
+   *  the footer is a `justify-end` flex row) order. */
+  buttons: string[];
+}
+
+/**
+ * Every production `<SystemDialogFooter>` ELEMENT in either silo, with its
+ * buttons in order — the population the footer-order census reads. A third
+ * walk over the same `productionFiles()`, for the same reason the button walk
+ * is its own: ORDER is a fact about one footer, and neither the dialog nor the
+ * flat button population preserves which buttons share a row.
+ */
+export function dialogFooterElements(): DialogFooterSite[] {
+  const out: DialogFooterSite[] = [];
+  for (const { abs, rel } of productionFiles()) {
+    if (SHELL.includes(rel)) continue;
+    const src = commentsStripped(readFileSync(abs, "utf8"));
+    for (const hit of elementsNamed(src, "SystemDialogFooter")) {
+      const buttons = elementsNamed(hit.subtree ?? "", "SystemDialogButton").map((b) => b.tag);
+      out.push({ rel, buttons });
+    }
+  }
+  return out;
+}
+
 /* ── The DRAFT-HOLDING population (task 530) ───────────────────────── */
 
 /**
