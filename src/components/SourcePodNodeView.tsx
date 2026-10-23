@@ -7,6 +7,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import { useFieldDraft } from "./field-draft";
 import { iconHint } from "@/components/Hint";
 import { foldChevronAttrs, FOLD_CHEVRON_CLASS } from "@/lib/fold-chevron";
+import { FoldChevronGlyph } from "@/components/icons/FoldChevronGlyph";
 import type { SourcePodDerive } from "./source-pod-derive";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import {
@@ -502,9 +503,7 @@ export default function SourcePodNodeView({
           {...foldChevronAttrs(collapsed, config.kindLabel)}
           contentEditable={false}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4.5 2l4 4-4 4" />
-          </svg>
+          <FoldChevronGlyph />
         </button>
         )}
 

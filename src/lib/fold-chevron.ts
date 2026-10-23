@@ -63,3 +63,44 @@ export function paintFoldChevron(
     if (typeof v === "string") btn.setAttribute(k, v);
   }
 }
+
+/**
+ * The fold chevron's GLYPH — one declaration, every renderer (task 1260).
+ *
+ * A stroked right-pointing ">" in a `0 0 12 12` viewBox, 1.5 stroke at rest
+ * (globals.css bumps `.margin-fold-chevron.is-folded svg path` to 2). Rotation
+ * is the caller's business — the margin chevrons rotate through the shared
+ * class, the Outline twisties through a `rotate-90` utility. The vanilla
+ * heading NodeView builds it with {@link buildFoldChevronSvg}; React renders
+ * it through `FoldChevronGlyph` (src/components/icons/), which spreads this
+ * same table — so a size/stroke/path change is one edit here.
+ */
+export const FOLD_CHEVRON_GLYPH = {
+  viewBox: "0 0 12 12",
+  path: "M4.5 2l4 4-4 4",
+  /** Default edge in px (square). The Outline row twisty draws it at 10. */
+  size: 12,
+  /** SVG presentation attributes, keyed by their DOM (kebab-case) names. */
+  attrs: {
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "1.5",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "aria-hidden": "true",
+  },
+} as const;
+
+/** Vanilla-DOM builder for {@link FOLD_CHEVRON_GLYPH}. */
+export function buildFoldChevronSvg(size: number = FOLD_CHEVRON_GLYPH.size): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("viewBox", FOLD_CHEVRON_GLYPH.viewBox);
+  for (const [k, v] of Object.entries(FOLD_CHEVRON_GLYPH.attrs)) svg.setAttribute(k, v);
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("d", FOLD_CHEVRON_GLYPH.path);
+  svg.appendChild(path);
+  return svg;
+}

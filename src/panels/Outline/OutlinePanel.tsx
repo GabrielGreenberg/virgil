@@ -31,6 +31,7 @@ import {
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { MIME_OUTLINE_POD } from "@/lib/marginalia";
 import { iconHint } from "@/components/Hint";
+import { FoldChevronGlyph } from "@/components/icons/FoldChevronGlyph";
 import { activatableProps } from "@/lib/activatable-props";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
@@ -785,19 +786,9 @@ function OutlineNode({
             className="mt-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 flex items-center justify-center focus-ring"
             style={{ width: OUTLINE_TWIST_COL, height: 16 }}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 12 12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <FoldChevronGlyph
               className={`motion-safe:transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-            >
-              <path d="M4.5 2l4 4-4 4" />
-            </svg>
+            />
           </button>
         ) : (
           <span className="shrink-0" style={{ width: OUTLINE_TWIST_COL }} />
@@ -1145,19 +1136,10 @@ const EditablePod = memo(function EditablePod({
             className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 focus-ring"
             {...iconHint({ label: isCollapsed ? "Expand" : "Collapse", pos: "above" })}
           >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 12 12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <FoldChevronGlyph
+              size={10}
               className={`motion-safe:transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-            >
-              <path d="M4.5 2l4 4-4 4" />
-            </svg>
+            />
           </button>
         ) : (
           <span className="w-3 shrink-0" />

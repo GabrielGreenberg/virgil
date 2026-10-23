@@ -108,7 +108,7 @@ import {
   GraphicsBlock,
 } from "@/lib/tiptap-extensions";
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
-import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
+import { paintFoldChevron, buildFoldChevronSvg, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 import { proxiedSurfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { BoundRoot, type BoundRootPredicate } from "@/lib/tiptap/bound-root";
@@ -942,20 +942,7 @@ export function createHeadingWithLabel(
           );
           foldBtn.contentEditable = "false";
           paintFoldChevron(foldBtn, false, FOLD_SUBJECT_SECTION);
-          const SVG_NS_FOLD = "http://www.w3.org/2000/svg";
-          const foldSvg = document.createElementNS(SVG_NS_FOLD, "svg");
-          foldSvg.setAttribute("width", "12");
-          foldSvg.setAttribute("height", "12");
-          foldSvg.setAttribute("viewBox", "0 0 12 12");
-          foldSvg.setAttribute("fill", "none");
-          foldSvg.setAttribute("stroke", "currentColor");
-          foldSvg.setAttribute("stroke-width", "1.5");
-          foldSvg.setAttribute("stroke-linecap", "round");
-          foldSvg.setAttribute("stroke-linejoin", "round");
-          const foldPath = document.createElementNS(SVG_NS_FOLD, "path");
-          foldPath.setAttribute("d", "M4.5 2l4 4-4 4");
-          foldSvg.appendChild(foldPath);
-          foldBtn.appendChild(foldSvg);
+          foldBtn.appendChild(buildFoldChevronSvg());
           // Prevent PM from focusing the editor / moving the selection.
           foldBtn.addEventListener("mousedown", (e) => {
             e.preventDefault();
