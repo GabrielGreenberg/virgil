@@ -2,6 +2,7 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { OrphanedFootnote } from "@/lib/types";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { orphanRecordFor } from "@/lib/footnote-source-attrs";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
 
 /**
  * Footnote ↔ orphan + archive bookkeeping bridges.
@@ -49,6 +50,9 @@ export interface OrphanBridgeStore {
  * Must run synchronously no later than the macrotask that removed the atom —
  * the detector's orphan event is deferred by `setTimeout(…, 0)`, so arming
  * before the splice or synchronously right after the splice's tr both win.
+ * The arm EXPIRES right after that deferral (task 1255): a delete that orphans
+ * nothing (an unanchored ref, an empty footnote) must not leave the id armed
+ * to swallow a later, genuine orphan of the same id.
  * `docId` scopes the latch to the originating pane (FN-A2-03).
  */
 export function armFootnoteOrphanSuppress(
@@ -102,7 +106,18 @@ export function useFootnoteOrphanBridges(deps: {
   const { setOrphanedFootnotes } = store;
 
   // Per-pane suppression latch (was a shared ref in EditorLayout pre-cutover).
-  const suppressRef = useRef<Set<string>>(new Set());
+  // Keyed id → arm token. The latch means "the NEXT orphan event caused by
+  // THIS delete", so an arm has a lifetime: it expires one macrotask after the
+  // detector's deferral (task 1255). A delete that produces no orphan event —
+  // trashing an unanchored ref whose atom is already gone, deleting an empty
+  // footnote — would otherwise leave the id armed forever, and a LATER genuine
+  // orphan of the same id (undo restores the atom with its id) would be
+  // swallowed with its body. The expiry timers ride the pane's ONE lifetime
+  // scope, so none outlives the pane; the token stops an older arm's expiry
+  // from clearing a re-arm of the same id.
+  const suppressRef = useRef<Map<string, number>>(new Map());
+  const armTokenRef = useRef(0);
+  const lifetime = useViewLifetime();
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -133,12 +148,23 @@ export function useFootnoteOrphanBridges(deps: {
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
       if (detail.docId !== docId) return;
-      suppressRef.current.add(detail.footnoteId);
+      const id: string = detail.footnoteId;
+      const token = ++armTokenRef.current;
+      suppressRef.current.set(id, token);
+      // Two hops: the detector's orphan timer is scheduled in the arming
+      // macrotask (before or after this arm — see
+      // `armFootnoteOrphanSuppress`), so a timer chained off a first hop
+      // always runs after it, consuming nothing a real orphan needs.
+      lifetime.setTimeout(() => {
+        lifetime.setTimeout(() => {
+          if (suppressRef.current.get(id) === token) suppressRef.current.delete(id);
+        }, 0);
+      }, 0);
     };
     window.addEventListener("virgil-footnote-suppress-orphan", handler);
     return () =>
       window.removeEventListener("virgil-footnote-suppress-orphan", handler);
-  }, [docId]);
+  }, [docId, lifetime]);
 
   useEffect(() => {
     const handler = (e: Event) => {

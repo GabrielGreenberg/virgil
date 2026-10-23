@@ -185,6 +185,55 @@ describe("footnote suppress-orphan seam — INTEGRATION (#38 W-C nit 2)", () => 
   });
 });
 
+describe("the latch expires — an arm no orphan consumes cannot swallow a later one (task 1255)", () => {
+  it("unanchored-ref trash arms with nothing to consume it; a LATER genuine orphan of the same id is still recorded", () => {
+    const { getOrphans } = mountBridge("docA");
+    const editor = mountEditorWithFootnote("fn-reused", "docA");
+
+    // EditorPane.handleDeleteUnanchoredFootnote: the door with a sidecar-ref
+    // delete as its `remove` — no atom leaves the doc, so no orphan event fires
+    // to consume the arm.
+    act(() => {
+      footnoteDeleteDoor("docA")("fn-reused", () => {});
+    });
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(getOrphans()).toEqual([]);
+
+    // Later (undo has brought the atom back with the same id), the user
+    // deletes the marker by typing — a genuine orphan.
+    act(() => {
+      deleteFootnoteAtom(editor);
+    });
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    const orphans = getOrphans();
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0].footnoteId).toBe("fn-reused");
+
+    editor.destroy();
+  });
+
+  it("an arm made synchronously AFTER the splice (archive's order) still swallows its own orphan", () => {
+    const { getOrphans } = mountBridge("docA");
+    const editor = mountEditorWithFootnote("fn-after", "docA");
+
+    act(() => {
+      deleteFootnoteAtom(editor);
+      armFootnoteOrphanSuppress("fn-after", "docA");
+    });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(getOrphans()).toEqual([]);
+
+    editor.destroy();
+  });
+});
+
 describe("range Delete / Archive — the lifecycle registry's footnote delete (task 1116)", () => {
   /** A lifecycle API whose footnote `delete` is EditorPane's registry entry:
    *  the door with the sidecar ref delete as its `remove`. */
