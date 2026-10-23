@@ -679,7 +679,7 @@ function NavArrow({
 function OmniBulkPendingHeader({ bulk }: { bulk: OmniBulkPendingChanges }) {
   return (
     <div
-      className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-1.5 rounded-md border border-[var(--pending-ai-edge)] bg-surface px-2 py-1.5 shadow-[var(--pod-shadow)]"
+      className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-1.5 rounded-md border border-[var(--pending-ai-edge)] bg-surface px-2 py-1.5 shadow-[var(--card-shadow-ambient)]"
       role="group"
       aria-label="Pending change navigator"
       data-omni-bulk-pending={bulk.count}

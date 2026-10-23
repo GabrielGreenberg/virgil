@@ -1069,17 +1069,24 @@ Five states. One implementation each.
   (the pending-change pill, the hint tooltip, the drop-mode Save/Cancel
   chip, the stale-PDF badge and compile-running chip, the label-ref,
   math and figure popovers, every menu, the toast, the floating zap
-  trigger, the portaled stack pill) takes the menu rung,
+  trigger, the portaled stack pill, the Library page-number lozenge, the
+  outline focus-band handles) takes the menu rung,
   `--menu-shadow` — by NAME, even where it equals the pod's today
   (the menu rung aliases `--pod-shadow`); an IN-FLOW chip
   or sticky header (Omni's pending navigator, `.omni-bin-pill`, outline
-  pod chips) takes the pod/card ambient rung. No site authors its own:
+  pod chips) takes the card ambient rung, `--card-shadow-ambient` — ONE
+  token, since they sit among cards (task 1247). No site authors its own:
   `shadow-tier-census.test.ts` fails any Tailwind `shadow`/`shadow-sm…2xl`,
   any non-`var()` `shadow-[…]`, and any literal blurred layer outside a
   `:root` token definition — rings (`0 0 0 Npx`) and `inset` seams are
   not elevation and pass (task 818). It also checks the RUNG (task
   1059): the floating population above is a declared list that must
-  read `--menu-shadow`; a shadow token is read bare (`var(--tok, X)`
+  read `--menu-shadow`, and is also DERIVED — any `position:
+  absolute|fixed` surface whose shadow reads an ambient rung fails
+  (task 1247); the in-flow list must read `--card-shadow-ambient`; and a
+  ternary on a state (active/selected/hover/open…) whose branches differ
+  in an elevation read fails — a selected row swaps bg/border or wears
+  `--control-selected-inset-ring`, it never lifts; a shadow token is read bare (`var(--tok, X)`
   is a dead, driftable fallback — `:root` always defines it); and a
   ring's colour is a token read (`--focus-ring-shadow`, or `color-mix`
   over a colour token), never a hand-picked rgba/hex;
