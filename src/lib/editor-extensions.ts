@@ -109,7 +109,7 @@ import {
 } from "@/lib/tiptap-extensions";
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 import { paintFoldChevron, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
-import { surfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
+import { proxiedSurfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { BoundRoot, type BoundRootPredicate } from "@/lib/tiptap/bound-root";
 import { VirgilHorizontalRule } from "@/lib/tiptap/virgil-horizontal-rule";
@@ -154,6 +154,63 @@ export interface ParagraphSurfaceOpts {
   /** Float only: the main editor a float proxies the title write to.
    *  Resolved per-interaction (a re-mounted main editor is picked up). */
   host?: { getMainEditor: () => Editor | null };
+}
+
+/**
+ * The ONE title write for the vanilla paragraph and list strips (task 1251 —
+ * folded from two byte-identical `setTitle` copies). In a FLOAT the write
+ * proxies to MAIN (FCU chips C1/C2), resolving the block there by its synced
+ * uuid — the float's own onUpdate never fires from it, so `useFloatMainSync`
+ * re-reads the result idempotently; falls back to the float editor when main
+ * is not resolvable. On MAIN it writes the editor the NodeView lives in,
+ * resolved by live position, minting a uuid on a first title.
+ *
+ * Gating is NOT this function's job: every caller reaches it through a
+ * gesture that asked `proxiedSurfaceEditableNow` first (the session's `mayWrite`, the
+ * `×` handler).
+ */
+function writeVanillaParTitle(p: {
+  isFloat: boolean;
+  nodeEditor: Editor;
+  /** Where a float's write lands: main, else the float itself. */
+  target: Editor;
+  typeName: string;
+  node: PMNode;
+  getPos: () => number | null | undefined;
+  next: string | null;
+}): void {
+  const { nodeEditor, target, typeName, node, next } = p;
+  if (p.isFloat) {
+    const uuid = (node.attrs.uuid as string | null) || null;
+    if (!uuid) return;
+    let foundPos: number | null = null;
+    let foundAttrs: Record<string, unknown> | null = null;
+    target.state.doc.descendants((nd, pos) => {
+      if (foundPos != null) return false;
+      if (nd.type.name === typeName && nd.attrs.uuid === uuid) {
+        foundPos = pos;
+        foundAttrs = { ...nd.attrs };
+        return false;
+      }
+      return true;
+    });
+    if (foundPos == null || foundAttrs == null) return;
+    target.view.dispatch(
+      target.state.tr.setNodeMarkup(foundPos, undefined, {
+        ...(foundAttrs as Record<string, unknown>),
+        parTitle: next,
+      }),
+    );
+    return;
+  }
+  const pos = p.getPos();
+  if (pos == null) return;
+  const n = nodeEditor.state.doc.nodeAt(pos);
+  if (!n) return;
+  const attrs = { ...n.attrs, parTitle: next } as Record<string, unknown>;
+  // Assign a uuid when setting a title on a node that has none yet.
+  if (next && !attrs.uuid) attrs.uuid = mintDocUuid(nodeEditor.state.doc);
+  nodeEditor.view.dispatch(nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs));
 }
 
 export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
@@ -254,50 +311,19 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
 
         wrapper.appendChild(pContainer);
 
+        const getTarget = (): Editor =>
+          isFloat ? (host?.getMainEditor() ?? nodeEditor) : nodeEditor;
+        const mayWrite = (): boolean => proxiedSurfaceEditableNow(nodeEditor, getTarget());
         function setTitle(newTitle: string | null) {
-          if (isFloat) {
-            // FCU Chip C1: proxy the title write to MAIN, resolving the
-            // paragraph there by uuid (the float's paragraph carries the
-            // synced uuid). The float's own onUpdate never fires from this,
-            // so useFloatMainSync re-reads the result idempotently — no echo.
-            // Falls back to the float editor if main isn't resolvable.
-            const target = host?.getMainEditor() ?? nodeEditor;
-            const uuid = (currentNode.attrs.uuid as string | null) || null;
-            if (!uuid) return;
-            let foundPos: number | null = null;
-            let foundAttrs: Record<string, unknown> | null = null;
-            target.state.doc.descendants((nd, pos) => {
-              if (foundPos != null) return false;
-              if (nd.type.name === "paragraph" && nd.attrs.uuid === uuid) {
-                foundPos = pos;
-                foundAttrs = { ...nd.attrs };
-                return false;
-              }
-              return true;
-            });
-            if (foundPos == null || foundAttrs == null) return;
-            const tr = target.state.tr.setNodeMarkup(foundPos, undefined, {
-              ...(foundAttrs as Record<string, unknown>),
-              parTitle: newTitle,
-            });
-            target.view.dispatch(tr);
-            return;
-          }
-          // Main (default): UNCHANGED — write to the editor the NodeView
-          // lives in, resolved by live position.
-          const pos = typeof getPos === "function" ? getPos() : null;
-          if (pos != null) {
-            const n = nodeEditor.state.doc.nodeAt(pos);
-            if (n) {
-              const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
-              // Assign UUID if setting a title and node doesn't have one yet
-              if (newTitle && !attrs.uuid) {
-                attrs.uuid = mintDocUuid(nodeEditor.state.doc);
-              }
-              const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
-              nodeEditor.view.dispatch(tr);
-            }
-          }
+          writeVanillaParTitle({
+            isFloat,
+            nodeEditor,
+            target: getTarget(),
+            typeName: "paragraph",
+            node: currentNode,
+            getPos: () => (typeof getPos === "function" ? getPos() : null),
+            next: newTitle,
+          });
         }
 
         // ONE paragraph-title edit session (task 552): the door owns the input,
@@ -313,6 +339,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           getTitle: () => (currentNode.attrs.parTitle as string | null) || null,
           render: () => renderAnnot(),
           commit: (next) => setTitle(next),
+          mayWrite,
         });
         const enterEditMode = () => titleSession.begin();
 
@@ -355,7 +382,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
             xBtn.textContent = "×";
             xBtn.title = "Remove title";
             xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-            xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
+            xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); if (mayWrite()) setTitle(null); });
             titleAnnot.appendChild(xBtn);
           } else {
             wrapper.classList.remove("has-title");
@@ -554,50 +581,19 @@ function createListTitleNodeView(
     // handle. The list wrapper keeps its `position: relative` so the
     // editor-level handle can pin to its margin via DOM-rect math.
 
+    const getTarget = (): Editor =>
+      isFloat ? (host?.getMainEditor() ?? nodeEditor) : nodeEditor;
+    const mayWrite = (): boolean => proxiedSurfaceEditableNow(nodeEditor, getTarget());
     function setTitle(newTitle: string | null) {
-      if (isFloat) {
-        // FCU Chip C2: proxy the title write to MAIN, resolving the list
-        // there by uuid (the float's list carries the synced uuid). The
-        // float's own onUpdate never fires from this write, so
-        // useFloatMainSync re-reads the result idempotently — no echo loop.
-        // Falls back to the float editor if main isn't resolvable. Mirrors
-        // the paragraph builder's float-mode setTitle (Chip C1).
-        const target = host?.getMainEditor() ?? nodeEditor;
-        const uuid = (currentNode.attrs.uuid as string | null) || null;
-        if (!uuid) return;
-        let foundPos: number | null = null;
-        let foundAttrs: Record<string, unknown> | null = null;
-        target.state.doc.descendants((nd, pos) => {
-          if (foundPos != null) return false;
-          if (nd.type.name === typeName && nd.attrs.uuid === uuid) {
-            foundPos = pos;
-            foundAttrs = { ...nd.attrs };
-            return false;
-          }
-          return true;
-        });
-        if (foundPos == null || foundAttrs == null) return;
-        const tr = target.state.tr.setNodeMarkup(foundPos, undefined, {
-          ...(foundAttrs as Record<string, unknown>),
-          parTitle: newTitle,
-        });
-        target.view.dispatch(tr);
-        return;
-      }
-      // Main (default): UNCHANGED — write to the editor the NodeView lives
-      // in, resolved by live position.
-      const pos = typeof getPos === "function" ? getPos() : null;
-      if (pos != null) {
-        const n = nodeEditor.state.doc.nodeAt(pos);
-        if (n) {
-          const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
-          if (newTitle && !attrs.uuid) {
-            attrs.uuid = mintDocUuid(nodeEditor.state.doc);
-          }
-          const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
-          nodeEditor.view.dispatch(tr);
-        }
-      }
+      writeVanillaParTitle({
+        isFloat,
+        nodeEditor,
+        target: getTarget(),
+        typeName,
+        node: currentNode,
+        getPos: () => (typeof getPos === "function" ? getPos() : null),
+        next: newTitle,
+      });
     }
 
     // ONE paragraph-title edit session (task 552) — the paragraph's byte for
@@ -611,6 +607,7 @@ function createListTitleNodeView(
       getTitle: () => (currentNode.attrs.parTitle as string | null) || null,
       render: () => renderAnnot(),
       commit: (next) => setTitle(next),
+      mayWrite,
     });
     const enterEditMode = () => titleSession.begin();
 
@@ -638,7 +635,7 @@ function createListTitleNodeView(
         xBtn.textContent = "×";
         xBtn.title = "Remove title";
         xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-        xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
+        xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); if (mayWrite()) setTitle(null); });
         titleAnnot.appendChild(xBtn);
       } else {
         wrapper.classList.remove("has-title");
@@ -882,7 +879,7 @@ export function createHeadingWithLabel(
         // Asked of BOTH editors: a float's own surface AND the main editor
         // its structural writes proxy to. Read at gesture time — O(1).
         const chipMayWrite = (): boolean =>
-          surfaceEditableNow(nodeEditor) && surfaceEditableNow(getTarget());
+          proxiedSurfaceEditableNow(nodeEditor, getTarget());
 
         // Every timer this view arms — the label input's focus frame, blur
         // guard and refocus KEEPER — is bounded by the view's teardown (task

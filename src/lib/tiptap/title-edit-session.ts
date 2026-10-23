@@ -131,24 +131,41 @@ export interface ParTitleSessionOptions {
   /** Repaint the strip from the node — the view's own `renderAnnot`. */
   render: () => void;
   /** Persist a CHANGED title (null = cleared). Never called for an unchanged
-   *  value, and never from a view teardown. */
+   *  value, never from a view teardown, and never when `mayWrite` refuses. */
   commit: (next: string | null) => void;
+  /**
+   * The WRITE GATE (task 1251) — "may this strip write its document right
+   * now?", asked through `surfaceEditableNow` of every editor the commit can
+   * reach (the view's own surface AND the main editor a float proxies to).
+   * REQUIRED, so no strip can be built ungated: on MAIN `view.editable` is
+   * pinned `true`, and a read-only host (Library Reader) or a held pen is
+   * enforced only downstream by `readOnlyEnforcer`, which DROPS the write
+   * silently — the input would open, take a title, and do nothing. Asked
+   * twice: at `begin()` (a refused session mounts nothing) and again at the
+   * commit (the pen can be taken mid-draft; a refused commit ends as a
+   * cancel). The heading chip's `chipMayWrite` (task 1017) is the twin.
+   */
+  mayWrite: () => boolean;
 }
 
 export interface ParTitleSession {
   /** Open the input. A no-op while a session is already open — the
-   *  re-entry rule, keyed on the session, never on DOM containment. */
+   *  re-entry rule, keyed on the session, never on DOM containment — and a
+   *  no-op when `mayWrite` refuses (task 1251). */
   begin(): void;
   /** True while an input owns the strip; `update()` must not repaint it. */
   readonly editing: boolean;
 }
 
 export function createParTitleSession(opts: ParTitleSessionOptions): ParTitleSession {
-  const { wrapper, titleAnnot, lifetime, placement, placeholder, getTitle, render, commit } = opts;
+  const { wrapper, titleAnnot, lifetime, placement, placeholder, getTitle, render, commit, mayWrite } =
+    opts;
   let editing = false;
 
   const begin = (): void => {
     if (editing) return;
+    // A read-only surface is offered no input at all (task 1251).
+    if (!mayWrite()) return;
     editing = true;
     // Setup is ATOMIC (task 805). The body placement appends a full-viewport
     // click-away overlay BEFORE the input's handlers exist; a throw part-way
@@ -229,7 +246,9 @@ export function createParTitleSession(opts: ParTitleSessionOptions): ParTitleSes
       // reaches the view's `update()`, which repaints from the new attr; an
       // unchanged one has nothing to dispatch and this is its whole ending.
       render();
-      if (next !== original) commit(next);
+      // Re-asked at the commit: the pen can be taken mid-draft, and a refused
+      // write ends as the cancel it is (strip restored, nothing dispatched).
+      if (next !== original && mayWrite()) commit(next);
     };
     const cancel = (): void => {
       if (ended) return;

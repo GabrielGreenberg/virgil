@@ -135,6 +135,24 @@ export function surfaceEditableNow(
 }
 
 /**
+ * May an in-NodeView edit door WRITE right now — asked of BOTH the surface the
+ * door lives on and the editor its write lands on (task 1251). A float's
+ * structural writes proxy to MAIN, so the float's own pen is not the whole
+ * answer; on main the two are the same editor and this is `surfaceEditableNow`.
+ * The ONE spelling of the gate every vanilla NodeView edit door asks before it
+ * offers an input — the heading chip (1017), the title strips and the example
+ * label pod (1251); `nodeview-write-gate-census.test.ts` pins the population.
+ *
+ * [cost: O(1).]
+ */
+export function proxiedSurfaceEditableNow(
+  own: EditorLike | EditorView | null | undefined,
+  target: EditorLike | EditorView | null | undefined,
+): boolean {
+  return surfaceEditableNow(own) && surfaceEditableNow(target);
+}
+
+/**
  * Is this surface read-only because its HOST mounted it so (the `editableRef`
  * axis — the Library Reader), as opposed to the pen (`view.editable`)? Asked
  * only to EXPLAIN a refusal (task 968's reason channel names "open read-only"
