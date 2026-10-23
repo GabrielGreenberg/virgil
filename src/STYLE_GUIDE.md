@@ -960,11 +960,25 @@ the note; `em`/`rem` prose rhythm is outside the pixel grid. `--pod-gap: 10px` i
 don't override.
 
 Four icon-button sizes: `iconbtn-xs` (16×16 — card/float header
-chevrons, dense-row dismiss X's), `iconbtn-sm` (20×20), `iconbtn-md`
-(24×24, default), `iconbtn-lg` (32×32). The visual SVG inside is smaller
-than the button (12 — forced by the utility —, 14, 16, 20 respectively);
-the whitespace is the click target. Pick the size that matches the box
-the control renders; a loose `p-0.5` around a 10–12px glyph is `xs`.
+chevrons, dense-row dismiss X's and copy buttons), `iconbtn-sm` (20×20 —
+the panel-header tier), `iconbtn-md` (24×24, default), `iconbtn-lg`
+(32×32). The visual SVG inside is smaller than the button (12, 14, 16, 20
+respectively); the whitespace is the click target.
+
+**The box→glyph ladder is structure, not caller discipline** (task
+2026-10-23-1249). Each rung is a token pair on `:root` — `--iconbtn-{size}`
+(box) and `--iconbtn-{size}-glyph` — and the utility sizes a direct-child
+SVG from the glyph token at EVERY size, deriving the padding as
+(box − glyph) / 2. So a caller's own `width`/`height` cannot move a glyph
+off the ladder; write them equal to the rung anyway (the larger dimension,
+for a non-square glyph), because CI reads them. Pick the box by the glyph
+the control wants: a 10–12px glyph is `xs`, not a loose `sm`/`md`. Code
+that needs a box size (an overlay pitch, a centring offset) reads the token
+— `var(--iconbtn-sm)` — and never restates the number. A glyph that must
+sit off the ladder says so at the site:
+`data-iconbtn-glyph="<reason>"` on the button opts its SVG out (the
+Toggle-sidebar button keeps the icon strip's 18px). CI:
+`iconbtn-glyph-ladder-census.test.ts`.
 
 **Every icon-only `<button>` wears one — or says why not, at the site**
 (task 826). CI (`icon-button-a11y-guardrail.test.ts`, leg E, no allowlist)

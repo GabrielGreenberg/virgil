@@ -546,8 +546,8 @@ function BibEntryPickerBody({
             {...iconHint({ label: "Close (Esc)" })}
           >
             <svg
-              width="11"
-              height="11"
+              width="12"
+              height="12"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -712,12 +712,12 @@ function BibEntryPickerRow({
               e.stopPropagation();
               onToggleExpand();
             }}
-            className="iconbtn-sm"
+            className="iconbtn-xs"
             {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
           >
             <svg
-              width="11"
-              height="11"
+              width="12"
+              height="12"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -958,8 +958,8 @@ function CitekeyRow({ citekey }: { citekey: string }) {
       >
         {copied ? (
           <svg
-            width="11"
-            height="11"
+            width="12"
+            height="12"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -972,8 +972,8 @@ function CitekeyRow({ citekey }: { citekey: string }) {
           </svg>
         ) : (
           <svg
-            width="11"
-            height="11"
+            width="12"
+            height="12"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"

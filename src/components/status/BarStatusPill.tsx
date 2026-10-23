@@ -218,7 +218,7 @@ export function useBarStatusMenu(): BarStatusMenuController {
 
 function KebabIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <circle cx="5" cy="12" r="1.6" />
       <circle cx="12" cy="12" r="1.6" />
       <circle cx="19" cy="12" r="1.6" />

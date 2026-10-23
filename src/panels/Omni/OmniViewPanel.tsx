@@ -633,11 +633,11 @@ function NavArrow({
         e.stopPropagation();
         onClick();
       }}
-      className="iconbtn-sm"
+      className="iconbtn-xs"
     >
       <svg
-        width="11"
-        height="11"
+        width="12"
+        height="12"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

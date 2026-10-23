@@ -108,7 +108,7 @@ export function RecentPaperRow({
           hint: "Forgets the paper in Virgil. No files are deleted.",
         })}
       >
-        <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
           <path d="M3 3 L11 11" />
           <path d="M11 3 L3 11" />
         </svg>

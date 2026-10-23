@@ -2530,14 +2530,16 @@ export function CardPopoutButton({
 
 /** The bottom-right card overlay cluster (trash · archive · restore) — ONE
  *  pitch, not three hand-picked offsets (task 821). Slot `n` sits one
- *  `iconbtn-sm` box (20px, globals.css) + a 2px gap further in from the
- *  corner inset than slot `n−1`: 6 · 28 · 50px. Resize the button and the
- *  cluster re-spaces itself. */
+ *  `iconbtn-sm` box + a 2px gap further in from the corner inset than slot
+ *  `n−1`: 6 · 28 · 50px today. The box is READ from its token
+ *  (`--iconbtn-sm`, globals.css), never restated here (task
+ *  2026-10-23-1249) — resize the button and the cluster re-spaces itself. */
 const CORNER_SLOT_INSET_PX = 6;
-const ICONBTN_SM_PX = 20;
 const CORNER_SLOT_GAP_PX = 2;
-function cornerSlotStyle(slot: 0 | 1 | 2): { right: number } {
-  return { right: CORNER_SLOT_INSET_PX + slot * (ICONBTN_SM_PX + CORNER_SLOT_GAP_PX) };
+function cornerSlotStyle(slot: 0 | 1 | 2): { right: string } {
+  return {
+    right: `calc(${CORNER_SLOT_INSET_PX}px + ${slot} * (var(--iconbtn-sm) + ${CORNER_SLOT_GAP_PX}px))`,
+  };
 }
 
 /**
@@ -3387,7 +3389,11 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
           {onTogglePopout && isPoppedOut && !chromeless && (
             <div
               className="absolute right-1.5 z-10"
-              style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 10px)" }}
+              // Centred on the header: half the measured header height
+              // minus half the `iconbtn-sm` box, both READ (the token, and
+              // the header's own `h-6` as the pre-measure fallback) —
+              // never a hand-halved box size (task 2026-10-23-1249).
+              style={{ top: "calc(var(--pc-header-h, 24px) / 2 - var(--iconbtn-sm) / 2)" }}
             >
               <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
             </div>

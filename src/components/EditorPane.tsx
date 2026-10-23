@@ -7564,7 +7564,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       className="iconbtn-xs iconbtn-meta"
                       {...iconHint({ label: "Expand all sections" })}
                     >
-                      <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M2 1 L7 4.5 L12 1" />
                         <path d="M2 5.5 L7 9 L12 5.5" />
                       </svg>
@@ -7575,7 +7575,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       className="iconbtn-xs iconbtn-meta"
                       {...iconHint({ label: "Collapse all sections" })}
                     >
-                      <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M2 4.5 L7 1 L12 4.5" />
                         <path d="M2 9 L7 5.5 L12 9" />
                       </svg>
@@ -8405,6 +8405,9 @@ function IconStrip({
           }}
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={isOpen}
+          // Off the iconbtn ladder on purpose: the strip's 18px panel glyphs
+          // (panel-icons.tsx) sit directly below, and this toggle matches them.
+          data-iconbtn-glyph="aligns: the icon strip's 18px panel glyphs (panel-icons.tsx)"
           {...iconHint({ label: "Toggle sidebar" })}
         >
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
