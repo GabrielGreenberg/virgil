@@ -633,11 +633,30 @@
   --edge-strong: #a8a29e;   /* input focus border (≈ stone-400) */
 
   /* Text scale */
-  --ink-faint: #d6d3d1;     /* disabled, resting drag handles (≈ stone-300) */
+  --ink-faint: #d6d3d1;     /* disabled, resting card grips (≈ stone-300) */
   --ink-muted: #78716c;     /* placeholders, default icons, timestamps (≈ stone-500) */
   --ink-subtle: #78716c;    /* subtitles (≈ stone-500) */
   --ink-body: #44403c;      /* section titles, strong readable text (≈ stone-700) */
   --ink-strong: #292524;    /* modal titles, primary bold text (≈ stone-800) */
+
+  /* Drag-handle ink. Two grips share one ladder: the card grip
+     (`.card-drag-handle`, rest `--ink-faint` → hover `--ink-subtle`) and the
+     margin grab handle (`.text-object-grab-handle`, rest `--muted`, the META
+     tier `iconbtn-meta` rests on). Both go to `--ink-body` when hovered,
+     pressed or menu-open — the iconbtn hover ink (task 2026-10-23-1261). */
+
+  /* Heading divider ramp — the rule drawn above a heading at each level
+     (`.show-dividers-N .heading-wrapper-lN::before`), darkest at the part
+     level (l0) and fading toward l6. A warm-grey ramp of its own: l1 and l2
+     sit one hex step off `--muted` / `--edge-strong` and are left as
+     shipped (task 2026-10-23-1261). */
+  --heading-divider-0: #6e6a62;
+  --heading-divider-1: #8a857d;
+  --heading-divider-2: #a8a29a;
+  --heading-divider-3: #c4bfb7;
+  --heading-divider-4: #d8d4cd;
+  --heading-divider-5: #e4e0d9;
+  --heading-divider-6: #ece8e1;
 
   /* ── Destructive / alarm roles ────────────────────────────────────
      The ROLE family every destructive, error and conflict affordance
@@ -2596,7 +2615,7 @@ textarea {
 }
 
 .text-object-grab-handle:hover {
-  color: var(--ink, #3a362f);
+  color: var(--ink-body);
 }
 /* Hover background renders across the whole HALO (centered on the dots), so
    the user SEES the enlarged target is engaged even with the cursor over the
@@ -2611,7 +2630,7 @@ textarea {
 
 .text-object-grab-handle:active,
 .text-object-grab-handle.is-pressed {
-  color: var(--ink, #3a362f);
+  color: var(--ink-body);
   /* Keep the translateY(-50%) centering (the box is centered on the optical
      Y) and add the 1px press nudge on top. */
   transform: translateY(calc(-50% + 1px));
@@ -2622,7 +2641,7 @@ textarea {
 }
 
 .text-object-grab-handle.is-menu-open {
-  color: var(--ink, #3a362f);
+  color: var(--ink-body);
 }
 .text-object-grab-handle.is-menu-open::before {
   background: rgba(0, 0, 0, 0.10);
@@ -2985,7 +3004,7 @@ textarea {
    otherwise lag the bg/color change behind the press. */
 .card-drag-handle:active,
 .card-drag-handle.is-pressed {
-  color: var(--ink, #3a362f) !important;
+  color: var(--ink-body) !important;
   background: rgba(0, 0, 0, 0.14) !important;
   border-radius: var(--radius-xs) !important;
   transform: translateY(2px) scale(0.9) !important;
@@ -5591,7 +5610,7 @@ body.perf-contain .static-borrowed-text {
 .show-dividers-0 .tiptap .heading-wrapper-l0::before {
   top: -3em;
   height: 4px;
-  background-color: #6e6a62;
+  background-color: var(--heading-divider-0);
 }
 .show-dividers-1 .tiptap .heading-wrapper-l1 {
   margin-top: 6.6em;
@@ -5599,28 +5618,28 @@ body.perf-contain .static-borrowed-text {
 .show-dividers-1 .tiptap .heading-wrapper-l1::before {
   top: -2.4em;
   height: 3px;
-  background-color: #8a857d;
+  background-color: var(--heading-divider-1);
 }
 
 .show-dividers-2 .tiptap .heading-wrapper-l2::before {
   height: 2px;
-  background-color: #a8a29a;
+  background-color: var(--heading-divider-2);
 }
 .show-dividers-3 .tiptap .heading-wrapper-l3::before {
   height: 1px;
-  background-color: #c4bfb7;
+  background-color: var(--heading-divider-3);
 }
 .show-dividers-4 .tiptap .heading-wrapper-l4::before {
   height: 1px;
-  background-color: #d8d4cd;
+  background-color: var(--heading-divider-4);
 }
 .show-dividers-5 .tiptap .heading-wrapper-l5::before {
   height: 1px;
-  background-color: #e4e0d9;
+  background-color: var(--heading-divider-5);
 }
 .show-dividers-6 .tiptap .heading-wrapper-l6::before {
   height: 1px;
-  background-color: #ece8e1;
+  background-color: var(--heading-divider-6);
 }
 
 /* Panel font size preferences */
