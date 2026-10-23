@@ -1037,9 +1037,15 @@ first: it is `tabIndex={-1}` and shows `data-active` instead, so it
 needs a name and no ring.
 
 Icons are stroke-only, stroke-width 2, round caps and joins, single
-color (`currentColor`). Three exceptions are filled by design: the AI
-star (sky `#0ea5e9`), the trash icon (`text-danger`), and the
-heading-fold chevron (`--footnote-color` when folded).
+color (`currentColor`). Two exceptions are filled by design: the AI
+star (sky `#0ea5e9`) and the trash icon (`text-danger`). The **fold
+chevron** is a STROKED exception to the width: the shared
+`margin-fold-chevron` control (heading fold + source-pod collapse) and the
+Outline twisties draw one glyph, `FOLD_CHEVRON_GLYPH` in
+[src/lib/fold-chevron.ts](src/lib/fold-chevron.ts) (vanilla
+`buildFoldChevronSvg`, React `FoldChevronGlyph`), at stroke 1.5 at rest —
+the margin control bumps it to 2 and paints `--footnote-color` when
+folded (globals.css `.margin-fold-chevron.is-folded`).
 
 The **external-link / "open in new tab"** glyph (`ExternalLinkIcon` —
 `src/components/icons/`, a lucide box-with-arrow leaf, 12px default) is the
