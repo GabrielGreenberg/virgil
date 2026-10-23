@@ -11,7 +11,10 @@
  *     handle.left = markerLeft − gapPx − HANDLE_WIDTH
  *
  * i.e. the handle's RIGHT edge sits one `gapPx` (an em token resolved per
- * block in block-frame.ts) left of the block's measured marker. The result is
+ * block in block-frame.ts) left of the block's measured marker. (That is the
+ * HUG reading; since task 487 a markerless container right-justifies in
+ * `columnRight` instead — both readings are stated at `resolveHandleLane`
+ * below.) The result is
  * floored at `editorColumnLeft − baselineInset` so a deeply-indented block on
  * a narrow viewport never pushes the handle off-screen-left.
  *

@@ -405,7 +405,8 @@
      for the `.text-object-grab-handle` width and the halo's floor below; the
      JS placement (handle-layout.ts `HANDLE_WIDTH`) must equal it, which
      hover-zone-contains-handle-lane.test.tsx pins against this line (task
-     831). A px token, not em: the X rule `markerLeft − gap − width` and the
+     831). A px token, not em: the X rule (both readings, handle-layout.ts
+     `resolveHandleLane`) and the
      optical-center math both assume a fixed box. */
   --margin-handle-width: 12px;
   /* Inter-block vertical rhythm. Owned by each block's margin-top
@@ -2540,8 +2541,8 @@ textarea {
      (placement.top, derived from block-frame.ts). Center the box on that Y
      (translateY(-50%)) AND center the SVG within the box, so the six-dot
      glyph's visual center lands exactly on the optical center of the text it
-     labels — font-size-independently. The 12px box stays put: chip 2's X
-     placement (`markerLeft − gap − 12`) and chip 1's optical center depend on
+     labels — font-size-independently. The 12px box stays put: the X
+     placement (`resolveHandleLane`, handle-layout.ts) and chip 1's optical center depend on
      this size, so the WIDE hit/hover halo is a separate ::before centered on
      this box (below) — it enlarges the target WITHOUT moving the dots. */
   align-items: center;
@@ -2552,13 +2553,11 @@ textarea {
      Scales with the editor font like the handle height (~1.8× font ≈ 1.8em),
      so the target grows with larger prose rather than staying a fixed px. */
   --margin-handle-hit-pad: calc(var(--editor-font-size, 1.05rem) * 1.8);
-  /* Chip 3: sibling-overlap cap — the MAX half-width (px) the halo may take.
-     Default is effectively unbounded (full pad); the grab-handle component
-     sets this inline to half the distance to the nearest same-row handle when
-     that's closer than the pad, so two nested handles (a bullet container +
-     its first item, measured ~19px apart) get halos that meet at the midpoint
-     and stay independently grabbable instead of the wider swallowing the
-     narrower. See TextObjectGrabHandle.tsx `applyHitCaps`. */
+  /* Chip 3: hit-halo cap — the MAX half-width (px) the halo may take. The
+     grab-handle component sets this inline per handle; the default below is
+     only the no-inline-value fallback. The live contract (sibling cap ∧
+     outboard lane cap) is stated once, at TextObjectGrabHandle.tsx
+     `applyHitCaps`. */
   --margin-handle-hit-cap: 999px;
   transform: translateY(-50%);
   opacity: 1;
