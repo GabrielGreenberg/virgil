@@ -945,3 +945,41 @@ describe("CodeMirror surfaces carry no raw colour literal", () => {
     expect(hits).toEqual([]);
   });
 });
+
+/**
+ * Margin chrome reads the token scale (task 2026-10-23-1261).
+ *
+ * The margin grab handle and the card grip painted their active ink with the
+ * never-defined `--ink` (so the #3a362f fallback always painted and a retone
+ * never reached them), and the seven heading dividers were raw hexes in rule
+ * bodies, two of them one hex step off `--muted` / `--edge-strong`. The
+ * handles now go to `--ink-body` (the iconbtn hover ink); the dividers read a
+ * `--heading-divider-N` ramp declared once on `:root`.
+ */
+describe("margin chrome reads the token scale", () => {
+  const css = cssCommentsStripped(globals);
+  /** Every `selector { body }` whose selector matches `sel`. */
+  const rules = (sel: RegExp) =>
+    [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, s]) => sel.test(s))
+      .map(([, s, body]) => ({ sel: s.trim(), body }));
+
+  it("gives no grab-handle or card-grip rule the undefined --ink", () => {
+    const grips = rules(/\.(text-object-grab-handle|card-drag-handle)\b/);
+    expect(grips.length).toBeGreaterThanOrEqual(6); // non-vacuous
+    expect(grips.filter((r) => /var\(--ink[,)]/.test(r.body)).map((r) => r.sel)).toEqual([]);
+  });
+
+  it("paints every heading divider from the --heading-divider ramp", () => {
+    const dividers = rules(/\.heading-wrapper-l[0-6]::before\s*$/).filter((r) =>
+      /background-color/.test(r.body),
+    );
+    expect(dividers).toHaveLength(7);
+    for (const [i, r] of dividers.entries()) {
+      expect(r.body).toContain(`background-color: var(--heading-divider-${i});`);
+    }
+    for (let i = 0; i <= 6; i++) {
+      expect(globals).toMatch(new RegExp(`--heading-divider-${i}:\\s*#[0-9a-f]{6}\\s*;`));
+    }
+  });
+});

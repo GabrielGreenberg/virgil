@@ -58,7 +58,7 @@ import { commentsStripped, cssCommentsStripped, walkFiles } from "@/lib/__tests_
  * A hit is DEFINE-it or SPELL-the-value.
  *
  * WITH-FALLBACK is a pinned CENSUS rather than a ban: those reads work, and
- * deciding whether `var(--ink, #3a362f)` should become `--ink-body`, a literal,
+ * deciding whether `var(--ink, #2a2520)` should become `--ink-body`, a literal,
  * or a newly-minted token is a VISUAL judgement, not a cleanup. So the set is
  * exact — a NEW decorative phantom fails CI — and it can only SHRINK.
  */
@@ -189,10 +189,12 @@ const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
   // A vocabulary the math / figure / expex chrome invented alongside the real
   // `--surface` / `--foreground` / `--muted` / `--ink-*` scales it sits beside.
   // `--text` (#1a1a1a) and `--panel-bg`/`--input-bg` (#ffffff) match a live
-  // token EXACTLY today; `--ink` and `--text-muted` match none, and `--ink`
-  // carries two different fallbacks. Re-pointing any of them makes those
-  // surfaces newly follow a user retone — right, and a change to look at.
-  "--ink": "math/figure chrome; fallback is the shipped value; two variants (#3a362f / #2a2520)",
+  // token EXACTLY today; `--ink` and `--text-muted` match none. (`--ink` once
+  // also painted the margin grab handle and card grip at #3a362f; those now
+  // read `--ink-body` — task 2026-10-23-1261 — leaving only the figure
+  // chrome.) Re-pointing any of them makes those surfaces newly follow a
+  // user retone — right, and a change to look at.
+  "--ink": "figure chrome (.figure-empty-cta, .figure-scale-input); fallback #2a2520 matches no live token",
   "--text": "math/figure chrome; fallback #1a1a1a equals --foreground today",
   "--text-muted": "math/figure chrome; fallback #9a8f80 matches no live token",
   "--panel-bg": "math/figure chrome; fallback #ffffff equals --surface today",
