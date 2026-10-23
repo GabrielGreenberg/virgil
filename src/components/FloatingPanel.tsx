@@ -1340,6 +1340,10 @@ function FloatingPanelInner({
       data-floating-panel="true"
       data-panel-shell-mode={mode}
       data-panel-shell-id={panelId}
+      // The float's SURFACE as a stated fact (task 1246): the popped-card
+      // window rules in globals.css gate on `data-float-surface="card"` so a
+      // whole-panel float keeps its tier's shadow + per-card outlines.
+      data-float-surface={surface}
       className={`flex flex-col overflow-hidden${viewPrefRoot.className ? ` ${viewPrefRoot.className}` : ""}`}
       {...viewPrefAttrs}
       style={
