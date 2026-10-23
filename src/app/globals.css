@@ -140,7 +140,8 @@
      (so `rounded-md` / `rounded-lg` / … are token-backed), AND emitted as
      `:root` vars there for inline-style / CSS consumers (`var(--radius-md)`).
      --pod-radius / --panel-radius keep their canonical names + values (widely
-     referenced, print-mode-overridden); the @theme `--radius-lg`/`--radius-xl`
+     referenced, NEVER redefined outside :root — print flattens the editor
+     pod through --editor-pod-radius, not the tier); the @theme `--radius-lg`/`--radius-xl`
      alias onto them. Tiers, small→large:
        --radius-xs 3px    in-text/chip micro details (marks, chips, kbd)
        --radius-sm 4px    small controls & inner rows (icon btns, swatches)
@@ -166,6 +167,14 @@
      equality is pinned by folder-tab-geometry.test.ts (see STYLE_GUIDE
      "Radius scale" exceptions; tangency lineage: task 014). */
   --library-manila-radius: 10px;
+  /* The EDITOR POD's own corner — the pod-tier value under a name that is
+     the pod's CHROME, not the tier (task 2026-10-23-1248). Print flattens
+     the editor pod's chrome by zeroing THIS, so `--pod-radius` keeps one
+     meaning in every mode: code blocks, display math and figure images
+     (which read the tier) print with the same 8px corners they show on
+     screen. Every editor-pod chrome surface (frame ring, caps, in-card
+     header, split panes) reads this name, never `--pod-radius` directly. */
+  --editor-pod-radius: var(--pod-radius);
   --pod-gap: 10px;
   /* ── The pod SEAM (SSOT, task 329) ────────────────────────────────────
      `--pod-gap` was answering two different questions, and only one of them
@@ -942,7 +951,7 @@ body[data-zen-mode="on"] {
    self-references below resolve to the :root values, never to a
    circular-invalid value). `--radius-lg`/`--radius-xl` alias the
    canonical --pod-radius/--panel-radius (kept as the tier SSOT,
-   print-mode overridden). Only intentional visual shift vs Tailwind
+   one value in every mode). Only intentional visual shift vs Tailwind
    defaults: rounded-xl 12→14 (modals join the panel tier).
    rounded-full / rounded-none stay Tailwind's built-ins (they are
    `staticValues`, not theme keys, so nothing here can reach them);
@@ -1848,7 +1857,7 @@ textarea {
 .source-pod-preview {
   position: relative; /* stacks above .source-pod-row-sensor in overlap */
   border: 1px dashed var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-md);
+  border-radius: var(--pod-radius);
   background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
   padding: 8px 12px;
   cursor: pointer;
@@ -1906,7 +1915,7 @@ textarea {
   padding: 1px 4px;
   font-size: 10px;
   line-height: 1.25;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--background) 85%, transparent);
   border: 1px solid var(--heading-annotation-border, #a8c4de);
   color: var(--heading-annotation-color, #6b9ac4);
@@ -1956,7 +1965,7 @@ textarea {
 .source-pod-derived {
   position: relative;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-md);
+  border-radius: var(--pod-radius);
   background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
   padding: 14px 70px 14px 16px;
   cursor: pointer;
@@ -2000,7 +2009,7 @@ textarea {
   margin: 0;
   padding: 6px 10px;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-md);
+  border-radius: var(--pod-radius);
   background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
   color: var(--ink-strong, #2a2724);
   font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
@@ -6102,14 +6111,17 @@ body.perf-contain .static-borrowed-text {
   }
 
   /* The editor pod (a descendant of [data-editor-page]) uses
-     var(--pod-border) and var(--pod-shadow) inline. Override the
-     custom properties at the document root so the pod chrome
-     disappears in print without us having to target the inline-styled
-     element directly. */
+     var(--pod-border), var(--pod-shadow) and var(--editor-pod-radius)
+     inline. Override the custom properties at the document root so the
+     pod chrome disappears in print without us having to target the
+     inline-styled element directly. The corner is zeroed through the
+     pod's OWN name, never the `--pod-radius` tier: content that wears
+     the tier (code blocks, display math, figure images) is content, not
+     chrome, and prints as it shows (task 2026-10-23-1248). */
   :root {
     --pod-border: 0 !important;
     --pod-shadow: none !important;
-    --pod-radius: 0 !important;
+    --editor-pod-radius: 0 !important;
   }
 
   /* Pull through our chosen font size only inside the print media so we

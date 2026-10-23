@@ -13,8 +13,8 @@ import { commentsStripped, cssCommentsStripped, trackedFiles } from "@/lib/__tes
  * mapped onto Tailwind's `rounded-*` namespace. These tests lock:
  *   1. the scale tokens exist with their canonical values,
  *   2. the Tailwind `@theme` mapping aliases `rounded-lg`/`rounded-xl` onto the
- *      canonical --pod-radius/--panel-radius (so print-mode flattening + the
- *      tier SSOT are preserved),
+ *      canonical --pod-radius/--panel-radius (so the tier SSOT is
+ *      preserved),
  *   3. the guard passes — no stray literal radii have crept back into the tree.
  */
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -35,7 +35,7 @@ describe("radius scale tokens", () => {
 
   it("maps the Tailwind radius namespace onto the scale", () => {
     // rounded-lg / rounded-xl must alias the canonical pod/panel tokens, not
-    // hard-code 8px/14px — that keeps them print-mode-flattenable + single-sourced.
+    // hard-code 8px/14px — that keeps them single-sourced.
     expect(globals).toMatch(/--radius-lg:\s*var\(--pod-radius\)/);
     expect(globals).toMatch(/--radius-xl:\s*var\(--panel-radius\)/);
     // xs/sm/md/pill self-reference the :root values (emitted, unlayered-wins).
@@ -385,6 +385,13 @@ describe("radius roles wear the tier the guide assigns them", () => {
     [".tiptap pre", "var(--pod-radius)"],
     [".display-math", "var(--pod-radius)"],
     [".figure-block .figure-image", "var(--pod-radius)"],
+    // Source-pod code surfaces are CODE surfaces — the pod tier, beside the
+    // code block they mirror (task 2026-10-23-1248).
+    [".source-pod-preview", "var(--pod-radius)"],
+    [".source-pod-derived", "var(--pod-radius)"],
+    [".source-pod-static-source", "var(--pod-radius)"],
+    // Annotation chips are the xs tier, like their heading-annotation siblings.
+    [".source-pod-chip", "var(--radius-xs)"],
     // Menus reach the pod tier through --menu-radius, never by naming it.
     [".menu-surface", "var(--menu-radius)"],
     // The one stated exception: the surface="none" label-ref popover sits on
@@ -426,7 +433,70 @@ describe("radius roles wear the tier the guide assigns them", () => {
     expect(tierOf(m![1])).toEqual([token]);
   });
 
+  it("the source-pod CodeMirror mount wears the same tier as its frame", () => {
+    expect(src("src/components/source-pod-code-mirror.tsx")).toMatch(/borderRadius:\s*"var\(--pod-radius\)"/);
+  });
+
   it("StatusPill itself is on the pill tier (the shape the badges above match)", () => {
     expect(src("library/components/StatusPill.tsx")).toMatch(/var\(--radius-pill\)|rounded-pill|rounded-full/);
+  });
+});
+
+/**
+ * A tier token has ONE meaning in every mode (task 2026-10-23-1248). Print
+ * used to zero `--pod-radius` to drop the editor pod's chrome, which also
+ * squared every code block, display-math block and figure image — content
+ * that reads the tier — while inline code/math kept their corners. A mode
+ * that must change one surface's corner overrides that surface's OWN name
+ * (`--editor-pod-radius`), never the tier.
+ */
+describe("radius tier tokens are never redefined outside :root", () => {
+  const TIER_DECL = /(?:^|[;{\s])(--(?:pod-radius|panel-radius|radius(?:-[a-z0-9]+)?))\s*:/g;
+
+  it("declares each tier exactly once, in the first :root (plus its @theme alias)", () => {
+    const css = cssCommentsStripped(globals);
+    // Walk top-level and nested blocks, recording the selector/at-rule chain
+    // each declaration sits under.
+    const offenders: string[] = [];
+    const stack: string[] = [];
+    let buf = "";
+    let firstRootSeen = false;
+    let inFirstRoot = false;
+    for (const ch of css) {
+      if (ch === "{") {
+        const head = buf.trim().split(/[;}]/).pop()!.trim();
+        if (head === ":root" && stack.length === 0 && !firstRootSeen) {
+          firstRootSeen = true;
+          inFirstRoot = true;
+        }
+        stack.push(head);
+        buf = "";
+      } else if (ch === "}") {
+        const body = buf;
+        const chain = stack.join(" > ");
+        const allowed = (inFirstRoot && stack.length === 1) || chain.startsWith("@theme");
+        if (!allowed) {
+          for (const m of body.matchAll(TIER_DECL)) offenders.push(`${m[1]} in \`${chain}\``);
+        }
+        if (inFirstRoot && stack.length === 1) inFirstRoot = false;
+        stack.pop();
+        buf = "";
+      } else {
+        buf += ch;
+      }
+    }
+    expect(firstRootSeen).toBe(true);
+    expect(offenders).toEqual([]);
+  });
+
+  it("print flattens the editor pod through its own name, and the pod chrome reads it", () => {
+    expect(globals).toMatch(/--editor-pod-radius:\s*var\(--pod-radius\)\s*;/);
+    const print = cssCommentsStripped(globals).match(/@media print\s*\{[\s\S]*?:root\s*\{([^}]*)\}/);
+    expect(print, "expected a :root block inside @media print").not.toBeNull();
+    expect(print![1]).toMatch(/--editor-pod-radius:\s*0\s*!important/);
+    const pane = readFileSync(path.join(ROOT, "src/components/EditorPane.tsx"), "utf8");
+    expect(pane).not.toMatch(/var\(--pod-radius\)/);
+    const split = readFileSync(path.join(ROOT, "src/components/editor-layout/split-editor-panes.tsx"), "utf8");
+    expect(split).not.toMatch(/var\(--pod-radius\)/);
   });
 });

@@ -83,7 +83,7 @@ const sourcePodTheme = EditorView.theme(
         fontSize: "13px",
         fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
         backgroundColor: "var(--code-block-bg)",
-        borderRadius: "var(--radius-md)",
+        borderRadius: "var(--pod-radius)",
         border: "1px solid var(--heading-annotation-border)",
       },
       "&.cm-focused": { outline: "none" },

@@ -117,7 +117,7 @@ export function SplitEditorPanes({
         ref={topRef}
         data-editor-pane="top"
         className="relative flex flex-col min-w-0 min-h-0 overflow-hidden"
-        style={{ flex: `${ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
+        style={{ flex: `${ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--editor-pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
       >
         {canonical}
         <SectionLozenge sectionPath={sectionPath} />
@@ -132,7 +132,7 @@ export function SplitEditorPanes({
         ref={bottomRef}
         data-editor-pane="bottom"
         className="relative flex flex-col min-w-0 min-h-0 overflow-hidden"
-        style={{ flex: `${1 - ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
+        style={{ flex: `${1 - ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--editor-pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
       >
         <EditorMirror
           editor={editorInstance}
