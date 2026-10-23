@@ -1561,9 +1561,9 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
       // scoped it to `:not(:focus-visible)`, which is what its own sentence
       // ("the window now carries the ring — selection AND hover") already
       // said it was about. The `:not()` in each selector is the pin.
-      '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"]:not(:focus-visible),\n' +
-        '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),\n' +
-        '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover:not(:focus-visible)',
+      '[data-floating-panel][data-panel-shell-mode="floating"][data-float-surface="card"] [data-card-key][data-card-selected="true"]:not(:focus-visible),\n' +
+        '[data-floating-panel][data-panel-shell-mode="floating"][data-float-surface="card"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),\n' +
+        '[data-floating-panel][data-panel-shell-mode="floating"][data-float-surface="card"] [data-card-key]:hover:not(:focus-visible)',
       // The PRINT neutralisation. A focus indicator is editor state by
       // definition, and the outline is the one member that prints with DEFAULT
       // settings (a `box-shadow` needs "Background graphics"; an `outline` is

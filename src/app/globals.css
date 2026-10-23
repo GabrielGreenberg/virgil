@@ -4296,7 +4296,15 @@ textarea {
  * reconciler stamps it upward at write time (perf Wave 0, plan P5.1). */
 /* The projection sits ON the FloatingPanel root itself (it portals out of the
  * pane), hence the compound selector rather than a descendant one. */
-.card-outline-chrome[data-floating-panel][data-panel-shell-mode="floating"][data-contains-active-card="true"] {
+/* POPPED CARD ONLY (task 1246). A whole panel floated from the strip is the
+ * same FloatingPanel root in `floating` mode, carries the same view-pref
+ * projection, and the reconciler stamps `data-contains-active-card` on it for
+ * ANY active card — so without the surface gate, hovering one note rang the
+ * whole Notes window and swapped its `--shadow-float` for the card rung
+ * ("elevation is a property of the tier, never of a state"). FloatingPanel
+ * states its surface as `data-float-surface`; every popped-context selector
+ * here requires `="card"`. */
+.card-outline-chrome[data-floating-panel][data-panel-shell-mode="floating"][data-float-surface="card"][data-contains-active-card="true"] {
   box-shadow:
     var(--card-shadow-ambient),
     0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent)
@@ -4315,9 +4323,9 @@ textarea {
  * that pref is default OFF, so what it handed over to was nothing. Strictly
  * additive: it draws an outline only in a state where none was drawn before,
  * and every selection/hover state it was written for is untouched. */
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"]:not(:focus-visible),
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover:not(:focus-visible) {
+[data-floating-panel][data-panel-shell-mode="floating"][data-float-surface="card"] [data-card-key][data-card-selected="true"]:not(:focus-visible),
+[data-floating-panel][data-panel-shell-mode="floating"][data-float-surface="card"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),
+[data-floating-panel][data-panel-shell-mode="floating"][data-float-surface="card"] [data-card-key]:hover:not(:focus-visible) {
   outline: none;
 }
 
