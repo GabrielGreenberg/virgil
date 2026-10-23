@@ -54,7 +54,9 @@ export interface FsaDocMeta {
    * scan the folder on every read.
    */
   texFilename: string;
-  /** Display label for the picked folder (its `.name`), for the path bar. */
+  /** Display label for the picked folder (its `.name`), for the path bar.
+   *  NOT an identity key — two folders may share a basename; "same paper?"
+   *  is `findKnownDoc` (storage-fsa.ts, `isSameEntry`), task 1250. */
   folderName: string;
   createdAt: string;
   lastModifiedAt: string;

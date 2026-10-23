@@ -103,10 +103,12 @@ const A: FsaDocMeta = {
 };
 
 function fakeFolder(name: string): FileSystemDirectoryHandle {
+  // Identity is `isSameEntry` (task 1250); the fake's entry is its basename.
   return {
     name,
     kind: "directory",
     getDirectoryHandle: async () => ({}),
+    isSameEntry: async (other: { name?: string }) => other?.name === name,
   } as unknown as FileSystemDirectoryHandle;
 }
 
