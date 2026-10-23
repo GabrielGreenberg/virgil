@@ -1,4 +1,4 @@
-<!-- last-verified: ff4a500a 2026-10-22 -->
+<!-- last-verified: 67893ac1 2026-10-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -160,12 +160,15 @@ off-vocabulary kind is a refusal (`die`), where it used to default silently to
 `footnote`). Two more belts on the write: a write against a Task that is ALREADY
 terminal dies before any byte lands (task 787 — `revert` still re-opens), and a
 new card's self-link `ref.kind` is stamped with the SPINE card kind
-(`card_by_id.spine_card_kind`), never the record discriminant (task 783). An existing-card mutation op (`update`, …) that carries a `requestId` closes that request in the SAME commit (task 816, `_mutation_commit`): a real Task completes `auto-applied` and its `linkedTo` source flag is lowered; a `virtual:<panel>:<cardId>` id lowers that card's flag; an unknown or terminal Task is refused before anything is written. Every free-text flag of `create_card.py` (and `complete-only --note`) accepts `@<path>` — write the prose to a quoted-heredoc scratch file (task 815, `_common.text_arg`). The conceptual model is
+(`card_by_id.spine_card_kind`), never the record discriminant (task 783). An existing-card mutation op (`update`, …) that carries a `requestId` closes that request in the SAME commit (task 816, `_mutation_commit`): a real Task completes `auto-applied` and its `linkedTo` source flag is lowered; a `virtual:<panel>:<cardId>` id lowers that card's flag; an unknown or terminal Task is refused before anything is written; and a `virtual:` id is IDEMPOTENT — once its source flag is down `create_card.py` no-ops and the door refuses (task 1234). Both the drain (`list_requests.py`) and `create_card.py` read a Task through ONE live projection, `list_requests.project_task_row` (text / paragraphIds / selectedText from the linked card; the stored row only when the link does not resolve — task 1232). Every free-text flag of `create_card.py` (and `complete-only --note`) accepts `@<path>` — write the prose to a quoted-heredoc scratch file (task 815, `_common.text_arg`). The conceptual model is
 [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern); this
 contract is **built and validated end-to-end through the footnote kind**, then
 fanned out to the full create-able set — `note` / `todo` / `citation` / `report` /
 `report-request` (and the tex-only `example`) — each a small, uniform addition on
-the same contract (`editor/scripts/create_card.py`), **no contract change**.
+the same contract (`editor/scripts/create_card.py`), **no contract change**. Since task 1238 `/editor/find-citation` lands here too: `--kind=citation`
+allocates the 4-hex citation id, `--unanchored` builds the card the user drags into
+place (no `.tex` splice), and a `--bib-entry` rider appends the new source to the
+`.bib` in the SAME atomic op.
 
 ## The preservation gate (the app's own writes)
 

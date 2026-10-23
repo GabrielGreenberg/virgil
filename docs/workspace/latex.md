@@ -1,4 +1,4 @@
-<!-- last-verified: ff4a500a 2026-10-22 -->
+<!-- last-verified: 67893ac1 2026-10-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -61,6 +61,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\sout{}` | strike mark (`ulem`, injected `[normalem]`) |
 | `\textsc{}` | smallCaps mark (`{\scshape …}` stays raw) |
 | `\texttt{}` | code mark |
+| `\textsubscript{}` / `\textsuperscript{}` | subscript / superscript marks, rendered `<sub>`/`<sup>` (kernel commands, no package; task 1239 — math-mode `$_2$` stays math) |
 | `\textcolor[HTML]{RRGGBB}{}` | textColor mark (**only** the `[HTML]{6-hex}` form) |
 | `\footnote{}` / `\thanks{}` | `footnote` atom (consumes a pending `\vfid`) |
 | the natbib + biblatex cite family | `citation` atom (consumes a pending `\vcid`) |
@@ -187,7 +188,7 @@ elsewhere. An expex
 
 - **Mark → command** (ONE table, `WRAPPER_MARK_ROWS` in `src/lib/mark-composition.ts`,
   task 808): bold→`\textbf`, italic→`\emph` (or `\textit` per its `spelling` attr),
-  underline→`\underline`, strike→`\sout`, smallCaps→`\textsc`, code→`\texttt`, textColor→`\textcolor[HTML]{HEX}{}`; `latexCommand`→raw
+  underline→`\underline`, strike→`\sout`, smallCaps→`\textsc`, code→`\texttt`, subscript→`\textsubscript`, superscript→`\textsuperscript`, textColor→`\textcolor[HTML]{HEX}{}`; `latexCommand`→raw
   passthrough; `linkedAnchor`→no command (wrapped by `\vlid`/`\vlidend`).
 - **Escaping is ONE table read by both rungs on both surfaces** —
   `CHAR_ESCAPE_TABLE` in [src/lib/latex-typography.ts](../../src/lib/latex-typography.ts)

@@ -1,4 +1,4 @@
-<!-- last-verified: ff4a500a 2026-10-22 -->
+<!-- last-verified: 67893ac1 2026-10-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -82,8 +82,10 @@ with the structural hook namespace: `.tiptap` / `.ProseMirror` / `.react-rendere
 families, plus the standalone `data-atoms-graspable` (task 524), the `data-attr-<kebab>`
 clipboard lane atom attrs ride on copy/paste (task 1068,
 [attr-clipboard-codec.ts](../../src/lib/tiptap/attr-clipboard-codec.ts)), and the chrome
-classes `.iconbtn-*` (task 826), `.margin-fold-chevron` (task 830) and
-`.card-mono` (task 825). (The full namespace is the SSOT file itself,
+classes `.iconbtn-*` (task 826), `.margin-fold-chevron` (task 830),
+`.card-mono` (task 825) and the resize-gutter grab family (`--gutter-grab`,
+`.drag-gap-grab-start` / `-end`, task 1241), plus `data-float-surface` — the
+float's stated surface the popped-card window rules gate on (task 1246). (The full namespace is the SSOT file itself,
 [src/app/globals.css](../../src/app/globals.css).)
 
 **Reserved file / folder paths** (SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)):
