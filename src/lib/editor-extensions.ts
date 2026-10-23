@@ -1661,7 +1661,8 @@ export interface EditorExtensionsCtx {
   figureFloat?: boolean;
   /** Heading / figure callback refs, read by the relocated NodeViews. */
   callbacks: EditorExtensionsCallbackRefs;
-  /** docId mirror for FigureBlock / GraphicsBlock NodeViews. */
+  /** docId mirror for the NodeViews that name their doc: FigureBlock /
+   *  GraphicsBlock, and the Footnote / Citation marker clicks (task 1252). */
   docIdRef?: RefObject<string | null> | null;
   /** Paragraph UUIDs carrying marginalia — gates MarginaliaAnchorGuard. */
   anchoredUuidsRef?: RefObject<Set<string>>;
@@ -1893,7 +1894,8 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // `surface` gate guarded against dissolves natively. Added bare on both
     // surfaces (only `cardContext` still gates it, via borrowed-schema).
     LatexComment.configure({ surface: isFloat ? "float" : "main" }),
-    Citation,
+    // Its marker click names the owning doc (task 1252), like Footnote's.
+    Citation.configure({ docIdRef: ctx.docIdRef ?? null }),
     LabelRef,
     // The atoms' paste identity + plain-text clipboard (task 1068). A float's
     // doc is one node of MAIN's, so it asks MAIN "is this id free?" (task

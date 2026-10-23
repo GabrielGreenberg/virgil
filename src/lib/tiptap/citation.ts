@@ -42,6 +42,8 @@ import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import { createLeafNodeView } from "@/lib/tiptap/leaf-node-view";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
+import type { RefObject } from "react";
+import { dispatchCitationClick } from "@/lib/pane-click-origin";
 
 const CITATION_ATOM = ATOM_REGISTRY.citation;
 
@@ -54,6 +56,13 @@ const CITATION_ATOM = ATOM_REGISTRY.citation;
 // avoidance against the existing citation IDs in the document.
 export interface CitationOptions {
   idGenerator: (existing: Set<string>) => string;
+  /**
+   * Live ref to the owning editor's docId, read at click time so the marker
+   * click names its ORIGIN doc (task 1252, finishing task 1093): the shell's
+   * bridge routes a Library Reader click into the Reader's own pane. Null on
+   * surfaces with no doc identity (the click then takes the editor's path).
+   */
+  docIdRef?: RefObject<string | null> | null;
 }
 
 export const Citation = Node.create<CitationOptions>({
@@ -71,6 +80,7 @@ export const Citation = Node.create<CitationOptions>({
   addOptions() {
     return {
       idGenerator: (existing: Set<string>) => generateShortId(existing),
+      docIdRef: null,
     };
   },
 
@@ -281,6 +291,7 @@ export const Citation = Node.create<CitationOptions>({
         ),
       );
     };
+    const docIdRef = this.options.docIdRef;
     return ({ node, getPos }) =>
       // Task 840: the click reads the LIVE node, so a citation id re-minted in
       // place opens ITS card, not the mount-time one.
@@ -308,28 +319,16 @@ export const Citation = Node.create<CitationOptions>({
         },
         onClick({ node: current, dom, pos }) {
           const rect = dom.getBoundingClientRect();
-          const panelAncestor = dom.closest(
-            "[data-panel-side]",
-          ) as HTMLElement | null;
-          window.dispatchEvent(
-            new CustomEvent("virgil-citation-click", {
-              detail: {
-                citationId: current.attrs.citationId,
-                // Viewport Y of the clicked citation — used by the citations
-                // panel to align the corresponding card vertically with the
-                // click target.
-                clickY: rect.top,
-                // Doc position of THIS citation instance — used to override
-                // the card's anchor when a later/repeated citation is clicked
-                // so the card moves to align with the click rather than the
-                // (often-distant) first citation.
-                clickedPos: pos(),
-                sourceSide: panelAncestor?.dataset.panelSide,
-                sourcePanelId: panelAncestor?.dataset.panelId,
-                sourceHalf: panelAncestor?.dataset.panelHalf,
-              },
-            })
-          );
+          // Names its ORIGIN doc (task 1252) — see `pane-click-origin.ts`.
+          dispatchCitationClick({
+            docId: docIdRef?.current ?? null,
+            citationId: current.attrs.citationId,
+            // Viewport Y of the clicked citation — the card is placed level
+            // with it (`placeSelectedCard`).
+            clickY: rect.top,
+            // Doc position of THIS citation instance (task 840 pins it live).
+            clickedPos: pos(),
+          });
         },
       });
   },

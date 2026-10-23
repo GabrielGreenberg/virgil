@@ -57,6 +57,7 @@ import {
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
 import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
+import { dispatchFootnoteClick } from "@/lib/pane-click-origin";
 
 // Options accepted by the Footnote extension. `idGenerator` lets a host
 // (e.g. the Library Reader) substitute a different ID strategy for newly
@@ -65,8 +66,9 @@ import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
 export interface FootnoteOptions {
   idGenerator: (existing: Set<string>) => string;
   /**
-   * Live ref to the owning editor's docId. Threaded onto the deferred
-   * `virgil-footnote-orphaned` event so the per-pane orphan bridge can route
+   * Live ref to the owning editor's docId. Read at click time onto the
+   * marker click (task 1252 — it names its ORIGIN doc), and threaded onto the
+   * deferred `virgil-footnote-orphaned` event so the per-pane orphan bridge can route
    * each orphan to its ORIGINATING doc's store — without this, under multi-doc
    * keep-alive a teardown in doc A bleeds into doc B's Footnotes panel
    * (FN-A2-03). Null on surfaces with no doc identity (cards / floats / the
@@ -364,6 +366,7 @@ export const Footnote = Node.create<FootnoteOptions>({
   },
 
   addNodeView() {
+    const docIdRef = this.options.docIdRef;
     return ({ node, getPos }) =>
       // Task 840: the click reads the LIVE node, so an id re-minted in place
       // (paste de-dupe, undo) opens ITS card, not the mount-time one.
@@ -389,11 +392,14 @@ export const Footnote = Node.create<FootnoteOptions>({
         onClick({ node: current, dom }) {
           if (!current.attrs.footnoteId) return;
           const rect = dom.getBoundingClientRect();
-          window.dispatchEvent(
-            new CustomEvent("virgil-footnote-click", {
-              detail: { footnoteId: current.attrs.footnoteId, clickY: rect.top },
-            })
-          );
+          // Names its ORIGIN doc (task 1252): the shell's bridge routes a
+          // click from a non-current pane (the Library Reader) into that
+          // pane's own host, never the editor's store / prefs.
+          dispatchFootnoteClick({
+            docId: docIdRef?.current ?? null,
+            footnoteId: current.attrs.footnoteId,
+            clickY: rect.top,
+          });
         },
       });
   },

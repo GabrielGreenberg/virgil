@@ -530,8 +530,8 @@ export default function EditorLayout() {
   // lived here and around line 1403.
   const {
     selectedNoteId,
-    selectedFootnoteId, setSelectedFootnoteId,
-    selectedCitationId, setSelectedCitationId,
+    selectedFootnoteId,
+    selectedCitationId,
     selectedTodoId,
     selectedArchiveId,
     selectedCutterCardId,
@@ -2191,8 +2191,6 @@ export default function EditorLayout() {
     setActiveRight,
     tryScrollOmniEntry,
     getOmniEnabled,
-    setSelectedFootnoteId,
-    setSelectedCitationId,
     setSelectedErrorId: setSelectedErrorIdBridge,
     setActiveRef,
     setAtomCreateRequest,
