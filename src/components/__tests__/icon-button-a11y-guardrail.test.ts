@@ -1862,8 +1862,10 @@ describe("a text-labelled action button renders through <Button> (task 827)", ()
   it("sees a population worth censusing (self-check)", () => {
     // 40 raw `<button>`s with a word when this leg landed (the rest of the app's
     // text buttons already render through `<Button>`, which this scan does not
-    // see — that is the point). Floor well under it.
-    expect(sites.length).toBeGreaterThan(25);
+    // see — that is the point). Floor well under it. Task 1257 moved the card
+    // toolbar's B/I/U/Sc out (they announce `aria-pressed` now — toggles, not
+    // actions), leaving 25.
+    expect(sites.length).toBeGreaterThan(20);
     expect(sites.some((s) => s.file.startsWith("library/"))).toBe(true);
   });
 

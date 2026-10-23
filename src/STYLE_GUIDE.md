@@ -1251,6 +1251,16 @@ Five states. One implementation each.
   with its own keyboard path, e.g. a list's empty-area deselect). CI: the
   same census, "the click-only control" — `src/panels/**` allowlist EMPTY,
   `src/components/**` a shrink-only ratchet.
+  And the same defect on a REAL `<button>`: one that must act on
+  `mousedown` (before a press blurs a field, beats a card's focus-driven
+  select, or wins a click-outside commit) is keyboard-dead if it acts ONLY
+  there — Enter/Space dispatch a `click`, never a mousedown (task 1257: the
+  card rich-text toolbar, Pop-out/Dock, the math popover's Cancel). Such a
+  button spreads `pressProps(action)` (`src/lib/press-props.ts`; a DOM button
+  takes `bindPress(el, action)`): the mousedown leg plus a click leg that runs
+  only for `detail === 0`, so a pointer press never double-fires. A press that
+  STARTS A DRAG states `data-press-exempt="<reason>"`. CI: the same census,
+  "the mousedown-only button" — allowlist EMPTY.
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none` — for STANDALONE buttons.
   A menu ROW greys differently, by ink alone (`text-ink-faint`, no opacity),
