@@ -7,7 +7,10 @@
  *   - `virgil-linked-anchor-click` — a margin-marker click (EditorPane's
  *     marker builder) or an in-text Mode-B `.linked-anchor` click
  *     (`useTextHoverBridge`);
- *   - `virgil-error-marker-click` — an error margin-marker click.
+ *   - `virgil-error-marker-click` — an error margin-marker click;
+ *   - `virgil-footnote-click` / `virgil-citation-click` — an inline-atom
+ *     marker click (the Footnote / Citation NodeViews; task 1252 finished
+ *     1093's conversion for these two).
  *
  * The bridge is mounted ONCE, by EditorLayout, and its own routing env is the
  * EDITOR's: the editor's open paper's card store and the editor's persisted
@@ -40,6 +43,8 @@ import type { EntityKind } from "@/links/_shared/entity-hover";
 
 export const LINKED_ANCHOR_CLICK_EVENT = "virgil-linked-anchor-click";
 export const ERROR_MARKER_CLICK_EVENT = "virgil-error-marker-click";
+export const FOOTNOTE_CLICK_EVENT = "virgil-footnote-click";
+export const CITATION_CLICK_EVENT = "virgil-citation-click";
 
 export interface LinkedAnchorClickDetail {
   /** The ORIGIN pane's document. */
@@ -59,6 +64,34 @@ export interface ErrorMarkerClickDetail {
   /** The post-toggle state (the pane owns the toggle). */
   selected: boolean;
   clickY?: number;
+}
+
+/** An inline-atom marker click. `docId` is the owning editor's doc, read from
+ *  the extension's `docIdRef` at click time; a surface with no doc identity
+ *  (a card / float body built with no `docIdRef`) passes `null`, which the
+ *  bridge treats as the editor's own (the pre-1093 path) — the field is still
+ *  REQUIRED, so a NodeView cannot simply forget it. */
+export interface FootnoteClickDetail {
+  docId: string | null;
+  footnoteId: string;
+  clickY?: number;
+}
+
+export interface CitationClickDetail {
+  docId: string | null;
+  citationId: string;
+  clickY?: number;
+  /** Doc position of THIS citation instance in the owning editor — the
+   *  clicked one of several `\cite`s of the same card (task 840 pins it live). */
+  clickedPos?: number;
+}
+
+export function dispatchFootnoteClick(detail: FootnoteClickDetail): void {
+  window.dispatchEvent(new CustomEvent(FOOTNOTE_CLICK_EVENT, { detail }));
+}
+
+export function dispatchCitationClick(detail: CitationClickDetail): void {
+  window.dispatchEvent(new CustomEvent(CITATION_CLICK_EVENT, { detail }));
 }
 
 export function dispatchLinkedAnchorClick(detail: LinkedAnchorClickDetail): void {

@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { Editor } from "@tiptap/react";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
@@ -18,6 +18,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
+import type { EntityKind } from "@/links/_shared/entity-hover";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
 import { placeSelectedCard } from "../selected-card-placement";
 import { cardPopKey } from "@/panels/panel-registry";
@@ -32,10 +33,15 @@ import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tipt
 import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { isFigurePopoverKind, type FigurePopoverKind } from "@/lib/figures/popover-target";
 import {
+  CITATION_CLICK_EVENT,
   ERROR_MARKER_CLICK_EVENT,
+  FOOTNOTE_CLICK_EVENT,
   LINKED_ANCHOR_CLICK_EVENT,
   resolveClickOrigin,
+  type CitationClickDetail,
+  type ClickOrigin,
   type ErrorMarkerClickDetail,
+  type FootnoteClickDetail,
   type LinkedAnchorClickDetail,
 } from "@/lib/pane-click-origin";
 
@@ -128,7 +134,23 @@ function routeAnchorClick(
 ): void {
   const route = ANCHOR_CLICK_ROUTES[detail.kind as AnchorClickKind];
   if (!route) return;
+  routeCardClick(route, detail, env);
+}
 
+/** The inline-atom kinds, routed by the SAME body as the anchor kinds (task
+ *  1252) on their own events — derived from the registry exactly as
+ *  `ANCHOR_CLICK_ROUTES` is. */
+const ATOM_CLICK_ROUTES = {
+  footnote: { panelId: panelForCardKind("footnote") as PanelId, cardKind: "footnote" },
+  citation: { panelId: panelForCardKind("citation") as PanelId, cardKind: "citation" },
+} as const satisfies Record<string, { panelId: PanelId; cardKind: CardKind }>;
+
+/** Select → `openForCard` → place, in the routed doc's env. */
+function routeCardClick(
+  route: { panelId: PanelId; cardKind: CardKind },
+  detail: { kind: EntityKind; entityId: string; clickY?: number; anchorPid?: string },
+  env: AnchorClickEnv,
+): void {
   const id = detail.entityId;
   // Click → card alignment goes through placeSelectedCard below, NOT
   // through usePlacement (which would scroll the row and drag the editor).
@@ -199,9 +221,9 @@ function routeAnchorClick(
  *     If the card's kind isn't omni-eligible or is filtered out of Omni
  *     on that side, fall back to opening the native panel instead.
  *
- * Citation clicks keep the split-aware routing — if the click originated
- * inside a same-side panel, target opens as a split so the source stays
- * visible alongside.
+ * Every card click is routed by its ORIGIN doc (`resolveClickOrigin`, tasks
+ * 1093 / 1252): the editor's current doc → the shell's env; another pane's doc
+ * → that pane's `PaneClickHost`; a foreign doc with no host → dropped.
  */
 export function useMarkerClickBridges(deps: {
   prefsRef: MutableRefObject<ViewPrefs>;
@@ -209,8 +231,6 @@ export function useMarkerClickBridges(deps: {
   setActiveRight: (id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
-  setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
-  setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
   /** Error selection setter. Now routes to the per-doc owner in EditorPane
    *  (bubbled up via `paneState.setSelectedErrorId`); the shell passes a stable
    *  `setSelectedErrorIdBridge` wrapper. Called value-only (never an updater),
@@ -260,7 +280,8 @@ export function useMarkerClickBridges(deps: {
    *  `AnchorClickEnv.getActiveCardStore`). */
   getActiveCardStore: () => CardStore;
   /** The editor's current doc id, read at click time. A pane-originated click
-   *  (`virgil-linked-anchor-click` / `virgil-error-marker-click`) names its
+   *  (`virgil-linked-anchor-click` / `virgil-error-marker-click`, and since
+   *  task 1252 `virgil-footnote-click` / `virgil-citation-click`) names its
    *  origin doc; only the current doc's clicks take the shell path — any other
    *  origin (the Library Reader) routes into its OWN pane's host (task 1093). */
   getActiveDocId: () => string | null;
@@ -271,8 +292,6 @@ export function useMarkerClickBridges(deps: {
     setActiveRight,
     tryScrollOmniEntry,
     getOmniEnabled,
-    setSelectedFootnoteId,
-    setSelectedCitationId,
     setSelectedErrorId,
     setActiveRef,
     setAtomCreateRequest,
@@ -282,94 +301,69 @@ export function useMarkerClickBridges(deps: {
     getActiveDocId,
   } = deps;
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.footnoteId) return;
-      // Marker click → card alignment goes through placeSelectedCard
-      // below, NOT through usePlacement (which would scroll the row and drag
-      // the editor). See usePlacement's asymmetry-rule docstring.
-      suppressNextPlacement();
-      setSelectedFootnoteId(detail.footnoteId);
-      const clickY: number | undefined =
-        typeof detail.clickY === "number" ? detail.clickY : undefined;
-      openForCard(
-        {
-          omniKey: cardPopKey("footnote", detail.footnoteId),
-          entrySelector: cardEntrySelector("footnote", detail.footnoteId),
-          panelId: "footnotes",
-          cardKind: "footnote",
-          // skipScroll: the selection-alignment door moves the CARD, so the
-          // document stays put.
-          skipScroll: true,
-        },
-        {
-          prefs: prefsRef.current,
-          setActiveLeft,
-          setActiveRight,
-          tryScrollOmniEntry,
-          getOmniEnabled,
-        },
-      );
-      if (typeof clickY === "number") {
-        placeSelectedCard({
-          omniKey: cardPopKey("footnote", detail.footnoteId),
-          entrySelector: cardEntrySelector("footnote", detail.footnoteId),
-          viewportY: clickY,
-          store: getActiveCardStore(),
-        });
-      }
-    };
-    window.addEventListener("virgil-footnote-click", handler);
-    return () => window.removeEventListener("virgil-footnote-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedFootnoteId, getActiveCardStore]);
+  // The routing env for a click, by ORIGIN (task 1093; the atom events joined
+  // in task 1252): the editor's current doc takes the shell's store + persisted
+  // prefs; a click from another pane (the Library Reader, on its own ephemeral
+  // prefs) routes into THAT pane's host. `drop` is answered by the caller.
+  const envFor = useCallback(
+    (origin: Exclude<ClickOrigin, { route: "drop" }>): AnchorClickEnv =>
+      origin.route === "shell"
+        ? {
+            getPrefs: () => prefsRef.current,
+            setActiveLeft,
+            setActiveRight,
+            tryScrollOmniEntry,
+            getOmniEnabled,
+            getActiveCardStore,
+          }
+        : {
+            getPrefs: origin.host.getPrefs,
+            setActiveLeft: origin.host.setActiveLeft,
+            setActiveRight: origin.host.setActiveRight,
+            // The omni DOM helpers are pane-agnostic: they resolve the
+            // VISIBLE pane's entry first (task 873), which is the pane the
+            // user just clicked in.
+            tryScrollOmniEntry,
+            getOmniEnabled: origin.host.getOmniEnabled,
+            getActiveCardStore: () => origin.host.cardStore,
+          },
+    [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, getActiveCardStore],
+  );
 
+  // Inline-atom marker clicks (Footnote / Citation NodeViews). They name their
+  // origin doc (task 1252) and ride the SAME select → open → place body as the
+  // anchor kinds, so a Reader click opens the READER's card and never selects
+  // in — or docks panels through the persisted prefs of — the editor's paper.
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.citationId) return;
-      // Marker click → card alignment goes through placeSelectedCard
-      // below, NOT through usePlacement (which would scroll the row and drag
-      // the editor). See usePlacement's asymmetry-rule docstring.
-      suppressNextPlacement();
-      setSelectedCitationId(detail.citationId);
-      const clickY: number | undefined =
-        typeof detail.clickY === "number" ? detail.clickY : undefined;
-      // Split-aware routing is gone in the band-stack model — omni is always
-      // the background, so the target citation just opens on its home side.
-      openForCard(
-        {
-          omniKey: cardPopKey("citation", detail.citationId),
-          entrySelector: cardEntrySelector("citation", detail.citationId),
-          panelId: "citations",
-          cardKind: "citation",
-          // skipScroll: the selection-alignment door moves the CARD, so the
-          // document stays put.
-          skipScroll: true,
-        },
-        {
-          prefs: prefsRef.current,
-          setActiveLeft,
-          setActiveRight,
-          tryScrollOmniEntry,
-          getOmniEnabled,
-        },
+    const onFootnote = (e: Event) => {
+      const detail = (e as CustomEvent).detail as FootnoteClickDetail | undefined;
+      if (!detail?.footnoteId) return;
+      const origin = resolveClickOrigin(detail.docId, getActiveDocId());
+      if (origin.route === "drop") return;
+      routeCardClick(
+        ATOM_CLICK_ROUTES.footnote,
+        { kind: "footnote", entityId: detail.footnoteId, clickY: detail.clickY },
+        envFor(origin),
       );
-      // After openForCard mounts the host (or confirms it's already open),
-      // pull the card level with the click. The door defers to the frame
-      // after React commits the new selection, so it measures as painted.
-      if (typeof clickY === "number") {
-        placeSelectedCard({
-          omniKey: cardPopKey("citation", detail.citationId),
-          entrySelector: cardEntrySelector("citation", detail.citationId),
-          viewportY: clickY,
-          store: getActiveCardStore(),
-        });
-      }
     };
-    window.addEventListener("virgil-citation-click", handler);
-    return () => window.removeEventListener("virgil-citation-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId, getActiveCardStore]);
+    const onCitation = (e: Event) => {
+      const detail = (e as CustomEvent).detail as CitationClickDetail | undefined;
+      if (!detail?.citationId) return;
+      const origin = resolveClickOrigin(detail.docId, getActiveDocId());
+      if (origin.route === "drop") return;
+      routeCardClick(
+        ATOM_CLICK_ROUTES.citation,
+        { kind: "citation", entityId: detail.citationId, clickY: detail.clickY },
+        envFor(origin),
+      );
+    };
+    window.addEventListener(FOOTNOTE_CLICK_EVENT, onFootnote);
+    window.addEventListener(CITATION_CLICK_EVENT, onCitation);
+    return () => {
+      window.removeEventListener(FOOTNOTE_CLICK_EVENT, onFootnote);
+      window.removeEventListener(CITATION_CLICK_EVENT, onCitation);
+    };
+  }, [envFor, getActiveDocId]);
 
   // The EDIT-existing-`\ref` bridge. The chip's NodeView dispatches its
   // IDENTITY — `pos` in the editor that OWNS it, plus that chip's own rect —
@@ -526,40 +520,11 @@ export function useMarkerClickBridges(deps: {
       // and the shell's store/prefs are not its to touch.
       const origin = resolveClickOrigin(detail.docId, getActiveDocId());
       if (origin.route === "drop") return;
-      const env: AnchorClickEnv =
-        origin.route === "shell"
-          ? {
-              getPrefs: () => prefsRef.current,
-              setActiveLeft,
-              setActiveRight,
-              tryScrollOmniEntry,
-              getOmniEnabled,
-              getActiveCardStore,
-            }
-          : {
-              getPrefs: origin.host.getPrefs,
-              setActiveLeft: origin.host.setActiveLeft,
-              setActiveRight: origin.host.setActiveRight,
-              // The omni DOM helpers are pane-agnostic: they resolve the
-              // VISIBLE pane's entry first (task 873), which is the pane the
-              // user just clicked in.
-              tryScrollOmniEntry,
-              getOmniEnabled: origin.host.getOmniEnabled,
-              getActiveCardStore: () => origin.host.cardStore,
-            };
-      routeAnchorClick(detail, env);
+      routeAnchorClick(detail, envFor(origin));
     };
     window.addEventListener(LINKED_ANCHOR_CLICK_EVENT, handler);
     return () => window.removeEventListener(LINKED_ANCHOR_CLICK_EVENT, handler);
-  }, [
-    prefsRef,
-    setActiveLeft,
-    setActiveRight,
-    tryScrollOmniEntry,
-    getOmniEnabled,
-    getActiveCardStore,
-    getActiveDocId,
-  ]);
+  }, [envFor, getActiveDocId]);
 
   // Error margin-marker bridge — errors aren't anchored cards (no cardStore
   // ref, no omni entry), so they bypass `routeAnchorClick`. EditorPane owns

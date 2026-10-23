@@ -47,7 +47,9 @@ import type { ViewPrefs } from "@/hooks/useViewPrefs";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import type { OmniCategory } from "@/panels/Omni";
 import {
+  dispatchCitationClick,
   dispatchErrorMarkerClick,
+  dispatchFootnoteClick,
   dispatchLinkedAnchorClick,
   getPaneClickHost,
   registerPaneClickHost,
@@ -71,8 +73,6 @@ function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
     setActiveHalf: vi.fn(),
     tryScrollOmniEntry: vi.fn(() => true),
     getOmniEnabled: vi.fn(() => new Set()),
-    setSelectedFootnoteId: vi.fn(),
-    setSelectedCitationId: vi.fn(),
     setSelectedErrorId: vi.fn(),
     setActiveRef: vi.fn(),
     setAtomCreateRequest: vi.fn(),
@@ -384,6 +384,66 @@ describe("origin routing (task 1093)", () => {
     expect(host.setActiveLeft).toHaveBeenCalledWith("errors");
     expect(deps.setSelectedErrorId).not.toHaveBeenCalled();
     expect(deps.setActiveRight).not.toHaveBeenCalled();
+  });
+
+  // Task 1252: the inline-atom clicks name their origin too, and ride the same
+  // select → open → place body.
+  it.each([
+    ["footnote", "footnotes", () => dispatchFootnoteClick({ docId: "reader-R", footnoteId: "f1", clickY: 40 })],
+    ["citation", "citations", () => dispatchCitationClick({ docId: "reader-R", citationId: "f1", clickY: 40 })],
+  ] as const)(
+    "a %s marker click from the Reader's doc opens the READER's card — the editor's selection and prefs are untouched",
+    (kind, panelId, click) => {
+      const deps = makeDeps();
+      const editorPrefsBefore = deps.prefsRef.current;
+      const { host, readerPrefs, readerStore } = makeReaderHost();
+      unregister = registerPaneClickHost("reader-R", host);
+      mountBridges(deps);
+      act(click);
+
+      expect(readerStore.select).toHaveBeenCalledWith({ kind, id: "f1" });
+      expect(selectSpy).not.toHaveBeenCalled();
+      expect(openForCardMock).toHaveBeenCalledTimes(1);
+      const [target, routeDeps] = openForCardMock.mock.calls[0];
+      expect(target.panelId).toBe(panelId);
+      expect(target.cardKind).toBe(kind);
+      expect(routeDeps.prefs).toBe(readerPrefs);
+      expect(routeDeps.setActiveLeft).toBe(host.setActiveLeft);
+      expect(placeMock.mock.calls[0][0].store).toBe(readerStore);
+      expect(deps.prefsRef.current).toBe(editorPrefsBefore);
+      expect(deps.setActiveLeft).not.toHaveBeenCalled();
+      expect(deps.setActiveRight).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["footnote", () => dispatchFootnoteClick({ docId: "doc-A", footnoteId: "f1" })],
+    ["citation", () => dispatchCitationClick({ docId: "doc-A", citationId: "f1" })],
+    // A surface with no doc identity (a card body built with no docIdRef).
+    ["footnote", () => dispatchFootnoteClick({ docId: null, footnoteId: "f1" })],
+  ] as const)("a %s click from the editor's own doc keeps the shell path", (kind, click) => {
+    const deps = makeDeps();
+    const { host, readerStore } = makeReaderHost();
+    unregister = registerPaneClickHost("reader-R", host);
+    mountBridges(deps);
+    act(click);
+
+    expect(selectSpy).toHaveBeenCalledWith({ kind, id: "f1" });
+    expect(readerStore.select).not.toHaveBeenCalled();
+    expect(openForCardMock.mock.calls[0][1].prefs).toBe(deps.prefsRef.current);
+  });
+
+  it.each([
+    ["footnote", () => dispatchFootnoteClick({ docId: "reader-X", footnoteId: "f1", clickY: 10 })],
+    ["citation", () => dispatchCitationClick({ docId: "reader-X", citationId: "f1", clickY: 10 })],
+  ] as const)("a %s click from a foreign doc with NO host is dropped", (_kind, click) => {
+    const deps = makeDeps();
+    mountBridges(deps);
+    act(click);
+
+    expect(selectSpy).not.toHaveBeenCalled();
+    expect(openForCardMock).not.toHaveBeenCalled();
+    expect(placeMock).not.toHaveBeenCalled();
   });
 
   it("a departing pane's unregister removes only its OWN entry", () => {

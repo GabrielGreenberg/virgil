@@ -1,5 +1,6 @@
 /**
- * PANE-CLICK ORIGIN CENSUS (task 1093).
+ * PANE-CLICK ORIGIN CENSUS (task 1093; widened to the inline-atom clicks,
+ * `virgil-footnote-click` / `virgil-citation-click`, by task 1252).
  *
  * `virgil-linked-anchor-click` and `virgil-error-marker-click` carry a click
  * from inside an `EditorPane` up to the shell's ONE bridge, which routes it by
@@ -22,7 +23,12 @@ import { commentsStripped, walkFiles } from "./_source-scan";
 
 const REPO = path.resolve(__dirname, "../../..");
 const DOOR = "src/lib/pane-click-origin.ts";
-const EVENT_NAMES = ["virgil-linked-anchor-click", "virgil-error-marker-click"];
+const EVENT_NAMES = [
+  "virgil-linked-anchor-click",
+  "virgil-error-marker-click",
+  "virgil-footnote-click",
+  "virgil-citation-click",
+];
 
 /** A quoted occurrence of an event name in code (comments stripped). */
 export function spellsEventByHand(source: string): string[] {
@@ -52,7 +58,8 @@ describe("pane-click origin census", () => {
     }
     expect(
       offenders,
-      `Dispatch through dispatchLinkedAnchorClick / dispatchErrorMarkerClick ` +
+      `Dispatch through dispatchLinkedAnchorClick / dispatchErrorMarkerClick / ` +
+        `dispatchFootnoteClick / dispatchCitationClick ` +
         `(they require the origin docId) and listen through the exported event ` +
         `constants in ${DOOR}.`,
     ).toEqual([]);
