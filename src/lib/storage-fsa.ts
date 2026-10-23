@@ -2405,6 +2405,56 @@ export async function pickProjectFolder(): Promise<FolderPickResult> {
 }
 
 /**
+ * The cheap PREFILTER for paper identity (task 1250): rows that COULD be this
+ * folder's paper. The basename is a display label — two different folders may
+ * both be called `letter/` — so a prefilter hit is never a verdict; only
+ * `findKnownDoc`'s `isSameEntry` confirmation is. The ONE place a row's
+ * `folderName` is compared (identity-census test).
+ */
+function isIdentityCandidate(
+  d: FsaDocMeta,
+  handle: FileSystemDirectoryHandle,
+  texFilename: string,
+): boolean {
+  return d.texFilename === texFilename && d.folderName === handle.name;
+}
+
+/** Is the folder stored for paper `id` the very entry `handle` names? */
+async function storedHandleIsSameEntry(
+  id: string,
+  handle: FileSystemDirectoryHandle,
+): Promise<boolean> {
+  const stored = await getDocHandle(id);
+  if (!stored || typeof stored.isSameEntry !== "function") return false;
+  try {
+    // isSameEntry needs no permission grant, so a stale (ungranted) stored
+    // handle still answers.
+    return await stored.isSameEntry(handle);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * "Have I seen this paper before?" — the ONE identity question for an opened
+ * folder (task 1250). A row matches only when its stored handle `isSameEntry`
+ * the picked one; a folder that merely shares the basename and .tex name is a
+ * DIFFERENT paper. `rows` defaults to the whole index.
+ */
+export async function findKnownDoc(
+  handle: FileSystemDirectoryHandle,
+  texFilename: string,
+  rows?: readonly FsaDocMeta[],
+): Promise<FsaDocMeta | undefined> {
+  const docs = rows ?? (await readIndex()).docs;
+  for (const d of docs) {
+    if (!isIdentityCandidate(d, handle, texFilename)) continue;
+    if (await storedHandleIsSameEntry(d.id, handle)) return d;
+  }
+  return undefined;
+}
+
+/**
  * Phase 2 — register a specific .tex file from an already-picked folder.
  * Does NOT require a user gesture.
  */
@@ -2414,11 +2464,21 @@ export async function registerDocInFolder(
 ): Promise<FsaDocMeta> {
   await handle.getDirectoryHandle(VIRGIL_SUBDIR, { create: true });
 
-  const sameFile = (d: FsaDocMeta) =>
-    d.folderName === handle.name && d.texFilename === texFilename;
+  // Rows already confirmed NOT to be this folder. `isSameEntry` is async, so
+  // it cannot run inside the index transaction; instead the transaction only
+  // inserts when no UNCHECKED candidate row exists, and otherwise hands the
+  // new candidates back to be confirmed outside it. `checked` grows each
+  // round, so the loop ends.
+  const checked = new Set<string>();
+  const confirm = (rows: readonly FsaDocMeta[]) => {
+    const fresh = rows.filter((d) => !checked.has(d.id));
+    for (const d of fresh) checked.add(d.id);
+    return findKnownDoc(handle, texFilename, fresh);
+  };
 
-  const known = (await readIndex()).docs.find(sameFile);
+  const known = await confirm((await readIndex()).docs);
   if (known) {
+    // Confirmed the same folder: store the freshly granted handle.
     await setDocHandle(known.id, handle);
     return known;
   }
@@ -2435,21 +2495,28 @@ export async function registerDocInFolder(
   };
 
   // The handle is stored BEFORE the row appears, so no reader ever finds a
-  // row without its handle. Find-or-insert runs inside the index
-  // transaction: a concurrent register of the same file (another window, a
-  // double click) that landed since our read wins, and we adopt its row.
+  // row without its handle — which is also what lets a concurrent register
+  // of the same folder (another window, a double click) confirm our row.
   await setDocHandle(candidate.id, handle);
-  const meta = await mutateIndex((idx) => {
-    const raced = idx.docs.find(sameFile);
-    if (raced) return raced;
-    idx.docs.push(candidate);
-    return candidate;
-  });
-  if (meta.id !== candidate.id) {
-    await setDocHandle(meta.id, handle);
-    await deleteDocHandle(candidate.id);
+  for (;;) {
+    const outcome = await mutateIndex<
+      { meta: FsaDocMeta } | { unchecked: FsaDocMeta[] }
+    >((idx) => {
+      const unchecked = idx.docs.filter(
+        (d) =>
+          !checked.has(d.id) && isIdentityCandidate(d, handle, texFilename),
+      );
+      if (unchecked.length > 0) return { unchecked };
+      idx.docs.push(candidate);
+      return { meta: candidate };
+    });
+    if ("meta" in outcome) return outcome.meta;
+    const raced = await confirm(outcome.unchecked);
+    if (raced) {
+      await deleteDocHandle(candidate.id);
+      return raced;
+    }
   }
-  return meta;
 }
 
 /**
