@@ -9,8 +9,11 @@
  * therefore names something that is ABSENT on purpose and will come back:
  *
  *   - `Link.archivedWith`  — the snippet id this one link's text lives in;
- *   - card `archivedWith`  — set only while EVERY anchor link of the card is
- *     dormant in that snippet. The card is then also `archived: true`, so
+ *   - card `archivedWith`  — set exactly while EVERY anchor link of the card
+ *     is dormant ({@link isFullyDormant}), in whichever snippets: it names the
+ *     snippet whose capture COMPLETED the dormancy (task 1254 — a card whose
+ *     anchors went into two different snippets is as fully dormant as one
+ *     whose anchors went into one). The card is then also `archived: true`, so
  *     every existing archived filter (panels, omni, markers, the unanchored
  *     chip, the scripts) hides it with no new branch.
  *
@@ -133,10 +136,13 @@ function isCarriedLink(link: Link, keys: CarriedKeys): boolean {
  * THE WRITER (task 1194): the archive capture took this card's text with it.
  * Every link `keys` names becomes dormant in `snippetId`; a link it does not
  * name stays live, so a card also anchored to surviving text stays active
- * there. When every anchor link is dormant in THIS snippet the card is
- * archived with it (`archived` + `archivedWith`), which every archived filter
- * already hides — unless the user had archived it by hand, which stays a
- * hand archive (revival must not unarchive what the user put away).
+ * there. When this capture leaves EVERY anchor link dormant — here or in an
+ * earlier snippet: the card-level state is {@link isFullyDormant}, the same
+ * predicate the resolver and omni rows read (task 1254) — the card is archived
+ * with this, the completing snippet (`archived` + `archivedWith`), which every
+ * archived filter already hides — unless the user had archived it by hand,
+ * which stays a hand archive (revival must not unarchive what the user put
+ * away).
  *
  * Identity-preserving no-op when `keys` names none of the card's links.
  */
@@ -151,10 +157,8 @@ export function markDormant<T extends DormantCardShape>(
     isCarriedLink(l, keys) ? { ...l, archivedWith: snippetId } : l,
   );
   const out: T = { ...card, links: next };
-  const anchors = next.filter((l) => l.anchor.type === "textObject");
-  const allHere = anchors.every((l) => l.archivedWith === snippetId);
   const byHand = card.archived === true && !isArchivedWithText(card);
-  if (allHere && !byHand) {
+  if (isFullyDormant(out) && !byHand) {
     out.archived = true;
     out.archivedWith = snippetId;
   }
@@ -317,10 +321,14 @@ export function setArchivedFlag<T extends DormantCardShape>(card: T, archived: b
 
 /**
  * The passage was DELETED for good (task 1195): nothing can revive these
- * links any more. Drop every link dormant in `snippetId` and clear the card's
- * `archivedWith` — the card itself is never deleted: an archived card stays an
- * ordinary archived card, an active one reads unanchored. Identity-preserving
- * when the card names nothing in that snippet.
+ * links any more. Drop every link dormant in `snippetId`; the card itself is
+ * never deleted. Its `archivedWith` follows the links, never the snippet id
+ * alone (task 1254): when the card is STILL fully dormant — its other links
+ * wait in another snippet — it stays archived with that one (the first
+ * remaining dormant link's), so restoring it still brings the card back;
+ * otherwise the field is cleared and an archived card stays an ordinary
+ * archived card, an active one reads unanchored. Identity-preserving when the
+ * card names nothing in that snippet.
  */
 export function releaseFromSnippet<T extends DormantCardShape>(card: T, snippetId: string): T {
   const links = card.links;
@@ -329,7 +337,13 @@ export function releaseFromSnippet<T extends DormantCardShape>(card: T, snippetI
   if (!linked && !owned) return card;
   const out: T = { ...card };
   if (linked) out.links = links!.filter((l) => l.archivedWith !== snippetId);
-  if (owned) delete out.archivedWith;
+  if (owned) {
+    const still = isFullyDormant(out)
+      ? (out.links ?? []).find((l) => l.anchor.type === "textObject")?.archivedWith
+      : undefined;
+    if (still) out.archivedWith = still;
+    else delete out.archivedWith;
+  }
   return out;
 }
 
