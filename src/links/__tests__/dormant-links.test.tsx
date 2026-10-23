@@ -24,6 +24,9 @@ import {
   insertionTouchesDormant,
   isArchivedWithText,
   isDormantLink,
+  isFullyDormant,
+  markDormant as markDormantWriter,
+  releaseFromSnippet,
   reviveLiveLinks,
   type DormantCardShape,
 } from "@/links/dormant";
@@ -149,6 +152,78 @@ describe("dormant vocabulary", () => {
     expect([...keys.anchorIds]).toEqual(["A3"]);
     expect(insertionTouchesDormant(keys, { uuids: ["P2"], anchorIds: [] })).toBe(false);
     expect(insertionTouchesDormant(keys, { uuids: [], anchorIds: ["A3"] })).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The card-level state is isFullyDormant in EVERY archive order (task 1254)
+// ---------------------------------------------------------------------------
+
+describe("a card whose anchors went into two snippets (task 1254)", () => {
+  const twoLinks = (): Card => ({ id: "n1", links: [modeA("l1", "P1"), modeA("l2", "P2")] });
+  const archiveBoth = (): Card => {
+    const once = markDormantWriter(twoLinks(), "S1", { pids: new Set(["P1"]) });
+    // Still live on P2 — the card stays active.
+    expect(once.archived).toBeUndefined();
+    expect(once.archivedWith).toBeUndefined();
+    return markDormantWriter(once, "S2", { pids: new Set(["P2"]) });
+  };
+  const live = (uuid: string) => ({ isUuidLive: (u: string) => u === uuid, isAnchorIdLive: () => false });
+
+  it("is archived with the completing snippet once every link is dormant", () => {
+    const card = archiveBoth();
+    expect(isFullyDormant(card)).toBe(true);
+    expect(card.archived).toBe(true);
+    expect(card.archivedWith).toBe("S2");
+  });
+
+  it("restoring EITHER snippet revives that link and un-archives the card", () => {
+    for (const [pid, other] of [["P1", "S2"], ["P2", "S1"]] as const) {
+      const back = reviveLiveLinks(archiveBoth(), live(pid));
+      expect(back.archived).toBeUndefined();
+      expect(back.archivedWith).toBeUndefined();
+      expect(back.links!.filter(isDormantLink).map((l) => l.archivedWith)).toEqual([other]);
+    }
+  });
+
+  it("the single-snippet archive is unchanged", () => {
+    const card = markDormantWriter(twoLinks(), "S1", { pids: new Set(["P1", "P2"]) });
+    expect(card.archived).toBe(true);
+    expect(card.archivedWith).toBe("S1");
+  });
+
+  it("a hand archive stays a hand archive", () => {
+    const hand = { ...twoLinks(), archived: true };
+    const once = markDormantWriter(hand, "S1", { pids: new Set(["P1"]) });
+    const both = markDormantWriter(once, "S2", { pids: new Set(["P2"]) });
+    expect(both.archived).toBe(true);
+    expect(both.archivedWith).toBeUndefined();
+  });
+
+  it("deleting the completing snippet keeps the card archived with the OTHER one", () => {
+    const released = releaseFromSnippet(archiveBoth(), "S2");
+    expect(released.links!.map((l) => l.id)).toEqual(["l1"]);
+    expect(released.archived).toBe(true);
+    expect(released.archivedWith).toBe("S1");
+    // …so restoring S1 still brings the card back.
+    const back = reviveLiveLinks(released, live("P1"));
+    expect(back.archived).toBeUndefined();
+    expect(back.links!.some(isDormantLink)).toBe(false);
+  });
+
+  it("deleting the earlier snippet leaves the card archived with the completing one", () => {
+    const released = releaseFromSnippet(archiveBoth(), "S1");
+    expect(released.links!.map((l) => l.id)).toEqual(["l2"]);
+    expect(released.archived).toBe(true);
+    expect(released.archivedWith).toBe("S2");
+  });
+
+  it("deleting the only snippet leaves an ordinary archived card", () => {
+    const card = markDormantWriter(twoLinks(), "S1", { pids: new Set(["P1", "P2"]) });
+    const released = releaseFromSnippet(card, "S1");
+    expect(released.links).toEqual([]);
+    expect(released.archived).toBe(true);
+    expect(released.archivedWith).toBeUndefined();
   });
 });
 
