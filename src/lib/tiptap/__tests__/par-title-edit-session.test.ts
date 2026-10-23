@@ -74,10 +74,10 @@ import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
 // Harness (the 548 shape — the REAL main extension stack)
 // ---------------------------------------------------------------------------
 
-function ctx(): EditorExtensionsCtx {
+function ctx(editableRef: { current: boolean } = { current: true }): EditorExtensionsCtx {
   return {
     surface: "main",
-    editableRef: { current: true },
+    editableRef,
     cardContext: false,
     callbacks: {},
     docIdRef: { current: null },
@@ -119,12 +119,15 @@ function fixture(): JSONContent {
 
 let live: { editor: Editor; el: HTMLElement } | null = null;
 
-function mount(content: JSONContent = fixture()) {
+function mount(
+  content: JSONContent = fixture(),
+  editableRef: { current: boolean } = { current: true },
+) {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const editor = new Editor({
     element: el,
-    extensions: buildEditorExtensions(ctx()),
+    extensions: buildEditorExtensions(ctx(editableRef)),
     content,
   });
   live = { editor, el };
@@ -639,6 +642,7 @@ describe("task 805 — setup is ATOMIC: a throw in setup leaves no orphan", () =
         getTitle: () => null,
         render,
         commit: () => {},
+        mayWrite: () => true,
       });
       expect(() => session.begin()).toThrow("Illegal invocation");
       expect(session.editing).toBe(false);
@@ -649,4 +653,93 @@ describe("task 805 — setup is ATOMIC: a throw in setup leaves no orphan", () =
       wrapper.remove();
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Task 1251 — the WRITE GATE: a read-only surface is offered no input
+// ---------------------------------------------------------------------------
+
+describe("task 1251 — the title strips and the example label pod ask the write gate", () => {
+  /** The two read-only axes: the HOST (`editableRef`, the Library Reader) and
+   *  the PEN (`view.editable`, a co-author holding it). */
+  const AXES: Record<string, (editor: Editor, ref: { current: boolean }) => void> = {
+    "host read-only (editableRef)": (_e, ref) => {
+      ref.current = false;
+    },
+    "pen held (view.editable)": (e) => {
+      e.view.setProps({ editable: () => false });
+    },
+  };
+
+  const labelPod = (root: HTMLElement) =>
+    root.querySelector<HTMLElement>('[data-uuid="ex-1"] .expex-label-annotation')!;
+  const labelInputs = () => document.querySelectorAll("input.expex-label-input");
+
+  for (const [axis, lock] of Object.entries(AXES)) {
+    for (const [name, { uuid }] of Object.entries(STRIPS)) {
+      it(`${axis} — ${name}: clicking the strip mounts NO input`, () => {
+        const ref = { current: true };
+        const { editor, el } = mount(fixture(), ref);
+        lock(editor, ref);
+        click(strip(el, uuid));
+        expect(allInputs(el)).toHaveLength(0);
+        expect(wrapperOf(el, uuid).classList.contains(PAR_TITLE_EDITING_CLASS)).toBe(false);
+        expect(document.querySelectorAll(`.${PAR_TITLE_OVERLAY_CLASS}`)).toHaveLength(0);
+      });
+
+      it(`${axis} — ${name}: a gate flipped mid-draft dispatches nothing and restores the strip`, () => {
+        const ref = { current: true };
+        const { editor, el } = mount(fixture(), ref);
+        click(strip(el, uuid));
+        const input = allInputs(el)[0];
+        expect(input).toBeTruthy();
+        input.value = "Too late";
+        lock(editor, ref);
+        let dispatched = 0;
+        const count = ({ transaction }: { transaction: { docChanged: boolean } }) => {
+          if (transaction.docChanged) dispatched++;
+        };
+        editor.on("transaction", count);
+        try {
+          key(input, "Enter");
+        } finally {
+          editor.off("transaction", count);
+        }
+        expect(dispatched).toBe(0);
+        expect(titleOf(editor, uuid)).toBe(null);
+        expect(allInputs(el)).toHaveLength(0);
+        expect(wrapperOf(el, uuid).classList.contains(PAR_TITLE_EDITING_CLASS)).toBe(false);
+      });
+    }
+
+    it(`${axis} — the paragraph's × removes nothing`, () => {
+      const ref = { current: true };
+      const { editor, el } = mount(fixture(), ref);
+      click(strip(el, "p-1"));
+      const input = allInputs(el)[0];
+      input.value = "Kept";
+      key(input, "Enter");
+      expect(titleOf(editor, "p-1")).toBe("Kept");
+      lock(editor, ref);
+      click(strip(el, "p-1").querySelector(".par-title-delete")!);
+      expect(titleOf(editor, "p-1")).toBe("Kept");
+    });
+
+    it(`${axis} — the example "Label +" mounts no input and leaves the pod unswapped`, () => {
+      const ref = { current: true };
+      const { editor, el } = mount(fixture(), ref);
+      lock(editor, ref);
+      const pod = labelPod(el);
+      const before = pod.innerHTML;
+      click(pod.querySelector(".heading-label-add")!);
+      expect(labelInputs()).toHaveLength(0);
+      expect(pod.innerHTML).toBe(before);
+    });
+  }
+
+  it("COMPANION — on an editable surface the example \"Label +\" does open its input", () => {
+    const { el } = mount();
+    click(labelPod(el).querySelector(".heading-label-add")!);
+    expect(labelInputs()).toHaveLength(1);
+  });
 });

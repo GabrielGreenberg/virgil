@@ -19,6 +19,7 @@ import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { diffExamplesRecomputable, readDiffFor } from "@/lib/tiptap/doc-structure";
 import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
 import { createParTitleSession } from "@/lib/tiptap/title-edit-session";
+import { proxiedSurfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import {
   setClassNameIfChanged,
   setDataIfChanged,
@@ -99,8 +100,14 @@ function createExampleLabelPod(params: {
    *  float). Asked twice by the door when a confirm is awaited. */
   locate: (target: Editor) => { pos: number; node: PMNode } | null;
   confirm: () => LabelRenameConfirm | null;
+  /** The WRITE GATE (task 1251): asked before the pod offers an input. The
+   *  commit is already safe (`renameLabelWithRefs` re-asks at entry and after
+   *  its await) — the defect was the OFFER: a read-only surface opened an
+   *  input whose Enter was refused and discarded with no feedback. */
+  mayWrite: () => boolean;
 }): { render: () => void; sync: () => void } {
-  const { labelAnnot, typeText, getLabel, lifetime, getTarget, locate, confirm } = params;
+  const { labelAnnot, typeText, getLabel, lifetime, getTarget, locate, confirm, mayWrite } =
+    params;
   labelAnnot.className = chromeOnly(params.className);
   labelAnnot.contentEditable = "false";
 
@@ -146,7 +153,7 @@ function createExampleLabelPod(params: {
   };
 
   const beginLabelEdit = (replaceTarget: HTMLElement) => {
-    if (editing) return;
+    if (editing || !mayWrite()) return;
     editing = true;
     const input = document.createElement("input");
     input.type = "text";
@@ -242,6 +249,9 @@ function createExampleLabelPod(params: {
   labelAnnot.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    // Asked BEFORE the "Label +" swap below, so a refused click leaves the
+    // pod exactly as rendered (task 1251).
+    if (!mayWrite()) return;
     const target = e.target as HTMLElement;
     if (target.classList.contains("heading-label-text")) {
       beginLabelEdit(target);
@@ -1143,6 +1153,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
             target === editor,
           ),
         confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
+        mayWrite: () => proxiedSurfaceEditableNow(editor, getTarget()),
       });
 
       const commitTitle = (next: string | null) => {
@@ -1190,6 +1201,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
             getTitle: () => (currentNode.attrs.parTitle as string | null) || null,
             render: () => renderTitle(),
             commit: (next) => commitTitle(next),
+            // The title writes THIS editor (`commitTitle`); asking the label
+            // pod's pair too keeps one gate per view (task 1251).
+            mayWrite: () => proxiedSurfaceEditableNow(editor, getTarget()),
           })
         : null;
       titleAnnot?.addEventListener("click", (e) => {
@@ -1621,6 +1635,7 @@ export const ExampleItem = Node.create<ExampleItemOptions>({
             target === editor,
           ),
         confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
+        mayWrite: () => proxiedSurfaceEditableNow(editor, getTarget()),
       });
 
       return {
