@@ -1252,7 +1252,7 @@ export function CitationCard({
                    shipped — the `text-ink-body` that used to sit here was
                    swallowed by the unlayered base rule, so making it real
                    would introduce a look nobody has seen (task 509). */
-                triggerClassName="iconbtn-sm"
+                triggerClassName="iconbtn-xs"
                 menuClassName="w-44"
                 trigger={() => (
                   <svg
@@ -1565,8 +1565,8 @@ function CitationKeyRow({
               {...iconHint({ label: "Close" })}
             >
               <svg
-                width="9"
-                height="9"
+                width="12"
+                height="12"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -1677,12 +1677,12 @@ function CitationKeyRow({
                 e.stopPropagation();
                 onRemove();
               }}
-              className="iconbtn-sm iconbtn-danger-hover opacity-0 group-hover/row:opacity-100"
+              className="iconbtn-xs iconbtn-danger-hover opacity-0 group-hover/row:opacity-100"
               {...iconHint({ label: "Remove this row" })}
             >
               <svg
-                width="11"
-                height="11"
+                width="12"
+                height="12"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -1727,13 +1727,13 @@ function CitationKeyRow({
                is why this button read `--ink-muted` while the citekey button
                eight lines up — a `.card-mono`, which writes no colour — really
                did paint `--muted` beside it (task 509). */
-            className="iconbtn-sm iconbtn-meta"
+            className="iconbtn-xs iconbtn-meta"
             {...iconHint({ label: copied ? "Copied" : "Copy citekey" })}
           >
             {copied ? (
               <svg
-                width="11"
-                height="11"
+                width="12"
+                height="12"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -1746,8 +1746,8 @@ function CitationKeyRow({
               </svg>
             ) : (
               <svg
-                width="11"
-                height="11"
+                width="12"
+                height="12"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -1792,14 +1792,14 @@ function CitationKeyRow({
               e.stopPropagation();
               onRemove();
             }}
-            className={`iconbtn-sm iconbtn-meta iconbtn-danger-hover opacity-0 group-hover/row:opacity-100 ${
+            className={`iconbtn-xs iconbtn-meta iconbtn-danger-hover opacity-0 group-hover/row:opacity-100 ${
               !canRemove ? "pointer-events-none" : ""
             }`}
             {...iconHint({ label: "Remove this key" })}
           >
             <svg
-              width="11"
-              height="11"
+              width="12"
+              height="12"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"

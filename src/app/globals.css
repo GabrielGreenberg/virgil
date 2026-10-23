@@ -175,6 +175,24 @@
      screen. Every editor-pod chrome surface (frame ring, caps, in-card
      header, split panes) reads this name, never `--pod-radius` directly. */
   --editor-pod-radius: var(--pod-radius);
+  /* ── The icon-button LADDER (task 2026-10-23-1249) ──────────────────
+     Each `.iconbtn-*` box and the glyph it centres, as ONE pair of tokens.
+     The box rules read the box token, `.iconbtn-* > svg` reads the glyph
+     token, and the padding is DERIVED ((box − glyph) / 2) — so the ladder
+     holds by construction, not by every caller passing the right
+     width/height. A JS/inline consumer that needs a box size (the card
+     corner cluster's pitch, the popped card's X centring) reads the token;
+     it never restates the number. A button whose glyph must sit off the
+     ladder states why in `data-iconbtn-glyph="<reason>"` (its SVG then keeps
+     its own attributes). Pinned by iconbtn-glyph-ladder-census.test.ts. */
+  --iconbtn-xs: 16px;
+  --iconbtn-xs-glyph: 12px;
+  --iconbtn-sm: 20px;
+  --iconbtn-sm-glyph: 14px;
+  --iconbtn-md: 24px;
+  --iconbtn-md-glyph: 16px;
+  --iconbtn-lg: 32px;
+  --iconbtn-lg-glyph: 20px;
   --pod-gap: 10px;
   /* ── The pod SEAM (SSOT, task 329) ────────────────────────────────────
      `--pod-gap` was answering two different questions, and only one of them
@@ -1105,10 +1123,12 @@ body[data-zen-mode="on"] {
 
 /* ── Icon-button utilities ────────────────────────────────────────
    Four locked sizes. Use for any icon-only button.
-   The visual SVG inside is smaller than the button: pass width/height
-   14 (sm), 16 (md), 20 (lg) on the SVG. iconbtn-xs forces SVGs down to
-   12px via a child-selector override so callers using shared button
-   factories (e.g. PopoutButton) don't need to special-case the size. */
+   The visual SVG inside is smaller than the button — 12 (xs), 14 (sm),
+   16 (md), 20 (lg) — and EVERY size enforces it through a child selector
+   reading the `--iconbtn-*-glyph` token (:root), so a caller's own
+   width/height can't drift off the ladder and shared button factories
+   (e.g. PopoutButton) never special-case the size. Off-ladder glyph:
+   `data-iconbtn-glyph="<reason>"` on the button (task 2026-10-23-1249). */
 .iconbtn-xs,
 .iconbtn-sm,
 .iconbtn-md,
@@ -1230,11 +1250,14 @@ body[data-zen-mode="on"] {
   cursor: not-allowed;
 }
 
-.iconbtn-xs { width: 16px; height: 16px; padding: 2px; }
-.iconbtn-sm { width: 20px; height: 20px; padding: 3px; } /* aligns: centres a 14px glyph in the 20px box */
-.iconbtn-md { width: 24px; height: 24px; padding: 4px; }
-.iconbtn-lg { width: 32px; height: 32px; padding: 6px; }
-.iconbtn-xs > svg { width: 12px; height: 12px; }
+.iconbtn-xs { width: var(--iconbtn-xs); height: var(--iconbtn-xs); padding: calc((var(--iconbtn-xs) - var(--iconbtn-xs-glyph)) / 2); }
+.iconbtn-sm { width: var(--iconbtn-sm); height: var(--iconbtn-sm); padding: calc((var(--iconbtn-sm) - var(--iconbtn-sm-glyph)) / 2); }
+.iconbtn-md { width: var(--iconbtn-md); height: var(--iconbtn-md); padding: calc((var(--iconbtn-md) - var(--iconbtn-md-glyph)) / 2); }
+.iconbtn-lg { width: var(--iconbtn-lg); height: var(--iconbtn-lg); padding: calc((var(--iconbtn-lg) - var(--iconbtn-lg-glyph)) / 2); }
+.iconbtn-xs:not([data-iconbtn-glyph]) > svg { width: var(--iconbtn-xs-glyph); height: var(--iconbtn-xs-glyph); }
+.iconbtn-sm:not([data-iconbtn-glyph]) > svg { width: var(--iconbtn-sm-glyph); height: var(--iconbtn-sm-glyph); }
+.iconbtn-md:not([data-iconbtn-glyph]) > svg { width: var(--iconbtn-md-glyph); height: var(--iconbtn-md-glyph); }
+.iconbtn-lg:not([data-iconbtn-glyph]) > svg { width: var(--iconbtn-lg-glyph); height: var(--iconbtn-lg-glyph); }
 
 /* Per-panel body-typography scope.
  *

@@ -198,7 +198,7 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
           className="iconbtn-md"
           {...iconHint({ label: "Close" })}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+          <svg width="16" height="16" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
             <path d="M3 3l6 6M9 3l-6 6" />
           </svg>
         </button>

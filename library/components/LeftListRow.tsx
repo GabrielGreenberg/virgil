@@ -203,7 +203,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
             {ck && (
               <button
                 type="button"
-                className="iconbtn-sm"
+                className="iconbtn-xs"
                 {...iconHint({ label: "Copy citekey", hint: copied ? "Copied" : "Copy citekey" })}
                 draggable={false}
                 onPointerDown={(e) => e.stopPropagation()}
@@ -412,8 +412,8 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
           style={{ opacity: ck ? 1 : 0.4 }}
         >
           <svg
-            width="13"
-            height="13"
+            width="14"
+            height="14"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
