@@ -152,11 +152,14 @@ export const SYSTEM_DIALOG_TOKENS = {
 } as const;
 
 export type SystemDialogSize = keyof typeof SYSTEM_DIALOG_TOKENS.maxWidth;
-export type SystemDialogButtonVariant =
-  | "primary"
-  | "secondary"
-  | "danger"
-  | "accent";
+/** The footer's three answers, spelled in the canonical `Button` vocabulary —
+ *  a SUBSET of `ButtonVariant`, never a parallel set of names. The old
+ *  `"accent"` member was an alias of `"primary"` (task 1258): two names for one
+ *  look is how a footer comes to mean something its pixels do not. */
+export type SystemDialogButtonVariant = Extract<
+  ButtonVariant,
+  "primary" | "secondary" | "danger"
+>;
 
 /* ── Anchored placement (a MEASUREMENT, not a guess — task 1065) ────── */
 
@@ -1053,16 +1056,6 @@ export interface SystemDialogButtonProps
   autoFocus?: boolean;
 }
 
-/** Map legacy SystemDialog variant names onto the canonical Button
- *  variants. The "accent" name is preserved for compatibility but folds
- *  into "primary" (which is itself accent-filled in the new spec). */
-const SYSTEM_DIALOG_BUTTON_VARIANT: Record<SystemDialogButtonVariant, ButtonVariant> = {
-  primary: "primary",
-  secondary: "secondary",
-  danger: "danger",
-  accent: "primary",
-};
-
 export function SystemDialogButton({
   variant = "secondary",
   autoFocus,
@@ -1081,7 +1074,7 @@ export function SystemDialogButton({
     <Button
       ref={ref}
       type={type}
-      variant={SYSTEM_DIALOG_BUTTON_VARIANT[variant]}
+      variant={variant}
       size="sm"
       className={className}
       {...rest}

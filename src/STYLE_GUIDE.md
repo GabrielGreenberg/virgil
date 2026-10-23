@@ -2120,8 +2120,22 @@ Five variants × three sizes via `<Button variant size>`:
 Sizes: `sm` 24px / 12px font, `md` 32px / 13px (default), `lg` 40px /
 14px. All share `rounded-md` (6px).
 
-Modal footers: rightmost is primary, then ghost cancel to its left,
-destructive (if any) far left. Tab right + enter must not delete.
+Modal footers (`<SystemDialogFooter>`, task 1258 — this describes every
+shipped footer, and `dialog-footer-order-census.test.ts` holds it):
+
+- **Cancel is `secondary`** (the default — omit `variant`). Not `ghost`: an
+  unbordered word reads as a label on the footer's muted band. The footer's
+  variants are the `Button` vocabulary itself (`primary | secondary | danger`);
+  there is no alias spelling.
+- **The affirmative/cued answer is rightmost** (`primary`).
+- **A two-button danger confirm** (`Cancel | Delete`) puts the destructive
+  answer rightmost, and does NOT cue it — Cancel holds `autoFocus` (task 386,
+  `confirm-cue-policy.ts`).
+- **A footer with BOTH a primary and a destructive alternative** seats the
+  destructive one FAR LEFT with `className="mr-auto"`
+  (`Hard update · ⟶ · Cancel | AI-managed update`). A `danger` button is never
+  adjacent to a `primary` one: one Tab or one mis-aimed click away from the
+  default must never be "delete".
 
 **Don't hand-roll a button** — don't mix Tailwind utilities to imitate a
 variant. Reach for `<Button variant size>`; if you need a new look, extend the
