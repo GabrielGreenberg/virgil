@@ -7182,7 +7182,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 ['--pod-cap-inner' as string]: '8px',
                 ['--pod-cap-bleed' as string]: 'calc(4px + var(--pod-gap))',
                 ['--pod-cap-h' as string]:
-                  'calc(var(--pod-radius) + 4px + var(--pod-gap))',
+                  'calc(var(--editor-pod-radius) + 4px + var(--pod-gap))',
                 ['--pod-top' as string]: 'var(--pod-cap-inner)',
                 // Bottom outer gap. Kept EQUAL to --pod-top so the manilla
                 // padding outside the pod is symmetric top/bottom. (Its own
@@ -7312,8 +7312,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     // the manila container's rounded corner, fills the
                     // corner notch so the borderless content's white
                     // doesn't show past the frame's rounded corner.
-                    borderTopLeftRadius: 'var(--pod-radius)',
-                    borderTopRightRadius: 'var(--pod-radius)',
+                    borderTopLeftRadius: 'var(--editor-pod-radius)',
+                    borderTopRightRadius: 'var(--editor-pod-radius)',
                   }}
                 />
               </div>
@@ -7356,7 +7356,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     "calc(-1 * (var(--scroll-viewport-h, 100vh) - var(--pod-top) - var(--pod-bottom)))",
                   zIndex: 31,
                   border: "var(--pod-border)",
-                  borderRadius: "var(--pod-radius)",
+                  borderRadius: "var(--editor-pod-radius)",
                   // Two stacked box-shadows: (1) a manila "matte" that
                   // fills OUTSIDE the ring's rounded shape — this covers
                   // the corner notches (the borderless content's white
@@ -7385,7 +7385,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 card's top edge (top: --pod-top), z-30 — the SAME layer as
                 the caps, so the frame ring's border (z-31) paints cleanly
                 over its edge (the proven cap pattern). Rounded TOP corners
-                (--pod-radius) so its white doesn't square off the corner
+                (--editor-pod-radius) so its white doesn't square off the corner
                 notch; the top cap behind fills the concentric manila arc.
                 In-flow with height --pod-header-h, so it naturally pushes
                 the prose pod down by the header (no zero-flow margin), and
@@ -7404,8 +7404,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   top: 'var(--pod-top)',
                   height: 'var(--pod-header-h)',
                   background: 'var(--pod-editor)',
-                  borderTopLeftRadius: 'var(--pod-radius)',
-                  borderTopRightRadius: 'var(--pod-radius)',
+                  borderTopLeftRadius: 'var(--editor-pod-radius)',
+                  borderTopRightRadius: 'var(--editor-pod-radius)',
                   paddingLeft: 14,
                   paddingRight: 6,
                 }}
@@ -7506,8 +7506,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 // container or new containing block, so the pod's sticky
                 // descendants (frame ring, caps, lozenge) still latch to the
                 // scroll root unchanged.
-                borderTopLeftRadius: "var(--pod-radius)",
-                borderTopRightRadius: "var(--pod-radius)",
+                borderTopLeftRadius: "var(--editor-pod-radius)",
+                borderTopRightRadius: "var(--editor-pod-radius)",
                 overflow: "clip",
                 // Marginalia portals markers as `position: absolute`
                 // children of the closest `[data-marginalia-host]`. The
@@ -8066,8 +8066,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     background: 'var(--pod-editor)',
                     // Mask-only (see top cap): no border/shadow; the
                     // single `[data-pod-frame]` ring draws the edge.
-                    borderBottomLeftRadius: 'var(--pod-radius)',
-                    borderBottomRightRadius: 'var(--pod-radius)',
+                    borderBottomLeftRadius: 'var(--editor-pod-radius)',
+                    borderBottomRightRadius: 'var(--editor-pod-radius)',
                   }}
                 />
               </div>

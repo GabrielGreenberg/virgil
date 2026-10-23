@@ -723,9 +723,21 @@ onto the Tailwind `rounded-*` utilities via an `@theme` block, so
 | `--radius-xs` | 3 | `rounded-xs` | in-text/chip micro details: inline marks (highlight, citation/footnote/label/note markers), annotation chips/toggles/delete, `kbd`, scrollbar thumb. |
 | `--radius-sm` | 4 | `rounded-sm` | small controls & inner rows: icon/topbar buttons, color swatches, inner list rows, form inputs inside a popover, drag-handle hit area. |
 | `--radius-md` | 6 | `rounded-md` | primary CONTROL radius: `<Button>`, inputs, segmented controls, copy buttons, tooltips, hint bubbles. |
-| `--pod-radius` | 8 | `rounded-lg` | CARD + POD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, editor pod, code / display-math blocks, figure images. Menus reach it through `--menu-radius` (see **Menus** → Menu surface), never by naming it. |
+| `--pod-radius` | 8 | `rounded-lg` | CARD + POD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, editor pod (via `--editor-pod-radius`), code / display-math blocks + source-pod code surfaces, figure images. Menus reach it through `--menu-radius` (see **Menus** → Menu surface), never by naming it. |
 | `--panel-radius` | 14 | `rounded-xl` | large PANEL + MODAL tier: sidebar panel pods, docked floating panels, system/font dialogs. |
 | `--radius-pill` | 9999 | `rounded-pill` / `rounded-full` | fully-round capsules: status pills, page-scroll lozenges, pgmark chips, drag-ghost badges. |
+
+**A tier token has ONE value in every mode.** No `@media`, state or selector
+block redefines `--pod-radius` / `--panel-radius` / `--radius-*` — they are
+declared once, in `:root` (and aliased once, in `@theme`). Where a mode must
+change ONE surface's corner, that surface reads its own name defaulting to the
+tier and the mode overrides the name: the editor pod's chrome reads
+`--editor-pod-radius` (= `var(--pod-radius)`), and print flattens THAT, so code
+blocks, display math and figure images — content, not chrome — print with the
+corners they show on screen (task 2026-10-23-1248; pinned by the
+"no tier redefinition" leg of `radius-scale.test.ts`). Source-pod code
+surfaces (tex/forest preview, derived, static source, the CodeMirror mount)
+are code surfaces and wear the pod tier beside the code block they mirror.
 
 **The BARE `rounded` spelling is `--radius-sm` (4px)** — the same tier as
 `rounded-sm`, so the two are interchangeable and neither is wrong. Prefer
