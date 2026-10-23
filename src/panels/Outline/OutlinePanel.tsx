@@ -1665,7 +1665,7 @@ function FocusBand({
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
-            boxShadow: "var(--pod-shadow)",
+            boxShadow: "var(--menu-shadow)",
           }}
         />
       )}
@@ -1686,7 +1686,7 @@ function FocusBand({
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
-            boxShadow: "var(--pod-shadow)",
+            boxShadow: "var(--menu-shadow)",
           }}
         />
       )}

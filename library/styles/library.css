@@ -86,7 +86,7 @@
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.02em;
-  box-shadow: var(--pod-shadow);
+  box-shadow: var(--menu-shadow);
   opacity: 0;
   transition: opacity 0.25s ease;
   z-index: 10;
