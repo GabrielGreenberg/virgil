@@ -64,8 +64,7 @@ import {
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { ExcerptReturnAddress } from "@/lib/tiptap/restore-excerpt";
-import { freshenReturningUuids, withCarriedMarks } from "@/lib/tiptap/slice-capture";
-import { collectBlockUuids } from "@/lib/tiptap/node-identity";
+import { withCarriedMarks } from "@/lib/tiptap/slice-capture";
 import VirgilEditor, { type EditorHandle } from "./Editor";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SCROLL_PERSIST } from "@/lib/layout-gesture-probe";
@@ -5200,26 +5199,23 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       (content) =>
         landReturningDisplaced({
           doc: () => innerRef.current?.getEditor()?.state.doc ?? null,
+          // UUID COLLISION (task 1194 → 1253): the door gives a returning
+          // block whose uuid is already live a fresh one BEFORE this sees the
+          // content, and hands the same old → new map to the displaced cards
+          // AND (`onRemap`) to the dormant ones — one identity answer for
+          // every card this restore carries.
+          content,
           // CARRIED MARKS (task 1194): the Mode-B marks of the cards that
           // travelled with the passage go back on in the SAME transaction
           // as the text — which is what revives their dormant links.
-          //
-          // UUID COLLISION (task 1194): a returning block whose uuid is
-          // already live gets a fresh one HERE rather than from the backfill,
-          // so the cards that went dormant on the old id follow it.
-          land: () => {
+          land: (fresh) => {
             const ed = innerRef.current?.getEditor();
-            if (!ed) return innerRef.current?.restoreArchive(content, address) ?? false;
-            const { content: fresh, remap } = freshenReturningUuids(
-              content,
-              collectBlockUuids(ed.state.doc),
-            );
+            if (!ed) return innerRef.current?.restoreArchive(fresh, address) ?? false;
             const landing = withCarriedMarks(ed.state.schema, fresh, snippet?.carriedMarks);
-            const landed = innerRef.current?.restoreArchive(landing, address) ?? false;
-            if (landed && remap.size > 0) {
-              for (const back of dormantReturnDoors) back(id, remap);
-            }
-            return landed;
+            return innerRef.current?.restoreArchive(landing, address) ?? false;
+          },
+          onRemap: (remap) => {
+            for (const back of dormantReturnDoors) back(id, remap);
           },
           displaced: snippet?.displaced,
           retarget: anchorRetarget,

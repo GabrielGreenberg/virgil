@@ -60,6 +60,8 @@ import { isAnchorableBlock } from "@/text-objects/anchor-resolution";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { DisplacedAnchorRecord } from "@/lib/types";
+import type { JSONContent } from "@tiptap/react";
+import { freshenReturningUuids } from "@/lib/tiptap/slice-capture";
 import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 import type { MarginItemHandlers, MarginItemKind } from "./delete-margin-item";
@@ -294,9 +296,12 @@ export function rehomeAbsorbedAnchor({
 export interface ReturnDisplacedAnchorsArgs {
   handlers: Record<MarginItemKind, MarginItemHandlers>;
   displaced: ReadonlyArray<DisplacedAnchorRecord>;
-  /** The kind + snapshot of a uuid the restore brought back, or `null` when
-   *  the restore did not bring it back (see {@link returnedBlocks}). */
-  returned: (uuid: string) => { kind: TextObjectKind; snapshot: string | null } | null;
+  /** Where a CAPTURED uuid came back — the live uuid it landed under (its own,
+   *  or the fresh one a collision gave it), with that block's kind + snapshot —
+   *  or `null` when the restore did not bring it back (see {@link returnedBlocks}). */
+  returned: (
+    uuid: string,
+  ) => { uuid: string; kind: TextObjectKind; snapshot: string | null } | null;
 }
 
 /**
@@ -318,9 +323,13 @@ export interface ReturnDisplacedAnchorsArgs {
  *  - a card the capture ADDED to the neighbour but that is no longer there has
  *    been moved by the user since — their choice wins, and it is left alone;
  *  - only a `from` uuid the restore itself RETURNED (`returned(uuid)` non-null)
- *    is re-anchored. A uuid that was already live before the landing means
- *    `BlockUuidBackfill` re-minted the restored copy (id collision), so that
- *    uuid names someone else's block — the card stays where it is;
+ *    is re-anchored — onto the uuid it came back UNDER. On a collision (the
+ *    captured uuid already live, naming someone else's block) the landing gave
+ *    the returning block a fresh id and recorded old → new (task 1194's
+ *    `freshenReturningUuids`, owned by {@link landReturningDisplaced}), so the
+ *    card follows its block to the fresh id — the same id the dormant cards of
+ *    that restore revive on (task 1253). A `from` the restore did not bring
+ *    back at all leaves the card where it is;
  *  - the neighbour link is dropped only if the capture added it.
  *
  * Re-anchor BEFORE unanchor, so the card never passes through zero anchors.
@@ -343,7 +352,9 @@ export function returnDisplacedAnchors({
       const block = returned(uuid);
       if (!block) continue;
       back = true;
-      if (!pids.includes(uuid)) bundle.reanchor(rec.id, uuid, block.kind, block.snapshot);
+      if (!pids.includes(block.uuid)) {
+        bundle.reanchor(rec.id, block.uuid, block.kind, block.snapshot);
+      }
     }
     if (!back) continue;
     if (rec.added && !rec.from.includes(rec.to)) bundle.unanchor(rec.id, rec.to);
@@ -354,12 +365,15 @@ export function returnDisplacedAnchors({
 
 /**
  * The uuids a landing RETURNED to the document: live in `after`, absent from
- * `before`, on an anchorable block. O(doc) twice — Restore is a click.
+ * `before`, on an anchorable block. A captured uuid is first translated through
+ * the landing's collision `remap` (old → fresh), so a block that came back
+ * under a new id is found under it. O(doc) twice — Restore is a click.
  */
 export function returnedBlocks(
   before: PMNode,
   after: PMNode,
   snapshotOf: (uuid: string) => string | null,
+  remap: ReadonlyMap<string, string> = new Map(),
 ): ReturnDisplacedAnchorsArgs["returned"] {
   const wasLive = collectBlockUuids(before);
   const kinds = new Map<string, string>();
@@ -368,40 +382,62 @@ export function returnedBlocks(
     if (typeof u === "string" && u && !wasLive.has(u)) kinds.set(u, node.type.name);
     return true;
   });
-  return (uuid) => {
+  return (captured) => {
+    const uuid = remap.get(captured) ?? captured;
     const kind = kinds.get(uuid);
     if (kind === undefined || !isAnchorableBlock(kind, uuid)) return null;
-    return { kind, snapshot: snapshotOf(uuid) };
+    return { uuid, kind, snapshot: snapshotOf(uuid) };
   };
 }
 
 /**
- * The ONE restore door for an excerpt that displaced cards: run `land`, and if
- * it landed, hand the displaced cards back to the blocks it returned. Shared by
- * the pane's Restore and its tests, so the "measure the doc around the
- * landing" ordering is stated once.
+ * The ONE restore door for an excerpt: answer a uuid COLLISION, run `land`,
+ * and if it landed, hand every card the restore carries back to the blocks it
+ * returned. Shared by the pane's Restore and its tests, so the "measure the
+ * doc around the landing" ordering is stated once.
+ *
+ * IDENTITY (task 1253): a returning block whose uuid is already live gets a
+ * fresh one HERE (`freshenReturningUuids`, task 1194) — before `land` sees the
+ * content — and the one old → new map answers BOTH populations the restore
+ * carries: the displaced (re-homed) cards through `returnDisplaced`, the
+ * dormant ones through `onRemap`. Two readers of one map, from one call, so a
+ * single Restore can no longer split its cards across two ids. With no live
+ * document (`doc()` null) there is nothing to collide with and the content
+ * lands as-is.
  */
 export function landReturningDisplaced({
   doc,
+  content,
   land,
+  onRemap,
   displaced,
   retarget,
   snapshotOf,
 }: {
   /** Reads the LIVE document (called before and after `land`). */
   doc: () => PMNode | null;
-  land: () => boolean;
+  /** The excerpt as archived, carrying its original block uuids. */
+  content: JSONContent;
+  /** Lands the (collision-freshened) content; `true` when it landed. */
+  land: (content: JSONContent) => boolean;
+  /** The landing's old → fresh uuid map, when non-empty and it landed — the
+   *  dormant cards' door (`reviveRemapped`). */
+  onRemap?: (remap: ReadonlyMap<string, string>) => void;
   displaced: ReadonlyArray<DisplacedAnchorRecord> | undefined;
   retarget: Pick<AnchorRetargetApi, "returnDisplaced">;
   snapshotOf: (uuid: string) => string | null;
 }): boolean {
-  const before = displaced?.length ? doc() : null;
-  if (!land()) return false;
-  const after = before ? doc() : null;
+  const before = doc();
+  const { content: fresh, remap } = before
+    ? freshenReturningUuids(content, collectBlockUuids(before))
+    : { content, remap: new Map<string, string>() };
+  if (!land(fresh)) return false;
+  if (remap.size > 0) onRemap?.(remap);
+  const after = before && displaced?.length ? doc() : null;
   if (before && after && displaced) {
     retarget.returnDisplaced({
       displaced,
-      returned: returnedBlocks(before, after, snapshotOf),
+      returned: returnedBlocks(before, after, snapshotOf, remap),
     });
   }
   return true;

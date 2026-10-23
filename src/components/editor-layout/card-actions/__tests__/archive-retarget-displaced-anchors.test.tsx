@@ -62,6 +62,7 @@ import {
   isDormantLink,
   markDormant,
   reviveLiveLinks,
+  reviveRemapped,
   type CarriedKeys,
 } from "@/links/dormant";
 import { collectBlockUuids } from "@/lib/tiptap/node-identity";
@@ -204,7 +205,14 @@ function makeCardStore() {
       }
     }
   };
-  return { seed, handlers, pidsOf, cardOf, carry, revive };
+  /** The dormant cards' collision door (`useDormantRevival.returnRemapped`) —
+   *  the REAL `reviveRemapped`, fed the map the restore door hands `onRemap`. */
+  const returnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => {
+    for (const arr of byKind.values()) {
+      for (let i = 0; i < arr.length; i++) arr[i] = reviveRemapped(arr[i], snippetId, remap);
+    }
+  };
+  return { seed, handlers, pidsOf, cardOf, carry, revive, returnRemapped };
 }
 
 /** Every pid the card STORES, dormant or live — `getLinkedTextObjectIds`
@@ -526,15 +534,18 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     editor: Editor,
     handlers: Record<MarginItemKind, MarginItemHandlers>,
     call: { paragraphId: unknown; returnBefore?: unknown; content?: unknown; displaced?: DisplacedAnchorRecord[] },
+    onRemap?: (remap: ReadonlyMap<string, string>) => void,
   ): boolean {
     const anchor = call.paragraphId as string;
     return landReturningDisplaced({
       doc: () => editor.state.doc,
-      land: () =>
-        restoreExcerptAtAnchor(editor, call.content as JSONContent, {
+      content: call.content as JSONContent,
+      land: (fresh) =>
+        restoreExcerptAtAnchor(editor, fresh, {
           uuid: anchor,
           side: call.returnBefore === anchor ? "before" : "after",
         }) === true,
+      onRemap,
       displaced: call.displaced,
       retarget: { returnDisplaced: (args) => returnDisplacedAnchors({ ...args, handlers }) },
       snapshotOf: (uuid) => captureParagraphSnapshot(editor, uuid),
@@ -626,16 +637,20 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     expect(store.pidsOf("archive", "n")).toEqual(["p-after"]);
   });
 
-  it("a restore whose uuid was RE-MINTED (collision) leaves the displaced card on the neighbour", async () => {
+  // Task 1253 renegotiates this leg. Pre-1194 the collision was answered by
+  // `BlockUuidBackfill`'s re-mint, so the new id was unknowable and the card
+  // had to stay on the neighbour. Since 1194 the restore door mints the fresh
+  // id itself and knows old → new — so the displaced card follows its block,
+  // onto the SAME id the dormant cards of that restore revive on.
+  it("a restore whose uuid COLLIDES returns the displaced card to the block's FRESH uuid", async () => {
     const editor = mountDoc(threeParagraphDoc());
     const store = makeCardStore();
     store.seed("archive", "n", ["p-target"]);
     const h = makeHarness(editor, store.handlers, store.carry);
 
     await h.dispatch("archive", TARGET_REF);
-    // Something else now holds the archived uuid (e.g. the user restored a copy
-    // already), so the landing cannot return it — BlockUuidBackfill re-mints
-    // the newcomer, and `p-target` names a block the restore did NOT bring back.
+    // Something else now holds the archived uuid (e.g. the user pasted the
+    // text back), so the returning block cannot keep `p-target`.
     editor.commands.insertContentAt(editor.state.doc.content.size, {
       type: "paragraph",
       attrs: { uuid: "p-target" },
@@ -643,10 +658,65 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     });
     expect(editor.state.doc.textContent).toContain("Squatter.");
 
-    restore(editor, store.handlers, h.archiveCalls[0]);
+    let remap: ReadonlyMap<string, string> = new Map();
+    expect(restore(editor, store.handlers, h.archiveCalls[0], (m) => (remap = m))).toBe(true);
 
-    expect(editor.state.doc.textContent).toContain("Target passage.");
-    expect(store.pidsOf("archive", "n")).toEqual(["p-before"]);
+    const fresh = remap.get("p-target");
+    expect(fresh).toBeTruthy();
+    expect(fresh).not.toBe("p-target");
+    // The returned passage sits under the fresh id; the squatter keeps its own.
+    const uuids = uuidsInOrder(editor);
+    expect(uuids.filter((u) => u === "p-target")).toHaveLength(1);
+    expect(uuids).toContain(fresh);
+    // THE DEFECT LEG: pre-1253 the card stayed on p-before. The neighbour link
+    // the capture added is dropped.
+    expect(store.pidsOf("archive", "n")).toEqual([fresh]);
+  });
+
+  it("a colliding restore lands a DORMANT card and a DISPLACED card on the same fresh uuid", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const store = makeCardStore();
+    store.seed("note", "carried", ["p-target"]); // travels dormant (task 1194)
+    store.seed("archive", "moved", ["p-target"]); // re-homed + recorded (task 1079)
+    const h = makeHarness(editor, store.handlers, store.carry);
+
+    await h.dispatch("archive", TARGET_REF);
+    const snippetId = dormantSnippetOf(store.cardOf("note", "carried")!);
+    expect(snippetId).toBeTruthy();
+    expect(store.pidsOf("archive", "moved")).toEqual(["p-before"]);
+
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: "paragraph",
+      attrs: { uuid: "p-target" },
+      content: [{ type: "text", text: "Squatter." }],
+    });
+
+    let remap: ReadonlyMap<string, string> = new Map();
+    restore(editor, store.handlers, h.archiveCalls[0], (m) => {
+      remap = m;
+      store.returnRemapped(snippetId!, m);
+    });
+    const fresh = remap.get("p-target")!;
+    expect(fresh).toBeTruthy();
+
+    const carried = store.cardOf("note", "carried")!;
+    expect(getLinkedTextObjectIds(carried)).toEqual([fresh]);
+    expect(carried.links!.some(isDormantLink)).toBe(false);
+    expect(store.pidsOf("archive", "moved")).toEqual([fresh]);
+  });
+
+  it("a restore with NO collision hands onRemap nothing and keeps the original uuid", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const store = makeCardStore();
+    store.seed("archive", "n", ["p-target"]);
+    const h = makeHarness(editor, store.handlers, store.carry);
+
+    await h.dispatch("archive", TARGET_REF);
+    const onRemap = vi.fn();
+    restore(editor, store.handlers, h.archiveCalls[0], onRemap);
+
+    expect(onRemap).not.toHaveBeenCalled();
+    expect(store.pidsOf("archive", "n")).toEqual(["p-target"]);
   });
 
   it("a REFUSED landing hands nothing back", () => {
@@ -654,6 +724,7 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     store.seed("note", "n", ["p-before"]);
     const landed = landReturningDisplaced({
       doc: () => null,
+      content: { type: "doc", content: [] },
       land: () => false,
       displaced: [{ kind: "note", id: "n", from: ["p-target"], to: "p-before", added: true }],
       retarget: { returnDisplaced: () => { throw new Error("must not run"); } },
