@@ -13,7 +13,7 @@ import {
   type DormantKeys,
   type ReturningRemap,
 } from "@/links/dormant";
-import { useAnchorsRevived } from "@/lib/tiptap/orphan-events";
+import { useAnchorsArchived, useAnchorsRevived } from "@/lib/tiptap/orphan-events";
 
 /**
  * The insert-driven half of DORMANT-link revival (task 1193; the load half is
@@ -102,6 +102,15 @@ export function useDormantRevival<S, C extends DormantCardShape>(
       return changed ? map(prev, next) : prev;
     });
   }, []);
+  // The DEPARTURE half read off the document (task 1269): ids an un-retired
+  // snippet holds left the doc with no gesture to carry their cards — a Redo
+  // of an Archive. Same op as the gesture's `carry`, over every card; it lands
+  // before the orphan event for the same ids, whose strip then skips the now
+  // dormant links. Identity no-op for a card none of whose links it names.
+  useAnchorsArchived(docId, ({ snippetId, uuids, anchorIds }) => {
+    const keys: CarriedKeys = { pids: new Set(uuids), anchorIds: new Set(anchorIds) };
+    mapEach((c) => markDormant(c, snippetId, keys));
+  });
   const carry = useCallback<CarryCard>(
     (id, snippetId, keys) =>
       mapEach((c) => (c.id === id ? markDormant(c, snippetId, keys) : c)),

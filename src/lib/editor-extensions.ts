@@ -2002,6 +2002,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
       ? [
           MarginaliaAnchorGuard.configure({
             anchoredUuidsRef: ctx.anchoredUuidsRef,
+            docIdRef: ctx.docIdRef ?? null,
           }),
         ]
       : []),

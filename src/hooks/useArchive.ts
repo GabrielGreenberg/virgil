@@ -1,7 +1,7 @@
 "use client";
 
 import { useAnchorOrphaned, useTextObjectOrphaned } from "@/lib/tiptap/orphan-events";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { JSONContent } from "@tiptap/react";
 import type {
@@ -27,6 +27,11 @@ import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/si
 import { archiveOriginOf, type ArchiveOrigin, type ArchiveOriginPanel } from "@/lib/archive-origin";
 import { usePersistentState } from "./usePersistentState";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
+import {
+  holdingsOf,
+  publishArchiveHoldings,
+  retractArchiveHoldings,
+} from "@/lib/tiptap/archive-holdings";
 
 const EMPTY: ArchiveState = { snippets: [] };
 
@@ -127,6 +132,18 @@ export function useArchive(docId: string | null) {
       persistMigrationOnLoad: true,
       errorLabel: "archive",
     });
+
+  // ARCHIVE HOLDINGS (task 1269): the ids this doc's un-retired snippets hold,
+  // published per archive change (never per transaction) so the anchor guards
+  // can tell a Redo of an Archive from an orphaning edit. This instance is the
+  // owner; it retracts only its own entry.
+  const holdingsOwner = useRef({});
+  useEffect(() => {
+    if (!docId) return;
+    const owner = holdingsOwner.current;
+    publishArchiveHoldings(docId, owner, holdingsOf(state.snippets));
+    return () => retractArchiveHoldings(docId, owner);
+  }, [docId, state.snippets]);
 
   const archiveContent = useCallback(
     (

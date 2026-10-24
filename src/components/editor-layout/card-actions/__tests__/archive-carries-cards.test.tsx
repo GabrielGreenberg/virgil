@@ -61,9 +61,24 @@ import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_KINDS } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
-import type { CarriedMarkRecord } from "@/lib/types";
+import type { ArchivedSnippet, CarriedMarkRecord } from "@/lib/types";
+import {
+  __resetArchiveHoldingsForTests,
+  holdingsOf,
+  publishArchiveHoldings,
+  retractArchiveHoldings,
+  snippetHoldingAnchor,
+  snippetHoldingUuid,
+} from "@/lib/tiptap/archive-holdings";
+import {
+  ANCHORS_ARCHIVED_EVENT,
+  ANCHOR_ORPHANED_EVENT,
+  TEXTOBJECT_ORPHANED_EVENT,
+  type AnchorsArchivedDetail,
+} from "@/lib/tiptap/orphan-events";
+import { removeTextObjectLink } from "@/links/links";
 
-function mainCtx(): EditorExtensionsCtx {
+function mainCtx(over: Partial<EditorExtensionsCtx> = {}): EditorExtensionsCtx {
   return {
     surface: "main",
     editableRef: { current: true },
@@ -72,16 +87,17 @@ function mainCtx(): EditorExtensionsCtx {
     docIdRef: { current: null },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
+    ...over,
   };
 }
 
-function mountDoc(content: JSONContent[]): Editor {
+function mountDoc(content: JSONContent[], over: Partial<EditorExtensionsCtx> = {}): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
   return new Editor({
     element,
     editable: true,
-    extensions: buildEditorExtensions(mainCtx()),
+    extensions: buildEditorExtensions(mainCtx(over)),
     content: { type: "doc", content },
   });
 }
@@ -773,4 +789,157 @@ describe("archive-carry CENSUS", () => {
       expect(store.byId("k1").links!.some(isDormantLink)).toBe(false);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// TASK 1269 member 3 — a HISTORY REPLAY of an archive (Redo) carries no
+// lifecycle meta; the guards read the archive's holdings off the DOCUMENT.
+// ---------------------------------------------------------------------------
+
+describe("task 1269 — Redo of an Archive leaves the cards dormant, not stripped", () => {
+  const DOC = "doc-replay";
+  const listeners: Array<[string, EventListener]> = [];
+  afterEach(() => {
+    for (const [t, l] of listeners) window.removeEventListener(t, l);
+    listeners.length = 0;
+    __resetArchiveHoldingsForTests();
+  });
+
+  /** The card hooks' three listeners over the store, in the app's order:
+   *  `useDormantRevival`'s archived door, then the orphan strips (which skip
+   *  dormant links). */
+  function wireHooks(store: ReturnType<typeof makeStore>, cards: string[]) {
+    const on = (type: string, fn: (d: never) => void) => {
+      const l = ((e: CustomEvent) => {
+        if (e.detail?.docId === DOC) fn(e.detail as never);
+      }) as EventListener;
+      window.addEventListener(type, l);
+      listeners.push([type, l]);
+    };
+    const each = (step: (c: Card) => Card) => {
+      for (const id of cards) {
+        const c = store.byId(id);
+        Object.assign(c, step(c));
+      }
+    };
+    on(ANCHORS_ARCHIVED_EVENT, (d: AnchorsArchivedDetail) =>
+      each((c) =>
+        markDormant(c, d.snippetId, { pids: new Set(d.uuids), anchorIds: new Set(d.anchorIds) }),
+      ),
+    );
+    on(ANCHOR_ORPHANED_EVENT, (d: { anchorId: string }) =>
+      each((c) => ({
+        ...c,
+        links: (c.links ?? []).filter(
+          (l) =>
+            isDormantLink(l) ||
+            (l.anchor as { textRange?: { anchorId: string } }).textRange?.anchorId !== d.anchorId,
+        ),
+      })),
+    );
+    on(TEXTOBJECT_ORPHANED_EVENT, (d: { uuid: string }) => each((c) => removeTextObjectLink(c, d.uuid)));
+  }
+
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("archive → Undo → Redo: no placeholder, cards dormant in the snippet; Restore brings them back", async () => {
+    const editor = mountDoc(doc(), {
+      docIdRef: { current: DOC },
+      anchoredUuidsRef: { current: new Set(["p-target"]) },
+    });
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    wireHooks(store, ["m1", "h1", "n1"]);
+    await h.dispatch("archive", P_REF);
+    // `useArchive` publishes on the archive change.
+    const owner = {};
+    publishArchiveHoldings(DOC, owner, holdingsOf(h.snippets as unknown as ArchivedSnippet[]));
+    await flush();
+
+    editor.commands.undo();
+    await flush();
+    store.revive(editor);
+    expect(store.byId("n1").links!.some(isDormantLink)).toBe(false);
+
+    editor.commands.redo();
+    await flush();
+    // No empty resurrected `p-target` between the neighbours.
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-after"]);
+    for (const id of ["m1", "h1", "n1"]) {
+      const c = store.byId(id);
+      expect(c.links, id).toHaveLength(1); // kept, not stripped
+      expect(dormantSnippetOf(c), id).toBe(h.snippets[0].id);
+      expect(c.archived, id).toBe(true);
+    }
+
+    expect(restore(editor, h.snippets[0])).toBe(true);
+    store.revive(editor);
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
+    expect(markedText(editor, "A-note")).toBe("beta gamma");
+    expect(markedText(editor, "A-hl")).toBe("delta");
+    for (const id of ["m1", "h1", "n1"]) {
+      expect(store.byId(id).links!.some(isDormantLink), id).toBe(false);
+      expect(store.byId(id).archived, id).toBeUndefined();
+    }
+    retractArchiveHoldings(DOC, owner);
+  });
+
+  it("CONTROL: nothing held → an ordinary removal of an anchored block still resurrects", async () => {
+    const editor = mountDoc(doc(), {
+      docIdRef: { current: DOC },
+      anchoredUuidsRef: { current: new Set(["p-target"]) },
+    });
+    const { from } = posOf(editor, "Alpha");
+    const { to } = posOf(editor, "delta.");
+    editor.chain().setTextSelection({ from: from - 1, to: to + 1 }).deleteSelection().run();
+    await flush();
+    expect(uuidsInOrder(editor)).toContain("p-target");
+  });
+});
+
+describe("task 1269 — archive holdings", () => {
+  afterEach(() => __resetArchiveHoldingsForTests());
+  const snip = (over: Partial<ArchivedSnippet>): ArchivedSnippet =>
+    ({
+      id: "s",
+      title: "",
+      createdAt: "",
+      content: {
+        type: "doc",
+        content: [{ type: "paragraph", attrs: { uuid: "u1" }, content: [{ type: "text", text: "x" }] }],
+      },
+      carriedMarks: [{ from: 1, to: 2, anchorId: "a1", attrs: {} } as unknown as CarriedMarkRecord],
+      ...over,
+    }) as ArchivedSnippet;
+
+  it("an un-retired excerpt holds its whole-block uuids and carried anchorIds", () => {
+    publishArchiveHoldings("d", {}, holdingsOf([snip({})]));
+    expect(snippetHoldingUuid("d", "u1")).toBe("s");
+    expect(snippetHoldingAnchor("d", "a1")).toBe("s");
+    expect(snippetHoldingUuid("other-doc", "u1")).toBeNull();
+  });
+
+  it("a retired snippet and a whole-CARD snippet hold nothing", () => {
+    publishArchiveHoldings(
+      "d",
+      {},
+      holdingsOf([
+        snip({ archived: true }),
+        snip({ id: "c", originalPanel: "notes", originalCard: { id: "n" } } as Partial<ArchivedSnippet>),
+      ]),
+    );
+    expect(snippetHoldingUuid("d", "u1")).toBeNull();
+    expect(snippetHoldingAnchor("d", "a1")).toBeNull();
+  });
+
+  it("a departing owner retracts only its own entry", () => {
+    const a = {};
+    const b = {};
+    publishArchiveHoldings("d", a, holdingsOf([snip({ id: "sa" })]));
+    publishArchiveHoldings("d", b, holdingsOf([snip({ id: "sb" })]));
+    retractArchiveHoldings("d", a);
+    expect(snippetHoldingUuid("d", "u1")).toBe("sb");
+    retractArchiveHoldings("d", b);
+    expect(snippetHoldingUuid("d", "u1")).toBeNull();
+  });
 });
