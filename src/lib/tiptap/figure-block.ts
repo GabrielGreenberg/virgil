@@ -116,6 +116,11 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
       widthPercent: { default: null, renderHTML: () => ({}) },
       sources: { default: [], renderHTML: () => ({}) },
       label: { default: "" },
+      // Was `label` written BEFORE the `\caption` (task 1262)? The side of the
+      // caption decides what `\ref` prints, so the emitter re-places it there.
+      // Defaults FALSE — a figure without provenance keeps the label-after-
+      // caption emission every earlier build wrote.
+      labelBeforeCaption: { default: false, renderHTML: () => ({}) },
       // Did the SOURCE env carry a `\caption` command (task 319)? Provenance
       // the always-present `figureCaption` child cannot express, and the fact
       // the emitter + both numberers read — see `@/lib/figures/env-body`.

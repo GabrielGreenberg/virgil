@@ -35,7 +35,7 @@
 //     and why this one fact must not be frozen into an attr) (task 318).
 // ---------------------------------------------------------------------------
 
-import { captionDeclaresLabel } from "./parse-attrs";
+import { captionDeclaresLabel, withPreCaptionLabel } from "./parse-attrs";
 
 export interface FigureEnvBodyParts {
   /** Env body BEFORE the figure's own `\caption`, minus that caption and the
@@ -73,6 +73,11 @@ export interface FigureEnvBodyParts {
   numbered: boolean;
   /** The figure's `\label` body; "" when it has none. */
   label: string;
+  /** Does that label's declaration live in `extras`, before the caption
+   *  (`FigureAttrs.labelBeforeCaption`, task 1262)? Then the key is rendered
+   *  INTO that declaration, never re-emitted after the caption. Optional for
+   *  the same reason as `trailingExtras`: a FRESH figure has no source side. */
+  labelBeforeCaption?: boolean;
 }
 
 /** Will this figure carry a `\caption` in the emitted `.tex`?
@@ -180,10 +185,24 @@ function figureEmitsLabel(parts: FigureEnvBodyParts): boolean {
  *  confined to the two shapes that were being corrupted. */
 export function buildFigureEnvBody(parts: FigureEnvBodyParts): string {
   const out: string[] = [];
-  const extras = (parts.extras || "").replace(/\s+$/, "");
+  // A label written before the caption stays there, in `extras`, with the
+  // model's key rendered into it (task 1262) — re-emitting it after the
+  // caption would re-point every `\ref` from the section's number to the
+  // figure's. Only when that declaration has gone missing from `extras` does
+  // the emitter write the key itself, still on the before-caption side.
+  const owned = parts.labelBeforeCaption
+    ? withPreCaptionLabel(parts.extras || "", parts.label)
+    : null;
+  const labelAhead = parts.labelBeforeCaption === true && owned === null;
+  const extras = (owned ?? parts.extras ?? "").replace(/\s+$/, "");
   if (extras) {
     out.push("\n");
     out.push(extras);
+  }
+  const emitsLabel = !parts.labelBeforeCaption && figureEmitsLabel(parts);
+  if (labelAhead && figureEmitsLabel(parts)) {
+    out.push("\n  ");
+    out.push(`\\label{${parts.label}}`);
   }
   if (partsEmitCaption(parts)) {
     // The `[short]` LoF argument rides through opaquely (task 263); a
@@ -194,7 +213,7 @@ export function buildFigureEnvBody(parts: FigureEnvBodyParts): string {
     out.push("\n  ");
     out.push(`\\caption${star}${shortArg}{${parts.captionTex}}`);
   }
-  if (figureEmitsLabel(parts)) {
+  if (emitsLabel) {
     out.push("\n  ");
     out.push(`\\label{${parts.label}}`);
   }

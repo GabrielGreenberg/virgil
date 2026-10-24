@@ -24,7 +24,13 @@ import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@tiptap/react";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
-import { extractFigureAttrs } from "@/lib/figures/parse-attrs";
+import {
+  extractFigureAttrs,
+  figureNodeAttrsFromSource,
+  withFigureGraphicsEdit,
+  withUpdatedFigureWidth,
+} from "@/lib/figures/parse-attrs";
+import { serializeFigureEnvBody } from "@/lib/latex-serializer";
 
 function parseBody(input: string): JSONContent {
   return parseLatex(
@@ -156,6 +162,13 @@ describe("figure multi-label / multi-caption round trip (task 379)", () => {
   ])("control — a single-label figure is unchanged (%s)", (_name, body) => {
     const { once, twice } = cycles(body);
     expect(twice).toBe(once);
+    // POSITION, not just presence (task 1262): the label stays on the side of
+    // the caption it was written on — which is what `\ref` to it prints.
+    const label = once.indexOf("\\label{fig:a}");
+    const caption = once.indexOf("\\caption{");
+    const bodyLabel = body.indexOf("\\label{fig:a}");
+    const bodyCaption = body.indexOf("\\caption{");
+    if (bodyLabel !== -1) expect(label < caption).toBe(bodyLabel < bodyCaption);
     if (body.includes("\\label")) {
       expect(countOf(once, /\\label\{fig:a\}/g)).toBe(1);
       expect(extractFigureAttrs(`\n${body}\n`).label).toBe("fig:a");
@@ -188,5 +201,77 @@ describe("figure multi-label / multi-caption round trip (task 379)", () => {
       `\n\\includegraphics{a}\n\\caption{C}\n\\label{fig:a}\n`,
     );
     expect(attrs.trailingExtras.trim()).toBe("");
+  });
+
+  // ── task 1262: a SOLE label written before the caption ────────────────
+  describe("a sole label before the caption keeps its side (task 1262)", () => {
+    const body = `  \\includegraphics{a}\n  \\label{fig:x}\n  \\caption{Cap}`;
+    const env = `\\begin{figure}\n${body}\n\\end{figure}\n`;
+
+    const figureOf = (src: string) => findByType(parseBody(src), "figureBlock")[0];
+    const before = (s: string, key = "fig:x") =>
+      s.indexOf(`\\label{${key}}`) < s.indexOf("\\caption{");
+
+    it("round-trips byte-for-byte, label still before the caption", () => {
+      const { once, twice } = cycles(body);
+      expect(once).toContain(body);
+      expect(before(once)).toBe(true);
+      expect(countOf(once, /\\label\{fig:x\}/g)).toBe(1);
+      expect(twice).toBe(once);
+    });
+
+    it("still gives the model its key (lozenge / rename / \\ref display)", () => {
+      const attrs = extractFigureAttrs(`\n${body}\n`);
+      expect(attrs.label).toBe("fig:x");
+      expect(attrs.labelBeforeCaption).toBe(true);
+      expect(figureOf(env).attrs?.labelBeforeCaption).toBe(true);
+    });
+
+    it("a rename through the attr rewrites THAT declaration, in place", () => {
+      const fig = figureOf(env);
+      const renamed = { ...fig, attrs: { ...fig.attrs, label: "fig:y" } };
+      const out = serializeFigureEnvBody(renamed);
+      expect(out).not.toContain("fig:x");
+      expect(countOf(out, /\\label\{fig:y\}/g)).toBe(1);
+      expect(before(out, "fig:y")).toBe(true);
+    });
+
+    it("clearing the label removes the declaration rather than keeping a stale one", () => {
+      const fig = figureOf(env);
+      const out = serializeFigureEnvBody({ ...fig, attrs: { ...fig.attrs, label: "" } });
+      expect(out).not.toContain("\\label");
+      expect(out).toContain("\\caption{Cap}");
+    });
+
+    it("a popover save (synthesize → re-extract → emit) keeps the side", () => {
+      const fig = figureOf(env);
+      const synthesized = serializeFigureEnvBody(fig);
+      const reparsed = figureNodeAttrsFromSource(extractFigureAttrs(synthesized));
+      const out = serializeFigureEnvBody({ ...fig, attrs: { ...fig.attrs, ...reparsed } });
+      expect(out.trim()).toBe(synthesized.trim());
+      expect(before(out)).toBe(true);
+    });
+
+    it("a width-stepper edit keeps the label before the caption", () => {
+      const fig = figureOf(env);
+      const next = withFigureGraphicsEdit(
+        {
+          extras: fig.attrs?.extras as string,
+          trailingExtras: fig.attrs?.trailingExtras as string,
+        },
+        (t) => withUpdatedFigureWidth(t, 50),
+      );
+      expect(next).not.toBeNull();
+      const out = serializeFigureEnvBody({ ...fig, attrs: { ...fig.attrs, ...next } });
+      expect(out).toContain("width=");
+      expect(before(out)).toBe(true);
+      expect(countOf(out, /\\label\{fig:x\}/g)).toBe(1);
+    });
+
+    it("a label AFTER the caption still binds and is still emitted after it", () => {
+      const attrs = extractFigureAttrs(`\n\\label{fig:pre}\n\\caption{C}\\label{fig:post}\n`);
+      expect(attrs.label).toBe("fig:post");
+      expect(attrs.labelBeforeCaption).toBe(false);
+    });
   });
 });

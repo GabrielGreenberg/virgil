@@ -2009,6 +2009,8 @@ export function serializeFigureEnvBody(node: JSONContent): string {
     // `\caption` vs `\caption*` — see `FigureEnvBodyParts.numbered`.
     numbered: node.attrs?.numbered !== false,
     label,
+    // Which side of the caption the label was written on (task 1262).
+    labelBeforeCaption: node.attrs?.labelBeforeCaption === true,
   });
 }
 
