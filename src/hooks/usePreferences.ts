@@ -73,8 +73,9 @@ export interface EditorPreferences {
   panelAdminTextFont: string;
 
   // App Chrome
-  // (themeColor is locked to topbarBackground, mainTabBg is locked to
-  //  backgroundColor — both derived in globals.css, not user-editable)
+  // (the theme-color meta follows topbarBackground — src/lib/theme-color.ts;
+  //  mainTabBg is locked to backgroundColor in globals.css; neither is
+  //  user-editable)
   topbarBackground: string;
   topbarBackgroundBottom: string; // Bottom color of the Virgil-bar gradient
   topbarBorder: string;

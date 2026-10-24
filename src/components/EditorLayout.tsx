@@ -152,9 +152,9 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useHelperMode } from "@/hooks/useHelperMode";
 import { useZenMode } from "@/hooks/useZenMode";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
-import { applyTransforms } from "@/lib/color-transforms";
 import { resolvePrefCssVars } from "@/lib/preferences-tree";
 import { recordPrefCssPaint } from "@/lib/pref-css-bootstrap";
+import { themeColorFromVars, writeThemeColorMeta } from "@/lib/theme-color";
 import { notifyChromePaletteChanged } from "@/lib/chrome-palette-signal";
 import PreferencesModal from "./PreferencesModal";
 import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
@@ -1362,12 +1362,11 @@ export default function EditorLayout() {
     // re-assign that var onto the card's own PM dom).
     const docPx = Math.round(Number(editorPrefs.editorFontSize) * 16);
     setTierBaseFontSizes(docPx - 2, Number(editorPrefs.panelFontSize));
-    // Update browser theme-color meta tag. Always mirrors the topbar
-    // background — in enhanced zen mode the whole window canvas is also
-    // the topbar color, so this stays correct in both modes.
-    const tcSource = editorPrefs.topbarBackground;
-    const tc = applyTransforms(tcSource, editorTransforms);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tc);
+    // Point the browser/OS chrome at the top-bar colour just painted — the
+    // same row of the same resolved paint the pre-paint bootstrap replays
+    // (task 1274). In enhanced zen mode the whole window canvas is also the
+    // topbar color, so this stays correct in both modes.
+    writeThemeColorMeta(themeColorFromVars(vars));
     // Same-origin iframes (the pdf.js viewer) have their own `:root` and cannot
     // see the writes above — tell them to re-copy the live palette (task 890).
     notifyChromePaletteChanged();

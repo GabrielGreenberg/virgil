@@ -36,8 +36,9 @@ export const PREF_CSS_ROWS = Object.freeze([
   { key: "editorTextColor", cssVar: "--editor-text-color", color: true },
 
   // App chrome
-  // (--theme-color is aliased to --topbar-bg, --main-tab-bg is aliased to
-  //  --background, both in globals.css)
+  // (the theme-color meta follows --topbar-bg's painted value —
+  //  src/lib/theme-color.ts; --main-tab-bg is aliased to --background in
+  //  globals.css)
   { key: "topbarBackground", cssVar: "--topbar-bg", color: true },
   { key: "topbarBackgroundBottom", cssVar: "--topbar-bg-bottom", color: true },
   { key: "topbarBorder", cssVar: "--topbar-border", color: true },

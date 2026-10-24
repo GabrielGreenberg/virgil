@@ -574,8 +574,7 @@ The token scales:
   token that must harmonize with a surface should be `color-mix`-derived FROM
   that surface's var, not a hand-picked hex that a future retone can desync.
 
-Locked aliases (must track each other): `--theme-color`/`--topbar-bg`,
-`--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
+Locked aliases (must track each other): `--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
 `--h1-color`/`--foreground`, `--h2h3-color`/`--editor-text-color`,
 `--scrollbar-hover`/`--muted-light`, `--zen-canvas-cool`/`--topbar-bg`. Each is DERIVED (`var(--partner)`), never
 a re-spelled literal, and

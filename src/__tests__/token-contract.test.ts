@@ -54,7 +54,6 @@ const LOCKED_VALUES: ReadonlyArray<readonly [string, string]> = [
  * what makes the tracking structural instead of aspirational.
  */
 const LOCKED_ALIASES: ReadonlyArray<readonly [string, string]> = [
-  ["--theme-color", "--topbar-bg"],
   ["--main-tab-bg", "--background"],
   ["--pod-editor", "--surface"],
   ["--h1-color", "--foreground"],

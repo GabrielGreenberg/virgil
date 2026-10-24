@@ -62,8 +62,9 @@
   --accent-blue: #2563eb;
 
   /* App Chrome
-     --theme-color is locked to --topbar-bg so the in-app top bar and the
-     PWA/browser chrome can't drift apart.
+     The PWA/browser chrome colour (<meta name="theme-color">, manifest
+     theme_color) follows --topbar-bg's PAINTED value; src/lib/theme-color.ts
+     owns it in every phase (task 1274).
      --main-tab-bg is locked to --background so the active tab and the page
      canvas it joins always share a color. */
   --topbar-bg: #dcdbd7;
@@ -75,7 +76,6 @@
      its optical centre at seam−15 — the tab titles' anchor (tasks 094/289).
      aligns: a 24px row's centre to seam−15, not the 4px grid. */
   --bar-seam-lift: 3px;
-  --theme-color: var(--topbar-bg);
   --tab-bg: #dcdbd7;
   --main-tab-bg: var(--background);
   --library-bg: #eae7e2;
@@ -5725,9 +5725,9 @@ body.perf-contain .static-borrowed-text {
   /* The browser/OS chrome (the WCO control strip + window corners) is
      painted by the theme-color meta, which the web platform allows to be a
      SOLID color only — so a gradient bar can never seam-match it under WCO.
-     Flatten the bar to its top color here (== theme-color, locked to
-     --topbar-bg) so the installed title bar reads as one continuous fill;
-     a normal browser tab keeps the user's gradient untouched. Overriding
+     Flatten the bar to its top color here (== theme-color, which follows
+     --topbar-bg — src/lib/theme-color.ts) so the installed title bar reads
+     as one continuous fill; a normal browser tab keeps the user's gradient untouched. Overriding
      the custom property on the element re-resolves the inline
      linear-gradient() in TopBar.tsx to a single stop. */
   --topbar-bg-bottom: var(--topbar-bg);
