@@ -302,10 +302,11 @@ describe("archived-with CENSUS", () => {
     const start = code.indexOf("const deletePassage = useCallback(");
     expect(start).toBeGreaterThan(-1);
     const body = code.slice(start, code.indexOf("const archiveHook = useMemo(", start));
-    for (const r of ["releaseNotes", "releaseTodos", "releaseCutter", "releaseRevisions", "releaseReports"]) {
-      expect(body, r).toMatch(new RegExp(`\\b${r}\\b`));
-    }
-    expect(body.indexOf("await deleteArchiveSnippet(id)")).toBeLessThan(body.indexOf("release(id)"));
+    // All five via the ONE carrying-store table (task 1271) — the table's
+    // exhaustive `ArchiveOriginPanel` key is what makes it "all five"; the
+    // store side is `dormant-store-census.test.ts`.
+    expect(body).toMatch(/Object\.values\(dormantStores\)/);
+    expect(body.indexOf("await deleteArchiveSnippet(id)")).toBeLessThan(body.indexOf(".release(id)"));
     expect(code).toMatch(/deleteSnippet:\s*deletePassage\b/);
   });
 

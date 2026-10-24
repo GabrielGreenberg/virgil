@@ -269,6 +269,16 @@ archived notes linked to it"*, so since task 1194 an archive CARRIES:
   landing (`freshenReturningIdentities`) and the dormant Mode-A links follow it
   (`reviveRemapped` via each hook's `returnRemapped`) — never revived onto the
   squatter. Legacy snippets carrying `displaced` restore through 1079 unchanged.
+- **One table for the per-STORE doors** (task 1271). `carry`, `returnRemapped`,
+  `release` and the archive-origin `reinstate` are per store, not per kind, so
+  they live in ONE `DormantStoreTable` (`src/hooks/useDormantStores.ts`, keyed
+  by `ArchiveOriginPanel`; the type demands all four per store). `EditorPane`
+  reads it at every door — the lifecycle literal's `carry`, the Restore remap,
+  the passage delete, `reinstate` — so a store that carries without returning
+  or releasing does not type-check. `dormantStoreOfKind` derives a kind's store
+  from `CARD_REGISTRY[kind].panel`; `dormant-store-census.test.ts` pins that
+  every kind declaring `lifecycle.carry` resolves to a store and that its
+  `carry` is that store's door.
 - **Identity is RE-DERIVED at landing, never trusted from the capture** (task
   1269). The archive body is editable and the world moves between capture and
   Restore, so the record is a hint: each carried run also stores the WORDS it
