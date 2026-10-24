@@ -91,7 +91,13 @@ function migrateCarriedMarks(raw: unknown): CarriedMarkRecord[] | undefined {
     if (!Number.isInteger(r.from) || !Number.isInteger(r.to)) continue;
     if ((r.from as number) < 0 || (r.to as number) <= (r.from as number)) continue;
     const attrs = r.attrs && typeof r.attrs === "object" ? r.attrs : {};
-    out.push({ anchorId: r.anchorId, attrs: { ...attrs, anchorId: r.anchorId }, from: r.from!, to: r.to! });
+    out.push({
+      anchorId: r.anchorId,
+      attrs: { ...attrs, anchorId: r.anchorId },
+      from: r.from!,
+      to: r.to!,
+      ...(typeof r.text === "string" && r.text ? { text: r.text } : {}),
+    });
   }
   return out.length ? out : undefined;
 }

@@ -976,20 +976,26 @@ export interface OrphanedFootnotesState {
   orphans: OrphanedFootnote[];
 }
 
-/** One card an archive capture re-homed (task 1079 — see
- *  `ArchivedSnippet.displaced`). `kind` is a `MarginItemKind`, typed as a
- *  string here because it round-trips through `archive.json`; an unknown kind
- *  is simply skipped on restore. */
 /** One carried `linkedAnchor` run — see `ArchivedSnippet.carriedMarks`. */
 export interface CarriedMarkRecord {
   anchorId: string;
   /** The mark's own attrs, verbatim (`anchorId`, `linkCard`, …). */
   attrs: Record<string, unknown>;
-  /** Positions inside the snippet's `content` doc. */
+  /** Positions inside the snippet's `content` doc AT CAPTURE — a hint, not an
+   *  authority: the body is editable, so Restore re-finds the run by `text`. */
   from: number;
   to: number;
+  /** The words the run covered at capture (`textBetween(from, to, "\n",
+   *  "\ufffc")`) — the run's IDENTITY (task 1269). Restore stamps the mark
+   *  only where the content still reads exactly this; absent on a pre-1269
+   *  record, which is trusted at its offsets. */
+  text?: string;
 }
 
+/** One card an archive capture re-homed (task 1079 — see
+ *  `ArchivedSnippet.displaced`). `kind` is a `MarginItemKind`, typed as a
+ *  string here because it round-trips through `archive.json`; an unknown kind
+ *  is simply skipped on restore. */
 export interface DisplacedAnchorRecord {
   kind: string;
   /** The card's id within its kind's collection. */

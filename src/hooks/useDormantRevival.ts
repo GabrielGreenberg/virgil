@@ -11,6 +11,7 @@ import {
   type CarriedKeys,
   type DormantCardShape,
   type DormantKeys,
+  type ReturningRemap,
 } from "@/links/dormant";
 import { useAnchorsRevived } from "@/lib/tiptap/orphan-events";
 
@@ -36,10 +37,11 @@ import { useAnchorsRevived } from "@/lib/tiptap/orphan-events";
  *  `CardLifecycle.carry`. */
 export type CarryCard = (id: string, snippetId: string, keys: CarriedKeys) => void;
 
-/** Restore's collision door (task 1194): the snippet's returning blocks were
- *  given fresh uuids (`remap`, old → new) — move this kind's dormant links
- *  onto them and revive them. See `reviveRemapped`. */
-export type ReturnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => void;
+/** Restore's collision door (task 1194 → 1269): the snippet's returning
+ *  blocks / carried marks were given fresh ids (`remap`, old → new per
+ *  identity space) — move this kind's dormant links onto them and revive
+ *  them. See `reviveRemapped`. */
+export type ReturnRemapped = (snippetId: string, remap: ReturningRemap) => void;
 
 /** The passage `snippetId` was deleted for good (task 1195): drop this
  *  kind's links dormant there and clear `archivedWith`. Never deletes a card.

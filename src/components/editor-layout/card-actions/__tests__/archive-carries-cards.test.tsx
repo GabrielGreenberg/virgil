@@ -48,11 +48,15 @@ import {
   reviveRemapped,
   type CarriedKeys,
   type DormantCardShape,
+  type ReturningRemap,
 } from "@/links/dormant";
 import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
-import { carryDisplacedAnchors, retargetDisplacedAnchors } from "@/cards/retarget-anchors";
+import {
+  carryDisplacedAnchors,
+  landReturningDisplaced,
+  retargetDisplacedAnchors,
+} from "@/cards/retarget-anchors";
 import { restoreExcerptAtAnchor } from "@/lib/tiptap/restore-excerpt";
-import { freshenReturningUuids, withCarriedMarks } from "@/lib/tiptap/slice-capture";
 import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_KINDS } from "@/cards/predicates";
@@ -194,7 +198,7 @@ function makeStore(cards: Card[]) {
     }
   };
   /** The hooks' `returnRemapped` door over this store. */
-  const returnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => {
+  const returnRemapped = (snippetId: string, remap: ReturningRemap) => {
     for (let i = 0; i < all.length; i++) all[i] = reviveRemapped(all[i], snippetId, remap);
   };
   return { byId, carry, handlers, revive, returnRemapped };
@@ -266,27 +270,30 @@ function makeHarness(editor: Editor, store: ReturnType<typeof makeStore>) {
   };
 }
 
-/** The pane's Restore, minus React — the same calls `handleArchiveRestore`'s
- *  `land` makes: freshen colliding uuids, re-stamp the carried marks, land at
- *  the return address, and hand any remap to the stores' `returnRemapped`. */
+/** The pane's Restore, minus React — the SAME door `handleArchiveRestore`
+ *  calls (`landReturningDisplaced`): re-stamp the carried marks by their
+ *  words, freshen colliding uuids AND anchorIds, land at the return address,
+ *  and hand any remap to the stores' `returnRemapped`. */
 function restore(
   editor: Editor,
   s: SnippetCall,
-  returnRemapped?: (snippetId: string, remap: ReadonlyMap<string, string>) => void,
+  returnRemapped?: (snippetId: string, remap: ReturningRemap) => void,
 ): boolean {
   const anchor = s.paragraphId as string;
-  const { content: fresh, remap } = freshenReturningUuids(
-    s.content,
-    collectBlockUuids(editor.state.doc),
-  );
-  const content = withCarriedMarks(editor.state.schema, fresh, s.carriedMarks);
-  const landed =
-    restoreExcerptAtAnchor(editor, content, {
-      uuid: anchor,
-      side: s.returnBefore === anchor ? "before" : "after",
-    }) === true;
-  if (landed && remap.size > 0) returnRemapped?.(s.id, remap);
-  return landed;
+  return landReturningDisplaced({
+    doc: () => editor.state.doc,
+    content: s.content,
+    carriedMarks: s.carriedMarks,
+    land: (content) =>
+      restoreExcerptAtAnchor(editor, content, {
+        uuid: anchor,
+        side: s.returnBefore === anchor ? "before" : "after",
+      }) === true,
+    onRemap: (remap) => returnRemapped?.(s.id, remap),
+    displaced: undefined,
+    retarget: { returnDisplaced: () => 0 },
+    snapshotOf: () => null,
+  });
 }
 
 /** The words a `linkedAnchor` covers in the live doc. */

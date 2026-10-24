@@ -198,40 +198,63 @@ export function reviveLiveLinks<T extends DormantCardShape>(
   return out;
 }
 
+/** A restore's old → fresh identity maps (structurally `IdentityRemap` from
+ *  `slice-capture.ts` — one per identity space a carried link can name). */
+export interface ReturningRemap {
+  uuids: ReadonlyMap<string, string>;
+  anchorIds: ReadonlyMap<string, string>;
+}
+
 /**
- * A RESTORE WHOSE UUID COLLIDED (task 1194). When a returning block's uuid is
- * already live (the user archived a copy, or something since took the id),
- * the landing gives the returning block a FRESH uuid (`remap`: old → new) —
- * so a dormant Mode-A link naming the old uuid would otherwise never revive,
- * and the load reconcile would one day revive it onto the SQUATTER. This
- * rewrites every such link of `snippetId` to the new uuid and revives it in
- * the same write (the landing has just made the new uuid live). Mode-B links
- * are untouched: they revive by their mark, which the landing re-stamped.
- * Identity-preserving no-op when nothing names a remapped uuid.
+ * A RESTORE WHOSE IDENTITY COLLIDED (task 1194 → 1269). When a returning
+ * block's uuid, or a carried mark's anchorId, is already live (the user
+ * archived a copy, a doc Undo revived the original, or something since took
+ * the id), the landing gives the returning one a FRESH id (`remap`: old →
+ * new) — so a dormant link naming the old id would otherwise never revive,
+ * or revive onto the SQUATTER. This rewrites every such link of `snippetId`
+ * onto the new ids and revives it in the same write (the landing has just
+ * made them live): a Mode-A link by its pids, a Mode-B link by its anchorId
+ * (its pids follow the uuid map too, so the paragraph it names is the one
+ * that came back). Identity-preserving no-op when nothing names a remapped id.
  */
 export function reviveRemapped<T extends DormantCardShape>(
   card: T,
   snippetId: string,
-  remap: ReadonlyMap<string, string>,
+  remap: ReturningRemap,
 ): T {
   const links = card.links;
-  if (!links || remap.size === 0) return card;
+  if (!links || (remap.uuids.size === 0 && remap.anchorIds.size === 0)) return card;
   let touched = false;
   const next = links.map((l) => {
-    if (l.archivedWith !== snippetId || isModeB(l) || l.anchor.type !== "textObject") return l;
+    if (l.archivedWith !== snippetId || l.anchor.type !== "textObject") return l;
     const ids = l.anchor.textObjectIds;
-    if (!ids.some((u) => remap.has(u))) return l;
+    if (isModeB(l)) {
+      const range = l.anchor.textRange;
+      const fresh = range?.anchorId ? remap.anchorIds.get(range.anchorId) : undefined;
+      if (!fresh || !range) return l;
+      touched = true;
+      return {
+        ...l,
+        anchor: {
+          ...l.anchor,
+          textObjectIds: ids.map((u) => remap.uuids.get(u) ?? u),
+          textRange: { ...range, anchorId: fresh },
+        },
+      };
+    }
+    if (!ids.some((u) => remap.uuids.has(u))) return l;
     touched = true;
     return {
       ...l,
-      anchor: { ...l.anchor, textObjectIds: ids.map((u) => remap.get(u) ?? u) },
+      anchor: { ...l.anchor, textObjectIds: ids.map((u) => remap.uuids.get(u) ?? u) },
     };
   });
   if (!touched) return card;
-  const fresh = new Set(remap.values());
+  const freshUuids = new Set(remap.uuids.values());
+  const freshAnchors = new Set(remap.anchorIds.values());
   return reviveLiveLinks({ ...card, links: next } as T, {
-    isUuidLive: (u) => fresh.has(u),
-    isAnchorIdLive: () => false,
+    isUuidLive: (u) => freshUuids.has(u),
+    isAnchorIdLive: (a) => freshAnchors.has(a),
   });
 }
 
