@@ -231,6 +231,7 @@ import { surfaceEditableNow, surfaceReadOnlyByHost } from "@/lib/tiptap/surface-
 import { refusalPhrase, type Refusal } from "./refusal";
 import {
   sliceIsFullyCapturedBy,
+  captureRangeMathText,
   type CaptureVocabulary,
 } from "@/lib/tiptap/capture-symmetry";
 import { captureRangeLatexSource } from "@/lib/tiptap/slice-capture";
@@ -2857,7 +2858,8 @@ function inlineAtomInsertRefusal(
 // renders from the SSOT. Pure ProseMirror (operates on `ctx.editor`), no bridge.
 //
 // WRAP semantics (preserved verbatim from the former grid helper):
-//   - latex = the selected plain text, or a placeholder when the selection is
+//   - latex = the selected text (`captureRangeMathText`: plain characters, sub/
+//     superscript translated to `_{…}` / `^{…}` — task 1272), or a placeholder when the selection is
 //     empty ("x" for inline, "\int f(x)\,dx" for display);
 //   - inline → `inlineMath` (no uuid attr); display → `displayMath` (uuid hydrated
 //     lazily by `ensureAnchorUuid` on first interaction, same as before — we do
@@ -2869,7 +2871,9 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
   // only gate: see `isCollabReadOnly` (task 638).
     const editor = ctx.editor;
     const { from, to } = editor.state.selection;
-    const text = editor.state.doc.textBetween(from, to, " ");
+    // The "text" capture (task 1272): the plain characters, with the wrapper
+    // marks math can spell TRANSLATED — H₂O seeds `H_{2}O`, not `H2O`.
+    const text = captureRangeMathText(editor.state.doc, from, to);
     // DATA-LOSS GUARD: a non-empty selection holding an inline atom but no text
     // (a citation pill / `$\lambda$` / `\ref` selected alone) has `text === ""`
     // yet a non-empty slice — `deleteSelection()` below would DESTROY the atom
@@ -2883,7 +2887,7 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     // harvest come back empty?", which waved through every MIXED selection.)
     // Task 848: the predicate reads MARKS too. Formatting marks are dropped by
     // DECLARATION (`TEXT_CAPTURE_DROPPED_MARKS` — `\emph` has no meaning inside
-    // math source); a `linkedAnchor` (a card's anchor) refuses the wrap rather
+    // math source; sub/superscript are TRANSLATED instead, task 1272); a `linkedAnchor` (a card's anchor) refuses the wrap rather
     // than stranding the card in the unanchored bin.
     // Task 907: the same `wrapCaptureHolds` question both math rows'
     // `applies()` ask, so the cell greys where this run would refuse.

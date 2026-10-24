@@ -96,6 +96,12 @@ export type MarkLike = { type: string; attrs?: Record<string, unknown> };
  *    types, the name the parser reads and the name the emit writes are one
  *    column. A row without `slash` has no toggle to run: `underline` has no
  *    format action, and `textcolor` needs a color argument.
+ *  - `inMath` — what the mark MEANS once its run is wrapped in math source
+ *    (task 1272; the math wrap's plain-text capture, `capture-symmetry.ts`).
+ *    REQUIRED, so a new row cannot join a capture's drop set without saying
+ *    so: `"drop"` = typography math has no use for (`\textbf` over `x` seeds
+ *    `x`, nothing lost); `{ open, close }` = math spells the same meaning
+ *    and the seed TRANSLATES the run (`H\textsubscript{2}O` → `H_{2}O`).
  *
  * Adding a mark is one row here + its TipTap `Mark` + its schema
  * registrations (which the coverage suites enforce).
@@ -113,7 +119,11 @@ export interface WrapperMarkRow {
   readonly cardBody?: false;
   readonly html?: readonly string[];
   readonly slash?: { readonly aliases?: readonly string[] };
+  readonly inMath: WrapperInMath;
 }
+
+/** A wrapper row's in-math answer — see `inMath` above (task 1272). */
+export type WrapperInMath = "drop" | { readonly open: string; readonly close: string };
 
 /** The small-caps mark's name — spelled once, here, for the table row, the
  *  TipTap mark and the spell checker's gloss-abbreviation rule. */
@@ -125,14 +135,21 @@ export const SUBSCRIPT_MARK = "subscript";
 export const SUPERSCRIPT_MARK = "superscript";
 
 export const WRAPPER_MARK_ROWS = [
-  { mark: "bold", commands: ["textbf"], html: ["strong", "b"], slash: { aliases: ["bf"] } },
+  {
+    mark: "bold",
+    commands: ["textbf"],
+    html: ["strong", "b"],
+    slash: { aliases: ["bf"] },
+    inMath: "drop",
+  },
   {
     mark: "italic",
     commands: ["emph", "textit"],
     html: ["em", "i"],
     slash: { aliases: ["it", "em"] },
+    inMath: "drop",
   },
-  { mark: "underline", commands: ["underline"], html: ["u"] },
+  { mark: "underline", commands: ["underline"], html: ["u"], inMath: "drop" },
   // `ulem`'s `\sout`. The package is loaded `[normalem]` (see its requirement
   // row) so it does not turn every `\emph` in the paper into an underline.
   {
@@ -141,19 +158,33 @@ export const WRAPPER_MARK_ROWS = [
     package: "ulem",
     html: ["s", "del", "strike"],
     slash: {},
+    inMath: "drop",
   },
-  { mark: SMALL_CAPS_MARK, commands: ["textsc"], slash: { aliases: ["sc"] } },
+  { mark: SMALL_CAPS_MARK, commands: ["textsc"], slash: { aliases: ["sc"] }, inMath: "drop" },
   // `\textsubscript` / `\textsuperscript` (LaTeX kernel since 2015 — no
   // package). Task 1239: the library's OCR clean-up writes `realism\textsubscript{2}`
   // for a flattened `realism₂`, and with no row here it rendered as raw source.
-  { mark: SUBSCRIPT_MARK, commands: ["textsubscript"], html: ["sub"] },
-  { mark: SUPERSCRIPT_MARK, commands: ["textsuperscript"], html: ["sup"] },
+  // Math DOES spell these (task 1272): a math wrap translates the run rather
+  // than dropping it, so H₂O seeds `H_{2}O`, not `H2O`.
+  {
+    mark: SUBSCRIPT_MARK,
+    commands: ["textsubscript"],
+    html: ["sub"],
+    inMath: { open: "_{", close: "}" },
+  },
+  {
+    mark: SUPERSCRIPT_MARK,
+    commands: ["textsuperscript"],
+    html: ["sup"],
+    inMath: { open: "^{", close: "}" },
+  },
   {
     mark: "code",
     commands: ["texttt"],
     opensCode: true,
     html: ["code"],
     slash: { aliases: ["tt"] },
+    inMath: "drop",
   },
   {
     mark: "textColor",
@@ -161,6 +192,7 @@ export const WRAPPER_MARK_ROWS = [
     package: "xcolor",
     colorArg: true,
     cardBody: false,
+    inMath: "drop",
   },
 ] as const satisfies readonly WrapperMarkRow[];
 

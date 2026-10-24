@@ -1,6 +1,11 @@
 import type { Fragment, Mark, Node as PMNode, Slice } from "prosemirror-model";
 import { MEANINGFUL_BLOCK_ATOM_NODE_NAMES } from "@/text-objects/text-object-registry";
-import { COMMENT_TAIL_MARK_NAME, WRAPPER_MARK_TYPES } from "@/lib/mark-composition";
+import {
+  COMMENT_TAIL_MARK_NAME,
+  WRAPPER_MARK_ROWS,
+  WRAPPER_MARK_TYPES,
+  type WrapperMarkRow,
+} from "@/lib/mark-composition";
 import { LATEX_COMMAND_MARK, LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
@@ -45,9 +50,11 @@ import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
  * callers. Task 696 named the three DIALECTS of one cut (`slice-capture.ts`);
  * each vocabulary here is the capture side of one of them.
  *
- *   • `"text"` — `state.doc.textBetween(...)`: plain characters only
+ *   • `"text"` — `captureRangeMathText` (the math wrap's seed): the plain
+ *     characters `textBetween` would yield, with the wrapper marks math can
+ *     SPELL translated into it (task 1272 — `\\textsubscript{2}` → `_{2}`)
  *     (`mathRun`'s `latex`). An inline atom, a block atom, a text object: none
- *     survive. Nor does a MARK — see {@link TEXT_CAPTURE_DROPPED_MARKS} for the
+ *     survive. Nor does any other MARK — see {@link TEXT_CAPTURE_DROPPED_MARKS} for the
  *     ones whose loss is declared rather than refused (task 848).
  *   • `"inline"` — `extractInlineFromSlice`: every INLINE leaf, marks and all,
  *     with block scaffolding flattened away (`exampleRun`'s `inline*` item
@@ -72,19 +79,41 @@ const BYTE_CARRIER_MARKS = [LATEX_COMMAND_MARK, LATEX_VERBATIM_MARK] as const;
 
 /**
  * The marks a `"text"` capture DROPS BY DECLARATION (task 848) — the WRAPPER
- * marks (`\\textbf` / `\\emph` / `\\textsc` / `\\sout` / `\\texttt` / colour …,
- * derived from `WRAPPER_MARK_ROWS`). Inside math source they have no meaning,
- * so `\\(` over `*x*` seeding `x` loses nothing the destination could hold —
- * a stated, tested exemption rather than a silent one. Every OTHER mark on a
- * `"text"` capture refuses (fail closed) — above all `linkedAnchor`, whose
- * loss would strand a card in the unanchored bin.
+ * rows whose `inMath` column says `"drop"` (`\\textbf` / `\\emph` /
+ * `\\textsc` / `\\sout` / `\\texttt` / colour …). Inside math source they
+ * have no meaning, so `\\(` over `*x*` seeding `x` loses nothing the
+ * destination could hold — a stated, tested exemption rather than a silent
+ * one. Every OTHER mark on a `"text"` capture is either TRANSLATED
+ * ({@link TEXT_CAPTURE_TRANSLATED_MARKS}) or refuses (fail closed) — above all
+ * `linkedAnchor`, whose loss would strand a card in the unanchored bin.
+ *
+ * Task 1272: this set used to be the wrapper vocabulary WHOLESALE, so when
+ * task 1239 added `\\textsubscript` / `\\textsuperscript` rows they joined
+ * it unreviewed and a math wrap turned H₂O into `H2O`. The drop is now a
+ * per-row declaration — a new row states its answer or does not compile.
  */
 export const TEXT_CAPTURE_DROPPED_MARKS: ReadonlySet<string> = new Set<string>(
-  WRAPPER_MARK_TYPES,
+  (WRAPPER_MARK_ROWS as readonly WrapperMarkRow[])
+    .filter((r) => r.inMath === "drop")
+    .map((r) => r.mark),
+);
+
+/** The wrapper marks a `"text"` capture TRANSLATES into math (task 1272) —
+ *  the rows whose `inMath` names a math spelling, keyed to it, in table order
+ *  (which is also the nesting order when one run wears several). */
+const TEXT_CAPTURE_TRANSLATIONS: ReadonlyMap<string, { open: string; close: string }> = new Map(
+  (WRAPPER_MARK_ROWS as readonly WrapperMarkRow[]).flatMap((r) =>
+    r.inMath === "drop" ? [] : [[r.mark, r.inMath] as const],
+  ),
+);
+
+export const TEXT_CAPTURE_TRANSLATED_MARKS: ReadonlySet<string> = new Set<string>(
+  TEXT_CAPTURE_TRANSLATIONS.keys(),
 );
 
 const TEXT_CAPTURE_MARKS: ReadonlySet<string> = new Set<string>([
   ...TEXT_CAPTURE_DROPPED_MARKS,
+  ...TEXT_CAPTURE_TRANSLATED_MARKS,
   ...BYTE_CARRIER_MARKS,
 ]);
 
@@ -170,4 +199,60 @@ export function sliceIsFullyCapturedBy(
   };
   walk(slice.content);
   return complete;
+}
+
+/**
+ * The `"text"` capture itself — the math wrap's seed (task 1272). Exactly the
+ * characters `doc.textBetween(from, to, " ")` yields (same block separator,
+ * same leaf handling), except that a run wearing a TRANSLATED wrapper mark is
+ * spelled in math: `H\\textsubscript{2}O` → `H_{2}O`, `1\\textsuperscript{st}`
+ * → `1^{st}`. Adjacent text nodes sharing a translated mark (a subscript
+ * whose middle is also italic) open it ONCE — `_{ab}`, never the double
+ * subscript `_{a}_{b}` math rejects. Dropped marks contribute nothing, as
+ * declared. Bounded by the range; asked on the wrap gesture only.
+ *
+ * Pair with {@link sliceIsFullyCapturedBy}(…, `"text"`): that predicate says
+ * whether this seed represents the slice; this builds it.
+ */
+export function captureRangeMathText(doc: PMNode, from: number, to: number): string {
+  let out = "";
+  let first = true;
+  const open: string[] = [];
+  const closeTo = (keep: number) => {
+    while (open.length > keep) out += TEXT_CAPTURE_TRANSLATIONS.get(open.pop()!)!.close;
+  };
+  doc.nodesBetween(
+    from,
+    to,
+    (node, pos) => {
+      if (!node.isText) closeTo(0); // a block edge or a leaf ends every open run
+      const nodeText = node.isText
+        ? node.text!.slice(Math.max(from, pos) - pos, to - pos)
+        : !node.isLeaf
+          ? ""
+          : node.type.spec.leafText
+            ? node.type.spec.leafText(node)
+            : "";
+      if (node.isBlock && ((node.isLeaf && nodeText) || node.isTextblock)) {
+        if (first) first = false;
+        else out += " ";
+      }
+      if (node.isText) {
+        const want = [...TEXT_CAPTURE_TRANSLATIONS.keys()].filter((m) =>
+          node.marks.some((mk) => mk.type.name === m),
+        );
+        let k = 0;
+        while (k < open.length && k < want.length && open[k] === want[k]) k++;
+        closeTo(k);
+        for (const m of want.slice(k)) {
+          out += TEXT_CAPTURE_TRANSLATIONS.get(m)!.open;
+          open.push(m);
+        }
+      }
+      out += nodeText;
+    },
+    0,
+  );
+  closeTo(0);
+  return out;
 }
