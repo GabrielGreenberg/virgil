@@ -251,7 +251,7 @@ archived notes linked to it"*, so since task 1194 an archive CARRIES:
   (`withCarriedMarks`) so the marks land in the SAME transaction as the text,
   wherever it lands; the dormant links then revive by liveness (1193). A
   returning block whose uuid is already live is given a fresh uuid BEFORE the
-  landing (`freshenReturningUuids`) and the dormant Mode-A links follow it
+  landing (`freshenReturningIdentities`) and the dormant Mode-A links follow it
   (`reviveRemapped` via each hook's `returnRemapped`) — never revived onto the
   squatter. Legacy snippets carrying `displaced` restore through 1079 unchanged.
 - **Identity is RE-DERIVED at landing, never trusted from the capture** (task
@@ -272,9 +272,24 @@ archived notes linked to it"*, so since task 1194 an archive CARRIES:
   user data the editor's history does not own (dropping it would make a later
   Redo lose the only copy); restoring it again lands a second copy whose
   colliding uuids are freshened.
+- **History REPLAY follows the DOCUMENT, not the gesture** (task 1269). A Redo
+  of an Archive removes the same text again with no `LIFECYCLE_DELETE_META`,
+  so a gesture-only answer resurrected an empty placeholder and stripped the
+  cards. `useArchive` publishes its un-retired excerpt snippets' HOLDINGS —
+  whole-block uuids in `content` + `carriedMarks` anchorIds — to a per-doc,
+  per-owner registry on every archive change (`archive-holdings.ts`; never per
+  transaction). `MarginaliaAnchorGuard` does not resurrect a held uuid
+  (EXCEPTION 5), and the orphan guards announce held departures as
+  `virgil-anchors-archived {snippetId, uuids, anchorIds}` BEFORE the orphan
+  events; `useDormantRevival` answers with the gesture's own `markDormant`, so
+  the strip that follows sees dormant links and leaves them. Restore then
+  revives them as usual. A retired snippet (restored or set aside) holds
+  nothing — so **Undo of a Restore** still resurrects/strips as before: the
+  snippet cannot be restored again, and dormancy there would hide the cards
+  for good (open ruling on task 1269).
 
 Pinned by `archive-carries-cards.test.tsx` (whole-paragraph, selection,
-clipped mark, multi-anchor, collision, Undo, JSON reload, and a registry-driven
+clipped mark, multi-anchor, collision, Undo, Undo→Redo→Restore, JSON reload, and a registry-driven
 CENSUS: every kind declaring `carry` has a round-trip row), with 393's equality
 and 491's Mode-A legs renegotiated in place (`archive-anchored-capture`,
 `archive-retarget-displaced-anchors`). **Owed:** a real-PWA eyeball (anchor
