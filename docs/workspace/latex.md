@@ -1,4 +1,4 @@
-<!-- last-verified: 67893ac1 2026-10-23 -->
+<!-- last-verified: ad267f8e 2026-10-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -42,7 +42,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\begin{verbatim}…\end{verbatim}` | `codeBlock` |
 | `\begin{quote}…\end{quote}` | `blockquote` |
 | `\begin{itemize}` / `\begin{enumerate}` | `bulletList` / `orderedList` |
-| `\begin{figure}` / `\begin{figure*}` | `figureBlock` (+ `figureCaption`; non-caption body kept verbatim as `extras`) |
+| `\begin{figure}` / `\begin{figure*}` | `figureBlock` (+ `figureCaption`; non-caption body kept verbatim as `extras` — incl. a sole pre-caption `\label`, kept in place via `labelBeforeCaption`, task 1262) |
 | `\begin{forest}…\end{forest}` | `forestBlock` — claimed WHOLE (task 383): the env verbatim in `source`, so the drawn tree (task 384) is a derivation that can't subtract from it. Its leading `[` is the TREE, not an option. Since task 387 the serializer **trims the source's trailing whitespace before appending the `%!v:` anchor**, because `source` is a user-editable attr written verbatim by both pod doors: the renderer accepts `\s*` after the closer while the anchor reader accepts `[ \t]*`, so one press of Enter after `\end{forest}` put the anchor on its own line where `NODE_UUID_ANCHOR` cannot see it — the tree came back uuid-less, a fresh id was minted, and the stranded anchor became an empty paragraph carrying the old identity. Normalizing at the EMIT site rather than at the doors is what makes the append point and the detach point coincide by construction (task 348's rule). NON-whitespace after the closer is left alone: it makes the renderer REFUSE, and the badge names it |
 | `\hrulefill` | `horizontalRule` |
 | `% …` **full-line** comment | `latexComment` (a MID-line `%` is a comment *tail*, inline table below). Its `marks: ""` is also declared as `code: true` (task 512), so no type-time rule rewrites a comment's own source bytes. Since task 990 its body is the bytes after `%`, verbatim — no trim, no injected space ([latex-comment-body.ts](../../src/lib/latex-comment-body.ts)) |

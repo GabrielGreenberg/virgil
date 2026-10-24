@@ -1,4 +1,4 @@
-<!-- last-verified: 67893ac1 2026-10-23 -->
+<!-- last-verified: ad267f8e 2026-10-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -186,7 +186,7 @@ the per-pane, docId-routed `useFootnoteOrphanBridges`
 (`src/components/editor-layout/event-bridges/footnote-sync.ts`), which filters on
 `detail.docId` so a teardown in doc A no longer bleeds into doc B's store. The
 detector stamps that `docId` onto the event via the `Footnote` plugin's new
-`docIdRef` option (`src/lib/tiptap/footnote.ts`). Both writers build the record through ONE builder, `orphanRecordFor`, from
+`docIdRef` option (`src/lib/tiptap/footnote.ts`); the bridge's suppress latch for an archived id expires two macrotask hops after arming (task 1255). Both writers build the record through ONE builder, `orphanRecordFor`, from
 ONE pick, `pickFootnoteCarriedAttrs` (`src/lib/footnote-source-attrs.ts`), which the
 diff's removed entry also carries (`removedCarried`) — so a title-only or
 `\thanks`/`\footnote[3]` orphan keeps its title and markup on both flag paths (task 1073).

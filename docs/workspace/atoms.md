@@ -1,4 +1,4 @@
-<!-- last-verified: ff4a500a 2026-10-22 -->
+<!-- last-verified: ad267f8e 2026-10-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -223,4 +223,10 @@ carries. **Flag OFF preserves current behavior exactly.** When a footnote is
 *archived* (bug sweep #3), a one-shot `archivedSuppress` seam
 (`inline-atom-lifecycle-policy.ts`) skips the flag-ON orphan-upsert for that id so
 the same footnote can't be both archived and orphaned; flag-OFF uses its existing
-suppress-event latch.
+suppress-event latch, whose arm now EXPIRES two macrotask hops after it is made
+(task 1255), so a delete that orphans nothing cannot swallow a later genuine orphan.
+A footnote / citation MARKER CLICK names its origin doc the same way (task 1252):
+`dispatchFootnoteClick` / `dispatchCitationClick` carry the owning editor's
+`docId` (both extensions take `docIdRef`), routed through `resolveClickOrigin`
+([pane-click-origin.ts](../../src/lib/pane-click-origin.ts)), so a Library Reader
+click opens the Reader's card.
