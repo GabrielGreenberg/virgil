@@ -254,6 +254,19 @@ archived notes linked to it"*, so since task 1194 an archive CARRIES:
   landing (`freshenReturningUuids`) and the dormant Mode-A links follow it
   (`reviveRemapped` via each hook's `returnRemapped`) — never revived onto the
   squatter. Legacy snippets carrying `displaced` restore through 1079 unchanged.
+- **Identity is RE-DERIVED at landing, never trusted from the capture** (task
+  1269). The archive body is editable and the world moves between capture and
+  Restore, so the record is a hint: each carried run also stores the WORDS it
+  covered (`CarriedMarkRecord.text`), and `withCarriedMarks` stamps it only
+  where the content still reads exactly those words — at its offsets, else at
+  the ONE place that does (an edit elsewhere carries the mark along). Changed
+  or duplicated words skip the run: its card stays dormant, never re-attached
+  to different text. The marks go on BEFORE the one identity pass
+  (`freshenReturningIdentities`, inside `landReturningDisplaced`), which
+  freshens a live block uuid AND a live `anchorId` alike — so a Restore after
+  a doc Undo of the archive cannot leave two runs sharing one id — and hands
+  both maps (`IdentityRemap`) to `reviveRemapped`, which moves a dormant Mode-A
+  link by its pids and a Mode-B link by its anchorId.
 - **Doc Undo** of an archive restores uuids and marks, so the cards revive by
   liveness with no undo-specific code. The snippet STAYS in `archive.json`:
   user data the editor's history does not own (dropping it would make a later
