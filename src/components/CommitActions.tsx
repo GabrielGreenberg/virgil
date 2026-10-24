@@ -48,6 +48,7 @@
  */
 import type { ReactElement } from "react";
 import { iconHint } from "@/components/Hint";
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 
 /** A check (Keep) / cross (Dismiss) glyph. ONE implementation — this used to be
  *  `PillGlyph` in `PendingChangePill.tsx` and `CommitGlyph` in
@@ -60,7 +61,7 @@ export function CommitGlyph({ kind }: { kind: "check" | "cross" }): ReactElement
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth={ICON_STROKE_SMALL}
       strokeLinecap="round"
       strokeLinejoin="round"
       className="flex-shrink-0"

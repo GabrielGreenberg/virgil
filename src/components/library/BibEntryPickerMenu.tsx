@@ -77,6 +77,8 @@ import { Button } from "@/components/Button";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+import { MenuCaret } from "@/components/icons/MenuCaret";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -551,7 +553,7 @@ function BibEntryPickerBody({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2.5"
+              strokeWidth={ICON_STROKE_SMALL}
               strokeLinecap="round"
             >
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -587,7 +589,7 @@ function BibEntryPickerBody({
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.5"
+                  strokeWidth={ICON_STROKE_SMALL}
                   strokeLinecap="round"
                 >
                   <line x1="12" y1="5" x2="12" y2="19" />
@@ -715,22 +717,12 @@ function BibEntryPickerRow({
             className="iconbtn-xs"
             {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <MenuCaret
               className="motion-safe:transition-transform duration-[120ms] ease-[ease]"
               style={{
                 transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
               }}
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
+            />
           </button>
           {showVerifiedPill && (
             <VerifiedPill bibState={libraryItem?.bibState} />
@@ -871,7 +863,7 @@ function AddButton({
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2.5"
+        strokeWidth={ICON_STROKE_SMALL}
         strokeLinecap="round"
       >
         <line x1="12" y1="5" x2="12" y2="19" />
@@ -963,7 +955,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2.5"
+            strokeWidth={ICON_STROKE_SMALL}
             strokeLinecap="round"
             strokeLinejoin="round"
             className="text-positive-ink"

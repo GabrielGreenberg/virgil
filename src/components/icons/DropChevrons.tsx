@@ -1,3 +1,5 @@
+import { ICON_STROKE_SMALL } from "./icon-stroke";
+
 /**
  * Neutral double-chevron-down glyph — the "drop here" / (re)anchor mark.
  *
@@ -37,7 +39,7 @@ export function DropChevrons({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth={ICON_STROKE_SMALL}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

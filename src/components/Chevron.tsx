@@ -1,3 +1,5 @@
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+
 /**
  * The ONE disclosure chevron: a right-pointing caret that rotates 90° when
  * `expanded`. A leaf (task 1237) — `panel-primitives` re-exports it and
@@ -12,7 +14,7 @@ export function Chevron({ expanded }: { expanded: boolean }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth={ICON_STROKE_SMALL}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={`motion-safe:transition-transform duration-150 flex-shrink-0 ${expanded ? "rotate-90" : ""}`}

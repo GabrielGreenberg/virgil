@@ -1047,7 +1047,20 @@ first: it is `tabIndex={-1}` and shows `data-active` instead, so it
 needs a name and no ring.
 
 Icons are stroke-only, stroke-width 2, round caps and joins, single
-color (`currentColor`). Two exceptions are filled by design: the AI
+color (`currentColor`). **One sanctioned second rung** (task
+2026-10-24-1276): `ICON_STROKE_SMALL` (2.5) for a BARE MARK — "+", close
+"×", chevron, caret — at ≤14px, where 2 units in a 24 viewBox render
+under 1.2 CSS px and read faint; framed/outlined glyphs stay on
+`ICON_STROKE` (2). Both live in
+[src/components/icons/icon-stroke.ts](src/components/icons/icon-stroke.ts)
+and a site on the small rung imports it — CI
+(`icon-stroke-rung-census.test.ts`) fails a bare `2.5` literal anywhere
+in `src/`. A glyph declares its weight ONCE, on its outer `<svg>`; a child
+never overrides it (the popout button's popped "×" did, so one button
+changed weight with its state). The menu-trigger caret is the
+`MenuCaret` leaf (`src/components/icons/`, down/up), never a hand-copied
+polyline; an INLINE caret sizes to the text it trails (the card-kind
+trigger's 9px), a button-only caret takes its `iconbtn-*` rung. Two exceptions are filled by design: the AI
 star (sky `#0ea5e9`) and the trash icon (`text-danger`). The **fold
 chevron** is a STROKED exception to the width: the shared
 `margin-fold-chevron` control (heading fold + source-pod collapse) and the

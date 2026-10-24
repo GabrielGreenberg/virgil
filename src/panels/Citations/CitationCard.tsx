@@ -55,6 +55,7 @@ import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1203,7 +1204,7 @@ export function CitationCard({
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.5"
+                  strokeWidth={ICON_STROKE_SMALL}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
@@ -1570,7 +1571,7 @@ function CitationKeyRow({
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2.5"
+                strokeWidth={ICON_STROKE_SMALL}
                 strokeLinecap="round"
               >
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -1737,7 +1738,7 @@ function CitationKeyRow({
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2.5"
+                strokeWidth={ICON_STROKE_SMALL}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 className="text-positive-ink"

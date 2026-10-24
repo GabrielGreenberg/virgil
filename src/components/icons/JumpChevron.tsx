@@ -1,3 +1,5 @@
+import { ICON_STROKE_SMALL } from "./icon-stroke";
+
 /**
  * Neutral single-chevron-right glyph — the ">" "jump to source" mark.
  *
@@ -36,7 +38,7 @@ export function JumpChevron({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth={ICON_STROKE_SMALL}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

@@ -4,7 +4,7 @@
  * Design language:
  *  - Items are rendered as rounded cards with subtle borders
  *  - Selected cards get an amber tint + border + shadow
- *  - Expandable sub-sections use "sub-pod" containers (rounded-md, muted bg)
+ *  - Expandable sub-sections use "sub-pod" containers (rounded-lg, muted bg)
  *  - Lists use `space-y-2` gaps between cards (no border-b dividers)
  *  - Headers are compact: title + count + optional action
  *
@@ -46,6 +46,8 @@ import { useCardRestoreActions } from "@/panels/_shared/card-restore-actions";
 import { Chevron } from "./Chevron";
 import { DropChevrons } from "./icons/DropChevrons";
 import { JumpChevron } from "./icons/JumpChevron";
+import { MenuCaret } from "./icons/MenuCaret";
+import { ICON_STROKE, ICON_STROKE_SMALL } from "./icons/icon-stroke";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
 import type { InlineAtomCardKind } from "./drop-mode/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -1021,9 +1023,7 @@ function CardKindDropdown({
       trigger={() => (
         <>
           {labelOverride ?? cardTypeLabel(kind)}
-          <svg className={chromeOnly("")} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          <MenuCaret size={9} className={chromeOnly("")} />
         </>
       )}
     >
@@ -2140,7 +2140,7 @@ export function AiRequestCheckbox({
       // panel was a tab stop with only the UA outline (task 554). The prop
       // was already APPENDED, so only the indicator was missing.
       className={withFocusIndicator(
-        `flex items-center gap-1.5 text-[11px] text-ink-subtle cursor-pointer select-none bg-transparent p-0${className ? ` ${className}` : ""}`,
+        `card-content-row flex items-center gap-1.5 text-ink-subtle cursor-pointer select-none bg-transparent p-0${className ? ` ${className}` : ""}`,
       )}
     >
       <CheckSquare variant="ai-request" checked={checked} />
@@ -2193,7 +2193,7 @@ export const PANEL = {
   /** Expandable sub-pod with muted background (for fields, notes, etc.). */
   subpod: "rounded-lg border border-edge-subtle bg-surface-muted/70 p-3 overflow-hidden",
   /** Sub-pod with white background (for rich-text editors, etc.). */
-  subpodWhite: "rounded-lg border border-edge-subtle bg-white overflow-hidden",
+  subpodWhite: "rounded-lg border border-edge-subtle bg-surface overflow-hidden",
   /** Standard panel header bar — height set by --header-h so all headers align.
    *  Borderless: shares the body fill (--pod-panel), no divider — header and
    *  body read as one continuous warm sheet. */
@@ -2300,8 +2300,8 @@ export type PopoutVariant = "arrow" | "x";
 function popoutSvgInner(isPoppedOut: boolean, variant: PopoutVariant): string {
   if (isPoppedOut && variant === "x") {
     return (
-      '<line x1="6" y1="6" x2="18" y2="18" stroke-width="2.5" />' +
-      '<line x1="18" y1="6" x2="6" y2="18" stroke-width="2.5" />'
+      '<line x1="6" y1="6" x2="18" y2="18" />' +
+      '<line x1="18" y1="6" x2="6" y2="18" />'
     );
   }
   if (isPoppedOut) {
@@ -2318,10 +2318,19 @@ function popoutSvgInner(isPoppedOut: boolean, variant: PopoutVariant): string {
   );
 }
 
-function popoutSvgOuter(innerMarkup: string): string {
+/** The popout glyph's ONE stroke weight, declared on the outer `<svg>` and
+ *  never overridden by a child (task 2026-10-24-1276 — the popped "x" used to
+ *  set 2.5 on its lines inside an svg declaring 2). The bare "×" is a small
+ *  mark, so it wears the small-glyph rung like `PanelClose`'s ×; the framed
+ *  box-and-arrow wears the default. */
+function popoutStroke(isPoppedOut: boolean, variant: PopoutVariant): number {
+  return isPoppedOut && variant === "x" ? ICON_STROKE_SMALL : ICON_STROKE;
+}
+
+function popoutSvgOuter(innerMarkup: string, strokeWidth: number): string {
   return (
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" ' +
-    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    `stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" ` +
     `stroke-linejoin="round">${innerMarkup}</svg>`
   );
 }
@@ -2387,7 +2396,7 @@ export function PopoutButton({
       className={withFocusIndicator(className ?? POPOUT_BUTTON_CLASS)}
       {...iconHint({ label: title, hint: isPoppedOut ? "Dock" : "Pop out" })}
       dangerouslySetInnerHTML={{
-        __html: popoutSvgOuter(popoutSvgInner(isPoppedOut, variant)),
+        __html: popoutSvgOuter(popoutSvgInner(isPoppedOut, variant), popoutStroke(isPoppedOut, variant)),
       }}
     />
   );
@@ -2417,7 +2426,7 @@ export function createPopoutButtonEl(opts: {
   btn.title = title;
   btn.setAttribute("aria-label", title);
   btn.setAttribute("data-helper", opts.isPoppedOut ? "Dock" : "Pop out");
-  btn.innerHTML = popoutSvgOuter(popoutSvgInner(opts.isPoppedOut, variant));
+  btn.innerHTML = popoutSvgOuter(popoutSvgInner(opts.isPoppedOut, variant), popoutStroke(opts.isPoppedOut, variant));
   // Fire on mousedown (with preventDefault) so the action runs BEFORE the
   // host's focus-driven selection logic — otherwise an unselected card eats
   // the first click as a "select" and the user has to click twice.
@@ -2456,7 +2465,7 @@ export function PanelClose() {
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2.5"
+        strokeWidth={ICON_STROKE_SMALL}
         strokeLinecap="round"
         strokeLinejoin="round"
       >
@@ -3485,7 +3494,7 @@ export function PanelHeader({
           className="iconbtn-sm"
           {...iconHint({ label: "Add" })}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
           </svg>
         </button>
@@ -3537,7 +3546,7 @@ function HeaderAddDropdown({
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2.5"
+          strokeWidth={ICON_STROKE_SMALL}
           strokeLinecap="round"
         >
           <path d="M12 5v14M5 12h14" />
