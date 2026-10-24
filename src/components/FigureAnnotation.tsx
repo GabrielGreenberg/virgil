@@ -8,6 +8,7 @@ import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { iconHint } from "@/components/Hint";
+import { figureDeleteLabel, requestFigureDelete } from "@/lib/figures/delete-figure";
 import { isCommitEnter } from "@/lib/key-intent";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
@@ -175,16 +176,17 @@ export default function FigureAnnotation({
     editor.view.dispatch(tr);
   }, [editor, numbered, getFigurePos, mayWrite]);
 
+  // Task 1265: the lozenge's × and the empty-state chrome share ONE delete
+  // door — the confirm rule, write gate and live re-read live there.
   const requestDelete = useCallback(async () => {
-    if (!editor || !getFigurePos || !mayWrite()) return;
-    const ok = onConfirmDelete ? await onConfirmDelete() : true;
-    if (!ok || !mayWrite()) return;
-    const pos = getFigurePos();
-    if (pos == null) return;
-    const figNode = editor.state.doc.nodeAt(pos);
-    if (!figNode || figNode.type.name !== "figureBlock") return;
-    editor.view.dispatch(editor.state.tr.delete(pos, pos + figNode.nodeSize));
-  }, [editor, getFigurePos, onConfirmDelete, mayWrite]);
+    if (!editor || !getFigurePos) return;
+    await requestFigureDelete({
+      editor,
+      getPos: getFigurePos,
+      typeName: "figureBlock",
+      confirm: onConfirmDelete,
+    });
+  }, [editor, getFigurePos, onConfirmDelete]);
 
   // Suppress PM focus-steal: mousedown on the lozenge shouldn't plant a caret.
   // On a real `<button>` this ALSO stops a pointer press from moving DOM focus
@@ -361,7 +363,7 @@ export default function FigureAnnotation({
           data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
           className="figure-annotation-delete focus-ring"
-          {...iconHint({ label: "Delete figure" })}
+          {...iconHint({ label: figureDeleteLabel("figureBlock") })}
           onClick={(e) => {
             e.stopPropagation();
             void requestDelete();
