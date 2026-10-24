@@ -153,7 +153,6 @@ import {
   resolveHorizontalMargin,
   resolveMarginaliaLane,
 } from "@/lib/marginalia";
-import { isTier1CDisabled } from "@/lib/perf-flags";
 import { useCitations, type CitationsHook } from "@/hooks/useCitations";
 import { useAutoAddLibraryEntriesForCitations } from "@/hooks/useAutoAddLibraryEntriesForCitations";
 import { useLibraryMasterBib } from "@/hooks/useLibrary";
@@ -1132,7 +1131,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the legacy getJSON here stays fully disabled.
   const outlineContent = useMemo<JSONContent | null>(
     () =>
-      editor && !docProductsEnabled && !isTier1CDisabled()
+      editor && !docProductsEnabled
         ? (editor.getJSON() as JSONContent)
         : null,
     [editor, rev.headings, rev.blocks, rev.labels, outlineDocTick],
