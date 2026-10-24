@@ -73,8 +73,8 @@ import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 import type { MarginItemHandlers, MarginItemKind } from "./delete-margin-item";
 import type { CardWithLinks } from "@/links/links";
 import type { CardKind } from "./types";
-import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
-import { CARD_REGISTRY } from "./card-registry";
+import { cardKindTravels, type CardLifecycleApi } from "@/panels/card-lifecycle-registry";
+import { isCarriedLink } from "@/links/dormant";
 import { cardKindFromRecord } from "./predicates";
 import { panelForMarkerType } from "./marker-meta";
 
@@ -164,13 +164,19 @@ export function marginCardKind(kind: MarginItemKind, card: CardWithLinks): CardK
   return cardKindFromRecord(card as { kind?: string }, panelForMarkerType(kind));
 }
 
-/** Does an ARCHIVE carry this margin card with the passage (task 1194)? Its
- *  kind's declared `lifecycle.carry` — the predicate the capture hands
- *  {@link retargetDisplacedAnchors} as `keep`, so a card is either carried or
- *  re-homed, never both. `archive` declares no carry: an archive card inside
- *  the passage still stacks on the preceding paragraph (task 491). */
-export function travelsWithArchive(kind: MarginItemKind, card: CardWithLinks): boolean {
-  return CARD_REGISTRY[marginCardKind(kind, card)]?.lifecycle.carry === true;
+/** Does an ARCHIVE carry this margin card with the passage (task 1194)? The
+ *  ONE travel predicate (`cardKindTravels`, task 1270 — declared AND wired)
+ *  for the card's spine kind. The capture hands it to
+ *  {@link retargetDisplacedAnchors} as `keep` and {@link carryDisplacedAnchors}
+ *  asks it too, so a card is either carried or re-homed, never both and never
+ *  neither. `archive` declares no carry: an archive card inside the passage
+ *  still stacks on the preceding paragraph (task 491). */
+export function travelsWithArchive(
+  kind: MarginItemKind,
+  card: CardWithLinks,
+  lifecycle: CardLifecycleApi,
+): boolean {
+  return cardKindTravels(marginCardKind(kind, card), lifecycle);
 }
 
 export interface CarryDisplacedAnchorsArgs {
@@ -206,11 +212,11 @@ export function carryDisplacedAnchors({
   let carried = 0;
   for (const kind of Object.keys(handlers) as MarginItemKind[]) {
     for (const card of handlers[kind].cards) {
-      if (!travelsWithArchive(kind, card)) continue;
-      if (!getLinkedTextObjectIds(card).some((pid) => removed.has(pid))) continue;
-      const carry = lifecycle.get(marginCardKind(kind, card))?.carry;
-      if (!carry) continue;
-      carry(card.id, snippetId, { pids: removed });
+      if (!travelsWithArchive(kind, card, lifecycle)) continue;
+      // `some` — the writer's own per-pid answer (`isCarriedLink`): a link
+      // only partly inside the passage splits, its removed pids go dormant.
+      if (!(card.links ?? []).some((l) => isCarriedLink(l, { pids: removed }))) continue;
+      lifecycle.get(marginCardKind(kind, card))!.carry!(card.id, snippetId, { pids: removed });
       carried += 1;
     }
   }

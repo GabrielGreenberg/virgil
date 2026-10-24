@@ -117,6 +117,19 @@ export interface CardLifecycleApi {
   get(kind: CardKind): CardLifecycle | null;
 }
 
+/** **Does an ARCHIVE carry this kind's cards with the passage?** (task 1270)
+ *  The ONE travel question every leg of the capture asks — the Mode-A re-home's
+ *  `keep`, the Mode-A carry, the Mode-B mark record and the range card half —
+ *  so a card is always exactly one of carried (dormant, recorded by its links)
+ *  or re-homed / deleted (the 491 / 393 answers), never neither. It asks what
+ *  the kind DECLARES (`CARD_REGISTRY[kind].lifecycle.carry`) AND what this
+ *  host has WIRED: a kind declared to travel in a host whose table lacks the op
+ *  takes the non-travelling answer rather than being skipped by one leg and
+ *  dropped by another. (The mismatch itself is `assertLifecycleCoverage`'s.) */
+export function cardKindTravels(kind: CardKind, lifecycle: CardLifecycleApi): boolean {
+  return CARD_REGISTRY[kind]?.lifecycle.carry === true && !!lifecycle.get(kind)?.carry;
+}
+
 /** Direct constructor for callers that own a registry but don't want the
  *  provider/consumer dance (e.g. `EditorPane` handing the API into a
  *  dispatcher hook). Identity is stable across renders; only the ref's

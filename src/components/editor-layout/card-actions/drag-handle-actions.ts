@@ -1024,7 +1024,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             ed.state.doc,
             settled.from,
             settled.to,
-            collectCarriedAnchorIds(ed.state.doc, settled.from, settled.to),
+            collectCarriedAnchorIds(ed.state.doc, settled.from, settled.to, cardLifecycle),
           );
           let snippetId: string | null = null;
           const landed = commitRangeDelete(
@@ -1040,7 +1040,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 // gesture's fresh links are.
                 snapshot,
                 // A travelling card is carried below, never re-homed.
-                keep: travelsWithArchive,
+                keep: (kind, card) => travelsWithArchive(kind, card, cardLifecycle),
               });
               const snippet = cardCreation.createArchiveSnippet({
                 text,

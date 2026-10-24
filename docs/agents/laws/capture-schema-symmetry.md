@@ -237,6 +237,21 @@ archived notes linked to it"*, so since task 1194 an archive CARRIES:
   WHOLE gets that link dormant in the snippet; `retargetDisplacedAnchors` is
   told to `keep` it, so a card is carried or re-homed, never both. A link to
   surviving text stays live — a multi-anchor card stays active there.
+- **ONE travel predicate, asked by every leg** (task 1270). `cardKindTravels`
+  (`card-lifecycle-registry.tsx`) = the kind DECLARES `lifecycle.carry` AND this
+  host WIRES it. The re-home's `keep` (`travelsWithArchive`), the Mode-A carry,
+  the Mode-B mark record (`collectCarriedAnchorIds`) and the range card half all
+  read it — before, two legs asked the declaration and the write asked the
+  wiring, so a declared-but-unwired kind was skipped by one and dropped by the
+  other (orphaned card; a recorded mark no card owned). And travel is PER PID:
+  the writer's `isCarriedLink` is `some`, and `markDormant` SPLITS a Mode-A
+  link only partly inside the passage (`[P, Q]`, P archived → a dormant `[P]` +
+  a live `[Q]`; the `<cardId>@<pid>` id stays with the half holding its pid).
+  Before, the writer asked `every` while the capture asked `some`, so such a
+  link was neither carried nor re-homed and the orphan sweep stripped P for
+  good. A card is therefore ALWAYS exactly one of carried or re-homed/deleted.
+  Pinned by `archive-carries-cards.test.tsx` ("task 1270") and
+  `dormant-links.test.tsx` ("the writer travels PER PID").
 - **Mode B** (`cleanupLinksInRange`, `RangeCardDisposition.carryInto`): a
   contained mark's travelling card is carried instead of deleted — same
   population as Delete (one walker), different verb. The excerpt schema has no
