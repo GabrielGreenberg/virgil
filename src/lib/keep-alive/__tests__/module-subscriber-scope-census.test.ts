@@ -91,6 +91,7 @@ const LEDGER: Record<string, Row> = {
   "panels/Outline/outline-prefs-store.ts#listeners": { scope: "doc-keyed", why: "outline prefs are stored per docId" },
   "lib/ai-request-events.ts#listeners": { scope: "doc-keyed", why: "inbox events are keyed by docId" },
   "lib/compile/compile-progress.ts#listeners": { scope: "doc-keyed", why: "compile progress is per docId" },
+  "lib/compile/compile-record.ts#listeners": { scope: "doc-keyed", why: "the compile run state + result is per docId (task 1277)" },
 
   "components/editor-layout/omni-pin-store.ts#_listeners": { scope: "owner-keyed", why: "pins are keyed by a per-pod minted owner (task 583)" },
   "lib/stack/stack-terminal.ts#registryListeners": { scope: "owner-keyed", why: "terminals are registered per pane object" },

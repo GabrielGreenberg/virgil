@@ -146,7 +146,9 @@ describe("task 855 — a cancel is not a failure", () => {
 describe("task 575 — CENSUS: one speller for the outcome words", () => {
   const ROOT = join(__dirname, "..", "..", "..", "..");
   const read = (p: string) => commentsStripped(readFileSync(join(ROOT, p), "utf8"));
-  const HOOK = read("src/hooks/useLatexCompile.ts");
+  // The compile's dialog branches moved out of the pane hook into the per-doc
+  // run (task 1277) — the census follows the code that raises them.
+  const HOOK = read("src/lib/compile/run-compile-for-doc.ts");
   const SERVICE = read("src/lib/compile/compile-service.ts");
 
   // Sentences only the vocabulary may spell (string literals KEPT — the needles
@@ -161,7 +163,7 @@ describe("task 575 — CENSUS: one speller for the outcome words", () => {
     /citations may show/,
   ];
 
-  it("the hook spells no outcome sentence and no private wording function", () => {
+  it("the compile run spells no outcome sentence and no private wording function", () => {
     expect(HOOK).not.toMatch(/function failureMessage/);
     for (const re of SENTENCES) expect(HOOK, String(re)).not.toMatch(re);
     expect(HOOK).toMatch(/from "@\/lib\/compile\/compile-outcome"/);

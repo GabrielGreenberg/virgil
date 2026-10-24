@@ -29,7 +29,7 @@ import { render, cleanup } from "@testing-library/react";
 import ErrorsPanel from "@/panels/Errors";
 import type { LatexError } from "@/lib/latex-errors";
 import type { CompileResult } from "@/lib/compile/compile-types";
-import { downloadFailureErrors, offlineMissErrors } from "@/hooks/useLatexCompile";
+import { downloadFailureErrors, offlineMissErrors } from "@/lib/compile/run-compile-for-doc";
 
 afterEach(cleanup);
 

@@ -315,7 +315,7 @@ service is a module singleton that serializes compiles, and under multi-doc
 keep-alive paper B's Compile can sit behind paper A's cold compile for minutes;
 B's record was only written by `beginCompile` once B was admitted, so B's pane
 kept painting B's PREVIOUS outcome (a `role="alert"` telling the user to press
-the button already spinning). Two writes close it: `useLatexCompile` calls
+the button already spinning). Two writes close it: the run (`runCompileForDoc`, since task 1277) calls
 `beginCompile(docId)` at the click (before the drain, folder read and
 documentclass prompt — every path out already writes a terminal state), and
 `compileService.compile()` calls `noteQueued(docId)` synchronously when another
@@ -323,3 +323,25 @@ DOC's run holds the engine (its own `pending` count — `inFlight` stays a settl
 promise after the last run, so it cannot answer "busy?"). The `waiting` phase
 renders "Waiting for another paper's compile to finish…" in both renderers'
 status register; a doc queued behind its own run keeps that run's live record.
+
+### The owner half (task 1277)
+
+A compile's RESULT belongs to the DOCUMENT, never to the pane that pressed the
+button. The keep-alive LRU unmounts the least-recent `EditorPane` when a 4th
+paper opens — eviction is an UNMOUNT, not `display:none` — and a cold compile
+outlives that easily. While the run state and result lived in
+`useLatexCompile`'s React state, eviction mid-compile threw the PDF away (the
+write ran on a mount-time handle the unmount had ended → swallowed
+`StalePipelineError`), dropped the log and diagnostics, and left the reopened
+pane's Compile button enabled under a live run (whose press then reset the live
+progress record). So the whole run lives at module scope:
+[`runCompileForDoc`](../../src/lib/compile/run-compile-for-doc.ts) runs it and
+resolves the write handle at WRITE time (`getActiveHandle(docId)`), and
+[`compile-record.ts`](../../src/lib/compile/compile-record.ts) holds, per docId,
+`running` (the re-entry guard — `markCompileStarted` refuses a second run),
+the log / numeric status / salted diagnostics (the salt counter is per doc, so a
+remount cannot re-mint an earlier run's id), and the last PDF's bytes with a
+generation counter. `useLatexCompile` is a READER: it reports the record and
+delivers each PDF generation once per pane — on mount too, so a pane mounted
+after the run finished shows the PDF it produced even when no pipeline was open
+to persist it. Pin: `useLatexCompile-survives-eviction.test.tsx`.
