@@ -178,7 +178,8 @@ import {
 } from "@/lib/print-intent";
 import { readPdf } from "@/lib/storage";
 import { useEditorUIState, SETTLE_MS } from "@/hooks/useEditorUIState";
-import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
+import { useLatexCompile } from "@/hooks/useLatexCompile";
+import type { DocumentClassMismatchHandler } from "@/lib/compile/run-compile-for-doc";
 import { useLatexSource } from "@/hooks/useLatexSource";
 import {
   useDocProductsHost,
@@ -2497,7 +2498,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   }, [docId]);
 
   const handleCompileSuccess = useCallback(
-    (pdfBytes: Uint8Array) => {
+    (pdfBytes: Uint8Array, compiledAt: number) => {
       latestPdfBytes.current = pdfBytes;
       const blob = new Blob([pdfBytes.buffer as ArrayBuffer], {
         type: "application/pdf",
@@ -2506,7 +2507,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(blob);
       });
-      setLastCompileTime(Date.now());
+      setLastCompileTime(compiledAt);
       // Compile lands fresh → PDF is in sync until next edit.
       setPdfStale(false);
     },
@@ -2599,8 +2600,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // same `latestPdfBytes`/`pdfBlobUrl` state — so there's still exactly one
   // authoritative state, just seeded from disk instead of compile. Guarded on
   // docId so a doc switch mid-await can't flash a stale doc's PDF into the new
-  // viewer. (KeepAliveSlot hides the pane via display:none, never unmounting,
-  // so in-memory bytes survive the view toggle — no re-read after a compile.)
+  // viewer. The in-memory bytes come first: `useLatexCompile` delivers the
+  // doc's compile-record PDF on mount (its effect runs before this one), so a
+  // pane the keep-alive LRU EVICTED and re-mounted — eviction does unmount —
+  // shows the PDF its document last compiled, even one that finished while no
+  // pane was mounted (task 1277), before this disk read is ever tried.
   useEffect(() => {
     if (!pdfView || !docId) return;
     if (latestPdfBytes.current) return; // already seeded (compile or prior read)

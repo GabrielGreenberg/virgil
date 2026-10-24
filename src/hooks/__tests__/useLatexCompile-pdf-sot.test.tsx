@@ -50,6 +50,7 @@ vi.mock("@/lib/tex-delimiters-event", () => ({
 }));
 
 import { useLatexCompile } from "../useLatexCompile";
+import { __resetAllCompileRecords } from "@/lib/compile/compile-record";
 
 const OK_RESULT = {
   status: "ok" as const,
@@ -62,6 +63,9 @@ const OK_RESULT = {
 
 describe("useLatexCompile — P6 PDF source of truth", () => {
   beforeEach(() => {
+    // The record is per DOCUMENT and outlives a hook (task 1277): a fresh
+    // mount for a doc that already has a PDF is delivered it on mount.
+    __resetAllCompileRecords();
     alertSpy.mockClear();
     compileSpy.mockClear();
     writePdfSpy.mockClear();
