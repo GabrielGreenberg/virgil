@@ -5,6 +5,7 @@ import { Analytics } from "@/components/Analytics";
 import { publicAssetUrl } from "@/lib/public-asset-url";
 import { displayModeBootstrapScript } from "@/lib/window-chrome-bootstrap";
 import { prefCssBootstrapScript } from "@/lib/pref-css-bootstrap";
+import { DEFAULT_THEME_COLOR } from "@/lib/theme-color";
 import "./globals.css";
 
 const inter = Inter({
@@ -56,8 +57,9 @@ export const viewport: Viewport = {
   // corners) to the --window-inset-* SSOT in globals.css, and is the base for
   // the WCO title-bar insets. color-scheme hints UA controls/scrollbars for
   // the app's light palette (there is no dark theme). Note: theme-color stays
-  // the manual <meta> below + the runtime writer in EditorLayout (locked to
-  // --topbar-bg) — intentionally NOT declared here, to keep one SSOT for it.
+  // the manual <meta> below (src/lib/theme-color.ts owns its value in every
+  // phase) — intentionally NOT declared here, so it can precede the bootstrap
+  // script that rewrites it pre-paint.
   viewportFit: "cover",
   colorScheme: "light",
 };
@@ -80,6 +82,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/* The browser/OS chrome colour (task 1274): the shipped default here,
+            rewritten before first paint by the prefs bootstrap below (which is
+            why it must come FIRST) and after mount by EditorLayout — all three
+            from src/lib/theme-color.ts. */}
+        <meta name="theme-color" content={DEFAULT_THEME_COLOR} />
         {/* Flash-free window display-mode bootstrap. Stamps
             html[data-display-mode] from the real matchMedia (and ?wco-debug)
             BEFORE first paint, so the WCO chrome CSS
@@ -108,7 +115,6 @@ export default function RootLayout({
             __html: prefCssBootstrapScript(),
           }}
         />
-        <meta name="theme-color" content="#e5e4e1" />
         {/* Hand-written <link>, so Next prefixes nothing — through the
             basePath door (task 365) or a subdirectory deploy 404s the
             iOS home-screen icon, silently. */}

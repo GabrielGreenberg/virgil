@@ -18,7 +18,14 @@
  * not painted yet, cleared storage, a different user) is simply not replayed,
  * and the seed answers as before. With no stored prefs the seed IS the user's
  * palette, so there is nothing to replay.
+ *
+ * The replay also points the browser/OS chrome at the replayed top-bar colour
+ * (task 1274): the `<meta name="theme-color">` is not a custom property, so a
+ * replay of `:root` alone left the title strip on the shipped default until
+ * the post-mount writer ran. `app/layout.tsx` renders that meta BEFORE this
+ * script so it exists when the script runs.
  */
+import { THEME_COLOR_CSS_VAR, THEME_COLOR_META_SELECTOR } from "@/lib/theme-color";
 
 /** Where the preference blobs live (owned by `usePreferences`). */
 export const PREFS_STORAGE_KEY = "virgil-editor-prefs";
@@ -68,7 +75,9 @@ export function prefCssBootstrapScript(): string {
     "if(!r||!r.v)return;" +
     `if(r.p!==ls.getItem(${JSON.stringify(PREFS_STORAGE_KEY)})||r.t!==ls.getItem(${JSON.stringify(TRANSFORMS_STORAGE_KEY)}))return;` +
     "var s=document.documentElement.style;" +
-    "for(var i=0;i<r.v.length;i++){s.setProperty(r.v[i][0],r.v[i][1]);}" +
+    `var m=document.querySelector(${JSON.stringify(THEME_COLOR_META_SELECTOR)});` +
+    "for(var i=0;i<r.v.length;i++){s.setProperty(r.v[i][0],r.v[i][1]);" +
+    `if(m&&r.v[i][0]===${JSON.stringify(THEME_COLOR_CSS_VAR)})m.setAttribute("content",r.v[i][1]);}` +
     "}catch(e){}})();"
   );
 }

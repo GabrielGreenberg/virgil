@@ -452,18 +452,6 @@ const isReadSomewhere = (token: string): boolean =>
  * cabinet this list exists not to become.
  */
 const PERMITTED_ORPHAN_TOKENS: Readonly<Record<string, string>> = {
-  // DOCUMENTATION-SHAPED ALIAS. Locked to --topbar-bg and pinned as such by
-  // token-contract.test.ts's LOCKED_ALIASES — but the PWA/browser chrome color
-  // is written in EditorLayout.tsx (`meta[name="theme-color"]`) from the PREF
-  // value through applyTransforms, never from this var. So the alias states a
-  // tracking relationship the code implements somewhere else, and the guard
-  // pins the statement rather than the mechanism. Resolving it is a choice
-  // between deleting the token (and its LOCKED_ALIASES row) and making the
-  // meta write read the computed var — a behaviour change on the installed-PWA
-  // chrome path, which reproduces in no preview. A suite is not a consumer.
-  "--theme-color":
-    "aliased + pinned by token-contract, but the meta tag is written from the PREF in EditorLayout, not from this var",
-
   // The one unread member of the four-token window-inset SSOT, whose stated
   // model is that EVERY OS-reserved edge flows through these vars (-top,
   // -left, -right are all live). env(safe-area-inset-bottom) only becomes
