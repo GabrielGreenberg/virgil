@@ -16,6 +16,7 @@ import {
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { figureDeleteLabel, requestFigureDelete } from "@/lib/figures/delete-figure";
 import { figurePopoverRaw } from "@/lib/figures/popover-target";
 import {
   applyFigureExtrasEdit,
@@ -545,13 +546,18 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     }
   };
 
+  // Task 1265: the same door as the lozenge's × — an "empty" figure (no
+  // image yet) can still carry a caption and a `\label` the text `\ref`s,
+  // so the confirm rule is the shared one, not "empty means disposable".
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!figureMayWrite()) return;
-    const hit = liveTarget();
-    if (!hit) return;
-    editor.view.dispatch(editor.state.tr.delete(hit.pos, hit.pos + hit.node.nodeSize));
+    void requestFigureDelete({
+      editor,
+      getPos: getFigurePos,
+      typeName: node.type.name,
+      confirm: opts.onConfirmFigureDeleteRef?.current ?? null,
+    });
   };
 
   const handlePickFile = async (e?: React.MouseEvent) => {
@@ -696,7 +702,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         </div>
         <div className={chromeOnly("figure-chrome figure-chrome-empty")}>
           <ChromeIconButton
-            title="Remove figure"
+            title={figureDeleteLabel(node.type.name)}
             onClick={handleDelete}
             kind="danger"
           >

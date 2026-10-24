@@ -3738,10 +3738,12 @@ textarea {
 }
 
 /* Figure block chrome — the hover-revealed corner row of controls
- * (folder picker, scale stepper, refresh, delete). Lives at the wrapper
- * level so a single refresh button drives all panels in a subfigure block.
- * The empty placeholder shows a stripped-down row with just the delete
- * button (the picker is the centered CTA). */
+ * (folder picker, scale stepper, refresh). Lives at the wrapper level so a
+ * single refresh button drives all panels in a subfigure block. A populated
+ * figure's delete lives on its label lozenge, not here; the empty placeholder
+ * shows a stripped-down row with just the delete button (the picker is the
+ * centered CTA). Both delete controls share one door (task 1265,
+ * `src/lib/figures/delete-figure.ts`). */
 .figure-block .figure-chrome {
   position: absolute;
   top: 4px;

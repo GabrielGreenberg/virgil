@@ -175,7 +175,7 @@ describe("read-only: every figure verb writes nothing and opens nothing", () => 
     const { container } = await mount("\\centering\n\\includegraphics{}");
     lockEditor();
     const before = held.editor!.state.doc;
-    await clickAndSettle(container.querySelector('[aria-label="Remove figure"]')!);
+    await clickAndSettle(container.querySelector('[aria-label="Delete figure"]')!);
     await clickAndSettle(container.querySelector(".figure-empty-cta")!);
     expect(pick.pickFigureFile).not.toHaveBeenCalled();
     expect(held.editor!.state.doc.eq(before)).toBe(true);
@@ -267,7 +267,7 @@ describe("the rename door refuses a non-editable target (every caller inherits i
 describe("positive control: an editable doc still performs each verb", () => {
   it("empty figure: Remove figure deletes", async () => {
     const { container } = await mount("\\centering\n\\includegraphics{}");
-    await clickAndSettle(container.querySelector('[aria-label="Remove figure"]')!);
+    await clickAndSettle(container.querySelector('[aria-label="Delete figure"]')!);
     expect(figure()).toBeNull();
   });
 
