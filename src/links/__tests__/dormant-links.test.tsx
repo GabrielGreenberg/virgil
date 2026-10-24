@@ -159,6 +159,43 @@ describe("dormant vocabulary", () => {
 // The card-level state is isFullyDormant in EVERY archive order (task 1254)
 // ---------------------------------------------------------------------------
 
+describe("the writer travels PER PID (task 1270)", () => {
+  const pq = (id: string): Card => {
+    const l = modeA(id, "P");
+    return { id: "n1", links: [{ ...l, anchor: { ...l.anchor, textObjectIds: ["P", "Q"] } } as Link] };
+  };
+  const pids = (l: Link) => (l.anchor as { textObjectIds: string[] }).textObjectIds;
+
+  it("splits a partly-carried Mode-A link: removed pids dormant, survivors live, the card active", () => {
+    const out = markDormantWriter(pq("l1"), "S", { pids: new Set(["P"]) });
+    expect(out.archived).toBeUndefined();
+    expect(out.links!.filter((l) => !isDormantLink(l)).map(pids)).toEqual([["Q"]]);
+    expect(out.links!.filter(isDormantLink).map(pids)).toEqual([["P"]]);
+    // The surviving half keeps the link's id; the carried half is minted.
+    expect(out.links!.find((l) => !isDormantLink(l))!.id).toBe("l1");
+    expect(out.links!.find(isDormantLink)!.id).toBe("n1@P");
+  });
+
+  it("the `<cardId>@<pid>` id stays with the half holding the pid it was minted for", () => {
+    const out = markDormantWriter(pq("n1@P"), "S", { pids: new Set(["P"]) });
+    expect(out.links!.find(isDormantLink)!.id).toBe("n1@P");
+    expect(out.links!.find((l) => !isDormantLink(l))!.id).toBe("n1@Q");
+  });
+
+  it("every pid carried: no split, the link itself goes dormant", () => {
+    const out = markDormantWriter(pq("l1"), "S", { pids: new Set(["P", "Q"]) });
+    expect(out.links!.map((l) => [l.id, isDormantLink(l)])).toEqual([["l1", true]]);
+    expect(out.archivedWith).toBe("S");
+  });
+
+  it("restoring P revives the carried half; the card names P and Q again", () => {
+    const out = markDormantWriter(pq("l1"), "S", { pids: new Set(["P"]) });
+    const back = reviveLiveLinks(out, { isUuidLive: (u) => u === "P", isAnchorIdLive: () => false });
+    expect(back.links!.some(isDormantLink)).toBe(false);
+    expect(back.links!.flatMap(pids).sort()).toEqual(["P", "Q"]);
+  });
+});
+
 describe("a card whose anchors went into two snippets (task 1254)", () => {
   const twoLinks = (): Card => ({ id: "n1", links: [modeA("l1", "P1"), modeA("l2", "P2")] });
   const archiveBoth = (): Card => {
