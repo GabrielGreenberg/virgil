@@ -114,35 +114,78 @@ function isTargetLive(link: Link, live: AnchorLiveness): boolean {
 
 /** Which of a card's links an archive capture took with it (task 1194). */
 export interface CarriedKeys {
-  /** Block uuids the capture removed WHOLE — a Mode-A link travels when every
-   *  pid it names is among them. */
+  /** Block uuids the capture removed WHOLE — a Mode-A link travels by the
+   *  pids it names that are among them (task 1270: per pid, see
+   *  {@link splitCarried}). */
   pids?: ReadonlySet<string>;
   /** `linkedAnchor` ids whose WHOLE mark lies inside the capture — a Mode-B
    *  link travels by its mark only (the reviver's rule, mirrored). */
   anchorIds?: ReadonlySet<string>;
 }
 
-function isCarriedLink(link: Link, keys: CarriedKeys): boolean {
-  if (link.anchor.type !== "textObject" || isDormantLink(link)) return false;
+/**
+ * THE travel question, per link (task 1270): which part of `link` did the
+ * capture take? `carried` is the part that goes dormant, `kept` the part that
+ * stays live — each null when empty. A Mode-B link is indivisible (it travels
+ * by its mark). A Mode-A link travels PER PID: one naming `[P, Q]` whose P
+ * left whole splits into a dormant `[P]` and a live `[Q]`, exactly as a card
+ * with one link per paragraph already behaves. Before, a Mode-A link went
+ * dormant only when EVERY pid left, while the capture's other legs asked
+ * whether SOME did — so a partly-archived link was neither carried nor
+ * re-homed, and the orphan sweep then stripped P for good.
+ */
+function splitCarried(link: Link, keys: CarriedKeys): { carried: string[]; kept: string[] } | null {
+  if (link.anchor.type !== "textObject" || isDormantLink(link)) return null;
   if (isModeB(link)) {
     const anchorId = link.anchor.textRange?.anchorId;
-    return !!anchorId && !!keys.anchorIds?.has(anchorId);
+    return anchorId && keys.anchorIds?.has(anchorId)
+      ? { carried: link.anchor.textObjectIds, kept: [] }
+      : null;
   }
-  const pids = link.anchor.textObjectIds.filter(Boolean);
-  return pids.length > 0 && pids.every((pid) => !!keys.pids?.has(pid));
+  const carried: string[] = [];
+  const kept: string[] = [];
+  for (const pid of link.anchor.textObjectIds) {
+    if (pid && keys.pids?.has(pid)) carried.push(pid);
+    else kept.push(pid);
+  }
+  return carried.length > 0 ? { carried, kept } : null;
+}
+
+/** Does `keys` take any part of this link? The ONE answer every capture leg
+ *  shares with the writer — `some`, per pid (task 1270). */
+export function isCarriedLink(link: Link, keys: CarriedKeys): boolean {
+  return splitCarried(link, keys) !== null;
+}
+
+/** A split's two halves keep the Mode-A id convention (`<cardId>@<pid>`, the
+ *  `makeAnchorLink` mint): the half holding the pid the original id was
+ *  minted for keeps it, the other half is minted for its own first pid. */
+function splitIds(
+  cardId: string,
+  link: Link,
+  carried: string[],
+  kept: string[],
+  taken: ReadonlySet<string>,
+): { carriedId: string; keptId: string } {
+  const unique = (id: string) => (taken.has(id) && id !== link.id ? `${id}#${link.id}` : id);
+  const mintedFor = carried.some((pid) => link.id === `${cardId}@${pid}`);
+  return mintedFor
+    ? { carriedId: link.id, keptId: unique(`${cardId}@${kept[0] ?? ""}`) }
+    : { carriedId: unique(`${cardId}@${carried[0] ?? ""}`), keptId: link.id };
 }
 
 /**
  * THE WRITER (task 1194): the archive capture took this card's text with it.
- * Every link `keys` names becomes dormant in `snippetId`; a link it does not
- * name stays live, so a card also anchored to surviving text stays active
- * there. When this capture leaves EVERY anchor link dormant — here or in an
- * earlier snippet: the card-level state is {@link isFullyDormant}, the same
- * predicate the resolver and omni rows read (task 1254) — the card is archived
- * with this, the completing snippet (`archived` + `archivedWith`), which every
- * archived filter already hides — unless the user had archived it by hand,
- * which stays a hand archive (revival must not unarchive what the user put
- * away).
+ * Every link `keys` names becomes dormant in `snippetId` — a Mode-A link only
+ * in the pids `keys` names, its surviving pids split off as a live link (task
+ * 1270); a link it does not name stays live, so a card also anchored to
+ * surviving text stays active there. When this capture leaves EVERY anchor
+ * link dormant — here or in an earlier snippet: the card-level state is
+ * {@link isFullyDormant}, the same predicate the resolver and omni rows read
+ * (task 1254) — the card is archived with this, the completing snippet
+ * (`archived` + `archivedWith`), which every archived filter already hides —
+ * unless the user had archived it by hand, which stays a hand archive
+ * (revival must not unarchive what the user put away).
  *
  * Identity-preserving no-op when `keys` names none of the card's links.
  */
@@ -153,9 +196,30 @@ export function markDormant<T extends DormantCardShape>(
 ): T {
   const links = card.links;
   if (!snippetId || !links || !links.some((l) => isCarriedLink(l, keys))) return card;
-  const next = links.map((l) =>
-    isCarriedLink(l, keys) ? { ...l, archivedWith: snippetId } : l,
-  );
+  const taken = new Set(links.map((l) => l.id));
+  const next: Link[] = [];
+  for (const l of links) {
+    const split = splitCarried(l, keys);
+    if (!split) {
+      next.push(l);
+      continue;
+    }
+    if (split.kept.length === 0 || l.anchor.type !== "textObject") {
+      next.push({ ...l, archivedWith: snippetId });
+      continue;
+    }
+    const { carriedId, keptId } = splitIds(card.id, l, split.carried, split.kept, taken);
+    taken.add(carriedId).add(keptId);
+    next.push(
+      { ...l, id: keptId, anchor: { ...l.anchor, textObjectIds: split.kept } },
+      {
+        ...l,
+        id: carriedId,
+        anchor: { ...l.anchor, textObjectIds: split.carried },
+        archivedWith: snippetId,
+      },
+    );
+  }
   const out: T = { ...card, links: next };
   const byHand = card.archived === true && !isArchivedWithText(card);
   if (isFullyDormant(out) && !byHand) {

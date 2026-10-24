@@ -185,6 +185,8 @@ function makeStore(cards: Card[]) {
     if (i >= 0) all[i] = markDormant(all[i], snippetId, keys);
   };
   const handlers = {} as Record<MarginItemKind, MarginItemHandlers>;
+  /** Every 491 re-home write, `un:<id>:<pid>` / `re:<id>:<uuid>`. */
+  const rehomed: string[] = [];
   for (const kind of ["note", "archive", "cut", "todo", "revision", "report"] as MarginItemKind[]) {
     handlers[kind] = {
       findCard: (id: string) => all.find((c) => c.id === id && c.kind === kind),
@@ -192,9 +194,9 @@ function makeStore(cards: Card[]) {
         return all.filter((c) => c.kind === kind);
       },
       contentKind: "note",
-      unanchor: () => {},
+      unanchor: (id: string, pid: string) => rehomed.push(`un:${id}:${pid}`),
       detach: () => {},
-      reanchor: () => {},
+      reanchor: (id: string, uuid: string) => rehomed.push(`re:${id}:${uuid}`),
       delete: async () => true,
     } as unknown as MarginItemHandlers;
   }
@@ -217,7 +219,7 @@ function makeStore(cards: Card[]) {
   const returnRemapped = (snippetId: string, remap: ReturningRemap) => {
     for (let i = 0; i < all.length; i++) all[i] = reviveRemapped(all[i], snippetId, remap);
   };
-  return { byId, carry, handlers, revive, returnRemapped };
+  return { byId, carry, handlers, revive, returnRemapped, rehomed };
 }
 
 function fixtureStore() {
@@ -236,7 +238,12 @@ interface SnippetCall {
   carriedMarks?: CarriedMarkRecord[];
 }
 
-function makeHarness(editor: Editor, store: ReturnType<typeof makeStore>) {
+function makeHarness(
+  editor: Editor,
+  store: ReturnType<typeof makeStore>,
+  /** Which kinds this host WIRES `carry` for (default: exactly the declared). */
+  wired: (kind: CardKind) => boolean = (kind) => !!CARD_REGISTRY[kind]?.lifecycle.carry,
+) {
   const snippets: SnippetCall[] = [];
   const deletes: string[] = [];
   let n = 0;
@@ -264,7 +271,7 @@ function makeHarness(editor: Editor, store: ReturnType<typeof makeStore>) {
     cardLifecycle: {
       get: (kind: string) => ({
         delete: (id: string) => deletes.push(`${kind}:${id}`),
-        ...(CARD_REGISTRY[kind as CardKind]?.lifecycle.carry ? { carry: store.carry } : {}),
+        ...(wired(kind as CardKind) ? { carry: store.carry } : {}),
       }),
     } as unknown as DragHandleActionsDeps["cardLifecycle"],
     anchorRetarget: {
@@ -718,6 +725,55 @@ describe("task 1194 — a multi-anchor card", () => {
       "p-target",
       "p-after",
     ]);
+  });
+});
+
+describe("task 1270 — one travel predicate: a card is carried or re-homed, never neither", () => {
+  it("a link only PARTLY archived splits: P goes dormant and comes back, Q stays live throughout", async () => {
+    const editor = mountDoc(doc());
+    const store = makeStore([
+      {
+        id: "pq",
+        kind: "note",
+        links: [{ ...modeA("p-target"), anchor: { type: "textObject", targetKind: "paragraph", textObjectIds: ["p-target", "p-after"] } } as Link],
+      },
+    ]);
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+
+    const mid = store.byId("pq");
+    const ids = (l: Link) => (l.anchor as { textObjectIds: string[] }).textObjectIds;
+    // Carried, not re-homed: nothing written onto the neighbour.
+    expect(store.rehomed).toEqual([]);
+    expect(mid.archived).toBeUndefined();
+    expect(mid.links!.filter((l) => !isDormantLink(l)).map(ids)).toEqual([["p-after"]]);
+    expect(mid.links!.filter(isDormantLink).map(ids)).toEqual([["p-target"]]);
+    expect(new Set(mid.links!.map((l) => l.id)).size).toBe(2);
+
+    expect(restore(editor, h.snippets[0])).toBe(true);
+    store.revive(editor);
+    const back = store.byId("pq");
+    expect(back.links!.some(isDormantLink)).toBe(false);
+    expect(back.links!.flatMap(ids).sort()).toEqual(["p-after", "p-target"]);
+  });
+
+  it("a kind DECLARED to travel but not WIRED here is re-homed / deleted — never orphaned, no unowned mark", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store, (kind) => kind !== "note" && !!CARD_REGISTRY[kind]?.lifecycle.carry);
+    await h.dispatch("archive", P_REF);
+
+    // Mode A: the note is re-homed onto the neighbour (task 491), not skipped.
+    expect(store.rehomed.some((e) => e.startsWith("un:n1:"))).toBe(true);
+    expect(store.rehomed.some((e) => e.startsWith("re:n1:"))).toBe(true);
+    expect(store.byId("n1").links!.some(isDormantLink)).toBe(false);
+    // Mode B: the note's mark is NOT recorded (no card would own it) and the
+    // card takes the Delete answer; the wired highlight still travels.
+    const recorded = (h.snippets[0].carriedMarks ?? []).map((m) => m.anchorId);
+    expect(recorded).not.toContain("A-note");
+    expect(recorded).toContain("A-hl");
+    expect(h.deletes).toContain("note:m1");
+    expect(store.byId("h1").links!.every(isDormantLink)).toBe(true);
   });
 });
 

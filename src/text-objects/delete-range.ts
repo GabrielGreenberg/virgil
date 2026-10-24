@@ -50,7 +50,7 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/react";
-import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
+import { cardKindTravels, type CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { parseLinkCardKey } from "@/links/link-dom-contract";
 import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
@@ -60,7 +60,6 @@ import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import { commitDocThenCards } from "@/components/drop-mode/commit-seam";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { StepMap } from "@tiptap/pm/transform";
-import { CARD_REGISTRY } from "@/cards/card-registry";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -277,27 +276,22 @@ export interface RangeCardDisposition {
   carryInto?: string | null;
 }
 
-/** Does an archive of this kind's text carry the card rather than delete it?
- *  The registry's declaration — read here, by the walker, and by the capture's
- *  mark record, so the three can never disagree about who travels. */
-export function cardKindCarries(kind: CardKind): boolean {
-  return CARD_REGISTRY[kind]?.lifecycle.carry === true;
-}
-
 /**
  * The `linkedAnchor` ids an archive of `[from, to)` CARRIES — every mark wholly
- * inside the range whose card kind travels ({@link cardKindCarries}). The same
- * containment walk the card half uses, so the snippet records exactly the
- * marks whose cards went dormant (and Restore re-stamps exactly those).
+ * inside the range whose card kind travels (`cardKindTravels`, the one travel
+ * predicate). The same containment walk the card half uses, so the snippet
+ * records exactly the marks whose cards went dormant (and Restore re-stamps
+ * exactly those).
  */
 export function collectCarriedAnchorIds(
   doc: PMNode,
   from: number,
   to: number,
+  lifecycle: CardLifecycleApi,
 ): Set<string> {
   const out = new Set<string>();
   for (const hit of walkRangeCards(doc, from, to)) {
-    if (hit.contained && hit.anchorId && cardKindCarries(hit.kind)) out.add(hit.anchorId);
+    if (hit.contained && hit.anchorId && cardKindTravels(hit.kind, lifecycle)) out.add(hit.anchorId);
   }
   return out;
 }
@@ -516,7 +510,7 @@ export function cleanupLinksInRange(
   const deletions: RangeCardTarget[] = [];
   for (const hit of walkRangeCards(doc, from, to)) {
     if (!hit.contained) continue;
-    if (carryInto && hit.anchorId && cardKindCarries(hit.kind) && lifecycle.get(hit.kind)?.carry) {
+    if (carryInto && hit.anchorId && cardKindTravels(hit.kind, lifecycle)) {
       const key = `${hit.kind}:${hit.id}`;
       const entry = carried.get(key) ?? { kind: hit.kind, id: hit.id, anchorIds: new Set<string>() };
       entry.anchorIds.add(hit.anchorId);
