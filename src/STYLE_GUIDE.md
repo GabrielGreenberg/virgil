@@ -1148,7 +1148,14 @@ Five states. One implementation each.
   inline-styled library control. It is not an escape from `iconbtn-*`: if the
   utility fits, take the utility. Never leave the UA default
   ring, and never strip it bare: `outline: none` is legal only where the same
-  rule supplies the replacement. One caveat with teeth — an element whose
+  rule supplies the replacement — a `:focus`/`:focus-visible` rule over the same
+  selector drawing a border, box-shadow or outline; a background swap is not
+  one (CI: `icon-button-a11y-guardrail.test.ts` → "a stylesheet that strips the
+  outline supplies the replacement", task 1264). The stated exceptions are
+  document surfaces (the caret is the indicator) and TRANSIENT inline-rename
+  inputs — mounted only for their edit session and focused on mount, so focus
+  is the only state they ever have and their underline is the indicator. A
+  PERSISTENT tab stop (the figure width box) is not transient. One caveat with teeth — an element whose
   elevation is an INLINE `box-shadow` can't be ringed at all (inline beats the
   sheet), and adding `.focus-ring` there deletes the UA outline while supplying
   nothing. That element takes **`.focus-outline`** instead (task 554): the SAME
