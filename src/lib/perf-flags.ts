@@ -7,12 +7,11 @@
  *
  * Usage from the DevTools Console:
  *
- *   // Disable all gated Tier 1 candidates at once:
+ *   // Disable every remaining gated Tier 1 site at once (today: B only):
  *   window.__virgilPerf.disableTier1 = true
  *
  *   // Or individually:
- *   window.__virgilPerf.disableTier1B = true   // section breadcrumb (EditorLayout.tsx)
- *   window.__virgilPerf.disableTier1C = true   // in-render getJSON for popouts (EditorPane.tsx)
+ *   window.__virgilPerf.disableTier1B = true   // section-path recompute on editor update (EditorLayout.tsx)
  *
  *   // Reset:
  *   window.__virgilPerf = {}
@@ -21,18 +20,22 @@
  * and then permanently fixed by deferring `editor.getJSON()` into the
  * downstream debounce timers — see the plan file
  * `ok-lets-do-a-dreamy-thacker.md`. The A-specific flag is therefore
- * no longer exported; B and C remain available for future investigation.
+ * no longer exported.
+ *
+ * Tier 1 C (the legacy outline `editor.getJSON()` memo in EditorPane.tsx)
+ * was retired too (task 1278): that memo is now the DocProducts pipeline's
+ * flag-off fallback, reachable only with `virgil:doc-products` OFF — the
+ * declared switch for it — so a console gate on it was inert under the
+ * default flag set. B remains available for future investigation.
  */
 
 declare global {
   interface Window {
     __virgilPerf?: {
-      /** Master switch — disables all gated Tier 1 sites at once. */
+      /** Master switch — disables every remaining gated Tier 1 site (today: B). */
       disableTier1?: boolean;
-      /** B — section breadcrumb compute (src/components/EditorLayout.tsx). */
+      /** B — section-path recompute on editor update (src/components/EditorLayout.tsx). */
       disableTier1B?: boolean;
-      /** C — in-render getJSON for popouts (src/components/EditorPane.tsx). */
-      disableTier1C?: boolean;
     };
   }
 }
@@ -44,7 +47,7 @@ if (typeof window !== "undefined") {
   window.__virgilPerf ??= {};
 }
 
-function isOn(flag: "disableTier1B" | "disableTier1C"): boolean {
+function isOn(flag: "disableTier1B"): boolean {
   if (typeof window === "undefined") return false;
   const p = window.__virgilPerf;
   if (!p) return false;
@@ -52,6 +55,5 @@ function isOn(flag: "disableTier1B" | "disableTier1C"): boolean {
 }
 
 export const isTier1BDisabled = (): boolean => isOn("disableTier1B");
-export const isTier1CDisabled = (): boolean => isOn("disableTier1C");
 
 export {};
