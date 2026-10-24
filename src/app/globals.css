@@ -3904,8 +3904,13 @@ textarea {
   margin: 0;
 }
 
+/* The width box is a PERSISTENT tab stop in the chrome row, so it needs a
+   focus state of its own — the white fill alone is nil over a .92-white pod.
+   An inputs-take-a-thicker-border edge (STYLE_GUIDE → Focus), drawn inset so
+   the attached [ − | n | + ] composite does not shift (task 2026-10-24-1264). */
 .figure-block .figure-scale-input:focus {
   background: white;
+  box-shadow: inset 0 -2px 0 var(--edge-strong);
 }
 
 .figure-block .figure-scale-input:disabled {

@@ -1087,11 +1087,14 @@ function ChromeIconButton({
 }) {
   return (
     <button
+      data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
       type="button"
       // Stamped on the button ITSELF as well as on the row that hosts it: the
       // census resolves coverage by JSX subtree, and this component's JSX
-      // sits outside every row that renders it.
-      className={chromeOnly(`figure-chrome-btn${kind === "danger" ? " figure-chrome-btn-danger" : ""}`)}
+      // sits outside every row that renders it. `focus-ring` matches the
+      // row's −/+ siblings: the icon census reads a `{children}`-forwarding
+      // wrapper through its call sites (task 2026-10-24-1264).
+      className={chromeOnly(`figure-chrome-btn focus-ring${kind === "danger" ? " figure-chrome-btn-danger" : ""}`)}
       {...iconHint({ label: title })}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={onClick}

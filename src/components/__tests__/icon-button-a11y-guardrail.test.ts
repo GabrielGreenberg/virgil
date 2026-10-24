@@ -354,11 +354,53 @@ interface Site extends JsxElementHit {
  *  reports as a harness error rather than as a failing census. */
 const unparsable: string[] = [];
 
+/**
+ * A FORWARDING WRAPPER, read through its call sites (task 2026-10-24-1264).
+ *
+ * A `<button>` whose whole children region is the component's own
+ * `{children}` prop is neither provably an icon nor provably text, so
+ * `isIconOnly` reads it as text — and every icon-only leg above went blind to
+ * it. `FigureBlockNodeView`'s `ChromeIconButton` lived there: it rendered the
+ * folder, refresh and "Remove figure" icons with no focus ring while its row
+ * siblings, plain `<button>`s, carried one.
+ *
+ * The honest answer is the CALL SITES': find the enclosing component, read
+ * every `<Name …>` in its own file and in each file that imports it, and call
+ * the wrapper icon-only when every one of those passes only an icon (at least
+ * one call, and none with text). One text-bearing call keeps it out — a
+ * wrapper that sometimes shows a label is a text button that sometimes does
+ * not, and the text leg owns it. Returns the plain classification for any
+ * button that does not forward `{children}`.
+ */
+export function forwardsChildren(subtree: string | null): boolean {
+  return subtree !== null && /^\s*\{\s*children\s*\}\s*$/.test(subtree);
+}
+/** The PascalCase component whose body holds `index`, or null. */
+export function enclosingComponent(src: string, index: number): string | null {
+  const re = /(?:function\s+([A-Z]\w*)\s*[(<]|(?:const|let)\s+([A-Z]\w*)\s*(?::[^=]+)?=\s*(?:React\.)?(?:forwardRef|memo)?\s*\(?)/g;
+  let name: string | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) && m.index < index) name = m[1] ?? m[2] ?? name;
+  return name;
+}
+function wrapperIsIconOnly(
+  name: string,
+  file: string,
+  all: { file: string; src: string }[],
+): boolean {
+  const imports = new RegExp(`\\bimport\\b[^;]*\\b${name}\\b[^;]*\\bfrom\\b`);
+  const calls = all
+    .filter((s) => s.file === file || imports.test(s.src))
+    .flatMap((s) => elementsNamed(s.src, name));
+  return calls.length > 0 && calls.every((c) => isIconOnly(c) === true);
+}
+
 /** Every `<button>` in both silos, located, with its two classifications. */
 function buttonSites(): { icon: Site[]; text: Site[] } {
   const icon: Site[] = [];
   const text: Site[] = [];
-  for (const { file, src, raw } of sources()) {
+  const all = sources();
+  for (const { file, src, raw } of all) {
     // Advanced past each located tag so two BYTE-IDENTICAL open tags in one
     // file report their OWN lines. `suggestion-fields` holds exactly that
     // pair, and a bare `indexOf` named the first one twice — a census whose
@@ -371,7 +413,8 @@ function buttonSites(): { icon: Site[]; text: Site[] } {
     // spells, and a guard that read only the literal tag never saw it.
     const consts = stringConsts(src);
     for (const hit of elementsNamed(src, "button")) {
-      const isIcon = isIconOnly(hit);
+      const wrapper = forwardsChildren(hit.subtree) ? enclosingComponent(src, hit.index) : null;
+      const isIcon = wrapper ? wrapperIsIconOnly(wrapper, file, all) : isIconOnly(hit);
       if (isIcon === null) {
         unparsable.push(`${file}: unreadable <button> subtree`);
         continue;
@@ -434,8 +477,12 @@ describe("icon-only buttons announce, once, and focus visibly", () => {
     const unringed = sites
       .filter((s) => !opaqueSpread(s.tag) && !notATabStop(s.tag))
       .filter((s) => {
+        // A computed className (`chromeOnly("…")`, a ternary) is read off the
+        // RESOLVED tag text, as leg E reads geometry: a ring token spelled
+        // anywhere in it passes. Skipping it outright hid `ChromeIconButton`
+        // twice over (task 2026-10-24-1264).
         const cls = literalClassName(s.tag);
-        return cls !== null && !RING.test(cls);
+        return !RING.test(cls ?? s.tag);
       })
       .filter((s) => !PERMITTED_UNRINGED_ICON_BUTTONS[s.file]);
     expect(unringed.map(at)).toEqual([]);
@@ -1943,5 +1990,113 @@ describe("a text-labelled action button renders through <Button> (task 827)", ()
     expect(BUTTON_EXEMPT.test(`<button data-button-exempt="header chip" onClick={f}>`)).toBe(true);
     expect(BUTTON_EXEMPT.test(`<button data-button-exempt="">`)).toBe(false);
     expect(SELECTION_CONTROL.test(`<button aria-pressed={on} className="px-2 rounded bg-x">`)).toBe(true);
+  });
+});
+
+/* ── A stylesheet that strips the outline supplies the replacement (task 2026-10-24-1264) ──
+ *
+ * STYLE_GUIDE → Focus: "`outline: none` is legal only where the same rule
+ * supplies the replacement." Every leg above reads JSX, so a stylesheet rule
+ * could strip the UA ring from an input and draw nothing — the figure width
+ * box did exactly that: `outline: none`, and a `:focus` that only switched a
+ * .92-white fill to white.
+ *
+ * The rule: a rule declaring `outline: none|0` passes when
+ *  - its own selector is a focus selector and it declares a replacement, or
+ *  - some `:focus` / `:focus-visible` / `:focus-within` rule over the SAME
+ *    base selector declares one (a border, a box-shadow, a real outline, a
+ *    text-decoration), or
+ *  - it strips only OUTSIDE focus (`:not(:focus-visible)` on every member), or
+ *  - it is paper (`@media print` — a focus indicator never reaches paper, task 554).
+ * A background change is NOT a replacement: it is how the figure box hid.
+ * Anything else states its reason below. The list may only SHRINK.
+ */
+const PERMITTED_BARE_OUTLINE_STRIPS: Record<string, string> = {
+  ".tiptap":
+    "the document surface itself — the caret is the focus indicator; a ring around the whole editor is noise",
+  ".editor-mirror .ProseMirror": "the document surface's mirror — the caret is the indicator, as for .tiptap",
+  ".latex-comment-editable": "an in-prose editable comment run — the caret is the indicator, as for .tiptap",
+  "[data-virgil-library-reader] .paper-render .tiptap": "the Library Reader's document surface — the caret is the indicator, as for .tiptap",
+  ".lib-dashboard-palette-row:hover:not(:disabled), .lib-dashboard-palette-row:focus-visible":
+    "a palette LIST row: keyboard focus paints the full-row highlight hover does — the menu-row idiom, a whole-row fill rather than a ring. The one place a background counts; a new row belongs on a ring",
+  ".heading-label-input":
+    "a transient inline-rename field: mounted only for its edit session and focused on mount, so focus is the only state it has — its underline + caret are the indicator",
+  ".par-title-input": "a transient inline-rename field (see .heading-label-input)",
+  ".card-title-input": "a transient inline-rename field (see .heading-label-input)",
+  ".figure-block .figure-label-input":
+    "a transient inline-rename field, the figure twin of .heading-label-input (STYLE_GUIDE → chrome that mirrors the document) — mounted only while editing",
+};
+
+const STRIPS_OUTLINE = /(?<![-\w])outline\s*:\s*(?:none|0)\b/;
+const FOCUS_REPLACEMENT =
+  /(?<![-\w])(?:border(?:-[a-z-]+)?|box-shadow|outline(?:-(?:color|style|width|offset))?|text-decoration(?:-[a-z]+)?)\s*:(?!\s*(?:none\b|0\s*(?:[;!]|$)))/;
+const FOCUS_PSEUDO = /:focus(?:-visible|-within)?(?:\([^)]*\))?/g;
+
+/** Innermost `selector { declarations }` rules, `@media print` dropped. */
+export function cssRules(css: string): { selector: string; body: string }[] {
+  let s = cssCommentsStripped(css);
+  for (let at = s.search(/@media\s+print\b/); at >= 0; at = s.search(/@media\s+print\b/)) {
+    const open = s.indexOf("{", at);
+    s = s.slice(0, at) + s.slice(skipBraces(s, open));
+  }
+  const out: { selector: string; body: string }[] = [];
+  for (const m of s.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    out.push({ selector: m[1].trim(), body: m[2] });
+  }
+  return out;
+}
+const members = (sel: string) => sel.split(",").map((p) => p.trim()).filter(Boolean);
+const baseOf = (member: string) => member.replace(FOCUS_PSEUDO, "").replace(/\s+/g, " ").trim();
+const replaces = (body: string) => FOCUS_REPLACEMENT.test(body.replace(new RegExp(STRIPS_OUTLINE, "g"), ""));
+
+export function bareOutlineStrips(css: string): string[] {
+  const rules = cssRules(css);
+  const focusBases = new Set<string>();
+  for (const r of rules) {
+    if (!replaces(r.body)) continue;
+    for (const m of members(r.selector)) {
+      if (/:focus/.test(m.replace(/:not\([^)]*\)/g, ""))) focusBases.add(baseOf(m));
+    }
+  }
+  const out: string[] = [];
+  for (const r of rules) {
+    if (!STRIPS_OUTLINE.test(r.body)) continue;
+    const ms = members(r.selector);
+    if (ms.every((m) => /:not\(:focus(?:-visible)?\)/.test(m))) continue;
+    if (ms.some((m) => /:focus/.test(m)) && replaces(r.body)) continue;
+    if (ms.every((m) => focusBases.has(baseOf(m)))) continue;
+    out.push(r.selector.replace(/\s+/g, " "));
+  }
+  return out;
+}
+
+describe("a stylesheet that strips the outline supplies the replacement", () => {
+  const sheets = SILOS.flatMap((s) => trackedFiles(s, /\.css$/)).map((p) => path.relative(ROOT, path.resolve(ROOT, p)));
+  const strips = sheets.flatMap((f) =>
+    bareOutlineStrips(fs.readFileSync(path.join(ROOT, f), "utf8")).map((sel) => ({ f, sel })),
+  );
+
+  it("sees a population worth censusing (self-check)", () => {
+    expect(sheets).toContain("src/app/globals.css");
+    const all = sheets.flatMap((f) => cssRules(fs.readFileSync(path.join(ROOT, f), "utf8")));
+    expect(all.filter((r) => STRIPS_OUTLINE.test(r.body)).length).toBeGreaterThan(10);
+  });
+
+  it("no rule strips the outline bare", () => {
+    expect(strips.filter((s) => !PERMITTED_BARE_OUTLINE_STRIPS[s.sel]).map((s) => `${s.f}: ${s.sel}`)).toEqual([]);
+  });
+
+  it("the bare-strip allowlist has no stale entries", () => {
+    const live = new Set(strips.map((s) => s.sel));
+    expect(Object.keys(PERMITTED_BARE_OUTLINE_STRIPS).filter((k) => !live.has(k))).toEqual([]);
+  });
+
+  it("reads a background swap as no replacement, and a focus edge as one (self-check)", () => {
+    expect(bareOutlineStrips(`.x { outline: none; } .x:focus { background: white; }`)).toEqual([".x"]);
+    expect(bareOutlineStrips(`.x { outline: none; } .x:focus-visible { box-shadow: inset 0 -2px 0 red; }`)).toEqual([]);
+    expect(bareOutlineStrips(`.x:focus { outline: none; border-color: red; }`)).toEqual([]);
+    expect(bareOutlineStrips(`.x:hover:not(:focus-visible) { outline: none; }`)).toEqual([]);
+    expect(bareOutlineStrips(`@media print { .x { outline: none !important; } }`)).toEqual([]);
+    expect(bareOutlineStrips(`.x { outline: 0; } .x:focus { border: none; }`)).toEqual([".x"]);
   });
 });
