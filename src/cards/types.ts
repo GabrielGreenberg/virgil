@@ -110,8 +110,12 @@ export interface CardLifecycleCapability {
    *  back. `false` — the pre-1194 answer stands: an inline-atom kind is
    *  deleted (its marker rides the slice and its sidecar ref is rebuilt on
    *  restore), and `archive` re-homes onto the preceding paragraph (task 491).
-   *  A one-line narrowing per kind; `archive-carry-census.test.ts` requires a
-   *  round-trip test row for every kind that declares it. */
+   *  A one-line narrowing per kind; the `archive-carry CENSUS` block in
+   *  `src/components/editor-layout/card-actions/__tests__/archive-carries-cards.test.tsx`
+   *  requires a round-trip test row for every kind that declares it, and
+   *  `src/hooks/__tests__/dormant-store-census.test.ts` requires it to resolve
+   *  to a carrying store (`dormantStoreOfKind`) that wires all three dormant
+   *  doors — carry, returnRemapped, release (task 1271). */
   carry: boolean;
 }
 

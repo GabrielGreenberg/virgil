@@ -161,6 +161,7 @@ import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
 import { highlightContext, noteContext, useNotes } from "@/hooks/useNotes";
+import { useDormantStores } from "@/hooks/useDormantStores";
 import { useAiRequests } from "@/hooks/useAiRequests";
 import {
   sourcesAreAuthoritative,
@@ -407,7 +408,7 @@ import {
 } from "@/links/_shared/request-wash";
 import { canProducePendingChanges } from "@/lib/pending-changes-flag";
 import { generateEntityId } from "@/lib/uuid";
-import { ARCHIVE_ORIGIN_PANEL_LABEL, type ArchiveOriginPanel } from "@/lib/archive-origin";
+import { ARCHIVE_ORIGIN_PANEL_LABEL } from "@/lib/archive-origin";
 import { buildSuggestionApplyPrompt } from "@/links/suggestion-apply-prompt";
 import {
   applySuggestion,
@@ -1501,6 +1502,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => withProposalFinalize(revisionsHookUnfinalized, onProposalFinalize),
     [revisionsHookUnfinalized, onProposalFinalize],
   );
+  // The CARRYING STORES (task 1271): the five stores whose cards travel with an
+  // archived passage, each giving all four of its dormant-round-trip doors —
+  // `carry` (read by the lifecycle literal below), `returnRemapped` (Restore's
+  // remap), `release` (the passage delete) and `reinstate` (an archived card's
+  // way home). One typed table keyed by `ArchiveOriginPanel`, so a store that
+  // carries without returning or releasing does not type-check.
+  const dormantStores = useDormantStores({
+    notes: notesHookRaw,
+    todos: todosHookRaw,
+    cutter: cutterHookRaw,
+    revisions: revisionsHookRaw,
+    reports: reportsHookRaw,
+  });
   // Per-family deps bag for the shared `pending-change-actions` sequence. Built
   // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
   // identity is keystroke-stable (deps: the keystroke-stable hook object), which
@@ -2071,22 +2085,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // declined delete keeps the passage, so its cards must keep their way back.
   // Folded into `archiveHook.deleteSnippet` below, so every door that deletes
   // a snippet (panel trash, margin marker, footnote-sync bridge) releases.
-  const releaseNotes = notesHookRaw.release;
-  const releaseTodos = todosHookRaw.release;
-  const releaseCutter = cutterHookRaw.release;
-  const releaseRevisions = revisionsHookRaw.release;
-  const releaseReports = reportsHookRaw.release;
+  // Every carrying store, read off the one table (task 1271).
   const deletePassage = useCallback(
     async (id: string) => {
       const deleted = await deleteArchiveSnippet(id);
       if (deleted) {
-        for (const release of [releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports]) {
-          release(id);
-        }
+        for (const store of Object.values(dormantStores)) store.release(id);
       }
       return deleted;
     },
-    [deleteArchiveSnippet, releaseNotes, releaseTodos, releaseCutter, releaseRevisions, releaseReports],
+    [deleteArchiveSnippet, dormantStores],
   );
   const archiveHook = useMemo(
     () => ({ ...archiveHookRaw, deleteSnippet: deletePassage }),
@@ -4313,37 +4321,37 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         clone: notesHook.cloneNote,
         delete: notesHook.deleteNote,
         bindAnchor: notesHook.bindAnchor,
-        carry: notesHook.carry,
+        carry: dormantStores.notes.carry,
       },
       highlight: {
         clone: notesHook.cloneHighlight,
         delete: notesHook.deleteNote,
         bindAnchor: notesHook.bindAnchor,
-        carry: notesHook.carry,
+        carry: dormantStores.notes.carry,
       },
       "revision-comment": {
         clone: revisionsHook.cloneComment,
         delete: revisionsHook.deleteCard,
         bindAnchor: revisionsHook.bindAnchor,
-        carry: revisionsHook.carry,
+        carry: dormantStores.revisions.carry,
       },
       "revision-suggestion": {
         clone: revisionsHook.cloneSuggestion,
         delete: revisionsHook.deleteCard,
         bindAnchor: revisionsHook.bindAnchor,
-        carry: revisionsHook.carry,
+        carry: dormantStores.revisions.carry,
       },
       "cutter-comment": {
         clone: cutterHook.cloneComment,
         delete: cutterHook.deleteCard,
         bindAnchor: cutterHook.bindAnchor,
-        carry: cutterHook.carry,
+        carry: dormantStores.cutter.carry,
       },
       "cutter-suggestion": {
         clone: cutterHook.cloneSuggestion,
         delete: cutterHook.deleteCard,
         bindAnchor: cutterHook.bindAnchor,
-        carry: cutterHook.carry,
+        carry: dormantStores.cutter.carry,
       },
       // The three kinds task 721 brought to Mode-B parity. They were unwired
       // here for as long as their registry rows claimed they carried no
@@ -4358,22 +4366,22 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         clone: todosHook.cloneTodo,
         delete: todosHook.deleteItem,
         bindAnchor: todosHook.bindAnchor,
-        carry: todosHook.carry,
+        carry: dormantStores.todos.carry,
       },
       report: {
         clone: reportsHook.cloneReport,
         delete: reportsHook.deleteCard,
         bindAnchor: reportsHook.bindAnchor,
-        carry: reportsHook.carry,
+        carry: dormantStores.reports.carry,
       },
       "report-request": {
         clone: reportsHook.cloneRequest,
         delete: reportsHook.deleteCard,
         bindAnchor: reportsHook.bindAnchor,
-        carry: reportsHook.carry,
+        carry: dormantStores.reports.carry,
       },
     }),
-    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, todosHook, reportsHook, deleteFootnoteUnbridged],
+    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, todosHook, reportsHook, deleteFootnoteUnbridged, dormantStores],
   );
   // The pristine manager rides in so a clone of a still-blank card is itself
   // blank-and-discardable (task 960) — decided at the API door, not per hook.
@@ -5131,42 +5139,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // A snippet with an ORIGIN record (task 712 — a whole card set aside by
   // `/editor/archive-card`) never takes the landing path: `restoreSnippet`
   // routes it to `reinstate`, which hands the verbatim card back to its own
-  // panel's hook. One table here, keyed by the same panel vocabulary
-  // `apply_response.py` writes (`ARCHIVE_ORIGIN_PANELS`).
-  const reinstateByPanel = useMemo<Record<ArchiveOriginPanel, (raw: unknown) => boolean>>(
-    () => ({
-      notes: notesHookRaw.reinstate,
-      todos: todosHookRaw.reinstate,
-      cutter: cutterHookRaw.reinstate,
-      revisions: revisionsHookRaw.reinstate,
-      reports: reportsHookRaw.reinstate,
-    }),
-    [
-      notesHookRaw.reinstate,
-      todosHookRaw.reinstate,
-      cutterHookRaw.reinstate,
-      revisionsHookRaw.reinstate,
-      reportsHookRaw.reinstate,
-    ],
-  );
-  // The five card stores that hold dormant links (task 1194) — the same five
-  // `reinstateByPanel` names, each exposing its `useDormantRevival` doors.
-  const dormantReturnDoors = useMemo(
-    () => [
-      notesHookRaw.returnRemapped,
-      todosHookRaw.returnRemapped,
-      cutterHookRaw.returnRemapped,
-      revisionsHookRaw.returnRemapped,
-      reportsHookRaw.returnRemapped,
-    ],
-    [
-      notesHookRaw.returnRemapped,
-      todosHookRaw.returnRemapped,
-      cutterHookRaw.returnRemapped,
-      revisionsHookRaw.returnRemapped,
-      reportsHookRaw.returnRemapped,
-    ],
-  );
+  // panel's hook. One table, keyed by the same panel vocabulary
+  // `apply_response.py` writes (`ARCHIVE_ORIGIN_PANELS`): `dormantStores`
+  // (task 1271), whose `returnRemapped` the remap below reaches too.
   const handleArchiveRestore = useCallback((id: string) => {
     // THE PEN (task 1169): asked LIVE, before either route. The card route
     // (reinstate into its panel + drop the snippet from archive.json) is React
@@ -5211,14 +5186,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           carriedMarks: snippet?.carriedMarks,
           land: (fresh) => innerRef.current?.restoreArchive(fresh, address) ?? false,
           onRemap: (remap) => {
-            for (const back of dormantReturnDoors) back(id, remap);
+            for (const store of Object.values(dormantStores)) store.returnRemapped(id, remap);
           },
           displaced: snippet?.displaced,
           retarget: anchorRetarget,
           snapshotOf: (uuid) =>
             captureParagraphSnapshot(innerRef.current?.getEditor() ?? null, uuid),
         }),
-      (panel, card) => reinstateByPanel[panel](card),
+      (panel, card) => dormantStores[panel].reinstate(card),
     );
     if (!restored && origin && origin.kind !== "excerpt") {
       // A card, not an excerpt: the only ways back to its panel failing are a
@@ -5284,8 +5259,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     archiveHook.snippets,
     anchorPass,
     anchorRetarget,
-    reinstateByPanel,
-    dormantReturnDoors,
+    dormantStores,
     dragHandleNotify,
     cardLifecycleSignal,
   ]);
