@@ -239,7 +239,6 @@ import {
 } from "@/links/proposal-finalize";
 import {
   panelForCardKind,
-  isArchivable,
   archiveRemovesAtom,
   excerptCardKinds,
   cardKindFromRecord,
@@ -391,10 +390,6 @@ import {
 } from "@/links/card-anchor-rows";
 import { marginSideForMarkerType, type PanelSideMap } from "@/lib/margin-side";
 import { panelSidesFromPlacements, resolvePanelSide } from "@/lib/panel-side";
-import {
-  resolveAnchorState,
-  type AnchorIntent,
-} from "@/links/anchor-state";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
 import type { ModeBBag } from "@/cards/mode-b-collections";
 import {
@@ -6842,7 +6837,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   <PaneRailBody
                     side={panelSide}
                     panelKind={pid as PanelKind}
-                    editor={editor}
                     content={outlineContentEffective}
                     examples={examples}
                     docId={docId}
@@ -6851,7 +6845,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     bibReviewHook={bibReviewHook}
                     bibSettingsHook={bibSettingsHook}
                     notesHook={notesHook}
-                    cardCreation={cardCreation}
                     allEditorCitations={allEditorCitations}
                     citationPositionMap={citationPositionMap}
                     citationOrder={citationOrder}
@@ -6884,8 +6877,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     onEditFootnoteTitle={handleEditFootnoteTitle}
                     onDeleteFootnote={handleDeleteFootnote}
                     onDeleteCitation={handleDeleteCitation}
-                    selectedNoteId={selectedNoteId}
-                    setSelectedNoteId={setSelectedNoteId}
                     compileLog={compileHook.lastLog}
                     compileStatus={compileHook.lastStatus}
                     isCompiling={compileHook.isCompiling}
@@ -6903,7 +6894,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     <PaneRailBody
                       side={panelSide}
                       panelKind={pid as PanelKind}
-                      editor={editor}
                       content={outlineContentEffective}
                       examples={examples}
                       docId={docId}
@@ -6912,7 +6902,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       bibReviewHook={bibReviewHook}
                       bibSettingsHook={bibSettingsHook}
                       notesHook={notesHook}
-                      cardCreation={cardCreation}
                       allEditorCitations={allEditorCitations}
                       citationPositionMap={citationPositionMap}
                       citationOrder={citationOrder}
@@ -6945,8 +6934,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onEditFootnoteTitle={handleEditFootnoteTitle}
                       onDeleteFootnote={handleDeleteFootnote}
                       onDeleteCitation={handleDeleteCitation}
-                      selectedNoteId={selectedNoteId}
-                      setSelectedNoteId={setSelectedNoteId}
                       compileLog={compileHook.lastLog}
                       compileStatus={compileHook.lastStatus}
                       isCompiling={compileHook.isCompiling}
@@ -6965,7 +6952,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   panelId={pid}
                   mode={mode}
                   slotKey={slotKey}
-                  fillSlot={viewPrefs.prefs.panelHeights[pid] != null}
                   initialX={initialX}
                   initialY={initialY}
                   initialWidth={initialWidth}
@@ -7887,7 +7873,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       <PaneRailBody
                         side="left"
                         panelKind={kind as PanelKind}
-                        editor={editor}
                         content={(initialContent ?? docHook.content) as JSONContent | null}
                         examples={examples}
                         docId={docId}
@@ -7896,7 +7881,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         bibReviewHook={bibReviewHook}
                         bibSettingsHook={bibSettingsHook}
                         notesHook={notesHook}
-                        cardCreation={cardCreation}
                         allEditorCitations={allEditorCitations}
                         citationPositionMap={citationPositionMap}
                         citationOrder={citationOrder}
@@ -7929,8 +7913,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         onEditFootnoteTitle={handleEditFootnoteTitle}
                         onDeleteFootnote={handleDeleteFootnote}
                         onDeleteCitation={handleDeleteCitation}
-                        selectedNoteId={selectedNoteId}
-                        setSelectedNoteId={setSelectedNoteId}
                         compileLog={compileHook.lastLog}
                         compileStatus={compileHook.lastStatus}
                         isCompiling={compileHook.isCompiling}
@@ -8364,9 +8346,12 @@ function IconStrip({
         <button
           onClick={() => {
             if (isOpen) {
-              isLeft ? viewPrefs.collapseLeft() : viewPrefs.collapseRight();
+              if (isLeft) viewPrefs.collapseLeft();
+              else viewPrefs.collapseRight();
+            } else if (isLeft) {
+              viewPrefs.expandLeft();
             } else {
-              isLeft ? viewPrefs.expandLeft() : viewPrefs.expandRight();
+              viewPrefs.expandRight();
             }
           }}
           className="iconbtn-md iconbtn-toggle"
@@ -8648,7 +8633,6 @@ function PaneRail({
 interface PaneRailBodyProps {
   side: "left" | "right";
   panelKind: PanelKind;
-  editor: Editor | null;
   content: JSONContent | null;
   examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
   docId: string;
@@ -8657,7 +8641,6 @@ interface PaneRailBodyProps {
   bibReviewHook: ReturnType<typeof useBibReview>;
   bibSettingsHook: ReturnType<typeof useBibSettings>;
   notesHook: WithMorphDoor<ReturnType<typeof useNotes>>;
-  cardCreation: ReturnType<typeof useCardCreation>;
   allEditorCitations: Array<{
     citationId: string;
     command: string;
@@ -8698,8 +8681,6 @@ interface PaneRailBodyProps {
    *  entry (the hard-delete contract). Threaded like `onDeleteFootnote`
    *  so the rail's panel slots don't reach for the bare sidecar filter. */
   onDeleteCitation: (id: string) => void;
-  selectedNoteId: string | null;
-  setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
   // Errors surface (`ErrorsHost`) reads the diagnostics bundle from
   // `DiagnosticsProvider` via `useDiagnosticsContext()`, not from props. The
   // compile log/status below stay explicit props (NOT part of the diagnostics
@@ -8730,7 +8711,6 @@ interface PaneRailBodyProps {
 function PaneRailBody({
   side,
   panelKind,
-  editor,
   content,
   examples,
   docId,
@@ -8739,7 +8719,6 @@ function PaneRailBody({
   bibReviewHook,
   bibSettingsHook,
   notesHook,
-  cardCreation,
   allEditorCitations,
   citationPositionMap,
   citationOrder,
@@ -8770,8 +8749,6 @@ function PaneRailBody({
   onEditFootnoteTitle,
   onDeleteFootnote,
   onDeleteCitation,
-  selectedNoteId,
-  setSelectedNoteId,
   compileLog,
   compileStatus,
   isCompiling,

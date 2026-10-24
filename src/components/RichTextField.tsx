@@ -14,7 +14,6 @@
  */
 
 import { useEffect, useRef, useState, useCallback, memo } from "react";
-import { createPortal } from "react-dom";
 import { useEditor, useEditorState, EditorContent, JSONContent } from "@tiptap/react";
 import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
@@ -76,9 +75,6 @@ interface RichTextFieldProps {
   getCitationDisplayText?: (command: string) => string;
   /** Called when the user creates a brand-new citation in this field via drop. */
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
-  /** When set, the format toolbar is portalled into this DOM element instead of
-   *  rendering inline above the editor content. */
-  toolbarPortalTarget?: HTMLElement | null;
   /** When true, suppress the FormatToolbar entirely (keyboard shortcuts still work). */
   hideToolbar?: boolean;
   /** Panel kind — when set, body text picks up the user's per-panel
@@ -128,11 +124,9 @@ const TOGGLE_ON_CLASS =
 function FormatToolbar({
   editor,
   selected,
-  inline,
 }: {
   editor: ReturnType<typeof useEditor> | null;
   selected: boolean;
-  inline?: boolean;
 }) {
   // Task 427: the two list buttons are the card-body twin of the lightning
   // grid's wrapper cells, so they read the SAME wrapper door (identity +
@@ -176,11 +170,9 @@ function FormatToolbar({
 
   return (
     <div
-      className={inline
-        ? "flex items-center gap-0.5"
-        : `flex items-center gap-0.5 px-1 py-0.5 mb-1 border-b ${
-            selected ? "border-white/20" : "border-[var(--border-light)]"
-          }`}
+      className={`flex items-center gap-0.5 px-1 py-0.5 mb-1 border-b ${
+        selected ? "border-white/20" : "border-[var(--border-light)]"
+      }`}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -270,7 +262,6 @@ function RichTextFieldImpl({
   onArchiveConsumed,
   getCitationDisplayText,
   onCitationCreated,
-  toolbarPortalTarget,
   hideToolbar = false,
   panelKey,
   editable = true,
@@ -728,9 +719,7 @@ function RichTextFieldImpl({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
     >
-      {!hideToolbar && (toolbarPortalTarget
-        ? createPortal(<FormatToolbar editor={editor} selected={selected} inline />, toolbarPortalTarget)
-        : <FormatToolbar editor={editor} selected={selected} />)}
+      {!hideToolbar && <FormatToolbar editor={editor} selected={selected} />}
       <EditorContent
         editor={editor}
         // Stop card-level click + key handlers from intercepting editor input.
