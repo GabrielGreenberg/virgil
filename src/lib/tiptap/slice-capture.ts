@@ -158,15 +158,70 @@ export function captureCarriedMarks(
     }
     return false;
   });
+  // The run's IDENTITY is its words (task 1269), read once the run is whole.
+  for (const run of runs) run.text = runText(content, run.from, run.to);
   return runs;
+}
+
+/** The ONE reading of a carried run's words — capture and Restore must agree
+ *  on it, leaves included (an inline atom reads as one U+FFFC, its size). */
+function runText(node: PMNode | Fragment, from: number, to: number): string {
+  return node.textBetween(from, to, "\n", "\ufffc");
+}
+
+/**
+ * Where a carried run lands in (possibly edited) `content` (task 1269). The
+ * record's offsets are a capture-time HINT: the archive body is editable
+ * (`useArchive.updateSnippet` replaces `content`), so they may now point at
+ * other words. The run is placed on its own words — at its offsets when they
+ * still read `text`, else at the ONE place in a single textblock that does
+ * (an edit elsewhere in the body shifts it; the mark rides along). Nowhere,
+ * or more than one place, is `null`: the run is skipped and its card stays
+ * dormant — never stamped on different words. A pre-1269 record (no `text`)
+ * is trusted at its offsets, bounds-checked.
+ */
+function locateRun(
+  node: PMNode,
+  m: CarriedMarkRecord,
+): { from: number; to: number } | null {
+  const size = node.content.size;
+  const fits = m.from >= 0 && m.to <= size && m.to > m.from;
+  if (m.text === undefined) return fits ? { from: m.from, to: m.to } : null;
+  if (!m.text) return null;
+  if (fits && runText(node, m.from, m.to) === m.text) return { from: m.from, to: m.to };
+  let hit: { from: number; to: number } | null = null;
+  let count = 0;
+  node.descendants((block, pos) => {
+    if (count > 1) return false;
+    if (!block.isTextblock) return true;
+    const start = pos + 1;
+    const line = runText(block, 0, block.content.size);
+    for (let i = line.indexOf(m.text!); i >= 0; i = line.indexOf(m.text!, i + 1)) {
+      // A char offset is a position offset only while every inline before it
+      // is text or a size-1 leaf — confirm on the node, never assume.
+      const from = start + i;
+      const to = from + m.text!.length;
+      if (to > size || runText(node, from, to) !== m.text) continue;
+      if (++count > 1) return false;
+      hit = { from, to };
+    }
+    return false;
+  });
+  return count === 1 ? hit : null;
 }
 
 /**
  * Restore's half (task 1194): the excerpt `content` with its carried
  * `linkedAnchor` runs stamped back on, in the LIVE document's schema — so the
  * marks land in the very transaction that lands the text, wherever it lands.
- * A run that no longer fits the content (a hand-edited archive.json, a body
- * edited since) is skipped, never forced: its card simply stays dormant.
+ * Each run is placed on the WORDS it covered at capture ({@link locateRun},
+ * task 1269): an edit to the archive body elsewhere carries the mark along;
+ * an edit that changed or duplicated those words skips the run, and its card
+ * simply stays dormant. A run is never stamped on different words.
+ *
+ * The anchorIds go on VERBATIM; a collision with a live mark (doc Undo
+ * revived the original, then this snippet is restored too) is answered by
+ * the one identity pass that runs after this, {@link freshenReturningIdentities}.
  */
 export function withCarriedMarks(
   schema: Schema,
@@ -182,11 +237,12 @@ export function withCarriedMarks(
     return content;
   }
   const tr = new Transform(node);
-  const size = node.content.size;
   for (const m of marks) {
-    if (m.from < 0 || m.to > size || m.to <= m.from) continue;
+    // Located against the UNMARKED content: adding a mark moves no position.
+    const at = locateRun(node, m);
+    if (!at) continue;
     try {
-      tr.addMark(m.from, m.to, type.create({ ...m.attrs, anchorId: m.anchorId }));
+      tr.addMark(at.from, at.to, type.create({ ...m.attrs, anchorId: m.anchorId }));
     } catch {
       continue;
     }
@@ -194,29 +250,85 @@ export function withCarriedMarks(
   return tr.docChanged ? (tr.doc.toJSON() as JSONContent) : content;
 }
 
+/** The identities already live in the document a restore lands in. */
+export interface LiveIdentities {
+  uuids: ReadonlySet<string>;
+  anchorIds: ReadonlySet<string>;
+}
+
+/** Old → fresh, per identity space — the ONE answer a restore hands every
+ *  card it carries (displaced, dormant Mode A, dormant Mode B). */
+export interface IdentityRemap {
+  uuids: ReadonlyMap<string, string>;
+  anchorIds: ReadonlyMap<string, string>;
+}
+
+export const NO_IDENTITY_REMAP: IdentityRemap = { uuids: new Map(), anchorIds: new Map() };
+
+export function isEmptyRemap(r: IdentityRemap): boolean {
+  return r.uuids.size === 0 && r.anchorIds.size === 0;
+}
+
 /**
- * Restore's COLLISION answer (task 1194): the excerpt with every block uuid
- * that is already LIVE replaced by a fresh one, and the old → new map. Left to
- * itself `BlockUuidBackfill` would re-mint such a newcomer anyway (keeping the
- * pre-existing block's identity — the right tie-break for a paste-as-new); the
- * landing does it FIRST so it knows the new id, and the cards that went
- * dormant on the old one can follow it (`reviveRemapped`). A content with no
- * collision is returned as-is with an empty map.
+ * Restore's COLLISION answer (task 1194 → 1269): the excerpt with every
+ * identity that is already LIVE replaced by a fresh one, and the old → new
+ * maps. Two identity spaces, one pass:
+ *
+ *  - a block `uuid` — left to itself `BlockUuidBackfill` would re-mint such a
+ *    newcomer anyway (keeping the pre-existing block's identity — the right
+ *    tie-break for a paste-as-new); the landing does it FIRST so it knows the
+ *    new id, and the cards that went dormant on the old one can follow it;
+ *  - a `linkedAnchor` `anchorId` (the carried marks, stamped on by
+ *    {@link withCarriedMarks} before this runs) — nothing re-mints a
+ *    duplicate mark id, so without this a restore after a doc Undo of the
+ *    archive left two runs sharing one id and a Mode-B card resolved to
+ *    whichever came first. Paste strips the mark for the same reason; Restore
+ *    keeps it and freshens it instead. A `linkId` that mirrored the old
+ *    anchorId follows it.
+ *
+ * Both maps go to `reviveRemapped` (via each hook's `returnRemapped`). A
+ * content with no collision is returned as-is with empty maps.
  */
-export function freshenReturningUuids(
+export function freshenReturningIdentities(
   content: JSONContent,
-  live: ReadonlySet<string>,
-): { content: JSONContent; remap: Map<string, string> } {
-  const remap = new Map<string, string>();
-  const taken = new Set<string>(live);
+  live: LiveIdentities,
+): { content: JSONContent; remap: IdentityRemap } {
+  const uuids = new Map<string, string>();
+  const anchorIds = new Map<string, string>();
+  const takenUuids = new Set<string>(live.uuids);
+  const takenAnchors = new Set<string>(live.anchorIds);
+  const freshAnchor = (old: string): string => {
+    let id = anchorIds.get(old);
+    if (!id) {
+      id = generateShortId(takenAnchors);
+      takenAnchors.add(id);
+      anchorIds.set(old, id);
+    }
+    return id;
+  };
   const visit = (node: JSONContent): JSONContent => {
     const uuid = (node.attrs as { uuid?: unknown } | undefined)?.uuid;
     let next = node;
-    if (typeof uuid === "string" && uuid && live.has(uuid)) {
-      const fresh = remap.get(uuid) ?? generateShortId(taken);
-      taken.add(fresh);
-      remap.set(uuid, fresh);
+    if (typeof uuid === "string" && uuid && live.uuids.has(uuid)) {
+      let fresh = uuids.get(uuid);
+      if (!fresh) {
+        fresh = generateShortId(takenUuids);
+        takenUuids.add(fresh);
+        uuids.set(uuid, fresh);
+      }
       next = { ...node, attrs: { ...node.attrs, uuid: fresh } };
+    }
+    if (node.marks?.length) {
+      let touched = false;
+      const marks = node.marks.map((m) => {
+        const a = m.type === "linkedAnchor" ? (m.attrs as { anchorId?: unknown } | undefined)?.anchorId : null;
+        if (typeof a !== "string" || !a || !live.anchorIds.has(a)) return m;
+        touched = true;
+        const id = freshAnchor(a);
+        const linkId = (m.attrs as { linkId?: unknown }).linkId;
+        return { ...m, attrs: { ...m.attrs, anchorId: id, ...(linkId === a ? { linkId: id } : {}) } };
+      });
+      if (touched) next = { ...next, marks };
     }
     if (node.content?.length) {
       const kids = node.content.map(visit);
@@ -225,7 +337,7 @@ export function freshenReturningUuids(
     return next;
   };
   const out = visit(content);
-  return { content: out, remap };
+  return { content: out, remap: { uuids, anchorIds } };
 }
 
 /**

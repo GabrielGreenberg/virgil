@@ -263,7 +263,8 @@ ArchivedSnippet { id; title; titleAuto?; content; createdAt; links: Link[];
 // ({ kind; id; from: string[]; to; added }) records the Mode-A cards the capture
 // re-homed onto the neighbour; Restore hands them back (`landReturningDisplaced`).
 // CARRIED MARKS (task 1194) — `carriedMarks?: CarriedMarkRecord[]`
-// ({ anchorId; attrs; from; to }, offsets relative to `content`) records the Mode-B
+// ({ anchorId; attrs; from; to; text? }, offsets relative to `content` at capture,
+// `text` = the covered words, task 1269 — Restore places a run by its words) records the Mode-B
 // `linkedAnchor` runs whose cards travelled into the snippet (the excerpt schema has
 // no such mark); Restore re-stamps them, reviving the dormant links.
 // ORIGIN RECORD (task 712) — the last three are present iff the snippet is a whole

@@ -35,6 +35,13 @@ export const TEXTOBJECT_ORPHANED_EVENT = "virgil-textobject-orphaned";
  *  DORMANT link (`@/links/dormant`) whose archived text is in the doc again —
  *  a Restore, a doc Undo of an archive, any re-insertion alike. */
 export const ANCHORS_REVIVED_EVENT = "virgil-anchors-revived";
+/** The DEPARTURE into an archive (task 1269): ids that left the document
+ *  while an un-retired archive snippet holds them (`archive-holdings.ts`) — a
+ *  HISTORY REPLAY of an archive (Redo), which carries no lifecycle meta. The
+ *  card hooks answer by making the links dormant in that snippet. Dispatched
+ *  BEFORE the orphan events for the same ids, so the strip that follows sees
+ *  dormant links and skips them (`removeTextObjectLink` / `getTextAnchor`). */
+export const ANCHORS_ARCHIVED_EVENT = "virgil-anchors-archived";
 
 export interface AnchorOrphanedDetail {
   /** The document whose editor removed the mark; `null` = no document. */
@@ -57,6 +64,22 @@ export interface AnchorsRevivedDetail {
   uuids: string[];
   /** `linkedAnchor` mark ids the transaction inserted (live on the settled doc). */
   anchorIds: string[];
+}
+
+export interface AnchorsArchivedDetail {
+  /** The document whose editor removed the anchors; `null` = no document. */
+  docId: string | null;
+  /** The un-retired snippet that holds them. */
+  snippetId: string;
+  /** Departed block uuids the snippet holds. */
+  uuids: string[];
+  /** Departed `linkedAnchor` ids the snippet's carried marks name. */
+  anchorIds: string[];
+}
+
+export function dispatchAnchorsArchived(detail: AnchorsArchivedDetail): void {
+  if (detail.uuids.length === 0 && detail.anchorIds.length === 0) return;
+  window.dispatchEvent(new CustomEvent(ANCHORS_ARCHIVED_EVENT, { detail }));
 }
 
 export function dispatchAnchorsRevived(detail: AnchorsRevivedDetail): void {
@@ -125,4 +148,12 @@ export function useAnchorsRevived(
   handler: (detail: AnchorsRevivedDetail) => void,
 ): void {
   useOrphanEvent(ANCHORS_REVIVED_EVENT, docId, handler);
+}
+
+/** Subscribe to departures INTO an archive (task 1269) in `docId` only. */
+export function useAnchorsArchived(
+  docId: string | null,
+  handler: (detail: AnchorsArchivedDetail) => void,
+): void {
+  useOrphanEvent(ANCHORS_ARCHIVED_EVENT, docId, handler);
 }

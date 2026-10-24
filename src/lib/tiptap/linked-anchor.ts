@@ -5,9 +5,11 @@ import type { EditorView } from "@tiptap/pm/view";
 import type { MutableRefObject, RefObject } from "react";
 import {
   dispatchAnchorOrphaned,
+  dispatchAnchorsArchived,
   dispatchAnchorsRevived,
   dispatchTextObjectOrphaned,
 } from "@/lib/tiptap/orphan-events";
+import { groupHeldDepartures, snippetHoldingUuid } from "@/lib/tiptap/archive-holdings";
 import { hasLiveAnchor, hasLiveBlock, readDiffFor } from "@/lib/tiptap/doc-structure";
 import {
   classifyBlockDepartures,
@@ -132,6 +134,20 @@ export const LinkedAnchor = Mark.create({
 // slices to prevent duplicate-id collisions via copy-paste.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Task 1269: announce every departed id an un-retired archive snippet holds
+ *  (`archive-holdings.ts`) as `virgil-anchors-archived`, one event per
+ *  snippet. The archive GESTURE carries its cards itself; this is the answer
+ *  for a removal that does not say what it is — a history replay of that
+ *  gesture. O(departed) O(1) lookups; an empty registry answers at once. */
+function announceArchivedDepartures(
+  docId: string | null,
+  departed: { uuids?: readonly string[]; anchorIds?: readonly string[] },
+): void {
+  for (const [snippetId, held] of groupHeldDepartures(docId, departed)) {
+    dispatchAnchorsArchived({ docId, snippetId, ...held });
+  }
+}
+
 export const LinkedAnchorGuard = Extension.create<{
   docIdRef: RefObject<string | null> | null;
 }>({
@@ -205,13 +221,16 @@ export const LinkedAnchorGuard = Extension.create<{
             // re-asked the question the index answers. Fallback (no view):
             // dispatch all, matching prior behavior.
             const state = liveView?.state ?? null;
-            for (const a of diff.removedAnchors) {
-              if (state && hasLiveAnchor(state, a.id)) continue; // survived
-              dispatchAnchorOrphaned({
-                docId: docIdRef?.current ?? null,
-                anchorId: a.id,
-                kind: a.kind,
-              });
+            const docId = docIdRef?.current ?? null;
+            const departed = diff.removedAnchors.filter(
+              (a) => !(state && hasLiveAnchor(state, a.id)), // survived
+            );
+            // A departure an un-retired archive snippet HOLDS (task 1269 — a
+            // Redo of an Archive) goes dormant there first; the orphan event
+            // below then finds the link dormant and leaves it.
+            announceArchivedDepartures(docId, { anchorIds: departed.map((a) => a.id) });
+            for (const a of departed) {
+              dispatchAnchorOrphaned({ docId, anchorId: a.id, kind: a.kind });
             }
           }, 0);
           return null;
@@ -392,6 +411,13 @@ export const TextObjectOrphanGuard = Extension.create<{
             // deferred inner paragraph is correctly NOT live. Fallback (no
             // view): dispatch all, matching the prior unconditional behavior.
             const state = liveView?.state ?? null;
+            // Departures an un-retired archive snippet holds go dormant there
+            // BEFORE any orphan / absorbed verdict below (task 1269).
+            announceArchivedDepartures(docIdRef?.current ?? null, {
+              uuids: removed
+                .filter((b) => !(state && hasLiveBlock(state, b.uuid)))
+                .map((b) => b.uuid),
+            });
             for (const block of removed) {
               if (state && hasLiveBlock(state, block.uuid)) continue; // resurrected
               // ONE uuid, ONE verdict. A block the batch ABSORBED did not
@@ -457,6 +483,11 @@ export const LIFECYCLE_DELETE_META = "virgilLifecycleDelete";
 // EXCEPTION 1: a transaction tagged with `LIFECYCLE_DELETE_META` (the Archive /
 // Delete drag-handle actions) is a deliberate removal — the guard bypasses it
 // so the block actually goes. See the meta declaration above.
+//
+// EXCEPTION 5 (task 1269) is EXCEPTION 1 read off the DOCUMENT instead of the
+// gesture: a block whose uuid an un-retired archive snippet holds is leaving
+// for the archive even when the transaction does not say so (a Redo of an
+// Archive), so it is not resurrected either. See `archive-holdings.ts`.
 //
 // EXCEPTIONS 2, 3 and 4 are three readings of ONE law — *a preservation guard
 // may not restore an identity that an empty paragraph cannot carry*: the
@@ -535,17 +566,21 @@ function resurrectionWouldBeANoOp(
 
 export const MarginaliaAnchorGuard = Extension.create<{
   anchoredUuidsRef: MutableRefObject<Set<string>>;
+  /** The document this editor edits — the key EXCEPTION 5 reads the archive
+   *  holdings under. Null → no document, nothing held. */
+  docIdRef: RefObject<string | null> | null;
 }>({
   name: "marginaliaAnchorGuard",
 
   addOptions() {
     return {
       anchoredUuidsRef: { current: new Set() } as MutableRefObject<Set<string>>,
+      docIdRef: null,
     };
   },
 
   addProseMirrorPlugins() {
-    const { anchoredUuidsRef } = this.options;
+    const { anchoredUuidsRef, docIdRef } = this.options;
     return [
       new Plugin({
         key: new PluginKey("marginaliaAnchorGuard"),
@@ -617,6 +652,13 @@ export const MarginaliaAnchorGuard = Extension.create<{
             // Verbatim the reported bug. The card follows the survivor instead;
             // `TextObjectOrphanGuard` publishes that (one uuid, one verdict).
             if (departures.absorbedInto.has(b.uuid)) continue;
+            // EXCEPTION 5 (task 1269) — HELD BY THE ARCHIVE. An un-retired
+            // archive snippet holds this uuid: the removal is a replay of the
+            // archive gesture (Redo), which carries no LIFECYCLE meta. The
+            // passage is in the archive and a Restore brings it back; the
+            // cards go dormant there (`virgil-anchors-archived`), so a
+            // placeholder here would only be a stray empty line. O(1) lookup.
+            if (snippetHoldingUuid(docIdRef?.current, b.uuid)) continue;
             vanished.push({ uuid: b.uuid, pos: b.pos });
           }
           if (vanished.length === 0) return null;

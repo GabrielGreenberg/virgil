@@ -59,10 +59,16 @@ import { getLinkedTextObjectIds } from "@/links/links";
 import { isAnchorableBlock } from "@/text-objects/anchor-resolution";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import type { DisplacedAnchorRecord } from "@/lib/types";
+import type { CarriedMarkRecord, DisplacedAnchorRecord } from "@/lib/types";
 import type { JSONContent } from "@tiptap/react";
-import { freshenReturningUuids } from "@/lib/tiptap/slice-capture";
-import { collectBlockUuids } from "@/lib/tiptap/node-identity";
+import {
+  NO_IDENTITY_REMAP,
+  freshenReturningIdentities,
+  isEmptyRemap,
+  withCarriedMarks,
+  type IdentityRemap,
+} from "@/lib/tiptap/slice-capture";
+import { collectBlockUuids, collectLinkedAnchorIds } from "@/lib/tiptap/node-identity";
 import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 import type { MarginItemHandlers, MarginItemKind } from "./delete-margin-item";
 import type { CardWithLinks } from "@/links/links";
@@ -391,23 +397,26 @@ export function returnedBlocks(
 }
 
 /**
- * The ONE restore door for an excerpt: answer a uuid COLLISION, run `land`,
- * and if it landed, hand every card the restore carries back to the blocks it
- * returned. Shared by the pane's Restore and its tests, so the "measure the
- * doc around the landing" ordering is stated once.
+ * The ONE restore door for an excerpt: re-stamp the carried marks, answer an
+ * identity COLLISION, run `land`, and if it landed, hand every card the
+ * restore carries back to the blocks it returned. Shared by the pane's
+ * Restore and its tests, so the ordering is stated once.
  *
- * IDENTITY (task 1253): a returning block whose uuid is already live gets a
- * fresh one HERE (`freshenReturningUuids`, task 1194) — before `land` sees the
- * content — and the one old → new map answers BOTH populations the restore
- * carries: the displaced (re-homed) cards through `returnDisplaced`, the
- * dormant ones through `onRemap`. Two readers of one map, from one call, so a
- * single Restore can no longer split its cards across two ids. With no live
- * document (`doc()` null) there is nothing to collide with and the content
- * lands as-is.
+ * IDENTITY (task 1253 → 1269): the carried `linkedAnchor` runs go back on
+ * FIRST (`withCarriedMarks`, placed by their words), so the ONE identity pass
+ * that follows (`freshenReturningIdentities`) sees every id the landing will
+ * bring: a returning block uuid OR anchorId that is already live gets a fresh
+ * one before `land` sees the content, and the one remap answers EVERY
+ * population the restore carries: the displaced (re-homed) cards through
+ * `returnDisplaced` (uuids), the dormant ones through `onRemap` (both). A
+ * single Restore can no longer split its cards across two ids, nor leave two
+ * runs sharing one anchorId. With no live document (`doc()` null) there is
+ * nothing to stamp against or collide with, and the content lands as-is.
  */
 export function landReturningDisplaced({
   doc,
   content,
+  carriedMarks,
   land,
   onRemap,
   displaced,
@@ -418,26 +427,31 @@ export function landReturningDisplaced({
   doc: () => PMNode | null;
   /** The excerpt as archived, carrying its original block uuids. */
   content: JSONContent;
-  /** Lands the (collision-freshened) content; `true` when it landed. */
+  /** The snippet's carried Mode-B runs (`ArchivedSnippet.carriedMarks`). */
+  carriedMarks?: readonly CarriedMarkRecord[];
+  /** Lands the (stamped, collision-freshened) content; `true` when it landed. */
   land: (content: JSONContent) => boolean;
-  /** The landing's old → fresh uuid map, when non-empty and it landed — the
+  /** The landing's old → fresh maps, when non-empty and it landed — the
    *  dormant cards' door (`reviveRemapped`). */
-  onRemap?: (remap: ReadonlyMap<string, string>) => void;
+  onRemap?: (remap: IdentityRemap) => void;
   displaced: ReadonlyArray<DisplacedAnchorRecord> | undefined;
   retarget: Pick<AnchorRetargetApi, "returnDisplaced">;
   snapshotOf: (uuid: string) => string | null;
 }): boolean {
   const before = doc();
   const { content: fresh, remap } = before
-    ? freshenReturningUuids(content, collectBlockUuids(before))
-    : { content, remap: new Map<string, string>() };
+    ? freshenReturningIdentities(withCarriedMarks(before.type.schema, content, carriedMarks), {
+        uuids: collectBlockUuids(before),
+        anchorIds: collectLinkedAnchorIds(before),
+      })
+    : { content, remap: NO_IDENTITY_REMAP };
   if (!land(fresh)) return false;
-  if (remap.size > 0) onRemap?.(remap);
+  if (!isEmptyRemap(remap)) onRemap?.(remap);
   const after = before && displaced?.length ? doc() : null;
   if (before && after && displaced) {
     retarget.returnDisplaced({
       displaced,
-      returned: returnedBlocks(before, after, snapshotOf, remap),
+      returned: returnedBlocks(before, after, snapshotOf, remap.uuids),
     });
   }
   return true;

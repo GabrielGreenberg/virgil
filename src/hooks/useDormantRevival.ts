@@ -11,8 +11,9 @@ import {
   type CarriedKeys,
   type DormantCardShape,
   type DormantKeys,
+  type ReturningRemap,
 } from "@/links/dormant";
-import { useAnchorsRevived } from "@/lib/tiptap/orphan-events";
+import { useAnchorsArchived, useAnchorsRevived } from "@/lib/tiptap/orphan-events";
 
 /**
  * The insert-driven half of DORMANT-link revival (task 1193; the load half is
@@ -36,10 +37,11 @@ import { useAnchorsRevived } from "@/lib/tiptap/orphan-events";
  *  `CardLifecycle.carry`. */
 export type CarryCard = (id: string, snippetId: string, keys: CarriedKeys) => void;
 
-/** Restore's collision door (task 1194): the snippet's returning blocks were
- *  given fresh uuids (`remap`, old → new) — move this kind's dormant links
- *  onto them and revive them. See `reviveRemapped`. */
-export type ReturnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => void;
+/** Restore's collision door (task 1194 → 1269): the snippet's returning
+ *  blocks / carried marks were given fresh ids (`remap`, old → new per
+ *  identity space) — move this kind's dormant links onto them and revive
+ *  them. See `reviveRemapped`. */
+export type ReturnRemapped = (snippetId: string, remap: ReturningRemap) => void;
 
 /** The passage `snippetId` was deleted for good (task 1195): drop this
  *  kind's links dormant there and clear `archivedWith`. Never deletes a card.
@@ -100,6 +102,15 @@ export function useDormantRevival<S, C extends DormantCardShape>(
       return changed ? map(prev, next) : prev;
     });
   }, []);
+  // The DEPARTURE half read off the document (task 1269): ids an un-retired
+  // snippet holds left the doc with no gesture to carry their cards — a Redo
+  // of an Archive. Same op as the gesture's `carry`, over every card; it lands
+  // before the orphan event for the same ids, whose strip then skips the now
+  // dormant links. Identity no-op for a card none of whose links it names.
+  useAnchorsArchived(docId, ({ snippetId, uuids, anchorIds }) => {
+    const keys: CarriedKeys = { pids: new Set(uuids), anchorIds: new Set(anchorIds) };
+    mapEach((c) => markDormant(c, snippetId, keys));
+  });
   const carry = useCallback<CarryCard>(
     (id, snippetId, keys) =>
       mapEach((c) => (c.id === id ? markDormant(c, snippetId, keys) : c)),

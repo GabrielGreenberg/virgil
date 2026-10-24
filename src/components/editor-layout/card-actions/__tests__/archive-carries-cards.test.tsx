@@ -48,18 +48,37 @@ import {
   reviveRemapped,
   type CarriedKeys,
   type DormantCardShape,
+  type ReturningRemap,
 } from "@/links/dormant";
 import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
-import { carryDisplacedAnchors, retargetDisplacedAnchors } from "@/cards/retarget-anchors";
+import {
+  carryDisplacedAnchors,
+  landReturningDisplaced,
+  retargetDisplacedAnchors,
+} from "@/cards/retarget-anchors";
 import { restoreExcerptAtAnchor } from "@/lib/tiptap/restore-excerpt";
-import { freshenReturningUuids, withCarriedMarks } from "@/lib/tiptap/slice-capture";
 import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_KINDS } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
-import type { CarriedMarkRecord } from "@/lib/types";
+import type { ArchivedSnippet, CarriedMarkRecord } from "@/lib/types";
+import {
+  __resetArchiveHoldingsForTests,
+  holdingsOf,
+  publishArchiveHoldings,
+  retractArchiveHoldings,
+  snippetHoldingAnchor,
+  snippetHoldingUuid,
+} from "@/lib/tiptap/archive-holdings";
+import {
+  ANCHORS_ARCHIVED_EVENT,
+  ANCHOR_ORPHANED_EVENT,
+  TEXTOBJECT_ORPHANED_EVENT,
+  type AnchorsArchivedDetail,
+} from "@/lib/tiptap/orphan-events";
+import { removeTextObjectLink } from "@/links/links";
 
-function mainCtx(): EditorExtensionsCtx {
+function mainCtx(over: Partial<EditorExtensionsCtx> = {}): EditorExtensionsCtx {
   return {
     surface: "main",
     editableRef: { current: true },
@@ -68,16 +87,17 @@ function mainCtx(): EditorExtensionsCtx {
     docIdRef: { current: null },
     anchoredUuidsRef: { current: new Set<string>() },
     host: null,
+    ...over,
   };
 }
 
-function mountDoc(content: JSONContent[]): Editor {
+function mountDoc(content: JSONContent[], over: Partial<EditorExtensionsCtx> = {}): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
   return new Editor({
     element,
     editable: true,
-    extensions: buildEditorExtensions(mainCtx()),
+    extensions: buildEditorExtensions(mainCtx(over)),
     content: { type: "doc", content },
   });
 }
@@ -194,7 +214,7 @@ function makeStore(cards: Card[]) {
     }
   };
   /** The hooks' `returnRemapped` door over this store. */
-  const returnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => {
+  const returnRemapped = (snippetId: string, remap: ReturningRemap) => {
     for (let i = 0; i < all.length; i++) all[i] = reviveRemapped(all[i], snippetId, remap);
   };
   return { byId, carry, handlers, revive, returnRemapped };
@@ -266,27 +286,30 @@ function makeHarness(editor: Editor, store: ReturnType<typeof makeStore>) {
   };
 }
 
-/** The pane's Restore, minus React — the same calls `handleArchiveRestore`'s
- *  `land` makes: freshen colliding uuids, re-stamp the carried marks, land at
- *  the return address, and hand any remap to the stores' `returnRemapped`. */
+/** The pane's Restore, minus React — the SAME door `handleArchiveRestore`
+ *  calls (`landReturningDisplaced`): re-stamp the carried marks by their
+ *  words, freshen colliding uuids AND anchorIds, land at the return address,
+ *  and hand any remap to the stores' `returnRemapped`. */
 function restore(
   editor: Editor,
   s: SnippetCall,
-  returnRemapped?: (snippetId: string, remap: ReadonlyMap<string, string>) => void,
+  returnRemapped?: (snippetId: string, remap: ReturningRemap) => void,
 ): boolean {
   const anchor = s.paragraphId as string;
-  const { content: fresh, remap } = freshenReturningUuids(
-    s.content,
-    collectBlockUuids(editor.state.doc),
-  );
-  const content = withCarriedMarks(editor.state.schema, fresh, s.carriedMarks);
-  const landed =
-    restoreExcerptAtAnchor(editor, content, {
-      uuid: anchor,
-      side: s.returnBefore === anchor ? "before" : "after",
-    }) === true;
-  if (landed && remap.size > 0) returnRemapped?.(s.id, remap);
-  return landed;
+  return landReturningDisplaced({
+    doc: () => editor.state.doc,
+    content: s.content,
+    carriedMarks: s.carriedMarks,
+    land: (content) =>
+      restoreExcerptAtAnchor(editor, content, {
+        uuid: anchor,
+        side: s.returnBefore === anchor ? "before" : "after",
+      }) === true,
+    onRemap: (remap) => returnRemapped?.(s.id, remap),
+    displaced: undefined,
+    retarget: { returnDisplaced: () => 0 },
+    snapshotOf: () => null,
+  });
 }
 
 /** The words a `linkedAnchor` covers in the live doc. */
@@ -432,6 +455,148 @@ describe("task 1194 — the two other ways the text comes back", () => {
       expect(store.byId(id).links!.some(isDormantLink), id).toBe(false);
     }
     expect(h.snippets).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 1269 — the round trip re-derives identity at landing instead of
+// trusting the capture-time record.
+// ---------------------------------------------------------------------------
+
+/** `useArchive.updateSnippet`'s effect on the record: the BODY changes, the
+ *  `carriedMarks` table does not. `edit` rewrites the text of every text node. */
+function editBody(s: SnippetCall, edit: (text: string, i: number) => string): SnippetCall {
+  let i = 0;
+  const visit = (n: JSONContent): JSONContent => ({
+    ...n,
+    ...(typeof n.text === "string" ? { text: edit(n.text, i++) } : {}),
+    ...(n.content ? { content: n.content.map(visit) } : {}),
+  });
+  return { ...s, content: visit(s.content) };
+}
+
+/** Every `linkedAnchor` id in the live doc → the words it covers. */
+function anchorRuns(editor: Editor): Map<string, string> {
+  const out = new Map<string, string>();
+  editor.state.doc.descendants((n) => {
+    if (!n.isText) return true;
+    for (const m of n.marks) {
+      if (m.type.name !== "linkedAnchor") continue;
+      const id = m.attrs.anchorId as string;
+      out.set(id, (out.get(id) ?? "") + n.text);
+    }
+    return true;
+  });
+  return out;
+}
+
+describe("task 1269 — an EDITED archive body never moves a mark onto other words", () => {
+  it("text prepended to the body: the marks ride along onto their own words", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const edited = editBody(h.snippets[0], (t, i) => (i === 0 ? `Note: ${t}` : t));
+
+    expect(restore(editor, edited)).toBe(true);
+
+    expect(editor.state.doc.textContent).toContain("Note: Alpha");
+    expect(markedText(editor, "A-note")).toBe("beta gamma");
+    expect(markedText(editor, "A-hl")).toBe("delta");
+    store.revive(editor);
+    for (const id of ["m1", "h1"]) expect(store.byId(id).archived, id).toBeUndefined();
+  });
+
+  it("the run's OWN words edited: that run is skipped (its card stays dormant), the other lands", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const edited = editBody(h.snippets[0], (t) => t.replace("beta gamma", "beta GAMMA"));
+
+    expect(restore(editor, edited)).toBe(true);
+
+    expect(markedText(editor, "A-note")).toBe("");
+    expect(markedText(editor, "A-hl")).toBe("delta");
+    store.revive(editor);
+    expect(store.byId("m1").archived).toBe(true);
+    expect(store.byId("m1").links!.every(isDormantLink)).toBe(true);
+    expect(store.byId("h1").archived).toBeUndefined();
+  });
+
+  it("the run's words now appear TWICE: ambiguous, so skipped — never guessed", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const edited = editBody(h.snippets[0], (t, i) => (i === 0 ? `delta ${t}` : t));
+
+    expect(restore(editor, edited)).toBe(true);
+
+    expect(markedText(editor, "A-hl")).toBe("");
+    expect(markedText(editor, "A-note")).toBe("beta gamma");
+  });
+
+  it("a pre-1269 record (no `text`) is trusted at its offsets, as before", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const legacy: SnippetCall = {
+      ...h.snippets[0],
+      carriedMarks: h.snippets[0].carriedMarks!.map(({ text: _t, ...rest }) => rest),
+    };
+    expect(restore(editor, legacy)).toBe(true);
+    expect(markedText(editor, "A-note")).toBe("beta gamma");
+  });
+});
+
+describe("task 1269 — one identity answer for uuids AND anchorIds", () => {
+  it("Undo then Restore: no two runs share an anchorId; the cards keep the original copy", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    editor.commands.undo();
+    store.revive(editor);
+
+    expect(restore(editor, h.snippets[0], store.returnRemapped)).toBe(true);
+
+    // Each id names ONE run: the original keeps "A-note" / "A-hl" …
+    const runs = anchorRuns(editor);
+    expect(runs.get("A-note")).toBe("beta gamma");
+    expect(runs.get("A-hl")).toBe("delta");
+    // … and the second copy's runs carry FRESH ids over the same words.
+    const fresh = [...runs].filter(([id]) => id !== "A-note" && id !== "A-hl");
+    expect(fresh.map(([, t]) => t).sort()).toEqual(["beta gamma", "delta"]);
+    // The live (revived) cards are not moved by the restore.
+    expect((store.byId("m1").links![0].anchor as { textRange: { anchorId: string } }).textRange.anchorId).toBe("A-note");
+    expect(store.byId("m1").archived).toBeUndefined();
+  });
+
+  it("an anchorId COLLISION with a dormant card: the card follows the fresh id and revives", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    // Something now carries the archived mark id.
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: "paragraph",
+      attrs: { uuid: "p-squat" },
+      content: [{ type: "text", text: "Squatter.", marks: mark("A-note", "note:other") }],
+    });
+
+    expect(restore(editor, h.snippets[0], store.returnRemapped)).toBe(true);
+    store.revive(editor);
+
+    expect(markedText(editor, "A-note")).toBe("Squatter.");
+    const m1 = store.byId("m1");
+    expect(m1.archived).toBeUndefined();
+    expect(m1.links!.some(isDormantLink)).toBe(false);
+    const id = (m1.links![0].anchor as { textRange: { anchorId: string } }).textRange.anchorId;
+    expect(id).not.toBe("A-note");
+    // Onto the RETURNED words — never the squatter.
+    expect(markedText(editor, id)).toBe("beta gamma");
   });
 });
 
@@ -624,4 +789,157 @@ describe("archive-carry CENSUS", () => {
       expect(store.byId("k1").links!.some(isDormantLink)).toBe(false);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// TASK 1269 member 3 — a HISTORY REPLAY of an archive (Redo) carries no
+// lifecycle meta; the guards read the archive's holdings off the DOCUMENT.
+// ---------------------------------------------------------------------------
+
+describe("task 1269 — Redo of an Archive leaves the cards dormant, not stripped", () => {
+  const DOC = "doc-replay";
+  const listeners: Array<[string, EventListener]> = [];
+  afterEach(() => {
+    for (const [t, l] of listeners) window.removeEventListener(t, l);
+    listeners.length = 0;
+    __resetArchiveHoldingsForTests();
+  });
+
+  /** The card hooks' three listeners over the store, in the app's order:
+   *  `useDormantRevival`'s archived door, then the orphan strips (which skip
+   *  dormant links). */
+  function wireHooks(store: ReturnType<typeof makeStore>, cards: string[]) {
+    const on = (type: string, fn: (d: never) => void) => {
+      const l = ((e: CustomEvent) => {
+        if (e.detail?.docId === DOC) fn(e.detail as never);
+      }) as EventListener;
+      window.addEventListener(type, l);
+      listeners.push([type, l]);
+    };
+    const each = (step: (c: Card) => Card) => {
+      for (const id of cards) {
+        const c = store.byId(id);
+        Object.assign(c, step(c));
+      }
+    };
+    on(ANCHORS_ARCHIVED_EVENT, (d: AnchorsArchivedDetail) =>
+      each((c) =>
+        markDormant(c, d.snippetId, { pids: new Set(d.uuids), anchorIds: new Set(d.anchorIds) }),
+      ),
+    );
+    on(ANCHOR_ORPHANED_EVENT, (d: { anchorId: string }) =>
+      each((c) => ({
+        ...c,
+        links: (c.links ?? []).filter(
+          (l) =>
+            isDormantLink(l) ||
+            (l.anchor as { textRange?: { anchorId: string } }).textRange?.anchorId !== d.anchorId,
+        ),
+      })),
+    );
+    on(TEXTOBJECT_ORPHANED_EVENT, (d: { uuid: string }) => each((c) => removeTextObjectLink(c, d.uuid)));
+  }
+
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("archive → Undo → Redo: no placeholder, cards dormant in the snippet; Restore brings them back", async () => {
+    const editor = mountDoc(doc(), {
+      docIdRef: { current: DOC },
+      anchoredUuidsRef: { current: new Set(["p-target"]) },
+    });
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    wireHooks(store, ["m1", "h1", "n1"]);
+    await h.dispatch("archive", P_REF);
+    // `useArchive` publishes on the archive change.
+    const owner = {};
+    publishArchiveHoldings(DOC, owner, holdingsOf(h.snippets as unknown as ArchivedSnippet[]));
+    await flush();
+
+    editor.commands.undo();
+    await flush();
+    store.revive(editor);
+    expect(store.byId("n1").links!.some(isDormantLink)).toBe(false);
+
+    editor.commands.redo();
+    await flush();
+    // No empty resurrected `p-target` between the neighbours.
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-after"]);
+    for (const id of ["m1", "h1", "n1"]) {
+      const c = store.byId(id);
+      expect(c.links, id).toHaveLength(1); // kept, not stripped
+      expect(dormantSnippetOf(c), id).toBe(h.snippets[0].id);
+      expect(c.archived, id).toBe(true);
+    }
+
+    expect(restore(editor, h.snippets[0])).toBe(true);
+    store.revive(editor);
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
+    expect(markedText(editor, "A-note")).toBe("beta gamma");
+    expect(markedText(editor, "A-hl")).toBe("delta");
+    for (const id of ["m1", "h1", "n1"]) {
+      expect(store.byId(id).links!.some(isDormantLink), id).toBe(false);
+      expect(store.byId(id).archived, id).toBeUndefined();
+    }
+    retractArchiveHoldings(DOC, owner);
+  });
+
+  it("CONTROL: nothing held → an ordinary removal of an anchored block still resurrects", async () => {
+    const editor = mountDoc(doc(), {
+      docIdRef: { current: DOC },
+      anchoredUuidsRef: { current: new Set(["p-target"]) },
+    });
+    const { from } = posOf(editor, "Alpha");
+    const { to } = posOf(editor, "delta.");
+    editor.chain().setTextSelection({ from: from - 1, to: to + 1 }).deleteSelection().run();
+    await flush();
+    expect(uuidsInOrder(editor)).toContain("p-target");
+  });
+});
+
+describe("task 1269 — archive holdings", () => {
+  afterEach(() => __resetArchiveHoldingsForTests());
+  const snip = (over: Partial<ArchivedSnippet>): ArchivedSnippet =>
+    ({
+      id: "s",
+      title: "",
+      createdAt: "",
+      content: {
+        type: "doc",
+        content: [{ type: "paragraph", attrs: { uuid: "u1" }, content: [{ type: "text", text: "x" }] }],
+      },
+      carriedMarks: [{ from: 1, to: 2, anchorId: "a1", attrs: {} } as unknown as CarriedMarkRecord],
+      ...over,
+    }) as ArchivedSnippet;
+
+  it("an un-retired excerpt holds its whole-block uuids and carried anchorIds", () => {
+    publishArchiveHoldings("d", {}, holdingsOf([snip({})]));
+    expect(snippetHoldingUuid("d", "u1")).toBe("s");
+    expect(snippetHoldingAnchor("d", "a1")).toBe("s");
+    expect(snippetHoldingUuid("other-doc", "u1")).toBeNull();
+  });
+
+  it("a retired snippet and a whole-CARD snippet hold nothing", () => {
+    publishArchiveHoldings(
+      "d",
+      {},
+      holdingsOf([
+        snip({ archived: true }),
+        snip({ id: "c", originalPanel: "notes", originalCard: { id: "n" } } as Partial<ArchivedSnippet>),
+      ]),
+    );
+    expect(snippetHoldingUuid("d", "u1")).toBeNull();
+    expect(snippetHoldingAnchor("d", "a1")).toBeNull();
+  });
+
+  it("a departing owner retracts only its own entry", () => {
+    const a = {};
+    const b = {};
+    publishArchiveHoldings("d", a, holdingsOf([snip({ id: "sa" })]));
+    publishArchiveHoldings("d", b, holdingsOf([snip({ id: "sb" })]));
+    retractArchiveHoldings("d", a);
+    expect(snippetHoldingUuid("d", "u1")).toBe("sb");
+    retractArchiveHoldings("d", b);
+    expect(snippetHoldingUuid("d", "u1")).toBeNull();
+  });
 });

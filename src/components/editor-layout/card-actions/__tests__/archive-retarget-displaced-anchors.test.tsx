@@ -64,6 +64,7 @@ import {
   reviveLiveLinks,
   reviveRemapped,
   type CarriedKeys,
+  type ReturningRemap,
 } from "@/links/dormant";
 import { collectBlockUuids } from "@/lib/tiptap/node-identity";
 import {
@@ -207,7 +208,7 @@ function makeCardStore() {
   };
   /** The dormant cards' collision door (`useDormantRevival.returnRemapped`) —
    *  the REAL `reviveRemapped`, fed the map the restore door hands `onRemap`. */
-  const returnRemapped = (snippetId: string, remap: ReadonlyMap<string, string>) => {
+  const returnRemapped = (snippetId: string, remap: ReturningRemap) => {
     for (const arr of byKind.values()) {
       for (let i = 0; i < arr.length; i++) arr[i] = reviveRemapped(arr[i], snippetId, remap);
     }
@@ -534,7 +535,7 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     editor: Editor,
     handlers: Record<MarginItemKind, MarginItemHandlers>,
     call: { paragraphId: unknown; returnBefore?: unknown; content?: unknown; displaced?: DisplacedAnchorRecord[] },
-    onRemap?: (remap: ReadonlyMap<string, string>) => void,
+    onRemap?: (remap: ReturningRemap) => void,
   ): boolean {
     const anchor = call.paragraphId as string;
     return landReturningDisplaced({
@@ -659,7 +660,7 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
     expect(editor.state.doc.textContent).toContain("Squatter.");
 
     let remap: ReadonlyMap<string, string> = new Map();
-    expect(restore(editor, store.handlers, h.archiveCalls[0], (m) => (remap = m))).toBe(true);
+    expect(restore(editor, store.handlers, h.archiveCalls[0], (m) => (remap = m.uuids))).toBe(true);
 
     const fresh = remap.get("p-target");
     expect(fresh).toBeTruthy();
@@ -693,7 +694,7 @@ describe("task 1079 — Restore returns the cards the archive displaced", () => 
 
     let remap: ReadonlyMap<string, string> = new Map();
     restore(editor, store.handlers, h.archiveCalls[0], (m) => {
-      remap = m;
+      remap = m.uuids;
       store.returnRemapped(snippetId!, m);
     });
     const fresh = remap.get("p-target")!;

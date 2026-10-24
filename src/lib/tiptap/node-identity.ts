@@ -74,6 +74,22 @@ export function collectBlockUuids(doc: PMNode): Set<string> {
   return ids;
 }
 
+/** Every `linkedAnchor` id live in `doc` — the MARK twin of
+ *  {@link collectBlockUuids}, read by Restore's identity pass (task 1269).
+ *  A gesture-time walk, never per keystroke. */
+export function collectLinkedAnchorIds(doc: PMNode): Set<string> {
+  const ids = new Set<string>();
+  doc.descendants((node) => {
+    for (const m of node.marks) {
+      if (m.type.name !== "linkedAnchor") continue;
+      const a = m.attrs.anchorId;
+      if (typeof a === "string" && a) ids.add(a);
+    }
+    return true;
+  });
+  return ids;
+}
+
 /**
  * Does `json`'s node type DECLARE a block `uuid`? Asked of the DESTINATION
  * schema — `isAnchorableNode`'s test (`spec.attrs.uuid` declared), read by
