@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import { EditorHandle } from "./Editor";
 import { readFlag } from "@/lib/feature-flags";
@@ -28,7 +28,7 @@ import {
   LAYOUT_SITE_SECTION_PATH,
 } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
-import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
+import { type DividerLevel } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
@@ -62,13 +62,9 @@ import BugReportWindow from "./BugReportWindow";
 import FontsDialog from "./FontsDialog";
 import { SpellSuggestionMenu } from "./SpellSuggestionMenu";
 import { StackChromeHost } from "./stack/StackChromeHost";
-import type { AiRequest } from "@/lib/types";
 import { CITATIONS_INERT } from "@/hooks/useCitations";
 import ManageStylesModal from "./ManageStylesModal";
-import {
-  isAnchorableNode,
-  MIME_ARCHIVE,
-} from "@/lib/marginalia";
+import { MIME_ARCHIVE } from "@/lib/marginalia";
 import { useSyncExternalStore } from "react";
 import {
   getPanelColor,
@@ -100,28 +96,17 @@ function usePanelColorSubscription(): number {
   }
   return useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
 }
-import {
-  getLinkedTextObjectIds,
-} from "@/links/links";
 import type { ModeBBag } from "@/cards/mode-b-collections";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
 import {
-  type OmniCategory,
   deriveCategorySides,
   omniCategoriesForSide,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
+import { useViewPrefs, PanelId, ALL_HIGHLIGHT_TYPES, HighlightType, isPanelDocked } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { Button } from "./Button";
-import {
-  FLOATING_PANEL_WIDTH,
-  FLOATING_PANEL_HEIGHT,
-  FLOATING_PANEL_VIEWPORT_MARGIN,
-  FLOATING_PANEL_STACK_OFFSET,
-  FLOATING_PANEL_Z_BASE,
-} from "./editor-layout/constants";
 import { cardFloatZ } from "@/floats/float-policy";
 import {
   alignEntryToYIfNeeded,
@@ -268,46 +253,6 @@ export default function EditorLayout() {
   // confirming a footnote move on drop). Mount `confirmDialog` once at
   // the layout root so any descendant caller can await `confirm(...)`.
   const { confirm: runConfirm, dialog: confirmDialog } = useConfirmDialog();
-  const confirmFootnoteMove = useCallback(
-    () =>
-      runConfirm({
-        title: "Move footnote?",
-        message:
-          "This will move the footnote from its current position in the document to where you dropped it.",
-        confirmLabel: "Move",
-        cancelLabel: "Cancel",
-        tone: "danger",
-      }),
-    [runConfirm],
-  );
-  const confirmLabelRename = useCallback(
-    (oldLabel: string, newLabel: string, refCount: number) =>
-      runConfirm({
-        title: "Update references?",
-        message: (
-          <>
-            <p>
-              This label is referenced by {refCount}{" "}
-              {refCount === 1 ? "\\ref" : "\\refs"} elsewhere in the document.
-            </p>
-            <p className="mt-2">
-              Rewrite {refCount === 1 ? "it" : "them"} from{" "}
-              <code className="px-1 rounded bg-surface-muted text-ink-body">
-                {oldLabel}
-              </code>{" "}
-              to{" "}
-              <code className="px-1 rounded bg-surface-muted text-ink-body">
-                {newLabel}
-              </code>
-              ?
-            </p>
-          </>
-        ),
-        confirmLabel: refCount === 1 ? "Update ref" : `Update ${refCount} refs`,
-        cancelLabel: "Leave refs",
-      }),
-    [runConfirm],
-  );
   const {
     docs,
     openTabs,
@@ -619,41 +564,19 @@ export default function EditorLayout() {
 
   // Main-app view-state engine (global persistence — the default). Captured
   // whole so the shared `buildEditorPaneViewPrefs` builder can read every
-  // layout setter off it; the destructure below keeps the ~100 existing
-  // call sites in EditorLayout working unchanged.
+  // layout setter off it; the destructure below names only what the shell
+  // itself still calls (the no-unused-vars shell guard keeps it that way).
   const viewPrefsResult = useViewPrefs();
   const {
     prefs,
-    togglePanel,
-    movePanel,
-    collapseLeft,
-    collapseRight,
-    expandLeft,
-    expandRight,
     closeAllPanels,
     setActiveLeft,
     setActiveRight,
-    setPanelHeight,
-    clearPanelHeight,
-    tradePanelHeights,
-    notePanelUse,
     setCodePaneRatio,
-    togglePopout,
     closePopout,
-    openPanelFloat,
-    openPanelDocked,
-    undockPanel,
-    redockPanel,
-    setFloatPosition,
-    toggleCardPopout,
     closeCardPopout,
-    setCardFloatPosition,
     migratePoppedOutCards,
     setPrintOptions,
-    setEditorLeftMargin,
-    setEditorRightMargin,
-    setEditorTopMargin,
-    setEditorBottomMargin,
     setTopbarRightCollapsed,
     // The three registry-driven view-pref writers (task 274). Every view pref
     // — par titles, % comments, marginalia + its hidden types, heading labels,
@@ -662,7 +585,6 @@ export default function EditorLayout() {
     setViewPref,
     toggleViewPref,
     toggleViewPrefMember,
-    toggleOmniCategory,
     resetOmniSide,
     setCardArchiveView,
   } = viewPrefsResult;
@@ -695,12 +617,6 @@ export default function EditorLayout() {
   // outside drag, panels shrink 100× faster than the editor so window
   // downsize pulls from panels first, then the text area.
   const [isResizingPanels, setIsResizingPanels] = useState(false);
-  // Dynamic flex-basis for the editor column. Updated only when the
-  // panel layout changes (drag, panel toggle, zen). NOT updated on
-  // window resize — that's what makes window-shrink pull from panels
-  // first: the editor holds its basis while panels' flex-shrink (100)
-  // eats the shortage before the editor's (1) contributes.
-  const [editorBasis, setEditorBasis] = useState(880);
 
   // MRU focus stack for in-app floating windows. Drives Cmd-W (close
   // frontmost). Push on first focus / on open; reconcile when underlying
@@ -865,12 +781,14 @@ export default function EditorLayout() {
   const pruneDocMaps = useCallback((slotDocId: string) => {
     setEditorInstanceByDocId((m) => {
       if (!(slotDocId in m)) return m;
-      const { [slotDocId]: _drop, ...rest } = m;
+      const rest = { ...m };
+      delete rest[slotDocId];
       return rest;
     });
     setPaneStateByDocId((m) => {
       if (!(slotDocId in m)) return m;
-      const { [slotDocId]: _drop, ...rest } = m;
+      const rest = { ...m };
+      delete rest[slotDocId];
       return rest;
     });
     onEditorReadyCacheRef.current.delete(slotDocId);
@@ -1111,7 +1029,6 @@ export default function EditorLayout() {
   // `latestDoc` survives for genuine full-snapshot consumers (outline,
   // word count, LaTeX serialization). See useStructuralRevisions.
   const rev = useStructuralRevisions(editorInstance);
-  const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   // Anchored selection slots are declared above near useCutter — derived
   // from the cardStore via useAnchoredSelectionSlots.
   //
@@ -1254,7 +1171,6 @@ export default function EditorLayout() {
     // bridge (EX-F4-02 figure twin).
     editor: Editor;
   } | null>(null);
-  const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   // NOTE (CHIP 4a-ii): EditorLayout's own `pendingCitationCreate` /
   // `pendingCitationMode` state was consumed ONLY by the now-removed
   // `useCommandInputBridges` `virgil-citation-create` handler (the citation
@@ -1501,7 +1417,8 @@ export default function EditorLayout() {
   const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
   const currentParaRef = useRef<string | null>(null);
   const navigatingRef = useRef(false);
-  const [paraNavVersion, setParaNavVersion] = useState(0); // bump to re-render toolbar
+  // Bumped only to re-render the toolbar — the value itself is never read.
+  const [, setParaNavVersion] = useState(0);
 
   // Track active paragraph and build navigation history
   // Model: stack always includes current position, idx points to where we are now.
@@ -1606,7 +1523,7 @@ export default function EditorLayout() {
   }, [scrollToParagraph]);
 
   // Para nav disabled state — derived from `paraHistoryRef.current` so it
-  // updates when paraNavVersion bumps. Bumped from `paraNavBack` and
+  // updates when setParaNavVersion bumps. Bumped from `paraNavBack` and
   // `paraNavForward` plus the history-recording effect.
   const paraNavBackDisabled = paraHistoryRef.current.idx <= 0;
   const paraNavForwardDisabled =
@@ -1910,16 +1827,6 @@ export default function EditorLayout() {
   // permanently null and the effect took its clear-and-return branch on every
   // run. Retired with the split in task 115.
 
-  // Derive footnotes list from editor state (sorted by document position).
-  // Recomputes on `editorInstance` change (initial mount + doc-switch remount)
-  // and when footnotes change (`rev.footnotes` — add/remove/reorder, and
-  // footnote-body edits which surface as a footnote-order change). Plain
-  // typing bumps neither, so this no longer re-walks per keystroke.
-  const footnotes = useMemo(() => {
-    return editorRef.current?.getFootnotes() ?? [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rev.footnotes, editorInstance]);
-
   // (Phase C) the dead `sortedArchiveSnippets` memo was removed — it was never
   // read or passed; the Archive panel sorts inside EditorPane now.
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -2088,9 +1995,6 @@ export default function EditorLayout() {
     dividerLevels.forEach((lvl) => { if (availableDividerLevels.has(lvl)) s.add(lvl); });
     return s;
   }, [dividerLevels, availableDividerLevels]);
-  const dividerClassName = useMemo(() => (
-    [...activeDividerLevels].map((lvl) => `show-dividers-${lvl}`).join(" ")
-  ), [activeDividerLevels]);
 
   const {
     handleFocusActivate,
@@ -2764,60 +2668,6 @@ export default function EditorLayout() {
   // (Search-highlight clear-on-close moved to EditorPane — it OWNS the search
   // highlight now; clearing it from here operated on a dead duplicate.)
 
-  // --- Marginalia: build the marker list and side map ---
-  // (Hooks must run on every render — placed before any early returns.)
-  // OmniView aggregates several panels on one side. Omni is now ALWAYS the
-  // backdrop behind each side's band stack, so its aggregated children
-  // (notes/archive/revisions/cutter/todo) are visible on a side whenever
-  // that side isn't collapsed. As before, the omni backdrop counts as a
-  // RIGHT-side host only (left omni is deliberately not a marginalia
-  // fallback — `void omniLeft`); a kind docked as its own band overrides.
-  const marginaliaPanelSides = useMemo(() => {
-    const omniLeft = !prefs.collapsedLeft;
-    const omniRight = !prefs.collapsedRight;
-    void omniLeft;
-    // A kind docked as its own band wins its side; otherwise it falls to the
-    // right omni backdrop. Notes, archive, revisions, cutter, todo are
-    // right-side children of OmniView.
-    const notesSide: "left" | "right" | null =
-      dockedSideOf(prefs, "notes") === "left"
-        ? "left"
-        : dockedSideOf(prefs, "notes") === "right" || omniRight
-          ? "right"
-          : null;
-    const archiveSide: "left" | "right" | null =
-      dockedSideOf(prefs, "archive") === "left"
-        ? "left"
-        : dockedSideOf(prefs, "archive") === "right" || omniRight
-          ? "right"
-          : null;
-    const revisionsSide: "left" | "right" | null =
-      dockedSideOf(prefs, "revisions") === "left"
-        ? "left"
-        : dockedSideOf(prefs, "revisions") === "right" || omniRight
-          ? "right"
-          : null;
-    const cutterSide: "left" | "right" | null =
-      dockedSideOf(prefs, "cutter") === "left"
-        ? "left"
-        : dockedSideOf(prefs, "cutter") === "right" || omniRight
-          ? "right"
-          : null;
-    const todoSide: "left" | "right" | null =
-      dockedSideOf(prefs, "todo") === "left"
-        ? "left"
-        : dockedSideOf(prefs, "todo") === "right" || omniRight
-          ? "right"
-          : null;
-    return {
-      notes: notesSide,
-      archive: archiveSide,
-      revisions: revisionsSide,
-      cutter: cutterSide,
-      todo: todoSide,
-    };
-  }, [prefs]);
-
   // P6: the PDF-stale tracker that used to ride `editor.on('update')` here was
   // a DUPLICATE of EditorPane's (EditorPane.tsx:~939), which is the single
   // owner of pdfStale. It has been removed — a code-view edit round-trips
@@ -3135,34 +2985,13 @@ export default function EditorLayout() {
     ? null
     : !visibleHighlightKinds.has("comment")
       ? null
-      : commentHighlight
-        ? commentHighlight
-        : isPanelDocked(prefs, "revisions") &&
-            currentSuggestion &&
-            currentSuggestion.status === "pending"
-          ? currentSuggestion.original_text
-          : null;
+      : isPanelDocked(prefs, "revisions") &&
+          currentSuggestion &&
+          currentSuggestion.status === "pending"
+        ? currentSuggestion.original_text
+        : null;
   // Error badge count — read from the per-doc owner (EditorPane) via paneState.
   const errorCount = paneState?.latexErrors.length ?? 0;
-  // OmniView aggregates several child panels on one side. Omni is now the
-  // perpetual backdrop behind each side's band stack, so the side-of-panel
-  // lookups must include its children. A kind docked as its own band wins
-  // its side; otherwise the right omni backdrop hosts it (left omni is not a
-  // marginalia fallback, matching the prior behavior).
-  //   Left omni children:  footnotes, citations
-  //   Right omni children: notes, revisions, cutter, archive
-  const omniRightActive = !prefs.collapsedRight;
-  const notesPanelSide: "left" | "right" | null =
-    dockedSideOf(prefs, "notes") === "left" ? "left" : dockedSideOf(prefs, "notes") === "right" || omniRightActive ? "right" : null;
-  const todoPanelSide: "left" | "right" | null =
-    dockedSideOf(prefs, "todo") === "left" ? "left" : dockedSideOf(prefs, "todo") === "right" || omniRightActive ? "right" : null;
-  const cutterPanelSide: "left" | "right" | null =
-    dockedSideOf(prefs, "cutter") === "left" ? "left" : dockedSideOf(prefs, "cutter") === "right" || omniRightActive ? "right" : null;
-  const revisionsPanelSide: "left" | "right" | null =
-    dockedSideOf(prefs, "revisions") === "left" ? "left" : dockedSideOf(prefs, "revisions") === "right" || omniRightActive ? "right" : null;
-  const bibliographyPanelSide: "left" | "right" | null =
-    dockedSideOf(prefs, "bibliography");
-
   // Render helpers (renderPanelWithChrome / renderPanelInner / renderPanelColumn)
   // moved into EditorPane along with the panel mount itself. The icon
   // strip (and its `leftStripItems` / `rightStripItems` derivation) also

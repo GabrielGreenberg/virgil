@@ -202,11 +202,6 @@ interface FloatingPanelProps {
    *  Looks like "left-0" / "right-2" — the `data-dock-slot` key produced
    *  by `bandSlotKey(side, index)`. */
   slotKey?: DockSlotKey | null;
-  /** When mode==='docked', whether the docked container should fill the
-   *  slot frame (`height: 100%`) rather than sizing to its content. True
-   *  for slots given an explicit band height by the parent; false (the
-   *  default) leaves the pod content-sized with a min/max clamp. */
-  fillSlot?: boolean;
   /** Visual treatment when floating. "panel" (default) is the popup
    *  look — beige pod bg, strong drop shadow. "card" reads as an
    *  ambient card on the canvas — white surface, gentle ambient
@@ -342,7 +337,6 @@ function FloatingPanelInner({
   cardKey,
   mode = "floating",
   slotKey = null,
-  fillSlot = false,
   surface = "panel",
   accentTint,
   children,
@@ -1296,7 +1290,7 @@ function FloatingPanelInner({
   // content overflows. This replaces the old `max-height: 100%` cap,
   // which WebKit/Safari fails to resolve against a flex-shrunk item —
   // the panel grew to full content height and ran off the bottom of the
-  // page instead of capping + scrolling (`fillSlot` is now vestigial).
+  // page instead of capping + scrolling.
   // Floating: positioned via fixed left/top and explicit w/h.
   const containerStyle: React.CSSProperties =
     mode === "docked"

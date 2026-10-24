@@ -72,11 +72,6 @@ const LEDGER: Record<string, Row> = {
     count: 1,
     why: "the bin stack portals into the omni frame's own bin slot",
   },
-  "components/RichTextField.tsx": {
-    scope: "in-pane",
-    count: 1,
-    why: "the format toolbar portals into its own card's toolbar slot",
-  },
   "components/FloatingPanel.tsx": {
     scope: "visible",
     count: 1,

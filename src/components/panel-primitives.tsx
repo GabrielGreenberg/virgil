@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, type RefObject, type HTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
+import { type ReactNode, type RefObject, type HTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize/layout-gesture-park";
@@ -61,7 +61,7 @@ import { AnchoredMenu } from "./menu/AnchoredMenu";
 import { MenuActionRow } from "./menu/MenuActionRow";
 import { MenuRadioGroup } from "./menu/MenuRadioGroup";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
-import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
+import { richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useTrailingClickGuard } from "@/hooks/useTrailingClickGuard";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
@@ -1698,7 +1698,6 @@ export function EditableCard({
     ? bodySchemaForCardKind(kind)
     : "card";
   const [isFocused, setIsFocused] = useState(false);
-  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   // Presence tier for the COLLAPSED borrowed body (perf Wave 3; flag off ⇒ 3
   // ⇒ legacy live branch). Policy "static": collapsed footnote/archive prose
@@ -2082,7 +2081,6 @@ export function EditableCard({
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}
           onFocusChange={handleFocusChange}
-          toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
           hideToolbar={hideToolbar || !cardEditable}
           panelKey={panelKey}
           editable={cardEditable}
