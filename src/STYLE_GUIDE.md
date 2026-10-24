@@ -462,7 +462,12 @@ fallbacks, and every rung is load-bearing. Import `FONT_SANS` / `FONT_SERIF` /
 the identical chain in a stylesheet (CSS cannot import). Never a bare
 `var(--font-mono)` — that skips the user's override — and never a fourth
 hand-spelled copy: there were three of the sans chain before the SSOT, two of
-them carrying comments about not letting the third drift.
+them carrying comments about not letting the third drift. A TITLE line (card
+titles, par titles) reads `FONT_PARTITLE` + `PARTITLE_WEIGHT` — par-title
+family pref → Global Sans → `next/font` sans — so card titles and in-document
+par titles answer the same prefs (task 1273; `phantom-css-var.test.ts` fails a
+bare `var(--font-sans)` in a component and pins each `.par-title-*` CSS copy
+to `FONT_PARTITLE` verbatim).
 
 For a token with no utility, consume it as `var(--token)` — usually the
 Tailwind arbitrary value `bg-[var(--pod-editor)]` / `text-[var(--muted)]`,

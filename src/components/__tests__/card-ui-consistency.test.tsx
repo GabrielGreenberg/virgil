@@ -160,8 +160,12 @@ describe("T2: in-card tier primitives", () => {
     const theme = CARD_THEMES.citation;
     const style = cardTitleStyle(theme);
     expect(style.fontSize).toBe("var(--par-title-size, 0.78rem)");
-    expect(style.fontWeight).toBe(500);
     expect(style.color).toBe(theme.titleColor);
+    // Family + weight answer the same GLOBAL font prefs the in-document par
+    // titles read (task 1273): par-title family → Global Sans → next/font sans.
+    expect(style.fontFamily).toContain("var(--font-partitle-family,");
+    expect(style.fontFamily).toContain("var(--font-sans-override, var(--font-sans))");
+    expect(style.fontWeight).toBe("var(--font-partitle-weight, 500)");
     // Unthemed fallback keeps the par-title color var.
     expect(cardTitleStyle().color).toBe("var(--par-title-color, #c45a5a)");
   });

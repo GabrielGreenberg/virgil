@@ -32,6 +32,7 @@ import {
 } from "@/lib/pane-resize/pointer-invariants";
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
+import { FONT_PARTITLE, PARTITLE_WEIGHT } from "@/lib/font-stacks";
 import { useFieldDraft } from "./field-draft";
 import { FOCUS_OUTLINE_CLASS, withFocusIndicator } from "./focus-indicator";
 import { chromeOnly } from "@/lib/view-only-chrome";
@@ -1310,13 +1311,16 @@ const TITLE_CLASS = "min-w-0 max-w-full bg-transparent outline-none overflow-hid
 const TITLE_STYLE: React.CSSProperties = {
   fontSize: "var(--par-title-size, 0.78rem)",
   color: "var(--par-title-color, #c45a5a)",
-  fontWeight: 500,
-  fontFamily: "var(--font-sans), Inter, sans-serif",
+  fontWeight: PARTITLE_WEIGHT,
+  fontFamily: FONT_PARTITLE,
   letterSpacing: "0.02em",
 };
 
 /** Canonical card-title inline style — the TITLE dialect (the `.par-title-*`
- *  tokens, themed via `theme.titleColor`). Design-system-fixed: the per-panel
+ *  tokens, themed via `theme.titleColor`). Family + weight are the par-title
+ *  chain from `@/lib/font-stacks`, so the GLOBAL font prefs (Global Sans,
+ *  Par-title family/weight) reach card titles exactly as they reach the
+ *  in-document par titles. Design-system-fixed: the per-panel
  *  font picker (`usePanelBodyStyle`) styles BODY CONTENT ONLY and must never
  *  be spread over a title/header line (ratified 2026-06-12). Consumed by
  *  `CardTitleInput` and the bespoke title/header lines (citation collapsed
