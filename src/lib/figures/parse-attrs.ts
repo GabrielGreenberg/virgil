@@ -47,6 +47,27 @@ export interface FigureAttrs {
   captionStarred: boolean;
   /** `\label{...}` body. Empty string if none. */
   label: string;
+  /** Does the figure's `\label` live BEFORE its `\caption`, inside `extras`
+   *  (task 1262)?
+   *
+   *  Which SIDE of the caption a label sits on decides what `\ref` to it
+   *  prints: `\caption` calls `\refstepcounter{figure}`, so a label after it
+   *  names the figure and the same bytes before it name whatever counter was
+   *  stepped last — usually the section. When no label sits at or after the
+   *  caption, `bindingLabel` falls back to the pre-caption one (the model still
+   *  needs a key for the lozenge, the rename door and `\ref` display). Until
+   *  1262 the strip then CUT it and the emitter re-wrote it after the caption,
+   *  so a save silently re-pointed every `\ref` in the paper from the
+   *  section's number to the figure's — zero word tokens, invisible to the
+   *  write gate.
+   *
+   *  So such a label is not cut at all: its bytes stay in `extras`, exactly
+   *  where the author put them, and this flag says the FIRST figure-depth
+   *  `\label` in `extras` is the model's `label`. The emitter renders that one
+   *  declaration's key from the attr (`withPreCaptionLabel`), so a rename or a
+   *  clear through the lozenge still reaches the file, and no second copy is
+   *  ever written after the caption. */
+  labelBeforeCaption: boolean;
   /** Env body BEFORE the figure's own `\caption` (minus the figure's own
    *  `\caption`/binding `\label`), raw passthrough. Preserves `\centering`,
    *  `\includegraphics`, TikZ blocks, sub-floats and raw comments — so the
@@ -557,6 +578,27 @@ export function captionDeclaresLabel(captionTex: string, label: string): boolean
   return scanFigure(captionTex).labels.some((l) => l.body === label);
 }
 
+/** Render a `labelBeforeCaption` figure's `extras` with the model's key in
+ *  the declaration it owns — the FIRST figure-depth `\label` there (task 1262).
+ *
+ *  Found by the same depth-aware scan the parser used to choose it, so a
+ *  sub-float's label or one quoted in `\verb` is never the one rewritten. The
+ *  key is spliced into that one `\label{…}`'s braces and nothing else moves,
+ *  which is what keeps the label on the side of the caption it was written on;
+ *  an unchanged key returns `extras` byte-identical. An EMPTY key (the label
+ *  was cleared) removes the declaration. Null when `extras` holds no
+ *  figure-depth label — the caller then emits the key itself. */
+export function withPreCaptionLabel(extras: string, label: string): string | null {
+  const own = scanFigure(extras).labels[0];
+  if (!own) return null;
+  const replacement = label ? `\\label{${label}}` : "";
+  if (extras.slice(own.start, own.end) === replacement) return extras;
+  return cutRanges(
+    extras.slice(0, own.start) + replacement + extras.slice(own.end),
+    [],
+  );
+}
+
 /** Which figure-depth `\label` is the figure's OWN — the one `\ref` resolves
  *  to the figure's number?
  *
@@ -666,6 +708,11 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
   // strip cuts, so the bytes removed are exactly the bytes re-emitted, which is
   // what makes the round-trip a fixed point.
   const binding = bindingLabel(scan);
+  // A binding label written BEFORE the caption (the fallback: none sits at or
+  // after it) is the model's key but is NOT cut — its bytes stay in `extras`,
+  // on the side that decides what `\ref` prints (task 1262).
+  const labelBeforeCaption =
+    !!binding && !!scan.caption && !binding.inCaption && binding.start < scan.caption.start;
   return {
     source: first?.path ?? null,
     widthPercent: first?.widthPercent ?? null,
@@ -675,7 +722,8 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
     shortCaption: scan.caption?.short ?? null,
     captionStarred: scan.caption?.starred ?? false,
     label: binding?.body ?? "",
-    ...splitFigureOwnCommands(envContent, scan, binding),
+    labelBeforeCaption,
+    ...splitFigureOwnCommands(envContent, scan, labelBeforeCaption ? null : binding),
   };
 }
 
