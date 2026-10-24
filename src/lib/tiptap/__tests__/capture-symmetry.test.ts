@@ -22,9 +22,11 @@ import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-ex
 import {
   sliceIsFullyCapturedBy,
   TEXT_CAPTURE_DROPPED_MARKS,
+  TEXT_CAPTURE_TRANSLATED_MARKS,
+  captureRangeMathText,
   type CaptureVocabulary,
 } from "@/lib/tiptap/capture-symmetry";
-import { WRAPPER_MARK_TYPES } from "@/lib/mark-composition";
+import { WRAPPER_MARK_ROWS, WRAPPER_MARK_TYPES, type WrapperMarkRow } from "@/lib/mark-composition";
 import { VIRGIL_ACTION_REGISTRY, type ActionContext } from "@/lib/actions/action-registry";
 
 function mount(content: Record<string, unknown>[]): Editor {
@@ -65,8 +67,29 @@ function captured(content: Record<string, unknown>[], capture: CaptureVocabulary
 }
 
 describe("sliceIsFullyCapturedBy — marks (task 848)", () => {
-  it("the declared drop set IS the wrapper-mark vocabulary", () => {
-    expect([...TEXT_CAPTURE_DROPPED_MARKS].sort()).toEqual([...WRAPPER_MARK_TYPES].sort());
+  // Task 1272: the drop set is DERIVED per row from `inMath`, never the whole
+  // wrapper vocabulary — the census pins that every row declares its answer and
+  // that the drop/translate partition covers the vocabulary exactly.
+  it("CENSUS: every wrapper row declares its in-math answer; drop ∪ translate = wrappers", () => {
+    for (const row of WRAPPER_MARK_ROWS as readonly WrapperMarkRow[]) {
+      const ok =
+        row.inMath === "drop" ||
+        (typeof row.inMath === "object" && row.inMath.open.length > 0 && row.inMath.close.length > 0);
+      expect(ok, `${row.mark} must declare inMath`).toBe(true);
+      expect(TEXT_CAPTURE_DROPPED_MARKS.has(row.mark)).toBe(row.inMath === "drop");
+      expect(TEXT_CAPTURE_TRANSLATED_MARKS.has(row.mark)).toBe(row.inMath !== "drop");
+    }
+    expect(
+      [...TEXT_CAPTURE_DROPPED_MARKS, ...TEXT_CAPTURE_TRANSLATED_MARKS].sort(),
+    ).toEqual([...WRAPPER_MARK_TYPES].sort());
+  });
+
+  it("sub/superscript are TRANSLATED, not dropped (math spells them)", () => {
+    expect(TEXT_CAPTURE_DROPPED_MARKS.has("subscript")).toBe(false);
+    expect(TEXT_CAPTURE_DROPPED_MARKS.has("superscript")).toBe(false);
+    expect(TEXT_CAPTURE_TRANSLATED_MARKS.has("subscript")).toBe(true);
+    expect(TEXT_CAPTURE_TRANSLATED_MARKS.has("superscript")).toBe(true);
+    expect(captured([text("H"), text("2", [{ type: "subscript" }]), text("O")], "text")).toBe(true);
   });
 
   it("plain text: every vocabulary captures it", () => {
@@ -141,4 +164,62 @@ describe("mathRun — the \"text\" capture's mark policy, end to end (task 848)"
     expect(countMath(e)).toBe(0);
     expect(e.state.doc.toJSON()).toEqual(before);
   });
+});
+
+describe("captureRangeMathText — the \"text\" capture's seed (task 1272)", () => {
+  const seed = (content: Record<string, unknown>[]) => {
+    const e = mount([para(content)]);
+    const end = e.state.doc.firstChild!.content.size + 1;
+    return captureRangeMathText(e.state.doc, 1, end);
+  };
+  const SUB = { type: "subscript" };
+  const SUP = { type: "superscript" };
+
+  it("plain text equals textBetween", () => {
+    const e = mount([para([text("a b")]), { ...para([text("c")]), attrs: { uuid: "p2" } }]);
+    const { size } = e.state.doc.content;
+    expect(captureRangeMathText(e.state.doc, 0, size)).toBe(e.state.doc.textBetween(0, size, " "));
+  });
+
+  it("subscript → _{…}, superscript → ^{…}", () => {
+    expect(seed([text("H"), text("2", [SUB]), text("O")])).toBe("H_{2}O");
+    expect(seed([text("1"), text("st", [SUP])])).toBe("1^{st}");
+  });
+
+  it("a subscript split by an inner dropped mark opens ONCE (no double subscript)", () => {
+    expect(seed([text("x"), text("a", [SUB]), text("b", [SUB, { type: "italic" }]), text("c", [SUB])])).toBe(
+      "x_{abc}",
+    );
+  });
+
+  it("dropped marks contribute nothing", () => {
+    expect(seed([text("E=mc"), text("2", [{ type: "bold" }])])).toBe("E=mc2");
+  });
+});
+
+describe("mathRun — sub/superscript survive the wrap (task 1272)", () => {
+  const latexOf = (e: Editor, name: string) => {
+    let latex: string | null = null;
+    e.state.doc.descendants((n) => {
+      if (n.type.name === name) latex = n.attrs.latex as string;
+    });
+    return latex;
+  };
+  for (const [id, name] of [
+    ["inline-math", "inlineMath"],
+    ["display-math", "displayMath"],
+  ] as const) {
+    it(`${id}: H\\textsubscript{2}O seeds H_{2}O`, () => {
+      const e = mount([para([text("H"), text("2", [{ type: "subscript" }]), text("O")])]);
+      e.commands.setTextSelection({ from: 1, to: 4 });
+      VIRGIL_ACTION_REGISTRY[id]!.run({
+        editor: e,
+        view: e.view,
+        ref: { kind: "selection", from: 1, to: 4, paragraphId: "" },
+        surface: "lightning",
+        canEdit: true,
+      } as ActionContext);
+      expect(latexOf(e, name)).toBe("H_{2}O");
+    });
+  }
 });
