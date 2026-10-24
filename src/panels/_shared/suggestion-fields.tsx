@@ -51,6 +51,7 @@ import type { SuggestionField } from "./suggestion-field-vocabulary";
 import { iconHint } from "@/components/Hint";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 
 /** The two cards share a
  *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
@@ -206,7 +207,7 @@ function CopyButton({ text }: { text: string }) {
       className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer disabled:opacity-40 disabled:cursor-default focus-ring"
     >
       {copied ? (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round" strokeLinejoin="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>
       ) : (

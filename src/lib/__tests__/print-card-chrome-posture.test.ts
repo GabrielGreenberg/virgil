@@ -121,7 +121,9 @@ describe("print card-chrome posture (task 1114)", () => {
 
   it("the kind dropdown's caret is chrome while its label is content", () => {
     const body = cardFunctions(read(PRIMITIVES)).get("CardKindDropdown")!;
-    expect(body).toMatch(/<svg\s+className=\{chromeOnly\(/);
+    // The caret is the shared `MenuCaret` leaf (task 1276), handed the chrome
+    // class at the site.
+    expect(body).toMatch(/<MenuCaret\b[^>]*className=\{chromeOnly\(/);
   });
 
   it("no dead appendix marker rule survives in the print block", () => {

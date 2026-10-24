@@ -42,6 +42,7 @@ import {
   type RegistryPrefs,
 } from "@/lib/view-prefs/registry";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 
 /** True when two bib entries describe the same record at field level —
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
@@ -757,7 +758,7 @@ function BibliographyPanel({
               className="iconbtn-xs"
               {...iconHint({ label: "Close search" })}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -839,7 +840,7 @@ function BibliographyPanel({
               className="iconbtn-xs iconbtn-on-dark ml-auto"
               {...iconHint({ label: "Cancel" })}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -901,7 +902,7 @@ function BibliographyPanel({
                 className="iconbtn-xs iconbtn-on-dark"
                 {...iconHint({ label: "Dismiss", pos: "above" })}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>

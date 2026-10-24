@@ -246,3 +246,23 @@ describe("T4: preview-chrome sites have no local fontStack helper", () => {
     });
   }
 });
+
+describe("In-card type scale: card-body-mounted primitives sit on a ratified tier", () => {
+  // The AI-request row renders in EVERY card body (task 825's one placement),
+  // so its label is in-card type and owes the META or CONTENT tier — it was
+  // a 11px stray the class-only sweep above never mounted (task 1276).
+  it("AiRequestCheckbox / AiRequestRow label wears the CONTENT tier, no stray px size", () => {
+    const { container } = render(
+      <panelPrimitives.AiRequestRow checked={false} onToggle={() => {}} />,
+    );
+    const btn = container.querySelector("button") as HTMLElement;
+    expect(btn).toBeTruthy();
+    expect(btn.className).toMatch(/\bcard-content-row\b/);
+    expect(btn.className).not.toMatch(/text-\[(10\.5|11|11\.5)px\]/);
+  });
+
+  it("PANEL.subpodWhite paints the surface token, not raw white", () => {
+    expect(PANEL.subpodWhite).toMatch(/\bbg-surface\b/);
+    expect(PANEL.subpodWhite).not.toMatch(/\bbg-white\b/);
+  });
+});

@@ -1,5 +1,6 @@
 import { PanelId } from "@/hooks/useViewPrefs";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 
 export function IconNotes({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
@@ -21,7 +22,7 @@ export function IconHighlight({ active, size = 18 }: { active?: boolean; size?: 
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M15 4 L20 9 L13 16 L8 16 L8 11 Z" />
       <path d="M8 16 L6 18 L8 20 L10 18 Z" />
-      <line x1="3" y1="22" x2="21" y2="22" strokeWidth="2.5" />
+      <line x1="3" y1="22" x2="21" y2="22" strokeWidth={ICON_STROKE_SMALL} />
     </svg>
   );
 }
@@ -75,7 +76,7 @@ export function IconFolder() {
 
 export function IconPlus() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
     </svg>
   );

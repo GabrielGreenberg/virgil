@@ -53,6 +53,7 @@ import { holdOmniCard } from "@/components/editor-layout/omni-card-placement";
 import { useLayoutGestureActive } from "@/lib/pane-resize";
 import { cardShellWithin, pressFromInteractiveControl } from "@/lib/drag-blocklist";
 import { iconHint } from "@/components/Hint";
+import { MenuCaret } from "@/components/icons/MenuCaret";
 import { PARKED_WITH_PASSAGE_COPY } from "@/panels/_shared/archived-with";
 
 /**
@@ -635,22 +636,7 @@ function NavArrow({
       }}
       className="iconbtn-xs"
     >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {dir === "up" ? (
-          <polyline points="6 15 12 9 18 15" />
-        ) : (
-          <polyline points="6 9 12 15 18 9" />
-        )}
-      </svg>
+      <MenuCaret direction={dir} />
     </button>
   );
 }
