@@ -474,6 +474,12 @@ The token scales:
 
 - **Ink** (text, light → dark): `ink-faint`, `ink-muted`, `ink-subtle`,
   `ink-body`, `ink-strong`. Plus `--foreground` for editor body.
+  Popover/input placeholder and hint ink is `--ink-muted`; an input's own
+  text is `--foreground` on `--surface` (the math and figure popovers are
+  twins and read exactly this). Never invent a parallel name (`--text`,
+  `--text-muted`, `--input-bg`, `--panel-bg`, `--ink` were all retired,
+  task 1263) — an undefined var paints its fallback forever and ignores
+  every retone.
 - **Edge** (borders): `edge-subtle`, `edge-hover`, `edge-strong`.
 - **Surface** (backgrounds): `surface`, `surface-muted`,
   `surface-muted-strong`, plus the warmer `--pod-*` family.

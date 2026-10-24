@@ -186,19 +186,10 @@ describe("no var() read resolves to nothing", () => {
  * decision. The set may only shrink; a new phantom fails the exact-set check.
  */
 const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
-  // A vocabulary the math / figure / expex chrome invented alongside the real
-  // `--surface` / `--foreground` / `--muted` / `--ink-*` scales it sits beside.
-  // `--text` (#1a1a1a) and `--panel-bg`/`--input-bg` (#ffffff) match a live
-  // token EXACTLY today; `--ink` and `--text-muted` match none. (`--ink` once
-  // also painted the margin grab handle and card grip at #3a362f; those now
-  // read `--ink-body` — task 2026-10-23-1261 — leaving only the figure
-  // chrome.) Re-pointing any of them makes those surfaces newly follow a
-  // user retone — right, and a change to look at.
-  "--ink": "figure chrome (.figure-empty-cta, .figure-scale-input); fallback #2a2520 matches no live token",
-  "--text": "math/figure chrome; fallback #1a1a1a equals --foreground today",
-  "--text-muted": "math/figure chrome; fallback #9a8f80 matches no live token",
-  "--panel-bg": "math/figure chrome; fallback #ffffff equals --surface today",
-  "--input-bg": "math/figure chrome; fallback #ffffff equals --surface today",
+  // (The math / figure chrome once invented its own colour vocabulary —
+  // `--ink`, `--text`, `--text-muted`, `--panel-bg`, `--input-bg` — beside the
+  // real scale. Retired onto `--ink-strong` / `--foreground` / `--ink-muted` /
+  // `--surface`: tasks 2026-10-23-1261 (margin half) and 2026-10-24-1263.)
   "--doc-title-leadin": "title lead-in height; fallback 40px is the shipped value",
 
   // The heading-typography preference registry (`preferences-tree.ts`:345-350)
