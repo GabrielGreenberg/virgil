@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { FONT_PARTITLE } from "@/lib/font-stacks";
 import { commentsStripped, cssCommentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 
 /**
@@ -302,6 +303,53 @@ describe("the phantom font vocabulary is dead", () => {
       "Import FONT_SANS / FONT_SERIF / FONT_MONO from @/lib/font-stacks instead " +
         "of re-spelling the override chain.",
     ).toEqual([]);
+  });
+});
+
+// ── The override rung is never skipped (task 2026-10-24-1273) ──────────────
+
+const PERMITTED_BARE_SANS = new Set([
+  "src/lib/panel-typography.ts", // PREVIEW_FONT_STACKS: the named face, deliberately un-overridden
+]);
+
+describe("a component's sans chain never skips the user's override", () => {
+  it("no .ts/.tsx reads a bare var(--font-sans) outside an override fallback", () => {
+    // `TITLE_STYLE` spelled `var(--font-sans), Inter` and so every card title
+    // ignored Global Sans and the par-title family/weight prefs the
+    // in-document par titles honour. The only legal bare `var(--font-sans)`
+    // is the LAST rung of a chain (`…-override, var(--font-sans))`); the
+    // spelled chains are FONT_SANS / FONT_PARTITLE in src/lib/font-stacks.ts.
+    // `panel-typography.ts`'s PREVIEW stacks are exempt by design: a font
+    // PICKER preview must show the named face, not the user's override.
+    const hits: string[] = [];
+    for (const [file, text] of SOURCES) {
+      if (STYLESHEETS.includes(file)) continue;
+      if (PERMITTED_BARE_SANS.has(file)) continue;
+      text.split("\n").forEach((lineText, i) => {
+        const bare = lineText.replace(/-override,\s*var\(--font-sans\)/g, "-override, RUNG");
+        if (/var\(\s*--font-sans\s*[,)]/.test(bare))
+          hits.push(`${file}:${i + 1} — ${lineText.trim().slice(0, 80)}`);
+      });
+    }
+    expect(hits, "Import FONT_SANS / FONT_PARTITLE from @/lib/font-stacks").toEqual([]);
+  });
+
+  it("every stylesheet par-title chain is FONT_PARTITLE verbatim", () => {
+    // CSS cannot import, so the `.par-title-*` rules spell the chain; this pins
+    // each copy to the SSOT the card titles read, so the two cannot drift.
+    const lines: string[] = [];
+    for (const [file, text] of SOURCES) {
+      if (!STYLESHEETS.includes(file)) continue;
+      text.split("\n").forEach((lineText, i) => {
+        if (/font-family:.*var\(--font-partitle-family/.test(lineText)) {
+          const value = lineText.replace(/^.*font-family:\s*/, "").replace(/;.*$/, "").trim();
+          if (value !== FONT_PARTITLE) lines.push(`${file}:${i + 1} — ${value}`);
+          else lines.push("ok");
+        }
+      });
+    }
+    expect(lines.length, "the par-title rules still read the chain").toBeGreaterThan(0);
+    expect(lines.filter((l) => l !== "ok")).toEqual([]);
   });
 });
 

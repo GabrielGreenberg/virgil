@@ -48,3 +48,16 @@ export const FONT_SERIF =
 
 /** Monospace — citekeys, page numbers, code, `.tex` fragments. */
 export const FONT_MONO = "var(--font-mono-override, var(--font-mono)), monospace";
+
+/** Par-title family — the TITLE dialect's chain: the user's par-title family
+ *  pref (`fontParTitleFamily` → `--font-partitle-family`), then their Global
+ *  Sans (`--font-sans-override`), then the `next/font` sans. Read by the
+ *  in-document par titles (`.par-title-*` in `globals.css`, spelled there
+ *  verbatim — CSS cannot import) AND the card titles (`cardTitleStyle`), so
+ *  both answer the same three font prefs (task 2026-10-24-1273: the card
+ *  titles hand-spelled a bare `var(--font-sans)` and followed none of them). */
+export const FONT_PARTITLE =
+  "var(--font-partitle-family, var(--font-sans-override, var(--font-sans))), Inter, sans-serif";
+
+/** Par-title weight — `fontParTitleWeight` → `--font-partitle-weight`. */
+export const PARTITLE_WEIGHT = "var(--font-partitle-weight, 500)";
