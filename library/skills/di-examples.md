@@ -183,7 +183,16 @@ exit "$rc"
 re-checked against the current text; if `main.tex` changed since `--out`,
 the apply is refused (exit 2, nothing written) — re-run `--out` and
 review again. Bare `--apply` (no `--proposals`) refuses whenever any
-record is `suspect`, so always pass the reviewed file.
+record is `suspect`, so always pass the reviewed file. Never point
+`--out` at the reviewed file in the apply call (refused, exit 2).
+
+Each record's `carried` list shows the lines the conversion will carry
+INSIDE the block beyond each item's head line — continuation lines,
+`\pgmark{N}` anchors, prose or a skipped sub-item between a `(N)` parent
+and its last `(Na)`. Nothing in the span is dropped (the script refuses a
+record whose block would not re-emit every character it replaces); if
+the carried text is prose that does not belong in the example, delete the
+record and fix the paragraphing by hand.
 
 **Re-run safety.** A paper with prior conversion state (`grep -c 'exno='
 papers/$ARGUMENTS/main.tex` is `>5`) yields proposals enriched for false
