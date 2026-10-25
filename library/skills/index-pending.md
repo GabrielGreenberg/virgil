@@ -188,10 +188,11 @@ the error and re-run Phase A.
 
 If two callers race and start two `drain_queue.py` processes against
 the same library, that's safe — `_process_one` in the drain script
-acquires `.virgil/queue/<citekey>.lock` before processing each entry
-and skips files held by another worker. You'll see a brief overlap
-(both workers pick the same first file before the lock takes hold)
-but no corruption.
+CLAIMS each entry (`status: running`, through `queue_slot.claim_request`)
+before processing it, and a worker that finds the entry already claimed
+skips it. The claim is also what the app and `queue_slot.py write` refuse
+on, and the drain retires only the request it claimed — so a request
+queued while the drain works that paper stays queued (task 1291).
 
 ## Why this isn't a `/loop`
 

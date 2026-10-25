@@ -56,11 +56,24 @@ The contract, stated once:
    hand. The row arithmetic (`with_pending_review` / `without_pending_review`)
    is pinned to queue.ts's by `queue-slot-parity.test.ts`.
 
+9. **A worker CLAIMS before it works, and retires only what it claimed**
+   (task 1291). `claim_request` rewrites the entry to `status: running` +
+   `startedAt` — the one in-flight signal both writers refuse on
+   (`is_in_flight`; the drain's old `.lock` sidecar told neither of them).
+   `retire_claimed` / `release_claimed` act only while the slot still holds
+   the claimed request (`same_request`: kind + `requestedAt`), so a request
+   the user queues mid-run stays queued instead of being copied into `.done`
+   unworked. A claim older than `RUNNING_TTL_SECONDS` is abandoned and
+   re-claimable. "Is there a live request?" is ONE predicate in both silos:
+   `LIVE_STATUSES` over `slot_kinds` (`index` ≈ `reindex`), pinned by
+   `queue-slot-parity.test.ts`.
+
 CLI (the door for skill prompts that enqueue work)::
 
     python3 queue_slot.py write --kind index --citekey smith2020 [--library .]
     python3 queue_slot.py write --kind deepIndex --citekey smith2020 [--note "…"]
-    python3 queue_slot.py retire --kind index --citekey smith2020
+    python3 queue_slot.py claim --kind index --citekey smith2020
+    python3 queue_slot.py retire --kind index --citekey smith2020 [--requested-at <claimed>]
     python3 queue_slot.py pending [--native] [--count]
 
 `pending` prints the pending requests as JSON lines (`{"kind", "citekey",
@@ -132,6 +145,23 @@ DONE_JSON_SUFFIX = ".done.json"
 # `done` is finished. Mirrored by `scanQueue`'s status test.
 PENDING_STATUS = "requested"
 
+# The status a CLAIM writes (contract item 9). Mirrored by queue.ts.
+RUNNING_STATUS = "running"
+
+# "Is there a live request in this slot?" — the statuses `find_request` and
+# queue.ts `findQueuedRequest` both answer with (task 1291). A `failed` or
+# `poisoned` entry is not a live request: a deep index must still plant its
+# companion over it. Pinned TS↔py by `queue-slot-parity.test.ts`.
+LIVE_STATUSES: tuple[str, ...] = (PENDING_STATUS, RUNNING_STATUS)
+
+# A claim older than this is ABANDONED (its worker was killed mid-run): the
+# writers may replace it and the drain may re-claim it. The same hour the
+# drain's old `.lock` sidecar used. Pinned TS↔py (`QUEUE_RUNNING_TTL_MS`).
+RUNNING_TTL_SECONDS = 60 * 60
+
+# Statuses a worker may claim: a fresh request and a failed one it retries.
+CLAIMABLE_STATUSES: tuple[str, ...] = (PENDING_STATUS, "failed")
+
 # Kinds `drain_queue.py` processes itself; every other kind is deferred to a
 # skill (index-pending.md step 2).
 DRAIN_NATIVE_KINDS: tuple[str, ...] = ("index", "reindex")
@@ -157,6 +187,52 @@ def queue_dir(library: Path) -> Path:
 
 def normalize_kind(kind: str) -> str:
     return LEGACY_KIND_ALIASES.get(kind, kind)
+
+
+def slot_kinds(kind: str) -> tuple[str, ...]:
+    """Every kind that shares `kind`'s slot — derived from `SLOT_SUFFIX`, so
+    `index` and `reindex` (both the bare slot) answer for each other (task
+    1291). Mirrored by queue.ts `queueSlotKinds`."""
+    kind = normalize_kind(kind)
+    if kind not in SLOT_SUFFIX:
+        return (kind,)
+    return tuple(k for k, v in SLOT_SUFFIX.items() if v == SLOT_SUFFIX[kind])
+
+
+def _parse_stamp(value: Any) -> Optional[float]:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def is_in_flight(entry: Optional[dict[str, Any]], now: Optional[float] = None) -> bool:
+    """True when `entry` is being worked: `status: running` under a claim that
+    is not yet ABANDONED (`RUNNING_TTL_SECONDS` since `startedAt`). A running
+    entry with no readable `startedAt` was claimed by something that predates
+    the claim door — treated as in flight, the conservative answer. Mirrored
+    by queue.ts `isQueueEntryInFlight`."""
+    if not isinstance(entry, dict) or entry.get("status") != RUNNING_STATUS:
+        return False
+    started = _parse_stamp(entry.get("startedAt"))
+    if started is None:
+        return True
+    now = datetime.now(timezone.utc).timestamp() if now is None else now
+    return now - started < RUNNING_TTL_SECONDS
+
+
+def same_request(a: Optional[dict[str, Any]], b: Optional[dict[str, Any]]) -> bool:
+    """Do `a` and `b` record the SAME request — same kind and same
+    `requestedAt`? The identity a claim is retired against (task 1291) and
+    the one `done_retires` already uses."""
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return False
+    return (
+        normalize_kind(str(a.get("kind") or "")) == normalize_kind(str(b.get("kind") or ""))
+        and a.get("requestedAt") == b.get("requestedAt")
+    )
 
 
 def slot_filename(kind: str, citekey: str) -> str:
@@ -247,7 +323,7 @@ def _migrate_legacy_occupant(qdir: Path, citekey: str, target_kind: str) -> bool
         # The per-kind slot holds something else (running / failed): moving
         # the legacy request over it would lose one of the two.
         return False
-    if cur.get("status") == "running":
+    if is_in_flight(cur):
         return False
     retire_done(qdir, dest.stem)
     try:
@@ -357,7 +433,7 @@ def write_request(
     cur = _read(path) if path.exists() else None
     if cur is not None:
         status = cur.get("status")
-        if status == "running":
+        if is_in_flight(cur):
             return IN_FLIGHT, path
         if (
             status == "requested"
@@ -418,11 +494,14 @@ def write_deep_index(
 
 
 def find_request(library: Path, kind: str, citekey: str) -> Optional[Path]:
-    """The file holding a pending `kind` request for `citekey`, looking in the
-    per-kind slot, (for legacy kinds) the bare slot, and any legacy slot
-    spelling (`-richindex` for deepIndex)."""
+    """The file holding a LIVE (`LIVE_STATUSES`) request of `kind` — or of any
+    kind sharing its slot (`slot_kinds`: a `reindex` answers for `index`) —
+    for `citekey`, looking in the per-kind slot, (for legacy kinds) the bare
+    slot, and any legacy slot spelling (`-richindex` for deepIndex). Mirrored
+    by queue.ts `findQueuedRequest` (task 1291)."""
     qdir = queue_dir(library)
     kind = normalize_kind(kind)
+    kinds = slot_kinds(kind)
     candidates = [qdir / slot_filename(kind, citekey)]
     if kind in LEGACY_BARE_SLOT_KINDS:
         candidates.append(qdir / f"{citekey}.json")
@@ -431,11 +510,96 @@ def find_request(library: Path, kind: str, citekey: str) -> Optional[Path]:
         cur = _read(p) if p.exists() else None
         if (
             cur
-            and normalize_kind(str(cur.get("kind") or "")) == kind
-            and cur.get("status") in (PENDING_STATUS, "running")
+            and normalize_kind(str(cur.get("kind") or "")) in kinds
+            and cur.get("status") in LIVE_STATUSES
         ):
             return p
     return None
+
+
+# ── the claim (contract item 9, task 1291) ────────────────────────────
+
+
+def _slot_lock(path: Path) -> Path:
+    """The flock sidecar that serializes Python claimants of one slot. (The
+    app cannot take it; `retire_claimed`'s identity check is what makes an
+    app write that lands mid-claim safe.)"""
+    return path.with_name(path.name + ".lock")
+
+
+def claim_request(path: Path) -> Optional[dict[str, Any]]:
+    """CLAIM the request in `path` for working: rewrite it to
+    `status: running` + `startedAt`, atomically, so both writers (this
+    module's `write_request` and the app's `writeQueueEntry`) refuse to
+    replace it while it is worked. Returns the claimed entry — the identity
+    `retire_claimed` / `release_claimed` check — or None when there is
+    nothing claimable there (absent, unreadable, already in flight, poisoned,
+    done). An ABANDONED claim (`is_in_flight` false on a running entry) is
+    re-claimable."""
+    with _flock_path(_slot_lock(path)):
+        cur = _read(path) if path.exists() else None
+        if cur is None:
+            return None
+        status = cur.get("status")
+        abandoned = status == RUNNING_STATUS and not is_in_flight(cur)
+        if status not in CLAIMABLE_STATUSES and not abandoned:
+            return None
+        cur["status"] = RUNNING_STATUS
+        cur["startedAt"] = _now()
+        _atomic_write_text(path, json.dumps(cur, indent=2) + "\n")
+        return cur
+
+
+def _claim_still_holds(path: Path, claimed: dict[str, Any]) -> Optional[dict[str, Any]]:
+    cur = _read(path) if path.exists() else None
+    return cur if same_request(cur, claimed) else None
+
+
+def retire_claimed(path: Path, claimed: dict[str, Any]) -> bool:
+    """Retire the request this worker CLAIMED and finished: write its
+    `.done` marker and drop the entry — but only if the slot still holds
+    that request. A request written into the slot after the claim (the user
+    re-queued mid-run) is a different request: it is left live, never
+    copied into `.done` unworked. Returns whether the claim was retired.
+
+    The `.done` WRITE is what retires the entry (`done_retires`); the
+    unlink is tidiness and a mount that refuses it must not raise (task 496)."""
+    with _flock_path(_slot_lock(path)):
+        cur = _claim_still_holds(path, claimed)
+        if cur is None:
+            return False
+        retire_done(path.parent, path.stem)
+        cur["status"] = "done"
+        cur["finishedAt"] = _now()
+        _atomic_write_text(path.with_suffix(".done"), json.dumps(cur, indent=2) + "\n")
+        unlink_tolerant(path, what="retired queue entry")
+        return True
+
+
+def release_claimed(path: Path, claimed: dict[str, Any], error: str) -> Optional[str]:
+    """Release a claim whose work FAILED: bump `attempts` and set `failed`
+    (or `poisoned` on the third failure) with `lastError`. Returns the new
+    status, or None when the slot no longer holds the claimed request — a
+    newer request is not charged with this run's failure."""
+    with _flock_path(_slot_lock(path)):
+        cur = _claim_still_holds(path, claimed)
+        if cur is None:
+            return None
+        attempts = int(cur.get("attempts", 0) or 0) + 1
+        cur["attempts"] = attempts
+        cur["status"] = "failed" if attempts < 3 else "poisoned"
+        cur["lastError"] = error[:1000]
+        cur["lastAttemptAt"] = _now()
+        cur.pop("startedAt", None)
+        _atomic_write_text(path, json.dumps(cur, indent=2) + "\n")
+        return cur["status"]
+
+
+def in_flight_requests(qdir: Path) -> list[Path]:
+    """The request files currently CLAIMED and not abandoned — the one
+    answer to "is a worker in this queue right now?" (the merge-bibs
+    preflight asks it)."""
+    return [p for p in request_files(qdir) if is_in_flight(_read(p))]
 
 
 def is_request_filename(name: str) -> bool:
@@ -492,10 +656,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                    help="replace a pending request of the same kind")
     w.add_argument("--note", default=None,
                    help="the user's own words, carried on the request")
+    c = sub.add_parser("claim", help="claim a queued request before working it")
+    c.add_argument("--kind", required=True)
+    c.add_argument("--citekey", required=True)
+    c.add_argument("--library", default=None)
     r = sub.add_parser("retire", help="mark a finished request done")
     r.add_argument("--kind", required=True)
     r.add_argument("--citekey", required=True)
     r.add_argument("--library", default=None)
+    r.add_argument("--requested-at", default=None,
+                   help="retire only the request `claim` returned (its requestedAt)")
     q = sub.add_parser("pending", help="list (or count) the pending requests")
     q.add_argument("--native", action="store_true",
                    help="only the kinds drain_queue.py processes itself")
@@ -536,25 +706,58 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(out))
         return 3 if result in REFUSED_RESULTS else 0
 
-    return retire(library, args.kind, args.citekey)
+    if args.cmd == "claim":
+        return claim(library, args.kind, args.citekey)
+
+    return retire(library, args.kind, args.citekey, requested_at=args.requested_at)
 
 
-def retire(library: Path, kind: str, citekey: str) -> int:
-    """Mark the pending `kind` request for `citekey` done. Retiring an
+def claim(library: Path, kind: str, citekey: str) -> int:
+    """CLI half of `claim_request`: claim the live `kind` request for
+    `citekey` before working it. Prints `{"result": "claimed", "file",
+    "requestedAt"}` — the `requestedAt` a skill hands back to `retire
+    --requested-at` — or `{"result": "nothing-claimable"}` (no request
+    queued: the skill was invoked directly; or it is already in flight).
+    Always exits 0: a skill run with nothing queued still does its work."""
+    path = find_request(library, kind, citekey)
+    claimed = claim_request(path) if path is not None else None
+    if claimed is None:
+        out: dict[str, Any] = {"result": "nothing-claimable"}
+        if path is not None:
+            out["file"] = path.name
+    else:
+        out = {"result": "claimed", "file": path.name,
+               "requestedAt": claimed.get("requestedAt")}
+    print(json.dumps(out))
+    return 0
+
+
+def retire(
+    library: Path, kind: str, citekey: str, *, requested_at: Optional[str] = None,
+) -> int:
+    """Mark the live `kind` request for `citekey` done. With `requested_at`
+    (what `claim` printed) only THAT request is retired: a newer one written
+    into the slot while the skill worked is left queued (`"superseded"`) —
+    the identity check `retire_claimed` makes (task 1291). Retiring an
     `authenticate` request also drops its review-manifest row — even when no
-    request is queued, so a stale row left by an older run is cleaned up."""
+    request is queued, so a stale row left by an older run is cleaned up
+    (but not when a newer request superseded the claim: its row is live)."""
     path = find_request(library, kind, citekey)
     out: dict[str, Any]
+    superseded = False
     if path is None:
         out = {"result": "nothing-queued"}
     else:
-        qdir = path.parent
-        retire_done(qdir, path.stem)
-        done = path.with_suffix(".done")
-        _atomic_write_text(done, path.read_text())
-        unlink_tolerant(path, what="retired queue entry")
-        out = {"result": "retired", "file": done.name}
-    if normalize_kind(kind) == REVIEW_KIND:
+        cur = _read(path) or {}
+        claimed = dict(cur) if requested_at is None else {
+            "kind": cur.get("kind"), "requestedAt": requested_at,
+        }
+        if retire_claimed(path, claimed):
+            out = {"result": "retired", "file": path.with_suffix(".done").name}
+        else:
+            superseded = True
+            out = {"result": "superseded", "file": path.name}
+    if normalize_kind(kind) == REVIEW_KIND and not superseded:
         out["manifest"] = remove_pending_review(library, citekey)
     print(json.dumps(out))
     return 0

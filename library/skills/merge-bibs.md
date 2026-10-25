@@ -174,8 +174,8 @@ if pf["any_writers"]:
     print("Other writers detected:")
     for p in w["processes"]:
         print(f"  process pid={p['pid']} pattern={p['pattern']}")
-    for lk in w["queue_locks"]:
-        print(f"  queue lock: {lk}")
+    for lk in w["queue_claims"]:
+        print(f"  queue request in flight: {lk}")
     for r in w["recent_mods"]:
         print(f"  recent mod: {r['path']} (mtime {r['mtime_age_s']}s ago)")
 PY
@@ -188,8 +188,9 @@ Now decide whether to bail. The policy is computed by the preflight itself
   bail with this message (do not proceed):
   > Library-wide bib merge refused: other writers are touching this
   > library. Pause `/library:index-pending`, kill stale
-  > `merge_paper_references.py` / `drain_queue.py` processes, and
-  > clear stale `.virgil/queue/*.lock` files. The preflight snapshot
+  > `merge_paper_references.py` / `drain_queue.py` processes (a
+  > killed run's in-flight queue claim expires on its own after an
+  > hour). The preflight snapshot
   > at `<snapshot_dir>` is safe.
 
 - **If `refuse` starts with `"parallel-in-sync"`** (`sync_mounted` and

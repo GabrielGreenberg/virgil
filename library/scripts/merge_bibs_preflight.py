@@ -26,7 +26,7 @@ three jobs in order, each in service of "the user can always recover":
   2. Detect whether the library is sync-mounted (CloudStorage,
      classic Dropbox path, iCloud Drive). If so, the orchestrator
      defaults --batch to 1.
-  3. Detect other writers (process list, queue lock files, recently-
+  3. Detect other writers (process list, claimed queue requests, recently-
      modified critical files). If any are present, the orchestrator
      refuses to start.
 
@@ -171,20 +171,14 @@ def _detect_competing_processes() -> list[dict]:
     return hits
 
 
-def _detect_queue_locks(library: Path) -> list[str]:
-    """Non-empty .lock files in .virgil/queue/ mean a drain is in-flight."""
-    qd = library / ".virgil" / "queue"
-    if not qd.is_dir():
-        return []
-    fresh = []
-    for p in qd.glob("*.lock"):
-        try:
-            st = p.stat()
-        except OSError:
-            continue
-        if st.st_size > 0:
-            fresh.append(str(p.relative_to(library)))
-    return fresh
+def _detect_queue_claims(library: Path) -> list[str]:
+    """Queue requests a worker has CLAIMED (`status: running`, claim not yet
+    abandoned) mean a drain or skill run is in flight. Asked through
+    `queue_slot.in_flight_requests` — the one in-flight predicate both queue
+    writers refuse on (task 1291; the drain's old `.lock` sidecar, which this
+    used to glob, is gone)."""
+    from queue_slot import in_flight_requests, queue_dir  # noqa: PLC0415
+    return [str(p.relative_to(library)) for p in in_flight_requests(queue_dir(library))]
 
 
 def _detect_recent_mods(library: Path) -> list[dict]:
@@ -282,7 +276,7 @@ def main(argv: list[str]) -> int:
 
     sync_mounted, sync_kind = _detect_sync_mount(library)
     competing = _detect_competing_processes()
-    queue_locks = _detect_queue_locks(library)
+    queue_claims = _detect_queue_claims(library)
     recent_mods = _detect_recent_mods(library)
 
     snapshot_dir: Optional[str] = None
@@ -302,10 +296,10 @@ def main(argv: list[str]) -> int:
         "recommended_batch": 1 if sync_mounted else 5,
         "other_writers": {
             "processes": competing,
-            "queue_locks": queue_locks,
+            "queue_claims": queue_claims,
             "recent_mods": recent_mods,
         },
-        "any_writers": bool(competing or queue_locks or recent_mods),
+        "any_writers": bool(competing or queue_claims or recent_mods),
     }
     batch, refuse = _batch_policy(
         requested=args.batch,

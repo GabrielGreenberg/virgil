@@ -1,8 +1,11 @@
 """Drain ~/Virgil-Library/queue/ — process all index/reindex entries.
 
 Walks `queue/*.json`, groups by citekey, and processes each entry by
-shelling out to `index_paper.py`. Updates queue file states (.done /
-.failed / .poisoned) on the way. Prints a per-entry classified summary
+shelling out to `index_paper.py`. Each entry is CLAIMED first (`status:
+running`, `queue_slot.claim_request` — task 1291) and retired/released only
+while the slot still holds that request, so one the user queues mid-run is
+never retired unworked. Updates queue file states (.done / failed /
+poisoned) on the way. Prints a per-entry classified summary
 at the end.
 
 Out of scope (skipped, with a note): every kind but `index`/`reindex`
@@ -22,26 +25,27 @@ import argparse
 import json
 import subprocess
 import sys
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import _atomic_write_text, unlink_tolerant  # noqa: E402
 from queue_slot import (  # noqa: E402
+    CLAIMABLE_STATUSES,
     DRAIN_NATIVE_KINDS,
-    PENDING_STATUS,
+    RUNNING_STATUS,
+    claim_request,
     done_retires,
+    is_in_flight,
     normalize_kind,
+    release_claimed,
     request_files,
+    retire_claimed,
     retire_done,
 )
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-LOCK_TTL_SECONDS = 60 * 60  # ignore stale locks older than 1h
 
 # Within-citekey processing order.
 KIND_PRIORITY = {
@@ -62,29 +66,17 @@ KIND_PRIORITY = {
 NATIVE_KINDS = set(DRAIN_NATIVE_KINDS)
 
 # Statuses the drain works: a fresh request, and a failed one it retries
-# (`_bump_attempts` poisons it on the third failure). `running` is in flight
-# elsewhere, `poisoned` is given up on — both are skipped and counted.
-WORK_STATUSES = (PENDING_STATUS, "failed")
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+# (`release_claimed` poisons it on the third failure) — `queue_slot`'s
+# CLAIMABLE set, plus an ABANDONED claim (`running` past its TTL). A live
+# `running` claim is in flight elsewhere, `poisoned` is given up on — both
+# are skipped and counted.
+WORK_STATUSES = CLAIMABLE_STATUSES
 
 
 def _read_catalog(library: Path) -> dict:
     # The one door (task 893): a malformed catalog refuses, never reads empty.
     from _tools import read_catalog
     return read_catalog(library)
-
-
-def _is_lock_stale(lock_path: Path) -> bool:
-    if not lock_path.exists():
-        return True
-    try:
-        age = time.time() - lock_path.stat().st_mtime
-    except FileNotFoundError:
-        return True
-    return age > LOCK_TTL_SECONDS
 
 
 def _peek_kind(p: Path) -> str:
@@ -124,11 +116,6 @@ def _list_pending(library: Path, skip_counts: Optional[dict[str, int]] = None) -
                 continue
             if retire_done(qdir, p.stem):
                 skip("rotated-done")
-        # Skip if .lock sibling is fresh.
-        lock_sibling = p.with_suffix(".lock")
-        if lock_sibling.exists() and not _is_lock_stale(lock_sibling):
-            skip("locked")
-            continue
         try:
             data = json.loads(p.read_text())
         except Exception as e:
@@ -141,8 +128,11 @@ def _list_pending(library: Path, skip_counts: Optional[dict[str, int]] = None) -
         if status == "poisoned":
             skip("poisoned")
             continue
-        if status not in WORK_STATUSES:
-            skip("running" if status == "running" else "other-status")
+        if is_in_flight(data):
+            skip("running")
+            continue
+        if status not in WORK_STATUSES and status != RUNNING_STATUS:
+            skip("other-status")
             continue
         if not data.get("kind"):
             out.append({"_path": p, "_error": "entry has no `kind`", "kind": "?"})
@@ -157,40 +147,6 @@ def _sort_key(entry: dict) -> tuple:
     citekey = entry.get("citekey", "")
     kind = entry.get("kind", "")
     return (citekey, KIND_PRIORITY.get(kind, 99))
-
-
-def _bump_attempts(entry_path: Path, error: str) -> int:
-    """Read entry, increment attempts, write back. Returns new attempts count."""
-    try:
-        data = json.loads(entry_path.read_text())
-    except Exception:
-        data = {}
-    attempts = int(data.get("attempts", 0)) + 1
-    data["attempts"] = attempts
-    data["status"] = "failed" if attempts < 3 else "poisoned"
-    data["lastError"] = error[:1000]
-    data["lastAttemptAt"] = _now()
-    _atomic_write_text(entry_path, json.dumps(data, indent=2) + "\n")
-    return attempts
-
-
-def _mark_done(entry_path: Path) -> None:
-    """Replace queue file with `.done` sibling.
-
-    The `.done` WRITE is what retires the entry — `_list_pending` skips a
-    queue file whose `.done` sibling records this very request
-    (`queue_slot.done_retires`) — so the unlink is
-    tidiness, and a mount that refuses it must not raise out of a drain that
-    has already completed the work (task 496). Left behind, the entry file is
-    inert: the `.done` sibling keeps it out of the next pass.
-    """
-    done = entry_path.with_suffix(".done")
-    retire_done(entry_path.parent, entry_path.stem)
-    try:
-        _atomic_write_text(done, entry_path.read_text())
-    except Exception:
-        _atomic_write_text(done, "")
-    unlink_tolerant(entry_path, what="retired queue entry")
 
 
 def _classify_entry(library: Path, citekey: str) -> tuple[str, str]:
@@ -250,44 +206,49 @@ def _process_one(entry: dict, library: Path) -> dict:
     if not citekey:
         return {"kind": kind, "status": "error", "summary": "missing citekey"}
 
-    # Lock.
-    lock = path.with_suffix(".lock")
-    lock.write_text(_now())
+    # Claim (task 1291): the slot reads `running` while we work it, so
+    # neither writer replaces it, and retirement below touches only the
+    # request we claimed — one queued mid-run stays queued.
+    claimed = claim_request(path)
+    if claimed is None:
+        return {"citekey": citekey, "kind": kind, "status": "skipped-claimed",
+                "summary": "claimed by another worker"}
     try:
         proc = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "index_paper.py"), citekey,
              "--library", str(library)],
             capture_output=True, text=True, timeout=600, check=False,
         )
-        if proc.returncode == 0:
-            symbol, desc = _classify_entry(library, citekey)
-            _mark_done(path)
-            return {
-                "citekey": citekey,
-                "kind": kind,
-                "status": "ok",
-                "symbol": symbol,
-                "summary": desc,
-            }
-        else:
-            err = (proc.stderr or proc.stdout or "").strip()[-1000:]
-            attempts = _bump_attempts(path, err)
-            return {
-                "citekey": citekey,
-                "kind": kind,
-                "status": "poisoned" if attempts >= 3 else "failed",
-                "symbol": "X",
-                "summary": err.splitlines()[-1] if err else "non-zero exit",
-            }
     except subprocess.TimeoutExpired:
-        _bump_attempts(path, "timeout")
-        return {"citekey": citekey, "kind": kind, "status": "failed",
-                "symbol": "X", "summary": "timeout (10m)"}
-    finally:
-        # A finally-positioned delete must never replace the entry's own
-        # result with an OSError (task 496); the lock is stale-timeout'd
-        # anyway (`_is_lock_stale`), so a leftover self-clears.
-        unlink_tolerant(lock, what="queue lock")
+        status = release_claimed(path, claimed, "timeout")
+        return {"citekey": citekey, "kind": kind,
+                "status": status or "failed", "symbol": "X",
+                "summary": "timeout (10m)" + _superseded_note(status)}
+    if proc.returncode == 0:
+        symbol, desc = _classify_entry(library, citekey)
+        retired = retire_claimed(path, claimed)
+        return {
+            "citekey": citekey,
+            "kind": kind,
+            "status": "ok",
+            "symbol": symbol,
+            "summary": desc + ("" if retired else
+                               " (a newer request arrived mid-run; left queued)"),
+        }
+    err = (proc.stderr or proc.stdout or "").strip()[-1000:]
+    status = release_claimed(path, claimed, err)
+    return {
+        "citekey": citekey,
+        "kind": kind,
+        "status": status or "failed",
+        "symbol": "X",
+        "summary": (err.splitlines()[-1] if err else "non-zero exit")
+        + _superseded_note(status),
+    }
+
+
+def _superseded_note(status: Optional[str]) -> str:
+    return "" if status is not None else " (a newer request arrived mid-run; left queued)"
 
 
 from _library_root import library_root_or_exit  # noqa: E402  (task 896)
@@ -312,7 +273,6 @@ def main() -> int:
             f"{skip_counts[k]} {label}"
             for k, label in (
                 ("already-done", "already done"),
-                ("locked", "locked"),
                 ("running", "running"),
                 ("poisoned", "poisoned"),
                 ("other-status", "with an unrecognised status"),
@@ -348,6 +308,11 @@ def main() -> int:
             deferred.append(result)
             noted = " [note]" if result.get("noted") else ""
             print(f"  [defer]  {citekey:30s} kind={result['kind']!r}{noted} (skill needed)")
+            continue
+        if status == "skipped-claimed":
+            # Claimed by a concurrent drain between our listing and our
+            # claim — in flight elsewhere, the same as a listed `running`.
+            skip_counts["running"] = skip_counts.get("running", 0) + 1
             continue
 
         native_processed += 1
@@ -385,8 +350,6 @@ def main() -> int:
     skip_extras = []
     if skip_counts.get("already-done"):
         skip_extras.append(f"{skip_counts['already-done']} already done")
-    if skip_counts.get("locked"):
-        skip_extras.append(f"{skip_counts['locked']} locked (in-flight elsewhere)")
     if skip_counts.get("poisoned"):
         skip_extras.append(f"{skip_counts['poisoned']} poisoned (max attempts exceeded)")
     if skip_counts.get("running"):

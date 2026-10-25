@@ -5,8 +5,8 @@ the headline: the cowork pen's release deleted `.virgil/pen-context.json`, and
 on a mount that refuses deletion (the reported cloud/Dropbox one) the raise
 rolled a committed collab restore back to Claude-held and reported exit 2 on an
 already-landed write. This silo has the identical SHAPE at four more sites, and
-one of them is worse in kind: `drain_queue._mark_done` unlinks the queue entry
-it has just retired, and `_drain_one`'s `finally:` unlinks the lock — a refused
+one of them is worse in kind: the drain's retirement (`queue_slot.retire_claimed`) unlinks the queue entry
+it has just retired (the drain's old lock sidecar is gone since task 1291) — a refused
 delete there replaces the entry's own result with an OSError.
 
 The helper is MIRRORED rather than shared: the two script trees ship as
@@ -112,17 +112,19 @@ def test_rmtree_tolerant():
 
 # ── the drain-queue members ───────────────────────────────────────────────
 
-def test_mark_done_survives_a_refused_delete():
-    """M4. `_mark_done` writes a `.done` sibling and then unlinks the entry.
-    The `.done` WRITE is what retires it — `_list_pending` skips a queue file
-    whose same-kind `.done` sibling exists — so a refused unlink must leave a
+def test_retire_claimed_survives_a_refused_delete():
+    """M4. `queue_slot.retire_claimed` (the drain's retirement since task
+    1291) writes a `.done` sibling and then unlinks the entry. The `.done`
+    WRITE is what retires it — `_list_pending` skips a queue file whose
+    same-request `.done` sibling exists — so a refused unlink must leave a
     completed drain completed, not raise out of it."""
-    import drain_queue as DQ  # noqa: PLC0415
+    import queue_slot as QS  # noqa: PLC0415
 
     d = Path(tempfile.mkdtemp())
     try:
         entry = d / "e.json"
-        entry.write_text('{"kind": "index", "citekey": "x"}')
+        entry.write_text('{"kind": "index", "citekey": "x", "status": "requested"}')
+        claimed = QS.claim_request(entry)
         real = Path.unlink
 
         def refuse(self, missing_ok=False):
@@ -132,7 +134,7 @@ def test_mark_done_survives_a_refused_delete():
         Path.unlink = refuse
         try:
             with redirect_stderr(err):
-                DQ._mark_done(entry)          # must NOT raise
+                assert QS.retire_claimed(entry, claimed)   # must NOT raise
         finally:
             Path.unlink = real
         assert (d / "e.done").exists(), "the .done sibling — the actual retirement — landed"
@@ -216,7 +218,9 @@ def test_census_no_raw_delete_in_the_library_silo():
 
 
 def test_the_helper_is_actually_reached():
-    for name in ("drain_queue.py", "queue_slot.py", "merge_bibs_preflight.py",
+    # (`drain_queue.py` left this list in task 1291: it deletes nothing of its
+    # own any more — retirement is `queue_slot.retire_claimed`, listed.)
+    for name in ("queue_slot.py", "merge_bibs_preflight.py",
                  "apply_metadata_mismatch_policy.py", "rename_citekeys.py"):
         src = _strip_strings_and_comments((SCRIPTS / name).read_text(encoding="utf-8"))
         assert "unlink_tolerant" in src or "rmtree_tolerant" in src, name
