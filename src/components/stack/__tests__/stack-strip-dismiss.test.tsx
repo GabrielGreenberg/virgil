@@ -22,24 +22,13 @@ vi.mock("@/components/drop-mode/controller", async (orig) => ({
 
 import { StackChromeHost } from "@/components/stack/StackChromeHost";
 import {
-  registerStackTerminal,
+  registerStackChromeGate,
   openStackStrip,
   isStackStripOpen,
-  __resetStackTerminals,
+  __resetStackChromeGates,
   __resetStackStripOpen,
-  type StackTerminal,
 } from "@/lib/stack/stack-terminal";
 import { __resetStackIconRect } from "@/lib/stack/stack-drop-target";
-
-const terminal: StackTerminal = {
-  getEditor: () => null,
-  getSource: () => ({ docId: "d1" }),
-  getBibCtx: () => ({
-    getBibEntry: () => undefined,
-    getAnnotation: () => undefined,
-  }),
-  wantsChrome: true,
-};
 
 const flushDefer = () =>
   act(async () => {
@@ -59,7 +48,7 @@ const escape = () =>
   });
 
 async function mountOpen() {
-  registerStackTerminal({}, terminal);
+  registerStackChromeGate({}, true);
   render(<StackChromeHost />);
   act(() => openStackStrip());
   await flushDefer();
@@ -67,7 +56,7 @@ async function mountOpen() {
 }
 
 beforeEach(() => {
-  __resetStackTerminals();
+  __resetStackChromeGates();
   __resetStackStripOpen();
   __resetStackIconRect();
   localStorage.clear();
@@ -76,7 +65,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  __resetStackTerminals();
+  __resetStackChromeGates();
   __resetStackStripOpen();
   __resetStackIconRect();
 });

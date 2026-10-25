@@ -230,8 +230,8 @@ export function readStackItem(id: string): StackItem | null {
 
 /**
  * **The ONE door into the Stack** — imperative because every producer runs
- * outside the React tree (the `virgil-stack-drop` window listener, StackIcon's
- * HTML5 drop handler). The hook's own `add` was deleted with task 235 rather
+ * outside the React tree (the `virgil-stack-drop` window listener, the content
+ * lift's release). The hook's own `add` was deleted with task 235 rather
  * than given the same signature: it had no caller, and a second add door is a
  * door someone reaches for without the obligation below.
  *

@@ -27,34 +27,20 @@ import {
   __resetStackIconRect,
 } from "@/lib/stack/stack-drop-target";
 import {
-  registerStackTerminal,
-  getStackTerminal,
-  someTerminalWantsChrome,
+  registerStackChromeGate,
+  someStackPaneWantsChrome,
   openStackStrip,
   isStackStripOpen,
-  __resetStackTerminals,
+  __resetStackChromeGates,
   __resetStackStripOpen,
-  type StackTerminal,
 } from "@/lib/stack/stack-terminal";
 
 const ICON = { left: 12, top: 700, right: 68, bottom: 756 };
 const ICON_CENTER = { x: 40, y: 728 };
 
-function terminal(over: Partial<StackTerminal> = {}): StackTerminal {
-  return {
-    getEditor: () => null,
-    getSource: () => ({ docId: "d1" }),
-    getBibCtx: () => ({
-      getBibEntry: () => undefined,
-      getAnnotation: () => undefined,
-    }),
-    wantsChrome: true,
-    ...over,
-  };
-}
 
 beforeEach(() => {
-  __resetStackTerminals();
+  __resetStackChromeGates();
   __resetStackStripOpen();
   __resetStackIconRect();
   localStorage.clear();
@@ -62,7 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  __resetStackTerminals();
+  __resetStackChromeGates();
   __resetStackStripOpen();
   __resetStackIconRect();
 });
@@ -94,34 +80,28 @@ describe("MEMBER 1 — a departing owner cannot erase the live icon rect", () =>
     // after the new one in a few orderings; an unchecked `delete` there would
     // drop the live entry and the chrome would vanish with panes still mounted.
     const token = {};
-    const stale = terminal({ wantsChrome: false });
-    const fresh = terminal({ wantsChrome: true });
-    const disposeStale = registerStackTerminal(token, stale);
-    registerStackTerminal(token, fresh);
+    const disposeStale = registerStackChromeGate(token, false);
+    registerStackChromeGate(token, true);
 
     disposeStale();
 
-    expect(getStackTerminal()).toBe(fresh);
-    expect(someTerminalWantsChrome()).toBe(true);
+    expect(someStackPaneWantsChrome()).toBe(true);
   });
 
   it("an evicted pane leaves the survivor's entry alone", () => {
-    const visible = terminal({ wantsChrome: true });
-    const warm = terminal({ wantsChrome: true });
-    registerStackTerminal({}, visible);
-    const disposeWarm = registerStackTerminal({}, warm);
+    registerStackChromeGate({}, true);
+    const disposeWarm = registerStackChromeGate({}, true);
 
     disposeWarm();
-    expect(someTerminalWantsChrome()).toBe(true);
-    expect(getStackTerminal()).toBe(visible);
+    expect(someStackPaneWantsChrome()).toBe(true);
   });
 });
 
 describe("MEMBER 2 — one icon, one strip, however many panes are warm", () => {
   it("three registered panes still yield exactly one icon and one strip", () => {
-    registerStackTerminal({}, terminal());
-    registerStackTerminal({}, terminal());
-    registerStackTerminal({}, terminal());
+    registerStackChromeGate({}, true);
+    registerStackChromeGate({}, true);
+    registerStackChromeGate({}, true);
 
     render(<StackChromeHost />);
     act(() => {
@@ -137,7 +117,7 @@ describe("MEMBER 2 — one icon, one strip, however many panes are warm", () => 
   });
 
   it("the strip's open state is GLOBAL, so a capture in any pane opens the one the user sees", () => {
-    registerStackTerminal({}, terminal());
+    registerStackChromeGate({}, true);
     render(<StackChromeHost />);
     expect(document.querySelector('[data-stack-strip="true"]')).toBe(null);
 
@@ -150,14 +130,14 @@ describe("MEMBER 2 — one icon, one strip, however many panes are warm", () => 
   });
 
   it("no pane wanting chrome renders nothing at all (zen mode / no doc open)", () => {
-    registerStackTerminal({}, terminal({ wantsChrome: false }));
+    registerStackChromeGate({}, false);
     render(<StackChromeHost />);
     expect(document.querySelector('[data-stack-icon-hit="true"]')).toBe(null);
   });
 
   it("ANY non-zen pane is enough — the gate is an ANY over the registry", () => {
-    registerStackTerminal({}, terminal({ wantsChrome: false }));
-    registerStackTerminal({}, terminal({ wantsChrome: true }));
+    registerStackChromeGate({}, false);
+    registerStackChromeGate({}, true);
     render(<StackChromeHost />);
     expect(document.querySelector('[data-stack-icon-hit="true"]')).not.toBe(
       null,
@@ -187,5 +167,27 @@ describe("MEMBER 3 — the structural floor", () => {
       ),
     );
     expect(layout.match(/<StackChromeHost\b/g) ?? []).toHaveLength(1);
+  });
+});
+
+describe("task 1287 — the registry publishes only what is read", () => {
+  it("stack-terminal.ts carries no active-pane resolver and no per-doc getters", () => {
+    // Task 590 deleted the icon's HTML5 drop door, the only reader of the
+    // editor / source / bib getters and of the `pickActiveByEditor` ladder that
+    // chose "the active pane's" terminal. A live-looking resolver nobody calls
+    // invites the next producer to ask it instead of its own pane — so the
+    // registry is the chrome gate and nothing else.
+    const src = codeOnly(
+      readFileSync(resolve(__dirname, "../../../lib/stack/stack-terminal.ts"), "utf8"),
+    );
+    for (const needle of [
+      "pickActiveByEditor",
+      "getStackTerminal",
+      "getEditor",
+      "getSource",
+      "getBibCtx",
+    ]) {
+      expect(src.includes(needle), `stack-terminal.ts must not spell \`${needle}\``).toBe(false);
+    }
   });
 });

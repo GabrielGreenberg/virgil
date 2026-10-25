@@ -16,7 +16,8 @@
  * `display:none`, so a per-pane mount put one identical button per warm pane at
  * the same fixed spot and let an evicted pane's teardown erase the one global
  * icon rect. It therefore takes NO per-doc props: the doc that owns a capture is
- * resolved from the terminal registry at the GESTURE (`getStackTerminal()`).
+ * the pane whose own gesture produced it — a float drag or a content lift both
+ * run inside their pane and capture through that pane's refs.
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";

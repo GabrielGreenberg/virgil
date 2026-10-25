@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * THE Stack's per-pane terminal registry + the one strip-open signal.
+ * THE Stack's per-pane chrome-gate registry + the one strip-open signal.
  *
  * ## Why this module exists (task 589)
  *
@@ -29,55 +29,37 @@
  * per-DOCUMENT is a registry keyed by its owner, never a single slot* — except
  * here the value is not per-document at all. The Stack's chrome is global, so
  * the fix is to mount it ONCE (`StackChromeHost`, above the keep-alive slots)
- * and let each pane publish only the per-doc facts that chrome needs.
+ * and let each pane publish only the one per-pane fact that chrome needs.
  *
  * ## What a pane publishes
  *
- * A {@link StackTerminal} is the small bag of per-doc answers the single Stack
- * chrome asks for: the doc's editor + attribution + bibliography (the HTML5
- * capture door's inputs — every Stack producer answers the bib question at the
- * add door, task 235), and whether that pane's view is in zen mode.
+ * ONE fact: whether that pane wants the chrome at all (`viewPrefs && !zenMode`)
+ * — a per-pane chrome GATE, registered under the pane's own token.
  *
- * Resolution mirrors `drop-mode/controller.ts`'s `getDropCtx` — the same ladder,
- * for the same reason — 0 entries → null; 1 entry → that one WHATEVER its editor
- * looks like (a pane whose editor has not been created yet, and every hand-built
- * fixture, must still resolve); N entries → focused-then-visible via
- * `pickActiveByEditor`, else `null`. NEVER "whichever registered last".
+ * It used to publish a whole `StackTerminal` — the pane's editor, source
+ * attribution and bibliography resolvers, resolved for "the active pane"
+ * through a `pickActiveByEditor` ladder — as the inputs of the icon's HTML5
+ * drop door. Task 590 deleted that door (every Stack producer is an in-app
+ * gesture that already runs INSIDE its own pane and captures through the pane's
+ * own refs, `captureKeyToStack`), and task 1287 deleted the getters and the
+ * ladder with it: a registry earns its name by being read, and a live-looking
+ * "which pane is active" resolver nobody calls invites the next producer to ask
+ * it instead of its own pane.
  *
- * The ZEN gate is deliberately NOT the resolved terminal's answer: it is
- * `someTerminalWantsChrome()`, an ANY over the registry. That preserves exactly
- * today's aggregate semantics (the chrome existed if any mounted pane had
- * `viewPrefs && !zenMode`) — including the surfaces where the ladder is
- * honestly ambiguous, such as PDF view, where every doc slot is `display:none`
- * and no pane wins. Zen is uniform across doc panes (all read one
+ * The gate is an ANY over the registry (`someStackPaneWantsChrome`), which
+ * preserves exactly the aggregate semantics the per-pane mount had (the chrome
+ * existed if any mounted pane had `viewPrefs && !zenMode`) — including the
+ * surfaces where no pane is honestly "active", such as PDF view, where every
+ * doc slot is `display:none`. Zen is uniform across doc panes (all read one
  * `zenModeOn`) and always `false` in the Reader, so the ANY is not a guess.
  */
 
-import type { Editor } from "@tiptap/react";
 import { useEffect, useState } from "react";
-import { pickActiveByEditor } from "@/lib/active-editor-probe";
-import type { StackBibCtx } from "@/lib/stack/bib-carry";
 
-export interface StackTerminal {
-  /** This pane's main editor, or `null` before it is created / in a
-   *  view-less fixture. Read live (a getter) because a pane registers once and
-   *  its editor arrives later. */
-  getEditor: () => Editor | null;
-  /** Source attribution stamped onto items this pane's chrome captures. */
-  getSource: () => { docId: string | null };
-  /** The SOURCE doc's bibliography resolvers for the add door (task 235). */
-  getBibCtx: () => StackBibCtx;
-  /** False while this pane has no `viewPrefs` or is in zen mode — the chrome
-   *  gate this pane would have applied to its own copy. A plain VALUE, not a
-   *  getter: it is the one field the host has to re-render on, so a pane
-   *  re-registers (same token, new terminal) when it flips, and that
-   *  registration emit is the host's signal. Zen toggles, not keystrokes. */
-  wantsChrome: boolean;
-}
-
+/** One registration. Its identity is what the owner-checked disposer compares,
+ *  so a superseded registration under the same token can remove nothing. */
 interface Entry {
-  token: object;
-  terminal: StackTerminal;
+  wantsChrome: boolean;
 }
 
 const registry = new Map<object, Entry>();
@@ -88,47 +70,37 @@ function emitRegistry() {
 }
 
 /**
- * Publish this pane's terminal under its own token. The returned disposer is
- * OWNER-CHECKED: a pane that has already been replaced in the slot removes
- * nothing, so a departing owner can never delete a live owner's entry.
+ * Publish this pane's chrome gate under its own token. A pane re-registers
+ * (same token, new entry) when its gate flips — zen toggles, never keystrokes —
+ * and that emit is the host's re-render signal. The returned disposer is
+ * OWNER-CHECKED: a registration that has already been replaced in the slot
+ * removes nothing, so a departing owner can never delete a live owner's entry.
  */
-export function registerStackTerminal(
+export function registerStackChromeGate(
   token: object,
-  terminal: StackTerminal,
+  wantsChrome: boolean,
 ): () => void {
-  registry.set(token, { token, terminal });
+  const entry: Entry = { wantsChrome };
+  registry.set(token, entry);
   emitRegistry();
   return () => {
-    const entry = registry.get(token);
-    if (!entry || entry.terminal !== terminal) return; // already replaced — not ours
+    if (registry.get(token) !== entry) return; // already replaced — not ours
     registry.delete(token);
     emitRegistry();
   };
 }
 
-/** The ACTIVE pane's terminal — see the ladder in this module's header. */
-export function getStackTerminal(): StackTerminal | null {
-  if (registry.size === 0) return null;
-  if (registry.size === 1) {
-    return registry.values().next().value?.terminal ?? null;
-  }
-  const picked = pickActiveByEditor(registry.values(), (e) =>
-    e.terminal.getEditor(),
-  );
-  return picked ? picked.terminal : null;
-}
-
 /** True when SOME mounted pane wants the Stack chrome (see header: the gate is
- *  an ANY, not the resolved terminal's answer). */
-export function someTerminalWantsChrome(): boolean {
+ *  an ANY over the registry). */
+export function someStackPaneWantsChrome(): boolean {
   for (const entry of registry.values()) {
-    if (entry.terminal.wantsChrome) return true;
+    if (entry.wantsChrome) return true;
   }
   return false;
 }
 
-/** TEST-ONLY: drop every registered terminal. */
-export function __resetStackTerminals(): void {
+/** TEST-ONLY: drop every registered gate. */
+export function __resetStackChromeGates(): void {
   registry.clear();
   emitRegistry();
 }
@@ -137,7 +109,7 @@ export function __resetStackTerminals(): void {
  * Subscribe to registry membership changes. The host re-reads the gate on each
  * emit; emits happen on mount/unmount of a pane only, never per keystroke.
  */
-export function subscribeStackTerminals(fn: () => void): () => void {
+export function subscribeStackChromeGates(fn: () => void): () => void {
   registryListeners.add(fn);
   return () => {
     registryListeners.delete(fn);
