@@ -95,12 +95,14 @@ function ruleProviders(ed: Editor): string[] {
 // The declared provider set. Each entry is a rule Virgil MEANS to run:
 //   bulletList / orderedList / blockquote — the wrapper rules (`- ` / `1. ` /
 //     `> `), mounted through `withWrapperGate` (task 731);
-//   smartQuotes / autocorrect — Virgil's own typographic rules (main only);
+//   smartQuotes / autocorrect — Virgil's own typographic rules, on main AND
+//     float (task 1288: a float edits the paper's own prose and writes it back,
+//     so a popout that withheld them typed straight quotes into the `.tex`);
 //   link:paste — autolinking a pasted URL (not markdown).
 const WRAPPERS = ["blockquote:input", "bulletList:input", "orderedList:input"];
 const EXPECTED: Record<string, string[]> = {
   main: [...WRAPPERS, "autocorrect:input", "link:paste", "smartQuotes:input"].sort(),
-  float: [...WRAPPERS, "link:paste"].sort(),
+  float: [...WRAPPERS, "autocorrect:input", "link:paste", "smartQuotes:input"].sort(),
   "card-body:card": ["bulletList:input", "link:paste", "orderedList:input"].sort(),
   "card-body:excerpt": [...WRAPPERS, "link:paste"].sort(),
 };

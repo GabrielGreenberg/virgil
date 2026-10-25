@@ -1698,7 +1698,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
   // Float (FCU Chip B): the shared core MINUS the doc-wide numberers/folding
   // (sectionNumbers / sectionFoldingPlugin — omitted inside the heading
   // builder's float mode — and ExpexNumbering) and the main-only chrome
-  // (Placeholder, SlashPopupExtension, SmartQuotes, TextObjectOrphanGuard,
+  // (Placeholder, SlashPopupExtension, TextObjectOrphanGuard,
   // LabelHandler, EmptyParagraphTitleCleaner,
   // MarginaliaAnchorGuard, PgMarkChip, readOnlyEnforcer). data-uuid DOM
   // exposure moved off the deleted UuidAttrDecorator onto the NodeViews'
@@ -1954,14 +1954,18 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // — the one `SmartQuotes` deliberately does NOT take — is inside the rule
     // (`typed-prose-gate.ts`): a word swap has no reverse map, so it may not
     // fire inside a `latexCommand` run the way a glyph legitimately does.
-    // Main-only, matching `SmartQuotes`: a card body gets neither.
-    ...(isMain
-      ? [
-          SlashPopupExtension,
-          SmartQuotes,
-          Autocorrect.configure({ portRef: ctx.spellcheckPortRef ?? null }),
-        ]
-      : []),
+    // SHARED, for the reason `SpellcheckDecorator` above is (task 1288): a
+    // float edits the paper's OWN prose and writes it back to MAIN, so the same
+    // paragraph must type the same bytes in either pane — a straight `"` typed
+    // in a popout used to land in the `.tex`, where LaTeX prints a closing
+    // quote on both sides. A read-only float stays inert: a non-editable view
+    // receives no text input, so no input rule fires. The appended rewrite
+    // transaction reaches MAIN through the float's ordinary write-back like any
+    // keystroke. Real card bodies (notes, todos, `RichTextField`) do not build
+    // this stack and get neither. Only the slash popup is main-only chrome.
+    ...(isMain ? [SlashPopupExtension] : []),
+    SmartQuotes,
+    Autocorrect.configure({ portRef: ctx.spellcheckPortRef ?? null }),
     LinkedAnchor,
     // `docIdRef` rides onto both orphan events so only the ORIGINATING doc's
     // card hooks strip the dead link (task 598 — `orphan-events.ts`). A card

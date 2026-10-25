@@ -121,7 +121,7 @@ function mainCtx(withAnchors = true): EditorExtensionsCtx {
 // shared stack in L3j so the title/author/date fields pop out; it was the lone
 // bodyless kind that was main-only) MINUS the doc-wide example numberer
 // (`expexNumbering`) and every main-only chrome extension (`placeholder`,
-// `slashPopup`, `smartQuotes`, the orphan/label/cleaner guards,
+// `slashPopup`, the orphan/label/cleaner guards,
 // `marginaliaAnchorGuard`, `pgmarkChip`, `uuidAttrDecorator`,
 // `readOnlyEnforcer`). The `sectionNumbers` + `sectionFolding` plugins are
 // omitted *inside* the heading builder (a separate test asserts that).
@@ -174,6 +174,10 @@ const EXPECTED_FLOAT_ORDER = [
   "latexCommentTail",
   "inlineAtomGrab",
   "spellcheckDecorator",
+  // smartQuotes + autocorrect: SHARED since task 1288 — a float edits the
+  // paper's own prose, so it types the same bytes the main pane does.
+  "smartQuotes",
+  "autocorrect",
   "linkedAnchor",
   "linkedAnchorGuard",
   // titleField: promoted into the shared float stack (L3j) — it was the lone
@@ -195,8 +199,6 @@ const MAIN_ONLY_NAMES = [
   "placeholder",
   "expexNumbering",
   "slashPopup",
-  "smartQuotes",
-  "autocorrect",
   "textObjectOrphanGuard",
   "labelHandler",
   "emptyParagraphTitleCleaner",
