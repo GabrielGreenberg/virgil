@@ -67,6 +67,6 @@ describe("useCollab — identity re-hydrates across windows (task 768)", () => {
   it("a local setIdentity still updates this window (no storage event needed)", () => {
     const { result } = renderHook(() => useCollab("doc-1"));
     act(() => result.current.setIdentity({ name: "Grace", color: "#abcdef" }));
-    expect(result.current.identity).toEqual({ name: "Grace", color: "#abcdef" });
+    expect(result.current.identity).toMatchObject({ name: "Grace", color: "#abcdef" });
   });
 });

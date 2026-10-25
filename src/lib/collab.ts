@@ -53,7 +53,26 @@ export const COLLAB_COLORS: { name: string; hex: string }[] = [
 export interface CollabIdentity {
   name: string;
   color: string;
+  /** Task 1281 — the RENAME LEDGER: names this browser has given up, most
+   *  recent first, each with WHEN it was given up. A rename only migrates
+   *  the papers mounted at that moment; every other paper's `collab.json`
+   *  still carries the old name, and the ledger is what lets the next open
+   *  fold it onto the current one (`adoptIdentity`, collab-store.ts).
+   *  Maintained ONLY by {@link saveIdentity}: bounded, deduped, never holding
+   *  the current name. Absent when no rename has happened. */
+  previousNames?: CollabNameRelease[];
 }
+
+/** One rename-ledger entry (task 1281): `name` stopped being this browser's
+ *  at `until`. A trace of `name` stamped later than that (past a grace) can't
+ *  be this browser's — it is someone else who now goes by it. */
+export interface CollabNameRelease {
+  name: string;
+  until: string;
+}
+
+/** The rename ledger keeps this many released names. */
+export const COLLAB_PREVIOUS_NAMES_MAX = 8;
 
 export interface CollabParticipant {
   name: string;
@@ -199,12 +218,38 @@ export function loadIdentity(): CollabIdentity | null {
       parsed.name.trim() &&
       /^#[0-9a-f]{6}$/i.test(parsed.color)
     ) {
-      return { name: parsed.name.trim(), color: parsed.color.toLowerCase() };
+      const name = parsed.name.trim();
+      const previousNames = normalizeLedger(
+        Array.isArray(parsed.previousNames) ? parsed.previousNames : [],
+        name,
+      );
+      return previousNames.length
+        ? { name, color: parsed.color.toLowerCase(), previousNames }
+        : { name, color: parsed.color.toLowerCase() };
     }
   } catch {
     /* ignore */
   }
   return null;
+}
+
+/** Sanitize a rename ledger: well-formed entries only, one per name (the
+ *  latest release wins), most recent first, never `current`, bounded. */
+function normalizeLedger(entries: unknown[], current: string): CollabNameRelease[] {
+  const latest = new Map<string, CollabNameRelease>();
+  for (const e of entries) {
+    if (!e || typeof e !== "object") continue;
+    const { name, until } = e as { name?: unknown; until?: unknown };
+    if (typeof name !== "string" || typeof until !== "string") continue;
+    const n = name.trim();
+    const at = Date.parse(until);
+    if (!n || n === current || !Number.isFinite(at)) continue;
+    const seen = latest.get(n);
+    if (!seen || Date.parse(seen.until) < at) latest.set(n, { name: n, until });
+  }
+  return [...latest.values()]
+    .sort((a, b) => Date.parse(b.until) - Date.parse(a.until))
+    .slice(0, COLLAB_PREVIOUS_NAMES_MAX);
 }
 
 /**
@@ -215,10 +260,34 @@ export function loadIdentity(): CollabIdentity | null {
  * through the in-window announcement — and each `useCollab` that hears an
  * actual change migrates its paper's sidecar from the old name to the new one.
  * An unchanged identity announces nothing.
+ *
+ * A NAME change is also recorded in the identity's rename ledger (task 1281,
+ * {@link CollabIdentity.previousNames}) — the door, not the caller, owns it:
+ * the outgoing name is stamped with the moment it was given up, merged with
+ * the ledger already stored (a caller's copy may be stale), so the papers
+ * that were NOT mounted during the rename converge on their next open.
  */
-export function saveIdentity(identity: CollabIdentity): void {
+export function saveIdentity(
+  identity: CollabIdentity,
+  clock: () => number = Date.now,
+): void {
   if (typeof window === "undefined") return;
-  const value = JSON.stringify(identity);
+  const prior = loadIdentity();
+  const released: CollabNameRelease[] =
+    prior && prior.name !== identity.name
+      ? [{ name: prior.name, until: new Date(clock()).toISOString() }]
+      : [];
+  const previousNames = normalizeLedger(
+    [
+      ...released,
+      ...(prior?.previousNames ?? []),
+      ...(identity.previousNames ?? []),
+    ],
+    identity.name,
+  );
+  const record: CollabIdentity = { name: identity.name, color: identity.color };
+  if (previousNames.length) record.previousNames = previousNames;
+  const value = JSON.stringify(record);
   try {
     if (localStorage.getItem(COLLAB_IDENTITY_KEY) === value) return;
     localStorage.setItem(COLLAB_IDENTITY_KEY, value);
@@ -341,7 +410,13 @@ export function ensureParticipant(
     ...sidecar,
     participants: [
       ...sidecar.participants,
-      { ...identity, firstSeen: new Date().toISOString() },
+      // Explicit fields: the identity also carries its rename ledger, which
+      // is per-browser state and never belongs on a paper's roster.
+      {
+        name: identity.name,
+        color: identity.color,
+        firstSeen: new Date().toISOString(),
+      },
     ],
   };
 }

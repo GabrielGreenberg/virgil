@@ -33,7 +33,8 @@ import {
   mutateCollab,
   passPenMutator,
   releaseSelf,
-  renameSelf,
+  adoptIdentity,
+  adoptSelf,
   takePenMutator,
   type CollabMutator,
 } from "@/lib/collab-store";
@@ -275,7 +276,9 @@ export function useCollab(
   // writing under the OLD name. And the old name is projected onto this
   // paper's sidecar (pen holder, presence, roster): renaming only the cache
   // would leave `iHavePen` false for a pen this user still holds, so the
-  // change also MIGRATES the sidecar old → new, idempotently.
+  // change also MIGRATES the sidecar old → new, idempotently — through
+  // `adoptSelf`, the same door the load below repairs a paper that was
+  // CLOSED during the rename with (task 1281: the identity's rename ledger).
   useEffect(
     () =>
       subscribeToStorageKey(COLLAB_IDENTITY_KEY, () => {
@@ -288,7 +291,7 @@ export function useCollab(
           next &&
           (before.name !== next.name || before.color !== next.color)
         ) {
-          void mutate(renameSelf(before.name, next));
+          void mutate(adoptSelf(next, before.name));
         }
       }),
     [mutate],
@@ -304,6 +307,10 @@ export function useCollab(
     }
     let cancelled = false;
     let lastSerialized = "";
+    /** Task 1281 — the identity this paper's on-open repair last ran for:
+     *  once per identity per load, so a paper that can't be written (a
+     *  library paper) doesn't retry the same write every poll. */
+    let adoptedFor = "";
     let lastPenKey = "";
     /** The cowork rung (task 489). Reads BOTH on-disk records and resolves
      *  them through the ONE ladder, then publishes the answer to the store the
@@ -348,6 +355,15 @@ export function useCollab(
           EMPTY_COLLAB_SIDECAR,
         );
         void loadCoworkPen(fresh.pen ?? null);
+        // Task 1281 — a rename only migrated the papers mounted at the time;
+        // this one may still carry a released name (pen, presence, roster).
+        // Fold the identity's rename ledger onto it, through the door.
+        const me = identityRef.current;
+        const meKey = me ? JSON.stringify(me) : "";
+        if (!cancelled && me && meKey !== adoptedFor) {
+          adoptedFor = meKey;
+          if (adoptIdentity(fresh, me) !== fresh) void mutate(adoptSelf(me));
+        }
         if (!cancelled) {
           // Merge: keep our own focus heartbeat if we wrote it more recently.
           const merged = mergeKeepingSelf(fresh, sidecarRef.current, selfRef.current());

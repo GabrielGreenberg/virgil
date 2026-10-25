@@ -149,7 +149,7 @@ describe("useCollab — identity change is a door (task 1014)", () => {
 
     act(() => result.current.setIdentity(ADA2));
 
-    expect(result.current.identity).toEqual(ADA2);
+    expect(result.current.identity).toMatchObject(ADA2);
     expect(result.current.iHavePen).toBe(true);
     expect(result.current.canEditMainText).toBe(true);
     await waitFor(() =>
@@ -173,7 +173,7 @@ describe("useCollab — identity change is a door (task 1014)", () => {
     act(() => a.result.current.setIdentity(ADA2));
 
     for (const h of [a, b, c]) {
-      expect(h.result.current.identity).toEqual(ADA2);
+      expect(h.result.current.identity).toMatchObject(ADA2);
       expect(h.result.current.iHavePen).toBe(true);
     }
     await waitFor(() => {
