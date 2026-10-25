@@ -48,6 +48,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    _atomic_write_bytes,
     _atomic_write_text,
     paper_folder,
     SOURCE_FORMAT_PRIORITY,
@@ -593,8 +594,13 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
                 f"backed up to {retired}")
     if source_ext == "tex":
         log("Step 5: copy .tex source as main.tex (passthrough)")
-        shutil.copyfile(source_path, paper_dir / "main.tex")
-        tex = (paper_dir / "main.tex").read_text(errors="replace")
+        # Through the door, not `shutil.copyfile` (task 1294): a copy writes
+        # IN PLACE, so a kill or a full disk mid-copy on --re-extract left a
+        # truncated main.tex. The bytes land verbatim — passthrough means the
+        # author's file, whatever its encoding.
+        source_bytes = Path(source_path).read_bytes()
+        _atomic_write_bytes(paper_dir / "main.tex", source_bytes)
+        tex = source_bytes.decode("utf-8", errors="replace")
     else:
         log("Step 5: emit main.tex")
         tex = emit(
