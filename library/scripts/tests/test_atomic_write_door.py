@@ -17,9 +17,14 @@ Legs:
   * `write_paper_bib_entry` inherits that (the task's named contract);
   * the door writes UTF-8 whatever the locale says;
   * CENSUS: no `.write_text(` / `.write_bytes(` / `open(…, "w"|"a"|"x"|"+")`
-    / `os.replace(` in a library script outside the door, except the rows in
+    / `os.replace(` / `shutil.copy*(` / `shutil.move(` / `shutil.copytree(`
+    in a library script outside the door, except the rows in
     `ALLOW` (reports, logs, scratch, self-test fixtures, locks) — and an
     `ALLOW` row nothing matches is itself a failure, so the list cannot rot;
+  * the census SEES every spelling it bans (a fixture per spelling) — task
+    1294: `index_paper`'s .tex passthrough wrote main.tex with
+    `shutil.copyfile`, in place, and a census that scanned only
+    `write_text`/`open` passed it unseen;
   * no second definition of the door anywhere in the tree.
 
 Run: python3 library/scripts/tests/test_atomic_write_door.py
@@ -68,7 +73,21 @@ ALLOW: dict[tuple[str, str], str] = {
     ("rename_citekeys.py", "tmp / '.virgil' / 'catalog.json'"): "self-test fixture",
     ("rename_citekeys.py", "tmp / '.virgil' / 'aliases.json'"): "self-test fixture",
     ("dedup-run-2026-07-03/finalize_plan.py", "SCR / 'final_plan.json'"): "archived one-off run's report",
+    # shutil copies/moves (task 1294). A COPY onto a content path writes in
+    # place and is never allowed; these are backups or renames.
+    ("_tools.py", "str(dest)"): "safe_move's rename fallback (the relocate door, task 619)",
+    ("merge_bibs_preflight.py", "snap_dir / dst_name"): "pre-run backup snapshot",
+    ("recover_ocr_pipeline.py", "archive_path"): "backup of the original PDF",
+    ("recover_ocr_pipeline.py", "str(pdf_path)"): "rename of a finished temp PDF onto the source",
+    ("index_paper.py", "dest / 'main.tex'"): "re-extract backup copy",
+    ("index_paper.py", "str(dest / baseline.name)"): "re-extract backup move",
+    ("index_paper.py", "str(backup)"): "backup of the original PDF",
+    ("index_paper.py", "str(source_path)"): "rename of a finished OCR temp PDF onto the source",
 }
+
+# Every shutil call that writes its second argument. `copyfileobj` writes a
+# file object some `open(…, "w")` already produced, which the census sees.
+SHUTIL_WRITERS = {"copy", "copy2", "copyfile", "copytree", "move"}
 
 
 def _script_files() -> list[Path]:
@@ -96,7 +115,15 @@ def _is_write_mode(call: ast.Call) -> bool:
 
 def _raw_writes(path: Path) -> list[tuple[int, str, str]]:
     """(line, kind, target source) for every raw write in `path`."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return _raw_writes_in(path.read_text(encoding="utf-8"))
+
+
+def _raw_writes_in(source: str) -> list[tuple[int, str, str]]:
+    tree = ast.parse(source)
+    # `from shutil import copyfile` — the bare name is the same write.
+    shutil_names = {a.asname or a.name: a.name for n in ast.walk(tree)
+                    if isinstance(n, ast.ImportFrom) and n.module == "shutil"
+                    for a in n.names}
     found = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -109,7 +136,21 @@ def _raw_writes(path: Path) -> list[tuple[int, str, str]]:
         elif (isinstance(f, ast.Attribute) and f.attr == "replace"
               and isinstance(f.value, ast.Name) and f.value.id == "os"):
             found.append((node.lineno, "os.replace", ast.unparse(node.args[0]) if node.args else ""))
+        elif (isinstance(f, ast.Attribute) and f.attr in SHUTIL_WRITERS
+              and isinstance(f.value, ast.Name) and f.value.id == "shutil"):
+            found.append((node.lineno, f"shutil.{f.attr}", _second_arg(node, "dst")))
+        elif isinstance(f, ast.Name) and shutil_names.get(f.id) in SHUTIL_WRITERS:
+            found.append((node.lineno, f"shutil.{shutil_names[f.id]}", _second_arg(node, "dst")))
     return found
+
+
+def _second_arg(call: ast.Call, kw: str) -> str:
+    if len(call.args) >= 2:
+        return ast.unparse(call.args[1])
+    for k in call.keywords:
+        if k.arg == kw:
+            return ast.unparse(k.value)
+    return ""
 
 
 def test_census_every_content_write_goes_through_the_door():
@@ -133,6 +174,38 @@ def test_census_every_content_write_goes_through_the_door():
     )
     stale = sorted(set(ALLOW) - seen)
     assert not stale, f"ALLOW rows that match no write any more — delete them: {stale}"
+
+
+def test_census_sees_every_banned_spelling():
+    """A negative census is only as wide as the spellings it can see."""
+    fixture = (
+        "import os, shutil\n"
+        "from shutil import copyfile as cf\n"
+        "p.write_text('x')\n"
+        "p.write_bytes(b'x')\n"
+        "open(p, 'w')\n"
+        "os.replace(tmp, p)\n"
+        "shutil.copyfile(src, paper_dir / 'main.tex')\n"
+        "shutil.copy(src, dst=p)\n"
+        "shutil.copy2(src, p)\n"
+        "shutil.copytree(src, p)\n"
+        "shutil.move(src, p)\n"
+        "cf(src, p)\n"
+    )
+    kinds = [k for _, k, _ in _raw_writes_in(fixture)]
+    assert sorted(kinds) == sorted([
+        "write_text", "write_bytes", "open", "os.replace", "shutil.copyfile",
+        "shutil.copy", "shutil.copy2", "shutil.copytree", "shutil.move", "shutil.copyfile",
+    ]), kinds
+    targets = {t for _, k, t in _raw_writes_in(fixture) if k.startswith("shutil.")}
+    assert "paper_dir / 'main.tex'" in targets and "p" in targets
+
+
+def test_tex_passthrough_writes_main_tex_through_the_door():
+    """Task 1294's named member: no raw write targets main.tex in index_paper."""
+    raw = _raw_writes(SCRIPTS / "index_paper.py")
+    offenders = [r for r in raw if "main.tex" in r[2] and "dest" not in r[2]]
+    assert not offenders, offenders
 
 
 def test_the_door_is_defined_once():
