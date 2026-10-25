@@ -258,8 +258,15 @@ describe("the host closes the float only on a capture that landed", () => {
     // strip opens only past it (opening on nothing is the visible half of the
     // same lie).
     const body = terminalBody();
-    const guard = body.indexOf("if (!addStackItem(item, stackBibCtxRef.current)) {");
+    const call = body.indexOf("const added = addStackItem(item, stackBibCtxRef.current);");
+    const guard = body.indexOf("if (!added.ok) {");
     const notice = body.indexOf("dragHandleNotify(");
+    expect(call, "the terminal holds the add's typed report").toBeGreaterThan(-1);
+    expect(guard, "…and gates on it").toBeGreaterThan(call);
+    // The notice is DERIVED from the refusal's reason (task 1285), never one
+    // hard-coded "full" for every refusal.
+    expect(body.includes("STACK_ADD_REFUSAL_NOTICE[added.reason]")).toBe(true);
+    expect(body.includes('"The Stack is full"'), "no hard-coded refusal copy").toBe(false);
     const strip = body.indexOf("openStackStrip()");
     expect(guard, "the terminal must gate on the add's report").toBeGreaterThan(-1);
     expect(notice, "a Stack that is genuinely full is said out loud")

@@ -82,16 +82,16 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("the add door reports whether the item actually landed", () => {
   it("returns true on an ordinary add, and the item is readable back", () => {
-    expect(addStackItem(item("a"), NO_BIB)).toBe(true);
+    expect(addStackItem(item("a"), NO_BIB).ok).toBe(true);
     expect(readStackItem("a")?.id).toBe("a");
   });
 
   it("returns FALSE when nothing can be persisted — and loses nothing", () => {
-    expect(addStackItem(item("old"), NO_BIB)).toBe(true);
+    expect(addStackItem(item("old"), NO_BIB).ok).toBe(true);
     // Every write throws from here on: not a budget the door can trim into,
     // just a storage that refuses.
     rationStorageAt(0);
-    expect(addStackItem(item("new"), NO_BIB)).toBe(false);
+    expect(addStackItem(item("new"), NO_BIB).ok).toBe(false);
     // A failed `setItem` does not modify the existing value, so the envelope
     // that was already there is intact — the capture is a copy, and refusing
     // it costs the user nothing but the gesture.
@@ -101,24 +101,24 @@ describe("the add door reports whether the item actually landed", () => {
 
   it("makes room by FIFO eviction and then SUCCEEDS", () => {
     for (const id of ["oldest", "middle", "newest"]) {
-      expect(addStackItem(item(id), NO_BIB)).toBe(true);
+      expect(addStackItem(item(id), NO_BIB).ok).toBe(true);
     }
     expect(storedIds()).toEqual(["newest", "middle", "oldest"]);
     // Room for three envelope entries, not four: the add must give something
     // up rather than refuse, and what it gives up is the OLD end.
     const three = localStorage.getItem(STACK_STORAGE_KEY)!.length;
     rationStorageAt(three);
-    expect(addStackItem(item("fourth"), NO_BIB)).toBe(true);
+    expect(addStackItem(item("fourth"), NO_BIB).ok).toBe(true);
     expect(storedIds()).toEqual(["fourth", "newest", "middle"]);
   });
 
   it("never evicts the item being added to make room for itself", () => {
-    expect(addStackItem(item("resident"), NO_BIB)).toBe(true);
+    expect(addStackItem(item("resident"), NO_BIB).ok).toBe(true);
     // Not even one item fits. The honest answer is a refusal — a silent trim
     // to an empty Stack would be the same lie one layer down, and would also
     // destroy what was already captured.
     rationStorageAt(4);
-    expect(addStackItem(item("huge"), NO_BIB)).toBe(false);
+    expect(addStackItem(item("huge"), NO_BIB).ok).toBe(false);
     expect(storedIds()).toEqual(["resident"]);
   });
 });
@@ -157,8 +157,8 @@ describe("the cap is a budget: fitStackItems applies BOTH halves", () => {
 
 describe("hook state follows the write, never leads it", () => {
   it("remove reports false and keeps the item when the write fails", () => {
-    expect(addStackItem(item("a"), NO_BIB)).toBe(true);
-    expect(addStackItem(item("b"), NO_BIB)).toBe(true);
+    expect(addStackItem(item("a"), NO_BIB).ok).toBe(true);
+    expect(addStackItem(item("b"), NO_BIB).ok).toBe(true);
     const { result } = renderHook(() => useStack());
     expect(result.current.items.map((i) => i.id)).toEqual(["b", "a"]);
 
@@ -175,8 +175,8 @@ describe("hook state follows the write, never leads it", () => {
   });
 
   it("…and remove reports true and takes effect on a write that lands", () => {
-    expect(addStackItem(item("a"), NO_BIB)).toBe(true);
-    expect(addStackItem(item("b"), NO_BIB)).toBe(true);
+    expect(addStackItem(item("a"), NO_BIB).ok).toBe(true);
+    expect(addStackItem(item("b"), NO_BIB).ok).toBe(true);
     const { result } = renderHook(() => useStack());
     act(() => {
       expect(result.current.remove("a")).toBe(true);
