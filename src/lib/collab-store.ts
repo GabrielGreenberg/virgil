@@ -359,11 +359,86 @@ export function renameParticipant(
   return next;
 }
 
-/** {@link renameParticipant} as a write-queue mutator: `null` when nothing
- *  of `from`'s is on disk (no write). */
-export function renameSelf(from: string, to: CollabIdentity): CollabMutator {
+
+/** How long past a rename-ledger entry's `until` a trace of the released
+ *  name is still taken to be this browser's: a write already in the queue
+ *  when the rename landed stamps a moment just after it (task 1281). */
+export const COLLAB_RENAME_GRACE_MS = 30_000;
+
+/** Does any trace of `name` on the sidecar postdate `cutoff` (epoch ms)? */
+function hasTraceAfter(
+  sidecar: CollabSidecar,
+  name: string,
+  cutoff: number,
+): boolean {
+  const after = (iso: string | null | undefined) =>
+    !!iso && Date.parse(iso) > cutoff;
+  const pen = sidecar.pen;
+  if (
+    pen.holder === name &&
+    (after(pen.since) || after(pen.lastHeartbeat) || after(pen.lastActivity))
+  ) {
+    return true;
+  }
+  if ((pen.requestedBy ?? []).some((r) => r.name === name && after(r.requestedAt))) {
+    return true;
+  }
+  const entry = sidecar.presence[name];
+  if (
+    entry &&
+    (after(entry.lastHeartbeat) ||
+      after(entry.focusedCard?.lastHeartbeat) ||
+      Object.values(entry.sessions ?? {}).some(after))
+  ) {
+    return true;
+  }
+  return sidecar.participants.some((p) => p.name === name && after(p.firstSeen));
+}
+
+/**
+ * Bring a paper's sidecar up to date with this browser's identity `me`
+ * (task 1281) — THE one door both migrations go through: the rename of a
+ * MOUNTED paper (the identity subscription, which knows the outgoing name
+ * for certain and passes it as `knownFrom`) and the repair of a paper that
+ * was CLOSED during the rename (its next load, which has only the ledger).
+ *
+ * Every rename-ledger name is folded onto `me` through
+ * {@link renameParticipant} (idempotent and merge-safe), then `me`'s own
+ * roster colour is corrected. A ledger name is folded only when nothing of
+ * it on disk postdates its release (+ {@link COLLAB_RENAME_GRACE_MS}): a
+ * newer trace is someone else who has since taken that name on a shared
+ * paper, and it stays theirs. Residual risk, accepted: a collaborator whose
+ * clock runs behind ours by more than the gap since our rename could still
+ * read as "old" — names are the sidecar's key, so this is the same
+ * conflation two same-named people already have.
+ *
+ * Returns `prev` itself when there is nothing to change.
+ */
+export function adoptIdentity(
+  prev: CollabSidecar,
+  me: CollabIdentity,
+  knownFrom?: string,
+): CollabSidecar {
+  let next = prev;
+  if (knownFrom !== undefined && knownFrom !== me.name) {
+    next = renameParticipant(next, knownFrom, me);
+  }
+  for (const released of me.previousNames ?? []) {
+    if (released.name === me.name || released.name === knownFrom) continue;
+    const until = Date.parse(released.until);
+    if (!Number.isFinite(until)) continue;
+    if (hasTraceAfter(next, released.name, until + COLLAB_RENAME_GRACE_MS)) continue;
+    next = renameParticipant(next, released.name, me);
+  }
+  // The colour half (task 1106): a no-op unless my roster slot is off-colour.
+  return renameParticipant(next, me.name, me);
+}
+
+/** {@link adoptIdentity} as a write-queue mutator: `null` when the sidecar on
+ *  disk already reflects `me` (no write). */
+export function adoptSelf(me: CollabIdentity, knownFrom?: string): CollabMutator {
   return (prev) => {
-    const next = renameParticipant(prev, from, to);
+    const next = adoptIdentity(prev, me, knownFrom);
     return next === prev ? null : next;
   };
 }
