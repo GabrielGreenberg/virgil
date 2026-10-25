@@ -2416,6 +2416,14 @@ figures in the `trailing` slot (pinned right; the label grows), never a bare
 `<button>` with a `{on ? "✓" : ""}` tick. The census flags that conditional tick
 anywhere outside a declared holdout.
 
+**A row's hover-revealed remove X is a SLOT, not a patch** (task 1280): it
+takes the row's trailing cell — the cell's own content (Recents' relative time)
+turns `invisible`, keeping its width, while the X shows on row hover / focus /
+menu-active — and it paints NO background, so it reads on whatever tone the row
+has. Never an absolute overlay with a hard-coded `bg-[var(--background)]` (a
+beige square on a white menu). Inside a `<Menu>` the same verb is keyboard-
+reachable: `useMenuItem({ remove })` → Delete/Backspace on the active row.
+
 ### Reset-to-default (task 903)
 
 **One per-row reset control: `ResetButton`** (`ResetButton.tsx`, a ghost

@@ -65,6 +65,13 @@ export interface MenuNode {
   letterAliases?: string[];
   /** Activation handler — run on click / Enter / Space / letter. */
   run: () => void;
+  /**
+   * The row's REMOVE verb (task 1280), or absent. A row that names a removable
+   * thing (a Recents entry) supplies it; Delete/Backspace on the ACTIVE row
+   * runs it — unlike a `letterAliases` Backspace, which maps a key to ONE fixed
+   * row regardless of where the cursor is. Never closes the menu.
+   */
+  remove?: () => void;
   /** The activedescendant target: `${menuId}-item-${id}`. */
   domId: string;
   /** Live element ref (set by `getItemProps().ref`). */
@@ -102,6 +109,13 @@ export interface MenuRegistryHandle {
    * rule the registry already owns — ask the mechanism.
    */
   activate(): boolean;
+  /**
+   * Run the ACTIVE node's `remove` verb (task 1280), first stepping the cursor
+   * to a neighbour so the highlight survives the row's unmount. Returns whether
+   * anything ran — false with no active node, a disabled one, or one with no
+   * `remove` — so the controller consumes Delete/Backspace only on a true.
+   */
+  removeActive(): boolean;
 }
 
 /** Escape-dismissal config (§3.2). */
