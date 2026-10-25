@@ -844,9 +844,13 @@ def main() -> int:
     tex_path = Path(positional[0])
     bib_path = Path(positional[1])
 
-    tex = tex_path.read_text(encoding="utf-8")
-    tex, ocr_fixes = fix_ocr_years(tex)
+    original = tex_path.read_text(encoding="utf-8")
+    tex, ocr_fixes = fix_ocr_years(original)
 
+    # Task 1292: every pass reports `(text, n)` and the total is a SUM — no
+    # pass may own `count`. (The style branches used to ASSIGN it, so the
+    # multi-year fold's tally was discarded and a fold-only paper printed
+    # "Multi-year folded: N" and then wrote nothing.)
     unresolved: list[str] = []
     count = 0
     new_tex = tex
@@ -863,28 +867,36 @@ def main() -> int:
         if multi_year_count:
             count += multi_year_count
             print(f"Multi-year folded: {multi_year_count}")
-        tex = new_tex
 
     if style == "bracket-key":
         bracket_map = parse_bracket_keys(bib_path)
-        new_tex, count = rewrite_bracket_keys(tex, bracket_map)
+        new_tex, style_count = rewrite_bracket_keys(new_tex, bracket_map)
     elif style == "bracket-numeric":
-        refs_span = references_span(tex)
-        refs_section = tex[refs_span.head_start:] if refs_span else ""
+        refs_span = references_span(new_tex)
+        refs_section = new_tex[refs_span.head_start:] if refs_span else ""
         numeric_map = parse_numeric_bracket_keys(refs_section)
-        new_tex, count = rewrite_bracket_numeric(tex, numeric_map)
+        new_tex, style_count = rewrite_bracket_numeric(new_tex, numeric_map)
     elif style == "bracket-author-year":
         bibmap = parse_bib(bib_path)
-        new_tex, count, unresolved = rewrite_bracket_author_year(tex, bibmap)
+        new_tex, style_count, unresolved = rewrite_bracket_author_year(
+            new_tex, bibmap,
+        )
     elif style == "author-year-paren":
         bibmap = parse_bib(bib_path)
-        new_tex, count, unresolved = rewrite_author_year_paren(tex, bibmap)
+        new_tex, style_count, unresolved = rewrite_author_year_paren(
+            new_tex, bibmap,
+        )
     elif style == "bracket-locator":
         bibmap = parse_bib(bib_path)
-        new_tex, count, unresolved = rewrite_bracket_locator(tex, bibmap)
+        new_tex, style_count, unresolved = rewrite_bracket_locator(
+            new_tex, bibmap,
+        )
     else:
         bibmap = parse_bib(bib_path)
-        new_tex, count, unresolved = rewrite_citations(tex, bibmap, style=style)
+        new_tex, style_count, unresolved = rewrite_citations(
+            new_tex, bibmap, style=style,
+        )
+    count += style_count
 
     if also_possessive and style not in {"bracket-key", "bracket-numeric"}:
         bibmap = parse_bib(bib_path)
@@ -895,7 +907,9 @@ def main() -> int:
 
     if ocr_fixes:
         print(f"OCR year fixes: {ocr_fixes}")
-    if count or ocr_fixes:
+    # Gate the write on the literal question — did the text change? — not
+    # on a counter, so no future tally slip can drop a rewrite on the floor.
+    if new_tex != original:
         _atomic_write_text(tex_path, new_tex)
     if count:
         print(
