@@ -46,7 +46,6 @@ DOOR_NAMES = {"_atomic_write_bytes", "_atomic_write_text"}
 ALLOW: dict[tuple[str, str], str] = {
     ("_tools.py", "tmp"): "the door's own temp file",
     ("_tools.py", "lock_path"): "flock lock file (never holds content)",
-    ("drain_queue.py", "lock"): "lock file: a timestamp, recreated per drain",
     ("bulk_convert_numbered_examples.py", "Path(args.out)"): "report",
     ("extract_book_toc.py", "Path(args.out)"): "report",
     ("extract_pdf_footnotes.py", "out_path"): "derived report the caller re-runs",

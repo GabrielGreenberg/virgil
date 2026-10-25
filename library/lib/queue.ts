@@ -48,6 +48,10 @@ export interface QueueEntry {
   requestedAt: string;
   attempts: number;
   lastError?: string;
+  // Set by the worker's CLAIM (`queue_slot.claim_request`, task 1291) when it
+  // rewrites the entry to `running`; the in-flight guard ages it out after
+  // `QUEUE_RUNNING_TTL_MS` (a killed worker's claim is abandoned).
+  startedAt?: string;
   // bib-edit only: the new entry type + field map the skill should write
   // into master.bib for `citekey`. The skill replaces the existing block
   // verbatim with this content.
@@ -116,7 +120,9 @@ export class QueueSlotBusyError extends Error {
  *   2. retire-on-write: a `<slot>.done` left by an earlier run is rotated to
  *      `<slot>.<kind>.<stamp>.done` first, so the drain can never mistake a
  *      new request for finished work;
- *   3. a `running` entry is never overwritten (`QueueSlotBusyError`);
+ *   3. an in-flight entry — `running` under a live claim
+ *      (`isQueueEntryInFlight`, task 1291) — is never overwritten
+ *      (`QueueSlotBusyError`);
  *   4. a legacy `authenticate` request in the bare `<citekey>.json` slot is
  *      moved to its own slot before anything else is written there.
  *
@@ -134,7 +140,7 @@ export async function writeQueueEntry(
     }
   }
   const cur = normalizeQueueEntry(await readJsonFile<QueueEntry>(root, path));
-  if (cur?.status === "running") {
+  if (isQueueEntryInFlight(cur)) {
     throw new QueueSlotBusyError(filename, "in-flight");
   }
   await retireDone(root, slotStem(filename));
@@ -193,16 +199,19 @@ async function migrateLegacyOccupant(
     await deleteFile(root, barePath);
     return true;
   }
-  if (cur.status === "running") return false;
+  if (isQueueEntryInFlight(cur)) return false;
   await retireDone(root, slotStem(destName));
   await writeJsonFile(root, destPath, cur);
   await deleteFile(root, barePath);
   return true;
 }
 
-/** The file that holds a live (`requested`/`running`) request of `kind` for
- *  `citekey`, looking in its own slot and — for legacy kinds — the bare slot.
- *  The CANCEL half's reader, so a cancel finds a pre-618 request too. */
+/** The file that holds a LIVE (`QUEUE_LIVE_STATUSES`) request of `kind` — or
+ *  of any kind sharing its slot (`queueSlotKinds`: a `reindex` answers for
+ *  `index`) — for `citekey`, looking in its own slot and — for legacy kinds —
+ *  the bare slot. The CANCEL half's reader, so a cancel finds a pre-618
+ *  request too. The same predicate as `queue_slot.find_request` (task 1291):
+ *  a `failed`/`poisoned`/`done` entry is not a live request. */
 export async function findQueuedRequest(
   root: FileSystemDirectoryHandle,
   citekey: string,
@@ -214,7 +223,13 @@ export async function findQueuedRequest(
   for (const name of names) {
     const path = `${SUBDIRS.queue}/${name}`;
     const entry = normalizeQueueEntry(await readJsonFile<QueueEntry>(root, path));
-    if (entry && entry.kind === kind) return { path, entry };
+    if (
+      entry &&
+      queueSlotKinds(kind).includes(entry.kind) &&
+      QUEUE_LIVE_STATUSES.includes(entry.status)
+    ) {
+      return { path, entry };
+    }
   }
   return null;
 }
@@ -264,6 +279,37 @@ export const QUEUE_DONE_JSON_SUFFIX = ".done.json";
 
 /** The one status that means "waiting to be worked" (`PENDING_STATUS`). */
 export const QUEUE_PENDING_STATUS: QueueStatus = "requested";
+
+/** "Is there a live request in this slot?" — `queue_slot.LIVE_STATUSES`,
+ *  pinned by `queue-slot-parity.test.ts` (task 1291). */
+export const QUEUE_LIVE_STATUSES: readonly QueueStatus[] = ["requested", "running"];
+
+/** A worker's claim older than this is abandoned (`RUNNING_TTL_SECONDS`). */
+export const QUEUE_RUNNING_TTL_MS = 60 * 60 * 1000;
+
+/** Is `entry` being worked — `running` under a claim not yet abandoned? A
+ *  running entry with no readable `startedAt` predates the claim door and is
+ *  treated as in flight. Mirrors `queue_slot.is_in_flight` (task 1291). */
+export function isQueueEntryInFlight(
+  entry: Pick<QueueEntry, "status" | "startedAt"> | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!entry || entry.status !== "running") return false;
+  const started = entry.startedAt ? Date.parse(entry.startedAt) : NaN;
+  if (Number.isNaN(started)) return true;
+  return now - started < QUEUE_RUNNING_TTL_MS;
+}
+
+/** Every kind sharing `kind`'s slot, derived from `QUEUE_SLOT_SUFFIX` —
+ *  `index` and `reindex` answer for each other. Mirrors
+ *  `queue_slot.slot_kinds`. */
+export function queueSlotKinds(kind: QueueKind): QueueKind[] {
+  if (kind === "triage") return [kind];
+  const suffix = QUEUE_SLOT_SUFFIX[kind];
+  return (Object.keys(QUEUE_SLOT_SUFFIX) as Exclude<QueueKind, "triage">[]).filter(
+    (k) => QUEUE_SLOT_SUFFIX[k] === suffix,
+  );
+}
 
 /** Can this queue-folder filename hold a request? Mirrors
  *  `queue_slot.is_request_filename`. */

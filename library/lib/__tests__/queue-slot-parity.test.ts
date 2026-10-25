@@ -17,8 +17,12 @@ import {
   QUEUE_KINDS,
   QUEUE_NON_REQUEST_FILENAMES,
   QUEUE_PENDING_REVIEWS_FILENAME,
+  isQueueEntryInFlight,
+  QUEUE_LIVE_STATUSES,
   QUEUE_PENDING_STATUS,
+  QUEUE_RUNNING_TTL_MS,
   QUEUE_SLOT_SUFFIX,
+  queueSlotKinds,
   withPendingReview,
   withoutPendingReview,
 } from "../queue";
@@ -102,6 +106,54 @@ describe("queue population — TS ↔ Python parity (task 794)", () => {
   it("every Python-slotted kind is a TS QueueKind (triage has no citekey slot)", () => {
     const pyKinds = py("sorted(queue_slot.SLOT_SUFFIX)");
     expect([...pyKinds, "triage"].sort()).toEqual([...QUEUE_KINDS].sort());
+  });
+});
+
+describe("live request + in-flight claim — one predicate per silo, equal (task 1291)", () => {
+  const py = (expr: string) =>
+    JSON.parse(
+      run([
+        "-c",
+        [
+          "import json, sys",
+          `sys.path.insert(0, ${JSON.stringify(SCRIPTS)})`,
+          "import queue_slot",
+          `print(json.dumps(${expr}))`,
+        ].join("\n"),
+      ]),
+    );
+
+  it("LIVE_STATUSES and the claim TTL are stated equal", () => {
+    expect(py("list(queue_slot.LIVE_STATUSES)")).toEqual([...QUEUE_LIVE_STATUSES]);
+    expect(py("queue_slot.RUNNING_TTL_SECONDS") * 1000).toBe(QUEUE_RUNNING_TTL_MS);
+    expect(py("queue_slot.RUNNING_STATUS")).toBe("running");
+  });
+
+  it("slot_kinds and queueSlotKinds agree kind by kind", () => {
+    const kinds = Object.keys(QUEUE_SLOT_SUFFIX) as (keyof typeof QUEUE_SLOT_SUFFIX)[];
+    const pyKinds = py(
+      `{k: list(queue_slot.slot_kinds(k)) for k in ${JSON.stringify(kinds)}}`,
+    );
+    expect(Object.fromEntries(kinds.map((k) => [k, queueSlotKinds(k)]))).toEqual(pyKinds);
+  });
+
+  it("is_in_flight and isQueueEntryInFlight agree entry by entry", () => {
+    const now = Date.parse("2026-10-25T12:00:00Z");
+    const entries = [
+      { status: "running" },
+      { status: "running", startedAt: "2026-10-25T11:30:00Z" },
+      { status: "running", startedAt: "2026-10-25T10:00:00Z" },
+      { status: "running", startedAt: "garbage" },
+      { status: "requested", startedAt: "2026-10-25T11:59:00Z" },
+      { status: "failed" },
+    ];
+    const pyVerdicts = py(
+      `[queue_slot.is_in_flight(e, ${now / 1000}) for e in ${JSON.stringify(entries)}]`,
+    );
+    expect(
+      entries.map((e) => isQueueEntryInFlight(e as Parameters<typeof isQueueEntryInFlight>[0], now)),
+    ).toEqual(pyVerdicts);
+    expect(pyVerdicts).toEqual([true, true, false, true, false, false]);
   });
 });
 

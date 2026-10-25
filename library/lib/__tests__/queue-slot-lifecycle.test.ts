@@ -38,8 +38,12 @@ vi.mock("../library-storage", () => ({
 }));
 
 import {
+  findQueuedRequest,
+  isQueueEntryInFlight,
+  QUEUE_RUNNING_TTL_MS,
   QueueSlotBusyError,
   queueFilename,
+  queueSlotKinds,
   writeQueueEntry,
   type QueueEntry,
 } from "../queue";
@@ -170,5 +174,49 @@ describe("kinds coexist; in-flight work is protected (member 3)", () => {
     await queueDeepIndex(ROOT, "k", undefined, true);
     expect(get("k.json")?.status).toBe("running");
     expect(get("k-deepindex.json")?.kind).toBe("deepIndex");
+  });
+});
+
+describe("one live-request predicate; an abandoned claim yields (task 1291)", () => {
+  it("findQueuedRequest ignores a failed / poisoned / done entry", async () => {
+    for (const status of ["failed", "poisoned", "done"] as const) {
+      put("k.json", { kind: "index", status, citekey: "k" });
+      expect(await findQueuedRequest(ROOT, "k", "index")).toBeNull();
+    }
+  });
+
+  it("a deep index over a poisoned index plants its companion", async () => {
+    put("k.json", { kind: "index", status: "poisoned", citekey: "k", attempts: 3 });
+    await queueDeepIndex(ROOT, "k", undefined, true);
+    expect(get("k.json")?.status).toBe("requested");
+    expect(get("k.json")?.companionOf).toBe("deepIndex");
+  });
+
+  it("a pending reindex is the slot's live request: not replaced, and survives cancelDeepIndex", async () => {
+    put("k.json", { kind: "reindex", status: "requested", citekey: "k", note: "mine" });
+    expect((await findQueuedRequest(ROOT, "k", "index"))?.entry.kind).toBe("reindex");
+    await queueDeepIndex(ROOT, "k", undefined, true);
+    expect(get("k.json")?.kind).toBe("reindex");
+    expect(get("k.json")?.companionOf).toBeUndefined();
+    expect(await cancelDeepIndex(ROOT, "k")).toBe(true);
+    expect(get("k.json")?.note).toBe("mine");
+  });
+
+  it("a live claim refuses the write; an abandoned one (past the TTL) is replaced", async () => {
+    const fresh = new Date().toISOString();
+    put("k.json", { kind: "index", status: "running", citekey: "k", startedAt: fresh });
+    await expect(queueIndex(ROOT, "k")).rejects.toBeInstanceOf(QueueSlotBusyError);
+    const stale = new Date(Date.now() - QUEUE_RUNNING_TTL_MS - 1000).toISOString();
+    put("k.json", { kind: "index", status: "running", citekey: "k", startedAt: stale });
+    await queueIndex(ROOT, "k");
+    expect(get("k.json")?.status).toBe("requested");
+  });
+
+  it("isQueueEntryInFlight: running-without-startedAt is in flight; other statuses never", () => {
+    expect(isQueueEntryInFlight({ status: "running" })).toBe(true);
+    expect(isQueueEntryInFlight({ status: "requested" })).toBe(false);
+    expect(isQueueEntryInFlight(null)).toBe(false);
+    expect(queueSlotKinds("index")).toEqual(["index", "reindex"]);
+    expect(queueSlotKinds("authenticate")).toEqual(["authenticate"]);
   });
 });
