@@ -300,26 +300,31 @@ genuinely app-global value by pane is the same error mirrored" warning above.
 It is to **mount it once**
 ([StackChromeHost](../../../src/components/stack/StackChromeHost.tsx), rendered a
 single time by `EditorLayout`, above the keep-alive slots and beside the Library
-surfaces), and to let each pane publish only the per-doc half it actually owns —
-a `StackTerminal` (editor, source attribution, bib resolvers, chrome gate) in
-[stack-terminal.ts](../../../src/lib/stack/stack-terminal.ts), with the same
-owner-token registry + identity-guarded dispose + `pickActiveByEditor` ladder
-`drop-mode/controller.ts` uses, for the same reasons.
+surfaces), and to let each pane publish only the per-pane fact the chrome reads —
+its chrome GATE (`registerStackChromeGate(token, wantsChrome)` in
+[stack-terminal.ts](../../../src/lib/stack/stack-terminal.ts)), with the same
+owner-token registry + identity-guarded dispose `drop-mode/controller.ts` uses.
+(Task 589 published a whole `StackTerminal` — editor, source, bib resolvers —
+behind a `pickActiveByEditor` ladder, as inputs of the icon's HTML5 drop door.
+Task 590 deleted that door; task 1287 deleted the getters and the ladder, which
+nothing read: every Stack producer is an in-app gesture that runs inside its own
+pane and captures through that pane's refs, so the owner is never resolved.)
 
 Three rules it adds:
 
-- **Resolve the owner AT THE GESTURE, not at render.** The icon's HTML5 drop door
-  calls `getStackTerminal()` inside `onDrop`. A terminal captured as a prop at
-  render would freeze at whichever pane last caused the single host to re-render —
-  which for the bib obligation (task 235) means a `\cite` carrying the WRONG
-  document's entry. Same reasoning as "bind the value to the GESTURE" above.
-- **The chrome GATE is an ANY over the registry, not the resolved terminal's
-  answer.** `someTerminalWantsChrome()` preserves exactly the aggregate semantics
+- **Resolve the owner AT THE GESTURE, not at render.** Today that is structural —
+  the gesture runs in its pane — but any future out-of-pane producer must resolve
+  at the gesture too. A value captured as a prop at render would freeze at
+  whichever pane last caused the single host to re-render — which for the bib
+  obligation (task 235) means a `\cite` carrying the WRONG document's entry. Same
+  reasoning as "bind the value to the GESTURE" above.
+- **The chrome GATE is an ANY over the registry, not any one pane's
+  answer.** `someStackPaneWantsChrome()` preserves exactly the aggregate semantics
   the per-pane mount had (chrome existed if any pane had `viewPrefs && !zenMode`),
   including the surfaces where the ladder is honestly ambiguous — PDF view, where
   every doc slot is `display:none` and no pane wins. It is not a guess: zen is
   uniform across doc panes (one `zenModeOn` feeds every bundle) and always `false`
-  in the Reader. Using the resolved terminal there would make the icon vanish in
+  in the Reader. Using a resolved active pane there would make the icon vanish in
   PDF view — a decision nobody made.
 - **A singular slot still checks its owner.** `setStackIconRect(owner, rect)` now
   clears only if the caller still holds the slot. The value stays app-global — it

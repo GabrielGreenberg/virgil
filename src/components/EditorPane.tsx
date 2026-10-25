@@ -263,8 +263,7 @@ import { addStackItem } from "@/hooks/useStack";
 import { STACK_ADD_REFUSAL_NOTICE } from "@/lib/stack/add-report";
 import {
   openStackStrip,
-  registerStackTerminal,
-  type StackTerminal,
+  registerStackChromeGate,
 } from "@/lib/stack/stack-terminal";
 import type { StackBibCtx } from "@/lib/stack/bib-carry";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
@@ -2187,7 +2186,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the keep-alive slots (`StackChromeHost`), and NOT here — a portal escapes
   // its React parent's DOM, so a per-pane icon was neither hidden by the warm
   // slot's `display:none` nor safe to tear down (task 589). What this pane owns
-  // is the per-doc half: the terminal it publishes below.
+  // is the per-doc half: the refs a capture reads (below), and the chrome gate
+  // it publishes.
   const stackSourceRef = useRef<{ docId: string | null }>({ docId: docId ?? null });
   stackSourceRef.current = { docId: docId ?? null };
   // The SOURCE doc's bibliography, for the stack-add door (task 235). Every
@@ -2207,24 +2207,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
   const stackBibCtxRef = useRef<StackBibCtx>(stackBibCtx);
   stackBibCtxRef.current = stackBibCtx;
-  // Publish this pane's Stack terminal — the per-doc answers the ONE mounted
-  // Stack chrome asks for. Getters over refs, so the entry's identity is stable
-  // and the registration effect re-runs only when the CHROME GATE flips
-  // (viewPrefs arriving, zen toggling): never per render, never per keystroke.
-  // The disposer is owner-checked inside the registry, so an evicted warm pane
+  // Publish this pane's Stack chrome GATE — the one per-pane fact the ONE
+  // mounted Stack chrome asks for (task 1287: the editor/source/bib getters it
+  // once carried had no reader since task 590; captures use the refs above).
+  // The registration effect re-runs only when the gate flips (viewPrefs
+  // arriving, zen toggling): never per render, never per keystroke. The
+  // disposer is owner-checked inside the registry, so an evicted warm pane
   // removes only its own entry.
   const stackWantsChrome = !!viewPrefs && !viewPrefs.zenMode;
-  const stackTerminalToken = useRef<object>({});
-  useEffect(() => {
-    const token = stackTerminalToken.current;
-    const terminal: StackTerminal = {
-      getEditor: () => innerRef.current?.getEditor() ?? null,
-      getSource: () => stackSourceRef.current,
-      getBibCtx: () => stackBibCtxRef.current,
-      wantsChrome: stackWantsChrome,
-    };
-    return registerStackTerminal(token, terminal);
-  }, [stackWantsChrome]);
+  const stackChromeGateToken = useRef<object>({});
+  useEffect(
+    () => registerStackChromeGate(stackChromeGateToken.current, stackWantsChrome),
+    [stackWantsChrome],
+  );
   // The `virgil-stack-drop` handler lives below, right after `popoutsDeps`
   // is declared — it resolves the dropped float's `Floatable.snapshotForStack`
   // via `captureFloatToStack(key, popoutsDeps, …)`, so it must be declared

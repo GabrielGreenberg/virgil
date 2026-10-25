@@ -10,8 +10,9 @@
  * one global rect — see `@/lib/stack/stack-terminal` for the full account.
  *
  * So this host is mounted ONCE, above the keep-alive slots (EditorLayout), and
- * the per-doc facts its chrome needs are read from the pane that owns them
- * through the terminal registry's ladder. Consequences worth naming:
+ * the one per-pane fact its chrome needs — does any pane want it at all — is
+ * read as an ANY over the panes' registered chrome gates. Consequences worth
+ * naming:
  *
  *   - exactly one `[data-stack-icon-hit]` and at most one `[data-stack-strip]`
  *     exist in the DOM, however many panes are warm;
@@ -43,8 +44,8 @@ import { useMenuDismiss } from "@/components/menu/useMenuDismiss";
 import { getDropSession } from "@/components/drop-mode/controller";
 import {
   setStackStripOpen,
-  someTerminalWantsChrome,
-  subscribeStackTerminals,
+  someStackPaneWantsChrome,
+  subscribeStackChromeGates,
   toggleStackStrip,
   useStackStripOpen,
 } from "@/lib/stack/stack-terminal";
@@ -55,8 +56,8 @@ export function StackChromeHost() {
   // Membership/gate snapshot. Emits only when a pane mounts, unmounts, or
   // flips its zen gate — never per keystroke, never per frame.
   const wantsChrome = useSyncExternalStore(
-    subscribeStackTerminals,
-    someTerminalWantsChrome,
+    subscribeStackChromeGates,
+    someStackPaneWantsChrome,
     () => false,
   );
 
