@@ -1,4 +1,4 @@
-<!-- last-verified: ad267f8e 2026-10-24 -->
+<!-- last-verified: 48b518d4 2026-10-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -239,7 +239,14 @@ re-stamps them (`withCarriedMarks`) so the links revive by liveness. Task 1195 s
 the relation on both cards (`archiveRelation` shell row, `cardsArchivedWith`), and
 deleting the passage RELEASES its cards (`releaseFromSnippet`), never deletes them;
 a card fully dormant across two snippets stays archived, re-pointed to the remaining
-one (task 1254).
+one (task 1254). Since task 1269 a carried mark is placed on Restore by its WORDS
+(`CarriedMarkRecord.text`), and a HISTORY REPLAY of an archive (Redo) goes dormant
+too: the guards ask `archive-holdings.ts` (published by `useArchive`) whether a
+departing uuid/anchorId is held by an un-retired snippet. Task 1270: ONE travel
+predicate (`isCarriedLink` / `splitCarried` in `dormant.ts`) — a Mode-A link
+travels PER PID, splitting into a dormant and a live half. Task 1271: the four
+dormant doors (carry / returnRemapped / release / reinstate) read ONE carrying-store
+table (`useDormantStores`, `dormantStoreOfKind`).
 Doctrine: [capture-schema-symmetry → the carry half](../agents/laws/capture-schema-symmetry.md).
 
 - **`isArchivable(kind)`** ([predicates.ts](../../src/cards/predicates.ts)) —

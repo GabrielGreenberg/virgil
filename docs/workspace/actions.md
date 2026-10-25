@@ -1,4 +1,4 @@
-<!-- last-verified: ad267f8e 2026-10-24 -->
+<!-- last-verified: 48b518d4 2026-10-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -45,7 +45,7 @@ once below and the variants point at it.
 ### The action vocabulary: `VIRGIL_ACTION_REGISTRY`
 
 The SSOT for the action vocabulary is **`VIRGIL_ACTION_REGISTRY`** in
-[action-registry.ts:3541](../../src/lib/actions/action-registry.ts) — the single
+[action-registry.ts:4139](../../src/lib/actions/action-registry.ts) — the single
 registry every surface reads off (CHIP 3 inverted the old dependency: the array
 `MENU_ENTRIES` is **deleted**, and the two live menus now render FROM the
 registry via `cardActionRows("grab" | "lightning")`). Since task 260 the registry
@@ -77,7 +77,7 @@ an `applies()` gate + `run()`.
 | 10 | `archive` | Archive | `A` | lifecycle | `cardCreation.createArchiveSnippet` |
 | 11 | `delete` | Delete | `⌫` | lifecycle | `cardLifecycle` delete + range cut |
 
-The `CardCreationApi` ([card-creation.ts:142](../../src/components/editor-layout/card-actions/card-creation.ts))
+The `CardCreationApi` ([card-creation.ts:190](../../src/components/editor-layout/card-actions/card-creation.ts))
 is the SSOT for the create endpoints; the `cardLifecycle`
 (`CardLifecycleApi`, the per-`CardKind` clone/delete registry) drives Duplicate
 and Delete. Three actions deliberately create the *request/comment* end of a
@@ -86,8 +86,8 @@ a `cutter-comment`, and `report` → a `report-request` (the quick gesture files
 the ask). The authored `revision-suggestion` / `cutter-suggestion` / `report`
 kinds are AI/responder outputs (see [cards.md](cards.md)). Footnote and Citation
 collapse the selection to the passage end before inserting their atom
-([drag-handle-actions.ts:390](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
-[:405](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:472](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
+[:498](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the audit's CITE behavior, below.
 
 **No-scroll create (two halves).** Creating any card must NOT jump the viewport —
@@ -170,7 +170,7 @@ task 1199 — the SAME SSOT the slash/typed surfaces reach). Every cell, `\tex` 
 | BlockType | set paragraph/heading level | `<BlockTypeDropdown>` → `pickBlockType` (MenuBar.tsx) — every heading level commits through ONE door, `runHeadingLevel` (action-registry.ts, gated by `headingLevelVerdict`); rows greyed by `blockTypeOptions` / the ¶ cell by `blockTypeVerdict` ([block-type.ts](../../src/lib/actions/block-type.ts), task 1199) |
 | Bullet list / Numbered list / Blockquote | toggle block wrapper | `runGridAction("bullet-list")` … → registry row |
 | Example (`ex`) | wrap selection in an `exampleBlock` | `runGridAction("example")` → registry `exampleRun` (shared with slash `\ex`) |
-| Inline math (`$x$`) / Display math (`$$`) | wrap selection in math | `runGridAction("inline-math" / "display-math")` → registry row |
+| Inline math (`$x$`) / Display math (`$$`) | wrap selection in math (seeded by `captureRangeMathText` in [capture-symmetry.ts](../../src/lib/tiptap/capture-symmetry.ts): plain text, sub/superscript TRANSLATED to `_{…}`/`^{…}` per each `WRAPPER_MARK_ROWS` row's required `inMath`, task 1272) | `runGridAction("inline-math" / "display-math")` → registry row |
 | Text color (`A`) | apply/clear text color | `runGridAction("text-color")` → `openColorPopover` → `SelectionColorPopover` → `setTextColor` / `unsetTextColor` |
 | `\tex` | insert a raw-LaTeX block (over a selection, seeded with the span's LaTeX SOURCE — marks and id-less inline atoms carried, task 848, `captureRangeLatexSource` in [slice-capture.ts](../../src/lib/tiptap/slice-capture.ts)) | `runGridAction("tex")` → registry `texRun` (shared with slash `\tex`) |
 | Cross-ref (`\ref`) | open the shared inline-atom create popover in `\ref` mode | `runGridAction("ref")` → registry `refRun` → `openAtomCreate("ref")` (the unified seam — see [the create popover](#the-unified-inline-atom-create-popover), below) |
@@ -395,9 +395,9 @@ whose value is wired in `EditorPane` as
 - `dispatch(action, ref)` runs an action with no popover step (the toolbar path; both `ActionsMenuPanel` triggers call it directly).
 
 `dispatch` is owned by **`useDragHandleActions`**
-([drag-handle-actions.ts:180](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:186](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the single `switch (action)` over all 11 actions
-([drag-handle-actions.ts:426](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
+([drag-handle-actions.ts:464](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
 It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 `notify`, view-prefs) and resolves the ref before acting:
 
@@ -715,7 +715,7 @@ their default bindings survive:
 | `Shift-Enter`, `Mod-Enter` | hard line break | StarterKit `HardBreak` |
 | `Mod-Alt-1…6` | set heading level | `createHeadingWithLabel` (extends `Heading`) |
 | `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote — **gated** since task 427 (on the node via `withWrapperGate` since 731): `guardWrapperShortcuts` wraps the parent binding and CONSUMES the key where `wrapperSafeInState` refuses (an expex item, a `codeBlock`, a heading) | the list/blockquote builders (extend the base) + [wrapper-gate.ts](../../src/lib/tiptap/wrapper-gate.ts) |
-| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1784](../../src/lib/editor-extensions.ts)) |
+| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1849](../../src/lib/editor-extensions.ts)) |
 
 > The `Mod-Shift-H` **mark** (a text-background tint) is distinct from the
 > Family-1 **Highlight card** action (`H`), which creates a `HighlightCard`
