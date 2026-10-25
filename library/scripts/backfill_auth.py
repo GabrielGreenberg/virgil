@@ -27,9 +27,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from queue_slot import REFUSED_RESULTS, find_request, slot_filename, write_request  # noqa: E402
 from _tools import (
     catalog_row_bib_state,
+    BibEntryUnbalanced,
     read_catalog,
-    read_master_bib,
-    update_master_bib_entry,
+    settle_master_bib_state,
 )
 
 
@@ -78,17 +78,21 @@ def _restamp_from_catalog(library: Path, master_states: dict[str, str],
         for ck in needs_restamp:
             print(f"  [dry-run] would restamp {ck} → % bib.state = {catalog_states[ck]}")
         return len(needs_restamp)
-    master = read_master_bib(library / "master.bib")
+    # Stamp ONLY the `% bib.state` comment, through the write door: the
+    # entry's type and fields are composed from what the door is about to
+    # replace, inside its lock (task 1293). This used to re-emit the fields of
+    # a `read_master_bib(...).get()` read — a parser that caps an unbalanced
+    # entry at the next `@` without raising, so the restamp could write a
+    # GUESS back — and an NFD-spelled key read as "no entry".
     for ck in needs_restamp:
-        entry = master.get(ck)
-        if not entry:
+        try:
+            settled = settle_master_bib_state(library, ck, catalog_states[ck])
+        except BibEntryUnbalanced as e:
+            print(f"  [skipped] {ck}: {e}")
             continue
-        update_master_bib_entry(
-            library, ck,
-            entry["type"], entry["fields"],
-            bib_state=catalog_states[ck],
-        )
-        print(f"  [restamped] {ck} → {catalog_states[ck]}")
+        if not settled:
+            continue
+        print(f"  [restamped] {ck} → {settled}")
     return len(needs_restamp)
 
 

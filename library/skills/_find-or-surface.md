@@ -89,7 +89,9 @@ answer in hand. State the mode explicitly; there is no useful default.
   `journal` and `url` drive the fast-paths that fix bad metadata, so an
   entry reduced to a title gets only the fuzzy search. `--citekey`
   additionally passes the library root through, enabling the recovery
-  chain over `papers/<key>/`. Prefer either to hand-marshalling the values
+  chain over `papers/<key>/`; it exits **3** when the key is absent from
+  `master.bib` and **2** when its entry is unreadable (report stderr
+  verbatim — the fields are a guess). Prefer either to hand-marshalling the values
   into a `python3 -c` snippet, which is where transcription and
   shell-quoting errors come from. Individual seeds can be overridden —
   `bib_auth.py --citekey <key> --title "<corrected>" --author "<a>" --type <t>`

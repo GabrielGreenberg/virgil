@@ -194,11 +194,17 @@ def test_read_door_finds_an_nfd_entry_from_nfc(tmp_path):
     assert e["state"] == "unverified"
 
 
-def test_read_door_answers_none_for_a_missing_entry_or_file(tmp_path):
+def test_read_door_answers_none_for_a_missing_entry_raises_for_a_missing_file(tmp_path):
+    """Absent entry → None; absent FILE → `MasterBibMissing` (task 1293): a
+    library whose master.bib was lost is damage, not "no such entry"."""
     lib = _lib(tmp_path)
     assert _tools.master_entry_for(lib, "nobody1999") is None
     (lib / "master.bib").unlink()
-    assert _tools.master_entry_for(lib, "smith2020") is None
+    try:
+        _tools.master_entry_for(lib, "smith2020")
+    except _tools.MasterBibMissing:
+        return
+    raise AssertionError("a missing master.bib answered None")
 
 
 def test_read_door_raises_on_an_unreadable_file(tmp_path):

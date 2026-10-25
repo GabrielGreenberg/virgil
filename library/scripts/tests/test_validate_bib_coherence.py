@@ -267,6 +267,26 @@ def test_unknown_citekey_exits_2_under_json(tmp_path):
     check(code == 2, f"read failure must exit 2 under --json, got {code}")
 
 
+def test_unbalanced_entry_is_unreadable_never_coherent(tmp_path):
+    """`read_master_bib` caps an entry whose braces never balance at the next
+    `@` opener and does not raise, so the pre-1293 raw read checked GUESSED
+    fields and could report COHERENT. Through the door it is a read failure
+    whose reason is `unreadable` — distinct from a typo'd citekey."""
+    lib = _make_library(tmp_path, (
+        "@book{broken2001,\n  title = {Unclosed {brace,\n  year = {2001}\n}\n\n"
+        + BOOK))
+    code, report = _run(lib, "broken2001", "--json", "--no-cover-check")
+    check(code == 2, f"unbalanced entry must exit 2, got {code}: {report!r}")
+    check(report.get("reason") == "unreadable", f"wrong reason: {report!r}")
+    check("broken2001" in report.get("error", ""), f"entry not named: {report!r}")
+    check("findings" not in report, f"guessed fields were checked: {report!r}")
+    code, report = _run(lib, "nosuchkey1999", "--json")
+    check(report.get("reason") == "absent", f"absent not distinguished: {report!r}")
+    # The balanced neighbour is still read normally.
+    code, report = _run(lib, "bringhurst1992", "--json", "--no-cover-check")
+    check(code == 0 and report.get("ok"), f"neighbour unreadable: {report!r}")
+
+
 def test_text_mode_exit_codes_match_json_mode(tmp_path):
     """The two modes must agree, or a caller that drops `--json` changes
     meaning. Text mode was already 0/1/2; JSON now matches it."""

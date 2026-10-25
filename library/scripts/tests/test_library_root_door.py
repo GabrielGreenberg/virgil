@@ -85,7 +85,9 @@ def test_configured_library_is_found_from_a_paper_folder(tmp_path):
         r = _run(script, args, paper, home)
         assert "No library" not in r.stderr, f"{script}: {r.stderr}"
         assert "Traceback" not in r.stderr, f"{script}: {r.stderr}"
-        assert r.returncode in (0, 1), f"{script} rc={r.returncode}: {r.stderr}"
+        # 3 = bib_auth's "absent from master.bib" (task 1293) — the library
+        # WAS found; the probe citekey just isn't in it.
+        assert r.returncode in (0, 1, 3), f"{script} rc={r.returncode}: {r.stderr}"
     inbox = json.loads((lib / ".virgil" / "notifications" / "inbox.json").read_text())
     assert [i["summary"] for i in inbox["items"]] == ["door probe"]
     assert (lib / ".virgil" / "catalog-version.txt").exists()
