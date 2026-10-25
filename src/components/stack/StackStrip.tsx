@@ -105,6 +105,13 @@ export function StackStrip({
       }}
     >
       {items.length === 0 ? (
+        // The hint names the BUTTON, never "here" (task 1286). The strip is not
+        // a capture target and cannot usefully become one: its dismiss door
+        // (`StackChromeHost` → `useMenuDismiss`) closes it on the outside press
+        // that BEGINS every capture gesture — a float-header drag or a content
+        // lift — so while anything is in flight the strip is gone and only the
+        // icon remains to receive it (`isOverStackIcon`, read by both
+        // producers). What the hint offers is what the commit accepts.
         <div
           style={{
             color: "var(--stack-strip-hint)",
@@ -115,7 +122,8 @@ export function StackStrip({
             fontStyle: "italic",
           }}
         >
-          Drop popped paragraphs, headings, cards, or text selections here.
+          Drag paragraphs, headings, cards, or a text selection onto the Stack
+          button to keep them here.
         </div>
       ) : (
         items.map((it) => (
