@@ -56,6 +56,12 @@ describe("identity colour swatches are a radio group", () => {
     expect(radios).toHaveLength(COLLAB_COLORS.length);
     expect(checked()).toEqual([radios[2]]);
     expect(radios.filter((r) => r.tabIndex === 0)).toEqual([radios[2]]);
+    // The chosen swatch carries a check (task 1279) — a shape cue, not only
+    // its border; the others carry none.
+    const marked = radios.filter(
+      (r) => r.querySelector('[data-radio-mark="checked"]') !== null,
+    );
+    expect(marked).toEqual([radios[2]]);
   });
 
   it("arrow keys move the choice and focus together, wrapping; Save commits it", () => {

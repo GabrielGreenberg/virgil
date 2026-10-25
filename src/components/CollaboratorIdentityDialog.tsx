@@ -27,6 +27,7 @@ import {
 import { iconHint } from "@/components/Hint";
 import { isCommitEnter } from "@/lib/key-intent";
 import { useRadioGroup } from "@/hooks/useRadioGroup";
+import { RadioMark } from "@/components/icons/RadioMark";
 
 /** The swatch row's option values, normalised once (the saved colour is
  *  compared case-insensitively). */
@@ -124,7 +125,8 @@ export default function CollaboratorIdentityDialog({
             </span>
             {/* A pick-one row, so it is a radio group (task 1216): the chosen
                 colour is announced, not only drawn as a border, and the arrow
-                keys move it. */}
+                keys move it; the chosen swatch carries a check (task 1279), so
+                it reads by shape, not only by its border. */}
             <div
               {...swatchGroup.groupProps}
               aria-labelledby={colorLabelId}
@@ -139,13 +141,15 @@ export default function CollaboratorIdentityDialog({
                     type="button"
                     {...swatchGroup.radioProps(i)}
                     {...iconHint({ label: c.name })}
-                    className="w-6 h-6 rounded-full border-2 motion-safe:transition-transform focus-ring"
+                    className="w-6 h-6 rounded-full border-2 flex items-center justify-center motion-safe:transition-transform focus-ring"
                     style={{
                       background: c.hex,
                       borderColor: selected ? "var(--foreground)" : "transparent",
                       transform: selected ? "scale(1.1)" : undefined,
                     }}
-                  />
+                  >
+                    <RadioMark checked={selected} variant="check" size={14} />
+                  </button>
                 );
               })}
             </div>

@@ -2307,7 +2307,10 @@ buttons: `role="radiogroup"` labelled by its `Field`, each option
 move choice and focus together. The contract is ONE hook,
 `useRadioGroup` (`src/hooks/useRadioGroup.ts`, task 1216) — spread its
 `groupProps` / `radioProps(i)`; never hand-roll the key handler. Selection
-must never be signalled by colour (or a border) alone.
+must never be signalled by colour (or a border) alone: every option renders
+the shared `RadioMark` (`src/components/icons/RadioMark.tsx`, task 1279) — a
+ring that holds a dot for option cards, a check over the chosen colour for
+swatches — and `radio-mark-census.test.ts` fails a consumer that doesn't.
 
 **Intended exceptions, so the next audit doesn't re-file them.** A
 *chromeless* field is a different control and stays hand-rolled: a bare
