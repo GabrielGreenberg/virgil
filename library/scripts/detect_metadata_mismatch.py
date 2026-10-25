@@ -43,7 +43,7 @@ import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tools import paper_folder  # noqa: E402
+from _tools import BibEntryUnbalanced, master_entry_for, paper_folder  # noqa: E402
 
 
 from _library_root import library_root_or_exit  # noqa: E402  (task 896)
@@ -77,24 +77,32 @@ def _extract_cover_text(pdf: Path, pages: int = 2) -> str:
     return ""
 
 
-def _read_master_bib_fields(
-    bib_path: Path, citekey: str,
-) -> dict[str, str]:
-    if not bib_path.exists():
+class EntryUnreadable(Exception):
+    """master.bib cannot say what `citekey`'s fields are: the entry's braces
+    never balance, or the file is missing or undecodable."""
+
+
+def _read_master_bib_fields(library: Path, citekey: str) -> dict[str, str]:
+    """`citekey`'s fields (+ `_type`) through the read door; `{}` when absent.
+
+    `_tools.master_entry_for` is the one single-entry reader (task 1293). The
+    hand regex this replaced was the task-322 shape: an UNANCHORED search
+    (the first `@type{key,` anywhere, even inside a `note`), braced values
+    only, and `[^}]+` — so `title = {The {Nested} Title}` read as `The
+    {Nested` and the cover check compared the PDF against a truncated title.
+    The door parses with the SSOT parser, matches NFC/NFD, and raises on an
+    unbalanced entry, which here becomes `EntryUnreadable`.
+    """
+    try:
+        entry = master_entry_for(library, citekey)
+    except BibEntryUnbalanced as e:
+        raise EntryUnreadable(str(e)) from e
+    except (OSError, UnicodeDecodeError) as e:
+        raise EntryUnreadable(f"master.bib could not be read: {e}") from e
+    if entry is None:
         return {}
-    bib = bib_path.read_text(encoding="utf-8")
-    pat = re.compile(
-        rf"@(\w+)\{{{re.escape(citekey)},([\s\S]*?)\n\}}",
-        re.M,
-    )
-    m = pat.search(bib)
-    if not m:
-        return {}
-    entry_type = m.group(1)
-    body = m.group(2)
-    out: dict[str, str] = {"_type": entry_type}
-    for field_m in re.finditer(r"(\w+)\s*=\s*\{([^}]+)\}", body):
-        out[field_m.group(1).lower()] = field_m.group(2).strip()
+    out: dict[str, str] = {"_type": entry["type"]}
+    out.update({k.lower(): str(v).strip() for k, v in entry["fields"].items()})
     return out
 
 
@@ -134,13 +142,17 @@ def detect(citekey: str) -> dict:
     library = _resolve_library_root()
     paper_dir = paper_folder(library, citekey)
     pdf_path = paper_dir / f"{citekey}.pdf"
-    bib_path = library / "master.bib"
 
     if not pdf_path.exists():
         return {"error": f"PDF not found at {pdf_path}", "kind": "unknown"}
-    fields = _read_master_bib_fields(bib_path, citekey)
+    try:
+        fields = _read_master_bib_fields(library, citekey)
+    except EntryUnreadable as e:
+        return {"error": f"master.bib entry for {citekey} is unreadable: {e}",
+                "kind": "unknown", "reason": "unreadable"}
     if not fields:
-        return {"error": "master.bib entry not found", "kind": "unknown"}
+        return {"error": "master.bib entry not found", "kind": "unknown",
+                "reason": "absent"}
 
     cover_text = _extract_cover_text(pdf_path, pages=2)
     if not cover_text:

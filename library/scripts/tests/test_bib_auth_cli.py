@@ -301,13 +301,45 @@ def test_query_with_a_citekey_is_authentication_not_search(tmp_path: Path):
 # ── Refusals ────────────────────────────────────────────────────────────
 
 
-def test_unknown_citekey_exits_1(tmp_path: Path):
+def test_unknown_citekey_exits_3_absent(tmp_path: Path):
+    """`--citekey`'s absent answer is `master_entry.py`'s code (task 1293)."""
     lib = _make_library(tmp_path)
     rec = _Recorder()
     with _patched(authenticate=rec):
         code, _, err = _run(["--citekey", "nobody1900", "--library", str(lib)])
-    assert code == 1
-    assert "nobody1900" in err
+    assert code == bib_auth.SEED_EXIT_ABSENT == 3
+    assert "nobody1900" in err and "absent" in err
+    assert rec.calls == []
+
+
+def test_unbalanced_entry_refuses_with_2_never_seeds_guessed_fields(tmp_path: Path):
+    """The parser caps an entry whose braces never balance at the next `@`
+    and does not raise — so the old seed authenticated GUESSED fields. The
+    door raises; `--citekey` refuses with 2, naming the entry (task 1293)."""
+    lib = _make_library(tmp_path)
+    (lib / "master.bib").write_text(
+        "@book{broken2001,\n  title = {Unclosed {brace,\n  year = {2001}\n}\n\n"
+        "@book{fine2002,\n  title = {Fine},\n  year = {2002}\n}\n",
+        encoding="utf-8")
+    rec = _Recorder()
+    with _patched(authenticate=rec):
+        code, _, err = _run(["--citekey", "broken2001", "--library", str(lib)])
+    assert code == bib_auth.SEED_EXIT_UNREADABLE == 2, err
+    assert "broken2001" in err
+    assert rec.calls == [], "authenticated a guessed entry"
+
+
+def test_missing_master_bib_is_unreadable_not_absent(tmp_path: Path):
+    """A resolved library whose master.bib was lost (sync) is damage: 2, never
+    the absent code 3 — the door raises rather than answering None."""
+    lib = _make_library(tmp_path)
+    rec = _Recorder()
+    with _patched(authenticate=rec,
+                  _resolve_library=lambda explicit: (lib, "")):
+        (lib / "master.bib").unlink()
+        code, _, err = _run(["--citekey", "smith2001", "--library", str(lib)])
+    assert code == 2, (code, err)
+    assert "master.bib" in err
     assert rec.calls == []
 
 

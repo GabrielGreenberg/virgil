@@ -34,9 +34,13 @@ Checks (in order):
 
 Outputs a JSON report. Exit codes, the same in `--json` and text mode:
 **0** no issues, **1** findings, **2** the entry could not be read at
-all (not in master.bib). Those last two are genuinely different answers
-— a typo'd citekey is not an incoherent entry — and collapsing them is
-why a caller must branch on the report, not on `$?`.
+all. Those last two are genuinely different answers — a typo'd citekey is
+not an incoherent entry — and collapsing them is why a caller must branch
+on the report, not on `$?`. A read failure's report is
+`{"error": …, "reason": "absent" | "unreadable"}`: `absent` = not in
+master.bib; `unreadable` = the entry's braces never balance, or master.bib
+is missing or undecodable (task 1293) — its fields are a guess, so the
+message goes to a human verbatim and is never reported as "not found".
 
 Who calls it
 ------------
@@ -79,8 +83,12 @@ from pathlib import Path
 # from anywhere, so its own directory is not necessarily on the path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _bib_parse import read_master_bib  # noqa: E402
-from _tools import SOURCE_FORMAT_PRIORITY, resolve_paper_source  # noqa: E402
+from _tools import (  # noqa: E402
+    SOURCE_FORMAT_PRIORITY,
+    BibEntryUnbalanced,
+    master_entry_for,
+    resolve_paper_source,
+)
 
 
 # Fields incoherent on each entry type — stated once in `_bib_types` (task
@@ -96,30 +104,34 @@ def _resolve_library_root() -> Path:
     return library_root_or_exit()
 
 
+class EntryUnreadable(Exception):
+    """master.bib holds no readable answer for the citekey: the entry's braces
+    never balance, or the file is missing or cannot be decoded."""
+
+
 def _read_master_bib_entry(
-    bib_path: Path, citekey: str,
+    library: Path, citekey: str,
 ) -> tuple[str, dict[str, str]] | None:
-    """Read `citekey`'s `(entry_type, fields)` out of a `.bib` file.
+    """`citekey`'s `(entry_type, fields)`, through the read door; None when
+    master.bib has no entry for it; `EntryUnreadable` when it cannot say.
 
-    Goes through the SSOT parser (`_bib_parse.read_master_bib`), exactly as
-    `bib_auth.py` does. The ad-hoc regex this replaced only recognised
-    `field = {braced}` values, so a `journal = "Journal of Nowhere"` on a
-    `@phdthesis` — the script's own headline case, and the literal shape of
-    the `leong1994towards` memo it was written for — parsed as no field at
-    all and the entry was reported COHERENT. A check that silently passes is
-    worse than no check, and it is the one failure mode wiring this into a
-    pipeline would have made load-bearing (task 322).
-
-    Diacritic citekeys are matched under both NFC and NFD, since the write
-    side normalizes to NFC and older rows are NFD (the 1976-Tichý class).
+    `_tools.master_entry_for` is the one single-entry reader (task 1293): it
+    parses with the SSOT parser — the ad-hoc regex the first version used
+    only recognised `field = {braced}` values, so a `journal = "…"` on a
+    `@phdthesis`, this script's headline case, parsed as no field at all
+    (task 322) — matches the citekey under NFC and NFD (the 1976-Tichý
+    class), and RAISES on an entry whose braces never balance. The raw
+    `read_master_bib(...).get()` this replaced capped such an entry at the
+    next `@` opener without a word, so a check over GUESSED fields could
+    report the entry COHERENT — the one failure mode a pre-flight must not
+    have.
     """
-    if not bib_path.exists():
-        return None
-    entries = read_master_bib(bib_path)
-    entry = entries.get(citekey)
-    if entry is None:
-        by_nfc = {unicodedata.normalize("NFC", k): v for k, v in entries.items()}
-        entry = by_nfc.get(unicodedata.normalize("NFC", citekey))
+    try:
+        entry = master_entry_for(library, citekey)
+    except BibEntryUnbalanced as e:
+        raise EntryUnreadable(str(e)) from e
+    except (OSError, UnicodeDecodeError) as e:
+        raise EntryUnreadable(f"master.bib could not be read: {e}") from e
     if entry is None:
         return None
     return entry["type"].lower(), dict(entry["fields"])
@@ -222,9 +234,16 @@ def validate(
     citekey: str, check_cover: bool = True, check_url: bool = False,
 ) -> dict:
     library = _resolve_library_root()
-    entry = _read_master_bib_entry(library / "master.bib", citekey)
+    try:
+        entry = _read_master_bib_entry(library, citekey)
+    except EntryUnreadable as e:
+        # The entry may well be THERE — its fields just cannot be trusted.
+        # Never reported as "not found" (task 1293): a human must look.
+        return {"error": f"master.bib entry for {citekey} is unreadable: {e}",
+                "reason": "unreadable"}
     if entry is None:
-        return {"error": f"master.bib entry for {citekey} not found"}
+        return {"error": f"master.bib entry for {citekey} not found",
+                "reason": "absent"}
     entry_type, fields = entry
 
     findings: list[str] = []

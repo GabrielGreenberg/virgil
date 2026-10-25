@@ -1869,8 +1869,8 @@ def master_entry_for(
     """WHAT DOES master.bib SAY ABOUT THIS ONE CITEKEY? — the one read door.
 
     Returns `{type, fields, raw, key, state}` for `citekey`'s entry, or None
-    when master.bib has no entry for it (or does not exist). `key` is the
-    citekey as the FILE spells it; `state` is its `% bib.state` comment ("").
+    when master.bib has no entry for it. `key` is the citekey as the FILE
+    spells it; `state` is its `% bib.state` comment ("").
 
     Every single-entry reader goes through here instead of
     `read_master_bib(...).get(citekey)` (task 621). The raw dict lookup had two
@@ -1887,12 +1887,18 @@ def master_entry_for(
     decode error propagates, and an entry whose braces never balance raises
     `BibEntryUnbalanced`, because its fields are a guess. A caller that then
     merges and writes can only do so against what the writer will replace.
+
+    A MISSING master.bib raises `MasterBibMissing` too (task 1293), never
+    None: every library the silo's resolver accepts has one, so its absence
+    is damage (a file lost to sync), not "no such entry" — answering None let
+    `master_entry.py` report a lost file as one absent citekey. And the file
+    is read as UTF-8 explicitly, never the locale's encoding.
     """
     if text is None:
         path = library / "master.bib"
         if not path.exists():
-            return None
-        text = path.read_text()
+            raise MasterBibMissing(path)
+        text = path.read_text(encoding="utf-8")
     span = locate_master_entry(text, citekey)
     if span is None:
         return None
@@ -1901,6 +1907,19 @@ def master_entry_for(
     if entry is None:  # unreachable: the span IS an entry the reader yields
         return None
     return {**entry, "key": span.key, "state": span.state}
+
+
+class MasterBibMissing(FileNotFoundError):
+    """`master_entry_for` was asked about a library with no master.bib.
+
+    An `OSError`, so every caller that already treats "cannot be read" as its
+    own answer (`master_entry.py`'s exit 2, triage_apply's
+    `bib-master-unreadable`) handles it with no new arm."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        super().__init__(f"no master.bib at {path} — the library's bibliography "
+                         "is missing (lost to sync?); nothing can be read")
 
 
 class BibKeyTaken(Exception):

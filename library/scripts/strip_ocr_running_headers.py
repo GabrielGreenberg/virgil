@@ -32,11 +32,10 @@ import re
 import sys
 from pathlib import Path
 
-from _tools import _atomic_write_text
+from _tools import BibEntryUnbalanced, _atomic_write_text, master_entry_for
 
 
 SECTION_RE = re.compile(r"\\section\{([^}]+)\}", re.M)
-MASTER_BIB_TITLE_RE = re.compile(r"title\s*=\s*\{([^}]+)\}", re.I)
 
 
 def _phrase_regex(phrase: str) -> re.Pattern:
@@ -84,19 +83,26 @@ def _read_toc_titles(text: str) -> list[str]:
 
 
 def _read_master_bib_title(bib_path: Path, citekey: str) -> str | None:
+    """`citekey`'s title in the bib at `bib_path`, through the read door.
+
+    `_tools.master_entry_for` (task 1293), handed the file's text, replaces a
+    hand regex that searched UNANCHORED and read `title = {[^}]+}` — so a
+    nested-brace title (`{The {Nested} Title}`) stripped the truncated
+    phrase `The {Nested`. An entry whose braces never balance has no
+    trustworthy title: warn and strip nothing for it, never a guess.
+    """
     if not bib_path.exists():
         return None
-    bib = bib_path.read_text(encoding="utf-8")
-    # Find the entry with citekey.
-    pat = re.compile(
-        rf"@\w+\{{{re.escape(citekey)},[\s\S]*?\n\}}",
-        re.M,
-    )
-    m = pat.search(bib)
-    if not m:
+    try:
+        entry = master_entry_for(bib_path.parent, citekey,
+                                 text=bib_path.read_text(encoding="utf-8"))
+    except BibEntryUnbalanced as e:
+        print(f"warning: {e}; no title taken from it", file=sys.stderr)
         return None
-    title_m = MASTER_BIB_TITLE_RE.search(m.group(0))
-    return title_m.group(1) if title_m else None
+    if entry is None:
+        return None
+    title = str(entry["fields"].get("title", "")).strip().strip("{}").strip()
+    return title or None
 
 
 def main() -> int:

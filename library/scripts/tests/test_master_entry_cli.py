@@ -87,6 +87,27 @@ def test_undecodable_master_bib_exits_2(tmp_path):
     assert proc.stdout == ""
 
 
+def test_missing_master_bib_is_unreadable_not_absent(tmp_path):
+    """The door raises `MasterBibMissing` (an OSError) rather than answering
+    None, so the CLI's OSError arm reports a lost master.bib as 2 (task 1293)."""
+    lib = _lib(tmp_path, GOOD)
+    (lib / "master.bib").unlink()
+    import io
+    from contextlib import redirect_stderr
+    import _library_root
+    saved = master_entry.library_root_or_exit
+    master_entry.library_root_or_exit = lambda code=2: lib
+    err = io.StringIO()
+    try:
+        with redirect_stderr(err):
+            rc = master_entry.main(["smith2001good"])
+    finally:
+        master_entry.library_root_or_exit = saved
+    assert rc == master_entry.EXIT_UNREADABLE == 2, err.getvalue()
+    assert "master.bib" in err.getvalue()
+    assert _library_root  # the resolver itself refuses a master.bib-less root
+
+
 def _step_one(text: str) -> str:
     return text.split("2. **Coherence pre-flight")[0].split("1. **Read the citekey")[1]
 

@@ -127,9 +127,12 @@ directory).
    honest (0 clean / 1 findings / 2 unreadable entry), but the two non-zero
    answers mean opposite things and only the JSON says which:
 
-   - **`{"error": …}`** — the entry is not in `master.bib`. That is a wrong
-     citekey (or an entry nobody has written yet), *not* incoherence. Stop and
-     report it: step 3's `--citekey` reads the same file and fails the same
+   - **`{"error": …}`** — the entry could not be read, *not* incoherence; its
+     `reason` says which. `"absent"` — not in `master.bib` (a wrong citekey,
+     or an entry nobody has written yet). `"unreadable"` — the entry is there
+     but its braces never balance (or master.bib cannot be read): report the
+     `error` **verbatim**, never as "not in master.bib". Either way stop:
+     step 3's `--citekey` reads through the same door and refuses the same
      way, so there is nothing further to run.
    - **`"findings": []`** — nothing to say. Continue, silently.
    - **`"findings": [...]`** — record them and **continue anyway**. A finding
@@ -177,6 +180,10 @@ directory).
    Prints the `AuthResult` as JSON (`state`, `sources`, `score`,
    `matched_record`, `field_changes`, `proposed_type`), and keeps it in
    `<runDir>/result.json` for step 4b — don't re-run the helper.
+   `--citekey` reads through the same door as step 1, with the same codes
+   (task 1293): **3** — the entry is absent; **2** — it is unreadable
+   (braces never balance, master.bib missing or undecodable), stderr names
+   the entry — report that verbatim and stop, never authenticate a guess.
 
    **Don't hand-marshal the seed values.** The entry must reach the helper
    exactly as it appears in `master.bib` — verbatim, no cleanup, no

@@ -2117,34 +2117,50 @@ def _resolve_library(explicit: Optional[str]) -> tuple[Optional[Path], str]:
         return None, str(e)
 
 
-def _seed_from_master_bib(library: Path, citekey: str) -> tuple[Optional[dict], str]:
-    """Read `citekey`'s entry out of `master.bib`, verbatim.
+# `--citekey`'s three answers — the same codes as `master_entry.py`, the CLI
+# face of the read door (task 1229): a caller can tell "not in master.bib"
+# from "in master.bib but damaged" by the exit code alone.
+SEED_EXIT_UNREADABLE = 2
+SEED_EXIT_ABSENT = 3
 
-    Returns `(entry, error_message)` where `entry` is the SSOT parser's dict
-    (`{"citekey", "type", "fields"}`).
+
+def _seed_from_master_bib(
+    library: Path, citekey: str,
+) -> tuple[Optional[dict], int, str]:
+    """Read `citekey`'s entry out of `master.bib`, verbatim — through the door.
+
+    Returns `(entry, exit_code, message)`: `(entry, 0, "")` when found, where
+    `entry` is the SSOT parser's dict (`{"type", "fields", …}`);
+    `(None, SEED_EXIT_ABSENT, …)` when master.bib has no entry for it; and
+    `(None, SEED_EXIT_UNREADABLE, …)` when it cannot be read — its braces
+    never balance, master.bib is missing, or the file cannot be decoded.
+
+    This used to read `read_master_bib(...).get()` plus its own NFC scan
+    (task 1293). The parser caps an unbalanced entry at the next `@` opener
+    and does not raise, so an entry whose fields were a GUESS was
+    authenticated — and the caller's later write could bake the guess in —
+    while absent, no-master.bib and an I/O error all exited 1, the conflation
+    task 1229 removed from authenticate-bib step 1. `_tools.master_entry_for`
+    owns all of that: NFC/NFD lookup, LAST entry wins, and a raise for every
+    answer that is not "found" or "absent".
     """
     import sys as _sys
 
     _sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
-        from _bib_parse import read_master_bib
+        from _tools import BibEntryUnbalanced, master_entry_for
     except ImportError as e:
-        return None, f"cannot import the bib parser: {e}"
-    master = library / "master.bib"
-    if not master.exists():
-        return None, f"no master.bib at {master}"
-    entries = read_master_bib(master)
-    entry = entries.get(citekey)
+        return None, SEED_EXIT_UNREADABLE, f"cannot import the master.bib door: {e}"
+    try:
+        entry = master_entry_for(library, citekey)
+    except BibEntryUnbalanced as e:
+        return None, SEED_EXIT_UNREADABLE, f"error: {e}"
+    except (OSError, UnicodeDecodeError) as e:
+        return None, SEED_EXIT_UNREADABLE, f"error: master.bib could not be read: {e}"
     if entry is None:
-        # NFC/NFD fold (task 621): the parser keys entries by the file's own
-        # spelling, and macOS hands us keys in either form.
-        import unicodedata
-        want = unicodedata.normalize("NFC", citekey)
-        entry = next((v for k, v in reversed(list(entries.items()))
-                      if unicodedata.normalize("NFC", k) == want), None)
-    if entry is None:
-        return None, f"{citekey} is not in {master}"
-    return entry, ""
+        return (None, SEED_EXIT_ABSENT,
+                f"absent: {citekey} is not in {library / 'master.bib'}")
+    return entry, 0, ""
 
 
 def _split_bib_authors(author_field: str) -> list[str]:
@@ -2297,6 +2313,13 @@ def _build_arg_parser():
             "  bib_auth.py --citekey genette1997 --library ~/Virgil-Library\n"
             "  bib_auth.py --title \"Paratexts\" --author \"Genette, G.\" --type book\n"
             "  bib_auth.py \"Paratexts\" \"Genette, G.\"      # legacy positional form\n"
+            "\n"
+            "exit codes:\n"
+            "  0  the verdict / candidates are on stdout\n"
+            "  2  usage error, no library, or --citekey's entry is UNREADABLE\n"
+            "     (braces never balance, master.bib missing or undecodable) —\n"
+            "     report stderr verbatim; the entry's fields are a guess\n"
+            "  3  --citekey's entry is ABSENT from master.bib\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2367,10 +2390,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         if library is None:
             print(err, file=sys.stderr)
             return 2
-        entry, err = _seed_from_master_bib(library, args.citekey)
+        entry, code, err = _seed_from_master_bib(library, args.citekey)
         if entry is None:
             print(err, file=sys.stderr)
-            return 1
+            return code
         fields = dict(entry.get("fields") or {})
         entry_type = entry_type or entry.get("type", "")
     elif args.library:
