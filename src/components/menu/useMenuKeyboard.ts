@@ -262,6 +262,20 @@ export function useMenuKeyboard(
       return true;
     }
 
+    // The active row's REMOVE verb (task 1280): plain Delete/Backspace on a
+    // row that declares one (a Recents entry) forgets it, menu open. Checked
+    // before the letter map so a removable row's own verb outranks a fixed
+    // Backspace alias elsewhere; a row without a verb falls through unchanged.
+    // A held key removes ONE row: `activated` arms the repeat swallow.
+    if (
+      plain &&
+      !e.repeat &&
+      (e.key === "Delete" || e.key === "Backspace") &&
+      activated(reg.removeActive())
+    ) {
+      return true;
+    }
+
     // Bare-letter fast-path: a single-char key with no meta/ctrl/alt, checked
     // BEFORE bailing. Disabled rows are excluded from the map (inert). The map
     // is rebuilt only when the registry version changes — not per keystroke.

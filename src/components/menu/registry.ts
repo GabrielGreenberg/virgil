@@ -39,6 +39,8 @@ export interface MenuItemRegistration {
   letter?: string;
   letterAliases?: string[];
   run: () => void;
+  /** The row's remove verb (Delete/Backspace on the active row), if any. */
+  remove?: () => void;
 }
 
 type Listener = () => void;
@@ -144,6 +146,7 @@ export class MenuRegistry implements MenuRegistryHandle {
       letter: reg.letter,
       letterAliases: reg.letterAliases,
       run: reg.run,
+      remove: reg.remove,
       domId: this.domIdFor(reg.id),
       order,
     };
@@ -221,6 +224,7 @@ export class MenuRegistry implements MenuRegistryHandle {
           letter: rec.letter,
           letterAliases: rec.letterAliases,
           run: rec.run,
+          remove: rec.remove,
           domId: rec.domId,
           // Cosmetic snapshot field, sourced from the refs-map SSOT. Nav never
           // reads it (only `refFor` does, live); may lag a ref set (which
@@ -326,6 +330,22 @@ export class MenuRegistry implements MenuRegistryHandle {
   activate(): boolean {
     if (this.active === null) return false;
     return this.activateById(this.active);
+  }
+
+  /** Run the active node's remove verb — see `MenuRegistryHandle.removeActive`.
+   *  The cursor steps to the next row (else the previous) BEFORE the verb runs:
+   *  the removed row's unmount would otherwise clear `active` and drop the
+   *  keyboard user back to an un-highlighted menu. */
+  removeActive(): boolean {
+    const id = this.active;
+    if (id === null) return false;
+    const rec = this.records.get(id);
+    if (!rec || rec.disabled || rec.region === "widget" || !rec.remove) return false;
+    this.move("down");
+    if (this.active === id) this.move("up");
+    if (this.active === id) this.setActiveFrom(null, false);
+    rec.remove();
+    return true;
   }
 
   /** Activate a node by id directly (the letter fast-path / a click). No-op

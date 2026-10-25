@@ -41,6 +41,12 @@ export interface UseMenuItemOptions {
   letterAliases?: string[];
   /** Activation handler. */
   run: () => void;
+  /**
+   * The row's remove verb (task 1280): Delete/Backspace while this row is
+   * ACTIVE runs it, and the menu stays open. Omit for a row with nothing to
+   * remove.
+   */
+  remove?: () => void;
   /** ARIA role override for checkbox/option rows (defaults from the menu role). */
   role?: MenuItemProps["role"];
   /**
@@ -72,6 +78,7 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     letter,
     letterAliases,
     run,
+    remove,
     role: roleOverride,
     order,
     keepMenuOpen = false,
@@ -94,6 +101,13 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
   keepOpenRef.current = keepMenuOpen;
   const idRef = useRef(id);
   idRef.current = id;
+  // The remove verb rides a ref like `run`: the registry holds ONE stable
+  // wrapper (present iff a verb is supplied), so a fresh closure each render
+  // never re-registers the node.
+  const removeRef = useRef(remove);
+  removeRef.current = remove;
+  const hasRemove = remove != null;
+  const stableRemove = useCallback(() => removeRef.current?.(), []);
   // The ONE activation path. Both doors reach it — the keyboard controller via
   // `registry.activate()` (which calls the registered handler directly, with no
   // DOM event) and the item's own `onClick` below — so the provider's
@@ -125,6 +139,7 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     letter,
     letterAliases,
     run: stableRun,
+    remove: hasRemove ? stableRemove : undefined,
   };
   useEffect(() => {
     registry.register(registration);
@@ -136,7 +151,7 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     registry.register(registration);
     // aliasesKey stands in for the array identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registry, id, region, coordsRow, coordsCol, disabled, letter, aliasesKey, stableRun]);
+  }, [registry, id, region, coordsRow, coordsCol, disabled, letter, aliasesKey, stableRun, hasRemove]);
 
   // Republish the live visual index (reorderable lists only). Nav order is read
   // from the DOM, but a key-stable re-rank moves DOM nodes WITHOUT any

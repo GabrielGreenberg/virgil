@@ -14,6 +14,14 @@
  * be cleaned up without opening it. The X calls `useFiles.deleteFile`, which
  * drops the index row and never touches the disk. One painter, so both
  * consumers (start screen, "+" menu) get the same affordance.
+ *
+ * Task 1280: the X is a SLOT, not a patch. It occupies the row's trailing
+ * cell — the relative time yields to it (`invisible`, so the width holds) on
+ * row hover, on focus anywhere in the row, and while the row is the menu's
+ * roving-active one — and it carries NO background, so it reads on whatever
+ * tone the row currently has (white menu, hover tint, roving highlight). In
+ * the "+" menu the keyboard half is the menu primitive's remove verb:
+ * Delete/Backspace on the active row (`useMenuItem({ remove })`).
  */
 
 import type { FsaDocMeta } from "@/lib/doc-index";
@@ -88,16 +96,27 @@ export function RecentPaperRow({
   itemProps?: MenuItemProps;
   active?: boolean;
 }) {
-  const row = <RecentPaperOpenButton doc={doc} onOpen={onOpen} itemProps={itemProps} active={active} />;
+  const removable = !!onRemove;
+  const row = (
+    <RecentPaperOpenButton
+      doc={doc}
+      onOpen={onOpen}
+      itemProps={itemProps}
+      active={active}
+      removable={removable}
+    />
+  );
   if (!onRemove) return row;
   // The X is a SIBLING of the open button, never nested in it (a button in a
-  // button is invalid and would also fire the open).
+  // button is invalid and would also fire the open). It sits over the trailing
+  // time cell, which turns `invisible` whenever the X shows — one slot, two
+  // occupants, never both painted.
   return (
     <div className="group relative flex items-center">
       {row}
       <button
         type="button"
-        className="iconbtn-xs absolute right-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-[var(--background)]"
+        className={`${RECENT_REMOVE_CLASS} ${active ? "opacity-100" : ""}`}
         data-testid="recent-paper-remove"
         onClick={(e) => {
           e.stopPropagation();
@@ -117,16 +136,31 @@ export function RecentPaperRow({
   );
 }
 
+/**
+ * The remove X's class: right-aligned in the row's trailing cell (the open
+ * button's `px-2` inset), hidden until the row is hovered or holds focus, and
+ * deliberately background-free so it shares the row's paint (task 1280).
+ * Exported for the paint pin — jsdom resolves no CSS vars, so the test asserts
+ * the SPECIFIED class.
+ */
+export const RECENT_REMOVE_CLASS =
+  "iconbtn-xs absolute right-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100";
+
+/** The time cell's yield: invisible (width kept) whenever the X shows. */
+const TIME_YIELDS_CLASS = "group-hover:invisible group-focus-within:invisible";
+
 function RecentPaperOpenButton({
   doc,
   onOpen,
   itemProps,
   active,
+  removable,
 }: {
   doc: FsaDocMeta;
   onOpen?: (id: string) => void;
   itemProps?: MenuItemProps;
   active: boolean;
+  removable: boolean;
 }) {
   const subtitle =
     doc.folderName && doc.folderName !== doc.name ? doc.folderName : null;
@@ -149,7 +183,12 @@ function RecentPaperOpenButton({
           </span>
         )}
       </span>
-      <span className="text-[11px] text-ink-subtle shrink-0">
+      <span
+        className={`text-[11px] text-ink-subtle shrink-0 ${
+          removable ? (active ? "invisible" : TIME_YIELDS_CLASS) : ""
+        }`}
+        data-testid="recent-paper-time"
+      >
         {formatRelativeTime(doc.lastAccessedAt)}
       </span>
     </button>

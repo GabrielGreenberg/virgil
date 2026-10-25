@@ -281,7 +281,8 @@ export function TabPlusMenu({
  * `RecentPaperRow` (the start screen's painter); this wrapper only registers it
  * with the menu primitive and hands the item props + `active` flag through, so
  * it joins the roving nav snapshot with a `data-active` highlight. `run` = the
- * existing open handler.
+ * existing open handler; `remove` (task 1280) = the forget handler, so
+ * Delete/Backspace on the active row reaches what the X does by mouse.
  */
 function RecentRowItem({
   doc,
@@ -296,6 +297,7 @@ function RecentRowItem({
     id: `recent-${doc.id}`,
     region: "list",
     run: () => onOpen(doc.id),
+    remove: onRemove ? () => onRemove(doc.id) : undefined,
   });
   return (
     <RecentPaperRow
