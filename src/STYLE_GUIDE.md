@@ -966,7 +966,11 @@ Tailwind spacing utility passes only as a `var(…)` or with the `aligns:` note
 (task 821). The same rule reaches every other spelling (task 1060): CSS
 declarations (stylesheets, `cssText`, `[padding:…]`) and inline style-object
 keys are judged on their px value — an odd px above 1 or a fractional px needs
-the note; `em`/`rem` prose rhythm is outside the pixel grid. `--pod-gap: 10px` is the canonical pod-to-pod gap;
+the note; `em`/`rem` prose rhythm is outside the pixel grid. A mark that sits
+beside a multi-line label aligns to the label's FIRST LINE by a line-height box,
+never a hand-tuned top offset: wrap it in a box one line tall (`h-5` for
+`text-sm`) and centre it — `RadioMark`'s `firstLine` prop is the door (task 1282
+retired its consumer's `mt-[3px]`). `--pod-gap: 10px` is the canonical pod-to-pod gap;
 don't override.
 
 Four icon-button sizes: `iconbtn-xs` (16×16 — card/float header

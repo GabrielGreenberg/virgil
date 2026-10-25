@@ -35,6 +35,15 @@
  *      `main` red on `library/lib/__tests__/latex-output-stock-compile`
  *      (task 1212). A targeted-suite pick keyed on where the diff lives can
  *      never select it; only the unconditional run can.
+ *   5. it RUNS A TREE SCRIPT — spawns (`execFileSync` / `spawnSync` /
+ *      `execSync` / …) a repo script under a `scripts/` or `tools/` dir that
+ *      itself enumerates a directory. Such a guard DELEGATES the walk, so its
+ *      own source shows none of 1–4: `spacing-grid.test.ts` runs
+ *      `scripts/check-spacing-grid.mjs` and sat outside the family until task
+ *      1279 merged `main` red on it (task 1282). The test is a whole-tree guard
+ *      exactly when the script it runs is, so the property is read off the
+ *      SCRIPT — a spawn of a script that only processes its arguments (the
+ *      python parity runners) does not select, keeping the budget intact.
  *
  * The population is exactly what `npm test` collects: the roots come from
  * `vitest.config.ts`'s own `include` (the meta-test pins that every pattern
@@ -81,14 +90,49 @@ export function crossesARoot(rel: string, code: string): boolean {
   return false;
 }
 
+/** Signature 5: the file spawns a child process … */
+export const SPAWNS = /\b(?:execFileSync|execFile|spawnSync|spawn|execSync)\s*\(/;
+/** … naming a repo script under a `scripts/` or `tools/` dir (in a string literal). */
+const SCRIPT_LITERAL = /["'`][^"'`\n]*?\b((?:[\w.-]+\/)*(?:scripts|tools)\/[\w./-]+\.(?:mjs|cjs|js|ts|py|sh))\b/g;
+/** A script enumerates a tree: the JS doors of signature 3, plus Python's and the shell's. */
+export const SCRIPT_LISTS_A_TREE = new RegExp(
+  `${LISTS_A_TREE.source}|\\bos\\.(?:walk|listdir|scandir)\\s*\\(|\\.(?:r?glob|iterdir)\\s*\\(|^\\s*find\\s`,
+  "m",
+);
+
+/** Reads a repo-relative script, or `null` when there is none. */
+export type ScriptReader = (repoRel: string) => string | null;
+const readRepoScript: ScriptReader = (repoRel) => {
+  const abs = path.join(REPO_ROOT, repoRel);
+  return fs.existsSync(abs) && fs.statSync(abs).isFile() ? fs.readFileSync(abs, "utf8") : null;
+};
+
+/** The repo scripts a file spawns that themselves list a tree (signature 5). */
+export function treeScriptsRun(code: string, readScript: ScriptReader = readRepoScript): string[] {
+  if (!SPAWNS.test(code)) return [];
+  const out = new Set<string>();
+  for (const m of code.matchAll(SCRIPT_LITERAL)) {
+    const rel = m[1].replace(/^\.\//, "");
+    if (/\.test\.tsx?$/.test(rel) || out.has(rel)) continue;
+    const script = readScript(rel);
+    if (script !== null && SCRIPT_LISTS_A_TREE.test(script)) out.add(rel);
+  }
+  return [...out].sort();
+}
+
 /** Which signature(s) select a file — `[]` = not a guard. */
-export function guardSignatures(rel: string, source: string): string[] {
+export function guardSignatures(
+  rel: string,
+  source: string,
+  readScript: ScriptReader = readRepoScript,
+): string[] {
   const out: string[] = [];
   if (GUARD_NAME.test(rel)) out.push("name");
   const code = commentsStripped(source);
   if (CENSUS_TITLE.test(code)) out.push("census-title");
   if (LISTS_A_TREE.test(code)) out.push("lists-a-tree");
   if (crossesARoot(rel, code)) out.push("crosses-a-root");
+  if (treeScriptsRun(code, readScript).length > 0) out.push("runs-a-tree-script");
   return out;
 }
 
