@@ -44,7 +44,11 @@ describe("Stack strip surface (task 860)", () => {
     const el = strip();
     expect(el.style.background).toBe("var(--stack-strip-bg)");
     const hint = el.firstElementChild as HTMLElement;
-    expect(hint.textContent).toMatch(/Drop popped paragraphs/);
+    // Task 1286 — the hint points at the Stack BUTTON (the only capture
+    // target), not at the strip, and never says "popped": a content lift
+    // captures text that was never popped out.
+    expect(hint.textContent).toMatch(/onto the Stack\s+button/);
+    expect(hint.textContent).not.toMatch(/\bDrop\b|popped/i);
     expect(hint.style.color).toBe("var(--stack-strip-hint)");
   });
 
