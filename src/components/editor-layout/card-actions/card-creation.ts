@@ -21,7 +21,6 @@ import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
 import { panelForCardKind } from "@/cards/predicates";
-import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard, cardKindHasEditableBody } from "@/lib/focus-new-card";
@@ -439,10 +438,11 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // NOT scroll to "align" it. Without this, the `setSelected` below trips
       // usePlacement's effect, whose `alignEntryToY` drags the shared row
       // scroll: the "creating a footnote/citation jumps the viewport" bug.
-      // Mirrors marker-clicks.ts, the only other suppressor (same asymmetry
-      // rule: usePlacement owns card→text; create surfaces text→card itself).
-      suppressNextPlacement();
-      setSelected(id);
+      // Mirrors marker-clicks.ts (same asymmetry rule: usePlacement owns
+      // card→text; create surfaces text→card itself). The intent rides THIS
+      // doc's store and tags only the selection changes made inside the
+      // scope (task 1283) — both `setSelected` and the CHIP-B `select` below.
+      store.withoutPlacement(() => setSelected(id));
       pin(pinToken, id);
       // Drop the caret into the new card's body (CHIP B). User-initiated
       // (`autoFocus` defaults true); editable-body kinds only — `focusNewCard`
@@ -456,7 +456,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         // shared store so the card paints as the active one. Both are
         // single store writes — no per-keystroke work.
         store.expand({ kind, id });
-        store.select({ kind, id });
+        store.select({ kind, id }, { placement: "none" });
         focusNewCard(cardPopKey(kind, id), focusLifetime);
       }
       if (opts.mode === "omni") return;

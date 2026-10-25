@@ -9,9 +9,10 @@
 // ALREADY surfaced at the right spot (floated at its anchorRect / pinned to its
 // panel), so the editor must NOT scroll to "align" it.
 //
-// The contract: `finishCreate` calls `suppressNextPlacement()` BEFORE the
-// selection setter — the same suppression `marker-clicks.ts` uses for the
-// inverse gesture. Because EVERY card factory funnels through `finishCreate`,
+// The contract: the selection change `finishCreate` makes is tagged
+// `placement: "none"` on THIS doc's CardStore (task 1283 — it used to raise a
+// module-level flag before the setter) — the same intent `marker-clicks.ts`
+// uses for the inverse gesture. Because EVERY card factory funnels through `finishCreate`,
 // this guards all 13 kinds at once; we pin footnote (the reported case) and
 // note (proves it's the shared tail, not a footnote-special path).
 //
@@ -25,18 +26,8 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-// Spy on the suppression primitive; keep the rest of the module real.
-vi.mock("@/links/_shared/usePlacement", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/links/_shared/usePlacement")>();
-  return { ...actual, suppressNextPlacement: vi.fn() };
-});
-
 import { useCardCreation } from "../card-creation";
-import { suppressNextPlacement } from "@/links/_shared/usePlacement";
-import { defaultCardStore } from "@/links/_shared/anchored-card-store";
-
-const suppressMock = vi.mocked(suppressNextPlacement);
+import { createCardStore, type CardStore } from "@/links/_shared/anchored-card-store";
 
 type CardDeps = Parameters<typeof useCardCreation>[0];
 
@@ -85,18 +76,21 @@ function makeDeps(over: Partial<CardDeps> = {}): CardDeps {
     getFootnoteCount: (() => 0) as never,
     // finishCreate expands/selects in this store; supply one so it doesn't
     // crash (the `as CardDeps` cast hides the missing field at compile time).
-    store: defaultCardStore,
+    store,
     ...over,
   } as CardDeps;
 }
 
+let store: CardStore;
 beforeEach(() => {
-  suppressMock.mockClear();
+  store = createCardStore();
 });
 
 describe("finishCreate suppresses card→text placement on create", () => {
-  it("createFootnote suppresses placement BEFORE selecting the new card", () => {
-    const setSelectedFootnoteId = vi.fn();
+  it("createFootnote's selection change carries placement: none on the doc's store", () => {
+    const setSelectedFootnoteId = vi.fn((id: string) =>
+      store.select({ kind: "footnote", id }),
+    );
     const { result } = renderHook(() =>
       useCardCreation(makeDeps({ setSelectedFootnoteId: setSelectedFootnoteId as never })),
     );
@@ -105,17 +99,12 @@ describe("finishCreate suppresses card→text placement on create", () => {
       result.current.createFootnote({});
     });
 
-    expect(suppressMock).toHaveBeenCalledTimes(1);
     expect(setSelectedFootnoteId).toHaveBeenCalledWith("fn-1");
-    // Order matters: the flag must be set before the selection setter that
-    // trips usePlacement's effect, or the alignment scroll still fires.
-    expect(suppressMock.mock.invocationCallOrder[0]).toBeLessThan(
-      setSelectedFootnoteId.mock.invocationCallOrder[0],
-    );
+    expect(store.isPlacementSuppressed({ kind: "footnote", id: "fn-1" })).toBe(true);
   });
 
   it("createNote suppresses placement too (the shared finishCreate tail)", () => {
-    const setSelectedNoteId = vi.fn();
+    const setSelectedNoteId = vi.fn((id: string) => store.select({ kind: "note", id }));
     const { result } = renderHook(() =>
       useCardCreation(makeDeps({ setSelectedNoteId: setSelectedNoteId as never })),
     );
@@ -124,7 +113,7 @@ describe("finishCreate suppresses card→text placement on create", () => {
       result.current.createNote({});
     });
 
-    expect(suppressMock).toHaveBeenCalledTimes(1);
     expect(setSelectedNoteId).toHaveBeenCalledWith("note-1");
+    expect(store.isPlacementSuppressed({ kind: "note", id: "note-1" })).toBe(true);
   });
 });

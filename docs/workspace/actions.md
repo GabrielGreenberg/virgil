@@ -92,8 +92,10 @@ the audit's CITE behavior, below.
 
 **No-scroll create (two halves).** Creating any card must NOT jump the viewport —
 the new card is already surfaced at its anchor (float/panel). (1) The shared
-`finishCreate` tail calls `suppressNextPlacement()`
-([usePlacement](../../src/links/_shared/usePlacement.ts)) before `setSelected`, so
+`finishCreate` tail selects inside `store.withoutPlacement(…)`, tagging that
+selection change `placement: "none"` on the doc's own CardStore (task 1283 —
+formerly a module-level flag; read by
+[usePlacement](../../src/links/_shared/usePlacement.ts)), so
 selecting the fresh card doesn't trip `usePlacement`'s card→text
 `alignEntryToYIfNeeded` scroll (one call covers all card kinds —
 footnote/citation were the reported jumps). Since task 328 that door is the
