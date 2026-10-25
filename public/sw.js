@@ -5,7 +5,7 @@
 // Strategy, per request (see `handle` below):
 //   - same-origin `_next/static/**` (content-hashed, never change under one
 //     name): cache first, network on a miss;
-//   - any other precached path (the TeX core, the dictionary) whose held copy
+//   - any other precached path (the TeX engine + core, the dictionary, …) whose held copy
 //     carries THIS build's content hash (task 888): cache first — it is
 //     byte-for-byte what this build shipped;
 //   - everything else: network first. A 2xx answer refreshes the cache. When
@@ -59,13 +59,16 @@ const BUILD_SHAS = new Map(
 // the user has picked.
 const CROSS_ORIGIN_CACHE = "virgil-fonts";
 
-// What the precache covers beyond the build's chunks and shell — the vendored
-// TeX core (P1 offline-assets: the base .fmt + every path of
-// `swiftlatex/texbundle/manifest.json`, so provisionEngine's seed fetch is
-// offline-durable) and the Hunspell dictionary (task 518: without it the
-// spellchecker silently has no dictionary offline) — is decided by the stamper
-// at BUILD time (`ASSET_PRECACHE` in scripts/stamp-service-worker.mjs) and
-// arrives here in BUILD_PRECACHE with everything else. The worker's OWN
+// What the precache covers beyond the build's chunks and shell is decided by
+// the stamper at BUILD time — `PUBLIC_ASSET_CLASSES` in
+// scripts/stamp-service-worker.mjs, one row per `public/` entry (task 1284) —
+// and arrives here in BUILD_PRECACHE with everything else: the TeX ENGINE
+// (PdfTeXEngine.js, the swiftlatexpdftex.js worker, its .wasm) and core (P1
+// offline-assets: the base .fmt + every path of
+// `swiftlatex/texbundle/manifest.json`, so a compile is offline-durable), the
+// Hunspell dictionary (task 518), the PDF viewer and the example paper. The
+// engine's Worker is created by a controlled page, so it is controlled too and
+// its .wasm fetch is served from the precache. The worker's OWN
 // cross-origin sync XHR to the mirror is NOT — and cannot be — SW-intercepted
 // (that's what the IndexedDB write-through cache + curated seed are for).
 
