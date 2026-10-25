@@ -18,21 +18,44 @@ import { ICON_STROKE, ICON_STROKE_SMALL } from "./icon-stroke";
  *    IS the control). Two strokes — a `--foreground` halo under a
  *    `--background` mark — so it reads on any swatch hue in either theme.
  *
+ * FIRST-LINE ALIGNMENT is the leaf's, not the consumer's (task 1282). A
+ * ring beside a multi-line option sits on the option's FIRST text line;
+ * `firstLine` names that line's text size and the leaf wraps itself in a box
+ * exactly one such line tall (Tailwind's `text-sm` line is 20px = `h-5`,
+ * `text-xs` 16px = `h-4`), centring the ring in it — so no consumer
+ * hand-tunes an off-grid `mt-[3px]` that drifts when the size or the type
+ * scale changes.
+ *
  * `data-radio-mark` names the state for tests (jsdom resolves no colours, so
  * the pin is structural): `radio-mark-census.test.ts` fails a `useRadioGroup`
  * consumer that does not render this leaf.
  */
+/** The line box for each first-line text size (its Tailwind line-height). */
+const FIRST_LINE_BOX = { "text-sm": "h-5", "text-xs": "h-4" } as const;
+
 export function RadioMark({
-  checked,
-  variant = "ring",
-  size = 14,
-  className,
-}: {
+  firstLine,
+  ...props
+}: RadioMarkProps & {
+  /** Centre the mark on the first line of text at this size beside it. */
+  firstLine?: keyof typeof FIRST_LINE_BOX;
+}) {
+  if (!firstLine) return <RadioMarkGlyph {...props} />;
+  return (
+    <span className={`flex shrink-0 items-center ${FIRST_LINE_BOX[firstLine]}`}>
+      <RadioMarkGlyph {...props} />
+    </span>
+  );
+}
+
+type RadioMarkProps = {
   checked: boolean;
   variant?: "ring" | "check";
   size?: number;
   className?: string;
-}) {
+};
+
+function RadioMarkGlyph({ checked, variant = "ring", size = 14, className }: RadioMarkProps) {
   if (variant === "check") {
     if (!checked) return null;
     return (

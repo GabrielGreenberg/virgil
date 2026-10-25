@@ -215,7 +215,8 @@ function DocTypePicker({
           >
             <RadioMark
               checked={selected}
-              className={`shrink-0 mt-[3px] ${selected ? "text-ink-body" : "text-ink-subtle"}`}
+              firstLine="text-sm"
+              className={`${selected ? "text-ink-body" : "text-ink-subtle"}`}
             />
             <div className="min-w-0">
               <div className="text-sm font-medium text-ink-body">{t.label}</div>

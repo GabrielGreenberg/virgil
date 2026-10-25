@@ -5,8 +5,9 @@
  * The selection rule lives in `_guard-family.ts` (read its header for why the
  * worker runs it on every task). This file pins what could rot around it:
  * the script and config still route through the derived rule; the rule still
- * walks exactly what `npm test` collects; the four signatures still SEE the
- * guards that motivated them (987's three breaks among them); and no file
+ * walks exactly what `npm test` collects; the five signatures still SEE the
+ * guards that motivated them (987's three breaks and 1282's script-delegating
+ * guard among them); and no file
  * with a CENSUS block can sit outside the selection.
  */
 import { describe, expect, it } from "vitest";
@@ -55,6 +56,15 @@ describe("guard family — the derived selection", () => {
     const cross = "library/lib/__tests__/latex-output-stock-compile.test.ts";
     expect(guardSignatures(cross, read(cross))).toEqual(["crosses-a-root"]);
     expect(family).toContain(cross);
+    // A guard that DELEGATES the walk to a repo script (task 1282): its own
+    // source shows none of signatures 1–4, so it is read off the script it runs.
+    const delegating = "src/__tests__/spacing-grid.test.ts";
+    expect(guardSignatures(delegating, read(delegating))).toEqual(["runs-a-tree-script"]);
+    expect(family).toContain(delegating);
+    // Its sibling runner is selected by the SAME rule (it also walks fixtures itself).
+    expect(guardSignatures("src/__tests__/radius-scale.test.ts", read("src/__tests__/radius-scale.test.ts"))).toContain(
+      "runs-a-tree-script",
+    );
     // And this file.
     expect(family).toContain("src/lib/__tests__/guard-family-census.test.ts");
   });
@@ -90,6 +100,27 @@ describe("guard family — the derived selection", () => {
     ]);
     expect(guardSignatures("src/lib/__tests__/x.test.ts", `import { y } from "@/lib/y";\nimport { z } from "../z";`)).toEqual([]);
     expect(guardSignatures("library/lib/__tests__/x.test.ts", `// from "../../../src/lib/y"`)).toEqual([]);
+  });
+
+  it("runs-a-tree-script: selected by what the SPAWNED script does", () => {
+    const scripts: Record<string, string> = {
+      "scripts/check-x.mjs": `for (const e of fs.readdirSync(dir)) walk(e);`,
+      "library/scripts/scan_x.py": `for root, _, files in os.walk(base):\n    pass`,
+      "tools/args-only.mjs": `const [file] = process.argv.slice(2); check(file);`,
+    };
+    const reader = (rel: string) => scripts[rel] ?? null;
+    const sig = (code: string) => guardSignatures("src/__tests__/x.test.ts", code, reader);
+    // A spawn of a script that walks the tree — JS or Python — selects.
+    expect(sig(`execFileSync("node", ["scripts/check-x.mjs"], { cwd: ROOT });`)).toEqual(["runs-a-tree-script"]);
+    expect(sig(`spawnSync("python3", ["library/scripts/scan_x.py"]);`)).toEqual(["runs-a-tree-script"]);
+    expect(sig(`execSync("node scripts/check-x.mjs");`)).toEqual(["runs-a-tree-script"]);
+    // A script that only processes its arguments (a parity runner) does not.
+    expect(sig(`execFileSync("node", ["tools/args-only.mjs", fixture]);`)).toEqual([]);
+    // Naming the script without spawning it, or in prose, does not.
+    expect(sig(`const p = "scripts/check-x.mjs"; readFileSync(p);`)).toEqual([]);
+    expect(sig(`// execFileSync("node", ["scripts/check-x.mjs"])`)).toEqual([]);
+    // A script that does not exist does not.
+    expect(sig(`execFileSync("node", ["scripts/missing.mjs"]);`)).toEqual([]);
   });
 
   it("no CENSUS-titled block lives outside the selection", () => {
