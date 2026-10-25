@@ -134,7 +134,7 @@ import {
   registerPaneClickHost,
 } from "@/lib/pane-click-origin";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
-import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacement";
+import { usePlacement } from "@/links/_shared/usePlacement";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
 import { useBibCitationHighlight } from "./editor-layout/bib-citation-highlight";
@@ -3251,8 +3251,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // Suppress the selection-driven placement scroll — alignment happens
       // by pulling the card to the click (placeSelectedCard), never by
       // scrolling the document row.
-      suppressNextPlacement();
-      cardStoreInst.select(ref);
+      cardStoreInst.select(ref, { placement: "none" });
       // T5 Pillar E-2 (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02): a multi-anchor
       // card draws ONE margin marker per anchored paragraph, and the omni
       // surface draws one row per anchor keyed `…@<pid>` (task 916). Stamp the

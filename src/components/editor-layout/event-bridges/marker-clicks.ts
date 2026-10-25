@@ -16,7 +16,6 @@ import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { OmniCategory } from "@/panels/Omni";
 import type { CardKind } from "@/panels/_shared/types";
 import { panelForCardKind } from "@/cards/predicates";
-import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
@@ -125,7 +124,7 @@ interface AnchorClickEnv {
  * `expandedSet`), route through `openForCard` (omni-first, native fallback),
  * and place the card level with the click Y (`placeSelectedCard` — the Omni
  * pin or the native list's slide, task 1179). No document jump — `skipScroll` +
- * `suppressNextPlacement` keep the editor row put; alignment happens by
+ * a `placement: "none"` select keep the editor row put; alignment happens by
  * pulling the CARD to the click instead.
  */
 function routeAnchorClick(
@@ -154,13 +153,13 @@ function routeCardClick(
   const id = detail.entityId;
   // Click → card alignment goes through placeSelectedCard below, NOT
   // through usePlacement (which would scroll the row and drag the editor).
-  // See usePlacement's asymmetry-rule docstring.
-  suppressNextPlacement();
+  // See usePlacement's asymmetry-rule docstring. The intent rides the
+  // routed doc's own store, bound to this selection change (task 1283).
   // Selection axis only. The event carries the exact kind (the dispatchers
   // resolve comment-vs-suggestion / report-vs-request from the record), so
   // select directly instead of going through the per-kind slot setters
   // (which would have to re-derive the polymorphic kind).
-  env.getActiveCardStore().select({ kind: detail.kind, id });
+  env.getActiveCardStore().select({ kind: detail.kind, id }, { placement: "none" });
 
   const entrySelector = cardEntrySelector(route.cardKind, id);
 

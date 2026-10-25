@@ -74,6 +74,24 @@ interface CardInteractionState {
   expandedSet: AnchoredCardRef[];
   selected: AnchoredCardRef | null;
   hover: AnchoredCardRef | null;
+  /** The selection change's PLACEMENT INTENT (task 1283): the ref whose
+   *  selection was made with `placement: "none"` — "this selection change must
+   *  not scroll the document" (a marker click, an atom click, a brand-new
+   *  card; each surfaces the card itself). Written ONLY by a select that
+   *  actually changes `selected`, and reset by every other selection change,
+   *  so it always describes the CURRENT selection or nothing: a no-op select
+   *  cannot strand it, and another doc's store cannot consume it. Read by
+   *  `usePlacement` through {@link CardStore.isPlacementSuppressed}. */
+  placementSuppressedFor: AnchoredCardRef | null;
+}
+
+/** How a selection change asks to be placed. `"align"` (the default) lets
+ *  `usePlacement` scroll the document to meet the card; `"none"` says the
+ *  caller surfaces the card itself, so the document must stay put. */
+export type SelectionPlacement = "align" | "none";
+
+export interface SelectOptions {
+  placement?: SelectionPlacement;
 }
 
 function refsEqual(a: AnchoredCardRef | null, b: AnchoredCardRef | null): boolean {
@@ -95,7 +113,17 @@ export interface CardStore {
   toggleExpanded(ref: AnchoredCardRef): void;
   isExpanded(ref: AnchoredCardRef): boolean;
   // SELECTION axis — `selected` slot only, never touches `expandedSet`.
-  select(ref: AnchoredCardRef): void;
+  /** Select `ref`. `{ placement: "none" }` tags THIS selection change as one
+   *  that must not scroll the document (task 1283). A no-op select (same ref)
+   *  changes nothing — not even the intent. */
+  select(ref: AnchoredCardRef, opts?: SelectOptions): void;
+  /** Run `fn` with every selection change it makes tagged `placement: "none"`
+   *  — for callers that select through a per-kind slot setter (which takes no
+   *  options), e.g. `finishCreate`. Synchronous scope; nothing outlives it. */
+  withoutPlacement(fn: () => void): void;
+  /** True iff `ref` is the current selection AND it was made with
+   *  `placement: "none"`. The one read `usePlacement` makes. */
+  isPlacementSuppressed(ref: AnchoredCardRef): boolean;
   clearSelection(): void;
   isSelected(ref: AnchoredCardRef): boolean;
   // HOVER — two doors, and which one you get depends on what you KNOW.
@@ -139,7 +167,14 @@ export interface CardStore {
 /** Build a fresh, isolated interaction store. Each instance closes over its own
  *  state, listener set, and snapshot caches — no cross-instance bleed. */
 export function createCardStore(): CardStore {
-  let state: CardInteractionState = { expandedSet: [], selected: null, hover: null };
+  let state: CardInteractionState = {
+    expandedSet: [],
+    selected: null,
+    hover: null,
+    placementSuppressedFor: null,
+  };
+  // Depth of `withoutPlacement` scopes currently on the stack.
+  let noPlacementDepth = 0;
   const listeners = new Set<() => void>();
   // Stable identity for the selection snapshot — `useSyncExternalStore` requires
   // the getter to return the SAME reference while the value is unchanged.
@@ -185,15 +220,33 @@ export function createCardStore(): CardStore {
 
   // ── SELECTION axis ────────────────────────────────────────────────────────
   /** Make `ref` the selected card (halo / scroll / keyboard target). ≤1. */
-  function select(ref: AnchoredCardRef): void {
+  function select(ref: AnchoredCardRef, opts?: SelectOptions): void {
     if (refsEqual(state.selected, ref)) return;
-    state = { ...state, selected: { ...ref } };
+    const suppressed = opts?.placement === "none" || noPlacementDepth > 0;
+    state = {
+      ...state,
+      selected: { ...ref },
+      placementSuppressedFor: suppressed ? { ...ref } : null,
+    };
     emit();
+  }
+  function withoutPlacement(fn: () => void): void {
+    noPlacementDepth++;
+    try {
+      fn();
+    } finally {
+      noPlacementDepth--;
+    }
+  }
+  function isPlacementSuppressed(ref: AnchoredCardRef): boolean {
+    return (
+      refsEqual(state.selected, ref) && refsEqual(state.placementSuppressedFor, ref)
+    );
   }
   /** Clear the selection (halo). Expansion is untouched. */
   function clearSelection(): void {
     if (!state.selected) return;
-    state = { ...state, selected: null };
+    state = { ...state, selected: null, placementSuppressedFor: null };
     emit();
   }
   /** True iff `ref` is the selected card. At most one per doc. */
@@ -244,6 +297,8 @@ export function createCardStore(): CardStore {
     toggleExpanded,
     isExpanded,
     select,
+    withoutPlacement,
+    isPlacementSuppressed,
     clearSelection,
     isSelected,
     setHover,

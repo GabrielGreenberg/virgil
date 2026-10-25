@@ -9,6 +9,10 @@
  * Asymmetry rule: text/marginalia → card alignment is handled by the
  * existing `openForCard` flow (per-surface click handlers). This hook
  * covers the inverse: card → text alignment. Hover never moves anything.
+ * A caller that surfaces the card itself says so on the selection change
+ * — `store.select(ref, { placement: "none" })`, or `store.withoutPlacement`
+ * around a per-kind slot setter — and this hook then leaves the document
+ * where it is (task 1283: the intent rides the doc's own CardStore).
  *
  * Multi-anchor cards: every anchor of the same card stays highlighted by
  * `useAnchorHighlightReconciler`; the placement just chooses *which* of
@@ -50,14 +54,6 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
   // scroll on an actual selection change.
   const lastScrolledRef = useRef<AnchoredCardRef | null>(null);
   useEffect(() => {
-    // Consume the suppress flag UP FRONT, on every effect run. This is the
-    // only consumer of `_suppressNextPlacement`, so consuming here on
-    // every entry means callers that set the flag right before a setter
-    // (suppressNextPlacement → setSelected*Id, or setSelectionWithoutPlacement)
-    // get reliable suppression even though `useEffect` is a passive
-    // effect that runs in a macrotask after paint. The earlier
-    // microtask-clear design lost the flag before this effect ran.
-    const wasSuppressed = consumeSuppressFlag();
     if (!selection) {
       // Cleared on deselect so re-selecting the same card later still
       // counts as a fresh change worth scrolling for.
@@ -76,8 +72,13 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     lastScrolledRef.current = selection;
 
     // Suppression takes effect AFTER marking lastScrolledRef so future
-    // effect runs for the same selection short-circuit cleanly.
-    if (wasSuppressed) return;
+    // effect runs for the same selection short-circuit cleanly. The intent
+    // is read from THIS doc's store, for THIS selection (task 1283): a select
+    // made with `placement: "none"` (marker click, atom click, a brand-new
+    // card — each surfaces the card itself) must not drag the document. It
+    // used to be one module-level flag consumed by whichever mounted pane's
+    // effect ran first, and stranded by a no-op select.
+    if (store.isPlacementSuppressed(selection)) return;
 
     // Locate the card element. Multiple matches are possible (popped
     // float + native panel mount); pick the first that's actually
@@ -126,45 +127,7 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     // is already fully visible, or one within the band's "far" threshold,
     // does not drag the document to meet a card the user can already see.
     alignEntryToYIfNeeded(best.el, cardY);
-  }, [selection, editor, collections]);
-}
-
-/** The suppress flag. Consumed by `usePlacement`'s effect on every entry
- *  (including the entry triggered by the very setter that raised it), so the
- *  suppression is reliable. No microtask clear: `useEffect` is a passive
- *  (macrotask) effect, so a microtask clear would race and consume the flag
- *  BEFORE the effect runs.
- *
- *  A second, store-taking raiser (`setSelectionWithoutPlacement`) sat here
- *  with zero callers and was removed in task 202 — every real caller raises
- *  the flag then calls its own setter, which is the shape below. */
-let _suppressNextPlacement = false;
-
-/** Imperative escape hatch for callers that change selection via the
- *  legacy slot setters (which route through cardStore.select) and
- *  don't want placement to fire. The usual case is a marker click in the
- *  editor or a margin icon click in the panel column: alignment is
- *  handled by `placeSelectedCard` (offset-based card shift), not by
- *  scrolling the row (which would drag the editor too — both views share
- *  the row scroll). Honors the asymmetry rule in this hook's docstring:
- *  text/marginalia → card alignment is the caller's responsibility;
- *  usePlacement only handles card → text alignment.
- *
- *  Call BEFORE the selection-changing setter:
- *      suppressNextPlacement();
- *      setSelectedCitationId(id);
- *
- *  Flag is consumed at the top of every `usePlacement` effect entry, so
- *  the next run (triggered by the suppressed setter) skips alignment. */
-export function suppressNextPlacement(): void {
-  _suppressNextPlacement = true;
-}
-
-/** Read-side helper used by the placement effect to honor the suppress flag. */
-export function consumeSuppressFlag(): boolean {
-  const v = _suppressNextPlacement;
-  _suppressNextPlacement = false;
-  return v;
+  }, [selection, editor, collections, store]);
 }
 
 // Helper to keep type-checker happy with CardKind import (used implicitly

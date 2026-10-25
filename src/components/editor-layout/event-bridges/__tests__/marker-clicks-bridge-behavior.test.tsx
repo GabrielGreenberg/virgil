@@ -32,15 +32,9 @@ vi.mock("@/components/editor-layout/event-bridges/open-for-card", () => ({
 vi.mock("@/components/editor-layout/selected-card-placement", () => ({
   placeSelectedCard: vi.fn(),
 }));
-vi.mock("@/links/_shared/usePlacement", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/links/_shared/usePlacement")>();
-  return { ...actual, suppressNextPlacement: vi.fn() };
-});
 
 import { useMarkerClickBridges } from "@/components/editor-layout/event-bridges/marker-clicks";
 import { openForCard } from "@/components/editor-layout/event-bridges/open-for-card";
-import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { placeSelectedCard } from "@/components/editor-layout/selected-card-placement";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { ViewPrefs } from "@/hooks/useViewPrefs";
@@ -56,7 +50,6 @@ import {
 } from "@/lib/pane-click-origin";
 
 const openForCardMock = vi.mocked(openForCard);
-const suppressMock = vi.mocked(suppressNextPlacement);
 const placeMock = vi.mocked(placeSelectedCard);
 
 function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
@@ -118,8 +111,7 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     mountBridges(deps);
     dispatch("virgil-linked-anchor-click", { entityId: "n1", kind: "note" });
 
-    expect(suppressMock).toHaveBeenCalledTimes(1);
-    expect(selectSpy).toHaveBeenCalledWith({ kind: "note", id: "n1" });
+    expect(selectSpy).toHaveBeenCalledWith({ kind: "note", id: "n1" }, { placement: "none" });
     expect(openForCardMock).toHaveBeenCalledTimes(1);
     const [target, env] = openForCardMock.mock.calls[0];
     expect(target).toEqual({
@@ -144,7 +136,7 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
       kind: "cutter-suggestion",
     });
 
-    expect(selectSpy).toHaveBeenCalledWith({ kind: "cutter-suggestion", id: "c1" });
+    expect(selectSpy).toHaveBeenCalledWith({ kind: "cutter-suggestion", id: "c1" }, { placement: "none" });
     const [target] = openForCardMock.mock.calls[0];
     expect(target).toEqual({
       omniKey: "float:card:cutter-suggestion:c1",
@@ -186,7 +178,7 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
       anchorPid: "p2",
     });
 
-    expect(selectSpy).toHaveBeenCalledWith({ kind: "report", id: "r1" });
+    expect(selectSpy).toHaveBeenCalledWith({ kind: "report", id: "r1" }, { placement: "none" });
     const [target] = openForCardMock.mock.calls[0];
     expect(target).toMatchObject({
       omniKey: "float:card:report:r1@p2",
@@ -226,7 +218,6 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
 
     expect(selectSpy).not.toHaveBeenCalled();
     expect(openForCardMock).not.toHaveBeenCalled();
-    expect(suppressMock).not.toHaveBeenCalled();
     expect(placeMock).not.toHaveBeenCalled();
   });
 
@@ -337,7 +328,7 @@ describe("origin routing (task 1093)", () => {
     mountBridges(deps);
     dispatchLinkedAnchorClick({ docId: "reader-R", entityId: "n1", kind: "note", clickY: 40 });
 
-    expect(readerStore.select).toHaveBeenCalledWith({ kind: "note", id: "n1" });
+    expect(readerStore.select).toHaveBeenCalledWith({ kind: "note", id: "n1" }, { placement: "none" });
     expect(selectSpy).not.toHaveBeenCalled();
     expect(openForCardMock).toHaveBeenCalledTimes(1);
     const routeDeps = openForCardMock.mock.calls[0][1];
@@ -358,7 +349,7 @@ describe("origin routing (task 1093)", () => {
     mountBridges(deps);
     dispatchLinkedAnchorClick({ docId: "doc-A", entityId: "n1", kind: "note" });
 
-    expect(selectSpy).toHaveBeenCalledWith({ kind: "note", id: "n1" });
+    expect(selectSpy).toHaveBeenCalledWith({ kind: "note", id: "n1" }, { placement: "none" });
     expect(readerStore.select).not.toHaveBeenCalled();
     expect(openForCardMock.mock.calls[0][1].prefs).toBe(deps.prefsRef.current);
   });
@@ -401,7 +392,7 @@ describe("origin routing (task 1093)", () => {
       mountBridges(deps);
       act(click);
 
-      expect(readerStore.select).toHaveBeenCalledWith({ kind, id: "f1" });
+      expect(readerStore.select).toHaveBeenCalledWith({ kind, id: "f1" }, { placement: "none" });
       expect(selectSpy).not.toHaveBeenCalled();
       expect(openForCardMock).toHaveBeenCalledTimes(1);
       const [target, routeDeps] = openForCardMock.mock.calls[0];
@@ -428,7 +419,7 @@ describe("origin routing (task 1093)", () => {
     mountBridges(deps);
     act(click);
 
-    expect(selectSpy).toHaveBeenCalledWith({ kind, id: "f1" });
+    expect(selectSpy).toHaveBeenCalledWith({ kind, id: "f1" }, { placement: "none" });
     expect(readerStore.select).not.toHaveBeenCalled();
     expect(openForCardMock.mock.calls[0][1].prefs).toBe(deps.prefsRef.current);
   });

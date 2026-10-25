@@ -637,3 +637,20 @@ shell path, any other origin its own pane's host, an origin with no host is
 dropped. Pinned by `marker-clicks-bridge-behavior.test.tsx` ("origin routing")
 and `pane-click-origin-census.test.ts` (no hand-spelled event name outside the
 door).
+
+### The INTENT half: a selection's placement intent rides its doc's store (task 1283)
+
+"This selection change must not scroll the document" (a margin-marker click, an
+atom/anchor click routed by the marker bridge, a brand-new card) used to be ONE
+module-level boolean in `usePlacement.ts`, consumed up front by every
+`usePlacement` effect run in every mounted pane. Another pane's effect could eat
+pane A's flag (A then aligned — dragged the document — anyway), and a no-op
+select (re-clicking an already-selected atom) stranded it until it swallowed the
+next real card→text alignment. Now the intent is a field of the doc's own
+`CardStore`: `select(ref, { placement: "none" })` (or `withoutPlacement(fn)`
+around a per-kind slot setter) records it ONLY when the selection actually
+changes, every other selection change resets it, and `usePlacement` reads
+`store.isPlacementSuppressed(selection)` from its own store. Owner-keyed and
+bound to a real selection change, by construction. Pinned by
+`placement-intent-per-store.test.tsx` (two stores/two hosts; the no-op strand;
+a census that `usePlacement.ts` holds no module-level `let`).
