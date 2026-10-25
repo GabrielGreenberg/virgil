@@ -71,6 +71,15 @@ describe("dialog field labels (task 869)", () => {
     expect(checked).toHaveLength(1);
     // Roving tabindex: one tab stop, the checked card.
     expect(radios.filter((r) => r.tabIndex === 0)).toEqual(checked);
+    // The choice reads by SHAPE, not only border + tint (task 1279): every
+    // card carries the RadioMark ring, and only the checked one holds the dot.
+    for (const r of radios) {
+      const marks = r.querySelectorAll("[data-radio-mark]");
+      expect(marks).toHaveLength(1);
+      expect(marks[0].getAttribute("data-radio-mark")).toBe(
+        r.getAttribute("aria-checked") === "true" ? "checked" : "unchecked",
+      );
+    }
   });
 
   it("NewDocumentModal: arrow keys move the choice and focus together, wrapping", () => {

@@ -12,6 +12,7 @@ import { InlineError } from "./InlineError";
 import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
 import { isCommitEnter } from "@/lib/key-intent";
 import { useRadioGroup } from "@/hooks/useRadioGroup";
+import { RadioMark } from "@/components/icons/RadioMark";
 
 /**
  * What `onCreate` DID — the report this dialog reads to decide whether its
@@ -170,7 +171,9 @@ export default function NewDocumentModal({
  * `role="radio"` with `aria-checked`, one tab stop for the whole group (the
  * checked card — roving tabindex), and the arrow keys move the choice and the
  * focus together, wrapping at the ends, as native radios do. The contract is
- * `useRadioGroup`'s (task 1216), shared with every pick-one row.
+ * `useRadioGroup`'s (task 1216), shared with every pick-one row; the chosen
+ * card also reads by SHAPE — its `RadioMark` ring holds a dot (task 1279) —
+ * not only by the border and tint.
  */
 function DocTypePicker({
   labelledBy,
@@ -204,15 +207,21 @@ function DocTypePicker({
             type="button"
             {...radioProps(i)}
             disabled={disabled}
-            className={`text-left px-3 py-2 rounded-md border transition-colors ${
+            className={`flex items-start gap-2 text-left px-3 py-2 rounded-md border transition-colors ${
               selected
                 ? "border-edge-strong bg-[var(--accent-light)]"
                 : "border-edge-subtle hover:border-edge-hover hover-on-light"
             }`}
           >
-            <div className="text-sm font-medium text-ink-body">{t.label}</div>
-            <div className="text-xs text-ink-subtle mt-0.5">
-              {t.description}
+            <RadioMark
+              checked={selected}
+              className={`shrink-0 mt-[3px] ${selected ? "text-ink-body" : "text-ink-subtle"}`}
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-ink-body">{t.label}</div>
+              <div className="text-xs text-ink-subtle mt-0.5">
+                {t.description}
+              </div>
             </div>
           </button>
         );

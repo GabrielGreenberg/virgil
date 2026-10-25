@@ -21,6 +21,11 @@ import { useRef, type KeyboardEvent } from "react";
  * - the arrow keys move the choice AND the focus together, wrapping at the
  *   ends, as native radios do.
  *
+ * The hook owns the SEMANTICS; the VISUAL half of the contract is the
+ * `RadioMark` leaf (`src/components/icons/RadioMark.tsx`, task 1279), which
+ * every consumer renders inside each option so the chosen one reads by shape,
+ * never by colour or a border alone. `radio-mark-census.test.ts` pins it.
+ *
  * (Menus model pick-one with `MenuRadioGroup`, which rides the menu's own
  * list navigation; this is the non-menu counterpart.)
  */
