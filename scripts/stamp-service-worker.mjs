@@ -18,9 +18,10 @@
 //                     the immutable `_next/static/**` chunks (so a tab still
 //                     running build N can lazily load build N's chunks after
 //                     build N+1 has replaced them on the server), and the
-//                     vendored offline assets — the TeX core (.fmt + every path
-//                     of `swiftlatex/texbundle/manifest.json`) and the Hunspell
-//                     dictionary. The sha is the file's content hash (task 888):
+//                     vendored offline assets `PUBLIC_ASSET_CLASSES` marks
+//                     precache — the TeX engine + core (.fmt + every path of
+//                     `swiftlatex/texbundle/manifest.json`), the Hunspell
+//                     dictionary, the PDF viewer, the example paper. The sha is the file's content hash (task 888):
 //                     at install the worker COPIES any path a held build cache
 //                     already has with the same sha, so a deploy that leaves the
 //                     ~19 MB of vendored assets alone downloads none of them.
@@ -41,19 +42,107 @@ export const PRECACHE_PLACEHOLDER = "/*__VIRGIL_BUILD_PRECACHE__*/ []";
 const SW_FILE = "sw.js";
 
 /**
- * Vendored offline assets the worker precaches beyond the build's chunks.
- * Out-relative paths. The base `.fmt` (P1 offline-assets) makes the main
- * thread's engine-seed fetch offline-durable; the dictionary (task 518) is
- * what Virgil's own spellchecker fetches — pinned against
- * `src/lib/spell/dictionary-asset.ts` by `dictionary-asset.test.ts`, since this
- * script cannot import TypeScript. A path the export lacks is skipped (a
- * lighter deploy precaches less).
+ * What every runtime entry of `public/` is to the worker (task 1284) — the ONE
+ * answer to "which vendored assets must survive offline". Each row is a
+ * top-level `public/` entry (or a deeper prefix; the LONGEST matching row wins)
+ * with a mode and a one-line why:
+ *
+ *   - `precache`: every file the export has under it is precached at install,
+ *     with its content sha (so a deploy that leaves it alone copies it from a
+ *     held build cache instead of downloading it — task 888);
+ *   - `manifest`: precached too, but the paths come from a manifest the entry
+ *     owns (the texbundle — `tex-bundle-integrity.test.ts` pins its views);
+ *   - `runtime`: left to network-first runtime caching — fine only where losing
+ *     it offline costs nothing that matters, and the why says so.
+ *
+ * Before this table the precache was a hand list of three paths that nothing
+ * reconciled against what the app loads: it held the TeX DATA (.fmt) but not the
+ * TeX ENGINE (`PdfTeXEngine.js`, the worker script, the `.wasm`), so an offline
+ * compile on a fresh install — or after two deploys with no compile between —
+ * died with every data byte in hand. `sw-offline-asset-census.test.ts` fails on a
+ * `public/` entry this table does not classify. `generated` marks an entry the
+ * build writes (gitignored), so a checkout without it is not a stale row.
+ *
+ * This script cannot import TypeScript, so the consumers' own path constants
+ * (`src/lib/swiftlatex.ts`, `src/lib/spell/dictionary-asset.ts`, …) are pinned
+ * against this table by the census and `dictionary-asset.test.ts`.
  */
-export const ASSET_PRECACHE = [
-  "swiftlatex/swiftlatexpdftex.fmt",
-  "dictionaries/en/index.aff",
-  "dictionaries/en/index.dic",
+export const PUBLIC_ASSET_CLASSES = [
+  {
+    entry: "swiftlatex",
+    mode: "precache",
+    why: "the TeX engine (PdfTeXEngine.js <script>, swiftlatexpdftex.js Worker, swiftlatexpdftex.wasm) + the base .fmt — an offline compile loads all four",
+  },
+  {
+    entry: "swiftlatex/texbundle",
+    mode: "manifest",
+    why: "the curated TeX core; its manifest.json names every path the engine seeds",
+  },
+  {
+    entry: "dictionaries",
+    mode: "precache",
+    why: "the Hunspell dictionary Virgil's spellchecker fetches (task 518)",
+  },
+  {
+    entry: "pdfjs",
+    mode: "precache",
+    why: "the Library's PDF viewer (PdfView) — the Library is offline-first, and content shas make it a one-time ~9 MB",
+  },
+  {
+    entry: "examples",
+    mode: "precache",
+    generated: true,
+    why: "the example paper example-seeder.ts copies into a new document — tiny, and a new-example flow offline otherwise fails",
+  },
+  {
+    entry: "skill-bundle",
+    mode: "runtime",
+    generated: true,
+    why: "skills re-synced into a paper folder on doc-open; a missed offline sync retries next open, and network-first keeps the last copy",
+  },
+  { entry: "sw.js", mode: "runtime", why: "the worker itself — the browser fetches it, never the worker's cache" },
+  {
+    entry: "apple-touch-icon.png",
+    mode: "runtime",
+    why: "home-screen icon, read by the OS at PWA install (online by definition)",
+  },
+  { entry: "icon-192x192.png", mode: "runtime", why: "manifest icon, read by the browser at PWA install" },
+  { entry: "icon-512x512.png", mode: "runtime", why: "manifest icon, read by the browser at PWA install" },
+  ...["logo.png", "logo_large1.png", "logo_large2.png", "logo_new.png"].map((entry) => ({
+    entry,
+    mode: "runtime",
+    why: "brand artwork no app surface loads",
+  })),
+  ...["file.svg", "globe.svg", "next.svg", "vercel.svg", "window.svg"].map((entry) => ({
+    entry,
+    mode: "runtime",
+    why: "create-next-app scaffold no app surface loads",
+  })),
 ];
+
+/** The row an out-relative path falls under (longest prefix), or undefined. */
+export function classifyPublicPath(file) {
+  const path = String(file).replace(/^(\.\/|\/)+/, "");
+  let best;
+  for (const row of PUBLIC_ASSET_CLASSES) {
+    if (path === row.entry || path.startsWith(`${row.entry}/`)) {
+      if (!best || row.entry.length > best.entry.length) best = row;
+    }
+  }
+  return best;
+}
+
+/**
+ * The vendored assets an export precaches beyond its shell and chunks: every
+ * file under a `precache` row, then the texbundle manifest's paths
+ * (`precacheList` lists each once — the manifest's first row IS the base .fmt).
+ */
+export function precacheAssets(files, manifestPaths = []) {
+  return [
+    ...files.filter((f) => classifyPublicPath(f)?.mode === "precache"),
+    ...manifestPaths,
+  ];
+}
 
 /** The curated TeX core bundle's path list (scripts/lib/tex-bundle-manifest.mjs). */
 export const TEX_BUNDLE_MANIFEST = "swiftlatex/texbundle/manifest.json";
@@ -149,7 +238,7 @@ export function stampServiceWorker(outDir) {
   hash.update(source);
   const stamp = hash.digest("hex").slice(0, 16);
   const precache = precacheList(files, {
-    assets: [...ASSET_PRECACHE, ...texBundlePaths(root)],
+    assets: precacheAssets(files, texBundlePaths(root)),
     sha: (f) => shas.get(f),
   });
 

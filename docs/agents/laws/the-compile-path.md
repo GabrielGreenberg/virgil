@@ -262,6 +262,23 @@ libraries. Together **+2.26 MB over 92 files**, taking the engine payload from
 baseline. That cost is paid ONCE at install, into the service worker's
 precache, and it replaces a per-paper wait of 60–100 serial blocking round trips.
 
+**The engine half (task 1284).** That set is the TeX DATA. The engine that
+reads it is three more same-origin files — `PdfTeXEngine.js` (a `<script>`),
+`swiftlatexpdftex.js` (its Worker) and `swiftlatexpdftex.wasm` — and until 1284
+the precache was a hand list (`ASSET_PRECACHE`) that named the .fmt but none of
+them, so they survived offline only as runtime copies in a build cache the
+two-build ledger sweeps: a fresh install that went offline before its first
+compile, or two deploys without a compile, left a dead engine beside a full
+bundle. The precache is now decided by ONE table over `public/` —
+`PUBLIC_ASSET_CLASSES` in `scripts/stamp-service-worker.mjs`, each entry
+`precache` / `manifest` / `runtime` with a why — and
+[sw-offline-asset-census.test.ts](../../../src/lib/__tests__/sw-offline-asset-census.test.ts)
+fails on an unclassified `public/` entry, on any `public/swiftlatex/` file outside
+`texbundle/` that is not precached, on the engine's own load paths (read from
+source) leaving the precache, and on a `publicAssetUrl("/…")` literal naming an
+unclassified entry. Real-PWA airplane-mode proof on a fresh install is owed, not
+claimable from CI.
+
 CI: [tex-bundle-integrity.test.ts](../../../src/lib/__tests__/tex-bundle-integrity.test.ts).
 Its legs with teeth are the AGREEMENT ones, because the bundle's two consumers
 fail in OPPOSITE, SILENT ways: a `CORE_MANIFEST` row whose bytes are absent

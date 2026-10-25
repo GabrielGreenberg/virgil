@@ -15,7 +15,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { DICTIONARY_ASSET_PATHS, dictionaryAssetUrls } from "@/lib/spell/dictionary-asset";
 import { REPO_ROOT } from "@/lib/__tests__/_source-scan";
-import { ASSET_PRECACHE, precacheList } from "../../../../scripts/stamp-service-worker.mjs";
+import { classifyPublicPath, precacheAssets, precacheList } from "../../../../scripts/stamp-service-worker.mjs";
 
 const read = (rel: string) => readFileSync(resolve(REPO_ROOT, rel), "utf8");
 
@@ -57,19 +57,20 @@ describe("the vendored dictionary", () => {
 describe("the service worker precaches the SAME paths", () => {
   // Since task 888 the worker's precache list is decided at BUILD time by the
   // stamper (it hashes each file so an unchanged one is copied, not
-  // re-downloaded); `ASSET_PRECACHE` is where the dictionary is named.
+  // re-downloaded); `PUBLIC_ASSET_CLASSES` is where the dictionary's directory
+  // is classified precache (task 1284).
   it("the stamper lists both files, scope-relative", () => {
     for (const rel of Object.values(DICTIONARY_ASSET_PATHS)) {
       // Scope-relative by contract (task 365): a leading slash would discard
       // the SW's own scope and escape to the origin root, which under a
       // subdirectory deploy 404s every asset silently.
-      expect(ASSET_PRECACHE).toContain(rel);
+      expect(classifyPublicPath(rel)?.mode).toBe("precache");
     }
   });
 
   it("…and folds them into the worker's precache list", () => {
     const files = [...Object.values(DICTIONARY_ASSET_PATHS), "index.html"];
-    const listed = precacheList(files, { assets: ASSET_PRECACHE }).map(([p]) => p);
+    const listed = precacheList(files, { assets: precacheAssets(files) }).map(([p]) => p);
     for (const rel of Object.values(DICTIONARY_ASSET_PATHS)) expect(listed).toContain(`./${rel}`);
   });
 
