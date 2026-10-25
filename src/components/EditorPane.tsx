@@ -260,6 +260,7 @@ import { buildInlineAtomCardApis } from "./drop-mode/atom-card-apis";
 import { releaseModeB } from "./drop-mode/util/mode-b-release";
 import type { StackPullApi } from "./drop-mode/types";
 import { addStackItem } from "@/hooks/useStack";
+import { STACK_ADD_REFUSAL_NOTICE } from "@/lib/stack/add-report";
 import {
   openStackStrip,
   registerStackTerminal,
@@ -5892,12 +5893,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // same single-button surface the drag-handle refusals use, and the
       // terminal reports the refusal so each producer keeps its own source
       // surface exactly as it was.
-      if (!addStackItem(item, stackBibCtxRef.current)) {
+      //
+      // The notice is DERIVED from the door's typed reason (task 1285): it
+      // used to say "full — remove some items" for every refusal, including
+      // the ones where the strip is empty and nothing can be removed.
+      const added = addStackItem(item, stackBibCtxRef.current);
+      if (!added.ok) {
         dragHandleNotify({
-          title: "The Stack is full",
-          message:
-            "This capture could not be saved — the Stack has run out of room. " +
-            "Remove some items from the Stack strip and try again.",
+          ...STACK_ADD_REFUSAL_NOTICE[added.reason],
           tone: "danger",
         });
         return false;

@@ -33,6 +33,7 @@ import {
   withBibCarry,
   type StackBibCtx,
 } from "@/lib/stack/bib-carry";
+import type { StackAddReport } from "@/lib/stack/add-report";
 
 /** Key the add door moves a stored blob to when NOBODY can read it (it does
  *  not parse), before starting fresh — so real corruption costs one key's
@@ -60,11 +61,15 @@ const STACK_PAYLOAD_KINDS: Record<StackPayload["kind"], true> = {
  * - `foreign` — parses, but is not a v1 envelope (another build's version, or
  *   no `items` array). Some build may own it: never overwrite.
  * - `corrupt` — does not parse. No build can ever read it.
+ * - `unavailable` — storage itself could not be read (it threw, or there is
+ *   no `localStorage`). Nothing was read, so nothing may be written; kept
+ *   apart from `foreign` so the refusal can say which (task 1285).
  */
 type EnvelopeRead =
   | { state: "ok"; items: StackItem[] }
   | { state: "foreign" }
-  | { state: "corrupt"; raw: string };
+  | { state: "corrupt"; raw: string }
+  | { state: "unavailable" };
 
 function isStackItem(v: unknown): v is StackItem {
   if (!v || typeof v !== "object") return false;
@@ -80,14 +85,14 @@ function isStackItem(v: unknown): v is StackItem {
 }
 
 function readEnvelope(): EnvelopeRead {
-  if (typeof window === "undefined") return { state: "ok", items: [] };
+  if (typeof window === "undefined") return { state: "unavailable" };
   let raw: string | null;
   try {
     raw = localStorage.getItem(STACK_STORAGE_KEY);
   } catch {
     // Storage itself is unavailable: nothing was read, and nothing will be
     // written either (the write door reports the same failure).
-    return { state: "foreign" };
+    return { state: "unavailable" };
   }
   if (!raw) return { state: "ok", items: [] };
   let parsed: Partial<StackEnvelope> | null;
@@ -230,9 +235,11 @@ export function readStackItem(id: string): StackItem | null {
  * than given the same signature: it had no caller, and a second add door is a
  * door someone reaches for without the obligation below.
  *
- * Returns whether the item actually LANDED. `false` means the envelope could
- * not be persisted even after FIFO-evicting everything older — the caller must
- * not report a capture (task 591).
+ * Returns whether the item actually LANDED, and when it did not, WHY (task
+ * 1285) — a {@link StackAddReport}. Only `ok: true` may be reported as a
+ * capture (task 591); the reason is what the terminal's notice is derived
+ * from, so a refusal never tells the user to remove items from a Stack that
+ * holds none.
  *
  * `bib` is REQUIRED (task 235). The referenced bibliography is resolved HERE,
  * once, for every payload family, so a producer cannot land an item without
@@ -248,10 +255,13 @@ export function readStackItem(id: string): StackItem | null {
  * it) is moved to {@link STACK_QUARANTINE_KEY} first, and the add proceeds
  * only if that move landed; refusing forever would wedge the Stack.
  */
-export function addStackItem(item: StackItem, bib: StackBibCtx): boolean {
+export function addStackItem(item: StackItem, bib: StackBibCtx): StackAddReport {
   const env = readEnvelope();
-  if (env.state === "foreign") return false;
-  if (env.state === "corrupt" && !quarantine(env.raw)) return false;
+  if (env.state === "unavailable") return { ok: false, reason: "unreadable-storage" };
+  if (env.state === "foreign") return { ok: false, reason: "foreign" };
+  if (env.state === "corrupt" && !quarantine(env.raw)) {
+    return { ok: false, reason: "quarantine-failed" };
+  }
   const cur = env.state === "ok" ? env.items : [];
   let candidate = [withBibCarry(item, bib), ...cur];
   // The cap is applied here, once, in BOTH its halves — count then the real
@@ -261,25 +271,44 @@ export function addStackItem(item: StackItem, bib: StackBibCtx): boolean {
     const fitted = fitStackItems(candidate);
     if (writeSerialized(fitted.serialized)) {
       notifySameWindow();
-      return true;
+      return { ok: true };
     }
     // Our own budget is a share of the origin's, not the whole of it — every
     // `virgil:*` pref key spends from the same ~5 MB — so a write can still
     // throw well inside it. Make room the same way and try again. When only
     // the new item is left there is nothing further to give, and the add
     // REFUSES: a failed write is never reported as a capture, because its
-    // report is what closes the float and tears down the lift.
-    if (fitted.items.length <= 1) return false;
+    // report is what closes the float and tears down the lift. Whether
+    // "remove some items" is honest copy depends on whether there were any
+    // (task 1285).
+    if (fitted.items.length <= 1) {
+      return { ok: false, reason: cur.length > 0 ? "full" : "no-room" };
+    }
     candidate = fitted.items.slice(0, fitted.items.length - 1);
   }
 }
 
+/**
+ * Set an unparseable blob aside. The copy needs the blob's size again, so it
+ * is most likely to fail under quota pressure — and a failure used to be a
+ * PERMANENT wedge (every later add refused the same way). An earlier
+ * quarantine is the one thing here that is ours to give up: it is older
+ * damaged data, superseded by this one. So on a throw, drop it and try once
+ * more (task 1285).
+ */
 function quarantine(raw: string): boolean {
   try {
     localStorage.setItem(STACK_QUARANTINE_KEY, raw);
     return true;
-  } catch (err) {
-    console.error("[stack] quarantine failed", err);
-    return false;
+  } catch (first) {
+    try {
+      if (localStorage.getItem(STACK_QUARANTINE_KEY) === null) throw first;
+      localStorage.removeItem(STACK_QUARANTINE_KEY);
+      localStorage.setItem(STACK_QUARANTINE_KEY, raw);
+      return true;
+    } catch (err) {
+      console.error("[stack] quarantine failed", err);
+      return false;
+    }
   }
 }
