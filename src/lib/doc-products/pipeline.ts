@@ -479,19 +479,24 @@ export function createDocProducts(
   // reader inherits the ordering by going through this door.
   let preambleEpoch = 0;
 
-  /** `initial` = the attach read, the one that OPENS the line-number-parity
-   *  gate: any settled outcome sets `preambleReady`, a failure meaning "no
-   *  disk preamble" so lint still runs (the useLatexSource fallback). A
-   *  re-read is best-effort and keeps the current preamble unless it has a
-   *  better one. */
-  function readPreamble(initial: boolean) {
+  /** The line-number-parity gate opens on the first read to SETTLE while it
+   *  is still shut — whichever read that is (task 1289). The duty is a fact
+   *  of the GATE STATE at settle time, not of which caller started the read:
+   *  a delimiters re-read that supersedes a still-pending attach read
+   *  inherits its ownership of the preamble, so it inherits the duty too, or
+   *  a failing/null re-read would leave `sourceText` dead for the session.
+   *  While shut, any settled outcome opens it — a failure or a null
+   *  extraction meaning "no disk preamble" so lint still runs (the
+   *  useLatexSource fallback). Once open, a read is best-effort and keeps the
+   *  current preamble unless it has a better one. */
+  function readPreamble() {
     const epoch = ++preambleEpoch;
     const owns = () => !destroyed && epoch === preambleEpoch;
     readTex(config.docId)
       .then((diskText) => {
         if (!owns()) return;
         const extracted = extractPreambleAndPostamble(diskText);
-        if (!extracted && !initial) return;
+        if (!extracted && preambleReady) return;
         preamble = extracted?.preamble;
         postamble = extracted?.postamble;
         preambleReady = true;
@@ -500,7 +505,7 @@ export function createDocProducts(
         revalidate();
       })
       .catch(() => {
-        if (!owns() || !initial) return;
+        if (!owns() || preambleReady) return;
         preamble = undefined;
         postamble = undefined;
         preambleReady = true;
@@ -508,7 +513,7 @@ export function createDocProducts(
       });
   }
 
-  readPreamble(true);
+  readPreamble();
 
   // The folder's style-file manifest lands as a side effect of a storage read
   // (the load writeback, every save) on its own schedule, so it can arrive
@@ -519,7 +524,7 @@ export function createDocProducts(
   const onDelimitersChanged = (e: Event) => {
     const detail = (e as CustomEvent<TexDelimitersChangedDetail>).detail;
     if (!detail || detail.docId !== config.docId) return;
-    readPreamble(false);
+    readPreamble();
   };
   if (typeof window !== "undefined") {
     window.addEventListener(TEX_DELIMITERS_CHANGED_EVENT, onDelimitersChanged);

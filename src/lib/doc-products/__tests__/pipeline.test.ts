@@ -501,6 +501,49 @@ describe("doc-products pipeline", () => {
     expect(p.snapshot().sourceText).toContain("\\usepackage{fresh}");
   });
 
+  // Task 1289: the superseding re-read inherits the attach read's OWNERSHIP of
+  // the preamble, so it must inherit its duty to open the parity gate too —
+  // the duty is the gate state at settle time, not which caller started it.
+  for (const [label, reread] of [
+    ["rejects", () => Promise.reject(new Error("stale handle"))],
+    ["finds no \\begin{document}", () => Promise.resolve("no delimiters here")],
+  ] as const) {
+    it(`a re-read that supersedes the pending attach read and ${label} still opens the gate (1289)`, async () => {
+      readTexImpl = (call) =>
+        call === 0 ? new Promise<string>(() => {}) : reread();
+
+      const ed = makeEditor("<p>alpha</p>");
+      const p = attach(ed);
+      window.dispatchEvent(
+        new CustomEvent(TEX_DELIMITERS_CHANGED_EVENT, {
+          detail: { docId: "test-doc" },
+        }),
+      );
+      await settle();
+      // No disk preamble — but the lint feed is alive, not `not-ready`.
+      expect(p.snapshot().sourceText).not.toBeNull();
+      expect(p.snapshot().sourceText).toContain("alpha");
+    });
+  }
+
+  it("once the gate is open, a failing re-read keeps the good preamble (1289)", async () => {
+    readTexImpl = (call) =>
+      call === 0
+        ? Promise.resolve(FRESH_TEX)
+        : Promise.reject(new Error("stale handle"));
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    expect(p.snapshot().sourceText).toContain("\\usepackage{fresh}");
+    window.dispatchEvent(
+      new CustomEvent(TEX_DELIMITERS_CHANGED_EVENT, {
+        detail: { docId: "test-doc" },
+      }),
+    );
+    await settle();
+    expect(p.snapshot().sourceText).toContain("\\usepackage{fresh}");
+  });
+
   it("assembleLiveSource: the pipeline path and the unmounted fallback agree, and both honour bibFamily (865)", async () => {
     // A body whose only cite is SHARED (`\citeauthor`) needs SOME family but
     // pins none: the authoritative family decides which (task 1019 — an
