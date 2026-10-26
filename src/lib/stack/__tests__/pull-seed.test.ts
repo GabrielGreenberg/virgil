@@ -17,10 +17,13 @@
  *     because a pulled suggestion claiming `applied` would offer Keep/Revert
  *     over a splice that lives in ANOTHER document.
  *
- * The table's own two rot modes (a name that is not a field of the record; a
- * vocabulary member with no entry) are COMPILE errors by construction — see
- * `NON_TRAVELLING_FIELDS`'s mapped type — so they are deliberately not tested
- * here. A runtime leg restating them would be the tautology task 260 is about.
+ * The table's own three rot modes (a name that is not a field of the record; a
+ * vocabulary member with no entry; a field ADDED to a record with no stated
+ * fate — task 1298) are COMPILE errors by construction — see `FIELD_FATES`'s
+ * mapped type — so they are deliberately not restated as runtime legs (the
+ * tautology task 260 is about). What a runtime leg CAN add is the fixture's
+ * half: the fixture must populate every classified field, or "the strip is
+ * exactly the declared table" below would pass over a field it never saw.
  */
 import { describe, expect, it } from "vitest";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -29,7 +32,7 @@ import {
   STACK_CARD_KINDS,
   type StackCardKind,
 } from "../card-kinds";
-import { NON_TRAVELLING_FIELDS, pullSeed } from "../pull-seed";
+import { FIELD_FATES, NON_TRAVELLING_FIELDS, pullSeed } from "../pull-seed";
 import {
   POPULATED_SNAPSHOT_DATA,
   UNCARRIABLE_CONTENT_FIELDS,
@@ -127,6 +130,31 @@ describe("the ceiling — what a pull leaves behind", () => {
     },
   );
 
+  it("an archive snippet arrives with none of its SOURCE paper's return records (task 1298)", () => {
+    // `carriedMarks` names `linkedAnchor` marks whose `linkCard` is a card in
+    // the SOURCE paper: restored here they would stamp marks nothing owns, and
+    // the snippet's holdings would claim foreign anchor ids. `displaced` names
+    // source card ids, `returnBefore` a source block uuid.
+    const seed = seedFor("archive");
+    expect(seed.carriedMarks).toBeUndefined();
+    expect(seed.displaced).toBeUndefined();
+    expect(seed.returnBefore).toBeUndefined();
+    expect(seed.content).toEqual(POPULATED_SNAPSHOT_DATA.archive.content);
+  });
+
+  it.each([...STACK_CARD_KINDS])(
+    "%s: no dormancy, LaTeX capture or Task back-pointer from the source travels",
+    (kind) => {
+      // Task 1193's `archivedWith`, 696's `selectedLatex`, 1043's
+      // `aiOriginRequestId` — each addresses the SOURCE paper, and each was
+      // silently travelling until the classification became total.
+      const seed = seedFor(kind);
+      expect(seed.archivedWith, `${kind}.archivedWith`).toBeUndefined();
+      expect(seed.selectedLatex, `${kind}.selectedLatex`).toBeUndefined();
+      expect(seed.aiOriginRequestId, `${kind}.aiOriginRequestId`).toBeUndefined();
+    },
+  );
+
   it("an APPLIED suggestion is not carried as applied", () => {
     // The splice `appliedChange` describes lives in the SOURCE paper's `.tex`.
     // A copy claiming `applied` would advertise Keep/Revert over a range this
@@ -137,18 +165,34 @@ describe("the ceiling — what a pull leaves behind", () => {
     }
   });
 
-  it("a bib entry travels WHOLE — the strip has nothing to do there", () => {
-    // The one kind whose entry is deliberately empty. Its pull runs through
-    // `upsertBibEntry`, the same sink `applyBibCarry` feeds: insert-if-absent on
-    // the citekey, with `addBibEntry` as the documented uid mint point. Shedding
-    // the `key` would defeat the whole bib carry (task 235), and shedding the
-    // `uid` here while the carry path keeps it would be a fork, not a fix.
-    const seed = seedFor("bibliography");
-    expect(seed).toEqual(POPULATED_SNAPSHOT_DATA.bibliography);
+  it("a bib entry travels WHOLE but for its splice anchor", () => {
+    // Its pull runs through `upsertBibEntry`, the same sink `applyBibCarry`
+    // feeds: insert-if-absent on the citekey, with `addBibEntry` as the
+    // documented uid mint point. Shedding the `key` would defeat the whole bib
+    // carry (task 235), and shedding the `uid` here while the carry path keeps
+    // it would be a fork, not a fix. `source` is a span in the SOURCE `.bib`
+    // (task 688) — the same field `addBibEntry`'s door drops for every entry.
+    const { source: _source, ...rest } = POPULATED_SNAPSHOT_DATA.bibliography;
+    void _source;
+    expect(seedFor("bibliography")).toEqual(rest);
   });
 });
 
 describe("the strip is exactly the declared table", () => {
+  it.each([...STACK_CARD_KINDS])(
+    "%s: the fixture populates every field FIELD_FATES classifies",
+    (kind) => {
+      // The compiler makes the table total over the record; this makes the
+      // FIXTURE total over the table, so the exact-strip leg below sees every
+      // field — a fixture missing `carriedMarks` would let it travel unseen.
+      const data = asRecord(POPULATED_SNAPSHOT_DATA[kind]);
+      const missing = Object.keys(FIELD_FATES[kind]).filter(
+        (f) => !Object.prototype.hasOwnProperty.call(data, f),
+      );
+      expect(missing, `${kind}: the fixture leaves these classified fields out`).toEqual([]);
+    },
+  );
+
   it.each([...STACK_CARD_KINDS])("%s removes its listed fields and no others", (kind) => {
     const data = asRecord(POPULATED_SNAPSHOT_DATA[kind]);
     const seed = seedFor(kind);
