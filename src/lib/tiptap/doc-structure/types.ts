@@ -680,6 +680,73 @@ export function diffLabelsRecomputable(diff: StructureDiff): boolean {
   );
 }
 
+/** A footnote entered, left, or changed order. A same-uuid change
+ *  (`changedFootnotes`) always co-sets `footnoteOrderChanged` — also the
+ *  signal for an edit inside a footnote body. */
+export function diffFootnotesRecomputable(diff: StructureDiff): boolean {
+  return (
+    diff.addedFootnotes.length > 0 ||
+    diff.removedFootnotes.length > 0 ||
+    diff.footnoteOrderChanged
+  );
+}
+
+/** A citation entered, left, changed attrs or order — OR a footnote body
+ *  changed: a citation can be born / edited / removed entirely inside a
+ *  footnote's opaque `attrs.content`, invisible to step inspection, and that
+ *  edit surfaces only as a footnote-order change. */
+export function diffCitationsRecomputable(diff: StructureDiff): boolean {
+  return (
+    diff.addedCitations.length > 0 ||
+    diff.removedCitations.length > 0 ||
+    diff.changedCitations.length > 0 ||
+    diff.citationOrderChanged ||
+    diff.footnoteOrderChanged
+  );
+}
+
+/** A linkedAnchor mark entered or left. `changedAnchors` (an anchor that only
+ *  MOVED, task 1128) is deliberately out: every anchor reader resolves the
+ *  snapshot lazily, and it does not wake the structural watchers. */
+export function diffAnchorsRecomputable(diff: StructureDiff): boolean {
+  return diff.addedAnchors.length > 0 || diff.removedAnchors.length > 0;
+}
+
+/** An anchorable block entered, left, or changed order. A same-uuid change
+ *  (`changedBlocks`) always co-sets `blockOrderChanged`. A par-title FLIP
+ *  (`blockParTitleChanged`) is not a doc-order input, so it is out. */
+export function diffBlocksRecomputable(diff: StructureDiff): boolean {
+  return (
+    diff.addedBlocks.length > 0 ||
+    diff.removedBlocks.length > 0 ||
+    diff.blockOrderChanged
+  );
+}
+
+/**
+ * The structural-revision categories — the ONE table behind
+ * `useStructuralRevisions` (task 1301). Each counter bumps exactly when its
+ * predicate holds for a structural emit, so a counter cannot disagree with the
+ * predicate it is named for (the hand-wired channel list it replaced already
+ * had: `labels` missed `changedLabels`). The hook's `StructuralRevisions` keys
+ * DERIVE from this table, so a new category is one row here.
+ *
+ * Every predicate must imply `diffWakesStructuralWatchers` (the hook listens on
+ * `onAnyChange`) — pinned by `structural-revisions-table.test.ts`.
+ */
+export const STRUCTURAL_REVISION_PREDICATES = {
+  footnotes: diffFootnotesRecomputable,
+  citations: diffCitationsRecomputable,
+  examples: diffExamplesRecomputable,
+  anchors: diffAnchorsRecomputable,
+  blocks: diffBlocksRecomputable,
+  headings: diffHeadingsRecomputable,
+  figures: diffFiguresRecomputable,
+  labels: diffLabelsRecomputable,
+} as const satisfies Record<string, (diff: StructureDiff) => boolean>;
+
+export type StructuralRevisionCategory = keyof typeof STRUCTURAL_REVISION_PREDICATES;
+
 /**
  * Does this diff touch anything the section / figure / example numberer reads
  * from STRUCTURE? The union of the four per-kind predicates above. Raw-source
