@@ -1,4 +1,4 @@
-<!-- last-verified: 48b518d4 2026-10-25 -->
+<!-- last-verified: c4bac5c2 2026-10-26 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -278,6 +278,10 @@ were not universally consulted, which is the shape all three share:
   since task 1182 a row that creates a node/mark declares it (`makes`) and is greyed with
   cause `"surface"` where the editor's schema cannot hold it at all (`surfaceLacks` — a
   footnote or note body has no heading, rule or example).
+  Since task 1299 the registry COMPOSES that gate at assembly (`withSchemaGate`, so no
+  row hand-re-asks `surfaceLacks`), and `runAction` (action-registry.ts) is the ONE run
+  door before `spec.run` — live pen∧host, then the verdict — that the bridge, slash
+  popup, ¶ dropdown and lightning grid all commit through.
 
 - **427 — the SSOT was built and ONE caller adopted it.** The residual 397 filed: the
   wrapper actions had three live surfaces that never touched the registry — StarterKit's
