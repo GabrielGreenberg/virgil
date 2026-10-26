@@ -149,11 +149,15 @@ void _scratchMemberIsRefused;
 
 describe("action registry — the completeness pin is union-exhaustive at compile time", () => {
   it("declares VIRGIL_ACTION_REGISTRY as a TOTAL Record<ActionId, ActionSpec>", () => {
+    // Task 1299: the family spread is wrapped by the assembly's gate
+    // composition (`mapRecord(…, withSchemaGate)`); the spread itself still
+    // `satisfies` the total Record, so a missing row stays a compile error.
     expect(squeezed).toContain(
       squeeze(
-        "export const VIRGIL_ACTION_REGISTRY: Readonly<Record<ActionId, ActionSpec>> = {",
+        "export const VIRGIL_ACTION_REGISTRY: Readonly<Record<ActionId, ActionSpec>> = mapRecord(",
       ),
     );
+    expect(squeezed).toContain(squeeze("} satisfies Record<ActionId, ActionSpec>,"));
     // The two shapes that made a missing row legal pre-260.
     expect(squeezed).not.toContain(squeeze("VIRGIL_ACTION_REGISTRY: Partial<"));
     expect(squeezed).not.toContain(

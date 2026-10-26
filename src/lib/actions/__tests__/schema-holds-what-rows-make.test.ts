@@ -35,6 +35,7 @@ import {
   VIRGIL_ACTION_REGISTRY,
   refusalOf,
   verdictOf,
+  withSchemaGate,
   type ActionContext,
   type ActionSpec,
 } from "@/lib/actions/action-registry";
@@ -149,6 +150,24 @@ describe("task 1182 — schema membership gates every node/mark-making row", () 
         v: { state: "disabled", reason: SURFACE_PHRASE },
       });
     }
+  });
+
+  // Task 1299: the declaration IS the gate. No row asks `surfaceLacks` by hand;
+  // the registry assembly composes it from `makes`, so a row whose own
+  // `applies` asks nothing about the schema is still greyed where it can't land.
+  it("COMPOSITION: a row that declares `makes` with a bare `applies` is greyed on a card body", () => {
+    const body = mountCardBody();
+    const main = mountMain();
+    const bare: ActionSpec = {
+      ...VIRGIL_ACTION_REGISTRY["horizontal-rule"],
+      applies: () => "ok",
+    };
+    const gated = withSchemaGate(bare);
+    expect(verdictOf(gated, lightningCtx(body))).toEqual({ state: "disabled", reason: SURFACE_PHRASE });
+    expect(gated.applies(lightningCtx(main))).toBe("ok");
+    // A row that makes nothing is passed through untouched.
+    const card = ROWS.find((r) => !r.makes)!;
+    expect(withSchemaGate(card)).toBe(card);
   });
 
   it("AGREEMENT: in the main text no row is refused for lacking its schema member", () => {

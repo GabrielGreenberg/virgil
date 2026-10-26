@@ -932,8 +932,10 @@ export interface ActionSpec {
    * surface whose schema HOLDS it: a footnote or note body mounts a narrower
    * schema than the main text (no heading, rule, example, raw-LaTeX block…), so
    * an insert row lit there ran a `run()` that found no node type and returned —
-   * a lit cell, a click, nothing, no reason. Every gate factory below asks
-   * `surfaceLacks` FIRST, and `refusalOf` reads THIS field for the reason
+   * a lit cell, a click, nothing, no reason. The registry ASSEMBLY composes
+   * this field into the row's `applies` (`withSchemaGate`, task 1299) — no row
+   * asks it by hand, so a row that declares `makes` cannot be painted lit where
+   * the member is missing — and `refusalOf` reads THIS field for the reason
    * ("Not available in this field"). `schema-holds-what-rows-make.test.ts` pins
    * that every node/mark-making row declares it and that the declaration and
    * the gate agree. Absent on rows that make no schema member of their own (the
@@ -1211,6 +1213,70 @@ function surfaceLacks(ctx: ActionContext, member: SchemaMember): boolean {
   if (!doc || typeof doc.resolve !== "function") return false; // can't ask → allow
   const schema = doc.type.schema;
   return "node" in member ? !schema.nodes[member.node] : !schema.marks[member.mark];
+}
+
+/**
+ * The schema-membership gate COMPOSED into a row's verdict, once, at registry
+ * assembly (task 1299). Task 1182 declared `makes` on the row but left every
+ * gate factory (and three inline `applies`) to re-ask `surfaceLacks` with a
+ * re-typed name — so declaration and gate agreed only because a test compared
+ * them, and a new inline row that declared `makes` but built its own `applies`
+ * got the reason (`refusalOf` reads `makes`) without the greying. Now the
+ * declaration IS the gate: `makes ∧ surfaceLacks → "disabled"`, else the row's
+ * own `applies`, which asks only its container / capture questions.
+ */
+export function withSchemaGate(spec: ActionSpec): ActionSpec {
+  const member = spec.makes;
+  if (!member) return spec;
+  const own = spec.applies;
+  return { ...spec, applies: (ctx) => (surfaceLacks(ctx, member) ? "disabled" : own(ctx)) };
+}
+
+// ---------------------------------------------------------------------------
+// THE run door (task 1299) — "the commit re-asks the offer's question".
+//
+// Tasks 638 / 1168 / 1199 each closed one surface whose COMMIT skipped the gate
+// its OFFER greyed on, and each did it with a hand copy of the same two lines
+// (`applies(ctx) === "disabled" → return`, `surfaceEditableNow → return`) at
+// the bridge, the slash path, the ¶ dropdown and the colour commit — and the
+// lightning grid's `runGridAction`, the fifth caller, had none (it trusted the
+// render-time `disabled=`). `runAction` is the one door every caller of a row's
+// `run` crosses; `action-run-door-census.test.ts` fails a `run(ctx)` call
+// anywhere else. `actionGate` is its gate half, for a deferred commit that has
+// its own body (`applyTextColor`).
+//
+// Order: the LIVE pen ∧ host answer first (a React `canEdit` is only as fresh
+// as the last render), then the row's own verdict. `beforeRun` is a caller
+// side effect that must happen only if the run will (the grid's focus move —
+// a refused commit must not move focus, as `pickBlockType` does not).
+// ---------------------------------------------------------------------------
+
+/** What the run door's gate half answers: the row's own state, or
+ *  `"read-only"` when the surface cannot be mutated right now. */
+export type ActionGate = ReturnType<ActionSpec["applies"]> | "read-only";
+
+/** The run door's gate half — exported for a deferred commit with its own
+ *  body (`applyTextColor`). Gesture-rate. */
+export function actionGate(spec: ActionSpec, ctx: ActionContext): ActionGate {
+  if (!surfaceEditableNow(ctx.editor ?? ctx.view)) return "read-only";
+  return spec.applies(ctx);
+}
+
+/** Why `runAction` did or did not run — a subset of `ActionDispatchOutcome`,
+ *  so the bridge returns it as is. */
+export type ActionRunOutcome = "ran" | "disabled" | "read-only";
+
+/** Run `spec` at `ctx` iff its gate passes — THE run door (task 1299). */
+export function runAction(
+  spec: ActionSpec,
+  ctx: ActionContext,
+  opts?: { beforeRun?: () => void },
+): ActionRunOutcome {
+  const gate = actionGate(spec, ctx);
+  if (gate === "read-only" || gate === "disabled") return gate;
+  opts?.beforeRun?.();
+  void spec.run(ctx);
+  return "ran";
 }
 
 // ---------------------------------------------------------------------------
@@ -2002,7 +2068,6 @@ function titleFieldRow(field: TitleActionId): ActionSpec {
     slashName: field,
     makes: { node: "titleField" },
     applies: (ctx) => {
-      if (surfaceLacks(ctx, { node: "titleField" })) return "disabled"; // task 1182
       const base = blockApplies(ctx);
       if (base !== "ok") return base;
       return titleFieldRefusal(ctx) ? "disabled" : "ok";
@@ -2745,7 +2810,6 @@ function blockInsertApplies(
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   const refusal = blockInsertRefusal(nodeName, capture);
   return (ctx: ActionContext) => {
-    if (surfaceLacks(ctx, { node: nodeName })) return "disabled"; // task 1182
     const base = blockApplies(ctx);
     if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
     return refusal(ctx) ? "disabled" : "ok";
@@ -2815,7 +2879,6 @@ function inlineAtomInsertApplies(
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   const refusal = inlineAtomInsertRefusal(nodeName, capture);
   return (ctx: ActionContext) => {
-    if (surfaceLacks(ctx, { node: nodeName })) return "disabled"; // task 1182
     const base = blockApplies(ctx);
     if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
     return refusal(ctx) ? "disabled" : "ok";
@@ -3242,7 +3305,6 @@ function formatApplies(
   markName: string,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   return (ctx: ActionContext) => {
-    if (surfaceLacks(ctx, { mark: markName })) return "disabled"; // task 1182
     const base: "ok" | "disabled" = rangeAllowsMark(ctx, markName) ? "ok" : "disabled";
     return gateApplies({ selection: "ignored" }, ctx, base);
   };
@@ -3256,7 +3318,7 @@ function formatApplies(
  * Degrades to `true` when no live view is threaded (the minimal
  * menu-decoration ctx, a unit-test probe) — the "allow" fallback every container
  * gate in this file takes. A schema WITHOUT the mark is refused before this is
- * asked (`formatApplies` → `surfaceLacks`, task 1182).
+ * asked (`withSchemaGate` → `surfaceLacks`, tasks 1182 / 1299).
  */
 function rangeAllowsMark(ctx: ActionContext, markName: string): boolean {
   const doc = ctx.view?.state?.doc;
@@ -3330,7 +3392,6 @@ function wrapperApplies(
   wrapperNodeName: string,
 ): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
   return (ctx: ActionContext) => {
-    if (surfaceLacks(ctx, { node: wrapperNodeName })) return "disabled"; // task 1182
     const base: "ok" | "disabled" = wrapperSafeHere(ctx.view, wrapperNodeName)
       ? "ok"
       : "disabled";
@@ -3630,8 +3691,9 @@ const TEXT_COLOR_ACTION_ROW: ActionSpec = {
  * written and the caller must not pretend otherwise.
  */
 export function applyTextColor(ctx: ActionContext, color: string | null): boolean {
-  if (TEXT_COLOR_ACTION_ROW.applies(ctx) !== "ok") return false;
-  if (!surfaceEditableNow(ctx.editor)) return false;
+  // The run door's gate half (task 1299), over the ASSEMBLED row (which carries
+  // the composed schema gate): pen ∧ host, then the row's own verdict.
+  if (actionGate(VIRGIL_ACTION_REGISTRY["text-color"], ctx) !== "ok") return false;
   const chain = ctx.editor.chain().focus();
   const ref = ctx.ref;
   if (ref.kind === "selection" && ref.from !== ref.to) {
@@ -3778,7 +3840,6 @@ function headingRow(id: HeadingActionId): ActionSpec {
     slashName,
     makes: { node: "heading" },
     applies: (ctx) => {
-      if (surfaceLacks(ctx, { node: "heading" })) return "disabled"; // task 1182
       const ref = ctx.ref;
       // Per-kind base: a selection / caret converts iff the SCHEMA can host a
       // heading where it sits — false inside a `listItem` / `exampleItem`, where
@@ -3788,7 +3849,10 @@ function headingRow(id: HeadingActionId): ActionSpec {
       // `isolating` node is a no-op), so the GATING facet disables it (task 066).
       let base: "ok" | "disabled" = "ok";
       if (ref.kind === "selection" || ref.kind === "cursor") {
-        base = selectionCanHostHeading(ctx.view) ? "ok" : "disabled";
+        // A doc-less ctx (a stub editor) takes the shared "can't ask → allow"
+        // fallback rather than throwing in the walk — so the run door can ask
+        // this verdict of ANY ctx the ¶ dropdown hands it (task 1299).
+        base = !headingGatesCanAsk(ctx) || selectionCanHostHeading(ctx.view) ? "ok" : "disabled";
       } else if (isTextObjectKind(ref.kind)) {
         base = TEXT_OBJECT_REGISTRY[ref.kind].isMeaningfulBlockAtom ? "disabled" : "ok";
       }
@@ -3837,11 +3901,14 @@ const OFF_REGISTRY_HEADING_SPECS = new Map<number, ActionSpec>();
  *  `headingRun(level)`. Not registered: it carries the section row's id and
  *  label only so it satisfies `ActionSpec`, and no surface lists it. */
 function headingLevelSpec(level: number): ActionSpec {
+  // Read off the ASSEMBLED registry, not the family table: the assembly is
+  // where the schema gate is composed in (task 1299), and the off-registry
+  // levels inherit it by spreading the section row.
   const id = LEVEL_HEADING_ID.get(level);
-  if (id) return HEADING_ACTION_ROWS[id];
+  if (id) return VIRGIL_ACTION_REGISTRY[id];
   let spec = OFF_REGISTRY_HEADING_SPECS.get(level);
   if (!spec) {
-    spec = { ...HEADING_ACTION_ROWS["heading-section"], run: headingRun(level) };
+    spec = { ...VIRGIL_ACTION_REGISTRY["heading-section"], run: headingRun(level) };
     OFF_REGISTRY_HEADING_SPECS.set(level, spec);
   }
   return spec;
@@ -3867,10 +3934,7 @@ export function headingLevelVerdict(ctx: ActionContext, level: number): ActionVe
  *  dropdown used to skip), then runs the canonical `headingRun`. Returns
  *  whether it ran. */
 export function runHeadingLevel(ctx: ActionContext, level: number): boolean {
-  const spec = headingLevelSpec(level);
-  if (headingGatesCanAsk(ctx) && spec.applies(ctx) === "disabled") return false;
-  void spec.run(ctx);
-  return true;
+  return runAction(headingLevelSpec(level), ctx) === "ran";
 }
 
 /**
@@ -4057,7 +4121,6 @@ const LATEX_COMMENT_ACTION_ROW: ActionSpec = {
   // block row's container refusal.
   makes: { node: "latexComment" },
   applies: (ctx) => {
-    if (surfaceLacks(ctx, { node: "latexComment" })) return "disabled"; // task 1182
     const base = blockApplies(ctx);
     if (base !== "ok") return base;
     const doc = ctx.view?.state?.doc;
@@ -4136,15 +4199,19 @@ const NON_HEADING_BLOCK_ACTION_ROWS: Readonly<
  * CHIP 7a `ref` + the 3 title fields, and the typed-only `latex-comment` row
  * (task 639) last.
  */
-export const VIRGIL_ACTION_REGISTRY: Readonly<Record<ActionId, ActionSpec>> = {
-  ...CARD_ACTION_ROWS,
-  ...HEADING_ACTION_ROWS,
-  ...NON_HEADING_BLOCK_ACTION_ROWS,
-  ...FORMAT_ACTION_ROWS,
-  ...ATOM_ACTION_ROWS,
-  ...TITLE_ACTION_ROWS,
-  ...LATEX_COMMENT_ACTION_ROWS,
-};
+export const VIRGIL_ACTION_REGISTRY: Readonly<Record<ActionId, ActionSpec>> = mapRecord(
+  {
+    ...CARD_ACTION_ROWS,
+    ...HEADING_ACTION_ROWS,
+    ...NON_HEADING_BLOCK_ACTION_ROWS,
+    ...FORMAT_ACTION_ROWS,
+    ...ATOM_ACTION_ROWS,
+    ...TITLE_ACTION_ROWS,
+    ...LATEX_COMMENT_ACTION_ROWS,
+  } satisfies Record<ActionId, ActionSpec>,
+  // Task 1299: the schema gate is composed HERE, once, from each row's `makes`.
+  withSchemaGate,
+);
 
 /**
  * Compile-time proof that the six family tables PARTITION `ActionId` — stated

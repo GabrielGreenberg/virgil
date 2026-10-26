@@ -39,7 +39,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, fireEvent } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
@@ -523,6 +523,36 @@ describe("the rendered grid asks the row (the panel, not just the registry)", ()
     const editor = mount();
     renderGrid(editor, "code");
     for (const id of MARKS) expect(cellDisabled(id), id).toBe(true);
+    editor.destroy();
+  });
+
+  // Task 1299: the grid's COMMIT re-asks the cell's question through the
+  // registry's one run door. A cell rendered lit stays lit until the panel
+  // re-renders; if the caret moves into a block the row refuses meanwhile, the
+  // click must write nothing — not even the up-front focus move.
+  it("a cell lit at render REFUSES at commit when the caret has moved into a refusing block", () => {
+    const editor = mount();
+    renderGrid(editor, "prose");
+    caretIn(editor, "code");
+    expect(verdict(editor, "bullet-list"), "the row now refuses at the caret").toBe("disabled");
+    const cell = document.querySelector('[id$="-item-bullet-list"]') as HTMLButtonElement;
+    // Vacuity guard: the click must actually reach the handler.
+    if (cell.disabled) cell.disabled = false;
+    const before = editor.state.doc;
+    let transactions = 0;
+    editor.on("transaction", () => transactions++);
+    fireEvent.click(cell);
+    expect(transactions, "no transaction — not even the focus move").toBe(0);
+    expect(editor.state.doc.eq(before)).toBe(true);
+    editor.destroy();
+  });
+
+  it("…and the same click RUNS where the row still applies (control)", () => {
+    const editor = mount();
+    renderGrid(editor, "prose");
+    const before = editor.state.doc;
+    fireEvent.click(document.querySelector('[id$="-item-bullet-list"]') as HTMLButtonElement);
+    expect(editor.state.doc.eq(before)).toBe(false);
     editor.destroy();
   });
 
