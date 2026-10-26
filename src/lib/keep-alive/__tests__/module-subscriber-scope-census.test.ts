@@ -95,6 +95,7 @@ const LEDGER: Record<string, Row> = {
 
   "components/editor-layout/omni-pin-store.ts#_listeners": { scope: "owner-keyed", why: "pins are keyed by a per-pod minted owner (task 583)" },
   "lib/stack/stack-terminal.ts#registryListeners": { scope: "owner-keyed", why: "terminals are registered per pane object" },
+  "links/_shared/stored-kind-resolver.ts#_resolvers": { scope: "owner-keyed", why: "kind resolvers are keyed by the doc's CardStore object; a pane releases only its own (task 1296)" },
 
   "links/pending-preview-store.ts#listeners": {
     scope: "residual-per-paper-key",
