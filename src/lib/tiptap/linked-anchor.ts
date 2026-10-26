@@ -10,6 +10,7 @@ import {
   dispatchTextObjectOrphaned,
 } from "@/lib/tiptap/orphan-events";
 import {
+  archiveReplayTracker,
   groupHeldDepartures,
   holdingsApplyTo,
   snippetHoldingUuid,
@@ -142,9 +143,11 @@ export const LinkedAnchor = Mark.create({
  *  (`archive-holdings.ts`) as `virgil-anchors-archived`, one event per
  *  snippet. The archive GESTURE carries its cards itself; this is the answer
  *  for a removal that does not say what it is — a history replay of that
- *  gesture. Only a replay: `replay` is `holdingsApplyTo(transactions)`, read
- *  at append time (task 1297 — an ordinary delete after an Undo of the
- *  archive orphans, as if nothing were held). O(departed) O(1) lookups; an
+ *  gesture. Only that replay: `replay` is `holdingsApplyTo(transactions)`,
+ *  read at append time — true only for the Redo of the archive's own history
+ *  event (task 1302); an ordinary delete after an Undo of the archive (task
+ *  1297), an Undo that takes the passage away, or a Redo of some other removal
+ *  all orphan, as if nothing were held). O(departed) O(1) lookups; an
  *  empty registry answers at once. */
 function announceArchivedDepartures(
   docId: string | null,
@@ -182,6 +185,10 @@ export const LinkedAnchorGuard = Extension.create<{
     // the `setTimeout(0)` skips any anchorId whose mark is actually still live.
     let liveView: EditorView | null = null;
     return [
+      // Which transaction is the REDO of an archive (task 1302) — the answer
+      // `holdingsApplyTo` gives this guard and the two block guards. Mounted
+      // here because this guard is unconditional wherever the others run.
+      archiveReplayTracker(),
       new Plugin({
         key: new PluginKey("linkedAnchorGuard"),
         view(v) {
@@ -672,9 +679,11 @@ export const MarginaliaAnchorGuard = Extension.create<{
             // passage is in the archive and a Restore brings it back; the
             // cards go dormant there (`virgil-anchors-archived`), so a
             // placeholder here would only be a stray empty line. O(1) lookup.
-            // Only for a history replay (task 1297): after an Undo of the
-            // archive the snippet still holds this uuid, and an ORDINARY
-            // delete of the live paragraph must resurrect as with no archive.
+            // Only for the Redo of the archive itself (tasks 1297/1302): after
+            // an Undo of the archive the snippet still holds this uuid, and any
+            // OTHER removal of the live paragraph — an ordinary delete, an Undo
+            // of the paste that made it, a Redo of an ordinary Cut — must
+            // resurrect as with no archive.
             if (replay && snippetHoldingUuid(docIdRef?.current, b.uuid)) continue;
             vanished.push({ uuid: b.uuid, pos: b.pos });
           }

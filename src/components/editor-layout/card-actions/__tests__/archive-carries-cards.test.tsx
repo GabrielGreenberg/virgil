@@ -30,6 +30,8 @@ vi.mock("@/lib/focus-new-card", async (importOriginal) => {
 });
 
 import { Editor } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
+import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import type { JSONContent } from "@tiptap/core";
 import { renderHook } from "@testing-library/react";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
@@ -988,6 +990,120 @@ describe("task 1269 — Redo of an Archive leaves the cards dormant, not strippe
     expect(store.byId("h1").links ?? []).toHaveLength(0);
     // S1 is untouched.
     expect(JSON.stringify(h.snippets[0])).toBe(snippet);
+    retractArchiveHoldings(DOC, owner);
+  });
+
+  /** Count the `virgil-anchors-archived` announcements from here on. */
+  function countArchivedEvents(): { n: number } {
+    const box = { n: 0 };
+    const l = ((e: CustomEvent) => {
+      if (e.detail?.docId === DOC) box.n++;
+    }) as EventListener;
+    window.addEventListener(ANCHORS_ARCHIVED_EVENT, l);
+    listeners.push([ANCHORS_ARCHIVED_EVENT, l]);
+    return box;
+  }
+
+  it("paste P → Archive → Undo → Undo (of the PASTE): not the archive — placeholder + orphan, nothing dormant (task 1302)", async () => {
+    const editor = mountDoc(doc(), {
+      docIdRef: { current: DOC },
+      anchoredUuidsRef: { current: new Set(["p-target"]) },
+    });
+    // Make P's arrival an undoable event: take it out OUTSIDE history (as a
+    // deliberate removal, so nothing resurrects), then put it back the way a
+    // paste does. Its own event, closed before the archive.
+    let at = -1;
+    let node: ReturnType<Editor["state"]["doc"]["child"]> | null = null;
+    editor.state.doc.forEach((n, pos) => {
+      if (n.attrs.uuid === "p-target") {
+        at = pos;
+        node = n;
+      }
+    });
+    editor.view.dispatch(
+      editor.state.tr
+        .delete(at, at + node!.nodeSize)
+        .setMeta(LIFECYCLE_DELETE_META, true)
+        .setMeta("addToHistory", false),
+    );
+    await flush();
+    editor.view.dispatch(editor.state.tr.insert(at, node!));
+    editor.view.dispatch(closeHistory(editor.state.tr));
+    await flush();
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
+
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    wireHooks(store, ["m1", "h1", "n1"]);
+    await h.dispatch("archive", P_REF);
+    const owner = {};
+    publishArchiveHoldings(DOC, owner, holdingsOf(h.snippets as unknown as ArchivedSnippet[]));
+    await flush();
+
+    editor.commands.undo(); // the archive
+    await flush();
+    store.revive(editor);
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-target", "p-after"]);
+    const archived = countArchivedEvents();
+
+    editor.commands.undo(); // the paste — removes P, but is NOT the archive
+    await flush();
+    expect(archived.n).toBe(0);
+    // Exactly as with nothing archived: the anchor guard resurrects…
+    expect(uuidsInOrder(editor)).toContain("p-target");
+    for (const id of ["m1", "h1", "n1"]) {
+      const c = store.byId(id);
+      expect(dormantSnippetOf(c), id).toBeNull();
+      expect(c.archived, id).toBeUndefined();
+    }
+    // …and the Mode-B anchors departed for real: orphaned.
+    expect(store.byId("m1").links ?? []).toHaveLength(0);
+    expect(store.byId("h1").links ?? []).toHaveLength(0);
+
+    // The archive's own Redo is still the archive: Redo the paste, then Redo
+    // the archive → dormant in the snippet, no placeholder.
+    editor.commands.redo();
+    await flush();
+    expect(archived.n).toBe(0);
+    editor.commands.redo();
+    await flush();
+    expect(archived.n).toBeGreaterThan(0);
+    expect(uuidsInOrder(editor)).toEqual(["p-before", "p-after"]);
+    expect(dormantSnippetOf(store.byId("n1"))).toBe(h.snippets[0].id);
+    retractArchiveHoldings(DOC, owner);
+  });
+
+  it("Archive → Undo → ordinary Cut → Undo → Redo (of the CUT): not the archive — nothing announced dormant (task 1302)", async () => {
+    const editor = mountDoc(doc(), {
+      docIdRef: { current: DOC },
+      anchoredUuidsRef: { current: new Set(["p-target"]) },
+    });
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    wireHooks(store, ["m1", "h1", "n1"]);
+    await h.dispatch("archive", P_REF);
+    const owner = {};
+    publishArchiveHoldings(DOC, owner, holdingsOf(h.snippets as unknown as ArchivedSnippet[]));
+    await flush();
+
+    editor.commands.undo(); // the archive
+    await flush();
+    store.revive(editor);
+
+    deleteWholeTarget(editor); // an ordinary Cut — clears the archive's Redo
+    await flush();
+    editor.commands.undo(); // the Cut
+    await flush();
+    const archived = countArchivedEvents();
+    editor.commands.redo(); // the Cut again — NOT the archive
+    await flush();
+    expect(archived.n).toBe(0);
+    expect(uuidsInOrder(editor)).toContain("p-target");
+    for (const id of ["m1", "h1", "n1"]) {
+      const c = store.byId(id);
+      expect(dormantSnippetOf(c), id).toBeNull();
+      expect(c.archived, id).toBeUndefined();
+    }
     retractArchiveHoldings(DOC, owner);
   });
 
