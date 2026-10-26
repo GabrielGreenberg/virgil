@@ -17,6 +17,7 @@ Named subcommands (v1):
   apply_response.py <doc> complete-task      <op-json> [--propose] [--synthesize-task]
   apply_response.py <doc> complete-only      <id|op-json> [--note N] [--result R] [--synthesize-task]
   apply_response.py <doc> revert             <id>
+  apply_response.py <doc> notify             --summary S --skill NAME   # Task-less run done
 
 Existing-card mutation ops (EDITOR_SKILLS_V1 §10) — the same atomic + pen-wrapped
 transaction, but they *mutate* a card that already exists rather than create one.
@@ -266,6 +267,8 @@ ALL_RESULTS = {
 
 SUBCOMMANDS = {
     "complete-task", "write-with-comment", "write-silent", "complete-only", "revert",
+    # Close a Task-less run: notification + version bump under the pen (task 1313).
+    "notify",
     # Existing-card mutation ops (§10) — each routes through _mutation_commit.
     # accept/reject (chip 13) consummate an L3 proposal (accept also splices the .tex).
     "update", "archive", "restore", "move", "link", "accept", "reject",
@@ -2465,6 +2468,29 @@ def cmd_revert(doc: Path, request_id: str) -> dict:
     return {"ok": True, "reverted": True, "version": vnum}
 
 
+def cmd_notify(doc: Path, summary: str, skill: str) -> dict:
+    """Close a Task-less RUN: append the `ai-request-complete` notification and
+    bump version.txt, both DEFERRED, committed together under the pen (task
+    1313). A skill whose writes all went through other doors (sync-bib-to-library:
+    the library shims, rename_citekey, a review note) still owes the app its
+    "run finished" signal — and before, it reached for two unpenned
+    `_common` writers through a dotted import that only resolved in the
+    source repo. This is that signal's one door: no Task is touched (a run is
+    not a Task — nothing is synthesized), and the reflection keys on '-'."""
+    if not summary or not summary.strip():
+        die("notify needs a non-empty --summary")
+    txn = _Txn(doc)
+    notif_path, notif_content = notification_deferred(
+        doc, {"kind": "ai-request-complete", "at": now_iso(), "summary": summary},
+    )
+    txn.add_raw(notif_path, notif_content)
+    vbump = DeferredVersionBump(doc)
+    txn.add_raw(vbump.path, vbump)
+    commit_under_pen(doc, txn.writes())
+    _reflect_tail(doc, skill, None)
+    return {"ok": True, "version": vbump.n, "summary": summary}
+
+
 # ---------------------------------------------------------------------------
 # Existing-card mutation ops (EDITOR_SKILLS_V1 §10)
 #
@@ -3400,6 +3426,14 @@ def _dispatch_subcommand(doc: Path, sub: str, sub_argv: list[str]) -> dict:
         p.add_argument("--synthesize-task", action="store_true", dest="synthesize")
         a = p.parse_args(sub_argv)
         return cmd_complete_only(doc, a.target, note=a.note, result=a.result, synthesize=a.synthesize)
+
+    if sub == "notify":
+        p = argparse.ArgumentParser(prog="apply_response.py <doc> notify")
+        p.add_argument("--summary", type=text_arg, required=True,
+                       help="the run's one-line outcome; @<path> reads a file")
+        p.add_argument("--skill", required=True, help="the skill closing its run (names the reflection)")
+        a = p.parse_args(sub_argv)
+        return cmd_notify(doc, a.summary, a.skill)
 
     if sub == "revert":
         p = argparse.ArgumentParser(prog="apply_response.py <doc> revert")

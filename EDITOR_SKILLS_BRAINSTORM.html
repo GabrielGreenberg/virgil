@@ -1884,7 +1884,7 @@ The third option is appealing — preserves the card history while skipping the 
 <p>Virtual ids are the key trick: legacy un-bridged card flags appear as <code>virtual:&lt;panel&gt;:&lt;cardId&gt;</code>, so <code>/editor/review</code> can dispatch them through the same routing table as real ai-requests. <code>apply_response.py</code> recognizes the prefix and clears the source flag instead of touching <code>ai-requests.json</code>.</p>
 
 <h4 style="margin-top: 0.8rem;"><code>editor/scripts/_common.py</code></h4>
-<p>Stdlib-only helpers: <code>resolve_doc</code>, <code>find_tex_file</code>, <code>find_bib_file</code>, <code>read_json</code> / <code>write_json</code>, <code>find_paragraph_uuids</code>, <code>card_paragraph_ids</code>, <code>append_notification</code>, <code>bump_version</code>, <code>now_iso</code>, <code>die</code>.</p>
+<p>Stdlib-only helpers: <code>resolve_doc</code>, <code>find_tex_file</code>, <code>find_bib_file</code>, <code>read_json</code> / <code>write_json</code>, <code>find_paragraph_uuids</code>, <code>card_paragraph_ids</code>, <code>notification_deferred</code>, <code>DeferredVersionBump</code>, <code>now_iso</code>, <code>die</code>.</p>
 </div>
 </div>
 
